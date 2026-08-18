@@ -8,13 +8,16 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   render:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+          fetch-depth: 0
 
       - name: Install Pandoc 3.10.2
         uses: pandoc/actions/setup@v1
@@ -106,12 +109,28 @@ jobs:
           import hashlib, json, pathlib
           p = pathlib.Path('docs/arch_manuals/mlff_training_data_architecture.pdf')
           m = json.loads(pathlib.Path(str(p)+'.manifest.json').read_text())
-          h = hashlib.sha256(p.read_bytes()).hexdigest()
-          assert h == m['pdf']['sha256']
+          assert hashlib.sha256(p.read_bytes()).hexdigest() == m['pdf']['sha256']
           s = pathlib.Path('docs/arch_manuals/mlff_training_data_architecture.md')
           assert hashlib.sha256(s.read_bytes()).hexdigest() == m['source']['sha256']
           print('provenance OK')
           PY
+
+      - name: Commit qualified render to branch
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/arch_manuals/mlff_training_data_architecture.md \
+                  docs/arch_manuals/mlff_training_data_architecture.pdf \
+                  docs/arch_manuals/mlff_training_data_architecture.pdf.manifest.json
+          if git diff --cached --quiet; then
+            echo 'render artifacts already synchronized'
+          else
+            git commit -m 'DOC-GOV1 G2 synchronize architecture PDF [skip ci]'
+            git push origin HEAD:${{ github.event.pull_request.head.ref }}
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
