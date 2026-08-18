@@ -477,3 +477,9 @@ The complete pre-DOC-GOV1 mixed specification, including completed stage chronol
 This specification owns only the cross-cutting invariants stated above. The dedicated current specifications listed in `README.md` own their module-local behavior and may refine implementation details without weakening these invariants. Runtime/product gates remain normative where they define current software behavior; developer implementation gates are non-normative coordination artifacts under `workplans/`.
 
 The complete pre-DOC-GOV1 mixed specification, including completed stage chronology and historical/future developer planning, is preserved at `docs/history/mlff/manual_snapshots/mlff_data_stage_plan_spec_pre_doc_gov1.md` and is non-normative.
+
+# Authority and supersession
+
+This specification owns only the cross-cutting invariants stated above. The dedicated current specifications listed in `README.md` own their module-local behavior and may refine implementation details without weakening these invariants. Runtime/product gates remain normative where they define current software behavior; developer implementation gates are non-normative coordination artifacts under `workplans/`.
+
+The complete pre-DOC-GOV1 mixed specification, including completed stage chronology and historical/future developer planning, is preserved at `docs/history/mlff/manual_snapshots/mlff_data_stage_plan_spec_pre_doc_gov1.md` and is non-normative.
