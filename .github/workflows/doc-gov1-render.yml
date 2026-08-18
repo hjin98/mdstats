@@ -22,6 +22,9 @@ jobs:
       - name: Apply lossless G3 specification split
         run: python tools/doc_gov1_g3_migrate.py
 
+      - name: Apply G4 dependency-graph normalization
+        run: python tools/doc_gov1_g4_migrate.py
+
       - name: Install Pandoc 3.10.2
         uses: pandoc/actions/setup@v1
         with:
@@ -95,7 +98,7 @@ jobs:
               print('provenance OK:', src)
           PY
 
-      - name: G3 authority checks
+      - name: G3-G4 authority checks
         shell: bash
         run: |
           set -euo pipefail
@@ -104,8 +107,23 @@ jobs:
           ! grep -q '^## Current version history' docs/specs/training_data/README.md
           test -s docs/history/mlff/manual_snapshots/mlff_data_stage_plan_spec_pre_doc_gov1.md
           test -s docs/history/mlff/manual_snapshots/training_data_spec_index_pre_doc_gov1.md
+          test -s docs/history/mlff/manual_snapshots/mlff_training_data_dependency_graph_pre_doc_gov1.json
+          python - <<'PY'
+          import json
+          p='docs/arch_manuals/mlff_training_data_dependency_graph.json'
+          g=json.load(open(p))
+          assert g.get('authority_model') == 'current_dependency_architecture'
+          for k in ('architecture_revision','branch','documentation_gate','next_gate'):
+              assert k not in g
+          bad={'implementation_requires','documentation_requires'}
+          assert not ({e['type'] for e in g['edges']} & bad)
+          assert {e['type'] for e in g['edges']} <= set(g['edge_type_definitions'])
+          for n in g['nodes']:
+              assert 'implementation_status' not in n and 'next_gate' not in n and 'gate_name' not in n
+          print('graph current-state semantics OK')
+          PY
 
-      - name: Commit qualified G3 state to branch
+      - name: Commit qualified G4 state to branch
         if: github.event_name == 'pull_request'
         shell: bash
         run: |
@@ -115,16 +133,18 @@ jobs:
           git add docs/arch_manuals/mlff_training_data_architecture.md \
                   docs/arch_manuals/mlff_training_data_architecture.pdf \
                   docs/arch_manuals/mlff_training_data_architecture.pdf.manifest.json \
+                  docs/arch_manuals/mlff_training_data_dependency_graph.json \
                   docs/specs/training_data/README.md \
                   docs/specs/training_data/mlff_data_stage_plan_spec.md \
                   docs/specs/training_data/mlff_data_stage_plan_spec.pdf \
                   docs/specs/training_data/mlff_data_stage_plan_spec.pdf.manifest.json \
                   docs/history/mlff/manual_snapshots/mlff_data_stage_plan_spec_pre_doc_gov1.md \
-                  docs/history/mlff/manual_snapshots/training_data_spec_index_pre_doc_gov1.md
+                  docs/history/mlff/manual_snapshots/training_data_spec_index_pre_doc_gov1.md \
+                  docs/history/mlff/manual_snapshots/mlff_training_data_dependency_graph_pre_doc_gov1.json
           if git diff --cached --quiet; then
-            echo 'G3 state already synchronized'
+            echo 'G4 state already synchronized'
           else
-            git commit -m 'DOC-GOV1 G3 normalize MLFF specifications [skip ci]'
+            git commit -m 'DOC-GOV1 G4 normalize MLFF dependency graph [skip ci]'
             git push origin HEAD:${{ github.event.pull_request.head.ref }}
           fi
 
@@ -138,4 +158,5 @@ jobs:
             docs/specs/training_data/mlff_data_stage_plan_spec.md
             docs/specs/training_data/mlff_data_stage_plan_spec.pdf
             docs/specs/training_data/mlff_data_stage_plan_spec.pdf.manifest.json
+            docs/arch_manuals/mlff_training_data_dependency_graph.json
           if-no-files-found: error
