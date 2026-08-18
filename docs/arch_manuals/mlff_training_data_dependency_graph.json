@@ -2863,6 +2863,26 @@
       "from": "MVSTATE_REUSE1_SELECTOR_REPAIR_HANDOFF",
       "to": "FINAL_GPU1_DEFERRED_RELEASE_QUALIFICATION",
       "type": "release_qualification_requires"
+    },
+    {
+      "from": "TARGET_DATA2C_MVIDX1_COVERAGE_INDEX",
+      "to": "TARGET_DATA2C_MVSEL2_FORWARD_LAZY_SELECTOR",
+      "type": "execution_requires"
+    },
+    {
+      "from": "TARGET_DATA2C_MVSEL2_FORWARD_LAZY_SELECTOR",
+      "to": "MVSTATE2_COMPACT_CHECKPOINT",
+      "type": "produces"
+    },
+    {
+      "from": "MVSTATE2_COMPACT_CHECKPOINT",
+      "to": "TARGET_DATA2C_REPAIR2_FORWARD_STATE",
+      "type": "execution_requires"
+    },
+    {
+      "from": "TARGET_DATA2C_REPAIR2_FORWARD_STATE",
+      "to": "TARGET_DATA2C_MVQUAL1_SAME_N_QUALIFICATION",
+      "type": "release_qualification_requires"
     }
   ],
   "forbidden_dependencies": [
@@ -4837,6 +4857,37 @@
       "repair_objective_authority_change": false,
       "selector_rank_authority_change": false,
       "state_cache_schema": "mdstats.target-multi-view-selection-state-cache.v1"
+    },
+    {
+      "authority_class": "scientific_selection",
+      "coverage_threshold": 0.95,
+      "forward_only_runtime_view": true,
+      "id": "TARGET_DATA2C_MVSEL2_FORWARD_LAZY_SELECTOR",
+      "inverse_mutation": false,
+      "phase_a": "exact_staged_forward_scan",
+      "phase_b": "certified_outward_rounded_lazy_frontier",
+      "record_name": "target_multi_view_selection_v2",
+      "stable_tie_break": "frame_uid",
+      "target_size_ceiling": 16384
+    },
+    {
+      "authority_class": "reconstructible_execution_state",
+      "candidate_gain_arrays_persisted": false,
+      "heap_persisted": false,
+      "id": "MVSTATE2_COMPACT_CHECKPOINT",
+      "persistence_schema": "mdstats.target-data2c-mvstate2.checkpoint.v1",
+      "publication": "authenticated_atomic_directory",
+      "record_name_pattern": "target_multi_view_selection_state_v2:<domain>:<size>"
+    },
+    {
+      "active_shell_only": true,
+      "authority_class": "scientific_selection_repair",
+      "forward_only_mutation": true,
+      "id": "TARGET_DATA2C_REPAIR2_FORWARD_STATE",
+      "immutable_lower_prefixes": true,
+      "inverse_mutation": false,
+      "record_name": "target_multi_view_repair_v2",
+      "strict_no_coverage_regression": true
     }
   ],
   "schema_version": 83

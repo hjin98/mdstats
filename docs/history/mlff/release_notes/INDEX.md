@@ -183,3 +183,4 @@ Release notes record deltas and migration context; they are not current architec
 - [mdstats 0.20.239a0 - Python 3.11 DATA6 progress syntax hotfix](PATCH_NOTES_0.20.239a0.md)
 - [mdstats 0.20.240a0 - MVIDX bounded-queue backpressure hotfix](PATCH_NOTES_0.20.240a0.md)
 - [mdstats 0.20.241a0 - MVSEL production-density scaling hardening](PATCH_NOTES_0.20.241a0.md)
+- [mdstats 0.20.242a0 - MVSEL2 forward/lazy selector chain](PATCH_NOTES_0.20.242a0.md)

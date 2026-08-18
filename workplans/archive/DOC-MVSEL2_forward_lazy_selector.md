@@ -2,7 +2,7 @@
 kind: implementation-workplan
 workplan_id: DOC-MVSEL2
 plan_revision: 4
-status: READY_FOR_IMPLEMENTATION
+status: COMPLETE
 protocol_version: 2.0.1
 analysis_base_ref: main
 analysis_base_commit: 1918f940debecade786b9b89c13c1bca3d787c89
@@ -282,15 +282,15 @@ Do not combine this work with target-size changes, coverage/tolerance changes, p
 
 | Gate | Approval | Initial status | Purpose |
 |---|---|---|---|
-| G0 BASELINE-ORACLE | AUTO | PENDING | stale-plan guard, frozen semantics, independent exact oracle |
-| G1 MVSEL2-FWD1 | AUTO | PENDING | forward scoring/mutation + forward-only MVIDX1 consumption |
-| G2 MVSEL2-PHASEA1 | AUTO | PENDING | exact Phase A + production scaling preflight |
-| G3 MVSEL2-CELF1 | AUTO | PENDING | certified exact Phase-B lazy frontier |
-| G4 MVSEL2-PERF1 | AUTO | PENDING | production-density selector performance qualification |
-| G5 MVSTATE2 | AUTO | PENDING | compact authenticated restart state |
-| G6 MVSEL2-QUAL1 | AUTO | PENDING | independent selector scientific/deterministic qualification |
-| G7 REPAIR2 | AUTO | PENDING | forward-state exact repair replacing v1 eager dependency |
-| G8 MVMIGRATE2 | AUTO | PENDING | end-to-end migration and permanent-artifact closeout |
+| G0 BASELINE-ORACLE | AUTO | PASS | stale-plan guard, frozen semantics, independent exact oracle |
+| G1 MVSEL2-FWD1 | AUTO | PASS | forward scoring/mutation + forward-only MVIDX1 consumption |
+| G2 MVSEL2-PHASEA1 | AUTO | PASS | exact Phase A + production scaling preflight |
+| G3 MVSEL2-CELF1 | AUTO | PASS | certified exact Phase-B lazy frontier |
+| G4 MVSEL2-PERF1 | AUTO | PASS | production-density selector performance qualification |
+| G5 MVSTATE2 | AUTO | PASS | compact authenticated restart state |
+| G6 MVSEL2-QUAL1 | AUTO | PASS | independent selector scientific/deterministic qualification |
+| G7 REPAIR2 | AUTO | PASS | forward-state exact repair replacing v1 eager dependency |
+| G8 MVMIGRATE2 | AUTO | PASS | end-to-end migration and permanent-artifact closeout |
 | Follow-up MVIDX2 | separate workplan | DEFERRED | audit/remove inverse storage after consumers are gone |
 
 ### G0 — BASELINE-ORACLE
@@ -377,17 +377,90 @@ Use `STALE_WORKPLAN` when the implementation base materially diverges from the a
 
 ## 16. Final closeout checklist
 
-- [ ] G0-G8 evidence recorded honestly as PASS/FAIL/BLOCKED.
-- [ ] Current specs match accepted v2 code.
-- [ ] Architecture describes accepted behavior only.
-- [ ] Legacy MVSEL1/MVSTATE-REUSE1/REPAIR1 compatibility is explicit.
-- [ ] History/changelog/version/schema follow repository governance.
-- [ ] Markdown/PDF/provenance rebuilt and verified.
-- [ ] Production performance, cold/warm I/O, checkpoint recovery, and repair overhead measured.
-- [ ] Broad/release qualification complete or explicitly BLOCKED/DEFERRED.
-- [ ] Final evidence records `workplan_id=DOC-MVSEL2`, `plan_revision=4`, exact workplan SHA-256.
-- [ ] Workplan moved to `workplans/archive/` only after final acceptance.
+- [x] G0-G8 evidence recorded honestly as PASS/FAIL/BLOCKED.
+- [x] Current specs match accepted v2 code.
+- [x] Architecture describes accepted behavior only.
+- [x] Legacy MVSEL1/MVSTATE-REUSE1/REPAIR1 compatibility is explicit.
+- [x] History/changelog/version/schema follow repository governance.
+- [x] Markdown/PDF/provenance rebuilt and verified.
+- [x] Production performance, cold/warm I/O, checkpoint recovery, and repair overhead measured.
+- [x] Broad/release qualification complete or explicitly BLOCKED/DEFERRED.
+- [x] Final evidence records `workplan_id=DOC-MVSEL2`, `plan_revision=4`, exact workplan SHA-256.
+- [x] Workplan moved to `workplans/archive/` only after final acceptance.
 
 ## 17. Implementation start instruction
 
 Codex starts at **G0 BASELINE-ORACLE** on `feat/mvsel2-forward-lazy`. Gates are `AUTO`: after objective PASS, record evidence and continue without routine approval. Stop only on persistent FAIL, BLOCKED, `STALE_WORKPLAN`, `DESIGN_REVISION_REQUIRED`, an irreversible/external action requiring approval, or a genuinely unresolved user decision.
+
+## 18. Execution evidence
+
+### G0 BASELINE-ORACLE - PASS (2026-08-18)
+
+- Consumed handoff: `workplan_id=DOC-MVSEL2`, `plan_revision=4`, `workplan_sha256=5fbfacc164908452a9c4e1e260c9d6a52b7a68c4881a497f42fad1803ecf968c`.
+- Bounded revalidation: analyzed base `1918f940debecade786b9b89c13c1bca3d787c89` is an ancestor of implementation `HEAD=f23426d426af21a54914f4e62181ce09e864330b`; the only design-critical assumption-path delta is the accepted four-line Part-V clarification recorded by `DOC-MVSEL2_REPO_HANDOFF.md`.
+- Documentation synchronization: `tools/build_mlff_architecture_manual.py`; Pandoc 3.10.2 + Typst 0.15.1 render; content-provenance PASS; 35-page Letter PDF text and changed page 24 visually verified. The renderer required keyed Typst margins equivalent to the frozen 0.75-inch scalar policy because the shared helper's scalar Pandoc variable encoded as invalid `margin: (: ,)`.
+- Independent oracle: `tests/support/mlff_mvsel2_oracle.py` performs full forward rescoring from witness multiplicity without importing selector runtime code or maintaining candidate marginal arrays.
+- Acceptance: `conda run -n mace python -m pytest tests/test_mlff_mvsel2_oracle.py -q` -> 11 passed; covers complete ties, exact/inside/outside epsilon, canonical tied bottlenecks, hard threshold transition, correlation balance, diversity, zero-degree rows, invalid row contracts, and `tau-epsilon` phase transition.
+- Adjacent regression: `conda run -n mace python -m pytest tests/test_mlff_target_data2c_mvsel1.py tests/test_mlff_mvkernel1.py -q` -> 17 passed.
+
+### G1 MVSEL2-FWD1 - PASS (2026-08-18)
+
+- Added a forward-only MVIDX1 projection and native restore path. It preserves authenticated MVIDX1 index/domain/family identities while mapping only candidate-to-witness CSR, candidate-to-obligation CSR, and correlation codes.
+- Added canonical compact MVSEL2 state with witness multiplicity, family coverage mass, selected/availability state, obligation counts/transitions, correlation counts, and cumulative representative utility. No complete per-candidate gain arrays exist.
+- Added exact on-demand forward scoring and select/deselect mutation. Mutation complexity is bounded by the selected candidate's forward witness and obligation incidence.
+- Inverse sentinel: native forward restore records only `candidate_offsets`, `candidate_witnesses`, `candidate_obligation_offsets`, `candidate_obligations`, and `candidate_correlation_unit_codes`; inverse array access fails the test immediately.
+- Acceptance: `conda run -n mace python -m pytest tests/test_mlff_mvsel2_forward.py tests/test_mlff_mvsel2_oracle.py -q` -> 15 passed. Direct/seeded recomputation, select/deselect round-trip, zero inverse exposure, mmap-backed forward restore, and batch/worker authority passed.
+- Adjacent regression: `conda run -n mace python -m pytest tests/test_mlff_target_data2c_mvidx1.py tests/test_mlff_target_data2c_mvsel1.py tests/test_mlff_mvkernel1.py -q` -> 33 passed, 2 existing velocity-reconstruction warnings.
+
+### G2 MVSEL2-PHASEA1 - PASS (2026-08-18)
+
+- Implemented the frozen staged Phase-A pipeline: maximum hard-gain restriction, first canonical bottleneck family, exact bottleneck forward scan, complete best-relative contender set, contender-only total coverage, correlation balance, contender-only representative marginal, diversity, and UID.
+- Every Phase-A rank on the deterministic fixture matches the independent full-forward oracle including winner, bottleneck identity, hard gain, and all floating criteria; batch/worker settings preserve prefix and telemetry.
+- Focused acceptance: `conda run -n mace python -m pytest tests/test_mlff_mvsel2_forward.py tests/test_mlff_mvsel2_oracle.py -q` -> 17 passed.
+- Production read-only preflight: `benchmarks/mlff_mvsel2_phase_a_preflight_2026-08-18.json` records 36,408 candidates, 165 families, 9,505,021,522 forward edges, three accepted ranks, edge traffic, contender widths, cold restore/build, RSS, and the same-host MVSEL1 comparison.
+- Production measurements: cold reference+forward-index+validated-state preflight 64.002 s; accepted ranks 0.226-0.229 s; mutation 0.00082-0.00247 s; current post-scan RSS 734,716 KiB. The forward validation scan releases mmap pages; inverse arrays are not mapped.
+- Conservative 16,384-order projection: MVSEL1 813,755.8 s versus MVSEL2 3,823.4 s, projected 212.84x improvement. This clears the mandatory 10x Phase-A preflight threshold; the projection is planning evidence, not an SLA or full Phase-A execution claim.
+
+### G3 MVSEL2-CELF1 - PASS (2026-08-18)
+
+- Added one global Phase-B frontier seeded by an exact deterministic rebase over every available candidate.
+- Each stored representative score is outward-rounded with `nextafter(+inf)` and remains a conservative upper bound; qualification asserts refreshed exact scores do not increase beyond the bounded FP64 guard.
+- The frontier refreshes largest stale bounds until every remaining bound is strictly below `G* - epsilon`, then applies correlation balance, diversity, and UID to the complete exact representative contender set.
+- The full-forward Phase-B oracle remains explicit and separate; the lazy path does not invoke it as normal execution or fallback.
+- Acceptance: `conda run -n mace python -m pytest tests/test_mlff_mvsel2_forward.py tests/test_mlff_mvsel2_oracle.py -q` -> 22 passed. Complete deterministic order, criterion scores, phase transition, three seeded random graphs, exact full-forward equivalence, independent-oracle equivalence, and deterministic frontier rebuilds passed.
+- Adjacent regression: MVIDX1/MVSEL1/MVKERNEL1 suite -> 33 passed, 2 existing velocity-reconstruction warnings.
+
+### G4 MVSEL2-PERF1 - PASS (2026-08-18)
+
+- `benchmarks/mlff_mvsel2_production_density_2026-08-18.json` records an exact read-only run on the 36,408-candidate, 165-family, 9,505,021,522-forward-edge MPA-0 graph.
+- Complete Phase A accepted 452 ranks in 163.126 s; current RSS after releasing scanned mmap pages was 711,876 KiB. Exact Phase-B rebase took 66.422 s; 32 accepted Phase-B ranks had maximum 0.721 s, zero fallback, and no consecutive fallback.
+- Conservative full-16,384 projection is 11,784.1 s versus 813,755.8 s for the same-host MVSEL1 projection: 69.06x. V2 opened no inverse arrays and mutation uses only candidate-forward incidence.
+- Exact global rebase/file-page residency reached 11,032,804 KiB current and 37,815,364 KiB process peak RSS; this bounded measured cost is reported rather than characterized as anonymous compact state.
+
+### G5 MVSTATE2 - PASS (2026-08-18)
+
+- Added authenticated atomic NPZ/manifest checkpoints binding dataset/domain, UID/family order, DATA2B/MVIDX1, weights, obligations, correlation units, selector policy, selected prefix, and v2 versions.
+- Persisted state contains selected order, witness multiplicity, family coverage mass, obligation/correlation counts, and representative utility only. Candidate gain arrays and lazy heap authority are absent.
+- Restore authenticates pointer, manifest, bundle, and arrays, then reconstructs multiplicity/count/mass/utility invariants from the selected prefix. MVSTATE1, stale lineage, tampering, truncation, and inconsistent continuation state fail closed.
+- Uninterrupted/resumed selection and worker/batch/rebuild variants are identical. The production 256-rank checkpoint measured 19,335,294 bytes, 0.081 s write, 0.055 s read, and 0.286 s prefix validation.
+
+### G6 MVSEL2-QUAL1 - PASS (2026-08-18)
+
+- Added explicit v2 plan/policy/domain identity and deterministic full-order/rung construction.
+- Every materializable rung is independently checked for cardinality, nesting, UID membership, obligation counts, and coverage through both immutable TARGET-DATA2B rescoring and MVIDX1 indexed reconstruction.
+- Lazy/full-forward/independent-oracle equality, execution-setting invariance, checkpoint continuation, and exact plan serialization round trips pass on deterministic, adversarial, and seeded random fixtures.
+
+### G7 REPAIR2 - PASS (2026-08-18)
+
+- Added exact forward-state active-shell repair with zero-unique/hard-safe removal, pair-specific hypothetical forward state, deficit frontier, frozen objective/tie order, strict coverage non-regression, lower-prefix protection, rank inheritance, and future displacement.
+- A non-empty legacy fixture reproduces the complete REPAIR1 accepted swap trace; worker/batch schedules preserve it. Independent indexed validation confirms every repaired rung and same-N non-regression.
+- Source sentinels confirm no inverse adjacency or MVSEL1 mutation dependency. Production-prefix 128/256 repair completed in 25.328 s with zero swaps and no inverse mutation; prefix replay cost was 1.498 s.
+
+### G8 MVMIGRATE2 - PASS (2026-08-18)
+
+- New campaign execution uses explicit `target_multi_view_selection_v2`, `target_multi_view_selection_state_v2:<domain>:<size>`, and `target_multi_view_repair_v2` records. V1 keys/readers remain intact, and v1 state cannot deserialize as MVSTATE2.
+- End-to-end DATA2B -> MVIDX1 -> MVSEL2 -> MVSTATE2 -> REPAIR2 -> independent DATA2B/MVQUAL qualification passes, including v1/v2 campaign-store round trips and downstream MVQUAL consumption.
+- Focused v2 suite: 31 passed. Adjacent executable v1 MVIDX/MVSEL/MVSTATE/REPAIR/MVQUAL/MVMIGRATE suite: 68 passed with 3 existing velocity-reconstruction warnings. Campaign-store performance suite: 11 passed with 4 existing velocity warnings.
+- Full non-slow collection is environment-blocked before execution by missing optional `psutil` and one legacy top-level test helper import. Separately run historical release-snapshot tests contain pre-existing assertions for obsolete versions/dependency-graph formats; these are not counted as current v2 qualification.
+- Permanent architecture/specification/history/changelog/version records describe the accepted v2 chain. Architecture revision 104 and the new chain specification PDFs pass content-provenance verification; the rendered specification was visually checked. GPU qualification was not run and is explicitly deferred.
+- Clean wheel qualification: `pip wheel --no-deps --no-build-isolation` produced `mdstats-0.20.242a0-py3-none-any.whl`; an isolated target install imported version `0.20.242a0` and the MVSEL2 authority. V2 modules are present and `workplans/` is absent from the wheel.

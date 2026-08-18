@@ -1,0 +1,38 @@
+{
+  "schema": "mdstats.release-qualification.mvsel2.v1",
+  "release": "0.20.242a0",
+  "date": "2026-08-18",
+  "workplan_id": "DOC-MVSEL2",
+  "plan_revision": 4,
+  "consumed_workplan_sha256": "5fbfacc164908452a9c4e1e260c9d6a52b7a68c4881a497f42fad1803ecf968c",
+  "completed_workplan_sha256": "0d0392b9387e83ae00fc507f8f9583cd3391d334f09b72ea54dc56b578485ae9",
+  "implementation_base_head": "f23426d426af21a54914f4e62181ce09e864330b",
+  "branch": "feat/mvsel2-forward-lazy",
+  "gates": {
+    "G0": "PASS",
+    "G1": "PASS",
+    "G2": "PASS",
+    "G3": "PASS",
+    "G4": "PASS",
+    "G5": "PASS",
+    "G6": "PASS",
+    "G7": "PASS",
+    "G8": "PASS"
+  },
+  "focused_tests_passed": 31,
+  "adjacent_v1_tests_passed": 68,
+  "campaign_store_tests_passed": 11,
+  "production_selector_evidence_sha256": "26c4abdf60bddc3ebd7fd64d1624f91289cbfc9557a124c72ab2ddc0dfb8f77c",
+  "production_state_repair_evidence_sha256": "4c78e983c2af0213c58de35af04a514eb1335d4257c7d06e00b8113b9d39863b",
+  "projected_full_order_speedup": 69.05514904291647,
+  "sampled_phase_b_fallback_count": 0,
+  "production_checkpoint_bytes_at_256": 19335294,
+  "specification_pdf_sha256": "5be6140df36a93ba67bddbfb706803954e9069cee81b6cccae3a82b4d46c5116",
+  "clean_wheel_sha256": "bebfc3c9fca9d319ba7d6184ddf2854e8dd970f2713fa92dad5edcf8c4b1c9c5",
+  "full_non_slow_suite": "BLOCKED_AT_COLLECTION",
+  "full_non_slow_blockers": [
+    "optional psutil dependency unavailable in mace",
+    "legacy test imports test_mlff_data5_partition_roles as a top-level module"
+  ],
+  "gpu_qualification": "DEFERRED_NOT_RUN"
+}

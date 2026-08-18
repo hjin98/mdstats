@@ -135,7 +135,7 @@ def test_mvkernel1_selector_reports_initialization_and_first_rank() -> None:
 
 
 def test_mvkernel1_production_density_release_contract() -> None:
-    assert mdstats.__version__ == "0.20.241a0"
+    assert mdstats.__version__ == "0.20.242a0"
     source = (
         Path(__file__).resolve().parents[1]
         / "docs/specs/training_data/mlff_mvkernel1_sparse_vector_kernels_spec.md"

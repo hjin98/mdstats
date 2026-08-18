@@ -1,7 +1,7 @@
 {
   "pdf": {
-    "name": "mlff_training_data_architecture.pdf",
-    "sha256": "3d7b9865999eee610a7028183d17d2c0e89db7ee0b63264cd8ecb4727cbb2a3b"
+    "name": "mlff_target_data2c_mvsel2_forward_lazy_chain_spec.pdf",
+    "sha256": "5be6140df36a93ba67bddbfb706803954e9069cee81b6cccae3a82b4d46c5116"
   },
   "renderer": {
     "config": {
@@ -25,7 +25,7 @@
   "resources": [],
   "schema_version": 1,
   "source": {
-    "name": "mlff_training_data_architecture.md",
-    "sha256": "621759662d216ce9893c7a99cbd960d4c0d453a1d0161534803620b4c6936d35"
+    "name": "mlff_target_data2c_mvsel2_forward_lazy_chain_spec.md",
+    "sha256": "02998c91d1d73e2db633943a06d6634011eecb47b8721030e41c4c7261039908"
   }
 }

@@ -1,7 +1,7 @@
 ---
 geometry: "margin=0.75in"
-architecture_revision: 103
-release: "mdstats 0.20.241a0"
+architecture_revision: 104
+release: "mdstats 0.20.242a0"
 status: "current normative architecture"
 last_updated: "2026-08-18"
 ---
@@ -858,7 +858,7 @@ MVIDX1 reuses the exact neighborhood relation already produced/qualified for the
 
 Canonical sparse execution uses witness-oriented CSR-equivalent storage with fixed typed offsets/indices and FP64 scientific weights stored separately. Identity binds candidate/reference ordering, family/scaling/radius/distance semantics, cardinalities, and cache/schema version; execution-only worker/block/queue/storage choices are excluded.
 
-MVIDX adopts authenticated forward witness-to-candidate CSR and constructs candidate-to-witness inverse state without repeating geometry. Forward/inverse edge cardinality and identities are cross-checked exactly.
+MVIDX persists authenticated witness-to-candidate and candidate-to-witness CSR without repeating geometry. Forward/inverse edge cardinality and identities are cross-checked exactly. MVSEL2 and REPAIR2 open a forward-only runtime projection containing candidate-to-witness rows, candidate-to-obligation incidence, and correlation codes; they neither map nor page-fault witness-to-candidate arrays. The complete MVIDX1 artifact remains available to legacy consumers.
 
 Large inversions may use the current deterministic out-of-core implementation described in Part VI, but in-memory and file-backed realizations remain byte-equivalent for authoritative sparse arrays.
 
@@ -871,6 +871,12 @@ At each rank, admissible candidates are compared by the frozen lexicographic pri
 Rank authority is sequential because selection state changes after every accepted candidate. Parallel/vector execution may accelerate exact sparse state preparation/mutation only when the authoritative candidate choice and FP state remain equivalent.
 
 The selector maintains witness multiplicity, hard-obligation state, and candidate marginal state incrementally through inverse adjacency. Full candidate-by-witness rescoring after each rank is not the current execution architecture.
+
+The current MVSEL1 execution representation includes complete per-candidate coverage and harmonic-representative marginal arrays. A changed witness updates those arrays through witness-to-candidate inverse adjacency so later rank decisions remain exact. This eager candidate-state representation is an execution contract of the v1 path; it is not itself part of the scientific selection objective.
+
+MVSEL1 remains an explicitly readable legacy authority. New campaign selection uses MVSEL2, which preserves the same FP64 policy while replacing eager inverse propagation with compact witness multiplicity and on-demand candidate-row scoring. During hard coverage, MVSEL2 performs a staged exact scan: maximum hard gain, first canonical bottleneck family, best-relative bottleneck and total-coverage filters, correlation balance, representative gain, diversity, then stable UID.
+
+After hard coverage completes, MVSEL2 runs one exact Phase-B rebase and maintains a global certified lazy representative frontier. Outward-rounded stale scores are conservative upper bounds. Candidates are refreshed until every unrefreshed bound is below the best exact score minus the frozen tolerance; correlation, diversity, and UID are then applied to the complete exact contender set. Full-forward scoring is a bounded oracle/fallback, not the normal production path.
 
 ## REPAIR1 - exact shell repair
 
@@ -885,6 +891,12 @@ $$
 Removal candidates must have sufficiently small/allowed unique contribution and no unique mandatory obligation. Replacement candidates come from the declared deficit/frontier policy. Every accepted swap obeys the frozen objective/tie hierarchy and preserves lower protected prefixes/rungs.
 
 Proposal scoring within one immutable pre-swap state may execute concurrently, but accepted-winner comparison and authoritative state mutation remain deterministic. Exact selector-to-repair state reuse is governed by Part VI: a pure-selector checkpoint is valid only before repair divergence.
+
+MVSTATE-REUSE1 persists the current v1 selector state, including candidate marginal arrays, for exact selector-to-repair reuse. REPAIR1 restores compatible checkpoints or reconstructs the same v1 mutable state before repair and then uses the v1 select/deselect mutation contract. This coupling belongs to current execution structure; the scientific repair policy remains the exact shell objective and invariants described above.
+
+REPAIR1 and MVSTATE-REUSE1 remain readable legacy identities. New campaigns use REPAIR2 over the same compact forward state as MVSEL2. Removal metrics, hypothetical replacement scores, accepted swap comparisons, and select/deselect mutations traverse only affected candidate rows and obligation/correlation incidence. REPAIR2 preserves active-shell-only repair, immutable lower prefixes, exact zero-unique and hard-safety admission, the deficit-frontier objective/tie hierarchy, strict no-coverage regression, rank inheritance, future displacement, and deterministic bounded traces.
+
+MVSTATE2 is authenticated reconstructible continuation state. It binds dataset/domain, UID and family order, DATA2B/MVIDX1 identities, weights, obligations, correlation units, selector policy, selected prefix, and v2 versions. It persists witness multiplicity, coverage mass, obligation/correlation counts, and representative utility; complete candidate marginal arrays and lazy-heap contents are forbidden. Publication is atomic, restoration revalidates state against the selected prefix, and incompatible MVSTATE-REUSE1 artifacts rebuild rather than migrate or deserialize as v2.
 
 ## MVQUAL1 - independent same-N qualification
 
@@ -990,11 +1002,13 @@ Execution may reduce a configured maximum block size to improve lane occupancy a
 
 Pair/species lookup structures, constant-family rejection, and cached scaling may remove repeated object traversal or unnecessary computation only when inclusion rules and numerical results remain unchanged.
 
-## Exact sparse selector and qualification kernels
+## Exact forward/lazy selector and qualification kernels
 
 MVSEL/MVQUAL use typed ragged-CSR gathers and indexed reductions to replace repeated Python object traversal. Candidate/witness ordering remains canonical.
 
-The MVSEL rank authority remains sequential. Vectorization MAY combine address calculation and telemetry work, but authoritative FP64 state mutations retain the historical candidate/edge order whenever exact equivalence depends on that order.
+The MVSEL rank authority remains sequential. MVSEL2 evaluates exact candidate-to-witness rows on demand during hard coverage, then uses an outward-rounded certified lazy representative frontier after one exact Phase-B rebase. A stale bound is excluded only when it is strictly below the best exact score minus the frozen tolerance. Vectorization MAY combine independent row evaluation and telemetry work, but authoritative FP64 row reductions, contender filters, and state mutations remain canonical.
+
+MVSEL2/REPAIR2 mutation touches only the selected candidate's forward witness and obligation incidence. It does not maintain complete candidate marginal arrays or traverse witness-to-candidate inverse adjacency. MVIDX1 remains unchanged on disk; its forward-only v2 runtime view avoids mapping inverse arrays.
 
 Required hard-obligation state and coverage counters may be maintained incrementally if qualification proves equality to reconstruction from the canonical sparse relation.
 
@@ -1013,6 +1027,8 @@ Proposal kernels may use vectorized CSR gathers, fused sparse scans, stamp-array
 After the first accepted repair swap, repair carries the historical mutable state forward. It SHALL NOT synthesize a later repaired state by reconciling a pure MVSEL checkpoint with selected-set differences when that operation changes FP64 state, even if selected candidate IDs happen to match.
 
 Cache identity binds the reference/MVIDX/MVSEL/policy/sparse-kernel lineage and excludes worker/storage choices. Missing, stale, corrupt, or incompatible state falls back to exact historical replay. Post-divergence CSR gather preparation may be batched, but authoritative candidate-major FP64 mutations remain in canonical order.
+
+For the current v2 chain, MVSTATE2 replaces the v1 eager cache. Its native bundle contains only selected order, per-family witness multiplicity and coverage mass, obligation counts, correlation counts, and representative utility. The lazy queue is reconstructed by exact rebase. Restore authenticates the manifest and array bundle, rejects v1/stale/tampered/truncated artifacts, and recomputes continuation invariants from the selected prefix before use.
 
 ## Replay-source indexing and materialization
 
@@ -1153,6 +1169,8 @@ Reference/Candidate Collection and Generation Identities
 The reverse edge is forbidden. Realized observables must not be inspected to choose their own acceptance policy. Locked-test activation additionally requires the frozen training protocol, partition assignment, and explicit evaluation activation. Locked-test observable evidence cannot alter feature fitting, selection, training protocol, checkpoint selection, calibration policy, or acquisition.
 
 ## Documentation and module ownership
+
+The current multi-view production chain assigns scientific selection to MVSEL2, reconstructible continuation state to MVSTATE2, exact active-shell exchange to REPAIR2, and independent acceptance evidence to MVQUAL. MVIDX1 continues to own the exact sparse graph and exposes a forward-only runtime projection to v2 consumers. MVSEL1, MVSTATE-REUSE1, and REPAIR1 retain their historical schemas and readers but do not own new-campaign execution.
 
 Cross-cutting architecture defines ownership and data/control relationships. Detailed current behavior belongs in the corresponding module specifications under `docs/specs/`. A current module specification may strengthen a local contract but may not contradict the cross-cutting scientific invariants in this manual.
 

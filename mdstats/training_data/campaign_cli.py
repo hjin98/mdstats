@@ -4465,6 +4465,16 @@ def _load_verified_target_size_convergence_authority(store: CampaignStore) -> An
     return plan
 
 
+def _load_target_multi_view_repair_authority(store: CampaignStore) -> Any:
+    """Restore explicit v2 authority, falling back only for legacy campaigns."""
+
+    import mdstats
+
+    if store.has_record("target_multi_view_repair_v2"):
+        return store.get_record("target_multi_view_repair_v2", mdstats.TargetMultiViewRepairPlanV2)
+    return store.get_record("target_multi_view_repair", mdstats.TargetMultiViewRepairPlan)
+
+
 def _target_production_migration_kwargs(store: CampaignStore, ladder: Any) -> dict[str, Any]:
     """Return generation-specific TARGET-DATA2E provenance inputs."""
 
@@ -4472,7 +4482,7 @@ def _target_production_migration_kwargs(store: CampaignStore, ladder: Any) -> di
 
     if ladder.authority_version != mdstats.TARGET_DATA_LADDER_MV_VERSION:
         return {}
-    repair = store.get_record("target_multi_view_repair", mdstats.TargetMultiViewRepairPlan)
+    repair = _load_target_multi_view_repair_authority(store)
     qualification = store.get_record("target_multi_view_qualification", mdstats.TargetMultiViewQualificationPlan)
     migration = store.get_record("target_multi_view_migration_plan", mdstats.TargetMultiViewMigrationPlan)
     activation = store.get_record("target_multi_view_migration_activation", mdstats.TargetMultiViewMigrationActivation)
@@ -4652,7 +4662,7 @@ def _load_verified_target_data_ladder_authority(store: CampaignStore) -> Any:
             ladder, reference=reference, target_data_role_freeze=role_freeze
         )
     elif ladder.authority_version == mdstats.TARGET_DATA_LADDER_MV_VERSION:
-        repair = store.get_record("target_multi_view_repair", mdstats.TargetMultiViewRepairPlan)
+        repair = _load_target_multi_view_repair_authority(store)
         qualification = store.get_record("target_multi_view_qualification", mdstats.TargetMultiViewQualificationPlan)
         migration = store.get_record("target_multi_view_migration_plan", mdstats.TargetMultiViewMigrationPlan)
         activation = store.get_record("target_multi_view_migration_activation", mdstats.TargetMultiViewMigrationActivation)
@@ -5121,6 +5131,136 @@ def _ensure_target_multi_view_repair(
         "TARGET-DATA2C-REPAIR1 frozen as diagnostic repair evidence; "
         f"digest={plan.content_digest[:12]}...; elapsed={format_progress_time(time.monotonic() - started)}; "
         "TARGET-DATA2C v4 unchanged"
+    )
+    return plan
+
+
+def _ensure_target_multi_view_selection_v2(
+    store: CampaignStore,
+    *,
+    cfg: Mapping[str, Any],
+    coverage_reference: Any,
+    sparse_index: Any,
+) -> tuple[Any, dict[str, Any]]:
+    """Build/reuse the production MVSEL2 authority and compact MVSTATE2 rungs."""
+
+    import mdstats
+    from .target_coverage_sparse_forward_view import target_coverage_sparse_forward_view
+
+    policy = mdstats.TargetMultiViewSelectorPolicyV2()
+    forward = target_coverage_sparse_forward_view(sparse_index)
+    try:
+        existing = store.get_record_optional(
+            "target_multi_view_selection_v2", mdstats.TargetMultiViewSelectionPlanV2
+        )
+    except Exception as exc:
+        print(f"[TARGET-DATA2C-MVSEL2 restart] stored v2 authority is unavailable ({exc}); rebuilding", flush=True)
+        existing = None
+    if existing is not None:
+        try:
+            mdstats.validate_target_multi_view_selection_authority_v2(
+                existing, target_coverage_reference=coverage_reference,
+                target_coverage_sparse_index=sparse_index, query_workers=1,
+            )
+        except Exception as exc:
+            print(f"[TARGET-DATA2C-MVSEL2 restart] stored v2 authority is stale ({exc}); rebuilding", flush=True)
+        else:
+            _ok(f"TARGET-DATA2C-MVSEL2 reused: digest={existing.content_digest[:12]}...; legacy MVSEL1 records retained")
+            return existing, {}
+
+    _print_header("TARGET-DATA2C-MVSEL2 exact forward/lazy selector")
+    checkpoint_pointers: dict[str, Any] = {}
+    def checkpoint(reference_domain: Any, forward_domain: Any, state: Any, size: int) -> None:
+        identity = mdstats.build_target_multi_view_selection_identity_v2(
+            reference_domain, forward_domain, dataset_id=coverage_reference.dataset_id,
+            selector_policy=policy.to_dict(),
+        )
+        frozen = mdstats.checkpoint_target_multi_view_forward_state_v2(state, identity)
+        pointer = mdstats.write_target_multi_view_selection_checkpoint_v2(
+            frozen, store.external_record_directory
+        )
+        key = f"target_multi_view_selection_state_v2:{reference_domain.label_domain_id}:{size}"
+        store.put_record(key, pointer)
+        checkpoint_pointers[key] = pointer
+
+    workers, resources = _target_coverage_query_workers(cfg)
+    scope = build_stage_resource_scope(
+        resources, stage_name="TARGET-DATA2C-MVSEL2/MVSTATE2",
+        python_workers=max(1, workers), structural_workers=1, tree_workers=1, blas_threads=1,
+    )
+    started = time.monotonic()
+    with stage_resource_scope(scope):
+        plan = mdstats.build_target_multi_view_selection_plan_v2(
+            coverage_reference, forward, policy=policy,
+            workers=max(1, workers), checkpoint_callback=checkpoint,
+            progress_callback=lambda message: print(f"[TARGET-DATA2C-MVSEL2] {message}", flush=True),
+            progress_interval_seconds=float(_cfg(cfg, "performance", "progress_interval_seconds", 30.0)),
+        )
+    mdstats.validate_target_multi_view_selection_authority_v2(
+        plan, target_coverage_reference=coverage_reference,
+        target_coverage_sparse_index=sparse_index, query_workers=1,
+    )
+    store.put_record("target_multi_view_selection_v2", plan)
+    _ok(
+        f"TARGET-DATA2C-MVSEL2 + MVSTATE2 accepted: digest={plan.content_digest[:12]}...; "
+        f"checkpoints={len(checkpoint_pointers)}; elapsed={format_progress_time(time.monotonic() - started)}; "
+        "legacy MVSEL1/MVSTATE-REUSE1 records retained"
+    )
+    return plan, checkpoint_pointers
+
+
+def _ensure_target_multi_view_repair_v2(
+    store: CampaignStore,
+    *,
+    cfg: Mapping[str, Any],
+    coverage_reference: Any,
+    sparse_index: Any,
+    selection_plan: Any,
+) -> Any:
+    """Build/reuse REPAIR2 over the forward-only MVIDX1 view."""
+
+    import mdstats
+    from .target_coverage_sparse_forward_view import target_coverage_sparse_forward_view
+
+    policy = mdstats.TargetMultiViewRepairPolicyV2()
+    try:
+        existing = store.get_record_optional("target_multi_view_repair_v2", mdstats.TargetMultiViewRepairPlanV2)
+    except Exception as exc:
+        print(f"[TARGET-DATA2C-REPAIR2 restart] stored v2 authority is unavailable ({exc}); rebuilding", flush=True)
+        existing = None
+    if existing is not None:
+        try:
+            mdstats.validate_target_multi_view_repair_authority_v2(
+                existing, target_coverage_reference=coverage_reference,
+                target_coverage_sparse_index=sparse_index,
+                target_multi_view_selection=selection_plan,
+            )
+        except Exception as exc:
+            print(f"[TARGET-DATA2C-REPAIR2 restart] stored v2 authority is stale ({exc}); rebuilding", flush=True)
+        else:
+            _ok(f"TARGET-DATA2C-REPAIR2 reused: digest={existing.content_digest[:12]}...; legacy REPAIR1 record retained")
+            return existing
+    repair_workers, resources = _target_multi_view_repair_parallelism(cfg)
+    scope = build_stage_resource_scope(
+        resources, stage_name="TARGET-DATA2C-REPAIR2",
+        python_workers=repair_workers, structural_workers=1, tree_workers=1, blas_threads=1,
+    )
+    started = time.monotonic()
+    with stage_resource_scope(scope):
+        plan = mdstats.build_target_multi_view_repair_plan_v2(
+            coverage_reference, target_coverage_sparse_forward_view(sparse_index), selection_plan,
+            policy=policy, workers=repair_workers,
+            progress_callback=lambda message: print(f"[TARGET-DATA2C-REPAIR2] {message}", flush=True),
+        )
+    mdstats.validate_target_multi_view_repair_authority_v2(
+        plan, target_coverage_reference=coverage_reference,
+        target_coverage_sparse_index=sparse_index,
+        target_multi_view_selection=selection_plan,
+    )
+    store.put_record("target_multi_view_repair_v2", plan)
+    _ok(
+        f"TARGET-DATA2C-REPAIR2 accepted: swaps={sum(item.total_swaps for item in plan.domains)}; "
+        f"digest={plan.content_digest[:12]}...; elapsed={format_progress_time(time.monotonic() - started)}; legacy REPAIR1 record retained"
     )
     return plan
 
@@ -8912,6 +9052,8 @@ _PREPARE_RECEIPT_RECORD_KEYS = (
     "target_coverage_sparse_index",
     "target_multi_view_selection",
     "target_multi_view_repair",
+    "target_multi_view_selection_v2",
+    "target_multi_view_repair_v2",
     "target_multi_view_qualification",
     "size_halve2_plan",
     "size_fidelity2_execution_plan",
@@ -9428,19 +9570,18 @@ def _prepare_materialization(
         coverage_reference=coverage_reference,
         feasibility=target_coverage_feasibility,
     )
-    target_multi_view_selection, target_multi_view_selection_state_cache = _ensure_target_multi_view_selection(
+    target_multi_view_selection, target_multi_view_selection_state_cache = _ensure_target_multi_view_selection_v2(
         store,
         cfg=cfg,
         coverage_reference=coverage_reference,
         sparse_index=target_coverage_sparse_index,
     )
-    target_multi_view_repair = _ensure_target_multi_view_repair(
+    target_multi_view_repair = _ensure_target_multi_view_repair_v2(
         store,
         cfg=cfg,
         coverage_reference=coverage_reference,
         sparse_index=target_coverage_sparse_index,
         selection_plan=target_multi_view_selection,
-        selection_state_cache=target_multi_view_selection_state_cache,
     )
     legacy_target_ladder = _ensure_target_data_ladder(
         store,

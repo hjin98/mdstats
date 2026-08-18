@@ -1,0 +1,31 @@
+{
+  "gpu_used": false,
+  "input": {
+    "candidate_count": 36408,
+    "family_count": 165,
+    "forward_edge_count": 9505021522,
+    "rungs": [
+      128,
+      256
+    ]
+  },
+  "mvstate2": {
+    "candidate_gain_arrays_persisted": false,
+    "checkpoint_bytes": 19335294,
+    "prefix_replay_seconds": 1.4981611379989772,
+    "read_seconds": 0.05460741299611982,
+    "selected_count": 256,
+    "validation_seconds": 0.2856018940001377,
+    "write_seconds": 0.08057068299967796
+  },
+  "repair2": {
+    "inverse_mutation": false,
+    "rung_swap_counts": [
+      0,
+      0
+    ],
+    "seconds": 25.32829579200188,
+    "total_swaps": 0
+  },
+  "schema": "mdstats.benchmark.mvstate2-repair2-production-prefix.v1"
+}

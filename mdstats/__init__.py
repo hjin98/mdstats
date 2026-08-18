@@ -6771,3 +6771,38 @@ from .training_data.replay_invalidation import (
 )
 
 __all__ = sorted(set([name for name in globals() if not name.startswith("_")]))
+
+# TARGET-DATA2C MVSEL2/MVSTATE2 forward-lazy execution chain.
+from .training_data.target_multi_view_selector_v2 import (
+    TARGET_MULTI_VIEW_SELECTOR_V2_VERSION,
+    TARGET_MULTI_VIEW_SELECTION_PLAN_V2_SCHEMA,
+    TargetMultiViewSelectorPolicyV2,
+    TargetMultiViewSelectionDomainPlanV2,
+    TargetMultiViewSelectionPlanV2,
+    build_target_multi_view_selection_plan_v2,
+    validate_target_multi_view_selection_authority_v2,
+)
+from .training_data.target_multi_view_selection_state_v2 import (
+    MVSTATE2_SCHEMA,
+    MVSTATE2_POINTER_SCHEMA,
+    MVSTATE2_PERSISTENCE_VERSION,
+    TargetMultiViewSelectionStateV2StoreError,
+    TargetMultiViewSelectionIdentityV2,
+    TargetMultiViewSelectionCheckpointV2,
+    build_target_multi_view_selection_identity_v2,
+    checkpoint_target_multi_view_forward_state_v2,
+    restore_target_multi_view_forward_state_v2,
+    write_target_multi_view_selection_checkpoint_v2,
+    read_target_multi_view_selection_checkpoint_v2,
+)
+from .training_data.target_multi_view_repair_v2 import (
+    TARGET_MULTI_VIEW_REPAIR_V2_VERSION,
+    TARGET_MULTI_VIEW_REPAIR_PLAN_V2_SCHEMA,
+    TargetMultiViewRepairPolicyV2,
+    TargetMultiViewRepairDomainPlanV2,
+    TargetMultiViewRepairPlanV2,
+    build_target_multi_view_repair_plan_v2,
+    validate_target_multi_view_repair_authority_v2,
+)
+
+__all__ = sorted(set([name for name in globals() if not name.startswith("_")]))

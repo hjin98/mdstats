@@ -35,6 +35,11 @@ from .target_coverage_sparse_index import (
     TargetCoverageSparseIndex,
     TargetCoverageSparseIndexPolicy,
 )
+from .target_coverage_sparse_forward_view import (
+    TargetCoverageSparseForwardDomainView,
+    TargetCoverageSparseForwardFamilyView,
+    TargetCoverageSparseForwardIndexView,
+)
 
 TARGET_COVERAGE_SPARSE_INDEX_NATIVE_MANIFEST_SCHEMA = "mdstats.target-coverage-sparse-index-native-manifest.v1"
 TARGET_COVERAGE_SPARSE_INDEX_NATIVE_POINTER_SCHEMA = "mdstats.mlff-campaign-target-coverage-sparse-index-native-pointer.v1"
@@ -683,3 +688,156 @@ def read_target_coverage_sparse_index_native_record(
             f"elapsed_s={time.monotonic() - started:.1f}"
         )
     return result
+
+
+def read_target_coverage_sparse_index_forward_view_native_record(
+    pointer: Mapping[str, Any],
+    state_root: str | Path,
+    *,
+    mmap_threshold_bytes: int = 8 * 1024 * 1024,
+) -> TargetCoverageSparseForwardIndexView:
+    """Restore only MVIDX1 arrays required by MVSEL2/REPAIR2.
+
+    The pointer and manifest retain the complete MVIDX1 scientific identity,
+    while inverse witness-to-candidate and obligation-to-candidate arrays are
+    neither opened nor mapped by this runtime view.
+    """
+
+    if pointer.get("schema") != TARGET_COVERAGE_SPARSE_INDEX_NATIVE_POINTER_SCHEMA:
+        raise TargetCoverageSparseIndexNativeStoreError(
+            "Unsupported TARGET-DATA2C-MVIDX1 native pointer schema."
+        )
+    if pointer.get("persistence_version") != TARGET_COVERAGE_SPARSE_INDEX_PERSISTENCE_VERSION:
+        raise TargetCoverageSparseIndexNativeStoreError(
+            "Unsupported TARGET-DATA2C-MVIDX1 persistence version."
+        )
+    relative = Path(str(pointer.get("relative_path", "")))
+    if relative.is_absolute() or ".." in relative.parts or relative in {Path(""), Path(".")}:
+        raise TargetCoverageSparseIndexNativeStoreError(
+            "Invalid TARGET-DATA2C-MVIDX1 manifest path."
+        )
+    root = Path(state_root).resolve()
+    manifest_path = (root / relative).resolve()
+    if root not in manifest_path.parents or not manifest_path.is_file():
+        raise TargetCoverageSparseIndexNativeStoreError(
+            "Missing TARGET-DATA2C-MVIDX1 native manifest."
+        )
+    expected_sha = str(pointer.get("sha256", ""))
+    if not expected_sha or _sha256_file(manifest_path) != expected_sha:
+        raise TargetCoverageSparseIndexNativeStoreError(
+            "TARGET-DATA2C-MVIDX1 manifest checksum mismatch."
+        )
+    pointer_payload = {key: value for key, value in pointer.items() if key != "pointer_digest"}
+    if pointer.get("pointer_digest") not in (None, digest(pointer_payload)):
+        raise TargetCoverageSparseIndexNativeStoreError(
+            "TARGET-DATA2C-MVIDX1 pointer digest mismatch."
+        )
+    with manifest_path.open("r", encoding="utf-8") as handle:
+        manifest = json.load(handle)
+    if (
+        not isinstance(manifest, Mapping)
+        or manifest.get("schema") != TARGET_COVERAGE_SPARSE_INDEX_NATIVE_MANIFEST_SCHEMA
+        or manifest.get("persistence_version") != TARGET_COVERAGE_SPARSE_INDEX_PERSISTENCE_VERSION
+    ):
+        raise TargetCoverageSparseIndexNativeStoreError(
+            "Invalid TARGET-DATA2C-MVIDX1 native manifest."
+        )
+    expected_manifest_digest = digest(
+        {key: value for key, value in manifest.items() if key != "manifest_digest"}
+    )
+    if manifest.get("manifest_digest") != expected_manifest_digest:
+        raise TargetCoverageSparseIndexNativeStoreError(
+            "TARGET-DATA2C-MVIDX1 native manifest digest mismatch."
+        )
+    if pointer.get("content_digest") != manifest.get("index_content_digest"):
+        raise TargetCoverageSparseIndexNativeStoreError(
+            "TARGET-DATA2C-MVIDX1 pointer/manifest content digest mismatch."
+        )
+
+    data_root = manifest_path.parent
+    domains: list[TargetCoverageSparseForwardDomainView] = []
+    for domain_payload in manifest.get("domains", ()):
+        families: list[TargetCoverageSparseForwardFamilyView] = []
+        for family_payload in domain_payload.get("families", ()):
+            arrays = family_payload.get("arrays")
+            if not isinstance(arrays, Mapping):
+                raise TargetCoverageSparseIndexNativeStoreError(
+                    "TARGET-DATA2C-MVIDX1 family array manifest is missing."
+                )
+            candidate_offsets = _read_npy(
+                data_root,
+                arrays["candidate_offsets"],
+                label="candidate_offsets",
+                mmap_threshold_bytes=mmap_threshold_bytes,
+            )
+            candidate_witnesses = _read_npy(
+                data_root,
+                arrays["candidate_witnesses"],
+                label="candidate_witnesses",
+                mmap_threshold_bytes=mmap_threshold_bytes,
+            )
+            family = TargetCoverageSparseForwardFamilyView(
+                family_id=str(family_payload["family_id"]),
+                family_digest=str(family_payload["family_digest"]),
+                mvidx1_family_digest=str(family_payload["content_digest"]),
+                candidate_count=int(family_payload["candidate_count"]),
+                witness_count=int(family_payload["witness_count"]),
+                candidate_offsets=candidate_offsets,
+                candidate_witnesses=candidate_witnesses,
+                _array_references={
+                    name: arrays[name]["array_reference"]
+                    for name in ("candidate_offsets", "candidate_witnesses")
+                },
+            )
+            if int(family_payload.get("edge_count", family.edge_count)) != family.edge_count:
+                raise TargetCoverageSparseIndexNativeStoreError(
+                    "TARGET-DATA2C-MVIDX1 forward family edge count mismatch."
+                )
+            families.append(family)
+        arrays = domain_payload.get("arrays")
+        if not isinstance(arrays, Mapping):
+            raise TargetCoverageSparseIndexNativeStoreError(
+                "TARGET-DATA2C-MVIDX1 domain array manifest is missing."
+            )
+        domains.append(
+            TargetCoverageSparseForwardDomainView(
+                label_domain_id=str(domain_payload["label_domain_id"]),
+                frame_domain_digest=str(domain_payload["frame_domain_digest"]),
+                mvidx1_domain_digest=str(domain_payload["content_digest"]),
+                candidate_count=int(domain_payload["candidate_count"]),
+                families=tuple(families),
+                obligations=tuple(
+                    TargetCoverageHardObligation.from_dict(item)
+                    for item in domain_payload["obligations"]
+                ),
+                candidate_obligation_offsets=_read_npy(
+                    data_root,
+                    arrays["candidate_obligation_offsets"],
+                    label="candidate_obligation_offsets",
+                    mmap_threshold_bytes=mmap_threshold_bytes,
+                ),
+                candidate_obligations=_read_npy(
+                    data_root,
+                    arrays["candidate_obligations"],
+                    label="candidate_obligations",
+                    mmap_threshold_bytes=mmap_threshold_bytes,
+                ),
+                correlation_unit_ids=tuple(
+                    str(item) for item in domain_payload["correlation_unit_ids"]
+                ),
+                candidate_correlation_unit_codes=_read_npy(
+                    data_root,
+                    arrays["candidate_correlation_unit_codes"],
+                    label="candidate_correlation_unit_codes",
+                    mmap_threshold_bytes=mmap_threshold_bytes,
+                ),
+            )
+        )
+    return TargetCoverageSparseForwardIndexView(
+        dataset_id=str(manifest["dataset_id"]),
+        mvidx1_content_digest=str(manifest["index_content_digest"]),
+        target_coverage_reference_digest=str(manifest["target_coverage_reference_digest"]),
+        target_data_role_freeze_digest=str(manifest["target_data_role_freeze_digest"]),
+        target_coverage_feasibility_digest=str(manifest["target_coverage_feasibility_digest"]),
+        domains=tuple(domains),
+    )

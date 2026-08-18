@@ -50,6 +50,8 @@ The reverse edge is forbidden. Realized observables must not be inspected to cho
 
 ## Documentation and module ownership
 
+The current multi-view production chain assigns scientific selection to MVSEL2, reconstructible continuation state to MVSTATE2, exact active-shell exchange to REPAIR2, and independent acceptance evidence to MVQUAL. MVIDX1 continues to own the exact sparse graph and exposes a forward-only runtime projection to v2 consumers. MVSEL1, MVSTATE-REUSE1, and REPAIR1 retain their historical schemas and readers but do not own new-campaign execution.
+
 Cross-cutting architecture defines ownership and data/control relationships. Detailed current behavior belongs in the corresponding module specifications under `docs/specs/`. A current module specification may strengthen a local contract but may not contradict the cross-cutting scientific invariants in this manual.
 
 Proposed new module behavior, migrations, or developer sequencing is coordinated in `workplans/` until implemented and accepted. Completed implementation chronology belongs in history/release notes; qualification evidence belongs in audits/release evidence; performance evidence belongs in benchmarks.

@@ -79,11 +79,13 @@ Execution may reduce a configured maximum block size to improve lane occupancy a
 
 Pair/species lookup structures, constant-family rejection, and cached scaling may remove repeated object traversal or unnecessary computation only when inclusion rules and numerical results remain unchanged.
 
-## Exact sparse selector and qualification kernels
+## Exact forward/lazy selector and qualification kernels
 
 MVSEL/MVQUAL use typed ragged-CSR gathers and indexed reductions to replace repeated Python object traversal. Candidate/witness ordering remains canonical.
 
-The MVSEL rank authority remains sequential. Vectorization MAY combine address calculation and telemetry work, but authoritative FP64 state mutations retain the historical candidate/edge order whenever exact equivalence depends on that order.
+The MVSEL rank authority remains sequential. MVSEL2 evaluates exact candidate-to-witness rows on demand during hard coverage, then uses an outward-rounded certified lazy representative frontier after one exact Phase-B rebase. A stale bound is excluded only when it is strictly below the best exact score minus the frozen tolerance. Vectorization MAY combine independent row evaluation and telemetry work, but authoritative FP64 row reductions, contender filters, and state mutations remain canonical.
+
+MVSEL2/REPAIR2 mutation touches only the selected candidate's forward witness and obligation incidence. It does not maintain complete candidate marginal arrays or traverse witness-to-candidate inverse adjacency. MVIDX1 remains unchanged on disk; its forward-only v2 runtime view avoids mapping inverse arrays.
 
 Required hard-obligation state and coverage counters may be maintained incrementally if qualification proves equality to reconstruction from the canonical sparse relation.
 
@@ -102,6 +104,8 @@ Proposal kernels may use vectorized CSR gathers, fused sparse scans, stamp-array
 After the first accepted repair swap, repair carries the historical mutable state forward. It SHALL NOT synthesize a later repaired state by reconciling a pure MVSEL checkpoint with selected-set differences when that operation changes FP64 state, even if selected candidate IDs happen to match.
 
 Cache identity binds the reference/MVIDX/MVSEL/policy/sparse-kernel lineage and excludes worker/storage choices. Missing, stale, corrupt, or incompatible state falls back to exact historical replay. Post-divergence CSR gather preparation may be batched, but authoritative candidate-major FP64 mutations remain in canonical order.
+
+For the current v2 chain, MVSTATE2 replaces the v1 eager cache. Its native bundle contains only selected order, per-family witness multiplicity and coverage mass, obligation counts, correlation counts, and representative utility. The lazy queue is reconstructed by exact rebase. Restore authenticates the manifest and array bundle, rejects v1/stale/tampered/truncated artifacts, and recomputes continuation invariants from the selected prefix before use.
 
 ## Replay-source indexing and materialization
 

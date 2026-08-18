@@ -1,7 +1,7 @@
 ---
 geometry: "margin=0.75in"
-architecture_revision: 103
-release: "mdstats 0.20.241a0"
+architecture_revision: 104
+release: "mdstats 0.20.242a0"
 status: "current normative architecture"
 last_updated: "2026-08-18"
 ---
