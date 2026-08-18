@@ -1,0 +1,31 @@
+{
+  "pdf": {
+    "name": "CHANGELOG.pdf",
+    "sha256": "5d3107409532a34532531b059b31c7cbe67b4f81490f24e2ea2fb40ba1b697f9"
+  },
+  "renderer": {
+    "config": {
+      "absolute_images": "reject",
+      "fontsize": "10.5pt",
+      "from": "markdown",
+      "lang": "en-US",
+      "margin": "0.75in",
+      "papersize": "us-letter",
+      "pdf_engine": "typst",
+      "remote_images": "reject",
+      "resource_path": "source-parent",
+      "resource_provenance": "pandoc-image-ast-local-files-v1"
+    },
+    "config_sha256": "a9a9944a65faa5149dea0d9ebeaee33df9adb32f8da5d6e94fde1d2a581ead51",
+    "driver": "render_markdown_pdfs.py",
+    "pandoc_version": "pandoc 3.10.2",
+    "policy_version": "pandoc-typst-v2",
+    "typst_version": "typst 0.15.1 (ca4bbbe8)"
+  },
+  "resources": [],
+  "schema_version": 1,
+  "source": {
+    "name": "CHANGELOG.md",
+    "sha256": "d096174dcc90241c4fa7412a9d8a54f081ffc10b4123dc3b5dfb15ce067dec4d"
+  }
+}

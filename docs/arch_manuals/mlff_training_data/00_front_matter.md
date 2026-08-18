@@ -1,8 +1,8 @@
 ---
 geometry: "margin=0.75in"
 architecture_revision: 103
-release: "mdstats 0.20.240a0"
-status: "current normative architecture; revision 103 unchanged; MVIDX multi-billion-edge scaling and bounded-queue backpressure hardened; exact-equivalence CPU optimization closed; FINAL-GPU1 next"
+release: "mdstats 0.20.241a0"
+status: "current normative architecture; revision 103 unchanged; MVIDX and MVSEL multi-billion-edge execution hardened; exact-equivalence CPU optimization closed; FINAL-GPU1 next"
 last_updated: "2026-08-18"
 ---
 
@@ -76,6 +76,8 @@ The assembled manual is the release-facing authority; chapter files are retrieva
 
 ## Current release boundary
 
+`mdstats 0.20.241a0` is an exact-execution MVSEL production-density hardening release on architecture revision 103. Initialization gathers FP64 weights in complete-row chunks bounded to a 512 MiB target and releases scanned inverse-mmap pages. Sparse scatter validation retains one touched bit per candidate rather than every processed edge. Families with at least 98% rectangular density use canonical witness-ordered contiguous-run adds that are bit-exact to the scalar oracle. On the supplied 36,408-candidate, 165-family, 9.51-billion-edge domain, scoped initialization plus rank 0 improves from about 320 s to 106 s and peak RSS from about 51.5 GiB to 19.2 GiB. Rate-limited initialization/rank heartbeats are now emitted before the first rung. Scientific identity, sequential rank authority, revision 103, schema 83, and `FINAL-GPU1` remain unchanged.
+
 `mdstats 0.20.240a0` is an exact-execution MVIDX/PARCORE1 backpressure hardening release on architecture revision 103. MVIDX no longer eager-submits every required family inversion into the bounded PARCORE1 ready queue. It feeds family and hard-obligation tasks through a deterministic producer/consumer refill loop: submit only while ready capacity exists, wait for completion, drain canonical completions, then refill. This preserves bounded ready/in-flight/completed queues and explicit RAM admission while allowing domains with arbitrarily more required families than queue slots (including the observed 165-family / 56-ready-slot production case). Scientific sparse-index authority, out-of-core storage semantics, worker-independent digests, and `FINAL-GPU1` as the next scientific gate are unchanged.
 
 `mdstats 0.20.239a0` is a Python-3.11 compatibility hotfix on architecture revision 103. It corrects the DATA6 progress reporter so canonical timing fields are computed before f-string interpolation; the 0.20.238a0 MVIDX out-of-core execution/storage hardening and all scientific authority are unchanged. Release qualification now includes whole-tree Python 3.11 grammar parsing. `FINAL-GPU1` remains the next scientific gate.
@@ -85,4 +87,3 @@ The assembled manual is the release-facing authority; chapter files are retrieva
 `mdstats 0.20.237a0` is a presentation-only maintenance release on top of architecture revision 103. It standardizes MLFF progress and heartbeat output across preparation, TARGET-DATA2, model sweep, training, inference/evaluation schedulers, and qualification callbacks. Every elapsed/ETA field now uses fixed-width `HH:MM:SS`; unavailable ETA is `--:--:--`; progress counters, rates, phase/status fields, and semicolon delimiters follow the common Part VI observability contract. No scientific identity, scheduler authority, model-family behavior, dependency-graph node, or CPU/GPU gate decision changes. `FINAL-GPU1` remains next.
 
 Revision 103 completes `MVSTATE-REUSE1` and closes the exact-equivalence CPU optimization program. MVSEL now emits authenticated exact sparse-state checkpoints at materializable target rungs; REPAIR consumes those checkpoints only while its state is still identical to MVSEL and falls back to the historical carried-forward arithmetic after the first accepted repair swap. Pure checkpoint reconciliation after repair divergence was rejected because it perturbed FP64 representative-gain arrays at the 1e-17--1e-16 level. On the common 8,192-candidate/six-family closure fixture, untouched 0.20.235a0 takes about 12.00 s while 0.20.236a0 takes about 11.02 s excluding persistence; including the one-time ~0.18 s authenticated cache write, the fresh chain is about 11.19 s. REPAIR itself improves from about 5.37 s to 4.27 s with exact selection/repair/qualification digests. Cumulative fresh-chain speedup versus the PERFBASE1-era 0.20.225a0 authority is about 2.44x. Remaining target-chain cost is dominated by the exact sequential sparse-state arithmetic itself, so no further CPU-only gate is justified under the exact-equivalence policy. `FINAL-GPU1` is next; positive accelerator qualification remains deferred to that workstation gate.
-

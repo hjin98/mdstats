@@ -1,3 +1,11 @@
+## 0.20.241a0 - 2026-08-18
+
+- Harden TARGET-DATA2C-MVSEL1 for the production 36,408-candidate, 165-family, 9.51-billion-edge MPA-0 index without changing sequential FP64 selection authority.
+- Bound initialization's indexed-weight temporary to 512 MiB at exact CSR row boundaries and discard scanned file-backed inverse pages, reducing scoped initialization peak RSS from about 41.4 GiB to 7.0 GiB.
+- Replace retained/concatenated touched-edge streams with a candidate-sized bitmap and use exact contiguous-run updates for families at least 98% dense; rank-0 peak RSS falls from about 51.5 GiB to 19.2 GiB and wall time from about 239.9 s to 49.7 s.
+- Add rate-limited initialization, family-update, and rank progress with fixed-width elapsed/ETA fields; `[performance].progress_interval_seconds` owns campaign cadence.
+- Preserve exact row-local FP64 reductions and optimized/reference selector-state equality. CPU threading remains rejected because the measured independent-scatter gain was only about 1.1x on this memory-bandwidth-bound workload.
+
 ## 0.20.240a0 - 2026-08-18
 
 - Fix MVIDX-REUSE1 producer-side PARCORE1 backpressure for domains whose required-family count exceeds the bounded ready queue (production incident: 165 families with 56 ready slots at 28 inverse workers).

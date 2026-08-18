@@ -717,7 +717,13 @@ class CampaignStore:
         )
         if cls is TargetCoverageSparseIndex and isinstance(payload, Mapping) and payload.get("schema") == TARGET_COVERAGE_SPARSE_INDEX_NATIVE_POINTER_SCHEMA:
             try:
-                return read_target_coverage_sparse_index_native_record(payload, self.path.parent)
+                return read_target_coverage_sparse_index_native_record(
+                    payload,
+                    self.path.parent,
+                    progress_callback=lambda message: print(
+                        f"[TARGET-DATA2C-MVIDX1 restore] {message}", flush=True
+                    ),
+                )
             except TargetCoverageSparseIndexNativeStoreError as exc:
                 raise CampaignCliError(str(exc)) from exc
         from .target_multi_view_selection_state import TargetMultiViewSelectionStateCache
@@ -4874,6 +4880,11 @@ def _ensure_target_multi_view_selection(
     import mdstats
 
     policy = mdstats.TargetMultiViewSelectorPolicy()
+    progress_interval = float(_cfg(cfg, "performance", "progress_interval_seconds", 30.0))
+    if progress_interval <= 0.0:
+        raise CampaignCliError("[performance].progress_interval_seconds must be positive.")
+    def progress(message: str) -> None:
+        print(f"[TARGET-DATA2C-MVSEL1] {message}", flush=True)
     existing = None
     try:
         existing = store.get_record_optional(
@@ -4923,7 +4934,12 @@ def _ensure_target_multi_view_selection(
                 )
                 with stage_resource_scope(selector_scope):
                     rebuilt, state_cache = mdstats.build_target_multi_view_selection_artifacts(
-                        coverage_reference, sparse_index, policy=policy, execution_mode="optimized"
+                        coverage_reference,
+                        sparse_index,
+                        policy=policy,
+                        execution_mode="optimized",
+                        progress_callback=progress,
+                        progress_interval_seconds=progress_interval,
                     )
                 if rebuilt.content_digest != existing.content_digest:
                     raise CampaignCliError("MVSTATE-REUSE1 cache rebuild changed MVSEL scientific authority.")
@@ -4960,7 +4976,8 @@ def _ensure_target_multi_view_selection(
             sparse_index,
             policy=policy,
             execution_mode="optimized",
-            progress_callback=lambda message: print(f"[TARGET-DATA2C-MVSEL1] {message}", flush=True),
+            progress_callback=progress,
+            progress_interval_seconds=progress_interval,
         )
     mdstats.validate_target_multi_view_selection_authority(
         plan,
