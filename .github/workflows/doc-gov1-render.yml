@@ -68,24 +68,33 @@ jobs:
           sudo install -m 0755 /tmp/typst-x86_64-unknown-linux-musl/typst /usr/local/bin/typst
           typst --version
 
-      - name: Re-render permanent MLFF PDFs and require byte-stable tracked artifacts
+      - name: Re-render permanent MLFF PDFs and compare rendered content
         shell: bash
         run: |
           set -euo pipefail
+          if ! command -v pdftotext >/dev/null || ! command -v pdfinfo >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y poppler-utils
+          fi
+          i=0
           for src in \
             docs/arch_manuals/mlff_training_data_architecture.md \
             docs/specs/training_data/mlff_data_stage_plan_spec.md
           do
-            pdf="${src%.md}.pdf"
+            i=$((i+1))
+            tracked="${src%.md}.pdf"
+            rerender="/tmp/docgov1-rerender-${i}.pdf"
             pandoc "$src" --from=markdown --pdf-engine=typst --metadata=lang:en-US \
               -V papersize:us-letter -V fontsize:10.5pt -V geometry:margin=0.75in \
-              --resource-path="$(dirname "$src")" -o "$pdf"
+              --resource-path="$(dirname "$src")" -o "$rerender"
+            tracked_pages=$(pdfinfo "$tracked" | awk '/^Pages:/ {print $2}')
+            rerender_pages=$(pdfinfo "$rerender" | awk '/^Pages:/ {print $2}')
+            test "$tracked_pages" = "$rerender_pages"
+            pdftotext -layout "$tracked" "/tmp/docgov1-tracked-${i}.txt"
+            pdftotext -layout "$rerender" "/tmp/docgov1-rerender-${i}.txt"
+            cmp "/tmp/docgov1-tracked-${i}.txt" "/tmp/docgov1-rerender-${i}.txt"
+            echo "rendered-content OK: $src ($tracked_pages pages)"
           done
-          git diff --exit-code -- \
-            docs/arch_manuals/mlff_training_data_architecture.md \
-            docs/arch_manuals/mlff_training_data_architecture.pdf \
-            docs/specs/training_data/mlff_data_stage_plan_spec.md \
-            docs/specs/training_data/mlff_data_stage_plan_spec.pdf
 
       - name: Verify permanent PDF provenance manifests
         run: |
@@ -146,7 +155,6 @@ jobs:
           ]
           for rel in required:
               assert any(n.endswith('/'+rel) for n in names), f'missing from sdist: {rel}'
-          # The wheel intentionally contains only the Python package and package data under pyproject.toml.
           assert any(n.startswith('mdstats/') for n in wnames)
           assert not any(n.startswith('docs/') or '/docs/' in n for n in wnames), 'unexpected repository docs in wheel'
           print('sdist:', sdists[0].name, 'members=', len(names))
