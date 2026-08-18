@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import numpy as np
@@ -8,7 +9,10 @@ import pytest
 
 import mdstats
 from mdstats.training_data.campaign_cli import CampaignStore
+from mdstats.training_data import _common as common
 from mdstats.training_data import target_coverage_sparse_index as mvidx
+from mdstats.training_data import target_coverage_sparse_index_store as mvidx_store
+from mdstats.training_data.target_coverage import _coverage_array_reference
 from tests.test_mlff_target_data2b_feas1 import _reference_and_role
 
 
@@ -134,6 +138,121 @@ def test_mvidx1_native_store_detects_tampering(tmp_path: Path) -> None:
         handle.write(bytes([byte[0] ^ 0x01]))
     with pytest.raises(mdstats.TargetCoverageSparseIndexNativeStoreError, match="Checksum mismatch"):
         mdstats.read_target_coverage_sparse_index_native_record(pointer, tmp_path)
+
+
+def test_mvidx1_native_restore_receipt_skips_and_stat_change_revalidates(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, _, _, index = _index()
+    pointer = mdstats.write_target_coverage_sparse_index_native_record(index, tmp_path / "records")
+    messages: list[str] = []
+    original = mvidx_store._validate_native_index_array
+    calls = 0
+
+    def count_validation(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original(*args, **kwargs)
+
+    common.configure_sha256_receipt_store(tmp_path / "receipts.sqlite3")
+    monkeypatch.setattr(mvidx_store, "_validate_native_index_array", count_validation)
+    try:
+        first = mdstats.read_target_coverage_sparse_index_native_record(
+            pointer, tmp_path, progress_callback=messages.append
+        )
+        assert first.content_digest == index.content_digest
+        assert calls > 0
+        assert any("validation=full" in message for message in messages)
+
+        calls = 0
+        messages.clear()
+        second = mdstats.read_target_coverage_sparse_index_native_record(
+            pointer, tmp_path, progress_callback=messages.append
+        )
+        assert second.content_digest == index.content_digest
+        assert calls == 0
+        assert any("validation=receipt-hit" in message for message in messages)
+
+        manifest = tmp_path / pointer["relative_path"]
+        payload = json.loads(manifest.read_text())
+        descriptor = payload["domains"][0]["families"][0]["arrays"]["witness_candidates"]
+        array_path = manifest.parent / descriptor["relative_path"]
+        stat = array_path.stat()
+        os.utime(array_path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1))
+
+        calls = 0
+        messages.clear()
+        third = mdstats.read_target_coverage_sparse_index_native_record(
+            pointer, tmp_path, progress_callback=messages.append
+        )
+        assert third.content_digest == index.content_digest
+        assert calls > 0
+        assert any("validation=full" in message for message in messages)
+    finally:
+        common.configure_sha256_receipt_store(None)
+
+
+def test_mvidx1_native_restore_applies_bounded_cache_advice(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, _, _, index = _index()
+    pointer = mdstats.write_target_coverage_sparse_index_native_record(index, tmp_path / "records")
+    advice: list[int] = []
+    messages: list[str] = []
+    monkeypatch.setattr(
+        mvidx_store,
+        "_madvise_array",
+        lambda array, value: advice.append(value) or True,
+    )
+    restored = mdstats.read_target_coverage_sparse_index_native_record(
+        pointer,
+        tmp_path,
+        mmap_cache_policy="discard",
+        progress_callback=messages.append,
+        progress_interval_seconds=0.001,
+    )
+    assert restored.content_digest == index.content_digest
+    if hasattr(mvidx_store.mmap, "MADV_SEQUENTIAL"):
+        assert mvidx_store.mmap.MADV_SEQUENTIAL in advice
+    if hasattr(mvidx_store.mmap, "MADV_DONTNEED"):
+        assert mvidx_store.mmap.MADV_DONTNEED in advice
+    assert messages[0].startswith("restore; status=start")
+    assert "cache_policy=discard" in messages[-1]
+
+
+def test_mvidx1_one_pass_validator_preserves_csr_boundary_semantics(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(mvidx_store, "_MVIDX_VALIDATION_CHUNK_EDGES", 2)
+    offsets = np.asarray([0, 2, 4], dtype="<u8")
+    valid = np.asarray([0, 2, 1, 3], dtype="<u4")
+    mvidx_store._validate_native_index_array(
+        _coverage_array_reference(valid),
+        valid,
+        offsets,
+        upper_bound=4,
+        label="test",
+    )
+
+    duplicate_across_chunk = np.asarray([0, 1, 1, 2], dtype="<u4")
+    with pytest.raises(mdstats.TargetCoverageSparseIndexNativeStoreError, match="strictly sorted"):
+        mvidx_store._validate_native_index_array(
+            _coverage_array_reference(duplicate_across_chunk),
+            duplicate_across_chunk,
+            np.asarray([0, 4], dtype="<u8"),
+            upper_bound=4,
+            label="test",
+        )
+
+    out_of_range = np.asarray([0, 4], dtype="<u4")
+    with pytest.raises(mdstats.TargetCoverageSparseIndexNativeStoreError, match="out-of-range"):
+        mvidx_store._validate_native_index_array(
+            _coverage_array_reference(out_of_range),
+            out_of_range,
+            np.asarray([0, 2], dtype="<u8"),
+            upper_bound=4,
+            label="test",
+        )
 
 
 def test_mvidx1_public_api_is_exported() -> None:

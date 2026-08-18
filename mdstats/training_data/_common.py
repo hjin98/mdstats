@@ -104,6 +104,7 @@ _SHA256_RECEIPT_LOCK = threading.RLock()
 _SHA256_RECEIPT_PATH: Path | None = None
 _SHA256_RECEIPT_LOCAL = threading.local()
 _SHA256_RECEIPT_SCHEMA = "mdstats.sha256-file-receipts.v1"
+_VALIDATION_RECEIPT_SCHEMA = "mdstats.completed-validation-receipts.v1"
 _SHA256_HASHED_IN_PROCESS: set[tuple[str, int, int, int, int, int]] = set()
 
 
@@ -170,6 +171,20 @@ def _sha256_receipt_connection() -> sqlite3.Connection | None:
             "INSERT OR REPLACE INTO meta(key,value) VALUES (?,?)",
             ("schema", _SHA256_RECEIPT_SCHEMA),
         )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS validation_receipts (
+                namespace TEXT NOT NULL,
+                identity_digest TEXT NOT NULL,
+                value_digest TEXT NOT NULL,
+                PRIMARY KEY(namespace, identity_digest)
+            )
+            """
+        )
+        connection.execute(
+            "INSERT OR REPLACE INTO meta(key,value) VALUES (?,?)",
+            ("validation_receipt_schema", _VALIDATION_RECEIPT_SCHEMA),
+        )
         connection.commit()
         _SHA256_RECEIPT_LOCAL.connection = connection
         _SHA256_RECEIPT_LOCAL.connection_path = str(path)
@@ -205,6 +220,52 @@ def _write_sha256_receipt(key: tuple[str, int, int, int, int, int], value: str) 
         connection.execute(
             "INSERT OR REPLACE INTO receipts(path,device,inode,size,mtime_ns,ctime_ns,sha256) VALUES (?,?,?,?,?,?,?)",
             (*key, value),
+        )
+        connection.commit()
+    except Exception:
+        pass
+
+
+def read_validation_receipt(namespace: str, identity_digest: str) -> str | None:
+    """Read trusted-local evidence that a compound artifact was fully validated."""
+
+    if not namespace or len(identity_digest) != 64:
+        return None
+    connection = _sha256_receipt_connection()
+    if connection is None:
+        return None
+    try:
+        row = connection.execute(
+            "SELECT value_digest FROM validation_receipts WHERE namespace=? AND identity_digest=?",
+            (namespace, identity_digest),
+        ).fetchone()
+        if row is None:
+            return None
+        value = str(row[0])
+        if len(value) != 64 or any(ch not in "0123456789abcdef" for ch in value):
+            return None
+        return value
+    except Exception:
+        return None
+
+
+def write_validation_receipt(namespace: str, identity_digest: str, value_digest: str) -> None:
+    """Record completed validation; database failures remain an optimization miss."""
+
+    if (
+        not namespace
+        or len(identity_digest) != 64
+        or len(value_digest) != 64
+        or any(ch not in "0123456789abcdef" for ch in identity_digest + value_digest)
+    ):
+        return
+    connection = _sha256_receipt_connection()
+    if connection is None:
+        return
+    try:
+        connection.execute(
+            "INSERT OR REPLACE INTO validation_receipts(namespace,identity_digest,value_digest) VALUES (?,?,?)",
+            (namespace, identity_digest, value_digest),
         )
         connection.commit()
     except Exception:

@@ -448,12 +448,18 @@ class _DomainSelectorState:
 
 def _row_weight_sums(offsets: np.ndarray, indices: np.ndarray, weights: np.ndarray) -> np.ndarray:
     edge_weights = weights[np.asarray(indices, dtype=np.int64)]
-    prefix = np.empty(edge_weights.size + 1, dtype=np.float64)
-    prefix[0] = 0.0
-    np.cumsum(edge_weights, dtype=np.float64, out=prefix[1:])
     starts = np.asarray(offsets[:-1], dtype=np.int64)
     stops = np.asarray(offsets[1:], dtype=np.int64)
-    return prefix[stops] - prefix[starts]
+    sums = np.zeros(starts.size, dtype=np.float64)
+    nonempty = starts < stops
+    if np.any(nonempty):
+        # Reduce each CSR row independently.  A global cumulative sum followed
+        # by prefix subtraction loses precision for small rows late in a large
+        # graph and can initialize a gain below the decrements it represents.
+        sums[nonempty] = np.add.reduceat(
+            edge_weights, starts[nonempty], dtype=np.float64
+        )
+    return sums
 
 
 def _build_domain_state(reference_domain: Any, sparse_domain: Any) -> _DomainSelectorState:

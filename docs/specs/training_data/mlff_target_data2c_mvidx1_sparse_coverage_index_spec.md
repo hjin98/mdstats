@@ -24,8 +24,27 @@ The domain index separately freezes bidirectional obligation adjacency for requi
 
 Scientific graph evidence is persisted as content-addressed authenticated NPY sidecars with a small JSON manifest. The manifest binds TARGET-DATA2B, TARGET-DATA2A, FEAS1, family, frame-domain, policy, obligation, unit, dtype/shape, and SHA-256 identities. Future heaps, marginal-gain vectors, covered masks, and scratch arrays are reconstructible caches and are not part of MVIDX1 authority. Restart reuse requires unchanged upstream digests and exact forward/inverse sparse consistency.
 
+Native restart validation preserves those scientific identities while bounding its
+execution footprint.  On a validation miss, each large adjacency array is checked
+in one chunked sequential pass that combines value-SHA verification, range checks,
+and strict within-row ordering/uniqueness checks.  A completed-validation receipt
+may then be stored in the campaign's trusted local receipt database.  The receipt
+is execution-only and is keyed by the authenticated manifest plus the resolved
+path, device, inode, size, modification time, and change time of every sidecar.
+An exact receipt hit permits restart to map the arrays without walking their data;
+any missing or changed identity falls back to full validation and fails closed on
+an integrity or scientific-invariant mismatch.  Receipts, progress reporting, and
+memory-map advice do not enter any scientific digest or persistence schema.
+
+Restore supports retain, discard, and automatic file-cache policies.  Full
+validation uses sequential mapping advice where supported.  The automatic policy
+may release already-validated clean mapped pages when the authenticated logical
+payload is large relative to currently available memory; this changes only
+reclaimable file-cache residency.  It must not copy adjacency payloads into the
+Python heap, mutate persisted arrays, or change subsequent query results.
+
 ## Acceptance
 
-Qualification requires: worker/block-invariant graph digests; exact forward/inverse agreement; geometric rebuild equivalence on deterministic fixtures/production-style coverage data; exact covered-mass and marginal-gain agreement with TARGET-DATA2B; exact extent/stratum/correlation obligation indexing; native persistence round-trip and checksum tamper rejection; no selector/default change; and regression-clean TARGET-DATA2B/C/D behavior.
+Qualification requires: worker/block-invariant graph digests; exact forward/inverse agreement; geometric rebuild equivalence on deterministic fixtures/production-style coverage data; exact covered-mass and marginal-gain agreement with TARGET-DATA2B; exact extent/stratum/correlation obligation indexing; native persistence round-trip and checksum tamper rejection; one-pass restore validation equivalence; receipt-hit reuse and stat-identity invalidation; bounded restore-cache policy and progress evidence; no selector/default change; and regression-clean TARGET-DATA2B/C/D behavior.
 
 **Next gate:** `TARGET-DATA2C-MVSEL1`.

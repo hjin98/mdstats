@@ -717,7 +717,13 @@ class CampaignStore:
         )
         if cls is TargetCoverageSparseIndex and isinstance(payload, Mapping) and payload.get("schema") == TARGET_COVERAGE_SPARSE_INDEX_NATIVE_POINTER_SCHEMA:
             try:
-                return read_target_coverage_sparse_index_native_record(payload, self.path.parent)
+                return read_target_coverage_sparse_index_native_record(
+                    payload,
+                    self.path.parent,
+                    progress_callback=lambda message: print(
+                        f"[TARGET-DATA2C-MVIDX1 restore] {message}", flush=True
+                    ),
+                )
             except TargetCoverageSparseIndexNativeStoreError as exc:
                 raise CampaignCliError(str(exc)) from exc
         from .target_multi_view_selection_state import TargetMultiViewSelectionStateCache

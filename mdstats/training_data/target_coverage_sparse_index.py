@@ -17,7 +17,7 @@ Execution-only query worker/block settings never enter scientific digests.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import InitVar, dataclass, field
 import math
 from pathlib import Path
 import time
@@ -62,6 +62,7 @@ _MVIDX_OUT_OF_CORE_MIN_OUTPUT_BYTES = 8 * _MIB
 _MVIDX_OUT_OF_CORE_TASK_ADMISSION_BYTES = 768 * _MIB
 _MVIDX_OUT_OF_CORE_CHUNK_SCRATCH_BYTES = 384 * _MIB
 _MVIDX_VALIDATION_CHUNK_EDGES = 8 * 1024 * 1024
+_NATIVE_RESTORE_TOKEN = object()
 
 
 def _canonical_array(
@@ -187,10 +188,16 @@ class TargetCoverageSparseFamilyIndex:
     witness_candidates: np.ndarray | Sequence[int]
     candidate_offsets: np.ndarray | Sequence[int]
     candidate_witnesses: np.ndarray | Sequence[int]
+    _native_restore_token: InitVar[object | None] = None
+    _native_array_references: InitVar[Mapping[str, Mapping[str, Any]] | None] = None
     _array_references: Mapping[str, Mapping[str, Any]] = field(default_factory=dict, init=False, repr=False, compare=False)
     _content_digest_cache: str = field(default="", init=False, repr=False, compare=False)
 
-    def __post_init__(self) -> None:
+    def __post_init__(
+        self,
+        _native_restore_token: object | None,
+        _native_array_references: Mapping[str, Mapping[str, Any]] | None,
+    ) -> None:
         if not self.family_id.strip():
             raise TrainingDataInputError("TARGET-DATA2C-MVIDX1 family_id cannot be empty.")
         family_digest = validate_digest(self.family_digest, name="family_digest")
@@ -207,19 +214,33 @@ class TargetCoverageSparseFamilyIndex:
             raise TrainingDataInputError("TARGET-DATA2C-MVIDX1 forward/inverse edge counts disagree.")
         _validate_offsets(witness_offsets, item_count=witness_count, edge_count=edge_count, name="witness")
         _validate_offsets(candidate_offsets, item_count=candidate_count, edge_count=edge_count, name="candidate")
-        if edge_count and (
-            int(np.max(witness_candidates)) >= candidate_count
-            or int(np.max(candidate_witnesses)) >= witness_count
-        ):
-            raise TrainingDataInputError("TARGET-DATA2C-MVIDX1 sparse family index contains out-of-range edges.")
-        _validate_sorted_unique_rows(witness_offsets, witness_candidates, name="witness-to-candidate")
-        _validate_sorted_unique_rows(candidate_offsets, candidate_witnesses, name="candidate-to-witness")
-        references = {
-            "witness_offsets": _coverage_array_reference(witness_offsets),
-            "witness_candidates": _coverage_array_reference(witness_candidates),
-            "candidate_offsets": _coverage_array_reference(candidate_offsets),
-            "candidate_witnesses": _coverage_array_reference(candidate_witnesses),
-        }
+        trusted_native_restore = _native_restore_token is _NATIVE_RESTORE_TOKEN
+        if trusted_native_restore:
+            if not isinstance(_native_array_references, Mapping):
+                raise TrainingDataInputError("TARGET-DATA2C-MVIDX1 native restore lacks array identities.")
+            names = (
+                "witness_offsets",
+                "witness_candidates",
+                "candidate_offsets",
+                "candidate_witnesses",
+            )
+            if any(not isinstance(_native_array_references.get(name), Mapping) for name in names):
+                raise TrainingDataInputError("TARGET-DATA2C-MVIDX1 native restore array identities are incomplete.")
+            references = {name: dict(_native_array_references[name]) for name in names}
+        else:
+            if edge_count and (
+                int(np.max(witness_candidates)) >= candidate_count
+                or int(np.max(candidate_witnesses)) >= witness_count
+            ):
+                raise TrainingDataInputError("TARGET-DATA2C-MVIDX1 sparse family index contains out-of-range edges.")
+            _validate_sorted_unique_rows(witness_offsets, witness_candidates, name="witness-to-candidate")
+            _validate_sorted_unique_rows(candidate_offsets, candidate_witnesses, name="candidate-to-witness")
+            references = {
+                "witness_offsets": _coverage_array_reference(witness_offsets),
+                "witness_candidates": _coverage_array_reference(witness_candidates),
+                "candidate_offsets": _coverage_array_reference(candidate_offsets),
+                "candidate_witnesses": _coverage_array_reference(candidate_witnesses),
+            }
         object.__setattr__(self, "family_digest", family_digest)
         object.__setattr__(self, "candidate_count", candidate_count)
         object.__setattr__(self, "witness_count", witness_count)
@@ -228,6 +249,21 @@ class TargetCoverageSparseFamilyIndex:
         object.__setattr__(self, "candidate_offsets", candidate_offsets)
         object.__setattr__(self, "candidate_witnesses", candidate_witnesses)
         object.__setattr__(self, "_array_references", references)
+
+    @classmethod
+    def _from_validated_native(
+        cls,
+        *,
+        array_references: Mapping[str, Mapping[str, Any]],
+        **values: Any,
+    ) -> "TargetCoverageSparseFamilyIndex":
+        """Construct from arrays already authenticated by the native store."""
+
+        return cls(
+            **values,
+            _native_restore_token=_NATIVE_RESTORE_TOKEN,
+            _native_array_references=array_references,
+        )
 
     @property
     def edge_count(self) -> int:

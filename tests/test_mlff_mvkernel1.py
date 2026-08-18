@@ -9,6 +9,44 @@ from tests.test_mlff_target_data2c_mvqual1 import _authorities
 from tests.test_mlff_target_data2c_mvsel1 import _selector
 
 
+def test_mvkernel1_row_weight_sums_avoid_cross_row_prefix_cancellation() -> None:
+    leading_edge_count = 1_000_000
+    target_edge_count = 959
+    weights = np.asarray([1.68e-4, 1.0351966873706005e-5], dtype=np.float64)
+    indices = np.concatenate((
+        np.zeros(leading_edge_count, dtype=np.uint32),
+        np.ones(target_edge_count, dtype=np.uint32),
+    ))
+    offsets = np.asarray([
+        0,
+        leading_edge_count,
+        leading_edge_count,
+        leading_edge_count + target_edge_count,
+        leading_edge_count + target_edge_count,
+    ], dtype=np.uint64)
+
+    row_sums = mvsel._row_weight_sums(offsets, indices, weights)
+
+    # This fixture crosses the production guard under the historical global
+    # prefix-subtraction implementation, while row-local FP64 accumulation
+    # remains reversible to numerical zero under MVSEL's ordered decrements.
+    edge_weights = weights[np.asarray(indices, dtype=np.int64)]
+    prefix = np.empty(edge_weights.size + 1, dtype=np.float64)
+    prefix[0] = 0.0
+    np.cumsum(edge_weights, dtype=np.float64, out=prefix[1:])
+    historical_target_sum = prefix[-1] - prefix[leading_edge_count]
+    historical_residual = float(historical_target_sum)
+    corrected_residual = float(row_sums[2])
+    for _ in range(target_edge_count):
+        historical_residual -= float(weights[1])
+        corrected_residual -= float(weights[1])
+
+    assert historical_residual < -5.0e-12
+    assert abs(corrected_residual) <= 5.0e-13
+    assert row_sums[1] == 0.0
+    assert row_sums[3] == 0.0
+
+
 def test_mvkernel1_ragged_gather_matches_canonical_python_concatenation() -> None:
     offsets = np.asarray([0, 2, 2, 5, 9, 10], dtype=np.uint64)
     indices = np.asarray([7, 8, 1, 4, 9, 2, 3, 5, 8, 6], dtype=np.uint32)
