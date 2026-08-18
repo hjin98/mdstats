@@ -1,6 +1,9 @@
 name: DOC-GOV1 Final Qualification
 
 on:
+  push:
+    branches:
+      - agent/doc-gov1-g0
   pull_request:
   workflow_dispatch:
 
@@ -138,7 +141,7 @@ The fitted/protocol/profile record families continue the same ownership contract
           git add "$src" "$pdf" "$pdf.manifest.json"
           if ! git diff --cached --quiet; then
             git commit -m 'DOC-GOV1 G7 fix system-contract PDF pagination [skip ci]'
-            git push origin HEAD:${{ github.event.pull_request.head.ref }}
+            git push origin HEAD:${{ github.event.pull_request.head.ref || github.ref_name }}
           fi
 
       - name: Governance and deterministic assembly checks
@@ -245,20 +248,8 @@ The fitted/protocol/profile record families continue the same ownership contract
           assert not any('/workplans/' in '/'+n.strip('/')+'/' for n in names), 'workplans leaked into sdist'
           assert not any('/workplans/' in '/'+n.strip('/')+'/' for n in wnames), 'workplans leaked into wheel'
           assert not any(n.endswith('/tools/doc_gov1_g3_migrate.py') or n.endswith('/tools/doc_gov1_g4_migrate.py') for n in names), 'migration helper leaked into sdist'
-          required=[
-              'docs/README.md','docs/INDEX.md',
-              'docs/arch_manuals/mlff_training_data_architecture.md',
-              'docs/arch_manuals/mlff_training_data_architecture.pdf',
-              'docs/arch_manuals/mlff_training_data_architecture.pdf.manifest.json',
-              'docs/arch_manuals/mlff_training_data_dependency_graph.json',
-              'docs/specs/training_data/README.md',
-              'docs/specs/training_data/mlff_data_stage_plan_spec.md',
-              'docs/specs/training_data/mlff_data_stage_plan_spec.pdf',
-              'docs/specs/training_data/mlff_data_stage_plan_spec.pdf.manifest.json',
-              'docs/history/mlff/README.md',
-          ]
-          for rel in required:
-              assert any(n.endswith('/'+rel) for n in names), f'missing from sdist: {rel}'
+          required=['docs/README.md','docs/INDEX.md','docs/arch_manuals/mlff_training_data_architecture.md','docs/arch_manuals/mlff_training_data_architecture.pdf','docs/arch_manuals/mlff_training_data_architecture.pdf.manifest.json','docs/arch_manuals/mlff_training_data_dependency_graph.json','docs/specs/training_data/README.md','docs/specs/training_data/mlff_data_stage_plan_spec.md','docs/specs/training_data/mlff_data_stage_plan_spec.pdf','docs/specs/training_data/mlff_data_stage_plan_spec.pdf.manifest.json','docs/history/mlff/README.md']
+          for rel in required: assert any(n.endswith('/'+rel) for n in names), f'missing from sdist: {rel}'
           assert any(n.startswith('mdstats/') for n in wnames)
           assert not any(n.startswith('docs/') or '/docs/' in n for n in wnames), 'unexpected repository docs in wheel'
           print('sdist:',sdists[0].name,'members=',len(names))
