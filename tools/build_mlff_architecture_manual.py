@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Assemble the current MLFF architecture from ordered chapter sources."""
+"""Assemble the current MLFF architecture from ordered current-state chapters."""
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,7 +13,6 @@ ORDER = [
     "40_training_evaluation.md",
     "50_target_multiview.md",
     "60_execution_performance.md",
-    "70_status_and_gates.md",
     "80_ownership_and_decisions.md",
     "90_references.md",
 ]
