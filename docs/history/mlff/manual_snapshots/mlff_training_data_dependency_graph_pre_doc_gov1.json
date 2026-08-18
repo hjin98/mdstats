@@ -1,13 +1,15 @@
 {
-  "authority_model": "current_dependency_architecture",
-  "description": "Current MLFF training-data product/data/runtime dependency architecture. Developer implementation sequencing and completed engineering status are non-normative and live in workplans/history.",
+  "architecture_revision": 103,
+  "branch": "MLFF-DATA",
+  "description": "MLFF training-data dependency graph through architecture revision 103. MVSTATE-REUSE1 closes the exact-equivalence CPU optimization program by authenticating MVSEL sparse-state checkpoints for exact REPAIR reuse; FINAL-GPU1 is the next release qualification gate.",
+  "documentation_gate": "MVSTATE_REUSE1_SELECTOR_REPAIR_HANDOFF",
   "edge_type_definitions": {
-    "execution_requires": "The upstream current product/interface must exist before downstream execution.",
+    "execution_requires": "The upstream product must exist before execution.",
     "fit_domain_requires": "The fitted object may inspect only the declared training domain.",
+    "implementation_requires": "The upstream interface/implementation must exist, but its deferred runtime qualification need not yet have passed.",
     "optional_enrichment": "The upstream product enriches but is not required for the base path.",
-    "produces": "The upstream current execution or policy produces the downstream record/product.",
-    "promotion_requires": "The upstream current product/evidence must satisfy the declared predicate before downstream promotion.",
-    "release_qualification_requires": "The upstream qualification must pass before the applicable production release/promotion boundary.",
+    "promotion_requires": "The upstream product must pass a declared predicate.",
+    "release_qualification_requires": "The upstream item must pass before the final production release, but does not block intermediate implementation development.",
     "replay_triggers": "The upstream event creates a new immutable generation.",
     "source_identity_requires": "Exact source or checkpoint identity is required.",
     "supersedes": "The downstream/current authority intentionally replaces the scientific meaning of the upstream historical authority; historical evidence remains archival."
@@ -498,13 +500,13 @@
     {
       "from": "DATA9A_GATE",
       "to": "DATA9B_EXECUTION",
-      "type": "promotion_requires"
+      "type": "gates"
     },
     {
       "from": "DATA9A_GATE",
       "predicate": "full_production_gate_passed",
       "to": "TRAINING_CAMPAIGN_PLAN",
-      "type": "promotion_requires"
+      "type": "gates"
     },
     {
       "from": "DERIVATIVE_CONVENTION",
@@ -641,7 +643,7 @@
     {
       "from": "FINAL_FEATURE_METRIC_FIT",
       "to": "FOUNDATION_RESIDUAL_E0_FIT",
-      "type": "execution_requires"
+      "type": "requires"
     },
     {
       "from": "FINAL_FEATURE_TRANSFORM",
@@ -826,7 +828,7 @@
     {
       "from": "FOUNDATION_CHECKPOINT",
       "to": "FOUNDATION_RESIDUAL_E0_FIT",
-      "type": "execution_requires"
+      "type": "requires"
     },
     {
       "from": "FOUNDATION_CHECKPOINT",
@@ -866,7 +868,7 @@
     {
       "from": "FOUNDATION_RESIDUAL_E0_FIT",
       "to": "PORTABLE_MACE_BUNDLE",
-      "type": "execution_requires"
+      "type": "requires"
     },
     {
       "from": "FOUNDATION_RESIDUAL_E0_FIT",
@@ -997,7 +999,7 @@
     {
       "from": "INSTALLED_MACE_QUALIFICATION",
       "to": "DATA9A_GATE",
-      "type": "execution_requires"
+      "type": "requires"
     },
     {
       "from": "ISOLATED_TRAJECTORY_WORKER",
@@ -1140,7 +1142,7 @@
     {
       "from": "MACE_ADAPTER_LOCK",
       "to": "INSTALLED_MACE_QUALIFICATION",
-      "type": "execution_requires"
+      "type": "requires"
     },
     {
       "from": "MACE_ADAPTER_LOCK",
@@ -1175,7 +1177,7 @@
     {
       "from": "MACE_CLI_SMOKE_RECORD",
       "to": "DATA9A_GATE",
-      "type": "execution_requires"
+      "type": "requires"
     },
     {
       "from": "MACE_CONFIG_REALIZATION_RECORD",
@@ -1205,7 +1207,7 @@
     {
       "from": "MACE_DEPENDENCY_MANIFEST",
       "to": "MACE_RUNTIME_ENVIRONMENT_RECORD",
-      "type": "execution_requires"
+      "type": "requires"
     },
     {
       "from": "MACE_DEPLOYMENT_EXPORT_POLICY",
@@ -1225,7 +1227,7 @@
     {
       "from": "MACE_JOB_EXECUTION_SMOKE_RECORD",
       "to": "DATA9A_GATE",
-      "type": "execution_requires"
+      "type": "requires"
     },
     {
       "from": "MACE_JOB_EXECUTION_SMOKE_RECORD",
@@ -1285,7 +1287,7 @@
     {
       "from": "MACE_RUNTIME_ENVIRONMENT_RECORD",
       "to": "INSTALLED_MACE_QUALIFICATION",
-      "type": "execution_requires"
+      "type": "requires"
     },
     {
       "from": "MACE_RUNTIME_ENVIRONMENT_RECORD",
@@ -1497,7 +1499,7 @@
     {
       "from": "OFFLINE_MACE_WHEELHOUSE",
       "to": "MACE_RUNTIME_ENVIRONMENT_RECORD",
-      "type": "execution_requires"
+      "type": "requires"
     },
     {
       "from": "OPTIONAL_PROFILE_EXTENSION_PROVIDER",
@@ -1706,7 +1708,7 @@
     {
       "from": "PORTABLE_MACE_BUNDLE",
       "to": "DATA9A_GATE",
-      "type": "execution_requires"
+      "type": "requires"
     },
     {
       "from": "PORTABLE_MACE_BUNDLE",
@@ -1813,7 +1815,7 @@
     {
       "from": "PRODUCTION_PREPARATION_BENCHMARK",
       "to": "DATA9A_GATE",
-      "type": "execution_requires"
+      "type": "requires"
     },
     {
       "from": "PRODUCTION_REGIMES",
@@ -2121,7 +2123,7 @@
     {
       "from": "SELECTION_LEVEL_IDENTITY",
       "to": "PORTABLE_MACE_BUNDLE",
-      "type": "execution_requires"
+      "type": "requires"
     },
     {
       "from": "SOFTWARE_PROVENANCE",
@@ -2451,7 +2453,7 @@
     {
       "from": "TRAINING_SELECTION_LADDER",
       "to": "SELECTION_LEVEL_IDENTITY",
-      "type": "execution_requires"
+      "type": "requires"
     },
     {
       "from": "TRAJECTORY_COLLECTION",
@@ -2687,7 +2689,7 @@
     {
       "from": "PERF_P2_LAZY_TARGET_LADDER_V2",
       "to": "PERF_P2_QUALIFICATION_EVIDENCE",
-      "type": "release_qualification_requires"
+      "type": "qualification_requires"
     },
     {
       "from": "PERF_P1_QUALIFICATION_EVIDENCE",
@@ -2700,9 +2702,19 @@
       "type": "supersedes"
     },
     {
+      "from": "PERF_P2R_SUCCESSIVE_FIDELITY_EXECUTION",
+      "to": "PERF_P3_CPU_STRUCTURAL_REDUCTION",
+      "type": "implementation_requires"
+    },
+    {
       "from": "SIZE_HALVE1_TARGET_SIZE_CORRECTION",
       "to": "SIZE_FIDELITY1_COARSE_SCREEN_CALIBRATION",
-      "type": "release_qualification_requires"
+      "type": "qualification_requires"
+    },
+    {
+      "from": "SIZE_FIDELITY1_COARSE_SCREEN_CALIBRATION",
+      "to": "PERF_P2R_SUCCESSIVE_FIDELITY_EXECUTION",
+      "type": "implementation_requires"
     },
     {
       "from": "SIZE_FIDELITY1_COARSE_SCREEN_CALIBRATION",
@@ -2718,6 +2730,11 @@
       "from": "PERF_P5_TRAIN_EVAL_PERSISTENCE_REUSE",
       "to": "FINAL_GPU1_DEFERRED_RELEASE_QUALIFICATION",
       "type": "release_qualification_requires"
+    },
+    {
+      "from": "PERF_P5_TRAIN_EVAL_PERSISTENCE_REUSE",
+      "to": "CUEQ_DEP1_RUNTIME_FREEZE",
+      "type": "implementation_requires"
     },
     {
       "from": "CUEQ_DEP1_RUNTIME_FREEZE",
@@ -2790,14 +2807,49 @@
       "type": "release_qualification_requires"
     },
     {
+      "from": "CUEQ_PHASE1_TRAINING_ONLY_QUALIFICATION",
+      "to": "CUEQ_DEFAULT1_TRAINING_DEFAULT_POLICY",
+      "type": "implementation_requires"
+    },
+    {
       "from": "CUEQ_DEFAULT1_TRAINING_DEFAULT_POLICY",
       "to": "TRAINING_PROTOCOL_IDENTITY",
       "type": "source_identity_requires"
     },
     {
+      "from": "SIZE_HALVE1_TARGET_SIZE_CORRECTION",
+      "to": "TARGET_DATA2C_RESCUE1_BOUNDED_UPPER_LADDER",
+      "type": "implementation_requires"
+    },
+    {
       "from": "TARGET_DATA2C_RESCUE1_BOUNDED_UPPER_LADDER",
       "to": "SIZE_FIDELITY1_COARSE_SCREEN_CALIBRATION",
-      "type": "release_qualification_requires"
+      "type": "qualification_requires"
+    },
+    {
+      "from": "TARGET_DATA2C_RESCUE1_BOUNDED_UPPER_LADDER",
+      "to": "TARGET_DATA2_MVPLAN1_ROADMAP_FREEZE",
+      "type": "implementation_requires"
+    },
+    {
+      "from": "TARGET_DATA2C_MVIDX1_COVERAGE_INDEX",
+      "to": "TARGET_DATA2C_MVSEL1_PROGRESSIVE_SELECTOR",
+      "type": "implementation_requires"
+    },
+    {
+      "from": "TARGET_DATA2C_MVSEL1_PROGRESSIVE_SELECTOR",
+      "to": "TARGET_DATA2C_REPAIR1_DEFICIT_EXCHANGE",
+      "type": "implementation_requires"
+    },
+    {
+      "from": "TARGET_DATA2C_REPAIR1_DEFICIT_EXCHANGE",
+      "to": "TARGET_DATA2C_MVPERF1_EXACT_HARDENING",
+      "type": "implementation_requires"
+    },
+    {
+      "from": "TARGET_DATA2C_MVPERF1_EXACT_HARDENING",
+      "to": "TARGET_DATA2C_MVQUAL1_SAME_N_QUALIFICATION",
+      "type": "implementation_requires"
     },
     {
       "from": "TARGET_DATA2C_MVQUAL1_SAME_N_QUALIFICATION",
@@ -2825,6 +2877,11 @@
       "type": "supersedes"
     },
     {
+      "from": "TARGET_DATA2_MVPLAN2_OPTIMIZATION_FREEZE",
+      "to": "TARGET_DATA2B_FEAS1_FULL_POOL_FEASIBILITY",
+      "type": "implementation_requires"
+    },
+    {
       "from": "TARGET_DATA2B_COVERAGE_REFERENCE_V2",
       "to": "TARGET_DATA2B_FEAS1_FULL_POOL_FEASIBILITY",
       "type": "execution_requires"
@@ -2845,6 +2902,31 @@
       "type": "source_identity_requires"
     },
     {
+      "from": "REPLAY_UNIFY1_ARCHITECTURE_FREEZE",
+      "to": "REPLAY_UNIFY1A_SINGLE_SOURCE_AUTHORITY",
+      "type": "implementation_requires"
+    },
+    {
+      "from": "REPLAY_UNIFY1A_SINGLE_SOURCE_AUTHORITY",
+      "to": "REPLAY_UNIFY1B_TRUE_LABEL_MATERIALIZATION",
+      "type": "implementation_requires"
+    },
+    {
+      "from": "REPLAY_UNIFY1B_TRUE_LABEL_MATERIALIZATION",
+      "to": "REPLAY_UNIFY1C_PSEUDOLABEL_MATERIALIZATION",
+      "type": "implementation_requires"
+    },
+    {
+      "from": "REPLAY_UNIFY1C_PSEUDOLABEL_MATERIALIZATION",
+      "to": "REPLAY_UNIFY1D_CAMPAIGN_INTEGRATION",
+      "type": "implementation_requires"
+    },
+    {
+      "from": "REPLAY_UNIFY1D_CAMPAIGN_INTEGRATION",
+      "to": "REPLAY_UNIFY1E_MIGRATION_HARDENING",
+      "type": "implementation_requires"
+    },
+    {
       "from": "REPLAY_UNIFY1E_MIGRATION_HARDENING",
       "to": "FINAL_GPU1_DEFERRED_RELEASE_QUALIFICATION",
       "type": "release_qualification_requires"
@@ -2855,9 +2937,104 @@
       "type": "supersedes"
     },
     {
+      "from": "CUEQ_DEFAULT1_HF2_TRAIN2_FP32_PARITY_CEILING",
+      "to": "FINAL_GPU1_DEFERRED_RELEASE_QUALIFICATION",
+      "type": "implementation_requires"
+    },
+    {
+      "from": "CUEQ_DEFAULT1_HF2_TRAIN2_FP32_PARITY_CEILING",
+      "to": "CUEQ_TRAIN2_REPEATABILITY_DIAGNOSTIC_HF",
+      "type": "implementation_requires"
+    },
+    {
+      "from": "CUEQ_TRAIN2_REPEATABILITY_DIAGNOSTIC_ALLPAIRS",
+      "to": "CUEQ_TRAIN2_NOISE_NORMALIZED_PARITY",
+      "type": "implementation_requires"
+    },
+    {
       "from": "CUEQ_TRAIN2_NOISE_NORMALIZED_PARITY",
       "to": "FINAL_GPU1_DEFERRED_RELEASE_QUALIFICATION",
       "type": "release_qualification_requires"
+    },
+    {
+      "from": "TARGET_DATA2B_FEAS1_FULL_POOL_FEASIBILITY",
+      "to": "TARGET_DATA2B_FEAS1_PERF1_EXACT_HARDENING",
+      "type": "implementation_requires"
+    },
+    {
+      "from": "TARGET_DATA2B_FEAS1_PERF1_EXACT_HARDENING",
+      "to": "TARGET_DATA2B_FEAS1_PERF2_BLOCK_PARALLEL_PROGRESS",
+      "type": "implementation_requires"
+    },
+    {
+      "from": "TARGET_DATA2B_FEAS1_PERF2_BLOCK_PARALLEL_PROGRESS",
+      "to": "TARGET_DATA2C_MVIDX1_COVERAGE_INDEX",
+      "type": "implementation_requires"
+    },
+    {
+      "from": "TARGET_DATA2B_FEAS1_PERF3_GLOBAL_QUEUE",
+      "to": "DOC_ARCH1_MANUAL_RESTRUCTURE_PERFORMANCE_ROADMAP",
+      "type": "documentation_requires"
+    },
+    {
+      "from": "DOC_ARCH1_MANUAL_RESTRUCTURE_PERFORMANCE_ROADMAP",
+      "to": "PERFBASE1_CAMPAIGN_BASELINES",
+      "type": "implementation_requires"
+    },
+    {
+      "from": "PERFBASE1_CAMPAIGN_BASELINES",
+      "to": "PARCORE1_DETERMINISTIC_WORK_QUEUE",
+      "type": "implementation_requires"
+    },
+    {
+      "from": "PARCORE1_DETERMINISTIC_WORK_QUEUE",
+      "to": "NEIGHBOR1_SHARED_EXACT_ENGINE",
+      "type": "implementation_requires"
+    },
+    {
+      "from": "NEIGHBOR1_SHARED_EXACT_ENGINE",
+      "to": "MVIDX_REUSE1_SPARSE_TRANSPOSE",
+      "type": "implementation_requires"
+    },
+    {
+      "from": "MVIDX_REUSE1_SPARSE_TRANSPOSE",
+      "to": "COVREF_PAR1_GLOBAL_BLOCK_QUEUE",
+      "type": "implementation_requires"
+    },
+    {
+      "from": "COVREF_PAR1_GLOBAL_BLOCK_QUEUE",
+      "to": "MVKERNEL1_VECTOR_SPARSE_KERNELS",
+      "type": "implementation_requires"
+    },
+    {
+      "from": "MVKERNEL1_VECTOR_SPARSE_KERNELS",
+      "to": "REPAIR_PAR1_PROPOSAL_QUEUE",
+      "type": "implementation_requires"
+    },
+    {
+      "from": "REPAIR_PAR1_PROPOSAL_QUEUE",
+      "to": "MVQUAL_PAR1_GLOBAL_SCORING_QUEUE",
+      "type": "implementation_requires"
+    },
+    {
+      "from": "MVQUAL_PAR1_GLOBAL_SCORING_QUEUE",
+      "to": "AUDIT_EVAL_PERF1_CPU_KERNELS",
+      "type": "implementation_requires"
+    },
+    {
+      "from": "AUDIT_EVAL_PERF1_CPU_KERNELS",
+      "to": "REPLAY_PERF1_INDEX_CACHE",
+      "type": "implementation_requires"
+    },
+    {
+      "from": "REPLAY_PERF1_INDEX_CACHE",
+      "to": "CAMPAIGN_PERF_QUAL1_CLOSURE",
+      "type": "implementation_requires"
+    },
+    {
+      "from": "CAMPAIGN_PERF_QUAL1_CLOSURE",
+      "to": "MVSTATE_REUSE1_SELECTOR_REPAIR_HANDOFF",
+      "type": "implementation_requires"
     },
     {
       "from": "MVSTATE_REUSE1_SELECTOR_REPAIR_HANDOFF",
@@ -3034,6 +3211,7 @@
       ]
     }
   ],
+  "next_gate": "FINAL_GPU1_DEFERRED_RELEASE_QUALIFICATION",
   "nodes": [
     {
       "id": "ACQUISITION_DECISIONS"
@@ -3155,6 +3333,8 @@
     {
       "authenticated": true,
       "id": "COLD_ARCHIVE_MANIFEST",
+      "implementation_status": "implemented",
+      "implemented_version": "0.20.116a0",
       "representation": "tar+gzip",
       "reversible_restore": true
     },
@@ -3331,8 +3511,10 @@
     },
     {
       "authority_class": "S+E",
+      "gate_name": "VRAM1 + PERF-P4",
       "gpu_qualification_schedule": "FINAL_GPU1",
-      "id": "GPU_VRAM_BATCH_EXECUTION_PLAN"
+      "id": "GPU_VRAM_BATCH_EXECUTION_PLAN",
+      "implementation_status": "implemented_cpu_control_plane_qualified"
     },
     {
       "id": "INDEPENDENCE_AXIS_CATALOG"
@@ -3703,6 +3885,8 @@
     {
       "archive_apply_requires": "verified COLD_ARCHIVE_MANIFEST",
       "id": "TIERED_STORAGE_RECLAMATION_PLAN",
+      "implementation_status": "implemented",
+      "implemented_version": "0.20.115a0",
       "tiers": [
         "safe",
         "cache",
@@ -3777,56 +3961,85 @@
     {
       "id": "IMMUTABLE_CONTENT_STORE",
       "identity": "sha256",
+      "implementation_status": "implemented",
+      "implemented_version": "0.20.116a0",
       "physical_representation": "same_filesystem_hardlink"
     },
     {
-      "id": "COLD_ARCHIVE_RESTORE_RECEIPT"
+      "id": "COLD_ARCHIVE_RESTORE_RECEIPT",
+      "implementation_status": "implemented",
+      "implemented_version": "0.20.116a0"
     },
     {
-      "id": "PERF_BASE0_NUMERICAL_ORACLE"
+      "id": "PERF_BASE0_NUMERICAL_ORACLE",
+      "implementation_status": "implemented",
+      "implemented_version": "0.20.178a0"
     },
     {
       "id": "TARGET_DATA2B_COVERAGE_REFERENCE_V2",
+      "implementation_status": "implemented",
+      "implemented_version": "0.20.179a0",
       "scientific_version": "mdstats.target-data2b.coverage.2026-08.v1"
     },
     {
       "id": "TARGET_DATA2B_NATIVE_ARRAY_STORE",
+      "implementation_status": "implemented",
+      "implemented_version": "0.20.179a0",
       "persistence_version": "mdstats.target-data2b.native-persistence.2026-08.v2"
     },
     {
-      "id": "TARGET_DATA2B_V1_V2_MIGRATION_REPORT"
+      "id": "TARGET_DATA2B_V1_V2_MIGRATION_REPORT",
+      "implementation_status": "implemented",
+      "implemented_version": "0.20.179a0"
     },
     {
-      "id": "PERF_P0_QUALIFICATION_EVIDENCE"
-    },
-    {
-      "authority_class": "E",
-      "id": "PERF_P1_EXACT_SELECTION_WORKSPACE"
-    },
-    {
-      "authority_class": "E",
-      "id": "PERF_P1_PROGRESSIVE_COVERAGE_STATE"
+      "id": "PERF_P0_QUALIFICATION_EVIDENCE",
+      "implementation_status": "implemented",
+      "implemented_version": "0.20.179a0"
     },
     {
       "authority_class": "E",
-      "id": "PERF_P1_DATA7_LINEAR_NEIGHBOR_STATE"
+      "id": "PERF_P1_EXACT_SELECTION_WORKSPACE",
+      "implementation_status": "implemented",
+      "implemented_version": "0.20.180a0"
     },
     {
-      "id": "PERF_P1_QUALIFICATION_EVIDENCE"
+      "authority_class": "E",
+      "id": "PERF_P1_PROGRESSIVE_COVERAGE_STATE",
+      "implementation_status": "implemented",
+      "implemented_version": "0.20.180a0"
+    },
+    {
+      "authority_class": "E",
+      "id": "PERF_P1_DATA7_LINEAR_NEIGHBOR_STATE",
+      "implementation_status": "implemented",
+      "implemented_version": "0.20.180a0"
+    },
+    {
+      "id": "PERF_P1_QUALIFICATION_EVIDENCE",
+      "implementation_status": "implemented",
+      "implemented_version": "0.20.180a0"
     },
     {
       "authority_class": "A",
       "authority_version": "mdstats.target-data2c.ladder.2026-08.v2",
+      "current_status": "historical_superseded",
       "id": "PERF_P2_LAZY_TARGET_LADDER_V2",
+      "implementation_status": "implemented",
+      "implemented_version": "0.20.181a0",
       "superseded_by": "SIZE_HALVE1_TARGET_SIZE_CORRECTION"
     },
     {
       "authority_class": "A",
+      "current_status": "historical_superseded_for_generated_campaigns",
       "id": "PERF_P2_QUALIFICATION_EVIDENCE",
+      "implementation_status": "implemented",
+      "implemented_version": "0.20.181a0",
       "superseded_by": "SIZE_HALVE1_TARGET_SIZE_CORRECTION"
     },
     {
       "authority_class": "E",
+      "cpu_benchmark": "benchmarks/mlff_perf_p3_cloud_cpu_2026-08-15.json",
       "features": [
         "direct_local_structure_array_kernel",
         "immutable_topology_workspace",
@@ -3835,7 +4048,9 @@
         "stage_resource_scope"
       ],
       "gpu_qualification_schedule": "FINAL_GPU1",
-      "id": "PERF_P3_CPU_STRUCTURAL_REDUCTION"
+      "id": "PERF_P3_CPU_STRUCTURAL_REDUCTION",
+      "implementation_status": "implemented_cpu_qualified",
+      "implemented_version": "0.20.185a0"
     },
     {
       "authority_class": {
@@ -3848,6 +4063,7 @@
         "data6_execution_policy": "mdstats.data6-model-sweep-execution-policy.v4",
         "runtime_batch_cap": "mdstats.data6-runtime-batch-cap.v1"
       },
+      "cpu_benchmark": "benchmarks/mlff_vram1_perf_p4_cloud_cpu_2026-08-15.json",
       "cpu_control_plane_features": [
         "combined_workload_capacity_evidence",
         "deterministic_stress_calibration_frames",
@@ -3860,7 +4076,10 @@
         "synchronous_exact_fallback"
       ],
       "gpu_qualification_schedule": "FINAL_GPU1",
-      "id": "VRAM1_PERF_P4_MEMORY_PIPELINE"
+      "id": "VRAM1_PERF_P4_MEMORY_PIPELINE",
+      "implementation_status": "implemented_cpu_control_plane_deferred_final_gpu_qualification",
+      "implemented_version": "0.20.186a0",
+      "next_implementation_gate": "PERF_P5"
     },
     {
       "authority_class": "C",
@@ -3870,7 +4089,9 @@
         "target_data2e": "mdstats.target-data2e.production-corpus.2026-08.v2",
         "training_evidence": "mdstats.target-size-training-evidence.v3"
       },
-      "id": "SIZE_HALVE1_TARGET_SIZE_CORRECTION"
+      "id": "SIZE_HALVE1_TARGET_SIZE_CORRECTION",
+      "implementation_status": "implemented",
+      "implemented_version": "0.20.182a0"
     },
     {
       "authority_version": "mdstats.size-fidelity1.coarse-screen-calibration.2026-08.v1",
@@ -3893,6 +4114,8 @@
         "uninterrupted_seed_size_trajectory_identity"
       ],
       "id": "SIZE_FIDELITY1_COARSE_SCREEN_CALIBRATION",
+      "implementation_status": "implemented_deferred_final_gpu_qualification",
+      "implemented_version": "0.20.183a0",
       "inference_reuse": "derive all monitor-size metrics from one authenticated full-development prediction authority per checkpoint",
       "qualification_kind": "scientific_low_fidelity_calibration",
       "qualification_schedule": "FINAL_GPU1",
@@ -3900,6 +4123,7 @@
     },
     {
       "authority_class": "E",
+      "cpu_benchmark": "benchmarks/mlff_perf_p2r_cloud_cpu_2026-08-15.json",
       "cpu_control_plane_features": [
         "parameterized_stage_plan",
         "exact_incremental_exposure_authority",
@@ -3909,6 +4133,8 @@
       ],
       "gpu_qualification_schedule": "FINAL_GPU1",
       "id": "PERF_P2R_SUCCESSIVE_FIDELITY_EXECUTION",
+      "implementation_status": "implemented_cpu_control_plane_deferred_final_gpu_qualification",
+      "implemented_version": "0.20.184a0",
       "qualification_schedule": "FINAL_GPU1",
       "required_parameter_grid": {
         "coarse_epochs": [
@@ -3977,6 +4203,8 @@
       "handoff_integrity_schema": "mdstats.mlff-final-gpu1.handoff-integrity.2026-08.v1",
       "id": "FINAL_GPU1_DEFERRED_RELEASE_QUALIFICATION",
       "immutable_gate_registration": true,
+      "implementation_status": "qualification_engine_v3_workstation_bundle_regenerated",
+      "implemented_version": "0.20.209a0",
       "locked_foundation_identity_required_at_init": true,
       "locked_foundation_sha256": {
         "mace_mh_1": "ec00a2705854622fbbd898ccfb7701072fcd674709102d009fb919c1b8cc5dde",
@@ -4002,6 +4230,7 @@
         "MH1_DEPLOY1_MLIAP_EXPORT_AND_LAMMPS_RUN0"
       ],
       "perf_cert1_qualification_schema": "mdstats.perf-cert1-qualification.v1",
+      "positive_gpu_execution": "pending_regenerated_0.20.219a0_workstation_run",
       "pre_reduction_rehash": [
         "release_archive",
         "foundation_models",
@@ -4009,6 +4238,8 @@
         "evidence_artifacts"
       ],
       "preflight_schema": "mdstats.mlff-final-gpu1.preflight.2026-08.v10",
+      "regenerated_release": "0.20.219a0",
+      "regeneration_gate": "CUEQ_TRAIN2_NOISE_NORMALIZED_PARITY",
       "required_pass_gates": [
         "CUEQ_DEP1_RUNTIME_FREEZE",
         "E3NN_BASELINE_COMPLETE_CAMPAIGN",
@@ -4040,6 +4271,7 @@
       "source_tree_mv_learning_control_cli": "tools/qualify_mlff_target_mv_learning_control.py",
       "source_tree_phase1_cli": "tools/qualify_mlff_cueq_phase1.py",
       "source_tree_size_fidelity2_cli": "tools/qualify_mlff_size_fidelity2.py",
+      "superseded_handoff_release": "0.20.209a0",
       "train2_acceleration_parity_policy_bound": true,
       "train2_noise_normalized_parity_policy_bound": true,
       "training_float32_atol": 1e-06,
@@ -4047,22 +4279,32 @@
       "training_force_distribution_ratio_ceiling": 1.25,
       "training_force_max_absolute_ceiling_eV_per_A": 0.0001,
       "typed_migration_evidence_required": true,
+      "workstation_bundle_current": true,
       "workstation_runbook": "docs/guides/mlff_final_gpu1_workstation_runbook.md"
     },
     {
+      "architecture_revision": 54,
       "authority_class": "E",
+      "cpu_benchmark": "benchmarks/mlff_perf_p5_cloud_cpu_2026-08-15.json",
       "features": [
         "chunked_zero_copy_tensor_hash_transport",
         "train2_execution_only_persistence_telemetry",
         "optional_fail_closed_eval2_model_state_reload",
         "dataset_format_graph_cache_boundary"
       ],
+      "gate_name": "PERF-P5",
       "gpu_qualification_schedule": "FINAL_GPU1",
-      "id": "PERF_P5_TRAIN_EVAL_PERSISTENCE_REUSE"
+      "id": "PERF_P5_TRAIN_EVAL_PERSISTENCE_REUSE",
+      "implementation_status": "implemented_cpu_control_plane_qualified_deferred_final_gpu_performance",
+      "implemented_version": "0.20.187a0"
     },
     {
+      "architecture_revision": 55,
       "authority_class": "runtime_dependency_provenance",
+      "gate_name": "CUEQ-DEP1",
       "id": "CUEQ_DEP1_RUNTIME_FREEZE",
+      "implementation_status": "implemented_control_plane_deferred_final_gpu_runtime_capture",
+      "implemented_version": "0.20.188a0",
       "ops_distribution_candidates": [
         "cuequivariance-ops-torch-cu13",
         "cuequivariance-ops-torch-cu12",
@@ -4073,6 +4315,7 @@
         "oeq"
       ],
       "policy_schema": "mdstats.cueq-dep1-policy.v1",
+      "positive_runtime_evidence": "pending",
       "qualification_schedule": "FINAL_GPU1",
       "required_components": [
         "torch",
@@ -4087,10 +4330,14 @@
       "training_kernel_mode": "cueq_pure"
     },
     {
+      "architecture_revision": 56,
       "authority_class": "accelerator_scientific_qualification",
       "default_short_epochs": 8,
+      "gate_name": "CUEQ-PHASE1",
       "generated_default_change_authorized": false,
       "id": "CUEQ_PHASE1_TRAINING_ONLY_QUALIFICATION",
+      "implementation_status": "implemented_control_plane_deferred_final_gpu_paired_training",
+      "implemented_version": "0.20.189a0",
       "minimum_representative_full_pairs": 1,
       "paired_assessment_schema": "mdstats.cueq-phase1-paired-assessment.v1",
       "policy_schema": "mdstats.cueq-phase1-policy.v1",
@@ -4107,13 +4354,17 @@
       "trajectory_schema": "mdstats.cueq-phase1-trajectory.v1"
     },
     {
+      "architecture_revision": 57,
       "authority_class": "optional_accelerator_execution_qualification",
       "candidate_executable_artifact": "EXTRACT1_selected_head_omat_pbe",
       "candidate_source_kernel_mode": "cueq_pure",
       "data6_parity_schema": "mdstats.cueq-phase2-data6-parity.v1",
       "development_corpus_schema": "mdstats.cueq-phase2-development-corpus.v1",
+      "gate_name": "CUEQ-PHASE2",
       "generated_default_change_authorized": false,
       "id": "CUEQ_PHASE2_SELECTED_HEAD_SOURCE_EXECUTION_OPTIONAL",
+      "implementation_status": "implemented_control_plane_deferred_final_gpu_selected_head_source_data6",
+      "implemented_version": "0.20.190a0",
       "locked_selected_head_checkpoint_sha256": "7b6f3cce6d2086164082f1cb5739098de2db990d6a49f0d60e66a3a0f1ae545e",
       "locked_selected_head_qualification_digest": "0f49db0ff9da291fbb4d70430c71189552a531d0239d92c06d0ca4024b05e365",
       "locked_source_checkpoint_sha256": "ec00a2705854622fbbd898ccfb7701072fcd674709102d009fb919c1b8cc5dde",
@@ -4121,6 +4372,7 @@
       "original_six_head_cueq_execution_authorized": false,
       "path_assessment_schema": "mdstats.cueq-phase2-path-assessment.v1",
       "policy_schema": "mdstats.cueq-phase2-policy.v1",
+      "positive_accelerator_evidence": "pending_FINAL_GPU1",
       "pseudolabel_authorization_requires_explicit_lineage": true,
       "qualification_schedule": "FINAL_GPU1",
       "qualification_schema": "mdstats.cueq-phase2-qualification.v1",
@@ -4133,15 +4385,20 @@
       "scientific_source": "original_mace_mh_1_six_head_omat_pbe"
     },
     {
+      "architecture_revision": 58,
       "authoritative_baseline": "optimized_mace_mh_1_omat_pbe_e3nn",
       "authority_class": "end_to_end_release_certification",
       "cueq_phase2_optional": true,
+      "gate_name": "PERF-CERT1",
       "generated_default_change_authorized": false,
       "id": "PERF_CERT1_END_TO_END_CERTIFICATION",
+      "implementation_status": "implemented_control_plane_deferred_final_gpu_end_to_end_profiles",
+      "implemented_version": "0.20.191a0",
       "minimum_total_speedup": 1.0,
       "phase1_profile": "e3nn_source_cueq_training",
       "phase2_profile": "selected_head_cueq_source_cueq_training_optional",
       "policy_schema": "mdstats.perf-cert1-policy.v1",
+      "positive_accelerator_evidence": "pending_FINAL_GPU1",
       "profile_assessment_schema": "mdstats.perf-cert1-profile-assessment.v1",
       "profile_schema": "mdstats.perf-cert1-profile.v1",
       "qualification_schedule": "FINAL_GPU1",
@@ -4156,12 +4413,18 @@
     {
       "authority_class": "final_gpu_reference_execution",
       "id": "E3NN_BASELINE_COMPLETE_CAMPAIGN",
+      "implementation_status": "final_workstation_execution_pending",
+      "implemented_version": "0.20.192a0",
       "purpose": "Authoritative complete production-representative baseline profile for FINAL-GPU1/PERF-CERT1.",
       "scientific_source": "original_mace_mh1_omat_pbe_e3nn"
     },
     {
+      "architecture_revision": 60,
       "authority_class": "generated_policy_revision",
+      "gate_name": "CUEQ-DEFAULT1",
       "id": "CUEQ_DEFAULT1_TRAINING_DEFAULT_POLICY",
+      "implementation_status": "implemented",
+      "implemented_version": "0.20.193a0",
       "legacy_configs_without_training_backend": "preserve_unified_backend_semantics",
       "only_cueq_default": false,
       "policy_revision_basis": "explicit_project_owner_request",
@@ -4174,10 +4437,15 @@
       "training_realization_schema": "mdstats.training-acceleration-realization-record.v1"
     },
     {
+      "architecture_revision": 61,
       "authority_class": "generated_policy_hotfix",
+      "basis": "pre_existing_selected_head_workstation_evidence",
       "float64_atol": 1e-12,
       "float64_rtol": 1e-10,
+      "gate_name": "CUEQ-DEFAULT1-HF1",
       "id": "CUEQ_DEFAULT1_HF1_TRAINING_PARITY_HOTFIX",
+      "implementation_status": "implemented",
+      "implemented_version": "0.20.194a0",
       "selection_identity_required": true,
       "silent_fallback_allowed": false,
       "source_data6_tolerance_relaxed": false,
@@ -4187,26 +4455,48 @@
       "training_float32_rtol": 1e-05
     },
     {
+      "acceleration_policy_changed": false,
       "affected_operations": [
         "np.linspace calibration sampling",
         "np.int64 calibration index dtype"
       ],
+      "architecture_revision": 62,
       "authority_class": "orchestration_runtime_hotfix",
+      "failure_mode": "NameError: np is not defined",
+      "gate_name": "DATA6-RECOVERY-HF1",
       "id": "DATA6_RECOVERY_HF1_NUMPY_IMPORT",
+      "implementation_status": "implemented",
+      "implemented_version": "0.20.195a0",
+      "regression_requirement": "exercise absent/nonreusable DATA6 model-sweep checkpoint recovery with requested_frame_count > calibration_stress_count",
+      "repair_scope": "campaign_cli.DATA6 verified recovery calibration sampling",
       "required_runtime_import": "numpy as np",
-      "restart_compatibility": "preserved"
+      "restart_compatibility": "preserved",
+      "scientific_identity_changed": false,
+      "selection_identity_changed": false
     },
     {
+      "acceleration_policy_changed": false,
+      "architecture_revision": 63,
       "authority_class": "orchestration_runtime_hotfix",
       "configuration_delivery": "explicit keyword-only cfg argument from _prepare_materialization",
       "configuration_key": "performance.foundation_audit_temporary_ram_mib",
+      "failure_mode": "NameError: name 'cfg' is not defined",
+      "gate_name": "FOUNDATION-AUDIT1-HF1",
       "id": "FOUNDATION_AUDIT1_HF1_CFG_PLUMBING",
-      "restart_compatibility": "preserved"
+      "implementation_status": "implemented",
+      "implemented_version": "0.20.196a0",
+      "regression_requirement": "invoke FOUNDATION-AUDIT1 helper with non-default RAM MiB and verify exact byte propagation",
+      "repair_scope": "campaign_cli._ensure_foundation_target_audit configuration plumbing",
+      "restart_compatibility": "preserved",
+      "scientific_identity_changed": false,
+      "selection_identity_changed": false
     },
     {
+      "acceleration_policy_changed": false,
       "activation": "base_hard_coverage_qualifiers_below_target_data2d_minimum",
       "alignment": "smallest_base_rung",
       "all_materializable_rescue_candidates_enter_stage_b0": true,
+      "architecture_revision": 64,
       "authority_class": "C_scientific_candidate_ceiling_correction",
       "base_candidate_sizes": [
         128,
@@ -4219,7 +4509,10 @@
       ],
       "coverage_remains_admissibility_only": true,
       "coverage_threshold_relaxed": false,
+      "gate_name": "TARGET-DATA2C-RESCUE1",
       "id": "TARGET_DATA2C_RESCUE1_BOUNDED_UPPER_LADDER",
+      "implementation_status": "implemented",
+      "implemented_version": "0.20.197a0",
       "maximum_training_pool_fraction": "7/8",
       "minimum_eval2_complement_fraction": "1/8",
       "pre_v4_restart_authority": "stale_rebuild_from_frozen_upstream",
@@ -4233,13 +4526,30 @@
       "target_data_ladder_authority_version": "mdstats.target-data2c.ladder.2026-08.v4"
     },
     {
+      "architecture_revision": 65,
       "authority_class": "architecture_plan",
       "candidate_halving": "8->4->2->1",
       "coverage_threshold_changed": false,
       "epoch_fidelity": "3->10->30",
-      "id": "TARGET_DATA2_MVPLAN1_ROADMAP_FREEZE"
+      "gate_name": "TARGET-DATA2-MVPLAN1",
+      "id": "TARGET_DATA2_MVPLAN1_ROADMAP_FREEZE",
+      "implementation_status": "planned_frozen",
+      "planned_candidate_sizes": [
+        128,
+        256,
+        512,
+        1024,
+        2048,
+        4096,
+        8192,
+        16384
+      ],
+      "planned_min_coverage_qualifiers": 4,
+      "planned_release": "0.20.198a0",
+      "runtime_behavior_changed": false
     },
     {
+      "architecture_revision": 67,
       "authority_class": "scientific_support_fragility_and_capacity_bound",
       "bounded_family_parallelism": true,
       "cardinality_bound_kind": "optimistic_singleton_coverage_plus_hard_obligation_lower_bound",
@@ -4250,10 +4560,14 @@
       "execution_hardening_release": "0.20.221a0",
       "fixed_candidate_ceiling": 16384,
       "full_pool_self_coverage_role": "consistency_only",
+      "gate_name": "TARGET-DATA2B-FEAS1",
       "gpu_backend_used": false,
       "id": "TARGET_DATA2B_FEAS1_FULL_POOL_FEASIBILITY",
+      "implementation_status": "implemented_diagnostic_only",
+      "implemented_release": "0.20.200a0",
       "public_builder": "build_target_coverage_feasibility_report",
       "record_name": "target_coverage_feasibility",
+      "runtime_selector_changed": false,
       "states": [
         "self_consistent",
         "cross_support_fragile",
@@ -4263,12 +4577,14 @@
       "vectorized_candidate_row_compression": true
     },
     {
+      "architecture_revision": 68,
       "authoritative_vs_cache_persistence_split": true,
       "authority_class": "exact_coverage_index",
       "candidate_index_dtype": "uint32",
       "content_addressed_binary_sidecars": true,
       "dense_all_pairs_forbidden": true,
       "exact_sparse_bidirectional_graph": true,
+      "gate_name": "TARGET-DATA2C-MVIDX1",
       "hard_extent_obligations_first_class": true,
       "hard_obligation_kinds": [
         "extent_lower",
@@ -4277,8 +4593,11 @@
         "correlation_interval"
       ],
       "id": "TARGET_DATA2C_MVIDX1_COVERAGE_INDEX",
+      "implementation_status": "implemented_index_substrate",
+      "implemented_release": "0.20.201a0",
       "indexed_family_scope": "required_TARGET_DATA2B_families",
       "native_persistence": "content_addressed_npy_sidecars",
+      "next_gate": "TARGET_DATA2C_MVSEL1_PROGRESSIVE_SELECTOR",
       "offset_dtype": "uint64",
       "production_layout": [
         "CSR_candidate_to_witness",
@@ -4287,19 +4606,26 @@
       "public_builder": "build_target_coverage_sparse_index",
       "record_name": "target_coverage_sparse_index",
       "restart_validation": "lineage_plus_forward_inverse_exactness",
+      "runtime_selector_changed": false,
       "witness_index_dtype": "uint32"
     },
     {
+      "architecture_revision": 69,
       "authority_class": "scientific_selection",
       "coverage_threshold": 0.95,
       "diversity_tie_break": "sparse_neighborhood_inverse_multiplicity",
       "exact_nested_prefixes": true,
       "gain_accumulation": "FP64",
+      "gate_name": "TARGET-DATA2C-MVSEL1",
       "id": "TARGET_DATA2C_MVSEL1_PROGRESSIVE_SELECTOR",
+      "implementation_status": "implemented_diagnostic_pre_migration",
+      "implemented_release": "0.20.202a0",
       "incremental_sparse_updates_required": true,
+      "next_gate": "TARGET_DATA2C_REPAIR1_DEFICIT_EXCHANGE",
       "provenance_balance": "least_selected_correlation_unit",
       "record_name": "target_multi_view_selection",
       "representative_gain": "harmonic_witness_multiplicity",
+      "runtime_selector_changed": false,
       "saturation_diagnostic_only": true,
       "selection_order": [
         "hard_obligation_gain",
@@ -4319,33 +4645,45 @@
     },
     {
       "active_shell_only": true,
+      "architecture_revision": 70,
       "authority_class": "scientific_selection_repair",
       "clustering_score_authority": "diagnostic_only",
       "deficit_directed_shortlists_required": true,
       "exact_required_obligation_multiplicity": true,
+      "gate_name": "TARGET-DATA2C-REPAIR1",
       "id": "TARGET_DATA2C_REPAIR1_DEFICIT_EXCHANGE",
+      "implementation_status": "implemented_diagnostic_pre_migration",
+      "implemented_release": "0.20.203a0",
       "literal_leave_one_out_rescoring_forbidden": true,
       "max_passes_per_shell": 2,
       "max_swaps_per_shell": 32,
+      "next_gate": "TARGET_DATA2C_MVPERF1_EXACT_HARDENING",
       "record_name": "target_multi_view_repair",
       "redundancy_authority": "coverage_multiplicity_unique_contribution",
       "removal_shortlist_limit": 64,
       "replacement_rank_inheritance": true,
+      "runtime_selector_changed": false,
       "strict_no_coverage_regression": true,
       "unique_coverage_tolerance": 1e-14
     },
     {
       "approximate_neighbor_authority_forbidden": true,
+      "architecture_revision": 71,
       "authenticated_reuse_required": true,
       "authority_class": "performance_exact_equivalence",
       "decision_equivalence_required": true,
       "dense_all_pairs_persistence_forbidden": true,
       "exact_plan_equivalence_required": true,
+      "gate_name": "TARGET-DATA2C-MVPERF1",
       "gpu_graph_authority_forbidden": true,
       "id": "TARGET_DATA2C_MVPERF1_EXACT_HARDENING",
+      "implementation_status": "implemented_exact_performance_hardening",
+      "implemented_release": "0.20.204a0",
       "maximum_scatter_edges_per_batch": 262144,
+      "next_gate": "TARGET_DATA2C_MVQUAL1_SAME_N_QUALIFICATION",
       "reference_execution_mode_retained": true,
       "repair_execution_mode": "bounded_witness_order_scatter",
+      "runtime_selector_changed": false,
       "scaling_telemetry_required": true,
       "selector_execution_mode": "bounded_witness_order_scatter",
       "stage_resource_scope_required": true,
@@ -4353,6 +4691,7 @@
     },
     {
       "all_mv_rungs_independently_rescored_for_capacity": true,
+      "architecture_revision": 72,
       "authority_class": "scientific_qualification",
       "common_N95_non_regression": true,
       "comparison": "legacy_vs_mv_at_identical_N",
@@ -4361,16 +4700,23 @@
         "D_sum",
         "N95"
       ],
+      "gate_name": "TARGET-DATA2C-MVQUAL1",
       "hard_obligation_authority": "TARGET-DATA2A+MVIDX1",
       "id": "TARGET_DATA2C_MVQUAL1_SAME_N_QUALIFICATION",
+      "implementation_status": "implemented_independent_same_n_qualification",
+      "implemented_release": "0.20.205a0",
       "independent_coverage_rescore": "TARGET-DATA2B",
+      "learning_control_status": "deferred_final_gpu_qualification",
       "limited_legacy_vs_mv_learning_control": true,
       "locked_test_tuning_forbidden": true,
+      "next_gate": "SIZE_HALVE2_EIGHT_CANDIDATE_FUNNEL",
+      "runtime_selector_changed": false,
       "same_N_hard_non_regression": true,
       "same_N_worst_deficit_non_regression": true,
       "selection_cost_telemetry_required": true
     },
     {
+      "architecture_revision": 73,
       "authority_class": "scientific_target_size_funnel",
       "authority_version": "mdstats.size-halve2.2026-08.v1",
       "candidate_counts": [
@@ -4401,8 +4747,13 @@
       ],
       "exact_normalized_schedule_progress_required": true,
       "exposure_must_increase_on_continuation": true,
+      "gate_name": "SIZE-HALVE2",
       "id": "SIZE_HALVE2_EIGHT_CANDIDATE_FUNNEL",
+      "implementation_status": "implemented_pre_migration_control_plane",
+      "implemented_release": "0.20.206a0",
       "minimum_hard_qualifiers": 4,
+      "next_gate": "SIZE-FIDELITY2",
+      "production_authority_changed": false,
       "q8_realization": "8->4->2->1",
       "record_schema": "mdstats.size-halve2-plan.v1",
       "training_run_identity_continuity_required": true
@@ -4416,6 +4767,7 @@
         7,
         8
       ],
+      "architecture_revision": 74,
       "authority_class": "scientific_fidelity_qualification",
       "authority_version": "mdstats.size-fidelity2.mv-survivor-requalification.2026-08.v1",
       "checkpoint_epochs": [
@@ -4425,9 +4777,12 @@
       ],
       "execution_plan_schema": "mdstats.size-fidelity2-execution-plan.v1",
       "fixed_ceiling": 16384,
+      "gate_name": "SIZE-FIDELITY2",
       "gpu_qualification": "deferred_final_gpu_qualification",
       "halving_disabled_during_calibration": true,
       "id": "SIZE_FIDELITY2_MV_SURVIVOR_REQUALIFICATION",
+      "implementation_status": "implemented_pre_migration_control_plane_gpu_deferred",
+      "implemented_release": "0.20.207a0",
       "material_boundary_nonconvergence_forbidden": true,
       "monitor_configuration_candidates": [
         128,
@@ -4435,6 +4790,8 @@
         512,
         1024
       ],
+      "next_gate": "TARGET-DATA2C-MVMIGRATE1",
+      "production_authority_changed": false,
       "qualification_report_schema": "mdstats.size-fidelity2-qualification-report.v1",
       "required_epoch10_finalist_recall": 1.0,
       "required_epoch3_finalist_recall": 1.0,
@@ -4448,6 +4805,8 @@
       "uninterrupted_trajectory_required": true
     },
     {
+      "activation_status": "final_gpu1_v2_handoff_ready",
+      "architecture_revision": 76,
       "authority_class": "generated_policy_migration",
       "candidate_ladder_schema": "mdstats.target-data-ladder-plan.v5",
       "control_plane_complete": true,
@@ -4463,21 +4822,27 @@
         8192,
         16384
       ],
+      "gate_name": "TARGET-DATA2C-MVMIGRATE1",
       "generated_defaults_changed": false,
       "historical_live_target_data2c_version": "mdstats.target-data2c.ladder.2026-08.v4",
       "historical_v4_readable": true,
       "id": "TARGET_DATA2C_MVMIGRATE1_GENERATED_DEFAULT",
+      "implementation_status": "activation_transaction_implemented_final_gpu1_v2_pending",
+      "implemented_release": "0.20.208a0",
       "migrated_target_data2c_version": "mdstats.target-data2c.ladder.2026-08.v5",
       "migrated_target_data2d_version": "mdstats.target-data2d.size-convergence.2026-08.v3",
       "migrated_target_data2e_version": "mdstats.target-data2e.production-corpus.2026-08.v3",
       "migration_plan_schema": "mdstats.target-mv-migration-plan.v1",
       "minimum_hard_qualifiers": 4,
+      "next_gate": "FINAL-GPU1 workstation execution and explicit atomic activation",
+      "production_authority_changed": false,
       "requires_plan_revision": 66,
       "retire_generated_dynamic_rescue": true,
       "runtime_behavior_changed_only_here": true,
       "size_fidelity2_gpu_pass_required": true
     },
     {
+      "architecture_revision": 66,
       "authority_class": "architecture_plan_hardening",
       "candidate_funnel": "q->min(q,4)->2->1",
       "coverage_failing_training_forbidden": true,
@@ -4486,14 +4851,50 @@
       "epoch_fidelity": "3->10->30",
       "exact_sparse_bidirectional_graph_required": true,
       "fixed_generated_ceiling": 16384,
+      "gate_name": "TARGET-DATA2-MVPLAN2",
       "id": "TARGET_DATA2_MVPLAN2_OPTIMIZATION_FREEZE",
+      "implementation_status": "planned_frozen",
+      "planned_release": "0.20.199a0",
+      "runtime_behavior_changed": false,
       "supersedes_planning_gate": "TARGET-DATA2-MVPLAN1"
+    },
+    {
+      "architecture_revision": 80,
+      "authority_class": "architecture_plan_hardening",
+      "default_split_ratio": [
+        5,
+        1
+      ],
+      "default_split_seed": 42,
+      "external_input_authority": "single_selected_replay_set",
+      "final_gpu1_regeneration_after": "REPLAY-UNIFY1E",
+      "gate_name": "REPLAY-UNIFY1",
+      "gates": [
+        "REPLAY-UNIFY1A",
+        "REPLAY-UNIFY1B",
+        "REPLAY-UNIFY1C",
+        "REPLAY-UNIFY1D",
+        "REPLAY-UNIFY1E"
+      ],
+      "id": "REPLAY_UNIFY1_ARCHITECTURE_FREEZE",
+      "implementation_status": "frozen_gate_d_implemented",
+      "implemented_release": "0.20.210a0",
+      "latest_implemented_gate": "REPLAY-UNIFY1D",
+      "latest_implemented_release": "0.20.213a0",
+      "layers": [
+        "source_index",
+        "label_cache",
+        "qualification",
+        "split_manifest",
+        "materialized_views"
+      ]
     },
     {
       "acceptance_12000_counts": [
         10000,
         2000
       ],
+      "architecture_revision": 77,
       "authority_class": "replay_source_and_partition_schema",
       "config_schema": "mdstats.replay-single-source-config.v1",
       "default_split_ratio": [
@@ -4501,24 +4902,38 @@
         1
       ],
       "default_split_seed": 42,
+      "gate_name": "REPLAY-UNIFY1A",
       "geometry_identity_schema": "mdstats.replay-geometry-identity.v1",
       "geometry_quantization_angstrom": 1e-08,
       "historical_replay_file_artifacts_reinterpreted": false,
       "id": "REPLAY_UNIFY1A_SINGLE_SOURCE_AUTHORITY",
+      "implementation_status": "implemented_additive_pre_migration",
+      "implemented_release": "0.20.210a0",
       "mixed_new_legacy_input_forbidden": true,
+      "next_gate": "REPLAY_UNIFY1B_TRUE_LABEL_MATERIALIZATION",
       "production_replay_execution_changed": false,
       "source_schema": "mdstats.replay-source-artifact.v1",
       "split_rank_schema": "mdstats.replay-split-rank.v1",
       "split_schema": "mdstats.replay-split-manifest.v1"
     },
     {
+      "architecture_revision": 78,
       "authenticated_cache_hit_source_parse_count": 0,
       "authority_class": "replay_true_label_cache_materialization",
+      "development_cpu_authenticated_cache_hit_seconds_approx": 0.23,
+      "development_cpu_dual_role_materialization_seconds_approx": 20.3,
+      "development_cpu_dual_role_peak_rss_mb_approx": 278,
+      "development_cpu_source_inspection_seconds_approx": 9.4,
       "dual_role_single_source_pass": true,
+      "gate_name": "REPLAY-UNIFY1B",
       "id": "REPLAY_UNIFY1B_TRUE_LABEL_MATERIALIZATION",
+      "implementation_status": "implemented_additive_pre_migration",
+      "implemented_release": "0.20.211a0",
       "lazy_role_materialization": true,
       "missing_requested_true_labels_fail_closed": true,
+      "next_gate": "REPLAY_UNIFY1C_PSEUDOLABEL_MATERIALIZATION",
       "production_replay_execution_changed": false,
+      "qualification_evidence": "benchmarks/mlff_replay_unify1b_cpu_2026-08-16.json",
       "same_geometry_different_label_masquerade_rejected": true,
       "source_order_independent_cache_identity": true,
       "supplied_lta_complete_true_label_count": 12000,
@@ -4533,6 +4948,7 @@
       "true_label_view_schema": "mdstats.replay-true-label-view.v1"
     },
     {
+      "architecture_revision": 79,
       "audit_cache_schema": "mdstats.replay-foundation-audit-cache.v1",
       "authenticated_prediction_cache_hit_model_call_count": 0,
       "authenticated_prediction_cache_hit_source_parse_count": 0,
@@ -4540,17 +4956,29 @@
       "batched_mace_required": true,
       "compact_audit_sidecar": true,
       "deleted_view_reinference_count": 0,
+      "development_cpu_authenticated_view_hit_seconds_approx": 0.22,
+      "development_cpu_control_plane_qualification_seconds_approx": 0.13,
+      "development_cpu_dual_role_materialization_seconds_approx": 9.34,
+      "development_cpu_peak_rss_mb_approx": 280,
+      "development_cpu_qualification_seconds_approx": 0.12,
+      "development_cpu_threshold_reclassification_seconds_approx": 0.11,
+      "gate_name": "REPLAY-UNIFY1C",
       "id": "REPLAY_UNIFY1C_PSEUDOLABEL_MATERIALIZATION",
+      "implementation_status": "implemented_additive_pre_migration",
+      "implemented_release": "0.20.212a0",
       "inference_batch_size_in_scientific_cache_identity": false,
       "lazy_pseudolabel_materialization": true,
+      "next_gate": "REPLAY_UNIFY1D_CAMPAIGN_INTEGRATION",
       "prediction_cache_schema": "mdstats.replay-foundation-prediction-cache.v1",
       "prediction_policy_schema": "mdstats.replay-foundation-prediction-policy.v1",
       "prediction_shard_schema": "mdstats.replay-foundation-prediction-shard.v1",
       "production_replay_execution_changed": false,
       "provider_surface": "MaceCalculatorProvider.predict_batch",
       "pseudolabel_view_schema": "mdstats.replay-pseudolabel-view.v1",
+      "qualification_evidence": "benchmarks/mlff_replay_unify1c_cpu_control_plane_2026-08-16.json",
       "qualification_policy_schema": "mdstats.replay-pseudolabel-qualification-policy.v1",
       "qualification_schema": "mdstats.replay-pseudolabel-qualification.v1",
+      "real_mace_gpu_execution_status": "deferred",
       "source_order_independent_prediction_identity": true,
       "source_truth_stripped_before_inference": true,
       "storage_shard_size_in_scientific_cache_identity": false,
@@ -4562,16 +4990,25 @@
       "threshold_only_reclassification_without_reinference": true
     },
     {
+      "architecture_revision": 80,
       "authority_class": "replay_interface_migration",
+      "development_cpu_cold_true_campaign_plan_seconds_approx": 27.6,
+      "development_cpu_peak_rss_mb_approx": 336,
+      "development_cpu_process_restart_seconds_approx": 0.6,
       "doctor_full_pseudolabel_inference_deferred_to_prepare": true,
       "downstream_adapter_strategy": "internal_materialized_views_as_historical_ReplayFileArtifact",
+      "gate_name": "REPLAY-UNIFY1D",
       "id": "REPLAY_UNIFY1D_CAMPAIGN_INTEGRATION",
+      "implementation_status": "implemented_campaign_integration",
+      "implemented_release": "0.20.213a0",
       "legacy_init_flags_hidden": true,
       "legacy_split_schema_readable": true,
       "mixed_interface_forbidden": true,
       "new_generated_config_path": "replay_set",
+      "next_gate": "REPLAY_UNIFY1E_MIGRATION_HARDENING_COMPLETE",
       "prepare_restart_authority_includes_single_source_records": true,
       "production_replay_execution_changed": true,
+      "real_mace_gpu_execution_status": "deferred_to_regenerated_final_gpu1_workstation_run",
       "source_receipt_schema": "mdstats.replay-source-artifact-receipt.v1",
       "storage_protected_external_input": "replay_set",
       "supplied_lta_default_split_counts": [
@@ -4585,13 +5022,20 @@
         10000,
         2000
       ],
+      "architecture_revision": 81,
       "authority_class": "replay_migration_qualification",
       "duplicate_overlap_fail_closed": true,
+      "final_gpu1_bundle_regenerated": true,
+      "final_gpu1_bundle_regeneration_required": true,
       "final_gpu1_replay_gate": "REPLAY_UNIFY1_GPU_PSEUDOLABEL_EXECUTION",
+      "gate_name": "REPLAY-UNIFY1E",
       "id": "REPLAY_UNIFY1E_MIGRATION_HARDENING",
+      "implementation_status": "implemented_migration_hardening_final_gpu1_regenerated",
+      "implemented_release": "0.20.214a0",
       "invalidation_plan_schema": "mdstats.replay-invalidation-plan.v1",
       "invalidation_plan_version": "REPLAY-UNIFY1E-v1",
       "lazy_materialization_reconstruction_qualified": true,
+      "real_mace_gpu_execution_status": "deferred_to_regenerated_final_gpu1_workstation_run",
       "source_relocation_without_reparse": true,
       "supplied_lta_default_split_counts": [
         10000,
@@ -4601,13 +5045,23 @@
     },
     {
       "adaptive_tolerance_widening_allowed": false,
+      "architecture_revision": 82,
       "authority_class": "generated_policy_hotfix",
+      "basis": "mpa0_default_workstation_fp32_backend_parity_evidence",
       "ceiling_is_backend_equivalence_only": true,
       "final_gpu1_policy_version": "mdstats.final-gpu1.release-handoff.2026-08.v3",
       "final_gpu1_preflight_schema": "mdstats.mlff-final-gpu1.preflight.2026-08.v9",
       "float64_atol": 1e-12,
       "float64_rtol": 1e-10,
+      "gate_name": "CUEQ-DEFAULT1-HF2",
       "id": "CUEQ_DEFAULT1_HF2_TRAIN2_FP32_PARITY_CEILING",
+      "implementation_status": "implemented",
+      "implemented_version": "0.20.215a0",
+      "observed_descriptor_max_abs": 2.883e-07,
+      "observed_energy_max_abs": 2.384e-07,
+      "observed_force_max_abs": 8.911e-06,
+      "observed_selection_identical": true,
+      "observed_stress_max_abs": 1.66e-07,
       "scientific_convergence_tolerances_changed": false,
       "selection_identity_required": true,
       "silent_fallback_allowed": false,
@@ -4617,7 +5071,123 @@
       "training_float32_rtol": 1e-05
     },
     {
+      "architecture_revision": 83,
+      "authority_class": "non_authorizing_diagnostic_hotfix",
+      "authorizing": false,
+      "cross_backend_reference": "paired_e3nn_vs_pure_cueq_each_repeat",
+      "diagnostic_schema": "mdstats.training-acceleration-repeatability-diagnostic.v1",
+      "final_gpu1_revision82_bundle_status": "archival_pending_repeatability_interpretation",
+      "force_reporting_threshold": 1e-05,
+      "gate_name": "CUEQ-REPEAT1-DIAG",
+      "id": "CUEQ_TRAIN2_REPEATABILITY_DIAGNOSTIC_HF",
+      "implementation_status": "implemented_pending_workstation_measurement",
+      "implemented_release": "0.20.216a0",
+      "printed_statistics": [
+        "Emax",
+        "Fmax",
+        "Frmse",
+        "Fp99",
+        "Fp99.9",
+        "force_count_above_1e-5",
+        "Smax",
+        "Dmax",
+        "selection_identical",
+        "self_force_min_median_p90_max",
+        "determinism_runtime_state"
+      ],
+      "repeat_count": 10,
+      "same_backend_reference": "run_1_vs_runs_2_through_10",
+      "training_float32_atol_unchanged": 1e-05,
+      "training_float32_rtol_unchanged": 1e-05
+    },
+    {
+      "architecture_revision": 84,
+      "authority_class": "non_authorizing_diagnostic_refinement",
+      "authorizing": false,
+      "cublas_workspace_config": ":4096:8",
+      "cudnn_benchmark": false,
+      "cudnn_deterministic": true,
+      "deterministic_control_schema": "mdstats.training-acceleration-deterministic-control-diagnostic.v1",
+      "deterministic_debug_mode": "error",
+      "deterministic_subprocess": true,
+      "final_gpu1_revision82_bundle_status": "archival_pending_refined_repeatability_interpretation",
+      "gate_name": "CUEQ-REPEAT1-DIAG2",
+      "id": "CUEQ_TRAIN2_REPEATABILITY_DIAGNOSTIC_REFINEMENT",
+      "implementation_status": "implemented_workstation_evidence_interpreted",
+      "implemented_release": "0.20.217a0",
+      "interpretation": "baseline-reference bias plus intrinsic CuEq FP32 variability persists under PyTorch deterministic controls; refine to discarded warm-up and all-pairs statistics",
+      "observed_mpa0_cross_fmax_max": 1.699e-05,
+      "observed_mpa0_cross_repeat_count": 10,
+      "observed_mpa0_cross_selection_identical_count": 10,
+      "observed_mpa0_cueq_self_fmax_max": 2.076e-05,
+      "observed_mpa0_diag2_deterministic_cross_fmax_max": 1.55e-05,
+      "observed_mpa0_diag2_deterministic_cueq_self_fmax_max": 2.709e-05,
+      "observed_mpa0_diag2_deterministic_e3nn_self_fmax_max": 1.061e-05,
+      "observed_mpa0_diag2_ordinary_cross_fmax_max": 2.27e-05,
+      "observed_mpa0_diag2_ordinary_cueq_self_fmax_max": 1.836e-05,
+      "observed_mpa0_diag2_ordinary_e3nn_self_fmax_max": 1.962e-05,
+      "observed_mpa0_e3nn_self_fmax_max": 2.12e-05,
+      "ordinary_diagnostic_schema": "mdstats.training-acceleration-repeatability-diagnostic.v1",
+      "repeat_count": 10,
+      "self_metrics": [
+        "Fmax",
+        "Frmse",
+        "Fp99",
+        "Fp99.9",
+        "force_count_above_1e-5"
+      ],
+      "torch_deterministic_algorithms": true,
+      "training_float32_atol_unchanged": 1e-05,
+      "training_float32_rtol_unchanged": 1e-05,
+      "unsupported_deterministic_operation_policy": "print_and_persist_failure_no_fallback"
+    },
+    {
+      "additional_channels": [
+        "Emax",
+        "Smax",
+        "Dmax",
+        "selection_identical"
+      ],
+      "architecture_revision": 85,
+      "authority_class": "non_authorizing_diagnostic_refinement",
+      "authorizing": false,
+      "comparison_mode": "all_pairs",
+      "cross_pair_count": 100,
+      "cublas_workspace_config": ":4096:8",
+      "cueq_self_pair_count": 45,
+      "deterministic_control_schema": "mdstats.training-acceleration-deterministic-control-diagnostic.v1",
+      "deterministic_subprocess": true,
+      "discarded_warmup_count_per_backend": 1,
+      "e3nn_self_pair_count": 45,
+      "final_gpu1_revision82_bundle_status": "archival_pending_diag3_interpretation",
+      "force_metrics": [
+        "Fmax",
+        "Frmse",
+        "Fp99",
+        "Fp99.9",
+        "force_count_above_1e-5"
+      ],
+      "gate_name": "CUEQ-REPEAT1-DIAG3",
+      "id": "CUEQ_TRAIN2_REPEATABILITY_DIAGNOSTIC_ALLPAIRS",
+      "implementation_status": "implemented_pending_workstation_measurement",
+      "implemented_release": "0.20.218a0",
+      "legacy_diagnostic_schema": "mdstats.training-acceleration-repeatability-diagnostic.v1",
+      "ordinary_diagnostic_schema": "mdstats.training-acceleration-repeatability-diagnostic.v2",
+      "post_warmup_repeat_count": 10,
+      "printed_summary_quantiles": [
+        "min",
+        "median",
+        "p90",
+        "p99",
+        "max"
+      ],
+      "purpose": "remove first-call/warm-up effects and arbitrary run-1 baseline dependence before freezing a later noise-normalized TRAIN2 FP32 backend-equivalence criterion",
+      "training_float32_atol_unchanged": 1e-05,
+      "training_float32_rtol_unchanged": 1e-05
+    },
+    {
       "adaptive_widening_allowed": false,
+      "architecture_revision": 86,
       "authority_class": "authorizing_generated_policy",
       "cross_pair_count": 100,
       "cueq_self_pair_count": 45,
@@ -4629,7 +5199,10 @@
       "force_distribution_ratio_ceiling": 1.25,
       "force_max_absolute_ceiling_eV_per_A": 0.0001,
       "force_max_self_factor": 1.5,
+      "gate_name": "CUEQ-REPEAT1-PARITY1",
       "id": "CUEQ_TRAIN2_NOISE_NORMALIZED_PARITY",
+      "implementation_status": "implemented",
+      "implemented_release": "0.20.219a0",
       "noise_normalized_policy_schema": "mdstats.training-acceleration-noise-normalized-parity-policy.v1",
       "noise_normalized_record_schema": "mdstats.training-acceleration-noise-normalized-parity-record.v1",
       "post_warmup_repeat_count": 10,
@@ -4640,8 +5213,12 @@
       "stable_channel_float32_rtol": 1e-05
     },
     {
+      "architecture_revision": 87,
       "authority_class": "campaign_runtime_observability_control",
+      "gate_name": "WARN-DOMAIN1",
       "id": "CAMPAIGN_WARNING_DOMAIN",
+      "implementation_status": "implemented",
+      "implemented_release": "0.20.220a0",
       "logging_warning_domain": "MACE_PyTorch_WARNING_plus",
       "normalized_campaign_summary": "single_[WARN]_line",
       "python_warning_domain": "entire_campaign_command",
@@ -4654,18 +5231,27 @@
       "worker_thread_scope_merge": true
     },
     {
+      "architecture_revision": 88,
       "authority_class": "performance_exact_equivalence",
       "automatic_tree_worker_cap_single_family": 16,
       "candidate_ceiling_changed": false,
       "coverage_metric_changed": false,
       "family_level_parallelism": "bounded_stage_resource_scope",
+      "final_gpu1_qualification_deferred": true,
+      "gate_name": "TARGET-DATA2B-FEAS1-PERF1",
       "gpu_neighborhood_backend_authorized": false,
       "historical_fp64_accumulation_order_preserved": true,
       "id": "TARGET_DATA2B_FEAS1_PERF1_EXACT_HARDENING",
+      "implementation_status": "implemented_exact_performance_hardening",
+      "implemented_release": "0.20.221a0",
       "mvidx1_uses_shared_vectorized_row_kernel": true,
+      "runtime_selector_changed": false,
+      "scientific_digest_changed": false,
+      "scientific_schema_changed": false,
       "vectorized_row_candidate_deduplication": true
     },
     {
+      "architecture_revision": 89,
       "authority_class": "performance_exact_equivalence",
       "automatic_block_worker_cap": 8,
       "automatic_tree_worker_cap_per_block": 4,
@@ -4673,14 +5259,22 @@
       "coverage_metric_changed": false,
       "deterministic_witness_order_reduction": true,
       "feas1_interval_heartbeat_progress": true,
+      "final_gpu1_qualification_deferred": true,
+      "gate_name": "TARGET-DATA2B-FEAS1-PERF2",
       "gpu_neighborhood_backend_authorized": false,
       "id": "TARGET_DATA2B_FEAS1_PERF2_BLOCK_PARALLEL_PROGRESS",
+      "implementation_status": "implemented_block_parallel_progress_hardening",
+      "implemented_release": "0.20.222a0",
       "mvidx1_block_progress": true,
       "process_pool_prototype_rejected_due_to_ipc_overhead": true,
+      "runtime_selector_changed": false,
+      "scientific_digest_changed": false,
+      "scientific_schema_changed": false,
       "shared_tree_block_parallelism": true,
       "single_block_tree_worker_cap": 16
     },
     {
+      "architecture_revision": 90,
       "authority_class": "performance_exact_equivalence",
       "automatic_global_workers": "full_cpu_threads_budget",
       "campaign_wide_profile_progress": true,
@@ -4689,31 +5283,61 @@
       "default_cpu_fraction": 0.9,
       "deterministic_per_profile_witness_order_reduction": true,
       "executor_busy_lane_telemetry": true,
+      "final_gpu1_qualification_deferred": true,
+      "gate_name": "TARGET-DATA2B-FEAS1-PERF3",
       "global_cross_profile_work_queue": true,
       "gpu_neighborhood_backend_authorized": false,
       "id": "TARGET_DATA2B_FEAS1_PERF3_GLOBAL_QUEUE",
+      "implementation_status": "implemented_global_single_level_scheduler",
+      "implemented_release": "0.20.223a0",
       "parallel_tree_workers_per_task": 1,
       "pending_future_bound_per_worker": 2,
+      "runtime_selector_changed": false,
+      "scientific_digest_changed": false,
+      "scientific_schema_changed": false,
       "total_buffered_block_bound_per_worker": 4
+    },
+    {
+      "architecture_revision": 91,
+      "authority_class": "documentation_architecture_freeze",
+      "canonical_manual_chapter_sources": true,
+      "gate_name": "DOC-ARCH1",
+      "history_tree_non_normative": true,
+      "id": "DOC_ARCH1_MANUAL_RESTRUCTURE_PERFORMANCE_ROADMAP",
+      "implementation_status": "implemented",
+      "implemented_release": "0.20.224a0",
+      "performance_roadmap_frozen": true,
+      "runtime_behavior_changed": false,
+      "scientific_digest_changed": false,
+      "scientific_schema_changed": false
     },
     {
       "active_foundation_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
       "active_qualification_foundation": "mace-mpa-0/medium",
+      "architecture_revision": 92,
       "authority_class": "performance_measurement_exact_equivalence",
       "content_digest": "5b8e1d8315cc103d317fd6bb8948bf8f699ef834873e9d2b1983345536d32ece",
       "foundation_generic_record": true,
+      "gate_name": "PERFBASE1",
       "gpu_performance_authority": false,
       "id": "PERFBASE1_CAMPAIGN_BASELINES",
+      "implementation_status": "implemented",
+      "implemented_release": "0.20.225a0",
       "measurement_only": true,
       "runtime_optimization_change": false,
+      "scientific_authority_change": false,
       "scientific_digest": "d16fdb3a52112192789a27f1515380ec29e8ac278e70b6b0bf669753a77e39df",
       "workload_output_equality_across_schedules": true
     },
     {
+      "architecture_revision": 93,
       "authority_class": "performance_exact_equivalence",
       "bounded_ready_inflight_completed": true,
       "feas1_consumer_migrated": true,
+      "gate_name": "PARCORE1",
       "id": "PARCORE1_DETERMINISTIC_WORK_QUEUE",
+      "implementation_status": "implemented",
+      "implemented_release": "0.20.226a0",
       "memory_backpressure": true,
       "native_thread_quarantine": true,
       "numa_affinity_activated": false,
@@ -4722,36 +5346,47 @@
       "persistent_memory_reservations": true,
       "progress_heartbeat_telemetry": true,
       "runtime_optimization_change": true,
+      "scientific_authority_change": false,
       "scientific_output_digest": "937214c70d1f2baae883993082f1ceb25bea6007a5a2be0beee045262f5c0613",
       "shared_queue_module": "mdstats.training_data.work_queue",
       "task_identity_errors": true,
       "work_conserving_dispatch": true
     },
     {
+      "architecture_revision": 94,
       "authority_class": "performance_exact_equivalence",
       "cache_miss_uses_same_global_engine": true,
       "execution_identity_excludes_worker_block_knobs": true,
       "feas1_mvidx_shared_exact_neighborhoods": true,
       "feas1_scientific_output_digest": "937214c70d1f2baae883993082f1ceb25bea6007a5a2be0beee045262f5c0613",
       "final_csr_ram_admitted_before_materialization": true,
+      "gate_name": "NEIGHBOR1",
       "id": "NEIGHBOR1_SHARED_EXACT_ENGINE",
+      "implementation_status": "implemented",
+      "implemented_release": "0.20.227a0",
       "mvidx_scientific_output_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
       "mvidx_second_geometry_sweep_on_cache_hit": false,
       "native_array_persistence": true,
       "neighborhood_store_digest": "0220c89084fe957e85eb1e1c87a581eaa44869f11cb98bee7f7bd8cdafd3d74e",
       "runtime_optimization_change": true,
+      "scientific_authority_change": false,
       "shared_engine_module": "mdstats.training_data.target_coverage_exact_neighborhood",
       "streamed_csr_execution_cache": true
     },
     {
       "active_foundation_qualification": "MACE-MPA-0 medium",
+      "architecture_revision": 95,
       "authority_class": "performance_exact_equivalence",
+      "gate_name": "MVIDX-REUSE1",
       "id": "MVIDX_REUSE1_SPARSE_TRANSPOSE",
+      "implementation_status": "implemented",
+      "implemented_release": "0.20.228a0",
       "mh1_supported_by_same_contract": true,
       "mvidx_scientific_output_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
       "parallel_granularity": "independent required-family and obligation inversions",
       "repeat_geometry_on_cache_hit": false,
       "runtime_optimization_change": true,
+      "scientific_authority_change": false,
       "single_native_sparse_kernel_per_task": true,
       "stable_parallel_csr_to_csc": true,
       "vectorized_sorted_unique_row_validation": true
@@ -4759,43 +5394,67 @@
     {
       "active_foundation_qualification": "MACE-MPA-0 medium",
       "adaptive_cache_sized_blocks": true,
+      "architecture_revision": 96,
       "authority_class": "performance_exact_equivalence",
+      "gate_name": "COVREF-PAR1",
       "id": "COVREF_PAR1_GLOBAL_BLOCK_QUEUE",
+      "implementation_status": "implemented",
+      "implemented_release": "0.20.229a0",
       "mh1_supported_by_same_contract": true,
       "o1_pair_species_lookup_maps": true,
       "parallel_granularity": "exact local-radius row blocks",
       "radius_scientific_output_digest": "823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d",
       "runtime_optimization_change": true,
+      "scientific_authority_change": false,
       "single_native_tree_worker_per_task": true
     },
     {
+      "architecture_revision": 97,
       "authority_class": "performance_exact_equivalence",
+      "gate_name": "MVKERNEL1",
       "hard_obligation_pending_count": "incremental",
       "id": "MVKERNEL1_VECTOR_SPARSE_KERNELS",
+      "implementation_status": "implemented_exact_vector_sparse_kernels",
+      "implemented_release": "0.20.230a0",
       "mvqual_telemetry": "csr_gather_bincount_exact",
+      "next_gate": "REPAIR_PAR1_PROPOSAL_QUEUE",
       "paired_gain_scatter": "single_gather_independent_ordered_add_at",
       "ragged_csr_gather": "vectorized_canonical_order",
+      "scientific_authority_change": false,
       "selector_rank_authority_changed": false
     },
     {
+      "architecture_revision": 98,
       "authority_class": "performance_exact_equivalence",
       "canonical_winner_reduction": "historical_removal_shortlist_order",
+      "gate_name": "REPAIR-PAR1",
       "id": "REPAIR_PAR1_PROPOSAL_QUEUE",
+      "implementation_status": "implemented_deterministic_parallel_proposals",
+      "implemented_release": "0.20.231a0",
       "inverse_rank_map": "o1_execution_only",
+      "next_gate": "MVQUAL_PAR1_GLOBAL_SCORING_QUEUE",
       "proposal_execution": "adaptive_parcore1_immutable_state",
+      "scientific_authority_change": false,
       "sequential_repair_authority_changed": false,
       "vectorized_frontier": "csr_gather_epoch_stamp_exact"
     },
     {
+      "architecture_revision": 99,
       "authority_class": "performance_exact_equivalence",
       "automatic_worker_ceiling": 4,
       "blas_threads_per_task": 1,
       "canonical_reduction": "historical_domain_size_order",
+      "gate_name": "MVQUAL-PAR1",
       "id": "MVQUAL_PAR1_GLOBAL_SCORING_QUEUE",
+      "implementation_status": "implemented_global_same_n_scoring_queue",
+      "implemented_release": "0.20.232a0",
       "native_tree_workers_per_task": 1,
-      "parallel_granularity": "domain_selector_target_size_score"
+      "next_gate": "AUDIT_EVAL_PERF1_CPU_KERNELS",
+      "parallel_granularity": "domain_selector_target_size_score",
+      "scientific_authority_change": false
     },
     {
+      "architecture_revision": 100,
       "authority_class": "performance_exact_equivalence",
       "eval2_bootstrap_batched": true,
       "eval2_bootstrap_temporary_target_mib": 32,
@@ -4804,37 +5463,68 @@
       "foundation_additional_model_inference": false,
       "foundation_shared_frame_index": true,
       "foundation_shared_species_membership": true,
-      "id": "AUDIT_EVAL_PERF1_CPU_KERNELS"
+      "gate_name": "AUDIT-EVAL-PERF1",
+      "gpu_authority_change": false,
+      "id": "AUDIT_EVAL_PERF1_CPU_KERNELS",
+      "implementation_status": "implemented_cached_metadata_batched_reducers",
+      "implemented_release": "0.20.233a0",
+      "model_inference_change": false,
+      "next_gate": "REPLAY_PERF1_INDEX_CACHE",
+      "scientific_authority_change": false
     },
     {
+      "architecture_revision": 101,
       "authority_class": "performance_exact_equivalence",
+      "gate_name": "REPLAY-PERF1",
       "id": "REPLAY_PERF1_INDEX_CACHE",
+      "implementation_status": "implemented_source_index_indexed_materialization",
+      "implemented_release": "0.20.234a0",
+      "next_gate": "CAMPAIGN_PERF_QUAL1_CLOSURE",
       "parser_parallelism": "serial_measured_authority",
+      "prediction_authority_changed": false,
+      "pseudolabel_authority_changed": false,
+      "scientific_authority_change": false,
       "source_index_receipt_schema": "mdstats.replay-source-index-receipt.v1",
       "source_index_schema": "mdstats.replay-source-index.v1",
       "source_sha_bound": true,
-      "sparse_direct_seek": true
+      "sparse_direct_seek": true,
+      "true_label_authority_changed": false
     },
     {
+      "architecture_revision": 102,
       "authority_class": "performance_integration_exact_equivalence",
+      "gate_name": "CAMPAIGN-PERF-QUAL1",
+      "gpu_authority_change": false,
       "id": "CAMPAIGN_PERF_QUAL1_CLOSURE",
+      "implementation_status": "implemented_pass_followup_required",
+      "implemented_release": "0.20.235a0",
       "memory_ceiling_qualified": true,
+      "next_gate": "MVSTATE_REUSE1_SELECTOR_REPAIR_HANDOFF",
+      "optimization_program_closed": false,
       "restart_behavior_qualified": true,
       "runtime_algorithm_change": false,
       "scaling_qualified": true,
+      "scientific_authority_change": false,
       "shifted_hotspot": "MVSEL exact sparse state mutation plus REPAIR duplicate selected-state replay",
       "target_chain_exact_scientific_outputs": true,
       "target_chain_speedup_approx": 2.28
     },
     {
+      "architecture_revision": 103,
       "authority_class": "performance_exact_equivalence",
       "checkpoint_rule": "only_before_first_repair_divergence",
       "cumulative_fresh_speedup_vs_perfbase1": 2.4351176667259553,
+      "gate_name": "MVSTATE-REUSE1",
       "id": "MVSTATE_REUSE1_SELECTOR_REPAIR_HANDOFF",
+      "implementation_status": "implemented_cpu_optimization_closed",
+      "implemented_release": "0.20.236a0",
       "integrated_fresh_speedup_vs_0_20_235": 1.0719762783496567,
+      "next_gate": "FINAL_GPU1_DEFERRED_RELEASE_QUALIFICATION",
+      "optimization_program_closed": true,
       "persistence_schema": "mdstats.target-multi-view-selection-state-native-manifest.v1",
       "pure_checkpoint_reconciliation_after_divergence": "rejected_fp64_state_difference",
       "repair_objective_authority_change": false,
+      "scientific_authority_change": false,
       "selector_rank_authority_change": false,
       "state_cache_schema": "mdstats.target-multi-view-selection-state-cache.v1"
     }

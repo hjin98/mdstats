@@ -1,261 +1,192 @@
 # Part VI - Performance and execution architecture
 
-## Performance objective
+## Performance objective and authority
 
-Optimization is accepted only when it preserves scientific authority and improves measured throughput, memory behavior, or restart cost. CPU percentage is diagnostic rather than the objective. In particular, memory-bound sparse kernels may be optimal below the nominal CPU occupancy target.
+Execution optimization is accepted only when it preserves scientific authority and improves measured throughput, memory behavior, or restart cost. CPU/GPU utilization is diagnostic rather than scientific authority. Memory-bound sparse kernels may be optimal below nominal occupancy targets.
 
-For a stage allocated $P$ CPU lanes, define effective occupancy over a bulk interval as
+For a stage allocated $P$ CPU lanes, effective occupancy over a bulk interval is
 
 $$
 U_P = \frac{\Delta t_{\mathrm{CPU}}}{P\,\Delta t_{\mathrm{wall}}}.
 $$
 
-When at least $2P$ independent compute tasks are ready and the kernel is compute-bound, the target is sustained $U_P\gtrsim0.85$ with automatic resource use capped by the configured campaign CPU fraction (90% by default). Throughput and wall time decide between exact-equivalent implementations.
+When sufficient independent compute tasks exist and the kernel is compute-bound, automatic execution targets high sustained occupancy while respecting the configured CPU/RAM/GPU/VRAM ceilings. Throughput and wall time decide among exact-equivalent realizations; scientific digests and authoritative records decide correctness.
 
-## Work/span model and global scheduling
+Worker count, queue depth, query-block size, storage path, cache location, and other execution-only choices SHALL NOT enter scientific identity unless the value changes a declared scientific algorithm.
 
-The campaign adopts a task-parallel work/span view. Let $T_1$ be serial work and $T_\infty$ the critical path. Ideal scheduling cannot beat
+## Work/span model and single-level parallelism
+
+The campaign follows a task-parallel work/span model. With serial work $T_1$ and critical path $T_\infty$,
 
 $$
 T_P \ge \max\!\left(\frac{T_1}{P},T_\infty\right).
 $$
 
-Classical work-stealing analysis motivates exposing many independent tasks to a common scheduler; for structured computations, the expected execution bound has the form $T_1/P+O(T_\infty)$ [32]. mdstats does not require a literal Cilk runtime, but adopts the same **work-conserving principle**: idle lanes take ready work from any compatible family/profile/domain instead of waiting for a local loop to finish.
-
-### Single-level parallelism
-
-The default CPU realization SHALL expose parallelism at the highest level that provides enough independent tasks. Nested numerical parallelism is suppressed while the outer queue is populated:
+Independent work is exposed at the highest level that supplies enough tasks. Nested numerical parallelism is suppressed while the outer queue can fill the budget:
 
 $$
-P_{\mathrm{outer}}\times P_{\mathrm{native}}\le P_{\mathrm{budget}},
+P_{\mathrm{outer}}\times P_{\mathrm{native}}\le P_{\mathrm{budget}}.
 $$
 
-with $P_{\mathrm{native}}=1$ for cKDTree/BLAS/OpenMP calls when outer parallelism can fill the budget. This avoids oversubscription and the underfilled `one Python driver + briefly threaded native call` pattern observed before FEAS1-PERF3.
+For cKDTree, BLAS, OpenMP, and similar native kernels, campaign execution normally uses one native lane per task when outer work is sufficient. Native-thread configuration is owned by the stage/resource scope rather than toggled independently inside arbitrary workers.
 
-Libraries such as `threadpoolctl` can limit BLAS/OpenMP pools, but their controls are process-global and have caveats when manipulated from several Python threads [35]. The scheduler therefore treats native-thread configuration as a stage/resource-scope concern, not something each arbitrary worker toggles independently.
+## Shared deterministic CPU scheduler
 
-## PARCORE1 - shared deterministic scheduler
+`DeterministicWorkQueue` is the common substrate for CPU-heavy independent work. Its current execution contract provides:
 
-`PARCORE1` is implemented in `mdstats 0.20.226a0`. The reusable queue class is `DeterministicWorkQueue`; it is now the common substrate for CPU-heavy independent work. Its execution contract provides:
+- explicit `StageResourceScope` CPU and RAM ownership;
+- separately bounded ready, submitted/in-flight, and completed work;
+- work-conserving dispatch across compatible profiles, families, domains, or jobs;
+- deterministic task identities and exception propagation;
+- deterministic ordered reducers where authoritative FP64 reduction order matters;
+- memory-weighted admission/backpressure and explicit persistent-memory reservations;
+- queue/executor heartbeat telemetry;
+- locality metadata that does not enter scientific identity.
 
-- `StageResourceScope` CPU and RAM integration;
-- separately bounded ready, submitted/in-flight, and completed queues;
-- work-conserving dispatch across profiles/families/domains;
-- deterministic ordered reducers for FP-sensitive authorities;
-- native-thread quarantine when the caller supplies the explicit campaign resource scope;
-- exception propagation with deterministic task identity;
-- memory-weighted admission/backpressure plus explicit persistent-memory reservations;
-- progress/heartbeat snapshots including ready, in-flight, completed, busy-lane, memory, and backpressure state;
-- locality/NUMA metadata that does not enter scientific identity.
+The executor owns exactly the executing Python lanes admitted by the resource scope. It MAY retain more submitted futures than executing lanes to hide coordinator hand-off latency, but simultaneously executing work remains bounded by the resource scope and does not authorize nested oversubscription.
 
-The executor owns exactly `StageResourceScope.python_workers` executing threads. The queue MAY keep more submitted futures than executing lanes (the current FEAS1 realization permits up to twice the worker count) so an idle worker can immediately pull the next admitted task without waiting for coordinator hand-off. This does not increase the number of simultaneously executing Python lanes and does not authorize nested native parallelism.
+Task completion may be arbitrary. Whenever arithmetic order is part of exact-equivalence authority, authoritative state is committed only in the prescribed canonical order.
 
-Task completion may be out of order; `DeterministicOrderedReducer` commits authoritative FP64 reduction only in the prescribed canonical order whenever arithmetic order is part of exact-equivalence authority. FEAS1 is the first migrated consumer and retains its historical witness-block commit order exactly. Its parallel cKDTree tasks continue to use one native tree worker while the outer queue is populated.
+Bare library/API calls that do not receive an explicit campaign scope preserve their documented direct-call resource semantics. Campaign orchestration supplies the explicit bounded scope and therefore owns admission, native-thread quarantine, and hard resource ceilings.
 
-Campaign execution passes an explicit `StageResourceScope`, so native BLAS/OpenMP limits are applied once by the queue-owning coordinator rather than toggled inside workers. Bare library/API calls that do not supply an explicit scope preserve their historical resource-control semantics; the scientific output is identical in either realization. `StageResourceScope.ram_budget_bytes` is execution-only and feeds queue admission.
+## Exact neighborhood production and reuse
 
-Locality keys are stored now so future NUMA-aware scheduling can reuse the task model. PARCORE1 does **not** activate NUMA affinity or node-local stealing; those remain measurement-gated execution extensions.
+`ExactNeighborhoodEngine` is the single exact TARGET-DATA2B/C geometric neighborhood implementation. Query blocks from eligible feature families may execute through the shared deterministic queue. The frozen scaled-distance/radius/tolerance semantics and candidate/witness order remain scientific authority.
 
-## NEIGHBOR1 - exact neighborhood production and reuse
+Completed blocks are reduced in canonical witness order and streamed into authenticated witness-oriented CSR state. Ragged neighbor temporaries are released after canonical commit. The final CSR uses fixed typed offsets/indices and is admitted against the stage RAM budget before materialization.
 
-`NEIGHBOR1` is implemented in `mdstats 0.20.227a0`. `ExactNeighborhoodEngine` is the single exact TARGET-DATA2B/C geometric implementation. Query blocks from all eligible families enter the PARCORE1 queue; while outer work is available, every cKDTree task uses one native worker [33]. The frozen scaled-Euclidean radius/tolerance semantics and candidate-frame deduplication order are unchanged.
+The neighborhood store is reconstructible execution state. Its identity binds the semantic reference/candidate ordering, family identity, metric/tolerance policy, cardinalities, and cache-format version. Worker count, block size, queue depth, timing, and progress configuration are excluded.
 
-As soon as a completed block becomes reducible in canonical witness order, FEAS1 now:
+MVIDX consumes authenticated forward CSR and SHALL NOT perform a second geometric query on a cache hit. Missing, corrupt, or stale forward state is rebuilt through the same exact neighborhood engine rather than a separate geometry implementation.
 
-1. applies the historical support/capacity reduction in the same FP64 order;
-2. appends the same exact row relation to a disk-backed canonical witness-oriented CSR stream;
-3. releases the ragged temporary neighbor object.
+## Deterministic MVIDX inversion and out-of-core scaling
 
-Thus peak ragged-neighborhood memory scales approximately with active/buffered blocks rather than the complete family:
+Required-family candidate-to-witness inversion and hard-obligation inversion are independent exact tasks. Each transpose uses deterministic counting/transpose semantics; canonical family order is restored after arbitrary task completion.
 
-$$
-M_{\mathrm{ragged}} = O(PB\bar d),
-$$
+Within-row strict-order validation is vectorized but semantically identical to a row-by-row predicate: every adjacent candidate index inside a CSR row must be strictly increasing.
 
-where $B$ is query-block size and $\bar d$ is mean neighborhood degree. The final CSR uses `uint64` witness offsets and `uint32` candidate indices. Its exact final allocation is known from streamed row counts/edge count and is admitted against `StageResourceScope.ram_budget_bytes` **before** materialization into RAM.
+Campaign MVIDX MUST NOT require a multi-billion-edge inverse payload and a full-family transpose workspace to coexist in anonymous RAM. Large-family inversion therefore supports bounded row-chunk CSR-to-CSC construction and file-backed NPY arrays under explicit RAM and disk admission. Candidate offsets remain canonical unsigned 64-bit arrays and candidate-to-witness indices remain canonical unsigned 32-bit arrays.
 
-The cache is reconstructible execution state rather than a new scientific authority. Family identity binds label-domain ID, frame-domain/candidate ordering digest, family digest, candidate/witness cardinalities, frozen metric/tolerance semantics, and cache-format version. Worker count, query-block size, queue depth, timing, and progress settings are deliberately excluded. Native persistence authenticates manifests and each NumPy array by checksum plus scientific array reference; campaign storage records the cache independently of FEAS1 so restart may validate/reuse it.
+Chunk size, file-backing threshold, and concurrent inversion count are execution-only. Out-of-core and in-memory paths SHALL be byte-equivalent for the authoritative sparse arrays and content digest. Required disk capacity is preflighted before inversion. Durable authenticated state is re-opened before transient build paths are removed.
 
-MVIDX1 adopts authenticated forward CSR directly and performs no geometric query on a cache hit. `target_coverage_sparse_index.py` no longer owns a cKDTree/query-ball implementation. If the cache is missing, corrupt, or stale, MVIDX1 rebuilds forward CSR once through the same global `ExactNeighborhoodEngine`, persists it, and then proceeds. It must never revive the former duplicate serial-family/nested-tree geometry sweep.
+The producer/consumer driver SHALL respect bounded ready/in-flight/completed queue capacity even when the number of required families exceeds queue slots. It submits only admitted work, drains completions, and refills deterministically; it does not eager-submit an unbounded family set.
 
-`MVIDX-REUSE1` (`0.20.228a0`) parallelizes the remaining inverse/metadata work at the natural independent-component boundary. Required-family inversions and hard-obligation inversion are immutable tasks on `DeterministicWorkQueue`; each task uses the deterministic compiled SciPy CSR-to-CSC counting transpose with one native lane, and canonical required-family order is restored after completion. This avoids nested sparse-kernel parallelism and atomics while allowing the outer queue to occupy the campaign CPU budget. An experimental Python-threaded intra-family degree/prefix/range-fill realization was exact but slower on the frozen authority and was therefore rejected rather than promoted.
+## Exact reference-radius construction
 
-The prior row-by-row strict-order validator was also a measured MVIDX hotspot. Revision 95 replaces it with one vectorized adjacent-index comparison and masks pairs crossing CSR row boundaries. The predicate is mathematically identical: every within-row adjacent pair must remain strictly increasing; worker count and queue completion order remain execution-only.
+TARGET-DATA2B reference-radius construction uses one shared read-only scaled matrix/tree per family and independent row blocks through the deterministic queue. Each queued cKDTree operation uses one native worker while outer work is available.
 
-## COVREF-PAR1 - exact reference-radius block scheduling
+Execution may reduce a configured maximum block size to improve lane occupancy and bound query temporaries. Block boundaries are not scientific inputs; local radii and downstream reference arrays SHALL remain byte-identical across qualified block/worker schedules.
 
-`COVREF-PAR1` (`0.20.229a0`) removes the remaining one-driver/native-tree pattern from TARGET-DATA2B reference-radius construction. Each family still computes the identical robust scales, scaled coordinates, balanced reference masses, and exact leave-one-out local radius. The scaled matrix and one read-only `cKDTree` are constructed once per family; independent row blocks are then submitted to the stage-wide `DeterministicWorkQueue`, and every task calls the tree with `workers=1`. Results write to disjoint canonical row slices, so task completion order cannot alter the local-radius array. Direct API calls that omit `execution_scope` retain the historical native-tree `query_workers` realization for compatibility and oracle comparison.
+Pair/species lookup structures, constant-family rejection, and cached scaling may remove repeated object traversal or unnecessary computation only when inclusion rules and numerical results remain unchanged.
 
-Parallel block size is execution-only. The configured `radius_block_size` remains an upper bound, while the queue may reduce it to keep the estimated cKDTree temporary working set near 2 MiB and expose at least four blocks per assigned lane on sufficiently large families. This is especially important for 30k-40k-frame target domains: a fixed 1024-row block would expose only about 36 tasks and develop a large tail on a 28-lane workstation. Block boundaries are not scientific inputs; qualification requires byte-identical radii across block/worker schedules.
+## Exact sparse selector and qualification kernels
 
-The family-adaptation path is also hardened without changing inclusion rules. Pair-geometry records are indexed once by `(frame_uid, rule_id)`, foundation species residuals once by `(frame_uid, atomic_number)`, and target-label scalar channels execute the exact historical `np.allclose` constant-family rejection before robust-statistic/tree work instead of after it. Weight-profile caching remains content-derived execution state, and scaling is materialized once per family and shared read-only by radius tasks.
+MVSEL/MVQUAL use typed ragged-CSR gathers and indexed reductions to replace repeated Python object traversal. Candidate/witness ordering remains canonical.
 
-The campaign resolves TARGET-DATA2B construction workers separately from later coverage-scoring native-tree widths. Automatic COVREF uses the complete configured CPU budget as outer lanes; `StageResourceScope` fixes `tree_workers=1` and `blas_threads=1`, making $P_{\mathrm{outer}}\times P_{\mathrm{native}}=P_{\mathrm{outer}}$ and preventing nested oversubscription.
+The MVSEL rank authority remains sequential. Vectorization MAY combine address calculation and telemetry work, but authoritative FP64 state mutations retain the historical candidate/edge order whenever exact equivalence depends on that order.
 
-Direct FEAS1, NEIGHBOR1-rebuild, and MVIDX inversion API calls that do not supply a `StageResourceScope` likewise retain historical host-independent execution semantics: their implicit scopes do not synthesize hard RAM ceilings from momentary shared-host/cgroup free-memory readings. Campaign execution, which owns the resource contract, continues to pass explicit RAM-bounded scopes and therefore remains fail-closed under declared memory limits. This distinction prevents transient unrelated host load from turning an otherwise identical direct scientific call into a scheduler-admission failure.
+Required hard-obligation state and coverage counters may be maintained incrementally if qualification proves equality to reconstruction from the canonical sparse relation.
+
+Same-N MVQUAL rescoring jobs are independent and may execute concurrently. Completion order is non-authoritative; comparison and persisted result order are reconstructed canonically. Campaign jobs use bounded native numerical lanes and memory admission to avoid nested oversubscription.
+
+## Deterministic repair execution
+
+REPAIR retains the sequential repair iteration, objective, tie hierarchy, accepted/rejected trace, and winner application as authority. Immutable proposal scoring may execute concurrently when measured work exceeds the execution-only break-even threshold.
+
+Proposal kernels may use vectorized CSR gathers, fused sparse scans, stamp-array membership, and O(1) candidate/rank maps. Parallel proposal completion is reduced in historical shortlist order. Before a winning swap is persisted, any arithmetic whose exact historical order is authoritative is recomputed in that order.
+
+## Selector-to-repair exact state reuse
+
+`TargetMultiViewSelectionStateCache` is authenticated reconstructible state at the MVSEL/REPAIR boundary. MVSEL may snapshot exact mutable selector state at materializable rungs. REPAIR may restore such a checkpoint only while repair state is identical to the pure selector order.
+
+After the first accepted repair swap, repair carries the historical mutable state forward. It SHALL NOT synthesize a later repaired state by reconciling a pure MVSEL checkpoint with selected-set differences when that operation changes FP64 state, even if selected candidate IDs happen to match.
+
+Cache identity binds the reference/MVIDX/MVSEL/policy/sparse-kernel lineage and excludes worker/storage choices. Missing, stale, corrupt, or incompatible state falls back to exact historical replay. Post-divergence CSR gather preparation may be batched, but authoritative candidate-major FP64 mutations remain in canonical order.
+
+## Replay-source indexing and materialization
+
+The selected replay ExtXYZ remains the external replay authority. A `ReplaySourceIndex` may record authenticated source-byte identity, frame byte offsets/lengths, atom counts, and source-order geometry identity so sparse monitor subsets can seek directly to requested frames and complete traversals can parse bounded contiguous chunks.
+
+The index is reconstructible execution state and SHALL NOT replace replay source, split, label, prediction, or retention authority. Parser chunk size and index location are execution-only. Source mutation or index corruption causes safe reconstruction.
+
+Parser concurrency is not introduced merely to increase worker count. It is permitted only when measured on the relevant workload and exact persisted replay bytes/identities are preserved.
+
+## Model inference, evaluation, and verification concurrency
+
+Independent checkpoint-evaluation and bounded verification jobs may execute concurrently under common CPU/RAM/GPU/VRAM admission. Initialization/setup work is excluded or included in utilization calibration according to the current dedicated runtime specification; architecture requires only that the selected calibration policy be explicit, deterministic, and independent of scientific checkpoint metrics.
+
+Runtime parallelism SHALL NOT enter evaluation policy, checkpoint metric, selection, or verification scientific digests. Existing completed verification/evaluation artifacts remain reusable only when their immutable model, structure/data, runtime dependency, and scientific execution identities remain compatible.
+
+GPU admission SHALL fail closed on hard memory limits and SHALL NOT silently change backend/model precision or scientific policy. Positive accelerator qualification is evidence, not an architectural assumption.
 
 ## Memory budget and persistence
 
-CPU admission is necessary but insufficient. The scheduler SHALL track an estimated memory budget
+CPU admission is necessary but insufficient. Long stages track an estimated memory budget including persistent trees/scaled arrays, in-flight temporaries, buffered completions, sparse state, result accumulation, and scratch space:
 
 $$
 M_{\mathrm{stage}} =
-M_{\mathrm{trees}}+M_{\mathrm{scaled}}+M_{\mathrm{inflight}}+
-M_{\mathrm{buffered}}+M_{\mathrm{sparse}}+M_{\mathrm{scratch}}.
+M_{\mathrm{persistent}}+M_{\mathrm{inflight}}+M_{\mathrm{buffered}}+
+M_{\mathrm{sparse}}+M_{\mathrm{result}}+M_{\mathrm{scratch}}.
 $$
 
-New work is admitted only if both CPU and memory budgets permit it. Completed sparse blocks may spill to mmap-compatible uncompressed arrays so neighborhood reuse does not require retaining the complete graph in Python objects. Compression is optional and must be benchmarked because decompression can erase the saved neighborhood-search time.
+New work is admitted only when CPU and memory budgets permit it. Large reconstructible arrays may use mmap-compatible uncompressed persistence when that lowers peak memory or restart cost without changing scientific content.
+
+Every persistent execution cache SHALL authenticate its semantic inputs and payload arrays independently. Cache corruption/staleness is a reconstruction event unless the cache itself is explicitly defined as scientific evidence by another contract.
 
 ## NUMA-ready locality
 
-A flat work queue is appropriate for the single-socket workstation but can inflate work on multi-socket EPYC/HPC nodes through remote-memory traffic and cache loss. NUMA-aware task runtimes explicitly address this locality problem [36]. PARCORE1 therefore reserves a locality extension:
+A flat work queue is appropriate when memory locality is not limiting. Multi-socket systems may require node-local queues/data shards, worker affinity, local stealing first, and cross-node stealing only to avoid idle lanes.
 
-- node-local queues and data shards;
-- worker affinity to the owning NUMA node;
-- local stealing first;
-- cross-node stealing only to avoid idle lanes.
+NUMA behavior is an execution extension only. It SHALL be activated only after measurement on suitable hardware and SHALL NOT alter scientific identity or canonical reduction order.
 
-NUMA mode is execution-only and will be activated only after measured qualification on a suitable host.
+## Vectorization and allocation hygiene
 
-## Vectorization and exact numerical kernels
+Performance-critical loops SHOULD avoid repeated linear searches, rebuilding immutable dictionaries, repeated full-array scaling, unnecessary concatenation, Python-object materialization where contiguous typed arrays suffice, and per-frame/per-species mask reconstruction that can be cached safely.
 
-The optimization program prefers array kernels that replace repeated Python object traversal without changing arithmetic authority.
+Appropriate exact kernels include:
 
-### Ragged sparse gather
+- offset-derived ragged CSR gathers;
+- bounded-integer indexed counting/reduction;
+- epoch/stamp arrays for bounded-ID membership;
+- bounded batched bootstrap/statistical work that preserves the declared RNG stream;
+- preallocated output arrays and static indexing metadata;
+- cache-keyed static reduction metadata for repeated checkpoint evaluation.
 
-MVSEL/MVQUAL SHALL replace Python `list-of-slices -> concatenate -> repeat` patterns with offset-derived vectorized CSR gathers. Candidate/witness ordering is retained exactly.
-
-### Bounded-integer reductions
-
-Species IDs, candidate IDs, and other bounded non-negative integer labels SHOULD use direct indexed reductions such as `numpy.bincount` when the semantic operation is counting or weighted summation [37]. This replaces repeated `unique + boolean mask` scans in FOUNDATION-AUDIT1, EVAL2, and sparse telemetry.
-
-### Stamp-array membership
-
-REPAIR1 repeated set intersections SHOULD use epoch/stamp arrays for bounded witness IDs:
-
-$$
-\mathrm{overlap}(j)=\mathbf 1[\mathrm{stamp}[j]=e],
-$$
-
-#### REPAIR-PAR1 realized proposal kernel
-
-`REPAIR-PAR1` retains the sequential repair iteration and canonical winner authority. For each immutable iteration state, fused removal metrics scan each sparse family once; replacement frontiers are scored with canonical ragged-CSR gathers and thread-private epoch/stamp arrays rather than repeated `intersect1d`/`isin` calls. An inverse candidate-rank map replaces repeated linear future-rank searches. Proposal tasks may execute through PARCORE1 only when an execution-only sparse-edge work estimate exceeds the measured break-even threshold; smaller rungs remain serial. Completion order is never authoritative: proposal results are reduced in the historical removal-shortlist order using the unchanged objective/tie hierarchy. The selected replacement's representative contribution is recomputed by the historical scalar arithmetic before persistence, preserving the complete repair trace exactly. Worker count, adaptive threshold, queue depth, and stamp epochs are execution state and do not enter content identity.
-
-
-where the current removed-witness set is stamped with epoch $e$. This turns repeated sorting/intersection work into direct indexed gathers.
-
-### Batched resampling/statistics
-
-Independent bootstrap replicates and repeated quantiles SHOULD be processed in bounded vectorized batches. Static composition/species codes and other invariant indexing metadata are computed once per dataset/checkpoint domain and reused.
-
-`AUDIT-EVAL-PERF1` applies this contract to EVAL2 with an execution-only bounded metadata cache keyed by the in-memory immutable evaluation view plus ordered correlation-block IDs. The cache stores precomputed composition keys, per-frame species membership, focus masks, and block codes; it does not enter target-role or prediction scientific identity. Paired bootstrap preserves the exact seeded draw stream while grouping draws into a temporary-memory-bounded matrix batch. FOUNDATION-AUDIT1 similarly shares one immutable DATA3 frame index and per-run species-membership map across audit domains and continues to read/authenticate the existing prediction sweep rather than invoking the foundation model.
-
-### Lookup and allocation hygiene
-
-Hot loops SHALL avoid repeated linear `next(...)` searches, rebuilding immutable dictionaries/maps, repeated full-array scaling, unnecessary `concatenate`, and materializing Python objects when contiguous typed arrays suffice. Optimization reviews explicitly look for these patterns.
-
-## Stage-specific optimization map
-
-| Stage | Dominant issue | Planned exact optimization |
-|---|---|---|
-| TARGET-DATA2B reference-radius/coverage | serial block driver with nested cKDTree workers | global block tasks, one tree worker/task, early constant-family rejection, shared scaled workspaces |
-| FEAS1 | global PARCORE1 queue plus implemented streamed exact CSR | retain exact reduction; downstream sparse-kernel work only |
-| MVIDX1 | authenticated graph adoption; inverse/validator Python overhead | implemented MVIDX-REUSE1 component-level queue plus vectorized CSR validation |
-| MVSEL1 | Python ragged gathers and sparse update overhead | vectorized CSR gather, indexed weights, incremental counters; preserve sequential rank authority |
-| REPAIR1 | serial proposal shortlist and repeated intersections | implemented adaptive immutable-state proposal queue, vectorized frontier scoring, stamp arrays, fused sparse scans, O(1) rank map |
-| MVQUAL1 | independent same-N rescoring globally queued | PARCORE1 same-N jobs + batched sparse telemetry; canonical post-queue reduction |
-| FOUNDATION-AUDIT1 | per-frame/species Python reductions | implemented shared frame/species metadata, reused squared-error work, batched tail quantiles; no new inference |
-| EVAL2 CPU analysis | repeated species/composition/focus reconstruction and bootstrap Python loops | implemented cached static reduction metadata, preallocated tails, memory-bounded batched bootstrap |
-| REPLAY-UNIFY1 | repeated serial ExtXYZ parsing/materialization | implemented source-SHA-bound byte-offset/natoms index; direct sparse seeks; deterministic bounded chunk parsing |
-
-Existing DATA6 GPU inference, training orchestration, structural FPS/GEMM kernels, and independent trajectory verification are not rewritten merely to increase thread count; they are changed only if runtime profiling identifies a new dominant hotspot.
-
-### REPLAY-PERF1 indexed replay realization
-
-The selected replay ExtXYZ remains the only external replay authority. `ReplaySourceIndex` is reconstructible execution state keyed by the exact source bytes and source-artifact/source-order identities; it is never a substitute scientific authority. The index records frame byte offsets, byte lengths, and atom counts, allowing a requested subset such as the 2,000-frame monitor role to seek directly to those source frames. For a complete source traversal, contiguous frames are parsed in bounded chunks and their already-authenticated source-order geometry identities are reused. Parser chunk size is execution state and MUST NOT enter replay source, split, label, prediction, or view content identity.
-
-ASE ExtXYZ parsing remains serial. REPLAY-PERF1 qualification explicitly tested thread-parallel chunk parsing and found it slower on the available CPU, so concurrency is not introduced merely to increase worker count. Future campaign-level parallelism MAY overlap independent higher-level consumers only if a later profile shows a net gain without changing persisted replay bytes or prediction authority.
-
-## CAMPAIGN-PERF-QUAL1 integrated reprofile and shifted bottleneck
-
-The revision-102 closure profile validates cumulative behavior instead of inferring campaign speed from isolated kernel benchmarks. On a common 8,192-candidate/six-family target-data chain, untouched `0.20.225a0` completes FEAS1 -> MVIDX1 -> MVSEL1 -> REPAIR1 -> MVQUAL1 in about 27.26 s. The optimized realization through `0.20.234a0` completes the same scientific chain in a four-lane median of about 11.95 s (~2.28x faster) with exact output digests. Current one/two/four-lane wall times are about 12.91/12.07/11.95 s, so additional outer lanes no longer provide material end-to-end scaling on the qualification CPU.
-
-The remaining four-lane wall-time composition is approximately 45% REPAIR1, 41% MVSEL1, 9% FEAS1 plus neighborhood production, 4% MVQUAL1, and less than 1% MVIDX1. Profiling shows the selector rank-choice routine itself is no longer dominant: 4,096 `_choose_candidate` calls consume about 0.90 s cumulative, while 4,096 exact `_select_and_update` calls consume about 5.20 s, including about 4.57 s in ordered paired sparse decrements.
-
-REPAIR1 exposes a stronger exact-reuse opportunity. On the same fixture it executes about 4,098 additional `_select_and_update` calls (about 5.34 s cumulative in the profile) to reconstruct the already-known selector sparse state before and during repair preparation. Proposal work is materially smaller. This reconstruction is not a new scientific decision; it is deterministic state derivable from the MVIDX authority plus the ordered MVSEL selection. `MVSTATE-REUSE1` therefore becomes the next exact-equivalence gate: persist/authenticate enough terminal selector execution state for REPAIR1 to start from that state directly, while retaining the historical replay path as the qualification oracle.
-
-The closure accepts a modest representative peak-RSS increase (about 306 MiB -> 343 MiB) because it is caused by reusable authenticated sparse execution state, remains far below the explicit campaign budget, and produces no observed queue backpressure. Performance evidence never overrides scientific digests.
-
-## MVSTATE-REUSE1 exact selector-state handoff and CPU closure
-
-Revision 103 implements an authenticated `TargetMultiViewSelectionStateCache` at the MVSEL/REPAIR boundary. MVSEL snapshots the exact mutable selector state at every materializable rung. REPAIR may restore such a checkpoint only while repair has not diverged from the pure selector order. After the first accepted repair swap, the historical mutable repair state is carried forward. This restriction is normative: reconstructing a later repaired state from a pure MVSEL checkpoint plus selected-set differences changed FP64 representative-gain entries by about `1e-17`--`1e-16`, so that shortcut is rejected even though selected IDs were identical.
-
-The cache is reconstructible execution state. Identity binds the reference/MVIDX/MVSEL/policy/sparse-kernel lineage and excludes worker/storage choices. Persistence uses one authenticated uncompressed NPZ array bundle plus a canonical manifest. A fresh campaign passes the in-memory cache directly from MVSEL to REPAIR and persists the same cache for restart; stale, missing, corrupt, or incompatible state falls back to exact historical replay. Post-divergence predetermined additions may batch CSR gather preparation, but candidate-major FP64 mutations remain in the historical order and are state-array qualified.
-
-On the 8,192-candidate/six-family integrated fixture, untouched 0.20.235a0 has a target-chain median near 12.00 s and REPAIR near 5.37 s. MVSTATE-REUSE1 gives about 11.02 s excluding persistence and 4.27 s for REPAIR. The one-time state-cache write is about 0.18 s, yielding a fresh-chain time near 11.19 s and a cumulative speedup of about 2.44x relative to the 27.26 s PERFBASE1-era chain. Peak RSS increases about 5.6% because exact rung state is retained, while remaining far below campaign limits.
-
-The post-gate reprofile finds no further material duplicated reconstructible CPU state: MVSEL and REPAIR are now dominated by the exact sequential sparse-state update arithmetic itself. The CPU optimization program is therefore closed. Further accelerator/runtime qualification belongs to `FINAL-GPU1`.
+Optimization changes must distinguish arithmetic preparation from authoritative arithmetic order. Rearranging addresses or batching independent work is acceptable only when the resulting authoritative records satisfy the applicable equivalence contract.
 
 ## Progress and observability contract
 
-Every stage expected to run long enough to appear stalled SHALL expose three layers:
+Every long-running stage SHALL expose:
 
-**Scientific progress**
+1. scientific progress: completed/total work, percent where meaningful, and ETA when estimable;
+2. executor state: busy/allocated workers, ready/in-flight/buffered work, and resource pressure where measurable;
+3. current hot items: identities/local progress for slow active families, shards, jobs, or proposals.
 
-- completed/total domains, profiles, families, blocks, configurations, witnesses, or edges as appropriate;
-- global percentage and ETA.
+A heartbeat is emitted even when no task completes during the reporting interval. ETA is based on globally committed work rather than one current item.
 
-**Executor state**
+User-facing MLFF progress uses the common presentation grammar:
 
-- busy/allocated workers;
-- ready, in-flight, and buffered tasks;
-- memory-budget use where measurable.
+- dynamic fields appear in canonical order beginning with status/progress/elapsed/ETA;
+- elapsed and known ETA use fixed-width `HH:MM:SS`; durations beyond 99 hours retain all hour digits;
+- unavailable ETA is exactly `--:--:--`;
+- counted work uses `progress=completed/total (percent%)`;
+- throughput carries an explicit stable unit;
+- fields are semicolon-delimited;
+- scheduler heartbeats expose completed and active/pending/queue state rather than prose-only status.
 
-**Current hot items**
+Presentation state SHALL NOT enter scientific digests or execution-cache identity. Shared timing/progress helpers own formatting so individual stages do not introduce private ETA dialects.
 
-- identities of slow/active families, shards, or proposals;
-- local progress for a long single item.
+## Performance qualification contract
 
-A heartbeat is emitted even when no task completes during the reporting interval. ETA is based on global committed work, not one current profile.
+A performance change is qualified against representative worker schedules and workloads appropriate to the stage. Qualification evidence records, as applicable:
 
-### MLFF progress presentation grammar
+- wall and CPU time;
+- occupancy/utilization and throughput;
+- peak RSS/VRAM and persisted bytes;
+- queue occupancy/backpressure;
+- output/content digests;
+- exact scientific-record equality or the explicitly declared tolerance contract.
 
-As of `0.20.237a0`, every user-facing MLFF progress/heartbeat message SHALL use the same presentation grammar. This is presentation state only and SHALL NOT enter scientific digests or execution-cache identity.
+For sequential-authority algorithms, equivalence is checked at the state granularity needed to detect arithmetic drift: for example, MVSEL after each selected rank, REPAIR across the complete swap trace, and MVIDX across every canonical offset/index array.
 
-- Dynamic progress fields appear in the order `status`, `progress`, `elapsed`, `eta`, rate fields, then stage-specific telemetry.
-- `elapsed` and known `eta` SHALL be fixed-width `HH:MM:SS`; durations longer than 99 hours retain all hour digits. Unknown/not-yet-estimable ETA SHALL be exactly `--:--:--`. Humanized alternatives such as `39m44s`, `27.9 min`, `10s`, or `estimating` are forbidden in MLFF progress output.
-- Counted work SHALL use `progress=completed/total (percent%)`, with thousands separators for large counters. A stage without a meaningful total SHALL report `status=phase; phase=...` rather than inventing a percentage.
-- Throughput SHALL carry an explicit stable unit such as `frame/s`, `witness/s`, `task/s`, or `edge/s`. When both are available, the recent/current rate precedes the cumulative average rate.
-- Fields SHALL be semicolon-delimited. Stage prefixes such as `[DATA6 sweep]`, `[TRAIN run-id]`, or `[EVALUATION scheduler]` identify the emitter but do not replace the canonical fields.
-- Scheduler heartbeats SHALL report the same elapsed/ETA grammar and expose completed progress plus active/pending/queue telemetry rather than using a separate prose-only dialect.
-- Cache restoration, phase transitions, and rung events use the same `status=...; progress=...` or `status=phase; phase=...` vocabulary where applicable.
-
-The shared helpers in `mdstats.training_data.progress_timing` own duration, fraction, rate, and timing-field formatting so individual stages do not reintroduce private ETA dialects.
-
-## Performance qualification
-
-Every performance gate is measured at worker counts $1$, $2$, a bounded intermediate count, and automatic full budget. The qualification record includes:
-
-- wall time and CPU time;
-- effective occupancy $U_P$;
-- throughput in domain-appropriate units;
-- peak RSS and persisted bytes;
-- queue occupancy/backpressure telemetry;
-- output/content digest;
-- exact scientific-record equality.
-
-For MVSEL, equivalence is checked after every selected rank on bounded fixtures. For REPAIR, the entire accepted/rejected swap trace is compared. For MVIDX, every CSR/CSC offset and index array is compared between reuse and full-rebuild paths.
-
-### PERFBASE1 frozen baseline authority
-
-`PERFBASE1` is implemented as a measurement-only, versioned record. Scientific-output identity is separated from execution telemetry so later exact-equivalent implementations may change wall time, CPU occupancy, memory layout, worker count, and queue behavior without changing the scientific baseline digest. The record binds the foundation family/variant/checkpoint SHA-256 as an input identity but does not encode MPA-0-specific behavior; MH-1 and other supported foundations use the same record contract.
-
-The revision-92 CPU evidence uses the supplied LTA target archive and unified 12,000-frame replay source plus deterministic synthetic FEAS1/MVIDX1/MVSEL1 workloads. The supplied TARGET-DATA2B radius workload is a fixed 4,100-frame, eight-family representative cache spanning low/high temperature and hydrostatic strain; the complete 27-file target archive is authenticated separately. On the qualification host the automatic CPU budget is three lanes, so the bounded-intermediate schedule aliases the two-lane schedule. Stages that are serial in the current implementation record the requested schedule separately from actual allocated lanes rather than reporting fictitious parallelism.
-
-The canonical evidence is `benchmarks/mlff_perfbase1_lta_cloud_cpu_mpa0_2026-08-17.{json,md}`. All repeated trials preserve exact scientific-output digests. The active MPA-0 medium checkpoint is bound by SHA-256 `75428afe3a1d...fb493e38604fb638`. MACE model inference is not claimed on the cloud host because that runtime was not part of the authoritative measurement environment; Foundation Audit/EVAL2 inference baselines remain explicitly unavailable there rather than being synthesized.
-
-### Multi-billion-edge MVIDX out-of-core hardening
-
-As of `0.20.238a0`, campaign MVIDX MUST NOT require the complete candidate-to-witness inverse edge payload plus full-family SciPy transpose workspace to coexist in anonymous RAM. When the inverse payload for a family exceeds the execution threshold, MVIDX performs deterministic source-row chunk transposes, appends each candidate column in ascending source-row chunk order, and writes the exact `<u4` candidate-witness array directly to an NPY memmap. Candidate offsets remain canonical `<u8`. Chunk size and concurrent family count are execution-only and are admitted under the explicit `StageResourceScope` RAM budget. The out-of-core result SHALL be byte-identical to the in-memory deterministic transpose.
-
-Whole-array NPY memmaps may be hard-linked into the native MVIDX record when source and destination share a filesystem; this is persistence reuse, not scientific identity. The campaign SHALL reload the durable native record before transient build paths are removed. Required inverse disk capacity is preflighted from exact edge cardinality, and MVIDX reports canonical `HH:MM:SS` elapsed/ETA heartbeats during long inversion.
+Detailed measurements, historical before/after comparisons, rejected implementation experiments, and release-by-release optimization chronology belong in `benchmarks/`, `audits/`, `release/`, and `docs/history/mlff/`, not in this architecture chapter.
