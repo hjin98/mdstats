@@ -1,18 +1,46 @@
-# MLFF training-data specifications
+# MLFF Training-Data Specifications
 
-This directory is the normative current-behavior layer for the MLFF training-data, fine-tuning, evaluation, deployment, and active-learning workflow. Specifications describe accepted behavior implemented by the current code; they are not implementation roadmaps or release chronologies.
+This directory owns specifications for `mdstats.training_data`. Physical
+observable algorithms remain under their analysis-module specifications and
+architecture manuals; this branch owns only MLFF data preparation,
+orchestration, comparison policy, training-backend calls, and evidence lineage.
 
-## Authority model
+## Canonical plan and current status
 
-- `mlff_data_stage_plan_spec.md` retains its legacy filename for stable links but is the **cross-cutting MLFF system contract**, not a stage plan. It owns workflow-wide invariants that are not usefully duplicated across narrower modules.
-- Narrower specifications own module-local APIs, schemas, numerical behavior, persistence, runtime semantics, and compatibility contracts.
-- Architecture under `docs/arch_manuals/` owns accepted current structure and ownership boundaries.
-- Developer transitions and implementation gates live under `workplans/`.
-- Completed chronology is non-normative and lives under `docs/history/mlff/`, `CHANGELOG.md`, release evidence, audits, or benchmarks as appropriate.
+- `mlff_data_stage_plan_spec.{md,pdf}` freezes the canonical stage order,
+  record-family separation, source/label identities, partition feasibility,
+  nested checkpoint monitors, protocol identity, fold-local feature/E0 fitting,
+  deterministic selection, replay, precision, deployment, observable calls,
+  profile migration, sealed-test activation, and active-learning lineage.
 
-When a narrow specification refines a cross-cutting rule, both must remain compatible: the narrow document owns the detailed realization, while the system contract owns the invariant it serves.
+Runtime progress through `0.20.61a0`:
 
-## Current specification hierarchy
+- DATA1--DATA8 are implemented (`0.20.29a0`--`0.20.36a0`).
+- DATA9A integration and real-MACE qualification span `0.20.37a0`--`0.20.39a0`.
+- Complete target-corpus DATA5 qualification is in `0.20.40a0`.
+- Selectable FP32/FP64 and critical-FP64 execution are in
+  `0.20.41a0`--`0.20.42a0`.
+- Deployment-artifact closure is in `0.20.43a0`.
+- The analysis-owned observable bridge is in `0.20.44a0`.
+- DATA9A6b bridge and documentation consistency closure is in `0.20.45a0`.
+- DATA9A6c observable-evidence identity and leakage closure is in `0.20.46a0`.
+- DATA9A7a material-profile and atom-group contracts are in `0.20.47a0`.
+- DATA9A7b universal structural selection providers are in `0.20.48a0`.
+- DATA9A7c phase and geometry profiles are in `0.20.49a0`.
+- DATA9A7d optional profile-extension/LTA migration is in `0.20.50a0`.
+- DATA9A7e cross-system qualification is implemented in `0.20.51a0`.
+- DATA9A8 observable comparison policies are implemented in `0.20.52a0`.
+- DATA9A9a restartable checkpoint-bound production DATA6 model sweeps are implemented in `0.20.53a0`.
+- DATA9A9b restartable final/fold DATA7 and exact-replay DATA8 materialization is implemented in `0.20.54a0`.
+- DATA9A9c production-gate integrity closure is implemented in `0.20.55a0`; the actual production corpus still must execute DATA9A9a/b against its frozen `ProductionCorpusPlan`.
+- DATA9B1 campaign/checkpoint control is implemented in `0.20.56a0`.
+- DATA9B2 supervised execution, checkpoint evaluation, fold/seed aggregation, committee export, protocol freeze, and sealed-test activation are implemented in `0.20.57a0`.
+- DATA9B3 unified campaign CLI, compact orchestration state, manifest approval, source-local precision wrappers, and bounded deployment verification are implemented in `0.20.58a0`. Long production execution remains gated on a passed real DATA9A realization and qualified production replay corpora.
+- DATA9B3A frozen cuEquivariance/e3nn backend selection, real-model qualification, and end-to-end campaign propagation are implemented in `0.20.59a0`.
+- DATA2A automatic review-manifest inference, exact LTA strain verification, and conservative approval gating are implemented in `0.20.60a0`.
+- DATA2 trailing interrupted VASP XML recovery hardening with explicit quality evidence is implemented in `0.20.61a0`.
+
+## Module and stage specifications
 
 - `mlff_data2_source_catalog_spec.{md,pdf}`: source manifest, label-domain,
   named-energy, and atomic-reference contracts.
