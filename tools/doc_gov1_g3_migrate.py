@@ -49,11 +49,14 @@ The complete pre-DOC-GOV1 mixed specification, including completed stage chronol
 """
 stage.write_text(current, encoding="utf-8")
 
-hier = "## Current specification hierarchy\n"
+hier = "## Module and stage specifications\n"
 pos = readme_text.find(hier)
 if pos < 0:
-    raise SystemExit("could not locate current specification hierarchy")
-remainder = readme_text[pos:]
+    hier = "## Current specification hierarchy\n"
+    pos = readme_text.find(hier)
+if pos < 0:
+    raise SystemExit("could not locate specification catalog")
+remainder = readme_text[pos:].replace(hier, "## Current specification hierarchy\n", 1)
 new_readme = """# MLFF training-data specifications
 
 This directory is the normative current-behavior layer for the MLFF training-data, fine-tuning, evaluation, deployment, and active-learning workflow. Specifications describe accepted behavior implemented by the current code; they are not implementation roadmaps or release chronologies.
