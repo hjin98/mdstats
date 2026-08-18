@@ -1,4 +1,4 @@
-name: DOC-GOV1 Render
+name: DOC-GOV1 Governance Check
 
 on:
   push:
@@ -8,10 +8,10 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  render:
+  governance:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,144 +19,82 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
           fetch-depth: 0
 
-      - name: Apply lossless G3 specification split
-        run: python tools/doc_gov1_g3_migrate.py
-
-      - name: Apply G4 dependency-graph normalization
-        run: python tools/doc_gov1_g4_migrate.py
-
-      - name: Install Pandoc 3.10.2
-        uses: pandoc/actions/setup@v1
-        with:
-          version: 3.10.2
-
-      - name: Install Typst 0.15.1
+      - name: Rebuild assembled architecture and require clean result
         shell: bash
         run: |
           set -euo pipefail
-          curl -L --fail --retry 3 -o /tmp/typst.tar.xz \
-            https://github.com/typst/typst/releases/download/v0.15.1/typst-x86_64-unknown-linux-musl.tar.xz
-          echo 'a6d077d0a95eed5a2eba715b2dae06be954f624ccbf85758a03f389ded33118c  /tmp/typst.tar.xz' | sha256sum -c -
-          tar -C /tmp -xf /tmp/typst.tar.xz
-          sudo install -m 0755 /tmp/typst-x86_64-unknown-linux-musl/typst /usr/local/bin/typst
-          typst --version
+          python tools/build_mlff_architecture_manual.py
+          git diff --exit-code -- docs/arch_manuals/mlff_training_data_architecture.md
 
-      - name: Rebuild assembled architecture
-        run: python tools/build_mlff_architecture_manual.py
-
-      - name: Render permanent Markdown PDFs
+      - name: Current authority regression checks
         shell: bash
         run: |
           set -euo pipefail
-          for src in \
-            docs/arch_manuals/mlff_training_data_architecture.md \
-            docs/specs/training_data/mlff_data_stage_plan_spec.md
-          do
-            pdf="${src%.md}.pdf"
-            pandoc "$src" --from=markdown --pdf-engine=typst --metadata=lang:en-US \
-              -V papersize:us-letter -V fontsize:10.5pt -V geometry:margin=0.75in \
-              --resource-path="$(dirname "$src")" -o "$pdf"
-          done
-
-      - name: Write and verify provenance manifests
-        shell: bash
-        run: |
-          python - <<'PY'
-          import hashlib, json, pathlib, subprocess
-          sources = [
-              pathlib.Path('docs/arch_manuals/mlff_training_data_architecture.md'),
-              pathlib.Path('docs/specs/training_data/mlff_data_stage_plan_spec.md'),
-          ]
-          config = {
-              'absolute_images': 'reject', 'fontsize': '10.5pt', 'from': 'markdown',
-              'lang': 'en-US', 'margin': '0.75in', 'papersize': 'us-letter',
-              'pdf_engine': 'typst', 'remote_images': 'reject',
-              'resource_path': 'source-parent',
-              'resource_provenance': 'pandoc-image-ast-local-files-v1',
-          }
-          def sha256(path): return hashlib.sha256(path.read_bytes()).hexdigest()
-          cfg = hashlib.sha256(json.dumps(config, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
-          for src in sources:
-              pdf = src.with_suffix('.pdf')
-              manifest = pathlib.Path(str(pdf) + '.manifest.json')
-              obj = {
-                  'schema_version': 1,
-                  'source': {'name': src.name, 'sha256': sha256(src)},
-                  'pdf': {'name': pdf.name, 'sha256': sha256(pdf)},
-                  'renderer': {
-                      'driver': 'DOC-GOV1 GitHub Actions equivalent of render_markdown_pdfs.py',
-                      'policy_version': 'pandoc-typst-v2',
-                      'pandoc_version': subprocess.check_output(['pandoc','--version'], text=True).splitlines()[0],
-                      'typst_version': subprocess.check_output(['typst','--version'], text=True).strip(),
-                      'config': config, 'config_sha256': cfg,
-                  },
-                  'resources': [],
-              }
-              manifest.write_text(json.dumps(obj, indent=2, sort_keys=True) + '\n', encoding='utf-8')
-              assert sha256(src) == obj['source']['sha256']
-              assert sha256(pdf) == obj['pdf']['sha256']
-              print('provenance OK:', src)
-          PY
-
-      - name: G3-G4 authority checks
-        shell: bash
-        run: |
-          set -euo pipefail
+          ! grep -q '70_status_and_gates.md' tools/build_mlff_architecture_manual.py
+          ! grep -Eq '(^|[[:space:]])Next gate|COMPLETE in 0\.20|Status and forward gates' docs/arch_manuals/mlff_training_data_architecture.md
           ! grep -q '^# Stage gates' docs/specs/training_data/mlff_data_stage_plan_spec.md
           ! grep -q 'Canonical plan and current status' docs/specs/training_data/README.md
           ! grep -q '^## Current version history' docs/specs/training_data/README.md
+          ! grep -Eq 'dependency/status graph|current status, and forward gates|module/gate contracts' \
+            docs/README.md docs/INDEX.md docs/arch_manuals/README.md
+          grep -q '^prune workplans$' MANIFEST.in
+          test -s workplans/README.md
+          test -s workplans/TEMPLATE.md
+          test -s docs/history/mlff/manual_snapshots/mlff_training_data_architecture_pre_doc_gov1.md
+          test -s docs/history/mlff/manual_snapshots/mlff_training_data_status_and_gates_pre_doc_gov1.md
           test -s docs/history/mlff/manual_snapshots/mlff_data_stage_plan_spec_pre_doc_gov1.md
           test -s docs/history/mlff/manual_snapshots/training_data_spec_index_pre_doc_gov1.md
           test -s docs/history/mlff/manual_snapshots/mlff_training_data_dependency_graph_pre_doc_gov1.json
-          python - <<'PY'
-          import json
-          p='docs/arch_manuals/mlff_training_data_dependency_graph.json'
-          g=json.load(open(p))
-          assert g.get('authority_model') == 'current_dependency_architecture'
-          for k in ('architecture_revision','branch','documentation_gate','next_gate'):
-              assert k not in g
-          bad={'implementation_requires','documentation_requires'}
-          assert not ({e['type'] for e in g['edges']} & bad)
-          assert {e['type'] for e in g['edges']} <= set(g['edge_type_definitions'])
-          for n in g['nodes']:
-              assert 'implementation_status' not in n and 'next_gate' not in n and 'gate_name' not in n
-          print('graph current-state semantics OK')
-          PY
 
-      - name: Commit qualified G4 state to branch
-        if: github.event_name == 'pull_request'
+      - name: Validate dependency graph current-state semantics
         shell: bash
         run: |
-          set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add docs/arch_manuals/mlff_training_data_architecture.md \
-                  docs/arch_manuals/mlff_training_data_architecture.pdf \
-                  docs/arch_manuals/mlff_training_data_architecture.pdf.manifest.json \
-                  docs/arch_manuals/mlff_training_data_dependency_graph.json \
-                  docs/specs/training_data/README.md \
-                  docs/specs/training_data/mlff_data_stage_plan_spec.md \
-                  docs/specs/training_data/mlff_data_stage_plan_spec.pdf \
-                  docs/specs/training_data/mlff_data_stage_plan_spec.pdf.manifest.json \
-                  docs/history/mlff/manual_snapshots/mlff_data_stage_plan_spec_pre_doc_gov1.md \
-                  docs/history/mlff/manual_snapshots/training_data_spec_index_pre_doc_gov1.md \
-                  docs/history/mlff/manual_snapshots/mlff_training_data_dependency_graph_pre_doc_gov1.json
-          if git diff --cached --quiet; then
-            echo 'G4 state already synchronized'
-          else
-            git commit -m 'DOC-GOV1 G4 normalize MLFF dependency graph [skip ci]'
-            git push origin HEAD:${{ github.event.pull_request.head.ref }}
-          fi
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('docs/arch_manuals/mlff_training_data_dependency_graph.json')
+          g = json.loads(p.read_text())
+          assert g.get('authority_model') == 'current_dependency_architecture'
+          for k in ('architecture_revision', 'branch', 'documentation_gate', 'next_gate'):
+              assert k not in g, k
+          bad_types = {'implementation_requires', 'documentation_requires'}
+          used = {e['type'] for e in g['edges']}
+          assert not (used & bad_types), used & bad_types
+          assert used <= set(g['edge_type_definitions']), used - set(g['edge_type_definitions'])
+          ids = {n['id'] for n in g['nodes']}
+          for e in g['edges']:
+              assert e['from'] in ids and e['to'] in ids, e
+          for n in g['nodes']:
+              for k in ('implementation_status', 'next_gate', 'gate_name'):
+                  assert k not in n, (n['id'], k)
+          print(f'graph OK: {len(g["nodes"])} nodes, {len(g["edges"])} edges')
+          PY
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: doc-gov1-render
-          path: |
-            docs/arch_manuals/mlff_training_data_architecture.md
-            docs/arch_manuals/mlff_training_data_architecture.pdf
-            docs/arch_manuals/mlff_training_data_architecture.pdf.manifest.json
-            docs/specs/training_data/mlff_data_stage_plan_spec.md
-            docs/specs/training_data/mlff_data_stage_plan_spec.pdf
-            docs/specs/training_data/mlff_data_stage_plan_spec.pdf.manifest.json
-            docs/arch_manuals/mlff_training_data_dependency_graph.json
-          if-no-files-found: error
+      - name: Verify permanent PDF provenance pairs
+        shell: bash
+        run: |
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          for md in (
+              Path('docs/arch_manuals/mlff_training_data_architecture.md'),
+              Path('docs/specs/training_data/mlff_data_stage_plan_spec.md'),
+          ):
+              pdf = md.with_suffix('.pdf')
+              manifest = Path(str(pdf) + '.manifest.json')
+              assert md.is_file() and pdf.is_file() and manifest.is_file(), md
+              m = json.loads(manifest.read_text())
+              assert hashlib.sha256(md.read_bytes()).hexdigest() == m['source']['sha256'], md
+              assert hashlib.sha256(pdf.read_bytes()).hexdigest() == m['pdf']['sha256'], pdf
+              assert m['renderer']['policy_version'] == 'pandoc-typst-v2'
+              print('provenance OK:', md)
+          PY
+
+      - name: Verify migration-base snapshot identity
+        shell: bash
+        run: |
+          test "$(git hash-object docs/history/mlff/manual_snapshots/mlff_training_data_architecture_pre_doc_gov1.md)" = "37b44aed940d4fc4ee9e86ca0f0587c7c5f2344f"
+          test "$(git hash-object docs/history/mlff/manual_snapshots/mlff_training_data_status_and_gates_pre_doc_gov1.md)" = "39a4d44aaa25ae7838ed40b994e60f775d6af9b5"
+          test "$(git hash-object docs/history/mlff/manual_snapshots/mlff_data_stage_plan_spec_pre_doc_gov1.md)" = "5454698cb5c3859ac5543967074f6ffe69bc03eb"
+          test "$(git hash-object docs/history/mlff/manual_snapshots/training_data_spec_index_pre_doc_gov1.md)" = "9bba16bac432e014b086abe4bbfb22d72c04e686"
+          test "$(git hash-object docs/history/mlff/manual_snapshots/mlff_training_data_dependency_graph_pre_doc_gov1.json)" = "2025102638efb943338c224c6c3201e499a8cb20"
