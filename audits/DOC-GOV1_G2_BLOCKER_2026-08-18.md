@@ -1,5 +1,7 @@
 # DOC-GOV1 G2 qualification blocker — 2026-08-18
 
+**Status: RESOLVED on 2026-08-18.** The temporary inability to render with Typst was cleared by using a GitHub-hosted qualification workflow that downloaded the official Typst 0.15.1 Linux x86_64 archive, verified its published SHA-256, and ran the repository's Pandoc + Typst rendering policy. G2 subsequently passed and DOC-GOV1 advanced through later gates.
+
 ## Gate
 
 DOC-GOV1 G2 — Separate MLFF architecture from implementation history/status.
@@ -13,7 +15,7 @@ DOC-GOV1 G2 — Separate MLFF architecture from implementation history/status.
 
 ## Completed G2 work
 
-The MLFF architecture chapter set has been normalized to accepted current-state architecture. The former `70_status_and_gates.md` chapter was removed from the assembler and preserved byte-for-byte as:
+The MLFF architecture chapter set was normalized to accepted current-state architecture. The former `70_status_and_gates.md` chapter was removed from the assembler and preserved byte-for-byte as:
 
 `docs/history/mlff/manual_snapshots/mlff_training_data_status_and_gates_pre_doc_gov1.md`
 
@@ -21,49 +23,23 @@ The unfinished FINAL-GPU1 developer coordination now lives in:
 
 `workplans/active/MLFF_FINAL_GPU1.md`
 
-The following current-state architecture chapters were normalized and the assembled Markdown regenerated:
+The current-state architecture chapters were normalized and the assembled Markdown regenerated. Durable scientific/runtime contracts from the former status material were retained in their current architecture/specification owners; detailed chronology/evidence remains in history, audits, release material, and benchmarks.
 
-- `00_front_matter.md`
-- `10_foundations.md`
-- `20_data_contracts.md`
-- `30_statistical_design.md`
-- `40_training_evaluation.md`
-- `50_target_multiview.md`
-- `60_execution_performance.md`
-- `80_ownership_and_decisions.md`
-- `mlff_training_data_architecture.md`
-
-Durable scientific/runtime contracts from the former status material were retained in Parts V/VI/VII as appropriate. Detailed performance chronology/evidence remains represented by the existing benchmark/audit/history material and by the preserved pre-migration snapshot.
-
-## Acceptance checks completed
+## Acceptance checks
 
 PASS:
 
-- `tools/build_mlff_architecture_manual.py` no longer includes `70_status_and_gates.md` in its ordered source list.
-- The assembled Markdown contains no former developer-status chapter.
-- Targeted scans of the assembled Markdown find no `Next gate`, no `COMPLETE`, and no `Status and forward gates` project-tracking text.
-- The current scientific/runtime architecture remains represented in the current-state chapters, including exact multi-view coverage/selection, MVIDX execution/storage, MVSEL/REPAIR authority, deterministic resource scheduling, replay/evaluation boundaries, progress formatting, and evidence ownership.
+- `tools/build_mlff_architecture_manual.py` no longer includes `70_status_and_gates.md`.
+- The assembled Markdown contains no former developer-status chapter or project-tracking `Next gate` / `COMPLETE in 0.20.x` material.
+- The current scientific/runtime architecture remains represented, including exact multi-view coverage/selection, MVIDX execution/storage, MVSEL/REPAIR authority, deterministic resource scheduling, replay/evaluation boundaries, progress formatting, and evidence ownership.
 - The pre-migration status chapter is retained losslessly in MLFF history.
+- The changed assembled Markdown, PDF, and provenance manifest were regenerated and hash-verified with Pandoc 3.10.2 + Typst 0.15.1 under the `pandoc-typst-v2` policy.
+- Representative PDF pages were visually inspected without clipping, overlap, or broken glyphs.
 
-## Blocked acceptance item
+## Original blocker and resolution
 
-G2 requires the changed permanent architecture Markdown to regenerate and check its synchronized PDF and provenance manifest using the repository's established renderer policy.
-
-The existing manifest identifies that policy as:
-
-- driver: `render_markdown_pdfs.py`
-- policy: `pandoc-typst-v2`
-- PDF engine: `typst`
-- prior renderer versions: Pandoc 3.10.2 and Typst 0.15.1
-
-The current execution environment provides Pandoc (`pandoc 3.1.11.1`) but has no Typst executable in PATH or the available system locations. The configured `mace` Conda environment is also not available in this execution environment. No repository CI workflow is present under `.github/workflows/` that can provide the approved renderer.
-
-The checked-in `mlff_training_data_architecture.pdf` and its `.pdf.manifest.json` therefore remain the pre-migration versions and are intentionally **not** claimed as synchronized.
-
-Per DOC-GOV1, PDF closeout must be reported blocked when the established renderer is unavailable and installing/bootstraping a replacement has not been authorized.
+The original execution container had Pandoc but no Typst binary and could not resolve external hosts, so the pre-migration PDF was intentionally not claimed as synchronized. After explicit authorization to obtain Typst, DOC-GOV1 used a temporary branch-local GitHub Actions renderer. The hosted runner downloaded Typst from the upstream Typst GitHub release, verified archive SHA-256 `a6d077d0a95eed5a2eba715b2dae06be954f624ccbf85758a03f389ded33118c`, regenerated the architecture PDF/provenance pair, and passed the source/PDF hash checks.
 
 ## Gate result
 
-**G2 BLOCKED — PDF/provenance regeneration unavailable in the current execution environment.**
-
-Do not advance to G3 until the established Typst-capable rendering environment is available or installation of the required renderer is explicitly authorized.
+**G2 PASS — blocker resolved.**
