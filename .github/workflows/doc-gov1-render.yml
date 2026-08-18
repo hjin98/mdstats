@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - agent/doc-gov1-g0
+  pull_request:
   workflow_dispatch:
 
 permissions:
