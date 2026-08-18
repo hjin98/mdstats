@@ -1,0 +1,147 @@
+{
+  "acceptance": {
+    "advance_to": "COVREF-PAR1",
+    "broad_regression": "PASS",
+    "exact_scientific_equivalence": "PASS",
+    "material_cached_mvidx_improvement": "PASS",
+    "stable_inverse_arrays": "PASS",
+    "worker_count_invariance": "PASS"
+  },
+  "architecture_revision": 95,
+  "authority_change": {
+    "gpu": false,
+    "runtime_optimization": true,
+    "scientific": false
+  },
+  "content_digest": "820b75cdd722270285b1fb68b53779e4b7bb0de112591b94edfe58265a86f17e",
+  "date": "2026-08-17",
+  "dependency_graph_schema": 76,
+  "documentation": {
+    "architecture_revision_note": {
+      "path": "docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV95.md",
+      "sha256": "046dd12f7fb250e01ccbd487a1f34d042914acdbab92c8c8b5ddbf7b96349271"
+    },
+    "canonical_markdown": {
+      "path": "docs/arch_manuals/mlff_training_data_architecture.md",
+      "sha256": "8eb0ff72695a9254ad531529bfde98d4bed1c02b50f5dc9c3d3d57f4b29be358"
+    },
+    "canonical_pdf": {
+      "full_render": "PASS",
+      "pages": 47,
+      "path": "docs/arch_manuals/mlff_training_data_architecture.pdf",
+      "preflight": "PASS",
+      "sha256": "dd27145881dfb22a6a55f24817b51d41b57edbb93b017476ccf932b1580233b3",
+      "visual_qa": "PASS"
+    },
+    "dependency_graph": {
+      "path": "docs/arch_manuals/mlff_training_data_dependency_graph.json",
+      "sha256": "494bb8deb9b9d97ebde251c34c92b39b8ac9c1f17cd8904aac5c8c07ebbc564f"
+    },
+    "pdf_comparison_note": "Before/after wrapper timed out while producing intermediate renders; the final 47-page PDF itself fully rendered and changed pages were visually inspected directly.",
+    "release_note": {
+      "path": "docs/history/mlff/release_notes/PATCH_NOTES_0.20.228a0.md",
+      "sha256": "a33f8b75ddca7743e2d01c370461620cfa5baf9e8669e87c8fad690a272093ae"
+    },
+    "spec": {
+      "path": "docs/specs/training_data/mlff_mvidx_reuse1_sparse_inversion_spec.md",
+      "sha256": "c72dd77bf68e217d7519ecaafbbe3d0c4e06b3ab919e8c99f54efc592513c32c"
+    }
+  },
+  "foundation": {
+    "active_qualification_family": "mace-mpa-0",
+    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
+    "mh1_supported_by_same_contract": true,
+    "note": "MVIDX-REUSE1 contains no foundation-model-specific sparse-index semantics; MPA-0 is the active qualification checkpoint and MACE-MH-1 remains supported by the same runtime contract.",
+    "variant": "medium"
+  },
+  "gate": "MVIDX-REUSE1_STABLE_PARALLEL_SPARSE_INVERSION",
+  "implementation": {
+    "canonical_order_restored_after_parallel_completion": true,
+    "implementation_manifest": {
+      "content_digest": "c3bf8538159a7fe249309e196efe4f92e3e258d1dc151d33accbaa44b92b3897",
+      "path": "benchmarks/mlff_mvidx_reuse1_implementation_manifest_0.20.228a0.json",
+      "sha256": "b23607f3125d2d855c5cbc8a6ac65a5738e404b03f2ab4baf00524e8a9ed6323"
+    },
+    "nested_sparse_kernel_threading": false,
+    "parallel_granularity": "independent required-family inversions and hard-obligation construction via DeterministicWorkQueue",
+    "per_component_kernel": "single-task deterministic compiled SciPy CSR-to-CSC counting transpose",
+    "rejected_intra_family_python_parallel_prototype": "exact but slower than compiled sparse transpose on qualification hardware",
+    "vectorized_canonical_csr_validator": true
+  },
+  "inputs": {
+    "dependency_archive": {
+      "path": "/mnt/data/dependencies.tar(20260817-112644).gz",
+      "sha256": "888d545a512396697c8583d69bc9ed33110914675f466a4cbcafc3e1e1407171"
+    },
+    "replay_source": {
+      "path": "/mnt/data/replay_fps_12000.extxyz",
+      "sha256": "187eed42fb2d6cf5e7e745ffed0ce34541e92c6a35ec9e654520cd3c7198403c"
+    },
+    "target_archive": {
+      "path": "/mnt/data/training_LTA.tar(4).gz",
+      "sha256": "bc1b7e25ba338507ae38b260bcd283356de887b6c6cf762a2c146733f1c3c958"
+    }
+  },
+  "next_gate": "COVREF-PAR1",
+  "performance_evidence": {
+    "control_0_20_227a0_serial_median_seconds": 0.590266875999987,
+    "current_0_20_228a0": {
+      "one_lane_median_seconds": 0.1562867385000004,
+      "three_lane_median_seconds": 0.08693167149999681,
+      "two_lane_median_seconds": 0.1176901005000559
+    },
+    "interpretation": "Execution timing is same-host evidence; exact sparse-index digest and byte equality are scientific authority.",
+    "primary_record": {
+      "path": "benchmarks/mlff_mvidx_reuse1_cloud_cpu_mpa0_2026-08-17.json",
+      "sha256": "2b8d37608d1438a18c05c6d4e93c14078c85984e2836b06e821cfc6e64522f55"
+    },
+    "report": {
+      "path": "benchmarks/mlff_mvidx_reuse1_cloud_cpu_mpa0_2026-08-17.md",
+      "sha256": "1474a30eab322c32224a16f85d62074209d0361c6c07ba9635683ac775562c87"
+    },
+    "serial_speedup": 3.7768199763154273,
+    "three_lane_speedup": 6.790009507639671
+  },
+  "release": "0.20.228a0",
+  "schema": "mdstats.mlff-mvidx-reuse1-qualification.v1",
+  "scientific_oracles": {
+    "inverse_arrays_byte_identical": true,
+    "mvidx1_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
+    "neighborhood_geometry_recomputed_on_cache_hit": false,
+    "worker_count_invariant": true,
+    "workload": {
+      "exact_edges": 3194880,
+      "families": 6,
+      "query_block_size": 512,
+      "witnesses": 49152
+    }
+  },
+  "status": "PASS",
+  "tests": {
+    "archival_spec_boundary": {
+      "excluded_from_current_release_pass_fail": [
+        "tests/test_mlff_target_data2c_mvidx1_specification.py"
+      ],
+      "reason": "Historical release-pinned specification asserts 0.20.209a0 / architecture revision 76 and is retained as archival evidence; runtime/scientific test_mlff_target_data2c_mvidx1.py is part of the 111-test current authority."
+    },
+    "compileall": {
+      "paths": [
+        "mdstats",
+        "benchmarks",
+        "tools"
+      ],
+      "status": "PASS"
+    },
+    "current_gate_and_dependencies": {
+      "failed": 0,
+      "passed": 42,
+      "warnings": 1
+    },
+    "target_data2_functional_authority": {
+      "failed": 0,
+      "passed": 111,
+      "warning_class": "expected velocity-reconstruction/normalization warnings unchanged from prior authority",
+      "warnings": 18
+    }
+  }
+}

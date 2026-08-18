@@ -1,0 +1,5541 @@
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/CHANGELOG.md mdstats-0.20.104a0/CHANGELOG.md
+--- mdstats-0.20.103a0/CHANGELOG.md	2026-08-08 01:30:41.000000000 +0000
++++ mdstats-0.20.104a0/CHANGELOG.md	2026-08-08 09:03:26.654131833 +0000
+@@ -1,3 +1,11 @@
++## 0.20.104a0
++
++- Restore the `tools/` source-checkout front ends omitted from 0.20.100a0--0.20.103a0 source distributions and package them explicitly.
++- Port the historical DATA9A3 finalizer to the current immutable `ProductionCorpusPlan` API and make source tools bootstrap the checkout root robustly.
++- Regenerate `campaign.toml.example` from the optimized 0.20.103 campaign backend, including OPT-EVAL4 staged evaluation and OPT-CTRL1 telemetry defaults.
++- Restore normative MLFF/Stage-11 dependency-graph JSON files and add release-content regression coverage.
++- Preserve the frozen MLFF scientific compatibility token at 0.20.99a0.
++
+ ## 0.20.103a0
+ 
+ - Complete MLFF roadmap stage OPT-CTRL1: persistent thread-local campaign SQLite connections, single-query optional record fetches, grouped parent-side commits, and reduced redundant JSON/record work.
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/MANIFEST.in mdstats-0.20.104a0/MANIFEST.in
+--- mdstats-0.20.103a0/MANIFEST.in	2026-08-07 02:47:12.000000000 +0000
++++ mdstats-0.20.104a0/MANIFEST.in	2026-08-08 09:05:37.985133398 +0000
+@@ -1,10 +1,13 @@
+ include README.md
+ include CHANGELOG.md
++include campaign.toml.example
+ include PATCH_NOTES_*.md
+-recursive-include docs *.md *.pdf *.png
++recursive-include docs *.md *.pdf *.png *.json
+ recursive-include audits *.md
+ recursive-include benchmarks *.py *.json *.md
+ recursive-include examples *.py *.md *.png *.svg *.html *.pdf *.csv *.json *.sh
+ recursive-include release *.md *.txt *.json *.patch *.sha256
++recursive-include tools *
+ recursive-include tests *.py
+ recursive-include tests/data *
++global-exclude *.py[cod]
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/PATCH_NOTES_0.20.104a0.md mdstats-0.20.104a0/PATCH_NOTES_0.20.104a0.md
+--- mdstats-0.20.103a0/PATCH_NOTES_0.20.104a0.md	1970-01-01 00:00:00.000000000 +0000
++++ mdstats-0.20.104a0/PATCH_NOTES_0.20.104a0.md	2026-08-08 09:03:26.200757138 +0000
+@@ -0,0 +1,32 @@
++# mdstats 0.20.104a0 patch notes
++
++## Source-tool restoration and packaging integrity
++
++- Restore the user-facing `tools/` tree last present in the 0.20.99a0 complete
++  source package.
++- Keep `tools/mdstats-mlff-campaign.py` as a thin source-checkout launcher over
++  the current `mdstats.training_data.campaign_cli.main`, so OPT-EVAL1 through
++  OPT-CTRL1 execution remains fully active and no optimized MLFF logic is
++  duplicated or bypassed by the wrapper.
++- Port `tools/finalize_lta_data9a3_qualification.py` to the current immutable
++  `ProductionCorpusPlan` qualification API. The old 0.20.99a0 utility still
++  passed the removed `expected_source_count=` keyword and was already stale.
++- Make the MACE runtime qualification and DATA9A3 finalization tools bootstrap
++  the source-checkout root explicitly, so they work outside the repository CWD.
++- Regenerate `campaign.toml.example` from the current campaign backend and retain
++  CUDA as the example target. This restores the 0.20.103a0 optimized evaluation
++  controls, including 5% calibration peak trimming, 30 s post-calibration GPU
++  telemetry, and bounded OPT-EVAL4 CPU prepare/finalize pipeline controls.
++- Restore the normative MLFF and Stage-11 machine-readable dependency graphs
++  that were omitted by the same source-distribution manifest regression.
++- Update `MANIFEST.in` so future sdists include `tools/`,
++  `campaign.toml.example`, and architecture JSON files.
++- Add packaging/front-end regression tests so the restored source files and
++  current optimized campaign defaults cannot silently disappear again.
++
++## Compatibility
++
++The frozen MLFF scientific campaign identity remains 0.20.99a0. This release
++changes source-package/front-end integrity and does not invalidate existing
++campaign state, DATA artifacts, prediction caches, checkpoint-selection records,
++or bounded-verification cache identities.
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/PKG-INFO mdstats-0.20.104a0/PKG-INFO
+--- mdstats-0.20.103a0/PKG-INFO	2026-08-08 01:37:50.280120000 +0000
++++ mdstats-0.20.104a0/PKG-INFO	1970-01-01 00:00:00.000000000 +0000
+@@ -1,19 +0,0 @@
+-Metadata-Version: 2.4
+-Name: mdstats
+-Version: 0.20.103a0
+-Summary: Transparent atomistic frame collections and structural/dynamical statistics
+-Requires-Python: >=3.10
+-Requires-Dist: numpy>=1.26
+-Requires-Dist: ase>=3.26
+-Requires-Dist: scipy>=1.11
+-Requires-Dist: matplotlib>=3.8
+-Requires-Dist: networkx>=3.4
+-Requires-Dist: threadpoolctl>=3.1
+-Requires-Dist: packaging>=23
+-Provides-Extra: manifest
+-Requires-Dist: PyYAML>=6.0; extra == "manifest"
+-Provides-Extra: interactive
+-Requires-Dist: plotly>=5.20; extra == "interactive"
+-Requires-Dist: scikit-image>=0.22; extra == "interactive"
+-Requires-Dist: fast-simplification>=0.1.13; extra == "interactive"
+-Requires-Dist: cloudpickle>=3.0; extra == "interactive"
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/campaign.toml.example mdstats-0.20.104a0/campaign.toml.example
+--- mdstats-0.20.103a0/campaign.toml.example	1970-01-01 00:00:00.000000000 +0000
++++ mdstats-0.20.104a0/campaign.toml.example	2026-08-08 09:00:58.576208609 +0000
+@@ -0,0 +1,342 @@
++schema = "mdstats.mlff-campaign-cli.v1"
++
++[campaign]
++id = "lta-mpa0-finetune"
++profile = "lta"
++workspace = "mlff-campaign"
++
++[paths]
++training_root = "/path/to/LTA_training"
++foundation_model = "/path/to/mace-mpa-0-medium.model"
++replay_train = "/path/to/replay_train.extxyz"
++replay_monitor = "/path/to/replay_monitor.extxyz"
++# Independent true labels for replay evaluation. The directory may contain
++# true_labels/replay_{train,monitor}.extxyz, or the original
++# mp_replay_selected.extxyz used to create the pseudo-label split.
++replay_true_labels = "/path/to/LTA_replay_true_labels"
++
++[data]
++dataset_id = "lta-dry-alkali-v1"
++manifest = "campaign-manifest.json"
++discovery_pattern = "**/*.xml"
++
++[manifest_inference]
++# Filename strain hints are candidates only. They are promoted after fixed-cell
++# XML controls and the exact LTA cell deformation pass these tolerances.
++fixed_cell_relative_tolerance = 1.0e-7
++reference_cell_relative_tolerance = 1.0e-7
++strain_matrix_absolute_tolerance = 5.0e-5
++strain_volume_ratio_tolerance = 5.0e-5
++maximum_rotation_radians = 1.0e-4
++conventional_axis_orthogonality_tolerance = 5.0e-6
++temperature_equality_tolerance_kelvin = 1.0e-6
++# hydro+5 / ortho-2 / shear+2 mean +5%, -2%, and +2%; decimal
++# forms such as hydro+0.05 retain their fractional interpretation.
++filename_values_at_or_above_one_are_percent = true
++
++[profile]
++profile_id = "dry-lta-alkali"
++framework_atomic_numbers = [8, 13, 14]
++mobile_atomic_numbers = [3, 11, 19]
++all_atomic_numbers = [3, 8, 11, 13, 14, 19]
++
++[partition]
++minimum_block_frames = 32
++purge_units_between_roles = 1
++
++[random]
++# Randomized PCA/range-finder seed used only when a DATA7 feature block is too
++# large for exact SVD. Exact-SVD paths are deterministic and ignore this seed.
++feature_projection_seed = 271828
++
++[model]
++foundation_name = "MPA-0-medium"
++device = "cuda"
++dtype = "float32"
++# Completed frames append one recovery record immediately. This value controls
++# durable journal flushes, not full-history JSON rewrites. Use 1 for maximum
++# durability or a larger value for lower filesystem synchronization overhead.
++checkpoint_interval = 128
++# Persist descriptors/predictions in immutable multi-frame shards. Larger values
++# reduce inode and open/stat pressure; an abrupt interruption may recompute at
++# most one incomplete shard.
++artifact_shard_size = 128
++# Set a small positive value for a bounded first pass; 0 means finish the sweep.
++max_new_frames = 0
++# 0 chooses a VRAM-bounded automatic batch. CUDA OOM halves the batch and retries.
++inference_batch_size = 0
++maximum_inference_batch_size = 16
++estimated_inference_memory_mib_per_frame = 512.0
++
++[acceleration]
++# `init` resolves this once from the active environment. Keep the explicit value
++# fixed so preparation, preflight, training, evaluation, and verification use
++# the same backend. Allowed values: "cueq" or "e3nn".
++backend = "e3nn"
++# mdstats qualifies the portable CuEq training path that converts saved models
++# back to ordinary e3nn form. Leave only_cueq=false for production campaigns.
++only_cueq = false
++# When true, doctor fails instead of silently falling back to e3nn.
++require_available = true
++
++[selection]
++# One value is simplest. Multiple values build a learning curve.
++sizes = [512]
++# 0 auto-selects an economical outer thread count (up to 90% of available
++# CPUs, capped where these vectorized per-frame kernels stop scaling).
++structural_workers = 0
++
++[objective]
++energy_weight = 1.0
++forces_weight = 10.0
++stress_weight = 1.0
++
++[training]
++# Legacy equivalent defaults: modes = ["naive_fine_tuning", "multihead_replay"]
++# and seeds = [1, 2]. New campaigns use the explicit per-method tables below.
++device = "cuda"
++dtype = "float32"
++learning_rate = 1.0e-4
++batch_size = 2
++valid_batch_size = 2
++# 0 chooses a CPU/RAM-bounded DataLoader worker count.
++num_workers = 0
++estimated_loader_memory_mib_per_worker = 256.0
++max_num_epochs = 30
++eval_interval = 1
++target_head_weight = 5.0
++replay_head_weight = 1.0
++
++[training.naive_fine_tuning]
++# Three cross-validation folds plus one final-development run are created for
++# every listed optimizer seed. Default: (3 + 1) * 2 = 8 naïve jobs.
++enabled = true
++seeds = [1, 2]
++# Set to 0 to train only the final-development model for each seed; 1 is invalid.
++cross_validation_folds = 3
++# Use the same fold seed in both methods for paired fold-by-fold comparison.
++fold_partition_seed = 104729
++
++[training.multihead_replay]
++# Default: (3 + 1) * 2 = 8 replay jobs. Disable either method, shorten its seed
++# array, or set cross_validation_folds=0 for one final-only model per seed.
++enabled = true
++seeds = [1, 2]
++# Set to 0 for final-only training; otherwise use K >= 2.
++cross_validation_folds = 3
++fold_partition_seed = 104729
++
++[runtime]
++# DATA8 is source-locked to this MACE interface. Change only after requalification.
++mace_version = "0.3.16"
++
++[performance]
++# Auto parallelism targets 90% of CPU threads and GPU/VRAM capacity. RAM remains
++# capped at 80% so the OS and unrelated programs retain baseline headroom.
++cpu_fraction = 0.90
++ram_fraction = 0.80
++gpu_memory_fraction = 0.90
++# 0 selects the automatic resource-bounded count. Explicit positive values are
++# still clipped by available CPU threads and the RAM budget.
++source_workers = 0
++feature_workers = 0
++# LTA workers return compact NumPy columns; the automatic count is bounded by
++# CPU threads plus RAM reserved for the final immutable catalog.
++lta_workers = 0
++# 0 disables the per-source hard timeout.
++source_timeout_seconds = 0
++# Heartbeat interval for source ingestion and other long preparation stages.
++progress_interval_seconds = 30.0
++
++[execution]
++max_attempts = 2
++minimum_free_disk_gib = 20.0
++# 0 or omitted means no wall-clock timeout for a production run.
++timeout_seconds = 0
++terminate_grace_seconds = 30.0
++# Heartbeat interval for preflight and other external subprocesses.
++progress_interval_seconds = 60.0
++# Visible production-training updates. Cancellation is still polled silently
++# every second so Ctrl-C and disk-reserve stops remain responsive.
++training_progress_interval_seconds = 10.0
++# 0 enables adaptive CUDA concurrency. CUDA always starts with one job.
++# Additional jobs are admitted one at a time only after every active job has
++# reached sustained optimizer/epoch work for the full averaging window. The
++# projected mean aggregate VRAM and GPU utilization must both remain below
++# their admission ceilings. Natural telemetry fluctuation is averaged rather
++# than treated as a reason to wait indefinitely. A positive value is only a
++# maximum cap; it does not bypass adaptive admission.
++parallel_training_jobs = 0
++minimum_parallel_training_jobs = 1
++maximum_parallel_training_jobs = 4
++training_gpu_memory_fraction = 0.90
++training_gpu_utilization_fraction = 0.90
++estimated_training_vram_mib_per_job = 6144.0
++estimated_training_ram_mib_per_job = 8192.0
++parallel_training_epoch_stabilization_seconds = 60.0
++parallel_training_epoch_activity_timeout_seconds = 120.0
++parallel_training_epoch_stability_samples = 12
++# Legacy tolerance fields remain accepted for old campaign files but no longer
++# gate scheduler promotion; the fixed-duration average above is authoritative.
++parallel_training_stability_relative_tolerance = 0.10
++parallel_training_utilization_stability_absolute_tolerance = 8.0
++parallel_training_memory_growth_margin = 1.05
++parallel_training_utilization_growth_margin = 1.05
++parallel_training_monitor_interval_seconds = 10.0
++# Evaluation and verification use a one-time single-job CUDA calibration. CUDA
++# starts with exactly one job and samples GPU utilization plus incremental VRAM.
++# OPT-EVAL4 evaluation calibrates only the accelerator stage (checkpoint/model
++# materialization, serialized CuEq/OEq/FX conversion, and inference) because
++# monitor/cache preparation now runs in separate CPU workers. Verification still
++# calibrates its complete admitted case. Samples below the 1% activity floor are
++# discarded independently for GPU utilization and VRAM. The highest 5% of retained samples
++# are discarded as transient peaks, then the next-highest 10% are averaged
++# independently for GPU utilization and incremental VRAM (approximately the
++# 85th--95th percentile band). The resulting estimate is fixed for the remaining
++# queue: live GPU-utilization spikes do not reduce concurrency. A hard live VRAM
++# guard remains because exceeding the memory ceiling can cause OOM. mdstats then
++# jumps directly to the largest projected concurrency below the 90% GPU/VRAM
++# ceilings. CPU jobs retain a 20-second workload window and a
++# projected 90% host-utilization ceiling. The 80% RAM bound above is always
++# applied. Zero means automatic resource-bounded concurrency; a positive value is
++# a hard maximum, and maximum_parallel_inference_jobs=0 adds no extra cap beyond
++# CPU/RAM/VRAM/utility admission.
++parallel_inference_jobs = 0
++maximum_parallel_inference_jobs = 0
++inference_cpu_utilization_fraction = 0.90
++inference_gpu_memory_fraction = 0.90
++inference_gpu_utilization_fraction = 0.90
++inference_estimated_vram_mib_per_job = 4096.0
++inference_estimated_ram_mib_per_job = 4096.0
++parallel_inference_calibration_window_seconds = 300.0
++parallel_inference_cpu_calibration_window_seconds = 20.0
++inference_gpu_minimum_activity_fraction = 0.01
++inference_gpu_calibration_peak_trim_fraction = 0.05
++inference_gpu_calibration_band_fraction = 0.10
++# The exact shared 0.20.91a0 generated peak-trim value 0.10 migrates to
++# the new 0.05 default; explicit phase-specific/custom values remain authoritative.
++# Legacy 0.20.90a0 key inference_gpu_calibration_upper_tail_fraction remains
++# accepted as an alias for inference_gpu_calibration_band_fraction.
++parallel_inference_stability_samples = 3
++inference_memory_growth_margin = 1.05
++inference_utilization_growth_margin = 1.05
++parallel_inference_monitor_interval_seconds = 2.0
++# After CUDA calibration, the fixed per-job GPU-utilization estimate is authoritative.
++# Only the hard live-VRAM safety guard still needs telemetry, so poll it less often
++# instead of spawning/reading telemetry every scheduler tick. A concurrency change
++# forces an immediate sample regardless of this interval.
++parallel_inference_post_calibration_monitor_interval_seconds = 30.0
++# Optional phase-specific overrides use the same suffixes, for example:
++# parallel_evaluation_jobs, maximum_parallel_verification_jobs,
++# evaluation_estimated_vram_mib_per_job, verification_gpu_utilization_fraction.
++# OPT-EVAL4 evaluation additionally has bounded CPU preparation/finalization
++# stages around accelerator inference. Zero means auto (currently up to two CPU
++# stage workers); the prepared buffer is also bounded so parsed monitors and
++# pending prediction arrays cannot grow without limit.
++parallel_evaluation_prepare_jobs = 0
++parallel_evaluation_finalize_jobs = 0
++evaluation_pipeline_buffer_jobs = 0
++# Stop admitting new jobs after the first failed run; already-active jobs finish.
++stop_scheduling_after_failure = true
++
++[cleanup]
++# Conservative lifecycle cleanup runs automatically at train/evaluate/verify boundaries.
++enabled = true
++# Young temporary trees are retained to avoid racing a recently interrupted process.
++stale_age_hours = 6.0
++# These caches can be reconstructed from immutable source/data records and are not
++# used by train/evaluate/verify once preflight has passed.
++remove_frame_cache_after_preflight = true
++remove_shared_data7_cache_after_prepare = true
++# Keep compact logs/configuration evidence, but delete the bounded smoke model,
++# checkpoints, copied ExtXYZ subsets, and predictions after preflight succeeds.
++remove_preflight_heavy_artifacts_after_success = true
++# After all checkpoints have been evaluated and a protocol is frozen, retain the
++# selected checkpoint for every run plus all metric/selection records; remove the
++# bulky unselected optimizer snapshots.
++prune_unselected_checkpoints_after_evaluate = true
++# When evaluation shortlists epochs from authenticated MACE validation history,
++# delete the screened-out optimizer checkpoints after the selected checkpoint and
++# shortlist evidence have been committed. Set false to retain every epoch snapshot.
++prune_screened_out_checkpoints_after_evaluate = true
++maximum_event_records = 10000
++
++[replay]
++# For MPA-0 pseudo-replay, labels must be generated by the exact foundation
++# checkpoint in [paths].foundation_model. Use external_true_label only for
++# genuine reference labels. "preselected" is exploratory unless explicitly allowed.
++mode = "external_pseudolabel"
++seed = 42
++minimum_train_configurations = 100
++minimum_monitor_configurations = 20
++require_target_elements = true
++allow_small_corpus = false
++allow_unspecified_label_provenance = false
++
++[acceptance]
++# Null thresholds are reported but not hard gates. Set project-specific values before production.
++maximum_energy_mae_ev_per_atom = 0.005
++maximum_focus_force_rmse_ev_per_angstrom = 0.10
++maximum_stress_rmse_ev_per_angstrom3 = 0.02
++maximum_worst_condition_force_rmse_ev_per_angstrom = 0.15
++# Applied only when the replay monitor carries genuine TRUE_DFT labels.
++# Foundation-pseudolabel replay is a regularization diagnostic and never an
++# accuracy/admissibility gate because the foundation self-error denominator is ~0.
++maximum_replay_degradation_fraction = 0.20
++
++[evaluation]
++device = "cuda"
++dtype = "float32"
++# Permit checkpoint evaluation after any run completes. Incomplete campaigns are
++# labeled interim and cannot create a production protocol freeze.
++allow_partial_campaign = true
++# Native MACE graph batch. CUDA OOM automatically bisects the active batch.
++batch_size = 8
++# Use MACE's already-computed per-epoch validation history to shortlist a small
++# number of checkpoints for authoritative mdstats target/replay monitor inference.
++# Set 0 to evaluate every saved epoch checkpoint.
++max_checkpoints_per_run = 4
++# Immutable monitor and foundation-baseline results are reused across checkpoints.
++cache_monitor_datasets = true
++cache_replay_baseline = true
++# Evaluate both the foundation and every candidate on the DFT target monitor.
++# Legacy campaign files that omit this key preserve their prior target-only behavior
++# unless [paths].replay_true_labels is added.
++evaluate_foundation_on_target = true
++# Leave blank for a single-head foundation checkpoint; set an explicit head only when needed.
++replay_baseline_head = ""
++
++[preflight]
++timeout_seconds = 1800
++num_threads = 1
++# The real one-epoch smoke uses deterministic bounded subsets. DATA8 byte and
++# numerical verification already covers the complete production corpora.
++target_train_configurations = 32
++target_valid_configurations = 8
++replay_train_configurations = 64
++replay_valid_configurations = 8
++
++[verification]
++# Permit bounded checks on the latest completed-model set when the full campaign
++# is unfinished. Evidence is explicitly graded and never treated as a freeze.
++allow_interim_completed_models = true
++# Equilibrated POSCAR/CONTCAR/extxyz structures used for bounded NVE checks.
++structures = []
++temperatures_kelvin = [300.0, 700.0, 800.0]
++device = "cuda"
++dtype = "float32"
++timestep_fs = 0.5
++# Reused across committee members so model comparisons start from identical velocities.
++velocity_seed = 314159
++# Full NVE length for deployment/final models.
++steps = 2000
++# Fold-only comparison models receive one short high-temperature divergence smoke.
++screening_steps = 200
++# Integrate every MD step, but compute drift/min-distance/max-force diagnostics
++# only at this cadence to avoid an O(N^2) distance matrix at every step.
++sample_interval_steps = 10
++# Omit to use the maximum configured verification temperature.
++# screening_temperature_kelvin = 800.0
++maximum_energy_drift_ev_per_atom_per_ps = 0.026
++minimum_pair_distance_angstrom = 0.8
++maximum_force_ev_per_angstrom = 100.0
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/docs/README.md mdstats-0.20.104a0/docs/README.md
+--- mdstats-0.20.103a0/docs/README.md	2026-08-05 18:20:00.000000000 +0000
++++ mdstats-0.20.104a0/docs/README.md	2026-08-08 09:03:46.590566671 +0000
+@@ -17,8 +17,8 @@
+   leakage-safe partitioning, feature/selection orchestration, MACE replay,
+   selectable and critical precision, production qualification, campaign
+   freezing, checkpoint inventory, and constrained selection.
+-- `arch_manuals/mlff_training_data_dependency_graph.json` is schema 24,
+-  architecture revision 20. LTA/ring/site features remain optional enrichment
++- `arch_manuals/mlff_training_data_dependency_graph.json` is schema 26,
++  architecture revision 22. LTA/ring/site features remain optional enrichment
+   rather than generic-core assumptions.
+ - `specs/training_data/mlff_data_stage_plan_spec.{md,pdf}` defines the gated
+   implementation order. DATA9A9a-c and DATA9B1-B3A are implemented; the real production corpus
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/docs/arch_manuals/README.md mdstats-0.20.104a0/docs/arch_manuals/README.md
+--- mdstats-0.20.103a0/docs/arch_manuals/README.md	2026-08-08 01:30:43.000000000 +0000
++++ mdstats-0.20.104a0/docs/arch_manuals/README.md	2026-08-08 09:03:46.590790724 +0000
+@@ -45,14 +45,15 @@
+ ## MLFF architecture
+ 
+ - `mlff_training_data_architecture.{md,pdf}`: canonical MLFF-DATA architecture
+-  through the frozen 0.20.99a0 scientific campaign identity and the 0.20.103a0
+-  execution-optimization line, including the recorded post-first-campaign staged
++  through the frozen 0.20.99a0 scientific campaign identity, the 0.20.103a0
++  execution-optimization line, and the 0.20.104a0 source-tool/package-integrity
++  repair, including the recorded post-first-campaign staged
+   optimization roadmap (`OPT-EVAL1` through `OPT-CTRL1`). The generic core owns provenance, eligibility,
+   partitioning, leakage control, selection orchestration, replay, precision,
+   training-backend calls, deployment, and validation policy. Physical
+   observables remain analysis-owned. LTA/ring/site semantics are an optional
+   profile extensions. DATA9A7a declarative contracts, DATA9A7b universal structural providers, DATA9A7c phase/geometry profiles, DATA9A7d optional-extension/LTA migration, and DATA9A7e cross-system qualification, DATA9A8 observable comparison, and DATA9A9a restartable production model sweeps are implemented.
+-- `mlff_training_data_dependency_graph.json`: machine-readable schema-24,
+-  architecture-revision-20 dependency graph. It separates generic material
++- `mlff_training_data_dependency_graph.json`: machine-readable schema-26,
++  architecture-revision-22 dependency graph. It separates generic material
+   profiles and observable validation from optional LTA enrichment and freezes
+   holdout/protocol-exclusion dependencies. Revision 20 adds DATA2A automatic review-manifest inference and verified strain promotion.
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/docs/arch_manuals/mlff_training_data_dependency_graph.json mdstats-0.20.104a0/docs/arch_manuals/mlff_training_data_dependency_graph.json
+--- mdstats-0.20.103a0/docs/arch_manuals/mlff_training_data_dependency_graph.json	1970-01-01 00:00:00.000000000 +0000
++++ mdstats-0.20.104a0/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-08 09:00:58.728403190 +0000
+@@ -0,0 +1,3145 @@
++{
++  "schema_version": 26,
++  "architecture_revision": 22,
++  "branch": "MLFF-DATA",
++  "documentation_gate": "MLFF-DATA0",
++  "description": "MLFF training-data dependency graph through DATA2A automatic review-manifest inference, DATA9B3A frozen e3nn/cuEquivariance campaigns, and MLFF-PERF2 resource-aware process/GPU execution; revision 21 binds CPU/RAM/VRAM plans to campaign execution without changing scientific policy.",
++  "edge_type_definitions": {
++    "source_identity_requires": "Exact source or checkpoint identity is required.",
++    "execution_requires": "The upstream product must exist before execution.",
++    "promotion_requires": "The upstream product must pass a declared predicate.",
++    "fit_domain_requires": "The fitted object may inspect only the declared training domain.",
++    "optional_enrichment": "The upstream product enriches but is not required for the base path.",
++    "replay_triggers": "The upstream event creates a new immutable generation."
++  },
++  "nodes": [
++    {
++      "id": "ACQUISITION_DECISIONS"
++    },
++    {
++      "id": "ADAPTIVE_INFERENCE_CONCURRENCY_PLAN"
++    },
++    {
++      "id": "ANALYSIS_LOCAL_STRUCTURE_FEATURES"
++    },
++    {
++      "id": "ASE_MD_STATE_PRECISION_AUDIT"
++    },
++    {
++      "id": "ATOMIC_MODEL_PREDICTION_MANIFEST"
++    },
++    {
++      "id": "ATOM_GROUP_CATALOG"
++    },
++    {
++      "id": "BLINDED_EVALUATION_PREDICTIONS"
++    },
++    {
++      "id": "BLINDING_BOUNDARY_CATALOG"
++    },
++    {
++      "id": "BOUNDED_DEPLOYMENT_VERIFICATION"
++    },
++    {
++      "id": "CALIBRATION_APPLICABILITY_DOMAIN"
++    },
++    {
++      "id": "CALIBRATION_DOMAIN"
++    },
++    {
++      "id": "CALIBRATION_TRANSFER_DECISION"
++    },
++    {
++      "id": "CAMPAIGN_CLI_CONFIGURATION"
++    },
++    {
++      "id": "CAMPAIGN_MANIFEST_APPROVAL"
++    },
++    {
++      "id": "CAMPAIGN_PREFLIGHT_RECORD"
++    },
++    {
++      "id": "CAMPAIGN_PREPARATION_GATE"
++    },
++    {
++      "id": "CAMPAIGN_RESULT_SUMMARY"
++    },
++    {
++      "id": "CAMPAIGN_STATE_DATABASE"
++    },
++    {
++      "id": "CAMPAIGN_STATUS_VIEW"
++    },
++    {
++      "id": "CANDIDATE_ADMISSIBILITY"
++    },
++    {
++      "id": "CANDIDATE_CATALOG"
++    },
++    {
++      "id": "CANDIDATE_CHECKPOINT_CATALOG"
++    },
++    {
++      "id": "CANDIDATE_TRAJECTORIES"
++    },
++    {
++      "id": "CHECKPOINT_ADMISSIBILITY_DECISION"
++    },
++    {
++      "id": "CHECKPOINT_EVALUATION_POLICY"
++    },
++    {
++      "id": "CHECKPOINT_EVALUATION_RECORD"
++    },
++    {
++      "id": "CHECKPOINT_METRIC_POLICY"
++    },
++    {
++      "id": "CHECKPOINT_METRIC_RECORD"
++    },
++    {
++      "id": "CHECKPOINT_SELECTION_DECISION"
++    },
++    {
++      "id": "CHECKPOINT_SELECTION_RECORD"
++    },
++    {
++      "id": "COMMITTEE_EXPORT_POLICY"
++    },
++    {
++      "id": "COMMITTEE_IDENTITY"
++    },
++    {
++      "id": "COMMITTEE_MEMBER_RECORD"
++    },
++    {
++      "id": "CONDITION_AXIS_CATALOG"
++    },
++    {
++      "id": "CONFIGURATION_WEIGHT_POLICY"
++    },
++    {
++      "id": "CPU_INFERENCE_TELEMETRY"
++    },
++    {
++      "id": "CPU_RAM_PARALLEL_EXECUTION_PLAN"
++    },
++    {
++      "id": "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE"
++    },
++    {
++      "id": "CROSS_SYSTEM_QUALIFICATION_POLICY"
++    },
++    {
++      "id": "CROSS_SYSTEM_QUALIFICATION_SUITE"
++    },
++    {
++      "id": "CROSS_VALIDATION_JOB_FAMILY"
++    },
++    {
++      "id": "CROSS_VALIDATION_PLAN"
++    },
++    {
++      "id": "DATA6_MODEL_SWEEP_CHECKPOINT"
++    },
++    {
++      "id": "DATA6_MODEL_SWEEP_EXECUTION_POLICY"
++    },
++    {
++      "id": "DATA6_MODEL_SWEEP_PLAN"
++    },
++    {
++      "id": "DATA8_ATOMIC_PROMOTION"
++    },
++    {
++      "id": "DATA9A_GATE"
++    },
++    {
++      "id": "DATA9B_EXECUTION"
++    },
++    {
++      "id": "DERIVATIVE_CONVENTION"
++    },
++    {
++      "id": "DEVELOPMENT_MACE_BUNDLE"
++    },
++    {
++      "id": "DEVELOPMENT_POOL"
++    },
++    {
++      "id": "DFT_QUERY_MANIFEST"
++    },
++    {
++      "id": "ENERGY_REFERENCE_IDENTITY"
++    },
++    {
++      "id": "ENSEMBLE_CERTIFICATE"
++    },
++    {
++      "id": "EVALUATION_ACTIVATION_DECISION"
++    },
++    {
++      "id": "EVALUATION_RESULT_CATALOG"
++    },
++    {
++      "id": "EVENT_CATALOG"
++    },
++    {
++      "id": "EXPOSURE_BACKEND_POLICY"
++    },
++    {
++      "id": "FEATURE_METRIC_POLICY_TEMPLATE"
++    },
++    {
++      "id": "FILENAME_STRAIN_CANDIDATE"
++    },
++    {
++      "id": "FINAL_ATOMIC_REFERENCE_FIT"
++    },
++    {
++      "id": "FINAL_COMMITTEE_CALIBRATION_PREDICTIONS"
++    },
++    {
++      "id": "FINAL_FEATURE_METRIC_FIT"
++    },
++    {
++      "id": "FINAL_FEATURE_TRANSFORM"
++    },
++    {
++      "id": "FINAL_SELECTION_MASTER_ORDER"
++    },
++    {
++      "id": "FINAL_TARGET_TRAINING_DOMAIN"
++    },
++    {
++      "id": "FINAL_TRAINING_DIFFICULTY_FEATURES"
++    },
++    {
++      "id": "FOCUS_ATOM_GROUP_POLICY"
++    },
++    {
++      "id": "FOLD_ATOMIC_REFERENCE_FITS"
++    },
++    {
++      "id": "FOLD_CHECKPOINT_MONITORS"
++    },
++    {
++      "id": "FOLD_DEFINITIONS"
++    },
++    {
++      "id": "FOLD_EVALUATION_DOMAINS"
++    },
++    {
++      "id": "FOLD_FEATURE_METRIC_FITS"
++    },
++    {
++      "id": "FOLD_LOCAL_SELECTIONS"
++    },
++    {
++      "id": "FOLD_LOCAL_TRANSFORMS"
++    },
++    {
++      "id": "FOLD_TRAINING_DIFFICULTY_FEATURES"
++    },
++    {
++      "id": "FOLD_TRAIN_DOMAINS"
++    },
++    {
++      "id": "FOUNDATION_CHECKPOINT"
++    },
++    {
++      "id": "FOUNDATION_RESIDUAL_E0_FIT"
++    },
++    {
++      "id": "FRAME_CATALOG"
++    },
++    {
++      "id": "FRAME_ELIGIBILITY"
++    },
++    {
++      "id": "FRAME_FACTS"
++    },
++    {
++      "id": "GENERIC_IMPORT_ISOLATION_EVIDENCE"
++    },
++    {
++      "id": "GENERIC_STRUCTURAL_EVENT_CATALOG"
++    },
++    {
++      "id": "GEOMETRY_FINGERPRINT"
++    },
++    {
++      "id": "GPU_INFERENCE_TELEMETRY"
++    },
++    {
++      "id": "GPU_VRAM_BATCH_EXECUTION_PLAN"
++    },
++    {
++      "id": "INDEPENDENCE_AXIS_CATALOG"
++    },
++    {
++      "id": "INSTALLED_MACE_QUALIFICATION"
++    },
++    {
++      "id": "ISOLATED_TRAJECTORY_WORKER"
++    },
++    {
++      "id": "LABELED_ACTIVE_ROUND"
++    },
++    {
++      "id": "LABELED_CONFIGURATION_FINGERPRINT"
++    },
++    {
++      "id": "LABELED_FRAME_ELIGIBILITY"
++    },
++    {
++      "id": "LABEL_DOMAIN"
++    },
++    {
++      "id": "LABEL_PAYLOAD_DIGEST"
++    },
++    {
++      "id": "LEAKAGE_AUDIT_REPORT"
++    },
++    {
++      "id": "LEARNING_CURVE_RECORD"
++    },
++    {
++      "id": "LOCKED_CHALLENGE_TESTS"
++    },
++    {
++      "id": "LOCKED_INTERPOLATION_TEST"
++    },
++    {
++      "id": "LOCKED_TEST_OBSERVABLE_EVIDENCE"
++    },
++    {
++      "id": "LTA_PROFILE_EXTENSION"
++    },
++    {
++      "id": "MACE_ACCELERATION_POLICY"
++    },
++    {
++      "id": "MACE_ACCELERATION_PROBE"
++    },
++    {
++      "id": "MACE_ADAPTER_LOCK"
++    },
++    {
++      "id": "MACE_CHECKPOINT_CONTROL_POLICY"
++    },
++    {
++      "id": "MACE_CLI_SMOKE_RECORD"
++    },
++    {
++      "id": "MACE_CONFIG_REALIZATION_RECORD"
++    },
++    {
++      "id": "MACE_CRITICAL_PRECISION_AUDIT"
++    },
++    {
++      "id": "MACE_CRITICAL_PRECISION_POLICY"
++    },
++    {
++      "id": "MACE_DATALOADER_WORKER_PLAN"
++    },
++    {
++      "id": "MACE_DEPENDENCY_MANIFEST"
++    },
++    {
++      "id": "MACE_DEPLOYMENT_ARTIFACT"
++    },
++    {
++      "id": "MACE_DEPLOYMENT_EXPORT_POLICY"
++    },
++    {
++      "id": "MACE_EXPOSURE_REALIZATION_RECORD"
++    },
++    {
++      "id": "MACE_INFERENCE_COMPARISON"
++    },
++    {
++      "id": "MACE_JOB_EXECUTION_SMOKE_RECORD"
++    },
++    {
++      "id": "MACE_MODEL_PRECISION_RECORD"
++    },
++    {
++      "id": "MACE_PRECISION_POLICY"
++    },
++    {
++      "id": "MACE_PRECISION_TRANSITION_RECORD"
++    },
++    {
++      "id": "MACE_RAW_DESCRIPTORS"
++    },
++    {
++      "id": "MACE_RUNTIME_ENVIRONMENT_RECORD"
++    },
++    {
++      "id": "MANIFEST_INFERENCE_POLICY"
++    },
++    {
++      "id": "MATERIAL_PROFILE_CONTRACTS"
++    },
++    {
++      "id": "MATERIAL_PROFILE_IDENTITY"
++    },
++    {
++      "id": "MATERIAL_PROFILE_PROVIDER_IDENTITY"
++    },
++    {
++      "id": "MLFF_CAMPAIGN_CLI_TOOL"
++    },
++    {
++      "id": "MLFF_CAMPAIGN_USER_GUIDE"
++    },
++    {
++      "id": "NATIVE_MACE_GRAPH_BATCH"
++    },
++    {
++      "id": "NEW_DATASET_GENERATION"
++    },
++    {
++      "id": "NUMERICAL_QUALITY_PROFILE"
++    },
++    {
++      "id": "OBSERVABLE_ACCEPTANCE_DECISION"
++    },
++    {
++      "id": "OBSERVABLE_ANALYSIS_RECIPE"
++    },
++    {
++      "id": "OBSERVABLE_COLLECTION_IDENTITIES"
++    },
++    {
++      "id": "OBSERVABLE_COMPARISON_POLICY"
++    },
++    {
++      "id": "OBSERVABLE_COMPARISON_RESULT"
++    },
++    {
++      "id": "OBSERVABLE_COMPARISON_RULES"
++    },
++    {
++      "id": "OBSERVABLE_RESULT_IDENTITIES"
++    },
++    {
++      "id": "OBSERVABLE_SCOPE_AGGREGATION"
++    },
++    {
++      "id": "OBSERVABLE_SCORE_UNCERTAINTY"
++    },
++    {
++      "id": "OBSERVABLE_VALIDATION_ACTIVATION_RECORD"
++    },
++    {
++      "id": "OBSERVABLE_VALIDATION_EVIDENCE"
++    },
++    {
++      "id": "OFFLINE_MACE_WHEELHOUSE"
++    },
++    {
++      "id": "OPTIONAL_PROFILE_EXTENSION_PROVIDER"
++    },
++    {
++      "id": "OUTER_MONITOR_VALIDATION"
++    },
++    {
++      "id": "OUTER_PARTITION"
++    },
++    {
++      "id": "OUT_OF_FOLD_PREDICTIONS"
++    },
++    {
++      "id": "PARALLEL_CHECKPOINT_EVALUATION"
++    },
++    {
++      "id": "PARALLEL_NVE_VERIFICATION"
++    },
++    {
++      "id": "PARTITION_CRITICAL_PROFILE_FEATURES"
++    },
++    {
++      "id": "PARTITION_FEASIBILITY_REPORT"
++    },
++    {
++      "id": "PARTITION_INDEPENDENCE_REPORT"
++    },
++    {
++      "id": "PARTITION_ROLE_BUDGET_POLICY"
++    },
++    {
++      "id": "PARTITION_UNIT_CATALOG"
++    },
++    {
++      "id": "PHASE_COMPONENT_IDENTITIES"
++    },
++    {
++      "id": "PHASE_GEOMETRY_SELECTION_PLAN"
++    },
++    {
++      "id": "PORTABLE_MACE_BUNDLE"
++    },
++    {
++      "id": "PREDECLARED_OBSERVABLE_THRESHOLDS"
++    },
++    {
++      "id": "PRODUCTION_CORPUS_PLAN"
++    },
++    {
++      "id": "PRODUCTION_DATA7_ARTIFACTS"
++    },
++    {
++      "id": "PRODUCTION_DATA8_ARTIFACT"
++    },
++    {
++      "id": "PRODUCTION_GATE_INTEGRITY_EVIDENCE"
++    },
++    {
++      "id": "PRODUCTION_MATERIALIZATION_CHECKPOINT"
++    },
++    {
++      "id": "PRODUCTION_MATERIALIZATION_PLAN"
++    },
++    {
++      "id": "PRODUCTION_MATERIALIZATION_RECORD"
++    },
++    {
++      "id": "PRODUCTION_PREPARATION_BENCHMARK"
++    },
++    {
++      "id": "PRODUCTION_REGIMES"
++    },
++    {
++      "id": "PROFILE_BOUND_UNIVERSAL_STRUCTURAL_POLICY"
++    },
++    {
++      "id": "PROFILE_ENVIRONMENT_COVERAGE"
++    },
++    {
++      "id": "PROFILE_EVENT_CATALOGS"
++    },
++    {
++      "id": "PROFILE_EXTENSION_COVERAGE_EVIDENCE"
++    },
++    {
++      "id": "PROFILE_OBSERVABLE_RECOMMENDATIONS"
++    },
++    {
++      "id": "PROFILE_PARTITION_FEATURE_CATALOGS"
++    },
++    {
++      "id": "PROFILE_SELECTION_FEATURE_CATALOGS"
++    },
++    {
++      "id": "PROPERTY_WEIGHT_POLICY"
++    },
++    {
++      "id": "PROTOCOL_COMPARISON_RECORD"
++    },
++    {
++      "id": "PROTOCOL_FAMILY_AGGREGATE"
++    },
++    {
++      "id": "PROTOCOL_FREEZE_RECORD"
++    },
++    {
++      "id": "PROTOCOL_VARIANT_AGGREGATE"
++    },
++    {
++      "id": "PYTHON_ASE_MACE_EXECUTION"
++    },
++    {
++      "id": "RAW_GENERIC_FEATURES"
++    },
++    {
++      "id": "REFERENCE_CELL"
++    },
++    {
++      "id": "REPLAY_LABEL_PAYLOAD_IDENTITY"
++    },
++    {
++      "id": "REPLAY_MONITOR"
++    },
++    {
++      "id": "REPLAY_PLAN"
++    },
++    {
++      "id": "REPLAY_RETENTION_POLICY"
++    },
++    {
++      "id": "REPLAY_SOURCE"
++    },
++    {
++      "id": "REVIEW_MANIFEST_INFERENCE_RESULT"
++    },
++    {
++      "id": "ROLE_INHERITANCE_POLICY"
++    },
++    {
++      "id": "SEALED_EVALUATION_BUNDLE"
++    },
++    {
++      "id": "SELECTION_BUDGET_POLICY"
++    },
++    {
++      "id": "SELECTION_COVERAGE_REPORT"
++    },
++    {
++      "id": "SELECTION_FEATURE_CATALOGS"
++    },
++    {
++      "id": "SELECTION_LEVEL_IDENTITY"
++    },
++    {
++      "id": "SOFTWARE_PROVENANCE"
++    },
++    {
++      "id": "SOURCE_BYTES"
++    },
++    {
++      "id": "SOURCE_CATALOG"
++    },
++    {
++      "id": "SOURCE_OCCURRENCE_IDENTITY"
++    },
++    {
++      "id": "STRUCTURAL_ATOMIC_REFERENCE_AUDIT"
++    },
++    {
++      "id": "STRUCTURAL_ATOMIC_REFERENCE_FIT_POLICY"
++    },
++    {
++      "id": "SYSTEM_RESOURCE_SNAPSHOT"
++    },
++    {
++      "id": "TEMPORAL_BLOCKS"
++    },
++    {
++      "id": "THEORY_IDENTITY"
++    },
++    {
++      "id": "THERMOMECHANICAL_VALIDATION_RECIPES"
++    },
++    {
++      "id": "TRAINED_COMMITTEE"
++    },
++    {
++      "id": "TRAINING_CAMPAIGN_PLAN"
++    },
++    {
++      "id": "TRAINING_CAMPAIGN_POLICY"
++    },
++    {
++      "id": "TRAINING_CAMPAIGN_RUN_PLAN"
++    },
++    {
++      "id": "TRAINING_CHECKPOINTS"
++    },
++    {
++      "id": "TRAINING_EXECUTION_POLICY"
++    },
++    {
++      "id": "TRAINING_OBJECTIVE_POLICY"
++    },
++    {
++      "id": "TRAINING_PROTOCOL_IDENTITY"
++    },
++    {
++      "id": "TRAINING_RUN_ATTEMPT_RECORD"
++    },
++    {
++      "id": "TRAINING_RUN_EXECUTION_RECORD"
++    },
++    {
++      "id": "TRAINING_SELECTION_LADDER"
++    },
++    {
++      "id": "TRAJECTORY_COLLECTION"
++    },
++    {
++      "id": "TRAJECTORY_GENERATION_IDENTITIES"
++    },
++    {
++      "id": "TRAJECTORY_QUALITY"
++    },
++    {
++      "id": "UNCERTAINTY_CALIBRATION"
++    },
++    {
++      "id": "UNCERTAINTY_SIGNAL_DIAGNOSTIC"
++    },
++    {
++      "id": "UNIVERSAL_STRUCTURAL_FEATURE_CATALOG"
++    },
++    {
++      "id": "VASP_CONTROLS"
++    },
++    {
++      "id": "VERIFIED_STRAIN_RELATIONSHIP"
++    }
++  ],
++  "edges": [
++    {
++      "from": "ACQUISITION_DECISIONS",
++      "to": "DFT_QUERY_MANIFEST",
++      "type": "execution_requires"
++    },
++    {
++      "from": "ADAPTIVE_INFERENCE_CONCURRENCY_PLAN",
++      "to": "PARALLEL_CHECKPOINT_EVALUATION",
++      "type": "execution_requires"
++    },
++    {
++      "from": "ADAPTIVE_INFERENCE_CONCURRENCY_PLAN",
++      "to": "PARALLEL_NVE_VERIFICATION",
++      "type": "execution_requires"
++    },
++    {
++      "from": "ANALYSIS_LOCAL_STRUCTURE_FEATURES",
++      "to": "PROFILE_BOUND_UNIVERSAL_STRUCTURAL_POLICY",
++      "type": "execution_requires"
++    },
++    {
++      "from": "ANALYSIS_LOCAL_STRUCTURE_FEATURES",
++      "to": "UNIVERSAL_STRUCTURAL_FEATURE_CATALOG",
++      "type": "execution_requires"
++    },
++    {
++      "from": "ASE_MD_STATE_PRECISION_AUDIT",
++      "to": "PYTHON_ASE_MACE_EXECUTION",
++      "type": "execution_requires"
++    },
++    {
++      "from": "ATOMIC_MODEL_PREDICTION_MANIFEST",
++      "to": "BLINDED_EVALUATION_PREDICTIONS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "ATOMIC_MODEL_PREDICTION_MANIFEST",
++      "to": "FINAL_TRAINING_DIFFICULTY_FEATURES",
++      "type": "execution_requires"
++    },
++    {
++      "from": "ATOMIC_MODEL_PREDICTION_MANIFEST",
++      "to": "FOLD_TRAINING_DIFFICULTY_FEATURES",
++      "type": "execution_requires"
++    },
++    {
++      "from": "ATOMIC_MODEL_PREDICTION_MANIFEST",
++      "to": "FOUNDATION_RESIDUAL_E0_FIT",
++      "type": "execution_requires"
++    },
++    {
++      "from": "ATOM_GROUP_CATALOG",
++      "to": "FOCUS_ATOM_GROUP_POLICY",
++      "type": "execution_requires"
++    },
++    {
++      "from": "ATOM_GROUP_CATALOG",
++      "to": "MATERIAL_PROFILE_CONTRACTS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "ATOM_GROUP_CATALOG",
++      "to": "OBSERVABLE_SCOPE_AGGREGATION",
++      "type": "source_identity_requires",
++      "predicate": "group_scoped_rules_only"
++    },
++    {
++      "from": "ATOM_GROUP_CATALOG",
++      "to": "PARTITION_CRITICAL_PROFILE_FEATURES",
++      "type": "execution_requires"
++    },
++    {
++      "from": "ATOM_GROUP_CATALOG",
++      "to": "SELECTION_FEATURE_CATALOGS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "ATOM_GROUP_CATALOG",
++      "to": "UNIVERSAL_STRUCTURAL_FEATURE_CATALOG",
++      "type": "execution_requires"
++    },
++    {
++      "from": "BOUNDED_DEPLOYMENT_VERIFICATION",
++      "to": "CAMPAIGN_RESULT_SUMMARY",
++      "type": "execution_requires"
++    },
++    {
++      "from": "CALIBRATION_APPLICABILITY_DOMAIN",
++      "to": "CALIBRATION_TRANSFER_DECISION",
++      "type": "execution_requires"
++    },
++    {
++      "from": "CALIBRATION_DOMAIN",
++      "to": "BLINDED_EVALUATION_PREDICTIONS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "CALIBRATION_DOMAIN",
++      "to": "CALIBRATION_APPLICABILITY_DOMAIN",
++      "type": "execution_requires"
++    },
++    {
++      "from": "CALIBRATION_DOMAIN",
++      "to": "FINAL_COMMITTEE_CALIBRATION_PREDICTIONS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "CALIBRATION_TRANSFER_DECISION",
++      "to": "ACQUISITION_DECISIONS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "CAMPAIGN_CLI_CONFIGURATION",
++      "to": "CAMPAIGN_MANIFEST_APPROVAL",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "CAMPAIGN_CLI_CONFIGURATION",
++      "to": "CAMPAIGN_PREPARATION_GATE",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "CAMPAIGN_CLI_CONFIGURATION",
++      "to": "MACE_ACCELERATION_POLICY",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "CAMPAIGN_CLI_CONFIGURATION",
++      "to": "MANIFEST_INFERENCE_POLICY",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "CAMPAIGN_CLI_CONFIGURATION",
++      "to": "MLFF_CAMPAIGN_CLI_TOOL",
++      "type": "execution_requires"
++    },
++    {
++      "from": "CAMPAIGN_MANIFEST_APPROVAL",
++      "to": "SOURCE_CATALOG",
++      "type": "execution_requires"
++    },
++    {
++      "from": "CAMPAIGN_PREFLIGHT_RECORD",
++      "to": "TRAINING_RUN_EXECUTION_RECORD",
++      "type": "promotion_requires"
++    },
++    {
++      "from": "CAMPAIGN_PREPARATION_GATE",
++      "to": "TRAINING_CAMPAIGN_PLAN",
++      "type": "promotion_requires"
++    },
++    {
++      "from": "CAMPAIGN_STATE_DATABASE",
++      "to": "CAMPAIGN_STATUS_VIEW",
++      "type": "execution_requires"
++    },
++    {
++      "from": "CANDIDATE_ADMISSIBILITY",
++      "to": "ACQUISITION_DECISIONS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "CANDIDATE_CATALOG",
++      "to": "CANDIDATE_ADMISSIBILITY",
++      "type": "execution_requires"
++    },
++    {
++      "from": "CANDIDATE_CHECKPOINT_CATALOG",
++      "to": "CHECKPOINT_ADMISSIBILITY_DECISION",
++      "type": "execution_requires"
++    },
++    {
++      "from": "CANDIDATE_CHECKPOINT_CATALOG",
++      "to": "CHECKPOINT_EVALUATION_RECORD",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "CANDIDATE_TRAJECTORIES",
++      "to": "CANDIDATE_CATALOG",
++      "type": "execution_requires"
++    },
++    {
++      "from": "CHECKPOINT_ADMISSIBILITY_DECISION",
++      "to": "CHECKPOINT_SELECTION_RECORD",
++      "type": "execution_requires"
++    },
++    {
++      "from": "CHECKPOINT_EVALUATION_POLICY",
++      "to": "CHECKPOINT_EVALUATION_RECORD",
++      "type": "execution_requires"
++    },
++    {
++      "from": "CHECKPOINT_EVALUATION_RECORD",
++      "to": "CAMPAIGN_STATE_DATABASE",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "CHECKPOINT_EVALUATION_RECORD",
++      "to": "CHECKPOINT_METRIC_RECORD",
++      "type": "promotion_requires"
++    },
++    {
++      "from": "CHECKPOINT_METRIC_POLICY",
++      "to": "CHECKPOINT_ADMISSIBILITY_DECISION",
++      "type": "execution_requires"
++    },
++    {
++      "from": "CHECKPOINT_METRIC_POLICY",
++      "to": "CHECKPOINT_SELECTION_DECISION",
++      "type": "execution_requires"
++    },
++    {
++      "from": "CHECKPOINT_METRIC_POLICY",
++      "to": "PRODUCTION_MATERIALIZATION_PLAN",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "CHECKPOINT_METRIC_POLICY",
++      "to": "TRAINING_PROTOCOL_IDENTITY",
++      "type": "execution_requires"
++    },
++    {
++      "from": "CHECKPOINT_METRIC_RECORD",
++      "to": "CHECKPOINT_ADMISSIBILITY_DECISION",
++      "type": "execution_requires"
++    },
++    {
++      "from": "CHECKPOINT_SELECTION_DECISION",
++      "to": "PROTOCOL_FREEZE_RECORD",
++      "type": "execution_requires"
++    },
++    {
++      "from": "CHECKPOINT_SELECTION_DECISION",
++      "to": "TRAINED_COMMITTEE",
++      "type": "execution_requires"
++    },
++    {
++      "from": "CHECKPOINT_SELECTION_RECORD",
++      "to": "CHECKPOINT_SELECTION_DECISION",
++      "type": "execution_requires"
++    },
++    {
++      "from": "CHECKPOINT_SELECTION_RECORD",
++      "to": "COMMITTEE_MEMBER_RECORD",
++      "type": "execution_requires"
++    },
++    {
++      "from": "CHECKPOINT_SELECTION_RECORD",
++      "to": "PROTOCOL_VARIANT_AGGREGATE",
++      "type": "execution_requires"
++    },
++    {
++      "from": "COMMITTEE_EXPORT_POLICY",
++      "to": "COMMITTEE_MEMBER_RECORD",
++      "type": "execution_requires"
++    },
++    {
++      "from": "COMMITTEE_IDENTITY",
++      "to": "BOUNDED_DEPLOYMENT_VERIFICATION",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "COMMITTEE_IDENTITY",
++      "to": "PROTOCOL_FREEZE_RECORD",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "COMMITTEE_IDENTITY",
++      "to": "TRAINED_COMMITTEE",
++      "type": "promotion_requires"
++    },
++    {
++      "from": "COMMITTEE_MEMBER_RECORD",
++      "to": "COMMITTEE_IDENTITY",
++      "type": "execution_requires"
++    },
++    {
++      "from": "CONDITION_AXIS_CATALOG",
++      "to": "MATERIAL_PROFILE_CONTRACTS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "CONDITION_AXIS_CATALOG",
++      "to": "OBSERVABLE_SCOPE_AGGREGATION",
++      "type": "source_identity_requires",
++      "predicate": "condition_scoped_rules_only"
++    },
++    {
++      "from": "CONDITION_AXIS_CATALOG",
++      "to": "OUTER_PARTITION",
++      "type": "execution_requires"
++    },
++    {
++      "from": "CONFIGURATION_WEIGHT_POLICY",
++      "to": "TRAINING_PROTOCOL_IDENTITY",
++      "type": "execution_requires"
++    },
++    {
++      "from": "CPU_INFERENCE_TELEMETRY",
++      "to": "ADAPTIVE_INFERENCE_CONCURRENCY_PLAN",
++      "type": "execution_requires"
++    },
++    {
++      "from": "CPU_RAM_PARALLEL_EXECUTION_PLAN",
++      "to": "ISOLATED_TRAJECTORY_WORKER",
++      "type": "execution_requires"
++    },
++    {
++      "from": "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
++      "to": "CROSS_SYSTEM_QUALIFICATION_SUITE",
++      "type": "execution_requires"
++    },
++    {
++      "from": "CROSS_SYSTEM_QUALIFICATION_POLICY",
++      "to": "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
++      "type": "execution_requires"
++    },
++    {
++      "from": "CROSS_SYSTEM_QUALIFICATION_POLICY",
++      "to": "GENERIC_IMPORT_ISOLATION_EVIDENCE",
++      "type": "execution_requires"
++    },
++    {
++      "from": "CROSS_VALIDATION_JOB_FAMILY",
++      "to": "OUT_OF_FOLD_PREDICTIONS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "CROSS_VALIDATION_PLAN",
++      "to": "FOLD_CHECKPOINT_MONITORS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "CROSS_VALIDATION_PLAN",
++      "to": "FOLD_EVALUATION_DOMAINS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "CROSS_VALIDATION_PLAN",
++      "to": "LEAKAGE_AUDIT_REPORT",
++      "type": "execution_requires"
++    },
++    {
++      "from": "DATA6_MODEL_SWEEP_CHECKPOINT",
++      "to": "ATOMIC_MODEL_PREDICTION_MANIFEST",
++      "type": "promotion_requires",
++      "predicate": "checkpoint_complete_and_verified"
++    },
++    {
++      "from": "DATA6_MODEL_SWEEP_CHECKPOINT",
++      "to": "DATA9A_GATE",
++      "type": "promotion_requires",
++      "predicate": "checkpoint_complete_and_verified"
++    },
++    {
++      "from": "DATA6_MODEL_SWEEP_CHECKPOINT",
++      "to": "MACE_RAW_DESCRIPTORS",
++      "type": "promotion_requires",
++      "predicate": "checkpoint_complete_and_verified"
++    },
++    {
++      "from": "DATA6_MODEL_SWEEP_CHECKPOINT",
++      "to": "PRODUCTION_MATERIALIZATION_PLAN",
++      "type": "promotion_requires",
++      "predicate": "checkpoint_complete_and_verified"
++    },
++    {
++      "from": "DATA6_MODEL_SWEEP_EXECUTION_POLICY",
++      "to": "DATA6_MODEL_SWEEP_CHECKPOINT",
++      "type": "execution_requires"
++    },
++    {
++      "from": "DATA6_MODEL_SWEEP_PLAN",
++      "to": "ATOMIC_MODEL_PREDICTION_MANIFEST",
++      "type": "execution_requires"
++    },
++    {
++      "from": "DATA6_MODEL_SWEEP_PLAN",
++      "to": "DATA6_MODEL_SWEEP_CHECKPOINT",
++      "type": "execution_requires"
++    },
++    {
++      "from": "DATA6_MODEL_SWEEP_PLAN",
++      "to": "MACE_RAW_DESCRIPTORS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "DATA8_ATOMIC_PROMOTION",
++      "to": "PRODUCTION_MATERIALIZATION_RECORD",
++      "type": "promotion_requires",
++      "predicate": "atomic_pointer_targets_verified_generation"
++    },
++    {
++      "from": "DATA9A_GATE",
++      "to": "CAMPAIGN_PREPARATION_GATE",
++      "type": "promotion_requires"
++    },
++    {
++      "from": "DATA9A_GATE",
++      "to": "DATA9B_EXECUTION",
++      "type": "gates"
++    },
++    {
++      "from": "DATA9A_GATE",
++      "to": "TRAINING_CAMPAIGN_PLAN",
++      "type": "gates",
++      "predicate": "full_production_gate_passed"
++    },
++    {
++      "from": "DERIVATIVE_CONVENTION",
++      "to": "LABEL_DOMAIN",
++      "type": "execution_requires"
++    },
++    {
++      "from": "DEVELOPMENT_MACE_BUNDLE",
++      "to": "TRAINING_CHECKPOINTS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "DEVELOPMENT_POOL",
++      "to": "FINAL_TARGET_TRAINING_DOMAIN",
++      "type": "execution_requires"
++    },
++    {
++      "from": "DEVELOPMENT_POOL",
++      "to": "FOLD_DEFINITIONS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "DFT_QUERY_MANIFEST",
++      "to": "LABELED_ACTIVE_ROUND",
++      "type": "execution_requires"
++    },
++    {
++      "from": "ENERGY_REFERENCE_IDENTITY",
++      "to": "LABEL_DOMAIN",
++      "type": "execution_requires"
++    },
++    {
++      "from": "ENSEMBLE_CERTIFICATE",
++      "to": "SOURCE_CATALOG",
++      "type": "execution_requires"
++    },
++    {
++      "from": "ENSEMBLE_CERTIFICATE",
++      "to": "TRAJECTORY_QUALITY",
++      "type": "execution_requires"
++    },
++    {
++      "from": "EVALUATION_ACTIVATION_DECISION",
++      "to": "EVALUATION_RESULT_CATALOG",
++      "type": "promotion_requires",
++      "predicate": "evaluation_activated"
++    },
++    {
++      "from": "EVALUATION_ACTIVATION_DECISION",
++      "to": "LOCKED_TEST_OBSERVABLE_EVIDENCE",
++      "type": "promotion_requires"
++    },
++    {
++      "from": "EVALUATION_ACTIVATION_DECISION",
++      "to": "OBSERVABLE_VALIDATION_ACTIVATION_RECORD",
++      "type": "promotion_requires",
++      "predicate": "locked_test_only"
++    },
++    {
++      "from": "EVENT_CATALOG",
++      "to": "FINAL_SELECTION_MASTER_ORDER",
++      "type": "execution_requires"
++    },
++    {
++      "from": "EVENT_CATALOG",
++      "to": "FOLD_LOCAL_SELECTIONS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "EVENT_CATALOG",
++      "to": "LEAKAGE_AUDIT_REPORT",
++      "type": "execution_requires"
++    },
++    {
++      "from": "EVENT_CATALOG",
++      "to": "PARTITION_UNIT_CATALOG",
++      "type": "execution_requires"
++    },
++    {
++      "from": "EVENT_CATALOG",
++      "to": "TEMPORAL_BLOCKS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "EXPOSURE_BACKEND_POLICY",
++      "to": "TRAINING_PROTOCOL_IDENTITY",
++      "type": "execution_requires"
++    },
++    {
++      "from": "FEATURE_METRIC_POLICY_TEMPLATE",
++      "to": "FINAL_FEATURE_METRIC_FIT",
++      "type": "execution_requires"
++    },
++    {
++      "from": "FEATURE_METRIC_POLICY_TEMPLATE",
++      "to": "FINAL_FEATURE_TRANSFORM",
++      "type": "execution_requires"
++    },
++    {
++      "from": "FEATURE_METRIC_POLICY_TEMPLATE",
++      "to": "FOLD_FEATURE_METRIC_FITS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "FEATURE_METRIC_POLICY_TEMPLATE",
++      "to": "FOLD_LOCAL_TRANSFORMS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "FEATURE_METRIC_POLICY_TEMPLATE",
++      "to": "PRODUCTION_MATERIALIZATION_PLAN",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "FILENAME_STRAIN_CANDIDATE",
++      "to": "VERIFIED_STRAIN_RELATIONSHIP",
++      "type": "execution_requires"
++    },
++    {
++      "from": "FINAL_ATOMIC_REFERENCE_FIT",
++      "to": "DEVELOPMENT_MACE_BUNDLE",
++      "type": "execution_requires"
++    },
++    {
++      "from": "FINAL_COMMITTEE_CALIBRATION_PREDICTIONS",
++      "to": "UNCERTAINTY_CALIBRATION",
++      "type": "execution_requires"
++    },
++    {
++      "from": "FINAL_FEATURE_METRIC_FIT",
++      "to": "FINAL_SELECTION_MASTER_ORDER",
++      "type": "execution_requires"
++    },
++    {
++      "from": "FINAL_FEATURE_METRIC_FIT",
++      "to": "FOUNDATION_RESIDUAL_E0_FIT",
++      "type": "requires"
++    },
++    {
++      "from": "FINAL_FEATURE_TRANSFORM",
++      "to": "FINAL_FEATURE_METRIC_FIT",
++      "type": "execution_requires"
++    },
++    {
++      "from": "FINAL_SELECTION_MASTER_ORDER",
++      "to": "ACQUISITION_DECISIONS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "FINAL_SELECTION_MASTER_ORDER",
++      "to": "TRAINING_SELECTION_LADDER",
++      "type": "execution_requires"
++    },
++    {
++      "from": "FINAL_TARGET_TRAINING_DOMAIN",
++      "to": "FINAL_ATOMIC_REFERENCE_FIT",
++      "type": "fit_domain_requires"
++    },
++    {
++      "from": "FINAL_TARGET_TRAINING_DOMAIN",
++      "to": "FINAL_FEATURE_METRIC_FIT",
++      "type": "fit_domain_requires"
++    },
++    {
++      "from": "FINAL_TARGET_TRAINING_DOMAIN",
++      "to": "FINAL_FEATURE_TRANSFORM",
++      "type": "fit_domain_requires"
++    },
++    {
++      "from": "FINAL_TARGET_TRAINING_DOMAIN",
++      "to": "FINAL_SELECTION_MASTER_ORDER",
++      "type": "fit_domain_requires"
++    },
++    {
++      "from": "FINAL_TARGET_TRAINING_DOMAIN",
++      "to": "FINAL_TRAINING_DIFFICULTY_FEATURES",
++      "type": "fit_domain_requires"
++    },
++    {
++      "from": "FINAL_TRAINING_DIFFICULTY_FEATURES",
++      "to": "FINAL_SELECTION_MASTER_ORDER",
++      "type": "execution_requires"
++    },
++    {
++      "from": "FOCUS_ATOM_GROUP_POLICY",
++      "to": "CHECKPOINT_METRIC_POLICY",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "FOCUS_ATOM_GROUP_POLICY",
++      "to": "TRAINING_OBJECTIVE_POLICY",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "FOLD_ATOMIC_REFERENCE_FITS",
++      "to": "CROSS_VALIDATION_JOB_FAMILY",
++      "type": "execution_requires"
++    },
++    {
++      "from": "FOLD_CHECKPOINT_MONITORS",
++      "to": "BLINDED_EVALUATION_PREDICTIONS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "FOLD_CHECKPOINT_MONITORS",
++      "to": "CROSS_VALIDATION_JOB_FAMILY",
++      "type": "execution_requires"
++    },
++    {
++      "from": "FOLD_DEFINITIONS",
++      "to": "FOLD_CHECKPOINT_MONITORS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "FOLD_DEFINITIONS",
++      "to": "FOLD_EVALUATION_DOMAINS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "FOLD_DEFINITIONS",
++      "to": "FOLD_TRAIN_DOMAINS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "FOLD_EVALUATION_DOMAINS",
++      "to": "BLINDED_EVALUATION_PREDICTIONS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "FOLD_EVALUATION_DOMAINS",
++      "to": "CROSS_VALIDATION_JOB_FAMILY",
++      "type": "execution_requires"
++    },
++    {
++      "from": "FOLD_FEATURE_METRIC_FITS",
++      "to": "FOLD_LOCAL_SELECTIONS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "FOLD_LOCAL_SELECTIONS",
++      "to": "CROSS_VALIDATION_JOB_FAMILY",
++      "type": "execution_requires"
++    },
++    {
++      "from": "FOLD_LOCAL_TRANSFORMS",
++      "to": "FOLD_FEATURE_METRIC_FITS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "FOLD_TRAINING_DIFFICULTY_FEATURES",
++      "to": "FOLD_LOCAL_SELECTIONS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "FOLD_TRAIN_DOMAINS",
++      "to": "FOLD_ATOMIC_REFERENCE_FITS",
++      "type": "fit_domain_requires"
++    },
++    {
++      "from": "FOLD_TRAIN_DOMAINS",
++      "to": "FOLD_FEATURE_METRIC_FITS",
++      "type": "fit_domain_requires"
++    },
++    {
++      "from": "FOLD_TRAIN_DOMAINS",
++      "to": "FOLD_LOCAL_SELECTIONS",
++      "type": "fit_domain_requires"
++    },
++    {
++      "from": "FOLD_TRAIN_DOMAINS",
++      "to": "FOLD_LOCAL_TRANSFORMS",
++      "type": "fit_domain_requires"
++    },
++    {
++      "from": "FOLD_TRAIN_DOMAINS",
++      "to": "FOLD_TRAINING_DIFFICULTY_FEATURES",
++      "type": "fit_domain_requires"
++    },
++    {
++      "from": "FOUNDATION_CHECKPOINT",
++      "to": "DATA6_MODEL_SWEEP_CHECKPOINT",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "FOUNDATION_CHECKPOINT",
++      "to": "DATA6_MODEL_SWEEP_PLAN",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "FOUNDATION_CHECKPOINT",
++      "to": "FINAL_ATOMIC_REFERENCE_FIT",
++      "type": "execution_requires"
++    },
++    {
++      "from": "FOUNDATION_CHECKPOINT",
++      "to": "FINAL_TRAINING_DIFFICULTY_FEATURES",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "FOUNDATION_CHECKPOINT",
++      "to": "FOLD_ATOMIC_REFERENCE_FITS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "FOUNDATION_CHECKPOINT",
++      "to": "FOLD_TRAINING_DIFFICULTY_FEATURES",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "FOUNDATION_CHECKPOINT",
++      "to": "FOUNDATION_RESIDUAL_E0_FIT",
++      "type": "requires"
++    },
++    {
++      "from": "FOUNDATION_CHECKPOINT",
++      "to": "MACE_ACCELERATION_PROBE",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "FOUNDATION_CHECKPOINT",
++      "to": "MACE_MODEL_PRECISION_RECORD",
++      "type": "execution_requires"
++    },
++    {
++      "from": "FOUNDATION_CHECKPOINT",
++      "to": "MACE_RAW_DESCRIPTORS",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "FOUNDATION_CHECKPOINT",
++      "to": "PRODUCTION_DATA8_ARTIFACT",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "FOUNDATION_CHECKPOINT",
++      "to": "PRODUCTION_MATERIALIZATION_PLAN",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "FOUNDATION_CHECKPOINT",
++      "to": "REPLAY_PLAN",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "FOUNDATION_CHECKPOINT",
++      "to": "TRAINING_PROTOCOL_IDENTITY",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "FOUNDATION_RESIDUAL_E0_FIT",
++      "to": "PORTABLE_MACE_BUNDLE",
++      "type": "requires"
++    },
++    {
++      "from": "FOUNDATION_RESIDUAL_E0_FIT",
++      "to": "PRODUCTION_GATE_INTEGRITY_EVIDENCE",
++      "type": "promotion_requires",
++      "predicate": "required_by_frozen_plan"
++    },
++    {
++      "from": "FRAME_CATALOG",
++      "to": "PRODUCTION_CORPUS_PLAN",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "FRAME_ELIGIBILITY",
++      "to": "ANALYSIS_LOCAL_STRUCTURE_FEATURES",
++      "type": "execution_requires"
++    },
++    {
++      "from": "FRAME_ELIGIBILITY",
++      "to": "DATA6_MODEL_SWEEP_PLAN",
++      "type": "execution_requires"
++    },
++    {
++      "from": "FRAME_ELIGIBILITY",
++      "to": "EVENT_CATALOG",
++      "type": "execution_requires"
++    },
++    {
++      "from": "FRAME_ELIGIBILITY",
++      "to": "MACE_RAW_DESCRIPTORS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "FRAME_ELIGIBILITY",
++      "to": "PARTITION_CRITICAL_PROFILE_FEATURES",
++      "type": "execution_requires"
++    },
++    {
++      "from": "FRAME_ELIGIBILITY",
++      "to": "PARTITION_UNIT_CATALOG",
++      "type": "execution_requires"
++    },
++    {
++      "from": "FRAME_ELIGIBILITY",
++      "to": "RAW_GENERIC_FEATURES",
++      "type": "execution_requires"
++    },
++    {
++      "from": "FRAME_ELIGIBILITY",
++      "to": "SELECTION_FEATURE_CATALOGS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "FRAME_FACTS",
++      "to": "FRAME_ELIGIBILITY",
++      "type": "execution_requires"
++    },
++    {
++      "from": "FRAME_FACTS",
++      "to": "GEOMETRY_FINGERPRINT",
++      "type": "execution_requires"
++    },
++    {
++      "from": "FRAME_FACTS",
++      "to": "LABEL_PAYLOAD_DIGEST",
++      "type": "execution_requires"
++    },
++    {
++      "from": "GENERIC_IMPORT_ISOLATION_EVIDENCE",
++      "to": "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
++      "type": "execution_requires"
++    },
++    {
++      "from": "GENERIC_STRUCTURAL_EVENT_CATALOG",
++      "to": "FINAL_SELECTION_MASTER_ORDER",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "GENERIC_STRUCTURAL_EVENT_CATALOG",
++      "to": "FOLD_LOCAL_SELECTIONS",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "GEOMETRY_FINGERPRINT",
++      "to": "LABELED_CONFIGURATION_FINGERPRINT",
++      "type": "execution_requires"
++    },
++    {
++      "from": "GEOMETRY_FINGERPRINT",
++      "to": "LEAKAGE_AUDIT_REPORT",
++      "type": "execution_requires"
++    },
++    {
++      "from": "GEOMETRY_FINGERPRINT",
++      "to": "OUTER_PARTITION",
++      "type": "execution_requires"
++    },
++    {
++      "from": "GPU_INFERENCE_TELEMETRY",
++      "to": "ADAPTIVE_INFERENCE_CONCURRENCY_PLAN",
++      "type": "execution_requires"
++    },
++    {
++      "from": "GPU_VRAM_BATCH_EXECUTION_PLAN",
++      "to": "NATIVE_MACE_GRAPH_BATCH",
++      "type": "execution_requires"
++    },
++    {
++      "from": "INDEPENDENCE_AXIS_CATALOG",
++      "to": "MATERIAL_PROFILE_CONTRACTS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "INDEPENDENCE_AXIS_CATALOG",
++      "to": "PARTITION_UNIT_CATALOG",
++      "type": "execution_requires"
++    },
++    {
++      "from": "INSTALLED_MACE_QUALIFICATION",
++      "to": "CAMPAIGN_PREFLIGHT_RECORD",
++      "type": "execution_requires"
++    },
++    {
++      "from": "INSTALLED_MACE_QUALIFICATION",
++      "to": "DATA9A_GATE",
++      "type": "requires"
++    },
++    {
++      "from": "ISOLATED_TRAJECTORY_WORKER",
++      "to": "FRAME_CATALOG",
++      "type": "execution_requires"
++    },
++    {
++      "from": "ISOLATED_TRAJECTORY_WORKER",
++      "to": "PARTITION_CRITICAL_PROFILE_FEATURES",
++      "type": "execution_requires"
++    },
++    {
++      "from": "ISOLATED_TRAJECTORY_WORKER",
++      "to": "RAW_GENERIC_FEATURES",
++      "type": "execution_requires"
++    },
++    {
++      "from": "ISOLATED_TRAJECTORY_WORKER",
++      "to": "SOURCE_CATALOG",
++      "type": "execution_requires"
++    },
++    {
++      "from": "LABELED_ACTIVE_ROUND",
++      "to": "LABELED_FRAME_ELIGIBILITY",
++      "type": "execution_requires"
++    },
++    {
++      "from": "LABELED_CONFIGURATION_FINGERPRINT",
++      "to": "LEAKAGE_AUDIT_REPORT",
++      "type": "execution_requires"
++    },
++    {
++      "from": "LABELED_FRAME_ELIGIBILITY",
++      "to": "NEW_DATASET_GENERATION",
++      "type": "execution_requires"
++    },
++    {
++      "from": "LABEL_DOMAIN",
++      "to": "FRAME_ELIGIBILITY",
++      "type": "execution_requires"
++    },
++    {
++      "from": "LABEL_DOMAIN",
++      "to": "LABEL_PAYLOAD_DIGEST",
++      "type": "execution_requires"
++    },
++    {
++      "from": "LABEL_PAYLOAD_DIGEST",
++      "to": "LABELED_CONFIGURATION_FINGERPRINT",
++      "type": "execution_requires"
++    },
++    {
++      "from": "LEAKAGE_AUDIT_REPORT",
++      "to": "DEVELOPMENT_POOL",
++      "type": "promotion_requires",
++      "predicate": "no_error_findings"
++    },
++    {
++      "from": "LOCKED_CHALLENGE_TESTS",
++      "to": "BLINDED_EVALUATION_PREDICTIONS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "LOCKED_CHALLENGE_TESTS",
++      "to": "LOCKED_TEST_OBSERVABLE_EVIDENCE",
++      "type": "source_identity_requires",
++      "predicate": "challenge_test_role"
++    },
++    {
++      "from": "LOCKED_CHALLENGE_TESTS",
++      "to": "SEALED_EVALUATION_BUNDLE",
++      "type": "execution_requires"
++    },
++    {
++      "from": "LOCKED_INTERPOLATION_TEST",
++      "to": "BLINDED_EVALUATION_PREDICTIONS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "LOCKED_INTERPOLATION_TEST",
++      "to": "LOCKED_TEST_OBSERVABLE_EVIDENCE",
++      "type": "source_identity_requires",
++      "predicate": "interpolation_test_role"
++    },
++    {
++      "from": "LOCKED_INTERPOLATION_TEST",
++      "to": "SEALED_EVALUATION_BUNDLE",
++      "type": "execution_requires"
++    },
++    {
++      "from": "LTA_PROFILE_EXTENSION",
++      "to": "OPTIONAL_PROFILE_EXTENSION_PROVIDER",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "MACE_ACCELERATION_POLICY",
++      "to": "BOUNDED_DEPLOYMENT_VERIFICATION",
++      "type": "execution_requires"
++    },
++    {
++      "from": "MACE_ACCELERATION_POLICY",
++      "to": "DATA6_MODEL_SWEEP_PLAN",
++      "type": "execution_requires"
++    },
++    {
++      "from": "MACE_ACCELERATION_POLICY",
++      "to": "MACE_ACCELERATION_PROBE",
++      "type": "execution_requires"
++    },
++    {
++      "from": "MACE_ACCELERATION_POLICY",
++      "to": "PRODUCTION_DATA8_ARTIFACT",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "MACE_ACCELERATION_POLICY",
++      "to": "PYTHON_ASE_MACE_EXECUTION",
++      "type": "execution_requires"
++    },
++    {
++      "from": "MACE_ACCELERATION_POLICY",
++      "to": "TRAINING_PROTOCOL_IDENTITY",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "MACE_ACCELERATION_PROBE",
++      "to": "CAMPAIGN_PREFLIGHT_RECORD",
++      "type": "promotion_requires"
++    },
++    {
++      "from": "MACE_ACCELERATION_PROBE",
++      "to": "TRAINING_CAMPAIGN_PLAN",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "MACE_ADAPTER_LOCK",
++      "to": "DEVELOPMENT_MACE_BUNDLE",
++      "type": "execution_requires"
++    },
++    {
++      "from": "MACE_ADAPTER_LOCK",
++      "to": "INSTALLED_MACE_QUALIFICATION",
++      "type": "requires"
++    },
++    {
++      "from": "MACE_ADAPTER_LOCK",
++      "to": "MACE_DEPENDENCY_MANIFEST",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "MACE_ADAPTER_LOCK",
++      "to": "PRODUCTION_MATERIALIZATION_PLAN",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "MACE_ADAPTER_LOCK",
++      "to": "TRAINING_PROTOCOL_IDENTITY",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "MACE_CHECKPOINT_CONTROL_POLICY",
++      "to": "CHECKPOINT_SELECTION_DECISION",
++      "type": "execution_requires"
++    },
++    {
++      "from": "MACE_CHECKPOINT_CONTROL_POLICY",
++      "to": "PRODUCTION_MATERIALIZATION_PLAN",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "MACE_CHECKPOINT_CONTROL_POLICY",
++      "to": "TRAINING_PROTOCOL_IDENTITY",
++      "type": "execution_requires"
++    },
++    {
++      "from": "MACE_CLI_SMOKE_RECORD",
++      "to": "DATA9A_GATE",
++      "type": "requires"
++    },
++    {
++      "from": "MACE_CONFIG_REALIZATION_RECORD",
++      "to": "MACE_JOB_EXECUTION_SMOKE_RECORD",
++      "type": "execution_requires"
++    },
++    {
++      "from": "MACE_CRITICAL_PRECISION_AUDIT",
++      "to": "DATA9A_GATE",
++      "type": "promotion_requires"
++    },
++    {
++      "from": "MACE_CRITICAL_PRECISION_AUDIT",
++      "to": "MACE_JOB_EXECUTION_SMOKE_RECORD",
++      "type": "promotion_requires"
++    },
++    {
++      "from": "MACE_CRITICAL_PRECISION_POLICY",
++      "to": "TRAINING_PROTOCOL_IDENTITY",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "MACE_DATALOADER_WORKER_PLAN",
++      "to": "MACE_CONFIG_REALIZATION_RECORD",
++      "type": "execution_requires"
++    },
++    {
++      "from": "MACE_DEPENDENCY_MANIFEST",
++      "to": "MACE_RUNTIME_ENVIRONMENT_RECORD",
++      "type": "requires"
++    },
++    {
++      "from": "MACE_DEPLOYMENT_EXPORT_POLICY",
++      "to": "MACE_DEPLOYMENT_ARTIFACT",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "MACE_EXPOSURE_REALIZATION_RECORD",
++      "to": "CHECKPOINT_SELECTION_DECISION",
++      "type": "execution_requires"
++    },
++    {
++      "from": "MACE_INFERENCE_COMPARISON",
++      "to": "MACE_DEPLOYMENT_ARTIFACT",
++      "type": "execution_requires"
++    },
++    {
++      "from": "MACE_JOB_EXECUTION_SMOKE_RECORD",
++      "to": "DATA9A_GATE",
++      "type": "requires"
++    },
++    {
++      "from": "MACE_JOB_EXECUTION_SMOKE_RECORD",
++      "to": "MACE_MODEL_PRECISION_RECORD",
++      "type": "execution_requires"
++    },
++    {
++      "from": "MACE_MODEL_PRECISION_RECORD",
++      "to": "MACE_DEPLOYMENT_ARTIFACT",
++      "type": "execution_requires"
++    },
++    {
++      "from": "MACE_MODEL_PRECISION_RECORD",
++      "to": "MACE_PRECISION_TRANSITION_RECORD",
++      "type": "promotion_requires"
++    },
++    {
++      "from": "MACE_PRECISION_POLICY",
++      "to": "DATA6_MODEL_SWEEP_EXECUTION_POLICY",
++      "type": "execution_requires"
++    },
++    {
++      "from": "MACE_PRECISION_POLICY",
++      "to": "TRAINING_PROTOCOL_IDENTITY",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "MACE_PRECISION_TRANSITION_RECORD",
++      "to": "DATA9A_GATE",
++      "type": "promotion_requires"
++    },
++    {
++      "from": "MACE_PRECISION_TRANSITION_RECORD",
++      "to": "MACE_DEPLOYMENT_ARTIFACT",
++      "type": "execution_requires"
++    },
++    {
++      "from": "MACE_RAW_DESCRIPTORS",
++      "to": "FINAL_FEATURE_TRANSFORM",
++      "type": "execution_requires"
++    },
++    {
++      "from": "MACE_RAW_DESCRIPTORS",
++      "to": "FOLD_LOCAL_TRANSFORMS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "MACE_RUNTIME_ENVIRONMENT_RECORD",
++      "to": "INSTALLED_MACE_QUALIFICATION",
++      "type": "requires"
++    },
++    {
++      "from": "MACE_RUNTIME_ENVIRONMENT_RECORD",
++      "to": "MACE_CLI_SMOKE_RECORD",
++      "type": "execution_requires"
++    },
++    {
++      "from": "MACE_RUNTIME_ENVIRONMENT_RECORD",
++      "to": "MACE_CONFIG_REALIZATION_RECORD",
++      "type": "execution_requires"
++    },
++    {
++      "from": "MACE_RUNTIME_ENVIRONMENT_RECORD",
++      "to": "MACE_JOB_EXECUTION_SMOKE_RECORD",
++      "type": "execution_requires"
++    },
++    {
++      "from": "MANIFEST_INFERENCE_POLICY",
++      "to": "REVIEW_MANIFEST_INFERENCE_RESULT",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "MANIFEST_INFERENCE_POLICY",
++      "to": "VERIFIED_STRAIN_RELATIONSHIP",
++      "type": "execution_requires"
++    },
++    {
++      "from": "MATERIAL_PROFILE_CONTRACTS",
++      "to": "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
++      "type": "execution_requires"
++    },
++    {
++      "from": "MATERIAL_PROFILE_CONTRACTS",
++      "to": "OBSERVABLE_COMPARISON_POLICY",
++      "type": "source_identity_requires",
++      "predicate": "profile_bound_policies_only"
++    },
++    {
++      "from": "MATERIAL_PROFILE_CONTRACTS",
++      "to": "OPTIONAL_PROFILE_EXTENSION_PROVIDER",
++      "type": "execution_requires"
++    },
++    {
++      "from": "MATERIAL_PROFILE_CONTRACTS",
++      "to": "PARTITION_CRITICAL_PROFILE_FEATURES",
++      "type": "execution_requires"
++    },
++    {
++      "from": "MATERIAL_PROFILE_CONTRACTS",
++      "to": "PHASE_GEOMETRY_SELECTION_PLAN",
++      "type": "execution_requires"
++    },
++    {
++      "from": "MATERIAL_PROFILE_CONTRACTS",
++      "to": "SELECTION_FEATURE_CATALOGS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "MATERIAL_PROFILE_CONTRACTS",
++      "to": "UNIVERSAL_STRUCTURAL_FEATURE_CATALOG",
++      "type": "execution_requires"
++    },
++    {
++      "from": "MATERIAL_PROFILE_IDENTITY",
++      "to": "ATOM_GROUP_CATALOG",
++      "type": "execution_requires"
++    },
++    {
++      "from": "MATERIAL_PROFILE_IDENTITY",
++      "to": "CONDITION_AXIS_CATALOG",
++      "type": "execution_requires"
++    },
++    {
++      "from": "MATERIAL_PROFILE_IDENTITY",
++      "to": "INDEPENDENCE_AXIS_CATALOG",
++      "type": "execution_requires"
++    },
++    {
++      "from": "MATERIAL_PROFILE_IDENTITY",
++      "to": "MATERIAL_PROFILE_CONTRACTS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "MATERIAL_PROFILE_IDENTITY",
++      "to": "PARTITION_CRITICAL_PROFILE_FEATURES",
++      "type": "execution_requires"
++    },
++    {
++      "from": "MATERIAL_PROFILE_IDENTITY",
++      "to": "SELECTION_FEATURE_CATALOGS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "MATERIAL_PROFILE_PROVIDER_IDENTITY",
++      "to": "MATERIAL_PROFILE_IDENTITY",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "MLFF_CAMPAIGN_USER_GUIDE",
++      "to": "MLFF_CAMPAIGN_CLI_TOOL",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "NATIVE_MACE_GRAPH_BATCH",
++      "to": "MACE_RAW_DESCRIPTORS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "NUMERICAL_QUALITY_PROFILE",
++      "to": "LABEL_DOMAIN",
++      "type": "execution_requires"
++    },
++    {
++      "from": "OBSERVABLE_ANALYSIS_RECIPE",
++      "to": "OBSERVABLE_COMPARISON_RULES",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "OBSERVABLE_ANALYSIS_RECIPE",
++      "to": "OBSERVABLE_RESULT_IDENTITIES",
++      "type": "execution_requires"
++    },
++    {
++      "from": "OBSERVABLE_ANALYSIS_RECIPE",
++      "to": "OBSERVABLE_VALIDATION_EVIDENCE",
++      "type": "execution_requires"
++    },
++    {
++      "from": "OBSERVABLE_COLLECTION_IDENTITIES",
++      "to": "OBSERVABLE_RESULT_IDENTITIES",
++      "type": "execution_requires"
++    },
++    {
++      "from": "OBSERVABLE_COLLECTION_IDENTITIES",
++      "to": "OBSERVABLE_VALIDATION_EVIDENCE",
++      "type": "execution_requires"
++    },
++    {
++      "from": "OBSERVABLE_COLLECTION_IDENTITIES",
++      "to": "TRAJECTORY_GENERATION_IDENTITIES",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "OBSERVABLE_COMPARISON_POLICY",
++      "to": "OBSERVABLE_COMPARISON_RESULT",
++      "type": "execution_requires"
++    },
++    {
++      "from": "OBSERVABLE_COMPARISON_POLICY",
++      "to": "OBSERVABLE_VALIDATION_ACTIVATION_RECORD",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "OBSERVABLE_COMPARISON_RESULT",
++      "to": "OBSERVABLE_ACCEPTANCE_DECISION",
++      "type": "execution_requires"
++    },
++    {
++      "from": "OBSERVABLE_COMPARISON_RULES",
++      "to": "OBSERVABLE_COMPARISON_POLICY",
++      "type": "execution_requires"
++    },
++    {
++      "from": "OBSERVABLE_COMPARISON_RULES",
++      "to": "OBSERVABLE_COMPARISON_RESULT",
++      "type": "execution_requires"
++    },
++    {
++      "from": "OBSERVABLE_RESULT_IDENTITIES",
++      "to": "OBSERVABLE_VALIDATION_EVIDENCE",
++      "type": "execution_requires"
++    },
++    {
++      "from": "OBSERVABLE_SCOPE_AGGREGATION",
++      "to": "OBSERVABLE_COMPARISON_RESULT",
++      "type": "execution_requires"
++    },
++    {
++      "from": "OBSERVABLE_SCORE_UNCERTAINTY",
++      "to": "OBSERVABLE_COMPARISON_POLICY",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "OBSERVABLE_VALIDATION_ACTIVATION_RECORD",
++      "to": "OBSERVABLE_VALIDATION_EVIDENCE",
++      "type": "execution_requires"
++    },
++    {
++      "from": "OBSERVABLE_VALIDATION_EVIDENCE",
++      "to": "LOCKED_TEST_OBSERVABLE_EVIDENCE",
++      "type": "promotion_requires",
++      "predicate": "evidence_role_is_locked_test"
++    },
++    {
++      "from": "OBSERVABLE_VALIDATION_EVIDENCE",
++      "to": "OBSERVABLE_COMPARISON_RESULT",
++      "type": "execution_requires"
++    },
++    {
++      "from": "OFFLINE_MACE_WHEELHOUSE",
++      "to": "MACE_RUNTIME_ENVIRONMENT_RECORD",
++      "type": "requires"
++    },
++    {
++      "from": "OPTIONAL_PROFILE_EXTENSION_PROVIDER",
++      "to": "PROFILE_PARTITION_FEATURE_CATALOGS",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "OPTIONAL_PROFILE_EXTENSION_PROVIDER",
++      "to": "PROFILE_SELECTION_FEATURE_CATALOGS",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "OUTER_MONITOR_VALIDATION",
++      "to": "BLINDED_EVALUATION_PREDICTIONS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "OUTER_MONITOR_VALIDATION",
++      "to": "CHECKPOINT_EVALUATION_RECORD",
++      "type": "execution_requires"
++    },
++    {
++      "from": "OUTER_MONITOR_VALIDATION",
++      "to": "CHECKPOINT_METRIC_RECORD",
++      "type": "execution_requires"
++    },
++    {
++      "from": "OUTER_MONITOR_VALIDATION",
++      "to": "CHECKPOINT_SELECTION_DECISION",
++      "type": "execution_requires"
++    },
++    {
++      "from": "OUTER_MONITOR_VALIDATION",
++      "to": "DEVELOPMENT_MACE_BUNDLE",
++      "type": "execution_requires"
++    },
++    {
++      "from": "OUTER_PARTITION",
++      "to": "BLINDING_BOUNDARY_CATALOG",
++      "type": "execution_requires"
++    },
++    {
++      "from": "OUTER_PARTITION",
++      "to": "CALIBRATION_DOMAIN",
++      "type": "execution_requires"
++    },
++    {
++      "from": "OUTER_PARTITION",
++      "to": "CROSS_VALIDATION_PLAN",
++      "type": "execution_requires"
++    },
++    {
++      "from": "OUTER_PARTITION",
++      "to": "DATA6_MODEL_SWEEP_PLAN",
++      "type": "execution_requires"
++    },
++    {
++      "from": "OUTER_PARTITION",
++      "to": "DEVELOPMENT_POOL",
++      "type": "execution_requires"
++    },
++    {
++      "from": "OUTER_PARTITION",
++      "to": "LEAKAGE_AUDIT_REPORT",
++      "type": "execution_requires"
++    },
++    {
++      "from": "OUTER_PARTITION",
++      "to": "LOCKED_CHALLENGE_TESTS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "OUTER_PARTITION",
++      "to": "LOCKED_INTERPOLATION_TEST",
++      "type": "execution_requires"
++    },
++    {
++      "from": "OUTER_PARTITION",
++      "to": "OBSERVABLE_VALIDATION_ACTIVATION_RECORD",
++      "type": "source_identity_requires",
++      "predicate": "partitioned_validation_roles_only"
++    },
++    {
++      "from": "OUTER_PARTITION",
++      "to": "OUTER_MONITOR_VALIDATION",
++      "type": "execution_requires"
++    },
++    {
++      "from": "OUTER_PARTITION",
++      "to": "PARTITION_INDEPENDENCE_REPORT",
++      "type": "execution_requires"
++    },
++    {
++      "from": "OUTER_PARTITION",
++      "to": "ROLE_INHERITANCE_POLICY",
++      "type": "execution_requires"
++    },
++    {
++      "from": "OUT_OF_FOLD_PREDICTIONS",
++      "to": "UNCERTAINTY_SIGNAL_DIAGNOSTIC",
++      "type": "execution_requires"
++    },
++    {
++      "from": "PARALLEL_CHECKPOINT_EVALUATION",
++      "to": "CHECKPOINT_EVALUATION_RECORD",
++      "type": "produces"
++    },
++    {
++      "from": "PARALLEL_NVE_VERIFICATION",
++      "to": "BOUNDED_DEPLOYMENT_VERIFICATION",
++      "type": "produces"
++    },
++    {
++      "from": "PARTITION_CRITICAL_PROFILE_FEATURES",
++      "to": "EVENT_CATALOG",
++      "type": "execution_requires"
++    },
++    {
++      "from": "PARTITION_CRITICAL_PROFILE_FEATURES",
++      "to": "OUTER_PARTITION",
++      "type": "execution_requires"
++    },
++    {
++      "from": "PARTITION_CRITICAL_PROFILE_FEATURES",
++      "to": "PARTITION_UNIT_CATALOG",
++      "type": "execution_requires"
++    },
++    {
++      "from": "PARTITION_CRITICAL_PROFILE_FEATURES",
++      "to": "PROFILE_EVENT_CATALOGS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "PARTITION_FEASIBILITY_REPORT",
++      "to": "CROSS_VALIDATION_PLAN",
++      "type": "promotion_requires",
++      "predicate": "cross_validation_roles_feasible"
++    },
++    {
++      "from": "PARTITION_FEASIBILITY_REPORT",
++      "to": "OUTER_PARTITION",
++      "type": "promotion_requires",
++      "predicate": "partition_roles_feasible"
++    },
++    {
++      "from": "PARTITION_ROLE_BUDGET_POLICY",
++      "to": "OBSERVABLE_VALIDATION_ACTIVATION_RECORD",
++      "type": "source_identity_requires",
++      "predicate": "partitioned_validation_roles_only"
++    },
++    {
++      "from": "PARTITION_ROLE_BUDGET_POLICY",
++      "to": "PARTITION_FEASIBILITY_REPORT",
++      "type": "execution_requires"
++    },
++    {
++      "from": "PARTITION_ROLE_BUDGET_POLICY",
++      "to": "PARTITION_UNIT_CATALOG",
++      "type": "execution_requires"
++    },
++    {
++      "from": "PARTITION_UNIT_CATALOG",
++      "to": "OUTER_PARTITION",
++      "type": "execution_requires"
++    },
++    {
++      "from": "PARTITION_UNIT_CATALOG",
++      "to": "PARTITION_FEASIBILITY_REPORT",
++      "type": "execution_requires"
++    },
++    {
++      "from": "PHASE_COMPONENT_IDENTITIES",
++      "to": "MATERIAL_PROFILE_IDENTITY",
++      "type": "execution_requires"
++    },
++    {
++      "from": "PHASE_GEOMETRY_SELECTION_PLAN",
++      "to": "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
++      "type": "execution_requires"
++    },
++    {
++      "from": "PHASE_GEOMETRY_SELECTION_PLAN",
++      "to": "PROFILE_BOUND_UNIVERSAL_STRUCTURAL_POLICY",
++      "type": "execution_requires"
++    },
++    {
++      "from": "PHASE_GEOMETRY_SELECTION_PLAN",
++      "to": "PROFILE_OBSERVABLE_RECOMMENDATIONS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "PHASE_GEOMETRY_SELECTION_PLAN",
++      "to": "SELECTION_FEATURE_CATALOGS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "PHASE_GEOMETRY_SELECTION_PLAN",
++      "to": "UNIVERSAL_STRUCTURAL_FEATURE_CATALOG",
++      "type": "execution_requires"
++    },
++    {
++      "from": "PORTABLE_MACE_BUNDLE",
++      "to": "DATA9A_GATE",
++      "type": "requires"
++    },
++    {
++      "from": "PORTABLE_MACE_BUNDLE",
++      "to": "MACE_CONFIG_REALIZATION_RECORD",
++      "type": "execution_requires"
++    },
++    {
++      "from": "PREDECLARED_OBSERVABLE_THRESHOLDS",
++      "to": "OBSERVABLE_COMPARISON_POLICY",
++      "type": "execution_requires"
++    },
++    {
++      "from": "PRODUCTION_CORPUS_PLAN",
++      "to": "PRODUCTION_GATE_INTEGRITY_EVIDENCE",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "PRODUCTION_DATA7_ARTIFACTS",
++      "to": "PRODUCTION_DATA8_ARTIFACT",
++      "type": "promotion_requires",
++      "predicate": "all_final_and_fold_domains_verified"
++    },
++    {
++      "from": "PRODUCTION_DATA7_ARTIFACTS",
++      "to": "PRODUCTION_MATERIALIZATION_RECORD",
++      "type": "promotion_requires",
++      "predicate": "all_domains_verified"
++    },
++    {
++      "from": "PRODUCTION_DATA8_ARTIFACT",
++      "to": "CAMPAIGN_PREFLIGHT_RECORD",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "PRODUCTION_DATA8_ARTIFACT",
++      "to": "DATA8_ATOMIC_PROMOTION",
++      "type": "promotion_requires",
++      "predicate": "tree_verified_before_pointer_switch"
++    },
++    {
++      "from": "PRODUCTION_DATA8_ARTIFACT",
++      "to": "PRODUCTION_MATERIALIZATION_RECORD",
++      "type": "promotion_requires",
++      "predicate": "tree_and_bundle_verified"
++    },
++    {
++      "from": "PRODUCTION_DATA8_ARTIFACT",
++      "to": "TRAINING_CAMPAIGN_PLAN",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "PRODUCTION_GATE_INTEGRITY_EVIDENCE",
++      "to": "DATA9A_GATE",
++      "type": "promotion_requires",
++      "predicate": "all_frozen_plan_requirements_satisfied"
++    },
++    {
++      "from": "PRODUCTION_MATERIALIZATION_CHECKPOINT",
++      "to": "PRODUCTION_DATA8_ARTIFACT",
++      "type": "promotion_requires",
++      "predicate": "all_data7_records_complete"
++    },
++    {
++      "from": "PRODUCTION_MATERIALIZATION_PLAN",
++      "to": "PRODUCTION_DATA7_ARTIFACTS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "PRODUCTION_MATERIALIZATION_PLAN",
++      "to": "PRODUCTION_MATERIALIZATION_CHECKPOINT",
++      "type": "execution_requires"
++    },
++    {
++      "from": "PRODUCTION_MATERIALIZATION_RECORD",
++      "to": "PRODUCTION_GATE_INTEGRITY_EVIDENCE",
++      "type": "promotion_requires",
++      "predicate": "record_complete_and_self_verified"
++    },
++    {
++      "from": "PRODUCTION_PREPARATION_BENCHMARK",
++      "to": "DATA9A_GATE",
++      "type": "requires"
++    },
++    {
++      "from": "PRODUCTION_REGIMES",
++      "to": "PRODUCTION_CORPUS_PLAN",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "PRODUCTION_REGIMES",
++      "to": "SOURCE_CATALOG",
++      "type": "execution_requires"
++    },
++    {
++      "from": "PROFILE_BOUND_UNIVERSAL_STRUCTURAL_POLICY",
++      "to": "UNIVERSAL_STRUCTURAL_FEATURE_CATALOG",
++      "type": "execution_requires"
++    },
++    {
++      "from": "PROFILE_ENVIRONMENT_COVERAGE",
++      "to": "SELECTION_COVERAGE_REPORT",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "PROFILE_EVENT_CATALOGS",
++      "to": "EVENT_CATALOG",
++      "type": "execution_requires"
++    },
++    {
++      "from": "PROFILE_EXTENSION_COVERAGE_EVIDENCE",
++      "to": "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "PROFILE_EXTENSION_COVERAGE_EVIDENCE",
++      "to": "PRODUCTION_CORPUS_PLAN",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "PROFILE_OBSERVABLE_RECOMMENDATIONS",
++      "to": "OBSERVABLE_ANALYSIS_RECIPE",
++      "type": "execution_requires"
++    },
++    {
++      "from": "PROFILE_OBSERVABLE_RECOMMENDATIONS",
++      "to": "OBSERVABLE_COMPARISON_RULES",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "PROFILE_PARTITION_FEATURE_CATALOGS",
++      "to": "PARTITION_CRITICAL_PROFILE_FEATURES",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "PROFILE_PARTITION_FEATURE_CATALOGS",
++      "to": "PROFILE_EXTENSION_COVERAGE_EVIDENCE",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "PROFILE_SELECTION_FEATURE_CATALOGS",
++      "to": "PROFILE_ENVIRONMENT_COVERAGE",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "PROFILE_SELECTION_FEATURE_CATALOGS",
++      "to": "SELECTION_FEATURE_CATALOGS",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "PROPERTY_WEIGHT_POLICY",
++      "to": "TRAINING_PROTOCOL_IDENTITY",
++      "type": "execution_requires"
++    },
++    {
++      "from": "PROTOCOL_COMPARISON_RECORD",
++      "to": "COMMITTEE_IDENTITY",
++      "type": "execution_requires"
++    },
++    {
++      "from": "PROTOCOL_COMPARISON_RECORD",
++      "to": "PROTOCOL_FREEZE_RECORD",
++      "type": "execution_requires"
++    },
++    {
++      "from": "PROTOCOL_FAMILY_AGGREGATE",
++      "to": "LEARNING_CURVE_RECORD",
++      "type": "execution_requires"
++    },
++    {
++      "from": "PROTOCOL_FAMILY_AGGREGATE",
++      "to": "PROTOCOL_COMPARISON_RECORD",
++      "type": "execution_requires"
++    },
++    {
++      "from": "PROTOCOL_FREEZE_RECORD",
++      "to": "BOUNDED_DEPLOYMENT_VERIFICATION",
++      "type": "promotion_requires"
++    },
++    {
++      "from": "PROTOCOL_FREEZE_RECORD",
++      "to": "CAMPAIGN_RESULT_SUMMARY",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "PROTOCOL_FREEZE_RECORD",
++      "to": "CAMPAIGN_STATE_DATABASE",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "PROTOCOL_FREEZE_RECORD",
++      "to": "EVALUATION_ACTIVATION_DECISION",
++      "type": "promotion_requires",
++      "predicate": "protocol_and_committee_frozen"
++    },
++    {
++      "from": "PROTOCOL_FREEZE_RECORD",
++      "to": "LOCKED_TEST_OBSERVABLE_EVIDENCE",
++      "type": "promotion_requires"
++    },
++    {
++      "from": "PROTOCOL_FREEZE_RECORD",
++      "to": "OBSERVABLE_VALIDATION_ACTIVATION_RECORD",
++      "type": "promotion_requires",
++      "predicate": "locked_test_only"
++    },
++    {
++      "from": "PROTOCOL_VARIANT_AGGREGATE",
++      "to": "PROTOCOL_FAMILY_AGGREGATE",
++      "type": "execution_requires"
++    },
++    {
++      "from": "PYTHON_ASE_MACE_EXECUTION",
++      "to": "MACE_CRITICAL_PRECISION_AUDIT",
++      "type": "execution_requires"
++    },
++    {
++      "from": "RAW_GENERIC_FEATURES",
++      "to": "FINAL_FEATURE_TRANSFORM",
++      "type": "execution_requires"
++    },
++    {
++      "from": "RAW_GENERIC_FEATURES",
++      "to": "FOLD_LOCAL_TRANSFORMS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "RAW_GENERIC_FEATURES",
++      "to": "PARTITION_CRITICAL_PROFILE_FEATURES",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "RAW_GENERIC_FEATURES",
++      "to": "PARTITION_UNIT_CATALOG",
++      "type": "execution_requires"
++    },
++    {
++      "from": "RAW_GENERIC_FEATURES",
++      "to": "SELECTION_FEATURE_CATALOGS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "RAW_GENERIC_FEATURES",
++      "to": "TEMPORAL_BLOCKS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "REFERENCE_CELL",
++      "to": "RAW_GENERIC_FEATURES",
++      "type": "execution_requires"
++    },
++    {
++      "from": "REPLAY_LABEL_PAYLOAD_IDENTITY",
++      "to": "REPLAY_PLAN",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "REPLAY_MONITOR",
++      "to": "CHECKPOINT_EVALUATION_RECORD",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "REPLAY_MONITOR",
++      "to": "CHECKPOINT_METRIC_RECORD",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "REPLAY_MONITOR",
++      "to": "CHECKPOINT_SELECTION_DECISION",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "REPLAY_MONITOR",
++      "to": "TRAINING_PROTOCOL_IDENTITY",
++      "type": "execution_requires"
++    },
++    {
++      "from": "REPLAY_PLAN",
++      "to": "PRODUCTION_DATA8_ARTIFACT",
++      "type": "execution_requires"
++    },
++    {
++      "from": "REPLAY_PLAN",
++      "to": "PRODUCTION_GATE_INTEGRITY_EVIDENCE",
++      "type": "promotion_requires",
++      "predicate": "numerical_label_payload_verified"
++    },
++    {
++      "from": "REPLAY_PLAN",
++      "to": "PRODUCTION_MATERIALIZATION_PLAN",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "REPLAY_PLAN",
++      "to": "REPLAY_MONITOR",
++      "type": "execution_requires"
++    },
++    {
++      "from": "REPLAY_PLAN",
++      "to": "REPLAY_RETENTION_POLICY",
++      "type": "execution_requires"
++    },
++    {
++      "from": "REPLAY_PLAN",
++      "to": "TRAINING_PROTOCOL_IDENTITY",
++      "type": "execution_requires"
++    },
++    {
++      "from": "REPLAY_RETENTION_POLICY",
++      "to": "CHECKPOINT_SELECTION_DECISION",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "REPLAY_RETENTION_POLICY",
++      "to": "TRAINING_PROTOCOL_IDENTITY",
++      "type": "execution_requires"
++    },
++    {
++      "from": "REPLAY_SOURCE",
++      "to": "REPLAY_LABEL_PAYLOAD_IDENTITY",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "REPLAY_SOURCE",
++      "to": "REPLAY_PLAN",
++      "type": "execution_requires"
++    },
++    {
++      "from": "REVIEW_MANIFEST_INFERENCE_RESULT",
++      "to": "CAMPAIGN_MANIFEST_APPROVAL",
++      "type": "promotion_requires"
++    },
++    {
++      "from": "ROLE_INHERITANCE_POLICY",
++      "to": "NEW_DATASET_GENERATION",
++      "type": "execution_requires"
++    },
++    {
++      "from": "SEALED_EVALUATION_BUNDLE",
++      "to": "EVALUATION_ACTIVATION_DECISION",
++      "type": "execution_requires"
++    },
++    {
++      "from": "SELECTION_BUDGET_POLICY",
++      "to": "FINAL_SELECTION_MASTER_ORDER",
++      "type": "execution_requires"
++    },
++    {
++      "from": "SELECTION_BUDGET_POLICY",
++      "to": "FOLD_LOCAL_SELECTIONS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "SELECTION_BUDGET_POLICY",
++      "to": "PRODUCTION_MATERIALIZATION_PLAN",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "SELECTION_COVERAGE_REPORT",
++      "to": "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
++      "type": "execution_requires"
++    },
++    {
++      "from": "SELECTION_FEATURE_CATALOGS",
++      "to": "FINAL_FEATURE_TRANSFORM",
++      "type": "execution_requires"
++    },
++    {
++      "from": "SELECTION_FEATURE_CATALOGS",
++      "to": "FOLD_LOCAL_TRANSFORMS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "SELECTION_LEVEL_IDENTITY",
++      "to": "PORTABLE_MACE_BUNDLE",
++      "type": "requires"
++    },
++    {
++      "from": "SOFTWARE_PROVENANCE",
++      "to": "LABEL_DOMAIN",
++      "type": "execution_requires"
++    },
++    {
++      "from": "SOURCE_BYTES",
++      "to": "CAMPAIGN_MANIFEST_APPROVAL",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "SOURCE_BYTES",
++      "to": "FILENAME_STRAIN_CANDIDATE",
++      "type": "execution_requires"
++    },
++    {
++      "from": "SOURCE_BYTES",
++      "to": "SOURCE_OCCURRENCE_IDENTITY",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "SOURCE_CATALOG",
++      "to": "FRAME_FACTS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "SOURCE_CATALOG",
++      "to": "NEW_DATASET_GENERATION",
++      "type": "replay_triggers"
++    },
++    {
++      "from": "SOURCE_CATALOG",
++      "to": "PRODUCTION_CORPUS_PLAN",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "SOURCE_CATALOG",
++      "to": "REFERENCE_CELL",
++      "type": "execution_requires"
++    },
++    {
++      "from": "SOURCE_CATALOG",
++      "to": "STRUCTURAL_ATOMIC_REFERENCE_AUDIT",
++      "type": "execution_requires"
++    },
++    {
++      "from": "SOURCE_OCCURRENCE_IDENTITY",
++      "to": "REVIEW_MANIFEST_INFERENCE_RESULT",
++      "type": "execution_requires"
++    },
++    {
++      "from": "SOURCE_OCCURRENCE_IDENTITY",
++      "to": "SOFTWARE_PROVENANCE",
++      "type": "execution_requires"
++    },
++    {
++      "from": "SOURCE_OCCURRENCE_IDENTITY",
++      "to": "SOURCE_CATALOG",
++      "type": "execution_requires"
++    },
++    {
++      "from": "SOURCE_OCCURRENCE_IDENTITY",
++      "to": "TRAJECTORY_COLLECTION",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "SOURCE_OCCURRENCE_IDENTITY",
++      "to": "VASP_CONTROLS",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "STRUCTURAL_ATOMIC_REFERENCE_AUDIT",
++      "to": "FINAL_ATOMIC_REFERENCE_FIT",
++      "type": "execution_requires"
++    },
++    {
++      "from": "STRUCTURAL_ATOMIC_REFERENCE_AUDIT",
++      "to": "FOLD_ATOMIC_REFERENCE_FITS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "STRUCTURAL_ATOMIC_REFERENCE_FIT_POLICY",
++      "to": "FINAL_ATOMIC_REFERENCE_FIT",
++      "type": "execution_requires"
++    },
++    {
++      "from": "STRUCTURAL_ATOMIC_REFERENCE_FIT_POLICY",
++      "to": "FOLD_ATOMIC_REFERENCE_FITS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "STRUCTURAL_ATOMIC_REFERENCE_FIT_POLICY",
++      "to": "PRODUCTION_MATERIALIZATION_PLAN",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "SYSTEM_RESOURCE_SNAPSHOT",
++      "to": "ADAPTIVE_INFERENCE_CONCURRENCY_PLAN",
++      "type": "execution_requires"
++    },
++    {
++      "from": "SYSTEM_RESOURCE_SNAPSHOT",
++      "to": "CPU_RAM_PARALLEL_EXECUTION_PLAN",
++      "type": "execution_requires"
++    },
++    {
++      "from": "SYSTEM_RESOURCE_SNAPSHOT",
++      "to": "GPU_VRAM_BATCH_EXECUTION_PLAN",
++      "type": "execution_requires"
++    },
++    {
++      "from": "SYSTEM_RESOURCE_SNAPSHOT",
++      "to": "MACE_DATALOADER_WORKER_PLAN",
++      "type": "execution_requires"
++    },
++    {
++      "from": "TEMPORAL_BLOCKS",
++      "to": "OUTER_PARTITION",
++      "type": "execution_requires"
++    },
++    {
++      "from": "TEMPORAL_BLOCKS",
++      "to": "PARTITION_FEASIBILITY_REPORT",
++      "type": "execution_requires"
++    },
++    {
++      "from": "TEMPORAL_BLOCKS",
++      "to": "PARTITION_UNIT_CATALOG",
++      "type": "execution_requires"
++    },
++    {
++      "from": "THEORY_IDENTITY",
++      "to": "LABEL_DOMAIN",
++      "type": "execution_requires"
++    },
++    {
++      "from": "THERMOMECHANICAL_VALIDATION_RECIPES",
++      "to": "OBSERVABLE_ANALYSIS_RECIPE",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "TRAINED_COMMITTEE",
++      "to": "CALIBRATION_APPLICABILITY_DOMAIN",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "TRAINED_COMMITTEE",
++      "to": "CANDIDATE_TRAJECTORIES",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "TRAINED_COMMITTEE",
++      "to": "FINAL_COMMITTEE_CALIBRATION_PREDICTIONS",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "TRAINED_COMMITTEE",
++      "to": "PROTOCOL_FREEZE_RECORD",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "TRAINED_COMMITTEE",
++      "to": "UNCERTAINTY_CALIBRATION",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "TRAINING_CAMPAIGN_PLAN",
++      "to": "PROTOCOL_VARIANT_AGGREGATE",
++      "type": "execution_requires"
++    },
++    {
++      "from": "TRAINING_CAMPAIGN_PLAN",
++      "to": "TRAINING_CAMPAIGN_RUN_PLAN",
++      "type": "execution_requires"
++    },
++    {
++      "from": "TRAINING_CAMPAIGN_POLICY",
++      "to": "TRAINING_CAMPAIGN_PLAN",
++      "type": "execution_requires"
++    },
++    {
++      "from": "TRAINING_CAMPAIGN_RUN_PLAN",
++      "to": "TRAINING_CHECKPOINTS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "TRAINING_CAMPAIGN_RUN_PLAN",
++      "to": "TRAINING_RUN_EXECUTION_RECORD",
++      "type": "execution_requires"
++    },
++    {
++      "from": "TRAINING_CHECKPOINTS",
++      "to": "CANDIDATE_CHECKPOINT_CATALOG",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "TRAINING_CHECKPOINTS",
++      "to": "CHECKPOINT_SELECTION_DECISION",
++      "type": "execution_requires"
++    },
++    {
++      "from": "TRAINING_CHECKPOINTS",
++      "to": "MACE_DEPLOYMENT_ARTIFACT",
++      "type": "execution_requires"
++    },
++    {
++      "from": "TRAINING_CHECKPOINTS",
++      "to": "MACE_EXPOSURE_REALIZATION_RECORD",
++      "type": "execution_requires"
++    },
++    {
++      "from": "TRAINING_EXECUTION_POLICY",
++      "to": "TRAINING_RUN_EXECUTION_RECORD",
++      "type": "execution_requires"
++    },
++    {
++      "from": "TRAINING_OBJECTIVE_POLICY",
++      "to": "PRODUCTION_MATERIALIZATION_PLAN",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "TRAINING_OBJECTIVE_POLICY",
++      "to": "TRAINING_PROTOCOL_IDENTITY",
++      "type": "execution_requires"
++    },
++    {
++      "from": "TRAINING_PROTOCOL_IDENTITY",
++      "to": "CANDIDATE_TRAJECTORIES",
++      "type": "execution_requires"
++    },
++    {
++      "from": "TRAINING_PROTOCOL_IDENTITY",
++      "to": "CROSS_VALIDATION_JOB_FAMILY",
++      "type": "execution_requires"
++    },
++    {
++      "from": "TRAINING_PROTOCOL_IDENTITY",
++      "to": "DEVELOPMENT_MACE_BUNDLE",
++      "type": "execution_requires"
++    },
++    {
++      "from": "TRAINING_PROTOCOL_IDENTITY",
++      "to": "MACE_CONFIG_REALIZATION_RECORD",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "TRAINING_PROTOCOL_IDENTITY",
++      "to": "MACE_EXPOSURE_REALIZATION_RECORD",
++      "type": "execution_requires"
++    },
++    {
++      "from": "TRAINING_PROTOCOL_IDENTITY",
++      "to": "PROTOCOL_FREEZE_RECORD",
++      "type": "execution_requires"
++    },
++    {
++      "from": "TRAINING_PROTOCOL_IDENTITY",
++      "to": "PYTHON_ASE_MACE_EXECUTION",
++      "type": "execution_requires"
++    },
++    {
++      "from": "TRAINING_RUN_EXECUTION_RECORD",
++      "to": "CAMPAIGN_STATE_DATABASE",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "TRAINING_RUN_EXECUTION_RECORD",
++      "to": "CANDIDATE_CHECKPOINT_CATALOG",
++      "type": "promotion_requires"
++    },
++    {
++      "from": "TRAINING_RUN_EXECUTION_RECORD",
++      "to": "TRAINING_RUN_ATTEMPT_RECORD",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "TRAINING_SELECTION_LADDER",
++      "to": "DEVELOPMENT_MACE_BUNDLE",
++      "type": "execution_requires"
++    },
++    {
++      "from": "TRAINING_SELECTION_LADDER",
++      "to": "SELECTION_LEVEL_IDENTITY",
++      "type": "requires"
++    },
++    {
++      "from": "TRAJECTORY_COLLECTION",
++      "to": "FRAME_FACTS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "TRAJECTORY_COLLECTION",
++      "to": "TRAJECTORY_QUALITY",
++      "type": "execution_requires"
++    },
++    {
++      "from": "TRAJECTORY_GENERATION_IDENTITIES",
++      "to": "OBSERVABLE_VALIDATION_EVIDENCE",
++      "type": "execution_requires"
++    },
++    {
++      "from": "TRAJECTORY_QUALITY",
++      "to": "FRAME_ELIGIBILITY",
++      "type": "execution_requires"
++    },
++    {
++      "from": "TRAJECTORY_QUALITY",
++      "to": "PRODUCTION_REGIMES",
++      "type": "promotion_requires",
++      "predicate": "trajectory_quality != unqualified"
++    },
++    {
++      "from": "TRAJECTORY_QUALITY",
++      "to": "SOURCE_CATALOG",
++      "type": "execution_requires"
++    },
++    {
++      "from": "UNCERTAINTY_CALIBRATION",
++      "to": "CALIBRATION_APPLICABILITY_DOMAIN",
++      "type": "execution_requires"
++    },
++    {
++      "from": "UNCERTAINTY_SIGNAL_DIAGNOSTIC",
++      "to": "ACQUISITION_DECISIONS",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "UNIVERSAL_STRUCTURAL_FEATURE_CATALOG",
++      "to": "GENERIC_STRUCTURAL_EVENT_CATALOG",
++      "type": "execution_requires"
++    },
++    {
++      "from": "UNIVERSAL_STRUCTURAL_FEATURE_CATALOG",
++      "to": "SELECTION_FEATURE_CATALOGS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "VASP_CONTROLS",
++      "to": "DERIVATIVE_CONVENTION",
++      "type": "execution_requires"
++    },
++    {
++      "from": "VASP_CONTROLS",
++      "to": "ENERGY_REFERENCE_IDENTITY",
++      "type": "execution_requires"
++    },
++    {
++      "from": "VASP_CONTROLS",
++      "to": "ENSEMBLE_CERTIFICATE",
++      "type": "execution_requires"
++    },
++    {
++      "from": "VASP_CONTROLS",
++      "to": "NUMERICAL_QUALITY_PROFILE",
++      "type": "execution_requires"
++    },
++    {
++      "from": "VASP_CONTROLS",
++      "to": "REVIEW_MANIFEST_INFERENCE_RESULT",
++      "type": "execution_requires"
++    },
++    {
++      "from": "VASP_CONTROLS",
++      "to": "THEORY_IDENTITY",
++      "type": "execution_requires"
++    },
++    {
++      "from": "VASP_CONTROLS",
++      "to": "VERIFIED_STRAIN_RELATIONSHIP",
++      "type": "execution_requires"
++    },
++    {
++      "from": "VERIFIED_STRAIN_RELATIONSHIP",
++      "to": "REFERENCE_CELL",
++      "type": "execution_requires"
++    },
++    {
++      "from": "VERIFIED_STRAIN_RELATIONSHIP",
++      "to": "REVIEW_MANIFEST_INFERENCE_RESULT",
++      "type": "promotion_requires"
++    }
++  ],
++  "forbidden_dependencies": [
++    {
++      "from": [
++        "LOCKED_INTERPOLATION_TEST",
++        "LOCKED_CHALLENGE_TESTS"
++      ],
++      "to": [
++        "FOLD_LOCAL_TRANSFORMS",
++        "FOLD_FEATURE_METRIC_FITS",
++        "FOLD_ATOMIC_REFERENCE_FITS",
++        "FOLD_TRAINING_DIFFICULTY_FEATURES",
++        "FOLD_LOCAL_SELECTIONS",
++        "FINAL_FEATURE_TRANSFORM",
++        "FINAL_FEATURE_METRIC_FIT",
++        "FINAL_ATOMIC_REFERENCE_FIT",
++        "FINAL_TRAINING_DIFFICULTY_FEATURES",
++        "FINAL_SELECTION_MASTER_ORDER",
++        "TRAINING_PROTOCOL_IDENTITY",
++        "CHECKPOINT_SELECTION_DECISION",
++        "UNCERTAINTY_CALIBRATION",
++        "ACQUISITION_DECISIONS"
++      ]
++    },
++    {
++      "from": [
++        "FOLD_EVALUATION_DOMAINS",
++        "FOLD_CHECKPOINT_MONITORS"
++      ],
++      "to": [
++        "FOLD_LOCAL_TRANSFORMS",
++        "FOLD_FEATURE_METRIC_FITS",
++        "FOLD_ATOMIC_REFERENCE_FITS",
++        "FOLD_TRAINING_DIFFICULTY_FEATURES",
++        "FOLD_LOCAL_SELECTIONS"
++      ]
++    },
++    {
++      "from": [
++        "CALIBRATION_DOMAIN"
++      ],
++      "to": [
++        "FINAL_FEATURE_TRANSFORM",
++        "FINAL_FEATURE_METRIC_FIT",
++        "FINAL_ATOMIC_REFERENCE_FIT",
++        "FINAL_TRAINING_DIFFICULTY_FEATURES",
++        "FINAL_SELECTION_MASTER_ORDER",
++        "CHECKPOINT_SELECTION_DECISION",
++        "TRAINING_PROTOCOL_IDENTITY"
++      ]
++    },
++    {
++      "from": [
++        "BLINDED_EVALUATION_PREDICTIONS"
++      ],
++      "to": [
++        "FOLD_LOCAL_SELECTIONS",
++        "FINAL_SELECTION_MASTER_ORDER",
++        "TRAINING_PROTOCOL_IDENTITY"
++      ]
++    },
++    {
++      "from": [
++        "LOCKED_INTERPOLATION_TEST",
++        "LOCKED_CHALLENGE_TESTS",
++        "LOCKED_TEST_OBSERVABLE_EVIDENCE"
++      ],
++      "to": [
++        "OBSERVABLE_COMPARISON_POLICY",
++        "TRAINING_PROTOCOL_IDENTITY",
++        "CHECKPOINT_SELECTION_DECISION",
++        "FOLD_FEATURE_METRIC_FITS",
++        "FINAL_FEATURE_METRIC_FIT"
++      ],
++      "reason": "Locked-test physical-observable evidence shall not tune comparison policies, training, data selection, or checkpoint decisions."
++    },
++    {
++      "from": [
++        "OBSERVABLE_COMPARISON_RESULT",
++        "OBSERVABLE_ACCEPTANCE_DECISION"
++      ],
++      "to": [
++        "FOLD_LOCAL_SELECTIONS",
++        "FINAL_SELECTION_MASTER_ORDER",
++        "TRAINING_PROTOCOL_IDENTITY"
++      ],
++      "reason": "Post-training physical validation shall not retroactively alter data selection or the frozen training protocol."
++    },
++    {
++      "from": [
++        "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
++        "CROSS_SYSTEM_QUALIFICATION_SUITE"
++      ],
++      "to": [
++        "FOLD_LOCAL_TRANSFORMS",
++        "FOLD_FEATURE_METRIC_FITS",
++        "FOLD_LOCAL_SELECTIONS",
++        "FINAL_FEATURE_TRANSFORM",
++        "FINAL_FEATURE_METRIC_FIT",
++        "FINAL_SELECTION_MASTER_ORDER",
++        "TRAINING_PROTOCOL_IDENTITY",
++        "CHECKPOINT_SELECTION_DECISION"
++      ],
++      "reason": "Cross-system software qualification is a release gate and shall not tune scientific features, selections, protocols, or checkpoints."
++    },
++    {
++      "from": [
++        "OBSERVABLE_VALIDATION_EVIDENCE",
++        "OBSERVABLE_COMPARISON_RESULT",
++        "OBSERVABLE_ACCEPTANCE_DECISION",
++        "LOCKED_TEST_OBSERVABLE_EVIDENCE"
++      ],
++      "to": [
++        "OBSERVABLE_COMPARISON_RULES",
++        "PREDECLARED_OBSERVABLE_THRESHOLDS",
++        "OBSERVABLE_SCORE_UNCERTAINTY",
++        "OBSERVABLE_COMPARISON_POLICY"
++      ]
++    },
++    {
++      "from": "CALLER_ASSERTED_FOUNDATION_STATUS",
++      "to": "DATA9A_GATE",
++      "reason": "Foundation features and residual E0 must be derived from verified DATA6/DATA7 artifacts."
++    },
++    {
++      "from": "UNFROZEN_CORPUS_COUNTS",
++      "to": "DATA9A_GATE",
++      "reason": "Qualification must bind the immutable ProductionCorpusPlan."
++    },
++    {
++      "from": "REPLAY_GEOMETRY_ONLY_IDENTITY",
++      "to": "PRODUCTION_DATA8_ARTIFACT",
++      "reason": "Replay semantic identity must include numerical label payloads."
++    }
++  ]
++}
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/docs/arch_manuals/stage11_dependency_graph.json mdstats-0.20.104a0/docs/arch_manuals/stage11_dependency_graph.json
+--- mdstats-0.20.103a0/docs/arch_manuals/stage11_dependency_graph.json	1970-01-01 00:00:00.000000000 +0000
++++ mdstats-0.20.104a0/docs/arch_manuals/stage11_dependency_graph.json	2026-08-08 09:00:58.729358378 +0000
+@@ -0,0 +1,1021 @@
++{
++  "schema_version": 2,
++  "architecture_revision": 56,
++  "description": "Normative Stage 11 typed dependency graph. Required acyclicity covers source_identity_requires, execution_requires, and unconditional promotion_requires edges within one model generation.",
++  "edge_type_definitions": {
++    "source_identity_requires": "same SourceTrajectoryBundleIdentity is mandatory",
++    "execution_requires": "upstream product must exist before execution",
++    "promotion_requires": "upstream status/predicate must pass for scientific promotion",
++    "conditional_requires": "required only for the declared product predicate",
++    "optional_enrichment": "adds annotation or detail but does not gate the base product",
++    "optional_verification": "independent check; unavailable verification does not reject a source-qualified result",
++    "supersedes": "later evidence replaces an earlier provisional record without mutating it",
++    "replay_triggers": "starts a new signed model generation rather than an in-generation cycle"
++  },
++  "nodes": [
++    {
++      "id": "SOURCE_BUNDLE"
++    },
++    {
++      "id": "SOURCE_BYTES"
++    },
++    {
++      "id": "SOURCE_COORDINATES"
++    },
++    {
++      "id": "PART_I"
++    },
++    {
++      "id": "E0A"
++    },
++    {
++      "id": "ENS0"
++    },
++    {
++      "id": "ENS1"
++    },
++    {
++      "id": "C0"
++    },
++    {
++      "id": "E0B_RAW"
++    },
++    {
++      "id": "STAT0"
++    },
++    {
++      "id": "STAT1"
++    },
++    {
++      "id": "STAT2"
++    },
++    {
++      "id": "GR0"
++    },
++    {
++      "id": "GR1"
++    },
++    {
++      "id": "GR2"
++    },
++    {
++      "id": "SAMP0"
++    },
++    {
++      "id": "E1"
++    },
++    {
++      "id": "E2"
++    },
++    {
++      "id": "GR3"
++    },
++    {
++      "id": "GR4"
++    },
++    {
++      "id": "STAT3"
++    },
++    {
++      "id": "E3A"
++    },
++    {
++      "id": "E3B"
++    },
++    {
++      "id": "E4"
++    },
++    {
++      "id": "SAMP1"
++    },
++    {
++      "id": "E5"
++    },
++    {
++      "id": "E5A"
++    },
++    {
++      "id": "E5B"
++    },
++    {
++      "id": "SAMP2"
++    },
++    {
++      "id": "SAMP3"
++    },
++    {
++      "id": "THERMO0"
++    },
++    {
++      "id": "THERMO1"
++    },
++    {
++      "id": "THERMO2"
++    },
++    {
++      "id": "THERMO4A"
++    },
++    {
++      "id": "THERMO3A"
++    },
++    {
++      "id": "PMF_DENSITY"
++    },
++    {
++      "id": "PMF_FORCE"
++    },
++    {
++      "id": "PMF_CROSSCHECK"
++    },
++    {
++      "id": "E6"
++    },
++    {
++      "id": "E6B"
++    },
++    {
++      "id": "THERMO3B"
++    },
++    {
++      "id": "E7"
++    },
++    {
++      "id": "E7A"
++    },
++    {
++      "id": "KSAMP0"
++    },
++    {
++      "id": "E9A"
++    },
++    {
++      "id": "G0"
++    },
++    {
++      "id": "F0"
++    },
++    {
++      "id": "E9B"
++    },
++    {
++      "id": "F1"
++    },
++    {
++      "id": "THERMO4B"
++    },
++    {
++      "id": "G1"
++    },
++    {
++      "id": "H"
++    },
++    {
++      "id": "I"
++    },
++    {
++      "id": "E8B_BASIN_GEOMETRY"
++    },
++    {
++      "id": "E8B_BASIN_THERMO"
++    },
++    {
++      "id": "E8B_CORRIDOR"
++    },
++    {
++      "id": "E8B_TRANSITION_REGION"
++    },
++    {
++      "id": "E8B_PATH"
++    },
++    {
++      "id": "E8B_TRANSITION_STATE"
++    },
++    {
++      "id": "E8B_EVENT_NETWORK"
++    },
++    {
++      "id": "E8B_KINETIC"
++    },
++    {
++      "id": "M1"
++    },
++    {
++      "id": "M2"
++    },
++    {
++      "id": "GR5"
++    },
++    {
++      "id": "E8A_ENS"
++    },
++    {
++      "id": "E8A_STAT"
++    },
++    {
++      "id": "E8A_GR"
++    },
++    {
++      "id": "E8A_SAMP"
++    },
++    {
++      "id": "E8A_SCOPE"
++    }
++  ],
++  "edges": [
++    {
++      "from": "SOURCE_BUNDLE",
++      "to": "SOURCE_BYTES",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "SOURCE_BUNDLE",
++      "to": "SOURCE_COORDINATES",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "SOURCE_BYTES",
++      "to": "ENS0",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "SOURCE_COORDINATES",
++      "to": "C0",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "PART_I",
++      "to": "C0",
++      "type": "execution_requires"
++    },
++    {
++      "from": "ENS0",
++      "to": "ENS1",
++      "type": "execution_requires"
++    },
++    {
++      "from": "C0",
++      "to": "E0B_RAW",
++      "type": "execution_requires"
++    },
++    {
++      "from": "ENS0",
++      "to": "STAT0",
++      "type": "execution_requires"
++    },
++    {
++      "from": "ENS1",
++      "to": "STAT0",
++      "type": "execution_requires"
++    },
++    {
++      "from": "STAT0",
++      "to": "STAT1",
++      "type": "promotion_requires",
++      "predicate": "trajectory_quality != unqualified"
++    },
++    {
++      "from": "STAT1",
++      "to": "STAT2",
++      "type": "execution_requires"
++    },
++    {
++      "from": "E0A",
++      "to": "GR0",
++      "type": "execution_requires"
++    },
++    {
++      "from": "GR0",
++      "to": "GR1",
++      "type": "execution_requires"
++    },
++    {
++      "from": "GR1",
++      "to": "GR2",
++      "type": "execution_requires"
++    },
++    {
++      "from": "STAT1",
++      "to": "SAMP0",
++      "type": "execution_requires"
++    },
++    {
++      "from": "E0B_RAW",
++      "to": "SAMP0",
++      "type": "execution_requires"
++    },
++    {
++      "from": "SAMP0",
++      "to": "E1",
++      "type": "execution_requires"
++    },
++    {
++      "from": "GR1",
++      "to": "E1",
++      "type": "execution_requires"
++    },
++    {
++      "from": "E1",
++      "to": "E2",
++      "type": "execution_requires"
++    },
++    {
++      "from": "E2",
++      "to": "GR3",
++      "type": "execution_requires"
++    },
++    {
++      "from": "GR1",
++      "to": "GR3",
++      "type": "execution_requires"
++    },
++    {
++      "from": "GR3",
++      "to": "GR4",
++      "type": "execution_requires"
++    },
++    {
++      "from": "SAMP0",
++      "to": "GR4",
++      "type": "execution_requires"
++    },
++    {
++      "from": "GR4",
++      "to": "STAT3",
++      "type": "execution_requires"
++    },
++    {
++      "from": "STAT2",
++      "to": "STAT3",
++      "type": "execution_requires"
++    },
++    {
++      "from": "SAMP0",
++      "to": "STAT3",
++      "type": "execution_requires"
++    },
++    {
++      "from": "GR4",
++      "to": "E3A",
++      "type": "execution_requires"
++    },
++    {
++      "from": "SAMP0",
++      "to": "E3A",
++      "type": "execution_requires"
++    },
++    {
++      "from": "E3A",
++      "to": "E3B",
++      "type": "execution_requires"
++    },
++    {
++      "from": "STAT2",
++      "to": "E3B",
++      "type": "promotion_requires",
++      "predicate": "force_thermodynamic_admissibility accepted"
++    },
++    {
++      "from": "STAT3",
++      "to": "E3B",
++      "type": "execution_requires"
++    },
++    {
++      "from": "GR4",
++      "to": "E4",
++      "type": "execution_requires"
++    },
++    {
++      "from": "SAMP0",
++      "to": "E4",
++      "type": "execution_requires"
++    },
++    {
++      "from": "E4",
++      "to": "SAMP1",
++      "type": "execution_requires"
++    },
++    {
++      "from": "GR4",
++      "to": "SAMP1",
++      "type": "execution_requires"
++    },
++    {
++      "from": "SAMP1",
++      "to": "E5",
++      "type": "promotion_requires",
++      "predicate": "basin sampling accepted or conditional"
++    },
++    {
++      "from": "E5",
++      "to": "E5A",
++      "type": "execution_requires"
++    },
++    {
++      "from": "E5A",
++      "to": "E5B",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "E4",
++      "to": "SAMP2",
++      "type": "execution_requires"
++    },
++    {
++      "from": "E5",
++      "to": "SAMP2",
++      "type": "execution_requires"
++    },
++    {
++      "from": "GR3",
++      "to": "SAMP2",
++      "type": "execution_requires"
++    },
++    {
++      "from": "SAMP1",
++      "to": "SAMP3",
++      "type": "execution_requires"
++    },
++    {
++      "from": "SAMP2",
++      "to": "SAMP3",
++      "type": "execution_requires"
++    },
++    {
++      "from": "ENS0",
++      "to": "THERMO0",
++      "type": "execution_requires"
++    },
++    {
++      "from": "STAT2",
++      "to": "THERMO0",
++      "type": "execution_requires"
++    },
++    {
++      "from": "E5",
++      "to": "THERMO0",
++      "type": "execution_requires"
++    },
++    {
++      "from": "THERMO0",
++      "to": "THERMO1",
++      "type": "execution_requires"
++    },
++    {
++      "from": "SAMP1",
++      "to": "THERMO1",
++      "type": "promotion_requires",
++      "predicate": "state sampling adequate"
++    },
++    {
++      "from": "THERMO1",
++      "to": "THERMO2",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "THERMO1",
++      "to": "THERMO4A",
++      "type": "conditional_requires",
++      "predicate": "verification product requests THERMO1"
++    },
++    {
++      "from": "THERMO2",
++      "to": "THERMO4A",
++      "type": "conditional_requires",
++      "predicate": "verification product requests THERMO2"
++    },
++    {
++      "from": "STAT3",
++      "to": "THERMO4A",
++      "type": "execution_requires"
++    },
++    {
++      "from": "THERMO0",
++      "to": "THERMO3A",
++      "type": "execution_requires"
++    },
++    {
++      "from": "SAMP2",
++      "to": "THERMO3A",
++      "type": "promotion_requires",
++      "predicate": "corridor sampling supported"
++    },
++    {
++      "from": "GR3",
++      "to": "THERMO3A",
++      "type": "promotion_requires",
++      "predicate": "corridor numerics converged"
++    },
++    {
++      "from": "STAT2",
++      "to": "PMF_DENSITY",
++      "type": "promotion_requires",
++      "predicate": "canonical_or_reweighted_density_pmf admissible"
++    },
++    {
++      "from": "STAT3",
++      "to": "PMF_DENSITY",
++      "type": "execution_requires"
++    },
++    {
++      "from": "GR3",
++      "to": "PMF_DENSITY",
++      "type": "promotion_requires",
++      "predicate": "field numerics converged"
++    },
++    {
++      "from": "SAMP1",
++      "to": "PMF_DENSITY",
++      "type": "promotion_requires",
++      "predicate": "basins supported"
++    },
++    {
++      "from": "STAT2",
++      "to": "PMF_FORCE",
++      "type": "promotion_requires",
++      "predicate": "canonical_or_reweighted_force_pmf admissible"
++    },
++    {
++      "from": "STAT3",
++      "to": "PMF_FORCE",
++      "type": "execution_requires"
++    },
++    {
++      "from": "E3B",
++      "to": "PMF_FORCE",
++      "type": "execution_requires"
++    },
++    {
++      "from": "GR3",
++      "to": "PMF_FORCE",
++      "type": "promotion_requires",
++      "predicate": "field numerics converged"
++    },
++    {
++      "from": "SAMP1",
++      "to": "PMF_FORCE",
++      "type": "promotion_requires",
++      "predicate": "basins supported"
++    },
++    {
++      "from": "PMF_DENSITY",
++      "to": "PMF_CROSSCHECK",
++      "type": "execution_requires"
++    },
++    {
++      "from": "PMF_FORCE",
++      "to": "PMF_CROSSCHECK",
++      "type": "execution_requires"
++    },
++    {
++      "from": "PMF_DENSITY",
++      "to": "THERMO4A",
++      "type": "conditional_requires",
++      "predicate": "verification product requests PMF_DENSITY"
++    },
++    {
++      "from": "PMF_FORCE",
++      "to": "THERMO4A",
++      "type": "conditional_requires",
++      "predicate": "verification product requests PMF_FORCE"
++    },
++    {
++      "from": "PMF_CROSSCHECK",
++      "to": "THERMO4A",
++      "type": "conditional_requires",
++      "predicate": "verification product requests PMF_CROSSCHECK"
++    },
++    {
++      "from": "E5",
++      "to": "E6",
++      "type": "execution_requires"
++    },
++    {
++      "from": "E4",
++      "to": "E6",
++      "type": "execution_requires"
++    },
++    {
++      "from": "SAMP1",
++      "to": "E6",
++      "type": "promotion_requires",
++      "predicate": "basin catalog accepted"
++    },
++    {
++      "from": "E6",
++      "to": "E6B",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "E6B",
++      "to": "THERMO3B",
++      "type": "execution_requires"
++    },
++    {
++      "from": "THERMO3A",
++      "to": "THERMO3B",
++      "type": "execution_requires"
++    },
++    {
++      "from": "PMF_DENSITY",
++      "to": "THERMO3B",
++      "type": "optional_verification"
++    },
++    {
++      "from": "PMF_FORCE",
++      "to": "THERMO3B",
++      "type": "optional_verification"
++    },
++    {
++      "from": "E6",
++      "to": "E7",
++      "type": "execution_requires"
++    },
++    {
++      "from": "E6B",
++      "to": "E7",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "THERMO3B",
++      "to": "E7",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "E5",
++      "to": "E7A",
++      "type": "execution_requires"
++    },
++    {
++      "from": "SAMP2",
++      "to": "E7A",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "M2",
++      "to": "E7A",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "E6",
++      "to": "KSAMP0",
++      "type": "execution_requires"
++    },
++    {
++      "from": "E7",
++      "to": "KSAMP0",
++      "type": "execution_requires"
++    },
++    {
++      "from": "E7",
++      "to": "E9A",
++      "type": "execution_requires"
++    },
++    {
++      "from": "KSAMP0",
++      "to": "E9A",
++      "type": "execution_requires"
++    },
++    {
++      "from": "E9A",
++      "to": "G0",
++      "type": "execution_requires"
++    },
++    {
++      "from": "E6",
++      "to": "F0",
++      "type": "execution_requires"
++    },
++    {
++      "from": "E7",
++      "to": "F0",
++      "type": "execution_requires"
++    },
++    {
++      "from": "E7A",
++      "to": "F0",
++      "type": "execution_requires"
++    },
++    {
++      "from": "KSAMP0",
++      "to": "F0",
++      "type": "execution_requires"
++    },
++    {
++      "from": "G0",
++      "to": "F0",
++      "type": "promotion_requires",
++      "predicate": "accepted state model generation"
++    },
++    {
++      "from": "F0",
++      "to": "E9B",
++      "type": "execution_requires"
++    },
++    {
++      "from": "KSAMP0",
++      "to": "E9B",
++      "type": "execution_requires"
++    },
++    {
++      "from": "E9B",
++      "to": "G0",
++      "type": "replay_triggers",
++      "predicate": "gating_revision_required or state_model_revision_required"
++    },
++    {
++      "from": "THERMO3B",
++      "to": "F1",
++      "type": "execution_requires"
++    },
++    {
++      "from": "G0",
++      "to": "F1",
++      "type": "promotion_requires",
++      "predicate": "accepted state model generation"
++    },
++    {
++      "from": "F0",
++      "to": "THERMO4B",
++      "type": "optional_verification"
++    },
++    {
++      "from": "E9B",
++      "to": "THERMO4B",
++      "type": "optional_verification"
++    },
++    {
++      "from": "THERMO1",
++      "to": "THERMO4B",
++      "type": "optional_verification"
++    },
++    {
++      "from": "F1",
++      "to": "THERMO4B",
++      "type": "optional_verification"
++    },
++    {
++      "from": "F0",
++      "to": "G1",
++      "type": "execution_requires"
++    },
++    {
++      "from": "E9B",
++      "to": "G1",
++      "type": "promotion_requires",
++      "predicate": "promoted_model_supported"
++    },
++    {
++      "from": "G0",
++      "to": "G1",
++      "type": "execution_requires"
++    },
++    {
++      "from": "F1",
++      "to": "G1",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "THERMO4B",
++      "to": "G1",
++      "type": "optional_verification"
++    },
++    {
++      "from": "G1",
++      "to": "H",
++      "type": "promotion_requires",
++      "predicate": "final model selected"
++    },
++    {
++      "from": "F0",
++      "to": "H",
++      "type": "execution_requires"
++    },
++    {
++      "from": "E9B",
++      "to": "H",
++      "type": "promotion_requires",
++      "predicate": "validated or explicitly exploratory"
++    },
++    {
++      "from": "H",
++      "to": "I",
++      "type": "execution_requires"
++    },
++    {
++      "from": "SAMP3",
++      "to": "I",
++      "type": "execution_requires"
++    },
++    {
++      "from": "THERMO1",
++      "to": "I",
++      "type": "execution_requires"
++    },
++    {
++      "from": "THERMO4A",
++      "to": "I",
++      "type": "optional_verification"
++    },
++    {
++      "from": "E5",
++      "to": "E8B_BASIN_GEOMETRY",
++      "type": "execution_requires"
++    },
++    {
++      "from": "SAMP1",
++      "to": "E8B_BASIN_GEOMETRY",
++      "type": "promotion_requires",
++      "predicate": "basins supported"
++    },
++    {
++      "from": "GR3",
++      "to": "E8B_BASIN_GEOMETRY",
++      "type": "promotion_requires",
++      "predicate": "basin numerics converged"
++    },
++    {
++      "from": "THERMO1",
++      "to": "E8B_BASIN_THERMO",
++      "type": "execution_requires"
++    },
++    {
++      "from": "THERMO2",
++      "to": "E8B_BASIN_THERMO",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "THERMO4A",
++      "to": "E8B_BASIN_THERMO",
++      "type": "optional_verification"
++    },
++    {
++      "from": "SAMP2",
++      "to": "E8B_CORRIDOR",
++      "type": "execution_requires"
++    },
++    {
++      "from": "GR3",
++      "to": "E8B_CORRIDOR",
++      "type": "promotion_requires",
++      "predicate": "corridor numerics converged"
++    },
++    {
++      "from": "THERMO3A",
++      "to": "E8B_TRANSITION_REGION",
++      "type": "execution_requires"
++    },
++    {
++      "from": "E6B",
++      "to": "E8B_PATH",
++      "type": "execution_requires"
++    },
++    {
++      "from": "THERMO3B",
++      "to": "E8B_TRANSITION_STATE",
++      "type": "execution_requires"
++    },
++    {
++      "from": "E7",
++      "to": "E8B_EVENT_NETWORK",
++      "type": "execution_requires"
++    },
++    {
++      "from": "F0",
++      "to": "E8B_KINETIC",
++      "type": "execution_requires"
++    },
++    {
++      "from": "E9B",
++      "to": "E8B_KINETIC",
++      "type": "promotion_requires",
++      "predicate": "kinetic model validated or exploratory status explicit"
++    },
++    {
++      "from": "G1",
++      "to": "E8B_KINETIC",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "F1",
++      "to": "E8B_KINETIC",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "THERMO4B",
++      "to": "E8B_KINETIC",
++      "type": "optional_verification"
++    },
++    {
++      "from": "PART_I",
++      "to": "M1",
++      "type": "execution_requires"
++    },
++    {
++      "from": "C0",
++      "to": "M1",
++      "type": "execution_requires"
++    },
++    {
++      "from": "M1",
++      "to": "M2",
++      "type": "execution_requires"
++    },
++    {
++      "from": "E0B_RAW",
++      "to": "M2",
++      "type": "execution_requires"
++    },
++    {
++      "from": "GR2",
++      "to": "GR5",
++      "type": "execution_requires"
++    },
++    {
++      "from": "GR4",
++      "to": "GR5",
++      "type": "execution_requires"
++    },
++    {
++      "from": "ENS1",
++      "to": "E8A_ENS",
++      "type": "execution_requires"
++    },
++    {
++      "from": "STAT1",
++      "to": "E8A_STAT",
++      "type": "execution_requires"
++    },
++    {
++      "from": "GR4",
++      "to": "E8A_GR",
++      "type": "execution_requires"
++    },
++    {
++      "from": "SAMP1",
++      "to": "E8A_SAMP",
++      "type": "execution_requires"
++    },
++    {
++      "from": "SAMP3",
++      "to": "E8A_SCOPE",
++      "type": "execution_requires"
++    },
++    {
++      "from": "PMF_DENSITY",
++      "to": "E8A_SCOPE",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "PMF_FORCE",
++      "to": "E8A_SCOPE",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "PMF_CROSSCHECK",
++      "to": "E8A_SCOPE",
++      "type": "optional_verification"
++    },
++    {
++      "from": "THERMO1",
++      "to": "E8A_SCOPE",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "THERMO4A",
++      "to": "E8A_SCOPE",
++      "type": "optional_verification"
++    },
++    {
++      "from": "E6B",
++      "to": "E8A_SCOPE",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "F0",
++      "to": "E8A_SCOPE",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "E3A",
++      "to": "E5",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "E3B",
++      "to": "E5",
++      "type": "optional_verification"
++    },
++    {
++      "from": "E5B",
++      "to": "E6",
++      "type": "optional_enrichment"
++    }
++  ],
++  "branch_notes": {
++    "thermodynamic_provenance": "Every thermodynamic result is source-qualified by mandatory provenance. Cross-checks are optional verification.",
++    "kinetic_crossfit": "F0 uses kinetic_model_fit episodes; E9B uses untouched kinetic_model_validation episodes.",
++    "rate_candidate_edges": "Zero-event bounds attach to predeclared RateCandidateEdge records with valid exposure.",
++    "candidate_freeze": "E2 emits per-realization catalogs; GR4 alone emits FrozenCandidateCatalog.",
++    "model_generation": "G0/E9B replay creates a child StateModelGeneration with bounded termination."
++  }
++}
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/mdstats/_version.py mdstats-0.20.104a0/mdstats/_version.py
+--- mdstats-0.20.103a0/mdstats/_version.py	2026-08-08 01:29:43.000000000 +0000
++++ mdstats-0.20.104a0/mdstats/_version.py	2026-08-08 09:03:25.564639906 +0000
+@@ -1,3 +1,3 @@
+ """Package version."""
+ 
+-__version__ = "0.20.103a0"
++__version__ = "0.20.104a0"
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/mdstats/data/observable_owner_manuals.json mdstats-0.20.104a0/mdstats/data/observable_owner_manuals.json
+--- mdstats-0.20.103a0/mdstats/data/observable_owner_manuals.json	2026-08-08 01:29:43.000000000 +0000
++++ mdstats-0.20.104a0/mdstats/data/observable_owner_manuals.json	2026-08-08 09:03:26.040009768 +0000
+@@ -1,11 +1,13 @@
+ {
+-  "schema": "mdstats.observable-owner-manual-index.v1",
+-  "package_version": "0.20.103a0",
+   "manuals": {
+     "structural-observables-architecture": {
+       "source_path": "docs/arch_manuals/structural_observables_architecture.md",
+       "uri": "mdstats-doc://structural-observables-architecture/0.20.53a0"
+     },
++    "thermomechanical-energetic-validation-architecture": {
++      "source_path": "docs/arch_manuals/thermomechanical_energetic_validation_architecture.md",
++      "uri": "mdstats-doc://thermomechanical-energetic-validation-architecture/0.20.53a0"
++    },
+     "topology-statistics-architecture": {
+       "source_path": "docs/arch_manuals/topology_statistics_architecture.md",
+       "uri": "mdstats-doc://topology-statistics-architecture/0.20.53a0"
+@@ -13,10 +15,8 @@
+     "vacf-dynamics-architecture": {
+       "source_path": "docs/arch_manuals/vacf_dynamics_architecture.md",
+       "uri": "mdstats-doc://vacf-dynamics-architecture/0.20.53a0"
+-    },
+-    "thermomechanical-energetic-validation-architecture": {
+-      "source_path": "docs/arch_manuals/thermomechanical_energetic_validation_architecture.md",
+-      "uri": "mdstats-doc://thermomechanical-energetic-validation-architecture/0.20.53a0"
+     }
+-  }
++  },
++  "package_version": "0.20.104a0",
++  "schema": "mdstats.observable-owner-manual-index.v1"
+ }
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/pyproject.toml mdstats-0.20.104a0/pyproject.toml
+--- mdstats-0.20.103a0/pyproject.toml	2026-08-08 01:29:43.000000000 +0000
++++ mdstats-0.20.104a0/pyproject.toml	2026-08-08 09:03:25.563491586 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.103a0"
++version = "0.20.104a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/tests/test_mlff_data0_architecture_specification.py mdstats-0.20.104a0/tests/test_mlff_data0_architecture_specification.py
+--- mdstats-0.20.103a0/tests/test_mlff_data0_architecture_specification.py	2026-08-08 01:31:22.000000000 +0000
++++ mdstats-0.20.104a0/tests/test_mlff_data0_architecture_specification.py	2026-08-08 09:03:26.054324200 +0000
+@@ -263,4 +263,4 @@
+ def test_mlff_data0_pdf_and_version_artifacts_exist() -> None:
+     assert MANUAL_PDF.stat().st_size > 10_000
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.103a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.104a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/tests/test_mlff_data1_specification.py mdstats-0.20.104a0/tests/test_mlff_data1_specification.py
+--- mdstats-0.20.103a0/tests/test_mlff_data1_specification.py	2026-08-08 01:31:22.000000000 +0000
++++ mdstats-0.20.104a0/tests/test_mlff_data1_specification.py	2026-08-08 09:03:26.043658525 +0000
+@@ -49,4 +49,4 @@
+     assert callable(mdstats.assign_balanced_round_robin)
+     assert callable(mdstats.build_complete_frame_block_plan)
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.103a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.104a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/tests/test_mlff_data2a_manifest_inference_specification.py mdstats-0.20.104a0/tests/test_mlff_data2a_manifest_inference_specification.py
+--- mdstats-0.20.103a0/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-08 01:31:22.000000000 +0000
++++ mdstats-0.20.104a0/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-08 09:03:26.044412224 +0000
+@@ -15,7 +15,7 @@
+ 
+ 
+ def test_data2a_version_public_api_and_documented_contract() -> None:
+-    assert mdstats.__version__ == "0.20.103a0"
++    assert mdstats.__version__ == "0.20.104a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert callable(mdstats.infer_training_manifest_metadata)
+     policy = mdstats.ManifestInferencePolicy()
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/tests/test_mlff_data9a2_specification.py mdstats-0.20.104a0/tests/test_mlff_data9a2_specification.py
+--- mdstats-0.20.103a0/tests/test_mlff_data9a2_specification.py	2026-08-08 01:31:22.000000000 +0000
++++ mdstats-0.20.104a0/tests/test_mlff_data9a2_specification.py	2026-08-08 09:03:26.054352372 +0000
+@@ -23,7 +23,7 @@
+         "finite energy, force, and stress",
+     ):
+         assert required in text
+-    assert 'version = "0.20.103a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.104a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "DATA9A2 real-MACE realization is implemented in `0.20.39a0`" in ARCH.read_text()
+ 
+ 
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/tests/test_mlff_data9a3_specification.py mdstats-0.20.104a0/tests/test_mlff_data9a3_specification.py
+--- mdstats-0.20.103a0/tests/test_mlff_data9a3_specification.py	2026-08-08 01:31:22.000000000 +0000
++++ mdstats-0.20.104a0/tests/test_mlff_data9a3_specification.py	2026-08-08 09:03:26.047718733 +0000
+@@ -9,5 +9,5 @@
+     assert "37,632" in text
+     assert "supported_with_temporal_blocks_only" in text
+     assert "production_replay_corpus_not_bound" in text
+-    assert 'version = "0.20.103a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.104a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "MLFF-DATA9A3 production qualification" in ARCH.read_text()
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/tests/test_mlff_data9a4_precision_specification.py mdstats-0.20.104a0/tests/test_mlff_data9a4_precision_specification.py
+--- mdstats-0.20.103a0/tests/test_mlff_data9a4_precision_specification.py	2026-08-08 01:35:13.000000000 +0000
++++ mdstats-0.20.104a0/tests/test_mlff_data9a4_precision_specification.py	2026-08-08 09:03:26.043832553 +0000
+@@ -9,7 +9,7 @@
+     assert "float32" in text and "float64" in text
+     assert "MaceModelPrecisionRecord" in text
+     assert "MacePrecisionTransitionRecord" in text
+-    assert "version = \"0.20.103a0\"" in (ROOT / "pyproject.toml").read_text()
++    assert "version = \"0.20.104a0\"" in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_bind_precision_to_protocol() -> None:
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/tests/test_mlff_data9a5_critical_fp64_specification.py mdstats-0.20.104a0/tests/test_mlff_data9a5_critical_fp64_specification.py
+--- mdstats-0.20.103a0/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-08 01:31:22.000000000 +0000
++++ mdstats-0.20.104a0/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-08 09:03:26.045788658 +0000
+@@ -14,7 +14,7 @@
+     assert 'version: "0.20.42a0"' in text
+     assert "training_force_jacobian_dtype = model" in text
+     assert "Python/ASE" in text
+-    assert 'version = "0.20.103a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.104a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_data9a5_architecture_declares_scope_and_limits() -> None:
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/tests/test_mlff_data9a5_deployment_specification.py mdstats-0.20.104a0/tests/test_mlff_data9a5_deployment_specification.py
+--- mdstats-0.20.103a0/tests/test_mlff_data9a5_deployment_specification.py	2026-08-08 01:31:22.000000000 +0000
++++ mdstats-0.20.104a0/tests/test_mlff_data9a5_deployment_specification.py	2026-08-08 09:03:26.053237056 +0000
+@@ -13,7 +13,7 @@
+     assert 'version: "0.20.43a0"' in text
+     assert "downstream runtime owns" in text
+     assert "float32-to-float64 promotion does not restore" in text
+-    assert 'version = "0.20.103a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.104a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_keep_lammps_outside_mdstats_scope() -> None:
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/tests/test_mlff_data9a6c_observable_evidence_specification.py mdstats-0.20.104a0/tests/test_mlff_data9a6c_observable_evidence_specification.py
+--- mdstats-0.20.103a0/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-08 01:35:13.000000000 +0000
++++ mdstats-0.20.104a0/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-08 09:03:26.053305518 +0000
+@@ -74,5 +74,5 @@
+ 
+ def test_packaged_owner_manual_index_is_valid() -> None:
+     payload = json.loads(MANUAL_INDEX.read_text(encoding="utf-8"))
+-    assert payload["package_version"] == "0.20.103a0"
++    assert payload["package_version"] == "0.20.104a0"
+     assert "structural-observables-architecture" in payload["manuals"]
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/tests/test_mlff_data9a7a_material_profile_specification.py mdstats-0.20.104a0/tests/test_mlff_data9a7a_material_profile_specification.py
+--- mdstats-0.20.103a0/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-08 01:31:22.000000000 +0000
++++ mdstats-0.20.104a0/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-08 09:03:26.054199055 +0000
+@@ -64,4 +64,4 @@
+ 
+ 
+ def test_release_version_is_data9a7a() -> None:
+-    assert 'version = "0.20.103a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert 'version = "0.20.104a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/tests/test_mlff_data9a7b_specification.py mdstats-0.20.104a0/tests/test_mlff_data9a7b_specification.py
+--- mdstats-0.20.103a0/tests/test_mlff_data9a7b_specification.py	2026-08-08 01:31:22.000000000 +0000
++++ mdstats-0.20.104a0/tests/test_mlff_data9a7b_specification.py	2026-08-08 09:03:26.050416619 +0000
+@@ -69,7 +69,7 @@
+ 
+ 
+ def test_data9a7b_public_exports_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.103a0"
++    assert mdstats.__version__ == "0.20.104a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert callable(mdstats.compute_local_structure_features)
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/tests/test_mlff_data9a7c_specification.py mdstats-0.20.104a0/tests/test_mlff_data9a7c_specification.py
+--- mdstats-0.20.103a0/tests/test_mlff_data9a7c_specification.py	2026-08-08 01:31:22.000000000 +0000
++++ mdstats-0.20.104a0/tests/test_mlff_data9a7c_specification.py	2026-08-08 09:03:26.055679683 +0000
+@@ -47,7 +47,7 @@
+ 
+ 
+ def test_public_api_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.103a0"
++    assert mdstats.__version__ == "0.20.104a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert mdstats.MLFF_DATA9A7C_PARSER_VERSION == "0.20.49a0"
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/tests/test_mlff_data9a7d_specification.py mdstats-0.20.104a0/tests/test_mlff_data9a7d_specification.py
+--- mdstats-0.20.103a0/tests/test_mlff_data9a7d_specification.py	2026-08-08 01:31:22.000000000 +0000
++++ mdstats-0.20.104a0/tests/test_mlff_data9a7d_specification.py	2026-08-08 09:03:26.047105292 +0000
+@@ -39,6 +39,6 @@
+ 
+ 
+ def test_data9a7d_runtime_versions() -> None:
+-    assert mdstats.__version__ == "0.20.103a0"
++    assert mdstats.__version__ == "0.20.104a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7D_PARSER_VERSION == "0.20.50a0"
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/tests/test_mlff_data9a7e_specification.py mdstats-0.20.104a0/tests/test_mlff_data9a7e_specification.py
+--- mdstats-0.20.103a0/tests/test_mlff_data9a7e_specification.py	2026-08-08 01:31:22.000000000 +0000
++++ mdstats-0.20.104a0/tests/test_mlff_data9a7e_specification.py	2026-08-08 09:03:26.044049035 +0000
+@@ -39,7 +39,7 @@
+         "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
+         "CROSS_SYSTEM_QUALIFICATION_SUITE",
+     } <= nodes
+-    assert mdstats.__version__ == "0.20.103a0"
++    assert mdstats.__version__ == "0.20.104a0"
+     assert mdstats.MLFF_DATA9A7E_PARSER_VERSION == "0.20.51a0"
+     assert callable(mdstats.qualify_cross_system_case)
+     assert callable(mdstats.build_cross_system_qualification_suite)
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/tests/test_mlff_data9a8_specification.py mdstats-0.20.104a0/tests/test_mlff_data9a8_specification.py
+--- mdstats-0.20.103a0/tests/test_mlff_data9a8_specification.py	2026-08-08 01:31:22.000000000 +0000
++++ mdstats-0.20.104a0/tests/test_mlff_data9a8_specification.py	2026-08-08 09:03:26.051482091 +0000
+@@ -66,7 +66,7 @@
+ 
+ 
+ def test_public_runtime_exposes_data9a8_without_removed_aliases() -> None:
+-    assert mdstats.__version__ == "0.20.103a0"
++    assert mdstats.__version__ == "0.20.104a0"
+     assert mdstats.MLFF_DATA9A8_PARSER_VERSION == "0.20.52a0"
+     assert mdstats.ObservableComparisonPolicy
+     assert mdstats.compare_mlff_observable_validation
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/tests/test_mlff_data9a9a_specification.py mdstats-0.20.104a0/tests/test_mlff_data9a9a_specification.py
+--- mdstats-0.20.103a0/tests/test_mlff_data9a9a_specification.py	2026-08-08 01:31:22.000000000 +0000
++++ mdstats-0.20.104a0/tests/test_mlff_data9a9a_specification.py	2026-08-08 09:03:26.054806997 +0000
+@@ -65,7 +65,7 @@
+ 
+ 
+ def test_public_runtime_exports_data9a9a_contracts() -> None:
+-    assert mdstats.__version__ == "0.20.103a0"
++    assert mdstats.__version__ == "0.20.104a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A9A_VERSION
+     assert mdstats.Data6ModelSweepPlan
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/tests/test_mlff_data9a9b_specification.py mdstats-0.20.104a0/tests/test_mlff_data9a9b_specification.py
+--- mdstats-0.20.103a0/tests/test_mlff_data9a9b_specification.py	2026-08-08 01:31:22.000000000 +0000
++++ mdstats-0.20.104a0/tests/test_mlff_data9a9b_specification.py	2026-08-08 09:03:26.049104070 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9b_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.103a0"
++    assert mdstats.__version__ == "0.20.104a0"
+     for name in (
+         "ProductionMaterializationPlan",
+         "ProductionMaterializationCheckpoint",
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/tests/test_mlff_data9a9c_specification.py mdstats-0.20.104a0/tests/test_mlff_data9a9c_specification.py
+--- mdstats-0.20.103a0/tests/test_mlff_data9a9c_specification.py	2026-08-08 01:31:22.000000000 +0000
++++ mdstats-0.20.104a0/tests/test_mlff_data9a9c_specification.py	2026-08-08 09:03:26.050938454 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9c_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.103a0"
++    assert mdstats.__version__ == "0.20.104a0"
+     for name in (
+         "ProductionCorpusPlan", "ProductionExpectedRun",
+         "ProfileExtensionEvidenceRequirement", "ProductionCorpusQualificationRecord",
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/tests/test_mlff_data9a_specification.py mdstats-0.20.104a0/tests/test_mlff_data9a_specification.py
+--- mdstats-0.20.103a0/tests/test_mlff_data9a_specification.py	2026-08-08 01:31:22.000000000 +0000
++++ mdstats-0.20.104a0/tests/test_mlff_data9a_specification.py	2026-08-08 09:03:26.053776597 +0000
+@@ -14,7 +14,7 @@
+ 
+ 
+ def test_data9a_runtime_specification_is_canonical() -> None:
+-    assert 'version = "0.20.103a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.104a0"' in (ROOT / "pyproject.toml").read_text()
+     architecture = ARCH.read_text()
+     stage = STAGE.read_text()
+     specification = SPEC.read_text()
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/tests/test_mlff_data9b1_specification.py mdstats-0.20.104a0/tests/test_mlff_data9b1_specification.py
+--- mdstats-0.20.103a0/tests/test_mlff_data9b1_specification.py	2026-08-08 01:31:22.000000000 +0000
++++ mdstats-0.20.104a0/tests/test_mlff_data9b1_specification.py	2026-08-08 09:03:26.055169846 +0000
+@@ -18,8 +18,8 @@
+     assert "TrainingCampaignPlan" in text
+     assert "CheckpointSelectionRecord" in text
+     assert "mdstats-mace-train" in text
+-    assert mdstats.__version__ == "0.20.103a0"
+-    assert 'version = "0.20.103a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert mdstats.__version__ == "0.20.104a0"
++    assert 'version = "0.20.104a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+ 
+ 
+ def test_data9b1_is_integrated_into_manual_and_stage_plan() -> None:
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/tests/test_mlff_data9b2_specification.py mdstats-0.20.104a0/tests/test_mlff_data9b2_specification.py
+--- mdstats-0.20.103a0/tests/test_mlff_data9b2_specification.py	2026-08-08 01:34:44.000000000 +0000
++++ mdstats-0.20.104a0/tests/test_mlff_data9b2_specification.py	2026-08-08 09:03:26.047846012 +0000
+@@ -23,7 +23,7 @@
+         'mdstats-mace-select-head',
+     ):
+         assert token in text
+-    assert mdstats.__version__ == '0.20.103a0'
++    assert mdstats.__version__ == '0.20.104a0'
+     assert mdstats.MLFF_DATA9B2_VERSION == '0.20.57a0'
+ 
+ 
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/tests/test_mlff_data9b3_campaign_cli_specification.py mdstats-0.20.104a0/tests/test_mlff_data9b3_campaign_cli_specification.py
+--- mdstats-0.20.103a0/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-08 01:31:22.000000000 +0000
++++ mdstats-0.20.104a0/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-08 09:03:26.046073030 +0000
+@@ -16,7 +16,7 @@
+ 
+ 
+ def test_data9b3_version_and_user_surface() -> None:
+-    assert mdstats.__version__ == "0.20.103a0"
++    assert mdstats.__version__ == "0.20.104a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert TOOL.is_file()
+     assert TOOL.stat().st_mode & 0o111
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/tests/test_mlff_opt_ctrl1_specification.py mdstats-0.20.104a0/tests/test_mlff_opt_ctrl1_specification.py
+--- mdstats-0.20.103a0/tests/test_mlff_opt_ctrl1_specification.py	2026-08-08 01:31:22.000000000 +0000
++++ mdstats-0.20.104a0/tests/test_mlff_opt_ctrl1_specification.py	2026-08-08 09:03:26.055347289 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_ctrl1_release_identity_preserves_scientific_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.103a0"
++    assert mdstats.__version__ == "0.20.104a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.103a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.104a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_ctrl1_architecture_and_spec_close_roadmap() -> None:
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/tests/test_mlff_opt_eval4_specification.py mdstats-0.20.104a0/tests/test_mlff_opt_eval4_specification.py
+--- mdstats-0.20.103a0/tests/test_mlff_opt_eval4_specification.py	2026-08-08 01:31:22.000000000 +0000
++++ mdstats-0.20.104a0/tests/test_mlff_opt_eval4_specification.py	2026-08-08 09:03:26.040697799 +0000
+@@ -11,9 +11,9 @@
+ 
+ 
+ def test_opt_eval4_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.103a0"
++    assert mdstats.__version__ == "0.20.104a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+-    assert 'version = "0.20.103a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.104a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_eval4_architecture_and_spec_record_pipeline_contract() -> None:
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/tests/test_mlff_opt_verify1_specification.py mdstats-0.20.104a0/tests/test_mlff_opt_verify1_specification.py
+--- mdstats-0.20.103a0/tests/test_mlff_opt_verify1_specification.py	2026-08-08 01:31:22.000000000 +0000
++++ mdstats-0.20.104a0/tests/test_mlff_opt_verify1_specification.py	2026-08-08 09:03:26.055320049 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_verify1_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.103a0"
++    assert mdstats.__version__ == "0.20.104a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.103a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.104a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_verify1_architecture_and_spec_record_contract() -> None:
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/tests/test_mlff_perf2_parallel_acceleration_specification.py mdstats-0.20.104a0/tests/test_mlff_perf2_parallel_acceleration_specification.py
+--- mdstats-0.20.103a0/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-08 01:31:22.000000000 +0000
++++ mdstats-0.20.104a0/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-08 09:03:26.051828825 +0000
+@@ -10,7 +10,7 @@
+ 
+ 
+ def test_perf2_release_and_configuration_contract() -> None:
+-    assert mdstats.__version__ == "0.20.103a0"
++    assert mdstats.__version__ == "0.20.104a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     template = campaign_cli._config_template(
+         workspace="workspace",
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/tests/test_tools_restoration.py mdstats-0.20.104a0/tests/test_tools_restoration.py
+--- mdstats-0.20.103a0/tests/test_tools_restoration.py	1970-01-01 00:00:00.000000000 +0000
++++ mdstats-0.20.104a0/tests/test_tools_restoration.py	2026-08-08 09:05:37.985274638 +0000
+@@ -0,0 +1,118 @@
++from __future__ import annotations
++
++import ast
++from pathlib import Path
++import tomllib
++
++
++ROOT = Path(__file__).resolve().parents[1]
++TOOLS = ROOT / "tools"
++
++
++def test_source_tools_are_restored_and_packaged() -> None:
++    expected = (
++        TOOLS / "mdstats-mlff-campaign.py",
++        TOOLS / "qualify_mace_runtime.py",
++        TOOLS / "finalize_lta_data9a3_qualification.py",
++        TOOLS / "performance" / "scan_interpreter_hotpaths.py",
++    )
++    for path in expected:
++        assert path.is_file()
++        assert path.stat().st_mode & 0o111
++    manifest = (ROOT / "MANIFEST.in").read_text(encoding="utf-8")
++    assert "include campaign.toml.example" in manifest
++    assert "recursive-include tools *" in manifest
++    assert "recursive-include docs *.md *.pdf *.png *.json" in manifest
++    assert "global-exclude *.py[cod]" in manifest
++
++
++def test_campaign_example_tracks_current_optimized_backend_defaults() -> None:
++    payload = tomllib.loads((ROOT / "campaign.toml.example").read_text(encoding="utf-8"))
++    execution = payload["execution"]
++    assert execution["inference_gpu_calibration_peak_trim_fraction"] == 0.05
++    assert execution["parallel_inference_post_calibration_monitor_interval_seconds"] == 30.0
++    assert execution["parallel_evaluation_prepare_jobs"] == 0
++    assert execution["parallel_evaluation_finalize_jobs"] == 0
++    assert execution["evaluation_pipeline_buffer_jobs"] == 0
++
++
++def test_data9a3_finalizer_uses_current_production_plan_contract() -> None:
++    path = TOOLS / "finalize_lta_data9a3_qualification.py"
++    tree = ast.parse(path.read_text(encoding="utf-8"))
++    calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call)]
++    builders = [
++        node for node in calls
++        if (
++            isinstance(node.func, ast.Attribute)
++            and node.func.attr == "build_production_corpus_qualification_record"
++        )
++    ]
++    assert len(builders) == 1
++    keywords = {kw.arg for kw in builders[0].keywords}
++    assert "production_plan" in keywords
++    assert "expected_source_count" not in keywords
++    source = path.read_text(encoding="utf-8")
++    assert "ProductionCorpusPlan" in source
++    assert "require_foundation_features=False" in source
++    assert "require_foundation_residual_e0=False" in source
++    assert "require_data8_artifacts=False" in source
++    assert "require_replay_corpus=False" in source
++
++
++def test_source_checkout_tools_bootstrap_repository_imports() -> None:
++    campaign = (TOOLS / "mdstats-mlff-campaign.py").read_text(encoding="utf-8")
++    qualify = (TOOLS / "qualify_mace_runtime.py").read_text(encoding="utf-8")
++    finalizer = (TOOLS / "finalize_lta_data9a3_qualification.py").read_text(encoding="utf-8")
++    for source in (campaign, qualify, finalizer):
++        assert 'Path(__file__).resolve().parents[1]' in source
++        assert 'sys.path.insert(0, str(ROOT))' in source
++
++
++def test_data9a3_finalizer_constructs_current_plan_dynamically() -> None:
++    import importlib.util
++    from types import SimpleNamespace
++
++    from mdstats.training_data._common import digest
++
++    path = TOOLS / "finalize_lta_data9a3_qualification.py"
++    spec = importlib.util.spec_from_file_location("mdstats_data9a3_finalizer_tool", path)
++    assert spec is not None and spec.loader is not None
++    module = importlib.util.module_from_spec(spec)
++    spec.loader.exec_module(module)
++
++    source = SimpleNamespace(content_digest=digest({"source": 1}))
++    frames = SimpleNamespace(
++        dataset_id="test-dataset",
++        content_digest=digest({"frames": 1}),
++    )
++    data5 = SimpleNamespace(
++        cross_validation_plans=(SimpleNamespace(folds=("a", "b", "c")),)
++    )
++    evidence = {
++        "runs": [
++            {
++                "run_id": "run-1",
++                "frame_count": 8,
++                "reduced_formula": "AlNaO4Si",
++                "ensemble": "nvt",
++                "target_start_kelvin": 300.0,
++                "target_end_kelvin": 300.0,
++            }
++        ]
++    }
++    plan = module._production_plan_for_data9a3(
++        normalization={"normalization": 1},
++        references={"reference": 1},
++        evidence=evidence,
++        source=source,
++        frames=frames,
++        data5=data5,
++        expected_sources=1,
++    )
++    assert plan.dataset_id == "test-dataset"
++    assert plan.expected_source_count == 1
++    assert plan.expected_cross_validation_fold_count == 3
++    assert plan.require_foundation_features is False
++    assert plan.require_foundation_residual_e0 is False
++    assert plan.require_data8_artifacts is False
++    assert plan.require_replay_corpus is False
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/tools/README.md mdstats-0.20.104a0/tools/README.md
+--- mdstats-0.20.103a0/tools/README.md	1970-01-01 00:00:00.000000000 +0000
++++ mdstats-0.20.104a0/tools/README.md	2026-08-08 08:58:38.440718448 +0000
+@@ -0,0 +1,27 @@
++# User-facing tools
++
++`mdstats-mlff-campaign.py` is the supported source-checkout interface for the
++complete MLFF preparation, fine-tuning, checkpoint-selection, committee, and
++bounded deployment-verification workflow.
++
++```bash
++python tools/mdstats-mlff-campaign.py guide
++python tools/mdstats-mlff-campaign.py --config campaign.toml init
++```
++
++The wrapper deliberately delegates all campaign behavior to
++`mdstats.training_data.campaign_cli.main`; the OPT-EVAL1--OPT-CTRL1 optimized
++backend is therefore used without duplicating scheduler, evaluation,
++verification, cache, or control-plane logic in the tool.
++
++The command stores orchestration state in one SQLite database below the chosen
++workspace. Scientific DATA2-DATA9B records remain owned by the package modules.
++
++Additional maintenance/qualification tools:
++
++- `qualify_mace_runtime.py` creates and qualifies an offline MACE 0.3.16 runtime.
++- `finalize_lta_data9a3_qualification.py` reconstructs the historical DATA9A3
++  DATA2--DATA5 target-corpus qualification using the current immutable
++  `ProductionCorpusPlan` API. Full modern DATA9A9c qualification belongs to the
++  campaign `prepare` path and is not bypassed by this utility.
++- `performance/scan_interpreter_hotpaths.py` performs static Python-loop triage.
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/tools/finalize_lta_data9a3_qualification.py mdstats-0.20.104a0/tools/finalize_lta_data9a3_qualification.py
+--- mdstats-0.20.103a0/tools/finalize_lta_data9a3_qualification.py	1970-01-01 00:00:00.000000000 +0000
++++ mdstats-0.20.104a0/tools/finalize_lta_data9a3_qualification.py	2026-08-08 08:58:38.440144045 +0000
+@@ -0,0 +1,154 @@
++#!/usr/bin/env python3
++"""Finalize the DATA9A3 DATA2--DATA5 LTA corpus qualification record.
++
++This source-checkout utility intentionally qualifies only the historical
++DATA9A3 target-corpus boundary (DATA2--DATA5).  Later DATA9A9c production gates
++also require DATA6--DATA8, profile-extension, foundation-residual, and replay
++artifacts and are owned by ``mdstats-mlff-campaign.py prepare``.
++"""
++from __future__ import annotations
++
++import argparse
++import gzip
++import json
++from pathlib import Path
++import sys
++from typing import Any, Mapping
++
++ROOT = Path(__file__).resolve().parents[1]
++if str(ROOT) not in sys.path:
++    sys.path.insert(0, str(ROOT))
++
++import mdstats
++from mdstats.training_data._common import canonical_json, digest
++
++
++def _read_gzip(path: Path) -> Mapping[str, Any]:
++    with gzip.open(path, "rt", encoding="utf-8") as handle:
++        payload = json.load(handle)
++    if not isinstance(payload, dict):
++        raise ValueError(f"Expected a JSON object in {path}.")
++    return payload
++
++
++def _production_plan_for_data9a3(
++    *,
++    normalization: Mapping[str, Any],
++    references: Mapping[str, Any],
++    evidence: Mapping[str, Any],
++    source: Any,
++    frames: Any,
++    data5: Any,
++    expected_sources: int,
++) -> Any:
++    """Reconstruct the frozen DATA9A3 DATA2--DATA5 qualification boundary.
++
++    The modern backend requires an immutable :class:`ProductionCorpusPlan`.
++    DATA9A3 predates the downstream DATA6--DATA8/full-DATA9A requirements, so
++    those requirements are explicitly disabled here instead of fabricating
++    readiness for artifacts this utility does not load.
++    """
++
++    runs = tuple(evidence.get("runs", ()))
++    if len(runs) != int(expected_sources):
++        raise ValueError(
++            f"Expected {expected_sources} production runs, but run_evidence.json "
++            f"contains {len(runs)}."
++        )
++    expected_runs = tuple(
++        mdstats.ProductionExpectedRun(
++            run_id=str(item["run_id"]),
++            frame_count=int(item["frame_count"]),
++            reduced_formula=str(item["reduced_formula"]),
++            ensemble=str(item["ensemble"]),
++            target_start_kelvin=(
++                None
++                if item.get("target_start_kelvin") is None
++                else float(item["target_start_kelvin"])
++            ),
++            target_end_kelvin=(
++                None
++                if item.get("target_end_kelvin") is None
++                else float(item["target_end_kelvin"])
++            ),
++        )
++        for item in runs
++    )
++    fold_count = sum(len(plan.folds) for plan in data5.cross_validation_plans)
++    return mdstats.ProductionCorpusPlan(
++        plan_id=f"{frames.dataset_id}-data9a3-qualification",
++        dataset_id=frames.dataset_id,
++        source_catalog_digest=source.content_digest,
++        frame_catalog_digest=frames.content_digest,
++        normalization_manifest_digest=digest(normalization),
++        reference_manifest_digest=digest(references),
++        expected_runs=expected_runs,
++        expected_cross_validation_fold_count=fold_count,
++        required_profile_extensions=(),
++        require_foundation_features=False,
++        require_foundation_residual_e0=False,
++        require_data8_artifacts=False,
++        require_replay_corpus=False,
++    )
++
++
++def build_parser() -> argparse.ArgumentParser:
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--artifact-directory", required=True, type=Path)
++    parser.add_argument("--expected-sources", type=int, default=27)
++    parser.add_argument("--output", required=True, type=Path)
++    return parser
++
++
++def main() -> int:
++    args = build_parser().parse_args()
++    root = args.artifact_directory
++    normalization = json.loads((root / "normalization_records.json").read_text())
++    references = json.loads((root / "reference_cohorts.json").read_text())
++    evidence = json.loads((root / "run_evidence.json").read_text())
++    frame_payload = _read_gzip(root / "frame_catalog.json.gz")
++    data4_payload = _read_gzip(root / "data4_feature_bundle.json.gz")
++    data5_payload = _read_gzip(root / "data5_partition_bundle.json.gz")
++
++    source = mdstats.TrainingDataSourceCatalog.from_dict(references["source_catalog"])
++    frames = mdstats.TrainingFrameCatalog.from_dict(frame_payload)
++    data4 = mdstats.Data4FeatureBundle.from_dict(data4_payload)
++    data5 = mdstats.Data5PartitionBundle.from_dict(data5_payload)
++    production_plan = _production_plan_for_data9a3(
++        normalization=normalization,
++        references=references,
++        evidence=evidence,
++        source=source,
++        frames=frames,
++        data5=data5,
++        expected_sources=args.expected_sources,
++    )
++    result = mdstats.build_production_corpus_qualification_record(
++        production_plan=production_plan,
++        normalization_manifest=normalization,
++        reference_manifest=references,
++        run_evidence_manifest=evidence,
++        source_catalog=source,
++        frame_catalog=frames,
++        data4_bundle=data4,
++        data5_bundle=data5,
++        verified_data4_bundle_digest=str(data4_payload["content_digest"]),
++        verified_data5_bundle_digest=str(data5_payload["content_digest"]),
++    )
++    args.output.parent.mkdir(parents=True, exist_ok=True)
++    args.output.write_text(canonical_json(result.to_dict()) + "\n", encoding="utf-8")
++    print(
++        canonical_json(
++            {
++                "status": result.status.value,
++                "target_corpus_qualified": result.target_corpus_qualified,
++                "full_data9a_passed": result.full_data9a_passed,
++                "content_digest": result.content_digest,
++            }
++        )
++    )
++    return 0
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/tools/mdstats-mlff-campaign.py mdstats-0.20.104a0/tools/mdstats-mlff-campaign.py
+--- mdstats-0.20.103a0/tools/mdstats-mlff-campaign.py	1970-01-01 00:00:00.000000000 +0000
++++ mdstats-0.20.104a0/tools/mdstats-mlff-campaign.py	2026-08-08 08:58:38.436137847 +0000
+@@ -0,0 +1,40 @@
++#!/usr/bin/env python3
++"""Run the mdstats MLFF campaign CLI from a source checkout.
++
++The campaign launcher exits with :func:`os._exit` after flushing Python and
++logging streams.  Real MACE/PyTorch subprocesses can otherwise leave runtime
++threads registered during interpreter teardown after all campaign artifacts
++have already been written.  The campaign core persists every durable state
++change atomically before returning, so a hard final process exit is safe and
++keeps UNIX exit status deterministic.
++"""
++from __future__ import annotations
++
++import logging
++import os
++from pathlib import Path
++import sys
++
++ROOT = Path(__file__).resolve().parents[1]
++if str(ROOT) not in sys.path:
++    sys.path.insert(0, str(ROOT))
++
++from mdstats.training_data.campaign_cli import main
++
++
++def _flush_and_exit(code: int) -> "NoReturn":
++    """Flush user-visible output and terminate without runtime shutdown hangs."""
++
++    try:
++        logging.shutdown()
++    finally:
++        for stream in (sys.stdout, sys.stderr):
++            try:
++                stream.flush()
++            except Exception:
++                pass
++    os._exit(int(code))
++
++
++if __name__ == "__main__":
++    _flush_and_exit(main())
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/tools/performance/scan_interpreter_hotpaths.py mdstats-0.20.104a0/tools/performance/scan_interpreter_hotpaths.py
+--- mdstats-0.20.103a0/tools/performance/scan_interpreter_hotpaths.py	1970-01-01 00:00:00.000000000 +0000
++++ mdstats-0.20.104a0/tools/performance/scan_interpreter_hotpaths.py	2026-08-08 08:58:38.438532803 +0000
+@@ -0,0 +1,97 @@
++#!/usr/bin/env python3
++"""Static triage for Python loops in potentially large mdstats functions.
++
++This is a review aid, not a profiler.  It ranks loops whose iterator/target names
++suggest scaling with frames, atoms, nodes, faces, blocks, tiles, pairs, samples,
++or graph candidates.  Human review must decide whether the loop is a coarse
++orchestration boundary, an irregular graph algorithm, or an unjustified dense
++numerical loop.
++"""
++from __future__ import annotations
++
++import argparse
++import ast
++import json
++from pathlib import Path
++
++TOKENS = (
++    "frame", "atom", "node", "voxel", "grid", "face", "edge", "pair",
++    "sample", "point", "triangle", "block", "tile", "offset", "ring",
++    "candidate", "source", "target", "position", "vertex",
++)
++
++
++def enclosing_function(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> str:
++    current = node
++    while current in parents:
++        current = parents[current]
++        if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef)):
++            return current.name
++    return "<module>"
++
++
++def scan(root: Path) -> list[dict[str, object]]:
++    findings: list[dict[str, object]] = []
++    for path in sorted(root.rglob("*.py")):
++        try:
++            tree = ast.parse(path.read_text())
++        except SyntaxError:
++            continue
++        parents: dict[ast.AST, ast.AST] = {}
++        for parent in ast.walk(tree):
++            for child in ast.iter_child_nodes(parent):
++                parents[child] = parent
++        for node in ast.walk(tree):
++            if not isinstance(node, (ast.For, ast.While)):
++                continue
++            iterator = ast.unparse(node.iter) if isinstance(node, ast.For) else ast.unparse(node.test)
++            target = ast.unparse(node.target) if isinstance(node, ast.For) else ""
++            text = f"{target} {iterator}".lower()
++            matched = sorted(token for token in TOKENS if token in text)
++            nested_loop_count = sum(
++                isinstance(child, (ast.For, ast.While)) for child in ast.walk(node)
++            ) - 1
++            if not matched and nested_loop_count == 0:
++                continue
++            findings.append(
++                {
++                    "path": str(path.relative_to(root)),
++                    "line": int(node.lineno),
++                    "function": enclosing_function(node, parents),
++                    "kind": type(node).__name__,
++                    "target": target,
++                    "iterator_or_test": iterator,
++                    "matched_tokens": matched,
++                    "nested_loop_count": int(nested_loop_count),
++                    "ast_node_count": int(sum(1 for _ in ast.walk(node))),
++                }
++            )
++    findings.sort(
++        key=lambda item: (
++            int(item["nested_loop_count"]),
++            len(item["matched_tokens"]),
++            int(item["ast_node_count"]),
++        ),
++        reverse=True,
++    )
++    return findings
++
++
++def main() -> None:
++    parser = argparse.ArgumentParser()
++    parser.add_argument("root", type=Path, nargs="?", default=Path("mdstats"))
++    parser.add_argument("--output", type=Path, default=None)
++    args = parser.parse_args()
++    findings = scan(args.root)
++    payload = {"root": str(args.root), "finding_count": len(findings), "findings": findings}
++    text = json.dumps(payload, indent=2) + "\n"
++    if args.output is None:
++        print(text, end="")
++    else:
++        args.output.parent.mkdir(parents=True, exist_ok=True)
++        args.output.write_text(text)
++        print(args.output)
++
++
++if __name__ == "__main__":
++    main()
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch' mdstats-0.20.103a0/tools/qualify_mace_runtime.py mdstats-0.20.104a0/tools/qualify_mace_runtime.py
+--- mdstats-0.20.103a0/tools/qualify_mace_runtime.py	1970-01-01 00:00:00.000000000 +0000
++++ mdstats-0.20.104a0/tools/qualify_mace_runtime.py	2026-08-08 08:59:17.676370649 +0000
+@@ -0,0 +1,68 @@
++#!/usr/bin/env python3
++"""Create and qualify an offline MACE 0.3.16 runtime for MLFF-DATA9A."""
++
++from __future__ import annotations
++
++import argparse
++import json
++from pathlib import Path
++import sys
++
++ROOT = Path(__file__).resolve().parents[1]
++if str(ROOT) not in sys.path:
++    sys.path.insert(0, str(ROOT))
++
++from mdstats.training_data import (
++    MaceRuntimeInstallPolicy,
++    create_mace_runtime_environment,
++    discover_mace_dependency_artifacts,
++    run_mace_cli_smoke,
++)
++
++
++def build_parser() -> argparse.ArgumentParser:
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--environment", required=True, type=Path)
++    parser.add_argument("--mace-source", required=True, type=Path)
++    parser.add_argument("--mace-archive", required=True, type=Path)
++    parser.add_argument("--ase-archive", required=True, type=Path)
++    parser.add_argument("--wheelhouse", type=Path)
++    parser.add_argument("--build-tool", action="append", default=[], type=Path)
++    parser.add_argument("--output", required=True, type=Path)
++    parser.add_argument("--recreate", action="store_true")
++    parser.add_argument("--allow-index", action="store_true")
++    return parser
++
++
++def main() -> int:
++    args = build_parser().parse_args()
++    dependencies = () if args.wheelhouse is None else discover_mace_dependency_artifacts(args.wheelhouse)
++    record = create_mace_runtime_environment(
++        args.environment,
++        mace_source_root=args.mace_source,
++        mace_archive=args.mace_archive,
++        ase_archive=args.ase_archive,
++        dependency_artifacts=dependencies,
++        build_tool_artifacts=tuple(args.build_tool),
++        policy=MaceRuntimeInstallPolicy(
++            system_site_packages=True,
++            inherit_base_python_paths=True,
++            offline=not args.allow_index,
++            force_recreate=args.recreate,
++        ),
++    )
++    smoke = run_mace_cli_smoke(record)
++    payload = {"environment": record.to_dict(), "cli_smoke": smoke.to_dict()}
++    args.output.parent.mkdir(parents=True, exist_ok=True)
++    args.output.write_text(json.dumps(payload, indent=2, sort_keys=True))
++    print(json.dumps({
++        "qualified_for_cli_smoke": record.qualified_for_cli_smoke,
++        "cli_smoke_passed": smoke.passed,
++        "missing_requirements": list(record.missing_requirement_texts),
++        "output": str(args.output.resolve()),
++    }, indent=2, sort_keys=True))
++    return 0 if smoke.passed else 2
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())

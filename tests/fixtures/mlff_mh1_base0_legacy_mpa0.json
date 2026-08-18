@@ -1,0 +1,252 @@
+{
+  "acceleration_policy_cueq": {
+    "backend": "cueq",
+    "enable_cueq": true,
+    "only_cueq": false,
+    "policy_digest": "15ba7746ff85eb0dbb80c161c1988acdfab57e3b9966b1c7bb0eae394a150d6f",
+    "require_available": true,
+    "schema": "mdstats.mace-acceleration-policy.v1"
+  },
+  "acceleration_policy_e3nn": {
+    "backend": "e3nn",
+    "enable_cueq": false,
+    "only_cueq": false,
+    "policy_digest": "25c60a7f8361bfeb24d3c47e047536d97d8e2e8b5af8b2109b11f0368fe09e0f",
+    "require_available": true,
+    "schema": "mdstats.mace-acceleration-policy.v1"
+  },
+  "deploy_verify_policy_fp32": {
+    "float32_atol": 1e-06,
+    "float32_rtol": 1e-05,
+    "float64_atol": 1e-10,
+    "float64_rtol": 1e-09,
+    "implementation_version": "mdstats.deploy-verify1.2026-08.v1",
+    "maximum_probe_configurations": 16,
+    "model_dtype": "float32",
+    "policy_digest": "3dae039b63dcce92da24fe7d508ca5c4c6469e1638fd0d176e50a3dce5b0ed57",
+    "require_lammps_run0": true,
+    "require_stress_when_available": true,
+    "schema": "mdstats.deploy-verify-policy.v1"
+  },
+  "evaluation_policy_cueq": {
+    "acceleration_policy": {
+      "backend": "cueq",
+      "enable_cueq": true,
+      "only_cueq": false,
+      "policy_digest": "15ba7746ff85eb0dbb80c161c1988acdfab57e3b9966b1c7bb0eae394a150d6f",
+      "require_available": true,
+      "schema": "mdstats.mace-acceleration-policy.v1"
+    },
+    "batch_size": 8,
+    "cache_monitor_datasets": true,
+    "cache_replay_baseline": true,
+    "combined_energy_weight": 1.0,
+    "combined_force_weight": 1.0,
+    "combined_stress_weight": 1.0,
+    "condition_keys": [
+      "composition",
+      "temperature",
+      "strain"
+    ],
+    "default_dtype": "float32",
+    "device": "cpu",
+    "energy_key": "REF_energy",
+    "focus_atomic_numbers": [
+      3,
+      11,
+      19
+    ],
+    "forces_key": "REF_forces",
+    "policy_digest": "9e662e12489c00942468e373da6c27c575535a6975a3ad6f1f0458c02eccd464",
+    "replay_baseline_floor": 1e-06,
+    "replay_baseline_head_name": "pt_head",
+    "replay_head_name": "pt_head",
+    "replay_metric": "force_rmse",
+    "schema": "mdstats.checkpoint-evaluation-policy.v3",
+    "stress_key": "REF_stress",
+    "target_head_name": "target_head"
+  },
+  "evaluation_policy_e3nn": {
+    "acceleration_policy": {
+      "backend": "e3nn",
+      "enable_cueq": false,
+      "only_cueq": false,
+      "policy_digest": "25c60a7f8361bfeb24d3c47e047536d97d8e2e8b5af8b2109b11f0368fe09e0f",
+      "require_available": true,
+      "schema": "mdstats.mace-acceleration-policy.v1"
+    },
+    "batch_size": 8,
+    "cache_monitor_datasets": true,
+    "cache_replay_baseline": true,
+    "combined_energy_weight": 1.0,
+    "combined_force_weight": 1.0,
+    "combined_stress_weight": 1.0,
+    "condition_keys": [
+      "composition",
+      "temperature",
+      "strain"
+    ],
+    "default_dtype": "float32",
+    "device": "cpu",
+    "energy_key": "REF_energy",
+    "focus_atomic_numbers": [
+      3,
+      11,
+      19
+    ],
+    "forces_key": "REF_forces",
+    "policy_digest": "aef5fa55561529d6fe2d9be5c6815a1ae6641eff0d639bb83acfdef1101c81f5",
+    "replay_baseline_floor": 1e-06,
+    "replay_baseline_head_name": "pt_head",
+    "replay_head_name": "pt_head",
+    "replay_metric": "force_rmse",
+    "schema": "mdstats.checkpoint-evaluation-policy.v3",
+    "stress_key": "REF_stress",
+    "target_head_name": "target_head"
+  },
+  "foundation_checkpoint_identity": {
+    "content_digest": "16603fbf4826186a4054141bfe8a1cb24e60391c4e2b1a264f36b81ea78f3717",
+    "foundation_head": "default",
+    "model_family": "MACE-MPA-0",
+    "reference": "/fixtures/mace-mpa-0-medium.model",
+    "schema": "mdstats.foundation-checkpoint-identity.v2",
+    "sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638"
+  },
+  "mace_mpa0_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
+  "model_checkpoint_identity_cueq": {
+    "adapter_version": "mdstats.mlff-data6.mace-calculator.2026-07.v1",
+    "calculator_class": "mace.calculators.MACECalculator",
+    "checkpoint_locator": "/fixtures/mace-mpa-0-medium.model",
+    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
+    "content_digest": "9ac86fe75bfc875ed382c1f307090c5f271ee771505aa1b2ccf7816bbe329e3f",
+    "default_dtype": "float32",
+    "device": "cuda",
+    "metadata": {
+      "acceleration_backend": "cueq",
+      "acceleration_policy_digest": "15ba7746ff85eb0dbb80c161c1988acdfab57e3b9966b1c7bb0eae394a150d6f",
+      "enable_cueq": "true",
+      "only_cueq": "false"
+    },
+    "model_family": "MACE-MPA-0",
+    "model_version": "MPA-0-medium",
+    "schema": "mdstats.model-checkpoint-identity.v1",
+    "supported_atomic_numbers": [
+      3,
+      8,
+      11,
+      13,
+      14,
+      19
+    ]
+  },
+  "model_checkpoint_identity_e3nn": {
+    "adapter_version": "mdstats.mlff-data6.mace-calculator.2026-07.v1",
+    "calculator_class": "mace.calculators.MACECalculator",
+    "checkpoint_locator": "/fixtures/mace-mpa-0-medium.model",
+    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
+    "content_digest": "3ea3392c40f600bfed5e679fe7ec30ffa945c5163135a1b7bf67fc738ce292cf",
+    "default_dtype": "float32",
+    "device": "cuda",
+    "metadata": {
+      "acceleration_backend": "e3nn",
+      "acceleration_policy_digest": "25c60a7f8361bfeb24d3c47e047536d97d8e2e8b5af8b2109b11f0368fe09e0f",
+      "enable_cueq": "false",
+      "only_cueq": "false"
+    },
+    "model_family": "MACE-MPA-0",
+    "model_version": "MPA-0-medium",
+    "schema": "mdstats.model-checkpoint-identity.v1",
+    "supported_atomic_numbers": [
+      3,
+      8,
+      11,
+      13,
+      14,
+      19
+    ]
+  },
+  "replay_plan": {
+    "content_digest": "9d0284c58dcd20c07e737aee8deb7b40c005b542f9ecf5acd351b15a79a408a6",
+    "filtering_type": "combinations",
+    "head_weight": 1.0,
+    "mode": "external_pseudolabel",
+    "monitor_artifact": {
+      "atomic_numbers": [
+        3,
+        8,
+        11,
+        13,
+        14,
+        19
+      ],
+      "configuration_count": 1,
+      "content_digest": "be23b06c81826ae92798d909f0bef45b755b3915640df343f44858631c92f647",
+      "energy_key": "REF_energy",
+      "forces_key": "REF_forces",
+      "foundation_checkpoint_digest": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
+      "geometry_identities": [
+        "5555555555555555555555555555555555555555555555555555555555555555"
+      ],
+      "label_identities": [
+        "6666666666666666666666666666666666666666666666666666666666666666"
+      ],
+      "label_mode": "foundation_pseudolabel",
+      "label_payload_digest": "9f14fb2c87cb5cc43e8d8e2c68b4350cc0b68978bb0aa6d4ca7f1cc33925d381",
+      "path": "/fixtures/replay_monitor.xyz",
+      "schema": "mdstats.replay-file-artifact.v3",
+      "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "stress_coverage_fraction": 1.0,
+      "stress_key": "REF_stress",
+      "stress_present_count": 1
+    },
+    "ready_for_fixed_file_training": true,
+    "requested_train_count": null,
+    "retention_policy": {
+      "failure_behavior": "reject_checkpoint",
+      "maximum_degradation_fraction": 0.2,
+      "metric": "force_rmse",
+      "policy_digest": "2ac165cbb4226ee2b23d8a91be5d7c3e30e2b0141d62a9698455b9aed5da52cf",
+      "require_disjoint_monitor": true,
+      "schema": "mdstats.replay-retention-policy.v1"
+    },
+    "schema": "mdstats.replay-preparation-plan.v3",
+    "seed": 42,
+    "selection_command": [],
+    "source_replay_path": null,
+    "subselect": "fps",
+    "target_weight": 10.0,
+    "train_artifact": {
+      "atomic_numbers": [
+        3,
+        8,
+        11,
+        13,
+        14,
+        19
+      ],
+      "configuration_count": 2,
+      "content_digest": "ca4b719d5deae4ceb1b92b88f5708ff88003ad2cc583133cb1dec65067224c3a",
+      "energy_key": "REF_energy",
+      "forces_key": "REF_forces",
+      "foundation_checkpoint_digest": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
+      "geometry_identities": [
+        "1111111111111111111111111111111111111111111111111111111111111111",
+        "2222222222222222222222222222222222222222222222222222222222222222"
+      ],
+      "label_identities": [
+        "3333333333333333333333333333333333333333333333333333333333333333",
+        "4444444444444444444444444444444444444444444444444444444444444444"
+      ],
+      "label_mode": "foundation_pseudolabel",
+      "label_payload_digest": "51a44d4729cf464dcabe36a4744e8107091a04e016cc6d89601497bca5d4b95d",
+      "path": "/fixtures/replay_train.xyz",
+      "schema": "mdstats.replay-file-artifact.v3",
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "stress_coverage_fraction": 1.0,
+      "stress_key": "REF_stress",
+      "stress_present_count": 2
+    }
+  },
+  "schema": "mdstats.mh1-base0-legacy-mpa0-fixtures.v1",
+  "target_head_export_digest": "4cf7a0cbf5d0f31b89f5ad2fb41d009ac2e5513ad2826e4bc6224871f9b3d6e4"
+}

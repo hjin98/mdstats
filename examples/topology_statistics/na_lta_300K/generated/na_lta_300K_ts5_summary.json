@@ -1,0 +1,83 @@
+{
+  "n_frames": 2000,
+  "duration_ps_assigned": 2.0,
+  "atomic_states": 72,
+  "framework_classes": 1,
+  "atomic_residence_intervals": 72,
+  "atomic_changed_boundaries": 71,
+  "framework_changed_boundaries": 0,
+  "stable_boundaries": 1928,
+  "atomic_only_boundaries": 71,
+  "framework_only_boundaries": 0,
+  "coupled_boundaries": 0,
+  "na_o": {
+    "support": [
+      110,
+      111,
+      112,
+      113,
+      114,
+      115,
+      116,
+      117,
+      118,
+      119,
+      120,
+      121
+    ],
+    "frequencies": [
+      51,
+      69,
+      218,
+      204,
+      83,
+      179,
+      220,
+      431,
+      169,
+      122,
+      178,
+      76
+    ],
+    "probabilities": [
+      0.0255,
+      0.0345,
+      0.109,
+      0.102,
+      0.0415,
+      0.0895,
+      0.11,
+      0.2155,
+      0.0845,
+      0.061,
+      0.089,
+      0.038
+    ],
+    "mean": 115.8735,
+    "population_sd": 2.8563084129694394,
+    "minimum": 110.0,
+    "maximum": 121.0,
+    "modes": [
+      117
+    ]
+  },
+  "si_o": {
+    "support": [
+      96
+    ],
+    "frequencies": [
+      2000
+    ]
+  },
+  "al_o": {
+    "support": [
+      96
+    ],
+    "frequencies": [
+      2000
+    ]
+  },
+  "framework_edge_count": 96,
+  "framework_cycle_rank": 49,
+  "interpretation": "atomic connectivity varies while framework topology remains uniform"
+}

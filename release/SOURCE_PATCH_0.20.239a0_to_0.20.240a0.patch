@@ -1,0 +1,629 @@
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.239a0.txt' '--exclude=SHA256SUMS_0.20.240a0.txt' /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/CHANGELOG.md /mnt/data/mdstats-0.20.240a0/CHANGELOG.md
+--- /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/CHANGELOG.md	2026-08-18 04:32:02.000000000 +0000
++++ /mnt/data/mdstats-0.20.240a0/CHANGELOG.md	2026-08-18 05:32:12.709696952 +0000
+@@ -1,3 +1,10 @@
++## 0.20.240a0 - 2026-08-18
++
++- Fix MVIDX-REUSE1 producer-side PARCORE1 backpressure for domains whose required-family count exceeds the bounded ready queue (production incident: 165 families with 56 ready slots at 28 inverse workers).
++- Replace eager family submission with deterministic submit/drain/refill scheduling; bounded queue sizes, RAM admission, canonical completion reduction, out-of-core inverse storage, and all scientific digests remain unchanged.
++- Add a forced one-slot ready-queue regression over a production-style 17-family TARGET-DATA2B reference, which would fail under the previous eager-submission loop and now reproduces the exact MVIDX digest.
++- Retain the 0.20.239a0 Python-3.11 syntax hotfix and 0.20.238a0 multi-billion-edge out-of-core MVIDX hardening. Architecture revision 103 / schema 83 remain unchanged; `FINAL-GPU1` remains next.
++
+ ## 0.20.239a0 - 2026-08-17
+ 
+ - Correct a Python 3.11 syntax incompatibility introduced in the DATA6 progress-format line: a multiline function call was embedded directly inside an f-string expression.
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.239a0.txt' '--exclude=SHA256SUMS_0.20.240a0.txt' /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/PKG-INFO /mnt/data/mdstats-0.20.240a0/PKG-INFO
+--- /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/PKG-INFO	2026-08-18 04:32:02.000000000 +0000
++++ /mnt/data/mdstats-0.20.240a0/PKG-INFO	2026-08-18 05:32:12.708513594 +0000
+@@ -1,6 +1,6 @@
+ Metadata-Version: 2.4
+ Name: mdstats
+-Version: 0.20.239a0
++Version: 0.20.240a0
+ Summary: Transparent atomistic frame collections and structural/dynamical statistics
+ Requires-Python: >=3.10
+ Requires-Dist: numpy>=1.26
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.239a0.txt' '--exclude=SHA256SUMS_0.20.240a0.txt' /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/docs/arch_manuals/mlff_training_data/00_front_matter.md /mnt/data/mdstats-0.20.240a0/docs/arch_manuals/mlff_training_data/00_front_matter.md
+--- /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/docs/arch_manuals/mlff_training_data/00_front_matter.md	2026-08-18 04:32:02.000000000 +0000
++++ /mnt/data/mdstats-0.20.240a0/docs/arch_manuals/mlff_training_data/00_front_matter.md	2026-08-18 05:34:48.305991441 +0000
+@@ -1,9 +1,9 @@
+ ---
+ geometry: "margin=0.75in"
+ architecture_revision: 103
+-release: "mdstats 0.20.239a0"
+-status: "current normative architecture; revision 103 unchanged; MVIDX multi-billion-edge scaling hardened; exact-equivalence CPU optimization closed; FINAL-GPU1 next"
+-last_updated: "2026-08-17"
++release: "mdstats 0.20.240a0"
++status: "current normative architecture; revision 103 unchanged; MVIDX multi-billion-edge scaling and bounded-queue backpressure hardened; exact-equivalence CPU optimization closed; FINAL-GPU1 next"
++last_updated: "2026-08-18"
+ ---
+ 
+ # MLFF Training-Data and Fine-Tuning Architecture
+@@ -76,6 +76,8 @@
+ 
+ ## Current release boundary
+ 
++`mdstats 0.20.240a0` is an exact-execution MVIDX/PARCORE1 backpressure hardening release on architecture revision 103. MVIDX no longer eager-submits every required family inversion into the bounded PARCORE1 ready queue. It feeds family and hard-obligation tasks through a deterministic producer/consumer refill loop: submit only while ready capacity exists, wait for completion, drain canonical completions, then refill. This preserves bounded ready/in-flight/completed queues and explicit RAM admission while allowing domains with arbitrarily more required families than queue slots (including the observed 165-family / 56-ready-slot production case). Scientific sparse-index authority, out-of-core storage semantics, worker-independent digests, and `FINAL-GPU1` as the next scientific gate are unchanged.
++
+ `mdstats 0.20.239a0` is a Python-3.11 compatibility hotfix on architecture revision 103. It corrects the DATA6 progress reporter so canonical timing fields are computed before f-string interpolation; the 0.20.238a0 MVIDX out-of-core execution/storage hardening and all scientific authority are unchanged. Release qualification now includes whole-tree Python 3.11 grammar parsing. `FINAL-GPU1` remains the next scientific gate.
+ 
+ `mdstats 0.20.238a0` is an exact-equivalence MVIDX scaling-hardening release on architecture revision 103. Multi-billion-edge NEIGHBOR1 caches may exceed the anonymous-RAM capacity required by the original full-family SciPy transpose even when the final scientific uint32/uint64 sparse arrays are valid. Campaign MVIDX therefore uses bounded row-chunk CSR-to-CSC transposes for large families, writes candidate-to-witness arrays directly as file-backed NPY memmaps, hard-links whole mmap-backed arrays into the authenticated native store on the same filesystem, and reloads the durable mmap authority before removing transient build paths. Queue admission accounts bounded transient scratch rather than the complete inverse payload for this path. A disk-space preflight fails before inversion if the exact inverse edge payload plus safety headroom cannot fit. In-memory and out-of-core arrays are required to be byte-identical and produce the same MVIDX content digest. This hardening changes execution/storage realization only; revision 103, schema 83, scientific authority, MPA-0/MH-1 semantics, and the `FINAL-GPU1` next-gate decision remain unchanged.
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.239a0.txt' '--exclude=SHA256SUMS_0.20.240a0.txt' /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/docs/arch_manuals/mlff_training_data_architecture.md /mnt/data/mdstats-0.20.240a0/docs/arch_manuals/mlff_training_data_architecture.md
+--- /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-18 04:40:37.000000000 +0000
++++ /mnt/data/mdstats-0.20.240a0/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-18 05:34:48.882565526 +0000
+@@ -1,9 +1,9 @@
+ ---
+ geometry: "margin=0.75in"
+ architecture_revision: 103
+-release: "mdstats 0.20.239a0"
+-status: "current normative architecture; revision 103 unchanged; MVIDX multi-billion-edge scaling hardened; exact-equivalence CPU optimization closed; FINAL-GPU1 next"
+-last_updated: "2026-08-17"
++release: "mdstats 0.20.240a0"
++status: "current normative architecture; revision 103 unchanged; MVIDX multi-billion-edge scaling and bounded-queue backpressure hardened; exact-equivalence CPU optimization closed; FINAL-GPU1 next"
++last_updated: "2026-08-18"
+ ---
+ 
+ # MLFF Training-Data and Fine-Tuning Architecture
+@@ -76,6 +76,8 @@
+ 
+ ## Current release boundary
+ 
++`mdstats 0.20.240a0` is an exact-execution MVIDX/PARCORE1 backpressure hardening release on architecture revision 103. MVIDX no longer eager-submits every required family inversion into the bounded PARCORE1 ready queue. It feeds family and hard-obligation tasks through a deterministic producer/consumer refill loop: submit only while ready capacity exists, wait for completion, drain canonical completions, then refill. This preserves bounded ready/in-flight/completed queues and explicit RAM admission while allowing domains with arbitrarily more required families than queue slots (including the observed 165-family / 56-ready-slot production case). Scientific sparse-index authority, out-of-core storage semantics, worker-independent digests, and `FINAL-GPU1` as the next scientific gate are unchanged.
++
+ `mdstats 0.20.239a0` is a Python-3.11 compatibility hotfix on architecture revision 103. It corrects the DATA6 progress reporter so canonical timing fields are computed before f-string interpolation; the 0.20.238a0 MVIDX out-of-core execution/storage hardening and all scientific authority are unchanged. Release qualification now includes whole-tree Python 3.11 grammar parsing. `FINAL-GPU1` remains the next scientific gate.
+ 
+ `mdstats 0.20.238a0` is an exact-equivalence MVIDX scaling-hardening release on architecture revision 103. Multi-billion-edge NEIGHBOR1 caches may exceed the anonymous-RAM capacity required by the original full-family SciPy transpose even when the final scientific uint32/uint64 sparse arrays are valid. Campaign MVIDX therefore uses bounded row-chunk CSR-to-CSC transposes for large families, writes candidate-to-witness arrays directly as file-backed NPY memmaps, hard-links whole mmap-backed arrays into the authenticated native store on the same filesystem, and reloads the durable mmap authority before removing transient build paths. Queue admission accounts bounded transient scratch rather than the complete inverse payload for this path. A disk-space preflight fails before inversion if the exact inverse edge payload plus safety headroom cannot fit. In-memory and out-of-core arrays are required to be byte-identical and produce the same MVIDX content digest. This hardening changes execution/storage realization only; revision 103, schema 83, scientific authority, MPA-0/MH-1 semantics, and the `FINAL-GPU1` next-gate decision remain unchanged.
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.239a0.txt' '--exclude=SHA256SUMS_0.20.240a0.txt' /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.240a0.md /mnt/data/mdstats-0.20.240a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.240a0.md
+--- /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.240a0.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-0.20.240a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.240a0.md	2026-08-18 05:36:05.314814065 +0000
+@@ -0,0 +1,5 @@
++# mdstats 0.20.240a0 - MVIDX bounded-queue backpressure hotfix
++
++This maintenance release fixes a production MVIDX/PARCORE1 integration defect exposed by a 165-family exact-neighborhood domain at 28 inverse workers. The ready queue is intentionally bounded to 56 tasks; MVIDX previously eager-submitted all family inversions and could fail with `PARCORE1 ready queue is full` before entering its completion-drain phase.
++
++MVIDX now uses deterministic producer-side backpressure: submit while ready capacity exists, drain completed tasks, then refill. Queue bounds, RAM admission, canonical sparse-index authority, out-of-core inverse storage, and architecture revision 103 remain unchanged. `FINAL-GPU1` remains next.
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.239a0.txt' '--exclude=SHA256SUMS_0.20.240a0.txt' /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/docs/specs/training_data/mlff_mvidx_queue_backpressure_spec.md /mnt/data/mdstats-0.20.240a0/docs/specs/training_data/mlff_mvidx_queue_backpressure_spec.md
+--- /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/docs/specs/training_data/mlff_mvidx_queue_backpressure_spec.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-0.20.240a0/docs/specs/training_data/mlff_mvidx_queue_backpressure_spec.md	2026-08-18 05:36:05.313262024 +0000
+@@ -0,0 +1,25 @@
++# MVIDX bounded-queue backpressure hardening (0.20.240a0)
++
++## Status
++
++Maintenance hardening on MLFF architecture revision 103 / dependency schema 83. Scientific authority is unchanged and `FINAL-GPU1` remains the next scientific gate.
++
++## Production incident
++
++A production TARGET-DATA2C-MVIDX1 domain contained 165 required exact-neighborhood families. With 28 inverse workers, PARCORE1 intentionally bounded the ready queue to 56 tasks. The pre-0.20.240 MVIDX producer eagerly submitted every family before entering its completion-drain loop, so submission 57+ could raise `DeterministicWorkQueueError: PARCORE1 ready queue is full (56 tasks)` even though workers were making valid progress.
++
++## Required execution contract
++
++MVIDX SHALL treat PARCORE1 queue capacity as producer backpressure rather than as a reason to increase the queue bound.
++
++1. Family inversions are submitted only while `queue.can_submit()` is true.
++2. When ready capacity is exhausted, the coordinator waits for worker completion, drains canonical completions, commits their results, and refills the queue.
++3. The hard-obligation inverse is submitted through the same bounded refill loop after family submission reaches its canonical end.
++4. Ready, in-flight, and completed queue limits remain bounded and RAM admission remains fail-closed.
++5. Completion order may vary, but result assembly remains canonical by family order and task identity.
++6. Out-of-core MVIDX storage introduced in 0.20.238a0 is unchanged.
++7. Queue size, worker count, and refill timing are execution state and SHALL NOT enter MVIDX scientific identity.
++
++## Qualification oracle
++
++A production-style TARGET-DATA2B fixture with 17 required families is forced through a PARCORE1 queue with only one ready slot. The optimized MVIDX build must complete without queue-full failure and must reproduce the exact control MVIDX content digest. Under the historical eager-submission implementation, this fixture necessarily fails once the bounded ready slot and in-flight capacity are saturated.
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.239a0.txt' '--exclude=SHA256SUMS_0.20.240a0.txt' /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/mdstats/_version.py /mnt/data/mdstats-0.20.240a0/mdstats/_version.py
+--- /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/mdstats/_version.py	2026-08-18 04:32:02.000000000 +0000
++++ /mnt/data/mdstats-0.20.240a0/mdstats/_version.py	2026-08-18 05:32:12.708345214 +0000
+@@ -1 +1 @@
+-__version__ = "0.20.239a0"
++__version__ = "0.20.240a0"
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.239a0.txt' '--exclude=SHA256SUMS_0.20.240a0.txt' /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/mdstats/training_data/target_coverage_sparse_index.py /mnt/data/mdstats-0.20.240a0/mdstats/training_data/target_coverage_sparse_index.py
+--- /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/mdstats/training_data/target_coverage_sparse_index.py	2026-08-18 04:09:35.000000000 +0000
++++ /mnt/data/mdstats-0.20.240a0/mdstats/training_data/target_coverage_sparse_index.py	2026-08-18 05:29:50.808213916 +0000
+@@ -1140,34 +1140,6 @@
+         heartbeat_interval_seconds=30.0,
+         thread_name_prefix="mdstats-mvidx-reuse1",
+     ) as queue:
+-        for position, family in enumerate(required):
+-            cached_family = cached_domain.family(family.family_id)
+-            use_ooc = _family_uses_out_of_core_inverse(
+-                cached_family, out_of_core_directory=ooc_root
+-            )
+-            queue.submit(
+-                task_id=f"family-{position:06d}-{family.family_id}",
+-                canonical_order=(0, position),
+-                function=build_family,
+-                args=(position, family),
+-                task_kind=("mvidx-family-inverse-ooc" if use_ooc else "mvidx-family-inverse"),
+-                estimated_memory_bytes=_family_build_memory_estimate(
+-                    cached_family,
+-                    out_of_core=use_ooc,
+-                    out_of_core_admission_bytes=ooc_admission_bytes,
+-                ),
+-                locality_key=f"{domain.label_domain_id}:{family.family_id}",
+-            )
+-        queue.submit(
+-            task_id="hard-obligations",
+-            canonical_order=(1, 0),
+-            function=_build_obligation_sparse_index,
+-            args=(domain, role_domain),
+-            kwargs={"inverse_workers": 1},
+-            task_kind="mvidx-obligation-inverse",
+-            estimated_memory_bytes=max(1, len(domain.frame_uids) * 32),
+-            locality_key=f"{domain.label_domain_id}:obligations",
+-        )
+         expected = len(required) + 1
+         total_edges = sum(
+             int(cached_domain.family(family.family_id).edge_count) for family in required
+@@ -1190,7 +1162,49 @@
+             else:
+                 results[("obligations", "0")] = completion.value
+ 
++        def submit_family(position: int) -> None:
++            family = required[position]
++            cached_family = cached_domain.family(family.family_id)
++            use_ooc = _family_uses_out_of_core_inverse(
++                cached_family, out_of_core_directory=ooc_root
++            )
++            queue.submit(
++                task_id=f"family-{position:06d}-{family.family_id}",
++                canonical_order=(0, position),
++                function=build_family,
++                args=(position, family),
++                task_kind=("mvidx-family-inverse-ooc" if use_ooc else "mvidx-family-inverse"),
++                estimated_memory_bytes=_family_build_memory_estimate(
++                    cached_family,
++                    out_of_core=use_ooc,
++                    out_of_core_admission_bytes=ooc_admission_bytes,
++                ),
++                locality_key=f"{domain.label_domain_id}:{family.family_id}",
++            )
++
++        next_submit = 0
++        obligation_submitted = False
+         while queue.snapshot().finished_tasks < expected:
++            # PARCORE1 queues are deliberately bounded.  Feed work only while
++            # ready capacity exists, then drain completed work before refilling.
++            # This keeps 100+ family MVIDX domains bounded without turning a
++            # temporary producer/consumer imbalance into a fatal queue-full error.
++            while next_submit < len(required) and queue.can_submit():
++                submit_family(next_submit)
++                next_submit += 1
++            if next_submit >= len(required) and not obligation_submitted and queue.can_submit():
++                queue.submit(
++                    task_id="hard-obligations",
++                    canonical_order=(1, 0),
++                    function=_build_obligation_sparse_index,
++                    args=(domain, role_domain),
++                    kwargs={"inverse_workers": 1},
++                    task_kind="mvidx-obligation-inverse",
++                    estimated_memory_bytes=max(1, len(domain.frame_uids) * 32),
++                    locality_key=f"{domain.label_domain_id}:obligations",
++                )
++                obligation_submitted = True
++
+             queue.wait_for_completion(timeout=max(0.1, float(progress_interval_seconds)))
+             for completion in queue.drain_completed():
+                 consume_completion(completion)
+@@ -1215,6 +1229,10 @@
+         for completion in queue.drain_completed():
+             consume_completion(completion)
+         snapshot = queue.snapshot()
++        if next_submit != len(required) or not obligation_submitted or queue.has_outstanding_work:
++            raise RuntimeError(
++                "MVIDX-REUSE1 bounded producer/consumer queue did not drain exactly."
++            )
+ 
+     family_indices = tuple(results[("family", family.family_id)] for family in required)
+     obligation_result = results[("obligations", "0")]
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.239a0.txt' '--exclude=SHA256SUMS_0.20.240a0.txt' /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/pyproject.toml /mnt/data/mdstats-0.20.240a0/pyproject.toml
+--- /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/pyproject.toml	2026-08-18 04:32:02.000000000 +0000
++++ /mnt/data/mdstats-0.20.240a0/pyproject.toml	2026-08-18 05:32:12.708466754 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.239a0"
++version = "0.20.240a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.239a0.txt' '--exclude=SHA256SUMS_0.20.240a0.txt' /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/release/SOURCE_PATCH_0.20.239a0_to_0.20.240a0.patch /mnt/data/mdstats-0.20.240a0/release/SOURCE_PATCH_0.20.239a0_to_0.20.240a0.patch
+--- /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/release/SOURCE_PATCH_0.20.239a0_to_0.20.240a0.patch	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-0.20.240a0/release/SOURCE_PATCH_0.20.239a0_to_0.20.240a0.patch	2026-08-18 05:38:30.533124864 +0000
+@@ -0,0 +1,230 @@
++diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.239a0.txt' '--exclude=SHA256SUMS_0.20.240a0.txt' /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/CHANGELOG.md /mnt/data/mdstats-0.20.240a0/CHANGELOG.md
++--- /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/CHANGELOG.md	2026-08-18 04:32:02.000000000 +0000
+++++ /mnt/data/mdstats-0.20.240a0/CHANGELOG.md	2026-08-18 05:32:12.709696952 +0000
++@@ -1,3 +1,10 @@
+++## 0.20.240a0 - 2026-08-18
+++
+++- Fix MVIDX-REUSE1 producer-side PARCORE1 backpressure for domains whose required-family count exceeds the bounded ready queue (production incident: 165 families with 56 ready slots at 28 inverse workers).
+++- Replace eager family submission with deterministic submit/drain/refill scheduling; bounded queue sizes, RAM admission, canonical completion reduction, out-of-core inverse storage, and all scientific digests remain unchanged.
+++- Add a forced one-slot ready-queue regression over a production-style 17-family TARGET-DATA2B reference, which would fail under the previous eager-submission loop and now reproduces the exact MVIDX digest.
+++- Retain the 0.20.239a0 Python-3.11 syntax hotfix and 0.20.238a0 multi-billion-edge out-of-core MVIDX hardening. Architecture revision 103 / schema 83 remain unchanged; `FINAL-GPU1` remains next.
+++
++ ## 0.20.239a0 - 2026-08-17
++ 
++ - Correct a Python 3.11 syntax incompatibility introduced in the DATA6 progress-format line: a multiline function call was embedded directly inside an f-string expression.
++diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.239a0.txt' '--exclude=SHA256SUMS_0.20.240a0.txt' /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/PKG-INFO /mnt/data/mdstats-0.20.240a0/PKG-INFO
++--- /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/PKG-INFO	2026-08-18 04:32:02.000000000 +0000
+++++ /mnt/data/mdstats-0.20.240a0/PKG-INFO	2026-08-18 05:32:12.708513594 +0000
++@@ -1,6 +1,6 @@
++ Metadata-Version: 2.4
++ Name: mdstats
++-Version: 0.20.239a0
+++Version: 0.20.240a0
++ Summary: Transparent atomistic frame collections and structural/dynamical statistics
++ Requires-Python: >=3.10
++ Requires-Dist: numpy>=1.26
++diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.239a0.txt' '--exclude=SHA256SUMS_0.20.240a0.txt' /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/docs/arch_manuals/mlff_training_data/00_front_matter.md /mnt/data/mdstats-0.20.240a0/docs/arch_manuals/mlff_training_data/00_front_matter.md
++--- /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/docs/arch_manuals/mlff_training_data/00_front_matter.md	2026-08-18 04:32:02.000000000 +0000
+++++ /mnt/data/mdstats-0.20.240a0/docs/arch_manuals/mlff_training_data/00_front_matter.md	2026-08-18 05:34:48.305991441 +0000
++@@ -1,9 +1,9 @@
++ ---
++ geometry: "margin=0.75in"
++ architecture_revision: 103
++-release: "mdstats 0.20.239a0"
++-status: "current normative architecture; revision 103 unchanged; MVIDX multi-billion-edge scaling hardened; exact-equivalence CPU optimization closed; FINAL-GPU1 next"
++-last_updated: "2026-08-17"
+++release: "mdstats 0.20.240a0"
+++status: "current normative architecture; revision 103 unchanged; MVIDX multi-billion-edge scaling and bounded-queue backpressure hardened; exact-equivalence CPU optimization closed; FINAL-GPU1 next"
+++last_updated: "2026-08-18"
++ ---
++ 
++ # MLFF Training-Data and Fine-Tuning Architecture
++@@ -76,6 +76,8 @@
++ 
++ ## Current release boundary
++ 
+++`mdstats 0.20.240a0` is an exact-execution MVIDX/PARCORE1 backpressure hardening release on architecture revision 103. MVIDX no longer eager-submits every required family inversion into the bounded PARCORE1 ready queue. It feeds family and hard-obligation tasks through a deterministic producer/consumer refill loop: submit only while ready capacity exists, wait for completion, drain canonical completions, then refill. This preserves bounded ready/in-flight/completed queues and explicit RAM admission while allowing domains with arbitrarily more required families than queue slots (including the observed 165-family / 56-ready-slot production case). Scientific sparse-index authority, out-of-core storage semantics, worker-independent digests, and `FINAL-GPU1` as the next scientific gate are unchanged.
+++
++ `mdstats 0.20.239a0` is a Python-3.11 compatibility hotfix on architecture revision 103. It corrects the DATA6 progress reporter so canonical timing fields are computed before f-string interpolation; the 0.20.238a0 MVIDX out-of-core execution/storage hardening and all scientific authority are unchanged. Release qualification now includes whole-tree Python 3.11 grammar parsing. `FINAL-GPU1` remains the next scientific gate.
++ 
++ `mdstats 0.20.238a0` is an exact-equivalence MVIDX scaling-hardening release on architecture revision 103. Multi-billion-edge NEIGHBOR1 caches may exceed the anonymous-RAM capacity required by the original full-family SciPy transpose even when the final scientific uint32/uint64 sparse arrays are valid. Campaign MVIDX therefore uses bounded row-chunk CSR-to-CSC transposes for large families, writes candidate-to-witness arrays directly as file-backed NPY memmaps, hard-links whole mmap-backed arrays into the authenticated native store on the same filesystem, and reloads the durable mmap authority before removing transient build paths. Queue admission accounts bounded transient scratch rather than the complete inverse payload for this path. A disk-space preflight fails before inversion if the exact inverse edge payload plus safety headroom cannot fit. In-memory and out-of-core arrays are required to be byte-identical and produce the same MVIDX content digest. This hardening changes execution/storage realization only; revision 103, schema 83, scientific authority, MPA-0/MH-1 semantics, and the `FINAL-GPU1` next-gate decision remain unchanged.
++diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.239a0.txt' '--exclude=SHA256SUMS_0.20.240a0.txt' /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/docs/arch_manuals/mlff_training_data_architecture.md /mnt/data/mdstats-0.20.240a0/docs/arch_manuals/mlff_training_data_architecture.md
++--- /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-18 04:40:37.000000000 +0000
+++++ /mnt/data/mdstats-0.20.240a0/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-18 05:34:48.882565526 +0000
++@@ -1,9 +1,9 @@
++ ---
++ geometry: "margin=0.75in"
++ architecture_revision: 103
++-release: "mdstats 0.20.239a0"
++-status: "current normative architecture; revision 103 unchanged; MVIDX multi-billion-edge scaling hardened; exact-equivalence CPU optimization closed; FINAL-GPU1 next"
++-last_updated: "2026-08-17"
+++release: "mdstats 0.20.240a0"
+++status: "current normative architecture; revision 103 unchanged; MVIDX multi-billion-edge scaling and bounded-queue backpressure hardened; exact-equivalence CPU optimization closed; FINAL-GPU1 next"
+++last_updated: "2026-08-18"
++ ---
++ 
++ # MLFF Training-Data and Fine-Tuning Architecture
++@@ -76,6 +76,8 @@
++ 
++ ## Current release boundary
++ 
+++`mdstats 0.20.240a0` is an exact-execution MVIDX/PARCORE1 backpressure hardening release on architecture revision 103. MVIDX no longer eager-submits every required family inversion into the bounded PARCORE1 ready queue. It feeds family and hard-obligation tasks through a deterministic producer/consumer refill loop: submit only while ready capacity exists, wait for completion, drain canonical completions, then refill. This preserves bounded ready/in-flight/completed queues and explicit RAM admission while allowing domains with arbitrarily more required families than queue slots (including the observed 165-family / 56-ready-slot production case). Scientific sparse-index authority, out-of-core storage semantics, worker-independent digests, and `FINAL-GPU1` as the next scientific gate are unchanged.
+++
++ `mdstats 0.20.239a0` is a Python-3.11 compatibility hotfix on architecture revision 103. It corrects the DATA6 progress reporter so canonical timing fields are computed before f-string interpolation; the 0.20.238a0 MVIDX out-of-core execution/storage hardening and all scientific authority are unchanged. Release qualification now includes whole-tree Python 3.11 grammar parsing. `FINAL-GPU1` remains the next scientific gate.
++ 
++ `mdstats 0.20.238a0` is an exact-equivalence MVIDX scaling-hardening release on architecture revision 103. Multi-billion-edge NEIGHBOR1 caches may exceed the anonymous-RAM capacity required by the original full-family SciPy transpose even when the final scientific uint32/uint64 sparse arrays are valid. Campaign MVIDX therefore uses bounded row-chunk CSR-to-CSC transposes for large families, writes candidate-to-witness arrays directly as file-backed NPY memmaps, hard-links whole mmap-backed arrays into the authenticated native store on the same filesystem, and reloads the durable mmap authority before removing transient build paths. Queue admission accounts bounded transient scratch rather than the complete inverse payload for this path. A disk-space preflight fails before inversion if the exact inverse edge payload plus safety headroom cannot fit. In-memory and out-of-core arrays are required to be byte-identical and produce the same MVIDX content digest. This hardening changes execution/storage realization only; revision 103, schema 83, scientific authority, MPA-0/MH-1 semantics, and the `FINAL-GPU1` next-gate decision remain unchanged.
++diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.239a0.txt' '--exclude=SHA256SUMS_0.20.240a0.txt' /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.240a0.md /mnt/data/mdstats-0.20.240a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.240a0.md
++--- /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.240a0.md	1970-01-01 00:00:00.000000000 +0000
+++++ /mnt/data/mdstats-0.20.240a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.240a0.md	2026-08-18 05:36:05.314814065 +0000
++@@ -0,0 +1,5 @@
+++# mdstats 0.20.240a0 - MVIDX bounded-queue backpressure hotfix
+++
+++This maintenance release fixes a production MVIDX/PARCORE1 integration defect exposed by a 165-family exact-neighborhood domain at 28 inverse workers. The ready queue is intentionally bounded to 56 tasks; MVIDX previously eager-submitted all family inversions and could fail with `PARCORE1 ready queue is full` before entering its completion-drain phase.
+++
+++MVIDX now uses deterministic producer-side backpressure: submit while ready capacity exists, drain completed tasks, then refill. Queue bounds, RAM admission, canonical sparse-index authority, out-of-core inverse storage, and architecture revision 103 remain unchanged. `FINAL-GPU1` remains next.
++diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.239a0.txt' '--exclude=SHA256SUMS_0.20.240a0.txt' /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/docs/specs/training_data/mlff_mvidx_queue_backpressure_spec.md /mnt/data/mdstats-0.20.240a0/docs/specs/training_data/mlff_mvidx_queue_backpressure_spec.md
++--- /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/docs/specs/training_data/mlff_mvidx_queue_backpressure_spec.md	1970-01-01 00:00:00.000000000 +0000
+++++ /mnt/data/mdstats-0.20.240a0/docs/specs/training_data/mlff_mvidx_queue_backpressure_spec.md	2026-08-18 05:36:05.313262024 +0000
++@@ -0,0 +1,25 @@
+++# MVIDX bounded-queue backpressure hardening (0.20.240a0)
+++
+++## Status
+++
+++Maintenance hardening on MLFF architecture revision 103 / dependency schema 83. Scientific authority is unchanged and `FINAL-GPU1` remains the next scientific gate.
+++
+++## Production incident
+++
+++A production TARGET-DATA2C-MVIDX1 domain contained 165 required exact-neighborhood families. With 28 inverse workers, PARCORE1 intentionally bounded the ready queue to 56 tasks. The pre-0.20.240 MVIDX producer eagerly submitted every family before entering its completion-drain loop, so submission 57+ could raise `DeterministicWorkQueueError: PARCORE1 ready queue is full (56 tasks)` even though workers were making valid progress.
+++
+++## Required execution contract
+++
+++MVIDX SHALL treat PARCORE1 queue capacity as producer backpressure rather than as a reason to increase the queue bound.
+++
+++1. Family inversions are submitted only while `queue.can_submit()` is true.
+++2. When ready capacity is exhausted, the coordinator waits for worker completion, drains canonical completions, commits their results, and refills the queue.
+++3. The hard-obligation inverse is submitted through the same bounded refill loop after family submission reaches its canonical end.
+++4. Ready, in-flight, and completed queue limits remain bounded and RAM admission remains fail-closed.
+++5. Completion order may vary, but result assembly remains canonical by family order and task identity.
+++6. Out-of-core MVIDX storage introduced in 0.20.238a0 is unchanged.
+++7. Queue size, worker count, and refill timing are execution state and SHALL NOT enter MVIDX scientific identity.
+++
+++## Qualification oracle
+++
+++A production-style TARGET-DATA2B fixture with 17 required families is forced through a PARCORE1 queue with only one ready slot. The optimized MVIDX build must complete without queue-full failure and must reproduce the exact control MVIDX content digest. Under the historical eager-submission implementation, this fixture necessarily fails once the bounded ready slot and in-flight capacity are saturated.
++diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.239a0.txt' '--exclude=SHA256SUMS_0.20.240a0.txt' /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/mdstats/_version.py /mnt/data/mdstats-0.20.240a0/mdstats/_version.py
++--- /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/mdstats/_version.py	2026-08-18 04:32:02.000000000 +0000
+++++ /mnt/data/mdstats-0.20.240a0/mdstats/_version.py	2026-08-18 05:32:12.708345214 +0000
++@@ -1 +1 @@
++-__version__ = "0.20.239a0"
+++__version__ = "0.20.240a0"
++diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.239a0.txt' '--exclude=SHA256SUMS_0.20.240a0.txt' /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/mdstats/training_data/target_coverage_sparse_index.py /mnt/data/mdstats-0.20.240a0/mdstats/training_data/target_coverage_sparse_index.py
++--- /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/mdstats/training_data/target_coverage_sparse_index.py	2026-08-18 04:09:35.000000000 +0000
+++++ /mnt/data/mdstats-0.20.240a0/mdstats/training_data/target_coverage_sparse_index.py	2026-08-18 05:29:50.808213916 +0000
++@@ -1140,34 +1140,6 @@
++         heartbeat_interval_seconds=30.0,
++         thread_name_prefix="mdstats-mvidx-reuse1",
++     ) as queue:
++-        for position, family in enumerate(required):
++-            cached_family = cached_domain.family(family.family_id)
++-            use_ooc = _family_uses_out_of_core_inverse(
++-                cached_family, out_of_core_directory=ooc_root
++-            )
++-            queue.submit(
++-                task_id=f"family-{position:06d}-{family.family_id}",
++-                canonical_order=(0, position),
++-                function=build_family,
++-                args=(position, family),
++-                task_kind=("mvidx-family-inverse-ooc" if use_ooc else "mvidx-family-inverse"),
++-                estimated_memory_bytes=_family_build_memory_estimate(
++-                    cached_family,
++-                    out_of_core=use_ooc,
++-                    out_of_core_admission_bytes=ooc_admission_bytes,
++-                ),
++-                locality_key=f"{domain.label_domain_id}:{family.family_id}",
++-            )
++-        queue.submit(
++-            task_id="hard-obligations",
++-            canonical_order=(1, 0),
++-            function=_build_obligation_sparse_index,
++-            args=(domain, role_domain),
++-            kwargs={"inverse_workers": 1},
++-            task_kind="mvidx-obligation-inverse",
++-            estimated_memory_bytes=max(1, len(domain.frame_uids) * 32),
++-            locality_key=f"{domain.label_domain_id}:obligations",
++-        )
++         expected = len(required) + 1
++         total_edges = sum(
++             int(cached_domain.family(family.family_id).edge_count) for family in required
++@@ -1190,7 +1162,49 @@
++             else:
++                 results[("obligations", "0")] = completion.value
++ 
+++        def submit_family(position: int) -> None:
+++            family = required[position]
+++            cached_family = cached_domain.family(family.family_id)
+++            use_ooc = _family_uses_out_of_core_inverse(
+++                cached_family, out_of_core_directory=ooc_root
+++            )
+++            queue.submit(
+++                task_id=f"family-{position:06d}-{family.family_id}",
+++                canonical_order=(0, position),
+++                function=build_family,
+++                args=(position, family),
+++                task_kind=("mvidx-family-inverse-ooc" if use_ooc else "mvidx-family-inverse"),
+++                estimated_memory_bytes=_family_build_memory_estimate(
+++                    cached_family,
+++                    out_of_core=use_ooc,
+++                    out_of_core_admission_bytes=ooc_admission_bytes,
+++                ),
+++                locality_key=f"{domain.label_domain_id}:{family.family_id}",
+++            )
+++
+++        next_submit = 0
+++        obligation_submitted = False
++         while queue.snapshot().finished_tasks < expected:
+++            # PARCORE1 queues are deliberately bounded.  Feed work only while
+++            # ready capacity exists, then drain completed work before refilling.
+++            # This keeps 100+ family MVIDX domains bounded without turning a
+++            # temporary producer/consumer imbalance into a fatal queue-full error.
+++            while next_submit < len(required) and queue.can_submit():
+++                submit_family(next_submit)
+++                next_submit += 1
+++            if next_submit >= len(required) and not obligation_submitted and queue.can_submit():
+++                queue.submit(
+++                    task_id="hard-obligations",
+++                    canonical_order=(1, 0),
+++                    function=_build_obligation_sparse_index,
+++                    args=(domain, role_domain),
+++                    kwargs={"inverse_workers": 1},
+++                    task_kind="mvidx-obligation-inverse",
+++                    estimated_memory_bytes=max(1, len(domain.frame_uids) * 32),
+++                    locality_key=f"{domain.label_domain_id}:obligations",
+++                )
+++                obligation_submitted = True
+++
++             queue.wait_for_completion(timeout=max(0.1, float(progress_interval_seconds)))
++             for completion in queue.drain_completed():
++                 consume_completion(completion)
++@@ -1215,6 +1229,10 @@
++         for completion in queue.drain_completed():
++             consume_completion(completion)
++         snapshot = queue.snapshot()
+++        if next_submit != len(required) or not obligation_submitted or queue.has_outstanding_work:
+++            raise RuntimeError(
+++                "MVIDX-REUSE1 bounded producer/consumer queue did not drain exactly."
+++            )
++ 
++     family_indices = tuple(results[("family", family.family_id)] for family in required)
++     obligation_result = results[("obligations", "0")]
++diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.239a0.txt' '--exclude=SHA256SUMS_0.20.240a0.txt' /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/pyproject.toml /mnt/data/mdstats-0.20.240a0/pyproject.toml
++--- /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/pyproject.toml	2026-08-18 04:32:02.000000000 +0000
+++++ /mnt/data/mdstats-0.20.240a0/pyproject.toml	2026-08-18 05:32:12.708466754 +0000
++@@ -4,7 +4,7 @@
++ 
++ [project]
++ name = "mdstats"
++-version = "0.20.239a0"
+++version = "0.20.240a0"
++ description = "Transparent atomistic frame collections and structural/dynamical statistics"
++ requires-python = ">=3.10"
++ dependencies = [
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.239a0.txt' '--exclude=SHA256SUMS_0.20.240a0.txt' /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/release/qualification_logs/MLFF_MVIDX_QUEUE_BACKPRESSURE_QUALIFICATION_0.20.240a0.json /mnt/data/mdstats-0.20.240a0/release/qualification_logs/MLFF_MVIDX_QUEUE_BACKPRESSURE_QUALIFICATION_0.20.240a0.json
+--- /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/release/qualification_logs/MLFF_MVIDX_QUEUE_BACKPRESSURE_QUALIFICATION_0.20.240a0.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-0.20.240a0/release/qualification_logs/MLFF_MVIDX_QUEUE_BACKPRESSURE_QUALIFICATION_0.20.240a0.json	2026-08-18 05:38:30.315186075 +0000
+@@ -0,0 +1,68 @@
++{
++  "active_foundation_model_for_campaign_testing": "MACE-MPA-0 medium",
++  "architecture_revision": 103,
++  "artifacts": {
++    "architecture_pdf_sha256": "a51fc5c9e652b7a9454f7975cad0adffd9c3c2aa445bd0174af895b34af76995",
++    "backpressure_spec_sha256": "599584174775cd65c7d05a7bafdfd1ed005195519f4e865577773c1aedcab63d",
++    "mvidx_source_sha256": "eb0e9a8a18e23acbe023fbfd6c51e03a7d6da3c681a8994bc770fd7078e0e69c",
++    "work_queue_source_sha256": "0a40548a8fc6491abb511f3b2936b9fbed14edf0c5941240a4e0431650c6ffde"
++  },
++  "clean_room": {
++    "campaign_cli_help_import": "PASS",
++    "package_version": "0.20.240a0",
++    "queue_bound_formula": "2 * inverse workers; 56 ready slots at 28 workers",
++    "recorded_source_hashes_verified": 2552
++  },
++  "content_digest": "28727b449ccc1bd8d9291a5eee07782c2b3b76009d005127fd7627f706051fea",
++  "dependency_graph_schema": 83,
++  "incident": {
++    "exception": "DeterministicWorkQueueError: PARCORE1 ready queue is full (56 tasks)",
++    "inverse_workers": 28,
++    "ready_queue_capacity": 56,
++    "required_families": 165,
++    "total_exact_edges": 9505021522
++  },
++  "mh1_compatibility": "unchanged; execution-only MVIDX/PARCORE1 hardening is foundation-model independent",
++  "next_gate": "FINAL_GPU1_DEFERRED_RELEASE_QUALIFICATION",
++  "release": "mdstats 0.20.240a0",
++  "resolution": {
++    "canonical_completion_reduction_changed": false,
++    "out_of_core_inverse_changed": false,
++    "queue_bound_increased": false,
++    "ram_guard_relaxed": false,
++    "strategy": "deterministic producer-side submit/drain/refill backpressure"
++  },
++  "scientific_authority_change": false,
++  "status": "PASS_EXACT_EXECUTION_BACKPRESSURE_HARDENING",
++  "tests": {
++    "affected_clean_room_surface": {
++      "failed": 0,
++      "passed": 27,
++      "warnings": 3
++    },
++    "affected_mvidx_parcore_ooc": {
++      "failed": 0,
++      "passed": 24,
++      "warnings": 3
++    },
++    "campaign_cli_help_import": "PASS",
++    "incident_specific_spec_and_forced_refill": {
++      "failed": 0,
++      "passed": 4,
++      "warnings": 1
++    },
++    "python311_grammar_files_parsed": 933,
++    "target_data2_original_authority": {
++      "failed": 0,
++      "passed": 111,
++      "warnings": 18
++    },
++    "target_data2_plus_ooc_and_backpressure": {
++      "failed": 0,
++      "passed": 116,
++      "warnings": 19
++    },
++    "wheel_version": "0.20.240a0",
++    "whole_tree_compileall": "PASS"
++  }
++}
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.239a0.txt' '--exclude=SHA256SUMS_0.20.240a0.txt' /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/tests/test_mlff_mvidx_queue_backpressure_specification.py /mnt/data/mdstats-0.20.240a0/tests/test_mlff_mvidx_queue_backpressure_specification.py
+--- /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/tests/test_mlff_mvidx_queue_backpressure_specification.py	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-0.20.240a0/tests/test_mlff_mvidx_queue_backpressure_specification.py	2026-08-18 05:36:14.401887002 +0000
+@@ -0,0 +1,40 @@
++from __future__ import annotations
++
++from pathlib import Path
++
++import mdstats
++
++ROOT = Path(__file__).resolve().parents[1]
++SPEC = ROOT / "docs/specs/training_data/mlff_mvidx_queue_backpressure_spec.md"
++MANUAL = ROOT / "docs/arch_manuals/mlff_training_data_architecture.md"
++
++
++def test_mvidx_backpressure_release_metadata() -> None:
++    assert mdstats.__version__ == "0.20.240a0"
++    manual = MANUAL.read_text(encoding="utf-8")
++    assert 'release: "mdstats 0.20.240a0"' in manual
++    assert "architecture_revision: 103" in manual
++    assert "165-family / 56-ready-slot" in manual
++    assert "FINAL-GPU1" in manual
++
++
++def test_mvidx_backpressure_spec_preserves_bounded_queue_contract() -> None:
++    text = SPEC.read_text(encoding="utf-8")
++    for token in (
++        "165 required",
++        "56 tasks",
++        "queue.can_submit()",
++        "drains canonical completions",
++        "RAM admission remains fail-closed",
++        "Out-of-core MVIDX",
++    ):
++        assert token in text
++
++
++def test_mvidx_runtime_uses_submit_drain_refill_loop() -> None:
++    source = (ROOT / "mdstats/training_data/target_coverage_sparse_index.py").read_text(
++        encoding="utf-8"
++    )
++    assert "while next_submit < len(required) and queue.can_submit():" in source
++    assert "obligation_submitted" in source
++    assert "bounded producer/consumer queue did not drain exactly" in source
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.239a0.txt' '--exclude=SHA256SUMS_0.20.240a0.txt' /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/tests/test_mlff_target_data2c_mvidx1.py /mnt/data/mdstats-0.20.240a0/tests/test_mlff_target_data2c_mvidx1.py
+--- /mnt/data/mdstats-0.20.239a0-pristine/mdstats-0.20.239a0/tests/test_mlff_target_data2c_mvidx1.py	2026-08-18 04:16:00.000000000 +0000
++++ /mnt/data/mdstats-0.20.240a0/tests/test_mlff_target_data2c_mvidx1.py	2026-08-18 05:31:30.125115264 +0000
+@@ -332,3 +332,45 @@
+         out_of_core_directory=tmp_path / "ooc-budgeted",
+     )
+     assert actual.content_digest == expected.content_digest
++
++
++def test_mvidx1_bounded_producer_refills_ready_queue_without_queue_full(
++    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
++) -> None:
++    """MVIDX must stream >queue-capacity family work instead of eager-submitting it."""
++    from tests.test_mlff_target_data2b_coverage import _build_coverage_inputs
++
++    _, _, _, data4, data5, data6, freeze, audit = _build_coverage_inputs(tmp_path / "inputs")
++    reference = mdstats.build_target_coverage_reference(data4, data5, data6, freeze, audit)
++    feasibility, neighborhoods = mdstats.build_target_coverage_feasibility_artifacts(
++        reference, freeze, query_workers=1, query_block_size=8, block_workers=2
++    )
++    expected = mdstats.build_target_coverage_sparse_index(
++        reference,
++        freeze,
++        feasibility,
++        exact_neighborhood_store=neighborhoods,
++        query_workers=1,
++        global_workers=2,
++    )
++
++    original_queue = mvidx.DeterministicWorkQueue
++
++    class OneReadySlotQueue(original_queue):
++        def __init__(self, scope, **kwargs):
++            kwargs["max_ready_tasks"] = 1
++            super().__init__(scope, **kwargs)
++
++    monkeypatch.setattr(mvidx, "DeterministicWorkQueue", OneReadySlotQueue)
++    monkeypatch.setattr(mvidx, "_MVIDX_OUT_OF_CORE_MIN_OUTPUT_BYTES", 1)
++    actual = mdstats.build_target_coverage_sparse_index(
++        reference,
++        freeze,
++        feasibility,
++        exact_neighborhood_store=neighborhoods,
++        query_workers=1,
++        global_workers=2,
++        out_of_core_directory=tmp_path / "ooc-refill",
++    )
++    assert sum(len(domain.families) for domain in actual.domains) > 1
++    assert actual.content_digest == expected.content_digest

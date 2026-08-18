@@ -1,0 +1,62 @@
+{
+  "dependency_authority": {
+    "all_four_context_entries": 4,
+    "all_four_layer_plan": [
+      "framework_topology_product",
+      "atomic_connectivity_product",
+      "atomic_trajectory_product",
+      "atomic_density_product"
+    ],
+    "all_four_source_preparation_count": 1,
+    "cache_policy": "scene_context_in_memory_single_flight",
+    "durable_product_cache": false,
+    "three_layer_omits_connectivity": true,
+    "three_layer_plan": [
+      "framework_topology_product",
+      "atomic_trajectory_product",
+      "atomic_density_product"
+    ]
+  },
+  "environment": {
+    "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+    "python": "3.13.5"
+  },
+  "gate": "GFX3D-4",
+  "mdstats_version": "0.20.149a0",
+  "next_gate": "GFX3D-5",
+  "performance_statement": "No wall-time speedup is claimed for GFX3D-4; qualification demonstrates reduced duplicate dependency authority/work and exact scientific equivalence.",
+  "real_cli_smoke": {
+    "html_path": "/mnt/data/gfx4_na_lta.html",
+    "html_size_bytes": 6766620,
+    "layers": [
+      "framework",
+      "trajectory:Na",
+      "density:Na"
+    ],
+    "manifest_path": "/mnt/data/gfx4_na_lta.scene.json",
+    "result": "pass"
+  },
+  "schema_version": "mdstats.gfx3d4-na-lta-qualification.v1",
+  "scientific_equivalence_0_20_148a0_to_0_20_149a0": {
+    "density_planning_approval_id": "0d0c876f4aa4f87ec6795bd04944017838bfe0eab11a8c6d70e66c15906132cc",
+    "exact_match": true,
+    "mean_framework_positions_sha256": "a646f0712ef8aa0c49f06826367a83848a8273f7a0803c7e5ff7ce938764025e",
+    "na_density_integral": 23.999999999999996,
+    "na_density_values_sha256": "7dfe8c055122a0a5ee1ab47fe50c1f827158aa65447057794936e5544747a9f8",
+    "na_trajectory_positions_sha256": "bd1184330923381803db1e0f09cab8e93605fb4b6e954cd95074367e019635be"
+  },
+  "source": {
+    "atoms": 168,
+    "path": "/mnt/data/dump.prod.Na_lta_300K.old(1).lammpstrj",
+    "qualified_frames": 21,
+    "sha256": "81c86cc40f5a11031f80817213eb558c02348494d1c6cad9b4775a5bc3c9f9cd",
+    "stride": 500,
+    "total_frames": 10001,
+    "type_map": {
+      "1": "Si",
+      "2": "Al",
+      "3": "O",
+      "4": "Na"
+    }
+  }
+}

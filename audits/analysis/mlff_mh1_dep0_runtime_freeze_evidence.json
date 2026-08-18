@@ -1,0 +1,249 @@
+{
+  "blocking_error_message": null,
+  "blocking_error_type": null,
+  "calculator_enable_cueq_supported": true,
+  "calculator_enable_oeq_supported": true,
+  "checkpoint_loads": [
+    {
+      "available_heads": [
+        "matpes_r2scan",
+        "mp_pbe_refit_add",
+        "spice_wB97M",
+        "oc20_usemppbe",
+        "omol",
+        "omat_pbe"
+      ],
+      "checkpoint_path": "/mnt/data/mace-mh-1.model",
+      "checkpoint_sha256": "ec00a2705854622fbbd898ccfb7701072fcd674709102d009fb919c1b8cc5dde",
+      "content_digest": "554e03fc4644a4f5b795226b37b9d80cd6a64dc956126b8505be307abb56cd21",
+      "e3nn_calculator_load_passed": true,
+      "error_message": null,
+      "error_type": null,
+      "model_class": "ScaleShiftMACE",
+      "passed": true,
+      "requested_head": "omat_pbe",
+      "schema": "mdstats.mace-runtime-checkpoint-load.v1",
+      "torch_load_passed": true
+    },
+    {
+      "available_heads": [
+        "default"
+      ],
+      "checkpoint_path": "/mnt/data/mace-mpa-0-medium(3).model",
+      "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
+      "content_digest": "555796b3ce256648fba9fad688373947d21d618fc58fe125ea2d505f6d2fb3dd",
+      "e3nn_calculator_load_passed": true,
+      "error_message": null,
+      "error_type": null,
+      "model_class": "ScaleShiftMACE",
+      "passed": true,
+      "requested_head": "default",
+      "schema": "mdstats.mace-runtime-checkpoint-load.v1",
+      "torch_load_passed": true
+    }
+  ],
+  "checkpoints_passed": true,
+  "component_capabilities": [
+    {
+      "available": false,
+      "candidate_distributions": [
+        "cuequivariance"
+      ],
+      "content_digest": "c552cf67a5679861501c28860548fa5756992d78736aad0718fd50d614c1897b",
+      "error_message": "No module named 'cuequivariance'",
+      "error_type": "ModuleNotFoundError",
+      "import_name": "cuequivariance",
+      "import_passed": false,
+      "installed_distribution": null,
+      "logical_name": "cueq-core",
+      "schema": "mdstats.mace-runtime-component-capability.v1",
+      "version": null
+    },
+    {
+      "available": false,
+      "candidate_distributions": [
+        "cuequivariance-torch"
+      ],
+      "content_digest": "4c210c0c95e78ab941462109fa58e0ca19cb5ec9a530c159f3d1db11c497345d",
+      "error_message": "No module named 'cuequivariance_torch'",
+      "error_type": "ModuleNotFoundError",
+      "import_name": "cuequivariance_torch",
+      "import_passed": false,
+      "installed_distribution": null,
+      "logical_name": "cueq-torch",
+      "schema": "mdstats.mace-runtime-component-capability.v1",
+      "version": null
+    },
+    {
+      "available": false,
+      "candidate_distributions": [
+        "cuequivariance-ops-torch-cu12",
+        "cuequivariance-ops-torch-cu11",
+        "cuequivariance-ops-torch"
+      ],
+      "content_digest": "d0134301e6d0beb627b9cc2ef6f9f23f8439c589c1ade246d509668f3e5a3b34",
+      "error_message": "No module named 'cuequivariance_ops_torch'",
+      "error_type": "ModuleNotFoundError",
+      "import_name": "cuequivariance_ops_torch",
+      "import_passed": false,
+      "installed_distribution": null,
+      "logical_name": "cueq-ops",
+      "schema": "mdstats.mace-runtime-component-capability.v1",
+      "version": null
+    },
+    {
+      "available": false,
+      "candidate_distributions": [
+        "openequivariance",
+        "OpenEquivariance"
+      ],
+      "content_digest": "bc4a449757377c32b862ff5be29ffd9e8af502a9e4cfd16a7cd22d18b2c4fc3f",
+      "error_message": "No module named 'openequivariance'",
+      "error_type": "ModuleNotFoundError",
+      "import_name": "openequivariance",
+      "import_passed": false,
+      "installed_distribution": null,
+      "logical_name": "oeq",
+      "schema": "mdstats.mace-runtime-component-capability.v1",
+      "version": null
+    }
+  ],
+  "content_digest": "00a98ff9d1ea5ac94af91a8581cb7118d599df4d3d42c522271c2da44b36a862",
+  "core_runtime_passed": true,
+  "cuda_available": false,
+  "cueq_backend_capability_passed": false,
+  "cueq_backend_failure_reasons": [
+    "cuEquivariance core/torch/ops capability is incomplete",
+    "OpenEquivariance capability is unavailable"
+  ],
+  "cueq_stack_available": false,
+  "dependency_target_passed": false,
+  "e3nn_backend_capability_passed": true,
+  "e3nn_backend_failure_reasons": [],
+  "e3nn_version": "0.4.4",
+  "mace_version": "0.3.16",
+  "oeq_available": false,
+  "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+  "policy": {
+    "policy_digest": "6c429f838b1d9c382faa0162efdfb637808048c574dfd4ddb75600d62ab83126",
+    "require_cueq_stack": true,
+    "require_oeq": true,
+    "required_e3nn_version": "0.4.4",
+    "required_mace_version": "0.3.16",
+    "schema": "mdstats.mace-runtime-freeze-policy.v1",
+    "source_lock": [
+      [
+        "mace/cli/run_train.py",
+        "4f219fce454279b54cb7a10af30e8e8508cb7b83b3ffa6981ed89dbe7dc8de8b"
+      ],
+      [
+        "mace/tools/train.py",
+        "ca700fa6685e75124ca725d83b2fa55303c0803c48a2ac0c4b543f8f63aa4dfc"
+      ],
+      [
+        "mace/tools/multihead_tools.py",
+        "a8b0d86bc314c8587e9140afe147553dcae7c4691f049c7d409e815854d9412f"
+      ],
+      [
+        "mace/tools/scripts_utils.py",
+        "de6b33ef2fc59e32408f0436d15a135ad0c63df3d23feeef8cc23e4a1b86bdb1"
+      ],
+      [
+        "mace/calculators/mace.py",
+        "97b17cef8d5880071068d1a05a97f1d432ffc57db00d23ba86c2c3049114a8ad"
+      ],
+      [
+        "mace/tools/arg_parser.py",
+        "9e583bbadc58492861655932c2dc71a069731eece3946ebc681e43f628149d86"
+      ],
+      [
+        "mace/cli/convert_e3nn_hybrid.py",
+        "11f7f601734182d00ce7cb21aa0c4efc096bad7341c0bdcbd211018ead731f20"
+      ],
+      [
+        "mace/cli/convert_e3nn_oeq.py",
+        "42511f11713e3b9b2569b78649da39ad4eadd676793666f3024c5222f06db7e9"
+      ]
+    ]
+  },
+  "python_version": "3.13.5",
+  "qualified_for_mh1_dep0": false,
+  "schema": "mdstats.mace-runtime-freeze-record.v1",
+  "source_evidence": [
+    {
+      "content_digest": "2cf00f9f584f81e3bd236e420410813b9b116ad9762b8fcda0ba20f19f21bb43",
+      "expected_sha256": "4f219fce454279b54cb7a10af30e8e8508cb7b83b3ffa6981ed89dbe7dc8de8b",
+      "matched": true,
+      "observed_sha256": "4f219fce454279b54cb7a10af30e8e8508cb7b83b3ffa6981ed89dbe7dc8de8b",
+      "relative_path": "mace/cli/run_train.py",
+      "schema": "mdstats.mace-runtime-source-evidence.v1"
+    },
+    {
+      "content_digest": "cfee1685c5c73d267d480954a268cf3ee0dabb3150ec78c909c10ab4db6f165b",
+      "expected_sha256": "ca700fa6685e75124ca725d83b2fa55303c0803c48a2ac0c4b543f8f63aa4dfc",
+      "matched": true,
+      "observed_sha256": "ca700fa6685e75124ca725d83b2fa55303c0803c48a2ac0c4b543f8f63aa4dfc",
+      "relative_path": "mace/tools/train.py",
+      "schema": "mdstats.mace-runtime-source-evidence.v1"
+    },
+    {
+      "content_digest": "328ba6b8a1b8506fc90a9fe6e66d8fdb31537ef8595dd597de73b147f6bab072",
+      "expected_sha256": "a8b0d86bc314c8587e9140afe147553dcae7c4691f049c7d409e815854d9412f",
+      "matched": true,
+      "observed_sha256": "a8b0d86bc314c8587e9140afe147553dcae7c4691f049c7d409e815854d9412f",
+      "relative_path": "mace/tools/multihead_tools.py",
+      "schema": "mdstats.mace-runtime-source-evidence.v1"
+    },
+    {
+      "content_digest": "81cb6b07245ccddf65a2de5bfb692dc1a6a755c6acedff5dc024b73c963a5d58",
+      "expected_sha256": "de6b33ef2fc59e32408f0436d15a135ad0c63df3d23feeef8cc23e4a1b86bdb1",
+      "matched": true,
+      "observed_sha256": "de6b33ef2fc59e32408f0436d15a135ad0c63df3d23feeef8cc23e4a1b86bdb1",
+      "relative_path": "mace/tools/scripts_utils.py",
+      "schema": "mdstats.mace-runtime-source-evidence.v1"
+    },
+    {
+      "content_digest": "887631fd7ed150cc6be48635ff56eaabafa40d2d018522b502087946fc879a5a",
+      "expected_sha256": "97b17cef8d5880071068d1a05a97f1d432ffc57db00d23ba86c2c3049114a8ad",
+      "matched": true,
+      "observed_sha256": "97b17cef8d5880071068d1a05a97f1d432ffc57db00d23ba86c2c3049114a8ad",
+      "relative_path": "mace/calculators/mace.py",
+      "schema": "mdstats.mace-runtime-source-evidence.v1"
+    },
+    {
+      "content_digest": "e59709417bfeabe9de572f4db4a8178f05095c11a3eb3a14ffeb7097cc7948ec",
+      "expected_sha256": "9e583bbadc58492861655932c2dc71a069731eece3946ebc681e43f628149d86",
+      "matched": true,
+      "observed_sha256": "9e583bbadc58492861655932c2dc71a069731eece3946ebc681e43f628149d86",
+      "relative_path": "mace/tools/arg_parser.py",
+      "schema": "mdstats.mace-runtime-source-evidence.v1"
+    },
+    {
+      "content_digest": "6f7a3c10b7eed060280a88954810e5315a769dd8e2ae05ab7e7adf5094dede34",
+      "expected_sha256": "11f7f601734182d00ce7cb21aa0c4efc096bad7341c0bdcbd211018ead731f20",
+      "matched": true,
+      "observed_sha256": "11f7f601734182d00ce7cb21aa0c4efc096bad7341c0bdcbd211018ead731f20",
+      "relative_path": "mace/cli/convert_e3nn_hybrid.py",
+      "schema": "mdstats.mace-runtime-source-evidence.v1"
+    },
+    {
+      "content_digest": "47835becb9039f6207441b1f6287d7411902c1494f26c1b11835e31bb488d71b",
+      "expected_sha256": "42511f11713e3b9b2569b78649da39ad4eadd676793666f3024c5222f06db7e9",
+      "matched": true,
+      "observed_sha256": "42511f11713e3b9b2569b78649da39ad4eadd676793666f3024c5222f06db7e9",
+      "relative_path": "mace/cli/convert_e3nn_oeq.py",
+      "schema": "mdstats.mace-runtime-source-evidence.v1"
+    }
+  ],
+  "source_lock_passed": true,
+  "supplied_artifacts": [
+    [
+      "dependencies.tar(20260814-095402).gz",
+      "888d545a512396697c8583d69bc9ed33110914675f466a4cbcafc3e1e1407171"
+    ]
+  ],
+  "torch_cuda_version": null,
+  "torch_version": "2.10.0+cpu",
+  "training_enable_cueq_supported": true,
+  "training_enable_oeq_supported": true
+}

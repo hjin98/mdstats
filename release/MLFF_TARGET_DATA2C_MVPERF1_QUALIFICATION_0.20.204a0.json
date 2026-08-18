@@ -1,0 +1,131 @@
+{
+  "architecture_revision": 71,
+  "authority_boundary": {
+    "data8_membership_changed": false,
+    "execution_only": true,
+    "generated_default_changed": false,
+    "runtime_selector_changed": false,
+    "scientific_policy_changed": false,
+    "target_data2c_production_selector": "revision-64 TARGET-DATA2C v4",
+    "train2_policy_changed": false
+  },
+  "date": "2026-08-16",
+  "dependency_graph_schema": 53,
+  "equivalence": {
+    "decision_equivalent_benchmark": true,
+    "incremental_state_exact_after_each_qualified_step": true,
+    "reference_and_optimized_policy_digest_identical": true,
+    "repair_persisted_plan_byte_equivalent": true,
+    "selector_persisted_plan_byte_equivalent": true
+  },
+  "execution_contract": {
+    "approximate_neighbor_authority_forbidden": true,
+    "canonical_witness_and_edge_order_preserved": true,
+    "complete_witness_rows_not_split_for_batch_ceiling": true,
+    "dense_all_pairs_persistence_forbidden": true,
+    "fp64_scientific_gain_semantics_preserved": true,
+    "gpu_graph_authority_forbidden": true,
+    "lazy_heap": {
+      "reason": "vectorized candidate arbitration is bounded and a minority cost on the cardinality stress fixture; sparse updates dominate and exact heap tie-frontier bookkeeping adds complexity without sufficient measured benefit",
+      "status": "evaluated_not_adopted"
+    },
+    "maximum_scatter_edges_per_batch": 262144,
+    "optimized_mode": "bounded_witness_order_scatter",
+    "reference_mode_retained": true,
+    "stage_resource_scope_required": true
+  },
+  "gate": "TARGET-DATA2C-MVPERF1",
+  "next_gate": "TARGET-DATA2C-MVQUAL1",
+  "package_checks": {
+    "compileall": "pass",
+    "graph_mirrors_identical": true,
+    "manual_mirrors_identical": true,
+    "pdf_preflight_and_visual_qa": "pass",
+    "python_or_pytest_cache_artifacts_before_archive": 0,
+    "source_payload_model_or_archive_files": 0,
+    "version_metadata_consistent": true
+  },
+  "performance": {
+    "bounded_scale": {
+      "cpu_seconds": 6.490255991,
+      "degree": 8,
+      "edge_count": 393216,
+      "family_count": 2,
+      "k": 16384,
+      "maxrss_kib": 270852,
+      "mode": "optimized",
+      "n": 24576,
+      "selection_digest": "aaec42fb0c1df6a62ce2286ec5f5b8897bc089d6d31726da89a0461bcd75d608",
+      "wall_seconds": 6.490874438999526
+    },
+    "full_cardinality_stress": {
+      "cpu_seconds": 7.184202751999999,
+      "degree": 8,
+      "edge_count": 524288,
+      "family_count": 2,
+      "k": 16384,
+      "maxrss_kib": 275240,
+      "mode": "optimized",
+      "n": 32768,
+      "selection_digest": "89e6b50d56f2d052f75a4b532b8c6ce617dc788c7c50fb40b7927f2a10ef9ffc",
+      "wall_seconds": 7.187546086999646
+    },
+    "optimized_rss_ratio": 1.0026006022447305,
+    "representative_optimized": {
+      "cpu_seconds": 1.2999042129999996,
+      "degree": 24,
+      "edge_count": 294912,
+      "family_count": 3,
+      "k": 2048,
+      "maxrss_kib": 263700,
+      "mode": "optimized",
+      "n": 4096,
+      "selection_digest": "d147d85acd64dd386dcd9b64e1bd534001e1b1a9e1736522b2ffaddbb978b378",
+      "wall_seconds": 1.3004607420007233
+    },
+    "representative_reference": {
+      "cpu_seconds": 3.476257453999999,
+      "degree": 24,
+      "edge_count": 294912,
+      "family_count": 3,
+      "k": 2048,
+      "maxrss_kib": 263016,
+      "mode": "reference",
+      "n": 4096,
+      "selection_digest": "d147d85acd64dd386dcd9b64e1bd534001e1b1a9e1736522b2ffaddbb978b378",
+      "wall_seconds": 3.4764153200012515
+    },
+    "selector_speedup": 2.673218197000612
+  },
+  "release": "0.20.204a0",
+  "schema": "mdstats.target-data2c-mvperf1-qualification.v1",
+  "status": "pass_exact_performance_hardening",
+  "tests": {
+    "current_release_specifications": {
+      "failed": 0,
+      "passed": 56,
+      "skipped": 0
+    },
+    "focused_mvperf_mvsel_repair": {
+      "failed": 0,
+      "passed": 22,
+      "skipped": 0
+    },
+    "target_data2a_through_mvidx": {
+      "failed": 0,
+      "passed": 50,
+      "skipped": 0
+    },
+    "target_data2d_e_campaign": {
+      "failed": 0,
+      "passed": 72,
+      "skip_reason": "real LTA training root not supplied",
+      "skipped": 1
+    },
+    "unique_completed_checks_total": {
+      "failed": 0,
+      "passed": 200,
+      "skipped": 1
+    }
+  }
+}

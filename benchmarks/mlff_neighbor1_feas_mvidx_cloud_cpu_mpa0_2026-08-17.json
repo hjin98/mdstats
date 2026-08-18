@@ -1,0 +1,304 @@
+{
+  "acceptance": {
+    "cache_hit_zero_second_geometric_queries": "verified by fail-fast query_block regression test",
+    "exact_feas1_digest_preserved": true,
+    "exact_mvidx1_digest_preserved": true,
+    "final_csr_memory_admitted_before_materialization": true,
+    "native_store_roundtrip_and_tamper_detection": "PASS",
+    "neighbor_store_digest_invariant": true,
+    "next_gate": "MVIDX-REUSE1",
+    "one_lane_end_to_end_speedup": 1.7256815443224238,
+    "status": "PASS",
+    "three_lane_end_to_end_speedup": 2.680885550080422
+  },
+  "active_foundation": {
+    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
+    "family": "mace-mpa-0",
+    "mh1_supported_by_same_contract": true,
+    "neighborhood_engine_foundation_generic": true,
+    "variant": "medium"
+  },
+  "architecture_revision": 94,
+  "authority_change": {
+    "gpu": false,
+    "runtime_optimization": true,
+    "scientific": false
+  },
+  "comparison": {
+    "1": {
+      "feas_wall_ratio_neighbor1_over_control": 1.2264886344448747,
+      "mvidx_speedup_control_over_neighbor1": 4.503273724022202,
+      "process_cpu_ratio_neighbor1_over_control": 0.5973398223718425,
+      "total_speedup_control_over_neighbor1": 1.7256815443224238,
+      "total_wall_ratio_neighbor1_over_control": 0.5794811929756383
+    },
+    "3": {
+      "feas_wall_ratio_neighbor1_over_control": 1.278319326324354,
+      "mvidx_speedup_control_over_neighbor1": 6.635096793464913,
+      "process_cpu_ratio_neighbor1_over_control": 0.46277017835449114,
+      "total_speedup_control_over_neighbor1": 2.680885550080422,
+      "total_wall_ratio_neighbor1_over_control": 0.3730110746316648
+    }
+  },
+  "content_digest": "09ccfd3f610bc0821310e2160dc419e2f0c34b39adeaa7a9e5d034b5d081441c",
+  "control_0_20_226a0": {
+    "description": "untouched PARCORE1 source: FEAS1 exact geometry followed by independent MVIDX1 geometric sweep",
+    "summaries": {
+      "1": {
+        "feas_digest": "937214c70d1f2baae883993082f1ceb25bea6007a5a2be0beee045262f5c0613",
+        "median_feas_seconds": 0.7834523724999372,
+        "median_mvidx_seconds": 1.4182178425000984,
+        "median_process_cpu_seconds": 2.2304115850000006,
+        "median_total_seconds": 2.2016725994999433,
+        "mvidx_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
+        "neighborhood_digest": null,
+        "peak_maxrss_kib": 340124,
+        "repeat_count": 2,
+        "workers": 1
+      },
+      "3": {
+        "feas_digest": "937214c70d1f2baae883993082f1ceb25bea6007a5a2be0beee045262f5c0613",
+        "median_feas_seconds": 0.5468097544999182,
+        "median_mvidx_seconds": 2.2268919205000657,
+        "median_process_cpu_seconds": 3.3084620219999987,
+        "median_total_seconds": 2.773704031500074,
+        "mvidx_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
+        "neighborhood_digest": null,
+        "peak_maxrss_kib": 350068,
+        "repeat_count": 2,
+        "workers": 3
+      }
+    },
+    "trials": [
+      {
+        "cpu_seconds": 2.153976355000001,
+        "edges": 3194880,
+        "feas_digest": "937214c70d1f2baae883993082f1ceb25bea6007a5a2be0beee045262f5c0613",
+        "feas_seconds": 0.7757356129998243,
+        "index_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
+        "maxrss_kib": 340124,
+        "mode": "old",
+        "mvidx_seconds": 1.3500995080000848,
+        "neighbor_digest": null,
+        "repeat": 0,
+        "round": 1,
+        "total_seconds": 2.1258371989999887,
+        "workers": 1
+      },
+      {
+        "cpu_seconds": 2.306846815,
+        "edges": 3194880,
+        "feas_digest": "937214c70d1f2baae883993082f1ceb25bea6007a5a2be0beee045262f5c0613",
+        "feas_seconds": 0.79116913200005,
+        "index_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
+        "maxrss_kib": 340124,
+        "mode": "old",
+        "mvidx_seconds": 1.486336177000112,
+        "neighbor_digest": null,
+        "repeat": 1,
+        "round": 1,
+        "total_seconds": 2.277507999999898,
+        "workers": 1
+      },
+      {
+        "cpu_seconds": 4.361792558999998,
+        "edges": 3194880,
+        "feas_digest": "937214c70d1f2baae883993082f1ceb25bea6007a5a2be0beee045262f5c0613",
+        "feas_seconds": 0.530621045999851,
+        "index_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
+        "maxrss_kib": 350068,
+        "mode": "old",
+        "mvidx_seconds": 3.280789595999977,
+        "neighbor_digest": null,
+        "repeat": 0,
+        "round": 1,
+        "total_seconds": 3.811413100000209,
+        "workers": 3
+      },
+      {
+        "cpu_seconds": 2.2551314849999997,
+        "edges": 3194880,
+        "feas_digest": "937214c70d1f2baae883993082f1ceb25bea6007a5a2be0beee045262f5c0613",
+        "feas_seconds": 0.5629984629999853,
+        "index_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
+        "maxrss_kib": 350068,
+        "mode": "old",
+        "mvidx_seconds": 1.1729942450001545,
+        "neighbor_digest": null,
+        "repeat": 1,
+        "round": 1,
+        "total_seconds": 1.7359949629999392,
+        "workers": 3
+      }
+    ]
+  },
+  "date": "2026-08-17",
+  "gate": "NEIGHBOR1",
+  "host": {
+    "automatic_90pct_budget_lanes": 3,
+    "cpu_model": "Intel Xeon Platinum 8573C",
+    "mdstats_available_cpu_threads": 4,
+    "note": "cgroup-limited cloud CPU; timing is execution evidence only",
+    "platform": "Linux x86_64",
+    "visible_online_cpus": 5
+  },
+  "independent_current_reproduction": {
+    "interpretation": "Independent release-tagged reproduction under later host scheduling. Timing is execution evidence only; all scientific digests remain exact. Host scheduling was noisier than the paired control run.",
+    "path": "benchmarks/mlff_neighbor1_current_repro_0.20.227a0.json",
+    "scientific_equivalence": {
+      "feasibility_digest_count": 1,
+      "feasibility_digests": [
+        "937214c70d1f2baae883993082f1ceb25bea6007a5a2be0beee045262f5c0613"
+      ],
+      "neighborhood_digest_count": 1,
+      "neighborhood_digests": [
+        "0220c89084fe957e85eb1e1c87a581eaa44869f11cb98bee7f7bd8cdafd3d74e"
+      ],
+      "sparse_index_digest_count": 1,
+      "sparse_index_digests": [
+        "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c"
+      ]
+    },
+    "sha256": "22a9c9e4799c1752f200ae939591d3d62cf11e0b6c4fcb954f9ecd16fbb0df3b",
+    "summaries": {
+      "1": {
+        "median_cache_hit_mvidx_seconds": 0.3070744429999195,
+        "median_feasibility_plus_csr_seconds": 1.031489163999936,
+        "median_process_cpu_seconds": 1.3845743300000004,
+        "median_total_feas_to_mvidx_seconds": 1.338564546999919,
+        "peak_maxrss_kib": 311544,
+        "repeat_count": 2,
+        "workers": 1
+      },
+      "3": {
+        "median_cache_hit_mvidx_seconds": 0.3138745564999681,
+        "median_feasibility_plus_csr_seconds": 1.2123920555001177,
+        "median_process_cpu_seconds": 2.386546871,
+        "median_total_feas_to_mvidx_seconds": 1.5262674000000516,
+        "peak_maxrss_kib": 335092,
+        "repeat_count": 2,
+        "workers": 3
+      }
+    }
+  },
+  "inputs": {
+    "control_source_package": "mdstats-0.20.226a0-complete-source-package-parcore1.zip",
+    "control_source_package_sha256": "b080a97a8731757dc7412cb059e22ee52303118b22351fe5c95bf9d7b8c29293",
+    "dependencies_archive_path": "dependencies.tar(20260817-112644).gz",
+    "dependencies_archive_sha256": "888d545a512396697c8583d69bc9ed33110914675f466a4cbcafc3e1e1407171",
+    "foundation_checkpoint_path": "mace-mpa-0-medium(4).model",
+    "foundation_checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
+    "replay_path": "replay_fps_12000.extxyz",
+    "replay_sha256": "187eed42fb2d6cf5e7e745ffed0ce34541e92c6a35ec9e654520cd3c7198403c",
+    "target_archive_path": "training_LTA.tar(4).gz",
+    "target_archive_sha256": "bc1b7e25ba338507ae38b260bcd283356de887b6c6cf762a2c146733f1c3c958"
+  },
+  "neighbor1_0_20_227a0": {
+    "description": "FEAS1 exact geometry plus streamed forward CSR followed by MVIDX1 authenticated CSR adoption",
+    "summaries": {
+      "1": {
+        "feas_digest": "937214c70d1f2baae883993082f1ceb25bea6007a5a2be0beee045262f5c0613",
+        "median_feas_seconds": 0.9608954305000452,
+        "median_mvidx_seconds": 0.3149304104999828,
+        "median_process_cpu_seconds": 1.33231366,
+        "median_total_seconds": 1.2758278645000019,
+        "mvidx_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
+        "neighborhood_digest": "0220c89084fe957e85eb1e1c87a581eaa44869f11cb98bee7f7bd8cdafd3d74e",
+        "peak_maxrss_kib": 337288,
+        "repeat_count": 2,
+        "workers": 1
+      },
+      "3": {
+        "feas_digest": "937214c70d1f2baae883993082f1ceb25bea6007a5a2be0beee045262f5c0613",
+        "median_feas_seconds": 0.6989974769999208,
+        "median_mvidx_seconds": 0.3356231249999837,
+        "median_process_cpu_seconds": 1.5310575599999998,
+        "median_total_seconds": 1.0346223215000236,
+        "mvidx_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
+        "neighborhood_digest": "0220c89084fe957e85eb1e1c87a581eaa44869f11cb98bee7f7bd8cdafd3d74e",
+        "peak_maxrss_kib": 357840,
+        "repeat_count": 2,
+        "workers": 3
+      }
+    },
+    "trials": [
+      {
+        "cpu_seconds": 1.2559536179999995,
+        "edges": 3194880,
+        "feas_digest": "937214c70d1f2baae883993082f1ceb25bea6007a5a2be0beee045262f5c0613",
+        "feas_seconds": 0.9073118890000842,
+        "index_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
+        "maxrss_kib": 333528,
+        "mode": "new",
+        "mvidx_seconds": 0.3004915300000448,
+        "neighbor_digest": "0220c89084fe957e85eb1e1c87a581eaa44869f11cb98bee7f7bd8cdafd3d74e",
+        "repeat": 0,
+        "round": 2,
+        "total_seconds": 1.2078058189999865,
+        "workers": 1
+      },
+      {
+        "cpu_seconds": 1.4086737020000006,
+        "edges": 3194880,
+        "feas_digest": "937214c70d1f2baae883993082f1ceb25bea6007a5a2be0beee045262f5c0613",
+        "feas_seconds": 1.0144789720000063,
+        "index_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
+        "maxrss_kib": 337288,
+        "mode": "new",
+        "mvidx_seconds": 0.32936929099992085,
+        "neighbor_digest": "0220c89084fe957e85eb1e1c87a581eaa44869f11cb98bee7f7bd8cdafd3d74e",
+        "repeat": 1,
+        "round": 2,
+        "total_seconds": 1.3438499100000172,
+        "workers": 1
+      },
+      {
+        "cpu_seconds": 1.5504909799999993,
+        "edges": 3194880,
+        "feas_digest": "937214c70d1f2baae883993082f1ceb25bea6007a5a2be0beee045262f5c0613",
+        "feas_seconds": 0.725006895999968,
+        "index_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
+        "maxrss_kib": 355152,
+        "mode": "new",
+        "mvidx_seconds": 0.31876850699995884,
+        "neighbor_digest": "0220c89084fe957e85eb1e1c87a581eaa44869f11cb98bee7f7bd8cdafd3d74e",
+        "repeat": 0,
+        "round": 2,
+        "total_seconds": 1.0437769229999958,
+        "workers": 3
+      },
+      {
+        "cpu_seconds": 1.5116241400000003,
+        "edges": 3194880,
+        "feas_digest": "937214c70d1f2baae883993082f1ceb25bea6007a5a2be0beee045262f5c0613",
+        "feas_seconds": 0.6729880579998735,
+        "index_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
+        "maxrss_kib": 357840,
+        "mode": "new",
+        "mvidx_seconds": 0.35247774300000856,
+        "neighbor_digest": "0220c89084fe957e85eb1e1c87a581eaa44869f11cb98bee7f7bd8cdafd3d74e",
+        "repeat": 1,
+        "round": 2,
+        "total_seconds": 1.0254677200000515,
+        "workers": 3
+      }
+    ]
+  },
+  "notes": [
+    "FEAS1 now includes streamed CSR production, so its isolated wall time may increase while total FEAS1->MVIDX1 time falls materially.",
+    "The MVIDX1 cache-hit path retains the existing serial SciPy CSR->CSC inversion; that is intentionally deferred to MVIDX-REUSE1.",
+    "No GPU performance authority is asserted."
+  ],
+  "release": "0.20.227a0",
+  "schema": "mdstats.mlff-neighbor1-qualification-benchmark.v1",
+  "workload": {
+    "edge_count": 3194880,
+    "family_count": 6,
+    "feas1_digest": "937214c70d1f2baae883993082f1ceb25bea6007a5a2be0beee045262f5c0613",
+    "mvidx1_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
+    "neighbor1_digest": "0220c89084fe957e85eb1e1c87a581eaa44869f11cb98bee7f7bd8cdafd3d74e",
+    "query_block_size": 512,
+    "source": "PERFBASE1 deterministic synthetic TARGET-DATA2B authority",
+    "witness_count": 49152
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "documents": [
+    {
+      "bytes": 863269,
+      "pages": 188,
+      "path": "docs/arch_manuals/mlff_training_data_architecture.pdf",
+      "sha256": "4322ba88c3aa2a37b653ac35d72284a6709c4e4da1267d110912d9fa95e2bac4"
+    },
+    {
+      "bytes": 64928,
+      "pages": 6,
+      "path": "docs/specs/training_data/mlff_perf_p1_shared_exact_selection_spec.pdf",
+      "sha256": "f94193c04fc956dee558d0ac236ae0d69e7912656f0c761e4b0b9b461d1370de"
+    },
+    {
+      "bytes": 44868,
+      "pages": 2,
+      "path": "ARCHITECTURE_NOTES_MLFF_REV46.pdf",
+      "sha256": "75b5815074dfd4babf73d9db63a37447cef8a09362de17fd83c47525e3488183"
+    },
+    {
+      "bytes": 34369,
+      "pages": 2,
+      "path": "audits/analysis/mlff_perf_p1_lta_cloud_cpu_2026-08-15.pdf",
+      "sha256": "3cafb0eee52d4709282ba4dec04ecf1c3899a3f8ebba98ecef7b3e9315fb6e15"
+    },
+    {
+      "bytes": 39200,
+      "pages": 2,
+      "path": "release/PATCH_NOTES_0.20.180a0.pdf",
+      "sha256": "2e3bcb3c943158d75c816affdea29a84b3ea079b177f6a0d7c42d61843709ca1"
+    }
+  ],
+  "release": "0.20.180a0",
+  "schema": "mdstats.mlff-perf-p1-pdf-qa.v1",
+  "source_of_truth": "Markdown rendered with pandoc + XeLaTeX",
+  "visual_review": {
+    "architecture_manual": "188 pages rendered at 24 dpi for whole-document overview; pages 178-181 rendered at 170 dpi; PERF-P1 implementation and PERF-P2 handoff inspected",
+    "observations": [
+      "No gate-local clipped text, overlap, blank pages, or missing glyphs observed.",
+      "Fonts are embedded according to pdffonts.",
+      "Historical XeLaTeX warnings for existing manual math commands are unchanged gate-external debt."
+    ],
+    "result": "pass",
+    "small_documents": "all pages rendered at 110 dpi; title/table/reference pages inspected"
+  }
+}

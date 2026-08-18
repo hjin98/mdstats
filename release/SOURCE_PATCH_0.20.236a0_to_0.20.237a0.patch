@@ -1,0 +1,2143 @@
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.236a0.txt' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SOURCE_PATCH_0.20.235a0_to_0.20.236a0.patch' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/CHANGELOG.md /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/CHANGELOG.md
+--- /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/CHANGELOG.md	2026-08-18 02:52:48.000000000 +0000
++++ /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/CHANGELOG.md	2026-08-18 03:41:10.658433685 +0000
+@@ -1,3 +1,11 @@
++## 0.20.237a0 - 2026-08-17
++
++- Standardize MLFF progress and heartbeat presentation across campaign stages without changing scientific or execution authority.
++- Use fixed-width `HH:MM:SS` for every elapsed/ETA field; unresolved ETA is always `--:--:--`.
++- Normalize periodic messages to the common field order `status`, `progress`, `elapsed`, `eta`, rates, then stage-specific telemetry, with semicolon-delimited fields.
++- Normalize frame/witness/task counters, phase messages, DATA6 model-sweep reporting, TARGET-DATA2B/FEAS1/NEIGHBOR1/MVIDX/MVSEL/REPAIR/MVQUAL callbacks, adaptive inference/evaluation schedulers, and TRAIN heartbeats.
++- Keep MLFF architecture revision 103 and dependency schema 83 unchanged; this is presentation-only maintenance and `FINAL-GPU1` remains the next release gate.
++
+ ## 0.20.236a0 - 2026-08-17
+ 
+ - Complete MVSTATE-REUSE1 / architecture revision 103 and close the exact-equivalence CPU optimization program.
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.236a0.txt' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SOURCE_PATCH_0.20.235a0_to_0.20.236a0.patch' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/PKG-INFO /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/PKG-INFO
+--- /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/PKG-INFO	2026-08-18 02:50:34.000000000 +0000
++++ /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/PKG-INFO	2026-08-18 03:41:10.652193805 +0000
+@@ -1,6 +1,6 @@
+ Metadata-Version: 2.4
+ Name: mdstats
+-Version: 0.20.236a0
++Version: 0.20.237a0
+ Summary: Transparent atomistic frame collections and structural/dynamical statistics
+ Requires-Python: >=3.10
+ Requires-Dist: numpy>=1.26
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.236a0.txt' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SOURCE_PATCH_0.20.235a0_to_0.20.236a0.patch' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/benchmarks/mlff_progress_format_implementation_manifest_0.20.237a0.json /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/benchmarks/mlff_progress_format_implementation_manifest_0.20.237a0.json
+--- /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/benchmarks/mlff_progress_format_implementation_manifest_0.20.237a0.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/benchmarks/mlff_progress_format_implementation_manifest_0.20.237a0.json	2026-08-18 03:49:08.433785628 +0000
+@@ -0,0 +1,56 @@
++{
++  "architecture_revision": 103,
++  "canonical_fields": [
++    "status",
++    "progress",
++    "elapsed",
++    "eta",
++    "recent/current rate",
++    "average rate",
++    "stage-specific telemetry"
++  ],
++  "content_digest": "9c7c61c4e2a214cbca986d025fa2ead11ea32a22ca93f372b164b3eb63e78348",
++  "dependency_graph_schema": 83,
++  "next_gate": "FINAL-GPU1",
++  "qualification_record": "release/qualification_logs/MLFF_PROGRESS_FORMAT_QUALIFICATION_0.20.237a0.json",
++  "release": "0.20.237a0",
++  "runtime_algorithm_change": false,
++  "schema": "mdstats.mlff-progress-format-implementation-manifest.v1",
++  "scientific_authority_change": false,
++  "scope": "presentation_only_mlff_progress_and_heartbeat_formatting",
++  "shared_helpers": [
++    "format_progress_time",
++    "format_progress_fraction",
++    "format_progress_rate",
++    "format_progress_timing_fields"
++  ],
++  "source_files": [
++    "mdstats/training_data/campaign_cli.py",
++    "mdstats/training_data/data4_sharded_store.py",
++    "mdstats/training_data/data6_bundle.py",
++    "mdstats/training_data/data6_sharded_store.py",
++    "mdstats/training_data/data7_bundle.py",
++    "mdstats/training_data/events.py",
++    "mdstats/training_data/feature_metric.py",
++    "mdstats/training_data/frame_catalog.py",
++    "mdstats/training_data/lta_profile.py",
++    "mdstats/training_data/lta_selection.py",
++    "mdstats/training_data/production_materialization.py",
++    "mdstats/training_data/progress_timing.py",
++    "mdstats/training_data/raw_features.py",
++    "mdstats/training_data/structural_selection.py",
++    "mdstats/training_data/target_coverage.py",
++    "mdstats/training_data/target_coverage_exact_neighborhood.py",
++    "mdstats/training_data/target_coverage_feasibility.py",
++    "mdstats/training_data/target_coverage_sparse_index.py",
++    "mdstats/training_data/target_multi_view_qualification.py",
++    "mdstats/training_data/target_multi_view_repair.py",
++    "mdstats/training_data/target_multi_view_selector.py"
++  ],
++  "specification": "docs/specs/training_data/mlff_progress_reporting_format_spec.md",
++  "time_contract": {
++    "elapsed": "HH:MM:SS",
++    "eta_known": "HH:MM:SS",
++    "eta_unknown": "--:--:--"
++  }
++}
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.236a0.txt' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SOURCE_PATCH_0.20.235a0_to_0.20.236a0.patch' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/docs/arch_manuals/mlff_training_data/00_front_matter.md /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/docs/arch_manuals/mlff_training_data/00_front_matter.md
+--- /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/docs/arch_manuals/mlff_training_data/00_front_matter.md	2026-08-18 02:59:28.000000000 +0000
++++ /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/docs/arch_manuals/mlff_training_data/00_front_matter.md	2026-08-18 03:41:10.663790626 +0000
+@@ -1,8 +1,8 @@
+ ---
+ geometry: "margin=0.75in"
+ architecture_revision: 103
+-release: "mdstats 0.20.236a0"
+-status: "current normative architecture; MVSTATE-REUSE1 complete; exact-equivalence CPU optimization closed; FINAL-GPU1 next"
++release: "mdstats 0.20.237a0"
++status: "current normative architecture; revision 103 unchanged; MLFF progress reporting normalized; exact-equivalence CPU optimization closed; FINAL-GPU1 next"
+ last_updated: "2026-08-17"
+ ---
+ 
+@@ -76,5 +76,7 @@
+ 
+ ## Current release boundary
+ 
++`mdstats 0.20.237a0` is a presentation-only maintenance release on top of architecture revision 103. It standardizes MLFF progress and heartbeat output across preparation, TARGET-DATA2, model sweep, training, inference/evaluation schedulers, and qualification callbacks. Every elapsed/ETA field now uses fixed-width `HH:MM:SS`; unavailable ETA is `--:--:--`; progress counters, rates, phase/status fields, and semicolon delimiters follow the common Part VI observability contract. No scientific identity, scheduler authority, model-family behavior, dependency-graph node, or CPU/GPU gate decision changes. `FINAL-GPU1` remains next.
++
+ Revision 103 completes `MVSTATE-REUSE1` and closes the exact-equivalence CPU optimization program. MVSEL now emits authenticated exact sparse-state checkpoints at materializable target rungs; REPAIR consumes those checkpoints only while its state is still identical to MVSEL and falls back to the historical carried-forward arithmetic after the first accepted repair swap. Pure checkpoint reconciliation after repair divergence was rejected because it perturbed FP64 representative-gain arrays at the 1e-17--1e-16 level. On the common 8,192-candidate/six-family closure fixture, untouched 0.20.235a0 takes about 12.00 s while 0.20.236a0 takes about 11.02 s excluding persistence; including the one-time ~0.18 s authenticated cache write, the fresh chain is about 11.19 s. REPAIR itself improves from about 5.37 s to 4.27 s with exact selection/repair/qualification digests. Cumulative fresh-chain speedup versus the PERFBASE1-era 0.20.225a0 authority is about 2.44x. Remaining target-chain cost is dominated by the exact sequential sparse-state arithmetic itself, so no further CPU-only gate is justified under the exact-equivalence policy. `FINAL-GPU1` is next; positive accelerator qualification remains deferred to that workstation gate.
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.236a0.txt' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SOURCE_PATCH_0.20.235a0_to_0.20.236a0.patch' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/docs/arch_manuals/mlff_training_data/60_execution_performance.md /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/docs/arch_manuals/mlff_training_data/60_execution_performance.md
+--- /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/docs/arch_manuals/mlff_training_data/60_execution_performance.md	2026-08-18 02:52:15.000000000 +0000
++++ /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/docs/arch_manuals/mlff_training_data/60_execution_performance.md	2026-08-18 03:41:10.663921545 +0000
+@@ -218,6 +218,20 @@
+ 
+ A heartbeat is emitted even when no task completes during the reporting interval. ETA is based on global committed work, not one current profile.
+ 
++### MLFF progress presentation grammar
++
++As of `0.20.237a0`, every user-facing MLFF progress/heartbeat message SHALL use the same presentation grammar. This is presentation state only and SHALL NOT enter scientific digests or execution-cache identity.
++
++- Dynamic progress fields appear in the order `status`, `progress`, `elapsed`, `eta`, rate fields, then stage-specific telemetry.
++- `elapsed` and known `eta` SHALL be fixed-width `HH:MM:SS`; durations longer than 99 hours retain all hour digits. Unknown/not-yet-estimable ETA SHALL be exactly `--:--:--`. Humanized alternatives such as `39m44s`, `27.9 min`, `10s`, or `estimating` are forbidden in MLFF progress output.
++- Counted work SHALL use `progress=completed/total (percent%)`, with thousands separators for large counters. A stage without a meaningful total SHALL report `status=phase; phase=...` rather than inventing a percentage.
++- Throughput SHALL carry an explicit stable unit such as `frame/s`, `witness/s`, `task/s`, or `edge/s`. When both are available, the recent/current rate precedes the cumulative average rate.
++- Fields SHALL be semicolon-delimited. Stage prefixes such as `[DATA6 sweep]`, `[TRAIN run-id]`, or `[EVALUATION scheduler]` identify the emitter but do not replace the canonical fields.
++- Scheduler heartbeats SHALL report the same elapsed/ETA grammar and expose completed progress plus active/pending/queue telemetry rather than using a separate prose-only dialect.
++- Cache restoration, phase transitions, and rung events use the same `status=...; progress=...` or `status=phase; phase=...` vocabulary where applicable.
++
++The shared helpers in `mdstats.training_data.progress_timing` own duration, fraction, rate, and timing-field formatting so individual stages do not reintroduce private ETA dialects.
++
+ ## Performance qualification
+ 
+ Every performance gate is measured at worker counts $1$, $2$, a bounded intermediate count, and automatic full budget. The qualification record includes:
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.236a0.txt' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SOURCE_PATCH_0.20.235a0_to_0.20.236a0.patch' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/docs/arch_manuals/mlff_training_data_architecture.md /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/docs/arch_manuals/mlff_training_data_architecture.md
+--- /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-18 02:59:30.000000000 +0000
++++ /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-18 03:41:12.076094752 +0000
+@@ -1,8 +1,8 @@
+ ---
+ geometry: "margin=0.75in"
+ architecture_revision: 103
+-release: "mdstats 0.20.236a0"
+-status: "current normative architecture; MVSTATE-REUSE1 complete; exact-equivalence CPU optimization closed; FINAL-GPU1 next"
++release: "mdstats 0.20.237a0"
++status: "current normative architecture; revision 103 unchanged; MLFF progress reporting normalized; exact-equivalence CPU optimization closed; FINAL-GPU1 next"
+ last_updated: "2026-08-17"
+ ---
+ 
+@@ -76,6 +76,8 @@
+ 
+ ## Current release boundary
+ 
++`mdstats 0.20.237a0` is a presentation-only maintenance release on top of architecture revision 103. It standardizes MLFF progress and heartbeat output across preparation, TARGET-DATA2, model sweep, training, inference/evaluation schedulers, and qualification callbacks. Every elapsed/ETA field now uses fixed-width `HH:MM:SS`; unavailable ETA is `--:--:--`; progress counters, rates, phase/status fields, and semicolon delimiters follow the common Part VI observability contract. No scientific identity, scheduler authority, model-family behavior, dependency-graph node, or CPU/GPU gate decision changes. `FINAL-GPU1` remains next.
++
+ Revision 103 completes `MVSTATE-REUSE1` and closes the exact-equivalence CPU optimization program. MVSEL now emits authenticated exact sparse-state checkpoints at materializable target rungs; REPAIR consumes those checkpoints only while its state is still identical to MVSEL and falls back to the historical carried-forward arithmetic after the first accepted repair swap. Pure checkpoint reconciliation after repair divergence was rejected because it perturbed FP64 representative-gain arrays at the 1e-17--1e-16 level. On the common 8,192-candidate/six-family closure fixture, untouched 0.20.235a0 takes about 12.00 s while 0.20.236a0 takes about 11.02 s excluding persistence; including the one-time ~0.18 s authenticated cache write, the fresh chain is about 11.19 s. REPAIR itself improves from about 5.37 s to 4.27 s with exact selection/repair/qualification digests. Cumulative fresh-chain speedup versus the PERFBASE1-era 0.20.225a0 authority is about 2.44x. Remaining target-chain cost is dominated by the exact sequential sparse-state arithmetic itself, so no further CPU-only gate is justified under the exact-equivalence policy. `FINAL-GPU1` is next; positive accelerator qualification remains deferred to that workstation gate.
+ 
+ # Part I - Foundations and ownership
+@@ -2629,6 +2631,20 @@
+ 
+ A heartbeat is emitted even when no task completes during the reporting interval. ETA is based on global committed work, not one current profile.
+ 
++### MLFF progress presentation grammar
++
++As of `0.20.237a0`, every user-facing MLFF progress/heartbeat message SHALL use the same presentation grammar. This is presentation state only and SHALL NOT enter scientific digests or execution-cache identity.
++
++- Dynamic progress fields appear in the order `status`, `progress`, `elapsed`, `eta`, rate fields, then stage-specific telemetry.
++- `elapsed` and known `eta` SHALL be fixed-width `HH:MM:SS`; durations longer than 99 hours retain all hour digits. Unknown/not-yet-estimable ETA SHALL be exactly `--:--:--`. Humanized alternatives such as `39m44s`, `27.9 min`, `10s`, or `estimating` are forbidden in MLFF progress output.
++- Counted work SHALL use `progress=completed/total (percent%)`, with thousands separators for large counters. A stage without a meaningful total SHALL report `status=phase; phase=...` rather than inventing a percentage.
++- Throughput SHALL carry an explicit stable unit such as `frame/s`, `witness/s`, `task/s`, or `edge/s`. When both are available, the recent/current rate precedes the cumulative average rate.
++- Fields SHALL be semicolon-delimited. Stage prefixes such as `[DATA6 sweep]`, `[TRAIN run-id]`, or `[EVALUATION scheduler]` identify the emitter but do not replace the canonical fields.
++- Scheduler heartbeats SHALL report the same elapsed/ETA grammar and expose completed progress plus active/pending/queue telemetry rather than using a separate prose-only dialect.
++- Cache restoration, phase transitions, and rung events use the same `status=...; progress=...` or `status=phase; phase=...` vocabulary where applicable.
++
++The shared helpers in `mdstats.training_data.progress_timing` own duration, fraction, rate, and timing-field formatting so individual stages do not reintroduce private ETA dialects.
++
+ ## Performance qualification
+ 
+ Every performance gate is measured at worker counts $1$, $2$, a bounded intermediate count, and automatic full budget. The qualification record includes:
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.236a0.txt' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SOURCE_PATCH_0.20.235a0_to_0.20.236a0.patch' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/docs/history/mlff/release_notes/INDEX.md /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/docs/history/mlff/release_notes/INDEX.md
+--- /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/docs/history/mlff/release_notes/INDEX.md	2026-08-18 02:52:48.000000000 +0000
++++ /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/docs/history/mlff/release_notes/INDEX.md	2026-08-18 03:41:10.664397240 +0000
+@@ -177,3 +177,4 @@
+ | `0.20.234a0` | [PATCH_NOTES_0.20.234a0.md](PATCH_NOTES_0.20.234a0.md) | - |
+ | `0.20.235a0` | [PATCH_NOTES_0.20.235a0.md](PATCH_NOTES_0.20.235a0.md) | - |
+ - [mdstats 0.20.236a0 - MVSTATE-REUSE1](PATCH_NOTES_0.20.236a0.md)
++- [mdstats 0.20.237a0 - MLFF progress-format consistency maintenance](PATCH_NOTES_0.20.237a0.md)
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.236a0.txt' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SOURCE_PATCH_0.20.235a0_to_0.20.236a0.patch' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.237a0.md /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.237a0.md
+--- /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.237a0.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.237a0.md	2026-08-18 03:41:10.664319451 +0000
+@@ -0,0 +1,7 @@
++# mdstats 0.20.237a0 - MLFF progress-format consistency maintenance
++
++- Standardize all current MLFF periodic progress and heartbeat emitters around one semicolon-delimited message grammar.
++- Format `elapsed` and known `eta` as fixed-width `HH:MM:SS`; use `--:--:--` for an unavailable ETA.
++- Normalize progress fractions, throughput units, phase/status vocabulary, adaptive scheduler messages, DATA6 sweep reporting, and live TRAIN heartbeat output.
++- Add shared formatting helpers and regression tests that reject legacy `10s` / `27.9 min` / `estimating` ETA dialects in MLFF progress code.
++- Preserve architecture revision 103, dependency schema 83, all scientific authority, MPA-0/MH-1 behavior, and the `FINAL-GPU1` next-gate decision.
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.236a0.txt' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SOURCE_PATCH_0.20.235a0_to_0.20.236a0.patch' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/docs/specs/training_data/README.md /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/docs/specs/training_data/README.md
+--- /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/docs/specs/training_data/README.md	2026-08-18 02:52:48.000000000 +0000
++++ /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/docs/specs/training_data/README.md	2026-08-18 03:41:10.664202746 +0000
+@@ -154,4 +154,5 @@
+   `mlff_adaptive_migration_spec.{md,pdf}`. The seven-gate adaptive revision is complete.
+ 
+ - `mlff_cueq_dep1_runtime_freeze_spec.{md,pdf}`: current `0.20.188a0` CUEQ-DEP1 authority for content-addressed CuEq core/Torch/CUDA-ops distributions, CUDA/determinism provenance, fail-closed runtime capture, and FINAL-GPU1 integration. Positive accelerator evidence remains deferred to the final release workstation run.
+-- `mlff_mvstate_reuse1_selector_repair_handoff_spec.md`: current 0.20.236a0 exact MVSEL-to-REPAIR sparse-state checkpoint handoff, authenticated bundled persistence, post-divergence exactness boundary, and CPU optimization closure.
++- `mlff_mvstate_reuse1_selector_repair_handoff_spec.md`: 0.20.236a0 exact MVSEL-to-REPAIR sparse-state checkpoint handoff, authenticated bundled persistence, post-divergence exactness boundary, and CPU optimization closure.
++- `mlff_progress_reporting_format_spec.md`: current 0.20.237a0 presentation-only MLFF progress grammar (`HH:MM:SS` elapsed/ETA, canonical counters/rates/status fields) with revision 103 and FINAL-GPU1 authority unchanged.
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.236a0.txt' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SOURCE_PATCH_0.20.235a0_to_0.20.236a0.patch' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/docs/specs/training_data/mlff_progress_reporting_format_spec.md /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/docs/specs/training_data/mlff_progress_reporting_format_spec.md
+--- /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/docs/specs/training_data/mlff_progress_reporting_format_spec.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/docs/specs/training_data/mlff_progress_reporting_format_spec.md	2026-08-18 03:41:10.664062610 +0000
+@@ -0,0 +1,30 @@
++# MLFF progress reporting format specification
++
++Implemented in mdstats 0.20.237a0 as presentation-only maintenance on MLFF architecture revision 103. Dependency-graph schema 83 and the `FINAL-GPU1` next-gate decision are unchanged.
++
++## Canonical grammar
++
++All user-facing MLFF periodic progress and heartbeat messages use semicolon-delimited fields in this order when applicable:
++
++`status; progress; elapsed; eta; recent/current rate; average rate; stage-specific telemetry`
++
++- `elapsed=HH:MM:SS`
++- `eta=HH:MM:SS` when known
++- `eta=--:--:--` when not yet estimable
++- `progress=completed/total (percent%)` for counted work
++- explicit rate units such as `frame/s`, `witness/s`, `task/s`, or `edge/s`
++- phase-only events use `status=phase; phase=...`
++
++Humanized ETA/elapsed variants (`39m44s`, `27.9 min`, `10s`, `estimating`) are not permitted in MLFF progress output.
++
++## Scope
++
++The normalization covers generic campaign reporters, DATA2/DATA3/DATA4/DATA6/DATA7 preparation callbacks, structural selection, TARGET-DATA2B reference/coverage work, FEAS1, NEIGHBOR1, MVIDX1, MVSEL1, REPAIR1, MVQUAL1, production materialization/model sweep, adaptive inference/evaluation scheduler heartbeats, and live training heartbeats.
++
++## Authority
++
++Formatting is presentation state only. It does not enter scientific content digests, selection/repair/evaluation authority, checkpoint identity, replay identity, scheduler admission authority, model-family behavior, or cache identity. MACE-MPA-0 and MACE-MH-1 use the same progress grammar.
++
++## Qualification
++
++Release qualification SHALL include source-level checks against legacy ETA dialects, formatter unit tests, representative progress-callback tests, the unchanged TARGET-DATA2 scientific authority, and package-version/document synchronization.
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.236a0.txt' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SOURCE_PATCH_0.20.235a0_to_0.20.236a0.patch' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/_version.py /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/_version.py
+--- /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/_version.py	2026-08-18 02:50:34.000000000 +0000
++++ /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/_version.py	2026-08-18 03:41:10.651876150 +0000
+@@ -1 +1 @@
+-__version__ = "0.20.236a0"
++__version__ = "0.20.237a0"
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.236a0.txt' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SOURCE_PATCH_0.20.235a0_to_0.20.236a0.patch' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/training_data/campaign_cli.py /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/training_data/campaign_cli.py
+--- /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/training_data/campaign_cli.py	2026-08-18 02:42:57.000000000 +0000
++++ /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/training_data/campaign_cli.py	2026-08-18 03:42:16.966433685 +0000
+@@ -36,7 +36,13 @@
+ 
+ import numpy as np
+ 
+-from .progress_timing import ProgressRateTracker
++from .progress_timing import (
++    ProgressRateTracker,
++    format_progress_fraction,
++    format_progress_rate,
++    format_progress_time,
++    format_progress_timing_fields,
++)
+ from .storage_accounting import (
+     CampaignOwnershipBoundary,
+     build_campaign_storage_report,
+@@ -3422,18 +3428,18 @@
+ 
+     @staticmethod
+     def _duration(seconds: float) -> str:
+-        seconds = max(0, int(round(seconds)))
+-        hours, remainder = divmod(seconds, 3600)
+-        minutes, secs = divmod(remainder, 60)
+-        if hours:
+-            return f"{hours:d}h{minutes:02d}m{secs:02d}s"
+-        if minutes:
+-            return f"{minutes:d}m{secs:02d}s"
+-        return f"{secs:d}s"
++        return format_progress_time(seconds)
+ 
+     def item_start(self, index: int, name: str, detail: str = "") -> None:
+-        suffix = f" — {detail}" if detail else ""
+-        print(f"[{self.label} {index:>3}/{self.total}] {name}{suffix}", flush=True)
++        suffix = f"; detail={detail}" if detail else ""
++        elapsed = max(0.0, time.monotonic() - self.started)
++        completed = max(0, min(self.total, int(index) - 1))
++        print(
++            f"[{self.label} {index:>3}/{self.total}] {name}; status=start; "
++            f"progress={format_progress_fraction(completed, self.total)}; "
++            f"elapsed={format_progress_time(elapsed)}; eta=--:--:--{suffix}",
++            flush=True,
++        )
+ 
+     def item_done(self, index: int, name: str, detail: str = "", *, force: bool = True) -> None:
+         now = time.monotonic()
+@@ -3448,14 +3454,12 @@
+         timing = self._rate_tracker.snapshot(
+             completed=index, total=self.total, now=now
+         )
+-        if timing.eta_seconds is None:
+-            eta_text = "estimating"
+-        else:
+-            eta_text = self._duration(timing.eta_seconds)
+-        suffix = f" — {detail}" if detail else ""
++        suffix = f"; detail={detail}" if detail else ""
+         print(
+-            f"[{self.label} {index:>3}/{self.total}] {name} complete{suffix}; "
+-            f"elapsed={self._duration(elapsed)}, eta={eta_text}",
++            f"[{self.label} {index:>3}/{self.total}] {name}; status=complete; "
++            f"progress={format_progress_fraction(index, self.total)}; "
++            f"elapsed={format_progress_time(elapsed)}; "
++            f"eta={format_progress_time(timing.eta_seconds)}{suffix}",
+             flush=True,
+         )
+         self.last_printed = now
+@@ -3874,7 +3878,7 @@
+         )
+     _ok(
+         "FOUNDATION-AUDIT1 frozen before target training: "
+-        f"digest={audit.content_digest[:12]}...; wall={time.monotonic() - started:.1f}s"
++        f"digest={audit.content_digest[:12]}...; elapsed={format_progress_time(time.monotonic() - started)}"
+     )
+     return audit
+ 
+@@ -4251,7 +4255,7 @@
+         f"beta={reference.policy.coverage_resolution_mass:.8f}; "
+         f"threshold={reference.policy.coverage_threshold:.3f}; "
+         f"digest={reference.content_digest[:12]}...; "
+-        f"wall={time.monotonic() - started:.1f}s"
++        f"elapsed={format_progress_time(time.monotonic() - started)}"
+     )
+     return reference
+ 
+@@ -4377,7 +4381,7 @@
+     _ok(
+         "TARGET-DATA2B-FEAS1 frozen as diagnostic-only evidence: "
+         f"state={report.terminal_state}; digest={report.content_digest[:12]}...; "
+-        f"wall={time.monotonic() - started:.1f}s; TARGET-DATA2C v4 unchanged"
++        f"elapsed={format_progress_time(time.monotonic() - started)}; TARGET-DATA2C v4 unchanged"
+     )
+     return report
+ 
+@@ -4619,7 +4623,7 @@
+         f"screening_seed={policy.screening_optimizer_seed}; "
+         f"3/10/30 epochs={policy.coarse_training_epochs}/{policy.short_training_epochs}/{policy.final_training_epochs}; "
+         f"equivalence={policy.practical_equivalence_mev_per_a:.3f} meV/A; "
+-        f"digest={plan.content_digest[:12]}...; wall={time.monotonic() - started:.1f}s"
++        f"digest={plan.content_digest[:12]}...; elapsed={format_progress_time(time.monotonic() - started)}"
+     )
+     _warn(
+         "TARGET-DATA2D Stage B0/B1/C evidence is intentionally not executed through the legacy adaptive-stop trainer. "
+@@ -4818,7 +4822,7 @@
+         )
+     _ok(
+         "TARGET-DATA2C-MVIDX1 frozen as diagnostic/index substrate; "
+-        f"digest={index.content_digest[:12]}...; wall={time.monotonic() - started:.1f}s; "
++        f"digest={index.content_digest[:12]}...; elapsed={format_progress_time(time.monotonic() - started)}; "
+         "TARGET-DATA2C v4 unchanged"
+     )
+     return index
+@@ -4950,7 +4954,7 @@
+     _ok(
+         "TARGET-DATA2C-MVSEL1 + MVSTATE-REUSE1 frozen: "
+         f"selection={plan.content_digest[:12]}...; state={state_cache.content_digest[:12]}...; "
+-        f"wall={time.monotonic() - started:.1f}s; TARGET-DATA2C v4 unchanged"
++        f"elapsed={format_progress_time(time.monotonic() - started)}; TARGET-DATA2C v4 unchanged"
+     )
+     return plan, state_cache
+ 
+@@ -5064,7 +5068,7 @@
+         )
+     _ok(
+         "TARGET-DATA2C-REPAIR1 frozen as diagnostic repair evidence; "
+-        f"digest={plan.content_digest[:12]}...; wall={time.monotonic() - started:.1f}s; "
++        f"digest={plan.content_digest[:12]}...; elapsed={format_progress_time(time.monotonic() - started)}; "
+         "TARGET-DATA2C v4 unchanged"
+     )
+     return plan
+@@ -5165,7 +5169,7 @@
+         f"outcome={plan.outcome}; common_N={plan.global_common_target_sizes}; "
+         f"legacy_N95={plan.legacy_n95_common or 'none'}; MV_N95={plan.mv_n95_common or 'none'}; "
+         f"MV_qualified={plan.mv_qualified_sizes or 'none'}; learning_controls={plan.learning_control_target_sizes or 'none'}; "
+-        f"digest={plan.content_digest[:12]}...; wall={time.monotonic() - started:.1f}s; "
++        f"digest={plan.content_digest[:12]}...; elapsed={format_progress_time(time.monotonic() - started)}; "
+         "TARGET-DATA2C v4 unchanged"
+     )
+     return plan
+@@ -5519,7 +5523,7 @@
+         f"rescue={'active' if ladder.coverage_rescue_activated else 'inactive'}; "
+         f"materialized={ladder.materialized_target_sizes}; "
+         f"stop={ladder.materialization_stop_reason}; digest={ladder.content_digest[:12]}...; "
+-        f"wall={time.monotonic() - started:.1f}s"
++        f"elapsed={format_progress_time(time.monotonic() - started)}"
+     )
+     return ladder
+ 
+@@ -5564,8 +5568,8 @@
+             sources, paths.internal / "frame-cache"
+         )
+         _ok(
+-            "normalized frame cache restored on demand in "
+-            f"{time.monotonic() - cache_start:.1f}s"
++            f"normalized frame cache restored on demand; "
++            f"elapsed={format_progress_time(time.monotonic() - cache_start)}"
+         )
+         return dict(frame_data)
+     except Exception as exc:
+@@ -5581,8 +5585,8 @@
+             sources, frame_data, paths.internal / "frame-cache"
+         )
+         _ok(
+-            "normalized frame cache rebuilt on demand in "
+-            f"{time.monotonic() - cache_start:.1f}s"
++            f"normalized frame cache rebuilt on demand; "
++            f"elapsed={format_progress_time(time.monotonic() - cache_start)}"
+         )
+         return dict(frame_data)
+ 
+@@ -7728,9 +7732,9 @@
+                         )
+                     if now - float(item["last_heartbeat"]) >= progress_interval_seconds:
+                         print(
+-                            f"[DATA2 {item['run_id']}] still parsing; "
+-                            f"elapsed={_ProgressReporter._duration(elapsed)}, "
+-                            f"stdout={_file_size_mib(item['stdout']):.1f} MiB, "
++                            f"[DATA2 {item['run_id']}] status=running; phase=parsing; "
++                            f"elapsed={format_progress_time(elapsed)}; eta=--:--:--; "
++                            f"stdout={_file_size_mib(item['stdout']):.1f} MiB; "
+                             f"stderr={_file_size_mib(item['stderr']):.1f} MiB",
+                             flush=True,
+                         )
+@@ -7768,7 +7772,7 @@
+                     f"frames={source_payload['frame_count']}, "
+                     f"quality={source_payload['quality_outcome']}, "
+                     f"production={source_payload['production_status']}, "
+-                    f"worker={source_seconds:.1f}s"
++                    f"worker_elapsed={format_progress_time(source_seconds)}"
+                 )
+                 if warning_lines:
+                     detail += f", warning-log={item['stderr'].name}"
+@@ -7886,7 +7890,7 @@
+     cache_load_seconds = time.monotonic() - cache_load_start
+     _ok(
+         f"DATA2 complete: {len(sources.sources)} audited sources; normalized arrays restored "
+-        f"in {cache_load_seconds:.1f}s"
++        f"in {format_progress_time(cache_load_seconds)}"
+     )
+     del worker_results, worker_payloads, source_by_run, cache_records
+     gc.collect()
+@@ -7949,7 +7953,7 @@
+         progress_callback=lambda message: print(f"[DATA3] {message}", flush=True),
+     )
+     data3_seconds = time.monotonic() - stage_start
+-    _ok(f"DATA3 complete: {len(frames.frames)} frames in {data3_seconds:.1f}s")
++    _ok(f"DATA3 complete: {len(frames.frames)} frames; elapsed={format_progress_time(data3_seconds)}")
+ 
+     stage_start = time.monotonic()
+     _print_header("DATA4 full-resolution features and event evidence")
+@@ -8011,7 +8015,7 @@
+         lta_parallel_workers=lta_workers,
+     )
+     data4_seconds = time.monotonic() - stage_start
+-    _ok(f"DATA4 complete in {data4_seconds:.1f}s")
++    _ok(f"DATA4 complete; elapsed={format_progress_time(data4_seconds)}")
+ 
+     stage_start = time.monotonic()
+     _print_header("DATA5 leakage-safe partition construction")
+@@ -8019,7 +8023,7 @@
+         sources, frames, data4, partition_policy=partition_policy
+     )
+     data5_seconds = time.monotonic() - stage_start
+-    _ok(f"DATA5 complete in {data5_seconds:.1f}s")
++    _ok(f"DATA5 complete; elapsed={format_progress_time(data5_seconds)}")
+ 
+     stage_start = time.monotonic()
+     _print_header("TARGET-DATA2A leakage-safe target-size role freeze")
+@@ -8032,14 +8036,14 @@
+         f"{len(target_data_role_freeze.size_development_frame_uids)} development frames; "
+         f"{len(target_data_role_freeze.correlation_families)} tracked cross-unit correlation families; "
+         f"digest={target_data_role_freeze.content_digest[:12]}...; "
+-        f"wall={target_data2a_seconds:.1f}s"
++        f"elapsed={format_progress_time(target_data2a_seconds)}"
+     )
+ 
+     cache_seconds = cache_finalize_seconds + cache_load_seconds
+     cache_bytes = sum(path.stat().st_size for path in cache_root.glob("*.npz"))
+     _ok(
+         f"normalized frame cache: {cache_bytes / (1024 ** 3):.2f} GiB; "
+-        f"manifest finalization + restore={cache_seconds:.1f}s"
++        f"manifest finalization + restore={format_progress_time(cache_seconds)}"
+     )
+ 
+     _print_header("Persisting checksum-verified campaign state")
+@@ -8048,7 +8052,7 @@
+         persisted_start = time.monotonic()
+         print(f"[state] writing {key}...", flush=True)
+         store.put_record(key, value)
+-        _ok(f"[state] {key} persisted in {time.monotonic() - persisted_start:.1f}s")
++        _ok(f"[state] {key} persisted; elapsed={format_progress_time(time.monotonic() - persisted_start)}")
+ 
+     persist_record("manifest", manifest)
+     persist_record("source_catalog", sources)
+@@ -8100,7 +8104,7 @@
+         raise CampaignCliError(
+             "DATA5 leakage audit failed. Inspect the manifest independence and reference declarations."
+         )
+-    _ok(f"catalogued {len(sources.sources)} runs and {len(frames.frames)} frames in {elapsed:.1f}s")
++    _ok(f"catalogued {len(sources.sources)} runs and {len(frames.frames)} frames; elapsed={format_progress_time(elapsed)}")
+     _ok(f"DATA5 leakage audit passed; {summary['cross_validation_fold_count']} fold definitions are available")
+     return frame_data
+ 
+@@ -8260,8 +8264,9 @@
+             progress_state["last_report_completed"] = completed
+             progress_state["last_report_time"] = now
+             print(
+-                f"[DATA6 {completed:>6}/{total}] restored verified checkpoint; "
+-                f"remaining={total - completed}",
++                f"[DATA6 {completed:>6}/{total}] status=restored; "
++                f"progress={format_progress_fraction(completed, total)}; "
++                f"elapsed=00:00:00; eta=--:--:--; remaining={total - completed:,}",
+                 flush=True,
+             )
+             return
+@@ -8273,20 +8278,16 @@
+         )
+         if should_report:
+             timing = tracker.snapshot(completed=completed, total=total, now=now)
+-            eta_text = (
+-                "estimating"
+-                if timing.eta_seconds is None
+-                else _ProgressReporter._duration(timing.eta_seconds)
+-            )
+-            recent_text = (
+-                "estimating"
+-                if timing.recent_rate <= 0.0
+-                else f"{timing.recent_rate:.2f} frame/s"
+-            )
+             print(
+-                f"[DATA6 {completed:>6}/{total}] frame={frame_uid[:12]} "
+-                f"recent={recent_text} avg={timing.average_rate:.2f} frame/s "
+-                f"eta={eta_text}",
++                f"[DATA6 {completed:>6}/{total}] "
++                f"progress={format_progress_fraction(completed, total)}; "
++                f"{format_progress_timing_fields(
++                    elapsed_seconds=timing.elapsed_seconds,
++                    eta_seconds=timing.eta_seconds,
++                    recent_rate=timing.recent_rate,
++                    average_rate=timing.average_rate,
++                    rate_unit='frame/s',
++                )}; frame={frame_uid[:12]}",
+                 flush=True,
+             )
+             progress_state["last_report_time"] = now
+@@ -8330,7 +8331,7 @@
+             persist_oom_batch_cap=True,
+         ),
+         progress_callback=report_sweep,
+-        phase_callback=lambda message: print(f"[DATA6 sweep] {message}", flush=True),
++        phase_callback=lambda message: print(f"[DATA6 sweep] status=phase; phase={message}", flush=True),
+     )
+     # The native model-sweep directory already owns the complete checkpoint and
+     # journal.  Storing the full tens-of-thousands-record object in SQLite (or
+@@ -9321,14 +9322,14 @@
+             progress_callback=lambda message: print(f"[DATA6 finalize] {message}", flush=True),
+             structural_max_workers=int(_cfg(cfg, "selection", "structural_workers", 0)),
+         )
+-        _ok(f"DATA6 evidence finalized in {time.monotonic() - data6_start:.1f}s")
++        _ok(f"DATA6 evidence finalized; elapsed={format_progress_time(time.monotonic() - data6_start)}")
+         print(
+             "[DATA6 finalize] persisting finalized DATA6 evidence as checksummed array/JSONL shards",
+             flush=True,
+         )
+         persist_start = time.monotonic()
+         store.put_record("data6", data6)
+-        _ok(f"DATA6 campaign record persisted in {time.monotonic() - persist_start:.1f}s")
++        _ok(f"DATA6 campaign record persisted; elapsed={format_progress_time(time.monotonic() - persist_start)}")
+     audit_potential = None
+     audit_inference = None
+     foundation_cfg = cfg.get("foundation")
+@@ -9599,7 +9600,7 @@
+                 "DATA6 compact prediction evidence contains frames outside the completed sweep."
+             )
+         _ok(
+-            f"foundation energies prepared once in {time.monotonic() - energy_start:.1f}s; "
++            f"foundation energies prepared once; elapsed={format_progress_time(time.monotonic() - energy_start)}; "
+             f"reused {len(expected_energy_uids) - len(missing_energy_uids)} compact summaries and "
+             f"read {len(missing_energy_uids)} sidecars"
+         )
+@@ -9765,7 +9766,7 @@
+             store.put_record(f"data8:{variant_id}", bundle)
+             data8_bundles.append(bundle)
+             variant_progress.item_done(
+-                variant_index, variant_id, f"wall={time.monotonic() - variant_start:.1f}s"
++                variant_index, variant_id, f"elapsed={format_progress_time(time.monotonic() - variant_start)}"
+             )
+             _ok(f"DATA7/DATA8 artifacts materialized for {variant_id}; final DATA9A gate pending")
+         else:
+@@ -10123,11 +10124,15 @@
+                             except Exception as exc:  # progress must never abort the child
+                                 detail = f"progress probe unavailable ({type(exc).__name__})"
+                         if detail:
+-                            print(f"[{progress_label}] elapsed={elapsed}; {detail}", flush=True)
++                            print(
++                                f"[{progress_label}] status=running; elapsed={elapsed}; "
++                                f"eta=--:--:--; {detail}",
++                                flush=True,
++                            )
+                         else:
+                             print(
+-                                f"[{progress_label}] elapsed={elapsed}; "
+-                                f"stdout={_file_size_mib(stdout_path):.1f} MiB; "
++                                f"[{progress_label}] status=running; elapsed={elapsed}; "
++                                f"eta=--:--:--; stdout={_file_size_mib(stdout_path):.1f} MiB; "
+                                 f"stderr={_file_size_mib(stderr_path):.1f} MiB",
+                                 flush=True,
+                             )
+@@ -10608,9 +10613,9 @@
+         expected = self.expected_updates
+         if expected is not None and expected > 0:
+             bounded = min(state.updates, expected)
+-            progress = f"gradient updates={bounded}/{expected} ({100.0 * bounded / expected:.1f}%)"
++            progress = f"progress={bounded:,}/{expected:,} ({100.0 * bounded / expected:.1f}%); unit=gradient-update"
+         else:
+-            progress = f"gradient updates={state.updates}"
++            progress = f"progress={state.updates:,}; unit=gradient-update"
+         telemetry = _gpu_telemetry(self.device)
+         return "; ".join(
+             item for item in (f"phase={state.phase}", progress, telemetry) if item
+@@ -11808,6 +11813,7 @@
+     stage_events_lock = threading.Lock()
+     stop_scheduling = False
+     last_report = 0.0
++    scheduler_started = time.monotonic()
+     telemetry_ready_active_jobs: int | None = None
+     last_gpu_poll = 0.0
+ 
+@@ -11851,7 +11857,7 @@
+             stage_events.clear()
+         for task_label, stage in events:
+             print(
+-                f"[{phase.upper()} STAGE] {task_label}: {stage}",
++                f"[{phase.upper()} stage] status=phase; item={task_label}; phase={stage}",
+                 flush=True,
+             )
+ 
+@@ -11995,10 +12001,11 @@
+                     else f"{decision.predicted_utilization_percent_at_target:.1f}%"
+                 )
+                 print(
+-                    f"[{phase.upper()} scheduler] concurrency "
+-                    f"{decision.previous_target} -> {decision.target_jobs}: "
+-                    f"{decision.reason}; projected memory={projected_memory}; "
+-                    f"projected utilization={projected_util}",
++                    f"[{phase.upper()} scheduler] status=concurrency-change; "
++                    f"progress={format_progress_fraction(len(results), len(tasks))}; "
++                    f"elapsed={format_progress_time(now - scheduler_started)}; eta=--:--:--; "
++                    f"workers={decision.previous_target}->{decision.target_jobs}; reason={decision.reason}; "
++                    f"projected_memory={projected_memory}; projected_utilization={projected_util}",
+                     flush=True,
+                 )
+             elif now - last_report >= 30.0 and active:
+@@ -12013,9 +12020,11 @@
+                         for name, count in sorted(active_phases.items())
+                     )
+                 print(
+-                    f"[{phase.upper()} scheduler] active={len(active)}/"
+-                    f"{controller.target_jobs}; pending={len(pending)}; "
+-                    f"{decision.reason}{phase_detail}",
++                    f"[{phase.upper()} scheduler] status=running; "
++                    f"progress={format_progress_fraction(len(results), len(tasks))}; "
++                    f"elapsed={format_progress_time(now - scheduler_started)}; eta=--:--:--; "
++                    f"active={len(active)}/{controller.target_jobs}; pending={len(pending)}; "
++                    f"reason={decision.reason}{phase_detail}",
+                     flush=True,
+                 )
+                 last_report = now
+@@ -12171,6 +12180,7 @@
+     stage_events: deque[tuple[str, str]] = deque()
+     stage_events_lock = threading.Lock()
+     last_report = 0.0
++    pipeline_started = time.monotonic()
+     telemetry_ready_active_jobs: int | None = None
+     last_gpu_poll = 0.0
+ 
+@@ -12179,7 +12189,10 @@
+             events = tuple(stage_events)
+             stage_events.clear()
+         for task_label, stage in events:
+-            print(f"[EVALUATION STAGE] {task_label}: {stage}", flush=True)
++            print(
++                f"[EVALUATION stage] status=phase; item={task_label}; phase={stage}",
++                flush=True,
++            )
+ 
+     def execute_prepare(task: _StagedEvaluationTask, timing: _StagedEvaluationTiming) -> Any:
+         started = time.monotonic()
+@@ -12454,10 +12467,11 @@
+                     else f"{decision.predicted_utilization_percent_at_target:.1f}%"
+                 )
+                 print(
+-                    "[EVALUATION scheduler] inference concurrency "
+-                    f"{decision.previous_target} -> {decision.target_jobs}: "
+-                    f"{decision.reason}; projected memory={projected_memory}; "
+-                    f"projected utilization={projected_util}",
++                    "[EVALUATION scheduler] status=concurrency-change; "
++                    f"progress={format_progress_fraction(len(results), len(tasks))}; "
++                    f"elapsed={format_progress_time(now - pipeline_started)}; eta=--:--:--; "
++                    f"workers={decision.previous_target}->{decision.target_jobs}; reason={decision.reason}; "
++                    f"projected_memory={projected_memory}; projected_utilization={projected_util}",
+                     flush=True,
+                 )
+             elif now - last_report >= 30.0 and (
+@@ -12474,11 +12488,13 @@
+                         for name, count in sorted(active_phases.items())
+                     )
+                 print(
+-                    "[EVALUATION pipeline] "
+-                    f"prepare={len(active_prepare)}, ready={len(ready_inference)}, "
+-                    f"infer={len(active_inference)}/{controller.target_jobs}, "
+-                    f"finalize={len(active_finalize)}, final-backlog={len(waiting_finalize)}, "
+-                    f"pending={len(pending)}; {decision.reason}{phase_detail}",
++                    "[EVALUATION pipeline] status=running; "
++                    f"progress={format_progress_fraction(len(results), len(tasks))}; "
++                    f"elapsed={format_progress_time(now - pipeline_started)}; eta=--:--:--; "
++                    f"prepare={len(active_prepare)}; ready={len(ready_inference)}; "
++                    f"infer={len(active_inference)}/{controller.target_jobs}; "
++                    f"finalize={len(active_finalize)}; final_backlog={len(waiting_finalize)}; "
++                    f"pending={len(pending)}; reason={decision.reason}{phase_detail}",
+                     flush=True,
+                 )
+                 last_report = now
+@@ -13619,10 +13635,11 @@
+             stdout_path: Path,
+             stderr_path: Path,
+         ) -> None:
++            detail = task.progress_probe()
+             print(
+-                f"[TRAIN {task.run.run_id}] attempt={attempt_index}; "
+-                f"elapsed={_ProgressReporter._duration(elapsed_seconds)}; "
+-                f"{task.progress_probe()}",
++                f"[TRAIN {task.run.run_id}] status=running; {detail}; "
++                f"attempt={attempt_index}; elapsed={format_progress_time(elapsed_seconds)}; "
++                "eta=--:--:--",
+                 flush=True,
+             )
+ 
+@@ -13829,7 +13846,7 @@
+                         completed_progress,
+                         task.run.run_id,
+                         f"{len(record.checkpoint_catalog.checkpoints)} checkpoints; "
+-                        f"run wall={_ProgressReporter._duration(run_wall)}{stop_detail}{rank_detail}",
++                        f"run_elapsed={format_progress_time(run_wall)}{stop_detail}{rank_detail}",
+                     )
+                 elif record.state is mdstats.TrainingRunState.INTERRUPTED:
+                     _warn(
+@@ -13906,10 +13923,11 @@
+                     else f"{decision.predicted_utilization_percent_at_target:.1f}%"
+                 )
+                 print(
+-                    f"[TRAIN scheduler] concurrency {decision.previous_target} -> "
+-                    f"{decision.target_jobs}: {decision.reason}; "
+-                    f"predicted VRAM={predicted_memory}; "
+-                    f"predicted GPU utilization={predicted_utilization}; "
++                    f"[TRAIN scheduler] status=concurrency-change; "
++                    f"progress={format_progress_fraction(completed_progress, training_progress.total)}; "
++                    f"elapsed={format_progress_time(now - scheduler_started)}; eta=--:--:--; "
++                    f"workers={decision.previous_target}->{decision.target_jobs}; reason={decision.reason}; "
++                    f"predicted_vram={predicted_memory}; predicted_gpu_utilization={predicted_utilization}; "
+                     f"ceilings={_format_bytes_gib(concurrency_plan.gpu_memory_budget_bytes)} / "
+                     f"{concurrency_plan.gpu_utilization_budget_percent:.0f}%",
+                     flush=True,
+@@ -13920,10 +13938,12 @@
+             ):
+                 telemetry = "GPU telemetry unavailable" if sample is None else sample.summary()
+                 print(
+-                    f"[TRAIN scheduler] elapsed={_ProgressReporter._duration(now - scheduler_started)}; "
+-                    f"active={len(active)}; true-epoch={epoch_active_jobs}/{len(active)}; "
++                    f"[TRAIN scheduler] status=running; "
++                    f"progress={format_progress_fraction(completed_progress, training_progress.total)}; "
++                    f"elapsed={format_progress_time(now - scheduler_started)}; eta=--:--:--; "
++                    f"active={len(active)}; true_epoch={epoch_active_jobs}/{len(active)}; "
+                     f"target={controller.target_jobs}; queued={len(pending_tasks)}; "
+-                    f"decision={decision.reason}; free-disk={free_disk_gib:.1f} GiB; {telemetry}",
++                    f"decision={decision.reason}; free_disk={free_disk_gib:.1f} GiB; {telemetry}",
+                     flush=True,
+                 )
+                 last_scheduler_report = now
+@@ -15270,7 +15290,7 @@
+                     finalize=finalize_round,
+                     done_detail=lambda result, wall: (
+                         f"force={result.metric_record.force_component_rmse_ev_per_angstrom * 1000:.1f} meV/A; "
+-                        f"fidelity={result.round_fraction:.0%}; wall={_ProgressReporter._duration(wall)}"
++                        f"fidelity={result.round_fraction:.0%}; elapsed={format_progress_time(wall)}"
+                     ),
+                     on_success=commit_round,
+                 )
+@@ -18894,7 +18914,7 @@
+                     finalize=finalize_checkpoint,
+                     done_detail=lambda result, wall: (
+                         f"force={result.metric_record.force_component_rmse_ev_per_angstrom * 1000:.1f} meV/A; "
+-                        f"wall={_ProgressReporter._duration(wall)}"
++                        f"elapsed={format_progress_time(wall)}"
+                     ),
+                     on_success=commit_checkpoint_evaluation,
+                 )
+@@ -20040,7 +20060,7 @@
+                         done_detail=lambda value, wall: (
+                             f"drift={value['absolute_energy_drift_ev_per_atom_per_ps']*1000:.2f} meV/atom/ps, "
+                             f"r_min={value['minimum_pair_distance_angstrom']:.2f} A, "
+-                            f"wall={_ProgressReporter._duration(wall)}"
++                            f"elapsed={format_progress_time(wall)}"
+                         ),
+                         on_success=lambda value, active_cache_key=cache_key,
+                         active_case_digest=case_digest, active_identity=identity: store.put_record(
+@@ -23108,7 +23128,7 @@
+                     f"drift={value['absolute_energy_drift_ev_per_atom_per_ps']*1000:.2f} meV/atom/ps, "
+                     f"r_min={value['minimum_pair_distance_angstrom']:.2f} A, "
+                     f"calculator={'reused' if value.get('calculator_reused') else 'loaded'}, "
+-                    f"wall={_ProgressReporter._duration(wall)}"
++                    f"elapsed={format_progress_time(wall)}"
+                 ),
+                 on_success=lambda value, active_cache_key=cache_key,
+                 active_case_digest=case_digest, active_identity=identity: store.put_record(
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.236a0.txt' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SOURCE_PATCH_0.20.235a0_to_0.20.236a0.patch' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/training_data/data4_sharded_store.py /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/training_data/data4_sharded_store.py
+--- /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/training_data/data4_sharded_store.py	2026-08-05 18:20:00.000000000 +0000
++++ /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/training_data/data4_sharded_store.py	2026-08-18 03:29:59.769594475 +0000
+@@ -15,6 +15,7 @@
+ import tempfile
+ from typing import Any, Callable, Iterable, Mapping, TypeVar
+ 
++from .progress_timing import format_progress_fraction
+ from ._common import canonical_json, sha256_file_cached
+ from .data4_bundle import Data4FeatureBundle
+ from .events import EventDetectionPolicy, FrameEventRecord, FullResolutionEventCatalog
+@@ -124,9 +125,9 @@
+                 raise Data4ShardedStoreError(f"Invalid record in {label} shard: {path}")
+             output.append(converter(payload))
+             if progress_callback is not None and len(output) % 100_000 == 0:
+-                progress_callback(f"restored {len(output):,}/{expected_count:,} {label} records")
++                progress_callback(f"restore; status=progress; progress={format_progress_fraction(len(output), expected_count)}; kind={label}")
+     if progress_callback is not None:
+-        progress_callback(f"restored {len(output):,}/{expected_count:,} {label} records")
++        progress_callback(f"restore; status=progress; progress={format_progress_fraction(len(output), expected_count)}; kind={label}")
+     if len(output) != expected_count:
+         raise Data4ShardedStoreError(
+             f"Record count mismatch for {label} shard: expected {expected_count}, read {len(output)}."
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.236a0.txt' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SOURCE_PATCH_0.20.235a0_to_0.20.236a0.patch' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/training_data/data6_bundle.py /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/training_data/data6_bundle.py
+--- /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/training_data/data6_bundle.py	2026-08-05 18:20:00.000000000 +0000
++++ /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/training_data/data6_bundle.py	2026-08-18 03:29:59.769866723 +0000
+@@ -6,6 +6,7 @@
+ from pathlib import Path
+ from typing import Any, Callable, Mapping, TYPE_CHECKING
+ 
++from .progress_timing import format_progress_fraction
+ from ._common import TrainingDataInputError, TrainingDataSerializationError, digest, validate_digest
+ from .difficulty import (
+     BlindedEvaluationPredictionCatalog,
+@@ -519,7 +520,7 @@
+     structural_catalogs: list[UniversalStructuralFeatureCatalog] = []
+     if active.build_universal_structural_features:
+         if progress_callback is not None:
+-            progress_callback("building universal structural selection features")
++            progress_callback("status=phase; phase=building-universal-structural-selection-features")
+         selected, _ = _descriptor_frame_uids(data5_bundle, active.universal_structural_roles)
+         provider = UniversalStructuralSelectionProvider() if structural_provider is None else structural_provider
+         if not callable(getattr(provider, "build_catalog", None)) or not str(getattr(provider, "provider_id", "")).strip():
+@@ -544,7 +545,7 @@
+     lta = None
+     if active.build_lta_selection_features:
+         if progress_callback is not None:
+-            progress_callback("building LTA selection features")
++            progress_callback("status=phase; phase=building-LTA-selection-features")
+         from .lta_selection import build_lta_selection_feature_catalog
+ 
+         if data4_bundle.lta_partition_features is None:
+@@ -612,8 +613,7 @@
+         if active.build_training_difficulty or active.build_blinded_predictions:
+             if progress_callback is not None:
+                 progress_callback(
+-                    "assembling DATA6 residual and blinded prediction evidence "
+-                    "with one shared frame index"
++                    "status=phase; phase=assembling-DATA6-model-evidence; shared_frame_index=on"
+                 )
+ 
+             def report_model_evidence(completed: int, total: int, frame_uid: str) -> None:
+@@ -621,7 +621,7 @@
+                     return
+                 if completed == total or completed == 1 or completed % 500 == 0:
+                     progress_callback(
+-                        f"model evidence {completed}/{total} frame={frame_uid[:12]}"
++                        f"model evidence; status=progress; progress={format_progress_fraction(completed, total)}; frame={frame_uid[:12]}"
+                     )
+ 
+             difficulty_values, blinded_values = build_model_evidence_catalogs(
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.236a0.txt' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SOURCE_PATCH_0.20.235a0_to_0.20.236a0.patch' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/training_data/data6_sharded_store.py /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/training_data/data6_sharded_store.py
+--- /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/training_data/data6_sharded_store.py	2026-08-05 19:40:06.000000000 +0000
++++ /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/training_data/data6_sharded_store.py	2026-08-18 03:29:59.769743341 +0000
+@@ -17,6 +17,7 @@
+ 
+ import numpy as np
+ 
++from .progress_timing import format_progress_fraction
+ from ._common import canonical_json, digest, sha256_file_cached
+ from .data6_bundle import Data6FeatureBundle, Data6Policy
+ from .difficulty import (
+@@ -200,14 +201,14 @@
+             result.append(converter(payload))
+             if progress_callback is not None and len(result) % 100_000 == 0:
+                 progress_callback(
+-                    f"restored {len(result):,}/{expected_count:,} {label} records"
++                    f"restore; status=progress; progress={format_progress_fraction(len(result), expected_count)}; kind={label}"
+                 )
+     if len(result) != expected_count:
+         raise Data6ShardedStoreError(
+             f"Record count mismatch for {label}: expected {expected_count}, read {len(result)}."
+         )
+     if progress_callback is not None and expected_count:
+-        progress_callback(f"restored {len(result):,}/{expected_count:,} {label} records")
++        progress_callback(f"restore; status=progress; progress={format_progress_fraction(len(result), expected_count)}; kind={label}")
+     return tuple(result)
+ 
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.236a0.txt' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SOURCE_PATCH_0.20.235a0_to_0.20.236a0.patch' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/training_data/data7_bundle.py /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/training_data/data7_bundle.py
+--- /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/training_data/data7_bundle.py	2026-08-14 22:50:30.000000000 +0000
++++ /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/training_data/data7_bundle.py	2026-08-18 03:29:59.766007455 +0000
+@@ -194,7 +194,7 @@
+     if data6_bundle.data5_bundle_digest != data5_bundle.content_digest or data6_bundle.data4_bundle_digest != data4_bundle.content_digest:
+         raise TrainingDataInputError("DATA7 input lineage mismatch.")
+     if progress_callback is not None:
+-        progress_callback("fitting domain-local feature metric")
++        progress_callback("status=phase; phase=fitting-domain-local-feature-metric")
+     metric = fit_feature_metric(
+         frame_catalog, frame_data_by_run, data4_bundle, data5_bundle, data6_bundle, domain,
+         policy=feature_metric_policy,
+@@ -205,7 +205,7 @@
+         progress_callback=progress_callback,
+     )
+     if progress_callback is not None:
+-        progress_callback("fitting atomic reference energies")
++        progress_callback("status=phase; phase=fitting-atomic-reference-energies")
+     e0 = fit_atomic_reference_energies(
+         frame_catalog,
+         frame_data_by_run,
+@@ -221,7 +221,7 @@
+         canonical_domain_digests=canonical,
+     )
+     if progress_callback is not None:
+-        progress_callback("building training objective weights")
++        progress_callback("status=phase; phase=building-training-objective-weights")
+     weights = build_training_weight_catalog(
+         frame_catalog, data4_bundle, data5_bundle, domain,
+         objective_policy=objective_policy, configuration_policy=configuration_weight_policy,
+@@ -232,10 +232,10 @@
+     )
+     checkpoint = CheckpointMetricPolicy() if checkpoint_metric_policy is None else checkpoint_metric_policy
+     if progress_callback is not None:
+-        progress_callback("building bounded deterministic selection ladder")
++        progress_callback("status=phase; phase=building-bounded-selection-ladder")
+     selection = build_training_selection_plan(data4_bundle, data5_bundle, data6_bundle, metric, policy=selection_budget_policy)
+     if progress_callback is not None:
+-        progress_callback("computing vectorized selection coverage")
++        progress_callback("status=phase; phase=computing-vectorized-selection-coverage")
+     coverage = build_selection_coverage_report(data4_bundle, data5_bundle, data6_bundle, metric, selection)
+     return Data7PreparationBundle(
+         dataset_id=frame_catalog.dataset_id, source_catalog_digest=source_catalog.content_digest,
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.236a0.txt' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SOURCE_PATCH_0.20.235a0_to_0.20.236a0.patch' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/training_data/events.py /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/training_data/events.py
+--- /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/training_data/events.py	2026-08-05 18:20:00.000000000 +0000
++++ /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/training_data/events.py	2026-08-18 03:29:59.768933813 +0000
+@@ -9,6 +9,7 @@
+ 
+ import numpy as np
+ 
++from .progress_timing import format_progress_fraction
+ from ._common import (
+     TrainingDataInputError,
+     TrainingDataSerializationError,
+@@ -481,7 +482,7 @@
+             previous_lta = lta
+         if progress_callback is not None:
+             progress_callback(
+-                f"event scan: {run_id} ({len(frames)} frames, {len(anchors)} cumulative anchors)"
++                f"status=item-complete; phase=event-scan; item={run_id}; frames={len(frames):,}; anchors={len(anchors):,}"
+             )
+ 
+     # Merge adjacent anchors of the same run/type.
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.236a0.txt' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SOURCE_PATCH_0.20.235a0_to_0.20.236a0.patch' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/training_data/feature_metric.py /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/training_data/feature_metric.py
+--- /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/training_data/feature_metric.py	2026-08-06 21:54:10.000000000 +0000
++++ /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/training_data/feature_metric.py	2026-08-18 03:29:59.767014218 +0000
+@@ -10,6 +10,7 @@
+ 
+ import numpy as np
+ 
++from .progress_timing import format_progress_fraction
+ from ._common import TrainingDataInputError, TrainingDataSerializationError, digest, validate_digest, validate_serialized_digest
+ from .difficulty import TrainingDifficultyDomainKind, build_training_difficulty_domains
+ from .model_features import (
+@@ -1009,8 +1010,7 @@
+     for block in policy.blocks:
+         if progress_callback is not None:
+             progress_callback(
+-                f"extracting feature block {block.name!r} for "
+-                f"{len(domain.frame_uids):,} frames"
++                f"status=phase; phase=extracting-feature-block; block={block.name}; frames={len(domain.frame_uids):,}"
+             )
+         # Universal structural features are stored columnarly.  Extract the
+         # complete domain in one indexed NumPy operation rather than lazily
+@@ -1028,9 +1028,8 @@
+             )
+             if progress_callback is not None:
+                 progress_callback(
+-                    f"feature block {block.name!r}: "
+-                    f"{len(domain.frame_uids):,}/{len(domain.frame_uids):,} frames "
+-                    "(columnar extraction)"
++                    f"feature block {block.name!r}; progress={format_progress_fraction(len(domain.frame_uids), len(domain.frame_uids))}; "
++                    "backend=columnar"
+                 )
+             continue
+ 
+@@ -1054,9 +1053,8 @@
+                 yield block.name, names, values_matrix, missing_matrix
+                 if progress_callback is not None:
+                     progress_callback(
+-                        f"feature block {block.name!r}: "
+-                        f"{len(domain.frame_uids):,}/{len(domain.frame_uids):,} frames "
+-                        "(shard-batched extraction)"
++                        f"feature block {block.name!r}; progress={format_progress_fraction(len(domain.frame_uids), len(domain.frame_uids))}; "
++                        "backend=shard-batched"
+                     )
+                 continue
+ 
+@@ -1140,8 +1138,7 @@
+                 )
+             ):
+                 progress_callback(
+-                    f"feature block {block.name!r}: "
+-                    f"{frame_number:,}/{len(domain.frame_uids):,} frames"
++                    f"feature block {block.name!r}; progress={format_progress_fraction(frame_number, len(domain.frame_uids))}"
+                 )
+         if not available:
+             if block.required: raise TrainingDataInputError(f"Required feature block {block.name!r} is unavailable.")
+@@ -1390,7 +1387,7 @@
+         raise TrainingDataInputError("Feature values and missing mask are misaligned.")
+     if progress_callback is not None:
+         progress_callback(
+-            f"feature transform {block.name!r}: computing column location/scale"
++            f"status=phase; phase=feature-location-scale; block={block.name}"
+         )
+     center, scale = _column_location_scale(X, missing, block.scaling)
+     scale = np.where(
+@@ -1399,7 +1396,7 @@
+ 
+     if progress_callback is not None:
+         progress_callback(
+-            f"feature transform {block.name!r}: imputing and standardizing"
++            f"status=phase; phase=feature-impute-standardize; block={block.name}"
+         )
+     # One writable matrix is sufficient for imputation and standardization.
+     Z = np.array(X, dtype=np.float64, copy=True, order="C")
+@@ -1427,9 +1424,7 @@
+     if use_pca and block.include_missing_indicators:
+         if progress_callback is not None:
+             progress_callback(
+-                f"feature transform {block.name!r}: fitting bounded PCA "
+-                f"{logical_dimension:,}->{block.pca_components:,} "
+-                "with implicit missing indicators"
++                f"status=phase; phase=feature-PCA; block={block.name}; dimensions={logical_dimension:,}->{block.pca_components:,}; missing_indicators=implicit"
+             )
+         projection, output = _implicit_missing_indicator_projection(
+             Z,
+@@ -1445,8 +1440,7 @@
+         if use_pca:
+             if progress_callback is not None:
+                 progress_callback(
+-                    f"feature transform {block.name!r}: fitting bounded PCA "
+-                    f"{logical_dimension:,}->{block.pca_components:,}"
++                    f"status=phase; phase=feature-PCA; block={block.name}; dimensions={logical_dimension:,}->{block.pca_components:,}"
+                 )
+             projection = _principal_projection(
+                 Z,
+@@ -1480,8 +1474,7 @@
+     )
+     if progress_callback is not None:
+         progress_callback(
+-            f"feature transform {block.name!r}: complete; "
+-            f"output_dimension={dimension:,}"
++            f"status=complete; phase=feature-transform; block={block.name}; output_dimension={dimension:,}"
+         )
+     return metric, output
+ 
+@@ -1523,8 +1516,7 @@
+     ):
+         if progress_callback is not None:
+             progress_callback(
+-                f"fitting feature transform {name!r} "
+-                f"shape={X.shape[0]:,}x{X.shape[1]:,}"
++                f"status=phase; phase=fitting-feature-transform; block={name}; shape={X.shape[0]:,}x{X.shape[1]:,}"
+             )
+         metric, output = _fit_block(
+             feature_names,
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.236a0.txt' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SOURCE_PATCH_0.20.235a0_to_0.20.236a0.patch' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/training_data/frame_catalog.py /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/training_data/frame_catalog.py
+--- /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/training_data/frame_catalog.py	2026-08-05 19:38:04.000000000 +0000
++++ /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/training_data/frame_catalog.py	2026-08-18 03:29:59.769338534 +0000
+@@ -11,6 +11,7 @@
+ 
+ from mdstats.collection import AtomisticFrameCollection
+ from .resources import isolated_process_map
++from .progress_timing import format_progress_fraction
+ from ._common import (
+     TrainingDataInputError,
+     TrainingDataSerializationError,
+@@ -785,7 +786,7 @@
+             completed += 1
+             if progress_callback is not None:
+                 progress_callback(
+-                    f"{completed}/{len(tasks)} {run_id}: {len(run_records)} frames; workers=1"
++                    f"status=item-complete; progress={format_progress_fraction(completed, len(tasks))}; item={run_id}; frames={len(run_records):,}; workers=1"
+                 )
+     else:
+         for result in isolated_process_map(__name__, "_build_training_frame_records_for_run", tasks, workers=workers):
+@@ -796,7 +797,7 @@
+             completed += 1
+             if progress_callback is not None:
+                 progress_callback(
+-                    f"{completed}/{len(tasks)} {run_id}: {len(run_records)} frames; workers={workers}"
++                    f"status=item-complete; progress={format_progress_fraction(completed, len(tasks))}; item={run_id}; frames={len(run_records):,}; workers={workers}"
+                 )
+ 
+     duplicate_catalog = build_duplicate_detection_catalog(
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.236a0.txt' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SOURCE_PATCH_0.20.235a0_to_0.20.236a0.patch' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/training_data/lta_profile.py /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/training_data/lta_profile.py
+--- /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/training_data/lta_profile.py	2026-08-05 18:20:00.000000000 +0000
++++ /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/training_data/lta_profile.py	2026-08-18 03:29:59.769487977 +0000
+@@ -12,6 +12,7 @@
+ from ase.data import chemical_symbols
+ 
+ from .resources import isolated_process_map
++from .progress_timing import format_progress_fraction
+ from ._common import (
+     TrainingDataInputError,
+     TrainingDataSerializationError,
+@@ -1259,10 +1260,9 @@
+             completed += 1
+             if progress_callback is not None:
+                 progress_callback(
+-                    f"LTA partition features: {columns.run_id} "
+-                    f"({len(run_frame_records)} frames, "
+-                    f"{len(run_mobile_states)} states; {completed}/{len(tasks)}; "
+-                    "workers=1; columnar)"
++                    f"LTA partition features; status=item-complete; progress={format_progress_fraction(completed, len(tasks))}; "
++                    f"item={columns.run_id}; frames={len(run_frame_records):,}; states={len(run_mobile_states):,}; "
++                    "workers=1; backend=columnar"
+                 )
+     else:
+         for columns in isolated_process_map(__name__, "_build_lta_columns_for_run", tasks, workers=workers):
+@@ -1272,8 +1272,8 @@
+             completed += 1
+             if progress_callback is not None:
+                 progress_callback(
+-                    f"LTA partition features: {columns.run_id} ({len(run_frame_records)} frames, "
+-                    f"{len(run_mobile_states)} states; {completed}/{len(tasks)}; workers={workers})"
++                    f"LTA partition features; status=item-complete; progress={format_progress_fraction(completed, len(tasks))}; "
++                    f"item={columns.run_id}; frames={len(run_frame_records):,}; states={len(run_mobile_states):,}; workers={workers}"
+                 )
+ 
+     return LtaPartitionFeatureCatalog(
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.236a0.txt' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SOURCE_PATCH_0.20.235a0_to_0.20.236a0.patch' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/training_data/lta_selection.py /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/training_data/lta_selection.py
+--- /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/training_data/lta_selection.py	2026-08-05 23:11:54.000000000 +0000
++++ /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/training_data/lta_selection.py	2026-08-18 03:29:59.769065906 +0000
+@@ -12,6 +12,7 @@
+ import numpy as np
+ from ase.data import chemical_symbols
+ 
++from .progress_timing import format_progress_fraction
+ from ._common import (
+     TrainingDataInputError,
+     TrainingDataSerializationError,
+@@ -660,8 +661,8 @@
+     report_interval = max(100, min(1_000, len(lta_records) // 100 or 1))
+     if progress_callback is not None:
+         progress_callback(
+-            f"LTA structure: {len(lta_records):,} frames; "
+-            f"atomic-environment materialization={'on' if active.materialize_atomic_environments else 'off'}"
++            f"LTA structure; status=start; progress={format_progress_fraction(0, len(lta_records))}; "
++            f"atomic-environment-materialization={'on' if active.materialize_atomic_environments else 'off'}"
+         )
+ 
+     for completed, lta_record in enumerate(lta_records, start=1):
+@@ -708,7 +709,7 @@
+             completed == len(lta_records) or completed % report_interval == 0
+         ):
+             progress_callback(
+-                f"LTA structure {completed:,}/{len(lta_records):,} frames"
++                f"LTA structure; status=progress; progress={format_progress_fraction(completed, len(lta_records))}"
+             )
+ 
+     return LtaSelectionFeatureCatalog(
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.236a0.txt' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SOURCE_PATCH_0.20.235a0_to_0.20.236a0.patch' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/training_data/production_materialization.py /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/training_data/production_materialization.py
+--- /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/training_data/production_materialization.py	2026-08-15 23:51:06.000000000 +0000
++++ /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/training_data/production_materialization.py	2026-08-18 03:29:59.767859908 +0000
+@@ -16,6 +16,7 @@
+ import uuid
+ from typing import Any, Callable, Mapping, MutableMapping, Sequence
+ 
++from .progress_timing import format_progress_fraction
+ from .adaptive_stop import AdaptiveTrainingStopPolicy
+ from .train2_policy import (
+     TrainingBudgetPolicy, LearningRateSchedulePolicy, CheckpointAdmissibilityPolicy,
+@@ -1228,7 +1229,7 @@
+     prediction_energy: Mapping[str, float] | None = foundation_prediction_energy_by_frame
+     if prediction_energy is None and model_sweep_artifacts.prediction_manifest is not None:
+         if progress_callback is not None:
+-            progress_callback("reading authenticated scalar foundation energies")
++            progress_callback("status=phase; phase=reading-authenticated-foundation-energies")
+         cache = model_sweep_artifacts.prediction_cache()
+         prediction_energy = {
+             item.frame_uid: cache.energy_for_frame(item.frame_uid)
+@@ -1270,7 +1271,7 @@
+             if artifact is not None and Path(artifact.path).is_file():
+                 if progress_callback is not None:
+                     progress_callback(
+-                        f"reusing in-process DATA7 domain {new_domains + 1}/{len(plan.domains)} "
++                        f"DATA7 domain; progress={format_progress_fraction(new_domains + 1, len(plan.domains))}; status=reuse-in-process; "
+                         f"kind={domain.kind.value} fold={domain.fold_index}"
+                     )
+             elif shared_cache_root is not None:
+@@ -1284,18 +1285,18 @@
+                         shared_memory[recipe_digest] = artifact
+                     if progress_callback is not None:
+                         progress_callback(
+-                            f"reusing verified shared DATA7 domain {new_domains + 1}/{len(plan.domains)} "
++                            f"DATA7 domain; progress={format_progress_fraction(new_domains + 1, len(plan.domains))}; status=reuse-verified; "
+                             f"kind={domain.kind.value} fold={domain.fold_index}"
+                         )
+             if artifact is None:
+                 if progress_callback is not None:
+                     progress_callback(
+-                        f"building DATA7 domain {new_domains + 1}/{len(plan.domains)} "
++                        f"DATA7 domain; progress={format_progress_fraction(new_domains + 1, len(plan.domains))}; status=building; "
+                         f"kind={domain.kind.value} fold={domain.fold_index}"
+                     )
+                 if frame_array_index is None:
+                     if progress_callback is not None:
+-                        progress_callback("building shared frame-array index for DATA7")
++                        progress_callback("status=phase; phase=building-shared-frame-array-index; consumer=DATA7")
+                     from ._frame_access import build_frame_array_index
+ 
+                     frame_array_index = build_frame_array_index(
+@@ -1366,14 +1367,14 @@
+             # together to avoid avoidable peak memory and swap-induced stalls.
+             mace_summary_cache.clear()
+             if progress_callback is not None:
+-                progress_callback("assembling DATA8 fixed-file artifacts")
++                progress_callback("status=phase; phase=assembling-DATA8-fixed-files")
+             bundles_list: list[Data7PreparationBundle] = []
+             for domain_number, domain in enumerate(plan.domains, start=1):
+                 bundle = resolved_bundles.get(domain.content_digest)
+                 if bundle is None:
+                     if progress_callback is not None:
+                         progress_callback(
+-                            f"loading DATA7 domain {domain_number}/{len(plan.domains)} "
++                            f"DATA7 domain; progress={format_progress_fraction(domain_number, len(plan.domains))}; status=loading; "
+                             "for DATA8 assembly"
+                         )
+                     bundle = _load_valid_data7_record(
+@@ -1388,7 +1389,7 @@
+             bundles = tuple(bundles_list)
+             if frame_array_index is None:
+                 if progress_callback is not None:
+-                    progress_callback("building shared frame-array index for DATA8")
++                    progress_callback("status=phase; phase=building-shared-frame-array-index; consumer=DATA8")
+                 from ._frame_access import build_frame_array_index
+                 frame_array_index = build_frame_array_index(frame_catalog, frame_data_by_run)
+                 if shared_frame_array_index_cache is not None:
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.236a0.txt' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SOURCE_PATCH_0.20.235a0_to_0.20.236a0.patch' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/training_data/progress_timing.py /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/training_data/progress_timing.py
+--- /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/training_data/progress_timing.py	2026-08-08 09:30:58.000000000 +0000
++++ /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/training_data/progress_timing.py	2026-08-18 03:35:20.170144080 +0000
+@@ -9,6 +9,81 @@
+ from __future__ import annotations
+ 
+ from dataclasses import dataclass
++import math
++
++
++PROGRESS_TIME_UNKNOWN = "--:--:--"
++
++def format_progress_time(seconds: float | None) -> str:
++    """Format an MLFF progress duration as fixed-width ``HH:MM:SS``.
++
++    Unknown, non-finite, or negative estimates use ``--:--:--``.  Elapsed
++    values should normally be passed as non-negative numbers; accepting an
++    unknown value here keeps every user-facing ``eta=`` field syntactically
++    stable while a rate estimate is still warming up.
++    """
++
++    if seconds is None:
++        return PROGRESS_TIME_UNKNOWN
++    value = float(seconds)
++    if not math.isfinite(value) or value < 0.0:
++        return PROGRESS_TIME_UNKNOWN
++    rounded = max(0, int(round(value)))
++    hours, remainder = divmod(rounded, 3600)
++    minutes, secs = divmod(remainder, 60)
++    return f"{hours:02d}:{minutes:02d}:{secs:02d}"
++
++
++def format_progress_fraction(completed: int, total: int) -> str:
++    """Return the canonical MLFF ``completed/total (percent)`` field."""
++
++    done = int(completed)
++    count = int(total)
++    if count < 0 or done < 0 or done > count:
++        raise ValueError("progress counts must satisfy 0 <= completed <= total")
++    percent = 100.0 if count == 0 else 100.0 * done / count
++    return f"{done:,}/{count:,} ({percent:.1f}%)"
++
++
++def format_progress_rate(rate: float | None, unit: str, *, precision: int = 2) -> str:
++    """Return one canonical MLFF throughput value, including its unit."""
++
++    if rate is None:
++        return f"-- {unit}"
++    value = float(rate)
++    if not math.isfinite(value) or value <= 0.0:
++        return f"-- {unit}"
++    return f"{value:.{int(precision)}f} {unit}"
++
++
++def format_progress_timing_fields(
++    *,
++    elapsed_seconds: float,
++    eta_seconds: float | None,
++    recent_rate: float | None = None,
++    average_rate: float | None = None,
++    rate_unit: str | None = None,
++    rate_precision: int = 2,
++) -> str:
++    """Format canonical timing/rate fields for MLFF progress messages.
++
++    Field order is intentionally stable across campaign stages: elapsed, ETA,
++    recent/current rate, then cumulative average rate.
++    """
++
++    fields = [
++        f"elapsed={format_progress_time(max(0.0, float(elapsed_seconds)))}",
++        f"eta={format_progress_time(eta_seconds)}",
++    ]
++    if rate_unit is not None and recent_rate is not None:
++        fields.append(
++            f"recent={format_progress_rate(recent_rate, rate_unit, precision=rate_precision)}"
++        )
++    if rate_unit is not None and average_rate is not None:
++        fields.append(
++            f"avg={format_progress_rate(average_rate, rate_unit, precision=rate_precision)}"
++        )
++    return "; ".join(fields)
+ 
+ 
+ @dataclass(frozen=True, slots=True)
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.236a0.txt' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SOURCE_PATCH_0.20.235a0_to_0.20.236a0.patch' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/training_data/raw_features.py /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/training_data/raw_features.py
+--- /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/training_data/raw_features.py	2026-08-05 19:41:32.000000000 +0000
++++ /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/training_data/raw_features.py	2026-08-18 03:29:59.769201969 +0000
+@@ -9,6 +9,7 @@
+ from ase.data import atomic_masses, chemical_symbols
+ 
+ from .resources import isolated_process_map
++from .progress_timing import format_progress_fraction
+ from ._common import (
+     TrainingDataInputError,
+     TrainingDataSerializationError,
+@@ -946,7 +947,7 @@
+             completed += 1
+             if progress_callback is not None:
+                 progress_callback(
+-                    f"raw features: {run_id} ({len(run_records)} frames; {completed}/{len(tasks)}; workers=1)"
++                    f"raw features; status=item-complete; progress={format_progress_fraction(completed, len(tasks))}; item={run_id}; frames={len(run_records):,}; workers=1"
+                 )
+     else:
+         for result in isolated_process_map(__name__, "_build_raw_features_for_run", tasks, workers=workers):
+@@ -955,7 +956,7 @@
+             completed += 1
+             if progress_callback is not None:
+                 progress_callback(
+-                    f"raw features: {run_id} ({len(run_records)} frames; {completed}/{len(tasks)}; workers={workers})"
++                    f"raw features; status=item-complete; progress={format_progress_fraction(completed, len(tasks))}; item={run_id}; frames={len(run_records):,}; workers={workers}"
+                 )
+ 
+     if len(records) != len(frame_catalog.frames):
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.236a0.txt' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SOURCE_PATCH_0.20.235a0_to_0.20.236a0.patch' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/training_data/structural_selection.py /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/training_data/structural_selection.py
+--- /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/training_data/structural_selection.py	2026-08-16 00:42:16.000000000 +0000
++++ /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/training_data/structural_selection.py	2026-08-18 03:29:59.768115618 +0000
+@@ -31,7 +31,12 @@
+     compute_local_structure_features,
+ )
+ 
+-from .progress_timing import ProgressRateTracker
++from .progress_timing import (
++    ProgressRateTracker,
++    format_progress_fraction,
++    format_progress_rate,
++    format_progress_time,
++)
+ from ._common import (
+     TrainingDataInputError,
+     TrainingDataSerializationError,
+@@ -1782,7 +1787,7 @@
+                 else str(worker_count)
+             )
+             progress_callback(
+-                f"universal structure: {len(records):,} frames; "
++                f"universal structure; status=start; progress={format_progress_fraction(0, len(records))}; "
+                 f"workers={worker_note}; "
+                 f"atomic-environment materialization="
+                 f"{'on' if active.materialize_atomic_environments else 'off'}"
+@@ -1870,8 +1875,7 @@
+                     if rate > 0.0
+                 )
+                 progress_callback(
+-                    f"universal structure worker autotune selected "
+-                    f"{worker_count}; candidates: {rate_text}"
++                    f"universal structure; status=autotune; selected_workers={worker_count}; candidates={rate_text}"
+                 )
+ 
+         def consume_result(
+@@ -2000,23 +2004,14 @@
+                 timing = progress_timing.snapshot(
+                     completed=completed, total=len(records), now=now
+                 )
+-                recent_text = (
+-                    "estimating"
+-                    if timing.recent_rate <= 0.0
+-                    else f"{timing.recent_rate:.2f} frame/s"
+-                )
+-                eta_text = (
+-                    "estimating"
+-                    if timing.eta_seconds is None
+-                    else f"{timing.eta_seconds / 60.0:.1f} min"
+-                )
+                 rss = _resident_set_mib()
+                 rss_text = "" if rss is None else f"; peak_rss={rss:,.0f} MiB"
+                 progress_callback(
+-                    f"universal structure {completed:,}/{len(records):,}; "
+-                    f"recent={recent_text}; "
+-                    f"avg={timing.average_rate:.2f} frame/s; "
+-                    f"eta={eta_text}; "
++                    f"universal structure; progress={format_progress_fraction(completed, len(records))}; "
++                    f"elapsed={format_progress_time(timing.elapsed_seconds)}; "
++                    f"eta={format_progress_time(timing.eta_seconds)}; "
++                    f"recent={format_progress_rate(timing.recent_rate, 'frame/s')}; "
++                    f"avg={format_progress_rate(timing.average_rate, 'frame/s')}; "
+                     f"events={event_count:,}{rss_text}"
+                 )
+                 last_report_time = now
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.236a0.txt' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SOURCE_PATCH_0.20.235a0_to_0.20.236a0.patch' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/training_data/target_coverage.py /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/training_data/target_coverage.py
+--- /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/training_data/target_coverage.py	2026-08-17 21:53:26.000000000 +0000
++++ /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/training_data/target_coverage.py	2026-08-18 03:29:59.768778069 +0000
+@@ -22,6 +22,7 @@
+ from scipy.spatial import cKDTree
+ from scipy.stats import wasserstein_distance
+ 
++from .progress_timing import format_progress_fraction
+ from ._common import (
+     TrainingDataInputError,
+     TrainingDataSerializationError,
+@@ -1927,8 +1928,8 @@
+             })[:16]
+             if progress_callback is not None:
+                 progress_callback(
+-                    f"TARGET-DATA2B structural family {family_number}/{len(family_keys)}: "
+-                    f"{semantic}/{group_id}; {rows.size:,} reference elements"
++                    f"TARGET-DATA2B structural family; progress={format_progress_fraction(family_number, len(family_keys))}; "
++                    f"family={semantic}/{group_id}; reference_elements={rows.size:,}"
+                 )
+             family = _build_family(
+                 family_id=f"structural:{semantic}:{group_id}:{family_key}",
+@@ -1954,8 +1955,8 @@
+                 result.append(family)
+         if progress_callback is not None:
+             progress_callback(
+-                f"TARGET-DATA2B structural provider {catalog_index + 1}/{len(data6_bundle.universal_structural_features)}: "
+-                f"{len(result)} families accumulated"
++                f"TARGET-DATA2B structural provider; progress={format_progress_fraction(catalog_index + 1, len(data6_bundle.universal_structural_features))}; "
++                f"families={len(result)}"
+             )
+     return result
+ 
+@@ -2507,19 +2508,19 @@
+             )
+             if progress_callback is not None:
+                 progress_callback(
+-                    f"TARGET-DATA2B domain {domain_number}/{len(target_data_role_freeze.domains)} "
+-                    f"{frozen.label_domain_id}: {len(frame_uids):,} reference frames"
++                    f"TARGET-DATA2B domain; progress={format_progress_fraction(domain_number, len(target_data_role_freeze.domains))}; "
++                    f"domain={frozen.label_domain_id}; reference_frames={len(frame_uids):,}"
+                 )
+                 if radius_queue is None:
+                     progress_callback(
+-                        f"TARGET-DATA2B exact local-kNN execution: native_workers={int(query_workers)}; "
+-                        "outer_block_queue=off; vectorized weighted-mass accumulation=on"
++                        f"status=configuration; phase=TARGET-DATA2B-local-kNN; native_workers={int(query_workers)}; "
++                        "outer_block_queue=off; vectorized_weighted_mass=on"
+                     )
+                 else:
+                     progress_callback(
+-                        "TARGET-DATA2B exact local-kNN execution: "
++                        "status=configuration; phase=TARGET-DATA2B-local-kNN; "
+                         f"outer_workers={radius_queue.allocated_workers}; native_workers=1; "
+-                        "outer_block_queue=on; vectorized weighted-mass accumulation=on"
++                        "outer_block_queue=on; vectorized_weighted_mass=on"
+                     )
+             families: list[TargetCoverageFamilyReference] = []
+             families.extend(
+@@ -2608,8 +2609,7 @@
+             )
+             if progress_callback is not None:
+                 progress_callback(
+-                    f"TARGET-DATA2B {frozen.label_domain_id}: {len(families)} required families, "
+-                    f"{len(strata)} support strata"
++                    f"status=domain-complete; domain={frozen.label_domain_id}; required_families={len(families)}; support_strata={len(strata)}"
+                 )
+         return domains
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.236a0.txt' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SOURCE_PATCH_0.20.235a0_to_0.20.236a0.patch' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/training_data/target_coverage_exact_neighborhood.py /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/training_data/target_coverage_exact_neighborhood.py
+--- /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/training_data/target_coverage_exact_neighborhood.py	2026-08-17 22:14:14.000000000 +0000
++++ /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/training_data/target_coverage_exact_neighborhood.py	2026-08-18 03:22:58.234664583 +0000
+@@ -26,6 +26,7 @@
+ from ._target_coverage_neighborhood import compress_unique_candidate_block
+ from .resources import StageResourceScope, available_cpu_threads
+ from .target_coverage import _coverage_array_reference, _validate_array_reference
++from .progress_timing import format_progress_fraction, format_progress_time
+ from .work_queue import DeterministicOrderedReducer, DeterministicWorkQueue, DeterministicWorkQueueSnapshot
+ 
+ 
+@@ -710,7 +711,8 @@
+     started = time.monotonic()
+     if progress_callback is not None:
+         progress_callback(
+-            f"global family-queue start: families={len(manifest)}; blocks={total_blocks}; witnesses={total_witnesses}; "
++            f"status=start; progress={format_progress_fraction(0, total_witnesses)}; "
++            f"elapsed=00:00:00; eta=--:--:--; families={len(manifest)}; blocks={total_blocks}; "
+             f"global-workers={workers}; tree-workers/task={native_workers}; query-block={block_size}; backend=neighbor1-exact-engine"
+         )
+ 
+@@ -849,9 +851,15 @@
+             if not queue.wait_for_completion(timeout=timeout):
+                 final_snapshot = queue.snapshot()
+                 if progress_callback is not None:
++                    elapsed = max(0.0, time.monotonic() - started)
++                    rate = completed_witnesses / elapsed if elapsed > 0.0 else 0.0
++                    remaining = max(0, total_witnesses - completed_witnesses)
++                    eta = remaining / rate if rate > 0.0 else None
+                     progress_callback(
+-                        f"global heartbeat: families={len(result_by_job)}/{len(manifest)}; blocks={completed_blocks}/{total_blocks}; "
+-                        f"witnesses={completed_witnesses}/{total_witnesses}; workers-busy={final_snapshot.busy_workers}/{final_snapshot.allocated_workers}; "
++                        f"status=heartbeat; progress={format_progress_fraction(completed_witnesses, total_witnesses)}; "
++                        f"elapsed={format_progress_time(elapsed)}; eta={format_progress_time(eta)}; "
++                        f"rate={rate:.1f} witness/s; families={len(result_by_job)}/{len(manifest)}; "
++                        f"blocks={completed_blocks}/{total_blocks}; workers-busy={final_snapshot.busy_workers}/{final_snapshot.allocated_workers}; "
+                         f"pending={final_snapshot.inflight_tasks}; buffered={final_snapshot.completed_tasks}; "
+                         f"memory-admitted={final_snapshot.accounted_memory_bytes}/{final_snapshot.memory_budget_bytes}; "
+                         f"backpressure={final_snapshot.memory_backpressure_events + final_snapshot.queue_backpressure_events}"
+@@ -904,11 +912,12 @@
+                     elapsed = max(1.0e-12, now - started)
+                     rate = completed_witnesses / elapsed
+                     remaining = max(0, total_witnesses - completed_witnesses)
++                    eta = remaining / rate if rate > 0.0 else None
+                     progress_callback(
+-                        f"global progress: families={len(result_by_job)}/{len(manifest)}; blocks={completed_blocks}/{total_blocks}; "
+-                        f"witnesses={completed_witnesses}/{total_witnesses} ({100.0*completed_witnesses/max(1,total_witnesses):.1f}%); "
+-                        f"workers-busy={final_snapshot.busy_workers}/{final_snapshot.allocated_workers}; "
+-                        f"rate={rate:.1f} witness/s; eta={remaining/rate if rate > 0 else float('inf'):.1f}s; "
++                        f"status=progress; progress={format_progress_fraction(completed_witnesses, total_witnesses)}; "
++                        f"elapsed={format_progress_time(elapsed)}; eta={format_progress_time(eta)}; "
++                        f"rate={rate:.1f} witness/s; families={len(result_by_job)}/{len(manifest)}; "
++                        f"blocks={completed_blocks}/{total_blocks}; workers-busy={final_snapshot.busy_workers}/{final_snapshot.allocated_workers}; "
+                         f"edges={sum(stream.edge_count for stream in stream_by_job.values())}"
+                     )
+                     last_progress = now
+@@ -976,8 +985,9 @@
+     )
+     if progress_callback is not None:
+         progress_callback(
+-            f"global complete: families={len(manifest)}; witnesses={total_witnesses}; edges={store.edge_count}; "
+-            f"digest={store.content_digest[:12]}...; wall={telemetry.wall_seconds:.3f}s"
++            f"status=complete; progress={format_progress_fraction(total_witnesses, total_witnesses)}; "
++            f"elapsed={format_progress_time(telemetry.wall_seconds)}; eta=00:00:00; "
++            f"families={len(manifest)}; edges={store.edge_count}; digest={store.content_digest[:12]}..."
+         )
+     return (store, telemetry) if return_telemetry else store
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.236a0.txt' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SOURCE_PATCH_0.20.235a0_to_0.20.236a0.patch' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/training_data/target_coverage_feasibility.py /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/training_data/target_coverage_feasibility.py
+--- /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/training_data/target_coverage_feasibility.py	2026-08-17 22:09:24.000000000 +0000
++++ /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/training_data/target_coverage_feasibility.py	2026-08-18 03:22:58.234855129 +0000
+@@ -28,6 +28,7 @@
+ 
+ from ._common import TrainingDataInputError, TrainingDataSerializationError, digest, validate_digest
+ from .resources import StageResourceScope, available_cpu_threads
++from .progress_timing import format_progress_fraction, format_progress_time
+ from .target_coverage_exact_neighborhood import (
+     ExactNeighborhoodBlockResult,
+     ExactNeighborhoodCSRStream,
+@@ -95,14 +96,7 @@
+ 
+     @staticmethod
+     def _duration(seconds: float) -> str:
+-        value = max(0, int(round(seconds)))
+-        hours, remainder = divmod(value, 3600)
+-        minutes, secs = divmod(remainder, 60)
+-        if hours:
+-            return f"{hours:d}h{minutes:02d}m{secs:02d}s"
+-        if minutes:
+-            return f"{minutes:d}m{secs:02d}s"
+-        return f"{secs:d}s"
++        return format_progress_time(seconds)
+ 
+     def _message(
+         self,
+@@ -117,32 +111,30 @@
+         remaining = max(0, self.total_witnesses - self.completed_witnesses)
+         eta = remaining / rate if rate > 0.0 else None
+         percent = 100.0 * self.completed_witnesses / self.total_witnesses
+-        eta_text = "estimating" if eta is None else self._duration(eta)
++        eta_text = format_progress_time(eta)
+         memory = snapshot.accounted_memory_bytes
+         budget = snapshot.memory_budget_bytes
+         memory_text = (
+             f"{memory}" if budget is None else f"{memory}/{budget}"
+         )
+         return (
+-            f"global {kind}: profiles={self.completed_profiles}/{self.total_profiles} complete; "
+-            f"prepared={self.prepared_profiles}/{self.total_profiles}; active={active_profiles}; "
+-            f"blocks={self.completed_blocks}/{self.total_blocks}; "
+-            f"witnesses={self.completed_witnesses}/{self.total_witnesses} ({percent:.1f}%); "
+-            f"workers-busy={snapshot.busy_workers}/{snapshot.allocated_workers}; "
+-            f"pending={snapshot.inflight_tasks}; "
++            f"status={kind}; progress={format_progress_fraction(self.completed_witnesses, self.total_witnesses)}; "
++            f"elapsed={self._duration(elapsed)}; eta={eta_text}; rate={rate:.1f} witness/s; "
++            f"profiles={self.completed_profiles}/{self.total_profiles}; prepared={self.prepared_profiles}/{self.total_profiles}; "
++            f"active={active_profiles}; blocks={self.completed_blocks}/{self.total_blocks}; "
++            f"workers-busy={snapshot.busy_workers}/{snapshot.allocated_workers}; pending={snapshot.inflight_tasks}; "
+             f"queued={snapshot.ready_tasks + max(0, snapshot.inflight_tasks - snapshot.busy_workers)}; "
+             f"buffered={snapshot.completed_tasks}; memory-admitted={memory_text}; "
+-            f"backpressure={snapshot.memory_backpressure_events + snapshot.queue_backpressure_events}; "
+-            f"elapsed={self._duration(elapsed)}; rate={rate:.1f} witness/s; eta={eta_text}"
++            f"backpressure={snapshot.memory_backpressure_events + snapshot.queue_backpressure_events}"
+         )
+ 
+     def start(self, *, global_workers: int, tree_workers: int, queue_depth: int) -> None:
+         if self.callback is not None:
+             self.callback(
+-                f"global start: profiles={self.total_profiles}; blocks={self.total_blocks}; "
+-                f"witnesses={self.total_witnesses}; global-workers={global_workers}; "
+-                f"block-workers={global_workers}; tree-workers/task={tree_workers}; queue-depth={queue_depth}; "
+-                "backend=parcore1-deterministic-work-queue"
++                f"status=start; progress={format_progress_fraction(0, self.total_witnesses)}; "
++                f"elapsed=00:00:00; eta=--:--:--; profiles={self.total_profiles}; blocks={self.total_blocks}; "
++                f"global-workers={global_workers}; block-workers={global_workers}; tree-workers/task={tree_workers}; "
++                f"queue-depth={queue_depth}; backend=parcore1-deterministic-work-queue"
+             )
+ 
+     def profile_prepared(self) -> None:
+@@ -185,12 +177,15 @@
+     ) -> None:
+         self.completed_profiles += 1
+         if self.callback is not None:
++            elapsed = max(0.0, time.monotonic() - self.started)
++            rate = self.completed_witnesses / elapsed if elapsed > 0.0 else 0.0
++            remaining = max(0, self.total_witnesses - self.completed_witnesses)
++            eta = remaining / rate if rate > 0.0 else None
+             self.callback(
+-                f"profile {self.completed_profiles}/{self.total_profiles} complete: "
+-                f"{domain_id}/{family_id} (manifest={profile_index}/{self.total_profiles}); "
+-                f"global profiles={self.completed_profiles}/{self.total_profiles}; "
+-                f"blocks={self.completed_blocks}/{self.total_blocks}; "
+-                f"witnesses={self.completed_witnesses}/{self.total_witnesses}; "
++                f"status=profile-complete; progress={format_progress_fraction(self.completed_witnesses, self.total_witnesses)}; "
++                f"elapsed={format_progress_time(elapsed)}; eta={format_progress_time(eta)}; rate={rate:.1f} witness/s; "
++                f"profile={self.completed_profiles}/{self.total_profiles}; domain={domain_id}; family={family_id}; "
++                f"manifest={profile_index}/{self.total_profiles}; blocks={self.completed_blocks}/{self.total_blocks}; "
+                 f"active={active_profiles}; pending={snapshot.inflight_tasks}; "
+                 f"queued={snapshot.ready_tasks + max(0, snapshot.inflight_tasks - snapshot.busy_workers)}"
+             )
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.236a0.txt' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SOURCE_PATCH_0.20.235a0_to_0.20.236a0.patch' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/training_data/target_coverage_sparse_index.py /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/training_data/target_coverage_sparse_index.py
+--- /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/training_data/target_coverage_sparse_index.py	2026-08-17 22:30:36.000000000 +0000
++++ /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/training_data/target_coverage_sparse_index.py	2026-08-18 03:25:50.543722176 +0000
+@@ -955,7 +955,7 @@
+     obligation_result = results[("obligations", "0")]
+     if progress_callback is not None:
+         progress_callback(
+-            f"{domain.label_domain_id}: MVIDX-REUSE1 sparse inversion queue; "
++            f"status=complete; domain={domain.label_domain_id}; phase=MVIDX-REUSE1-sparse-inversion; "
+             f"workers={workers}; max-busy={snapshot.max_busy_workers}; "
+             f"families={len(required)}; geometry=skipped"
+         )
+@@ -1009,7 +1009,7 @@
+         tree_workers = workers if outer_workers == 1 else 1
+         if progress_callback is not None:
+             progress_callback(
+-                f"NEIGHBOR1 cache miss: rebuilding exact forward CSR through global queue; "
++                f"status=cache-miss; phase=NEIGHBOR1-forward-CSR-rebuild; "
+                 f"global-workers={outer_workers}; tree-workers/task={tree_workers}"
+             )
+         neighborhoods = build_target_coverage_exact_neighborhood_store(
+@@ -1038,7 +1038,7 @@
+                 for family in required
+             )
+             progress_callback(
+-                f"{domain.label_domain_id}: NEIGHBOR1 cache hit for {len(required)} required families; "
++                f"status=cache-hit; domain={domain.label_domain_id}; phase=NEIGHBOR1-forward-CSR; families={len(required)}; "
+                 f"edges={edge_count}; geometry=skipped; inverse-workers={inverse_workers}"
+             )
+         (
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.236a0.txt' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SOURCE_PATCH_0.20.235a0_to_0.20.236a0.patch' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/training_data/target_multi_view_qualification.py /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/training_data/target_multi_view_qualification.py
+--- /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/training_data/target_multi_view_qualification.py	2026-08-17 23:55:42.000000000 +0000
++++ /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/training_data/target_multi_view_qualification.py	2026-08-18 03:25:50.543277438 +0000
+@@ -1135,8 +1135,9 @@
+             comparisons.append(comparison)
+             if progress_callback is not None:
+                 progress_callback(
+-                    f"{label} n{size}: legacy Dmax={comparison.legacy_d_max:.6f}; "
+-                    f"MV Dmax={comparison.mv_d_max:.6f}; same-N={'PASS' if comparison.same_n_qualified else 'FAIL'}"
++                    f"status=rung; domain={label}; target_size={size}; "
++                    f"legacy_Dmax={comparison.legacy_d_max:.6f}; MV_Dmax={comparison.mv_d_max:.6f}; "
++                    f"same_N={'PASS' if comparison.same_n_qualified else 'FAIL'}"
+                 )
+         comparison_by_size = {item.target_size: item for item in comparisons}
+         mv_domain_passes: dict[int, bool] = {}
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.236a0.txt' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SOURCE_PATCH_0.20.235a0_to_0.20.236a0.patch' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/training_data/target_multi_view_repair.py /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/training_data/target_multi_view_repair.py
+--- /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/training_data/target_multi_view_repair.py	2026-08-18 02:35:41.000000000 +0000
++++ /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/training_data/target_multi_view_repair.py	2026-08-18 03:25:50.542870137 +0000
+@@ -1565,7 +1565,7 @@
+                 minimum = min(value for _, value in rung.family_coverage)
+                 cache_note = "; state=MVSTATE-cache" if checkpoint_used else ""
+                 progress_callback(
+-                    f"{reference_domain.label_domain_id} n{size}: swaps={len(accepted)}; "
++                    f"status=rung; domain={reference_domain.label_domain_id}; target_size={size}; swaps={len(accepted)}; "
+                     f"zero_unique_shell_fraction={zero_unique_fraction:.4f}; min_required_coverage={minimum:.6f}{cache_note}"
+                 )
+             previous_size = size
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.236a0.txt' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SOURCE_PATCH_0.20.235a0_to_0.20.236a0.patch' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/training_data/target_multi_view_selector.py /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/training_data/target_multi_view_selector.py
+--- /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/mdstats/training_data/target_multi_view_selector.py	2026-08-18 02:38:33.000000000 +0000
++++ /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/mdstats/training_data/target_multi_view_selector.py	2026-08-18 03:25:50.542143908 +0000
+@@ -1071,8 +1071,9 @@
+             if progress_callback is not None:
+                 minimum = min(value for _, value in family_coverage)
+                 progress_callback(
+-                    f"{reference_domain.label_domain_id} n{size}: min_required_coverage={minimum:.6f}; "
+-                    f"hard_obligations={'PASS' if hard_pass else 'FAIL'}; phase={entries[-1].phase}"
++                    f"status=rung; domain={reference_domain.label_domain_id}; target_size={size}; "
++                    f"min_required_coverage={minimum:.6f}; hard_obligations={'PASS' if hard_pass else 'FAIL'}; "
++                    f"phase={entries[-1].phase}"
+                 )
+ 
+     rungs: list[TargetMultiViewSelectionRung] = []
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.236a0.txt' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SOURCE_PATCH_0.20.235a0_to_0.20.236a0.patch' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/pyproject.toml /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/pyproject.toml
+--- /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/pyproject.toml	2026-08-18 02:50:34.000000000 +0000
++++ /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/pyproject.toml	2026-08-18 03:41:10.652072122 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.236a0"
++version = "0.20.237a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.236a0.txt' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SOURCE_PATCH_0.20.235a0_to_0.20.236a0.patch' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/release/qualification_logs/MLFF_PROGRESS_FORMAT_QUALIFICATION_0.20.237a0.json /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/release/qualification_logs/MLFF_PROGRESS_FORMAT_QUALIFICATION_0.20.237a0.json
+--- /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/release/qualification_logs/MLFF_PROGRESS_FORMAT_QUALIFICATION_0.20.237a0.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/release/qualification_logs/MLFF_PROGRESS_FORMAT_QUALIFICATION_0.20.237a0.json	2026-08-18 03:48:01.382433685 +0000
+@@ -0,0 +1,105 @@
++{
++  "active_foundation": {
++    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
++    "family": "MACE-MPA-0 medium",
++    "mh1_compatible": true
++  },
++  "architecture_revision": 103,
++  "build": {
++    "compileall": "PASS",
++    "wheel_build": "PASS_NO_BUILD_ISOLATION",
++    "wheel_version": "0.20.237a0"
++  },
++  "content_digest": "0ab7cc94371c76d1efd693b3725868454ad6dcb0069530ba46c6da0b6192c5dd",
++  "coverage": [
++    "generic campaign progress reporter",
++    "DATA2/DATA3/DATA4/DATA6/DATA7 callbacks",
++    "structural selection",
++    "TARGET-DATA2B",
++    "FEAS1",
++    "NEIGHBOR1",
++    "MVIDX1",
++    "MVSEL1",
++    "REPAIR1",
++    "MVQUAL1",
++    "production materialization/model sweep",
++    "adaptive inference scheduler",
++    "staged evaluation scheduler",
++    "TRAIN heartbeat/scheduler"
++  ],
++  "dependency_graph_schema": 83,
++  "documentation": {
++    "architecture_revision_unchanged": true,
++    "manual_markdown_sha256": "80de2bcc6445ac672dd127f082dfd7fb55e987cb8f7052b0dfaa6fb4253937d8",
++    "manual_pdf_pages": 53,
++    "manual_pdf_sha256": "47421f4536e38df54303b7f6048e2660bde99dab31229435a154bb8faed3fb51",
++    "pdf_full_render": "PASS_53_PAGES",
++    "pdf_preflight": "PASS",
++    "pdf_visual_qa": "PASS_PAGES_1_2_41_42"
++  },
++  "format_contract": {
++    "delimiter": "semicolon",
++    "elapsed": "HH:MM:SS",
++    "eta_known": "HH:MM:SS",
++    "eta_unknown": "--:--:--",
++    "field_order": [
++      "status",
++      "progress",
++      "elapsed",
++      "eta",
++      "rate",
++      "stage_specific_telemetry"
++    ],
++    "legacy_eta_dialects_forbidden": [
++      "39m44s",
++      "decimal minutes",
++      "seconds-only ETA",
++      "estimating"
++    ],
++    "phase_only": "status=phase; phase=...",
++    "progress_fraction": "completed/total (percent%)"
++  },
++  "gpu_authority_change": false,
++  "known_preexisting_fixture": {
++    "classification": "pre_existing_environment_sensitive_acceleration_configuration_mismatch",
++    "progress_format_related": false,
++    "reproduced_on_untouched_0_20_236a0": true,
++    "test": "test_check_only_preflight_reuses_promoted_data8_tree"
++  },
++  "maintenance": "MLFF_PROGRESS_FORMAT_CONSISTENCY",
++  "next_gate": "FINAL_GPU1_DEFERRED_RELEASE_QUALIFICATION",
++  "release": "0.20.237a0",
++  "runtime_algorithm_change": false,
++  "schema": "mdstats.mlff-progress-format-qualification.v1",
++  "scientific_authority_change": false,
++  "status": "PASS_PRESENTATION_ONLY",
++  "tests": {
++    "modified_data2_data7_paths": {
++      "failed": 0,
++      "passed": 56,
++      "warnings": 54
++    },
++    "production_materialization_except_preexisting_fixture": {
++      "deselected_preexisting": 1,
++      "failed": 0,
++      "passed": 14,
++      "warnings": 13
++    },
++    "production_model_sweep": {
++      "failed": 0,
++      "passed": 9,
++      "warnings": 9
++    },
++    "progress_current_authority": {
++      "failed": 0,
++      "passed": 121,
++      "skipped": 1,
++      "warnings": 10
++    },
++    "target_data2_scientific_authority": {
++      "failed": 0,
++      "passed": 111,
++      "warnings": 18
++    }
++  }
++}
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.236a0.txt' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SOURCE_PATCH_0.20.235a0_to_0.20.236a0.patch' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/tests/test_mlff_campaign_cli.py /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/tests/test_mlff_campaign_cli.py
+--- /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/tests/test_mlff_campaign_cli.py	2026-08-16 22:26:28.000000000 +0000
++++ /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/tests/test_mlff_campaign_cli.py	2026-08-18 03:37:28.104131693 +0000
+@@ -603,7 +603,7 @@
+     )
+     text = probe()
+     assert "phase=epoch 1/1" in text
+-    assert "gradient updates=12/48 (25.0%)" in text
++    assert "progress=12/48 (25.0%); unit=gradient-update" in text
+ 
+ 
+ def test_mace_training_progress_probe_marks_only_new_optimizer_activity_as_true_epoch(tmp_path: Path) -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.236a0.txt' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SOURCE_PATCH_0.20.235a0_to_0.20.236a0.patch' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/tests/test_mlff_doc_arch1_specification.py /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/tests/test_mlff_doc_arch1_specification.py
+--- /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/tests/test_mlff_doc_arch1_specification.py	2026-08-18 02:53:15.000000000 +0000
++++ /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/tests/test_mlff_doc_arch1_specification.py	2026-08-18 03:41:10.664526862 +0000
+@@ -16,10 +16,10 @@
+ 
+ 
+ def test_doc_arch1_release_and_current_authority_are_synchronized():
+-    assert mdstats.__version__ == "0.20.236a0"
++    assert mdstats.__version__ == "0.20.237a0"
+     text = MANUAL.read_text(encoding="utf-8")
+     assert "architecture_revision: 103" in text
+-    assert 'release: "mdstats 0.20.236a0"' in text
++    assert 'release: "mdstats 0.20.237a0"' in text
+     assert "# Part VI - Performance and execution architecture" in text
+     assert "# Part VII - Current implementation status and frozen forward gates" in text
+     assert "## Context retrieval index" in text
+@@ -74,7 +74,7 @@
+     assert revisions == sorted(set(revisions))
+     assert revisions[-1] == 103
+     assert "NEIGHBOR1" in REV_INDEX.read_text()
+-    assert "0.20.236a0" in REL_INDEX.read_text()
++    assert "0.20.237a0" in REL_INDEX.read_text()
+     assert (ROOT / "docs/history/mlff/LINEAGE.md").is_file()
+     assert (ROOT / "docs/history/mlff/manual_snapshots/mlff_training_data_architecture_rev090_full.md").is_file()
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.236a0.txt' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SOURCE_PATCH_0.20.235a0_to_0.20.236a0.patch' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/tests/test_mlff_inference_parallel_scheduler.py /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/tests/test_mlff_inference_parallel_scheduler.py
+--- /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/tests/test_mlff_inference_parallel_scheduler.py	2026-08-16 22:26:28.000000000 +0000
++++ /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/tests/test_mlff_inference_parallel_scheduler.py	2026-08-18 03:37:28.104383822 +0000
+@@ -632,7 +632,7 @@
+         [task], cfg=cfg, phase="evaluation", device="cpu", progress=Progress()
+     ) == {"job": 3}
+     output = capsys.readouterr().out
+-    assert "[EVALUATION STAGE] run-a:epoch4: reading checkpoint payload" in output
++    assert "[EVALUATION stage] status=phase; item=run-a:epoch4; phase=reading checkpoint payload" in output
+     assert "loading candidate MACE model" in output
+     assert "evaluating candidate on LTA target monitor" in output
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.236a0.txt' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SOURCE_PATCH_0.20.235a0_to_0.20.236a0.patch' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/tests/test_mlff_mvstate_reuse1_specification.py /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/tests/test_mlff_mvstate_reuse1_specification.py
+--- /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/tests/test_mlff_mvstate_reuse1_specification.py	2026-08-18 02:53:14.000000000 +0000
++++ /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/tests/test_mlff_mvstate_reuse1_specification.py	2026-08-18 03:41:10.664639909 +0000
+@@ -12,13 +12,9 @@
+ EVIDENCE = ROOT / "benchmarks/mlff_mvstate_reuse1_cloud_cpu_mpa0_2026-08-17.json"
+ 
+ 
+-def test_mvstate_reuse1_release_and_manual_are_current() -> None:
+-    assert mdstats.__version__ == "0.20.236a0"
+-    assert 'version = "0.20.236a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+-    assert "Version: 0.20.236a0" in (ROOT / "PKG-INFO").read_text(encoding="utf-8")
++def test_mvstate_reuse1_historical_release_and_current_manual_are_synchronized() -> None:
+     text = MANUAL.read_text(encoding="utf-8")
+     assert "architecture_revision: 103" in text
+-    assert 'release: "mdstats 0.20.236a0"' in text
+     assert "Gate MVSTATE-REUSE1 - selector-to-repair sparse-state reuse - COMPLETE" in text
+     assert "CPU OPTIMIZATION CLOSED" in text
+     assert SPEC.is_file()
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.236a0.txt' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SOURCE_PATCH_0.20.235a0_to_0.20.236a0.patch' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/tests/test_mlff_progress_formatting.py /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/tests/test_mlff_progress_formatting.py
+--- /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/tests/test_mlff_progress_formatting.py	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/tests/test_mlff_progress_formatting.py	2026-08-18 03:29:03.656362333 +0000
+@@ -0,0 +1,91 @@
++from __future__ import annotations
++
++import re
++from pathlib import Path
++
++import pytest
++
++from mdstats.training_data.progress_timing import (
++    PROGRESS_TIME_UNKNOWN,
++    format_progress_fraction,
++    format_progress_rate,
++    format_progress_time,
++    format_progress_timing_fields,
++)
++
++
++_TIME_RE = re.compile(r"^(?:\d{2,}:\d{2}:\d{2}|--:--:--)$")
++
++
++def test_mlff_progress_time_is_fixed_width_hh_mm_ss() -> None:
++    assert format_progress_time(None) == PROGRESS_TIME_UNKNOWN == "--:--:--"
++    assert format_progress_time(float("inf")) == "--:--:--"
++    assert format_progress_time(-1.0) == "--:--:--"
++    assert format_progress_time(0.0) == "00:00:00"
++    assert format_progress_time(9.6) == "00:00:10"
++    assert format_progress_time(65.0) == "00:01:05"
++    assert format_progress_time(3661.0) == "01:01:01"
++    assert format_progress_time(100 * 3600 + 2) == "100:00:02"
++
++
++def test_mlff_progress_fraction_and_rates_use_canonical_fields() -> None:
++    assert format_progress_fraction(128, 36759) == "128/36,759 (0.3%)"
++    assert format_progress_fraction(0, 0) == "0/0 (100.0%)"
++    assert format_progress_rate(17.053, "frame/s") == "17.05 frame/s"
++    assert format_progress_rate(0.0, "frame/s") == "-- frame/s"
++    with pytest.raises(ValueError):
++        format_progress_fraction(2, 1)
++
++
++def test_mlff_progress_timing_field_order_is_stable() -> None:
++    message = format_progress_timing_fields(
++        elapsed_seconds=65.0,
++        eta_seconds=3661.0,
++        recent_rate=17.053,
++        average_rate=16.5,
++        rate_unit="frame/s",
++    )
++    assert message == (
++        "elapsed=00:01:05; eta=01:01:01; "
++        "recent=17.05 frame/s; avg=16.50 frame/s"
++    )
++
++
++def test_mlff_source_contains_no_legacy_eta_dialects() -> None:
++    root = Path(__file__).resolve().parents[1] / "mdstats" / "training_data"
++    offenders: list[str] = []
++    forbidden = (
++        "eta=estimating",
++        "recent=estimating",
++        "eta={timing.eta_seconds / 60.0",
++        "eta={remaining/rate",
++    )
++    for path in root.glob("*.py"):
++        text = path.read_text(encoding="utf-8")
++        for token in forbidden:
++            if token in text:
++                offenders.append(f"{path.name}: {token}")
++    assert not offenders, offenders
++
++
++def test_all_literal_mlff_eta_placeholders_are_hh_mm_ss() -> None:
++    root = Path(__file__).resolve().parents[1] / "mdstats" / "training_data"
++    # Literal eta values are used only for start/unknown/complete states.  Any
++    # calculated ETA must go through format_progress_time().
++    literal = re.compile(r"(?<![A-Za-z])eta=([^;\"'}]+)")
++    offenders: list[str] = []
++    for path in root.glob("*.py"):
++        for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
++            if line.lstrip().startswith(("#", "\"\"\"")):
++                continue
++            if 'f"' not in line and "f'" not in line:
++                continue
++            if not re.search(r'(?<![A-Za-z])eta=', line) or "format_progress_time" in line:
++                continue
++            for match in literal.finditer(line):
++                value = match.group(1).strip()
++                if value.startswith("{"):
++                    continue
++                if not _TIME_RE.match(value):
++                    offenders.append(f"{path.name}:{line_number}: {value}")
++    assert not offenders, offenders
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.236a0.txt' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SOURCE_PATCH_0.20.235a0_to_0.20.236a0.patch' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/tests/test_mlff_progress_reporting_format_specification.py /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/tests/test_mlff_progress_reporting_format_specification.py
+--- /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/tests/test_mlff_progress_reporting_format_specification.py	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/tests/test_mlff_progress_reporting_format_specification.py	2026-08-18 03:48:27.756273424 +0000
+@@ -0,0 +1,50 @@
++from __future__ import annotations
++
++import json
++from pathlib import Path
++
++import mdstats
++
++ROOT = Path(__file__).resolve().parents[1]
++MANUAL = ROOT / "docs/arch_manuals/mlff_training_data_architecture.md"
++SPEC = ROOT / "docs/specs/training_data/mlff_progress_reporting_format_spec.md"
++
++
++def test_progress_format_release_metadata_and_architecture_boundary() -> None:
++    assert mdstats.__version__ == "0.20.237a0"
++    assert 'version = "0.20.237a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert "Version: 0.20.237a0" in (ROOT / "PKG-INFO").read_text(encoding="utf-8")
++    text = MANUAL.read_text(encoding="utf-8")
++    assert "architecture_revision: 103" in text
++    assert 'release: "mdstats 0.20.237a0"' in text
++    assert "FINAL-GPU1" in text
++
++
++def test_progress_format_spec_freezes_canonical_presentation() -> None:
++    text = SPEC.read_text(encoding="utf-8")
++    for token in (
++        "elapsed=HH:MM:SS",
++        "eta=HH:MM:SS",
++        "eta=--:--:--",
++        "progress=completed/total (percent%)",
++        "status=phase; phase=...",
++        "presentation state only",
++    ):
++        assert token in text
++
++
++def test_progress_format_history_exists_without_new_architecture_revision() -> None:
++    assert (ROOT / "docs/history/mlff/release_notes/PATCH_NOTES_0.20.237a0.md").is_file()
++    assert not (ROOT / "docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV104.md").exists()
++
++
++def test_progress_format_qualification_record_is_presentation_only() -> None:
++    q = json.loads((ROOT / "release/qualification_logs/MLFF_PROGRESS_FORMAT_QUALIFICATION_0.20.237a0.json").read_text(encoding="utf-8"))
++    assert q["release"] == "0.20.237a0"
++    assert q["architecture_revision"] == 103
++    assert q["dependency_graph_schema"] == 83
++    assert q["status"] == "PASS_PRESENTATION_ONLY"
++    assert q["scientific_authority_change"] is False
++    assert q["runtime_algorithm_change"] is False
++    assert q["next_gate"] == "FINAL_GPU1_DEFERRED_RELEASE_QUALIFICATION"
++    assert q["tests"]["target_data2_scientific_authority"]["passed"] == 111
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.236a0.txt' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SOURCE_PATCH_0.20.235a0_to_0.20.236a0.patch' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/tests/test_mlff_progress_timing.py /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/tests/test_mlff_progress_timing.py
+--- /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/tests/test_mlff_progress_timing.py	2026-08-16 22:26:28.000000000 +0000
++++ /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/tests/test_mlff_progress_timing.py	2026-08-18 03:26:28.473515448 +0000
+@@ -82,10 +82,10 @@
+     reporter = campaign_cli._ProgressReporter("TEST", 3)
+     reporter.item_done(1, "cached", "already complete")
+     first = capsys.readouterr().out
+-    assert "eta=estimating" in first
++    assert "eta=--:--:--" in first
+ 
+     reporter.item_done(2, "real", "computed")
+     second = capsys.readouterr().out
+     # The first cached item is the baseline; one real item in ten seconds leaves
+     # one item and therefore predicts ~10 s, not ~5 s from counting the cache hit.
+-    assert "eta=10s" in second
++    assert "eta=00:00:10" in second
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.236a0.txt' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SOURCE_PATCH_0.20.235a0_to_0.20.236a0.patch' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/tests/test_mlff_target_data2b_feas1.py /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/tests/test_mlff_target_data2b_feas1.py
+--- /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/tests/test_mlff_target_data2b_feas1.py	2026-08-17 10:02:24.000000000 +0000
++++ /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/tests/test_mlff_target_data2b_feas1.py	2026-08-18 03:29:03.656690377 +0000
+@@ -269,9 +269,9 @@
+     assert parallel.content_digest == baseline.content_digest
+     assert any("global-workers=3" in message for message in messages)
+     assert any("tree-workers/task=1" in message for message in messages)
+-    assert any("profiles=1" in message and "blocks=" in message and "witnesses=" in message for message in messages)
++    assert any("profiles=1" in message and "blocks=" in message and "progress=" in message for message in messages)
+     assert any("eta=" in message and "rate=" in message for message in messages)
+-    assert any("profile 1/1 complete" in message for message in messages)
++    assert any("status=profile-complete" in message and "profile=1/1" in message for message in messages)
+ 
+ 
+ def test_feas1_cli_parallelism_uses_block_workers_when_budget_allows() -> None:
+@@ -327,10 +327,10 @@
+         block_workers=1,
+     )
+     assert parallel.to_dict() == serial.to_dict()
+-    assert any("global start: profiles=6" in message for message in messages)
+-    completion = [message for message in messages if message.startswith("profile ")]
++    assert any("status=start" in message and "profiles=6" in message for message in messages)
++    completion = [message for message in messages if message.startswith("status=profile-complete;")]
+     assert len(completion) == 6
+-    assert any("profile 6/6 complete" in message and "global profiles=6/6" in message for message in completion)
++    assert any("profile=6/6" in message for message in completion)
+     assert all("manifest=" in message for message in completion)
+ 
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.236a0.txt' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SOURCE_PATCH_0.20.235a0_to_0.20.236a0.patch' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/tests/test_mlff_target_data2c_mvidx1.py /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/tests/test_mlff_target_data2c_mvidx1.py
+--- /mnt/data/mdstats-progressfmt-control/mdstats-0.20.236a0/tests/test_mlff_target_data2c_mvidx1.py	2026-08-17 09:18:24.000000000 +0000
++++ /mnt/data/mdstats-progressfmt-work/mdstats-0.20.237a0/tests/test_mlff_target_data2c_mvidx1.py	2026-08-18 03:27:33.845927538 +0000
+@@ -167,7 +167,7 @@
+         progress_interval_seconds=0.01,
+         progress_callback=messages.append,
+     )
+-    assert any("family" in message and "blocks=" in message for message in messages)
++    assert any("families=" in message and "blocks=" in message and "progress=" in message for message in messages)
+     assert any("rate=" in message and "eta=" in message and "edges=" in message for message in messages)
+ 
+ 

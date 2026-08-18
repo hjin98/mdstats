@@ -1,0 +1,100 @@
+{
+  "acceptance_matrix": {
+    "item_count": 15,
+    "measure_only": [
+      "PREC3_REAL_CUEQ_ACTIVATION",
+      "MH1_ACCEL1_CUEQ_NUMERICAL_PARITY",
+      "MH1_DATA6_1_CUEQ_DESCRIPTOR_SELECTION_PARITY",
+      "MH1_TRAIN1_CUEQ_TRAINING_REALIZATION",
+      "MH1_CERT1_GENERATED_DEFAULT_CUEQ_MATRIX",
+      "PERF_P5_ACCELERATOR_PERSISTENCE_REUSE"
+    ],
+    "must_pass": [
+      "CUEQ_DEP1_RUNTIME_FREEZE",
+      "E3NN_BASELINE_COMPLETE_CAMPAIGN",
+      "SIZE_FIDELITY1_EXHAUSTIVE_CALIBRATION",
+      "PERF_P2R_WHOLE_FUNNEL_GPU_PERFORMANCE",
+      "VRAM1_PERF_P4_ACCELERATOR_MEMORY_THROUGHPUT",
+      "CUEQ_PHASE1_TRAINING_ONLY_QUALIFICATION",
+      "PERF_CERT1_END_TO_END_CERTIFICATION"
+    ],
+    "optional": [
+      "CUEQ_PHASE2_SELECTED_HEAD_SOURCE_EXECUTION_OPTIONAL",
+      "MH1_DEPLOY1_MLIAP_EXPORT_AND_LAMMPS_RUN0"
+    ],
+    "runtime_bound": [
+      "CUEQ_DEP1_RUNTIME_FREEZE",
+      "PREC3_REAL_CUEQ_ACTIVATION",
+      "MH1_ACCEL1_CUEQ_NUMERICAL_PARITY",
+      "MH1_DATA6_1_CUEQ_DESCRIPTOR_SELECTION_PARITY",
+      "MH1_TRAIN1_CUEQ_TRAINING_REALIZATION",
+      "MH1_CERT1_GENERATED_DEFAULT_CUEQ_MATRIX",
+      "CUEQ_PHASE1_TRAINING_ONLY_QUALIFICATION",
+      "CUEQ_PHASE2_SELECTED_HEAD_SOURCE_EXECUTION_OPTIONAL",
+      "PERF_CERT1_END_TO_END_CERTIFICATION"
+    ]
+  },
+  "architecture_revision": 59,
+  "authorization": {
+    "generated_default_change_authorized": false,
+    "perf_cert1_recommendation": false,
+    "positive_cueq_source_execution": false,
+    "positive_cueq_training": false
+  },
+  "control_plane_passed": true,
+  "dependency_graph_schema": 41,
+  "final_gpu1_policy_content_digest": "519b2cefca4c8ad33d3c03e2e079ec17d41428a8f0beed903cdc61f4d89c45db",
+  "gate": "FINAL-GPU1",
+  "handoff_guards": {
+    "canonical_policy_required": true,
+    "exact_ordered_matrix_binding": true,
+    "generated_default_change_authorized": false,
+    "immutable_gate_registration": true,
+    "locked_foundation_identity_required_at_init": true,
+    "pre_reduction_rehash": [
+      "release_archive",
+      "foundation_models",
+      "evidence_records",
+      "evidence_artifacts"
+    ],
+    "single_cueq_runtime_binding": true
+  },
+  "locked_foundation_models": {
+    "mace_mh_1": {
+      "expected_sha256": "ec00a2705854622fbbd898ccfb7701072fcd674709102d009fb919c1b8cc5dde",
+      "identity_passed": true,
+      "sha256": "ec00a2705854622fbbd898ccfb7701072fcd674709102d009fb919c1b8cc5dde"
+    },
+    "mace_mpa_0": {
+      "expected_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
+      "identity_passed": true,
+      "sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638"
+    }
+  },
+  "mdstats_version": "0.20.192a0",
+  "positive_gpu_execution": "pending_final_workstation",
+  "release_artifact_binding": {
+    "source_archive_sha256": null,
+    "state": "post_seal_sidecar_required"
+  },
+  "schema": "mdstats.mlff-final-gpu1-handoff-release-qualification.2026-08.v1",
+  "validation": {
+    "archival_test_note": "PERF-P3 specification remains intentionally pinned to historical release 0.20.187a0 and is excluded from current-release pass counts.",
+    "compileall": "pass",
+    "current_synchronization_slice": {
+      "failed": 0,
+      "passed": 19
+    },
+    "focused_final_gpu1_cueq_perf_cert1": {
+      "failed": 0,
+      "passed": 29,
+      "skipped_expected": 1
+    },
+    "pdf_qa": "pass",
+    "source_tree_cli_smoke": "pass",
+    "supplied_model_identity_test": {
+      "failed": 0,
+      "passed": 1
+    }
+  }
+}

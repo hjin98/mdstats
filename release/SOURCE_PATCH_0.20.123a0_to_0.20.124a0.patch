@@ -1,0 +1,2372 @@
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/ARCHITECTURE_NOTES_MLFF_REV27.md b/ARCHITECTURE_NOTES_MLFF_REV27.md
+--- a/ARCHITECTURE_NOTES_MLFF_REV27.md	1970-01-01 00:00:00.000000000 +0000
++++ b/ARCHITECTURE_NOTES_MLFF_REV27.md	2026-08-09 21:20:14.726787651 +0000
+@@ -0,0 +1,24 @@
++# MLFF architecture revision 27 - ADAPT-STOP1 implementation
++
++This release implements `ADAPT-STOP1` on top of the binary learned-model precision and fixed
++common online monitors established by ADAPT-PREC1/ADAPT-MON1.
++
++Implemented contract:
++
++- target force-RMSE boundary 30 meV/A by default;
++- replay boundary derived as `(target_weight / replay_weight) * target_boundary`;
++- default 1:1 weighting gives a 30 meV/A replay candidate boundary;
++- target-success training stop at 0.80 of the target boundary (24 meV/A default);
++- replay-exhaustion stop at 1.20 of the replay boundary (36 meV/A default);
++- hard 30-epoch ceiling retained;
++- pre-epoch-0 true-replay foundation-baseline feasibility check with explicit override;
++- no extra inference: stop decisions reuse normal ADAPT-MON1 MACE validation rows;
++- in-process MACE-loop termination only after a durable epoch checkpoint;
++- immutable run-local adaptive-stop evidence with exact policy lineage and restart idempotence;
++- terminal restart skips further epochs and completes normal final-model publication;
++- run outcome distinguishes whether an admissible checkpoint exists, but ranking remains deferred
++  to ADAPT-RANK1.
++
++The canonical contract is documented in
++`docs/specs/training_data/mlff_adaptive_training_stop_spec.{md,pdf}` and the MLFF architecture
++manual. EVAL-MF remains runtime-authoritative until ADAPT-EVAL1.
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/CHANGELOG.md b/CHANGELOG.md
+--- a/CHANGELOG.md	2026-08-09 19:54:32.000000000 +0000
++++ b/CHANGELOG.md	2026-08-09 21:20:15.143013998 +0000
+@@ -1,3 +1,15 @@
++## 0.20.124a0 - 2026-08-09
++
++- Implemented ADAPT-STOP1 criterion-driven MLFF training termination using the fixed common
++  ADAPT-MON1 monitors with no additional inference.
++- Added the 30 meV/A default target force-RMSE boundary, weight-derived replay boundary, 0.80
++  target-success margin, 1.20 replay-exhaustion margin, and 30-epoch hard ceiling.
++- Added pre-epoch-0 true-replay foundation-baseline feasibility validation and an explicit override
++  for deliberately replay-heavier policies.
++- Added durable `adaptive_training_stop.json` evidence, fail-closed exact restart semantics, and
++  terminal-restart finalization without an extra training epoch.
++- ADAPT-RANK1/ADAPT-EVAL1 remain pending; EVAL-MF is still the production evaluator.
++
+ ## 0.20.123a0 - 2026-08-09
+ 
+ - Implement ADAPT-MON1 fixed common online validation evidence: new campaigns use one deterministic 256-configuration target monitor shared across all competing runs and one deterministic 512-configuration independent TRUE_DFT replay monitor.
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/PATCH_NOTES_0.20.124a0.md b/PATCH_NOTES_0.20.124a0.md
+--- a/PATCH_NOTES_0.20.124a0.md	1970-01-01 00:00:00.000000000 +0000
++++ b/PATCH_NOTES_0.20.124a0.md	2026-08-09 21:20:14.726157137 +0000
+@@ -0,0 +1,33 @@
++# mdstats 0.20.124a0 patch notes
++
++## ADAPT-STOP1 — weight-coupled adaptive training termination
++
++This release implements the third gate of the post-0.20.120 adaptive MLFF revision.
++
++### Default stopping geometry
++
++The global target force-RMSE boundary is 30 meV/A. With default 1:1 target:replay score weights,
++the replay boundary is also 30 meV/A. Training stops after a durable epoch checkpoint when target
++RMSE reaches 80% of its boundary (24 meV/A), replay RMSE reaches 120% of its derived boundary
++(36 meV/A), or the 30-epoch hard ceiling is reached.
++
++### No additional monitor inference
++
++ADAPT-STOP1 consumes the fixed 256-target/512-true-replay validation rows already produced by
++MACE each epoch. The stop decision is installed inside the qualified MACE 0.3.16 loop after the
++epoch checkpoint is durable, so threshold termination exits normally and still permits MACE final
++model publication.
++
++### Replay feasibility and restart safety
++
++The initial true-label replay validation freezes the foundation replay baseline before epoch 0.
++Replay-heavy weight choices whose derived replay ceiling falls below that baseline fail closed
++unless explicitly overridden. Run-local `adaptive_training_stop.json` records the immutable
++policy digest, foundation baseline, per-epoch target/replay RMSE, candidate eligibility, and
++terminal reason. Checkpoint restart requires matching state. A terminal restart skips the epoch
++loop and finalizes without training an extra epoch.
++
++### Gate boundary
++
++ADAPT-STOP1 records whether an admissible epoch exists but does not choose it. ADAPT-RANK1 is the
++next gate. EVAL-MF remains the current production evaluator until ADAPT-EVAL1.
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/PKG-INFO b/PKG-INFO
+--- a/PKG-INFO	2026-08-09 19:55:00.000000000 +0000
++++ b/PKG-INFO	2026-08-09 21:19:26.450537028 +0000
+@@ -1,6 +1,6 @@
+ Metadata-Version: 2.4
+ Name: mdstats
+-Version: 0.20.123a0
++Version: 0.20.124a0
+ Summary: Transparent atomistic frame collections and structural/dynamical statistics
+ Requires-Python: >=3.10
+ Requires-Dist: numpy>=1.26
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/campaign.toml.example b/campaign.toml.example
+--- a/campaign.toml.example	2026-08-09 20:03:59.000000000 +0000
++++ b/campaign.toml.example	2026-08-09 21:25:09.455812822 +0000
+@@ -108,6 +108,12 @@
+ estimated_loader_memory_mib_per_worker = 256.0
+ max_num_epochs = 30
+ eval_interval = 1
++# ADAPT-STOP1 reuses the common validation rows already computed every epoch.
++# Target success stops at target_stop_fraction * the global target force-RMSE boundary;
++# replay exhaustion stops at replay_stop_multiplier * the weight-derived replay boundary.
++target_stop_fraction = 0.80
++replay_stop_multiplier = 1.20
++allow_replay_threshold_below_foundation_baseline = false
+ # ADAPT-MON1 fixed common online monitors. These are model-selection evidence only
+ # and never supply gradients. Target frames are condition/trajectory/time balanced;
+ # replay frames are selected from independent true-label replay evidence.
+@@ -294,6 +300,8 @@
+ 
+ [acceptance]
+ # Null thresholds are reported but not hard gates. Set project-specific values before production.
++# ADAPT-STOP1 global target force-RMSE candidate/full-evaluation boundary.
++maximum_target_force_rmse_ev_per_angstrom = 0.030
+ maximum_energy_mae_ev_per_atom = 0.005
+ maximum_focus_force_rmse_ev_per_angstrom = 0.10
+ maximum_stress_rmse_ev_per_angstrom3 = 0.02
+@@ -306,6 +314,9 @@
+ [evaluation]
+ device = "cuda"
+ dtype = "float32"
++# ADAPT-STOP1 derives replay_max = (target_score_weight/replay_score_weight) * target_max.
++target_score_weight = 1.0
++replay_score_weight = 1.0
+ # EVAL-MF2 qualified production default. Allowed values: "bounded", "exhaustive",
+ # or "multi_fidelity". Legacy configs that omit this field retain bounded behavior.
+ checkpoint_strategy = "multi_fidelity"
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/docs/arch_manuals/mlff_training_data_architecture.md b/docs/arch_manuals/mlff_training_data_architecture.md
+--- a/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-09 19:56:06.000000000 +0000
++++ b/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-09 21:23:56.017559895 +0000
+@@ -34,7 +34,7 @@
+ STAT1 and SAMP0 workflows consume those primitives without changing their
+ serialized evidence. MLFF-DATA2 is implemented in `0.20.30a0`: deterministic source manifests, VASP source catalogs, named energy selection, decomposed label domains, and per-label-domain structural atomic-reference identifiability are public runtime contracts. MLFF-DATA3 is implemented in `0.20.31a0`: manifest-bound frame occurrences, geometry and label identities, duplicate/restart detection, post-DFT eligibility, temperature conditions, reference-cell resolution, and rotation-separated finite strain are public runtime contracts. MLFF-DATA4 is implemented in `0.20.32a0` and generalized through DATA9A7d: partition-independent raw physical features, optional profile-extension states, protected event bursts, deterministic feature caches, and partition-role budget requests are public runtime contracts. MLFF-DATA5 is implemented in `0.20.33a0`: autocorrelation-aware partition units, role feasibility, deterministic outer evidence roles, independence grades, nested cross-validation monitors, blinding boundaries, and fail-closed leakage audits are public runtime contracts. MLFF-DATA6 is implemented in `0.20.34a0` and generalized through DATA9A7d: profile-aware universal and optional extension descriptors, optional checkpoint-bound MACE atomic descriptor sidecars, training-domain-only foundation residuals, blinded non-training predictions, and sealed locked-test prediction records are public runtime contracts. MLFF-DATA7 is implemented in `0.20.35a0`: canonical final/fold training domains, fold-local fitted metrics, domain-local atomic-reference fits, explicit objective and checkpoint policies, deterministic quota-interleaved selection ladders, and coverage reports are public runtime contracts. MLFF-DATA8 is implemented in `0.20.36a0`: verified MACE-readable extended-XYZ artifacts, explicit E0 mappings, replay train/monitor plans, a v0.3.16 source compatibility lock, complete training-protocol identities, loader dry-run exposure records, independent final/fold job bundles, and sealed locked-test metadata are public runtime contracts. MLFF-DATA9A hardening began in `0.20.37a0`, its offline runtime bootstrap is implemented in `0.20.38a0`, and DATA9A2 real-MACE realization is implemented in `0.20.39a0`: checkpoint-residual E0 fits, relocatable bundles, strict replay/XYZ audits, source-declared dependency manifests, isolated local-artifact installation, installed-environment qualification, v0.3.16 scalar-literal serialization, fixed-file target/replay weight realization, genuine parser/loader dry runs, bounded training, checkpoint/head inventory, target-head extraction, and finite evaluation round trips are public contracts. The supplied dependency bundle and MPA-0 checkpoint pass executable qualification. DATA9A3 in 0.20.40a0 qualifies the complete 27-source, 37,632-frame bulk-LTA target corpus through DATA5 with a passing leakage audit. DATA9A production execution remains open for checkpoint-bound production DATA6/DATA7 evidence, DATA8 job materialization, exact replay-corpus identity, and later protocol-matched training and freeze. DATA9A4 in 0.20.41a0 adds a protocol-bound selectable precision contract: the float64 MPA-0 checkpoint may initialize either a float32 or float64 fine-tuned model, and actual serialized parameter/buffer dtypes are immutable execution evidence rather than inferred from CLI text. DATA9A5a/9A5b in 0.20.42a0-0.20.43a0 close Python/ASE critical precision and deployment-artifact semantics. DATA9A6 in 0.20.44a0 introduces the analysis-owned observable-call bridge. DATA9A6b in 0.20.45a0 closes recipe dependency safety, collection and model lineage, runtime-duration/warning evidence, capability requirement schemas, documentation conflicts, and the thermomechanical/energetic analysis ownership plan. DATA9A6c in 0.20.46a0 verifies supplied identities against the actual collections, requires symmetric reference/candidate generation lineage for production evidence, binds analysis-owned result digests, freezes observable evidence roles and comparison-policy identity before locked evaluation, and corrects runtime/package identity and dependency ordering. DATA9A7a in 0.20.47a0 introduces user-declared compositional material profiles, phase components, atom-group catalogs, condition axes, independence axes, a declarative provider protocol, and DATA4 schema-v2 profile threading without changing existing feature or selection behavior. DATA9A7b in 0.20.48a0 adds an analysis-owned universal local-structure kernel, profile/atom-group-aware DATA6 structural catalogs, generic structural events, a DATA7 universal feature block, and generic per-species environment coverage without importing LTA. DATA9A7c in 0.20.49a0 derives immutable phase/geometry selection plans, profile-specific feature/event activation, geometry-aware atom-group priorities, DATA6-v3 plan lineage, and compositional observable-call recommendations. DATA9A7d in 0.20.50a0 migrates LTA behind generic optional profile-extension catalogs, advances DATA4/DATA6 canonical schemas, and replaces generic-core cation/site assumptions with focus groups, structural realizations, and extension coverage. DATA9A7e in 0.20.51a0 qualifies bounded crystal, amorphous, liquid, interface, and LTA DATA4-DATA7 paths, adds immutable qualification evidence, and makes MLFF LTA implementation imports lazy so generic workflows neither import nor serialize LTA-specific evidence. DATA9A8 in 0.20.52a0 adds frozen profile-aware observable comparison and acceptance policies. DATA9A9a in 0.20.53a0 adds the exact DATA5-authorized checkpoint-bound descriptor/prediction plan, per-frame restart sidecars, atomic checkpoints, corruption recovery, and DATA6 reuse without repeated foundation-model inference. DATA9A9b in 0.20.54a0 adds restartable final/fold DATA7 materialization, exact replay binding, complete DATA8 job-tree evidence, corruption-driven downstream invalidation, and a relocatable production materialization record. DATA9A9c in 0.20.55a0 adds the immutable production-corpus plan, evidence-derived foundation and residual-E0 qualification, numerical replay-label identity, content-addressed DATA8 generation promotion, self-verifying loaders, and generic optional-extension gate requirements. DATA9B1 in 0.20.56a0 adds passed-gate campaign-matrix freezing, protocol-family and seed-variant identities, content-addressed checkpoint catalogs, external metric records, deterministic hard-constraint admissibility, and fail-closed checkpoint selection. DATA9B2 in 0.20.57a0 adds supervised/restartable MACE execution, automatic target/replay checkpoint evaluation, fold/seed aggregation, learning curves, deterministic protocol comparison, target-head committee export, protocol freeze, and sealed-evaluation activation. DATA9B3 in 0.20.58a0 adds the unified source-checkout campaign CLI, one-database orchestration state, manifest approval, production preparation/training/evaluation commands, source-local precision-wrapper shims, and bounded NVE deployment verification. DATA9B3A in 0.20.59a0 makes the MACE acceleration backend a frozen campaign policy, auto-selects cuEquivariance at initialization when qualified, and propagates it through DATA6, DATA8, preflight, production training, checkpoint evaluation, and bounded verification without silent fallback. DATA2A in 0.20.60a0 adds XML-backed review-manifest metadata, percentage-aware filename strain candidates, exact LTA fixed-cell geometry verification, and fail-safe promotion before manual manifest approval. DATA2 interrupted-stream hardening in 0.20.61a0 adds EOF-qualified interrupted `vasprun.xml` recovery across ENS0, DATA2 source audit, and normalized trajectory loading while preserving strict rejection of ambiguous or mid-file corruption.
+ The post-0.20.105 evaluation/storage cycle implements EVAL-MF1 in 0.20.106a0 and EVAL-MF2 in 0.20.107a0: deterministic nested equal-fraction target/replay checkpoint screening, delta-only prediction reuse, conservative source/block-aware survivor guards, comprehensive epoch reporting, and full-fidelity finalist publication are now the generated production evaluation strategy.
+-The post-0.20.120 adaptive-training revision was recorded as architecture-only planning in 0.20.121a0. **ADAPT-PREC1 is implemented in 0.20.122a0** and **ADAPT-MON1 is implemented in 0.20.123a0**: new campaigns use binary `single|double` learned-model precision and now materialize one fixed common target online monitor plus one fixed independent true-label replay online monitor. Adaptive stopping and the simplified finalist evaluator remain pending; until ADAPT-STOP1/ADAPT-EVAL1 close, fixed-epoch training and EVAL-MF remain runtime-authoritative.
++The post-0.20.120 adaptive-training revision was recorded as architecture-only planning in 0.20.121a0. **ADAPT-PREC1 is implemented in 0.20.122a0**, **ADAPT-MON1 in 0.20.123a0**, and **ADAPT-STOP1 in 0.20.124a0**: new campaigns use binary `single|double` learned-model precision, fixed common target/true-replay online monitors, and criterion-driven epoch termination. Lightweight ranking and the simplified finalist evaluator remain pending; EVAL-MF remains runtime-authoritative until ADAPT-EVAL1 closes.
+ 
+ The central architectural rule is:
+ 
+@@ -4805,13 +4805,13 @@
+ # Post-0.20.120 adaptive-training, binary-precision, and evaluation-simplification roadmap
+ 
+ **Status:** architecture recorded in `mdstats 0.20.121a0`; `ADAPT-PREC1` is implemented
+-in `mdstats 0.20.122a0` and `ADAPT-MON1` in `mdstats 0.20.123a0`. `ADAPT-STOP1`
+-through `ADAPT-MIGRATE1` remain `not_started`. The binary learned-model precision
+-contract and fixed common online-monitor identities now supersede the corresponding
+-legacy production semantics for new campaigns, while fixed-epoch training and EVAL-MF
+-evaluation remain runtime-authoritative until their replacement gates close. Historical
+-EVAL-MF/PREC records remain valid evidence for the campaigns that created them and are
+-not rewritten retrospectively.
++in `mdstats 0.20.122a0`, `ADAPT-MON1` in `mdstats 0.20.123a0`, and `ADAPT-STOP1` in
++`mdstats 0.20.124a0`. `ADAPT-RANK1` through `ADAPT-MIGRATE1` remain `not_started`.
++Binary learned-model precision, fixed common online monitors, and criterion-driven
++training termination now supersede the corresponding legacy production semantics for
++new campaigns. EVAL-MF remains runtime-authoritative until ADAPT-EVAL1 closes.
++Historical EVAL-MF/PREC records remain valid evidence for the campaigns that created
++them and are not rewritten retrospectively.
+ 
+ ## Motivation and evidence
+ 
+@@ -5094,13 +5094,14 @@
+ monitor exact-geometry overlap, serialization/corruption rejection, and legacy schema
+ compatibility.
+ 
+-ADAPT-MON1 does not alter epoch termination: until ADAPT-STOP1 closes, the configured
+-`max_num_epochs` remains the authoritative training ceiling. Likewise EVAL-MF remains
+-runtime-authoritative until ADAPT-EVAL1 closes.
++ADAPT-MON1 itself only freezes monitor evidence. Beginning in 0.20.124a0, ADAPT-STOP1
++consumes those common monitor rows to terminate training at the target-success,
++replay-exhaustion, or hard-epoch boundary. EVAL-MF remains runtime-authoritative until
++ADAPT-EVAL1 closes.
+ 
+ ## ADAPT-STOP1 - weight-coupled acceptance region and adaptive training termination
+ 
+-**Status:** `not_started`.
++**Status:** implemented in `mdstats 0.20.124a0`.
+ 
+ ### Full target threshold
+ 
+@@ -5219,6 +5220,37 @@
+    semantics; and
+ 8. foundation-baseline feasibility warnings/overrides for unusually replay-heavy weights.
+ 
++
++### ADAPT-STOP1 implementation record (`0.20.124a0`)
++
++New campaign preparation binds an immutable `AdaptiveTrainingStopPolicy` into DATA8,
++production-materialization, and training-protocol identities. The generated defaults are
++`T_max=0.030 eV/A`, `w_T:w_R=1:1`, `f_T=0.80`, `f_R=1.20`, and a 30-epoch hard ceiling.
++The replay ceiling is derived rather than independently specified, so the default geometry is
++30/24/30/36 meV/A for target candidate/target stop/replay candidate/replay stop.
++
++MACE 0.3.16 performs the stop decision inside the qualified mdstats training-loop patch.
++The common ADAPT-MON1 target and true-label replay validation rows are already paid for by
++normal epoch validation; mdstats parses those rows without launching additional inference.
++Before epoch 0, the initial true-label replay row freezes the foundation replay baseline and
++fails closed when the derived replay ceiling is below that baseline unless the explicit
++`allow_replay_threshold_below_foundation_baseline` override is set.
++
++After each epoch's validation and durable save-all checkpoint, mdstats appends the target/replay
++force RMSE, candidate eligibility, and any terminal reason to
++`adaptive_training_stop.json`. The MACE loop then exits cleanly for `target_success`,
++`replay_exhaustion`, `target_success_and_replay_exhaustion`, or `max_epochs_reached`; the
++normal MACE final-model path still executes. A terminal run records whether at least one earlier
++checkpoint is lightweight-admissible, but ADAPT-STOP1 does **not** rank or select that checkpoint.
++That responsibility remains ADAPT-RANK1.
++
++Restart semantics are fail-closed. Existing checkpoints require matching adaptive-stop state.
++Repeated epoch evidence is idempotent and changed metrics are rejected. If a parent process is
++interrupted after terminal stop evidence is durable but before final-model publication,
++`--restart_latest` observes the terminal state, skips the epoch loop, and completes MACE's normal
++finalization without training an additional epoch. Historical pre-ADAPT-STOP1 protocols remain
++readable and continue their original fixed-epoch semantics.
++
+ ## ADAPT-RANK1 - zero-new-inference lightweight ranking and one champion per run
+ 
+ **Status:** `not_started`.
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/docs/guides/mlff_campaign_cli_user_guide.md b/docs/guides/mlff_campaign_cli_user_guide.md
+--- a/docs/guides/mlff_campaign_cli_user_guide.md	2026-08-09 19:54:31.000000000 +0000
++++ b/docs/guides/mlff_campaign_cli_user_guide.md	2026-08-09 21:19:41.722525175 +0000
+@@ -307,8 +307,12 @@
+ MACE `pt_valid_file` points to the 512-frame true-label monitor while `pt_train_file` remains
+ the configured replay-training corpus (including pseudo labels when selected). These monitor
+ artifacts never supply gradients. The monitor sizes and `online_monitor_seed` are policy identity.
+-ADAPT-STOP1 is not implemented in 0.20.123a0, so these common per-epoch metrics do **not yet**
+-terminate training early; `max_num_epochs` remains authoritative until that later gate closes.
++
++Beginning in 0.20.124a0, ADAPT-STOP1 consumes these already-paid force-RMSE rows after every
++durable epoch checkpoint. With default 1:1 target:replay score weights, target checkpoints enter
++the candidate region at 30 meV/A, target-success stops training at 24 meV/A, the replay candidate
++ceiling is 30 meV/A, replay exhaustion stops training at 36 meV/A, and 30 epochs remains the hard
++ceiling. The replay ceiling is derived as `(target_weight / replay_weight) * target_threshold`.
+ 
+ Do not choose the last epoch manually. A model can improve the target while
+ forgetting replay chemistry, or can have a good global force error while Li/Na/K
+@@ -328,11 +332,13 @@
+ evidence only. The legacy `bounded` strategy and exhaustive full-monitor evaluation
+ remain explicit configuration choices.
+ 
+-**Interim 0.20.123a0 behavior:** ADAPT-MON1 changes the training-time monitor artifacts,
+-but ADAPT-EVAL1 has not yet retired EVAL-MF. The multi-fidelity evaluator therefore remains
+-runtime-authoritative in this release. The later ADAPT-RANK1/ADAPT-EVAL1 gates will reuse the
+-already-computed common monitor metrics for zero-new-inference screening and replace this
+-successive-halving stage with top-finalist full evaluation.
++**0.20.124a0 behavior:** ADAPT-MON1 supplies the common training-time monitor artifacts and
++ADAPT-STOP1 consumes their force RMSE after each durable epoch checkpoint. The run-local
++`adaptive_training_stop.json` records the foundation replay baseline, per-epoch monitor metrics,
++candidate eligibility, and terminal reason. ADAPT-RANK1/ADAPT-EVAL1 are still pending, so the
++current multi-fidelity evaluator remains runtime-authoritative. Those later gates will reuse the
++already-computed monitor metrics for zero-new-inference screening and then replace successive
++halving with top-finalist full evaluation.
+ 
+ With `replay_true_labels` configured, both the frozen foundation and the fine-tuned
+ candidate are evaluated on both the target monitor and the independent true-label
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/docs/specs/training_data/mlff_adaptive_training_stop_spec.md b/docs/specs/training_data/mlff_adaptive_training_stop_spec.md
+--- a/docs/specs/training_data/mlff_adaptive_training_stop_spec.md	1970-01-01 00:00:00.000000000 +0000
++++ b/docs/specs/training_data/mlff_adaptive_training_stop_spec.md	2026-08-09 21:22:29.883788295 +0000
+@@ -0,0 +1,153 @@
++# MLFF adaptive training stop specification
++
++Status: implemented in mdstats 0.20.124a0 (`ADAPT-STOP1`)
++
++## Scope
++
++ADAPT-STOP1 turns the fixed common ADAPT-MON1 force-RMSE monitors into a criterion-driven
++training boundary. It changes epoch termination only. It does not rank epochs, choose a run
++champion, retire EVAL-MF, or change final verification policy; those remain later gates.
++
++The selected learned-model precision from ADAPT-PREC1 is preserved during all monitor inference:
++`single` executes the learned model in FP32 and `double` executes it in FP64. mdstats-owned metric
++accumulation and policy arithmetic remain FP64.
++
++## Normative policy
++
++Let the default full target force-RMSE boundary be
++
++$$
++T_{\max}=0.030\ \mathrm{eV/\AA}=30\ \mathrm{meV/\AA}.
++$$
++
++For positive target/replay score weights `w_T` and `w_R`, replay-enabled campaigns derive
++
++$$
++R_{\max}=\frac{w_T}{w_R}T_{\max}.
++$$
++
++The generated default is `w_T:w_R = 1:1`, hence `R_max = 30 meV/A`. A no-replay training mode
++omits replay eligibility and replay stopping entirely.
++
++One completed epoch is lightweight-candidate-eligible only if
++
++$$
++T_{mon}\le T_{\max}\quad\mathrm{and}\quad R_{mon}\le R_{\max}.
++$$
++
++Training stops cleanly after a durable epoch checkpoint when the first applicable terminal
++condition is reached:
++
++$$
++T_{mon}\le 0.80 T_{\max},
++$$
++
++$$
++R_{mon}\ge 1.20 R_{\max},
++$$
++
++or the hard `max_num_epochs` ceiling is reached. At the default 1:1 weighting the resulting
++geometry is:
++
++| Boundary | Default |
++|---|---:|
++| target candidate | 30 meV/A |
++| target-success stop | 24 meV/A |
++| replay candidate | 30 meV/A |
++| replay-exhaustion stop | 36 meV/A |
++| hard epoch ceiling | 30 epochs |
++
++If target success and replay exhaustion become true on the same epoch, the terminal reason is
++`target_success_and_replay_exhaustion`. The stop epoch itself is not automatically the selected
++checkpoint.
++
++## Foundation replay feasibility
++
++Before epoch 0, MACE's initial validation on the fixed 512-configuration true-label replay
++monitor is frozen as the foundation replay baseline. If the derived `R_max` is below that
++baseline, training fails closed because the configured weighting is asking the fine-tuned model
++to outperform its foundation on replay. The user may deliberately opt into that scientific
++request with `allow_replay_threshold_below_foundation_baseline = true`.
++
++The foundation baseline is immutable across `--restart_latest`. A resumed model's new
++`epoch=None` validation block must never replace it.
++
++## Runtime integration
++
++ADAPT-STOP1 launches no additional model inference. MACE 0.3.16 already evaluates the target
++and replay validation loaders at every configured evaluation interval. New production protocols
++require `eval_interval = 1` and `save_all_checkpoints = true`.
++
++mdstats installs a source-qualified in-process MACE training-loop patch. The order for every epoch
++is:
++
++1. train the epoch;
++2. evaluate the common target and true-label replay monitors;
++3. append MACE's validation JSONL rows;
++4. save the epoch checkpoint durably;
++5. record ADAPT-STOP1 epoch evidence;
++6. if terminal, break the MACE epoch loop cleanly;
++7. allow MACE's normal final-model publication path to execute.
++
++The parent process therefore does not kill MACE to implement a scientific stop, and an adaptive
++stop is not charged as a failed retry.
++
++## Durable evidence and exact restart
++
++Each adaptive run owns `adaptive_training_stop.json`. It is content-addressed and binds the
++adaptive policy digest. It records:
++
++- foundation true-replay RMSE and threshold-feasibility state;
++- every completed epoch's target and replay force RMSE;
++- candidate eligibility for each epoch;
++- terminal epoch and terminal reason; and
++- whether any lightweight-admissible checkpoint exists.
++
++Existing MACE checkpoints require matching adaptive-stop state before production restart. Missing,
++invalid, or policy-mismatched state fails closed. Re-recording an already durable epoch is
++idempotent only if the monitor values are identical; changed values are rejected.
++
++If the parent is interrupted after terminal stop evidence is durable but before MACE publishes its
++final model, `--restart_latest` revalidates the inputs, observes the terminal state, skips the epoch
++loop, and runs only normal MACE finalization. No extra training epoch is permitted.
++
++## Run outcomes
++
++A terminal adaptive state has one of two selection-readiness outcomes:
++
++- `admissible_checkpoint_available` — at least one completed epoch satisfied both lightweight
++  candidate boundaries;
++- `no_lightweight_admissible_checkpoint` — no completed epoch satisfied the candidate region.
++
++ADAPT-STOP1 deliberately does not select among admissible epochs. ADAPT-RANK1 will later compute
++the weight-coupled lightweight score and freeze exactly one champion per independent run.
++EVAL-MF remains the production evaluator in 0.20.124a0 until ADAPT-EVAL1 is implemented.
++
++## Generated configuration
++
++New campaigns expose the policy as:
++
++```toml
++[training]
++max_num_epochs = 30
++target_stop_fraction = 0.80
++replay_stop_multiplier = 1.20
++allow_replay_threshold_below_foundation_baseline = false
++
++[acceptance]
++maximum_target_force_rmse_ev_per_angstrom = 0.030
++
++[evaluation]
++target_score_weight = 1.0
++replay_score_weight = 1.0
++```
++
++`maximum_replay_force_rmse_ev_per_angstrom` is intentionally derived from the weights and target
++boundary instead of being an independent source of truth.
++
++## Compatibility boundary
++
++Historical DATA8/training-protocol/materialization records without an adaptive-stop policy remain
++readable and retain their original fixed-epoch behavior. New ADAPT-STOP1 protocol identities bind
++the complete adaptive-stop policy, monitor lineage, epoch ceiling, and binary learned-model dtype.
++They must not be silently projected back into pre-ADAPT-STOP1 identities.
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/docs/specs/training_data/mlff_online_monitor_spec.md b/docs/specs/training_data/mlff_online_monitor_spec.md
+--- a/docs/specs/training_data/mlff_online_monitor_spec.md	2026-08-09 19:54:31.000000000 +0000
++++ b/docs/specs/training_data/mlff_online_monitor_spec.md	2026-08-09 21:25:46.640353681 +0000
+@@ -112,10 +112,10 @@
+ 
+ ## 8. Current runtime boundary
+ 
+-In 0.20.123a0, MACE evaluates the common validation artifacts at the configured `eval_interval`,
+-but ADAPT-STOP1 is not yet implemented. Therefore the monitor values do **not** terminate training
+-early and `max_num_epochs` remains authoritative. Likewise, ADAPT-EVAL1 has not yet retired the
+-existing mixed-fidelity evaluation stage.
++ADAPT-MON1 itself freezes the common validation artifacts. Beginning in 0.20.124a0, ADAPT-STOP1
++consumes their already-paid force-RMSE rows at every evaluated epoch and can terminate training at
++the target-success, replay-exhaustion, or hard-epoch boundary without additional monitor
++inference. ADAPT-EVAL1 has not yet retired the existing mixed-fidelity evaluation stage.
+ 
+ ## 9. Acceptance tests
+ 
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/mdstats/__init__.py b/mdstats/__init__.py
+--- a/mdstats/__init__.py	2026-08-09 19:43:47.000000000 +0000
++++ b/mdstats/__init__.py	2026-08-09 21:19:26.451244060 +0000
+@@ -4775,3 +4775,30 @@
+     "build_replay_online_monitor",
+     "materialize_replay_online_monitor",
+ ]
++
++from .training_data import (
++    ADAPTIVE_STOP_POLICY_SCHEMA,
++    ADAPTIVE_STOP_STATE_SCHEMA,
++    ADAPTIVE_STOP_POLICY_ENVIRONMENT_VARIABLE,
++    ADAPTIVE_STOP_STATE_PATH_ENVIRONMENT_VARIABLE,
++    AdaptiveTrainingStopPolicy,
++    AdaptiveTrainingEpochMetric,
++    AdaptiveTrainingStopState,
++    adaptive_stop_policy_from_environment,
++    validate_adaptive_stop_foundation_baseline,
++    adaptive_training_stop_already_terminal,
++    adaptive_training_stop_requested,
++)
++__all__ += [
++    "ADAPTIVE_STOP_POLICY_SCHEMA",
++    "ADAPTIVE_STOP_STATE_SCHEMA",
++    "ADAPTIVE_STOP_POLICY_ENVIRONMENT_VARIABLE",
++    "ADAPTIVE_STOP_STATE_PATH_ENVIRONMENT_VARIABLE",
++    "AdaptiveTrainingStopPolicy",
++    "AdaptiveTrainingEpochMetric",
++    "AdaptiveTrainingStopState",
++    "adaptive_stop_policy_from_environment",
++    "validate_adaptive_stop_foundation_baseline",
++    "adaptive_training_stop_already_terminal",
++    "adaptive_training_stop_requested",
++]
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/mdstats/_version.py b/mdstats/_version.py
+--- a/mdstats/_version.py	2026-08-09 19:54:31.000000000 +0000
++++ b/mdstats/_version.py	2026-08-09 21:19:26.450490298 +0000
+@@ -1,3 +1,3 @@
+ """Package version."""
+ 
+-__version__ = "0.20.123a0"
++__version__ = "0.20.124a0"
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/mdstats/data/observable_owner_manuals.json b/mdstats/data/observable_owner_manuals.json
+--- a/mdstats/data/observable_owner_manuals.json	2026-08-09 19:54:31.000000000 +0000
++++ b/mdstats/data/observable_owner_manuals.json	2026-08-09 21:19:26.450650126 +0000
+@@ -17,6 +17,6 @@
+       "uri": "mdstats-doc://vacf-dynamics-architecture/0.20.53a0"
+     }
+   },
+-  "package_version": "0.20.123a0",
++  "package_version": "0.20.124a0",
+   "schema": "mdstats.observable-owner-manual-index.v1"
+ }
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/mdstats/training_data/__init__.py b/mdstats/training_data/__init__.py
+--- a/mdstats/training_data/__init__.py	2026-08-09 19:45:47.000000000 +0000
++++ b/mdstats/training_data/__init__.py	2026-08-09 21:19:26.450834681 +0000
+@@ -1085,3 +1085,19 @@
+ )
+ 
+ __all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
++
++from .adaptive_stop import (
++    ADAPTIVE_STOP_POLICY_SCHEMA,
++    ADAPTIVE_STOP_STATE_SCHEMA,
++    ADAPTIVE_STOP_POLICY_ENVIRONMENT_VARIABLE,
++    ADAPTIVE_STOP_STATE_PATH_ENVIRONMENT_VARIABLE,
++    AdaptiveTrainingStopPolicy,
++    AdaptiveTrainingEpochMetric,
++    AdaptiveTrainingStopState,
++    adaptive_stop_policy_from_environment,
++    validate_adaptive_stop_foundation_baseline,
++    adaptive_training_stop_already_terminal,
++    adaptive_training_stop_requested,
++)
++
++__all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/mdstats/training_data/adaptive_stop.py b/mdstats/training_data/adaptive_stop.py
+--- a/mdstats/training_data/adaptive_stop.py	1970-01-01 00:00:00.000000000 +0000
++++ b/mdstats/training_data/adaptive_stop.py	2026-08-09 21:18:19.238922449 +0000
+@@ -0,0 +1,486 @@
++"""ADAPT-STOP1 criterion-driven MACE training termination.
++
++The learned model remains inside MACE.  mdstats observes MACE's already-paid
++validation rows after each durable checkpoint, records an immutable lightweight
++training history, and asks the qualified MACE loop to stop cleanly once the
++configured target-success or replay-exhaustion margin is reached.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++import json
++import math
++import os
++from pathlib import Path
++from typing import Any, Mapping
++
++from ._common import TrainingDataInputError, TrainingDataSerializationError, digest, validate_digest
++
++ADAPTIVE_STOP_POLICY_SCHEMA = "mdstats.adaptive-training-stop-policy.v1"
++ADAPTIVE_STOP_STATE_SCHEMA = "mdstats.adaptive-training-stop-state.v1"
++ADAPTIVE_STOP_POLICY_ENVIRONMENT_VARIABLE = "MDSTATS_ADAPTIVE_STOP_POLICY"
++ADAPTIVE_STOP_STATE_PATH_ENVIRONMENT_VARIABLE = "MDSTATS_ADAPTIVE_STOP_STATE_PATH"
++
++
++@dataclass(frozen=True, slots=True)
++class AdaptiveTrainingStopPolicy:
++    """Immutable target/replay acceptance geometry and training stop margins."""
++
++    maximum_target_force_rmse_ev_per_angstrom: float = 0.030
++    target_score_weight: float = 1.0
++    replay_score_weight: float = 1.0
++    target_stop_fraction: float = 0.80
++    replay_stop_multiplier: float = 1.20
++    max_num_epochs: int = 30
++    replay_enabled: bool = True
++    allow_replay_threshold_below_foundation_baseline: bool = False
++    target_head_name: str = "target_head"
++    replay_head_name: str = "pt_head"
++
++    def __post_init__(self) -> None:
++        numbers = {
++            "maximum_target_force_rmse_ev_per_angstrom": self.maximum_target_force_rmse_ev_per_angstrom,
++            "target_score_weight": self.target_score_weight,
++            "target_stop_fraction": self.target_stop_fraction,
++            "replay_stop_multiplier": self.replay_stop_multiplier,
++        }
++        if self.replay_enabled:
++            numbers["replay_score_weight"] = self.replay_score_weight
++        for name, value in numbers.items():
++            if not math.isfinite(float(value)) or float(value) <= 0.0:
++                raise TrainingDataInputError(f"Adaptive-stop {name} must be finite and positive.")
++        if not 0.0 < float(self.target_stop_fraction) < 1.0:
++            raise TrainingDataInputError("Adaptive-stop target_stop_fraction must be strictly between zero and one.")
++        if float(self.replay_stop_multiplier) <= 1.0:
++            raise TrainingDataInputError("Adaptive-stop replay_stop_multiplier must exceed one.")
++        if int(self.max_num_epochs) <= 0:
++            raise TrainingDataInputError("Adaptive-stop max_num_epochs must be positive.")
++        if self.replay_enabled and (not self.target_head_name.strip() or not self.replay_head_name.strip()):
++            raise TrainingDataInputError("Adaptive-stop target/replay head names must be non-empty.")
++        if not self.replay_enabled and not self.target_head_name.strip():
++            raise TrainingDataInputError("Adaptive-stop target head name must be non-empty.")
++
++    @property
++    def maximum_replay_force_rmse_ev_per_angstrom(self) -> float | None:
++        if not self.replay_enabled:
++            return None
++        return (
++            float(self.target_score_weight)
++            / float(self.replay_score_weight)
++            * float(self.maximum_target_force_rmse_ev_per_angstrom)
++        )
++
++    @property
++    def target_stop_force_rmse_ev_per_angstrom(self) -> float:
++        return float(self.target_stop_fraction) * float(self.maximum_target_force_rmse_ev_per_angstrom)
++
++    @property
++    def replay_stop_force_rmse_ev_per_angstrom(self) -> float | None:
++        threshold = self.maximum_replay_force_rmse_ev_per_angstrom
++        return None if threshold is None else float(self.replay_stop_multiplier) * threshold
++
++    def candidate_eligible(self, target_rmse: float, replay_rmse: float | None) -> bool:
++        if target_rmse > float(self.maximum_target_force_rmse_ev_per_angstrom):
++            return False
++        if not self.replay_enabled:
++            return True
++        threshold = self.maximum_replay_force_rmse_ev_per_angstrom
++        return replay_rmse is not None and threshold is not None and replay_rmse <= threshold
++
++    def stop_reason(self, *, epoch: int, target_rmse: float, replay_rmse: float | None) -> str | None:
++        target_hit = target_rmse <= self.target_stop_force_rmse_ev_per_angstrom
++        replay_threshold = self.replay_stop_force_rmse_ev_per_angstrom
++        replay_hit = bool(
++            self.replay_enabled
++            and replay_threshold is not None
++            and replay_rmse is not None
++            and replay_rmse >= replay_threshold
++        )
++        if target_hit and replay_hit:
++            return "target_success_and_replay_exhaustion"
++        if target_hit:
++            return "target_success"
++        if replay_hit:
++            return "replay_exhaustion"
++        if int(epoch) + 1 >= int(self.max_num_epochs):
++            return "max_epochs_reached"
++        return None
++
++    def _payload(self) -> dict[str, Any]:
++        return {
++            "schema": ADAPTIVE_STOP_POLICY_SCHEMA,
++            "maximum_target_force_rmse_ev_per_angstrom": float(self.maximum_target_force_rmse_ev_per_angstrom),
++            "target_score_weight": float(self.target_score_weight),
++            "replay_score_weight": float(self.replay_score_weight),
++            "target_stop_fraction": float(self.target_stop_fraction),
++            "replay_stop_multiplier": float(self.replay_stop_multiplier),
++            "max_num_epochs": int(self.max_num_epochs),
++            "replay_enabled": bool(self.replay_enabled),
++            "allow_replay_threshold_below_foundation_baseline": bool(self.allow_replay_threshold_below_foundation_baseline),
++            "target_head_name": self.target_head_name,
++            "replay_head_name": self.replay_head_name,
++        }
++
++    @property
++    def policy_digest(self) -> str:
++        return digest(self._payload())
++
++    def to_dict(self) -> dict[str, Any]:
++        return {**self._payload(), "policy_digest": self.policy_digest}
++
++    @classmethod
++    def from_dict(cls, payload: Mapping[str, Any]) -> "AdaptiveTrainingStopPolicy":
++        if payload.get("schema") != ADAPTIVE_STOP_POLICY_SCHEMA:
++            raise TrainingDataSerializationError("Unsupported adaptive-training-stop policy schema.")
++        result = cls(
++            maximum_target_force_rmse_ev_per_angstrom=float(payload["maximum_target_force_rmse_ev_per_angstrom"]),
++            target_score_weight=float(payload["target_score_weight"]),
++            replay_score_weight=float(payload["replay_score_weight"]),
++            target_stop_fraction=float(payload["target_stop_fraction"]),
++            replay_stop_multiplier=float(payload["replay_stop_multiplier"]),
++            max_num_epochs=int(payload["max_num_epochs"]),
++            replay_enabled=bool(payload["replay_enabled"]),
++            allow_replay_threshold_below_foundation_baseline=bool(
++                payload.get("allow_replay_threshold_below_foundation_baseline", False)
++            ),
++            target_head_name=str(payload.get("target_head_name", "target_head")),
++            replay_head_name=str(payload.get("replay_head_name", "pt_head")),
++        )
++        if payload.get("policy_digest") not in (None, result.policy_digest):
++            raise TrainingDataSerializationError("Adaptive-training-stop policy digest mismatch.")
++        return result
++
++
++@dataclass(frozen=True, slots=True)
++class AdaptiveTrainingEpochMetric:
++    epoch: int
++    target_force_rmse_ev_per_angstrom: float
++    replay_force_rmse_ev_per_angstrom: float | None
++    candidate_eligible: bool
++    stop_reason: str | None = None
++
++    def __post_init__(self) -> None:
++        if int(self.epoch) < 0:
++            raise TrainingDataInputError("Adaptive-stop epoch must be nonnegative.")
++        for name in ("target_force_rmse_ev_per_angstrom", "replay_force_rmse_ev_per_angstrom"):
++            value = getattr(self, name)
++            if value is not None and (not math.isfinite(float(value)) or float(value) < 0.0):
++                raise TrainingDataInputError(f"Adaptive-stop {name} must be finite and nonnegative.")
++
++    def to_dict(self) -> dict[str, Any]:
++        return {
++            "epoch": int(self.epoch),
++            "target_force_rmse_ev_per_angstrom": float(self.target_force_rmse_ev_per_angstrom),
++            "replay_force_rmse_ev_per_angstrom": (
++                None if self.replay_force_rmse_ev_per_angstrom is None else float(self.replay_force_rmse_ev_per_angstrom)
++            ),
++            "candidate_eligible": bool(self.candidate_eligible),
++            "stop_reason": self.stop_reason,
++        }
++
++    @classmethod
++    def from_dict(cls, payload: Mapping[str, Any]) -> "AdaptiveTrainingEpochMetric":
++        return cls(
++            epoch=int(payload["epoch"]),
++            target_force_rmse_ev_per_angstrom=float(payload["target_force_rmse_ev_per_angstrom"]),
++            replay_force_rmse_ev_per_angstrom=(
++                None
++                if payload.get("replay_force_rmse_ev_per_angstrom") is None
++                else float(payload["replay_force_rmse_ev_per_angstrom"])
++            ),
++            candidate_eligible=bool(payload["candidate_eligible"]),
++            stop_reason=None if payload.get("stop_reason") is None else str(payload["stop_reason"]),
++        )
++
++
++@dataclass(frozen=True, slots=True)
++class AdaptiveTrainingStopState:
++    policy_digest: str
++    foundation_replay_force_rmse_ev_per_angstrom: float | None = None
++    foundation_replay_threshold_feasible: bool | None = None
++    foundation_feasibility_overridden: bool = False
++    epochs: tuple[AdaptiveTrainingEpochMetric, ...] = ()
++    stop_epoch: int | None = None
++    stop_reason: str | None = None
++    run_outcome: str = "running"
++
++    def __post_init__(self) -> None:
++        object.__setattr__(self, "policy_digest", validate_digest(self.policy_digest, name="policy_digest"))
++        if self.foundation_replay_force_rmse_ev_per_angstrom is not None:
++            value = float(self.foundation_replay_force_rmse_ev_per_angstrom)
++            if not math.isfinite(value) or value < 0.0:
++                raise TrainingDataInputError("Foundation replay RMSE must be finite and nonnegative.")
++        epochs = tuple(sorted(self.epochs, key=lambda item: item.epoch))
++        if len({item.epoch for item in epochs}) != len(epochs):
++            raise TrainingDataInputError("Adaptive-stop state cannot contain duplicate epochs.")
++        object.__setattr__(self, "epochs", epochs)
++        if self.stop_epoch is None:
++            if self.stop_reason is not None:
++                raise TrainingDataInputError("Adaptive-stop reason requires stop_epoch.")
++        else:
++            if self.stop_reason is None or not any(item.epoch == self.stop_epoch for item in epochs):
++                raise TrainingDataInputError("Adaptive-stop stop evidence is incomplete.")
++        allowed = {"running", "admissible_checkpoint_available", "no_lightweight_admissible_checkpoint"}
++        if self.run_outcome not in allowed:
++            raise TrainingDataInputError("Unsupported adaptive-stop run outcome.")
++
++    def _payload(self) -> dict[str, Any]:
++        return {
++            "schema": ADAPTIVE_STOP_STATE_SCHEMA,
++            "policy_digest": self.policy_digest,
++            "foundation_replay_force_rmse_ev_per_angstrom": self.foundation_replay_force_rmse_ev_per_angstrom,
++            "foundation_replay_threshold_feasible": self.foundation_replay_threshold_feasible,
++            "foundation_feasibility_overridden": bool(self.foundation_feasibility_overridden),
++            "epochs": [item.to_dict() for item in self.epochs],
++            "stop_epoch": self.stop_epoch,
++            "stop_reason": self.stop_reason,
++            "run_outcome": self.run_outcome,
++        }
++
++    @property
++    def content_digest(self) -> str:
++        return digest(self._payload())
++
++    def to_dict(self) -> dict[str, Any]:
++        return {**self._payload(), "content_digest": self.content_digest}
++
++    @classmethod
++    def from_dict(cls, payload: Mapping[str, Any]) -> "AdaptiveTrainingStopState":
++        if payload.get("schema") != ADAPTIVE_STOP_STATE_SCHEMA:
++            raise TrainingDataSerializationError("Unsupported adaptive-training-stop state schema.")
++        result = cls(
++            policy_digest=str(payload["policy_digest"]),
++            foundation_replay_force_rmse_ev_per_angstrom=(
++                None
++                if payload.get("foundation_replay_force_rmse_ev_per_angstrom") is None
++                else float(payload["foundation_replay_force_rmse_ev_per_angstrom"])
++            ),
++            foundation_replay_threshold_feasible=(
++                None
++                if payload.get("foundation_replay_threshold_feasible") is None
++                else bool(payload["foundation_replay_threshold_feasible"])
++            ),
++            foundation_feasibility_overridden=bool(payload.get("foundation_feasibility_overridden", False)),
++            epochs=tuple(AdaptiveTrainingEpochMetric.from_dict(item) for item in payload.get("epochs", ())),
++            stop_epoch=None if payload.get("stop_epoch") is None else int(payload["stop_epoch"]),
++            stop_reason=None if payload.get("stop_reason") is None else str(payload["stop_reason"]),
++            run_outcome=str(payload.get("run_outcome", "running")),
++        )
++        if payload.get("content_digest") not in (None, result.content_digest):
++            raise TrainingDataSerializationError("Adaptive-training-stop state digest mismatch.")
++        return result
++
++
++def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
++    path.parent.mkdir(parents=True, exist_ok=True)
++    temporary = path.with_name(f".{path.name}.tmp-{os.getpid()}")
++    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
++    os.replace(temporary, path)
++
++
++def adaptive_stop_policy_from_environment() -> AdaptiveTrainingStopPolicy | None:
++    raw = os.environ.get(ADAPTIVE_STOP_POLICY_ENVIRONMENT_VARIABLE)
++    if raw in (None, ""):
++        return None
++    try:
++        payload = json.loads(raw)
++        if not isinstance(payload, dict):
++            raise TypeError("policy payload must be a JSON object")
++        return AdaptiveTrainingStopPolicy.from_dict(payload)
++    except Exception as exc:
++        raise RuntimeError(f"Invalid {ADAPTIVE_STOP_POLICY_ENVIRONMENT_VARIABLE}: {exc}") from exc
++
++
++def _state_path(logger_path: str | Path) -> Path:
++    configured = os.environ.get(ADAPTIVE_STOP_STATE_PATH_ENVIRONMENT_VARIABLE)
++    if configured not in (None, ""):
++        return Path(configured).expanduser().resolve()
++    logger = Path(logger_path).expanduser().resolve()
++    return logger.parent / "adaptive_training_stop.json"
++
++
++def _load_state(path: Path, policy: AdaptiveTrainingStopPolicy) -> AdaptiveTrainingStopState:
++    if not path.is_file():
++        return AdaptiveTrainingStopState(policy_digest=policy.policy_digest)
++    state = AdaptiveTrainingStopState.from_dict(json.loads(path.read_text(encoding="utf-8")))
++    if state.policy_digest != policy.policy_digest:
++        raise RuntimeError("Adaptive-stop state belongs to a different policy; exact restart is refused.")
++    return state
++
++
++def _read_validation_rows(path: str | Path) -> list[dict[str, Any]]:
++    logger_path = Path(path)
++    rows: list[dict[str, Any]] = []
++    if not logger_path.is_file():
++        return rows
++    with logger_path.open("r", encoding="utf-8", errors="replace") as handle:
++        for line in handle:
++            if not line.strip():
++                continue
++            try:
++                item = json.loads(line)
++            except json.JSONDecodeError:
++                continue
++            if item.get("mode") == "eval" and "rmse_f" in item:
++                rows.append(item)
++    return rows
++
++
++def _head_metrics(
++    rows: list[dict[str, Any]],
++    *,
++    epoch: int | None,
++    policy: AdaptiveTrainingStopPolicy,
++) -> tuple[float | None, float | None]:
++    matching = [item for item in rows if item.get("epoch") == epoch]
++    if not matching:
++        return None, None
++    by_head: dict[str, float] = {}
++    for item in matching:
++        try:
++            value = float(item["rmse_f"])
++        except (TypeError, ValueError):
++            continue
++        if not math.isfinite(value) or value < 0.0:
++            continue
++        by_head[str(item.get("head", "Default"))] = value
++    replay_aliases = {policy.replay_head_name, "pt_head", "replay_head"}
++    replay = None
++    if policy.replay_enabled:
++        for name in (policy.replay_head_name, "pt_head", "replay_head"):
++            if name in by_head:
++                replay = by_head[name]
++                break
++    target = by_head.get(policy.target_head_name)
++    if target is None:
++        for preferred in ("target_head", "Default"):
++            if preferred in by_head and preferred not in replay_aliases:
++                target = by_head[preferred]
++                break
++    if target is None:
++        candidates = [(name, value) for name, value in by_head.items() if name not in replay_aliases]
++        if len(candidates) == 1:
++            target = candidates[0][1]
++        elif len(candidates) > 1:
++            raise RuntimeError(
++                "Adaptive-stop validation history contains multiple non-replay heads and no unique target head."
++            )
++    return target, replay
++
++
++def validate_adaptive_stop_foundation_baseline(logger_path: str | Path) -> None:
++    """Validate the true-label replay threshold after MACE's initial eval, before epoch 0."""
++
++    policy = adaptive_stop_policy_from_environment()
++    if policy is None or not policy.replay_enabled:
++        return
++    state_path = _state_path(logger_path)
++    state = _load_state(state_path, policy)
++    # MACE appends another epoch=None validation block after --restart_latest.
++    # Once the pre-epoch-0 foundation baseline is frozen, never reinterpret a
++    # resumed model's initial validation as the foundation baseline.
++    if state.foundation_replay_force_rmse_ev_per_angstrom is not None:
++        if state.foundation_replay_threshold_feasible is False and not state.foundation_feasibility_overridden:
++            raise RuntimeError(
++                "Derived replay force-RMSE threshold remains below the frozen foundation baseline; "
++                "a deliberate policy override is required before training can start."
++            )
++        return
++    rows = _read_validation_rows(logger_path)
++    _, replay = _head_metrics(rows, epoch=None, policy=policy)
++    if replay is None:
++        raise RuntimeError(
++            "ADAPT-STOP1 requires an initial true-label replay validation row before training starts."
++        )
++    threshold = policy.maximum_replay_force_rmse_ev_per_angstrom
++    assert threshold is not None
++    feasible = replay <= threshold
++    updated = AdaptiveTrainingStopState(
++        policy_digest=policy.policy_digest,
++        foundation_replay_force_rmse_ev_per_angstrom=replay,
++        foundation_replay_threshold_feasible=feasible,
++        foundation_feasibility_overridden=(not feasible and policy.allow_replay_threshold_below_foundation_baseline),
++        epochs=state.epochs,
++        stop_epoch=state.stop_epoch,
++        stop_reason=state.stop_reason,
++        run_outcome=state.run_outcome,
++    )
++    _atomic_write_json(state_path, updated.to_dict())
++    if not feasible and not policy.allow_replay_threshold_below_foundation_baseline:
++        raise RuntimeError(
++            "Derived replay force-RMSE threshold is below the foundation model's true-label replay baseline: "
++            f"threshold={threshold * 1e3:.3f} meV/A, foundation={replay * 1e3:.3f} meV/A. "
++            "Change the target/replay score weights or set "
++            "[training].allow_replay_threshold_below_foundation_baseline=true to deliberately override."
++        )
++
++
++def adaptive_training_stop_already_terminal(logger_path: str | Path) -> bool:
++    """Return whether durable ADAPT-STOP1 evidence already ended this run.
++
++    MACE performs an initial validation again after ``--restart_latest``.  If a
++    parent process was interrupted after mdstats persisted terminal stop
++    evidence but before MACE wrote its final model artifact, the restarted
++    child must skip the epoch loop rather than execute one extra epoch.
++    """
++
++    policy = adaptive_stop_policy_from_environment()
++    if policy is None:
++        return False
++    state = _load_state(_state_path(logger_path), policy)
++    return state.stop_reason is not None and state.stop_epoch is not None
++
++
++def adaptive_training_stop_requested(logger_path: str | Path, epoch: int) -> bool:
++    """Record one completed epoch and return whether MACE should stop cleanly."""
++
++    policy = adaptive_stop_policy_from_environment()
++    if policy is None:
++        return False
++    rows = _read_validation_rows(logger_path)
++    target, replay = _head_metrics(rows, epoch=int(epoch), policy=policy)
++    if target is None:
++        raise RuntimeError(f"ADAPT-STOP1 could not find target force RMSE for epoch {epoch}.")
++    if policy.replay_enabled and replay is None:
++        raise RuntimeError(f"ADAPT-STOP1 could not find true-label replay force RMSE for epoch {epoch}.")
++    eligible = policy.candidate_eligible(target, replay)
++    reason = policy.stop_reason(epoch=int(epoch), target_rmse=target, replay_rmse=replay)
++    metric = AdaptiveTrainingEpochMetric(
++        epoch=int(epoch),
++        target_force_rmse_ev_per_angstrom=target,
++        replay_force_rmse_ev_per_angstrom=replay,
++        candidate_eligible=eligible,
++        stop_reason=reason,
++    )
++    state_path = _state_path(logger_path)
++    state = _load_state(state_path, policy)
++    existing = {item.epoch: item for item in state.epochs}
++    if int(epoch) in existing:
++        prior = existing[int(epoch)]
++        if prior != metric:
++            raise RuntimeError("Adaptive-stop epoch metrics changed across an exact restart.")
++        return prior.stop_reason is not None
++    if state.stop_reason is not None:
++        raise RuntimeError("Adaptive-stop state is already terminal; training must not continue past the stop epoch.")
++    combined = tuple((*state.epochs, metric))
++    terminal = reason is not None
++    outcome = "running"
++    if terminal:
++        outcome = (
++            "admissible_checkpoint_available"
++            if any(item.candidate_eligible for item in combined)
++            else "no_lightweight_admissible_checkpoint"
++        )
++    updated = AdaptiveTrainingStopState(
++        policy_digest=policy.policy_digest,
++        foundation_replay_force_rmse_ev_per_angstrom=state.foundation_replay_force_rmse_ev_per_angstrom,
++        foundation_replay_threshold_feasible=state.foundation_replay_threshold_feasible,
++        foundation_feasibility_overridden=state.foundation_feasibility_overridden,
++        epochs=combined,
++        stop_epoch=int(epoch) if terminal else None,
++        stop_reason=reason,
++        run_outcome=outcome,
++    )
++    _atomic_write_json(state_path, updated.to_dict())
++    return terminal
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/mdstats/training_data/campaign_cli.py b/mdstats/training_data/campaign_cli.py
+--- a/mdstats/training_data/campaign_cli.py	2026-08-09 20:03:59.000000000 +0000
++++ b/mdstats/training_data/campaign_cli.py	2026-08-09 21:12:59.830963939 +0000
+@@ -1125,6 +1125,37 @@
+     )
+ 
+ 
++def _adaptive_training_stop_policy(
++    cfg: Mapping[str, Any],
++    *,
++    replay_enabled: bool,
++) -> Any:
++    """Build the ADAPT-STOP1 protocol-frozen force-RMSE stopping policy."""
++
++    import mdstats
++
++    maximum_target = float(
++        _cfg(cfg, "acceptance", "maximum_target_force_rmse_ev_per_angstrom", 0.030)
++    )
++    return mdstats.AdaptiveTrainingStopPolicy(
++        maximum_target_force_rmse_ev_per_angstrom=maximum_target,
++        target_score_weight=float(_cfg(cfg, "evaluation", "target_score_weight", 1.0)),
++        replay_score_weight=float(_cfg(cfg, "evaluation", "replay_score_weight", 1.0)),
++        target_stop_fraction=float(_cfg(cfg, "training", "target_stop_fraction", 0.80)),
++        replay_stop_multiplier=float(_cfg(cfg, "training", "replay_stop_multiplier", 1.20)),
++        max_num_epochs=int(_cfg(cfg, "training", "max_num_epochs", 30)),
++        replay_enabled=bool(replay_enabled),
++        allow_replay_threshold_below_foundation_baseline=bool(
++            _cfg(
++                cfg,
++                "training",
++                "allow_replay_threshold_below_foundation_baseline",
++                False,
++            )
++        ),
++    )
++
++
+ def _precision_template(profile: str) -> dict[str, str]:
+     """Resolve one ADAPT-PREC1 init profile into TOML-visible model dtypes."""
+ 
+@@ -4791,6 +4822,9 @@
+             cross_validation_plans=variant_cv_plans,
+             online_monitor_policy=online_monitor_policy,
+             true_replay_monitor_artifact=true_replay_resolution.monitor_artifact,
++            adaptive_stop_policy=_adaptive_training_stop_policy(
++                cfg, replay_enabled=require_replay
++            ),
+             feature_metric_policy=mdstats.FeatureMetricPolicyTemplate(
+                 randomized_projection_seed=int(
+                     _cfg(cfg, "random", "feature_projection_seed", 271828)
+@@ -7597,6 +7631,45 @@
+         return None
+ 
+ 
++def _load_adaptive_stop_state(
++    run_root: Path,
++    job: Any,
++    *,
++    require_terminal: bool,
++) -> Any | None:
++    """Load and lineage-check one ADAPT-STOP1 run-local state."""
++
++    import mdstats
++
++    policy = job.protocol.adaptive_stop_policy
++    if policy is None:
++        return None
++    path = run_root / "adaptive_training_stop.json"
++    if not path.is_file():
++        if require_terminal:
++            raise CampaignCliError(
++                f"Completed adaptive training run {job.job_id} is missing {path.name}."
++            )
++        return None
++    try:
++        state = mdstats.AdaptiveTrainingStopState.from_dict(
++            json.loads(path.read_text(encoding="utf-8"))
++        )
++    except Exception as exc:
++        raise CampaignCliError(
++            f"Invalid adaptive-stop state for {job.job_id}: {type(exc).__name__}: {exc}"
++        ) from exc
++    if state.policy_digest != policy.policy_digest:
++        raise CampaignCliError(
++            f"Adaptive-stop state for {job.job_id} belongs to another policy."
++        )
++    if require_terminal and (state.stop_reason is None or state.stop_epoch is None):
++        raise CampaignCliError(
++            f"Completed adaptive training run {job.job_id} lacks terminal stop evidence."
++        )
++    return state
++
++
+ def _completed_model_path(job: Any, run_root: Path, config_path: Path) -> Path | None:
+     try:
+         import yaml
+@@ -8013,6 +8086,11 @@
+             store.delete_record(key)
+ 
+         if previous is not None and previous.state is mdstats.TrainingRunState.SUCCEEDED:
++            adaptive_state = _load_adaptive_stop_state(
++                run_root, job, require_terminal=True
++            )
++            if adaptive_state is not None:
++                store.put_record(f"adaptive_stop:{run.run_id}", adaptive_state)
+             if previous.checkpoint_catalog is None:
+                 raise CampaignCliError(
+                     f"Completed training run {run.run_id} is missing its frozen checkpoint catalog."
+@@ -8042,10 +8120,15 @@
+             prior_record=previous,
+         )
+         if recovered is not None:
++            adaptive_state = _load_adaptive_stop_state(
++                run_root, job, require_terminal=True
++            )
+             store.put_record(key, recovered)
+             store.put_record(
+                 f"checkpoint_catalog:{run.run_id}", recovered.checkpoint_catalog
+             )
++            if adaptive_state is not None:
++                store.put_record(f"adaptive_stop:{run.run_id}", adaptive_state)
+             store.event(
+                 "warning",
+                 "train",
+@@ -8295,17 +8378,40 @@
+                     continue
+ 
+                 records_to_commit = {task.state_key: record}
++                adaptive_state = None
++                if record.state is mdstats.TrainingRunState.SUCCEEDED:
++                    adaptive_state = _load_adaptive_stop_state(
++                        task.run_root, task.job, require_terminal=True
++                    )
++                    if adaptive_state is not None:
++                        records_to_commit[f"adaptive_stop:{task.run.run_id}"] = adaptive_state
+                 if record.checkpoint_catalog is not None:
+                     records_to_commit[
+                         f"checkpoint_catalog:{task.run.run_id}"
+                     ] = record.checkpoint_catalog
+                 store.put_records(records_to_commit)
+                 if record.state is mdstats.TrainingRunState.SUCCEEDED:
++                    stop_detail = ""
++                    if adaptive_state is not None:
++                        metric = next(
++                            item for item in adaptive_state.epochs
++                            if item.epoch == adaptive_state.stop_epoch
++                        )
++                        replay_text = (
++                            ""
++                            if metric.replay_force_rmse_ev_per_angstrom is None
++                            else f", replay={metric.replay_force_rmse_ev_per_angstrom * 1e3:.2f} meV/A"
++                        )
++                        stop_detail = (
++                            f"; stop={adaptive_state.stop_reason}@epoch{adaptive_state.stop_epoch} "
++                            f"(target={metric.target_force_rmse_ev_per_angstrom * 1e3:.2f} meV/A"
++                            f"{replay_text}); outcome={adaptive_state.run_outcome}"
++                        )
+                     training_progress.item_done(
+                         completed_progress,
+                         task.run.run_id,
+                         f"{len(record.checkpoint_catalog.checkpoints)} checkpoints; "
+-                        f"run wall={_ProgressReporter._duration(run_wall)}",
++                        f"run wall={_ProgressReporter._duration(run_wall)}{stop_detail}",
+                     )
+                 elif record.state is mdstats.TrainingRunState.INTERRUPTED:
+                     _warn(
+@@ -13550,6 +13656,13 @@
+ # replay frames are selected from independent true-label replay evidence.
+ online_target_monitor_configurations = 256
+ online_replay_monitor_configurations = 512
++# ADAPT-STOP1: stop after the first durable epoch that reaches the target-success
++# margin, exceeds the replay-forgetting margin, or reaches max_num_epochs.
++target_stop_fraction = 0.80
++replay_stop_multiplier = 1.20
++# If a replay-heavy score weighting derives a replay ceiling below the foundation
++# model's own true-label replay RMSE, fail before epoch 0 unless deliberately overridden.
++allow_replay_threshold_below_foundation_baseline = false
+ target_head_weight = 5.0
+ replay_head_weight = 1.0
+ 
+@@ -13730,7 +13843,9 @@
+ allow_unspecified_label_provenance = false
+ 
+ [acceptance]
+-# Null thresholds are reported but not hard gates. Set project-specific values before production.
++# ADAPT-STOP1 global target force-RMSE candidate/full-evaluation boundary.
++maximum_target_force_rmse_ev_per_angstrom = 0.030
++# Other safety thresholds remain independent hard/diagnostic gates.
+ maximum_energy_mae_ev_per_atom = 0.005
+ maximum_focus_force_rmse_ev_per_angstrom = 0.10
+ maximum_stress_rmse_ev_per_angstrom3 = 0.02
+@@ -13741,6 +13856,10 @@
+ maximum_replay_degradation_fraction = 0.20
+ 
+ [evaluation]
++# ADAPT-STOP1 score weights also derive the replay force-RMSE candidate boundary:
++# R_max = (target_score_weight / replay_score_weight) * T_max.
++target_score_weight = 1.0
++replay_score_weight = 1.0
+ device = "{default_device}"
+ dtype = "{precision['evaluation_dtype']}"
+ # EVAL-MF2 qualified production default. Allowed values: "bounded", "exhaustive",
+@@ -13887,8 +14006,8 @@
+ ADAPT-MON1 is already active in preparation/training: every competing run receives the same
+ 256-configuration target validation membership, and multi-head replay validation uses the same
+ fixed 512-configuration TRUE_DFT replay monitor while replay gradient labels remain independent.
+-ADAPT-STOP1 is not yet active in 0.20.123a0, so these per-epoch monitor metrics do not terminate
+-training and `max_num_epochs` remains authoritative.
++ADAPT-STOP1 is active in 0.20.124a0: the common per-epoch force-RMSE monitor metrics now
++terminate training at the target-success margin, replay-exhaustion margin, or max_num_epochs.
+ 
+ Precision is explicit at initialization. Plain `init` generates `single` (FP32 learned-model
+ training/inference); use `init --precision double` for FP64 learned-model training/inference.
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/mdstats/training_data/campaign_execution.py b/mdstats/training_data/campaign_execution.py
+--- a/mdstats/training_data/campaign_execution.py	2026-08-08 22:04:08.000000000 +0000
++++ b/mdstats/training_data/campaign_execution.py	2026-08-09 21:18:27.224652194 +0000
+@@ -55,6 +55,11 @@
+     install_mace_critical_fp64_patch,
+ )
+ from .acceleration import MaceAccelerationPolicy
++from .adaptive_stop import (
++    ADAPTIVE_STOP_POLICY_ENVIRONMENT_VARIABLE,
++    ADAPTIVE_STOP_STATE_PATH_ENVIRONMENT_VARIABLE,
++    AdaptiveTrainingStopState,
++)
+ from .mace_export import MaceExtxyzArtifact
+ from .mace_compatibility import mace_runtime_warning_handled
+ from .checkpoint_capsule import (
+@@ -1248,6 +1253,18 @@
+         sort_keys=True,
+         separators=(",", ":"),
+     )
++    if job.protocol.adaptive_stop_policy is not None:
++        merged_env[ADAPTIVE_STOP_POLICY_ENVIRONMENT_VARIABLE] = json.dumps(
++            job.protocol.adaptive_stop_policy.to_dict(),
++            sort_keys=True,
++            separators=(",", ":"),
++        )
++        merged_env[ADAPTIVE_STOP_STATE_PATH_ENVIRONMENT_VARIABLE] = str(
++            (run_root / "adaptive_training_stop.json").resolve()
++        )
++    else:
++        merged_env.pop(ADAPTIVE_STOP_POLICY_ENVIRONMENT_VARIABLE, None)
++        merged_env.pop(ADAPTIVE_STOP_STATE_PATH_ENVIRONMENT_VARIABLE, None)
+     # Python hash randomization is fixed before the nested MACE interpreter is
+     # launched.  MACE itself receives the same run seed through DATA8.
+     merged_env.setdefault("PYTHONHASHSEED", str(run_plan.seed))
+@@ -1273,6 +1290,25 @@
+                 item for item in checkpoints.rglob("*.pt") if item.is_file()
+             )
+             if checkpoint_paths:
++                if job.protocol.adaptive_stop_policy is not None:
++                    adaptive_state_path = run_root / "adaptive_training_stop.json"
++                    if not adaptive_state_path.is_file():
++                        raise TrainingDataInputError(
++                            "Adaptive training checkpoints exist without adaptive_training_stop.json; "
++                            "exact restart is refused rather than losing already-computed monitor evidence."
++                        )
++                    try:
++                        adaptive_state = AdaptiveTrainingStopState.from_dict(
++                            json.loads(adaptive_state_path.read_text(encoding="utf-8"))
++                        )
++                    except Exception as exc:
++                        raise TrainingDataInputError(
++                            f"Adaptive training restart state is invalid: {type(exc).__name__}: {exc}"
++                        ) from exc
++                    if adaptive_state.policy_digest != job.protocol.adaptive_stop_policy.policy_digest:
++                        raise TrainingDataInputError(
++                            "Adaptive training restart state belongs to a different stop policy; exact restart is refused."
++                        )
+                 restart_epoch = None
+                 resolved_precision = job.protocol.resolved_precision_schedule
+                 if resolved_precision is not None and len(resolved_precision.stages) > 1:
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/mdstats/training_data/critical_precision_cli.py b/mdstats/training_data/critical_precision_cli.py
+--- a/mdstats/training_data/critical_precision_cli.py	2026-08-08 20:52:33.000000000 +0000
++++ b/mdstats/training_data/critical_precision_cli.py	2026-08-09 21:18:19.239203006 +0000
+@@ -153,10 +153,13 @@
+         install_mace_precision_runtime_patches,
+     )
+ 
++    from .adaptive_stop import adaptive_stop_policy_from_environment
++
+     plan = configure_precision_runtime_from_argv(sys.argv)
+     staged = bool(plan is not None and plan.staged)
+     restarting = "--restart_latest" in sys.argv[1:]
+-    if not restarting and not staged:
++    adaptive_stop = adaptive_stop_policy_from_environment() is not None
++    if not restarting and not staged and not adaptive_stop:
+         return
+ 
+     # Batch casting, EMA restoration, and staged checkpoint selection must be
+@@ -174,6 +177,11 @@
+         "        if distributed:\n"
+         "            torch.distributed.barrier()\n"
+     )
++    baseline_marker = (
++        "    valid_loss = valid_loss_head  # consider only the last head for the checkpoint\n"
++    )
++    epoch_increment_marker = "        epoch += 1\n"
++    exit_now_marker = "    exit_now = torch.zeros(1, device=device) if distributed else None\n"
+     if source.count(epoch_line) != 1 or source.count(scheduler_line) != 2:
+         raise RuntimeError(
+             "The qualified MACE restart-loop source contract changed; mdstats "
+@@ -184,6 +192,15 @@
+             "The qualified MACE PREC2 training-loop source contract changed; mdstats "
+             "refuses an unverified precision-stage transition."
+         )
++    if adaptive_stop and (
++        source.count(baseline_marker) != 1
++        or source.count(exit_now_marker) != 1
++        or source.count(epoch_increment_marker) != 1
++    ):
++        raise RuntimeError(
++            "The qualified MACE ADAPT-STOP1 training-loop source contract changed; mdstats "
++            "refuses an unverified adaptive-stop patch."
++        )
+ 
+     if restarting:
+         source = source.replace(
+@@ -225,6 +242,40 @@
+             1,
+         )
+ 
++    if adaptive_stop:
++        source = source.replace(
++            baseline_marker,
++            baseline_marker
++            + "    from mdstats.training_data.adaptive_stop import validate_adaptive_stop_foundation_baseline\n"
++            + "    validate_adaptive_stop_foundation_baseline(logger.path)\n",
++            1,
++        )
++        source = source.replace(
++            exit_now_marker,
++            exit_now_marker
++            + "    from mdstats.training_data.adaptive_stop import adaptive_training_stop_already_terminal\n"
++            + "    if adaptive_training_stop_already_terminal(logger.path):\n"
++            + "        logging.info('mdstats ADAPT-STOP1 found terminal restart evidence; skipping further epochs')\n"
++            + "        epoch = max_num_epochs\n",
++            1,
++        )
++        source = source.replace(
++            epoch_increment_marker,
++            "        from mdstats.training_data.adaptive_stop import adaptive_training_stop_requested\n"
++            "        _mdstats_adaptive_stop = False\n"
++            "        if rank == 0:\n"
++            "            _mdstats_adaptive_stop = adaptive_training_stop_requested(logger.path, epoch)\n"
++            "        if distributed:\n"
++            "            _mdstats_stop_tensor = torch.tensor([1 if _mdstats_adaptive_stop else 0], device=device)\n"
++            "            torch.distributed.broadcast(_mdstats_stop_tensor, src=0)\n"
++            "            _mdstats_adaptive_stop = bool(_mdstats_stop_tensor.item())\n"
++            "        if _mdstats_adaptive_stop:\n"
++            "            logging.info(f'mdstats ADAPT-STOP1 terminated training after durable epoch {epoch}')\n"
++            "            break\n"
++            + epoch_increment_marker,
++            1,
++        )
++
+     namespace: dict[str, Any] = {}
+     globals_copy = dict(original.__globals__)
+     exec(compile(source, "<mdstats-mace-precision-train>", "exec"), globals_copy, namespace)
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/mdstats/training_data/data8_bundle.py b/mdstats/training_data/data8_bundle.py
+--- a/mdstats/training_data/data8_bundle.py	2026-08-09 19:51:20.000000000 +0000
++++ b/mdstats/training_data/data8_bundle.py	2026-08-09 21:10:37.650878738 +0000
+@@ -18,6 +18,7 @@
+ 
+ from ._common import TrainingDataInputError, TrainingDataSerializationError, digest, validate_digest, sha256_file_cached
+ from .feature_metric import FeatureFitDomainKind
++from .adaptive_stop import AdaptiveTrainingStopPolicy
+ from .reference_fit import AtomicReferenceFitMode
+ from .mace_compatibility import (
+     MaceCheckpointControlPolicy,
+@@ -50,7 +51,8 @@
+ 
+ DATA8_PREPARATION_BUNDLE_SCHEMA = "mdstats.data8-preparation-bundle.v2"
+ DATA8_PREPARATION_BUNDLE_V1_SCHEMA = "mdstats.data8-preparation-bundle.v1"
+-MLFF_DATA8_PARSER_VERSION = "0.20.123a0"
++MLFF_DATA8_PARSER_VERSION = "0.20.124a0"
++MLFF_DATA8_PRE_ADAPT_STOP1_PARSER_VERSION = "0.20.123a0"
+ MLFF_DATA8_PRE_ADAPT_MON1_PARSER_VERSION = "0.20.66a0"
+ MLFF_DATA8_LEGACY_PARSER_VERSION = "0.20.39a0"
+ 
+@@ -426,6 +428,7 @@
+         if payload.get("parser_version") not in (
+             None,
+             MLFF_DATA8_PARSER_VERSION,
++            MLFF_DATA8_PRE_ADAPT_STOP1_PARSER_VERSION,
+             MLFF_DATA8_PRE_ADAPT_MON1_PARSER_VERSION,
+             MLFF_DATA8_LEGACY_PARSER_VERSION,
+         ):
+@@ -478,6 +481,7 @@
+     replay_plan: ReplayPreparationPlan | None = None,
+     online_monitor_policy: OnlineMonitorPolicy | None = None,
+     true_replay_monitor_artifact: ReplayFileArtifact | None = None,
++    adaptive_stop_policy: AdaptiveTrainingStopPolicy | None = None,
+     optimizer_policy: MaceOptimizerPolicy | None = None,
+     checkpoint_control_policy: MaceCheckpointControlPolicy | None = None,
+     extxyz_policy: MaceExtxyzPolicy | None = None,
+@@ -490,6 +494,13 @@
+     active_replay = ReplayPreparationPlan(mode=ReplayMode.NONE) if replay_plan is None else replay_plan
+     active_optimizer = MaceOptimizerPolicy() if optimizer_policy is None else optimizer_policy
+     active_checkpoint = MaceCheckpointControlPolicy() if checkpoint_control_policy is None else checkpoint_control_policy
++    if adaptive_stop_policy is not None:
++        if online_monitor_policy is None:
++            raise TrainingDataInputError("ADAPT-STOP1 requires ADAPT-MON1 online-monitor evidence.")
++        if active_optimizer.eval_interval != 1:
++            raise TrainingDataInputError("ADAPT-STOP1 requires eval_interval=1.")
++        if adaptive_stop_policy.max_num_epochs != active_optimizer.max_num_epochs:
++            raise TrainingDataInputError("ADAPT-STOP1 epoch ceiling disagrees with optimizer policy.")
+     active_extxyz = MaceExtxyzPolicy() if extxyz_policy is None else extxyz_policy
+     if compatibility_probe.policy_digest != active_compat.policy_digest or not compatibility_probe.fixed_file_adapter_supported:
+         raise TrainingDataInputError("The MACE compatibility probe does not match the active DATA8 lock.")
+@@ -743,6 +754,7 @@
+             target_online_monitor_record_digest=None if target_online_record is None else target_online_record.content_digest,
+             replay_online_monitor_record_digest=None if replay_online_record is None else replay_online_record.content_digest,
+             replay_valid_artifact_digest=None if online_replay_artifact is None else online_replay_artifact.content_digest,
++            adaptive_stop_policy=adaptive_stop_policy,
+         )
+         job = MaceJobArtifact(
+             job_id=job_id,
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/mdstats/training_data/production_materialization.py b/mdstats/training_data/production_materialization.py
+--- a/mdstats/training_data/production_materialization.py	2026-08-09 19:45:22.000000000 +0000
++++ b/mdstats/training_data/production_materialization.py	2026-08-09 21:10:59.159543978 +0000
+@@ -16,6 +16,7 @@
+ import uuid
+ from typing import Any, Callable, Mapping, MutableMapping, Sequence
+ 
++from .adaptive_stop import AdaptiveTrainingStopPolicy
+ from ._common import TrainingDataInputError, TrainingDataSerializationError, digest, validate_digest, validate_serialized_digest, sha256_file_cached
+ from .data7_bundle import (
+     MLFF_DATA7_PARSER_VERSION,
+@@ -39,7 +40,8 @@
+ from .selection import SelectionBudgetPolicy
+ 
+ PRODUCTION_MATERIALIZATION_POLICY_SCHEMA = "mdstats.production-materialization-policy.v1"
+-PRODUCTION_MATERIALIZATION_PLAN_SCHEMA = "mdstats.production-materialization-plan.v4"
++PRODUCTION_MATERIALIZATION_PLAN_SCHEMA = "mdstats.production-materialization-plan.v5"
++PRODUCTION_MATERIALIZATION_PLAN_V4_SCHEMA = "mdstats.production-materialization-plan.v4"
+ PRODUCTION_MATERIALIZATION_PLAN_V3_SCHEMA = "mdstats.production-materialization-plan.v3"
+ PRODUCTION_MATERIALIZATION_PLAN_V2_SCHEMA = "mdstats.production-materialization-plan.v2"
+ PRODUCTION_DATA7_ARTIFACT_SCHEMA = "mdstats.production-data7-artifact.v1"
+@@ -259,6 +261,7 @@
+     extxyz_policy: MaceExtxyzPolicy
+     online_monitor_policy: OnlineMonitorPolicy | None = None
+     true_replay_monitor_artifact: ReplayFileArtifact | None = None
++    adaptive_stop_policy: AdaptiveTrainingStopPolicy | None = None
+     cross_validation_plans: tuple[CrossValidationPlan, ...] = ()
+     plan_schema: str = PRODUCTION_MATERIALIZATION_PLAN_SCHEMA
+     real_pt_data_ratio_threshold: float = 0.0
+@@ -287,6 +290,7 @@
+         object.__setattr__(self, "domains", domains)
+         if self.plan_schema not in {
+             PRODUCTION_MATERIALIZATION_PLAN_SCHEMA,
++            PRODUCTION_MATERIALIZATION_PLAN_V4_SCHEMA,
+             PRODUCTION_MATERIALIZATION_PLAN_V3_SCHEMA,
+             PRODUCTION_MATERIALIZATION_PLAN_V2_SCHEMA,
+         }:
+@@ -336,6 +340,15 @@
+                 raise TrainingDataInputError("ADAPT-MON1 replay monitor source must carry true DFT labels.")
+         elif self.true_replay_monitor_artifact is not None:
+             raise TrainingDataInputError("True replay monitor evidence requires an online-monitor policy.")
++        if self.adaptive_stop_policy is not None:
++            if self.online_monitor_policy is None:
++                raise TrainingDataInputError("ADAPT-STOP1 requires ADAPT-MON1 monitor evidence.")
++            if self.optimizer_policy.eval_interval != 1:
++                raise TrainingDataInputError("ADAPT-STOP1 requires eval_interval=1.")
++            if self.adaptive_stop_policy.max_num_epochs != self.optimizer_policy.max_num_epochs:
++                raise TrainingDataInputError("ADAPT-STOP1 epoch ceiling disagrees with optimizer policy.")
++            if bool(self.adaptive_stop_policy.replay_enabled) != bool(self.require_replay):
++                raise TrainingDataInputError("ADAPT-STOP1 replay_enabled disagrees with the materialization training mode.")
+         if self.real_pt_data_ratio_threshold < 0.0:
+             raise TrainingDataInputError("real_pt_data_ratio_threshold must be nonnegative.")
+         if self.selection_size is not None and self.selection_size < 1:
+@@ -374,13 +387,15 @@
+             "require_foundation_residual_e0": self.require_foundation_residual_e0,
+             "require_replay": self.require_replay,
+         }
+-        if self.plan_schema in {PRODUCTION_MATERIALIZATION_PLAN_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V3_SCHEMA}:
++        if self.plan_schema in {PRODUCTION_MATERIALIZATION_PLAN_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V4_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V3_SCHEMA}:
+             payload["cross_validation_plans"] = [
+                 item.to_dict() for item in self.cross_validation_plans
+             ]
+-        if self.plan_schema == PRODUCTION_MATERIALIZATION_PLAN_SCHEMA:
++        if self.plan_schema in {PRODUCTION_MATERIALIZATION_PLAN_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V4_SCHEMA}:
+             payload["online_monitor_policy"] = None if self.online_monitor_policy is None else self.online_monitor_policy.to_dict()
+             payload["true_replay_monitor_artifact"] = None if self.true_replay_monitor_artifact is None else self.true_replay_monitor_artifact.to_dict()
++        if self.plan_schema == PRODUCTION_MATERIALIZATION_PLAN_SCHEMA:
++            payload["adaptive_stop_policy"] = None if self.adaptive_stop_policy is None else self.adaptive_stop_policy.to_dict()
+         return payload
+ 
+     @property
+@@ -395,6 +410,7 @@
+         schema = payload.get("schema")
+         if schema not in {
+             PRODUCTION_MATERIALIZATION_PLAN_SCHEMA,
++            PRODUCTION_MATERIALIZATION_PLAN_V4_SCHEMA,
+             PRODUCTION_MATERIALIZATION_PLAN_V3_SCHEMA,
+             PRODUCTION_MATERIALIZATION_PLAN_V2_SCHEMA,
+         }:
+@@ -426,6 +442,7 @@
+             extxyz_policy=MaceExtxyzPolicy.from_dict(payload["extxyz_policy"]),
+             online_monitor_policy=None if payload.get("online_monitor_policy") is None else OnlineMonitorPolicy.from_dict(payload["online_monitor_policy"]),
+             true_replay_monitor_artifact=None if payload.get("true_replay_monitor_artifact") is None else ReplayFileArtifact.from_dict(payload["true_replay_monitor_artifact"]),
++            adaptive_stop_policy=None if payload.get("adaptive_stop_policy") is None else AdaptiveTrainingStopPolicy.from_dict(payload["adaptive_stop_policy"]),
+             cross_validation_plans=tuple(
+                 CrossValidationPlan.from_dict(item)
+                 for item in payload.get("cross_validation_plans", ())
+@@ -662,6 +679,7 @@
+     cross_validation_plans: Sequence[CrossValidationPlan] | None = None,
+     online_monitor_policy: OnlineMonitorPolicy | None = None,
+     true_replay_monitor_artifact: ReplayFileArtifact | None = None,
++    adaptive_stop_policy: AdaptiveTrainingStopPolicy | None = None,
+     feature_metric_policy: FeatureMetricPolicyTemplate | None = None,
+     atomic_reference_policy: AtomicReferenceFitPolicy | None = None,
+     objective_policy: TrainingObjectivePolicy | None = None,
+@@ -741,6 +759,7 @@
+         extxyz_policy=MaceExtxyzPolicy() if extxyz_policy is None else extxyz_policy,
+         online_monitor_policy=online_monitor_policy,
+         true_replay_monitor_artifact=true_replay_monitor_artifact,
++        adaptive_stop_policy=adaptive_stop_policy,
+         real_pt_data_ratio_threshold=real_pt_data_ratio_threshold,
+         selection_size=selection_size,
+         require_foundation_residual_e0=require_foundation_residual_e0,
+@@ -1212,6 +1231,7 @@
+                 replay_plan=plan.replay_plan,
+                 online_monitor_policy=plan.online_monitor_policy,
+                 true_replay_monitor_artifact=plan.true_replay_monitor_artifact,
++                adaptive_stop_policy=plan.adaptive_stop_policy,
+                 optimizer_policy=plan.optimizer_policy,
+                 checkpoint_control_policy=plan.checkpoint_control_policy,
+                 extxyz_policy=plan.extxyz_policy,
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/mdstats/training_data/protocol.py b/mdstats/training_data/protocol.py
+--- a/mdstats/training_data/protocol.py	2026-08-09 19:44:08.000000000 +0000
++++ b/mdstats/training_data/protocol.py	2026-08-09 21:15:30.533472332 +0000
+@@ -11,6 +11,7 @@
+ from ._common import sha256_file_cached
+ from ._common import TrainingDataInputError, TrainingDataSerializationError, digest, validate_digest
+ from .acceleration import MaceAccelerationPolicy
++from .adaptive_stop import AdaptiveTrainingStopPolicy
+ from .critical_precision import MaceCriticalPrecisionPolicy
+ from .precision_schedule import PrecisionSchedulePolicy, ResolvedPrecisionSchedule
+ from .mace_compatibility import MaceCheckpointControlPolicy, MaceExposureBackend, MaceLoaderDryRun, MaceSourceProbe
+@@ -22,7 +23,8 @@
+ MACE_OPTIMIZER_POLICY_V3_SCHEMA = "mdstats.mace-optimizer-policy.v3"
+ MACE_OPTIMIZER_POLICY_V2_SCHEMA = "mdstats.mace-optimizer-policy.v2"
+ MACE_OPTIMIZER_POLICY_LEGACY_SCHEMA = "mdstats.mace-optimizer-policy.v1"
+-TRAINING_PROTOCOL_IDENTITY_SCHEMA = "mdstats.training-protocol-identity.v4"
++TRAINING_PROTOCOL_IDENTITY_SCHEMA = "mdstats.training-protocol-identity.v5"
++TRAINING_PROTOCOL_IDENTITY_V4_SCHEMA = "mdstats.training-protocol-identity.v4"
+ TRAINING_PROTOCOL_IDENTITY_V3_SCHEMA = "mdstats.training-protocol-identity.v3"
+ TRAINING_PROTOCOL_IDENTITY_V2_SCHEMA = "mdstats.training-protocol-identity.v2"
+ MACE_JOB_ARTIFACT_SCHEMA = "mdstats.mace-job-artifact.v1"
+@@ -285,6 +287,7 @@
+     target_online_monitor_record_digest: str | None = None
+     replay_online_monitor_record_digest: str | None = None
+     replay_valid_artifact_digest: str | None = None
++    adaptive_stop_policy: AdaptiveTrainingStopPolicy | None = None
+ 
+     def __post_init__(self) -> None:
+         object.__setattr__(self, "training_mode", TrainingMode(self.training_mode))
+@@ -320,6 +323,25 @@
+             raise TrainingDataInputError(
+                 "ADAPT-MON1 protocol evidence requires policy, target record, replay record, and replay-valid artifact together."
+             )
++        if self.adaptive_stop_policy is not None:
++            if self.online_monitor_policy_digest is None:
++                raise TrainingDataInputError("ADAPT-STOP1 requires ADAPT-MON1 online-monitor evidence.")
++            if self.optimizer_policy.eval_interval != 1:
++                raise TrainingDataInputError("ADAPT-STOP1 requires eval_interval=1 so every epoch has monitor evidence.")
++            expected_replay = self.training_mode is TrainingMode.MULTIHEAD_REPLAY
++            if bool(self.adaptive_stop_policy.replay_enabled) != expected_replay:
++                raise TrainingDataInputError("Adaptive-stop replay_enabled disagrees with the training mode.")
++            if self.adaptive_stop_policy.max_num_epochs != self.optimizer_policy.max_num_epochs:
++                raise TrainingDataInputError("Adaptive-stop epoch ceiling disagrees with optimizer policy.")
++            if self.adaptive_stop_policy.target_head_name != self.checkpoint_control_policy.target_head_name:
++                raise TrainingDataInputError("Adaptive-stop target head disagrees with checkpoint-control policy.")
++            if (
++                self.adaptive_stop_policy.replay_enabled
++                and self.adaptive_stop_policy.replay_head_name != self.checkpoint_control_policy.replay_head_name
++            ):
++                raise TrainingDataInputError("Adaptive-stop replay head disagrees with checkpoint-control policy.")
++            if not self.checkpoint_control_policy.save_all_checkpoints:
++                raise TrainingDataInputError("ADAPT-STOP1 requires one durable checkpoint for every evaluated epoch.")
+         if self.training_mode is TrainingMode.MULTIHEAD_REPLAY and self.replay_plan_digest is None:
+             raise TrainingDataInputError("Multi-head replay protocols require a replay plan.")
+         if self.training_mode is TrainingMode.NAIVE_FINE_TUNING and self.replay_plan_digest is not None:
+@@ -355,6 +377,8 @@
+         payload = {
+             "schema": (
+                 TRAINING_PROTOCOL_IDENTITY_SCHEMA
++                if self.adaptive_stop_policy is not None
++                else TRAINING_PROTOCOL_IDENTITY_V4_SCHEMA
+                 if self.online_monitor_policy_digest is not None
+                 else TRAINING_PROTOCOL_IDENTITY_V3_SCHEMA
+                 if self.resolved_precision_schedule is not None
+@@ -385,6 +409,8 @@
+                 "replay_online_monitor_record_digest": self.replay_online_monitor_record_digest,
+                 "replay_valid_artifact_digest": self.replay_valid_artifact_digest,
+             })
++        if self.adaptive_stop_policy is not None:
++            payload["adaptive_stop_policy"] = self.adaptive_stop_policy.to_dict()
+         return payload
+ 
+     @property
+@@ -396,7 +422,7 @@
+ 
+     @classmethod
+     def from_dict(cls, payload: Mapping[str, Any]) -> "TrainingProtocolIdentity":
+-        if payload.get("schema") not in {TRAINING_PROTOCOL_IDENTITY_SCHEMA, TRAINING_PROTOCOL_IDENTITY_V3_SCHEMA, TRAINING_PROTOCOL_IDENTITY_V2_SCHEMA, "mdstats.training-protocol-identity.v1"}:
++        if payload.get("schema") not in {TRAINING_PROTOCOL_IDENTITY_SCHEMA, TRAINING_PROTOCOL_IDENTITY_V4_SCHEMA, TRAINING_PROTOCOL_IDENTITY_V3_SCHEMA, TRAINING_PROTOCOL_IDENTITY_V2_SCHEMA, "mdstats.training-protocol-identity.v1"}:
+             raise TrainingDataSerializationError("Unsupported training-protocol schema.")
+         result = cls(
+             training_mode=TrainingMode(payload["training_mode"]),
+@@ -423,8 +449,13 @@
+             target_online_monitor_record_digest=None if payload.get("target_online_monitor_record_digest") is None else str(payload["target_online_monitor_record_digest"]),
+             replay_online_monitor_record_digest=None if payload.get("replay_online_monitor_record_digest") is None else str(payload["replay_online_monitor_record_digest"]),
+             replay_valid_artifact_digest=None if payload.get("replay_valid_artifact_digest") is None else str(payload["replay_valid_artifact_digest"]),
++            adaptive_stop_policy=(
++                None
++                if payload.get("adaptive_stop_policy") is None
++                else AdaptiveTrainingStopPolicy.from_dict(payload["adaptive_stop_policy"])
++            ),
+         )
+-        if payload.get("schema") in {TRAINING_PROTOCOL_IDENTITY_SCHEMA, TRAINING_PROTOCOL_IDENTITY_V3_SCHEMA, TRAINING_PROTOCOL_IDENTITY_V2_SCHEMA} and payload.get("content_digest") not in (None, result.content_digest):
++        if payload.get("schema") in {TRAINING_PROTOCOL_IDENTITY_SCHEMA, TRAINING_PROTOCOL_IDENTITY_V4_SCHEMA, TRAINING_PROTOCOL_IDENTITY_V3_SCHEMA, TRAINING_PROTOCOL_IDENTITY_V2_SCHEMA} and payload.get("content_digest") not in (None, result.content_digest):
+             raise TrainingDataSerializationError("Training-protocol digest mismatch.")
+         return result
+ 
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/pyproject.toml b/pyproject.toml
+--- a/pyproject.toml	2026-08-09 19:54:31.000000000 +0000
++++ b/pyproject.toml	2026-08-09 21:19:26.450371251 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.123a0"
++version = "0.20.124a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/release/mlff_adapt_stop1_adaptive_training_qualification.json b/release/mlff_adapt_stop1_adaptive_training_qualification.json
+--- a/release/mlff_adapt_stop1_adaptive_training_qualification.json	1970-01-01 00:00:00.000000000 +0000
++++ b/release/mlff_adapt_stop1_adaptive_training_qualification.json	2026-08-09 21:27:37.194064190 +0000
+@@ -0,0 +1,62 @@
++{
++  "date": "2026-08-09",
++  "gate": "ADAPT-STOP1",
++  "mace_source_contract": {
++    "epoch_stop_hook_present": true,
++    "foundation_hook_present": true,
++    "mace_version": "0.3.16",
++    "patched_code_filename": "<mdstats-mace-precision-train>",
++    "terminal_restart_hook_present": true
++  },
++  "package_version": "0.20.124a0",
++  "pdf_verification": {
++    "mlff_adaptive_training_stop_spec.pdf": "rendered and visually inspected",
++    "mlff_campaign_cli_user_guide.pdf": "updated evaluation/training pages rendered and visually inspected",
++    "mlff_online_monitor_spec.pdf": "updated runtime-boundary pages rendered and visually inspected",
++    "mlff_training_data_architecture.pdf": "ADAPT-STOP1 pages rendered and visually inspected"
++  },
++  "policy_defaults": {
++    "max_num_epochs": 30,
++    "maximum_replay_force_rmse_ev_per_angstrom_derived": 0.03,
++    "maximum_target_force_rmse_ev_per_angstrom": 0.03,
++    "replay_score_weight": 1.0,
++    "replay_stop_force_rmse_ev_per_angstrom": 0.036,
++    "replay_stop_multiplier": 1.2,
++    "target_score_weight": 1.0,
++    "target_stop_force_rmse_ev_per_angstrom": 0.024,
++    "target_stop_fraction": 0.8
++  },
++  "runtime_contract": {
++    "adaptive_state_file": "adaptive_training_stop.json",
++    "additional_stop_inference": false,
++    "foundation_replay_baseline_checked_before_epoch_0": true,
++    "missing_or_policy_mismatched_restart_state": "fail_closed",
++    "online_replay_monitor_configurations": 512,
++    "online_target_monitor_configurations": 256,
++    "production_evaluator": "EVAL-MF until ADAPT-EVAL1",
++    "ranking_implemented": false,
++    "replay_monitor_labels": "TRUE_DFT",
++    "stop_hook_position": "after validation and durable epoch checkpoint, before next epoch",
++    "terminal_restart": "skip_epoch_loop_and_finalize_without_extra_training"
++  },
++  "schema": "mdstats.mlff-adapt-stop1-qualification.v1",
++  "source_patch": {
++    "binary_pdfs": "excluded from unified source patch; included in complete package",
++    "dry_run": "passed",
++    "from": "0.20.123a0",
++    "to": "0.20.124a0"
++  },
++  "status": "passed",
++  "tests": [
++    {
++      "result": "104 passed, 1 skipped",
++      "scope": "affected runtime, adaptive-stop, monitor, precision, DATA8/materialization, campaign CLI, execution",
++      "skip": "real LTA training root not supplied"
++    },
++    {
++      "deselection": "pre-existing missing release/mlff_data9a9a_real_mpa0_restart_smoke.json fixture",
++      "result": "145 passed, 1 deselected",
++      "scope": "MLFF specification, adaptive revision, and legacy schema compatibility"
++    }
++  ]
++}
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/tests/test_mlff_adapt_mon1_specification.py b/tests/test_mlff_adapt_mon1_specification.py
+--- a/tests/test_mlff_adapt_mon1_specification.py	2026-08-09 19:55:01.000000000 +0000
++++ b/tests/test_mlff_adapt_mon1_specification.py	2026-08-09 21:24:39.735491930 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_adapt_mon1_release_and_normative_defaults():
+-    assert mdstats.__version__ == "0.20.123a0"
++    assert mdstats.__version__ == "0.20.124a0"
+     text = SPEC.read_text(encoding="utf-8")
+     assert "Status: implemented in mdstats 0.20.123a0" in text
+     assert "256 configurations" in text
+@@ -20,14 +20,14 @@
+     assert "must never supply gradients" in text
+ 
+ 
+-def test_adapt_mon1_manual_closed_and_stop_gate_open():
++def test_adapt_mon1_manual_closed_and_stop_gate_closed():
+     text = MANUAL.read_text(encoding="utf-8")
+     mon = text.index("## ADAPT-MON1")
+     stop = text.index("## ADAPT-STOP1")
+     assert mon < stop
+     assert "**Status:** `implemented` in `mdstats 0.20.123a0`." in text[mon:stop]
+-    assert "**Status:** `not_started`." in text[stop : stop + 1000]
+-    assert "max_num_epochs" in text[mon:stop]
++    assert "**Status:** implemented in `mdstats 0.20.124a0`." in text[stop : stop + 1000]
++    assert "hard-epoch boundary" in text[mon:stop]
+     assert "EVAL-MF" in text[mon:stop]
+ 
+ 
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/tests/test_mlff_adapt_prec1_specification.py b/tests/test_mlff_adapt_prec1_specification.py
+--- a/tests/test_mlff_adapt_prec1_specification.py	2026-08-09 19:55:00.000000000 +0000
++++ b/tests/test_mlff_adapt_prec1_specification.py	2026-08-09 21:24:27.845554338 +0000
+@@ -8,7 +8,7 @@
+ 
+ 
+ def test_adapt_prec1_release_and_spec_contract():
+-    assert mdstats.__version__ == "0.20.123a0"
++    assert mdstats.__version__ == "0.20.124a0"
+     text = SPEC.read_text(encoding="utf-8")
+     assert "Status: implemented in mdstats 0.20.122a0" in text
+     assert "`single`: learned-model" in text
+@@ -24,8 +24,9 @@
+     assert "**Status:** implemented in `mdstats 0.20.122a0`." in text
+     mon_start = text.index("## ADAPT-MON1")
+     assert "**Status:** `implemented` in `mdstats 0.20.123a0`." in text[mon_start : mon_start + 1400]
++    stop_start = text.index("## ADAPT-STOP1")
++    assert "**Status:** implemented in `mdstats 0.20.124a0`." in text[stop_start : stop_start + 1000]
+     for heading in [
+-        "## ADAPT-STOP1",
+         "## ADAPT-RANK1",
+         "## ADAPT-EVAL1",
+         "## ADAPT-VERIFY1",
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/tests/test_mlff_adapt_stop1_adaptive_training.py b/tests/test_mlff_adapt_stop1_adaptive_training.py
+--- a/tests/test_mlff_adapt_stop1_adaptive_training.py	1970-01-01 00:00:00.000000000 +0000
++++ b/tests/test_mlff_adapt_stop1_adaptive_training.py	2026-08-09 21:24:27.840503196 +0000
+@@ -0,0 +1,185 @@
++from __future__ import annotations
++
++import json
++from pathlib import Path
++
++import pytest
++
++import mdstats
++from mdstats.training_data.adaptive_stop import (
++    ADAPTIVE_STOP_POLICY_ENVIRONMENT_VARIABLE,
++    ADAPTIVE_STOP_STATE_PATH_ENVIRONMENT_VARIABLE,
++)
++
++
++def _append(path: Path, *, epoch, head: str, rmse_f: float) -> None:
++    path.parent.mkdir(parents=True, exist_ok=True)
++    with path.open("a", encoding="utf-8") as handle:
++        handle.write(json.dumps({"mode": "eval", "epoch": epoch, "head": head, "rmse_f": rmse_f}) + "\n")
++
++
++def _activate(monkeypatch, tmp_path: Path, policy: mdstats.AdaptiveTrainingStopPolicy):
++    state = tmp_path / "adaptive_training_stop.json"
++    monkeypatch.setenv(ADAPTIVE_STOP_POLICY_ENVIRONMENT_VARIABLE, json.dumps(policy.to_dict()))
++    monkeypatch.setenv(ADAPTIVE_STOP_STATE_PATH_ENVIRONMENT_VARIABLE, str(state))
++    return state
++
++
++def test_default_weight_geometry_matches_30_24_36_mev() -> None:
++    policy = mdstats.AdaptiveTrainingStopPolicy()
++    assert policy.maximum_target_force_rmse_ev_per_angstrom == pytest.approx(0.030)
++    assert policy.maximum_replay_force_rmse_ev_per_angstrom == pytest.approx(0.030)
++    assert policy.target_stop_force_rmse_ev_per_angstrom == pytest.approx(0.024)
++    assert policy.replay_stop_force_rmse_ev_per_angstrom == pytest.approx(0.036)
++
++
++@pytest.mark.parametrize(
++    ("target_weight", "replay_weight", "expected_replay"),
++    [(1.0, 1.0, 0.030), (2.0, 1.0, 0.060), (1.0, 2.0, 0.015)],
++)
++def test_weight_ratio_derives_replay_boundary(target_weight, replay_weight, expected_replay) -> None:
++    policy = mdstats.AdaptiveTrainingStopPolicy(
++        target_score_weight=target_weight,
++        replay_score_weight=replay_weight,
++    )
++    assert policy.maximum_replay_force_rmse_ev_per_angstrom == pytest.approx(expected_replay)
++    assert policy.replay_stop_force_rmse_ev_per_angstrom == pytest.approx(1.2 * expected_replay)
++
++
++def test_target_success_records_durable_history_and_exact_restart(monkeypatch, tmp_path: Path) -> None:
++    policy = mdstats.AdaptiveTrainingStopPolicy(max_num_epochs=30)
++    state_path = _activate(monkeypatch, tmp_path, policy)
++    log = tmp_path / "results" / "train.txt"
++    _append(log, epoch=None, head="pt_head", rmse_f=0.020)
++    _append(log, epoch=None, head="target_head", rmse_f=0.050)
++    mdstats.validate_adaptive_stop_foundation_baseline(log)
++
++    _append(log, epoch=0, head="pt_head", rmse_f=0.025)
++    _append(log, epoch=0, head="target_head", rmse_f=0.029)
++    assert not mdstats.adaptive_training_stop_requested(log, 0)
++
++    _append(log, epoch=1, head="pt_head", rmse_f=0.029)
++    _append(log, epoch=1, head="target_head", rmse_f=0.0239)
++    assert mdstats.adaptive_training_stop_requested(log, 1)
++    state = mdstats.AdaptiveTrainingStopState.from_dict(json.loads(state_path.read_text()))
++    assert state.stop_epoch == 1
++    assert state.stop_reason == "target_success"
++    assert state.run_outcome == "admissible_checkpoint_available"
++    assert [item.epoch for item in state.epochs] == [0, 1]
++    assert all(item.candidate_eligible for item in state.epochs)
++
++    # Repeating the same durable epoch is idempotent.
++    assert mdstats.adaptive_training_stop_requested(log, 1)
++    # A MACE restart appends a new epoch=None block for the resumed model. The
++    # frozen foundation baseline must not be reinterpreted or changed.
++    _append(log, epoch=None, head="pt_head", rmse_f=0.028)
++    mdstats.validate_adaptive_stop_foundation_baseline(log)
++    restored = mdstats.AdaptiveTrainingStopState.from_dict(json.loads(state_path.read_text()))
++    assert restored.foundation_replay_force_rmse_ev_per_angstrom == pytest.approx(0.020)
++
++
++def test_replay_exhaustion_preserves_earlier_admissible_checkpoint(monkeypatch, tmp_path: Path) -> None:
++    policy = mdstats.AdaptiveTrainingStopPolicy()
++    state_path = _activate(monkeypatch, tmp_path, policy)
++    log = tmp_path / "train.txt"
++    _append(log, epoch=None, head="pt_head", rmse_f=0.020)
++    _append(log, epoch=None, head="target_head", rmse_f=0.050)
++    mdstats.validate_adaptive_stop_foundation_baseline(log)
++
++    _append(log, epoch=0, head="pt_head", rmse_f=0.029)
++    _append(log, epoch=0, head="target_head", rmse_f=0.028)
++    assert not mdstats.adaptive_training_stop_requested(log, 0)
++
++    _append(log, epoch=1, head="pt_head", rmse_f=0.0361)
++    _append(log, epoch=1, head="target_head", rmse_f=0.026)
++    assert mdstats.adaptive_training_stop_requested(log, 1)
++    state = mdstats.AdaptiveTrainingStopState.from_dict(json.loads(state_path.read_text()))
++    assert state.stop_reason == "replay_exhaustion"
++    assert state.epochs[0].candidate_eligible
++    assert not state.epochs[1].candidate_eligible
++    assert state.run_outcome == "admissible_checkpoint_available"
++
++
++def test_epoch_ceiling_and_no_admissible_outcome(monkeypatch, tmp_path: Path) -> None:
++    policy = mdstats.AdaptiveTrainingStopPolicy(max_num_epochs=3)
++    state_path = _activate(monkeypatch, tmp_path, policy)
++    log = tmp_path / "train.txt"
++    _append(log, epoch=None, head="pt_head", rmse_f=0.020)
++    _append(log, epoch=None, head="target_head", rmse_f=0.050)
++    mdstats.validate_adaptive_stop_foundation_baseline(log)
++    for epoch in range(3):
++        _append(log, epoch=epoch, head="pt_head", rmse_f=0.029)
++        _append(log, epoch=epoch, head="target_head", rmse_f=0.031)
++        stopped = mdstats.adaptive_training_stop_requested(log, epoch)
++        assert stopped is (epoch == 2)
++    state = mdstats.AdaptiveTrainingStopState.from_dict(json.loads(state_path.read_text()))
++    assert state.stop_reason == "max_epochs_reached"
++    assert state.run_outcome == "no_lightweight_admissible_checkpoint"
++
++
++def test_foundation_baseline_requires_deliberate_override(monkeypatch, tmp_path: Path) -> None:
++    policy = mdstats.AdaptiveTrainingStopPolicy(
++        target_score_weight=1.0,
++        replay_score_weight=2.0,
++    )
++    state_path = _activate(monkeypatch, tmp_path, policy)
++    log = tmp_path / "train.txt"
++    _append(log, epoch=None, head="pt_head", rmse_f=0.020)
++    _append(log, epoch=None, head="target_head", rmse_f=0.050)
++    with pytest.raises(RuntimeError, match="below the foundation"):
++        mdstats.validate_adaptive_stop_foundation_baseline(log)
++    state = mdstats.AdaptiveTrainingStopState.from_dict(json.loads(state_path.read_text()))
++    assert state.foundation_replay_threshold_feasible is False
++    assert not state.foundation_feasibility_overridden
++
++    override = mdstats.AdaptiveTrainingStopPolicy(
++        target_score_weight=1.0,
++        replay_score_weight=2.0,
++        allow_replay_threshold_below_foundation_baseline=True,
++    )
++    state_path.unlink()
++    _activate(monkeypatch, tmp_path, override)
++    mdstats.validate_adaptive_stop_foundation_baseline(log)
++    state = mdstats.AdaptiveTrainingStopState.from_dict(json.loads(state_path.read_text()))
++    assert state.foundation_feasibility_overridden
++
++
++def test_naive_training_uses_target_only_stopping(monkeypatch, tmp_path: Path) -> None:
++    policy = mdstats.AdaptiveTrainingStopPolicy(replay_enabled=False)
++    state_path = _activate(monkeypatch, tmp_path, policy)
++    log = tmp_path / "train.txt"
++    _append(log, epoch=None, head="target_head", rmse_f=0.050)
++    mdstats.validate_adaptive_stop_foundation_baseline(log)
++    _append(log, epoch=0, head="target_head", rmse_f=0.023)
++    assert mdstats.adaptive_training_stop_requested(log, 0)
++    state = mdstats.AdaptiveTrainingStopState.from_dict(json.loads(state_path.read_text()))
++    assert state.stop_reason == "target_success"
++    assert state.epochs[0].replay_force_rmse_ev_per_angstrom is None
++
++
++def test_policy_roundtrip_and_validation() -> None:
++    policy = mdstats.AdaptiveTrainingStopPolicy(
++        target_score_weight=2.0,
++        replay_score_weight=1.0,
++        target_stop_fraction=0.8,
++        replay_stop_multiplier=1.2,
++    )
++    assert mdstats.AdaptiveTrainingStopPolicy.from_dict(policy.to_dict()) == policy
++    with pytest.raises(mdstats.TrainingDataInputError):
++        mdstats.AdaptiveTrainingStopPolicy(target_stop_fraction=1.0)
++    with pytest.raises(mdstats.TrainingDataInputError):
++        mdstats.AdaptiveTrainingStopPolicy(replay_stop_multiplier=1.0)
++
++
++def test_terminal_state_is_visible_before_restart_epoch_loop(monkeypatch, tmp_path: Path) -> None:
++    policy = mdstats.AdaptiveTrainingStopPolicy()
++    _activate(monkeypatch, tmp_path, policy)
++    log = tmp_path / "train.txt"
++    _append(log, epoch=None, head="pt_head", rmse_f=0.020)
++    _append(log, epoch=None, head="target_head", rmse_f=0.050)
++    mdstats.validate_adaptive_stop_foundation_baseline(log)
++    assert not mdstats.adaptive_training_stop_already_terminal(log)
++    _append(log, epoch=0, head="pt_head", rmse_f=0.029)
++    _append(log, epoch=0, head="target_head", rmse_f=0.023)
++    assert mdstats.adaptive_training_stop_requested(log, 0)
++    assert mdstats.adaptive_training_stop_already_terminal(log)
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/tests/test_mlff_adapt_stop1_specification.py b/tests/test_mlff_adapt_stop1_specification.py
+--- a/tests/test_mlff_adapt_stop1_specification.py	1970-01-01 00:00:00.000000000 +0000
++++ b/tests/test_mlff_adapt_stop1_specification.py	2026-08-09 21:24:27.837024986 +0000
+@@ -0,0 +1,57 @@
++from __future__ import annotations
++
++from pathlib import Path
++
++import mdstats
++
++
++ROOT = Path(__file__).resolve().parents[1]
++
++
++def test_adapt_stop1_spec_and_architecture_mark_gate_implemented() -> None:
++    spec = (ROOT / "docs/specs/training_data/mlff_adaptive_training_stop_spec.md").read_text()
++    architecture = (ROOT / "docs/arch_manuals/mlff_training_data_architecture.md").read_text()
++    assert "implemented in mdstats 0.20.124a0" in spec
++    section = architecture.split("## ADAPT-STOP1", 1)[1].split("## ADAPT-RANK1", 1)[0]
++    assert "**Status:** implemented in `mdstats 0.20.124a0`." in section
++    assert "ADAPT-STOP1 does **not** rank or select" in section
++
++
++def test_generated_configuration_contains_stop_policy_defaults() -> None:
++    from mdstats.training_data.campaign_cli import _config_template
++
++    config = _config_template(workspace="./w", training_root="./t", foundation_model="./f.model", replay_train="./r.extxyz", replay_monitor="./rm.extxyz")
++    assert "maximum_target_force_rmse_ev_per_angstrom = 0.030" in config
++    assert "target_score_weight = 1.0" in config
++    assert "replay_score_weight = 1.0" in config
++    assert "target_stop_fraction = 0.80" in config
++    assert "replay_stop_multiplier = 1.20" in config
++    assert "allow_replay_threshold_below_foundation_baseline = false" in config
++
++
++def test_default_policy_geometry_and_replay_weight_formula_are_documented() -> None:
++    spec = (ROOT / "docs/specs/training_data/mlff_adaptive_training_stop_spec.md").read_text()
++    policy = mdstats.AdaptiveTrainingStopPolicy()
++    assert policy.maximum_target_force_rmse_ev_per_angstrom == 0.030
++    assert policy.maximum_replay_force_rmse_ev_per_angstrom == 0.030
++    assert policy.target_stop_force_rmse_ev_per_angstrom == 0.024
++    assert policy.replay_stop_force_rmse_ev_per_angstrom == 0.036
++    for token in ("30 meV/A", "24 meV/A", "36 meV/A", "w_T", "w_R"):
++        assert token in spec
++
++
++def test_spec_freezes_checkpoint_then_stop_and_restart_contract() -> None:
++    spec = (ROOT / "docs/specs/training_data/mlff_adaptive_training_stop_spec.md").read_text()
++    assert "save the epoch checkpoint durably" in spec
++    assert "adaptive_training_stop.json" in spec
++    assert "skips the epoch" in spec and "loop" in spec
++    assert "No extra training epoch is permitted" in spec
++    assert "foundation replay baseline" in spec
++
++
++def test_rank_and_eval_gates_remain_pending() -> None:
++    architecture = (ROOT / "docs/arch_manuals/mlff_training_data_architecture.md").read_text()
++    rank = architecture.split("## ADAPT-RANK1", 1)[1].split("## ADAPT-EVAL1", 1)[0]
++    evaluation = architecture.split("## ADAPT-EVAL1", 1)[1].split("## ADAPT-VERIFY1", 1)[0]
++    assert "**Status:** `not_started`." in rank
++    assert "**Status:** `not_started`." in evaluation
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/tests/test_mlff_adaptive_training_revision_plan.py b/tests/test_mlff_adaptive_training_revision_plan.py
+--- a/tests/test_mlff_adaptive_training_revision_plan.py	2026-08-09 19:56:06.000000000 +0000
++++ b/tests/test_mlff_adaptive_training_revision_plan.py	2026-08-09 21:24:39.735706920 +0000
+@@ -6,7 +6,7 @@
+ 
+ def test_adaptive_revision_gate_order_and_defaults():
+     version_text = (ROOT / "mdstats" / "_version.py").read_text(encoding="utf-8")
+-    assert '__version__ = "0.20.123a0"' in version_text
++    assert '__version__ = "0.20.124a0"' in version_text
+     text = MANUAL.read_text(encoding="utf-8")
+     headings = [
+         "## ADAPT-PREC1",
+@@ -37,4 +37,4 @@
+     assert "performs no new model inference" in text
+     assert "retirement of EVAL-MF screening" in text
+     assert "full **true-label** replay" in text
+-    assert "Historical\nEVAL-MF/PREC records remain valid evidence" in text
++    assert "Historical EVAL-MF/PREC records remain valid evidence" in " ".join(text.split())
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/tests/test_mlff_data0_architecture_specification.py b/tests/test_mlff_data0_architecture_specification.py
+--- a/tests/test_mlff_data0_architecture_specification.py	2026-08-09 19:55:00.000000000 +0000
++++ b/tests/test_mlff_data0_architecture_specification.py	2026-08-09 21:24:27.841587681 +0000
+@@ -263,4 +263,4 @@
+ def test_mlff_data0_pdf_and_version_artifacts_exist() -> None:
+     assert MANUAL_PDF.stat().st_size > 10_000
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.123a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.124a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/tests/test_mlff_data1_specification.py b/tests/test_mlff_data1_specification.py
+--- a/tests/test_mlff_data1_specification.py	2026-08-09 19:55:00.000000000 +0000
++++ b/tests/test_mlff_data1_specification.py	2026-08-09 21:24:27.837692510 +0000
+@@ -49,4 +49,4 @@
+     assert callable(mdstats.assign_balanced_round_robin)
+     assert callable(mdstats.build_complete_frame_block_plan)
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.123a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.124a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/tests/test_mlff_data2a_manifest_inference_specification.py b/tests/test_mlff_data2a_manifest_inference_specification.py
+--- a/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-09 19:55:00.000000000 +0000
++++ b/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-09 21:24:27.841219863 +0000
+@@ -15,7 +15,7 @@
+ 
+ 
+ def test_data2a_version_public_api_and_documented_contract() -> None:
+-    assert mdstats.__version__ == "0.20.123a0"
++    assert mdstats.__version__ == "0.20.124a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert callable(mdstats.infer_training_manifest_metadata)
+     policy = mdstats.ManifestInferencePolicy()
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/tests/test_mlff_data9a2_specification.py b/tests/test_mlff_data9a2_specification.py
+--- a/tests/test_mlff_data9a2_specification.py	2026-08-09 19:55:00.000000000 +0000
++++ b/tests/test_mlff_data9a2_specification.py	2026-08-09 21:24:27.837626402 +0000
+@@ -23,7 +23,7 @@
+         "finite energy, force, and stress",
+     ):
+         assert required in text
+-    assert 'version = "0.20.123a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.124a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "DATA9A2 real-MACE realization is implemented in `0.20.39a0`" in ARCH.read_text()
+ 
+ 
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/tests/test_mlff_data9a3_specification.py b/tests/test_mlff_data9a3_specification.py
+--- a/tests/test_mlff_data9a3_specification.py	2026-08-09 19:55:00.000000000 +0000
++++ b/tests/test_mlff_data9a3_specification.py	2026-08-09 21:24:27.839997803 +0000
+@@ -9,5 +9,5 @@
+     assert "37,632" in text
+     assert "supported_with_temporal_blocks_only" in text
+     assert "production_replay_corpus_not_bound" in text
+-    assert 'version = "0.20.123a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.124a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "MLFF-DATA9A3 production qualification" in ARCH.read_text()
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/tests/test_mlff_data9a4_precision_specification.py b/tests/test_mlff_data9a4_precision_specification.py
+--- a/tests/test_mlff_data9a4_precision_specification.py	2026-08-09 19:55:00.000000000 +0000
++++ b/tests/test_mlff_data9a4_precision_specification.py	2026-08-09 21:24:27.840406081 +0000
+@@ -9,7 +9,7 @@
+     assert "float32" in text and "float64" in text
+     assert "MaceModelPrecisionRecord" in text
+     assert "MacePrecisionTransitionRecord" in text
+-    assert "version = \"0.20.123a0\"" in (ROOT / "pyproject.toml").read_text()
++    assert "version = \"0.20.124a0\"" in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_bind_precision_to_protocol() -> None:
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/tests/test_mlff_data9a5_critical_fp64_specification.py b/tests/test_mlff_data9a5_critical_fp64_specification.py
+--- a/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-09 19:55:00.000000000 +0000
++++ b/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-09 21:24:27.840084933 +0000
+@@ -14,7 +14,7 @@
+     assert 'version: "0.20.42a0"' in text
+     assert "training_force_jacobian_dtype = model" in text
+     assert "Python/ASE" in text
+-    assert 'version = "0.20.123a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.124a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_data9a5_architecture_declares_scope_and_limits() -> None:
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/tests/test_mlff_data9a5_deployment_specification.py b/tests/test_mlff_data9a5_deployment_specification.py
+--- a/tests/test_mlff_data9a5_deployment_specification.py	2026-08-09 19:55:00.000000000 +0000
++++ b/tests/test_mlff_data9a5_deployment_specification.py	2026-08-09 21:24:27.841853396 +0000
+@@ -13,7 +13,7 @@
+     assert 'version: "0.20.43a0"' in text
+     assert "downstream runtime owns" in text
+     assert "float32-to-float64 promotion does not restore" in text
+-    assert 'version = "0.20.123a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.124a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_keep_lammps_outside_mdstats_scope() -> None:
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/tests/test_mlff_data9a6c_observable_evidence_specification.py b/tests/test_mlff_data9a6c_observable_evidence_specification.py
+--- a/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-09 19:55:00.000000000 +0000
++++ b/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-09 21:24:27.841332781 +0000
+@@ -74,5 +74,5 @@
+ 
+ def test_packaged_owner_manual_index_is_valid() -> None:
+     payload = json.loads(MANUAL_INDEX.read_text(encoding="utf-8"))
+-    assert payload["package_version"] == "0.20.123a0"
++    assert payload["package_version"] == "0.20.124a0"
+     assert "structural-observables-architecture" in payload["manuals"]
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/tests/test_mlff_data9a7a_material_profile_specification.py b/tests/test_mlff_data9a7a_material_profile_specification.py
+--- a/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-09 19:55:00.000000000 +0000
++++ b/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-09 21:24:27.841451268 +0000
+@@ -64,4 +64,4 @@
+ 
+ 
+ def test_release_version_is_data9a7a() -> None:
+-    assert 'version = "0.20.123a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert 'version = "0.20.124a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/tests/test_mlff_data9a7b_specification.py b/tests/test_mlff_data9a7b_specification.py
+--- a/tests/test_mlff_data9a7b_specification.py	2026-08-09 19:55:00.000000000 +0000
++++ b/tests/test_mlff_data9a7b_specification.py	2026-08-09 21:24:27.841621741 +0000
+@@ -69,7 +69,7 @@
+ 
+ 
+ def test_data9a7b_public_exports_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.123a0"
++    assert mdstats.__version__ == "0.20.124a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert callable(mdstats.compute_local_structure_features)
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/tests/test_mlff_data9a7c_specification.py b/tests/test_mlff_data9a7c_specification.py
+--- a/tests/test_mlff_data9a7c_specification.py	2026-08-09 19:55:00.000000000 +0000
++++ b/tests/test_mlff_data9a7c_specification.py	2026-08-09 21:24:27.841363757 +0000
+@@ -47,7 +47,7 @@
+ 
+ 
+ def test_public_api_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.123a0"
++    assert mdstats.__version__ == "0.20.124a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert mdstats.MLFF_DATA9A7C_PARSER_VERSION == "0.20.49a0"
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/tests/test_mlff_data9a7d_specification.py b/tests/test_mlff_data9a7d_specification.py
+--- a/tests/test_mlff_data9a7d_specification.py	2026-08-09 19:55:00.000000000 +0000
++++ b/tests/test_mlff_data9a7d_specification.py	2026-08-09 21:24:27.839935420 +0000
+@@ -39,6 +39,6 @@
+ 
+ 
+ def test_data9a7d_runtime_versions() -> None:
+-    assert mdstats.__version__ == "0.20.123a0"
++    assert mdstats.__version__ == "0.20.124a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7D_PARSER_VERSION == "0.20.50a0"
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/tests/test_mlff_data9a7e_specification.py b/tests/test_mlff_data9a7e_specification.py
+--- a/tests/test_mlff_data9a7e_specification.py	2026-08-09 19:55:00.000000000 +0000
++++ b/tests/test_mlff_data9a7e_specification.py	2026-08-09 21:24:27.840627170 +0000
+@@ -39,7 +39,7 @@
+         "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
+         "CROSS_SYSTEM_QUALIFICATION_SUITE",
+     } <= nodes
+-    assert mdstats.__version__ == "0.20.123a0"
++    assert mdstats.__version__ == "0.20.124a0"
+     assert mdstats.MLFF_DATA9A7E_PARSER_VERSION == "0.20.51a0"
+     assert callable(mdstats.qualify_cross_system_case)
+     assert callable(mdstats.build_cross_system_qualification_suite)
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/tests/test_mlff_data9a8_specification.py b/tests/test_mlff_data9a8_specification.py
+--- a/tests/test_mlff_data9a8_specification.py	2026-08-09 19:55:00.000000000 +0000
++++ b/tests/test_mlff_data9a8_specification.py	2026-08-09 21:24:27.835736708 +0000
+@@ -66,7 +66,7 @@
+ 
+ 
+ def test_public_runtime_exposes_data9a8_without_removed_aliases() -> None:
+-    assert mdstats.__version__ == "0.20.123a0"
++    assert mdstats.__version__ == "0.20.124a0"
+     assert mdstats.MLFF_DATA9A8_PARSER_VERSION == "0.20.52a0"
+     assert mdstats.ObservableComparisonPolicy
+     assert mdstats.compare_mlff_observable_validation
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/tests/test_mlff_data9a9a_specification.py b/tests/test_mlff_data9a9a_specification.py
+--- a/tests/test_mlff_data9a9a_specification.py	2026-08-09 19:55:00.000000000 +0000
++++ b/tests/test_mlff_data9a9a_specification.py	2026-08-09 21:24:27.839819838 +0000
+@@ -65,7 +65,7 @@
+ 
+ 
+ def test_public_runtime_exports_data9a9a_contracts() -> None:
+-    assert mdstats.__version__ == "0.20.123a0"
++    assert mdstats.__version__ == "0.20.124a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A9A_VERSION
+     assert mdstats.Data6ModelSweepPlan
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/tests/test_mlff_data9a9b_specification.py b/tests/test_mlff_data9a9b_specification.py
+--- a/tests/test_mlff_data9a9b_specification.py	2026-08-09 19:55:00.000000000 +0000
++++ b/tests/test_mlff_data9a9b_specification.py	2026-08-09 21:24:27.836337552 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9b_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.123a0"
++    assert mdstats.__version__ == "0.20.124a0"
+     for name in (
+         "ProductionMaterializationPlan",
+         "ProductionMaterializationCheckpoint",
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/tests/test_mlff_data9a9c_specification.py b/tests/test_mlff_data9a9c_specification.py
+--- a/tests/test_mlff_data9a9c_specification.py	2026-08-09 19:55:00.000000000 +0000
++++ b/tests/test_mlff_data9a9c_specification.py	2026-08-09 21:24:27.840541342 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9c_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.123a0"
++    assert mdstats.__version__ == "0.20.124a0"
+     for name in (
+         "ProductionCorpusPlan", "ProductionExpectedRun",
+         "ProfileExtensionEvidenceRequirement", "ProductionCorpusQualificationRecord",
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/tests/test_mlff_data9a_specification.py b/tests/test_mlff_data9a_specification.py
+--- a/tests/test_mlff_data9a_specification.py	2026-08-09 19:55:00.000000000 +0000
++++ b/tests/test_mlff_data9a_specification.py	2026-08-09 21:24:27.840296428 +0000
+@@ -14,7 +14,7 @@
+ 
+ 
+ def test_data9a_runtime_specification_is_canonical() -> None:
+-    assert 'version = "0.20.123a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.124a0"' in (ROOT / "pyproject.toml").read_text()
+     architecture = ARCH.read_text()
+     stage = STAGE.read_text()
+     specification = SPEC.read_text()
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/tests/test_mlff_data9b1_specification.py b/tests/test_mlff_data9b1_specification.py
+--- a/tests/test_mlff_data9b1_specification.py	2026-08-09 19:55:00.000000000 +0000
++++ b/tests/test_mlff_data9b1_specification.py	2026-08-09 21:24:27.839964203 +0000
+@@ -18,8 +18,8 @@
+     assert "TrainingCampaignPlan" in text
+     assert "CheckpointSelectionRecord" in text
+     assert "mdstats-mace-train" in text
+-    assert mdstats.__version__ == "0.20.123a0"
+-    assert 'version = "0.20.123a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert mdstats.__version__ == "0.20.124a0"
++    assert 'version = "0.20.124a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+ 
+ 
+ def test_data9b1_is_integrated_into_manual_and_stage_plan() -> None:
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/tests/test_mlff_data9b2_specification.py b/tests/test_mlff_data9b2_specification.py
+--- a/tests/test_mlff_data9b2_specification.py	2026-08-09 19:55:00.000000000 +0000
++++ b/tests/test_mlff_data9b2_specification.py	2026-08-09 21:24:27.840028018 +0000
+@@ -23,7 +23,7 @@
+         'mdstats-mace-select-head',
+     ):
+         assert token in text
+-    assert mdstats.__version__ == '0.20.123a0'
++    assert mdstats.__version__ == '0.20.124a0'
+     assert mdstats.MLFF_DATA9B2_VERSION == '0.20.57a0'
+ 
+ 
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/tests/test_mlff_data9b3_campaign_cli_specification.py b/tests/test_mlff_data9b3_campaign_cli_specification.py
+--- a/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-09 19:55:00.000000000 +0000
++++ b/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-09 21:24:27.838289239 +0000
+@@ -16,7 +16,7 @@
+ 
+ 
+ def test_data9b3_version_and_user_surface() -> None:
+-    assert mdstats.__version__ == "0.20.123a0"
++    assert mdstats.__version__ == "0.20.124a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert TOOL.is_file()
+     assert TOOL.stat().st_mode & 0o111
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/tests/test_mlff_legacy_schema_compatibility.py b/tests/test_mlff_legacy_schema_compatibility.py
+--- a/tests/test_mlff_legacy_schema_compatibility.py	2026-08-09 19:56:06.000000000 +0000
++++ b/tests/test_mlff_legacy_schema_compatibility.py	2026-08-09 21:24:27.836948202 +0000
+@@ -106,7 +106,7 @@
+ 
+ 
+ def test_historical_data8_parser_identity_is_registered() -> None:
+-    assert mdstats.MLFF_DATA8_PARSER_VERSION == "0.20.123a0"
++    assert mdstats.MLFF_DATA8_PARSER_VERSION == "0.20.124a0"
+     from mdstats.training_data.data8_bundle import (
+         MLFF_DATA8_LEGACY_PARSER_VERSION,
+         MLFF_DATA8_PRE_ADAPT_MON1_PARSER_VERSION,
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/tests/test_mlff_opt_ctrl1_specification.py b/tests/test_mlff_opt_ctrl1_specification.py
+--- a/tests/test_mlff_opt_ctrl1_specification.py	2026-08-09 19:55:00.000000000 +0000
++++ b/tests/test_mlff_opt_ctrl1_specification.py	2026-08-09 21:24:27.841539339 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_ctrl1_release_identity_preserves_scientific_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.123a0"
++    assert mdstats.__version__ == "0.20.124a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.123a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.124a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_ctrl1_architecture_and_spec_close_roadmap() -> None:
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/tests/test_mlff_opt_eval4_specification.py b/tests/test_mlff_opt_eval4_specification.py
+--- a/tests/test_mlff_opt_eval4_specification.py	2026-08-09 19:55:00.000000000 +0000
++++ b/tests/test_mlff_opt_eval4_specification.py	2026-08-09 21:24:27.839461965 +0000
+@@ -11,9 +11,9 @@
+ 
+ 
+ def test_opt_eval4_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.123a0"
++    assert mdstats.__version__ == "0.20.124a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+-    assert 'version = "0.20.123a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.124a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_eval4_architecture_and_spec_record_pipeline_contract() -> None:
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/tests/test_mlff_opt_verify1_specification.py b/tests/test_mlff_opt_verify1_specification.py
+--- a/tests/test_mlff_opt_verify1_specification.py	2026-08-09 19:55:00.000000000 +0000
++++ b/tests/test_mlff_opt_verify1_specification.py	2026-08-09 21:24:27.841392540 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_verify1_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.123a0"
++    assert mdstats.__version__ == "0.20.124a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.123a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.124a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_verify1_architecture_and_spec_record_contract() -> None:
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/tests/test_mlff_perf2_parallel_acceleration_specification.py b/tests/test_mlff_perf2_parallel_acceleration_specification.py
+--- a/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-09 19:55:00.000000000 +0000
++++ b/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-09 21:24:27.840057822 +0000
+@@ -10,7 +10,7 @@
+ 
+ 
+ def test_perf2_release_and_configuration_contract() -> None:
+-    assert mdstats.__version__ == "0.20.123a0"
++    assert mdstats.__version__ == "0.20.124a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     template = campaign_cli._config_template(
+         workspace="workspace",
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/tests/test_mlff_prec1_specification.py b/tests/test_mlff_prec1_specification.py
+--- a/tests/test_mlff_prec1_specification.py	2026-08-09 19:55:00.000000000 +0000
++++ b/tests/test_mlff_prec1_specification.py	2026-08-09 21:24:27.835808514 +0000
+@@ -12,7 +12,7 @@
+ 
+ 
+ def test_prec1_release_and_architecture_status() -> None:
+-    assert mdstats.__version__ == "0.20.123a0"
++    assert mdstats.__version__ == "0.20.124a0"
+     manual = MANUAL.read_text(encoding="utf-8")
+     spec = SPEC.read_text(encoding="utf-8")
+     assert "PREC1 - precision profiles, explicit staged schedule, and init realization - implemented in 0.20.108a0" in manual
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.123a0_to_0.20.124a0.patch' a/tests/test_mlff_prec3_specification.py b/tests/test_mlff_prec3_specification.py
+--- a/tests/test_mlff_prec3_specification.py	2026-08-09 19:55:00.000000000 +0000
++++ b/tests/test_mlff_prec3_specification.py	2026-08-09 21:24:27.841421313 +0000
+@@ -16,7 +16,7 @@
+     manual = MANUAL.read_text(encoding="utf-8")
+     spec = SPEC.read_text(encoding="utf-8")
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+-    assert mdstats.__version__ == "0.20.123a0"
++    assert mdstats.__version__ == "0.20.124a0"
+     assert "PREC3 - campaign integration, qualification, and profile activation - implemented in 0.20.110a0" in manual
+     assert "PREC3 implementation closure (0.20.110a0)" in manual
+     assert "PREC3 implemented in mdstats 0.20.110a0" in spec

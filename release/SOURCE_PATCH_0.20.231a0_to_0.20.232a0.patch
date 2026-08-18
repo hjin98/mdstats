@@ -1,0 +1,1723 @@
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/CHANGELOG.md /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/CHANGELOG.md
+--- /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/CHANGELOG.md	2026-08-17 23:15:34.000000000 +0000
++++ /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/CHANGELOG.md	2026-08-17 23:59:59.489109910 +0000
+@@ -1,3 +1,12 @@
++## 0.20.232a0 - 2026-08-17
++
++- Implement MVQUAL-PAR1 / architecture revision 99 as a global deterministic queue over independent domain/selector/target-size same-N qualification jobs.
++- Preserve TARGET-DATA2B independent rescoring, MVIDX mass cross-checks, hard-obligation authority, canonical domain/size reduction, and every persisted MVQUAL scientific record exactly.
++- Constrain nested cKDTree/BLAS work to one native lane per outer campaign job; preserve legacy direct-API native-thread semantics when no explicit resource scope is supplied.
++- Add RAM-admitted per-job temporary estimates and an automatic four-lane ceiling for memory-bandwidth-heavy MVQUAL scoring, with explicit higher overrides allowed on qualified high-bandwidth hosts.
++- On a 16,000-reference / six-size / 12-job same-N fixture, reduce same-host median wall time from about 0.866 s in untouched 0.20.231a0 to about 0.409 s at four outer lanes (~2.12x), while preserving plan digest `2ebd7f5dc2b560e3150fe4849e7098be2eff56469779f15b2befda74059fc90b`.
++- Keep active qualification on supplied MACE-MPA-0 medium while preserving model-generic MACE-MH-1 compatibility; next optimization gate is AUDIT-EVAL-PERF1.
++
+ ## 0.20.231a0 - 2026-08-17
+ 
+ - Implement REPAIR-PAR1 / architecture revision 98 while preserving sequential repair iteration, objective/tie authority, accepted/rejected trace, terminal order, and winner application.
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/PKG-INFO /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/PKG-INFO
+--- /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/PKG-INFO	2026-08-17 23:15:34.000000000 +0000
++++ /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/PKG-INFO	2026-08-17 23:58:05.595790358 +0000
+@@ -1,6 +1,6 @@
+ Metadata-Version: 2.4
+ Name: mdstats
+-Version: 0.20.231a0
++Version: 0.20.232a0
+ Summary: Transparent atomistic frame collections and structural/dynamical statistics
+ Requires-Python: >=3.10
+ Requires-Dist: numpy>=1.26
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/benchmarks/mlff_mvqual_par1_cloud_cpu_mpa0_2026-08-17.json /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/benchmarks/mlff_mvqual_par1_cloud_cpu_mpa0_2026-08-17.json
+--- /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/benchmarks/mlff_mvqual_par1_cloud_cpu_mpa0_2026-08-17.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/benchmarks/mlff_mvqual_par1_cloud_cpu_mpa0_2026-08-17.json	2026-08-18 00:01:54.804998438 +0000
+@@ -0,0 +1,112 @@
++{
++  "acceptance": {
++    "next_gate": "AUDIT-EVAL-PERF1",
++    "status": "PASS"
++  },
++  "active_foundation": {
++    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
++    "family": "MACE-MPA-0 medium",
++    "mh1_compatible": true
++  },
++  "architecture_revision": 99,
++  "date": "2026-08-17",
++  "exactness_note": "Campaign execution was already BLAS/OpenMP=1 before this gate. Applying process-wide BLAS=1 only to an otherwise unscoped direct API call can shift a SciPy Wasserstein diagnostic by ~1e-16 and therefore a cryptographic report digest. MVQUAL-PAR1 preserves campaign BLAS=1 authority and leaves unscoped direct API native-thread state unchanged.",
++  "execution": {
++    "current_scaling": {
++      "1_lane": {
++        "max_busy_workers": 1,
++        "trials_seconds": [
++          0.8640885149998212,
++          0.8361911660012993,
++          0.820107437999468,
++          0.8405604620002123,
++          0.8072046949982905
++        ],
++        "warm_median_seconds": 0.8281493020003836
++      },
++      "2_lanes": {
++        "max_busy_workers": 2,
++        "trials_seconds": [
++          0.4617476009989332,
++          0.4536317540005257,
++          0.4451332619992172,
++          0.4530999830003566,
++          0.449643472000389
++        ],
++        "warm_median_seconds": 0.4513717275003728
++      },
++      "4_lanes": {
++        "max_busy_workers": 4,
++        "trials_seconds": [
++          0.4521447179995448,
++          0.4576090300015494,
++          0.45909247399868036,
++          0.4329530400009389,
++          0.503536685000654
++        ],
++        "warm_median_seconds": 0.4583507520001149
++      },
++      "automatic_worker_ceiling": 4,
++      "explicit_higher_override_allowed": true,
++      "interpretation": "Most scaling is realized by two lanes on this cloud CPU; four lanes are retained as the conservative automatic ceiling because score jobs are memory-bandwidth/allocation heavy.",
++      "one_to_four_speedup": 1.806802537983348,
++      "one_to_two_speedup": 1.8347389779739796
++    },
++    "paired_four_lane": {
++      "control_driver": "serial same-N driver; cKDTree query_workers=4; BLAS/OpenMP=1",
++      "control_release": "0.20.231a0",
++      "control_trials_seconds": [
++        0.8545966790006787,
++        0.7728988580001896,
++        0.8364606480008661,
++        0.8959100770007353,
++        0.9465855070011457
++      ],
++      "control_warm_median_seconds": 0.8661853625008007,
++      "current_driver": "global same-N queue; 4 outer lanes; cKDTree query_workers=1/job; BLAS/OpenMP=1",
++      "current_release": "0.20.232a0",
++      "current_trials_seconds": [
++        0.4847390649993031,
++        0.4168904760008445,
++        0.4007583420006995,
++        0.4020226169996022,
++        0.41608737299975473
++      ],
++      "current_warm_median_seconds": 0.40905499499967846,
++      "speedup": 2.117527894999746
++    },
++    "queue_probe": {
++      "jobs_finished": 12,
++      "jobs_submitted": 12,
++      "max_busy_workers": 4,
++      "memory_backpressure_events": 0,
++      "queue_backpressure_events": 0
++    }
++  },
++  "gate": "MVQUAL-PAR1",
++  "interpretation": "Timing is same-host execution evidence. Complete qualification-plan equality, independent TARGET-DATA2B rescoring, MVIDX covered-mass cross-checks, hard-obligation decisions, and canonical comparison order remain scientific authority.",
++  "release": "0.20.232a0",
++  "schema": "mdstats.mlff-mvqual-par1-benchmark.v1",
++  "scientific": {
++    "comparison_and_progress_order": "historical domain/size order after canonical reduction",
++    "control_current_plan_exact": true,
++    "qualification_plan_digest": "2ebd7f5dc2b560e3150fe4849e7098be2eff56469779f15b2befda74059fc90b",
++    "scientific_authority_change": false,
++    "worker_count_plan_exact": true
++  },
++  "workload": {
++    "benchmark_boundary": "fixture construction excluded; complete same-N qualification-plan build timed",
++    "label_domains": 1,
++    "production_numeric_contract": "explicit StageResourceScope with BLAS/OpenMP=1",
++    "reference_frames": 16000,
++    "same_n_scoring_jobs": 12,
++    "target_sizes": [
++      128,
++      256,
++      512,
++      1024,
++      2048,
++      4096
++    ]
++  }
++}
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/benchmarks/mlff_mvqual_par1_cloud_cpu_mpa0_2026-08-17.md /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/benchmarks/mlff_mvqual_par1_cloud_cpu_mpa0_2026-08-17.md
+--- /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/benchmarks/mlff_mvqual_par1_cloud_cpu_mpa0_2026-08-17.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/benchmarks/mlff_mvqual_par1_cloud_cpu_mpa0_2026-08-17.md	2026-08-18 00:01:54.805107934 +0000
+@@ -0,0 +1,40 @@
++# MVQUAL-PAR1 cloud-CPU qualification benchmark
++
++Release: `0.20.232a0`  
++Architecture revision: `99`  
++Gate: `MVQUAL-PAR1`  
++Active qualification foundation: MACE-MPA-0 medium (`75428afe...638`)  
++MACE-MH-1 compatibility: retained
++
++## Authority
++
++This is an exact-equivalence execution gate. The 16,000-reference, six-size, 12-job same-N fixture produces the same complete qualification-plan digest under the untouched 0.20.231a0 production numeric contract and every qualified 0.20.232a0 worker schedule:
++
++`2ebd7f5dc2b560e3150fe4849e7098be2eff56469779f15b2befda74059fc90b`
++
++Campaign execution remains BLAS/OpenMP=1. Unscoped direct API calls retain their historical native-thread environment; worker-count control is not allowed to redefine the scientific record.
++
++## Same-host paired result
++
++| Realization | Warm median |
++|---|---:|
++| 0.20.231a0 serial same-N; cKDTree workers=4 | 0.866 s |
++| 0.20.232a0 global queue; 4 outer lanes; tree worker/job=1 | 0.409 s |
++
++End-to-end speedup: **2.12x**.
++
++## Current scaling
++
++| Outer lanes | Warm median | Max busy |
++|---:|---:|---:|
++| 1 | 0.828 s | 1 |
++| 2 | 0.451 s | 2 |
++| 4 | 0.458 s | 4 |
++
++The 1→2 gain is **1.83x**. Four lanes are flat on this cloud CPU because the independent score jobs become memory-bandwidth/allocation limited; automatic campaign mode therefore caps MVQUAL at four outer lanes, while an explicit higher override remains available for a qualified high-bandwidth host.
++
++Queue telemetry on the 4-lane qualification probe observed all four workers active, 12/12 jobs completed, and no queue or memory backpressure.
++
++## Acceptance
++
++PASS. Same-N qualification records, comparison order, hard-obligation state, MVIDX cross-checks and final pass/fail authority are unchanged. `AUDIT-EVAL-PERF1` is next.
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/benchmarks/mlff_mvqual_par1_implementation_manifest_0.20.232a0.json /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/benchmarks/mlff_mvqual_par1_implementation_manifest_0.20.232a0.json
+--- /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/benchmarks/mlff_mvqual_par1_implementation_manifest_0.20.232a0.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/benchmarks/mlff_mvqual_par1_implementation_manifest_0.20.232a0.json	2026-08-18 00:10:02.758058137 +0000
+@@ -0,0 +1,39 @@
++{
++  "architecture_revision": 99,
++  "contracts": {
++    "automatic_worker_ceiling": 4,
++    "campaign_blas_threads": 1,
++    "canonical_reduction": "historical domain/size comparison order",
++    "direct_api_native_environment_preserved_without_explicit_scope": true,
++    "explicit_higher_worker_override_allowed": true,
++    "global_job_granularity": "domain_selector_target_size_score",
++    "native_tree_threads_per_parallel_job": 1,
++    "next_gate": "AUDIT-EVAL-PERF1",
++    "scientific_authority_change": false
++  },
++  "files": {
++    "docs/specs/training_data/mlff_mvqual_par1_global_scoring_queue_spec.md": {
++      "bytes": 2779,
++      "sha256": "2ed6a83f3517bde777a6c28db6a7bd750fd166fdf678a85f6e6e7a037374bd31"
++    },
++    "mdstats/training_data/campaign_cli.py": {
++      "bytes": 1168197,
++      "sha256": "6b6d3e23b2e297cec029a141806b9df6e606ee44389563e62b87844f6758f9d7"
++    },
++    "mdstats/training_data/target_multi_view_qualification.py": {
++      "bytes": 69359,
++      "sha256": "cd725383d643905547dec4b8bcfe493acfaab6ace70416b375b5cfaa7d5dc2a9"
++    },
++    "tests/test_mlff_mvqual_par1.py": {
++      "bytes": 5441,
++      "sha256": "b03c0671c4e1c38a1dcaa3a288b8083b80ac83817e9332009811563806b34461"
++    },
++    "tests/test_mlff_mvqual_par1_specification.py": {
++      "bytes": 4529,
++      "sha256": "3d21978159d79ddb5f86e873878bebc1384aae3cf13ffc13cc204cfe098c287c"
++    }
++  },
++  "gate": "MVQUAL-PAR1",
++  "release": "0.20.232a0",
++  "schema": "mdstats.mlff-mvqual-par1-implementation.v1"
++}
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/docs/arch_manuals/mlff_training_data/00_front_matter.md /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/docs/arch_manuals/mlff_training_data/00_front_matter.md
+--- /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/docs/arch_manuals/mlff_training_data/00_front_matter.md	2026-08-17 23:15:34.000000000 +0000
++++ /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/docs/arch_manuals/mlff_training_data/00_front_matter.md	2026-08-17 23:59:59.489487713 +0000
+@@ -1,8 +1,8 @@
+ ---
+ geometry: "margin=0.75in"
+-architecture_revision: 98
+-release: "mdstats 0.20.231a0"
+-status: "current normative architecture; REPAIR-PAR1 complete; MVQUAL-PAR1 next"
++architecture_revision: 99
++release: "mdstats 0.20.232a0"
++status: "current normative architecture; MVQUAL-PAR1 complete; AUDIT-EVAL-PERF1 next"
+ last_updated: "2026-08-17"
+ ---
+ 
+@@ -76,4 +76,4 @@
+ 
+ ## Current release boundary
+ 
+-Revision 98 completes `REPAIR-PAR1` on top of the exact MVKERNEL1 sparse substrate. Sequential repair iteration, objective/tie authority, accepted/rejected swap order, and winner application remain unchanged. Immutable removal proposals now use fused sparse removal metrics, vectorized replacement-frontier CSR scoring, per-thread epoch/stamp witness membership, and an O(1) inverse rank map. Large proposal batches may execute concurrently through PARCORE1, but arbitrary completion is reduced in the historical removal-shortlist order; small batches stay serial when executor overhead would dominate. The winning replacement representative contribution is recomputed with the historical scalar arithmetic before persistence. The active qualification checkpoint remains MACE-MPA-0 medium, and the execution kernels are foundation-model independent and remain valid for MACE-MH-1 campaigns. `MVQUAL-PAR1` is next; GPU performance authority remains deferred.
++Revision 99 completes `MVQUAL-PAR1` on top of the exact MVKERNEL1 telemetry substrate and PARCORE1 scheduler. Independent domain/selector/target-size same-N qualification jobs now share one global deterministic queue, while each job retains the immutable TARGET-DATA2B scorer, MVIDX covered-mass cross-check, hard-obligation authority, and existing telemetry. Campaign execution constrains nested cKDTree/BLAS work to one native lane/job and reconstructs comparisons/progress in the historical domain/size order after arbitrary task completion. Direct API calls without an explicit resource scope retain their historical native-thread environment, avoiding a 1e-16 Wasserstein digest shift caused solely by process-wide BLAS limiting. Automatic campaign scoring is conservatively capped at four outer lanes because these jobs are memory-bandwidth heavy; explicit larger values remain available for qualified high-bandwidth hosts. The active qualification checkpoint remains MACE-MPA-0 medium, and the execution contract remains foundation-model independent and valid for MACE-MH-1 campaigns. `AUDIT-EVAL-PERF1` is next; GPU performance authority remains deferred.
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/docs/arch_manuals/mlff_training_data/60_execution_performance.md /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/docs/arch_manuals/mlff_training_data/60_execution_performance.md
+--- /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/docs/arch_manuals/mlff_training_data/60_execution_performance.md	2026-08-17 23:22:28.000000000 +0000
++++ /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/docs/arch_manuals/mlff_training_data/60_execution_performance.md	2026-08-17 23:58:05.605916944 +0000
+@@ -161,7 +161,7 @@
+ | MVIDX1 | authenticated graph adoption; inverse/validator Python overhead | implemented MVIDX-REUSE1 component-level queue plus vectorized CSR validation |
+ | MVSEL1 | Python ragged gathers and sparse update overhead | vectorized CSR gather, indexed weights, incremental counters; preserve sequential rank authority |
+ | REPAIR1 | serial proposal shortlist and repeated intersections | implemented adaptive immutable-state proposal queue, vectorized frontier scoring, stamp arrays, fused sparse scans, O(1) rank map |
+-| MVQUAL1 | independent same-N rescoring serialized | global scoring queue and batched sparse telemetry |
++| MVQUAL1 | independent same-N rescoring globally queued | PARCORE1 same-N jobs + batched sparse telemetry; canonical post-queue reduction |
+ | FOUNDATION-AUDIT1 | per-frame/species Python reductions | chunked execution, cached frame index, `bincount`, one-pass quantiles |
+ | EVAL2 CPU analysis | repeated species masks and bootstrap Python loops | cached composition codes, `bincount`, batched bootstrap |
+ | REPLAY-UNIFY1 | repeated serial ExtXYZ parsing/materialization | content-addressed byte-offset geometry/index cache; deterministic chunk parsing |
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/docs/arch_manuals/mlff_training_data/70_status_and_gates.md /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/docs/arch_manuals/mlff_training_data/70_status_and_gates.md
+--- /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/docs/arch_manuals/mlff_training_data/70_status_and_gates.md	2026-08-17 23:22:28.000000000 +0000
++++ /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/docs/arch_manuals/mlff_training_data/70_status_and_gates.md	2026-08-18 00:01:56.373643626 +0000
+@@ -2,12 +2,14 @@
+ 
+ ## Current authority snapshot
+ 
+-The current campaign architecture retains the scientific contracts established by DATA1-DATA9, conventional nested CV, target/replay evaluation, MACE adapter/version locks, deployment verification, TARGET-DATA2 multi-view selection, and FINAL-GPU1 deferral. Revision 95 completes `MVIDX-REUSE1`, which reduces cached MVIDX1 to authenticated graph adoption, deterministic parallel component inversion, vectorized sparse validation, and obligation metadata without altering dataset membership, radii, coverage threshold, target-size ceiling, MACE model semantics, or GPU qualification authority.
++The current campaign architecture retains the scientific contracts established by DATA1-DATA9, conventional nested CV, target/replay evaluation, MACE adapter/version locks, deployment verification, TARGET-DATA2 multi-view selection, and FINAL-GPU1 deferral. Revision 99 completes `MVQUAL-PAR1`: independent same-N domain/selector/size qualification jobs are globally scheduled under PARCORE1 while every TARGET-DATA2B report, MVIDX cross-check, hard-obligation decision, comparison order, and persisted MVQUAL record remains unchanged.
+ 
+-The most recent implemented performance gate is:
++The most recent implemented performance gates are:
+ 
+-- **MVIDX-REUSE1 (`0.20.228a0`)** - cached MVIDX component-level sparse inversion on the shared deterministic scheduler plus exact vectorized CSR validation; NEIGHBOR1 geometry reuse remains unchanged.
+ - **COVREF-PAR1 (`0.20.229a0`)** - TARGET-DATA2B exact reference-radius construction on one single-level global block queue with adaptive cache-sized tasks, O(1) pair/species adapters, and unchanged radius/reference authority.
++- **MVKERNEL1 (`0.20.230a0`)** - exact ragged-CSR/vector telemetry kernels around the unchanged sequential MVSEL rank authority.
++- **REPAIR-PAR1 (`0.20.231a0`)** - vectorized immutable repair proposals with adaptive deterministic proposal parallelism and unchanged sequential repair winner authority.
++- **MVQUAL-PAR1 (`0.20.232a0`)** - global deterministic same-N scoring queue with one native numerical lane/job and canonical post-queue comparison reduction.
+ 
+ `PERFBASE1` (`0.20.225a0`) remains the frozen measurement authority used to judge subsequent optimization gates. `TARGET-DATA2B-FEAS1-PERF3` (`0.20.223a0`) is the direct predecessor scheduler whose successful global single-level execution pattern PARCORE1 generalizes.
+ 
+@@ -91,13 +93,15 @@
+ 
+ **Next gate.** `MVQUAL-PAR1`.
+ 
+-### Gate MVQUAL-PAR1 - global same-N scoring queue
++### Gate MVQUAL-PAR1 - global same-N scoring queue - COMPLETE
+ 
+-**Purpose.** Execute independent domain/selector/size rescoring concurrently.
++**Purpose.** Execute independent domain/selector/size rescoring concurrently without changing any same-N qualification authority.
+ 
+-**Implementation.** Shared scheduler, nested numerical threads constrained to one, batched sparse telemetry.
++**Implementation.** `0.20.232a0` freezes one execution-only job for every materializable `(domain, selector, target size)` score. A job performs the existing immutable TARGET-DATA2B rescore, MVKERNEL1 batched sparse telemetry, hard-obligation state, and MVIDX covered-mass cross-check. Large job sets execute through the PARCORE1 `DeterministicWorkQueue`; completion order is arbitrary, but comparisons and progress messages are reconstructed afterward in the historical domain/size order. Campaign jobs force cKDTree and BLAS/OpenMP to one native lane each, preventing nested oversubscription. Per-job temporary-memory estimates participate in queue admission. Automatic campaign mode is capped at four outer score lanes because qualification shows these jobs become memory-bandwidth limited; an explicit larger override remains available for qualified high-bandwidth hosts. Direct API calls without an explicit `StageResourceScope` deliberately do not alter the process native-thread environment. This preserves historical direct-API behavior while campaign execution retains its pre-gate BLAS=1 scientific authority; qualification caught that changing only BLAS thread count can shift the Wasserstein diagnostic by about 1e-16 and therefore change a cryptographic report digest.
+ 
+-**Acceptance.** Independent qualification records unchanged; improved wall time under the same CPU/RAM budget.
++**Acceptance. PASS.** Scalar/direct and 1/2/4-worker realizations preserve complete qualification-plan dictionaries under their respective historical native-thread contract. Under the production BLAS=1 contract, untouched `0.20.231a0` and MVQUAL-PAR1 preserve the same plan digest `2ebd7f5dc2b5...befda74059fc90b` on a 16,000-reference, six-size, 12-job same-N fixture. Same-host warm medians are about 0.866 s for the old serial driver with four native cKDTree workers and about 0.409 s for four outer MVQUAL lanes with one native tree worker/job (about 2.12x faster). The new path measures about 0.828/0.451/0.458 s at 1/2/4 outer lanes; all four lanes are observed active and all 12 jobs complete without queue or memory backpressure on the fixture. Timing is execution evidence; exact qualification records and digests remain scientific authority.
++
++**Next gate.** `AUDIT-EVAL-PERF1`.
+ 
+ ### Gate AUDIT-EVAL-PERF1 - Foundation Audit and EVAL2 CPU hardening
+ 
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/docs/arch_manuals/mlff_training_data_architecture.md /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/docs/arch_manuals/mlff_training_data_architecture.md
+--- /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-17 23:22:30.000000000 +0000
++++ /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-18 00:07:49.089191206 +0000
+@@ -1,8 +1,8 @@
+ ---
+ geometry: "margin=0.75in"
+-architecture_revision: 98
+-release: "mdstats 0.20.231a0"
+-status: "current normative architecture; REPAIR-PAR1 complete; MVQUAL-PAR1 next"
++architecture_revision: 99
++release: "mdstats 0.20.232a0"
++status: "current normative architecture; MVQUAL-PAR1 complete; AUDIT-EVAL-PERF1 next"
+ last_updated: "2026-08-17"
+ ---
+ 
+@@ -76,7 +76,7 @@
+ 
+ ## Current release boundary
+ 
+-Revision 98 completes `REPAIR-PAR1` on top of the exact MVKERNEL1 sparse substrate. Sequential repair iteration, objective/tie authority, accepted/rejected swap order, and winner application remain unchanged. Immutable removal proposals now use fused sparse removal metrics, vectorized replacement-frontier CSR scoring, per-thread epoch/stamp witness membership, and an O(1) inverse rank map. Large proposal batches may execute concurrently through PARCORE1, but arbitrary completion is reduced in the historical removal-shortlist order; small batches stay serial when executor overhead would dominate. The winning replacement representative contribution is recomputed with the historical scalar arithmetic before persistence. The active qualification checkpoint remains MACE-MPA-0 medium, and the execution kernels are foundation-model independent and remain valid for MACE-MH-1 campaigns. `MVQUAL-PAR1` is next; GPU performance authority remains deferred.
++Revision 99 completes `MVQUAL-PAR1` on top of the exact MVKERNEL1 telemetry substrate and PARCORE1 scheduler. Independent domain/selector/target-size same-N qualification jobs now share one global deterministic queue, while each job retains the immutable TARGET-DATA2B scorer, MVIDX covered-mass cross-check, hard-obligation authority, and existing telemetry. Campaign execution constrains nested cKDTree/BLAS work to one native lane/job and reconstructs comparisons/progress in the historical domain/size order after arbitrary task completion. Direct API calls without an explicit resource scope retain their historical native-thread environment, avoiding a 1e-16 Wasserstein digest shift caused solely by process-wide BLAS limiting. Automatic campaign scoring is conservatively capped at four outer lanes because these jobs are memory-bandwidth heavy; explicit larger values remain available for qualified high-bandwidth hosts. The active qualification checkpoint remains MACE-MPA-0 medium, and the execution contract remains foundation-model independent and valid for MACE-MH-1 campaigns. `AUDIT-EVAL-PERF1` is next; GPU performance authority remains deferred.
+ 
+ # Part I - Foundations and ownership
+ 
+@@ -2572,7 +2572,7 @@
+ | MVIDX1 | authenticated graph adoption; inverse/validator Python overhead | implemented MVIDX-REUSE1 component-level queue plus vectorized CSR validation |
+ | MVSEL1 | Python ragged gathers and sparse update overhead | vectorized CSR gather, indexed weights, incremental counters; preserve sequential rank authority |
+ | REPAIR1 | serial proposal shortlist and repeated intersections | implemented adaptive immutable-state proposal queue, vectorized frontier scoring, stamp arrays, fused sparse scans, O(1) rank map |
+-| MVQUAL1 | independent same-N rescoring serialized | global scoring queue and batched sparse telemetry |
++| MVQUAL1 | independent same-N rescoring globally queued | PARCORE1 same-N jobs + batched sparse telemetry; canonical post-queue reduction |
+ | FOUNDATION-AUDIT1 | per-frame/species Python reductions | chunked execution, cached frame index, `bincount`, one-pass quantiles |
+ | EVAL2 CPU analysis | repeated species masks and bootstrap Python loops | cached composition codes, `bincount`, batched bootstrap |
+ | REPLAY-UNIFY1 | repeated serial ExtXYZ parsing/materialization | content-addressed byte-offset geometry/index cache; deterministic chunk parsing |
+@@ -2627,12 +2627,14 @@
+ 
+ ## Current authority snapshot
+ 
+-The current campaign architecture retains the scientific contracts established by DATA1-DATA9, conventional nested CV, target/replay evaluation, MACE adapter/version locks, deployment verification, TARGET-DATA2 multi-view selection, and FINAL-GPU1 deferral. Revision 95 completes `MVIDX-REUSE1`, which reduces cached MVIDX1 to authenticated graph adoption, deterministic parallel component inversion, vectorized sparse validation, and obligation metadata without altering dataset membership, radii, coverage threshold, target-size ceiling, MACE model semantics, or GPU qualification authority.
++The current campaign architecture retains the scientific contracts established by DATA1-DATA9, conventional nested CV, target/replay evaluation, MACE adapter/version locks, deployment verification, TARGET-DATA2 multi-view selection, and FINAL-GPU1 deferral. Revision 99 completes `MVQUAL-PAR1`: independent same-N domain/selector/size qualification jobs are globally scheduled under PARCORE1 while every TARGET-DATA2B report, MVIDX cross-check, hard-obligation decision, comparison order, and persisted MVQUAL record remains unchanged.
+ 
+-The most recent implemented performance gate is:
++The most recent implemented performance gates are:
+ 
+-- **MVIDX-REUSE1 (`0.20.228a0`)** - cached MVIDX component-level sparse inversion on the shared deterministic scheduler plus exact vectorized CSR validation; NEIGHBOR1 geometry reuse remains unchanged.
+ - **COVREF-PAR1 (`0.20.229a0`)** - TARGET-DATA2B exact reference-radius construction on one single-level global block queue with adaptive cache-sized tasks, O(1) pair/species adapters, and unchanged radius/reference authority.
++- **MVKERNEL1 (`0.20.230a0`)** - exact ragged-CSR/vector telemetry kernels around the unchanged sequential MVSEL rank authority.
++- **REPAIR-PAR1 (`0.20.231a0`)** - vectorized immutable repair proposals with adaptive deterministic proposal parallelism and unchanged sequential repair winner authority.
++- **MVQUAL-PAR1 (`0.20.232a0`)** - global deterministic same-N scoring queue with one native numerical lane/job and canonical post-queue comparison reduction.
+ 
+ `PERFBASE1` (`0.20.225a0`) remains the frozen measurement authority used to judge subsequent optimization gates. `TARGET-DATA2B-FEAS1-PERF3` (`0.20.223a0`) is the direct predecessor scheduler whose successful global single-level execution pattern PARCORE1 generalizes.
+ 
+@@ -2716,13 +2718,15 @@
+ 
+ **Next gate.** `MVQUAL-PAR1`.
+ 
+-### Gate MVQUAL-PAR1 - global same-N scoring queue
++### Gate MVQUAL-PAR1 - global same-N scoring queue - COMPLETE
+ 
+-**Purpose.** Execute independent domain/selector/size rescoring concurrently.
++**Purpose.** Execute independent domain/selector/size rescoring concurrently without changing any same-N qualification authority.
+ 
+-**Implementation.** Shared scheduler, nested numerical threads constrained to one, batched sparse telemetry.
++**Implementation.** `0.20.232a0` freezes one execution-only job for every materializable `(domain, selector, target size)` score. A job performs the existing immutable TARGET-DATA2B rescore, MVKERNEL1 batched sparse telemetry, hard-obligation state, and MVIDX covered-mass cross-check. Large job sets execute through the PARCORE1 `DeterministicWorkQueue`; completion order is arbitrary, but comparisons and progress messages are reconstructed afterward in the historical domain/size order. Campaign jobs force cKDTree and BLAS/OpenMP to one native lane each, preventing nested oversubscription. Per-job temporary-memory estimates participate in queue admission. Automatic campaign mode is capped at four outer score lanes because qualification shows these jobs become memory-bandwidth limited; an explicit larger override remains available for qualified high-bandwidth hosts. Direct API calls without an explicit `StageResourceScope` deliberately do not alter the process native-thread environment. This preserves historical direct-API behavior while campaign execution retains its pre-gate BLAS=1 scientific authority; qualification caught that changing only BLAS thread count can shift the Wasserstein diagnostic by about 1e-16 and therefore change a cryptographic report digest.
+ 
+-**Acceptance.** Independent qualification records unchanged; improved wall time under the same CPU/RAM budget.
++**Acceptance. PASS.** Scalar/direct and 1/2/4-worker realizations preserve complete qualification-plan dictionaries under their respective historical native-thread contract. Under the production BLAS=1 contract, untouched `0.20.231a0` and MVQUAL-PAR1 preserve the same plan digest `2ebd7f5dc2b5...befda74059fc90b` on a 16,000-reference, six-size, 12-job same-N fixture. Same-host warm medians are about 0.866 s for the old serial driver with four native cKDTree workers and about 0.409 s for four outer MVQUAL lanes with one native tree worker/job (about 2.12x faster). The new path measures about 0.828/0.451/0.458 s at 1/2/4 outer lanes; all four lanes are observed active and all 12 jobs complete without queue or memory backpressure on the fixture. Timing is execution evidence; exact qualification records and digests remain scientific authority.
++
++**Next gate.** `AUDIT-EVAL-PERF1`.
+ 
+ ### Gate AUDIT-EVAL-PERF1 - Foundation Audit and EVAL2 CPU hardening
+ 
+Binary files /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/docs/arch_manuals/mlff_training_data_architecture.pdf and /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/docs/arch_manuals/mlff_training_data_architecture.pdf differ
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/docs/arch_manuals/mlff_training_data_dependency_graph.json /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/docs/arch_manuals/mlff_training_data_dependency_graph.json
+--- /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-17 23:15:34.000000000 +0000
++++ /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-17 23:59:59.494911872 +0000
+@@ -1,8 +1,8 @@
+ {
+-  "architecture_revision": 98,
++  "architecture_revision": 99,
+   "branch": "MLFF-DATA",
+-  "description": "MLFF training-data dependency graph through architecture revision 97. MVKERNEL1 implements exact vectorized sparse selector/qualification kernels; REPAIR-PAR1 is next.",
+-  "documentation_gate": "REPAIR_PAR1_PROPOSAL_QUEUE",
++  "description": "MLFF training-data dependency graph through architecture revision 99. MVQUAL-PAR1 globally schedules exact same-N scoring jobs while preserving qualification authority; AUDIT-EVAL-PERF1 is next.",
++  "documentation_gate": "MVQUAL_PAR1_GLOBAL_SCORING_QUEUE",
+   "edge_type_definitions": {
+     "execution_requires": "The upstream product must exist before execution.",
+     "fit_domain_requires": "The fitted object may inspect only the declared training domain.",
+@@ -3201,7 +3201,7 @@
+       ]
+     }
+   ],
+-  "next_gate": "MVQUAL_PAR1_GLOBAL_SCORING_QUEUE",
++  "next_gate": "AUDIT_EVAL_PERF1_CPU_KERNELS",
+   "nodes": [
+     {
+       "id": "ACQUISITION_DECISIONS"
+@@ -5429,12 +5429,19 @@
+       "next_gate": "MVQUAL_PAR1_GLOBAL_SCORING_QUEUE"
+     },
+     {
+-      "architecture_revision": 98,
+-      "authority_class": "planned_performance_exact_equivalence",
++      "architecture_revision": 99,
++      "authority_class": "performance_exact_equivalence",
+       "gate_name": "MVQUAL-PAR1",
+       "id": "MVQUAL_PAR1_GLOBAL_SCORING_QUEUE",
+-      "implementation_status": "planned",
+-      "scientific_authority_change": false
++      "implementation_status": "implemented_global_same_n_scoring_queue",
++      "scientific_authority_change": false,
++      "implemented_release": "0.20.232a0",
++      "parallel_granularity": "domain_selector_target_size_score",
++      "native_tree_workers_per_task": 1,
++      "blas_threads_per_task": 1,
++      "canonical_reduction": "historical_domain_size_order",
++      "automatic_worker_ceiling": 4,
++      "next_gate": "AUDIT_EVAL_PERF1_CPU_KERNELS"
+     },
+     {
+       "architecture_revision": 91,
+@@ -5461,5 +5468,5 @@
+       "scientific_authority_change": false
+     }
+   ],
+-  "schema_version": 78
++  "schema_version": 79
+ }
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV99.md /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV99.md
+--- /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV99.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV99.md	2026-08-17 23:59:59.490057710 +0000
+@@ -0,0 +1,11 @@
++# MLFF architecture revision 99 - MVQUAL-PAR1
++
++Revision 99 completes the exact-equivalence `MVQUAL-PAR1` performance gate.
++
++- Schedules immutable `(domain, selector, target size)` same-N scoring jobs globally through PARCORE1.
++- Preserves TARGET-DATA2B independent coverage reports, MVIDX covered-mass cross-checks, hard obligations, MVKERNEL1 telemetry, comparison order, and the complete persisted MVQUAL plan.
++- Constrains campaign cKDTree/BLAS work to one native lane per outer job and reduces completed work in historical domain/size order.
++- Keeps direct API calls without an explicit resource scope in their historical native-thread environment after qualification exposed a ~1e-16 Wasserstein change caused solely by BLAS thread limiting.
++- Adds execution-only task-memory admission and a conservative four-lane automatic ceiling for memory-bandwidth-heavy same-N jobs.
++- Preserves the production-contract benchmark plan digest `2ebd7f5dc2b560e3150fe4849e7098be2eff56469779f15b2befda74059fc90b` while reducing the paired 16k/12-job median from about 0.866 s to about 0.409 s at four lanes.
++- Advances the optimization program to `AUDIT-EVAL-PERF1`.
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/docs/history/mlff/architecture_revisions/INDEX.md /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/docs/history/mlff/architecture_revisions/INDEX.md
+--- /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/docs/history/mlff/architecture_revisions/INDEX.md	2026-08-17 23:15:34.000000000 +0000
++++ /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/docs/history/mlff/architecture_revisions/INDEX.md	2026-08-17 23:58:36.875320665 +0000
+@@ -80,3 +80,4 @@
+ | 96 | COVREF-PAR1 / mdstats 0.20.229a0 | [MLFF Architecture Revision 96](ARCHITECTURE_NOTES_MLFF_REV96.md) | - |
+ | 97 | - | [MLFF architecture revision 97 - MVKERNEL1](ARCHITECTURE_NOTES_MLFF_REV97.md) | - |
+ | 98 | REPAIR-PAR1 / mdstats 0.20.231a0 | [MLFF architecture revision 98 - REPAIR-PAR1](ARCHITECTURE_NOTES_MLFF_REV98.md) | - |
++| 99 | MVQUAL-PAR1 / mdstats 0.20.232a0 | [MLFF architecture revision 99 - MVQUAL-PAR1](ARCHITECTURE_NOTES_MLFF_REV99.md) | - |
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/docs/history/mlff/release_notes/INDEX.md /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/docs/history/mlff/release_notes/INDEX.md
+--- /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/docs/history/mlff/release_notes/INDEX.md	2026-08-17 23:17:28.000000000 +0000
++++ /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/docs/history/mlff/release_notes/INDEX.md	2026-08-18 00:01:56.373207513 +0000
+@@ -172,3 +172,4 @@
+ | `0.20.229a0` | [PATCH_NOTES_0.20.229a0.md](PATCH_NOTES_0.20.229a0.md) | - |
+ | `0.20.230a0` | [PATCH_NOTES_0.20.230a0.md](PATCH_NOTES_0.20.230a0.md) | - |
+ | `0.20.231a0` | [PATCH_NOTES_0.20.231a0.md](PATCH_NOTES_0.20.231a0.md) | - |
++| `0.20.232a0` | [PATCH_NOTES_0.20.232a0.md](PATCH_NOTES_0.20.232a0.md) | - |
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.232a0.md /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.232a0.md
+--- /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.232a0.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.232a0.md	2026-08-17 23:59:59.490223284 +0000
+@@ -0,0 +1,11 @@
++# mdstats 0.20.232a0 - MVQUAL-PAR1
++
++- Complete MLFF architecture revision 99 / `MVQUAL-PAR1`.
++- Add a global PARCORE1 queue for independent same-N domain/selector/size scoring jobs.
++- Preserve exact TARGET-DATA2B coverage, MVIDX cross-check, hard-obligation, telemetry, and persisted MVQUAL authority.
++- Constrain nested campaign numerical workers to one per outer job, with canonical post-queue comparison reduction.
++- Preserve historical direct-API native-thread behavior when no resource scope is supplied.
++- Add `[performance].target_multi_view_qualification_workers`, automatic four-lane ceiling, and RAM-admitted score-task estimates.
++- Preserve benchmark plan digest `2ebd7f5dc2b560e3150fe4849e7098be2eff56469779f15b2befda74059fc90b` and record about 2.12x paired wall-time improvement on the cloud CPU.
++- Keep MACE-MPA-0 medium as the active qualification checkpoint while preserving the same execution contract for MACE-MH-1.
++- Next gate: `AUDIT-EVAL-PERF1`.
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/docs/specs/training_data/mlff_mvqual_par1_global_scoring_queue_spec.md /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/docs/specs/training_data/mlff_mvqual_par1_global_scoring_queue_spec.md
+--- /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/docs/specs/training_data/mlff_mvqual_par1_global_scoring_queue_spec.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/docs/specs/training_data/mlff_mvqual_par1_global_scoring_queue_spec.md	2026-08-17 23:59:59.489933048 +0000
+@@ -0,0 +1,40 @@
++# MVQUAL-PAR1 global same-N scoring queue specification
++
++## Status
++
++Implemented in mdstats 0.20.232a0 / MLFF architecture revision 99.
++
++## Scientific invariants
++
++MVQUAL-PAR1 is an exact-equivalence execution gate. It MUST NOT change:
++
++- TARGET-DATA2B independent coverage reports for any selector/rung;
++- MVIDX covered-mass cross-checks or hard-obligation state;
++- MVKERNEL1 selector telemetry;
++- same-N comparison arithmetic, thresholds, N95 logic, learning-control sizes, outcome, or persisted plan schema;
++- canonical domain and target-size comparison order;
++- target-data membership, model-family semantics, training, or GPU authority.
++
++## Execution contract
++
++One immutable scoring job is formed for each materializable `(label domain, selector, target size)` tuple. A job computes the existing TARGET-DATA2B coverage report, MVKERNEL1 telemetry, hard-obligation state, and MVIDX/direct covered-mass consistency check.
++
++When `scoring_workers > 1`, jobs execute on the PARCORE1 `DeterministicWorkQueue`. Nested cKDTree, BLAS/OpenMP, and PyTorch CPU work are one native lane per campaign job. Completed jobs may arrive in arbitrary order, but comparison construction and progress emission MUST be reduced in historical domain/size order.
++
++Per-job temporary-memory estimates participate in queue admission. Automatic campaign mode uses at most four outer scoring workers; explicit positive configuration may request more subject to the existing CPU/RAM resource budget.
++
++Direct API callers that do not supply `StageResourceScope` retain their historical process native-thread environment. Explicit campaign scopes retain BLAS=1. This distinction is required because changing only BLAS thread count can shift the Wasserstein diagnostic at ~1e-16 and therefore change coverage-report cryptographic digests.
++
++## Configuration
++
++`[performance].target_multi_view_qualification_workers = 0` selects automatic execution. Positive values request an explicit outer scoring-worker count, clipped by available and budgeted CPU resources.
++
++## Acceptance authority
++
++Under the production BLAS=1 contract, untouched 0.20.231a0 and 0.20.232a0 MUST produce the same complete MVQUAL plan on the frozen 16,000-reference / six-size / 12-job benchmark. The canonical plan digest is:
++
++`2ebd7f5dc2b560e3150fe4849e7098be2eff56469779f15b2befda74059fc90b`
++
++The paired cloud-CPU benchmark records approximately 0.866 s median for the old serial same-N driver using four native cKDTree workers and approximately 0.409 s for four outer MVQUAL-PAR1 workers using one native tree worker/job, about 2.12x faster. New 1/2/4-lane medians are approximately 0.828/0.451/0.458 s. Timing is execution evidence only; complete record equality is scientific authority.
++
++The next optimization gate is `AUDIT-EVAL-PERF1`.
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/mdstats/_version.py /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/mdstats/_version.py
+--- /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/mdstats/_version.py	2026-08-17 23:15:34.000000000 +0000
++++ /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/mdstats/_version.py	2026-08-17 23:58:05.595515609 +0000
+@@ -1 +1 @@
+-__version__ = "0.20.231a0"
++__version__ = "0.20.232a0"
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/mdstats/training_data/campaign_cli.py /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/mdstats/training_data/campaign_cli.py
+--- /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/mdstats/training_data/campaign_cli.py	2026-08-17 23:02:54.000000000 +0000
++++ /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/mdstats/training_data/campaign_cli.py	2026-08-18 00:03:19.902433685 +0000
+@@ -3962,6 +3962,36 @@
+     return max(1, int(workers)), resources
+ 
+ 
++def _target_multi_view_qualification_parallelism(cfg: Mapping[str, Any]) -> tuple[int, Any]:
++    """Resolve MVQUAL-PAR1 global same-N scoring worker count.
++
++    Every outer scoring job owns one independent domain/selector/size rescore;
++    nested cKDTree/BLAS layers are constrained to one native thread. Automatic
++    mode uses a conservative four-lane automatic ceiling, while explicit positive
++    values may request more and remain clipped by visible/budgeted CPUs.
++    """
++
++    resources = detect_system_resources(
++        cpu_fraction=float(_cfg(cfg, "performance", "cpu_fraction", 0.90)),
++        ram_fraction=float(_cfg(cfg, "performance", "ram_fraction", 0.80)),
++        gpu_memory_fraction=float(_cfg(cfg, "performance", "gpu_memory_fraction", 0.90)),
++        device="cpu",
++    )
++    requested = int(_cfg(cfg, "performance", "target_multi_view_qualification_workers", 0))
++    if requested < 0:
++        raise CampaignCliError(
++            "[performance].target_multi_view_qualification_workers must be zero (automatic) or a positive integer."
++        )
++    budget = max(1, int(resources.cpu_threads_budget))
++    available = max(1, int(resources.cpu_threads_available))
++    # Same-N score jobs are memory-bandwidth and temporary-allocation heavy.
++    # Qualification on the 4-lane cloud host saturated after two lanes, so
++    # automatic mode uses a conservative four-lane ceiling while still
++    # allowing explicit larger values on high-memory-bandwidth servers.
++    workers = min(budget, available, 4) if requested == 0 else min(requested, budget, available)
++    return max(1, int(workers)), resources
++
++
+ def _target_coverage_feasibility_parallelism(
+     cfg: Mapping[str, Any],
+     coverage_reference: Any,
+@@ -4978,7 +5008,7 @@
+             flush=True,
+         )
+         existing = None
+-    coverage_workers, resource_cfg = _target_coverage_query_workers(cfg)
++    mvqual_workers, resource_cfg = _target_multi_view_qualification_parallelism(cfg)
+     if existing is not None:
+         try:
+             mdstats.validate_target_multi_view_qualification_authority(
+@@ -4990,7 +5020,7 @@
+                 legacy_target_data_ladder=legacy_ladder,
+                 target_multi_view_repair=repair_plan,
+                 policy=policy,
+-                coverage_query_workers=coverage_workers,
++                coverage_query_workers=1,
+             )
+         except Exception as exc:
+             print(
+@@ -5015,14 +5045,19 @@
+     started = time.monotonic()
+     scope = build_stage_resource_scope(
+         resource_cfg, stage_name="TARGET-DATA2C-MVQUAL1",
+-        python_workers=1, structural_workers=1, tree_workers=coverage_workers, blas_threads=1,
++        python_workers=mvqual_workers, structural_workers=1, tree_workers=1, blas_threads=1,
++    )
++    print(
++        f"[TARGET-DATA2C-MVQUAL-PAR1] scoring_workers={mvqual_workers}; "
++        "native_tree_threads/job=1; reduction=canonical domain/size order",
++        flush=True,
++    )
++    plan = mdstats.build_target_multi_view_qualification_plan(
++        coverage_reference, sparse_index, feasibility, role_freeze, legacy_ladder, repair_plan,
++        policy=policy, coverage_query_workers=1, scoring_workers=mvqual_workers,
++        resource_scope=scope,
++        progress_callback=lambda message: print(f"[TARGET-DATA2C-MVQUAL1] {message}", flush=True),
+     )
+-    with stage_resource_scope(scope):
+-        plan = mdstats.build_target_multi_view_qualification_plan(
+-            coverage_reference, sparse_index, feasibility, role_freeze, legacy_ladder, repair_plan,
+-            policy=policy, coverage_query_workers=coverage_workers,
+-            progress_callback=lambda message: print(f"[TARGET-DATA2C-MVQUAL1] {message}", flush=True),
+-        )
+     mdstats.validate_target_multi_view_qualification_authority(
+         plan,
+         target_coverage_reference=coverage_reference,
+@@ -5032,7 +5067,7 @@
+         legacy_target_data_ladder=legacy_ladder,
+         target_multi_view_repair=repair_plan,
+         policy=policy,
+-        coverage_query_workers=coverage_workers,
++        coverage_query_workers=1,
+     )
+     store.put_record("target_multi_view_qualification", plan)
+     _ok(
+@@ -24786,6 +24821,10 @@
+ # REPAIR-PAR1 immutable proposal workers. 0 uses the complete configured CPU
+ # budget; repair-state mutation and winner application remain sequential.
+ target_multi_view_repair_workers = 0
++# MVQUAL-PAR1 independent domain/selector/size scoring workers. 0 uses the
++# up to four configured CPU lanes automatically; nested cKDTree/BLAS workers are fixed at 1.
++# Set a larger explicit value only on a high-memory-bandwidth host after profiling.
++target_multi_view_qualification_workers = 0
+ # 0 gives FEAS1 one single-level global worker for every CPU-budget lane
+ # (normally 90% of logical threads). All domains/profiles feed the same queue.
+ # Positive values cap that global pool. Execution only.
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/mdstats/training_data/target_multi_view_qualification.py /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/mdstats/training_data/target_multi_view_qualification.py
+--- /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/mdstats/training_data/target_multi_view_qualification.py	2026-08-17 22:35:04.000000000 +0000
++++ /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/mdstats/training_data/target_multi_view_qualification.py	2026-08-17 23:55:42.558662107 +0000
+@@ -23,6 +23,8 @@
+ from ._sparse_vector_kernels import csr_gather_rows
+ from .target_coverage import score_target_subset_coverage
+ from .target_coverage_sparse_index import indexed_family_covered_mask, indexed_obligation_selected_counts
++from .resources import StageResourceScope, available_cpu_threads, stage_resource_scope
++from .work_queue import DeterministicWorkQueue
+ 
+ TARGET_MULTI_VIEW_QUALIFICATION_POLICY_SCHEMA = "mdstats.target-multi-view-qualification-policy.v1"
+ TARGET_MULTI_VIEW_QUALIFICATION_FAMILY_SCHEMA = "mdstats.target-multi-view-qualification-family.v1"
+@@ -769,6 +771,144 @@
+     return mv_n95 is not None and mv_n95 <= legacy_n95
+ 
+ 
++@dataclass(frozen=True, slots=True)
++class _MvqualScoreResult:
++    """Execution-only independent score result for one domain/selector/size job."""
++
++    label_domain_id: str
++    selector: str
++    target_size: int
++    report: Any = field(repr=False, compare=False)
++    selected_indices: np.ndarray = field(repr=False, compare=False)
++    telemetry: TargetMultiViewSelectorTelemetry = field(repr=False, compare=False)
++    hard_state: tuple[bool, tuple[str, ...]] = field(repr=False, compare=False)
++
++
++def _mvqual_parallel_scope(
++    resource_scope: StageResourceScope | None,
++    workers: int,
++) -> StageResourceScope:
++    """Return one single-level MVQUAL-PAR1 CPU scope.
++
++    Direct API calls without an explicit campaign scope remain independent of
++    transient host free-memory state.  Campaign callers pass their explicit RAM
++    contract through ``resource_scope``.
++    """
++
++    workers = max(1, int(workers))
++    if resource_scope is None:
++        available = max(1, int(available_cpu_threads()))
++        resolved = min(workers, available)
++        return StageResourceScope(
++            stage_name="TARGET-DATA2C-MVQUAL-PAR1",
++            cpu_threads_available=available,
++            cpu_threads_budget=resolved,
++            python_workers=resolved,
++            structural_workers=1,
++            tree_workers=1,
++            blas_threads=1,
++            pytorch_cpu_workers=1,
++            gpu_jobs=0,
++            ram_budget_bytes=None,
++        )
++    if int(resource_scope.python_workers) < workers:
++        raise TrainingDataInputError(
++            "TARGET-DATA2C-MVQUAL-PAR1 resource scope has fewer Python workers than requested."
++        )
++    return StageResourceScope(
++        stage_name=resource_scope.stage_name,
++        cpu_threads_available=resource_scope.cpu_threads_available,
++        cpu_threads_budget=resource_scope.cpu_threads_budget,
++        python_workers=workers,
++        structural_workers=1,
++        tree_workers=1,
++        blas_threads=1,
++        pytorch_cpu_workers=1,
++        gpu_jobs=resource_scope.gpu_jobs,
++        ram_budget_bytes=resource_scope.ram_budget_bytes,
++    )
++
++
++def _estimate_mvqual_score_memory_bytes(
++    reference_domain: Any,
++    sparse_domain: Any,
++    selected_count: int,
++) -> int:
++    """Conservative execution-only temporary-memory estimate for one score job."""
++
++    total = 0
++    for family in reference_domain.families:
++        n = len(family.values)
++        width = max(1, len(family.feature_names))
++        # raw/scaled FP64 values + distances/radii/weights/masks and tree scratch.
++        total += n * (16 * width + 40)
++    # Sparse telemetry: multiplicity plus gathered candidate->witness edges.
++    for family in sparse_domain.families:
++        offsets = np.asarray(family.candidate_offsets, dtype=np.uint64)
++        if offsets.size > 1 and selected_count > 0:
++            mean_edges = int(offsets[-1]) // max(1, int(family.candidate_count))
++            total += int(selected_count) * mean_edges * 16
++        total += int(family.witness_count) * 8
++    total += int(selected_count) * 128
++    return max(1, int(total))
++
++
++def _mvqual_score_job(
++    target_coverage_reference: Any,
++    reference_domain: Any,
++    sparse_domain: Any,
++    *,
++    label: str,
++    selector: str,
++    target_size: int,
++    selected_uids: Sequence[str],
++    uid_to_index: Mapping[str, int],
++    run_codes: np.ndarray,
++    condition_codes: np.ndarray,
++    query_workers: int,
++) -> _MvqualScoreResult:
++    """Compute one immutable MVQUAL same-N scoring job."""
++
++    report = score_target_subset_coverage(
++        target_coverage_reference,
++        label,
++        selected_uids,
++        query_workers=int(query_workers),
++    )
++    try:
++        selected = np.asarray([uid_to_index[uid] for uid in selected_uids], dtype=np.int64)
++    except KeyError as exc:
++        raise TrainingDataInputError(
++            "TARGET-DATA2C-MVQUAL1 selected frame is outside the reference domain."
++        ) from exc
++    telemetry = _selector_telemetry_indices(
++        reference_domain, sparse_domain, selected, run_codes, condition_codes
++    )
++    # MVIDX remains secondary telemetry only.  Every independent coverage mass
++    # must agree with the TARGET-DATA2B scorer exactly within the historical tol.
++    report_by_family = {item.family_id: item for item in report.family_reports}
++    for sparse_family in sparse_domain.families:
++        family = reference_domain.family(sparse_family.family_id)
++        mask = indexed_family_covered_mask(sparse_family, selected)
++        indexed_mass = float(
++            np.sum(np.asarray(family.weights, dtype=np.float64)[mask], dtype=np.float64)
++        )
++        direct_mass = report_by_family[sparse_family.family_id].covered_reference_mass
++        if not math.isclose(indexed_mass, direct_mass, rel_tol=0.0, abs_tol=5.0e-12):
++            raise TrainingDataInputError(
++                "TARGET-DATA2C-MVQUAL1 independent scorer disagrees with MVIDX telemetry."
++            )
++    return _MvqualScoreResult(
++        label_domain_id=str(label),
++        selector=str(selector),
++        target_size=int(target_size),
++        report=report,
++        selected_indices=selected,
++        telemetry=telemetry,
++        hard_state=_hard_obligation_state(sparse_domain, selected),
++    )
++
++
+ def build_target_multi_view_qualification_plan(
+     target_coverage_reference: Any,
+     target_coverage_sparse_index: Any,
+@@ -779,15 +919,36 @@
+     *,
+     policy: TargetMultiViewQualificationPolicy | None = None,
+     coverage_query_workers: int = 1,
++    scoring_workers: int = 1,
++    resource_scope: StageResourceScope | None = None,
++    execution_telemetry_callback: Any = None,
+     progress_callback: Any = None,
+ ) -> TargetMultiViewQualificationPlan:
+-    """Build independent same-N legacy-vs-MV qualification evidence."""
++    """Build independent same-N legacy-vs-MV qualification evidence.
+ 
+-    policy = policy or TargetMultiViewQualificationPolicy(coverage_threshold=float(target_coverage_reference.policy.coverage_threshold))
+-    workers = int(coverage_query_workers)
+-    if workers < 1:
++    ``scoring_workers`` is execution-only.  When greater than one, independent
++    domain/selector/size jobs share one PARCORE1 queue and every nested
++    TARGET-DATA2B cKDTree query is constrained to one native worker.  Results
++    are reassembled in the historical domain/size order before any scientific
++    comparison or progress emission occurs.
++    """
++
++    policy = policy or TargetMultiViewQualificationPolicy(
++        coverage_threshold=float(target_coverage_reference.policy.coverage_threshold)
++    )
++    query_workers = int(coverage_query_workers)
++    if query_workers < 1:
+         raise TrainingDataInputError("TARGET-DATA2C-MVQUAL1 coverage workers must be positive.")
+-    dataset_ids = {target_coverage_reference.dataset_id, target_coverage_sparse_index.dataset_id, target_coverage_feasibility.dataset_id, legacy_target_data_ladder.dataset_id, target_multi_view_repair.dataset_id}
++    requested_scoring_workers = int(scoring_workers)
++    if requested_scoring_workers < 1:
++        raise TrainingDataInputError("TARGET-DATA2C-MVQUAL-PAR1 scoring workers must be positive.")
++    dataset_ids = {
++        target_coverage_reference.dataset_id,
++        target_coverage_sparse_index.dataset_id,
++        target_coverage_feasibility.dataset_id,
++        legacy_target_data_ladder.dataset_id,
++        target_multi_view_repair.dataset_id,
++    }
+     if len(dataset_ids) != 1:
+         raise TrainingDataInputError("TARGET-DATA2C-MVQUAL1 dataset identity mismatch.")
+     if target_coverage_sparse_index.target_coverage_reference_digest != target_coverage_reference.content_digest:
+@@ -798,16 +959,27 @@
+         raise TrainingDataInputError("TARGET-DATA2C-MVQUAL1 FEAS/DATA2A lineage mismatch.")
+     if legacy_target_data_ladder.target_coverage_reference_digest != target_coverage_reference.content_digest:
+         raise TrainingDataInputError("TARGET-DATA2C-MVQUAL1 legacy/reference lineage mismatch.")
+-    if target_multi_view_repair.target_coverage_reference_digest != target_coverage_reference.content_digest or target_multi_view_repair.target_coverage_sparse_index_digest != target_coverage_sparse_index.content_digest:
++    if (
++        target_multi_view_repair.target_coverage_reference_digest != target_coverage_reference.content_digest
++        or target_multi_view_repair.target_coverage_sparse_index_digest != target_coverage_sparse_index.content_digest
++    ):
+         raise TrainingDataInputError("TARGET-DATA2C-MVQUAL1 repair lineage mismatch.")
+-    if not math.isclose(policy.coverage_threshold, float(target_coverage_reference.policy.coverage_threshold), rel_tol=0.0, abs_tol=5e-15):
++    if not math.isclose(
++        policy.coverage_threshold,
++        float(target_coverage_reference.policy.coverage_threshold),
++        rel_tol=0.0,
++        abs_tol=5e-15,
++    ):
+         raise TrainingDataInputError("TARGET-DATA2C-MVQUAL1 threshold differs from TARGET-DATA2B authority.")
+ 
+-    domains: list[TargetMultiViewQualificationDomainPlan] = []
++    # Freeze all job inputs before execution.  The dictionaries below are
++    # execution-only and preserve the canonical domain/rung ordering supplied by
++    # the scientific authorities.
++    domain_contexts: list[dict[str, Any]] = []
+     global_common: set[int] | None = None
+-    mv_independent_passes: dict[str, dict[int, bool]] = {}
+-
+-    for reference_domain in target_coverage_reference.domains:
++    jobs: list[tuple[int, int, int, str, str, int, Sequence[str], dict[str, Any]]] = []
++    job_position = 0
++    for domain_index, reference_domain in enumerate(target_coverage_reference.domains):
+         label = reference_domain.label_domain_id
+         sparse_domain = target_coverage_sparse_index.domain(label)
+         legacy_domain = legacy_target_data_ladder.domain(label)
+@@ -820,38 +992,145 @@
+         mv_rungs = {v.target_size: v for v in repair_domain.rungs if v.materializable}
+         common = tuple(sorted(set(legacy_rungs) & set(mv_rungs)))
+         if not common:
+-            raise TrainingDataInputError(f"TARGET-DATA2C-MVQUAL1 {label} has no common materializable target sizes.")
++            raise TrainingDataInputError(
++                f"TARGET-DATA2C-MVQUAL1 {label} has no common materializable target sizes."
++            )
+         global_common = set(common) if global_common is None else global_common & set(common)
+-        comparisons: list[TargetMultiViewQualificationRung] = []
++        context = {
++            "domain_index": domain_index,
++            "label": label,
++            "reference_domain": reference_domain,
++            "sparse_domain": sparse_domain,
++            "legacy_domain": legacy_domain,
++            "repair_domain": repair_domain,
++            "uid_to_index": uid_to_index,
++            "run_codes": run_codes,
++            "condition_codes": condition_codes,
++            "legacy_rungs": legacy_rungs,
++            "mv_rungs": mv_rungs,
++            "common": common,
++        }
++        domain_contexts.append(context)
+         for size in common:
+-            legacy_uids = legacy_rungs[size].frame_uids
+-            mv_uids = mv_rungs[size].frame_uids
+-            legacy_report = score_target_subset_coverage(target_coverage_reference, label, legacy_uids, query_workers=workers)
+-            mv_report = score_target_subset_coverage(target_coverage_reference, label, mv_uids, query_workers=workers)
+-            legacy_indices_array = np.asarray([uid_to_index[uid] for uid in legacy_uids], dtype=np.int64)
+-            mv_indices_array = np.asarray([uid_to_index[uid] for uid in mv_uids], dtype=np.int64)
+-            legacy_telemetry = _selector_telemetry_indices(
+-                reference_domain, sparse_domain, legacy_indices_array, run_codes, condition_codes
+-            )
+-            mv_telemetry = _selector_telemetry_indices(
+-                reference_domain, sparse_domain, mv_indices_array, run_codes, condition_codes
++            for selector_index, (selector, rung) in enumerate(
++                (("legacy", legacy_rungs[size]), ("mv", mv_rungs[size]))
++            ):
++                jobs.append(
++                    (
++                        job_position,
++                        domain_index,
++                        selector_index,
++                        label,
++                        selector,
++                        int(size),
++                        rung.frame_uids,
++                        context,
++                    )
++                )
++                job_position += 1
++        for size in sorted(set(mv_rungs) - set(common)):
++            jobs.append(
++                (
++                    job_position,
++                    domain_index,
++                    1,
++                    label,
++                    "mv",
++                    int(size),
++                    mv_rungs[size].frame_uids,
++                    context,
++                )
+             )
+-            # MVIDX is secondary telemetry only; covered mass must agree with the independent scorer.
+-            for report, selected in ((legacy_report, legacy_indices_array), (mv_report, mv_indices_array)):
+-                for sf in sparse_domain.families:
+-                    family = reference_domain.family(sf.family_id)
+-                    mask = indexed_family_covered_mask(sf, selected)
+-                    indexed_mass = float(np.sum(np.asarray(family.weights, dtype=np.float64)[mask], dtype=np.float64))
+-                    direct_mass = next(v.covered_reference_mass for v in report.family_reports if v.family_id == sf.family_id)
+-                    if not math.isclose(indexed_mass, direct_mass, rel_tol=0.0, abs_tol=5.0e-12):
+-                        raise TrainingDataInputError("TARGET-DATA2C-MVQUAL1 independent scorer disagrees with MVIDX telemetry.")
+-            legacy_indices = legacy_indices_array
+-            mv_indices = mv_indices_array
++            job_position += 1
++
++    score_results: dict[tuple[str, str, int], _MvqualScoreResult] = {}
++    effective_workers = max(1, min(requested_scoring_workers, len(jobs)))
++    inner_query_workers = query_workers if effective_workers == 1 else 1
++
++    def evaluate_job(job: tuple[int, int, int, str, str, int, Sequence[str], dict[str, Any]]) -> _MvqualScoreResult:
++        _, _, _, label, selector, size, selected_uids, context = job
++        return _mvqual_score_job(
++            target_coverage_reference,
++            context["reference_domain"],
++            context["sparse_domain"],
++            label=label,
++            selector=selector,
++            target_size=size,
++            selected_uids=selected_uids,
++            uid_to_index=context["uid_to_index"],
++            run_codes=context["run_codes"],
++            condition_codes=context["condition_codes"],
++            query_workers=inner_query_workers,
++        )
++
++    if effective_workers == 1:
++        if resource_scope is None:
++            for job in jobs:
++                result = evaluate_job(job)
++                score_results[(result.label_domain_id, result.selector, result.target_size)] = result
++        else:
++            serial_scope = _mvqual_parallel_scope(resource_scope, 1)
++            with stage_resource_scope(serial_scope):
++                for job in jobs:
++                    result = evaluate_job(job)
++                    score_results[(result.label_domain_id, result.selector, result.target_size)] = result
++    else:
++        scope = _mvqual_parallel_scope(resource_scope, effective_workers)
++        with DeterministicWorkQueue(
++            scope,
++            max_ready_tasks=max(len(jobs), 2 * effective_workers),
++            max_inflight_tasks=max(1, 2 * effective_workers),
++            max_completed_tasks=max(1, 2 * effective_workers),
++            heartbeat_interval_seconds=30.0,
++            telemetry_callback=execution_telemetry_callback,
++            thread_name_prefix="mdstats-mvqual-par1",
++            manage_resource_scope=resource_scope is not None,
++        ) as queue:
++            for position, domain_index, selector_index, label, selector, size, selected_uids, context in jobs:
++                queue.submit(
++                    task_id=f"mvqual-score-{domain_index:04d}-{selector}-{size:08d}",
++                    canonical_order=(domain_index, int(size), selector_index, position),
++                    function=evaluate_job,
++                    args=((position, domain_index, selector_index, label, selector, size, selected_uids, context),),
++                    task_kind="mvqual-score",
++                    estimated_memory_bytes=_estimate_mvqual_score_memory_bytes(
++                        context["reference_domain"], context["sparse_domain"], len(selected_uids)
++                    ),
++                    locality_key=f"{label}:mvqual",
++                )
++            expected = len(jobs)
++            while queue.snapshot().finished_tasks < expected:
++                queue.wait_for_completion()
++                for completion in queue.drain_completed():
++                    result = completion.value
++                    score_results[(result.label_domain_id, result.selector, result.target_size)] = result
++            for completion in queue.drain_completed():
++                result = completion.value
++                score_results[(result.label_domain_id, result.selector, result.target_size)] = result
++
++    domains: list[TargetMultiViewQualificationDomainPlan] = []
++    mv_independent_passes: dict[str, dict[int, bool]] = {}
++    for context in domain_contexts:
++        label = context["label"]
++        reference_domain = context["reference_domain"]
++        sparse_domain = context["sparse_domain"]
++        legacy_domain = context["legacy_domain"]
++        repair_domain = context["repair_domain"]
++        common = context["common"]
++        mv_rungs = context["mv_rungs"]
++        comparisons: list[TargetMultiViewQualificationRung] = []
++        for size in common:
++            legacy_result = score_results[(label, "legacy", int(size))]
++            mv_result = score_results[(label, "mv", int(size))]
+             comparison = _compare_reports(
+-                legacy_report, mv_report, threshold=policy.coverage_threshold,
+-                tolerance=policy.comparison_tolerance, legacy_telemetry=legacy_telemetry, mv_telemetry=mv_telemetry,
+-                legacy_hard_state=_hard_obligation_state(sparse_domain, legacy_indices),
+-                mv_hard_state=_hard_obligation_state(sparse_domain, mv_indices),
++                legacy_result.report,
++                mv_result.report,
++                threshold=policy.coverage_threshold,
++                tolerance=policy.comparison_tolerance,
++                legacy_telemetry=legacy_result.telemetry,
++                mv_telemetry=mv_result.telemetry,
++                legacy_hard_state=legacy_result.hard_state,
++                mv_hard_state=mv_result.hard_state,
+             )
+             comparisons.append(comparison)
+             if progress_callback is not None:
+@@ -861,48 +1140,77 @@
+                 )
+         comparison_by_size = {item.target_size: item for item in comparisons}
+         mv_domain_passes: dict[int, bool] = {}
+-        uid_to_index = {uid: i for i, uid in enumerate(reference_domain.frame_uids)}
+-        for size, rung in mv_rungs.items():
++        for size in mv_rungs:
+             if size in comparison_by_size:
+                 mv_domain_passes[size] = bool(comparison_by_size[size].mv_passed)
+                 continue
+-            mv_report = score_target_subset_coverage(
+-                target_coverage_reference, label, rung.frame_uids, query_workers=workers
+-            )
+-            mv_indices = [uid_to_index[uid] for uid in rung.frame_uids]
+-            mv_hard_pass, _ = _hard_obligation_state(sparse_domain, mv_indices)
+-            mv_domain_passes[size] = bool(mv_report.passed and mv_hard_pass)
++            mv_result = score_results[(label, "mv", int(size))]
++            mv_domain_passes[size] = bool(mv_result.report.passed and mv_result.hard_state[0])
+         mv_independent_passes[label] = mv_domain_passes
+         legacy_n95 = _first_qualified_size(comparisons, selector="legacy")
+         mv_n95 = _first_qualified_size(comparisons, selector="mv")
+-        domains.append(TargetMultiViewQualificationDomainPlan(
+-            label_domain_id=label, reference_domain_digest=reference_domain.content_digest,
+-            sparse_domain_digest=sparse_domain.content_digest, legacy_domain_digest=legacy_domain.content_digest,
+-            mv_repair_domain_digest=repair_domain.content_digest, common_target_sizes=common,
+-            comparisons=tuple(comparisons), legacy_n95_common=legacy_n95, mv_n95_common=mv_n95,
+-            n95_non_regression_passed=_n95_nonregression(legacy_n95, mv_n95),
+-        ))
++        domains.append(
++            TargetMultiViewQualificationDomainPlan(
++                label_domain_id=label,
++                reference_domain_digest=reference_domain.content_digest,
++                sparse_domain_digest=sparse_domain.content_digest,
++                legacy_domain_digest=legacy_domain.content_digest,
++                mv_repair_domain_digest=repair_domain.content_digest,
++                common_target_sizes=common,
++                comparisons=tuple(comparisons),
++                legacy_n95_common=legacy_n95,
++                mv_n95_common=mv_n95,
++                n95_non_regression_passed=_n95_nonregression(legacy_n95, mv_n95),
++            )
++        )
+ 
+     assert global_common is not None
+     common_sizes = tuple(sorted(global_common))
+     if not common_sizes:
+         raise TrainingDataInputError("TARGET-DATA2C-MVQUAL1 has no globally common materializable target sizes.")
+     by_domain = {v.label_domain_id: v for v in domains}
+-    legacy_common_n95 = next((size for size in common_sizes if all(next(c for c in d.comparisons if c.target_size == size).legacy_passed for d in by_domain.values())), None)
+-    mv_common_n95 = next((size for size in common_sizes if all(next(c for c in d.comparisons if c.target_size == size).mv_passed for d in by_domain.values())), None)
+-    same_n_pass = all(next(c for c in d.comparisons if c.target_size == size).same_n_qualified for d in by_domain.values() for size in common_sizes)
++    legacy_common_n95 = next(
++        (
++            size
++            for size in common_sizes
++            if all(
++                next(c for c in d.comparisons if c.target_size == size).legacy_passed
++                for d in by_domain.values()
++            )
++        ),
++        None,
++    )
++    mv_common_n95 = next(
++        (
++            size
++            for size in common_sizes
++            if all(
++                next(c for c in d.comparisons if c.target_size == size).mv_passed
++                for d in by_domain.values()
++            )
++        ),
++        None,
++    )
++    same_n_pass = all(
++        next(c for c in d.comparisons if c.target_size == size).same_n_qualified
++        for d in by_domain.values()
++        for size in common_sizes
++    )
+     n95_pass = _n95_nonregression(legacy_common_n95, mv_common_n95)
+     mv_candidate_sizes = sorted(set.intersection(*(set(values) for values in mv_independent_passes.values())))
+     mv_qualified_sizes = tuple(
+-        size for size in mv_candidate_sizes
++        size
++        for size in mv_candidate_sizes
+         if size <= policy.capacity_ceiling
+         and all(bool(mv_independent_passes[label][size]) for label in mv_independent_passes)
+     )
+-    # Controls require both selectors to be independently hard-qualified at the same N.
+     both_qualified = [
+-        size for size in common_sizes
++        size
++        for size in common_sizes
+         if all(
+-            (lambda c: c.legacy_passed and c.mv_passed)(next(c for c in d.comparisons if c.target_size == size))
++            (lambda c: c.legacy_passed and c.mv_passed)(
++                next(c for c in d.comparisons if c.target_size == size)
++            )
+             for d in by_domain.values()
+         )
+     ]
+@@ -938,14 +1246,20 @@
+         target_data_role_freeze_digest=target_data_role_freeze.content_digest,
+         legacy_target_data_ladder_digest=legacy_target_data_ladder.content_digest,
+         target_multi_view_repair_digest=target_multi_view_repair.content_digest,
+-        policy=policy, domains=tuple(domains), global_common_target_sizes=common_sizes,
+-        legacy_n95_common=legacy_common_n95, mv_n95_common=mv_common_n95,
+-        n95_non_regression_passed=n95_pass, same_n_non_regression_passed=same_n_pass,
+-        mv_qualified_sizes=mv_qualified_sizes, learning_control_target_sizes=learning_controls,
+-        learning_control_status=_LEARNING_DEFERRED, capacity_diagnosis=capacity_diagnosis, outcome=outcome,
++        policy=policy,
++        domains=tuple(domains),
++        global_common_target_sizes=common_sizes,
++        legacy_n95_common=legacy_common_n95,
++        mv_n95_common=mv_common_n95,
++        n95_non_regression_passed=n95_pass,
++        same_n_non_regression_passed=same_n_pass,
++        mv_qualified_sizes=mv_qualified_sizes,
++        learning_control_target_sizes=learning_controls,
++        learning_control_status=_LEARNING_DEFERRED,
++        capacity_diagnosis=capacity_diagnosis,
++        outcome=outcome,
+     )
+ 
+-
+ def validate_target_multi_view_qualification_authority(
+     plan: TargetMultiViewQualificationPlan,
+     *,
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/pyproject.toml /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/pyproject.toml
+--- /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/pyproject.toml	2026-08-17 23:15:34.000000000 +0000
++++ /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/pyproject.toml	2026-08-17 23:58:05.595708384 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.231a0"
++version = "0.20.232a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/release/qualification_logs/MLFF_MVQUAL_PAR1_QUALIFICATION_0.20.232a0.json /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/release/qualification_logs/MLFF_MVQUAL_PAR1_QUALIFICATION_0.20.232a0.json
+--- /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/release/qualification_logs/MLFF_MVQUAL_PAR1_QUALIFICATION_0.20.232a0.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/release/qualification_logs/MLFF_MVQUAL_PAR1_QUALIFICATION_0.20.232a0.json	2026-08-18 00:10:33.339994760 +0000
+@@ -0,0 +1,216 @@
++{
++  "acceptance": {
++    "advance_to": "AUDIT-EVAL-PERF1",
++    "broad_regression": "PASS",
++    "canonical_comparison_order": "PASS",
++    "exact_same_n_records": "PASS",
++    "scientific_policy_unchanged": "PASS",
++    "throughput_improved": "PASS",
++    "worker_count_invariance": "PASS"
++  },
++  "architecture_revision": 99,
++  "authority_change": {
++    "gpu": false,
++    "runtime_optimization": true,
++    "scientific": false
++  },
++  "content_digest": "9b164d272ddf4046bd05d925c2fab27b84a6dbaa3384d7c85f7079f244ebb852",
++  "date": "2026-08-17",
++  "documentation": {
++    "architecture_revision_note": {
++      "path": "docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV99.md",
++      "sha256": "b167b20ce6f3ba33a7cb954b95e97a0dea457d057aa95342605e1ed6ff8bdcb2"
++    },
++    "canonical_markdown": {
++      "path": "docs/arch_manuals/mlff_training_data_architecture.md",
++      "sha256": "2c4d7dafcca71621f0bb5783232b65b66fbe341167666ef15d947e4c14afdb29"
++    },
++    "canonical_pdf": {
++      "comparison_note": "Revision-98 and revision-99 49-page PDFs were compared at 50 dpi; 12 pages changed as expected. All 49 final pages rendered at 100 dpi; front matter and the changed performance/status/reference region were visually inspected with no clipping or overlap.",
++      "full_render": "PASS",
++      "pages": 49,
++      "path": "docs/arch_manuals/mlff_training_data_architecture.pdf",
++      "preflight": "PASS",
++      "sha256": "b78a8d65ce170d479dd26257ec1c53c5e1b31cb42c3993d82c73f927551a2343",
++      "visual_qa": "PASS"
++    },
++    "dependency_graph": {
++      "path": "docs/arch_manuals/mlff_training_data_dependency_graph.json",
++      "sha256": "bf3e08fcc98cf4cb218a090a4fcb29045a819d00e4eaaddce5bfdcc8e9a4dae1"
++    },
++    "release_note": {
++      "path": "docs/history/mlff/release_notes/PATCH_NOTES_0.20.232a0.md",
++      "sha256": "049e737a3369152c649af7743372d7ccb6bd5e71ff977b4ec074e52bde5a102c"
++    },
++    "spec": {
++      "path": "docs/specs/training_data/mlff_mvqual_par1_global_scoring_queue_spec.md",
++      "sha256": "2ed6a83f3517bde777a6c28db6a7bd750fd166fdf678a85f6e6e7a037374bd31"
++    }
++  },
++  "foundation": {
++    "active_qualification_family": "mace-mpa-0",
++    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
++    "mh1_supported_by_same_contract": true,
++    "note": "MVQUAL-PAR1 is model-family independent. MACE-MPA-0 medium is the active qualification checkpoint; MACE-MH-1 remains supported by the same target-data qualification execution contract.",
++    "variant": "medium"
++  },
++  "gate": "MVQUAL_PAR1_GLOBAL_SAME_N_SCORING_QUEUE",
++  "implementation": {
++    "automatic_worker_ceiling": 4,
++    "campaign_blas_threads": 1,
++    "canonical_reduction": "historical_domain_size_order",
++    "deterministic_work_queue": true,
++    "direct_api_native_environment_preserved_without_explicit_scope": true,
++    "explicit_higher_override_allowed": true,
++    "global_job_granularity": "domain_selector_target_size_score",
++    "implementation_manifest": {
++      "path": "benchmarks/mlff_mvqual_par1_implementation_manifest_0.20.232a0.json",
++      "sha256": "031fca3a242c96540c7a3410843e9e7bd568c3a286e9ee4c6b82db20f4ce52aa"
++    },
++    "native_tree_workers_per_parallel_job": 1,
++    "per_task_ram_admission": true
++  },
++  "inputs": {
++    "dependency_archive": {
++      "path": "/mnt/data/dependencies.tar(20260817-112644).gz",
++      "sha256": "888d545a512396697c8583d69bc9ed33110914675f466a4cbcafc3e1e1407171"
++    },
++    "replay_source": {
++      "path": "/mnt/data/replay_fps_12000.extxyz",
++      "sha256": "187eed42fb2d6cf5e7e745ffed0ce34541e92c6a35ec9e654520cd3c7198403c"
++    },
++    "target_archive": {
++      "path": "/mnt/data/training_LTA.tar(4).gz",
++      "sha256": "bc1b7e25ba338507ae38b260bcd283356de887b6c6cf762a2c146733f1c3c958"
++    }
++  },
++  "next_gate": "AUDIT-EVAL-PERF1",
++  "performance_evidence": {
++    "current_scaling": {
++      "1_lane": {
++        "max_busy_workers": 1,
++        "trials_seconds": [
++          0.8640885149998212,
++          0.8361911660012993,
++          0.820107437999468,
++          0.8405604620002123,
++          0.8072046949982905
++        ],
++        "warm_median_seconds": 0.8281493020003836
++      },
++      "2_lanes": {
++        "max_busy_workers": 2,
++        "trials_seconds": [
++          0.4617476009989332,
++          0.4536317540005257,
++          0.4451332619992172,
++          0.4530999830003566,
++          0.449643472000389
++        ],
++        "warm_median_seconds": 0.4513717275003728
++      },
++      "4_lanes": {
++        "max_busy_workers": 4,
++        "trials_seconds": [
++          0.4521447179995448,
++          0.4576090300015494,
++          0.45909247399868036,
++          0.4329530400009389,
++          0.503536685000654
++        ],
++        "warm_median_seconds": 0.4583507520001149
++      },
++      "automatic_worker_ceiling": 4,
++      "explicit_higher_override_allowed": true,
++      "interpretation": "Most scaling is realized by two lanes on this cloud CPU; four lanes are retained as the conservative automatic ceiling because score jobs are memory-bandwidth/allocation heavy.",
++      "one_to_four_speedup": 1.806802537983348,
++      "one_to_two_speedup": 1.8347389779739796
++    },
++    "interpretation": "Timing is same-host execution evidence. Complete qualification-plan equality, independent TARGET-DATA2B rescoring, MVIDX covered-mass cross-checks, hard-obligation decisions, and canonical comparison order remain scientific authority.",
++    "paired_four_lane": {
++      "control_driver": "serial same-N driver; cKDTree query_workers=4; BLAS/OpenMP=1",
++      "control_release": "0.20.231a0",
++      "control_trials_seconds": [
++        0.8545966790006787,
++        0.7728988580001896,
++        0.8364606480008661,
++        0.8959100770007353,
++        0.9465855070011457
++      ],
++      "control_warm_median_seconds": 0.8661853625008007,
++      "current_driver": "global same-N queue; 4 outer lanes; cKDTree query_workers=1/job; BLAS/OpenMP=1",
++      "current_release": "0.20.232a0",
++      "current_trials_seconds": [
++        0.4847390649993031,
++        0.4168904760008445,
++        0.4007583420006995,
++        0.4020226169996022,
++        0.41608737299975473
++      ],
++      "current_warm_median_seconds": 0.40905499499967846,
++      "speedup": 2.117527894999746
++    },
++    "primary_record": {
++      "path": "benchmarks/mlff_mvqual_par1_cloud_cpu_mpa0_2026-08-17.json",
++      "sha256": "b329b9861b8d182eb28347155c5352d5fbdc80a6c6ed87fe6af99f570ed2838d"
++    },
++    "queue_probe": {
++      "jobs_finished": 12,
++      "jobs_submitted": 12,
++      "max_busy_workers": 4,
++      "memory_backpressure_events": 0,
++      "queue_backpressure_events": 0
++    },
++    "report": {
++      "path": "benchmarks/mlff_mvqual_par1_cloud_cpu_mpa0_2026-08-17.md",
++      "sha256": "5215cb710f035ca2174534c18bf24f15a17357b9e4ddc6766d90926c1984f058"
++    }
++  },
++  "release": "0.20.232a0",
++  "schema": "mdstats.mlff-mvqual-par1-qualification.v1",
++  "scientific_oracles": {
++    "blas_authority_note": "Production campaign MVQUAL already ran under BLAS/OpenMP=1 before this gate. The optimized campaign preserves that authority; unscoped direct API calls preserve their prior native-thread environment.",
++    "comparison_progress_order_unchanged": true,
++    "control_current_plan_exact": true,
++    "hard_obligation_authority_unchanged": true,
++    "mvidx_covered_mass_crosscheck_unchanged": true,
++    "one_two_four_worker_plan_exact": true,
++    "qualification_plan_digest": "2ebd7f5dc2b560e3150fe4849e7098be2eff56469779f15b2befda74059fc90b",
++    "worker_count_execution_only": true
++  },
++  "status": "PASS",
++  "tests": {
++    "archival_spec_boundary": {
++      "excluded_from_current_release_pass_fail": [
++        "tests/test_mlff_target_data2c_mvidx1_specification.py"
++      ],
++      "reason": "Historical release-pinned MVIDX specification remains archival; current functional/scientific MVIDX authority is included in the 111-test regression."
++    },
++    "compileall": {
++      "paths": [
++        "mdstats",
++        "benchmarks",
++        "tools"
++      ],
++      "status": "PASS"
++    },
++    "current_gate_and_dependencies": {
++      "failed": 0,
++      "passed": 84,
++      "warnings": 3
++    },
++    "packaging_metadata": {
++      "pip_wheel_no_deps_no_build_isolation": "PASS",
++      "pyproject_version": "0.20.232a0",
++      "root_pkg_info_version": "0.20.232a0",
++      "wheel_metadata_name": "mdstats",
++      "wheel_metadata_version": "0.20.232a0"
++    },
++    "target_data2_functional_authority": {
++      "failed": 0,
++      "passed": 111,
++      "warning_class": "expected velocity-reconstruction/normalization warnings unchanged from prior authority",
++      "warnings": 18
++    }
++  }
++}
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/tests/test_mlff_doc_arch1_specification.py /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/tests/test_mlff_doc_arch1_specification.py
+--- /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/tests/test_mlff_doc_arch1_specification.py	2026-08-17 23:17:28.000000000 +0000
++++ /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/tests/test_mlff_doc_arch1_specification.py	2026-08-18 00:02:29.959615685 +0000
+@@ -16,10 +16,10 @@
+ 
+ 
+ def test_doc_arch1_release_and_current_authority_are_synchronized():
+-    assert mdstats.__version__ == "0.20.231a0"
++    assert mdstats.__version__ == "0.20.232a0"
+     text = MANUAL.read_text(encoding="utf-8")
+-    assert "architecture_revision: 98" in text
+-    assert 'release: "mdstats 0.20.231a0"' in text
++    assert "architecture_revision: 99" in text
++    assert 'release: "mdstats 0.20.232a0"' in text
+     assert "# Part VI - Performance and execution architecture" in text
+     assert "# Part VII - Current implementation status and frozen forward gates" in text
+     assert "## Context retrieval index" in text
+@@ -72,24 +72,25 @@
+     revision_rows = [line for line in REV_INDEX.read_text().splitlines() if re.match(r"^\|\s*\d+\s*\|", line)]
+     revisions = [int(line.split("|")[1].strip()) for line in revision_rows]
+     assert revisions == sorted(set(revisions))
+-    assert revisions[-1] == 98
++    assert revisions[-1] == 99
+     assert "NEIGHBOR1" in REV_INDEX.read_text()
+-    assert "0.20.231a0" in REL_INDEX.read_text()
++    assert "0.20.232a0" in REL_INDEX.read_text()
+     assert (ROOT / "docs/history/mlff/LINEAGE.md").is_file()
+     assert (ROOT / "docs/history/mlff/manual_snapshots/mlff_training_data_architecture_rev090_full.md").is_file()
+ 
+ 
+ def test_doc_arch1_graph_and_directory_ownership_are_current():
+     graph = json.loads(GRAPH.read_text())
+-    assert graph["architecture_revision"] == 98
+-    assert graph["schema_version"] == 78
++    assert graph["architecture_revision"] == 99
++    assert graph["schema_version"] == 79
+     node_ids = {node["id"] for node in graph["nodes"]}
+     for node in (
+         "DOC_ARCH1_MANUAL_RESTRUCTURE_PERFORMANCE_ROADMAP",
+         "PERFBASE1_CAMPAIGN_BASELINES", "PARCORE1_DETERMINISTIC_WORK_QUEUE",
+         "NEIGHBOR1_SHARED_EXACT_ENGINE", "MVIDX_REUSE1_SPARSE_TRANSPOSE",
+         "COVREF_PAR1_GLOBAL_BLOCK_QUEUE", "MVKERNEL1_VECTOR_SPARSE_KERNELS",
+-        "REPAIR_PAR1_PROPOSAL_QUEUE", "CAMPAIGN_PERF_QUAL1_CLOSURE",
++        "REPAIR_PAR1_PROPOSAL_QUEUE", "MVQUAL_PAR1_GLOBAL_SCORING_QUEUE",
++        "CAMPAIGN_PERF_QUAL1_CLOSURE",
+     ):
+         assert node in node_ids
+     root_names = {p.name for p in ROOT.iterdir() if p.is_file()}
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/tests/test_mlff_mvqual_par1.py /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/tests/test_mlff_mvqual_par1.py
+--- /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/tests/test_mlff_mvqual_par1.py	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/tests/test_mlff_mvqual_par1.py	2026-08-17 23:53:46.654433685 +0000
+@@ -0,0 +1,140 @@
++from __future__ import annotations
++
++from threading import Lock
++from pathlib import Path
++import time
++
++import pytest
++
++import mdstats
++from mdstats.training_data import campaign_cli
++from mdstats.training_data import target_multi_view_qualification as mvqual
++from mdstats.training_data.resources import StageResourceScope
++from tests.test_mlff_target_data2c_mvqual1 import _authorities
++
++
++def test_mvqual_par1_worker_counts_preserve_complete_plan() -> None:
++    reference, role, feasibility, sparse, _, repair, legacy, policy = _authorities(160)
++    plans = [
++        mdstats.build_target_multi_view_qualification_plan(
++            reference, sparse, feasibility, role, legacy, repair,
++            policy=policy, scoring_workers=workers,
++        )
++        for workers in (1, 2, 4)
++    ]
++    assert plans[0].to_dict() == plans[1].to_dict() == plans[2].to_dict()
++
++
++def test_mvqual_par1_parallel_jobs_are_concurrent_and_native_tree_single_threaded(monkeypatch) -> None:
++    reference, role, feasibility, sparse, _, repair, legacy, policy = _authorities(160)
++    original = mvqual.score_target_subset_coverage
++    lock = Lock()
++    active = 0
++    max_active = 0
++    observed_query_workers: list[int] = []
++
++    def wrapped(*args, **kwargs):
++        nonlocal active, max_active
++        with lock:
++            active += 1
++            max_active = max(max_active, active)
++            observed_query_workers.append(int(kwargs["query_workers"]))
++        try:
++            time.sleep(0.015)
++            return original(*args, **kwargs)
++        finally:
++            with lock:
++                active -= 1
++
++    monkeypatch.setattr(mvqual, "score_target_subset_coverage", wrapped)
++    plan = mdstats.build_target_multi_view_qualification_plan(
++        reference, sparse, feasibility, role, legacy, repair,
++        policy=policy, coverage_query_workers=4, scoring_workers=4,
++    )
++    assert plan.global_common_target_sizes == (4, 8, 16, 32)
++    assert max_active >= 2
++    assert observed_query_workers
++    assert set(observed_query_workers) == {1}
++
++
++def test_mvqual_par1_progress_reduction_remains_canonical() -> None:
++    reference, role, feasibility, sparse, _, repair, legacy, policy = _authorities(160)
++    serial_messages: list[str] = []
++    parallel_messages: list[str] = []
++    serial = mdstats.build_target_multi_view_qualification_plan(
++        reference, sparse, feasibility, role, legacy, repair,
++        policy=policy, scoring_workers=1, progress_callback=serial_messages.append,
++    )
++    parallel = mdstats.build_target_multi_view_qualification_plan(
++        reference, sparse, feasibility, role, legacy, repair,
++        policy=policy, scoring_workers=4, progress_callback=parallel_messages.append,
++    )
++    assert parallel.content_digest == serial.content_digest
++    assert parallel_messages == serial_messages
++
++
++def test_mvqual_par1_rejects_undersized_explicit_scope() -> None:
++    reference, role, feasibility, sparse, _, repair, legacy, policy = _authorities(80)
++    scope = StageResourceScope(
++        stage_name="mvqual-test",
++        cpu_threads_available=4,
++        cpu_threads_budget=2,
++        python_workers=2,
++        structural_workers=1,
++        tree_workers=1,
++        blas_threads=1,
++        pytorch_cpu_workers=1,
++        ram_budget_bytes=None,
++    )
++    with pytest.raises(mdstats.TrainingDataInputError, match="fewer Python workers"):
++        mdstats.build_target_multi_view_qualification_plan(
++            reference, sparse, feasibility, role, legacy, repair,
++            policy=policy, scoring_workers=3, resource_scope=scope,
++        )
++
++
++def test_mvqual_par1_campaign_configuration_and_resolver_are_wired() -> None:
++    source = Path(campaign_cli.__file__).read_text(encoding="utf-8")
++    assert "target_multi_view_qualification_workers = 0" in source
++    workers, resources = campaign_cli._target_multi_view_qualification_parallelism(
++        {"performance": {"cpu_fraction": 0.90, "ram_fraction": 0.80,
++                         "gpu_memory_fraction": 0.90,
++                         "target_multi_view_qualification_workers": 2}}
++    )
++    assert 1 <= workers <= 2
++    assert workers <= resources.cpu_threads_budget
++
++
++def test_mvqual_par1_explicit_campaign_scope_preserves_blas1_authority_across_workers() -> None:
++    reference, role, feasibility, sparse, _, repair, legacy, policy = _authorities(200)
++    scope4 = StageResourceScope(
++        stage_name="mvqual-campaign-test",
++        cpu_threads_available=4,
++        cpu_threads_budget=4,
++        python_workers=4,
++        structural_workers=1,
++        tree_workers=1,
++        blas_threads=1,
++        pytorch_cpu_workers=1,
++        ram_budget_bytes=None,
++    )
++    scope1 = StageResourceScope(
++        stage_name="mvqual-campaign-test",
++        cpu_threads_available=4,
++        cpu_threads_budget=4,
++        python_workers=1,
++        structural_workers=1,
++        tree_workers=1,
++        blas_threads=1,
++        pytorch_cpu_workers=1,
++        ram_budget_bytes=None,
++    )
++    serial = mdstats.build_target_multi_view_qualification_plan(
++        reference, sparse, feasibility, role, legacy, repair,
++        policy=policy, coverage_query_workers=1, scoring_workers=1, resource_scope=scope1,
++    )
++    parallel = mdstats.build_target_multi_view_qualification_plan(
++        reference, sparse, feasibility, role, legacy, repair,
++        policy=policy, coverage_query_workers=1, scoring_workers=4, resource_scope=scope4,
++    )
++    assert parallel.to_dict() == serial.to_dict()
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/tests/test_mlff_mvqual_par1_specification.py /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/tests/test_mlff_mvqual_par1_specification.py
+--- /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/tests/test_mlff_mvqual_par1_specification.py	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/tests/test_mlff_mvqual_par1_specification.py	2026-08-18 00:03:19.877501334 +0000
+@@ -0,0 +1,91 @@
++from __future__ import annotations
++
++import json
++from pathlib import Path
++
++import mdstats
++
++ROOT = Path(__file__).resolve().parents[1]
++MANUAL = ROOT / "docs/arch_manuals/mlff_training_data_architecture.md"
++GRAPH = ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json"
++SPEC = ROOT / "docs/specs/training_data/mlff_mvqual_par1_global_scoring_queue_spec.md"
++EVIDENCE = ROOT / "benchmarks/mlff_mvqual_par1_cloud_cpu_mpa0_2026-08-17.json"
++
++
++def test_mvqual_par1_release_manual_and_package_metadata_are_synchronized() -> None:
++    assert mdstats.__version__ == "0.20.232a0"
++    assert 'version = "0.20.232a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert "Version: 0.20.232a0" in (ROOT / "PKG-INFO").read_text(encoding="utf-8")
++    text = MANUAL.read_text(encoding="utf-8")
++    assert "architecture_revision: 99" in text
++    assert 'release: "mdstats 0.20.232a0"' in text
++    assert "Gate MVQUAL-PAR1 - global same-N scoring queue - COMPLETE" in text
++    assert "`AUDIT-EVAL-PERF1` is next" in text or "**Next gate.** `AUDIT-EVAL-PERF1`." in text
++    assert "four outer" in text
++    assert SPEC.is_file()
++
++
++def test_mvqual_par1_dependency_graph_is_closed() -> None:
++    graph = json.loads(GRAPH.read_text(encoding="utf-8"))
++    assert graph["architecture_revision"] == 99
++    assert graph["schema_version"] == 79
++    assert graph["documentation_gate"] == "MVQUAL_PAR1_GLOBAL_SCORING_QUEUE"
++    assert graph["next_gate"] == "AUDIT_EVAL_PERF1_CPU_KERNELS"
++    node = next(item for item in graph["nodes"] if item["id"] == "MVQUAL_PAR1_GLOBAL_SCORING_QUEUE")
++    assert node["implemented_release"] == "0.20.232a0"
++    assert node["implementation_status"] == "implemented_global_same_n_scoring_queue"
++    assert node["parallel_granularity"] == "domain_selector_target_size_score"
++    assert node["native_tree_workers_per_task"] == 1
++    assert node["blas_threads_per_task"] == 1
++    assert node["automatic_worker_ceiling"] == 4
++    assert node["scientific_authority_change"] is False
++
++
++def test_mvqual_par1_code_contains_exact_execution_contract() -> None:
++    qualification = (ROOT / "mdstats/training_data/target_multi_view_qualification.py").read_text(encoding="utf-8")
++    campaign = (ROOT / "mdstats/training_data/campaign_cli.py").read_text(encoding="utf-8")
++    for token in (
++        "_mvqual_score_job",
++        "_estimate_mvqual_score_memory_bytes",
++        "DeterministicWorkQueue",
++        "scoring_workers",
++        "manage_resource_scope=resource_scope is not None",
++        "execution_telemetry_callback",
++    ):
++        assert token in qualification
++    assert "target_multi_view_qualification_workers" in campaign
++    assert "TARGET-DATA2C-MVQUAL-PAR1" in campaign
++    assert "min(budget, available, 4)" in campaign
++
++
++def test_mvqual_par1_history_records_are_present() -> None:
++    assert (ROOT / "docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV99.md").is_file()
++    assert (ROOT / "docs/history/mlff/release_notes/PATCH_NOTES_0.20.232a0.md").is_file()
++    assert "0.20.232a0" in (ROOT / "CHANGELOG.md").read_text(encoding="utf-8").splitlines()[0]
++    assert "0.20.232a0" in (ROOT / "docs/history/mlff/release_notes/INDEX.md").read_text(encoding="utf-8")
++
++
++def test_mvqual_par1_frozen_benchmark_evidence_is_consistent() -> None:
++    evidence = json.loads(EVIDENCE.read_text(encoding="utf-8"))
++    assert evidence["release"] == "0.20.232a0"
++    assert evidence["architecture_revision"] == 99
++    assert evidence["acceptance"]["status"] == "PASS"
++    assert evidence["acceptance"]["next_gate"] == "AUDIT-EVAL-PERF1"
++    assert evidence["active_foundation"]["family"] == "MACE-MPA-0 medium"
++    assert evidence["active_foundation"]["checkpoint_sha256"] == (
++        "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638"
++    )
++    assert evidence["active_foundation"]["mh1_compatible"] is True
++    scientific = evidence["scientific"]
++    assert scientific["qualification_plan_digest"] == (
++        "2ebd7f5dc2b560e3150fe4849e7098be2eff56469779f15b2befda74059fc90b"
++    )
++    assert scientific["control_current_plan_exact"] is True
++    assert scientific["worker_count_plan_exact"] is True
++    paired = evidence["execution"]["paired_four_lane"]
++    scaling = evidence["execution"]["current_scaling"]
++    assert paired["speedup"] > 1.5
++    assert scaling["one_to_two_speedup"] > 1.3
++    assert scaling["automatic_worker_ceiling"] == 4
++    assert scaling["4_lanes"]["max_busy_workers"] == 4
++    assert evidence["execution"]["queue_probe"]["jobs_finished"] == 12
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/tests/test_mlff_repair_par1_specification.py /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/tests/test_mlff_repair_par1_specification.py
+--- /mnt/data/mdstats-mvqualpar1-control/mdstats-0.20.231a0/tests/test_mlff_repair_par1_specification.py	2026-08-17 23:16:50.000000000 +0000
++++ /mnt/data/mdstats-mvqualpar1-work/mdstats-0.20.231a0/tests/test_mlff_repair_par1_specification.py	2026-08-18 00:02:38.081601178 +0000
+@@ -13,12 +13,7 @@
+ 
+ 
+ def test_repair_par1_release_manual_and_package_metadata_are_synchronized() -> None:
+-    assert mdstats.__version__ == "0.20.231a0"
+-    assert 'version = "0.20.231a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+-    assert "Version: 0.20.231a0" in (ROOT / "PKG-INFO").read_text(encoding="utf-8")
+     text = MANUAL.read_text(encoding="utf-8")
+-    assert "architecture_revision: 98" in text
+-    assert 'release: "mdstats 0.20.231a0"' in text
+     assert "Gate REPAIR-PAR1 - deterministic parallel repair proposals - COMPLETE" in text
+     assert "**Next gate.** `MVQUAL-PAR1`." in text
+     assert "adaptive" in text
+@@ -28,10 +23,8 @@
+ 
+ def test_repair_par1_dependency_graph_is_closed() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+-    assert graph["architecture_revision"] == 98
+-    assert graph["schema_version"] == 78
+-    assert graph["documentation_gate"] == "REPAIR_PAR1_PROPOSAL_QUEUE"
+-    assert graph["next_gate"] == "MVQUAL_PAR1_GLOBAL_SCORING_QUEUE"
++    assert graph["architecture_revision"] >= 98
++    assert graph["schema_version"] >= 78
+     node = next(item for item in graph["nodes"] if item["id"] == "REPAIR_PAR1_PROPOSAL_QUEUE")
+     assert node["implementation_status"] == "implemented_deterministic_parallel_proposals"
+     assert node["implemented_release"] == "0.20.231a0"
+@@ -60,7 +53,7 @@
+ def test_repair_par1_history_records_are_present() -> None:
+     assert (ROOT / "docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV98.md").is_file()
+     assert (ROOT / "docs/history/mlff/release_notes/PATCH_NOTES_0.20.231a0.md").is_file()
+-    assert "0.20.231a0" in (ROOT / "CHANGELOG.md").read_text(encoding="utf-8").splitlines()[0]
++    assert "## 0.20.231a0" in (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+ 
+ 
+ def test_repair_par1_frozen_benchmark_evidence_is_consistent() -> None:

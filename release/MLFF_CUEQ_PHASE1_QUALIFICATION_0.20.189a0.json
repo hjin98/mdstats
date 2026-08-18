@@ -1,0 +1,127 @@
+{
+  "acceptance": {
+    "control_plane": "pass",
+    "foundation_model_identity": "pass",
+    "negative_host_evidence": "pass_fail_closed",
+    "paired_protocol_identity_and_tamper_guards": "pass",
+    "positive_representative_full_pair": "pending_FINAL-GPU1",
+    "positive_short_pair": "pending_FINAL-GPU1"
+  },
+  "architecture_revision": 56,
+  "authority_class": "training_only_accelerator_qualification_control_plane",
+  "authorization_boundary": {
+    "generated_default_change_authorized": false,
+    "phase_separated_training_authorized": false,
+    "reason": "positive CUEQ-DEP1 plus passing short and representative full paired trajectories are intentionally deferred to FINAL-GPU1",
+    "source_cueq_execution_authorized": false
+  },
+  "date": "2026-08-15",
+  "dependency_graph_schema": 38,
+  "development_host_cueq_dep1": {
+    "blocking_reasons": [
+      "cueq-core_import",
+      "cueq-torch_import",
+      "cueq-ops_import",
+      "torch_cuda_available",
+      "cuda_device_inventory"
+    ],
+    "content_digest": "45a3d9aa919e557388dc6858feb64b7009f4eeaa838c097d4456f7f29b56f069",
+    "device_count": 0,
+    "passed": false,
+    "schema": "mdstats.cueq-dep1-runtime.v1",
+    "supplied_artifacts": [
+      [
+        "dependencies.tar(2).gz",
+        "888d545a512396697c8583d69bc9ed33110914675f466a4cbcafc3e1e1407171"
+      ]
+    ],
+    "torch_cuda_available": false
+  },
+  "development_host_phase1": {
+    "blocking_reasons": [
+      "CUEQ_DEP1_RUNTIME_FREEZE",
+      "short_paired_adaptation_missing",
+      "representative_full_pair_missing"
+    ],
+    "content_digest": "e2ef69da746ca0e16ab1a4ffce9534fb3a84334bacd51a9769c3f71e44e9b491",
+    "cueq_dep1_runtime_digest": "45a3d9aa919e557388dc6858feb64b7009f4eeaa838c097d4456f7f29b56f069",
+    "passed": false,
+    "phase_separated_execution_policy": {
+      "generated_default_change_authorized": false,
+      "source_cueq_execution_authorized": false,
+      "source_inference_kernel_mode": "e3nn",
+      "training_authorized": false,
+      "training_kernel_mode": "cueq_pure"
+    },
+    "schema": "mdstats.cueq-phase1-qualification.v1"
+  },
+  "execution_split": {
+    "candidate_training": "cueq_pure",
+    "data6": "e3nn",
+    "pseudolabel_generation": "e3nn",
+    "reference_training": "e3nn",
+    "source_evaluation": "e3nn",
+    "source_inference": "e3nn"
+  },
+  "final_gpu_preflight_v3": {
+    "blocking_requirements": [
+      "torch_cuda_available",
+      "cueq_dep1_runtime_freeze"
+    ],
+    "embedded_phase1_passed": false,
+    "embedded_phase1_schema": "mdstats.cueq-phase1-qualification.v1",
+    "foundation_model_identities_passed": true,
+    "note": "Clean development-host readiness evidence in the reconstructed MACE 0.3.16/e3nn 0.4.4 reference environment; accelerator qualification remains deferred.",
+    "qualification_state": "deferred_not_executed",
+    "schema": "mdstats.mlff-final-gpu1.preflight.2026-08.v3"
+  },
+  "focused_adjacent_suite": {
+    "failed": 0,
+    "foundation_models_explicit": true,
+    "passed": 26,
+    "skipped": 0,
+    "warnings": 2
+  },
+  "foundation_models": {
+    "mace_mh_1": {
+      "head": "omat_pbe",
+      "sha256": "ec00a2705854622fbbd898ccfb7701072fcd674709102d009fb919c1b8cc5dde",
+      "size_bytes": 59208715
+    },
+    "mace_mpa_0_medium": {
+      "head": "default",
+      "sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
+      "size_bytes": 79462305
+    }
+  },
+  "gate": "CUEQ-PHASE1",
+  "gpu_qualification": "deferred_to_FINAL-GPU1",
+  "implementation_status": "control_plane_complete_positive_paired_gpu_evidence_deferred_to_FINAL-GPU1",
+  "next_gate_optional": true,
+  "next_implementation_gate": "CUEQ-PHASE2",
+  "package_checks": {
+    "compileall": "pass",
+    "stale_current_version_schema_scan": "pass"
+  },
+  "phase1_policy": {
+    "authority_version": "mdstats.cueq-phase1.training-only.2026-08.v1",
+    "candidate_training_kernel_mode": "cueq_pure",
+    "content_digest": "9a4d70b368eeb7b7c7bca68e98db1ed3f99e01682f1c483a06488b9719434518",
+    "minimum_full_pairs": 1,
+    "reference_training_kernel_mode": "e3nn",
+    "require_available_physical_pass": true,
+    "require_eval2_pass": true,
+    "require_finite_training": true,
+    "require_hard_decision_agreement": true,
+    "require_identical_protocol": true,
+    "require_target_head_extraction": true,
+    "schema": "mdstats.cueq-phase1-policy.v1",
+    "short_epoch_budget": 8,
+    "source_inference_kernel_mode": "e3nn"
+  },
+  "release": "0.20.189a0",
+  "schema": "mdstats.mlff-cueq-phase1-qualification-release.v1",
+  "scientific_model_identity_change": false,
+  "scientific_threshold_change": false,
+  "supplied_dependency_archive_sha256": "888d545a512396697c8583d69bc9ed33110914675f466a4cbcafc3e1e1407171"
+}

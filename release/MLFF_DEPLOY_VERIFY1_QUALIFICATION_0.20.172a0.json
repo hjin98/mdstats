@@ -1,0 +1,104 @@
+{
+  "adversarial_checks": [
+    "probe selection gives independent blocks first and is deterministic",
+    "energy/force mismatch fails parity",
+    "missing required prediction channels fail closed",
+    "target-head export digest is recomputed from source/target bytes, head, and dtype and rejects tampering",
+    "failed parity cannot be frozen into a run record",
+    "mocked LAMMPS run-0 parser preserves atom-id force order and pressure-to-stress conversion",
+    "Stage-C screening deployment candidates exclude CV runs and use only screening seed",
+    "post-selection deployment candidates include only selected-size final-development production seeds",
+    "cached deployment evidence authenticates exact target/ML-IAP/LAMMPS executable bytes before reuse"
+  ],
+  "date": "2026-08-13",
+  "gate": "DEPLOY-VERIFY1",
+  "qualification": {
+    "expected_skips": [
+      "tests/test_mlff_campaign_cli.py:337 real LTA training root not supplied"
+    ],
+    "focused_and_regression_pytest": {
+      "failed": 0,
+      "passed": 250,
+      "skipped": 1
+    },
+    "historical_test_debt": "older *_specification.py files that exact-pin package version 0.20.140a0 remain outside DEPLOY-VERIFY1 qualification evidence",
+    "pdf": {
+      "full_compare_dpi": 60,
+      "inspection_dpi": 150,
+      "no_clipping_overlap_or_broken_glyphs": true,
+      "pages_after": 128,
+      "pages_before": 128,
+      "render_compare_changed_pages": 10,
+      "result": "passed",
+      "visually_inspected_pages": [
+        123,
+        124
+      ]
+    },
+    "public_import": "mdstats 0.20.172a0 / mdstats.deploy-verify-run.v1",
+    "python_compileall": "passed",
+    "real_lammps_execution": "not available in this container; campaign-time gate fails closed if configured ML-IAP LAMMPS executable is unavailable"
+  },
+  "schema": "mdstats.mlff-deploy-verify1-qualification.v1",
+  "scientific_contract": {
+    "candidate_authority": "final-development EVAL2 winners only; CV models evidence-only",
+    "float32_tolerance": {
+      "atol": 1e-06,
+      "rtol": 1e-05
+    },
+    "float64_tolerance": {
+      "atol": 1e-10,
+      "rtol": 1e-09
+    },
+    "lammps_runtime_missing_behavior": "fail_closed",
+    "optional_supported_channel": "stress for fully periodic supported cases",
+    "parity_layers": [
+      "selected checkpoint explicit target head -> exported target-only MACE",
+      "target-only MACE -> ML-IAP/LAMMPS run 0"
+    ],
+    "probe_maximum_configurations": 16,
+    "probe_selection": "deterministic correlation-block round-robin",
+    "python_only_parity_sufficient": false,
+    "required_channels": [
+      "energy",
+      "forces"
+    ],
+    "verify_stage_after_pass": "WAITING for PES-VERIFY1"
+  },
+  "scope": {
+    "implemented": [
+      "immutable deployment parity policy/probe/comparison/run0/run/campaign records",
+      "final-development-only EVAL2 deployment candidate resolution",
+      "deterministic correlation-block round-robin probe selection",
+      "selected checkpoint explicit target-head versus target-only MACE parity",
+      "target-head export transform identity and byte authentication",
+      "MACE target-only to ML-IAP conversion with configured LAMMPS run-0 parity",
+      "exact LAMMPS executable SHA/arguments and restart authentication",
+      "TRAIN2 verify dispatch ending in WAITING for PES-VERIFY1"
+    ],
+    "intentionally_deferred": [
+      "PES-VERIFY1 restoring-force/local-curvature qualification",
+      "RELAX-VERIFY1 zero-K topology/geometry qualification",
+      "DYN-VERIFY2 short structural dynamical qualification",
+      "SELECT2 physical production publication"
+    ]
+  },
+  "sha256": {
+    "CHANGELOG.md": "9c6fde845e802bf48767c16962c188357c16282571d5ac308a617e5a7a45641f",
+    "PKG-INFO": "e880934329e4046dbed1a60c07eb04366bd833d403e37520e2193f29b61ceaf9",
+    "README.md": "8bae2c4fe7c616775811326512c71023916d13ae245415aaab3a373dc2323095",
+    "campaign.toml.example": "dc4ae53e473b1ec8147f7b49fc28be10e714d09175329f665897f816af10b617",
+    "docs/arch_manuals/mlff_training_data_architecture.md": "9f7b98efadb9e93e07d1244e04796698f806de4ee8919213213afd8fc3ad8175",
+    "docs/arch_manuals/mlff_training_data_architecture.pdf": "643999b62c983c93b8b4679d55ba39fbd9adc3cf3fc5917b289117e4674b4d13",
+    "mdstats/__init__.py": "04d03f314e1e620fad67dc246816a5cb271460f43f29739329b00adff7967ed2",
+    "mdstats/_version.py": "986754e9d3326926236fcf336c6688b9611c077e6f787d63038452f1bf6765ea",
+    "mdstats/training_data/__init__.py": "157ec28963bb84b5cf37cd808e27bb2851cf82acf528627fc464080c82afeaa0",
+    "mdstats/training_data/campaign_cli.py": "c348dbc35d27d70962ceec139a4cccb4f8de64c97bf5dde3a2804caf71db63dc",
+    "mdstats/training_data/deploy_verify.py": "a7ca6f09e0e2b6c94300b4211d0f553d9eab79725b0eff01eaa10a6fba88e2e8",
+    "pyproject.toml": "1b504c540c0d2c3e99c5082323f199398888ae184831d09b037aa2b09bb84ae7",
+    "release/PATCH_NOTES_0.20.172a0.md": "b77bdb987770f35c08f6d9c0b07682ca01ad78691564ff022aca25f3e755c113",
+    "tests/test_mlff_deploy_verify1.py": "fc020bfb54381c228ab3a6a5ff4862126b54e7bde1d7d9f8996d91d6d23ff9fb",
+    "tests/test_mlff_deploy_verify1_specification.py": "29d56a867e4c79b3d1f4b76146ef53aad163698cefbcd99650c633d2831e7bf9",
+    "tests/test_mlff_eval2_specification.py": "1fe8f74ab3af89dfa6c40563770f1498273b5e1bd9aa04df7df438a914b1b773"
+  }
+}

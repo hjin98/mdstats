@@ -1,0 +1,79 @@
+{
+  "schema": "mdstats.mlcv-final1-qualification.v1",
+  "release": "0.20.137a0",
+  "gate": "MLCV-FINAL1",
+  "status": "closed",
+  "date": "2026-08-10",
+  "final_selection_contract": {
+    "configured_cv_is_recipe_level_gate": true,
+    "campaign_cv_failed_blocks_all_production_and_committee": true,
+    "seed_cv_records_must_match_campaign_aggregate_exactly": true,
+    "production_candidate_domain": "FINAL_DEVELOPMENT SELECT1 representatives only",
+    "fold_representatives_production_eligible": false,
+    "comparable_target_domain": "identical D_full",
+    "comparable_replay_domain": "identical TRUE_DFT R_full",
+    "comparable_select1_policy_required": true,
+    "ranking_order": [
+      "full_weighted_score",
+      "target_full_rmse",
+      "replay_full_rmse",
+      "optimizer_seed",
+      "checkpoint_epoch",
+      "checkpoint_sha256"
+    ],
+    "single_production_verification_candidate": true,
+    "verified_production_model_published": false,
+    "committee_membership": "all and only qualified final-seed representatives",
+    "committee_padding_allowed": false,
+    "zero_fold_campaign_supported_as": "cv_not_performed",
+    "default_seed_mode": "optimizer_only",
+    "optional_seed_mode": "optimizer_and_cv_partition",
+    "optional_seed_mode_changes_final_development_membership": false,
+    "next_gate": "MLCV-VERIFY1"
+  },
+  "stop1_configuration_contract": {
+    "target_stop_fraction_toml_default": 0.8,
+    "replay_stop_multiplier_toml_default": 1.2,
+    "target_stop_formula": "target_stop_fraction * target_full_threshold",
+    "replay_full_threshold_formula": "(target_weight / replay_weight) * target_full_threshold",
+    "replay_stop_formula": "replay_stop_multiplier * replay_full_threshold",
+    "factors_configurable": true,
+    "full_validation_thresholds_changed_by_stop_factors": false
+  },
+  "qualification": {
+    "focused_mlcv_final_tree": {
+      "passed": 65,
+      "skipped": 1,
+      "failed": 0,
+      "note": "optional skip requires an importable MACE runtime"
+    },
+    "broad_segmented_mlff": {
+      "passed": 758,
+      "skipped": 32,
+      "deselected_known_historical_missing_fixture_test": 1,
+      "known_missing_fixture": "release/mlff_data9a9a_real_mpa0_restart_smoke.json",
+      "final1_regressions": 0
+    },
+    "python_compile": "pass",
+    "pdf_preflight": {
+      "architecture_manual": "pass; 103 pages; openable; not encrypted; not image-only",
+      "campaign_cli_user_guide": "pass; 14 pages; openable; not encrypted; not image-only",
+      "mlcv_final_selection_spec": "pass; 2 pages; openable; not encrypted; not image-only"
+    },
+    "pdf_render_review": "pass; all pages rendered; automated edge scan found no content touching page boundaries; no large solid-black render artifacts detected; changed FINAL1/CLI/spec text extracted successfully",
+    "packaged_tree_focused_verification": {
+      "passed": 34,
+      "skipped": 0,
+      "failed": 0,
+      "note": "executed from a fresh unzip of the distributable against FINAL1 plus upstream MLCV gate tests"
+    }
+  },
+  "known_external_or_historical_limits": [
+    "The supplied source archive does not contain release/mlff_data9a9a_real_mpa0_restart_smoke.json; that one historical specification test is deliberately deselected in the broad qualification command.",
+    "Optional real-MACE/e3nn/torch_ema and externally mounted model/data tests skip when those runtimes or artifacts are absent."
+  ],
+  "scope_not_yet_implemented": [
+    "physical verification, verified production publication, and locked E activation (MLCV-VERIFY1)",
+    "migration/retention closure (MLCV-MIGRATE1)"
+  ]
+}

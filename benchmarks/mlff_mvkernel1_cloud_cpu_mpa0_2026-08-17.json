@@ -1,0 +1,172 @@
+{
+  "acceptance": {
+    "full_mvqual_plan_digest_equal_to_control": true,
+    "mvqual_telemetry_byte_equivalent": true,
+    "next_gate": "REPAIR-PAR1",
+    "selector_plan_byte_equivalent": true,
+    "selector_state_exact_per_rank": true,
+    "status": "PASS",
+    "throughput_improved": true
+  },
+  "active_foundation": {
+    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
+    "family": "MACE-MPA-0 medium",
+    "mh1_compatible": true,
+    "model_specific_kernel_assumptions": false
+  },
+  "architecture_revision": 97,
+  "control": {
+    "raw": {
+      "maxrss_kib": 291216,
+      "release": "0.20.229a0",
+      "scale": {
+        "cpu_seconds": 6.639518193999999,
+        "selection_digest": "aaec42fb0c1df6a62ce2286ec5f5b8897bc089d6d31726da89a0461bcd75d608",
+        "wall_seconds": 6.6397316060001685
+      },
+      "selector": {
+        "digests": [
+          "d147d85acd64dd386dcd9b64e1bd534001e1b1a9e1736522b2ffaddbb978b378"
+        ],
+        "median": 1.403764596999281,
+        "times": [
+          1.403764596999281,
+          1.4242025100002138,
+          1.3560113050007203,
+          1.5705718970002636,
+          1.3805350359998556
+        ]
+      },
+      "telemetry": {
+        "authority": {
+          "condition_count": 1,
+          "content_digest": "da2a8fbf0411677316cdc6769a4556c91509f10dc52b3f056237c1175fc8ea21",
+          "correlation_unit_count": 512,
+          "maximum_correlation_unit_fraction": 0.001953125,
+          "run_count": 1,
+          "schema": "mdstats.target-multi-view-qualification-telemetry.v1",
+          "uncovered_reference_mass": 2.9285405130383175,
+          "uncovered_witness_count": 47982,
+          "unique_reference_mass_fraction": 0.0015794429314692695,
+          "zero_unique_candidate_fraction": 0.994384765625
+        },
+        "authority_digest": "d51daef220edffd1f9a72676ee5835ed4f0db44d8818b78f3449defcba63894c",
+        "median": 0.5779456809996191,
+        "times": [
+          0.5890249719996064,
+          0.5767970189999687,
+          0.5699440199996388,
+          0.5919615829998293,
+          0.5779456809996191
+        ]
+      }
+    },
+    "release": "0.20.229a0"
+  },
+  "current": {
+    "raw": {
+      "maxrss_kib": 295328,
+      "release": "0.20.230a0",
+      "scale": {
+        "cpu_seconds": 5.588193260999999,
+        "selection_digest": "aaec42fb0c1df6a62ce2286ec5f5b8897bc089d6d31726da89a0461bcd75d608",
+        "wall_seconds": 5.590918543000043
+      },
+      "selector": {
+        "digests": [
+          "d147d85acd64dd386dcd9b64e1bd534001e1b1a9e1736522b2ffaddbb978b378"
+        ],
+        "median": 0.8106222610003897,
+        "times": [
+          0.8017894859995067,
+          0.8031685890000517,
+          0.8106222610003897,
+          0.8383097099995211,
+          0.8158502169999338
+        ]
+      },
+      "telemetry": {
+        "authority": {
+          "condition_count": 1,
+          "content_digest": "da2a8fbf0411677316cdc6769a4556c91509f10dc52b3f056237c1175fc8ea21",
+          "correlation_unit_count": 512,
+          "maximum_correlation_unit_fraction": 0.001953125,
+          "run_count": 1,
+          "schema": "mdstats.target-multi-view-qualification-telemetry.v1",
+          "uncovered_reference_mass": 2.9285405130383175,
+          "uncovered_witness_count": 47982,
+          "unique_reference_mass_fraction": 0.0015794429314692695,
+          "zero_unique_candidate_fraction": 0.994384765625
+        },
+        "authority_digest": "d51daef220edffd1f9a72676ee5835ed4f0db44d8818b78f3449defcba63894c",
+        "median": 0.04112498700033029,
+        "times": [
+          0.0452122340002461,
+          0.04092534500068723,
+          0.040243059000204084,
+          0.04112498700033029,
+          0.041311094999400666
+        ]
+      }
+    },
+    "release": "0.20.230a0"
+  },
+  "date": "2026-08-17",
+  "execution": {
+    "mvqual_telemetry_16384_8192_6family": {
+      "control_median_seconds": 0.5779456809996191,
+      "control_trials_seconds": [
+        0.5890249719996064,
+        0.5767970189999687,
+        0.5699440199996388,
+        0.5919615829998293,
+        0.5779456809996191
+      ],
+      "current_median_seconds": 0.04112498700033029,
+      "current_trials_seconds": [
+        0.0452122340002461,
+        0.04092534500068723,
+        0.040243059000204084,
+        0.04112498700033029,
+        0.041311094999400666
+      ],
+      "speedup": 14.053394861741289
+    },
+    "selector_24576_16384": {
+      "control_seconds": 6.6397316060001685,
+      "current_seconds": 5.590918543000043,
+      "speedup": 1.1875922632271692
+    },
+    "selector_4096_2048": {
+      "control_median_seconds": 1.403764596999281,
+      "control_trials_seconds": [
+        1.403764596999281,
+        1.4242025100002138,
+        1.3560113050007203,
+        1.5705718970002636,
+        1.3805350359998556
+      ],
+      "current_median_seconds": 0.8106222610003897,
+      "current_trials_seconds": [
+        0.8017894859995067,
+        0.8031685890000517,
+        0.8106222610003897,
+        0.8383097099995211,
+        0.8158502169999338
+      ],
+      "speedup": 1.731712370280695
+    }
+  },
+  "host_scope": "cloud CPU/cgroup-limited execution authority; timing is non-scientific evidence",
+  "release": "0.20.230a0",
+  "schema": "mdstats.mlff-mvkernel1-qualification-benchmark.v1",
+  "scientific": {
+    "mvqual_plan_digest": "ff8f64607a4835309889cb9b4c1e886959d9e47468a48df07676e0bf32295a80",
+    "mvqual_telemetry_authority_digest": "d51daef220edffd1f9a72676ee5835ed4f0db44d8818b78f3449defcba63894c",
+    "scale_16384_selector_digest": "aaec42fb0c1df6a62ce2286ec5f5b8897bc089d6d31726da89a0461bcd75d608",
+    "scale_digest_equal": true,
+    "selector_digest": "d147d85acd64dd386dcd9b64e1bd534001e1b1a9e1736522b2ffaddbb978b378",
+    "selector_digest_equal": true,
+    "telemetry_digest_equal": true
+  }
+}

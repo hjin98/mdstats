@@ -1,0 +1,19 @@
+{
+  "schema": "mdstats.mlff.target-data2c-repair1.pdf-qa.v1",
+  "release": "0.20.203a0",
+  "date": "2026-08-16",
+  "gate": "TARGET-DATA2C-REPAIR1",
+  "status": "PASS",
+  "documents": [
+    {"path": "ARCHITECTURE_NOTES_MLFF_REV70.pdf", "pages": 1, "preflight": "PASS", "visual_qa": "PASS"},
+    {"path": "PATCH_NOTES_0.20.203a0.pdf", "pages": 1, "preflight": "PASS", "visual_qa": "PASS"},
+    {"path": "docs/specs/training_data/mlff_target_data2c_repair1_deficit_exchange_spec.pdf", "pages": 2, "preflight": "PASS", "visual_qa": "PASS"},
+    {"path": "docs/arch_manuals/mlff_training_data_architecture.pdf", "pages": 216, "preflight": "PASS", "visual_qa": "PASS", "targeted_pages_reviewed": [214, 215, 216]}
+  ],
+  "manual_first_page_visual_regression": {
+    "baseline_release": "0.20.202a0",
+    "changed": true,
+    "percent_pixels_changed": 0.004593917112299465,
+    "assessment": "expected revision/release metadata changes; new revision-70 tail reviewed separately"
+  }
+}

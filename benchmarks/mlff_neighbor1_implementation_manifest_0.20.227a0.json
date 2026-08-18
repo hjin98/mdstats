@@ -1,0 +1,91 @@
+{
+  "architecture_revision": 94,
+  "content_digest": "9c9830c5205b5c58a78cd4c496e7812bb41eab44224b6fdcae18b220fc91f571",
+  "files": [
+    {
+      "bytes": 50184,
+      "path": "mdstats/training_data/target_coverage_exact_neighborhood.py",
+      "sha256": "ebef6a0c5be24cd37bad6bd3068871b766ac83ff54f60d2f858b6d52ee117f79"
+    },
+    {
+      "bytes": 16763,
+      "path": "mdstats/training_data/target_coverage_exact_neighborhood_store.py",
+      "sha256": "e4acdae171b2e04be4a875a52d94bf373835da25a9da0321e275f771ee9a3826"
+    },
+    {
+      "bytes": 70330,
+      "path": "mdstats/training_data/target_coverage_feasibility.py",
+      "sha256": "a5d6e4af5930cf54f328152f166173390980993eaf9578006d3b2fde83e4f3b4"
+    },
+    {
+      "bytes": 57599,
+      "path": "mdstats/training_data/target_coverage_sparse_index.py",
+      "sha256": "c7adc6c2df657859623c1199800bebafc6cdfd7d9971b867bf77a24744dada33"
+    },
+    {
+      "bytes": 1162740,
+      "path": "mdstats/training_data/campaign_cli.py",
+      "sha256": "f8ad3b39e8ae5ce6d9a4e996ee5cfbfbf2a86357c38f46eb49ac4cc9899dc5d7"
+    },
+    {
+      "bytes": 68998,
+      "path": "mdstats/training_data/__init__.py",
+      "sha256": "815a6bc0194a403cd55ee03f0c65c8eb66a1cf3c74c2c6ccdd8dece668858f68"
+    },
+    {
+      "bytes": 226916,
+      "path": "mdstats/__init__.py",
+      "sha256": "ed6699e56f3d46a60ac18ea6b11d45f38a15c44f3333a16cc2b1e9678b84cc87"
+    },
+    {
+      "bytes": 5622,
+      "path": "benchmarks/benchmark_mlff_neighbor1.py",
+      "sha256": "d0f1ab50b99a379d846c2bb6a6a3da97f110882033d12f24f3acf59958fc6439"
+    },
+    {
+      "bytes": 12784,
+      "path": "benchmarks/mlff_neighbor1_feas_mvidx_cloud_cpu_mpa0_2026-08-17.json",
+      "sha256": "537e7a20401bfac9f16145879154fd17c0a1dff25b8ece3e12a1a9ce19fadc6d"
+    },
+    {
+      "bytes": 4116,
+      "path": "benchmarks/mlff_neighbor1_current_repro_0.20.227a0.json",
+      "sha256": "22a9c9e4799c1752f200ae939591d3d62cf11e0b6c4fcb954f9ecd16fbb0df3b"
+    },
+    {
+      "bytes": 4003,
+      "path": "docs/specs/training_data/mlff_neighbor1_exact_neighborhood_spec.md",
+      "sha256": "719d6fd9bf076108c1b92109e8215936a29e98ba79735523ddd5f0d9dd51d860"
+    },
+    {
+      "bytes": 165665,
+      "path": "docs/arch_manuals/mlff_training_data_dependency_graph.json",
+      "sha256": "865c809ab81d9f09f2a0149ee89c34b9d01f72d5817da02207a3515952b84f59"
+    },
+    {
+      "bytes": 14758,
+      "path": "docs/arch_manuals/mlff_training_data/60_execution_performance.md",
+      "sha256": "1efb2a241aa21dab93a4f04b525c9147ab660ba7d8488d73c4e8cc3d6099ce09"
+    },
+    {
+      "bytes": 11919,
+      "path": "docs/arch_manuals/mlff_training_data/70_status_and_gates.md",
+      "sha256": "c8a3c0b2d2549168d33cddb6ece6427e283f77add243c0628d18da6b61c3b7e9"
+    },
+    {
+      "bytes": 8405,
+      "path": "tests/test_mlff_neighbor1_exact_neighborhood.py",
+      "sha256": "28bd1d57fe2bb199c41b2139b8aada170c32cc298f6f32b8a9be16243d866ed6"
+    },
+    {
+      "bytes": 4441,
+      "path": "tests/test_mlff_neighbor1_specification.py",
+      "sha256": "f92b38df4cba3db415301dec350ca32c5bc56634083878d9fbf705a072cc50c2"
+    }
+  ],
+  "gate": "NEIGHBOR1",
+  "release": "0.20.227a0",
+  "runtime_optimization_change": true,
+  "schema": "mdstats.mlff-neighbor1-implementation-manifest.v1",
+  "scientific_authority_change": false
+}

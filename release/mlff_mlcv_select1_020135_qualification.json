@@ -1,0 +1,73 @@
+{
+  "schema": "mdstats.mlcv-select1-qualification.v1",
+  "release": "0.20.135a0",
+  "gate": "MLCV-SELECT1",
+  "status": "closed",
+  "date": "2026-08-10",
+  "stop_control": {
+    "target_stop_fraction_default": 0.8,
+    "target_stop_fraction_constraint": "0 < f_T < 1",
+    "replay_stop_multiplier_default": 1.2,
+    "replay_stop_multiplier_constraint": "f_R > 1",
+    "target_stop_formula": "T_stop = f_T * T_full_max",
+    "replay_full_formula": "R_full_max = (w_T / w_R) * T_full_max",
+    "replay_stop_formula": "R_stop = f_R * R_full_max",
+    "full_acceptance_thresholds_unchanged_by_stop_factors": true,
+    "protocol_frozen": true
+  },
+  "selection_contract": {
+    "rank1_schema_required": "v2 top-five run-local shortlist",
+    "evaluate_every_retained_candidate": true,
+    "early_survivor_shortcut": false,
+    "fold_target_selection_domain": "V_i_full",
+    "outer_cv_fold_used_for_checkpoint_selection": false,
+    "final_target_selection_domain": "D_full",
+    "replay_selection_domain": "R_full TRUE_DFT",
+    "component_wise_target_replay_gates_before_scoring": true,
+    "configured_energy_focus_stress_worst_condition_gates_preserved": true,
+    "outcome_per_run": "exactly one representative_selected or no_representative",
+    "campaign_wide_fold_final_pooling": false,
+    "next_gate": "MLCV-AGG1"
+  },
+  "qualification": {
+    "focused_select_stop_rank_campaign_data8": {
+      "passed": 64,
+      "skipped": 1,
+      "failed": 0,
+      "note": "skip requires an external real LTA training root"
+    },
+    "documentation_and_specification": {
+      "passed": 15,
+      "skipped": 0,
+      "failed": 0
+    },
+    "broad_segmented_mlff": {
+      "passed": 737,
+      "skipped": 32,
+      "known_historical_missing_fixture_failures": 1,
+      "known_missing_fixture": "release/mlff_data9a9a_real_mpa0_restart_smoke.json",
+      "select1_regressions": 0
+    },
+    "python_compile": "pass",
+    "pdf_preflight": {
+      "architecture_manual": "pass; 102 pages; openable; not encrypted; not image-only",
+      "campaign_cli_user_guide": "pass; 14 pages; openable; not encrypted; not image-only",
+      "mlcv_run_selection_spec": "pass; 2 pages; openable; not encrypted; not image-only",
+      "adaptive_training_stop_spec": "pass; 5 pages; openable; not encrypted; not image-only",
+      "lightweight_ranking_spec": "pass; 4 pages; openable; not encrypted; not image-only"
+    },
+    "pdf_visual_review": "pass; SELECT1 spec and architecture implementation/closure pages rendered and inspected",
+    "packaged_tree_focused_verification": {
+      "passed": 53,
+      "skipped": 1,
+      "failed": 0,
+      "note": "executed from a fresh unzip of the distributable; skip requires an external real LTA training root"
+    }
+  },
+  "scope_not_yet_implemented": [
+    "outer-fold representative evaluation and CV aggregation (MLCV-AGG1)",
+    "final-seed comparison and production/committee export (MLCV-FINAL1)",
+    "physical verification and locked E activation (MLCV-VERIFY1)",
+    "migration/retention closure (MLCV-MIGRATE1)"
+  ]
+}

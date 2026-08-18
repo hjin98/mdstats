@@ -1,0 +1,1190 @@
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.120a0_to_0.20.121a0.patch' a/ARCHITECTURE_NOTES_MLFF_REV24.md b/ARCHITECTURE_NOTES_MLFF_REV24.md
+--- a/ARCHITECTURE_NOTES_MLFF_REV24.md	1970-01-01 00:00:00.000000000 +0000
++++ b/ARCHITECTURE_NOTES_MLFF_REV24.md	2026-08-09 14:26:01.101579588 +0000
+@@ -0,0 +1,28 @@
++# MLFF architecture revision 24 planning notes
++
++This source-tree planning update records the adaptive-training and evaluation-simplification revision opened after mdstats 0.20.120a0. It does **not** claim runtime implementation.
++
++Ordered gates:
++
++1. `ADAPT-PREC1` - collapse learned-model precision to `single|double`; retire staged `refine` and do not add a user-facing `mixed` model mode. Model dtype follows all MACE inference; mdstats-owned scientific arithmetic remains FP64.
++2. `ADAPT-MON1` - replace variable fold-local production monitors with a fixed common 256-configuration target monitor and fixed 512-configuration true-label replay monitor, with deterministic coverage-aware sampling.
++3. `ADAPT-STOP1` - add a 30 meV/A default full target force-RMSE criterion, derive replay ceiling from target/replay score weights, and stop training at 80% of the target ceiling, 120% of the replay ceiling, or 30 epochs.
++4. `ADAPT-RANK1` - use already-computed epoch monitor metrics for zero-new-inference weighted scoring and retain exactly one champion per independent run.
++5. `ADAPT-EVAL1` - retire production EVAL-MF successive halving; fully evaluate the top five run champions on common full target and true-label replay domains, with deterministic next-five rescue only when no purchased candidate is admissible.
++6. `ADAPT-VERIFY1` - select the minimum weighted full score among candidates that pass target, replay, and retained physical gates; preserve model dtype through verification/export while keeping scientific bookkeeping FP64.
++7. `ADAPT-MIGRATE1` - close schema, restart, historical EVAL-MF/refine readability, storage interactions, and end-to-end qualification.
++
++Canonical defaults recorded by this revision:
++
++- target full force-RMSE ceiling: 30 meV/A;
++- target online stop fraction: 0.80 (24 meV/A at the default ceiling);
++- target online monitor: 256 configurations;
++- replay online monitor: 512 true-label configurations;
++- target:replay score weights: 1:1;
++- replay ceiling: `(target_weight / replay_weight) * target_ceiling` (30 meV/A at 1:1, 60 meV/A at 2:1);
++- replay online stop multiplier: 1.20 (36 meV/A at default 1:1);
++- maximum epochs: 30;
++- initial full-evaluation finalists: 5;
++- rescue batch size: 5.
++
++The canonical details are in `docs/arch_manuals/mlff_training_data_architecture.md`. Until `ADAPT-MIGRATE1` closes, the currently implemented EVAL-MF/PREC behavior remains runtime-authoritative.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.120a0_to_0.20.121a0.patch' a/CHANGELOG.md b/CHANGELOG.md
+--- a/CHANGELOG.md	2026-08-09 05:00:44.000000000 +0000
++++ b/CHANGELOG.md	2026-08-09 14:26:02.421579588 +0000
+@@ -1,3 +1,11 @@
++## 0.20.121a0 - 2026-08-09
++
++- Record the new seven-gate MLFF adaptive-training/evaluation revision (`ADAPT-PREC1` through `ADAPT-MIGRATE1`) without changing runtime behavior in this release.
++- Plan binary learned-model precision only (`single` FP32 or `double` FP64), retirement of staged `refine`, and no user-facing mixed-model mode; mdstats-owned scientific fitting/reductions/statistics and persistent simulation bookkeeping remain invariant FP64.
++- Freeze evidence-based online monitor defaults for the planned implementation: 256 common condition/trajectory/time-balanced target configurations and 512 fixed true-label replay configurations.
++- Plan criterion-driven training with a 30 meV/A default full target force-RMSE ceiling, 0.80 target-stop fraction, weight-derived replay ceiling, 1.20 replay-exhaustion multiplier, and 30 epochs as a hard upper bound.
++- Plan zero-new-inference lightweight scoring, one champion per independent run, retirement of production EVAL-MF successive halving, top-five authoritative full evaluation, deterministic next-five rescue, and exact model-dtype propagation through evaluation/verification/export.
++
+ ## 0.20.120a0 - 2026-08-08
+ 
+ - Implement PAR-DENS0 basin-aware adaptive spread estimation for atomic-density planning. Production density resolution now excludes transition/passage material through authoritative site/Stage-11 adapters when supplied, or a conservative density-independent provisional residence prepass otherwise.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.120a0_to_0.20.121a0.patch' a/PATCH_NOTES_0.20.121a0.md b/PATCH_NOTES_0.20.121a0.md
+--- a/PATCH_NOTES_0.20.121a0.md	1970-01-01 00:00:00.000000000 +0000
++++ b/PATCH_NOTES_0.20.121a0.md	2026-08-09 14:26:01.109579588 +0000
+@@ -0,0 +1,17 @@
++# mdstats 0.20.121a0 patch notes
++
++## MLFF adaptive-training revision plan
++
++This release is architecture/documentation only. It records a new gated MLFF revision after the validation-size, FP32/FP64, replay-retention, and checkpoint-selection studies. No production training/evaluation behavior changes in this release.
++
++The new roadmap contains seven ordered gates (`ADAPT-PREC1` through `ADAPT-MIGRATE1`). It plans to:
++
++- reduce learned-model precision to `single` (FP32) or `double` (FP64), remove staged `refine`, and not introduce a user-facing mixed-model mode;
++- keep mdstats-owned scientific fitting, reductions, statistics, and persistent simulation bookkeeping hard-coded in FP64;
++- use a common deterministic 256-configuration target monitor and a 512-configuration true-label replay monitor for epoch-wise stopping/ranking;
++- introduce a default full target force-RMSE criterion of 30 meV/A, stop target adaptation at 80% of that criterion, derive the replay ceiling from target/replay score weights, and stop replay exhaustion at 120% of that derived ceiling;
++- score only monitor-admissible epochs, retain one champion per independent run, and reuse monitor metrics without additional inference;
++- retire production EVAL-MF successive halving in favor of full evaluation of the top five run champions, with next-five rescue only when the purchased batch contains no admissible candidate; and
++- preserve exact `single|double` model dtype through all model inference/verification/export while retaining FP64 analysis arithmetic.
++
++At the default 1:1 target/replay weighting, the planned force-RMSE geometry is 30 meV/A target eligibility, 24 meV/A target-success stop, 30 meV/A replay eligibility, and 36 meV/A replay-exhaustion stop. The 30-epoch limit remains a hard upper bound rather than a required training length.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.120a0_to_0.20.121a0.patch' a/PKG-INFO b/PKG-INFO
+--- a/PKG-INFO	2026-08-09 05:00:29.000000000 +0000
++++ b/PKG-INFO	2026-08-09 14:26:04.017555992 +0000
+@@ -1,6 +1,6 @@
+ Metadata-Version: 2.4
+ Name: mdstats
+-Version: 0.20.120a0
++Version: 0.20.121a0
+ Summary: Transparent atomistic frame collections and structural/dynamical statistics
+ Requires-Python: >=3.10
+ Requires-Dist: numpy>=1.26
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.120a0_to_0.20.121a0.patch' a/docs/arch_manuals/mlff_training_data_architecture.md b/docs/arch_manuals/mlff_training_data_architecture.md
+--- a/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-09 04:15:01.000000000 +0000
++++ b/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-09 14:25:19.033244585 +0000
+@@ -2,7 +2,7 @@
+ title: "mdstats MLFF Training-Data Architecture"
+ subtitle: "Canonical architecture and staged implementation"
+ author: "mdstats project"
+-date: "2026-08-08 (revision: multi-fidelity evaluation, staged precision, and storage-management roadmap)"
++date: "2026-08-09 (revision: adaptive training, binary model precision, and simplified evaluation roadmap)"
+ geometry: margin=0.78in
+ toc: true
+ toc-depth: 3
+@@ -34,6 +34,7 @@
+ STAT1 and SAMP0 workflows consume those primitives without changing their
+ serialized evidence. MLFF-DATA2 is implemented in `0.20.30a0`: deterministic source manifests, VASP source catalogs, named energy selection, decomposed label domains, and per-label-domain structural atomic-reference identifiability are public runtime contracts. MLFF-DATA3 is implemented in `0.20.31a0`: manifest-bound frame occurrences, geometry and label identities, duplicate/restart detection, post-DFT eligibility, temperature conditions, reference-cell resolution, and rotation-separated finite strain are public runtime contracts. MLFF-DATA4 is implemented in `0.20.32a0` and generalized through DATA9A7d: partition-independent raw physical features, optional profile-extension states, protected event bursts, deterministic feature caches, and partition-role budget requests are public runtime contracts. MLFF-DATA5 is implemented in `0.20.33a0`: autocorrelation-aware partition units, role feasibility, deterministic outer evidence roles, independence grades, nested cross-validation monitors, blinding boundaries, and fail-closed leakage audits are public runtime contracts. MLFF-DATA6 is implemented in `0.20.34a0` and generalized through DATA9A7d: profile-aware universal and optional extension descriptors, optional checkpoint-bound MACE atomic descriptor sidecars, training-domain-only foundation residuals, blinded non-training predictions, and sealed locked-test prediction records are public runtime contracts. MLFF-DATA7 is implemented in `0.20.35a0`: canonical final/fold training domains, fold-local fitted metrics, domain-local atomic-reference fits, explicit objective and checkpoint policies, deterministic quota-interleaved selection ladders, and coverage reports are public runtime contracts. MLFF-DATA8 is implemented in `0.20.36a0`: verified MACE-readable extended-XYZ artifacts, explicit E0 mappings, replay train/monitor plans, a v0.3.16 source compatibility lock, complete training-protocol identities, loader dry-run exposure records, independent final/fold job bundles, and sealed locked-test metadata are public runtime contracts. MLFF-DATA9A hardening began in `0.20.37a0`, its offline runtime bootstrap is implemented in `0.20.38a0`, and DATA9A2 real-MACE realization is implemented in `0.20.39a0`: checkpoint-residual E0 fits, relocatable bundles, strict replay/XYZ audits, source-declared dependency manifests, isolated local-artifact installation, installed-environment qualification, v0.3.16 scalar-literal serialization, fixed-file target/replay weight realization, genuine parser/loader dry runs, bounded training, checkpoint/head inventory, target-head extraction, and finite evaluation round trips are public contracts. The supplied dependency bundle and MPA-0 checkpoint pass executable qualification. DATA9A3 in 0.20.40a0 qualifies the complete 27-source, 37,632-frame bulk-LTA target corpus through DATA5 with a passing leakage audit. DATA9A production execution remains open for checkpoint-bound production DATA6/DATA7 evidence, DATA8 job materialization, exact replay-corpus identity, and later protocol-matched training and freeze. DATA9A4 in 0.20.41a0 adds a protocol-bound selectable precision contract: the float64 MPA-0 checkpoint may initialize either a float32 or float64 fine-tuned model, and actual serialized parameter/buffer dtypes are immutable execution evidence rather than inferred from CLI text. DATA9A5a/9A5b in 0.20.42a0-0.20.43a0 close Python/ASE critical precision and deployment-artifact semantics. DATA9A6 in 0.20.44a0 introduces the analysis-owned observable-call bridge. DATA9A6b in 0.20.45a0 closes recipe dependency safety, collection and model lineage, runtime-duration/warning evidence, capability requirement schemas, documentation conflicts, and the thermomechanical/energetic analysis ownership plan. DATA9A6c in 0.20.46a0 verifies supplied identities against the actual collections, requires symmetric reference/candidate generation lineage for production evidence, binds analysis-owned result digests, freezes observable evidence roles and comparison-policy identity before locked evaluation, and corrects runtime/package identity and dependency ordering. DATA9A7a in 0.20.47a0 introduces user-declared compositional material profiles, phase components, atom-group catalogs, condition axes, independence axes, a declarative provider protocol, and DATA4 schema-v2 profile threading without changing existing feature or selection behavior. DATA9A7b in 0.20.48a0 adds an analysis-owned universal local-structure kernel, profile/atom-group-aware DATA6 structural catalogs, generic structural events, a DATA7 universal feature block, and generic per-species environment coverage without importing LTA. DATA9A7c in 0.20.49a0 derives immutable phase/geometry selection plans, profile-specific feature/event activation, geometry-aware atom-group priorities, DATA6-v3 plan lineage, and compositional observable-call recommendations. DATA9A7d in 0.20.50a0 migrates LTA behind generic optional profile-extension catalogs, advances DATA4/DATA6 canonical schemas, and replaces generic-core cation/site assumptions with focus groups, structural realizations, and extension coverage. DATA9A7e in 0.20.51a0 qualifies bounded crystal, amorphous, liquid, interface, and LTA DATA4-DATA7 paths, adds immutable qualification evidence, and makes MLFF LTA implementation imports lazy so generic workflows neither import nor serialize LTA-specific evidence. DATA9A8 in 0.20.52a0 adds frozen profile-aware observable comparison and acceptance policies. DATA9A9a in 0.20.53a0 adds the exact DATA5-authorized checkpoint-bound descriptor/prediction plan, per-frame restart sidecars, atomic checkpoints, corruption recovery, and DATA6 reuse without repeated foundation-model inference. DATA9A9b in 0.20.54a0 adds restartable final/fold DATA7 materialization, exact replay binding, complete DATA8 job-tree evidence, corruption-driven downstream invalidation, and a relocatable production materialization record. DATA9A9c in 0.20.55a0 adds the immutable production-corpus plan, evidence-derived foundation and residual-E0 qualification, numerical replay-label identity, content-addressed DATA8 generation promotion, self-verifying loaders, and generic optional-extension gate requirements. DATA9B1 in 0.20.56a0 adds passed-gate campaign-matrix freezing, protocol-family and seed-variant identities, content-addressed checkpoint catalogs, external metric records, deterministic hard-constraint admissibility, and fail-closed checkpoint selection. DATA9B2 in 0.20.57a0 adds supervised/restartable MACE execution, automatic target/replay checkpoint evaluation, fold/seed aggregation, learning curves, deterministic protocol comparison, target-head committee export, protocol freeze, and sealed-evaluation activation. DATA9B3 in 0.20.58a0 adds the unified source-checkout campaign CLI, one-database orchestration state, manifest approval, production preparation/training/evaluation commands, source-local precision-wrapper shims, and bounded NVE deployment verification. DATA9B3A in 0.20.59a0 makes the MACE acceleration backend a frozen campaign policy, auto-selects cuEquivariance at initialization when qualified, and propagates it through DATA6, DATA8, preflight, production training, checkpoint evaluation, and bounded verification without silent fallback. DATA2A in 0.20.60a0 adds XML-backed review-manifest metadata, percentage-aware filename strain candidates, exact LTA fixed-cell geometry verification, and fail-safe promotion before manual manifest approval. DATA2 interrupted-stream hardening in 0.20.61a0 adds EOF-qualified interrupted `vasprun.xml` recovery across ENS0, DATA2 source audit, and normalized trajectory loading while preserving strict rejection of ambiguous or mid-file corruption.
+ The post-0.20.105 evaluation/storage cycle implements EVAL-MF1 in 0.20.106a0 and EVAL-MF2 in 0.20.107a0: deterministic nested equal-fraction target/replay checkpoint screening, delta-only prediction reuse, conservative source/block-aware survivor guards, comprehensive epoch reporting, and full-fidelity finalist publication are now the generated production evaluation strategy.
++The post-0.20.120 adaptive-training revision is recorded as architecture-only planning in 0.20.121a0. It proposes binary `single|double` model precision, fixed-budget common target/true-replay epoch monitors, target/replay weight-coupled early stopping, one lightweight champion per run, and top-five authoritative full evaluation. Until its migration gate closes, the implemented EVAL-MF/PREC behavior remains runtime-authoritative.
+ 
+ The central architectural rule is:
+ 
+@@ -4801,6 +4802,633 @@
+ the checkpoint, prediction, optimizer-state, and dtype lifetimes that storage policy
+ must respect.
+ 
++# Post-0.20.120 adaptive-training, binary-precision, and evaluation-simplification roadmap
++
++**Status:** architecture recorded in `mdstats 0.20.121a0`; runtime implementation is
++`not_started` for all gates below. This roadmap supersedes the *production intent* of
++the earlier staged-precision and EVAL-MF roadmaps once its corresponding migration
++gates are implemented. Historical EVAL-MF/PREC records remain valid evidence for the
++campaigns that created them and are not rewritten retrospectively.
++
++## Motivation and evidence
++
++Production profiling after the first FP32/FP64 campaigns changed three assumptions on
++which the earlier EVAL-MF/PREC design was based.
++
++1. **Model precision is not the dominant observed accuracy variable.** On the common
++   replay monitor, FP32 and FP64 learning trajectories are nearly coincident, whereas
++   target validation errors move substantially with fold/condition composition. The
++   useful precision choice is therefore the learned-model dtype itself, not an assumed
++   FP32 -> FP64 refinement benefit.
++2. **A small, deliberately constructed target monitor is already statistically sharp.**
++   On the supplied 27-trajectory LTA regression, a 256-configuration
++   trajectory/condition/time-balanced target monitor had a force-RMSE 95% resampling
++   half-width of about `0.33 meV/A`, compared with a full balanced reference near
++   `34.20 meV/A`. A 280-frame ordinary-random monitor was roughly twice as noisy.
++3. **Replay is more heterogeneous but still suitable for fixed trend monitoring.** A
++   512-configuration replay subset had a force-RMSE 95% random-subset half-width of
++   about `2.7 meV/A`; therefore it is suitable as a fixed epoch-to-epoch forgetting
++   monitor but not as authoritative final replay evidence.
++
++The old production evaluator assumed a fixed approximately 30-checkpoint trajectory and
++therefore bought additional 10% -> 33% -> 100% inference to discover promising epochs.
++The new training loop already computes one target and replay monitor metric after every
++epoch and may terminate anywhere before the 30-epoch ceiling. Repeating partial
++inference in EVAL-MF would therefore duplicate work rather than reduce it.
++
++The new cycle makes the following decisions binding *after implementation*:
++
++- `precision = single|double` describes only learned-model arithmetic and model
++  inference dtype;
++- staged `refine` training and a user-facing `mixed` model mode are retired;
++- mdstats-owned scientific reductions, fitting, statistics, and persistent simulation
++  bookkeeping remain FP64 invariants rather than precision-profile choices;
++- training ends when enough target adaptation has been demonstrated, when replay
++  forgetting has clearly exceeded its useful region, or when the 30-epoch ceiling is
++  reached;
++- monitor metrics already paid for during training perform lightweight candidate
++  screening; and
++- only a small campaign-wide finalist set receives authoritative full evaluation.
++
++## Ordered implementation sequence
++
++The gates are implemented in this order:
++
++1. `ADAPT-PREC1` - binary model-precision contract and removal plan for staged refine;
++2. `ADAPT-MON1` - fixed-budget common target/replay monitor construction and evidence;
++3. `ADAPT-STOP1` - weight-coupled target/replay thresholds and criterion-driven training;
++4. `ADAPT-RANK1` - zero-new-inference epoch scoring and one champion per independent run;
++5. `ADAPT-EVAL1` - retire EVAL-MF production screening and perform top-K full evaluation;
++6. `ADAPT-VERIFY1` - full-evaluation/verification precision propagation and final selection;
++7. `ADAPT-MIGRATE1` - schema/restart/storage migration, historical readability, and campaign qualification.
++
++The sequencing is deliberate. Precision semantics must be frozen before they enter new
++training/evaluation identities. Monitor roles must be frozen before stopping or ranking
++can use them. Training must emit complete lightweight evidence before the evaluator can
++eliminate duplicate partial inference. Compatibility cleanup is last so no historical
++checkpoint or evaluation artifact becomes unreadable during the transition.
++
++## ADAPT-PREC1 - binary model precision and invariant FP64 scientific arithmetic
++
++**Status:** `not_started`.
++
++### User-facing model precision
++
++The generated campaign interface shall support exactly two model precision choices:
++
++```text
++single  -> FP32 learned model, FP32 training/autograd, FP32 MACE model inference
++double  -> FP64 learned model, FP64 training/autograd, FP64 MACE model inference
++```
++
++Plain `init` continues to select `single` unless the user explicitly requests `double`.
++The words `refine` and `mixed` cease to denote supported production model-precision
++profiles. No hardware heuristic may silently choose or alter model precision.
++
++The model dtype follows the checkpoint through every operation that executes the learned
++model:
++
++- training forward/backward and optimizer state;
++- epoch target-monitor inference;
++- epoch replay-monitor inference;
++- full target and replay evaluation inference;
++- verification/NVE force inference;
++- committee/member inference; and
++- final exported model parameters and buffers.
++
++An FP32 checkpoint must not be cast to FP64 merely to evaluate it under a common dtype,
++and an FP32 checkpoint selected for production must not be published as an FP64 model.
++Likewise, `double` checkpoints remain FP64 through evaluation and export.
++
++### Hard FP64 scientific-arithmetic invariant
++
++Model precision does **not** control mdstats-owned numerical analysis. Cheap operations
++whose accuracy can benefit from wider arithmetic remain unconditionally FP64, including:
++
++- elemental/reference-energy fitting and rank/SVD diagnostics;
++- feature centering, scaling, PCA/QR/SVD, and selection-distance reductions;
++- cell determinants, inverses, strain/polar-decomposition calculations, and geometric
++  diagnostics;
++- SSE/RMSE/MAE accumulation, confidence intervals, regression, and checkpoint scores;
++- observable analyses such as MSD/VACF/VDOS/diffusion/conductivity and NVE drift fits;
++- committee/statistical aggregation after model predictions leave the learned-model
++  arithmetic boundary; and
++- persistent MD positions, cell, velocities/momenta, and integrator bookkeeping where
++  mdstats owns those arrays.
++
++This is not called a `mixed` model. For `single`, FP32 model outputs may be converted to
++FP64 before mdstats-owned reductions/statistics; that conversion prevents additional
++analysis roundoff but does not claim FP64 model accuracy. Operations inseparable from the
++MACE differentiation graph remain in the selected model dtype.
++
++### Precision identity and migration boundary
++
++`TrainingProtocolIdentity`, checkpoint identity, inference cache identity, evaluation
++records, verification records, and exported-model manifests shall bind only the resolved
++model dtype (`float32` or `float64`) plus the normal backend/dependency identities. The
++resolved staged-precision schedule ceases to be a production identity field for new
++campaigns.
++
++Historical `refine` campaigns remain readable. A new campaign/configuration that still
++requests `refine` must fail closed with an explicit migration message asking the user to
++choose `single` or `double`; it must never be silently reinterpreted. An already-running
++legacy staged campaign may be inspected/archived under historical compatibility code but
++is not converted in place into a binary-precision scientific identity.
++
++### ADAPT-PREC1 acceptance gate
++
++The gate closes only when tests prove that:
++
++1. `init` emits only `single|double` model precision choices;
++2. `single` and `double` preserve exact model dtype through training, all inference,
++   verification, and export;
++3. no evaluator silently dtype-promotes one model class into the other;
++4. FP64 scientific reductions remain FP64 under both model modes;
++5. legacy `refine` evidence remains readable but cannot seed a silently reinterpreted
++   new protocol; and
++6. the retired schedule/optimizer-promotion machinery is no longer reachable from new
++   production configurations.
++
++## ADAPT-MON1 - fixed-budget common online monitors
++
++**Status:** `not_started`.
++
++### Target monitor
++
++The production default target online monitor contains:
++
++```text
++256 configurations
++```
++
++selected deterministically from the fixed representative DATA5 outer-monitor validation
++domain. Selection must balance declared condition/material-profile strata and spread
++samples across trajectory time. For the LTA profile this means, where available,
++coverage across composition, temperature, strain/geometry condition, trajectory/source,
++and the time axis within each trajectory.
++
++The monitor is **common across competing folds/seeds/protocol-equivalent runs** so its
++lightweight scores are directly comparable. This replaces the current production use of
++fold-dependent monitor sizes such as 280 versus 1400 configurations. DATA5's held-out
++evaluation folds remain independent evidence and never control checkpoint choice.
++
++The 256 default is evidence-based rather than arbitrary: the supplied LTA convergence
++study found a trajectory/time-balanced 256-frame force-RMSE 95% half-width of roughly
++`0.33 meV/A`, well below the several-meV acceptance margins used for stopping.
++
++### Replay monitor
++
++The production default replay online monitor contains:
++
++```text
++512 configurations
++```
++
++from **true-label replay evidence**, not foundation pseudo labels. It must be fixed for
++the campaign and selected with the strongest available chemical/structural/size coverage
++stratification. It is nested within the replay model-selection/evaluation domain and is
++used only for stopping/ranking; the authoritative full replay metric is still purchased
++later on the full declared true-label replay evaluation corpus.
++
++Using true labels gives the online replay RMSE and final replay RMSE the same physical
++meaning. Pseudo-label replay remains valid gradient-training data, but pseudo-label
++self-agreement is not the quantity against which the new absolute replay threshold is
++applied.
++
++### Monitor identity and uncertainty evidence
++
++Every monitor record binds:
++
++- parent evidence domain identity;
++- exact selected configuration identities and order;
++- requested and realized size;
++- stratification policy and seed/random-start identity;
++- label-domain and replay true-label lineage;
++- independence/role grades inherited from DATA5; and
++- monitor-size qualification evidence or a declared fallback when the requested
++  stratification is infeasible.
++
++The default sizes are policy values, not immutable scientific constants. Users may
++change them, but doing so changes the training/checkpoint policy identity.
++
++### ADAPT-MON1 acceptance gate
++
++The gate closes only when:
++
++1. all competing production runs consume the same target-monitor identity;
++2. target monitor size defaults to 256 and replay to 512;
++3. target sampling is condition/trajectory/time balanced rather than first-N or ordinary
++   unqualified random sampling;
++4. replay online metrics use true labels;
++5. monitors never supply gradients;
++6. held-out/locked evidence cannot leak into the monitor role; and
++7. deterministic regeneration and corruption/restart tests reproduce exactly the same
++   monitor memberships.
++
++## ADAPT-STOP1 - weight-coupled acceptance region and adaptive training termination
++
++**Status:** `not_started`.
++
++### Full target threshold
++
++Introduce an explicit global full-evaluation target force criterion:
++
++$$
++T_{\max}=30\ \mathrm{meV/\AA}=0.030\ \mathrm{eV/\AA}
++$$
++
++by default. This criterion is distinct from existing focus-group, energy, stress, and
++worst-condition safety gates, which remain separate acceptance constraints.
++
++### Score weights and derived replay threshold
++
++Let positive target and replay score weights be $w_T$ and $w_R$. With replay enabled,
++the default is
++
++$$
++w_T:w_R=1:1.
++$$
++
++Define the replay force-RMSE ceiling by equal weighted contribution at the two acceptance
++boundaries:
++
++$$
++R_{\max}=\frac{w_T}{w_R}T_{\max}.
++$$
++
++Examples for $T_{\max}=30\ \mathrm{meV/\AA}$ are:
++
++| Target:replay weight | $R_{\max}$ |
++|---:|---:|
++| 1:1 | 30 meV/A |
++| 2:1 | 60 meV/A |
++| 3:1 | 90 meV/A |
++| 1:2 | 15 meV/A |
++
++When replay is enabled both weights must be finite and strictly positive. A no-replay
++protocol omits replay scoring/stopping entirely rather than using a zero-weight
++singularity.
++
++Before training, the campaign evaluates or loads the foundation model's true-label
++replay baseline. If the derived $R_{\max}$ is already below that baseline, the policy is
++asking the fine-tuned model to outperform the foundation model on replay. Preparation or
++preflight must flag this explicitly and require a deliberate override rather than
++silently treating the threshold as ordinary retention.
++
++### Candidate region and stop margins
++
++A saved epoch is lightweight-eligible only when
++
++$$
++T_{\mathrm{mon}}\le T_{\max}
++\quad\text{and}\quad
++R_{\mathrm{mon}}\le R_{\max}.
++$$
++
++Training does **not** stop immediately at those acceptance boundaries. It explores a
++conservative margin around the useful tradeoff region and stops after an epoch when the
++first of the following becomes true:
++
++$$
++T_{\mathrm{mon}}\le f_T T_{\max},\qquad f_T=0.80,
++$$
++
++or
++
++$$
++R_{\mathrm{mon}}\ge f_R R_{\max},\qquad f_R=1.20,
++$$
++
++or the hard epoch ceiling is reached:
++
++```text
++maximum epochs = 30
++```
++
++For the default 1:1 policy this gives:
++
++```text
++target candidate boundary : 30 meV/A
++target successful stop     : 24 meV/A
++replay candidate boundary  : 30 meV/A
++replay exhaustion stop     : 36 meV/A
++```
++
++The stopping epoch itself need not be the selected checkpoint. A replay-exhaustion stop
++may still leave an earlier admissible epoch that becomes the run champion. If no saved
++epoch ever satisfies both candidate boundaries, the run ends with an explicit
++`no_lightweight_admissible_checkpoint` outcome rather than pretending that the final
++epoch is selectable.
++
++The 0.80/1.20 factors are generated defaults and editable policy values. They are large
++relative to the observed target monitor sampling error and intentionally bias mistakes
++toward extra training rather than premature final acceptance.
++
++### Other training-time checks
++
++Energy, stress, focus-group, worst-condition, finiteness, and runtime-health diagnostics
++continue to be recorded. The early-stop trigger is intentionally controlled by the
++force-RMSE target/replay policy unless another existing hard safety condition terminates
++the job. Ordinary non-monotonic one-epoch fluctuations are allowed; the implementation
++must not assume mathematically monotone learning curves.
++
++### ADAPT-STOP1 acceptance gate
++
++The gate closes only when tests cover:
++
++1. target stop at `0.80*T_max`;
++2. replay stop at `1.20*R_max`;
++3. the 30-epoch hard ceiling;
++4. weight-derived replay thresholds for at least 1:1, 2:1, and 1:2;
++5. preservation of earlier admissible checkpoints after a later replay-exhaustion stop;
++6. explicit failure when no admissible epoch exists;
++7. exact restart without losing already-computed epoch monitor metrics or changing stop
++   semantics; and
++8. foundation-baseline feasibility warnings/overrides for unusually replay-heavy weights.
++
++## ADAPT-RANK1 - zero-new-inference lightweight ranking and one champion per run
++
++**Status:** `not_started`.
++
++Training already paid for $T_{\mathrm{mon}}$ and $R_{\mathrm{mon}}$ at every epoch.
++ADAPT-RANK1 therefore performs no new model inference. For every lightweight-admissible
++epoch define
++
++$$
++S_{\mathrm{light}}
++=
++\frac{w_T T_{\mathrm{mon}}+w_R R_{\mathrm{mon}}}{w_T+w_R}.
++$$
++
++Because both quantities are force RMSE in the same units, the default 1:1 score is the
++simple arithmetic mean. The score is a *ranking objective*, never a mechanism for
++compensating a failed hard boundary.
++
++Each independent run contributes exactly one lightweight champion:
++
++$$
++c_r=\arg\min_{e\in\mathcal A_r}S_{\mathrm{light}}(r,e),
++$$
++
++where $\mathcal A_r$ is that run's admissible-epoch set. This prevents a single fold from
++occupying the campaign finalist list with several adjacent epochs. Deterministic ties
++are resolved by lower target RMSE, then lower replay RMSE, then earlier epoch, then
++stable checkpoint identity.
++
++The run report shall preserve the full epoch trajectory, stop reason, candidate-region
++entry, target/replay boundaries, score weights, all eligible epochs, and the chosen run
++champion. A later full-evaluation failure never rewrites these training-time facts.
++
++### ADAPT-RANK1 acceptance gate
++
++The gate closes only when:
++
++1. lightweight ranking performs zero additional MACE inference;
++2. only epochs satisfying both monitor boundaries are score-eligible;
++3. one and only one champion is emitted per independent run;
++4. ties are deterministic;
++5. scores from different runs are comparable because they share common monitor
++   identities; and
++6. restart/reconciliation can regenerate the same champion from persisted epoch metrics
++   without opening model checkpoints.
++
++## ADAPT-EVAL1 - top-K authoritative full evaluation and retirement of EVAL-MF screening
++
++**Status:** `not_started`.
++
++### Retire successive halving from the production path
++
++The production evaluator shall no longer run 10% -> 33% -> 100% mixed-fidelity rounds,
++survival fractions, guard-band rescue, or rank-inversion expansion. Historical EVAL-MF
++records remain readable, and an exhaustive/reference evaluator may remain available for
++diagnostics, but new production campaigns use training monitor evidence for the only
++cheap screening stage.
++
++### Campaign finalist queue
++
++Sort the run champions by $S_{\mathrm{light}}$ and initially purchase full evaluation
++for
++
++```text
++finalist_count = 5
++```
++
++champions, or all champions when fewer than five exist. Full evaluation uses the common
++full target model-selection/evaluation domain and the common full **true-label** replay
++evaluation domain. The model is executed in its own `single|double` dtype; all
++mdstats-owned error reductions and statistical calculations are FP64.
++
++The authoritative full force score is
++
++$$
++S_{\mathrm{full}}
++=
++\frac{w_T T_{\mathrm{full}}+w_R R_{\mathrm{full}}}{w_T+w_R}.
++$$
++
++Before ranking, reject any candidate with
++
++$$
++T_{\mathrm{full}}>T_{\max}
++\quad\text{or}\quad
++R_{\mathrm{full}}>R_{\max},
++$$
++
++or that fails any retained full-evaluation hard gate such as energy, stress, focus-group,
++worst-condition, finiteness, or required observable constraints. The weighted score
++cannot compensate for a hard failure.
++
++The historical percentage replay-degradation metric against the foundation remains a
++reported diagnostic (absolute and fractional degradation) but is no longer the default
++hard replay selector. The default replay hard gate is the weight-derived absolute
++true-label RMSE ceiling above.
++
++### Finalist rescue
++
++If the first finalist batch contains no fully admissible candidate, evaluate the next
++unevaluated champions in batches of
++
++```text
++finalist_rescue_batch_size = 5
++```
++
++until an admissible candidate appears or the champion pool is exhausted. This bounded
++rescue handles lightweight-monitor misranking without restoring EVAL-MF's multi-round
++complexity. Once at least one candidate in a purchased batch is admissible, normal
++production selection may stop and choose the best fully evaluated admissible candidate
++from all purchased batches. An explicit exhaustive mode may evaluate all champions for
++research/qualification but is not the production default.
++
++### ADAPT-EVAL1 acceptance gate
++
++The gate closes only when:
++
++1. production evaluation buys no 10%/33% EVAL-MF rounds;
++2. the initial full-evaluation purchase is at most five run champions;
++3. target and replay full evaluation use common campaign-wide domains and true replay
++   labels;
++4. `single` candidates infer as FP32 and `double` candidates as FP64, with no cross-dtype
++   promotion;
++5. metric accumulation and score calculation are FP64;
++6. hard target/replay boundaries are applied before weighted ranking;
++7. rescue proceeds in deterministic batches only when no purchased candidate is
++   admissible; and
++8. interrupted full evaluation reuses authenticated completed predictions without
++   changing candidate ordering or scientific identity.
++
++## ADAPT-VERIFY1 - final selection, verification, and precision propagation
++
++**Status:** `not_started`.
++
++Among all fully evaluated admissible candidates purchased by ADAPT-EVAL1, select
++
++$$
++M^*=\arg\min S_{\mathrm{full}}.
++$$
++
++The selected checkpoint then enters the existing bounded verification/deployment gates.
++Verification does not rerank models unless an existing hard verification failure rejects
++the current winner and the policy explicitly permits fallback to the next already fully
++evaluated admissible candidate.
++
++The precision boundary remains exact:
++
++```text
++single candidate -> FP32 learned-model inference during verification/export
++double candidate -> FP64 learned-model inference during verification/export
++```
++
++Persistent MD state, accumulated observables, energy-drift regression, and other
++mdstats-owned scientific bookkeeping remain FP64. A verification report must state both
++the model inference dtype and the invariant analysis/state dtype so users cannot mistake
++FP64 bookkeeping for a full-FP64 learned model.
++
++Full-evaluation and verification records shall publish, at minimum:
++
++- common target force RMSE and threshold;
++- true replay force RMSE and derived threshold;
++- target/replay weights and full score;
++- foundation replay RMSE plus absolute/fractional replay degradation as diagnostics;
++- retained energy/stress/focus/worst-condition and observable gates;
++- model precision and backend identity;
++- exact target/replay monitor and full-domain identities; and
++- finalist batch/rank provenance.
++
++### ADAPT-VERIFY1 acceptance gate
++
++The gate closes only when final selection, fallback after verification failure, model
++export, NVE verification, committee handling, and result summaries all preserve the
++binary model dtype and FP64 scientific-analysis boundary, and when no historical
++`refine` conversion or EVAL-MF rank can silently determine a new-production winner.
++
++## ADAPT-MIGRATE1 - schema, restart, storage, and historical compatibility closure
++
++**Status:** `not_started`.
++
++The final gate removes obsolete production plumbing only after the new training and
++evaluation path has qualified end to end.
++
++### Schema and identity migration
++
++The generated TOML and immutable protocol records shall expose at least:
++
++```toml
++[training]
++max_num_epochs = 30
++online_target_monitor_configurations = 256
++online_replay_monitor_configurations = 512
++target_stop_fraction = 0.80
++replay_stop_multiplier = 1.20
++
++[acceptance]
++maximum_target_force_rmse_ev_per_angstrom = 0.030
++
++[evaluation]
++target_score_weight = 1.0
++replay_score_weight = 1.0
++finalist_count = 5
++finalist_rescue_batch_size = 5
++```
++
++`maximum_replay_force_rmse_ev_per_angstrom` is resolved from the weights and target
++threshold by default and may be materialized into resolved-policy evidence. An explicit
++user override, if later supported, must be identity-bearing and must not silently change
++the weight-derived default semantics.
++
++The policy identity also binds exact monitor memberships, stop multipliers, finalist
++count, replay-label lineage, and common full-evaluation domain identities. Changing any
++of these invalidates affected training/evaluation selection caches but does not invalidate
++upstream source, partition, or feature evidence unnecessarily.
++
++### Historical evidence and restart
++
++- Existing EVAL-MF partial/full records remain readable as historical evaluation
++  evidence.
++- Existing `single`, `double`, and `refine` precision-profile records remain readable;
++  only new `refine` production execution is prohibited.
++- Active new-style runs restart from persisted epoch monitor metrics and stop-state
++  records exactly; they must not re-decide earlier stop boundaries from newly sampled
++  monitors.
++- A legacy staged run cannot be resumed under binary semantics without a new scientific
++  protocol identity.
++
++### Storage interaction
++
++STOR1-STOR5 ownership boundaries remain valid. Retired EVAL-MF prediction shards and
++staged-precision companion state become ordinary historical/reconstructable artifacts;
++existing cleanup tiers may reclaim them only under their already-declared lifecycle and
++capability-loss rules. The migration gate must not broaden deletion authority or delete
++historical evidence merely because the producing algorithm is no longer the default.
++
++### End-to-end qualification
++
++Qualification shall include at least:
++
++1. same-data `single` and `double` smoke campaigns proving dtype propagation;
++2. monitor-size regressions reproducing the 256-target/512-replay default rationale;
++3. synthetic and real learning curves covering target-stop, replay-stop, max-epoch, and
++   no-admissible-checkpoint outcomes;
++4. weight-ratio tests for 1:1, 2:1, and 1:2 replay ceilings;
++5. campaigns where the run champion occurs before the final stopping epoch;
++6. top-five full evaluation plus next-five rescue;
++7. interruption/restart during training monitor evaluation and during finalist full
++   evaluation;
++8. historical EVAL-MF/refine report readability; and
++9. storage/reporting tests proving obsolete algorithm artifacts remain ownership-safe.
++
++## Completion rule for the adaptive-training revision
++
++This roadmap is complete only when all seven gates are implemented and the production
++workflow satisfies all of the following:
++
++1. **binary model precision** - only `single|double` controls learned-model training and
++   inference dtype;
++2. **FP64 scientific arithmetic** - mdstats-owned fitting, reductions, statistics, and
++   persistent simulation bookkeeping remain FP64 without a user-facing mixed mode;
++3. **fixed comparable monitors** - 256 target and 512 true-replay defaults provide one
++   common lightweight metric basis across competing runs;
++4. **criterion-driven training** - target success, replay exhaustion, or the 30-epoch
++   ceiling terminates adaptation without assuming monotonic curves;
++5. **weight-consistent screening** - the same target/replay weights define the replay
++   ceiling, lightweight score, and full score;
++6. **hard boundaries precede scores** - neither lightweight nor full weighted averages
++   can compensate for target/replay acceptance failure;
++7. **one champion per run** - adjacent epochs from one fold cannot monopolize expensive
++   evaluation;
++8. **full evaluation is sparse** - production initially evaluates only the top five run
++   champions and uses bounded batch rescue rather than successive halving;
++9. **true replay semantics** - online and full replay error use true labels for the
++   absolute threshold, while pseudo labels remain a training mechanism only;
++10. **verification preserves model dtype** - FP32/FP64 model identity remains exact
++    through final inference and export; and
++11. **history remains readable** - retired EVAL-MF/refine evidence is preserved without
++    silently controlling new campaigns.
++
++Until `ADAPT-MIGRATE1` closes, the currently implemented EVAL-MF/PREC behavior remains the
++runtime source of truth. This section is the staged implementation target, not a claim
++that `0.20.121a0` already executes the redesigned policy.
++
++
+ ## Deferred or intentionally unchanged work
+ 
+ The current DATA6/DATA7 production architecture is not scheduled for another broad
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.120a0_to_0.20.121a0.patch' a/mdstats/_version.py b/mdstats/_version.py
+--- a/mdstats/_version.py	2026-08-09 05:00:29.000000000 +0000
++++ b/mdstats/_version.py	2026-08-09 14:26:04.017314428 +0000
+@@ -1,3 +1,3 @@
+ """Package version."""
+ 
+-__version__ = "0.20.120a0"
++__version__ = "0.20.121a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.120a0_to_0.20.121a0.patch' a/mdstats/data/observable_owner_manuals.json b/mdstats/data/observable_owner_manuals.json
+--- a/mdstats/data/observable_owner_manuals.json	2026-08-09 05:00:29.000000000 +0000
++++ b/mdstats/data/observable_owner_manuals.json	2026-08-09 14:26:04.017876605 +0000
+@@ -17,6 +17,6 @@
+       "uri": "mdstats-doc://vacf-dynamics-architecture/0.20.53a0"
+     }
+   },
+-  "package_version": "0.20.120a0",
++  "package_version": "0.20.121a0",
+   "schema": "mdstats.observable-owner-manual-index.v1"
+ }
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.120a0_to_0.20.121a0.patch' a/pyproject.toml b/pyproject.toml
+--- a/pyproject.toml	2026-08-09 05:00:29.000000000 +0000
++++ b/pyproject.toml	2026-08-09 14:26:04.017164291 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.120a0"
++version = "0.20.121a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.120a0_to_0.20.121a0.patch' a/release/ARCHITECTURE_PATCH_MLFF_REV23_TO_REV24.patch b/release/ARCHITECTURE_PATCH_MLFF_REV23_TO_REV24.patch
+--- a/release/ARCHITECTURE_PATCH_MLFF_REV23_TO_REV24.patch	1970-01-01 00:00:00.000000000 +0000
++++ b/release/ARCHITECTURE_PATCH_MLFF_REV23_TO_REV24.patch	2026-08-09 14:29:45.749579588 +0000
+@@ -0,0 +1,41 @@
++--- b/ARCHITECTURE_NOTES_MLFF_REV23.md	2026-08-08 11:02:43.000000000 +0000
+++++ b/ARCHITECTURE_NOTES_MLFF_REV24.md	2026-08-09 14:26:01.101579588 +0000
++@@ -1,13 +1,28 @@
++-# MLFF architecture revision 23 planning notes
+++# MLFF architecture revision 24 planning notes
++ 
++-This source-tree planning update records the next implementation sequence after mdstats 0.20.105a0. It does **not** claim runtime implementation.
+++This source-tree planning update records the adaptive-training and evaluation-simplification revision opened after mdstats 0.20.120a0. It does **not** claim runtime implementation.
++ 
++-1. EVAL-MF1 - nested multi-fidelity checkpoint evaluation core.
++-2. EVAL-MF2 - conservative survivor control, comprehensive epoch reporting, and production-default qualification.
++-3. STOR1 - storage accounting and campaign/user ownership boundary.
++-4. STOR2 - lossless completed-checkpoint evaluation-state compaction.
++-5. STOR3 - automatic lifecycle-safe reclamation.
++-6. STOR4 - manual tiered reclamation with capability-loss reporting.
++-7. STOR5 - immutable deduplication and optional cold archival.
+++Ordered gates:
++ 
++-The canonical details are in `docs/arch_manuals/mlff_training_data_architecture.md`, `docs/specs/training_data/mlff_eval_mf_successive_halving_spec.md`, and `docs/specs/training_data/mlff_storage_management_spec.md`.
+++1. `ADAPT-PREC1` - collapse learned-model precision to `single|double`; retire staged `refine` and do not add a user-facing `mixed` model mode. Model dtype follows all MACE inference; mdstats-owned scientific arithmetic remains FP64.
+++2. `ADAPT-MON1` - replace variable fold-local production monitors with a fixed common 256-configuration target monitor and fixed 512-configuration true-label replay monitor, with deterministic coverage-aware sampling.
+++3. `ADAPT-STOP1` - add a 30 meV/A default full target force-RMSE criterion, derive replay ceiling from target/replay score weights, and stop training at 80% of the target ceiling, 120% of the replay ceiling, or 30 epochs.
+++4. `ADAPT-RANK1` - use already-computed epoch monitor metrics for zero-new-inference weighted scoring and retain exactly one champion per independent run.
+++5. `ADAPT-EVAL1` - retire production EVAL-MF successive halving; fully evaluate the top five run champions on common full target and true-label replay domains, with deterministic next-five rescue only when no purchased candidate is admissible.
+++6. `ADAPT-VERIFY1` - select the minimum weighted full score among candidates that pass target, replay, and retained physical gates; preserve model dtype through verification/export while keeping scientific bookkeeping FP64.
+++7. `ADAPT-MIGRATE1` - close schema, restart, historical EVAL-MF/refine readability, storage interactions, and end-to-end qualification.
+++
+++Canonical defaults recorded by this revision:
+++
+++- target full force-RMSE ceiling: 30 meV/A;
+++- target online stop fraction: 0.80 (24 meV/A at the default ceiling);
+++- target online monitor: 256 configurations;
+++- replay online monitor: 512 true-label configurations;
+++- target:replay score weights: 1:1;
+++- replay ceiling: `(target_weight / replay_weight) * target_ceiling` (30 meV/A at 1:1, 60 meV/A at 2:1);
+++- replay online stop multiplier: 1.20 (36 meV/A at default 1:1);
+++- maximum epochs: 30;
+++- initial full-evaluation finalists: 5;
+++- rescue batch size: 5.
+++
+++The canonical details are in `docs/arch_manuals/mlff_training_data_architecture.md`. Until `ADAPT-MIGRATE1` closes, the currently implemented EVAL-MF/PREC behavior remains runtime-authoritative.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.120a0_to_0.20.121a0.patch' a/tests/test_density_par_dens_architecture_plan.py b/tests/test_density_par_dens_architecture_plan.py
+--- a/tests/test_density_par_dens_architecture_plan.py	2026-08-09 05:05:26.000000000 +0000
++++ b/tests/test_density_par_dens_architecture_plan.py	2026-08-09 14:26:05.612813558 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_par_dens0_is_completed_and_par_dens1_is_next() -> None:
+-    assert mdstats.__version__ == "0.20.120a0"
++    assert mdstats.__version__ == "0.20.121a0"
+     text = MANUAL.read_text(encoding="utf-8")
+     assert "PAR-DENS0 is `completed` in `mdstats 0.20.120a0`" in text
+     assert "PAR-DENS1 is the next" in text
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.120a0_to_0.20.121a0.patch' a/tests/test_mlff_adaptive_training_revision_plan.py b/tests/test_mlff_adaptive_training_revision_plan.py
+--- a/tests/test_mlff_adaptive_training_revision_plan.py	1970-01-01 00:00:00.000000000 +0000
++++ b/tests/test_mlff_adaptive_training_revision_plan.py	2026-08-09 14:26:29.561445807 +0000
+@@ -0,0 +1,40 @@
++from pathlib import Path
++
++ROOT = Path(__file__).resolve().parents[1]
++MANUAL = ROOT / "docs" / "arch_manuals" / "mlff_training_data_architecture.md"
++
++
++def test_adaptive_revision_gate_order_and_defaults():
++    version_text = (ROOT / "mdstats" / "_version.py").read_text(encoding="utf-8")
++    assert '__version__ = "0.20.121a0"' in version_text
++    text = MANUAL.read_text(encoding="utf-8")
++    headings = [
++        "## ADAPT-PREC1",
++        "## ADAPT-MON1",
++        "## ADAPT-STOP1",
++        "## ADAPT-RANK1",
++        "## ADAPT-EVAL1",
++        "## ADAPT-VERIFY1",
++        "## ADAPT-MIGRATE1",
++    ]
++    positions = [text.index(h) for h in headings]
++    assert positions == sorted(positions)
++    assert "256 configurations" in text
++    assert "512 configurations" in text
++    assert "T_{\\max}=30\\ \\mathrm{meV/\\AA}" in text
++    assert "f_T=0.80" in text
++    assert "f_R=1.20" in text
++    assert "finalist_count = 5" in text
++    assert "finalist_rescue_batch_size = 5" in text
++
++
++def test_adaptive_revision_precision_and_evaluation_invariants():
++    text = MANUAL.read_text(encoding="utf-8")
++    assert "single  -> FP32 learned model" in text
++    assert "double  -> FP64 learned model" in text
++    assert "The words `refine` and `mixed` cease to denote supported production model-precision" in text
++    assert "Hard FP64 scientific-arithmetic invariant" in text
++    assert "performs no new model inference" in text
++    assert "retirement of EVAL-MF screening" in text
++    assert "full **true-label** replay" in text
++    assert "Historical EVAL-MF/PREC records remain valid evidence" in text
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.120a0_to_0.20.121a0.patch' a/tests/test_mlff_data0_architecture_specification.py b/tests/test_mlff_data0_architecture_specification.py
+--- a/tests/test_mlff_data0_architecture_specification.py	2026-08-09 05:00:29.000000000 +0000
++++ b/tests/test_mlff_data0_architecture_specification.py	2026-08-09 14:26:05.615981111 +0000
+@@ -263,4 +263,4 @@
+ def test_mlff_data0_pdf_and_version_artifacts_exist() -> None:
+     assert MANUAL_PDF.stat().st_size > 10_000
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.120a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.121a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.120a0_to_0.20.121a0.patch' a/tests/test_mlff_data1_specification.py b/tests/test_mlff_data1_specification.py
+--- a/tests/test_mlff_data1_specification.py	2026-08-09 05:00:29.000000000 +0000
++++ b/tests/test_mlff_data1_specification.py	2026-08-09 14:26:05.614248366 +0000
+@@ -49,4 +49,4 @@
+     assert callable(mdstats.assign_balanced_round_robin)
+     assert callable(mdstats.build_complete_frame_block_plan)
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.120a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.121a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.120a0_to_0.20.121a0.patch' a/tests/test_mlff_data2a_manifest_inference_specification.py b/tests/test_mlff_data2a_manifest_inference_specification.py
+--- a/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-09 05:00:29.000000000 +0000
++++ b/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-09 14:26:05.633778186 +0000
+@@ -15,7 +15,7 @@
+ 
+ 
+ def test_data2a_version_public_api_and_documented_contract() -> None:
+-    assert mdstats.__version__ == "0.20.120a0"
++    assert mdstats.__version__ == "0.20.121a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert callable(mdstats.infer_training_manifest_metadata)
+     policy = mdstats.ManifestInferencePolicy()
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.120a0_to_0.20.121a0.patch' a/tests/test_mlff_data9a2_specification.py b/tests/test_mlff_data9a2_specification.py
+--- a/tests/test_mlff_data9a2_specification.py	2026-08-09 05:00:29.000000000 +0000
++++ b/tests/test_mlff_data9a2_specification.py	2026-08-09 14:26:05.605343750 +0000
+@@ -23,7 +23,7 @@
+         "finite energy, force, and stress",
+     ):
+         assert required in text
+-    assert 'version = "0.20.120a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.121a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "DATA9A2 real-MACE realization is implemented in `0.20.39a0`" in ARCH.read_text()
+ 
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.120a0_to_0.20.121a0.patch' a/tests/test_mlff_data9a3_specification.py b/tests/test_mlff_data9a3_specification.py
+--- a/tests/test_mlff_data9a3_specification.py	2026-08-09 05:00:29.000000000 +0000
++++ b/tests/test_mlff_data9a3_specification.py	2026-08-09 14:26:05.636780294 +0000
+@@ -9,5 +9,5 @@
+     assert "37,632" in text
+     assert "supported_with_temporal_blocks_only" in text
+     assert "production_replay_corpus_not_bound" in text
+-    assert 'version = "0.20.120a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.121a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "MLFF-DATA9A3 production qualification" in ARCH.read_text()
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.120a0_to_0.20.121a0.patch' a/tests/test_mlff_data9a4_precision_specification.py b/tests/test_mlff_data9a4_precision_specification.py
+--- a/tests/test_mlff_data9a4_precision_specification.py	2026-08-09 05:00:29.000000000 +0000
++++ b/tests/test_mlff_data9a4_precision_specification.py	2026-08-09 14:26:05.627530899 +0000
+@@ -9,7 +9,7 @@
+     assert "float32" in text and "float64" in text
+     assert "MaceModelPrecisionRecord" in text
+     assert "MacePrecisionTransitionRecord" in text
+-    assert "version = \"0.20.120a0\"" in (ROOT / "pyproject.toml").read_text()
++    assert "version = \"0.20.121a0\"" in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_bind_precision_to_protocol() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.120a0_to_0.20.121a0.patch' a/tests/test_mlff_data9a5_critical_fp64_specification.py b/tests/test_mlff_data9a5_critical_fp64_specification.py
+--- a/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-09 05:00:29.000000000 +0000
++++ b/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-09 14:26:05.602464912 +0000
+@@ -14,7 +14,7 @@
+     assert 'version: "0.20.42a0"' in text
+     assert "training_force_jacobian_dtype = model" in text
+     assert "Python/ASE" in text
+-    assert 'version = "0.20.120a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.121a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_data9a5_architecture_declares_scope_and_limits() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.120a0_to_0.20.121a0.patch' a/tests/test_mlff_data9a5_deployment_specification.py b/tests/test_mlff_data9a5_deployment_specification.py
+--- a/tests/test_mlff_data9a5_deployment_specification.py	2026-08-09 05:00:29.000000000 +0000
++++ b/tests/test_mlff_data9a5_deployment_specification.py	2026-08-09 14:26:05.602886455 +0000
+@@ -13,7 +13,7 @@
+     assert 'version: "0.20.43a0"' in text
+     assert "downstream runtime owns" in text
+     assert "float32-to-float64 promotion does not restore" in text
+-    assert 'version = "0.20.120a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.121a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_keep_lammps_outside_mdstats_scope() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.120a0_to_0.20.121a0.patch' a/tests/test_mlff_data9a7a_material_profile_specification.py b/tests/test_mlff_data9a7a_material_profile_specification.py
+--- a/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-09 05:00:29.000000000 +0000
++++ b/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-09 14:26:05.626803146 +0000
+@@ -64,4 +64,4 @@
+ 
+ 
+ def test_release_version_is_data9a7a() -> None:
+-    assert 'version = "0.20.120a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert 'version = "0.20.121a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.120a0_to_0.20.121a0.patch' a/tests/test_mlff_data9a7b_specification.py b/tests/test_mlff_data9a7b_specification.py
+--- a/tests/test_mlff_data9a7b_specification.py	2026-08-09 05:00:29.000000000 +0000
++++ b/tests/test_mlff_data9a7b_specification.py	2026-08-09 14:26:05.633977271 +0000
+@@ -69,7 +69,7 @@
+ 
+ 
+ def test_data9a7b_public_exports_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.120a0"
++    assert mdstats.__version__ == "0.20.121a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert callable(mdstats.compute_local_structure_features)
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.120a0_to_0.20.121a0.patch' a/tests/test_mlff_data9a7c_specification.py b/tests/test_mlff_data9a7c_specification.py
+--- a/tests/test_mlff_data9a7c_specification.py	2026-08-09 05:00:29.000000000 +0000
++++ b/tests/test_mlff_data9a7c_specification.py	2026-08-09 14:26:05.601751086 +0000
+@@ -47,7 +47,7 @@
+ 
+ 
+ def test_public_api_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.120a0"
++    assert mdstats.__version__ == "0.20.121a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert mdstats.MLFF_DATA9A7C_PARSER_VERSION == "0.20.49a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.120a0_to_0.20.121a0.patch' a/tests/test_mlff_data9a7d_specification.py b/tests/test_mlff_data9a7d_specification.py
+--- a/tests/test_mlff_data9a7d_specification.py	2026-08-09 05:00:29.000000000 +0000
++++ b/tests/test_mlff_data9a7d_specification.py	2026-08-09 14:26:05.617833338 +0000
+@@ -39,6 +39,6 @@
+ 
+ 
+ def test_data9a7d_runtime_versions() -> None:
+-    assert mdstats.__version__ == "0.20.120a0"
++    assert mdstats.__version__ == "0.20.121a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7D_PARSER_VERSION == "0.20.50a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.120a0_to_0.20.121a0.patch' a/tests/test_mlff_data9a7e_specification.py b/tests/test_mlff_data9a7e_specification.py
+--- a/tests/test_mlff_data9a7e_specification.py	2026-08-09 05:00:29.000000000 +0000
++++ b/tests/test_mlff_data9a7e_specification.py	2026-08-09 14:26:05.623488353 +0000
+@@ -39,7 +39,7 @@
+         "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
+         "CROSS_SYSTEM_QUALIFICATION_SUITE",
+     } <= nodes
+-    assert mdstats.__version__ == "0.20.120a0"
++    assert mdstats.__version__ == "0.20.121a0"
+     assert mdstats.MLFF_DATA9A7E_PARSER_VERSION == "0.20.51a0"
+     assert callable(mdstats.qualify_cross_system_case)
+     assert callable(mdstats.build_cross_system_qualification_suite)
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.120a0_to_0.20.121a0.patch' a/tests/test_mlff_data9a8_specification.py b/tests/test_mlff_data9a8_specification.py
+--- a/tests/test_mlff_data9a8_specification.py	2026-08-09 05:00:29.000000000 +0000
++++ b/tests/test_mlff_data9a8_specification.py	2026-08-09 14:26:05.620258735 +0000
+@@ -66,7 +66,7 @@
+ 
+ 
+ def test_public_runtime_exposes_data9a8_without_removed_aliases() -> None:
+-    assert mdstats.__version__ == "0.20.120a0"
++    assert mdstats.__version__ == "0.20.121a0"
+     assert mdstats.MLFF_DATA9A8_PARSER_VERSION == "0.20.52a0"
+     assert mdstats.ObservableComparisonPolicy
+     assert mdstats.compare_mlff_observable_validation
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.120a0_to_0.20.121a0.patch' a/tests/test_mlff_data9a9a_specification.py b/tests/test_mlff_data9a9a_specification.py
+--- a/tests/test_mlff_data9a9a_specification.py	2026-08-09 05:00:29.000000000 +0000
++++ b/tests/test_mlff_data9a9a_specification.py	2026-08-09 14:26:05.622649558 +0000
+@@ -65,7 +65,7 @@
+ 
+ 
+ def test_public_runtime_exports_data9a9a_contracts() -> None:
+-    assert mdstats.__version__ == "0.20.120a0"
++    assert mdstats.__version__ == "0.20.121a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A9A_VERSION
+     assert mdstats.Data6ModelSweepPlan
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.120a0_to_0.20.121a0.patch' a/tests/test_mlff_data9a9b_specification.py b/tests/test_mlff_data9a9b_specification.py
+--- a/tests/test_mlff_data9a9b_specification.py	2026-08-09 05:00:29.000000000 +0000
++++ b/tests/test_mlff_data9a9b_specification.py	2026-08-09 14:26:05.628522539 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9b_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.120a0"
++    assert mdstats.__version__ == "0.20.121a0"
+     for name in (
+         "ProductionMaterializationPlan",
+         "ProductionMaterializationCheckpoint",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.120a0_to_0.20.121a0.patch' a/tests/test_mlff_data9a9c_specification.py b/tests/test_mlff_data9a9c_specification.py
+--- a/tests/test_mlff_data9a9c_specification.py	2026-08-09 05:00:29.000000000 +0000
++++ b/tests/test_mlff_data9a9c_specification.py	2026-08-09 14:26:05.598066135 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9c_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.120a0"
++    assert mdstats.__version__ == "0.20.121a0"
+     for name in (
+         "ProductionCorpusPlan", "ProductionExpectedRun",
+         "ProfileExtensionEvidenceRequirement", "ProductionCorpusQualificationRecord",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.120a0_to_0.20.121a0.patch' a/tests/test_mlff_data9a_specification.py b/tests/test_mlff_data9a_specification.py
+--- a/tests/test_mlff_data9a_specification.py	2026-08-09 05:00:29.000000000 +0000
++++ b/tests/test_mlff_data9a_specification.py	2026-08-09 14:26:05.633631568 +0000
+@@ -14,7 +14,7 @@
+ 
+ 
+ def test_data9a_runtime_specification_is_canonical() -> None:
+-    assert 'version = "0.20.120a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.121a0"' in (ROOT / "pyproject.toml").read_text()
+     architecture = ARCH.read_text()
+     stage = STAGE.read_text()
+     specification = SPEC.read_text()
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.120a0_to_0.20.121a0.patch' a/tests/test_mlff_data9b1_specification.py b/tests/test_mlff_data9b1_specification.py
+--- a/tests/test_mlff_data9b1_specification.py	2026-08-09 05:00:29.000000000 +0000
++++ b/tests/test_mlff_data9b1_specification.py	2026-08-09 14:26:05.609579588 +0000
+@@ -18,8 +18,8 @@
+     assert "TrainingCampaignPlan" in text
+     assert "CheckpointSelectionRecord" in text
+     assert "mdstats-mace-train" in text
+-    assert mdstats.__version__ == "0.20.120a0"
+-    assert 'version = "0.20.120a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert mdstats.__version__ == "0.20.121a0"
++    assert 'version = "0.20.121a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+ 
+ 
+ def test_data9b1_is_integrated_into_manual_and_stage_plan() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.120a0_to_0.20.121a0.patch' a/tests/test_mlff_data9b2_specification.py b/tests/test_mlff_data9b2_specification.py
+--- a/tests/test_mlff_data9b2_specification.py	2026-08-09 05:00:29.000000000 +0000
++++ b/tests/test_mlff_data9b2_specification.py	2026-08-09 14:26:05.632382525 +0000
+@@ -23,7 +23,7 @@
+         'mdstats-mace-select-head',
+     ):
+         assert token in text
+-    assert mdstats.__version__ == '0.20.120a0'
++    assert mdstats.__version__ == '0.20.121a0'
+     assert mdstats.MLFF_DATA9B2_VERSION == '0.20.57a0'
+ 
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.120a0_to_0.20.121a0.patch' a/tests/test_mlff_data9b3_campaign_cli_specification.py b/tests/test_mlff_data9b3_campaign_cli_specification.py
+--- a/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-09 05:00:29.000000000 +0000
++++ b/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-09 14:26:05.614663997 +0000
+@@ -16,7 +16,7 @@
+ 
+ 
+ def test_data9b3_version_and_user_surface() -> None:
+-    assert mdstats.__version__ == "0.20.120a0"
++    assert mdstats.__version__ == "0.20.121a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert TOOL.is_file()
+     assert TOOL.stat().st_mode & 0o111
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.120a0_to_0.20.121a0.patch' a/tests/test_mlff_opt_ctrl1_specification.py b/tests/test_mlff_opt_ctrl1_specification.py
+--- a/tests/test_mlff_opt_ctrl1_specification.py	2026-08-09 05:00:29.000000000 +0000
++++ b/tests/test_mlff_opt_ctrl1_specification.py	2026-08-09 14:26:05.593226728 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_ctrl1_release_identity_preserves_scientific_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.120a0"
++    assert mdstats.__version__ == "0.20.121a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.120a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.121a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_ctrl1_architecture_and_spec_close_roadmap() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.120a0_to_0.20.121a0.patch' a/tests/test_mlff_opt_eval4_specification.py b/tests/test_mlff_opt_eval4_specification.py
+--- a/tests/test_mlff_opt_eval4_specification.py	2026-08-09 05:00:29.000000000 +0000
++++ b/tests/test_mlff_opt_eval4_specification.py	2026-08-09 14:26:05.606305274 +0000
+@@ -11,9 +11,9 @@
+ 
+ 
+ def test_opt_eval4_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.120a0"
++    assert mdstats.__version__ == "0.20.121a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+-    assert 'version = "0.20.120a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.121a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_eval4_architecture_and_spec_record_pipeline_contract() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.120a0_to_0.20.121a0.patch' a/tests/test_mlff_opt_verify1_specification.py b/tests/test_mlff_opt_verify1_specification.py
+--- a/tests/test_mlff_opt_verify1_specification.py	2026-08-09 05:00:29.000000000 +0000
++++ b/tests/test_mlff_opt_verify1_specification.py	2026-08-09 14:26:05.605194909 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_verify1_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.120a0"
++    assert mdstats.__version__ == "0.20.121a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.120a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.121a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_verify1_architecture_and_spec_record_contract() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.120a0_to_0.20.121a0.patch' a/tests/test_mlff_perf2_parallel_acceleration_specification.py b/tests/test_mlff_perf2_parallel_acceleration_specification.py
+--- a/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-09 05:00:29.000000000 +0000
++++ b/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-09 14:26:05.610679388 +0000
+@@ -10,7 +10,7 @@
+ 
+ 
+ def test_perf2_release_and_configuration_contract() -> None:
+-    assert mdstats.__version__ == "0.20.120a0"
++    assert mdstats.__version__ == "0.20.121a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     template = campaign_cli._config_template(
+         workspace="workspace",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.120a0_to_0.20.121a0.patch' a/tests/test_mlff_prec1_specification.py b/tests/test_mlff_prec1_specification.py
+--- a/tests/test_mlff_prec1_specification.py	2026-08-09 05:00:29.000000000 +0000
++++ b/tests/test_mlff_prec1_specification.py	2026-08-09 14:26:05.627651832 +0000
+@@ -12,7 +12,7 @@
+ 
+ 
+ def test_prec1_release_and_architecture_status() -> None:
+-    assert mdstats.__version__ == "0.20.120a0"
++    assert mdstats.__version__ == "0.20.121a0"
+     manual = MANUAL.read_text(encoding="utf-8")
+     spec = SPEC.read_text(encoding="utf-8")
+     assert "PREC1 - precision profiles, explicit staged schedule, and init realization - implemented in 0.20.108a0" in manual
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.120a0_to_0.20.121a0.patch' a/tests/test_mlff_prec3_specification.py b/tests/test_mlff_prec3_specification.py
+--- a/tests/test_mlff_prec3_specification.py	2026-08-09 05:00:29.000000000 +0000
++++ b/tests/test_mlff_prec3_specification.py	2026-08-09 14:26:05.605066512 +0000
+@@ -16,7 +16,7 @@
+     manual = MANUAL.read_text(encoding="utf-8")
+     spec = SPEC.read_text(encoding="utf-8")
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+-    assert mdstats.__version__ == "0.20.120a0"
++    assert mdstats.__version__ == "0.20.121a0"
+     assert "PREC3 - campaign integration, qualification, and profile activation - implemented in 0.20.110a0" in manual
+     assert "PREC3 implementation closure (0.20.110a0)" in manual
+     assert "PREC3 implemented in mdstats 0.20.110a0" in spec

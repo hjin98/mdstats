@@ -1,0 +1,57 @@
+{
+  "schema_version": "mdstats.gfx3d-harden2-qualification.v1",
+  "version": "0.20.157a0",
+  "date": "2026-08-12",
+  "focused_tests": {
+    "passed": 187,
+    "suites": [
+      "tests/test_lammps.py",
+      "tests/test_graphics3d_cli.py",
+      "tests/test_graphics3d_gfx4_dependencies.py",
+      "tests/test_graphics3d_harden1.py",
+      "tests/test_graphics3d_layers.py",
+      "tests/test_graphics3d_gfx5_rendering.py",
+      "tests/test_density_sparse_mesh.py",
+      "tests/test_atomic_density.py",
+      "tests/test_density_par_dens4_preprocessing.py",
+      "tests/test_framework_dynamics.py",
+      "tests/test_framework_topology.py",
+      "tests/test_framework_topology_visualization.py",
+      "tests/test_framework_density.py",
+      "tests/test_framework_semantics.py"
+    ]
+  },
+  "supplied_dump": {
+    "path_basename": "dump.prod.Na_lta_300K.old(2).lammpstrj",
+    "source_frames": 10001,
+    "file_size_mib_approx": 183,
+    "qualification_stride": 500,
+    "selected_frames": 21,
+    "likely_type_map_from_geometry": "1=Al,2=Na,3=O,4=Si",
+    "type_map_is_diagnostic_not_inferred_by_code": true,
+    "framework_warning_present": true
+  },
+  "lammps_stride_benchmark": {
+    "old_version": "0.20.156a0",
+    "old_elapsed_seconds": 9.17,
+    "old_peak_rss_kib": 1626836,
+    "new_version": "0.20.157a0",
+    "new_elapsed_seconds": 3.03,
+    "new_peak_rss_kib": 253336,
+    "same_selected_frame_count": true,
+    "same_source_frame_count": true
+  },
+  "four_layer_smoke": {
+    "layers": ["framework", "connectivity", "trajectory:Na", "density:Na"],
+    "source_preparation_seconds_approx": 10.0,
+    "process_elapsed_seconds": 24.13,
+    "process_peak_rss_kib": 828948,
+    "html_size_mib_approx": 22.1,
+    "sparse_density_rendered": true
+  },
+  "compatibility_preset": {
+    "semantic_contract_changed": false,
+    "all_present_supported_species_density_layers_retained": true,
+    "note": "Framework-species adaptive densities can remain intrinsically expensive; explicit mobile-ion density layers are recommended for routine transport views."
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "architecture_revision": 71,
+  "date": "2026-08-16",
+  "preflight": {
+    "ARCHITECTURE_NOTES_MLFF_REV71.pdf": {
+      "pages": 1,
+      "warnings": 0
+    },
+    "PATCH_NOTES_0.20.204a0.pdf": {
+      "pages": 1,
+      "warnings": 0
+    },
+    "docs/specs/training_data/mlff_target_data2c_mvperf1_exact_hardening_spec.pdf": {
+      "pages": 1,
+      "warnings": 0
+    },
+    "mlff_training_data_architecture.pdf": {
+      "pages": 217,
+      "warnings": 0
+    }
+  },
+  "release": "0.20.204a0",
+  "result": "pass",
+  "schema": "mdstats.target-data2c-mvperf1-pdf-qa.v1",
+  "visual_inspection": {
+    "broken_glyphs_found": false,
+    "canonical_manual_pages": [
+      214,
+      215,
+      216,
+      217
+    ],
+    "clipping_or_overflow_found": false,
+    "small_pdfs": [
+      "ARCHITECTURE_NOTES_MLFF_REV71.pdf page 1",
+      "MVPERF1 spec page 1",
+      "PATCH_NOTES_0.20.204a0.pdf page 1"
+    ]
+  }
+}

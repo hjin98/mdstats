@@ -1,0 +1,135 @@
+{
+  "architecture_revision": 47,
+  "authority_status": "bounded_pass",
+  "documents": {
+    "markdown_authority": [
+      "docs/arch_manuals/mlff_training_data_architecture.md",
+      "docs/specs/training_data/mlff_perf_p2_lazy_target_ladder_spec.md",
+      "ARCHITECTURE_NOTES_MLFF_REV47.md",
+      "audits/analysis/mlff_perf_p2_lta_cloud_cpu_2026-08-15.md",
+      "release/PATCH_NOTES_0.20.181a0.md"
+    ],
+    "pdf_qa": "release/MLFF_PERF_P2_PDF_QA_0.20.181a0.json"
+  },
+  "gate": "PERF-P2",
+  "limitations": [
+    "The supplied-data-derived forced early-stop fixture intentionally uses permissive local radii and omits extent channels only to exercise the safe early-stop branch; it is not a new production coverage policy.",
+    "The exhaustive fallback path is scientifically exact, but its fresh-process timing ranges overlap; no portable fallback speedup is claimed.",
+    "No authorizing MACE-MH-1 checkpoint or MACE runtime was supplied for gate-local production-model execution.",
+    "No GPU runtime qualification is claimed.",
+    "A complete package-wide pass is not claimed; gate-local/adjacent authority tests and package collection are the bounded qualification basis."
+  ],
+  "next_gate": "PERF-P3",
+  "performance": {
+    "early_stop": {
+      "median_wall_reduction_fraction": 0.8022583279606025,
+      "serialized_authority_reduction_fraction": 0.8750268792706853,
+      "v1_master_order_entries": 8192,
+      "v1_peak_rss_mib": {
+        "max": 328.10546875,
+        "median": 327.07421875,
+        "min": 326.08203125
+      },
+      "v1_serialized_json_bytes": 4729481,
+      "v1_wall_seconds": {
+        "max": 8.897939103000681,
+        "median": 7.867021048001334,
+        "min": 7.602295614999093
+      },
+      "v2_master_order_entries": 1024,
+      "v2_peak_rss_mib": {
+        "max": 316.37109375,
+        "median": 316.234375,
+        "min": 315.93359375
+      },
+      "v2_serialized_json_bytes": 591058,
+      "v2_wall_seconds": {
+        "max": 1.7126213689989527,
+        "median": 1.555637896000917,
+        "min": 1.5052325550004753
+      }
+    },
+    "fallback": {
+      "reason": "Fresh-process wall ranges overlap and are scheduler-sensitive; PERF-P2 claims exact fallback, not a portable fallback speedup.",
+      "speed_claim_authorized": false,
+      "v1_wall_seconds": {
+        "max": 13.40583952400084,
+        "median": 11.003029744000742,
+        "min": 8.58328211800108
+      },
+      "v2_wall_seconds": {
+        "max": 8.879123446999074,
+        "median": 8.726474230001259,
+        "min": 7.4703819249989465
+      }
+    },
+    "fresh_process_samples_per_path": 3,
+    "host": {
+      "cgroup_cpu_max": "800000 100000",
+      "cgroup_memory_max": "4294967296",
+      "cpu_model": "INTEL(R) XEON(R) PLATINUM 8573C",
+      "logical_cpus": 9,
+      "omp_num_threads": null,
+      "openblas_num_threads": null,
+      "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+      "python": "3.13.5"
+    }
+  },
+  "release": "0.20.181a0",
+  "schema": "mdstats.mlff-perf-p2-qualification.v1",
+  "scientific": {
+    "benchmark_content_digest": "45353b62cc21055527f275daf8e3ac8186c80909bb1454346366907ec31b728e",
+    "benchmark_scientific_digest": "ae55c560995791174ac63e2d894ec685d74a02c389eb0a955d87e77cfd9f18f9",
+    "early_stop_signature_digest": "1b91c9790753ccef5de367609ed4a452af6632c5d112a4f84bc922b329a4c261",
+    "early_stop_stage_a_survivor_sizes_exact": true,
+    "early_stop_survivor_evidence_exact": true,
+    "fallback_signature_digest": "df3757672ee12222c0f6e0172ecebd03341d3e7f57dc0e21dbf224c33d217ec7",
+    "fallback_stage_a_survivor_sizes_exact": true,
+    "fallback_survivor_evidence_exact": true,
+    "source_frame_count": 37633,
+    "source_perf_p0_reference_digest": "4f46dfaa6c366ede1cd4d19cf5fb8be65cfe49067b5aff85d668e0078915f9b8",
+    "worker_invariance_exact": true,
+    "worker_invariance_plan_digest": "af29ca65e44741e7e5b49b5da16cbe1a37b8b761b9e3f51be81641e6f75f7db9"
+  },
+  "tests": {
+    "compileall": "pass",
+    "dedicated_perf_p2": {
+      "passed": 8,
+      "result": "pass"
+    },
+    "full_suite_attempt": {
+      "fail_markers_observed": 5,
+      "note": "A package-wide -q run on the constrained shared host was stopped before completion after five failure markers appeared; pytest had not emitted failure identities before termination. The corresponding framework slice was rerun independently and passed 78/78. No package-wide pass is claimed.",
+      "progress_percent_before_stop": 26,
+      "result": "not_promoted"
+    },
+    "gate_adjacent_suite": {
+      "command_family": "PERF-BASE0/P0/P1/P2 + TARGET-DATA2B/C/D/E + DATA7 + campaign performance/anchor",
+      "passed": 133,
+      "result": "pass",
+      "warnings": 18
+    },
+    "package_collection": {
+      "collected": 2981,
+      "collection_skips": [
+        "interactive density mesh",
+        "real-MACE PREC2",
+        "real-MACE PREC3"
+      ],
+      "result": "collected_with_optional_skips"
+    },
+    "perf_p1_p2_implementation_spec_slice": {
+      "passed": 14,
+      "result": "pass"
+    },
+    "post_document_sync_spec_slice": {
+      "passed": 6,
+      "result": "pass"
+    },
+    "unrelated_framework_isolated_rerun": {
+      "note": "framework density/dynamics/semantics/topology rerun independently after an unpromoted package-wide attempt",
+      "passed": 78,
+      "result": "pass"
+    }
+  }
+}

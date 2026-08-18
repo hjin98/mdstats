@@ -1,0 +1,291 @@
+{
+  "artifacts": [
+    {
+      "artifact_id": "reference_structure",
+      "byte_count": 10573,
+      "metadata": {},
+      "relative_path": "tests/data/Na_LTA_relaxed.POSCAR",
+      "role": "Na-LTA reference structure",
+      "schema": "mdstats.pilot-artifact-record.v1",
+      "sha256": "991d9cf418429058f49869ac947e5207d57071863f3221b175aa719ed5d90bfd",
+      "signature": "71784cedad5f831f35acd72787e27b86d8153df9e2281724b4d3fa8dd7c10f36",
+      "source_kind": "reference"
+    },
+    {
+      "artifact_id": "topology_statistics",
+      "byte_count": 6946848,
+      "metadata": {},
+      "relative_path": "examples/topology_statistics/na_lta_300K/generated/tables/na_lta_300K.json",
+      "role": "legacy 300 K topology statistics",
+      "schema": "mdstats.pilot-artifact-record.v1",
+      "sha256": "ac55090de848a86fde17724f950fe06813de84fd17da84a09027d2d6447158b9",
+      "signature": "65f7f4bb692a6d6b968df587d1df40fb156e12d84631be1ec71c21101126f3f0",
+      "source_kind": "legacy_real_trajectory_summary"
+    },
+    {
+      "artifact_id": "topology_summary",
+      "byte_count": 1315,
+      "metadata": {},
+      "relative_path": "examples/topology_statistics/na_lta_300K/generated/na_lta_300K_ts5_summary.json",
+      "role": "legacy 300 K topology summary",
+      "schema": "mdstats.pilot-artifact-record.v1",
+      "sha256": "3ac8b60a9c099be0073048e070d434f7b4f4c1f65cdf95b9e803b075d88c877c",
+      "signature": "5fa11ca4fae3cba86f336e0f2c9b2e865f6e3045499040b775b90318e8ec2ae0",
+      "source_kind": "legacy_real_trajectory_summary"
+    },
+    {
+      "artifact_id": "primitive_ring_catalog",
+      "byte_count": 466611,
+      "metadata": {},
+      "relative_path": "examples/primitive_ring/na_lta_300K/generated/primitive_ring_catalog.json",
+      "role": "Na-LTA primitive-ring catalog",
+      "schema": "mdstats.pilot-artifact-record.v1",
+      "sha256": "1b1004c80b2ac76e8fdb581c9b8c8ece0a5382b1fb9c220714961f5db44f19a6",
+      "signature": "8dac3626246a8ac56dd4adbe5f3d0f7d522267c8530a65537cf722ebcc9cfb53",
+      "source_kind": "derived_reference"
+    },
+    {
+      "artifact_id": "density_benchmark",
+      "byte_count": 6285,
+      "metadata": {},
+      "relative_path": "benchmarks/density_full_trajectory_ld7_benchmark.json",
+      "role": "1,300-frame all-species density benchmark",
+      "schema": "mdstats.pilot-artifact-record.v1",
+      "sha256": "9b55bd2504f9ec622cd1e635d493f4a0a69751ac894c7c16f155610ff7acabe7",
+      "signature": "133e046b44e8dbd84c52f92604aa3fd378802217bf887cb63abc2a87d964401e",
+      "source_kind": "legacy_real_trajectory_summary"
+    },
+    {
+      "artifact_id": "plot_summary",
+      "byte_count": 2787,
+      "metadata": {},
+      "relative_path": "benchmarks/na_lta_300K_all_species_plot_summary.json",
+      "role": "all-species browser artifact summary",
+      "schema": "mdstats.pilot-artifact-record.v1",
+      "sha256": "81eabd8c38ed022ae0cf35551f0110e33318bb6ebf90b1b94a94b0a2f856c091",
+      "signature": "825657addf013b6e5923ec0224b23450cd88b6b7c1d5675ed4e9866a765e45d7",
+      "source_kind": "legacy_real_trajectory_summary"
+    }
+  ],
+  "blockers": [
+    "Raw 300 K Na-LTA trajectory coordinates are unavailable."
+  ],
+  "dataset": {
+    "atom_count": 168,
+    "duration_ps": 2.0,
+    "frame_count": 2000,
+    "frame_semantics": "trajectory",
+    "material": "Na-LTA",
+    "metadata": {
+      "legacy_density_frame_count": 1300,
+      "legacy_topology_frame_count": 2000,
+      "raw_trajectory_packaged": false,
+      "reference_cell_volume_angstrom3": 3701.347188414234
+    },
+    "mobile_species": "Na",
+    "registration_signature": null,
+    "schema": "mdstats.na-lta-300k-pilot-dataset.v1",
+    "signature": "69585038db5c17c5fb294fcb5b48ff88c04d8e610d9f1b12548e7c15235b70db",
+    "species_counts": {
+      "Al": 24,
+      "Na": 24,
+      "O": 96,
+      "Si": 24
+    },
+    "temperature_kelvin": 300.0,
+    "trajectory_available": false,
+    "trajectory_digest": null
+  },
+  "evidence": [
+    {
+      "accepted_fraction": null,
+      "artifact_ids": [
+        "reference_structure",
+        "topology_statistics",
+        "primitive_ring_catalog"
+      ],
+      "evidence_id": "structural_mapping",
+      "messages": [
+        "Real topology and ring evidence is available, but not source-bound E0b-E7 pilot output."
+      ],
+      "metrics": {
+        "atomic_changed_boundaries": 71,
+        "atomic_states": 72,
+        "framework_changed_boundaries": 0,
+        "framework_classes": 1,
+        "framework_edge_count": 96,
+        "primitive_ring_count": 82,
+        "primitive_ring_size_counts": {
+          "4": 36,
+          "6": 40,
+          "8": 6
+        },
+        "topology_digest": "11d0b594ba1564d14ede796e86b5a73901f91d5c2e31ab031b5b202ce96a4af4"
+      },
+      "schema": "mdstats.pilot-evidence-record.v1",
+      "signature": "f4c5b5ecf381f52cc27c0ed88582fee7738b0f50f962066e48986d9338db850a",
+      "source_digest": null,
+      "stage_id": "legacy-S4/C1-C3",
+      "status": "legacy_summary_only",
+      "unresolved_fraction": null
+    },
+    {
+      "accepted_fraction": 1.0,
+      "artifact_ids": [
+        "topology_statistics",
+        "primitive_ring_catalog"
+      ],
+      "evidence_id": "topology_certificate",
+      "messages": [],
+      "metrics": {
+        "framework_uniform": true,
+        "ring_complete_through_size": 8,
+        "ring_search_truncated": false
+      },
+      "schema": "mdstats.pilot-evidence-record.v1",
+      "signature": "9f5c461f01d1f0638f110f0f098d69178ad7595adb337ef216452679f168b485",
+      "source_digest": null,
+      "stage_id": "legacy-TS2/S4",
+      "status": "legacy_summary_only",
+      "unresolved_fraction": 0.0
+    },
+    {
+      "accepted_fraction": null,
+      "artifact_ids": [
+        "density_benchmark",
+        "plot_summary"
+      ],
+      "evidence_id": "kernel_metric_periodization",
+      "messages": [
+        "This predates the Stage-11E1 source-bound periodic species-density result."
+      ],
+      "metrics": {
+        "backend_by_species": {
+          "Al": "local_sparse",
+          "Na": "local_sparse",
+          "O": "local_sparse",
+          "Si": "local_sparse"
+        },
+        "density_frame_count": 1300,
+        "species": [
+          "Al",
+          "Na",
+          "O",
+          "Si"
+        ],
+        "total_seconds": 125.2780524750001
+      },
+      "schema": "mdstats.pilot-evidence-record.v1",
+      "signature": "0ea848fae707c81216a56da6826cea61554a225a736fafe99825d33a289f93f7",
+      "source_digest": null,
+      "stage_id": "legacy-LD7",
+      "status": "legacy_summary_only",
+      "unresolved_fraction": null
+    },
+    {
+      "accepted_fraction": null,
+      "artifact_ids": [
+        "density_benchmark",
+        "plot_summary"
+      ],
+      "evidence_id": "cost",
+      "messages": [],
+      "metrics": {
+        "density_wall_seconds": 125.2780524750001,
+        "plot_html_bytes": 34758038
+      },
+      "schema": "mdstats.pilot-evidence-record.v1",
+      "signature": "414d10a929c9555a566e803e3b10e91deece675ab85dbec3236aef4e994a63cb",
+      "source_digest": null,
+      "stage_id": "legacy-LD7",
+      "status": "partial",
+      "unresolved_fraction": null
+    },
+    {
+      "accepted_fraction": null,
+      "artifact_ids": [
+        "density_benchmark"
+      ],
+      "evidence_id": "memory",
+      "messages": [],
+      "metrics": {
+        "max_realized_density_bytes": 132612360,
+        "max_scatter_workspace_bytes": 51658144
+      },
+      "schema": "mdstats.pilot-evidence-record.v1",
+      "signature": "3dbe8eea0d416766e69e9e31e3cf3ff59261993547ffe233c184953ec324c8a9",
+      "source_digest": null,
+      "stage_id": "legacy-LD7",
+      "status": "partial",
+      "unresolved_fraction": null
+    }
+  ],
+  "metadata": {
+    "audit_kind": "bundled_legacy_real_evidence_preflight",
+    "legacy_summaries_replace_raw_trajectory": false,
+    "rates_inferred": false,
+    "raw_trajectory_required_to_complete_e8a": true,
+    "required_evidence_ids": [
+      "registration",
+      "structural_mapping",
+      "stationarity",
+      "kernel_metric_periodization",
+      "reference_cell_sensitivity",
+      "field_certificate",
+      "topology_certificate",
+      "attractor_lineage",
+      "provisional_cores",
+      "temporal_support",
+      "force_availability",
+      "force_density_agreement",
+      "transition_paths",
+      "unresolved_fraction",
+      "cost",
+      "memory"
+    ],
+    "source_mismatch": false
+  },
+  "missing_required_evidence": [
+    "registration",
+    "stationarity",
+    "reference_cell_sensitivity",
+    "field_certificate",
+    "attractor_lineage",
+    "provisional_cores",
+    "temporal_support",
+    "force_availability",
+    "force_density_agreement",
+    "transition_paths",
+    "unresolved_fraction"
+  ],
+  "outcome": {
+    "conclusions": [
+      "The archived real trajectory summaries show variable Na-inclusive atomic connectivity and one uniform framework topology.",
+      "The primitive-ring reference is certified complete through ring size eight under its declared definition.",
+      "No Stage-11E0b-E7 site, force, residence, path, or network conclusion can be reconstructed without raw coordinates or serialized stage products."
+    ],
+    "global_pmf_status": "not_requested",
+    "observed_connection_count": null,
+    "rate_status": "not_evaluated",
+    "schema": "mdstats.pilot-scientific-outcome.v1",
+    "signature": "46c9b5271483258c018c5b024eb1529864b5c218989d4dd1154e0d17ce139830",
+    "site_center_count": null,
+    "supported_basin_count": null,
+    "transition_path_ensemble_count": null,
+    "undersampled_path_ensemble_count": null
+  },
+  "overall_status": "blocked_missing_trajectory",
+  "resources": {
+    "metadata": {
+      "resource_scope": "legacy_density_benchmark_only"
+    },
+    "output_bytes": 7434419,
+    "peak_memory_bytes": 132612360,
+    "schema": "mdstats.pilot-resource-usage.v1",
+    "signature": "4ba0b68caa0b9df654be5751cd35000fdbe02c7c3d148f83384a74ff1666e882",
+    "wall_seconds": 125.2780524750001,
+    "worker_count": null
+  },
+  "schema": "mdstats.na-lta-300k-pilot-report.v1",
+  "signature": "ada276f33fad6eed28d592d27da86da734762167fd984fdb8bf21324677352e0"
+}

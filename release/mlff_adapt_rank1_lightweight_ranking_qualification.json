@@ -1,0 +1,50 @@
+{
+  "schema": "mdstats.mlff-adapt-rank1-qualification.v1",
+  "package_version": "0.20.125a0",
+  "gate": "ADAPT-RANK1",
+  "date": "2026-08-09",
+  "status": "qualified",
+  "behavior": {
+    "new_inference_required": false,
+    "checkpoint_model_open_required": false,
+    "hard_target_replay_boundaries_precede_ranking": true,
+    "weighted_lightweight_score": true,
+    "one_champion_per_independent_run": true,
+    "explicit_no_champion_outcome": true,
+    "deterministic_tie_breaking": [
+      "weighted_score",
+      "target_force_rmse",
+      "replay_force_rmse",
+      "epoch",
+      "checkpoint_sha256"
+    ],
+    "restart_reconciliation_from_stop_state_and_catalog": true,
+    "campaign_wide_top_k_full_evaluation": "pending ADAPT-EVAL1",
+    "current_evaluator": "historical EVAL-MF remains runtime-authoritative until ADAPT-EVAL1"
+  },
+  "tests": [
+    {
+      "scope": "adaptive/campaign runtime",
+      "result": "91 passed, 1 skipped",
+      "note": "skip requires external real LTA training root"
+    },
+    {
+      "scope": "checkpoint/execution/storage",
+      "result": "41 passed"
+    },
+    {
+      "scope": "MLFF specification/schema",
+      "result": "137 passed, 1 deselected",
+      "note": "deselected pre-existing missing release/mlff_data9a9a_real_mpa0_restart_smoke.json fixture"
+    },
+    {
+      "scope": "ADAPT-RANK1 focused",
+      "result": "7 passed"
+    }
+  ],
+  "numerical_policy": {
+    "score_storage": "unrounded FP64",
+    "rank_key_score_canonicalization_decimals": 15,
+    "reason": "prevent sub-scientific binary representation noise from bypassing deterministic tie-breakers"
+  }
+}

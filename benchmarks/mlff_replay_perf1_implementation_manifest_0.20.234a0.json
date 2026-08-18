@@ -1,0 +1,15 @@
+{
+  "architecture_revision": 101,
+  "files": [
+    "mdstats/training_data/replay_index.py",
+    "mdstats/training_data/replay.py",
+    "mdstats/training_data/replay_pseudolabel.py",
+    "mdstats/training_data/campaign_cli.py",
+    "tests/test_mlff_replay_perf1.py"
+  ],
+  "foundation_model_specific": false,
+  "next_gate": "CAMPAIGN-PERF-QUAL1",
+  "release": "0.20.234a0",
+  "schema": "mdstats.mlff-replay-perf1-implementation-manifest.v1",
+  "scientific_authority_change": false
+}

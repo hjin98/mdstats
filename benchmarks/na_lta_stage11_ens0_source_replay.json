@@ -1,0 +1,139 @@
+{
+  "atom_count": 168,
+  "bundle_signature": "787b2cfb3029266ac401702bbe8cf625fc2a43129f36f79cf275f44d416adc9d",
+  "cells_complete": true,
+  "controls": {
+    "EDIFF": 1e-05,
+    "IALGO": 38,
+    "ISIF": 2,
+    "LREAL_effective": true,
+    "LREAL_explicit": "Auto",
+    "MDALGO": 2,
+    "NELM": 100,
+    "NELMIN": 2,
+    "NSW": 1500,
+    "POTIM": 1.0,
+    "PREC_effective": "accura",
+    "PREC_explicit": "Accurate",
+    "ROPT": [
+      -0.00025,
+      -0.00025,
+      -0.00025,
+      -0.00025
+    ],
+    "SMASS": -3.0
+  },
+  "energy_channels": [
+    {
+      "complete": true,
+      "first_value": -1174.24992329,
+      "frame_count": 1500,
+      "last_value": -1175.60354671,
+      "present_count": 1500,
+      "semantic_role": "electronic_zero_smearing_extrapolation",
+      "source_name": "e_0_energy",
+      "units": "eV"
+    },
+    {
+      "complete": true,
+      "first_value": -1174.24992329,
+      "frame_count": 1500,
+      "last_value": -1175.60354671,
+      "present_count": 1500,
+      "semantic_role": "electronic_free_energy",
+      "source_name": "e_fr_energy",
+      "units": "eV"
+    },
+    {
+      "complete": true,
+      "first_value": -1174.24992329,
+      "frame_count": 1500,
+      "last_value": -1175.60354671,
+      "present_count": 1500,
+      "semantic_role": "electronic_energy_without_entropy",
+      "source_name": "e_wo_entrp",
+      "units": "eV"
+    },
+    {
+      "complete": true,
+      "first_value": 6.01526812,
+      "frame_count": 1500,
+      "last_value": 7.0556959,
+      "present_count": 1500,
+      "semantic_role": "ionic_kinetic_energy",
+      "source_name": "kinetic",
+      "units": "eV"
+    },
+    {
+      "complete": true,
+      "first_value": 0.0,
+      "frame_count": 1500,
+      "last_value": 0.0,
+      "present_count": 1500,
+      "semantic_role": "lattice_kinetic_energy",
+      "source_name": "lattice kinetic",
+      "units": "eV"
+    },
+    {
+      "complete": true,
+      "first_value": 0.0,
+      "frame_count": 1500,
+      "last_value": 0.0,
+      "present_count": 1500,
+      "semantic_role": "nose_thermostat_kinetic_energy",
+      "source_name": "nosekinetic",
+      "units": "eV"
+    },
+    {
+      "complete": true,
+      "first_value": 0.0,
+      "frame_count": 1500,
+      "last_value": 0.0,
+      "present_count": 1500,
+      "semantic_role": "nose_thermostat_potential_energy",
+      "source_name": "nosepot",
+      "units": "eV"
+    },
+    {
+      "complete": true,
+      "first_value": -1168.23465517,
+      "frame_count": 1500,
+      "last_value": -1168.54785081,
+      "present_count": 1500,
+      "semantic_role": "source_reported_total_energy",
+      "source_name": "total",
+      "units": "eV"
+    }
+  ],
+  "forces_complete": true,
+  "ionic_step_count": 1500,
+  "max_rss_kib": 229036,
+  "mdstats_version": "0.20.17a0",
+  "native_velocity_frame_count": 0,
+  "next_stage": "11E-ENS1 ensemble and method certification",
+  "parse_wall_seconds": 1.5458071829998516,
+  "positions_complete": true,
+  "scf_iteration_count_max": 24,
+  "scf_iteration_count_min": 3,
+  "schema": "mdstats.stage11-ens0-real-source-replay.v1",
+  "scientific_interpretation": "not_performed_by_ENS0",
+  "source_file_name": "vasprun(1).xml",
+  "source_identity_signature": "92fd811b47ff6d3ff7408a19fe3cb786599827465066075b2615a9cc67c37774",
+  "source_program": "vasp",
+  "source_program_subversion": "20Jul23 (build Jul 18 2025 10:32:48) complex                          parallel",
+  "source_program_version": "6.4.2",
+  "source_size_bytes": 37529184,
+  "stage": "11E-ENS0",
+  "steps_reaching_nelm": 0,
+  "stresses_complete": true,
+  "user_labels": [
+    {
+      "authority": "comment_only",
+      "notes": [
+        "Retained as a user comment; excluded from ensemble and method inference."
+      ],
+      "source_name": "SYSTEM",
+      "value": "Na-LTA 300K NVT AIMD"
+    }
+  ]
+}

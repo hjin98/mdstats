@@ -1,0 +1,34 @@
+{
+  "architecture_revision": 30,
+  "behavior": {
+    "checkpoint_materialization_scope": true,
+    "historical_torchscript_warning_code_preserved": true,
+    "mace_torch_warnings": "grouped by origin/category/source/message and emitted once per process signature",
+    "non_mace_torch_warnings": "replayed unchanged",
+    "outer_evaluation_scope": true,
+    "target_head_export_scope": true
+  },
+  "date": "2026-08-08",
+  "notes": [
+    "Real MACE 0.3.16/e3nn checkpoint materialization/export tests were included in the compatibility sweep.",
+    "No MLFF DATA8, checkpoint-selection, prediction-cache, precision-profile, or storage ownership identity changed."
+  ],
+  "observed_user_warning_groups": [
+    "torch.jit.load deprecated",
+    "torch.jit.save deprecated",
+    "torch.jit.script deprecated",
+    "MACE tensor-copy construction warning",
+    "TorchScript instance-annotation warning via ast.py"
+  ],
+  "package_version": "0.20.112a0",
+  "pre_existing_failure": "release/mlff_data9a9a_real_mpa0_restart_smoke.json is absent",
+  "roadmap_next_gate": "STOR2",
+  "schema": "mdstats.mlff-warning-condensation-qualification.v1",
+  "scientific_identity_changed": false,
+  "scope": "MACE/PyTorch warning condensation during campaign evaluation",
+  "tests": {
+    "campaign_evaluation_real_mace_compatibility_sweep": "97 passed, 1 external-LTA skip",
+    "mlff_specification_suite": "120 passed, 1 pre-existing missing historical evidence failure",
+    "warning_compatibility_tests": "13 passed"
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "schema": "mdstats.mlcv-rank1-qualification.v1",
+  "release": "0.20.134a0",
+  "gate": "MLCV-RANK1",
+  "date": "2026-08-10",
+  "stop_geometry": {
+    "target_stop_relation": "0.80 * full_target_threshold",
+    "replay_full_threshold_relation": "(target_score_weight / replay_score_weight) * full_target_threshold",
+    "replay_stop_relation": "1.20 * full_replay_threshold",
+    "default_target_full_ev_per_angstrom": 0.03,
+    "default_target_stop_ev_per_angstrom": 0.024,
+    "default_replay_full_ev_per_angstrom": 0.03,
+    "default_replay_stop_ev_per_angstrom": 0.036,
+    "margin_factors_fixed_in_v2": true
+  },
+  "rank1": {
+    "default_candidate_limit": 5,
+    "scope": "independent_per_training_run",
+    "full_threshold_prefilter": false,
+    "new_inference": false,
+    "checkpoint_deserialization": false,
+    "deterministic_tie_break": [
+      "weighted_score",
+      "target_force_rmse",
+      "replay_force_rmse",
+      "epoch",
+      "checkpoint_sha256"
+    ],
+    "new_record_schema": "mdstats.lightweight-run-champion.v2",
+    "legacy_record_schema": "mdstats.lightweight-run-champion.v1"
+  },
+  "tests": {
+    "focused": {
+      "passed": 85,
+      "skipped": 3,
+      "failed": 0
+    },
+    "broad_segmented": {
+      "passed": 724,
+      "skipped": 32,
+      "failed": 0
+    },
+    "historical_data9a9a_spec": {
+      "passed": 4,
+      "deselected_missing_fixture": 1
+    },
+    "known_missing_fixture": "release/mlff_data9a9a_real_mpa0_restart_smoke.json",
+    "packaged_tree_focused": {
+      "passed": 22,
+      "skipped": 0,
+      "failed": 0
+    }
+  },
+  "pdf_preflight": {
+    "architecture_manual_pages": 101,
+    "cli_guide_pages": 13,
+    "openable": true,
+    "encrypted": false
+  },
+  "next_gate": "MLCV-SELECT1"
+}

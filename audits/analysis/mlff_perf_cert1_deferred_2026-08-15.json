@@ -1,0 +1,52 @@
+{
+  "assessments": [],
+  "authority_version": "mdstats.perf-cert1.end-to-end.2026-08.v1",
+  "authorization": {
+    "generated_default_change_authorized": false,
+    "generated_default_policy_revision_required": false,
+    "phase_separated_acceleration_profile_recommended": false
+  },
+  "baseline": null,
+  "blocking_reasons": [
+    "authoritative_e3nn_baseline_missing",
+    "accelerated_profile_evidence_missing",
+    "CUEQ_PHASE1_TRAINING_QUALIFICATION"
+  ],
+  "candidates": [],
+  "content_digest": "03fa0009d6b8b0878387f8d7b8a64ff7573bdca384e3bb9f02399adeae246f18",
+  "passed": false,
+  "policy": {
+    "authority_version": "mdstats.perf-cert1.end-to-end.2026-08.v1",
+    "baseline_profile_kind": "authoritative_e3nn_baseline",
+    "content_digest": "ecd6f5ea74422d0cd2e553450726ed6327ed1a501c1f36ff3113adca27b44a6a",
+    "generated_default_change_authorized": false,
+    "minimum_total_speedup": 1.0,
+    "require_available_deployment_pass": true,
+    "require_available_physical_pass": true,
+    "require_eval2_pass": true,
+    "require_exact_data6_selection_identity": true,
+    "require_exact_data7_selection_identity": true,
+    "require_exact_hard_decision_identity": true,
+    "require_exact_target_selection_identity": true,
+    "require_locked_test_not_used_for_tuning": true,
+    "require_positive_total_speedup": true,
+    "require_replay_retention": true,
+    "schema": "mdstats.perf-cert1-policy.v1"
+  },
+  "recommended_profile_id": null,
+  "schema": "mdstats.perf-cert1-qualification.v1",
+  "upstream": {
+    "content_digest": "f01c66f33d5f042202393b94843545a365e490f128df8c3abc7cf3d936efb47a",
+    "cueq_dep1_runtime_digest": "0e59a5c702db7e981cae4d8d451d0b2896e1a0b2c139ed0f4498a5869a2ab497",
+    "cueq_phase1_passed": false,
+    "cueq_phase1_qualification_digest": "85992087455325b24d7e997b3a166488168c0c3ff927db0276f2ee9c98d57972",
+    "cueq_phase2_passed": false,
+    "cueq_phase2_qualification_digest": "d43d3bb04feb52d8ac339065ec7a1e5f279e448f9aafbae4bce9e189f863bd65",
+    "phase1_training_authorized": false,
+    "phase2_data6_authorized": false,
+    "phase2_pseudolabel_authorized": false,
+    "phase2_source_authorized": false,
+    "phase2_source_evaluation_authorized": false,
+    "schema": "mdstats.perf-cert1-upstream-authority.v1"
+  }
+}

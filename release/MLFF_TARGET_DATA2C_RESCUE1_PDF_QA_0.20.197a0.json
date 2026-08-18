@@ -1,0 +1,37 @@
+{
+  "schema": "mdstats.mlff-target-data2c-rescue1-pdf-qa.v1",
+  "version": "0.20.197a0",
+  "architecture_revision": 64,
+  "status": "pass",
+  "artifacts": [
+    {
+      "path": "ARCHITECTURE_NOTES_MLFF_REV64.pdf",
+      "pages": 1,
+      "preflight": "pass",
+      "visual_qa": "pass"
+    },
+    {
+      "path": "PATCH_NOTES_0.20.197a0.pdf",
+      "pages": 1,
+      "preflight": "pass",
+      "visual_qa": "pass"
+    },
+    {
+      "path": "docs/specs/training_data/mlff_target_data2c_rescue1_bounded_upper_ladder_spec.pdf",
+      "pages": 1,
+      "preflight": "pass",
+      "visual_qa": "pass"
+    },
+    {
+      "path": "docs/arch_manuals/mlff_training_data_architecture.pdf",
+      "pages": 200,
+      "preflight": "pass",
+      "visual_qa": "pass",
+      "inspected_pages": [
+        1,
+        199,
+        200
+      ]
+    }
+  ]
+}

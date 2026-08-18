@@ -1,0 +1,917 @@
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.104a0_to_0.20.105a0.patch' mdstats-0.20.104a0-complete-source-package/CHANGELOG.md mdstats105/CHANGELOG.md
+--- mdstats-0.20.104a0-complete-source-package/CHANGELOG.md	2026-08-08 09:27:29.481463126 +0000
++++ mdstats105/CHANGELOG.md	2026-08-08 09:32:42.957038392 +0000
+@@ -1,3 +1,11 @@
++## 0.20.105a0
++
++- Fix MLFF DATA6 progress timing so batched/sharded completion callbacks are not mistaken for numerical throughput. DATA6 now coalesces progress notification after each persistence drain, samples recent throughput only over real wall-clock windows, and derives ETA from cumulative post-restart work rate.
++- Fix the same callback-burst timing defect in universal structural selection progress reporting under threaded execution.
++- Harden the shared DATA2/DATA4/DATA8/TRAIN/EVAL/EXPORT/VERIFY progress reporter against instant cache/restart completions poisoning subsequent ETA calculations; immediate reused work becomes a timing baseline and ETA remains `estimating` until timed work exists.
++- Add deterministic regression coverage reproducing the observed `recent=1708 frame/s`, `avg=20 frame/s`, `eta=20s` failure mode. At 3,100/36,759 and 20.07 frame/s cumulative throughput, the corrected ETA is about 28 minutes.
++- This is a progress-reporting/runtime maintenance release only. It does not change frozen MLFF scientific, DATA8 materialization, checkpoint, prediction-cache, or verification identities.
++
+ ## 0.20.104a0
+ 
+ - Restore the `tools/` source-checkout front ends omitted from 0.20.100a0--0.20.103a0 source distributions and package them explicitly.
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.104a0_to_0.20.105a0.patch' mdstats-0.20.104a0-complete-source-package/PATCH_NOTES_0.20.105a0.md mdstats105/PATCH_NOTES_0.20.105a0.md
+--- mdstats-0.20.104a0-complete-source-package/PATCH_NOTES_0.20.105a0.md	1970-01-01 00:00:00.000000000 +0000
++++ mdstats105/PATCH_NOTES_0.20.105a0.md	2026-08-08 09:32:42.959815746 +0000
+@@ -0,0 +1,43 @@
++# mdstats 0.20.105a0 patch notes
++
++## Scope
++
++This maintenance release corrects misleading wall-clock throughput and ETA reporting in the MLFF preparation/campaign path. No scientific record schema, selection policy, model-training protocol, checkpoint identity, or verification identity is changed.
++
++## Root cause
++
++DATA6 performs foundation-model work in numerical batches and persists results in artifact shards. The old implementation emitted one logical progress callback per frame only after a completed batch was being journaled. A reporter sampling the time between those callbacks measured how quickly Python drained already-computed bookkeeping events, not how quickly MACE computed frames. Thus a real cumulative rate near 20 frame/s could be paired with a spurious "recent" rate above 1,000 frame/s and an ETA of only seconds.
++
++The threaded universal-structural-feature path had the same producer/consumer timing risk: completed futures can be consumed in bursts after workers have already performed the numerical work.
++
++A related restart/cache issue existed in the generic campaign reporter: multiple already-complete items emitted immediately at startup could be counted as current throughput and make the ETA for the remaining expensive work unrealistically small.
++
++## Changes
++
++1. `production_model_sweep.py` coalesces DATA6 progress callbacks to one notification per persistence drain instead of one notification per journaled frame.
++2. New internal `ProgressRateTracker` separates cumulative wall-clock throughput from recent diagnostics. Recent-rate samples require a real minimum wall-clock window, so sub-second callback bursts are ignored.
++3. DATA6 ETA uses cumulative throughput since the current run/restart baseline. A restored verified checkpoint resets the baseline so previously completed frames do not inflate the rate.
++4. Universal structural selection uses the same stable tracker and cumulative ETA policy.
++5. `_ProgressReporter` treats immediate startup cache/restart completions as baseline work and displays `eta=estimating` until actual timed work has been observed.
++6. Progress interval tests use completed-count deltas rather than exact modulo hits, so coalesced/batched callbacks cannot skip reporting merely because a batch jumped across an interval boundary.
++
++## Example
++
++For
++
++```text
++[DATA6   3100/36759] ... recent=1708.24 frame/s avg=20.07 frame/s eta=20s
++```
++
++the cumulative rate implies
++
++```text
++remaining = 36759 - 3100 = 33659 frames
++ETA = 33659 / 20.07 s = 1677 s ≈ 28 min
++```
++
++The corrected reporter therefore stays near that cumulative estimate rather than using the callback-drain burst rate.
++
++## Compatibility
++
++All frozen MLFF scientific/materialization identities remain unchanged. Existing 0.20.99a0+ campaigns, DATA6/DATA8 artifacts, checkpoints, prediction caches, and verification records remain reusable.
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.104a0_to_0.20.105a0.patch' mdstats-0.20.104a0-complete-source-package/docs/arch_manuals/README.md mdstats105/docs/arch_manuals/README.md
+--- mdstats-0.20.104a0-complete-source-package/docs/arch_manuals/README.md	2026-08-08 09:03:46.590790724 +0000
++++ mdstats105/docs/arch_manuals/README.md	2026-08-08 09:32:42.820756105 +0000
+@@ -46,8 +46,8 @@
+ 
+ - `mlff_training_data_architecture.{md,pdf}`: canonical MLFF-DATA architecture
+   through the frozen 0.20.99a0 scientific campaign identity, the 0.20.103a0
+-  execution-optimization line, and the 0.20.104a0 source-tool/package-integrity
+-  repair, including the recorded post-first-campaign staged
++  execution-optimization line, and the 0.20.104a0 source-tool/package-integrity repair, and the 0.20.105a0
++  progress-timing correctness repair, including the recorded post-first-campaign staged
+   optimization roadmap (`OPT-EVAL1` through `OPT-CTRL1`). The generic core owns provenance, eligibility,
+   partitioning, leakage control, selection orchestration, replay, precision,
+   training-backend calls, deployment, and validation policy. Physical
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.104a0_to_0.20.105a0.patch' mdstats-0.20.104a0-complete-source-package/mdstats/_version.py mdstats105/mdstats/_version.py
+--- mdstats-0.20.104a0-complete-source-package/mdstats/_version.py	2026-08-08 09:03:25.564639906 +0000
++++ mdstats105/mdstats/_version.py	2026-08-08 09:32:42.814794474 +0000
+@@ -1,3 +1,3 @@
+ """Package version."""
+ 
+-__version__ = "0.20.104a0"
++__version__ = "0.20.105a0"
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.104a0_to_0.20.105a0.patch' mdstats-0.20.104a0-complete-source-package/mdstats/data/observable_owner_manuals.json mdstats105/mdstats/data/observable_owner_manuals.json
+--- mdstats-0.20.104a0-complete-source-package/mdstats/data/observable_owner_manuals.json	2026-08-08 09:03:26.040009768 +0000
++++ mdstats105/mdstats/data/observable_owner_manuals.json	2026-08-08 09:32:42.814843387 +0000
+@@ -17,6 +17,6 @@
+       "uri": "mdstats-doc://vacf-dynamics-architecture/0.20.53a0"
+     }
+   },
+-  "package_version": "0.20.104a0",
++  "package_version": "0.20.105a0",
+   "schema": "mdstats.observable-owner-manual-index.v1"
+ }
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.104a0_to_0.20.105a0.patch' mdstats-0.20.104a0-complete-source-package/mdstats/training_data/campaign_cli.py mdstats105/mdstats/training_data/campaign_cli.py
+--- mdstats-0.20.104a0-complete-source-package/mdstats/training_data/campaign_cli.py	2026-08-08 01:27:37.000000000 +0000
++++ mdstats105/mdstats/training_data/campaign_cli.py	2026-08-08 09:32:52.382089365 +0000
+@@ -33,6 +33,8 @@
+ import tomllib
+ from typing import Any, Callable, Iterable, Mapping, Sequence
+ 
++from .progress_timing import ProgressRateTracker
++
+ from ._common import (
+     configure_sha256_receipt_store,
+     digest,
+@@ -63,8 +65,9 @@
+ 
+ # 0.20.100a0 changes plotting policy, 0.20.101a0 changes evaluation execution
+ # topology, 0.20.102a0 changes bounded-verification execution/scaling, and
+-# 0.20.103a0 changes only orchestration/telemetry/control-plane execution. None
+-# changes the frozen MLFF scientific/materialization identity, so existing
++# 0.20.103a0 changes only orchestration/telemetry/control-plane execution,
++# 0.20.104a0 repairs source packaging, and 0.20.105a0 repairs progress timing.
++# None changes the frozen MLFF scientific/materialization identity, so existing
+ # 0.20.99a0 campaign state and prediction caches remain reusable.
+ MLFF_DATA9B3_VERSION = "0.20.99a0"
+ # Parallel scheduling does not change the scientific NVE case identity. Keep
+@@ -1538,7 +1541,12 @@
+ 
+ 
+ class _ProgressReporter:
+-    """Compact elapsed/rate/ETA reporter for long campaign stages."""
++    """Compact elapsed/rate/ETA reporter for long campaign stages.
++
++    Immediate cache/restart completions are treated as baseline work rather
++    than throughput samples.  This avoids predicting an hours-long remaining
++    run from a millisecond burst of already-complete items.
++    """
+ 
+     def __init__(self, label: str, total: int, *, minimum_interval_seconds: float = 15.0):
+         self.label = str(label)
+@@ -1546,6 +1554,12 @@
+         self.started = time.monotonic()
+         self.last_printed = self.started
+         self.minimum_interval_seconds = float(minimum_interval_seconds)
++        self._rate_tracker = ProgressRateTracker(
++            completed=0,
++            started_at=self.started,
++            minimum_recent_window_seconds=1.0,
++        )
++        self._startup_baseline_seconds = 1.0
+ 
+     @staticmethod
+     def _duration(seconds: float) -> str:
+@@ -1567,12 +1581,22 @@
+         if not force and index < self.total and now - self.last_printed < self.minimum_interval_seconds:
+             return
+         elapsed = now - self.started
+-        rate = index / elapsed if elapsed > 0.0 else 0.0
+-        eta = (self.total - index) / rate if rate > 0.0 else 0.0
++        # Completed/recovered work reported immediately after reporter creation
++        # is not a sample of current execution speed.  Move the rate baseline
++        # past that startup burst.
++        if elapsed <= self._startup_baseline_seconds and index < self.total:
++            self._rate_tracker.reset(completed=index, now=now)
++        timing = self._rate_tracker.snapshot(
++            completed=index, total=self.total, now=now
++        )
++        if timing.eta_seconds is None:
++            eta_text = "estimating"
++        else:
++            eta_text = self._duration(timing.eta_seconds)
+         suffix = f" — {detail}" if detail else ""
+         print(
+             f"[{self.label} {index:>3}/{self.total}] {name} complete{suffix}; "
+-            f"elapsed={self._duration(elapsed)}, eta={self._duration(eta)}",
++            f"elapsed={self._duration(elapsed)}, eta={eta_text}",
+             flush=True,
+         )
+         self.last_printed = now
+@@ -3102,19 +3126,21 @@
+     progress_state = {
+         "last_report_time": start,
+         "last_report_completed": 0,
+-        "baseline_completed": 0,
+-        "work_start": start,
+-        "recent_rate": 0.0,
++        "timing": ProgressRateTracker(
++            completed=0,
++            started_at=start,
++            minimum_recent_window_seconds=1.0,
++        ),
+     }
+     progress_interval = int(_cfg(cfg, "model", "progress_interval", 100))
+ 
+     def report_sweep(completed: int, total: int, frame_uid: str) -> None:
+         now = time.monotonic()
++        tracker = progress_state["timing"]
+         if frame_uid == "restored-checkpoint":
+-            progress_state["baseline_completed"] = completed
++            tracker.reset(completed=completed, now=now)
+             progress_state["last_report_completed"] = completed
+             progress_state["last_report_time"] = now
+-            progress_state["work_start"] = now
+             print(
+                 f"[DATA6 {completed:>6}/{total}] restored verified checkpoint; "
+                 f"remaining={total - completed}",
+@@ -3123,35 +3149,30 @@
+             return
+         should_report = (
+             completed == total
+-            or completed % max(1, progress_interval) == 0
++            or completed - progress_state["last_report_completed"]
++            >= max(1, progress_interval)
+             or now - progress_state["last_report_time"] >= 30.0
+         )
+         if should_report:
+-            interval_frames = completed - progress_state["last_report_completed"]
+-            interval_seconds = now - progress_state["last_report_time"]
+-            instantaneous_rate = (
+-                interval_frames / interval_seconds if interval_seconds > 0 else 0.0
+-            )
+-            previous_rate = progress_state["recent_rate"]
+-            recent_rate = (
+-                instantaneous_rate
+-                if previous_rate <= 0.0
+-                else 0.35 * instantaneous_rate + 0.65 * previous_rate
+-            )
+-            new_completed = completed - progress_state["baseline_completed"]
+-            work_elapsed = now - progress_state["work_start"]
+-            average_rate = new_completed / work_elapsed if work_elapsed > 0 else 0.0
+-            eta_rate = recent_rate if recent_rate > 0 else average_rate
+-            eta = (total - completed) / eta_rate if eta_rate > 0 else 0.0
++            timing = tracker.snapshot(completed=completed, total=total, now=now)
++            eta_text = (
++                "estimating"
++                if timing.eta_seconds is None
++                else _ProgressReporter._duration(timing.eta_seconds)
++            )
++            recent_text = (
++                "estimating"
++                if timing.recent_rate <= 0.0
++                else f"{timing.recent_rate:.2f} frame/s"
++            )
+             print(
+                 f"[DATA6 {completed:>6}/{total}] frame={frame_uid[:12]} "
+-                f"recent={recent_rate:.2f} frame/s avg={average_rate:.2f} frame/s "
+-                f"eta={_ProgressReporter._duration(eta)}",
++                f"recent={recent_text} avg={timing.average_rate:.2f} frame/s "
++                f"eta={eta_text}",
+                 flush=True,
+             )
+             progress_state["last_report_time"] = now
+             progress_state["last_report_completed"] = completed
+-            progress_state["recent_rate"] = recent_rate
+ 
+     sweep_batch_size, sweep_resources, sweep_estimate = _resolve_model_sweep_batch_size(
+         cfg, task_count=len(frames.frames)
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.104a0_to_0.20.105a0.patch' mdstats-0.20.104a0-complete-source-package/mdstats/training_data/production_model_sweep.py mdstats105/mdstats/training_data/production_model_sweep.py
+--- mdstats-0.20.104a0-complete-source-package/mdstats/training_data/production_model_sweep.py	2026-08-05 23:17:58.000000000 +0000
++++ mdstats105/mdstats/training_data/production_model_sweep.py	2026-08-08 09:30:59.883041246 +0000
+@@ -1672,6 +1672,7 @@
+ 
+         def persist_artifact_buffer(*, force: bool = False) -> None:
+             nonlocal pending_journal_flush
++            last_persisted_uid: str | None = None
+             while artifact_buffer and (
+                 force or len(artifact_buffer) >= active_execution.artifact_shard_size
+             ):
+@@ -1717,13 +1718,20 @@
+                     existing_records[uid] = frame_record
+                     _append_model_sweep_journal_event(journal, record=frame_record)
+                     pending_journal_flush += 1
+-                    if progress_callback is not None:
+-                        progress_callback(
+-                            len(existing_records), len(plan.requested_frame_uids), uid
+-                        )
++                    last_persisted_uid = uid
+                     if pending_journal_flush >= active_execution.checkpoint_interval:
+                         _flush_model_sweep_journal(journal)
+                         pending_journal_flush = 0
++            # Numerical work is produced in batches and artifacts are then
++            # journaled/sharded.  Report once per persistence drain so the
++            # callback cadence reflects real wall-clock work instead of a
++            # millisecond burst of per-frame bookkeeping callbacks.
++            if progress_callback is not None and last_persisted_uid is not None:
++                progress_callback(
++                    len(existing_records),
++                    len(plan.requested_frame_uids),
++                    last_persisted_uid,
++                )
+ 
+         try:
+             while cursor < len(requested_pending):
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.104a0_to_0.20.105a0.patch' mdstats-0.20.104a0-complete-source-package/mdstats/training_data/progress_timing.py mdstats105/mdstats/training_data/progress_timing.py
+--- mdstats-0.20.104a0-complete-source-package/mdstats/training_data/progress_timing.py	1970-01-01 00:00:00.000000000 +0000
++++ mdstats105/mdstats/training_data/progress_timing.py	2026-08-08 09:30:58.151144927 +0000
+@@ -0,0 +1,127 @@
++"""Small wall-clock progress-rate helpers for MLFF campaign reporting.
++
++The training-data pipeline often computes work in batches and then publishes
++many logical completions together.  A callback-drain rate is not a compute
++throughput rate, so ETA calculations must be based on wall-clock work since a
++stable baseline rather than on arbitrarily short callback bursts.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++
++
++@dataclass(frozen=True, slots=True)
++class ProgressTimingSnapshot:
++    """One stable progress timing estimate."""
++
++    average_rate: float
++    recent_rate: float
++    eta_seconds: float | None
++    elapsed_seconds: float
++
++
++class ProgressRateTracker:
++    """Track cumulative and recent rates without sampling callback bursts.
++
++    ``average_rate`` and ETA use all actual work completed since the current
++    baseline.  ``recent_rate`` is an EWMA, but a new sample is accepted only
++    after ``minimum_recent_window_seconds`` of wall time.  This prevents a
++    batched producer from looking thousands of times faster merely because it
++    emits many completion callbacks after the numerical batch has finished.
++    """
++
++    __slots__ = (
++        "alpha",
++        "baseline_completed",
++        "minimum_recent_window_seconds",
++        "recent_rate",
++        "sample_completed",
++        "sample_started",
++        "started",
++    )
++
++    def __init__(
++        self,
++        *,
++        completed: int = 0,
++        started_at: float,
++        minimum_recent_window_seconds: float = 1.0,
++        alpha: float = 0.35,
++    ) -> None:
++        if completed < 0:
++            raise ValueError("completed must be nonnegative")
++        if minimum_recent_window_seconds <= 0.0:
++            raise ValueError("minimum_recent_window_seconds must be positive")
++        if not 0.0 < alpha <= 1.0:
++            raise ValueError("alpha must be in (0, 1]")
++        self.alpha = float(alpha)
++        self.minimum_recent_window_seconds = float(minimum_recent_window_seconds)
++        self.reset(completed=completed, now=float(started_at))
++
++    def reset(self, *, completed: int, now: float) -> None:
++        if completed < 0:
++            raise ValueError("completed must be nonnegative")
++        self.baseline_completed = int(completed)
++        self.started = float(now)
++        self.sample_completed = int(completed)
++        self.sample_started = float(now)
++        self.recent_rate = 0.0
++
++    def snapshot(
++        self,
++        *,
++        completed: int,
++        total: int,
++        now: float,
++    ) -> ProgressTimingSnapshot:
++        completed = int(completed)
++        total = int(total)
++        now = float(now)
++        if total < 0 or completed < 0 or completed > total:
++            raise ValueError("progress counts must satisfy 0 <= completed <= total")
++        if completed < self.baseline_completed:
++            raise ValueError("completed cannot precede the timing baseline")
++
++        elapsed = max(0.0, now - self.started)
++        completed_since_baseline = completed - self.baseline_completed
++        average_rate = (
++            completed_since_baseline / elapsed
++            if completed_since_baseline > 0 and elapsed > 0.0
++            else 0.0
++        )
++
++        sample_elapsed = max(0.0, now - self.sample_started)
++        sample_delta = completed - self.sample_completed
++        if (
++            sample_delta > 0
++            and sample_elapsed >= self.minimum_recent_window_seconds
++        ):
++            instantaneous_rate = sample_delta / sample_elapsed
++            self.recent_rate = (
++                instantaneous_rate
++                if self.recent_rate <= 0.0
++                else self.alpha * instantaneous_rate
++                + (1.0 - self.alpha) * self.recent_rate
++            )
++            self.sample_completed = completed
++            self.sample_started = now
++
++        # ETA intentionally uses the cumulative post-baseline rate.  The recent
++        # rate is useful diagnostics, but on batched/parallel pipelines it can
++        # legitimately be bursty even with a minimum sampling window.  A stable
++        # cumulative ETA is preferable to optimistic countdowns that jump by
++        # orders of magnitude.
++        remaining = total - completed
++        if remaining == 0:
++            eta_seconds: float | None = 0.0
++        elif average_rate > 0.0:
++            eta_seconds = remaining / average_rate
++        else:
++            eta_seconds = None
++        return ProgressTimingSnapshot(
++            average_rate=float(average_rate),
++            recent_rate=float(self.recent_rate),
++            eta_seconds=eta_seconds,
++            elapsed_seconds=float(elapsed),
++        )
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.104a0_to_0.20.105a0.patch' mdstats-0.20.104a0-complete-source-package/mdstats/training_data/structural_selection.py mdstats105/mdstats/training_data/structural_selection.py
+--- mdstats-0.20.104a0-complete-source-package/mdstats/training_data/structural_selection.py	2026-08-07 03:17:04.000000000 +0000
++++ mdstats105/mdstats/training_data/structural_selection.py	2026-08-08 09:30:59.279544550 +0000
+@@ -27,6 +27,7 @@
+     compute_local_structure_features,
+ )
+ 
++from .progress_timing import ProgressRateTracker
+ from ._common import (
+     TrainingDataInputError,
+     TrainingDataSerializationError,
+@@ -1750,7 +1751,11 @@
+         started = time.monotonic()
+         last_report_time = started
+         last_report_completed = 0
+-        recent_rate = 0.0
++        progress_timing = ProgressRateTracker(
++            completed=0,
++            started_at=started,
++            minimum_recent_window_seconds=1.0,
++        )
+ 
+         if progress_callback is not None:
+             membership_note = (
+@@ -1862,7 +1867,7 @@
+             completed: int,
+         ) -> None:
+             nonlocal frame_values, frame_missing, expected_frame_names
+-            nonlocal last_report_time, last_report_completed, recent_rate
++            nonlocal last_report_time, last_report_completed
+             nonlocal event_count
+             (
+                 record,
+@@ -1967,33 +1972,29 @@
+             now = time.monotonic()
+             if progress_callback is not None and (
+                 completed == len(records)
+-                or completed % progress_interval == 0
++                or completed - last_report_completed >= progress_interval
+                 or now - last_report_time >= 30.0
+             ):
+-                elapsed = max(now - started, 1.0e-12)
+-                interval_elapsed = max(now - last_report_time, 1.0e-12)
+-                interval_rate = (
+-                    completed - last_report_completed
+-                ) / interval_elapsed
+-                recent_rate = (
+-                    interval_rate
+-                    if recent_rate <= 0.0
+-                    else 0.35 * interval_rate + 0.65 * recent_rate
++                timing = progress_timing.snapshot(
++                    completed=completed, total=len(records), now=now
++                )
++                recent_text = (
++                    "estimating"
++                    if timing.recent_rate <= 0.0
++                    else f"{timing.recent_rate:.2f} frame/s"
+                 )
+-                average_rate = completed / elapsed
+-                eta_rate = recent_rate if recent_rate > 0.0 else average_rate
+-                eta_seconds = (
+-                    (len(records) - completed) / eta_rate
+-                    if eta_rate > 0.0
+-                    else 0.0
++                eta_text = (
++                    "estimating"
++                    if timing.eta_seconds is None
++                    else f"{timing.eta_seconds / 60.0:.1f} min"
+                 )
+                 rss = _resident_set_mib()
+                 rss_text = "" if rss is None else f"; peak_rss={rss:,.0f} MiB"
+                 progress_callback(
+                     f"universal structure {completed:,}/{len(records):,}; "
+-                    f"recent={recent_rate:.2f} frame/s; "
+-                    f"avg={average_rate:.2f} frame/s; "
+-                    f"eta={eta_seconds / 60.0:.1f} min; "
++                    f"recent={recent_text}; "
++                    f"avg={timing.average_rate:.2f} frame/s; "
++                    f"eta={eta_text}; "
+                     f"events={event_count:,}{rss_text}"
+                 )
+                 last_report_time = now
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.104a0_to_0.20.105a0.patch' mdstats-0.20.104a0-complete-source-package/pyproject.toml mdstats105/pyproject.toml
+--- mdstats-0.20.104a0-complete-source-package/pyproject.toml	2026-08-08 09:03:25.563491586 +0000
++++ mdstats105/pyproject.toml	2026-08-08 09:32:42.814665963 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.104a0"
++version = "0.20.105a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.104a0_to_0.20.105a0.patch' mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data0_architecture_specification.py mdstats105/tests/test_mlff_data0_architecture_specification.py
+--- mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data0_architecture_specification.py	2026-08-08 09:03:26.054324200 +0000
++++ mdstats105/tests/test_mlff_data0_architecture_specification.py	2026-08-08 09:32:42.819590855 +0000
+@@ -263,4 +263,4 @@
+ def test_mlff_data0_pdf_and_version_artifacts_exist() -> None:
+     assert MANUAL_PDF.stat().st_size > 10_000
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.104a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.105a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.104a0_to_0.20.105a0.patch' mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data1_specification.py mdstats105/tests/test_mlff_data1_specification.py
+--- mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data1_specification.py	2026-08-08 09:03:26.043658525 +0000
++++ mdstats105/tests/test_mlff_data1_specification.py	2026-08-08 09:32:42.815957811 +0000
+@@ -49,4 +49,4 @@
+     assert callable(mdstats.assign_balanced_round_robin)
+     assert callable(mdstats.build_complete_frame_block_plan)
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.104a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.105a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.104a0_to_0.20.105a0.patch' mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data2a_manifest_inference_specification.py mdstats105/tests/test_mlff_data2a_manifest_inference_specification.py
+--- mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-08 09:03:26.044412224 +0000
++++ mdstats105/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-08 09:32:42.816315763 +0000
+@@ -15,7 +15,7 @@
+ 
+ 
+ def test_data2a_version_public_api_and_documented_contract() -> None:
+-    assert mdstats.__version__ == "0.20.104a0"
++    assert mdstats.__version__ == "0.20.105a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert callable(mdstats.infer_training_manifest_metadata)
+     policy = mdstats.ManifestInferencePolicy()
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.104a0_to_0.20.105a0.patch' mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data9a2_specification.py mdstats105/tests/test_mlff_data9a2_specification.py
+--- mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data9a2_specification.py	2026-08-08 09:03:26.054352372 +0000
++++ mdstats105/tests/test_mlff_data9a2_specification.py	2026-08-08 09:32:42.819646598 +0000
+@@ -23,7 +23,7 @@
+         "finite energy, force, and stress",
+     ):
+         assert required in text
+-    assert 'version = "0.20.104a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.105a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "DATA9A2 real-MACE realization is implemented in `0.20.39a0`" in ARCH.read_text()
+ 
+ 
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.104a0_to_0.20.105a0.patch' mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data9a3_specification.py mdstats105/tests/test_mlff_data9a3_specification.py
+--- mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data9a3_specification.py	2026-08-08 09:03:26.047718733 +0000
++++ mdstats105/tests/test_mlff_data9a3_specification.py	2026-08-08 09:32:42.817214517 +0000
+@@ -9,5 +9,5 @@
+     assert "37,632" in text
+     assert "supported_with_temporal_blocks_only" in text
+     assert "production_replay_corpus_not_bound" in text
+-    assert 'version = "0.20.104a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.105a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "MLFF-DATA9A3 production qualification" in ARCH.read_text()
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.104a0_to_0.20.105a0.patch' mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data9a4_precision_specification.py mdstats105/tests/test_mlff_data9a4_precision_specification.py
+--- mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data9a4_precision_specification.py	2026-08-08 09:03:26.043832553 +0000
++++ mdstats105/tests/test_mlff_data9a4_precision_specification.py	2026-08-08 09:32:42.816046052 +0000
+@@ -9,7 +9,7 @@
+     assert "float32" in text and "float64" in text
+     assert "MaceModelPrecisionRecord" in text
+     assert "MacePrecisionTransitionRecord" in text
+-    assert "version = \"0.20.104a0\"" in (ROOT / "pyproject.toml").read_text()
++    assert "version = \"0.20.105a0\"" in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_bind_precision_to_protocol() -> None:
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.104a0_to_0.20.105a0.patch' mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data9a5_critical_fp64_specification.py mdstats105/tests/test_mlff_data9a5_critical_fp64_specification.py
+--- mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-08 09:03:26.045788658 +0000
++++ mdstats105/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-08 09:32:42.816649368 +0000
+@@ -14,7 +14,7 @@
+     assert 'version: "0.20.42a0"' in text
+     assert "training_force_jacobian_dtype = model" in text
+     assert "Python/ASE" in text
+-    assert 'version = "0.20.104a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.105a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_data9a5_architecture_declares_scope_and_limits() -> None:
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.104a0_to_0.20.105a0.patch' mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data9a5_deployment_specification.py mdstats105/tests/test_mlff_data9a5_deployment_specification.py
+--- mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data9a5_deployment_specification.py	2026-08-08 09:03:26.053237056 +0000
++++ mdstats105/tests/test_mlff_data9a5_deployment_specification.py	2026-08-08 09:32:42.819026557 +0000
+@@ -13,7 +13,7 @@
+     assert 'version: "0.20.43a0"' in text
+     assert "downstream runtime owns" in text
+     assert "float32-to-float64 promotion does not restore" in text
+-    assert 'version = "0.20.104a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.105a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_keep_lammps_outside_mdstats_scope() -> None:
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.104a0_to_0.20.105a0.patch' mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data9a6c_observable_evidence_specification.py mdstats105/tests/test_mlff_data9a6c_observable_evidence_specification.py
+--- mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-08 09:03:26.053305518 +0000
++++ mdstats105/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-08 09:32:42.819089911 +0000
+@@ -74,5 +74,5 @@
+ 
+ def test_packaged_owner_manual_index_is_valid() -> None:
+     payload = json.loads(MANUAL_INDEX.read_text(encoding="utf-8"))
+-    assert payload["package_version"] == "0.20.104a0"
++    assert payload["package_version"] == "0.20.105a0"
+     assert "structural-observables-architecture" in payload["manuals"]
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.104a0_to_0.20.105a0.patch' mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data9a7a_material_profile_specification.py mdstats105/tests/test_mlff_data9a7a_material_profile_specification.py
+--- mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-08 09:03:26.054199055 +0000
++++ mdstats105/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-08 09:32:42.819489505 +0000
+@@ -64,4 +64,4 @@
+ 
+ 
+ def test_release_version_is_data9a7a() -> None:
+-    assert 'version = "0.20.104a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert 'version = "0.20.105a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.104a0_to_0.20.105a0.patch' mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data9a7b_specification.py mdstats105/tests/test_mlff_data9a7b_specification.py
+--- mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data9a7b_specification.py	2026-08-08 09:03:26.050416619 +0000
++++ mdstats105/tests/test_mlff_data9a7b_specification.py	2026-08-08 09:32:42.817940304 +0000
+@@ -69,7 +69,7 @@
+ 
+ 
+ def test_data9a7b_public_exports_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.104a0"
++    assert mdstats.__version__ == "0.20.105a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert callable(mdstats.compute_local_structure_features)
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.104a0_to_0.20.105a0.patch' mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data9a7c_specification.py mdstats105/tests/test_mlff_data9a7c_specification.py
+--- mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data9a7c_specification.py	2026-08-08 09:03:26.055679683 +0000
++++ mdstats105/tests/test_mlff_data9a7c_specification.py	2026-08-08 09:32:42.820286838 +0000
+@@ -47,7 +47,7 @@
+ 
+ 
+ def test_public_api_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.104a0"
++    assert mdstats.__version__ == "0.20.105a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert mdstats.MLFF_DATA9A7C_PARSER_VERSION == "0.20.49a0"
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.104a0_to_0.20.105a0.patch' mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data9a7d_specification.py mdstats105/tests/test_mlff_data9a7d_specification.py
+--- mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data9a7d_specification.py	2026-08-08 09:03:26.047105292 +0000
++++ mdstats105/tests/test_mlff_data9a7d_specification.py	2026-08-08 09:32:42.817063453 +0000
+@@ -39,6 +39,6 @@
+ 
+ 
+ def test_data9a7d_runtime_versions() -> None:
+-    assert mdstats.__version__ == "0.20.104a0"
++    assert mdstats.__version__ == "0.20.105a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7D_PARSER_VERSION == "0.20.50a0"
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.104a0_to_0.20.105a0.patch' mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data9a7e_specification.py mdstats105/tests/test_mlff_data9a7e_specification.py
+--- mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data9a7e_specification.py	2026-08-08 09:03:26.044049035 +0000
++++ mdstats105/tests/test_mlff_data9a7e_specification.py	2026-08-08 09:32:42.816181363 +0000
+@@ -39,7 +39,7 @@
+         "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
+         "CROSS_SYSTEM_QUALIFICATION_SUITE",
+     } <= nodes
+-    assert mdstats.__version__ == "0.20.104a0"
++    assert mdstats.__version__ == "0.20.105a0"
+     assert mdstats.MLFF_DATA9A7E_PARSER_VERSION == "0.20.51a0"
+     assert callable(mdstats.qualify_cross_system_case)
+     assert callable(mdstats.build_cross_system_qualification_suite)
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.104a0_to_0.20.105a0.patch' mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data9a8_specification.py mdstats105/tests/test_mlff_data9a8_specification.py
+--- mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data9a8_specification.py	2026-08-08 09:03:26.051482091 +0000
++++ mdstats105/tests/test_mlff_data9a8_specification.py	2026-08-08 09:32:42.818415119 +0000
+@@ -66,7 +66,7 @@
+ 
+ 
+ def test_public_runtime_exposes_data9a8_without_removed_aliases() -> None:
+-    assert mdstats.__version__ == "0.20.104a0"
++    assert mdstats.__version__ == "0.20.105a0"
+     assert mdstats.MLFF_DATA9A8_PARSER_VERSION == "0.20.52a0"
+     assert mdstats.ObservableComparisonPolicy
+     assert mdstats.compare_mlff_observable_validation
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.104a0_to_0.20.105a0.patch' mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data9a9a_specification.py mdstats105/tests/test_mlff_data9a9a_specification.py
+--- mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data9a9a_specification.py	2026-08-08 09:03:26.054806997 +0000
++++ mdstats105/tests/test_mlff_data9a9a_specification.py	2026-08-08 09:32:42.819834847 +0000
+@@ -65,7 +65,7 @@
+ 
+ 
+ def test_public_runtime_exports_data9a9a_contracts() -> None:
+-    assert mdstats.__version__ == "0.20.104a0"
++    assert mdstats.__version__ == "0.20.105a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A9A_VERSION
+     assert mdstats.Data6ModelSweepPlan
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.104a0_to_0.20.105a0.patch' mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data9a9b_specification.py mdstats105/tests/test_mlff_data9a9b_specification.py
+--- mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data9a9b_specification.py	2026-08-08 09:03:26.049104070 +0000
++++ mdstats105/tests/test_mlff_data9a9b_specification.py	2026-08-08 09:32:42.817596073 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9b_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.104a0"
++    assert mdstats.__version__ == "0.20.105a0"
+     for name in (
+         "ProductionMaterializationPlan",
+         "ProductionMaterializationCheckpoint",
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.104a0_to_0.20.105a0.patch' mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data9a9c_specification.py mdstats105/tests/test_mlff_data9a9c_specification.py
+--- mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data9a9c_specification.py	2026-08-08 09:03:26.050938454 +0000
++++ mdstats105/tests/test_mlff_data9a9c_specification.py	2026-08-08 09:32:42.818163656 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9c_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.104a0"
++    assert mdstats.__version__ == "0.20.105a0"
+     for name in (
+         "ProductionCorpusPlan", "ProductionExpectedRun",
+         "ProfileExtensionEvidenceRequirement", "ProductionCorpusQualificationRecord",
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.104a0_to_0.20.105a0.patch' mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data9a_specification.py mdstats105/tests/test_mlff_data9a_specification.py
+--- mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data9a_specification.py	2026-08-08 09:03:26.053776597 +0000
++++ mdstats105/tests/test_mlff_data9a_specification.py	2026-08-08 09:32:42.819298862 +0000
+@@ -14,7 +14,7 @@
+ 
+ 
+ def test_data9a_runtime_specification_is_canonical() -> None:
+-    assert 'version = "0.20.104a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.105a0"' in (ROOT / "pyproject.toml").read_text()
+     architecture = ARCH.read_text()
+     stage = STAGE.read_text()
+     specification = SPEC.read_text()
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.104a0_to_0.20.105a0.patch' mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data9b1_specification.py mdstats105/tests/test_mlff_data9b1_specification.py
+--- mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data9b1_specification.py	2026-08-08 09:03:26.055169846 +0000
++++ mdstats105/tests/test_mlff_data9b1_specification.py	2026-08-08 09:32:42.820013613 +0000
+@@ -18,8 +18,8 @@
+     assert "TrainingCampaignPlan" in text
+     assert "CheckpointSelectionRecord" in text
+     assert "mdstats-mace-train" in text
+-    assert mdstats.__version__ == "0.20.104a0"
+-    assert 'version = "0.20.104a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert mdstats.__version__ == "0.20.105a0"
++    assert 'version = "0.20.105a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+ 
+ 
+ def test_data9b1_is_integrated_into_manual_and_stage_plan() -> None:
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.104a0_to_0.20.105a0.patch' mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data9b2_specification.py mdstats105/tests/test_mlff_data9b2_specification.py
+--- mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data9b2_specification.py	2026-08-08 09:03:26.047846012 +0000
++++ mdstats105/tests/test_mlff_data9b2_specification.py	2026-08-08 09:32:42.817278682 +0000
+@@ -23,7 +23,7 @@
+         'mdstats-mace-select-head',
+     ):
+         assert token in text
+-    assert mdstats.__version__ == '0.20.104a0'
++    assert mdstats.__version__ == '0.20.105a0'
+     assert mdstats.MLFF_DATA9B2_VERSION == '0.20.57a0'
+ 
+ 
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.104a0_to_0.20.105a0.patch' mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data9b3_campaign_cli_specification.py mdstats105/tests/test_mlff_data9b3_campaign_cli_specification.py
+--- mdstats-0.20.104a0-complete-source-package/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-08 09:03:26.046073030 +0000
++++ mdstats105/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-08 09:32:42.816784699 +0000
+@@ -16,7 +16,7 @@
+ 
+ 
+ def test_data9b3_version_and_user_surface() -> None:
+-    assert mdstats.__version__ == "0.20.104a0"
++    assert mdstats.__version__ == "0.20.105a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert TOOL.is_file()
+     assert TOOL.stat().st_mode & 0o111
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.104a0_to_0.20.105a0.patch' mdstats-0.20.104a0-complete-source-package/tests/test_mlff_opt_ctrl1_specification.py mdstats105/tests/test_mlff_opt_ctrl1_specification.py
+--- mdstats-0.20.104a0-complete-source-package/tests/test_mlff_opt_ctrl1_specification.py	2026-08-08 09:03:26.055347289 +0000
++++ mdstats105/tests/test_mlff_opt_ctrl1_specification.py	2026-08-08 09:32:42.820161002 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_ctrl1_release_identity_preserves_scientific_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.104a0"
++    assert mdstats.__version__ == "0.20.105a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.104a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.105a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_ctrl1_architecture_and_spec_close_roadmap() -> None:
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.104a0_to_0.20.105a0.patch' mdstats-0.20.104a0-complete-source-package/tests/test_mlff_opt_eval4_specification.py mdstats105/tests/test_mlff_opt_eval4_specification.py
+--- mdstats-0.20.104a0-complete-source-package/tests/test_mlff_opt_eval4_specification.py	2026-08-08 09:03:26.040697799 +0000
++++ mdstats105/tests/test_mlff_opt_eval4_specification.py	2026-08-08 09:32:42.815301567 +0000
+@@ -11,9 +11,9 @@
+ 
+ 
+ def test_opt_eval4_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.104a0"
++    assert mdstats.__version__ == "0.20.105a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+-    assert 'version = "0.20.104a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.105a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_eval4_architecture_and_spec_record_pipeline_contract() -> None:
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.104a0_to_0.20.105a0.patch' mdstats-0.20.104a0-complete-source-package/tests/test_mlff_opt_verify1_specification.py mdstats105/tests/test_mlff_opt_verify1_specification.py
+--- mdstats-0.20.104a0-complete-source-package/tests/test_mlff_opt_verify1_specification.py	2026-08-08 09:03:26.055320049 +0000
++++ mdstats105/tests/test_mlff_opt_verify1_specification.py	2026-08-08 09:32:42.820116315 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_verify1_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.104a0"
++    assert mdstats.__version__ == "0.20.105a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.104a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.105a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_verify1_architecture_and_spec_record_contract() -> None:
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.104a0_to_0.20.105a0.patch' mdstats-0.20.104a0-complete-source-package/tests/test_mlff_perf2_parallel_acceleration_specification.py mdstats105/tests/test_mlff_perf2_parallel_acceleration_specification.py
+--- mdstats-0.20.104a0-complete-source-package/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-08 09:03:26.051828825 +0000
++++ mdstats105/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-08 09:32:42.818552774 +0000
+@@ -10,7 +10,7 @@
+ 
+ 
+ def test_perf2_release_and_configuration_contract() -> None:
+-    assert mdstats.__version__ == "0.20.104a0"
++    assert mdstats.__version__ == "0.20.105a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     template = campaign_cli._config_template(
+         workspace="workspace",
+diff -ruN '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.104a0_to_0.20.105a0.patch' mdstats-0.20.104a0-complete-source-package/tests/test_mlff_progress_timing.py mdstats105/tests/test_mlff_progress_timing.py
+--- mdstats-0.20.104a0-complete-source-package/tests/test_mlff_progress_timing.py	1970-01-01 00:00:00.000000000 +0000
++++ mdstats105/tests/test_mlff_progress_timing.py	2026-08-08 09:32:16.589456900 +0000
+@@ -0,0 +1,91 @@
++from __future__ import annotations
++
++from pathlib import Path
++
++import pytest
++
++import mdstats
++from mdstats.training_data.progress_timing import ProgressRateTracker
++from tests.test_mlff_data9a9a_production_model_sweep import (
++    _CountingCalculator,
++    _inputs,
++    _provider,
++)
++
++
++def test_data6_eta_uses_cumulative_work_rate_not_callback_burst_rate() -> None:
++    tracker = ProgressRateTracker(
++        completed=0,
++        started_at=0.0,
++        minimum_recent_window_seconds=1.0,
++    )
++    # Reproduce the reported order of magnitude: 3,100 frames at ~20.07 frame/s.
++    elapsed = 3100.0 / 20.07
++    first = tracker.snapshot(completed=3100, total=36759, now=elapsed)
++    assert first.average_rate == pytest.approx(20.07)
++    assert first.recent_rate == pytest.approx(20.07)
++    assert first.eta_seconds == pytest.approx((36759 - 3100) / 20.07)
++    assert first.eta_seconds / 60.0 == pytest.approx(27.95, rel=2.0e-3)
++
++    # A hundred already-computed completion callbacks arrive 50 ms later.  The
++    # recent estimator must not interpret callback draining as numerical work.
++    burst = tracker.snapshot(completed=3200, total=36759, now=elapsed + 0.05)
++    assert burst.recent_rate == pytest.approx(first.recent_rate)
++    assert burst.recent_rate < 100.0
++    assert burst.eta_seconds is not None
++    assert burst.eta_seconds > 20.0 * 60.0
++
++
++def test_progress_rate_tracker_resets_after_restored_checkpoint() -> None:
++    tracker = ProgressRateTracker(completed=0, started_at=0.0)
++    tracker.reset(completed=3000, now=100.0)
++    timing = tracker.snapshot(completed=3100, total=36759, now=105.0)
++    assert timing.average_rate == pytest.approx(20.0)
++    assert timing.recent_rate == pytest.approx(20.0)
++    assert timing.eta_seconds == pytest.approx((36759 - 3100) / 20.0)
++
++
++def test_model_sweep_coalesces_batched_progress_callbacks(tmp_path: Path) -> None:
++    _, frames, frame_data, _, data5, policy = _inputs(tmp_path)
++    provider = _provider(_CountingCalculator())
++    events: list[tuple[int, int, str]] = []
++    result = mdstats.run_restartable_data6_model_sweep(
++        frames,
++        frame_data,
++        data5,
++        policy,
++        provider,
++        tmp_path / "coalesced-progress",
++        execution_policy=mdstats.Data6ModelSweepExecutionPolicy(
++            batch_size=128,
++            artifact_shard_size=1,
++            checkpoint_interval=1,
++        ),
++        progress_callback=lambda completed, total, uid: events.append(
++            (completed, total, uid)
++        ),
++    )
++    assert result.complete
++    non_restore = [event for event in events if event[2] != "restored-checkpoint"]
++    # One numerical batch may create many shard records, but progress is emitted
++    # once after that persistence drain rather than once per record.
++    assert len(non_restore) == 1
++    assert non_restore[0][0] == len(result.checkpoint.completed_frame_uids)
++    assert non_restore[0][1] == len(result.checkpoint.plan.requested_frame_uids)
++
++
++def test_generic_progress_reporter_ignores_immediate_restart_burst(monkeypatch, capsys) -> None:
++    import mdstats.training_data.campaign_cli as campaign_cli
++
++    times = iter((100.0, 100.01, 110.01))
++    monkeypatch.setattr(campaign_cli.time, "monotonic", lambda: next(times))
++    reporter = campaign_cli._ProgressReporter("TEST", 3)
++    reporter.item_done(1, "cached", "already complete")
++    first = capsys.readouterr().out
++    assert "eta=estimating" in first
++
++    reporter.item_done(2, "real", "computed")
++    second = capsys.readouterr().out
++    # The first cached item is the baseline; one real item in ten seconds leaves
++    # one item and therefore predicts ~10 s, not ~5 s from counting the cache hit.
++    assert "eta=10s" in second

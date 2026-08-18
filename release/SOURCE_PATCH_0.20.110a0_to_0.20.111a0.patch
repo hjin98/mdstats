@@ -1,0 +1,2340 @@
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/CHANGELOG.md ./CHANGELOG.md
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/CHANGELOG.md	2026-08-08 21:05:49.000000000 +0000
++++ ./CHANGELOG.md	2026-08-08 21:22:50.968353041 +0000
+@@ -1,3 +1,11 @@
++## 0.20.111a0 - 2026-08-08
++
++- Implement MLFF STOR1 read-only storage accounting via `mdstats-mlff-campaign storage`, including logical, allocated-physical, and unique-inode byte accounting plus largest file/directory reporting.
++- Add explicit campaign artifact ownership/retention families and protected-input cataloging for training data, foundation model, replay data, true labels, and the campaign config.
++- Add fail-closed real-path and symlink containment to the pre-existing cleanup/checkpoint-pruning paths; external materialization/checkpoint paths referenced by campaign records no longer confer deletion authority.
++- Preserve campaign-owned symlink cleanup without traversing or deleting external symlink targets.
++- Keep STOR1 reclamation-free; STOR2 remains the next gate for authenticated completed-checkpoint compaction.
++
+ ## 0.20.110a0
+ 
+ - Implement MLFF gate PREC3: activate `single`, `double`, and `refine` precision profiles end to end across preparation, preflight, training, checkpoint evaluation, verification, and deployment reporting.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/PATCH_NOTES_0.20.111a0.md ./PATCH_NOTES_0.20.111a0.md
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/PATCH_NOTES_0.20.111a0.md	1970-01-01 00:00:00.000000000 +0000
++++ ./PATCH_NOTES_0.20.111a0.md	2026-08-08 21:22:50.968487751 +0000
+@@ -0,0 +1,15 @@
++# mdstats 0.20.111a0 patch notes
++
++This release closes MLFF gate STOR1.
++
++## Read-only storage report
++
++`mdstats-mlff-campaign storage` inventories the campaign workspace and writes `results/storage-report.json` only when the report destination passes ownership/containment checks. The report distinguishes path-logical bytes, inode-deduplicated allocated physical bytes, and unique-inode logical bytes; classifies artifact families and retention roles; records protected configured inputs and symlink escapes; and lists the largest files/directories. No reclamation is performed.
++
++## Ownership boundary hardening
++
++Configured training/source, foundation, replay, true-label, and campaign configuration paths remain protected user/reference inputs even when nested inside the workspace. Existing cleanup and post-evaluation checkpoint pruning now require the same campaign ownership boundary before deleting, compacting SQLite, or writing cleanup diagnostics/reports. A path recorded in campaign state is not deletion authority. Campaign-owned symlink objects can be unlinked safely, but external targets are never traversed or deleted.
++
++## Next gate
++
++STOR2 will qualify authenticated model-state-only evaluation capsules for completed non-resume checkpoints. STOR1 deliberately introduces no new destructive cleanup tier.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/README.md ./README.md
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/README.md	2026-08-08 21:07:10.000000000 +0000
++++ ./README.md	2026-08-08 21:22:50.967548857 +0000
+@@ -4,7 +4,13 @@
+ 
+ Checkpoint accuracy is judged against independent DFT labels. Foundation-generated replay pseudolabels remain the default replay training targets and an absolute behavioral-drift diagnostic. Set `[paths].replay_true_labels` to the original true-label replay directory so mdstats can evaluate both the foundation and fine-tuned checkpoint on the same target and replay geometries without changing training inputs.
+ 
+-Current development release: **0.20.110a0** (PREC3 end-to-end precision-profile activation and cross-stage evaluation/deployment).
++Current development release: **0.20.111a0** (STOR1 read-only campaign storage accounting and ownership containment).
++
++## Read-only campaign storage accounting in 0.20.111a0
++
++Run `mdstats-mlff-campaign storage -c campaign.toml` to inventory the campaign workspace without reclaiming anything. STOR1 reports logical bytes, inode-deduplicated allocated physical bytes, unique-inode logical bytes, ownership/retention families, protected external inputs, symlink escapes, future reclamation eligibility, capability loss, and the largest files/directories. The JSON report is written to `results/storage-report.json` only when that destination is itself inside the verified ownership boundary.
++
++Configured training, foundation, replay, true-label, and campaign-config paths remain protected user/reference inputs even when physically located inside the workspace. Existing cleanup and checkpoint-pruning code now consumes the same real-path/symlink containment boundary, so a path found in TOML/SQLite/JSON never grants deletion authority over external data. STOR1 adds no new deletion mode; STOR2 is the next gate.
+ 
+ 
+ ## Explicit precision profiles in 0.20.108a0
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/docs/README.md ./docs/README.md
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/docs/README.md	2026-08-08 21:07:10.000000000 +0000
++++ ./docs/README.md	2026-08-08 21:25:48.007774044 +0000
+@@ -39,9 +39,11 @@
+   precision-profile roadmap; PREC1/PREC2/PREC3 are implemented through 0.20.110a0: `single`, `double`, and `refine` initialization,
+   explicit staged schedules, in-process FP32-to-FP64 optimizer/EMA promotion, restart
+   correctness, and campaign-wide qualification.
+-- `specs/training_data/mlff_storage_management_spec.{md,pdf}` defines the planned STOR1-STOR5
+-  ownership-scoped storage roadmap: accounting, checkpoint compaction, automatic safe
+-  reclamation, manual tiered cleanup, and optional deduplication/cold archival.
++- `specs/training_data/mlff_storage_management_spec.{md,pdf}` defines the STOR1-STOR5
++  ownership-scoped storage roadmap; STOR1 is implemented in 0.20.111a0 with read-only
++  accounting and fail-closed ownership containment, while STOR2-STOR5 cover checkpoint
++  compaction, automatic safe reclamation, manual tiered cleanup, and optional
++  deduplication/cold archival.
+ - `specs/training_data/mlff_data9b1_campaign_checkpoint_control_spec.{md,pdf}`
+   defines the passed-gate campaign matrix, checkpoint byte catalog, metric
+   admissibility, and deterministic fail-closed selection contracts.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/docs/arch_manuals/README.md ./docs/arch_manuals/README.md
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/docs/arch_manuals/README.md	2026-08-08 12:51:29.000000000 +0000
++++ ./docs/arch_manuals/README.md	2026-08-08 21:29:19.152818786 +0000
+@@ -49,13 +49,13 @@
+   execution-optimization line, the 0.20.104a0 source-tool/package-integrity repair,
+   and the 0.20.105a0 progress-timing correctness repair. It records the completed
+   post-first-campaign roadmap (`OPT-EVAL1` through `OPT-CTRL1`) and the planned
+-  post-0.20.105 evaluation/precision/storage roadmap. `EVAL-MF1` is implemented in 0.20.106a0, `EVAL-MF2` in 0.20.107a0, and `PREC1` in 0.20.108a0; `PREC2`--`PREC3` and `STOR1`--`STOR5` remain staged future gates.
++  post-0.20.105 evaluation/precision/storage roadmap. `EVAL-MF1` is implemented in 0.20.106a0, `EVAL-MF2` in 0.20.107a0, `PREC1`--`PREC3` in 0.20.108a0--0.20.110a0, and `STOR1` in 0.20.111a0; `STOR2`--`STOR5` remain staged future gates.
+   The generic core owns provenance, eligibility,
+   partitioning, leakage control, selection orchestration, replay, precision,
+   training-backend calls, deployment, and validation policy. Physical
+   observables remain analysis-owned. LTA/ring/site semantics are an optional
+   profile extensions. DATA9A7a declarative contracts, DATA9A7b universal structural providers, DATA9A7c phase/geometry profiles, DATA9A7d optional-extension/LTA migration, and DATA9A7e cross-system qualification, DATA9A8 observable comparison, and DATA9A9a restartable production model sweeps are implemented.
+ - `mlff_training_data_dependency_graph.json`: machine-readable schema-26,
+-  architecture-revision-27 dependency graph. It separates generic material
++  architecture-revision-30 dependency graph. It separates generic material
+   profiles and observable validation from optional LTA enrichment and freezes
+-  holdout/protocol-exclusion dependencies. Revision 27 records PREC1 profile/configuration and resolved-schedule identity completion while preserving the later PREC2/PREC3 and storage dependencies; earlier DATA2A and scientific identities remain unchanged.
++  holdout/protocol-exclusion dependencies. Revision 30 records completed EVAL-MF1/MF2, PREC1/PREC2/PREC3, and STOR1 ownership/accounting while preserving STOR2-STOR5 dependencies; earlier DATA2A and scientific identities remain unchanged.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/docs/arch_manuals/mlff_training_data_architecture.md ./docs/arch_manuals/mlff_training_data_architecture.md
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-08 21:05:37.000000000 +0000
++++ ./docs/arch_manuals/mlff_training_data_architecture.md	2026-08-08 21:28:11.344958988 +0000
+@@ -4559,7 +4559,7 @@
+ 
+ With PREC3 closed, staged-precision checkpoint lifetimes and dtype-specific storage roles are stable enough for STOR1.
+ 
+-## STOR1 - campaign storage accounting and ownership boundary - planned
++## STOR1 - campaign storage accounting and ownership boundary - implemented in 0.20.111a0
+ 
+ Storage optimization begins with accounting and deletion authority, not deletion.
+ STOR1 shall inventory campaign artifacts by ownership, scientific/restart role,
+@@ -4593,8 +4593,29 @@
+ - restart/re-evaluation capability retained or lost by deletion; and
+ - the largest individual files/directories.
+ 
+-STOR1 is read-only. Its acceptance gate includes symlink/path-traversal tests and
+-fixtures proving that external user directories cannot become cleanup targets.
++STOR1 is read-only with respect to reclamation. `mdstats-mlff-campaign storage`
++walks the campaign workspace without following directory symlinks, writes
++`results/storage-report.json` when that destination itself passes containment checks,
++and reports logical bytes, inode-deduplicated allocated physical bytes, unique-inode
++logical bytes, ownership/retention family, planned automatic/manual eligibility,
++capability loss, and the largest files/directories.
++
++Configured `training_root`, foundation model, replay train/monitor, true-label replay,
++and the campaign configuration remain protected user/reference inputs even if a user
++places one physically inside the workspace. A campaign-owned symlink may itself be
++unlinked by existing cleanup when its parent is contained, but its external target is
++never traversed or treated as owned.
++STOR1 distinguishes link-object deletion authority from recursive traversal authority:
++a contained symlink object can be removed, while a cleanup root is traversable only when
++its resolved root is itself contained and does not overlap a protected input.
++
++STOR1 also retrofits the same `CampaignOwnershipBoundary` into the pre-existing cleanup
++and post-evaluation checkpoint-pruning code. A materialization/checkpoint path merely
++stored in SQLite/JSON cannot authorize deletion outside the workspace; unsafe state DB,
++runtime-record, diagnostic, or cleanup-report destinations fail closed. The acceptance
++gate covers hardlinks, symlink escapes, configured inputs inside the workspace,
++path-traversal/external materialization references, and preservation of existing safe
++cache cleanup behavior.
+ 
+ ## STOR2 - lossless completed-checkpoint compaction - planned
+ 
+@@ -4719,8 +4740,8 @@
+ 8. **capability loss is explicit** - any manual higher-tier reclamation states exactly
+    what can no longer be restarted, recomputed, or re-evaluated cheaply.
+ 
+-`EVAL-MF1` is implemented in 0.20.106a0, `EVAL-MF2` in 0.20.107a0, `PREC1` in 0.20.108a0, `PREC2` in 0.20.109a0, and `PREC3` in 0.20.110a0. The next implementation gate is `STOR1`. The remaining required implementation sequence is
+-`STOR1 -> STOR2 -> STOR3 -> STOR4 -> STOR5`.
++`EVAL-MF1` is implemented in 0.20.106a0, `EVAL-MF2` in 0.20.107a0, `PREC1` in 0.20.108a0, `PREC2` in 0.20.109a0, `PREC3` in 0.20.110a0, and `STOR1` in 0.20.111a0. The next implementation gate is `STOR2`. The remaining required implementation sequence is
++`STOR2 -> STOR3 -> STOR4 -> STOR5`.
+ Storage implementation does not begin until EVAL-MF and staged-precision work establish
+ the checkpoint, prediction, optimizer-state, and dtype lifetimes that storage policy
+ must respect.
+@@ -4752,5 +4773,5 @@
+ The staged optimization roadmap **OPT-EVAL1 through OPT-CTRL1 is complete**. The
+ post-0.20.105 multi-fidelity-evaluation/staged-precision/storage roadmap above is a
+ separate cycle opened by new production-scale profiling, FP64-training, and storage
+-evidence. `EVAL-MF1`, `EVAL-MF2`, `PREC1`, `PREC2`, and `PREC3` are implemented through 0.20.110a0; the next implementation gate is `STOR1`.
++evidence. `EVAL-MF1`, `EVAL-MF2`, `PREC1`, `PREC2`, `PREC3`, and `STOR1` are implemented through 0.20.111a0; the next implementation gate is `STOR2`.
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/docs/arch_manuals/mlff_training_data_dependency_graph.json ./docs/arch_manuals/mlff_training_data_dependency_graph.json
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-08 21:05:56.000000000 +0000
++++ ./docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-08 21:25:48.008129642 +0000
+@@ -1,7 +1,7 @@
+ {
+-  "architecture_revision": 29,
++  "architecture_revision": 30,
+   "branch": "MLFF-DATA",
+-  "description": "MLFF training-data dependency graph through DATA2A automatic review-manifest inference,  DATA9B3A frozen e3nn/cuEquivariance campaigns, MLFF-PERF2 resource-aware process/GPU execution,  EVAL-MF1/MF2 multi-fidelity checkpoint evaluation, and PREC1-PREC3 explicit precision profiles,  staged runtime transitions, cross-stage evaluation, and deployment activation. STOR1-STOR5 ownership-scoped  storage management remain planned. Scientific DATA9 identity remains unchanged.",
++  "description": "MLFF training-data dependency graph through DATA2A automatic review-manifest inference,  DATA9B3A frozen e3nn/cuEquivariance campaigns, MLFF-PERF2 resource-aware process/GPU execution,  EVAL-MF1/MF2 multi-fidelity checkpoint evaluation, and PREC1-PREC3 explicit precision profiles,  staged runtime transitions, cross-stage evaluation, and deployment activation. STOR1 read-only ownership/storage accounting is implemented; STOR2-STOR5 ownership-scoped  storage management remain planned. Scientific DATA9 identity remains unchanged.",
+   "documentation_gate": "MLFF-DATA0",
+   "edge_type_definitions": {
+     "execution_requires": "The upstream product must exist before execution.",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/docs/specs/training_data/mlff_staged_precision_profiles_spec.md ./docs/specs/training_data/mlff_staged_precision_profiles_spec.md
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/docs/specs/training_data/mlff_staged_precision_profiles_spec.md	2026-08-08 21:05:37.000000000 +0000
++++ ./docs/specs/training_data/mlff_staged_precision_profiles_spec.md	2026-08-08 21:25:48.007929204 +0000
+@@ -1,6 +1,6 @@
+ # MLFF PREC1-PREC3 staged-precision profile specification
+ 
+-Status: PREC1 implemented in mdstats 0.20.108a0; PREC2 implemented in mdstats 0.20.109a0; PREC3 implemented in mdstats 0.20.110a0. STOR1-STOR5 remain planned.
++Status: PREC1 implemented in mdstats 0.20.108a0; PREC2 implemented in mdstats 0.20.109a0; PREC3 implemented in mdstats 0.20.110a0. STOR1 is implemented in mdstats 0.20.111a0; STOR2-STOR5 remain planned.
+ 
+ ## Purpose
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/docs/specs/training_data/mlff_storage_management_spec.md ./docs/specs/training_data/mlff_storage_management_spec.md
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/docs/specs/training_data/mlff_storage_management_spec.md	2026-08-08 11:32:35.000000000 +0000
++++ ./docs/specs/training_data/mlff_storage_management_spec.md	2026-08-08 21:28:11.345151564 +0000
+@@ -1,6 +1,6 @@
+ # MLFF STOR1-STOR5 campaign storage-management specification
+ 
+-Status: planned after EVAL-MF1/MF2 and PREC1-PREC3.
++Status: STOR1 implemented in 0.20.111a0; STOR2-STOR5 planned.
+ 
+ ## Purpose
+ 
+@@ -25,15 +25,28 @@
+ 7. Any artifact required to restart an incomplete stage is protected.
+ 8. Cleanup must be fail-closed under ambiguous ownership or dependency state.
+ 
+-## STOR1 - accounting and ownership
++## STOR1 - accounting and ownership - implemented in 0.20.111a0
+ 
+-STOR1 is read-only. It introduces artifact ownership/retention classification and a
++STOR1 is read-only with respect to reclamation. It introduces artifact ownership/retention classification and a
+ storage report with logical bytes, allocated physical bytes when available, unique-inode
+ bytes, largest artifacts, restart/re-evaluation value, and reclamation eligibility.
+ 
+ Deletion eligibility requires campaign ownership, real-path containment, no symlink
+-escape, and a declared retention class. Tests must include malicious/accidental external
+-path references and symlink traversal.
++escape, and a declared retention class. The implemented `storage` CLI emits
++`results/storage-report.json` and performs no reclamation. It reports path-logical,
++inode-deduplicated allocated physical, and unique-inode logical bytes, plus artifact
++families, protected inputs, symlink escapes, largest files/directories, and future
++reclamation/capability classifications.
++
++The ownership boundary protects the campaign config and all configured source,
++foundation, replay, and true-label inputs even when physically nested inside the
++workspace. Existing cleanup/pruning now consumes the same boundary, so external paths
++referenced by campaign records cannot gain deletion authority. Tests cover
++malicious/accidental external references, symlink traversal, hardlinks, external
++materialization roots, and campaign symlinks whose targets must survive.
++The implementation distinguishes authorization to unlink a contained symlink object from
++a stricter traversal authorization; cleanup roots are traversed only when their resolved
++targets remain inside the campaign boundary and outside every protected input.
+ 
+ ## STOR2 - completed-checkpoint compaction
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/mdstats/__init__.py ./mdstats/__init__.py
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/mdstats/__init__.py	2026-08-08 20:52:13.000000000 +0000
++++ ./mdstats/__init__.py	2026-08-08 21:16:12.160778550 +0000
+@@ -4699,3 +4699,32 @@
+     "canonical_precision_schedule_policy",
+     "legacy_one_stage_precision_policy",
+ ]
++
++from .training_data import (
++    CAMPAIGN_ARTIFACT_OWNERSHIP_CATALOG_SCHEMA,
++    CAMPAIGN_STORAGE_REPORT_SCHEMA,
++    ArtifactOwnershipClass,
++    ArtifactRetentionClass,
++    ProtectedInputPath,
++    StorageFamilyRecord,
++    LargestArtifactRecord,
++    CampaignArtifactOwnershipCatalog,
++    CampaignStorageReport,
++    CampaignOwnershipBoundary,
++    configured_protected_inputs,
++    build_campaign_storage_report,
++)
++__all__ += [
++    "CAMPAIGN_ARTIFACT_OWNERSHIP_CATALOG_SCHEMA",
++    "CAMPAIGN_STORAGE_REPORT_SCHEMA",
++    "ArtifactOwnershipClass",
++    "ArtifactRetentionClass",
++    "ProtectedInputPath",
++    "StorageFamilyRecord",
++    "LargestArtifactRecord",
++    "CampaignArtifactOwnershipCatalog",
++    "CampaignStorageReport",
++    "CampaignOwnershipBoundary",
++    "configured_protected_inputs",
++    "build_campaign_storage_report",
++]
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/mdstats/_version.py ./mdstats/_version.py
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/mdstats/_version.py	2026-08-08 21:06:27.000000000 +0000
++++ ./mdstats/_version.py	2026-08-08 21:22:50.966584946 +0000
+@@ -1,3 +1,3 @@
+ """Package version."""
+ 
+-__version__ = "0.20.110a0"
++__version__ = "0.20.111a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/mdstats/data/observable_owner_manuals.json ./mdstats/data/observable_owner_manuals.json
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/mdstats/data/observable_owner_manuals.json	2026-08-08 21:06:27.000000000 +0000
++++ ./mdstats/data/observable_owner_manuals.json	2026-08-08 21:22:50.967233148 +0000
+@@ -17,6 +17,6 @@
+       "uri": "mdstats-doc://vacf-dynamics-architecture/0.20.53a0"
+     }
+   },
+-  "package_version": "0.20.110a0",
++  "package_version": "0.20.111a0",
+   "schema": "mdstats.observable-owner-manual-index.v1"
+ }
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/mdstats/training_data/__init__.py ./mdstats/training_data/__init__.py
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/mdstats/training_data/__init__.py	2026-08-08 20:52:13.000000000 +0000
++++ ./mdstats/training_data/__init__.py	2026-08-08 21:16:12.160778550 +0000
+@@ -1047,3 +1047,17 @@
+ )
+ 
+ __all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
++from .storage_accounting import (
++    CAMPAIGN_ARTIFACT_OWNERSHIP_CATALOG_SCHEMA,
++    CAMPAIGN_STORAGE_REPORT_SCHEMA,
++    ArtifactOwnershipClass,
++    ArtifactRetentionClass,
++    ProtectedInputPath,
++    StorageFamilyRecord,
++    LargestArtifactRecord,
++    CampaignArtifactOwnershipCatalog,
++    CampaignStorageReport,
++    CampaignOwnershipBoundary,
++    configured_protected_inputs,
++    build_campaign_storage_report,
++)
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/mdstats/training_data/campaign_cli.py ./mdstats/training_data/campaign_cli.py
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/mdstats/training_data/campaign_cli.py	2026-08-08 21:07:18.000000000 +0000
++++ ./mdstats/training_data/campaign_cli.py	2026-08-08 21:28:46.909707460 +0000
+@@ -35,6 +35,11 @@
+ from typing import Any, Callable, Iterable, Mapping, Sequence
+ 
+ from .progress_timing import ProgressRateTracker
++from .storage_accounting import (
++    CampaignOwnershipBoundary,
++    build_campaign_storage_report,
++    configured_protected_inputs,
++)
+ 
+ from ._common import (
+     configure_sha256_receipt_store,
+@@ -72,7 +77,8 @@
+ # 0.20.107a0 implements EVAL-MF2 conservative survivor/reporting/default migration,
+ # 0.20.108a0 implements PREC1 precision profiles/schedule identity, and
+ # 0.20.109a0 implements the PREC2 staged-transition/restart runtime substrate, and
+-# 0.20.110a0 implements PREC3 profile activation/reporting/cross-stage deployment.
++# 0.20.110a0 implements PREC3 profile activation/reporting/cross-stage deployment, and
++# 0.20.111a0 implements STOR1 read-only storage accounting/ownership boundaries.
+ # None changes the frozen MLFF scientific/materialization identity, so existing
+ # 0.20.99a0 campaign state and prediction caches remain reusable.
+ MLFF_DATA9B3_VERSION = "0.20.99a0"
+@@ -1283,6 +1289,7 @@
+     paths: CampaignPaths,
+     *,
+     run_roots: Sequence[Path] | None = None,
++    ownership_boundary: CampaignOwnershipBoundary | None = None,
+ ) -> set[str]:
+     active: set[str] = set()
+     if run_roots is None:
+@@ -1303,7 +1310,12 @@
+         if _pid_alive(pid):
+             active.add(run_root.name)
+         else:
+-            marker.unlink(missing_ok=True)
++            if ownership_boundary is None:
++                marker.unlink(missing_ok=True)
++            else:
++                authorized, _ = ownership_boundary.destructive_authorization(marker)
++                if authorized:
++                    marker.unlink(missing_ok=True)
+     return active
+ 
+ 
+@@ -1364,6 +1376,7 @@
+     dry_run: bool
+     actions: list[dict[str, Any]] = field(default_factory=list)
+     skipped: list[str] = field(default_factory=list)
++    ownership_boundary: CampaignOwnershipBoundary | None = field(default=None, repr=False)
+ 
+     @property
+     def reclaimed_bytes(self) -> int:
+@@ -1399,8 +1412,24 @@
+ ) -> None:
+     if not path.exists() and not path.is_symlink():
+         return
++    if report.ownership_boundary is not None:
++        authorized, detail = report.ownership_boundary.destructive_authorization(path)
++        if not authorized:
++            report.skipped.append(
++                f"cleanup authority denied for {path}: {detail}"
++            )
++            return
+     size = _path_size_bytes(path)
+     if diagnostic_path is not None and not report.dry_run:
++        if report.ownership_boundary is not None:
++            diagnostic_authorized, diagnostic_detail = (
++                report.ownership_boundary.destructive_authorization(diagnostic_path)
++            )
++            if not diagnostic_authorized:
++                report.skipped.append(
++                    f"cleanup diagnostic write denied for {diagnostic_path}: {diagnostic_detail}"
++                )
++                return
+         _write_cleanup_diagnostic(diagnostic_path, path, reason=reason)
+     if not report.dry_run:
+         if path.is_symlink() or path.is_file():
+@@ -1430,6 +1459,13 @@
+     stale_before: float,
+ ) -> None:
+     root = store.external_record_directory
++    if report.ownership_boundary is not None:
++        authorized, detail = report.ownership_boundary.traversal_authorization(root)
++        if not authorized:
++            report.skipped.append(
++                f"external-record cleanup skipped because the root failed ownership checks: {detail}: {root}"
++            )
++            return
+     if not root.is_dir():
+         return
+     references = set(store.storage_references())
+@@ -1462,7 +1498,14 @@
+     stale_before: float,
+ ) -> None:
+     current_roots = _current_materialization_roots(store)
+-    if paths.data.is_dir():
++    data_root_authorized = True
++    if report.ownership_boundary is not None:
++        data_root_authorized, detail = report.ownership_boundary.traversal_authorization(paths.data)
++        if not data_root_authorized:
++            report.skipped.append(
++                f"DATA7/DATA8 cleanup skipped because the data root failed ownership checks: {detail}: {paths.data}"
++            )
++    if data_root_authorized and paths.data.is_dir():
+         for variant_root in paths.data.iterdir():
+             if not variant_root.is_dir():
+                 continue
+@@ -1487,12 +1530,27 @@
+                     reason="obsolete unreferenced DATA7/DATA8 materialization root",
+                 )
+             if not report.dry_run:
+-                try:
+-                    variant_root.rmdir()
+-                except OSError:
+-                    pass
++                authorized = True
++                if report.ownership_boundary is not None:
++                    authorized, detail = report.ownership_boundary.destructive_authorization(variant_root)
++                    if not authorized:
++                        report.skipped.append(
++                            f"cleanup authority denied for {variant_root}: {detail}"
++                        )
++                if authorized:
++                    try:
++                        variant_root.rmdir()
++                    except OSError:
++                        pass
+ 
+     for root in current_roots:
++        if report.ownership_boundary is not None:
++            authorized, detail = report.ownership_boundary.traversal_authorization(root)
++            if not authorized:
++                report.skipped.append(
++                    f"DATA8 generation cleanup skipped because the recorded root failed ownership checks: {detail}: {root}"
++                )
++                continue
+         # Staging/link/legacy/corrupt trees are never valid restart inputs after
+         # an atomic promotion has completed.
+         for pattern in (
+@@ -1545,10 +1603,29 @@
+     if preflight_payload is None or not bool(preflight_payload.get("passed")):
+         return
+     root = paths.internal / "preflight-smoke"
++    if report.ownership_boundary is not None:
++        traversal_authorized, traversal_detail = (
++            report.ownership_boundary.traversal_authorization(root)
++        )
++        if not traversal_authorized:
++            report.skipped.append(
++                "preflight cleanup skipped because the root failed traversal ownership "
++                f"checks: {traversal_detail}: {root}"
++            )
++            return
+     if not root.is_dir():
+         return
+     diagnostic = root / "retained-diagnostic.json"
+     if not report.dry_run and not diagnostic.is_file():
++        if report.ownership_boundary is not None:
++            diagnostic_authorized, diagnostic_detail = (
++                report.ownership_boundary.destructive_authorization(diagnostic)
++            )
++            if not diagnostic_authorized:
++                report.skipped.append(
++                    f"preflight diagnostic write denied by ownership boundary: {diagnostic_detail}: {diagnostic}"
++                )
++                return
+         payload = preflight_payload
+         tails = {
+             name: _diagnostic_log_tail(root / name)
+@@ -1652,18 +1729,41 @@
+ ) -> _CampaignCleanupReport:
+     """Conservatively remove only artifacts not needed by current continuation."""
+ 
+-    report = _CampaignCleanupReport(phase=phase, dry_run=dry_run)
++    protected_inputs = configured_protected_inputs(
++        cfg, config_dir=paths.config_dir, config_path=paths.config
++    )
++    report = _CampaignCleanupReport(
++        phase=phase,
++        dry_run=dry_run,
++        ownership_boundary=CampaignOwnershipBoundary(
++            paths.workspace, protected_inputs=protected_inputs
++        ),
++    )
+     if not bool(_cfg(cfg, "cleanup", "enabled", True)):
+         report.skipped.append("automatic cleanup disabled by [cleanup].enabled")
+         return report
+     stale_hours = max(0.25, float(_cfg(cfg, "cleanup", "stale_age_hours", 6.0)))
+     stale_before = time.time() - stale_hours * 3600.0
++    runs_authorized = True
++    if report.ownership_boundary is not None:
++        runs_authorized, detail = report.ownership_boundary.traversal_authorization(paths.runs)
++        if not runs_authorized:
++            report.skipped.append(
++                f"run-tree cleanup skipped because the runs root failed ownership checks: {detail}: {paths.runs}"
++            )
+     run_roots = (
+-        tuple(child for child in paths.runs.iterdir() if child.is_dir())
+-        if paths.runs.is_dir()
++        tuple(
++            child for child in paths.runs.iterdir()
++            if child.is_dir() and not child.is_symlink()
++        )
++        if runs_authorized and paths.runs.is_dir()
+         else ()
+     )
+-    active_run_ids = _active_training_run_ids(paths, run_roots=run_roots)
++    active_run_ids = _active_training_run_ids(
++        paths,
++        run_roots=run_roots,
++        ownership_boundary=report.ownership_boundary,
++    )
+ 
+     _cleanup_orphan_record_storage(report, store, stale_before=stale_before)
+     _cleanup_materialization_storage(
+@@ -1714,10 +1814,16 @@
+             _cleanup_preflight_heavy_artifacts(report, paths, store)
+ 
+     if not dry_run:
++        assert report.ownership_boundary is not None
++        store_authorized, store_detail = report.ownership_boundary.destructive_authorization(store.path)
+         if active_run_ids:
+             report.skipped.append(
+                 "SQLite compaction skipped while live training children exist"
+             )
++        elif not store_authorized:
++            report.skipped.append(
++                f"SQLite compaction skipped because campaign state failed ownership checks: {store_detail}"
++            )
+         else:
+             try:
+                 store.compact(
+@@ -1727,10 +1833,16 @@
+                 )
+             except Exception as exc:
+                 report.skipped.append(f"SQLite compaction skipped: {exc}")
+-        _atomic_json(
+-            paths.results / f"cleanup-{phase}.json",
+-            report.to_dict(),
++        cleanup_report_path = paths.results / f"cleanup-{phase}.json"
++        output_authorized, output_detail = report.ownership_boundary.destructive_authorization(
++            cleanup_report_path
+         )
++        if output_authorized:
++            _atomic_json(cleanup_report_path, report.to_dict())
++        else:
++            report.skipped.append(
++                f"cleanup report write skipped by ownership boundary: {output_detail}"
++            )
+     return report
+ 
+ 
+@@ -8076,8 +8188,22 @@
+     import mdstats
+ 
+     report = _CampaignCleanupReport(
+-        phase="post-evaluate-checkpoints", dry_run=dry_run
++        phase="post-evaluate-checkpoints",
++        dry_run=dry_run,
++        ownership_boundary=CampaignOwnershipBoundary(
++            paths.workspace,
++            protected_inputs=configured_protected_inputs(
++                cfg, config_dir=paths.config_dir, config_path=paths.config
++            ),
++        ),
+     )
++    assert report.ownership_boundary is not None
++    store_authorized, store_detail = report.ownership_boundary.destructive_authorization(store.path)
++    if not store_authorized:
++        report.skipped.append(
++            f"checkpoint cleanup refused because campaign state is outside ownership boundary: {store_detail}"
++        )
++        return report
+     if not bool(
+         _cfg(
+             cfg,
+@@ -8152,7 +8278,23 @@
+             )
+             continue
+ 
++        run_state_path = paths.runs / run.run_id / "training_execution.json"
++        run_state_authorized, run_state_detail = report.ownership_boundary.destructive_authorization(
++            run_state_path
++        )
++        if not run_state_authorized:
++            report.skipped.append(
++                f"checkpoint cleanup refused for {run.run_id}: runtime record destination failed ownership checks: "
++                f"{run_state_detail}"
++            )
++            continue
+         root = Path(original.root_directory).resolve()
++        root_authorized, root_detail = report.ownership_boundary.traversal_authorization(root)
++        if not root_authorized:
++            report.skipped.append(
++                f"checkpoint cleanup refused for {run.run_id}: {root_detail}: {root}"
++            )
++            continue
+         retained_catalog = mdstats.CandidateCheckpointCatalog(
+             run_plan_digest=original.run_plan_digest,
+             root_directory=original.root_directory,
+@@ -8220,10 +8362,7 @@
+         store.put_record(
+             f"checkpoint_catalog:{run.run_id}", retained_catalog
+         )
+-        _atomic_json(
+-            paths.runs / run.run_id / "training_execution.json",
+-            compact_execution.to_dict(),
+-        )
++        _atomic_json(run_state_path, compact_execution.to_dict())
+         for directory in sorted(root.rglob("*"), reverse=True):
+             if directory.is_dir():
+                 try:
+@@ -8232,10 +8371,17 @@
+                     pass
+ 
+     if not dry_run:
+-        _atomic_json(
+-            paths.results / "cleanup-post-evaluate-checkpoints.json",
+-            report.to_dict(),
++        assert report.ownership_boundary is not None
++        cleanup_report_path = paths.results / "cleanup-post-evaluate-checkpoints.json"
++        output_authorized, output_detail = report.ownership_boundary.destructive_authorization(
++            cleanup_report_path
+         )
++        if output_authorized:
++            _atomic_json(cleanup_report_path, report.to_dict())
++        else:
++            report.skipped.append(
++                f"checkpoint cleanup report write skipped by ownership boundary: {output_detail}"
++            )
+     return report
+ 
+ 
+@@ -11735,12 +11881,100 @@
+     return guidance
+ 
+ 
++def _format_storage_bytes(value: int) -> str:
++    value = int(value)
++    units = ("B", "KiB", "MiB", "GiB", "TiB")
++    number = float(value)
++    for unit in units:
++        if abs(number) < 1024.0 or unit == units[-1]:
++            return f"{number:.1f} {unit}" if unit != "B" else f"{int(number)} B"
++        number /= 1024.0
++    return f"{value} B"
++
++
++def command_storage(args: argparse.Namespace) -> int:
++    """STOR1 read-only campaign storage accounting and ownership report."""
++
++    cfg, paths = _load_config(args.config)
++    protected_inputs = configured_protected_inputs(
++        cfg, config_dir=paths.config_dir, config_path=paths.config
++    )
++    report = build_campaign_storage_report(
++        paths.workspace,
++        protected_inputs=protected_inputs,
++        largest_limit=int(getattr(args, "top", 20)),
++    )
++    payload = report.to_dict()
++    destination = paths.results / "storage-report.json"
++    boundary = CampaignOwnershipBoundary(
++        paths.workspace, protected_inputs=protected_inputs
++    )
++    output_authorized, output_detail = boundary.destructive_authorization(destination)
++    report_written = False
++    if output_authorized:
++        _atomic_json(destination, payload)
++        report_written = True
++
++    totals = payload["totals"]
++    print("STOR1 campaign storage report", flush=True)
++    print(f"  workspace: {paths.workspace}", flush=True)
++    print(
++        "  totals: "
++        f"logical={_format_storage_bytes(int(totals['logical_bytes']))}; "
++        f"allocated={_format_storage_bytes(int(totals['allocated_physical_bytes']))}; "
++        f"unique-inode={_format_storage_bytes(int(totals['unique_inode_bytes']))}; "
++        f"files={int(totals['file_count'])}; dirs={int(totals['directory_count'])}; "
++        f"symlinks={int(totals['symlink_count'])}",
++        flush=True,
++    )
++    print("  largest families:", flush=True)
++    for item in payload["families"][:10]:
++        print(
++            f"    {_format_storage_bytes(int(item['logical_bytes'])):>10}  "
++            f"{item['family']} [{item['retention_class']}]",
++            flush=True,
++        )
++    catalog = payload["ownership_catalog"]
++    if catalog["symlink_escapes"]:
++        _warn(
++            f"{len(catalog['symlink_escapes'])} workspace symlink(s) resolve outside "
++            "the campaign workspace; targets are not campaign-owned"
++        )
++    if catalog["ambiguous_paths"]:
++        _warn(
++            f"{len(catalog['ambiguous_paths'])} path(s) could not be fully classified; "
++            "destructive authority remains denied"
++        )
++    if report_written:
++        _ok(
++            f"read-only storage report written: {destination}; no cleanup/deletion was performed"
++        )
++    else:
++        _warn(
++            f"storage report was not written because the destination failed ownership/containment checks: "
++            f"{output_detail}; no cleanup/deletion was performed"
++        )
++    return 0
++
++
+ def command_cleanup(args: argparse.Namespace) -> int:
+     """Run the same conservative lifecycle cleanup used automatically."""
+ 
+     import mdstats
+ 
+     cfg, paths = _load_config(args.config)
++    protected_inputs = configured_protected_inputs(
++        cfg, config_dir=paths.config_dir, config_path=paths.config
++    )
++    boundary = CampaignOwnershipBoundary(
++        paths.workspace, protected_inputs=protected_inputs
++    )
++    state_authorized, state_detail = boundary.destructive_authorization(paths.state_db)
++    if not state_authorized:
++        raise CampaignCliError(
++            "Refusing cleanup because the campaign state database is outside the "
++            f"campaign ownership boundary: {state_detail}: {paths.state_db}"
++        )
+     store = CampaignStore(paths.state_db)
+     include_preparation_caches = not bool(args.keep_preparation_caches)
+     report = _campaign_cleanup(
+@@ -12258,6 +12492,8 @@
+ 7. verify     Run the full NVE matrix on deployment/final models and short stability smokes on fold-only comparison models.
+ 
+ Use `status` at any time. It reports the next command and never advances a failed gate.
++Use `storage` at any time for the STOR1 read-only ownership/storage inventory; it
++performs no reclamation and will not follow workspace symlinks into external data.
+ 
+ Seeds and folds
+ ---------------
+@@ -12301,7 +12537,7 @@
+ `checkpoint_strategy = "exhaustive"` evaluates every saved checkpoint in full.
+ 
+ Precision is explicit at initialization. Plain `init` generates canonical `single`; use
+-`init --precision double` for FP64 throughout or `init --precision refine` for the planned
++`init --precision double` for FP64 throughout or `init --precision refine` for the canonical
+ 80% FP32 -> 20% FP64 refinement schedule. PREC1 freezes configuration and protocol identity;
+ PREC2 implements the exact in-process FP32 -> FP64 transition and restart substrate. Production
+ profile activation is qualified by PREC3; the generated profile remains immutable and no hardware heuristic may substitute another precision mode.
+@@ -12419,6 +12655,16 @@
+     )
+     p.set_defaults(func=command_verify)
+ 
++    p = sub.add_parser(
++        "storage",
++        help="STOR1 read-only storage accounting and ownership report",
++    )
++    p.add_argument(
++        "--top", type=int, default=20,
++        help="number of largest individual artifacts to retain in the JSON report",
++    )
++    p.set_defaults(func=command_storage)
++
+     p = sub.add_parser("cleanup", help="reclaim stale/cache artifacts without deleting restartable training state")
+     p.add_argument("--dry-run", action="store_true", help="report reclaimable bytes without deleting anything")
+     p.add_argument(
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/mdstats/training_data/storage_accounting.py ./mdstats/training_data/storage_accounting.py
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/mdstats/training_data/storage_accounting.py	1970-01-01 00:00:00.000000000 +0000
++++ ./mdstats/training_data/storage_accounting.py	2026-08-08 21:27:31.410045641 +0000
+@@ -0,0 +1,597 @@
++from __future__ import annotations
++
++import os
++from dataclasses import dataclass
++from enum import Enum
++from pathlib import Path
++from typing import Iterable, Mapping, Sequence
++
++
++CAMPAIGN_ARTIFACT_OWNERSHIP_CATALOG_SCHEMA = "mdstats.mlff-campaign-artifact-ownership-catalog.v1"
++CAMPAIGN_STORAGE_REPORT_SCHEMA = "mdstats.mlff-campaign-storage-report.v1"
++
++
++class ArtifactOwnershipClass(str, Enum):
++    CAMPAIGN_OWNED = "campaign_owned"
++    EXTERNAL_USER_INPUT = "external_user_input"
++    CAMPAIGN_OWNED_SYMLINK = "campaign_owned_symlink"
++    AMBIGUOUS = "ambiguous"
++
++
++class ArtifactRetentionClass(str, Enum):
++    PROTECTED_INPUT = "protected_input"
++    PROTECTED_PRODUCTION = "protected_production"
++    PROTECTED_DIAGNOSTIC = "protected_diagnostic"
++    RESTART_CRITICAL = "restart_critical"
++    SCIENTIFIC_CACHE = "scientific_cache"
++    RECONSTRUCTABLE_CACHE = "reconstructable_cache"
++    INTERMEDIATE = "intermediate"
++    UNKNOWN = "unknown"
++
++
++@dataclass(frozen=True, slots=True)
++class ProtectedInputPath:
++    key: str
++    path: str
++    real_path: str
++    exists: bool
++    kind: str
++
++    def to_dict(self) -> dict[str, object]:
++        return {
++            "key": self.key,
++            "path": self.path,
++            "real_path": self.real_path,
++            "exists": self.exists,
++            "kind": self.kind,
++            "ownership": ArtifactOwnershipClass.EXTERNAL_USER_INPUT.value,
++            "retention_class": ArtifactRetentionClass.PROTECTED_INPUT.value,
++            "automatic_reclamation_eligibility": "prohibited",
++            "manual_reclamation_eligibility": "prohibited",
++            "capability_lost_if_deleted": ["source_or_reference_input_unavailable"],
++        }
++
++
++@dataclass(frozen=True, slots=True)
++class StorageFamilyRecord:
++    family: str
++    ownership: str
++    retention_class: str
++    logical_bytes: int
++    allocated_physical_bytes: int
++    unique_inode_bytes: int
++    file_count: int
++    directory_count: int
++    symlink_count: int
++    automatic_reclamation_eligibility: str
++    manual_reclamation_eligibility: str
++    capability_lost_if_deleted: tuple[str, ...]
++
++    def to_dict(self) -> dict[str, object]:
++        return {
++            "family": self.family,
++            "ownership": self.ownership,
++            "retention_class": self.retention_class,
++            "logical_bytes": self.logical_bytes,
++            "allocated_physical_bytes": self.allocated_physical_bytes,
++            "unique_inode_bytes": self.unique_inode_bytes,
++            "file_count": self.file_count,
++            "directory_count": self.directory_count,
++            "symlink_count": self.symlink_count,
++            "automatic_reclamation_eligibility": self.automatic_reclamation_eligibility,
++            "manual_reclamation_eligibility": self.manual_reclamation_eligibility,
++            "capability_lost_if_deleted": list(self.capability_lost_if_deleted),
++        }
++
++
++@dataclass(frozen=True, slots=True)
++class LargestArtifactRecord:
++    path: str
++    kind: str
++    family: str
++    ownership: str
++    retention_class: str
++    logical_bytes: int
++    allocated_physical_bytes: int
++    hardlink_count: int
++    symlink: bool
++    real_path: str
++    real_path_contained: bool
++    symlink_escape: bool
++
++    def to_dict(self) -> dict[str, object]:
++        return {
++            "path": self.path,
++            "kind": self.kind,
++            "family": self.family,
++            "ownership": self.ownership,
++            "retention_class": self.retention_class,
++            "logical_bytes": self.logical_bytes,
++            "allocated_physical_bytes": self.allocated_physical_bytes,
++            "hardlink_count": self.hardlink_count,
++            "symlink": self.symlink,
++            "real_path": self.real_path,
++            "real_path_contained": self.real_path_contained,
++            "symlink_escape": self.symlink_escape,
++        }
++
++
++@dataclass(frozen=True, slots=True)
++class CampaignArtifactOwnershipCatalog:
++    workspace: str
++    workspace_real_path: str
++    protected_inputs: tuple[ProtectedInputPath, ...]
++    symlink_escapes: tuple[str, ...]
++    ambiguous_paths: tuple[str, ...]
++
++    def to_dict(self) -> dict[str, object]:
++        return {
++            "schema": CAMPAIGN_ARTIFACT_OWNERSHIP_CATALOG_SCHEMA,
++            "workspace": self.workspace,
++            "workspace_real_path": self.workspace_real_path,
++            "protected_inputs": [item.to_dict() for item in self.protected_inputs],
++            "symlink_escapes": list(self.symlink_escapes),
++            "ambiguous_paths": list(self.ambiguous_paths),
++        }
++
++
++@dataclass(frozen=True, slots=True)
++class CampaignStorageReport:
++    ownership_catalog: CampaignArtifactOwnershipCatalog
++    logical_bytes: int
++    allocated_physical_bytes: int
++    unique_inode_bytes: int
++    file_count: int
++    directory_count: int
++    symlink_count: int
++    families: tuple[StorageFamilyRecord, ...]
++    largest_artifacts: tuple[LargestArtifactRecord, ...]
++
++    def to_dict(self) -> dict[str, object]:
++        return {
++            "schema": CAMPAIGN_STORAGE_REPORT_SCHEMA,
++            "read_only_gate": "STOR1",
++            "destructive_actions_performed": False,
++            "ownership_catalog": self.ownership_catalog.to_dict(),
++            "totals": {
++                "logical_bytes": self.logical_bytes,
++                "allocated_physical_bytes": self.allocated_physical_bytes,
++                "allocated_physical_bytes_source": "st_blocks_512_when_available_else_st_size",
++                "unique_inode_bytes": self.unique_inode_bytes,
++                "file_count": self.file_count,
++                "directory_count": self.directory_count,
++                "symlink_count": self.symlink_count,
++            },
++            "families": [item.to_dict() for item in self.families],
++            "largest_artifacts": [item.to_dict() for item in self.largest_artifacts],
++        }
++
++
++def _is_within(candidate: Path, root: Path) -> bool:
++    try:
++        candidate.relative_to(root)
++        return True
++    except ValueError:
++        return False
++
++
++def _resolved(path: Path) -> Path:
++    try:
++        return path.resolve(strict=False)
++    except OSError:
++        return Path(os.path.abspath(os.fspath(path)))
++
++
++def _allocated_bytes(stat_result: os.stat_result) -> int:
++    blocks = getattr(stat_result, "st_blocks", None)
++    if blocks is None:
++        return int(stat_result.st_size)
++    return int(blocks) * 512
++
++
++def _input_kind(path: Path) -> str:
++    try:
++        if path.is_dir():
++            return "directory"
++        if path.is_file():
++            return "file"
++        if path.is_symlink():
++            return "symlink"
++    except OSError:
++        pass
++    return "missing_or_other"
++
++
++def configured_protected_inputs(
++    cfg: Mapping[str, object],
++    *,
++    config_dir: Path,
++    config_path: Path | None = None,
++) -> tuple[ProtectedInputPath, ...]:
++    section = cfg.get("paths", {})
++    # These keys are user/reference inputs.  A future campaign-owned content store
++    # must be represented separately and must never inherit authority from [paths].
++    keys = (
++        "training_root",
++        "foundation_model",
++        "replay_train",
++        "replay_monitor",
++        "replay_true_labels",
++    )
++    result: list[ProtectedInputPath] = []
++    if config_path is not None:
++        config_absolute = Path(os.path.abspath(os.fspath(config_path)))
++        result.append(
++            ProtectedInputPath(
++                key="campaign_config",
++                path=str(config_absolute),
++                real_path=str(_resolved(config_absolute)),
++                exists=config_absolute.exists() or config_absolute.is_symlink(),
++                kind=_input_kind(config_absolute),
++            )
++        )
++    if not isinstance(section, Mapping):
++        return tuple(result)
++    for key in keys:
++        value = section.get(key)
++        if value in (None, ""):
++            continue
++        raw = Path(str(value)).expanduser()
++        path = raw if raw.is_absolute() else config_dir / raw
++        absolute = Path(os.path.abspath(os.fspath(path)))
++        real = _resolved(absolute)
++        result.append(
++            ProtectedInputPath(
++                key=key,
++                path=str(absolute),
++                real_path=str(real),
++                exists=absolute.exists() or absolute.is_symlink(),
++                kind=_input_kind(absolute),
++            )
++        )
++    return tuple(result)
++
++
++class CampaignOwnershipBoundary:
++    """Deletion-authority boundary shared by STOR1 and existing cleanup.
++
++    STOR1 itself is read-only.  Existing cleanup code may use this object only to
++    *reduce* its prior authority: any ambiguous path, real-path escape, or overlap
++    with a configured user/reference input is denied.
++    """
++
++    def __init__(
++        self,
++        workspace: Path,
++        *,
++        protected_inputs: Sequence[ProtectedInputPath] = (),
++    ) -> None:
++        self.workspace = Path(os.path.abspath(os.fspath(workspace)))
++        self.workspace_real = _resolved(self.workspace)
++        self.protected_inputs = tuple(protected_inputs)
++        self._protected_real = tuple(Path(item.real_path) for item in protected_inputs)
++        self._protected_lexical = tuple(Path(item.path) for item in protected_inputs)
++
++    def lexical_inside_workspace(self, path: Path) -> bool:
++        absolute = Path(os.path.abspath(os.fspath(path)))
++        return _is_within(absolute, self.workspace)
++
++    def real_inside_workspace(self, path: Path) -> bool:
++        return _is_within(_resolved(path), self.workspace_real)
++
++    def protected_input_key_for(self, path: Path, *, resolve: bool = True) -> str | None:
++        candidate = _resolved(path) if resolve else Path(os.path.abspath(os.fspath(path)))
++        for item in self.protected_inputs:
++            input_path = Path(item.real_path if resolve else item.path)
++            if _is_within(candidate, input_path):
++                return item.key
++        return None
++
++    def overlaps_protected_input(self, path: Path, *, resolve: bool = True) -> bool:
++        candidate = _resolved(path) if resolve else Path(os.path.abspath(os.fspath(path)))
++        protected = self._protected_real if resolve else self._protected_lexical
++        for input_path in protected:
++            if _is_within(candidate, input_path) or _is_within(input_path, candidate):
++                return True
++        return False
++
++    def traversal_authorization(self, path: Path) -> tuple[bool, str]:
++        """Authorize recursive inspection/traversal of a campaign-owned tree.
++
++        This is intentionally stricter than :meth:`destructive_authorization`: a
++        symlink object may be safe to unlink while its target is never safe to
++        traverse unless that resolved target is itself contained and unprotected.
++        """
++
++        absolute = Path(os.path.abspath(os.fspath(path)))
++        if not self.lexical_inside_workspace(absolute):
++            return False, "path is outside the campaign workspace"
++        if self.overlaps_protected_input(absolute, resolve=False):
++            return False, "path overlaps a configured user/reference input"
++        resolved = _resolved(absolute)
++        if not _is_within(resolved, self.workspace_real):
++            return False, "resolved traversal root escapes the campaign workspace"
++        if self.overlaps_protected_input(resolved, resolve=True):
++            return False, "resolved traversal root overlaps a configured user/reference input"
++        return True, "campaign-owned contained traversal root"
++
++    def destructive_authorization(self, path: Path) -> tuple[bool, str]:
++        absolute = Path(os.path.abspath(os.fspath(path)))
++        if not self.lexical_inside_workspace(absolute):
++            return False, "path is outside the campaign workspace"
++        if self.overlaps_protected_input(absolute, resolve=False):
++            return False, "path overlaps a configured user/reference input"
++        if absolute.is_symlink():
++            # Unlinking the link object itself is safe even if its target is external,
++            # provided the link's parent is genuinely campaign-contained.
++            parent_real = _resolved(absolute.parent)
++            if not _is_within(parent_real, self.workspace_real):
++                return False, "symlink parent escapes the campaign workspace"
++            return True, "campaign-owned symlink object"
++        resolved = _resolved(absolute)
++        if not _is_within(resolved, self.workspace_real):
++            return False, "real path escapes the campaign workspace"
++        if self.overlaps_protected_input(resolved, resolve=True):
++            return False, "real path overlaps a configured user/reference input"
++        return True, "campaign-owned contained path"
++
++
++def _family_for(relative: Path) -> tuple[str, ArtifactRetentionClass, str, str, tuple[str, ...]]:
++    parts = relative.parts
++    posix = relative.as_posix()
++    name = relative.name.lower()
++
++    if not parts:
++        return ("workspace_root", ArtifactRetentionClass.UNKNOWN, "prohibited", "prohibited", ("campaign_workspace",))
++    if parts[0] == "results":
++        return ("results_and_diagnostics", ArtifactRetentionClass.PROTECTED_DIAGNOSTIC, "prohibited", "prohibited", ("scientific_provenance",))
++    if parts[0] == "models":
++        return ("production_models", ArtifactRetentionClass.PROTECTED_PRODUCTION, "prohibited", "prohibited", ("production_inference",))
++    if parts[0] == "data":
++        return ("data7_data8_materializations", ArtifactRetentionClass.INTERMEDIATE, "not_yet_qualified", "candidate_after_stor4", ("data8_rematerialization", "training_input_materialization"))
++    if parts[0] == "runs":
++        if "checkpoints" in parts or name.endswith(".pt"):
++            return ("training_checkpoints", ArtifactRetentionClass.RESTART_CRITICAL, "prohibited", "candidate_after_stor2", ("training_restart", "exact_checkpoint_reevaluation"))
++        if "checkpoint-model-cache" in parts:
++            return ("checkpoint_model_cache", ArtifactRetentionClass.RECONSTRUCTABLE_CACHE, "candidate_after_stor3", "candidate_after_stor4", ("faster_checkpoint_reevaluation",))
++        if "logs" in parts or name.endswith(".log") or name.endswith("stdout") or name.endswith("stderr"):
++            return ("training_logs", ArtifactRetentionClass.PROTECTED_DIAGNOSTIC, "prohibited", "prohibited", ("training_diagnostics",))
++        if "models" in parts or name.endswith(".model"):
++            return ("run_models", ArtifactRetentionClass.INTERMEDIATE, "not_yet_qualified", "candidate_after_stor4", ("alternative_model_recovery",))
++        return ("training_run_runtime", ArtifactRetentionClass.INTERMEDIATE, "not_yet_qualified", "candidate_after_stor4", ("training_restart_or_diagnostics",))
++    if parts[0] == ".mdstats":
++        if len(parts) >= 2 and parts[1] in {"campaign.sqlite3", "records", "hash-receipts.sqlite3"}:
++            return ("campaign_state_and_provenance", ArtifactRetentionClass.PROTECTED_DIAGNOSTIC, "prohibited", "prohibited", ("campaign_state", "scientific_provenance"))
++        if len(parts) >= 2 and parts[1] in {"frame-cache", "data7-cache", "evaluation-graphs"}:
++            return (parts[1], ArtifactRetentionClass.RECONSTRUCTABLE_CACHE, "candidate_after_stor3", "candidate_after_stor4", ("faster_recomputation",))
++        if len(parts) >= 2 and parts[1] in {"model-sweep", "evaluation-predictions", "true-label-replay"}:
++            return (parts[1], ArtifactRetentionClass.SCIENTIFIC_CACHE, "not_yet_qualified", "candidate_after_stor4", ("metric_only_or_reanalysis_without_inference",))
++        if len(parts) >= 2 and parts[1] == "preflight-smoke":
++            return ("preflight_artifacts", ArtifactRetentionClass.INTERMEDIATE, "candidate_after_stor3", "candidate_after_stor4", ("preflight_reexecution",))
++        return ("internal_campaign_artifacts", ArtifactRetentionClass.INTERMEDIATE, "not_yet_qualified", "candidate_after_stor4", ("campaign_reanalysis",))
++    if name.endswith(".json") or name.endswith(".csv") or name.endswith(".log"):
++        return ("workspace_diagnostics", ArtifactRetentionClass.PROTECTED_DIAGNOSTIC, "prohibited", "prohibited", ("scientific_provenance",))
++    if name.endswith(".toml") or "manifest" in name:
++        return ("workspace_configuration", ArtifactRetentionClass.PROTECTED_DIAGNOSTIC, "prohibited", "prohibited", ("campaign_reproducibility",))
++    return ("other_campaign_owned", ArtifactRetentionClass.UNKNOWN, "not_yet_qualified", "candidate_after_stor4", ("unknown_campaign_capability",))
++
++
++@dataclass
++class _MutableFamily:
++    family: str
++    retention_class: ArtifactRetentionClass
++    auto: str
++    manual: str
++    capabilities: tuple[str, ...]
++    logical: int = 0
++    allocated: int = 0
++    unique: int = 0
++    files: int = 0
++    directories: int = 0
++    symlinks: int = 0
++
++
++def build_campaign_storage_report(
++    workspace: Path,
++    *,
++    protected_inputs: Sequence[ProtectedInputPath] = (),
++    largest_limit: int = 25,
++) -> CampaignStorageReport:
++    workspace = Path(os.path.abspath(os.fspath(workspace)))
++    boundary = CampaignOwnershipBoundary(workspace, protected_inputs=protected_inputs)
++    families: dict[str, _MutableFamily] = {}
++    largest: list[LargestArtifactRecord] = []
++    directory_logical: dict[Path, int] = {}
++    directory_allocated: dict[Path, int] = {}
++    directory_meta: dict[Path, tuple[str, str, str, Path, bool, bool]] = {}
++    seen_inodes: set[tuple[int, int]] = set()
++    total_logical = total_allocated = total_unique = 0
++    file_count = directory_count = symlink_count = 0
++    escapes: list[str] = []
++    ambiguous: list[str] = []
++
++    if not workspace.exists():
++        catalog = CampaignArtifactOwnershipCatalog(
++            workspace=str(workspace),
++            workspace_real_path=str(boundary.workspace_real),
++            protected_inputs=tuple(protected_inputs),
++            symlink_escapes=(),
++            ambiguous_paths=(str(workspace),),
++        )
++        return CampaignStorageReport(catalog, 0, 0, 0, 0, 0, 0, (), ())
++
++    stack = [workspace]
++    while stack:
++        current = stack.pop()
++        try:
++            entries = sorted(os.scandir(current), key=lambda item: item.name)
++        except OSError:
++            ambiguous.append(str(current))
++            continue
++        for entry in entries:
++            path = Path(entry.path)
++            try:
++                stat_result = entry.stat(follow_symlinks=False)
++            except OSError:
++                ambiguous.append(str(path))
++                continue
++            try:
++                relative = path.relative_to(workspace)
++            except ValueError:
++                ambiguous.append(str(path))
++                continue
++            input_key = boundary.protected_input_key_for(path, resolve=False)
++            if input_key is None and not path.is_symlink():
++                input_key = boundary.protected_input_key_for(path, resolve=True)
++            if input_key is not None:
++                family = f"configured_input:{input_key}"
++                retention = ArtifactRetentionClass.PROTECTED_INPUT
++                auto = "prohibited"
++                manual = "prohibited"
++                capabilities = ("source_or_reference_input_unavailable",)
++            else:
++                family, retention, auto, manual, capabilities = _family_for(relative)
++            bucket = families.get(family)
++            if bucket is None:
++                bucket = families[family] = _MutableFamily(family, retention, auto, manual, capabilities)
++
++            symlink = entry.is_symlink()
++            is_dir = entry.is_dir(follow_symlinks=False)
++            is_file = entry.is_file(follow_symlinks=False)
++            logical = 0 if is_dir else int(stat_result.st_size)
++            inode_allocated = _allocated_bytes(stat_result)
++            inode_key = (int(stat_result.st_dev), int(stat_result.st_ino))
++            first_inode = inode_key not in seen_inodes
++            if first_inode:
++                seen_inodes.add(inode_key)
++            unique = logical if (first_inode and not is_dir) else 0
++            allocated = inode_allocated if first_inode else 0
++
++            total_logical += logical
++            total_allocated += allocated
++            total_unique += unique
++            bucket.logical += logical
++            bucket.allocated += allocated
++            bucket.unique += unique
++
++            # Attribute path-based logical bytes and inode-deduplicated physical
++            # bytes to containing directories so the report can identify large
++            # directories without recursively restatting them.
++            parent = relative.parent
++            while parent != Path("."):
++                directory_logical[parent] = directory_logical.get(parent, 0) + logical
++                directory_allocated[parent] = directory_allocated.get(parent, 0) + allocated
++                parent = parent.parent
++            if is_dir:
++                directory_allocated[relative] = directory_allocated.get(relative, 0) + allocated
++
++            if symlink:
++                symlink_count += 1
++                bucket.symlinks += 1
++            elif is_dir:
++                directory_count += 1
++                bucket.directories += 1
++                stack.append(path)
++            elif is_file:
++                file_count += 1
++                bucket.files += 1
++            else:
++                ambiguous.append(str(path))
++
++            real = _resolved(path)
++            real_contained = _is_within(real, boundary.workspace_real)
++            symlink_escape = bool(symlink and not real_contained)
++            if symlink_escape:
++                escapes.append(str(path))
++            ownership = (
++                ArtifactOwnershipClass.EXTERNAL_USER_INPUT
++                if input_key is not None
++                else (
++                    ArtifactOwnershipClass.CAMPAIGN_OWNED_SYMLINK
++                    if symlink
++                    else ArtifactOwnershipClass.CAMPAIGN_OWNED
++                )
++            )
++            if is_dir and not symlink:
++                directory_meta[relative] = (
++                    family, ownership.value, retention.value, real, real_contained, symlink_escape
++                )
++            else:
++                largest.append(
++                    LargestArtifactRecord(
++                        path=str(path),
++                        kind="symlink" if symlink else "file",
++                        family=family,
++                        ownership=ownership.value,
++                        retention_class=retention.value,
++                        logical_bytes=logical,
++                        allocated_physical_bytes=inode_allocated,
++                        hardlink_count=int(stat_result.st_nlink),
++                        symlink=symlink,
++                        real_path=str(real),
++                        real_path_contained=real_contained,
++                        symlink_escape=symlink_escape,
++                    )
++                )
++
++    for relative, meta in directory_meta.items():
++        family, ownership, retention, real, real_contained, symlink_escape = meta
++        largest.append(
++            LargestArtifactRecord(
++                path=str(workspace / relative),
++                kind="directory",
++                family=family,
++                ownership=ownership,
++                retention_class=retention,
++                logical_bytes=int(directory_logical.get(relative, 0)),
++                allocated_physical_bytes=int(directory_allocated.get(relative, 0)),
++                hardlink_count=1,
++                symlink=False,
++                real_path=str(real),
++                real_path_contained=real_contained,
++                symlink_escape=symlink_escape,
++            )
++        )
++
++    family_records = tuple(
++        StorageFamilyRecord(
++            family=item.family,
++            ownership=(
++                ArtifactOwnershipClass.EXTERNAL_USER_INPUT.value
++                if item.family.startswith("configured_input:")
++                else ArtifactOwnershipClass.CAMPAIGN_OWNED.value
++            ),
++            retention_class=item.retention_class.value,
++            logical_bytes=item.logical,
++            allocated_physical_bytes=item.allocated,
++            unique_inode_bytes=item.unique,
++            file_count=item.files,
++            directory_count=item.directories,
++            symlink_count=item.symlinks,
++            automatic_reclamation_eligibility=item.auto,
++            manual_reclamation_eligibility=item.manual,
++            capability_lost_if_deleted=item.capabilities,
++        )
++        for item in sorted(families.values(), key=lambda value: (-value.logical, value.family))
++    )
++    largest_records = tuple(
++        sorted(largest, key=lambda item: (-item.logical_bytes, item.path))[: max(0, int(largest_limit))]
++    )
++    catalog = CampaignArtifactOwnershipCatalog(
++        workspace=str(workspace),
++        workspace_real_path=str(boundary.workspace_real),
++        protected_inputs=tuple(protected_inputs),
++        symlink_escapes=tuple(sorted(set(escapes))),
++        ambiguous_paths=tuple(sorted(set(ambiguous))),
++    )
++    return CampaignStorageReport(
++        ownership_catalog=catalog,
++        logical_bytes=total_logical,
++        allocated_physical_bytes=total_allocated,
++        unique_inode_bytes=total_unique,
++        file_count=file_count,
++        directory_count=directory_count,
++        symlink_count=symlink_count,
++        families=family_records,
++        largest_artifacts=largest_records,
++    )
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/pyproject.toml ./pyproject.toml
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/pyproject.toml	2026-08-08 21:05:49.000000000 +0000
++++ ./pyproject.toml	2026-08-08 21:22:50.966706947 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.110a0"
++version = "0.20.111a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/release/mlff_stor1_ownership_storage_qualification.json ./release/mlff_stor1_ownership_storage_qualification.json
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/release/mlff_stor1_ownership_storage_qualification.json	1970-01-01 00:00:00.000000000 +0000
++++ ./release/mlff_stor1_ownership_storage_qualification.json	2026-08-08 21:32:12.611427949 +0000
+@@ -0,0 +1,69 @@
++{
++  "architecture_revision": 30,
++  "campaign_cli_regression_subset": {
++    "coverage": [
++      "parser surface",
++      "init",
++      "campaign store roundtrip",
++      "obsolete-runtime cleanup",
++      "reconstructable-cache cleanup"
++    ],
++    "failed": 0,
++    "passed": 5
++  },
++  "destructive_reclamation_added": false,
++  "focused_tests": {
++    "command": "pytest -q tests/test_mlff_stor1_storage_accounting.py tests/test_mlff_eval_storage_roadmap_specification.py",
++    "failed": 0,
++    "notes": "Package import used a temporary ASE import stub because ASE is not installed in the release execution environment; STOR1 logic itself does not call ASE/MACE.",
++    "passed": 17
++  },
++  "gate": "STOR1",
++  "implemented_contracts": {
++    "allocated_physical_bytes": "inode-deduplicated st_blocks*512 when available, otherwise st_size",
++    "checkpoint_pruning_authority_hardened": true,
++    "existing_cleanup_authority_hardened": true,
++    "largest_files_and_directories": true,
++    "logical_bytes": "path-based non-directory st_size",
++    "protected_configured_inputs": true,
++    "read_only_storage_report": true,
++    "real_path_containment": true,
++    "separate_symlink_unlink_and_tree_traversal_authority": true,
++    "symlink_escape_detection": true,
++    "unique_inode_bytes": "inode-deduplicated non-directory st_size"
++  },
++  "mlff_specification_suite": {
++    "failed": 1,
++    "passed": 120,
++    "pre_existing_failure": "release/mlff_data9a9a_real_mpa0_restart_smoke.json is absent",
++    "stor1_related_failures": 0
++  },
++  "next_gate": "STOR2",
++  "package_version": "0.20.111a0",
++  "packaged_copy_gate": {
++    "artifact": "mdstats-0.20.111a0.tar.gz",
++    "ase_import_scaffolding": "temporary import-only ASE stub; not packaged and not scientific/runtime qualification evidence",
++    "deselected": 1,
++    "deselected_test": "test_real_mpa0_restart_smoke_is_valid_and_bounded",
++    "failed": 0,
++    "passed": 137,
++    "reason": "pre-existing historical evidence artifact is absent"
++  },
++  "protected_input_classes": [
++    "campaign_config",
++    "training_root",
++    "foundation_model",
++    "replay_train",
++    "replay_monitor",
++    "replay_true_labels"
++  ],
++  "runtime_dependency_boundary": {
++    "ase_available_in_current_environment": false,
++    "real_mace_rerun_performed": false,
++    "real_mace_rerun_required_for_stor1": false,
++    "reason": "STOR1 is filesystem accounting/ownership logic and does not invoke MACE; no claim of a new real-MACE qualification is made."
++  },
++  "schema": "mdstats.mlff-stor1-ownership-storage-qualification.v1",
++  "status": "passed",
++  "user_data_mutation_performed": false
++}
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_campaign_cli.py ./tests/test_mlff_campaign_cli.py
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_campaign_cli.py	2026-08-08 21:06:42.000000000 +0000
++++ ./tests/test_mlff_campaign_cli.py	2026-08-08 21:21:55.343986802 +0000
+@@ -13,7 +13,7 @@
+     parser = campaign_cli.build_parser()
+     choices = parser._subparsers._group_actions[0].choices
+     assert tuple(choices) == (
+-        "init", "doctor", "prepare", "preflight", "train", "evaluate", "verify", "cleanup", "status", "advance", "guide"
++        "init", "doctor", "prepare", "preflight", "train", "evaluate", "verify", "storage", "cleanup", "status", "advance", "guide"
+     )
+ 
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data0_architecture_specification.py ./tests/test_mlff_data0_architecture_specification.py
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data0_architecture_specification.py	2026-08-08 21:06:42.000000000 +0000
++++ ./tests/test_mlff_data0_architecture_specification.py	2026-08-08 21:25:55.198091996 +0000
+@@ -78,7 +78,7 @@
+ def test_mlff_data0_dependency_graph_is_acyclic_and_has_forbidden_edges() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["branch"] == "MLFF-DATA"
+-    assert graph["architecture_revision"] == 29
++    assert graph["architecture_revision"] == 30
+     assert graph["documentation_gate"] == "MLFF-DATA0"
+     assert graph["schema_version"] == 26
+ 
+@@ -263,4 +263,4 @@
+ def test_mlff_data0_pdf_and_version_artifacts_exist() -> None:
+     assert MANUAL_PDF.stat().st_size > 10_000
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.110a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.111a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data1_specification.py ./tests/test_mlff_data1_specification.py
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data1_specification.py	2026-08-08 21:06:42.000000000 +0000
++++ ./tests/test_mlff_data1_specification.py	2026-08-08 21:25:55.199835825 +0000
+@@ -49,4 +49,4 @@
+     assert callable(mdstats.assign_balanced_round_robin)
+     assert callable(mdstats.build_complete_frame_block_plan)
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.110a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.111a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data2a_manifest_inference_specification.py ./tests/test_mlff_data2a_manifest_inference_specification.py
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-08 21:06:42.000000000 +0000
++++ ./tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-08 21:25:55.200058736 +0000
+@@ -15,7 +15,7 @@
+ 
+ 
+ def test_data2a_version_public_api_and_documented_contract() -> None:
+-    assert mdstats.__version__ == "0.20.110a0"
++    assert mdstats.__version__ == "0.20.111a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert callable(mdstats.infer_training_manifest_metadata)
+     policy = mdstats.ManifestInferencePolicy()
+@@ -39,7 +39,7 @@
+ def test_data2a_dependency_graph_requires_verified_promotion_before_approval() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 29
++    assert graph["architecture_revision"] == 30
+     nodes = {node["id"] for node in graph["nodes"]}
+     assert {
+         "FILENAME_STRAIN_CANDIDATE",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data9a2_specification.py ./tests/test_mlff_data9a2_specification.py
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data9a2_specification.py	2026-08-08 21:06:42.000000000 +0000
++++ ./tests/test_mlff_data9a2_specification.py	2026-08-08 21:25:55.198387876 +0000
+@@ -23,7 +23,7 @@
+         "finite energy, force, and stress",
+     ):
+         assert required in text
+-    assert 'version = "0.20.110a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.111a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "DATA9A2 real-MACE realization is implemented in `0.20.39a0`" in ARCH.read_text()
+ 
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data9a3_specification.py ./tests/test_mlff_data9a3_specification.py
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data9a3_specification.py	2026-08-08 21:06:42.000000000 +0000
++++ ./tests/test_mlff_data9a3_specification.py	2026-08-08 21:25:55.201491904 +0000
+@@ -9,5 +9,5 @@
+     assert "37,632" in text
+     assert "supported_with_temporal_blocks_only" in text
+     assert "production_replay_corpus_not_bound" in text
+-    assert 'version = "0.20.110a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.111a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "MLFF-DATA9A3 production qualification" in ARCH.read_text()
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data9a4_precision_specification.py ./tests/test_mlff_data9a4_precision_specification.py
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data9a4_precision_specification.py	2026-08-08 21:06:42.000000000 +0000
++++ ./tests/test_mlff_data9a4_precision_specification.py	2026-08-08 21:25:55.198889120 +0000
+@@ -9,7 +9,7 @@
+     assert "float32" in text and "float64" in text
+     assert "MaceModelPrecisionRecord" in text
+     assert "MacePrecisionTransitionRecord" in text
+-    assert "version = \"0.20.110a0\"" in (ROOT / "pyproject.toml").read_text()
++    assert "version = \"0.20.111a0\"" in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_bind_precision_to_protocol() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data9a5_critical_fp64_specification.py ./tests/test_mlff_data9a5_critical_fp64_specification.py
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-08 21:06:42.000000000 +0000
++++ ./tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-08 21:25:55.197583572 +0000
+@@ -14,7 +14,7 @@
+     assert 'version: "0.20.42a0"' in text
+     assert "training_force_jacobian_dtype = model" in text
+     assert "Python/ASE" in text
+-    assert 'version = "0.20.110a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.111a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_data9a5_architecture_declares_scope_and_limits() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data9a5_deployment_specification.py ./tests/test_mlff_data9a5_deployment_specification.py
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data9a5_deployment_specification.py	2026-08-08 21:06:42.000000000 +0000
++++ ./tests/test_mlff_data9a5_deployment_specification.py	2026-08-08 21:25:55.198772336 +0000
+@@ -13,7 +13,7 @@
+     assert 'version: "0.20.43a0"' in text
+     assert "downstream runtime owns" in text
+     assert "float32-to-float64 promotion does not restore" in text
+-    assert 'version = "0.20.110a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.111a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_keep_lammps_outside_mdstats_scope() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data9a6b_architecture_consistency_specification.py ./tests/test_mlff_data9a6b_architecture_consistency_specification.py
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data9a6b_architecture_consistency_specification.py	2026-08-08 21:06:42.000000000 +0000
++++ ./tests/test_mlff_data9a6b_architecture_consistency_specification.py	2026-08-08 21:25:55.199704821 +0000
+@@ -61,7 +61,7 @@
+ def test_dependency_graph_treats_lta_as_optional() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 29
++    assert graph["architecture_revision"] == 30
+     nodes = {node["id"] for node in graph["nodes"]}
+     assert "MATERIAL_PROFILE_IDENTITY" in nodes
+     assert "LTA_PROFILE_EXTENSION" in nodes
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data9a6c_observable_evidence_specification.py ./tests/test_mlff_data9a6c_observable_evidence_specification.py
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-08 21:06:42.000000000 +0000
++++ ./tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-08 21:25:55.201725701 +0000
+@@ -38,7 +38,7 @@
+ def test_dependency_graph_places_policy_before_evidence_and_forbids_reverse_edge() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 29
++    assert graph["architecture_revision"] == 30
+     edges = {(e["from"], e["to"]) for e in graph["edges"]}
+     assert ("OBSERVABLE_COMPARISON_POLICY", "OBSERVABLE_VALIDATION_ACTIVATION_RECORD") in edges
+     assert ("OBSERVABLE_VALIDATION_ACTIVATION_RECORD", "OBSERVABLE_VALIDATION_EVIDENCE") in edges
+@@ -74,5 +74,5 @@
+ 
+ def test_packaged_owner_manual_index_is_valid() -> None:
+     payload = json.loads(MANUAL_INDEX.read_text(encoding="utf-8"))
+-    assert payload["package_version"] == "0.20.110a0"
++    assert payload["package_version"] == "0.20.111a0"
+     assert "structural-observables-architecture" in payload["manuals"]
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data9a7a_material_profile_specification.py ./tests/test_mlff_data9a7a_material_profile_specification.py
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-08 21:06:42.000000000 +0000
++++ ./tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-08 21:25:55.197843307 +0000
+@@ -41,7 +41,7 @@
+ def test_data9a7a_dependency_graph_contains_contract_chain() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 29
++    assert graph["architecture_revision"] == 30
+     nodes = {item["id"] for item in graph["nodes"]}
+     required = {
+         "MATERIAL_PROFILE_PROVIDER_IDENTITY",
+@@ -64,4 +64,4 @@
+ 
+ 
+ def test_release_version_is_data9a7a() -> None:
+-    assert 'version = "0.20.110a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert 'version = "0.20.111a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data9a7b_specification.py ./tests/test_mlff_data9a7b_specification.py
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data9a7b_specification.py	2026-08-08 21:06:42.000000000 +0000
++++ ./tests/test_mlff_data9a7b_specification.py	2026-08-08 21:25:55.201576950 +0000
+@@ -44,7 +44,7 @@
+ def test_data9a7b_dependency_graph_has_analysis_to_selection_chain() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 29
++    assert graph["architecture_revision"] == 30
+     nodes = {item["id"] for item in graph["nodes"]}
+     assert {
+         "ANALYSIS_LOCAL_STRUCTURE_FEATURES",
+@@ -69,7 +69,7 @@
+ 
+ 
+ def test_data9a7b_public_exports_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.110a0"
++    assert mdstats.__version__ == "0.20.111a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert callable(mdstats.compute_local_structure_features)
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data9a7c_specification.py ./tests/test_mlff_data9a7c_specification.py
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data9a7c_specification.py	2026-08-08 21:06:42.000000000 +0000
++++ ./tests/test_mlff_data9a7c_specification.py	2026-08-08 21:25:55.199289174 +0000
+@@ -34,7 +34,7 @@
+ def test_dependency_graph_contains_phase_geometry_contracts() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 29
++    assert graph["architecture_revision"] == 30
+     nodes = {node["id"] for node in graph["nodes"]}
+     assert {
+         "PHASE_GEOMETRY_SELECTION_PLAN",
+@@ -47,7 +47,7 @@
+ 
+ 
+ def test_public_api_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.110a0"
++    assert mdstats.__version__ == "0.20.111a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert mdstats.MLFF_DATA9A7C_PARSER_VERSION == "0.20.49a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data9a7d_specification.py ./tests/test_mlff_data9a7d_specification.py
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data9a7d_specification.py	2026-08-08 21:06:42.000000000 +0000
++++ ./tests/test_mlff_data9a7d_specification.py	2026-08-08 21:25:55.199013484 +0000
+@@ -21,7 +21,7 @@
+ def test_data9a7d_dependency_graph_contract() -> None:
+     graph = json.loads((ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json").read_text())
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 29
++    assert graph["architecture_revision"] == 30
+     nodes = {item["id"] for item in graph["nodes"]}
+     assert {
+         "OPTIONAL_PROFILE_EXTENSION_PROVIDER",
+@@ -39,6 +39,6 @@
+ 
+ 
+ def test_data9a7d_runtime_versions() -> None:
+-    assert mdstats.__version__ == "0.20.110a0"
++    assert mdstats.__version__ == "0.20.111a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7D_PARSER_VERSION == "0.20.50a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data9a7e_specification.py ./tests/test_mlff_data9a7e_specification.py
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data9a7e_specification.py	2026-08-08 21:06:42.000000000 +0000
++++ ./tests/test_mlff_data9a7e_specification.py	2026-08-08 21:25:55.197180113 +0000
+@@ -31,7 +31,7 @@
+ def test_data9a7e_dependency_graph_and_public_api() -> None:
+     graph = json.loads((ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json").read_text())
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 29
++    assert graph["architecture_revision"] == 30
+     nodes = {item["id"] for item in graph["nodes"]}
+     assert {
+         "CROSS_SYSTEM_QUALIFICATION_POLICY",
+@@ -39,7 +39,7 @@
+         "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
+         "CROSS_SYSTEM_QUALIFICATION_SUITE",
+     } <= nodes
+-    assert mdstats.__version__ == "0.20.110a0"
++    assert mdstats.__version__ == "0.20.111a0"
+     assert mdstats.MLFF_DATA9A7E_PARSER_VERSION == "0.20.51a0"
+     assert callable(mdstats.qualify_cross_system_case)
+     assert callable(mdstats.build_cross_system_qualification_suite)
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data9a8_specification.py ./tests/test_mlff_data9a8_specification.py
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data9a8_specification.py	2026-08-08 21:06:42.000000000 +0000
++++ ./tests/test_mlff_data9a8_specification.py	2026-08-08 21:25:55.199433999 +0000
+@@ -44,7 +44,7 @@
+ def test_dependency_graph_places_policy_upstream_and_forbids_posthoc_thresholds() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 29
++    assert graph["architecture_revision"] == 30
+     nodes = {node["id"] for node in graph["nodes"]}
+     for node in (
+         "OBSERVABLE_COMPARISON_RULES",
+@@ -66,7 +66,7 @@
+ 
+ 
+ def test_public_runtime_exposes_data9a8_without_removed_aliases() -> None:
+-    assert mdstats.__version__ == "0.20.110a0"
++    assert mdstats.__version__ == "0.20.111a0"
+     assert mdstats.MLFF_DATA9A8_PARSER_VERSION == "0.20.52a0"
+     assert mdstats.ObservableComparisonPolicy
+     assert mdstats.compare_mlff_observable_validation
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data9a9a_specification.py ./tests/test_mlff_data9a9a_specification.py
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data9a9a_specification.py	2026-08-08 21:06:42.000000000 +0000
++++ ./tests/test_mlff_data9a9a_specification.py	2026-08-08 21:25:55.198524839 +0000
+@@ -47,7 +47,7 @@
+ def test_dependency_graph_contains_restartable_model_sweep_chain() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 29
++    assert graph["architecture_revision"] == 30
+     nodes = {node["id"] for node in graph["nodes"]}
+     required = {
+         "DATA6_MODEL_SWEEP_EXECUTION_POLICY",
+@@ -65,7 +65,7 @@
+ 
+ 
+ def test_public_runtime_exports_data9a9a_contracts() -> None:
+-    assert mdstats.__version__ == "0.20.110a0"
++    assert mdstats.__version__ == "0.20.111a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A9A_VERSION
+     assert mdstats.Data6ModelSweepPlan
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data9a9b_specification.py ./tests/test_mlff_data9a9b_specification.py
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data9a9b_specification.py	2026-08-08 21:06:42.000000000 +0000
++++ ./tests/test_mlff_data9a9b_specification.py	2026-08-08 21:25:55.200125405 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9b_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.110a0"
++    assert mdstats.__version__ == "0.20.111a0"
+     for name in (
+         "ProductionMaterializationPlan",
+         "ProductionMaterializationCheckpoint",
+@@ -40,7 +40,7 @@
+ def test_dependency_graph_contains_data9a9b_chain() -> None:
+     graph = json.loads((ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json").read_text())
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 29
++    assert graph["architecture_revision"] == 30
+     nodes = {item["id"] for item in graph["nodes"]}
+     required = {
+         "PRODUCTION_MATERIALIZATION_PLAN",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data9a9c_specification.py ./tests/test_mlff_data9a9c_specification.py
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data9a9c_specification.py	2026-08-08 21:06:42.000000000 +0000
++++ ./tests/test_mlff_data9a9c_specification.py	2026-08-08 21:25:55.201074685 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9c_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.110a0"
++    assert mdstats.__version__ == "0.20.111a0"
+     for name in (
+         "ProductionCorpusPlan", "ProductionExpectedRun",
+         "ProfileExtensionEvidenceRequirement", "ProductionCorpusQualificationRecord",
+@@ -38,7 +38,7 @@
+ def test_dependency_graph_contains_integrity_gate_chain() -> None:
+     graph = json.loads((ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json").read_text())
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 29
++    assert graph["architecture_revision"] == 30
+     nodes = {item["id"] for item in graph["nodes"]}
+     assert {"PRODUCTION_CORPUS_PLAN", "REPLAY_LABEL_PAYLOAD_IDENTITY",
+             "DATA8_ATOMIC_PROMOTION", "PRODUCTION_GATE_INTEGRITY_EVIDENCE"} <= nodes
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data9a_specification.py ./tests/test_mlff_data9a_specification.py
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data9a_specification.py	2026-08-08 21:06:42.000000000 +0000
++++ ./tests/test_mlff_data9a_specification.py	2026-08-08 21:25:55.201442611 +0000
+@@ -14,7 +14,7 @@
+ 
+ 
+ def test_data9a_runtime_specification_is_canonical() -> None:
+-    assert 'version = "0.20.110a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.111a0"' in (ROOT / "pyproject.toml").read_text()
+     architecture = ARCH.read_text()
+     stage = STAGE.read_text()
+     specification = SPEC.read_text()
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data9b1_specification.py ./tests/test_mlff_data9b1_specification.py
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data9b1_specification.py	2026-08-08 21:06:42.000000000 +0000
++++ ./tests/test_mlff_data9b1_specification.py	2026-08-08 21:25:55.199226331 +0000
+@@ -18,8 +18,8 @@
+     assert "TrainingCampaignPlan" in text
+     assert "CheckpointSelectionRecord" in text
+     assert "mdstats-mace-train" in text
+-    assert mdstats.__version__ == "0.20.110a0"
+-    assert 'version = "0.20.110a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert mdstats.__version__ == "0.20.111a0"
++    assert 'version = "0.20.111a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+ 
+ 
+ def test_data9b1_is_integrated_into_manual_and_stage_plan() -> None:
+@@ -33,7 +33,7 @@
+ 
+ def test_data9b1_dependency_graph_nodes_and_gates() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+-    assert graph["architecture_revision"] == 29
++    assert graph["architecture_revision"] == 30
+     nodes = {item["id"] for item in graph["nodes"]}
+     for node in (
+         "TRAINING_CAMPAIGN_POLICY",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data9b2_specification.py ./tests/test_mlff_data9b2_specification.py
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data9b2_specification.py	2026-08-08 21:06:42.000000000 +0000
++++ ./tests/test_mlff_data9b2_specification.py	2026-08-08 21:25:55.199965828 +0000
+@@ -23,7 +23,7 @@
+         'mdstats-mace-select-head',
+     ):
+         assert token in text
+-    assert mdstats.__version__ == '0.20.110a0'
++    assert mdstats.__version__ == '0.20.111a0'
+     assert mdstats.MLFF_DATA9B2_VERSION == '0.20.57a0'
+ 
+ 
+@@ -37,7 +37,7 @@
+ 
+ def test_data9b2_dependency_graph_records_and_edges() -> None:
+     graph = json.loads(GRAPH.read_text(encoding='utf-8'))
+-    assert graph['architecture_revision'] == 29
++    assert graph['architecture_revision'] == 30
+     assert graph['schema_version'] == 26
+     nodes = {v['id'] for v in graph['nodes']}
+     for node in (
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data9b3_campaign_cli_specification.py ./tests/test_mlff_data9b3_campaign_cli_specification.py
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-08 21:06:42.000000000 +0000
++++ ./tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-08 21:25:55.199912059 +0000
+@@ -16,7 +16,7 @@
+ 
+ 
+ def test_data9b3_version_and_user_surface() -> None:
+-    assert mdstats.__version__ == "0.20.110a0"
++    assert mdstats.__version__ == "0.20.111a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert TOOL.is_file()
+     assert TOOL.stat().st_mode & 0o111
+@@ -55,7 +55,7 @@
+ def test_data9b3_dependency_graph_contract() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 29
++    assert graph["architecture_revision"] == 30
+     nodes = {node["id"] for node in graph["nodes"]}
+     required = {
+         "CAMPAIGN_CLI_CONFIGURATION",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data9b3a_cueq_specification.py ./tests/test_mlff_data9b3a_cueq_specification.py
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_data9b3a_cueq_specification.py	2026-08-08 21:06:42.000000000 +0000
++++ ./tests/test_mlff_data9b3a_cueq_specification.py	2026-08-08 21:25:55.197713104 +0000
+@@ -42,7 +42,7 @@
+ def test_data9b3a_dependency_graph_contract() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 29
++    assert graph["architecture_revision"] == 30
+     nodes = {node["id"] for node in graph["nodes"]}
+     assert {"MACE_ACCELERATION_POLICY", "MACE_ACCELERATION_PROBE"} <= nodes
+     edges = {(edge["from"], edge["to"], edge["type"]) for edge in graph["edges"]}
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_eval_storage_roadmap_specification.py ./tests/test_mlff_eval_storage_roadmap_specification.py
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_eval_storage_roadmap_specification.py	2026-08-08 21:06:42.000000000 +0000
++++ ./tests/test_mlff_eval_storage_roadmap_specification.py	2026-08-08 21:25:55.200970440 +0000
+@@ -29,7 +29,8 @@
+     assert positions == sorted(positions)
+     assert "EVAL-MF2 - conservative survivor control, diagnostics, and default migration - implemented in 0.20.107a0" in text
+     assert "`PREC1` in 0.20.108a0" in text
+-    assert "The next implementation gate is `STOR1`" in text
++    assert "The next implementation gate is `STOR2`" in text
++    assert "STOR1 - campaign storage accounting and ownership boundary - implemented in 0.20.111a0" in text
+ 
+ 
+ def test_multifidelity_plan_preserves_equal_target_replay_fidelity_and_full_final() -> None:
+@@ -75,10 +76,10 @@
+         assert token in text
+ 
+ 
+-def test_dependency_graph_revision_29_contains_eval_precision_storage_nodes() -> None:
++def test_dependency_graph_revision_30_contains_eval_precision_storage_nodes() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 29
++    assert graph["architecture_revision"] == 30
+     nodes = {node["id"] for node in graph["nodes"]}
+     for node in (
+         "NESTED_CHECKPOINT_EVALUATION_PLAN",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_opt_ctrl1_specification.py ./tests/test_mlff_opt_ctrl1_specification.py
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_opt_ctrl1_specification.py	2026-08-08 21:06:42.000000000 +0000
++++ ./tests/test_mlff_opt_ctrl1_specification.py	2026-08-08 21:25:55.201156306 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_ctrl1_release_identity_preserves_scientific_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.110a0"
++    assert mdstats.__version__ == "0.20.111a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.110a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.111a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_ctrl1_architecture_and_spec_close_roadmap() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_opt_eval4_specification.py ./tests/test_mlff_opt_eval4_specification.py
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_opt_eval4_specification.py	2026-08-08 21:06:42.000000000 +0000
++++ ./tests/test_mlff_opt_eval4_specification.py	2026-08-08 21:25:55.201304085 +0000
+@@ -11,9 +11,9 @@
+ 
+ 
+ def test_opt_eval4_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.110a0"
++    assert mdstats.__version__ == "0.20.111a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+-    assert 'version = "0.20.110a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.111a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_eval4_architecture_and_spec_record_pipeline_contract() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_opt_verify1_specification.py ./tests/test_mlff_opt_verify1_specification.py
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_opt_verify1_specification.py	2026-08-08 21:06:42.000000000 +0000
++++ ./tests/test_mlff_opt_verify1_specification.py	2026-08-08 21:25:55.196857894 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_verify1_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.110a0"
++    assert mdstats.__version__ == "0.20.111a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.110a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.111a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_verify1_architecture_and_spec_record_contract() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_perf2_parallel_acceleration_specification.py ./tests/test_mlff_perf2_parallel_acceleration_specification.py
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-08 21:06:42.000000000 +0000
++++ ./tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-08 21:25:55.199569951 +0000
+@@ -10,7 +10,7 @@
+ 
+ 
+ def test_perf2_release_and_configuration_contract() -> None:
+-    assert mdstats.__version__ == "0.20.110a0"
++    assert mdstats.__version__ == "0.20.111a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     template = campaign_cli._config_template(
+         workspace="workspace",
+@@ -43,7 +43,7 @@
+         .read_text(encoding="utf-8")
+     )
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 29
++    assert graph["architecture_revision"] == 30
+     nodes = {item["id"] for item in graph["nodes"]}
+     assert {
+         "SYSTEM_RESOURCE_SNAPSHOT",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_prec1_specification.py ./tests/test_mlff_prec1_specification.py
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_prec1_specification.py	2026-08-08 21:06:42.000000000 +0000
++++ ./tests/test_mlff_prec1_specification.py	2026-08-08 21:25:55.198655243 +0000
+@@ -12,15 +12,15 @@
+ 
+ 
+ def test_prec1_release_and_architecture_status() -> None:
+-    assert mdstats.__version__ == "0.20.110a0"
++    assert mdstats.__version__ == "0.20.111a0"
+     manual = MANUAL.read_text(encoding="utf-8")
+     spec = SPEC.read_text(encoding="utf-8")
+     assert "PREC1 - precision profiles, explicit staged schedule, and init realization - implemented in 0.20.108a0" in manual
+     assert "PREC1 implemented in mdstats 0.20.108a0" in spec
+-    assert "the next implementation gate is `STOR1`" in manual
++    assert "the next implementation gate is `STOR2`" in manual
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 29
++    assert graph["architecture_revision"] == 30
+ 
+ 
+ def test_prec1_public_contract_is_exported() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_prec2_specification.py ./tests/test_mlff_prec2_specification.py
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_prec2_specification.py	2026-08-08 21:06:42.000000000 +0000
++++ ./tests/test_mlff_prec2_specification.py	2026-08-08 21:25:55.198257712 +0000
+@@ -14,8 +14,8 @@
+     assert "latest-only authenticated companion" in manual
+     assert "real MACE 0.3.16" in manual
+     assert "no fabricated real-CuEq execution evidence is claimed" in manual
+-    assert "the next implementation gate is `STOR1`" in manual
++    assert "the next implementation gate is `STOR2`" in manual
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 29
++    assert graph["architecture_revision"] == 30
+     node_ids = {node["id"] for node in graph["nodes"]}
+     assert "PRECISION_RUNTIME_COMPANION" in node_ids
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_prec3_specification.py ./tests/test_mlff_prec3_specification.py
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_prec3_specification.py	2026-08-08 21:06:42.000000000 +0000
++++ ./tests/test_mlff_prec3_specification.py	2026-08-08 21:25:55.199755446 +0000
+@@ -16,13 +16,13 @@
+     manual = MANUAL.read_text(encoding="utf-8")
+     spec = SPEC.read_text(encoding="utf-8")
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+-    assert mdstats.__version__ == "0.20.110a0"
++    assert mdstats.__version__ == "0.20.111a0"
+     assert "PREC3 - campaign integration, qualification, and profile activation - implemented in 0.20.110a0" in manual
+     assert "PREC3 implementation closure (0.20.110a0)" in manual
+     assert "PREC3 implemented in mdstats 0.20.110a0" in spec
+-    assert "The next implementation gate is `STOR1`" in manual
++    assert "The next implementation gate is `STOR2`" in manual
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 29
++    assert graph["architecture_revision"] == 30
+ 
+ 
+ def test_prec3_qualification_evidence_is_transparent_about_cueq() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=mdstats.egg-info' '--exclude=PKG-INFO' '--exclude=SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch' /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_stor1_storage_accounting.py ./tests/test_mlff_stor1_storage_accounting.py
+--- /mnt/data/mdstats110_pristine/mdstats-0.20.110a0-complete-source-package/tests/test_mlff_stor1_storage_accounting.py	1970-01-01 00:00:00.000000000 +0000
++++ ./tests/test_mlff_stor1_storage_accounting.py	2026-08-08 21:28:59.712761907 +0000
+@@ -0,0 +1,309 @@
++from __future__ import annotations
++
++import json
++import os
++from pathlib import Path
++from types import SimpleNamespace
++
++from mdstats.training_data import campaign_cli
++from mdstats.training_data.storage_accounting import (
++    ArtifactOwnershipClass,
++    ArtifactRetentionClass,
++    CampaignOwnershipBoundary,
++    build_campaign_storage_report,
++    configured_protected_inputs,
++)
++
++
++def _write_config(tmp_path: Path, *, training_root: str = "../training") -> Path:
++    config = tmp_path / "campaign.toml"
++    config.write_text(
++        campaign_cli._config_template(
++            workspace="work",
++            training_root=training_root,
++            foundation_model="../foundation.model",
++            replay_train="../replay-train.xyz",
++            replay_monitor="../replay-monitor.xyz",
++            replay_true_labels="../true-labels",
++        ),
++        encoding="utf-8",
++    )
++    return config
++
++
++def test_stor1_report_counts_logical_allocated_and_unique_inode_bytes(tmp_path: Path) -> None:
++    config = _write_config(tmp_path)
++    cfg, paths = campaign_cli._load_config(config)
++    protected = configured_protected_inputs(cfg, config_dir=paths.config_dir, config_path=paths.config)
++
++    checkpoints = paths.runs / "run-a" / "checkpoints"
++    checkpoints.mkdir(parents=True)
++    first = checkpoints / "epoch-1.pt"
++    first.write_bytes(b"x" * 8192)
++    second = checkpoints / "epoch-1-hardlink.pt"
++    os.link(first, second)
++    (paths.results / "metrics.json").write_text("{}\n", encoding="utf-8")
++
++    report = build_campaign_storage_report(paths.workspace, protected_inputs=protected)
++    payload = report.to_dict()
++    assert payload["schema"] == "mdstats.mlff-campaign-storage-report.v1"
++    assert payload["destructive_actions_performed"] is False
++    assert payload["totals"]["logical_bytes"] >= 2 * 8192
++    assert payload["totals"]["allocated_physical_bytes"] > 0
++    assert payload["totals"]["unique_inode_bytes"] < payload["totals"]["logical_bytes"]
++    checkpoint_family = next(
++        item for item in payload["families"] if item["family"] == "training_checkpoints"
++    )
++    assert checkpoint_family["retention_class"] == ArtifactRetentionClass.RESTART_CRITICAL.value
++    assert checkpoint_family["automatic_reclamation_eligibility"] == "prohibited"
++
++
++def test_stor1_external_symlink_is_not_traversed_or_owned(tmp_path: Path) -> None:
++    config = _write_config(tmp_path)
++    cfg, paths = campaign_cli._load_config(config)
++    protected = configured_protected_inputs(cfg, config_dir=paths.config_dir, config_path=paths.config)
++
++    external = tmp_path / "external-large"
++    external.mkdir()
++    (external / "do-not-count.bin").write_bytes(b"z" * 1024 * 1024)
++    link = paths.internal / "external-link"
++    link.symlink_to(external, target_is_directory=True)
++
++    report = build_campaign_storage_report(paths.workspace, protected_inputs=protected)
++    payload = report.to_dict()
++    assert str(link) in payload["ownership_catalog"]["symlink_escapes"]
++    assert payload["totals"]["logical_bytes"] < 1024 * 1024
++    link_row = next(item for item in payload["largest_artifacts"] if item["path"] == str(link))
++    assert link_row["ownership"] == ArtifactOwnershipClass.CAMPAIGN_OWNED_SYMLINK.value
++    assert link_row["symlink_escape"] is True
++
++
++def test_configured_input_inside_workspace_remains_user_owned(tmp_path: Path) -> None:
++    config = _write_config(tmp_path, training_root="work/user-training")
++    cfg, paths = campaign_cli._load_config(config)
++    training = paths.workspace / "user-training"
++    training.mkdir(parents=True)
++    (training / "source.xml").write_bytes(b"source")
++    protected = configured_protected_inputs(cfg, config_dir=paths.config_dir, config_path=paths.config)
++
++    report = build_campaign_storage_report(paths.workspace, protected_inputs=protected)
++    family = next(
++        item for item in report.to_dict()["families"]
++        if item["family"] == "configured_input:training_root"
++    )
++    assert family["ownership"] == ArtifactOwnershipClass.EXTERNAL_USER_INPUT.value
++    assert family["retention_class"] == ArtifactRetentionClass.PROTECTED_INPUT.value
++    assert family["automatic_reclamation_eligibility"] == "prohibited"
++    assert family["manual_reclamation_eligibility"] == "prohibited"
++
++
++def test_cleanup_authority_denies_external_and_configured_inputs(tmp_path: Path) -> None:
++    config = _write_config(tmp_path, training_root="work/user-training")
++    cfg, paths = campaign_cli._load_config(config)
++    training = paths.workspace / "user-training"
++    training.mkdir(parents=True)
++    source = training / "source.xml"
++    source.write_bytes(b"source")
++    external = tmp_path / "external.bin"
++    external.write_bytes(b"external")
++
++    boundary = CampaignOwnershipBoundary(
++        paths.workspace,
++        protected_inputs=configured_protected_inputs(cfg, config_dir=paths.config_dir, config_path=paths.config),
++    )
++    report = campaign_cli._CampaignCleanupReport(
++        phase="stor1-test", dry_run=False, ownership_boundary=boundary
++    )
++    campaign_cli._cleanup_remove(report, source, reason="must be denied")
++    campaign_cli._cleanup_remove(report, external, reason="must be denied")
++
++    assert source.read_bytes() == b"source"
++    assert external.read_bytes() == b"external"
++    assert report.actions == []
++    assert len(report.skipped) == 2
++    assert all("cleanup authority denied" in item for item in report.skipped)
++
++
++def test_cleanup_symlink_unlinks_only_campaign_link_not_external_target(tmp_path: Path) -> None:
++    config = _write_config(tmp_path)
++    cfg, paths = campaign_cli._load_config(config)
++    external = tmp_path / "external-cache"
++    external.mkdir()
++    payload = external / "important.bin"
++    payload.write_bytes(b"keep")
++    link = paths.internal / "frame-cache"
++    link.symlink_to(external, target_is_directory=True)
++
++    report = campaign_cli._CampaignCleanupReport(
++        phase="stor1-test",
++        dry_run=False,
++        ownership_boundary=CampaignOwnershipBoundary(
++            paths.workspace,
++            protected_inputs=configured_protected_inputs(cfg, config_dir=paths.config_dir, config_path=paths.config),
++        ),
++    )
++    campaign_cli._cleanup_remove(report, link, reason="remove campaign link only")
++    assert not link.exists()
++    assert not link.is_symlink()
++    assert payload.read_bytes() == b"keep"
++    assert len(report.actions) == 1
++
++
++def test_storage_cli_writes_read_only_report(tmp_path: Path) -> None:
++    config = _write_config(tmp_path)
++    cfg, paths = campaign_cli._load_config(config)
++    (paths.runs / "run-a" / "checkpoints").mkdir(parents=True)
++    (paths.runs / "run-a" / "checkpoints" / "epoch.pt").write_bytes(b"x" * 1024)
++
++    rc = campaign_cli.command_storage(SimpleNamespace(config=str(config), top=5))
++    assert rc == 0
++    destination = paths.results / "storage-report.json"
++    payload = json.loads(destination.read_text(encoding="utf-8"))
++    assert payload["read_only_gate"] == "STOR1"
++    assert payload["destructive_actions_performed"] is False
++    assert len(payload["largest_artifacts"]) <= 5
++
++
++def test_materialization_record_path_does_not_confer_external_cleanup_authority(tmp_path: Path, monkeypatch) -> None:
++    config = _write_config(tmp_path)
++    cfg, paths = campaign_cli._load_config(config)
++    store = campaign_cli.CampaignStore(paths.state_db)
++    external_root = tmp_path / "external-materialization"
++    stale = external_root / ".data8-staging-old"
++    stale.mkdir(parents=True)
++    payload = stale / "user-owned.bin"
++    payload.write_bytes(b"do-not-delete")
++    old = __import__("time").time() - 24 * 3600
++    os.utime(stale, (old, old))
++
++    monkeypatch.setattr(
++        campaign_cli,
++        "_current_materialization_roots",
++        lambda _store: {external_root.resolve()},
++    )
++    report = campaign_cli._CampaignCleanupReport(
++        phase="stor1-test",
++        dry_run=False,
++        ownership_boundary=CampaignOwnershipBoundary(
++            paths.workspace,
++            protected_inputs=configured_protected_inputs(cfg, config_dir=paths.config_dir, config_path=paths.config),
++        ),
++    )
++    campaign_cli._cleanup_materialization_storage(
++        report,
++        paths,
++        store,
++        stale_before=__import__("time").time() - 6 * 3600,
++    )
++    assert payload.read_bytes() == b"do-not-delete"
++    assert report.actions == []
++    assert any("failed ownership checks" in item or "cleanup authority denied" in item for item in report.skipped)
++
++
++def test_stor1_largest_artifacts_include_directory_aggregate(tmp_path: Path) -> None:
++    config = _write_config(tmp_path)
++    cfg, paths = campaign_cli._load_config(config)
++    root = paths.runs / "run-big" / "checkpoints"
++    root.mkdir(parents=True)
++    (root / "a.pt").write_bytes(b"a" * 4096)
++    (root / "b.pt").write_bytes(b"b" * 2048)
++    report = build_campaign_storage_report(
++        paths.workspace,
++        protected_inputs=configured_protected_inputs(
++            cfg, config_dir=paths.config_dir, config_path=paths.config
++        ),
++        largest_limit=50,
++    )
++    row = next(
++        item for item in report.to_dict()["largest_artifacts"]
++        if item["path"] == str(root)
++    )
++    assert row["kind"] == "directory"
++    assert row["logical_bytes"] >= 6144
++
++
++def test_storage_cli_refuses_report_write_through_results_symlink(tmp_path: Path) -> None:
++    config = _write_config(tmp_path)
++    _cfg, paths = campaign_cli._load_config(config)
++    external = tmp_path / "external-results"
++    external.mkdir()
++    paths.results.rmdir()
++    paths.results.symlink_to(external, target_is_directory=True)
++
++    rc = campaign_cli.command_storage(SimpleNamespace(config=str(config), top=5))
++    assert rc == 0
++    assert not (external / "storage-report.json").exists()
++
++
++def test_cleanup_does_not_traverse_external_runs_symlink(tmp_path: Path) -> None:
++    config = _write_config(tmp_path)
++    cfg, paths = campaign_cli._load_config(config)
++    external = tmp_path / "external-runs"
++    victim = external / "run-a" / "checkpoint-model-cache" / "important.bin"
++    victim.parent.mkdir(parents=True)
++    victim.write_bytes(b"keep")
++    paths.runs.rmdir()
++    paths.runs.symlink_to(external, target_is_directory=True)
++    store = campaign_cli.CampaignStore(paths.state_db)
++
++    report = campaign_cli._campaign_cleanup(
++        cfg,
++        paths,
++        store,
++        phase="stor1-test",
++        dry_run=False,
++        include_preparation_caches=False,
++    )
++    assert victim.read_bytes() == b"keep"
++    assert any("run-tree cleanup skipped" in item for item in report.skipped)
++
++
++def test_preflight_cleanup_refuses_external_symlink_root(tmp_path: Path) -> None:
++    config = _write_config(tmp_path)
++    cfg, paths = campaign_cli._load_config(config)
++    store = campaign_cli.CampaignStore(paths.state_db)
++    store.put_record("preflight_smoke", {"passed": True})
++    external = tmp_path / "external-preflight"
++    external.mkdir()
++    victim = external / "heavy.bin"
++    victim.write_bytes(b"keep")
++    link = paths.internal / "preflight-smoke"
++    link.symlink_to(external, target_is_directory=True)
++    report = campaign_cli._CampaignCleanupReport(
++        phase="stor1-test",
++        dry_run=False,
++        ownership_boundary=CampaignOwnershipBoundary(
++            paths.workspace,
++            protected_inputs=configured_protected_inputs(
++                cfg, config_dir=paths.config_dir, config_path=paths.config
++            ),
++        ),
++    )
++    campaign_cli._cleanup_preflight_heavy_artifacts(report, paths, store)
++    assert victim.read_bytes() == b"keep"
++    assert not (external / "retained-diagnostic.json").exists()
++    assert any("failed traversal ownership checks" in item for item in report.skipped)
++
++
++def test_manual_cleanup_refuses_external_campaign_state_symlink(tmp_path: Path) -> None:
++    config = _write_config(tmp_path)
++    _cfg, paths = campaign_cli._load_config(config)
++    external = tmp_path / "external-state"
++    external.mkdir()
++    paths.internal.rmdir()
++    paths.internal.symlink_to(external, target_is_directory=True)
++
++    try:
++        campaign_cli.command_cleanup(
++            SimpleNamespace(
++                config=str(config),
++                keep_preparation_caches=False,
++                keep_unselected_checkpoints=False,
++                dry_run=False,
++            )
++        )
++    except campaign_cli.CampaignCliError as exc:
++        assert "campaign state database is outside" in str(exc)
++    else:
++        raise AssertionError("cleanup must fail closed before opening an external state database")
++    assert not (external / "campaign.sqlite3").exists()

@@ -1,0 +1,62 @@
+{
+  "date": "2026-08-09",
+  "gate": "ADAPT-STOP1",
+  "mace_source_contract": {
+    "epoch_stop_hook_present": true,
+    "foundation_hook_present": true,
+    "mace_version": "0.3.16",
+    "patched_code_filename": "<mdstats-mace-precision-train>",
+    "terminal_restart_hook_present": true
+  },
+  "package_version": "0.20.124a0",
+  "pdf_verification": {
+    "mlff_adaptive_training_stop_spec.pdf": "rendered and visually inspected",
+    "mlff_campaign_cli_user_guide.pdf": "updated evaluation/training pages rendered and visually inspected",
+    "mlff_online_monitor_spec.pdf": "updated runtime-boundary pages rendered and visually inspected",
+    "mlff_training_data_architecture.pdf": "ADAPT-STOP1 pages rendered and visually inspected"
+  },
+  "policy_defaults": {
+    "max_num_epochs": 30,
+    "maximum_replay_force_rmse_ev_per_angstrom_derived": 0.03,
+    "maximum_target_force_rmse_ev_per_angstrom": 0.03,
+    "replay_score_weight": 1.0,
+    "replay_stop_force_rmse_ev_per_angstrom": 0.036,
+    "replay_stop_multiplier": 1.2,
+    "target_score_weight": 1.0,
+    "target_stop_force_rmse_ev_per_angstrom": 0.024,
+    "target_stop_fraction": 0.8
+  },
+  "runtime_contract": {
+    "adaptive_state_file": "adaptive_training_stop.json",
+    "additional_stop_inference": false,
+    "foundation_replay_baseline_checked_before_epoch_0": true,
+    "missing_or_policy_mismatched_restart_state": "fail_closed",
+    "online_replay_monitor_configurations": 512,
+    "online_target_monitor_configurations": 256,
+    "production_evaluator": "EVAL-MF until ADAPT-EVAL1",
+    "ranking_implemented": false,
+    "replay_monitor_labels": "TRUE_DFT",
+    "stop_hook_position": "after validation and durable epoch checkpoint, before next epoch",
+    "terminal_restart": "skip_epoch_loop_and_finalize_without_extra_training"
+  },
+  "schema": "mdstats.mlff-adapt-stop1-qualification.v1",
+  "source_patch": {
+    "binary_pdfs": "excluded from unified source patch; included in complete package",
+    "dry_run": "passed",
+    "from": "0.20.123a0",
+    "to": "0.20.124a0"
+  },
+  "status": "passed",
+  "tests": [
+    {
+      "result": "104 passed, 1 skipped",
+      "scope": "affected runtime, adaptive-stop, monitor, precision, DATA8/materialization, campaign CLI, execution",
+      "skip": "real LTA training root not supplied"
+    },
+    {
+      "deselection": "pre-existing missing release/mlff_data9a9a_real_mpa0_restart_smoke.json fixture",
+      "result": "145 passed, 1 deselected",
+      "scope": "MLFF specification, adaptive revision, and legacy schema compatibility"
+    }
+  ]
+}

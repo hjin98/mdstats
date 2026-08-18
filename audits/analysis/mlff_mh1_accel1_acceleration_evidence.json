@@ -1,0 +1,160 @@
+{
+  "content_digest": "fe96fe97fde0728f4db2ad374921d151fd9eab8fad5238ab48522cb3d36451cd",
+  "design": {
+    "float32_tolerance": {
+      "atol": 1e-06,
+      "rtol": 1e-05
+    },
+    "float64_tolerance": {
+      "atol": 1e-12,
+      "rtol": 1e-10
+    },
+    "inference_kernel_modes": [
+      "e3nn",
+      "cueq_pure",
+      "cueq_oeq_hybrid"
+    ],
+    "mh1_cueq_preference": "cueq_oeq_hybrid inference when qualified; cueq_pure training must independently qualify",
+    "parity_quantities": [
+      "energy_per_atom",
+      "forces",
+      "stress",
+      "invariant_descriptors",
+      "deterministic_fps_selection"
+    ],
+    "qualified_cueq_requires": [
+      "inference_parity_record_digest",
+      "training_parity_record_digest"
+    ],
+    "training_kernel_modes_mace_0_3_16": [
+      "e3nn",
+      "cueq_pure"
+    ],
+    "user_facing_backends": [
+      "cueq",
+      "e3nn"
+    ]
+  },
+  "gate": "MH1-ACCEL1",
+  "mace_0_3_16_source_evidence": {
+    "calculator_hybrid_behavior": "MACECalculator exposes enable_cueq and enable_oeq and supports hybrid inference conversion",
+    "calculator_sha256": "97b17cef8d5880071068d1a05a97f1d432ffc57db00d23ba86c2c3049114a8ad",
+    "run_train_hybrid_behavior": "when enable_cueq and enable_oeq are both true, run_train warns and sets enable_oeq=False before conversion/training",
+    "run_train_sha256": "4f219fce454279b54cb7a10af30e8e8508cb7b83b3ffa6981ed89dbe7dc8de8b"
+  },
+  "predecessor": "mdstats-0.20.177a0-complete-source-package-mh1-extract1.zip",
+  "real_foundation_records": [
+    {
+      "architecture_signature": "c6fe21484b986728373c0853dcaf0339fb4b6d449193c3dea1529149ee41050d",
+      "e3nn_reference": [
+        {
+          "dtype": "float32",
+          "failure_reason": null,
+          "foundation_inference_identity_digest": "1d2926914e316209511d3205a0d497019afa76587e850a145ee9ff2ce13d89fc",
+          "inference_kernel_mode": "e3nn",
+          "qualified": true,
+          "realization_digest": "3591a140799217b1515bba715da31f57dc47493a182ffaa57a0747cfbb41852b",
+          "training_kernel_mode": "e3nn"
+        },
+        {
+          "dtype": "float64",
+          "failure_reason": null,
+          "foundation_inference_identity_digest": "aeb36cfdfcdeff7a9a30e3bc0adfc1d7091a99a8697a0b613432ebd640dbc395",
+          "inference_kernel_mode": "e3nn",
+          "qualified": true,
+          "realization_digest": "7ec18e4aefe4f3ef7557315d31b4470e335c530a8b7670274e9fd236cd22ce19",
+          "training_kernel_mode": "e3nn"
+        }
+      ],
+      "family": "mace_mh_1",
+      "foundation_potential_digest": "06bf87891d6addebd3ea300fa23fd6401f0b74897f5676394e99507d03c8fc59",
+      "head": "omat_pbe",
+      "label": "mh1",
+      "path_name": "mace-mh-1.model",
+      "sha256": "ec00a2705854622fbbd898ccfb7701072fcd674709102d009fb919c1b8cc5dde"
+    },
+    {
+      "architecture_signature": "c06e20329de9805c382d684dca0efab1ac4da8c58f8b51b67209bfaff2c7d6bf",
+      "e3nn_reference": [
+        {
+          "dtype": "float32",
+          "failure_reason": null,
+          "foundation_inference_identity_digest": "1094f677ab8840cfb4e3ab88a5fd06ec6a411adeb2323eff1dca30f249903e58",
+          "inference_kernel_mode": "e3nn",
+          "qualified": true,
+          "realization_digest": "08d1b48b51b6b256631f142f0d92142d1faf43e0d59f808717939d5f600e1b14",
+          "training_kernel_mode": "e3nn"
+        },
+        {
+          "dtype": "float64",
+          "failure_reason": null,
+          "foundation_inference_identity_digest": "3d31dc39d1951688a0dff9f87925226473b744969a29f31c6693c586b9247463",
+          "inference_kernel_mode": "e3nn",
+          "qualified": true,
+          "realization_digest": "c54b88671238a4b03a49bdbfa2e48e18f9c2d30eb904f71ba49b3bf642500d9f",
+          "training_kernel_mode": "e3nn"
+        }
+      ],
+      "family": "mace_mpa_0",
+      "foundation_potential_digest": "e6f6001827be216a9a8e8cb1829f2e2b996c846492f6f3975b6e6759064880dd",
+      "head": "default",
+      "label": "mpa0",
+      "path_name": "mace-mpa-0-medium(3).model",
+      "sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638"
+    }
+  ],
+  "runtime_probe": {
+    "calculator_enable_cueq_supported": true,
+    "calculator_enable_oeq_supported": true,
+    "content_digest": "528ac05da7dd49216d8aaaf0a85b2abc824c4068c23e336ecef9ebdf89b63127",
+    "cuda_available": false,
+    "cueq_available": false,
+    "cueq_imports_passed": false,
+    "cueq_versions": [
+      [
+        "cuequivariance",
+        null
+      ],
+      [
+        "cuequivariance-torch",
+        null
+      ],
+      [
+        "cuequivariance-ops-torch-cu12",
+        null
+      ]
+    ],
+    "device": "cpu",
+    "error_message": "cuequivariance: No module named 'cuequivariance'",
+    "error_type": "ModuleNotFoundError",
+    "finite_energy": null,
+    "finite_forces": null,
+    "finite_stress": null,
+    "mace_version": "0.3.16",
+    "model_smoke_attempted": false,
+    "model_smoke_passed": null,
+    "oeq_import_passed": false,
+    "oeq_version": null,
+    "schema": "mdstats.mace-acceleration-probe.v2",
+    "torch_cuda_version": null,
+    "torch_version": "2.10.0+cpu"
+  },
+  "schema": "mdstats.mlff-mh1-accel1-evidence.v1",
+  "status": {
+    "cueq_fail_closed_without_runtime": "PASS",
+    "cueq_real_numerical_certification": "BLOCKED_MISSING_CUEQ_OEQ_AND_CUDA_RUNTIME",
+    "e3nn_reference_real_models": "PASS",
+    "implementation": "PASS",
+    "mace_0_3_16_hybrid_training": "UNSUPPORTED_UPSTREAM_PURE_CUEQ_REQUIRED",
+    "no_silent_fallback": "PASS"
+  },
+  "tests": {
+    "accel_cueq_non_slow": "20 passed, 1 slow deselected",
+    "data8": "12 passed",
+    "evaluation_and_prediction_cache": "24 passed",
+    "known_unrelated_historical_spec": "test_generated_config_enables_score_ordered_verification_fallback expects mlcv_nested_cv while the already-frozen current template emits train2_target_first; ACCEL1 does not modify this historical expectation",
+    "production_materialization_and_legacy": "24 passed",
+    "real_model_slow": "1 passed; MH-1/omat_pbe and MPA-0/default each tested in float32 and float64",
+    "verification_nve_pes_deployment": "33 passed"
+  }
+}

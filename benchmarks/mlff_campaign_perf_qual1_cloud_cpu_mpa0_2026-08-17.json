@@ -1,0 +1,188 @@
+{
+  "acceptance": {
+    "final_gpu_qualification_ready": false,
+    "followup_reason": "Integrated profiling shows REPAIR replaying MVSEL terminal sparse state is now the dominant duplicated reconstructible cost; exact state handoff can remove it without changing selector or repair authority.",
+    "followup_required": true,
+    "memory_ceiling_pass": true,
+    "next_gate": "MVSTATE-REUSE1",
+    "optimization_program_closed": false,
+    "restart_behavior_exact": true,
+    "scaling_qualified": true,
+    "scientific_outputs_exact": true,
+    "status": "PASS_FOLLOWUP_REQUIRED"
+  },
+  "active_foundation": {
+    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
+    "family": "MACE-MPA-0 medium",
+    "mh1_compatible": true,
+    "model_inference_timed_in_closure": false
+  },
+  "architecture_revision": 102,
+  "authority_change": {
+    "classification": "integration_measurement_and_forward-gate_decision_only",
+    "gpu_numerical": false,
+    "runtime_algorithm": false,
+    "scientific": false
+  },
+  "content_digest": "d169137cca79709841f4ac9e531306324247a5420964018de2239d3f4e0f5539",
+  "execution": {
+    "eval2": {
+      "bootstrap_median_seconds": 0.015309499998693354,
+      "frozen_0_20_232_control_bootstrap_seconds": 0.05117,
+      "frozen_0_20_232_control_metric_seconds": 0.8621,
+      "metric_reduce_median_seconds": 0.4710217569991073
+    },
+    "foundation_audit": {
+      "frozen_0_20_232_control_seconds": 0.05803,
+      "median_seconds": 0.054020721499909996,
+      "model_provider_calls": [
+        44,
+        44
+      ]
+    },
+    "replay_restart": {
+      "closure_speedup_vs_control": 3.313696767259975,
+      "frozen_0_20_233_control_monitor_seconds": 9.13893,
+      "index_build_seconds": 0.41147491599986097,
+      "index_hit_seconds": 0.06988775699937833,
+      "monitor_only_materialization_seconds": 2.7579258580008172,
+      "peak_maxrss_kib": 280732
+    },
+    "target_chain": {
+      "control": {
+        "cpu_seconds": 28.220660382,
+        "note": "paired control completed once; a later repeated control was invalidated by unrelated shared-host timeout and is not used",
+        "peak_maxrss_kib": 313240,
+        "release": "0.20.225a0",
+        "repeat_count": 1,
+        "stage_wall_seconds": {
+          "feas_neighbor": 0.788001320001058,
+          "mvidx": 2.2042533550011285,
+          "mvqual": 2.0616274479980348,
+          "mvsel": 11.220217990998208,
+          "repair": 10.981256697999925
+        },
+        "wall_seconds": 27.255356811998354,
+        "workers_requested": 4
+      },
+      "current": {
+        "queue_backpressure_observed": false,
+        "release": "0.20.234a0",
+        "rss_ratio_vs_control_at_4_lanes": 1.1227684842293448,
+        "speedup_vs_control_at_4_lanes": 2.2811202967246227,
+        "worker_schedules": {
+          "1": {
+            "cpu_seconds": 13.031388508999996,
+            "peak_maxrss_kib": 320612,
+            "wall_seconds": 12.913599085004535
+          },
+          "2": {
+            "cpu_seconds": 13.232284265,
+            "peak_maxrss_kib": 334636,
+            "wall_seconds": 12.073693564001587
+          },
+          "4": {
+            "cpu_seconds_median": 13.688461302499999,
+            "peak_maxrss_kib_median": 351696.0,
+            "stage_wall_seconds_median": {
+              "feas_neighbor": 1.0333280395007023,
+              "mvidx": 0.08946929749981791,
+              "mvqual": 0.5325609709998389,
+              "mvsel": 4.873324781499832,
+              "repair": 5.419549913000083
+            },
+            "wall_seconds_median": 11.948233002500274,
+            "wall_seconds_samples": [
+              11.823693664005987,
+              12.072772340994561
+            ]
+          }
+        }
+      }
+    }
+  },
+  "gate": "CAMPAIGN-PERF-QUAL1",
+  "host": {
+    "cgroup_cpu_max": "400000 100000",
+    "cgroup_memory_current_bytes_at_record_creation": "4075847680",
+    "cgroup_memory_max_bytes": "4294967296",
+    "cpu_affinity_count": 5,
+    "timings_are_execution_evidence_only": true
+  },
+  "hotspot_reprofile": {
+    "mvsel_profile": {
+      "_choose_candidate_calls": 4096,
+      "_choose_candidate_cumulative_seconds": 0.9,
+      "_scatter_decrement_pair_exact_calls": 26319,
+      "_scatter_decrement_pair_exact_cumulative_seconds": 4.565,
+      "_select_and_update_calls": 4096,
+      "_select_and_update_cumulative_seconds": 5.197,
+      "finding": "exact sparse state mutation dominates residual selector time; rank choice is no longer dominant",
+      "profile_total_seconds_approx": 6.57
+    },
+    "repair_profile": {
+      "_best_repair_proposal_cumulative_seconds": 0.729,
+      "_shell_removal_scan_cumulative_seconds": 0.977,
+      "finding": "REPAIR reconstructs selector sparse state by replaying essentially the whole selected order before proposal work; this is exact reconstructible execution state and is now the dominant duplicated cost",
+      "profile_total_seconds_approx": 7.576,
+      "selector_state_replay__scatter_decrement_pair_exact_calls": 26331,
+      "selector_state_replay__scatter_decrement_pair_exact_cumulative_seconds": 4.671,
+      "selector_state_replay__select_and_update_calls": 4098,
+      "selector_state_replay__select_and_update_cumulative_seconds": 5.336,
+      "thread_executor_shutdown_cumulative_seconds": 0.699
+    },
+    "target_chain_current_4_lane_stage_fraction": {
+      "feas_neighbor": 0.0864837536466245,
+      "mvidx": 0.0074880777334268315,
+      "mvqual": 0.04457236236424213,
+      "mvsel": 0.4078699151983432,
+      "repair": 0.45358589105736336
+    }
+  },
+  "inputs": {
+    "replay_source_sha256": "187eed42fb2d6cf5e7e745ffed0ce34541e92c6a35ec9e654520cd3c7198403c",
+    "target_archive_sha256": "bc1b7e25ba338507ae38b260bcd283356de887b6c6cf762a2c146733f1c3c958",
+    "target_chain_control_release": "0.20.225a0",
+    "target_chain_current_runtime_release": "0.20.234a0",
+    "target_chain_fixture": {
+      "candidate_count": 8192,
+      "family_count": 6,
+      "master_selection_count": 4096,
+      "qualification_domains": 1,
+      "repair_swaps": 2
+    }
+  },
+  "measurement_date": "2026-08-17",
+  "release": "0.20.235a0",
+  "restart_and_memory": {
+    "memory_ceiling_violation": false,
+    "mvidx_zero_second_geometry_reuse_contract_retained": true,
+    "replay_authenticated_index_restart_exact": true,
+    "scientific_cache_or_restart_identity_change": false,
+    "target_chain_peak_rss_kib_control": 313240,
+    "target_chain_peak_rss_kib_current_4_lane_median": 351696.0,
+    "target_neighborhood_reuse_contract_retained": true
+  },
+  "schema": "mdstats.mlff-campaign-perf-qual1-evidence.v1",
+  "scientific": {
+    "eval2_bootstrap_digest": "9664354fd2d871e67113ff5b9ef28118c9414a59f29a5fd4114acb729590397e",
+    "eval2_metric_digest": "d9dd9db2c2d47e2d6f034e0b58f094c04c516d5a0dc4f0089d3f15762d434658",
+    "feasibility_digest": "937214c70d1f2baae883993082f1ceb25bea6007a5a2be0beee045262f5c0613",
+    "foundation_audit_digest": "39b8b207c741798f5a8555b41ceb0c746948935612d84d45961ba87b0e8c94e5",
+    "foundation_model_provider_calls": [
+      44,
+      44
+    ],
+    "mvidx_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
+    "neighborhood_digest": "0220c89084fe957e85eb1e1c87a581eaa44869f11cb98bee7f7bd8cdafd3d74e",
+    "qualification_digest": "c19f2f9c3a328c7003e169bd9584277b21e72a6720caa588cf3879bd1cac1b25",
+    "reference_digest": "a66b12eb0bdb604cce053b4ab5df7aec58a8d985143eb7f791ff8360217fc57f",
+    "repair_digest": "ab7dc752555114bcd756913187e1d0eb7069c2e9a093f2a8a41130f485cdc33f",
+    "replay_monitor_extxyz_sha256": "cc0f9b308becd5c027a2adc64fc251808323e19c217412d82ea3d50b3deab2cf",
+    "replay_monitor_logical_digest": "633aae8a6deb1a3d857880f3eecd9bb40dbaedba8357a13944184c1bafbf1114",
+    "replay_source_index_digest": "ce6c678ad556cff63be8ee75754d87cba2b3d08e80f544c5983fe4498dc0c5e1",
+    "role_digest": "6666666666666666666666666666666666666666666666666666666666666666",
+    "selection_digest": "c179df6cfbb3b052c866d17bcf54aa5088ebc1998b35259afd3bd0ca163e8b8d",
+    "target_chain_exact": true
+  }
+}

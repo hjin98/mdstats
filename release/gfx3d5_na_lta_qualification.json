@@ -1,0 +1,107 @@
+{
+  "atoms": 168,
+  "browser_payload": {
+    "estimated_geometry_bytes": 5457616,
+    "face_count": 149896,
+    "point_count": 77528,
+    "segment_count": 36,
+    "trace_count": 20
+  },
+  "dependency_cache_report": {
+    "entries": 3,
+    "hits": 0,
+    "misses": 3
+  },
+  "frames": 21,
+  "html_canonical_bytes": 6794313,
+  "html_periodic_bytes": 8742291,
+  "layer_payloads": {
+    "Na density": {
+      "estimated_geometry_bytes": 5427648,
+      "face_count": 149896,
+      "point_count": 76256,
+      "segment_count": 0,
+      "trace_count": 6
+    },
+    "Na trajectory": {
+      "estimated_geometry_bytes": 26896,
+      "face_count": 0,
+      "point_count": 1104,
+      "segment_count": 0,
+      "trace_count": 6
+    },
+    "framework": {
+      "estimated_geometry_bytes": 3072,
+      "face_count": 0,
+      "point_count": 168,
+      "segment_count": 36,
+      "trace_count": 8
+    }
+  },
+  "layers": [
+    "framework",
+    "Na trajectory",
+    "Na density"
+  ],
+  "mdstats_version": "0.20.150a0",
+  "periodic_image_shifts": [
+    [
+      0,
+      0,
+      0
+    ],
+    [
+      1,
+      0,
+      0
+    ]
+  ],
+  "prepared_scene_schema": "mdstats.graphics3d.prepared-scene.gfx3d5.v1",
+  "render_schema": "mdstats.graphics3d.plotly-render-result.gfx3d5.v1",
+  "schema_version": "mdstats.graphics3d.gfx3d5-na-lta-qualification.v1",
+  "scientific_hash_current_0_20_150a0": {
+    "density": "7dfe8c055122a0a5ee1ab47fe50c1f827158aa65447057794936e5544747a9f8",
+    "density_type": "PeriodicScalarField3D",
+    "field_key": "atomic-density-0",
+    "integral": 23.999999999999996,
+    "mean_positions": "a646f0712ef8aa0c49f06826367a83848a8273f7a0803c7e5ff7ce938764025e",
+    "planning": "0d0c876f4aa4f87ec6795bd04944017838bfe0eab11a8c6d70e66c15906132cc",
+    "trajectory_positions": "bd1184330923381803db1e0f09cab8e93605fb4b6e954cd95074367e019635be"
+  },
+  "scientific_hash_reference_0_20_149a0": {
+    "density": "7dfe8c055122a0a5ee1ab47fe50c1f827158aa65447057794936e5544747a9f8",
+    "density_type": "PeriodicScalarField3D",
+    "field_key": "atomic-density-0",
+    "integral": 23.999999999999996,
+    "mean_positions": "a646f0712ef8aa0c49f06826367a83848a8273f7a0803c7e5ff7ce938764025e",
+    "planning": "0d0c876f4aa4f87ec6795bd04944017838bfe0eab11a8c6d70e66c15906132cc",
+    "trajectory_positions": "bd1184330923381803db1e0f09cab8e93605fb4b6e954cd95074367e019635be"
+  },
+  "scientific_products_exactly_identical_to_0_20_149a0": true,
+  "source_path": "/mnt/data/dump.prod.Na_lta_300K.old(1).lammpstrj",
+  "source_provider_report": {
+    "cache_policy": "scene_context_in_memory_single_flight",
+    "durable_product_cache": false,
+    "preparation_count": 1,
+    "preparation_wall_seconds": 2.5094401160004054,
+    "prepared": true,
+    "schema_version": "mdstats.graphics3d.lta-provider-report.gfx3d4.v1",
+    "scientific_identity": "3d626a4a4eb2fbb61a747e5cffedc008fecbcdccd2ebcabd656ea838554e811e"
+  },
+  "source_scene_refs_in_layer_products": 0,
+  "source_sha256": "81c86cc40f5a11031f80817213eb558c02348494d1c6cad9b4775a5bc3c9f9cd",
+  "trace_count": 20,
+  "view": {
+    "camera": "[111]",
+    "periodic_images": "2x1x1",
+    "projection": "orthographic",
+    "visible_layers": [
+      "Na density"
+    ]
+  },
+  "visible_trace_counts": {
+    "Na density": 6,
+    "Na trajectory": 0,
+    "framework": 0
+  }
+}

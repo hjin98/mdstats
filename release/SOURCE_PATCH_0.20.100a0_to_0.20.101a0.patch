@@ -1,0 +1,2654 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index d7715f7..aaba220 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,5 +1,12 @@
+ # Changelog
+ 
++## 0.20.101a0
++
++- Implement OPT-EVAL4 staged checkpoint evaluation: bounded CPU preparation, accelerator-admitted model materialization/conversion/inference, and bounded CPU prediction persistence/metric finalization now overlap across independent checkpoints.
++- Keep MACE calculator ownership private to each inference worker and retain the existing process-wide CuEq/OEq/FX conversion guard, adaptive accelerator concurrency calibration, fixed post-calibration GPU estimate, and hard VRAM/RAM safeguards.
++- Let cache-only evaluation/relabel work bypass accelerator admission entirely, and apply bounded prepared/finalization queues so prediction arrays cannot accumulate without backpressure.
++- Add stage-specific progress/timing diagnostics and automatic CPU prepare/finalize worker controls without changing evaluation metrics, checkpoint selection, replay provenance, prediction/graph cache schemas, or the MLFF compatibility token (still 0.20.99a0).
++
+ ## 0.20.100a0
+ 
+ - Remove density wall-time estimates and measured elapsed time as hard plotting admission criteria; wall-time targets are advisory diagnostics only.
+diff --git a/PATCH_NOTES_0.20.101a0.md b/PATCH_NOTES_0.20.101a0.md
+new file mode 100644
+index 0000000..a07a459
+--- /dev/null
++++ b/PATCH_NOTES_0.20.101a0.md
+@@ -0,0 +1,23 @@
++# mdstats 0.20.101a0 patch notes
++
++This release implements **OPT-EVAL4**, the staged MLFF checkpoint-evaluation pipeline.
++
++## Changed
++
++- Split checkpoint evaluation into explicit CPU preparation, accelerator inference, and CPU finalization stages while retaining `evaluate_mace_checkpoint()` as a synchronous compatibility wrapper.
++- Pipeline independent checkpoints through bounded preparation and finalization worker pools around the existing adaptive inference scheduler.
++- Keep checkpoint materialization and CuEq/OEq/FX conversion inside accelerator admission because those operations may use CUDA; actual graph conversion remains serialized by the existing process-wide conversion lock.
++- Reuse one private candidate calculator and one private foundation calculator within each checkpoint inference task; calculators are never shared between concurrent workers.
++- Route cache-only metric/relabel evaluation directly from CPU preparation to CPU finalization without consuming an accelerator slot.
++- Bound prepared and finalization backlogs so cached graphs/prediction arrays cannot grow without backpressure.
++- Start evaluation telemetry at the accelerator stage, excluding monitor parsing/cache lookup and metric/persistence work from GPU calibration.
++- Add stage-specific progress messages and per-checkpoint prepare/infer/finalize timing.
++- Add `[execution]` controls `parallel_evaluation_prepare_jobs`, `parallel_evaluation_finalize_jobs`, and `evaluation_pipeline_buffer_jobs` (`0` means automatic).
++
++## Scientific compatibility
++
++No model weights, monitor definitions, prediction schemas, metric definitions, replay provenance, checkpoint-selection constraints, or verification semantics change. The MLFF campaign compatibility token therefore remains `0.20.99a0`; existing campaign state, cached evaluations, persistent predictions, and monitor graph shards remain reusable.
++
++## Failure behavior
++
++Stage failures are attributed to CPU preparation, accelerator inference/conversion, or CPU finalization. New work stops after the first failure, already admitted work is drained safely, and no partial evaluation record is committed before finalization succeeds.
+diff --git a/PKG-INFO b/PKG-INFO
+index aeeafcb..788393d 100644
+--- a/PKG-INFO
++++ b/PKG-INFO
+@@ -1,6 +1,6 @@
+ Metadata-Version: 2.4
+ Name: mdstats
+-Version: 0.20.99a0
++Version: 0.20.101a0
+ Summary: Transparent atomistic frame collections and structural/dynamical statistics
+ Requires-Python: >=3.10
+ Requires-Dist: numpy>=1.26
+diff --git a/docs/arch_manuals/README.md b/docs/arch_manuals/README.md
+index bccd719..2373f2d 100644
+--- a/docs/arch_manuals/README.md
++++ b/docs/arch_manuals/README.md
+@@ -45,8 +45,9 @@ for module specifications.
+ ## MLFF architecture
+ 
+ - `mlff_training_data_architecture.{md,pdf}`: canonical MLFF-DATA architecture
+-  through the current 0.20.99a0 campaign line, including the recorded
+-  post-first-campaign staged optimization roadmap (`OPT-EVAL1` through `OPT-CTRL1`). The generic core owns provenance, eligibility,
++  through the frozen 0.20.99a0 scientific campaign identity and the 0.20.101a0
++  execution-optimization line, including the recorded post-first-campaign staged
++  optimization roadmap (`OPT-EVAL1` through `OPT-CTRL1`). The generic core owns provenance, eligibility,
+   partitioning, leakage control, selection orchestration, replay, precision,
+   training-backend calls, deployment, and validation policy. Physical
+   observables remain analysis-owned. LTA/ring/site semantics are an optional
+diff --git a/docs/arch_manuals/mlff_training_data_architecture.md b/docs/arch_manuals/mlff_training_data_architecture.md
+index 569c1f0..971c915 100644
+--- a/docs/arch_manuals/mlff_training_data_architecture.md
++++ b/docs/arch_manuals/mlff_training_data_architecture.md
+@@ -3843,26 +3843,50 @@ in the OPT-EVAL3 training-data specification under `docs/specs/training_data/`.
+ 
+ ## OPT-EVAL4 - staged evaluation pipeline
+ 
+-After `OPT-EVAL1`--`OPT-EVAL3` stabilize, evaluation should migrate from one
+-heterogeneous "checkpoint job" abstraction to an explicit bounded pipeline:
++`OPT-EVAL4` is implemented in mdstats 0.20.101a0. Evaluation no longer treats one
++checkpoint as one heterogeneous worker occupying an accelerator-admission slot from
++checkpoint I/O through metric persistence. The runtime is split into bounded stages:
+ 
+ ```text
+-CPU checkpoint preparation
+-        -> bounded prepared-model queue
+-serialized accelerator/FX conversion where required
+-        -> GPU inference worker(s)
+-CPU metric reduction / persistence / target-model publication
++CPU monitor/cache preparation
++        -> bounded prepared queue
++accelerator-admitted checkpoint materialization + serialized CuEq/OEq/FX conversion
++        -> private-worker MACE inference
++        -> bounded finalization queue
++CPU prediction persistence + metric reduction
++        -> parent-thread durable commit / run selection / selected-model publication
+ ```
+ 
+-The goal is work conservation: CPU preparation for later checkpoints and CPU result
+-reduction for completed checkpoints should overlap GPU inference without sharing
+-mutable calculators across active workers.  The pipeline should preserve the fixed
+-post-calibration CUDA resource estimate and hard VRAM/RAM safety boundaries unless
+-new measured evidence justifies replacing them.
+-
+-This stage is intentionally deferred until prediction and graph cache identities are
+-stable, because pipeline parallelism otherwise makes cache/provenance bugs harder to
+-diagnose.
++The public `evaluate_mace_checkpoint()` surface remains synchronous and executes the
++same stages sequentially. Campaign evaluation uses the staged surfaces directly so CPU
++preparation for later checkpoints and CPU finalization for completed checkpoints can
++overlap accelerator work. Cache-only OPT-EVAL2 recomputation bypasses accelerator
++admission entirely.
++
++A calculator/provider remains private to one inference worker. Candidate checkpoint
++materialization occurs inside the admitted accelerator stage because CuEq/OEq direct
++restoration and the qualified legacy fallback can execute device-bound conversion. MACE
++FX conversion remains serialized by the process-wide conversion guard, while admitted
++model forwards can overlap on separate CUDA streams.
++
++The existing fixed post-calibration CUDA resource estimate remains authoritative.
++Evaluation calibration now describes the accelerator stage rather than CPU monitor
++parsing: model materialization, accelerator conversion, transfer, and inference are
++included; CPU preparation and metric/persistence finalization are excluded. The hard
++live VRAM safeguard remains.
++
++CPU stage concurrency and backpressure are bounded by
++`parallel_evaluation_prepare_jobs`, `parallel_evaluation_finalize_jobs`, and
++`evaluation_pipeline_buffer_jobs`; zero selects conservative automatic values. A full
++finalization backlog applies backpressure to inference so fresh prediction arrays cannot
++accumulate without bound. Completed accelerator slots are refilled before parent-side
++selection/model-publication callbacks run.
++
++Per-checkpoint progress reports total wall time plus prepare/inference/finalization stage
++time. These timings are diagnostic only and do not change prediction, graph, metric, or
++selection identities. Existing 0.20.99/0.20.100 campaign state therefore remains
++compatible. Detailed ownership, backpressure, restart, and acceptance requirements are
++recorded in `docs/specs/training_data/mlff_opt_eval4_staged_evaluation_pipeline_spec.md`.
+ 
+ ## OPT-VERIFY1 - verification reuse and nearest-pair scaling
+ 
+@@ -3922,5 +3946,5 @@ A stage is complete only when:
+ 5. representative timing evidence demonstrates the intended improvement; and
+ 6. the legacy fallback, when retained, remains fail-closed and clearly reported.
+ 
+-The next implementation follow-up from this roadmap is **`OPT-EVAL4`**.
++The next implementation follow-up from this roadmap is **`OPT-VERIFY1`**.
+ 
+diff --git a/docs/specs/training_data/mlff_opt_eval4_staged_evaluation_pipeline_spec.md b/docs/specs/training_data/mlff_opt_eval4_staged_evaluation_pipeline_spec.md
+new file mode 100644
+index 0000000..d3996d9
+--- /dev/null
++++ b/docs/specs/training_data/mlff_opt_eval4_staged_evaluation_pipeline_spec.md
+@@ -0,0 +1,160 @@
++# OPT-EVAL4 staged checkpoint-evaluation pipeline
++
++Status: implemented in mdstats 0.20.101a0.
++
++## 1. Purpose
++
++Checkpoint evaluation previously scheduled one heterogeneous job per candidate.
++A single worker performed checkpoint authentication/materialization, monitor parsing,
++accelerator graph conversion, MACE inference, prediction persistence, metric reduction,
++SQLite commit, run selection, and selected-model publication.  Independent checkpoint
++jobs could run concurrently, but CPU-only work before and after inference occupied the
++same admitted slot.  When model forwards were short relative to preparation/finalization,
++GPU slots could therefore be idle even though later checkpoints were ready to prepare.
++
++OPT-EVAL4 changes execution topology only.  It does not change model weights, monitor
++membership/order, prediction-cache identity, graph-cache identity, metric definitions,
++checkpoint admissibility, selection policy, replay lineage, or verification policy.
++
++## 2. Required pipeline
++
++Campaign evaluation shall execute uncached checkpoints through three bounded stages:
++
++```text
++CPU preparation
++  - authenticate checkpoint/monitor bytes
++  - load/cache target and replay monitors
++  - materialize immutable evaluation views
++  - resolve persisted candidate predictions
++  - resolve/import DATA6 or replay-pseudolabel foundation predictions
++        |
++        v
++bounded prepared queue
++        |
++        v
++accelerator stage
++  - materialize the candidate checkpoint model only when candidate inference is needed
++  - serialize CuEq/OEq/PyTorch-FX conversions through the existing process-wide guard
++  - construct a private calculator per active checkpoint worker
++  - execute target/replay model forwards under adaptive CPU/GPU admission
++        |
++        v
++bounded finalization queue
++        |
++        v
++CPU finalization
++  - persist newly generated candidate predictions
++  - reduce immutable prediction arrays against cached evaluation views
++  - construct the checkpoint evaluation record
++        |
++        v
++parent-thread durable commit / run selection / selected-model publication
++```
++
++Preparation for later checkpoints and finalization for completed checkpoints should be
++able to overlap inference.  A completed accelerator slot shall be refilled before
++parent-side run selection/model publication callbacks execute.
++
++## 3. Compatibility API
++
++`evaluate_mace_checkpoint()` remains public and synchronous.  It shall execute the same
++three scientific stages sequentially so existing callers do not need to know about the
++campaign pipeline.
++
++The runtime stage APIs are:
++
++- `prepare_mace_checkpoint_evaluation(...)`
++- `run_prepared_mace_checkpoint_inference(...)`
++- `finalize_prepared_mace_checkpoint_evaluation(...)`
++
++`PreparedCheckpointEvaluation` and `CheckpointEvaluationPredictionBundle` are runtime
++objects only and are not campaign-state serialization formats.
++
++## 4. Cache-only behavior
++
++If CPU preparation proves that all required candidate/foundation predictions are already
++durable or can be imported from authenticated DATA6/pseudolabel sources, the checkpoint
++shall bypass accelerator admission entirely.  Metric recomputation after a reference-label
++or reporting-policy change must therefore remain possible after the raw checkpoint has
++been pruned, as established by OPT-EVAL2.
++
++## 5. Accelerator ownership and safety
++
++A MACE calculator/provider is private to one active inference worker.  No calculator may
++be passed to a sibling worker or to CPU finalization.
++
++Candidate checkpoint materialization is part of the admitted accelerator stage rather
++than the unmetered CPU preparation stage.  This is required because direct restoration of
++CuEq/OEq checkpoints can execute accelerator/FX conversion, and the legacy qualified
++fallback may invoke a device-bound MACE reconstruction process.
++
++MACE CuEq/OEq/hybrid FX rewriting remains serialized by the existing process-wide
++conversion lock.  Independent model inference may overlap on separately admitted CUDA
++streams after conversion.
++
++## 6. Resource admission
++
++The existing `AdaptiveInferenceConcurrency` policy remains authoritative for the
++accelerator stage:
++
++- CUDA starts with one admitted inference job while calibration is incomplete;
++- the fixed post-calibration per-job GPU/VRAM estimate determines target concurrency;
++- live GPU-utilization spikes do not demote the calibrated target;
++- the hard live VRAM guard remains active;
++- CPU-only inference remains bounded by CPU/RAM policy.
++
++OPT-EVAL4 changes the meaning of evaluation calibration boundaries: CPU monitor/cache
++preparation and CPU metric/persistence finalization are outside CUDA calibration.  Model
++materialization, accelerator conversion, transfer, and actual MACE inference remain
++inside it.  Verification retains its existing admission behavior.
++
++## 7. Pipeline backpressure
++
++CPU stages must not run arbitrarily far ahead of inference.  The campaign exposes:
++
++- `parallel_evaluation_prepare_jobs` (`0` = auto),
++- `parallel_evaluation_finalize_jobs` (`0` = auto),
++- `evaluation_pipeline_buffer_jobs` (`0` = auto).
++
++The auto policy uses a small CPU-stage worker count and a bounded prepared/finalization
++backlog.  Accelerator admission pauses when the finalization backlog reaches its bound so
++fresh prediction arrays cannot accumulate without limit.
++
++## 8. Failure and restart semantics
++
++A failure in any stage stops admission of new work.  Already-active stage work may finish,
++but the command fails without marking incomplete checkpoints as evaluated.
++
++Durable prediction artifacts and evaluation records keep their existing OPT-EVAL2/3
++identities.  No new scientific-record schema is required merely for pipeline scheduling.
++A restart may therefore reuse 0.20.99/0.20.100 campaign state and prediction/graph caches.
++
++## 9. Progress and observability
++
++Campaign output shall distinguish pipeline stages.  At minimum it should expose:
++
++- CPU preparation;
++- accelerator model conversion/inference;
++- CPU prediction persistence/metric finalization;
++- active/ready/finalization-backlog counts in periodic scheduler reporting.
++
++Per-checkpoint completion should report total wall time and the accumulated prepare,
++inference, and finalization times.  These timings are diagnostics and do not enter any
++scientific digest or acceptance decision.
++
++## 10. Acceptance tests
++
++OPT-EVAL4 is complete only if all of the following hold:
++
++1. staged scientific execution reproduces synchronous `evaluate_mace_checkpoint()`
++   metrics and provenance;
++2. an OPT-EVAL2 cache-only restart bypasses the inference executor and works after raw
++   checkpoint deletion;
++3. with one inference slot, preparation of checkpoint N+1 overlaps inference of N;
++4. with one inference slot, CPU finalization of N overlaps inference of N+1;
++5. completion callbacks remain parent-thread operations so campaign SQLite/publication
++   semantics are unchanged;
++6. CuEq/OEq conversion guards and checkpoint materialization tests remain green;
++7. true-label replay and persistent prediction-cache regressions remain green;
++8. the existing adaptive inference controller tests remain green;
++9. exact source-patch and isolated-wheel smoke tests pass before release.
+diff --git a/mdstats/__init__.py b/mdstats/__init__.py
+index ebdeeb0..9f11dcf 100644
+--- a/mdstats/__init__.py
++++ b/mdstats/__init__.py
+@@ -4517,6 +4517,8 @@ from .training_data import (
+     TrainingRunExecutionRecord,
+     CheckpointEvaluationPolicy,
+     CheckpointEvaluationRecord,
++    PreparedCheckpointEvaluation,
++    CheckpointEvaluationPredictionBundle,
+     ModelDatasetMetricRecord,
+     ProtocolVariantAggregate,
+     ProtocolFamilyAggregate,
+@@ -4530,6 +4532,9 @@ from .training_data import (
+     ProtocolFreezeRecord,
+     EvaluationActivationDecision,
+     execute_training_run,
++    prepare_mace_checkpoint_evaluation,
++    run_prepared_mace_checkpoint_inference,
++    finalize_prepared_mace_checkpoint_evaluation,
+     evaluate_mace_checkpoint,
+     checkpoint_prediction_cache_complete,
+     bind_checkpoint_evaluation_replay_provenance,
+@@ -4575,6 +4580,8 @@ __all__ += [
+     "TrainingRunExecutionRecord",
+     "CheckpointEvaluationPolicy",
+     "CheckpointEvaluationRecord",
++    "PreparedCheckpointEvaluation",
++    "CheckpointEvaluationPredictionBundle",
+     "ModelDatasetMetricRecord",
+     "ProtocolVariantAggregate",
+     "ProtocolFamilyAggregate",
+@@ -4588,6 +4595,9 @@ __all__ += [
+     "ProtocolFreezeRecord",
+     "EvaluationActivationDecision",
+     "execute_training_run",
++    "prepare_mace_checkpoint_evaluation",
++    "run_prepared_mace_checkpoint_inference",
++    "finalize_prepared_mace_checkpoint_evaluation",
+     "evaluate_mace_checkpoint",
+     "checkpoint_prediction_cache_complete",
+     "bind_checkpoint_evaluation_replay_provenance",
+diff --git a/mdstats/_version.py b/mdstats/_version.py
+index 9d81ae1..201a595 100644
+--- a/mdstats/_version.py
++++ b/mdstats/_version.py
+@@ -1,3 +1,3 @@
+ """Package version."""
+ 
+-__version__ = "0.20.100a0"
++__version__ = "0.20.101a0"
+diff --git a/mdstats/data/observable_owner_manuals.json b/mdstats/data/observable_owner_manuals.json
+index aca7726..a9d7ada 100644
+--- a/mdstats/data/observable_owner_manuals.json
++++ b/mdstats/data/observable_owner_manuals.json
+@@ -1,6 +1,6 @@
+ {
+   "schema": "mdstats.observable-owner-manual-index.v1",
+-  "package_version": "0.20.100a0",
++  "package_version": "0.20.101a0",
+   "manuals": {
+     "structural-observables-architecture": {
+       "source_path": "docs/arch_manuals/structural_observables_architecture.md",
+diff --git a/mdstats/training_data/__init__.py b/mdstats/training_data/__init__.py
+index fee6b4f..0d2bfdc 100644
+--- a/mdstats/training_data/__init__.py
++++ b/mdstats/training_data/__init__.py
+@@ -904,6 +904,8 @@ from .campaign_execution import (
+     TrainingRunExecutionRecord,
+     CheckpointEvaluationPolicy,
+     CheckpointEvaluationRecord,
++    PreparedCheckpointEvaluation,
++    CheckpointEvaluationPredictionBundle,
+     ModelDatasetMetricRecord,
+     ProtocolVariantAggregate,
+     ProtocolFamilyAggregate,
+@@ -917,6 +919,9 @@ from .campaign_execution import (
+     ProtocolFreezeRecord,
+     EvaluationActivationDecision,
+     execute_training_run,
++    prepare_mace_checkpoint_evaluation,
++    run_prepared_mace_checkpoint_inference,
++    finalize_prepared_mace_checkpoint_evaluation,
+     evaluate_mace_checkpoint,
+     checkpoint_prediction_cache_complete,
+     bind_checkpoint_evaluation_replay_provenance,
+diff --git a/mdstats/training_data/campaign_cli.py b/mdstats/training_data/campaign_cli.py
+index 75c9c91..7051539 100644
+--- a/mdstats/training_data/campaign_cli.py
++++ b/mdstats/training_data/campaign_cli.py
+@@ -56,8 +56,9 @@ from .inference_parallel import (
+     report_inference_worker_phase,
+ )
+ 
+-# 0.20.100a0 is a plotting-only wall-time-policy release; keep the MLFF
+-# campaign compatibility token unchanged so existing campaign state is reusable.
++# 0.20.100a0 changes plotting policy and 0.20.101a0 changes only evaluation
++# execution topology. Neither changes the frozen MLFF scientific/materialization
++# identity, so existing 0.20.99a0 campaign state and prediction caches remain reusable.
+ MLFF_DATA9B3_VERSION = "0.20.99a0"
+ # Parallel scheduling does not change the scientific NVE case identity. Keep
+ # the 0.20.85a0 runtime token so completed verification caches remain reusable.
+@@ -6244,6 +6245,462 @@ def _run_adaptive_inference_tasks(
+     return results
+ 
+ 
++@dataclass(frozen=True)
++class _StagedEvaluationTask:
++    """One OPT-EVAL4 checkpoint flowing through prepare/infer/finalize stages."""
++
++    display_index: int
++    key: str
++    label: str
++    start_detail: str
++    prepare: Callable[[], Any]
++    requires_inference: Callable[[Any], bool]
++    infer: Callable[[Any], Any]
++    finalize: Callable[[Any, Any], Any]
++    done_detail: Callable[[Any, float], str]
++    on_success: Callable[[Any], None] | None = None
++
++
++@dataclass
++class _StagedEvaluationTiming:
++    started: float
++    prepared_seconds: float = 0.0
++    inference_seconds: float = 0.0
++    finalized_seconds: float = 0.0
++
++
++def _run_staged_evaluation_tasks(
++    tasks: Sequence[_StagedEvaluationTask],
++    *,
++    cfg: Mapping[str, Any],
++    device: str,
++    progress: Any,
++) -> dict[str, Any]:
++    """Run evaluation as a bounded CPU -> accelerator -> CPU pipeline.
++
++    CPU checkpoint/model preparation stays ahead of inference, accelerator work
++    retains the existing adaptive CUDA/CPU admission controller, and prediction
++    persistence/metric reduction runs behind it.  No mutable calculator crosses
++    an inference-worker boundary.
++    """
++
++    phase = "evaluation"
++    if not tasks:
++        return {}
++    policy = _inference_concurrency_policy(cfg, phase)
++    try:
++        resources = detect_system_resources(
++            cpu_fraction=float(_cfg(cfg, "performance", "cpu_fraction", 0.90)),
++            ram_fraction=float(_cfg(cfg, "performance", "ram_fraction", 0.80)),
++            gpu_memory_fraction=float(policy.gpu_memory_fraction),
++            device=device,
++        )
++    except ValueError as exc:
++        raise CampaignCliError(str(exc)) from exc
++    cpu_probe = CpuTelemetryProbe(capacity_threads=resources.cpu_threads_available)
++    cpu_sample = cpu_probe.sample(blocking_seconds=0.10)
++    gpu_sample = query_gpu_telemetry(device)
++    plan = build_inference_concurrency_plan(
++        task_count=len(tasks),
++        device=device,
++        resources=resources,
++        policy=policy,
++        gpu_sample=gpu_sample,
++        cpu_sample=cpu_sample,
++    )
++    _configure_inference_thread_budget(plan)
++    controller = AdaptiveInferenceConcurrency(plan, policy)
++
++    def _positive_stage_workers(key: str, default: int) -> int:
++        value = int(_cfg(cfg, "execution", key, 0))
++        if value < 0:
++            raise CampaignCliError(
++                f"[execution].{key} must be zero (auto) or positive."
++            )
++        if value == 0:
++            return max(1, default)
++        return value
++
++    # These workers do not own MACE calculators.  Keep them deliberately small:
++    # their job is to overlap hashing/parsing/materialization and metric I/O with
++    # accelerator work, not to create a second CPU oversubscription problem.
++    auto_cpu_stage_workers = max(1, min(2, int(resources.cpu_threads_available)))
++    prepare_workers = min(
++        len(tasks),
++        _positive_stage_workers(
++            "parallel_evaluation_prepare_jobs", auto_cpu_stage_workers
++        ),
++    )
++    finalize_workers = min(
++        len(tasks),
++        _positive_stage_workers(
++            "parallel_evaluation_finalize_jobs", auto_cpu_stage_workers
++        ),
++    )
++    configured_buffer = int(
++        _cfg(cfg, "execution", "evaluation_pipeline_buffer_jobs", 0)
++    )
++    if configured_buffer < 0:
++        raise CampaignCliError(
++            "[execution].evaluation_pipeline_buffer_jobs must be zero (auto) or positive."
++        )
++    auto_buffer = max(2, min(8, max(1, int(plan.maximum_jobs)) * 2))
++    pipeline_buffer = min(
++        len(tasks), configured_buffer if configured_buffer > 0 else auto_buffer
++    )
++    pipeline_buffer = max(1, pipeline_buffer)
++    finalize_backlog_limit = max(
++        finalize_workers,
++        min(pipeline_buffer, max(2, int(plan.maximum_jobs) * 2)),
++    )
++
++    _ok(
++        "evaluation pipeline: "
++        f"{plan.summary()}; CPU prepare={prepare_workers}, "
++        f"CPU finalize={finalize_workers}, prepared buffer={pipeline_buffer}"
++    )
++
++    pending = deque(tasks)
++    ready_inference: deque[tuple[_StagedEvaluationTask, Any, _StagedEvaluationTiming]] = deque()
++    waiting_finalize: deque[
++        tuple[_StagedEvaluationTask, Any, Any | None, _StagedEvaluationTiming]
++    ] = deque()
++    active_prepare: dict[Future[Any], tuple[_StagedEvaluationTask, _StagedEvaluationTiming]] = {}
++    active_inference: dict[
++        Future[Any], tuple[_StagedEvaluationTask, Any, _StagedEvaluationTiming, _InferenceWorkerStatus]
++    ] = {}
++    active_finalize: dict[
++        Future[Any], tuple[_StagedEvaluationTask, _StagedEvaluationTiming]
++    ] = {}
++    results: dict[str, Any] = {}
++    failures: list[str] = []
++    stop_scheduling = False
++    stage_events: deque[tuple[str, str]] = deque()
++    stage_events_lock = threading.Lock()
++    last_report = 0.0
++    telemetry_ready_active_jobs: int | None = None
++
++    def report_stage_events() -> None:
++        with stage_events_lock:
++            events = tuple(stage_events)
++            stage_events.clear()
++        for task_label, stage in events:
++            print(f"[EVALUATION STAGE] {task_label}: {stage}", flush=True)
++
++    def execute_prepare(task: _StagedEvaluationTask, timing: _StagedEvaluationTiming) -> Any:
++        started = time.monotonic()
++        try:
++            return task.prepare()
++        finally:
++            timing.prepared_seconds += time.monotonic() - started
++
++    def execute_inference(
++        task: _StagedEvaluationTask,
++        prepared: Any,
++        timing: _StagedEvaluationTiming,
++        status: _InferenceWorkerStatus,
++    ) -> Any:
++        def update_phase(stage: str) -> None:
++            if status.set_phase(stage):
++                with stage_events_lock:
++                    stage_events.append((task.label, status.phase()))
++
++        started = time.monotonic()
++        try:
++            with inference_start_signal(
++                status.mark_workload_started,
++                phase_callback=update_phase,
++            ):
++                update_phase("accelerator model conversion / inference")
++                if not str(device).startswith("cuda"):
++                    return task.infer(prepared)
++                try:
++                    import torch
++
++                    cuda_device = torch.device(device)
++                    if not torch.cuda.is_available():
++                        return task.infer(prepared)
++                    stream = torch.cuda.Stream(device=cuda_device)
++                    with torch.cuda.device(cuda_device), torch.cuda.stream(stream):
++                        result = task.infer(prepared)
++                    stream.synchronize()
++                    return result
++                except ModuleNotFoundError:
++                    return task.infer(prepared)
++        finally:
++            timing.inference_seconds += time.monotonic() - started
++
++    def execute_finalize(
++        task: _StagedEvaluationTask,
++        prepared: Any,
++        inference_result: Any | None,
++        timing: _StagedEvaluationTiming,
++    ) -> Any:
++        started = time.monotonic()
++        try:
++            # A cache-only prepared evaluation intentionally bypasses accelerator
++            # admission. Its prediction stage is a cheap bundle assembly and is
++            # safe to execute in this CPU worker before metric reduction.
++            active_result = (
++                task.infer(prepared)
++                if inference_result is None
++                else inference_result
++            )
++            return task.finalize(prepared, active_result)
++        finally:
++            timing.finalized_seconds += time.monotonic() - started
++
++    def launch_prepare(pool: ThreadPoolExecutor) -> None:
++        if stop_scheduling:
++            return
++        while pending and len(active_prepare) < prepare_workers:
++            buffered = len(active_prepare) + len(ready_inference) + len(waiting_finalize)
++            if buffered >= pipeline_buffer:
++                break
++            task = pending.popleft()
++            timing = _StagedEvaluationTiming(started=time.monotonic())
++            progress.item_start(
++                task.display_index,
++                task.label,
++                f"{task.start_detail}; stage=CPU prepare",
++            )
++            future = pool.submit(execute_prepare, task, timing)
++            active_prepare[future] = (task, timing)
++
++    def launch_finalize(pool: ThreadPoolExecutor) -> None:
++        while waiting_finalize and len(active_finalize) < finalize_workers:
++            task, prepared, inference_result, timing = waiting_finalize.popleft()
++            future = pool.submit(
++                execute_finalize, task, prepared, inference_result, timing
++            )
++            active_finalize[future] = (task, timing)
++
++    def launch_inference(pool: ThreadPoolExecutor) -> None:
++        if stop_scheduling:
++            return
++        while ready_inference and len(active_inference) < controller.target_jobs:
++            if len(waiting_finalize) + len(active_finalize) >= finalize_backlog_limit:
++                break
++            task, prepared, timing = ready_inference.popleft()
++            status = _InferenceWorkerStatus()
++            if str(device).startswith("cuda"):
++                controller.start_calibration(now=time.monotonic())
++            future = pool.submit(execute_inference, task, prepared, timing, status)
++            active_inference[future] = (task, prepared, timing, status)
++
++    with (
++        ThreadPoolExecutor(
++            max_workers=max(1, prepare_workers),
++            thread_name_prefix="mdstats-eval-prepare",
++        ) as prepare_pool,
++        ThreadPoolExecutor(
++            max_workers=max(1, plan.maximum_jobs),
++            thread_name_prefix="mdstats-eval-infer",
++        ) as inference_pool,
++        ThreadPoolExecutor(
++            max_workers=max(1, finalize_workers),
++            thread_name_prefix="mdstats-eval-finalize",
++        ) as finalize_pool,
++    ):
++        launch_prepare(prepare_pool)
++        while (
++            pending
++            or active_prepare
++            or ready_inference
++            or active_inference
++            or waiting_finalize
++            or active_finalize
++        ):
++            launch_finalize(finalize_pool)
++            launch_inference(inference_pool)
++            launch_prepare(prepare_pool)
++            report_stage_events()
++
++            all_futures = (
++                tuple(active_prepare)
++                + tuple(active_inference)
++                + tuple(active_finalize)
++            )
++            if not all_futures:
++                if stop_scheduling:
++                    break
++                raise CampaignCliError(
++                    "Evaluation pipeline stalled with queued work but no active stage."
++                )
++            done, _ = wait(
++                all_futures,
++                timeout=float(policy.monitor_interval_seconds),
++                return_when=FIRST_COMPLETED,
++            )
++
++            completed_parent_callbacks: list[tuple[_StagedEvaluationTask, Any, _StagedEvaluationTiming]] = []
++
++            for future in tuple(done):
++                if future in active_prepare:
++                    task, timing = active_prepare.pop(future)
++                    try:
++                        prepared = future.result()
++                        if task.requires_inference(prepared):
++                            ready_inference.append((task, prepared, timing))
++                        else:
++                            waiting_finalize.append((task, prepared, None, timing))
++                    except Exception as exc:
++                        failures.append(
++                            f"{task.label}: {type(exc).__name__}: {exc} (stage=CPU preparation)"
++                        )
++                        _fail(failures[-1])
++                        stop_scheduling = True
++                elif future in active_inference:
++                    task, prepared, timing, status = active_inference.pop(future)
++                    try:
++                        inference_result = future.result()
++                        waiting_finalize.append(
++                            (task, prepared, inference_result, timing)
++                        )
++                    except Exception as exc:
++                        failures.append(
++                            f"{task.label}: {type(exc).__name__}: {exc} "
++                            f"(stage={status.phase()})"
++                        )
++                        _fail(failures[-1])
++                        stop_scheduling = True
++                elif future in active_finalize:
++                    task, timing = active_finalize.pop(future)
++                    try:
++                        result = future.result()
++                        results[task.key] = result
++                        completed_parent_callbacks.append((task, result, timing))
++                    except Exception as exc:
++                        failures.append(
++                            f"{task.label}: {type(exc).__name__}: {exc} (stage=CPU finalization)"
++                        )
++                        _fail(failures[-1])
++                        stop_scheduling = True
++
++            # Refill GPU and CPU stage slots before parent-side publication or
++            # SQLite callbacks. This preserves work conservation even if the last
++            # checkpoint of a run triggers target-model export.
++            launch_finalize(finalize_pool)
++            launch_inference(inference_pool)
++            launch_prepare(prepare_pool)
++
++            for task, result, timing in completed_parent_callbacks:
++                try:
++                    if task.on_success is not None:
++                        task.on_success(result)
++                    wall = time.monotonic() - timing.started
++                    progress.item_done(
++                        task.display_index,
++                        task.label,
++                        task.done_detail(result, wall)
++                        + "; pipeline="
++                        + f"prepare {_ProgressReporter._duration(timing.prepared_seconds)}, "
++                        + f"infer {_ProgressReporter._duration(timing.inference_seconds)}, "
++                        + f"finalize {_ProgressReporter._duration(timing.finalized_seconds)}",
++                    )
++                except Exception as exc:
++                    failures.append(
++                        f"{task.label} result finalization: {type(exc).__name__}: {exc}"
++                    )
++                    _fail(failures[-1])
++                    stop_scheduling = True
++
++            now = time.monotonic()
++            workload_active_jobs = sum(
++                1
++                for _, _, _, status in active_inference.values()
++                if status.workload_started.is_set()
++            )
++            uses_cuda = str(device).startswith("cuda")
++            telemetry_ready = bool(active_inference) and workload_active_jobs >= len(active_inference)
++            cpu_probe_just_reset = False
++            if uses_cuda:
++                telemetry_ready_active_jobs = None
++            elif not telemetry_ready:
++                telemetry_ready_active_jobs = None
++            elif telemetry_ready_active_jobs != len(active_inference):
++                telemetry_ready_active_jobs = len(active_inference)
++                cpu_probe.reset()
++                cpu_probe_just_reset = True
++            cpu_runtime_sample = None
++            if (
++                telemetry_ready
++                and not uses_cuda
++                and not cpu_probe_just_reset
++                and telemetry_ready_active_jobs == len(active_inference)
++            ):
++                cpu_runtime_sample = cpu_probe.sample()
++            decision = controller.observe(
++                active_jobs=len(active_inference),
++                workload_active_jobs=workload_active_jobs,
++                gpu_sample=(
++                    query_gpu_telemetry(device)
++                    if uses_cuda and active_inference
++                    else None
++                ),
++                cpu_sample=cpu_runtime_sample,
++                now=now,
++            )
++            if decision.changed:
++                projected_memory = _format_bytes_gib(
++                    decision.predicted_memory_bytes_at_target
++                )
++                projected_util = (
++                    "unknown"
++                    if decision.predicted_utilization_percent_at_target is None
++                    else f"{decision.predicted_utilization_percent_at_target:.1f}%"
++                )
++                print(
++                    "[EVALUATION scheduler] inference concurrency "
++                    f"{decision.previous_target} -> {decision.target_jobs}: "
++                    f"{decision.reason}; projected memory={projected_memory}; "
++                    f"projected utilization={projected_util}",
++                    flush=True,
++                )
++            elif now - last_report >= 30.0 and (
++                active_prepare or active_inference or active_finalize
++            ):
++                active_phases = Counter(
++                    status.phase()
++                    for _, _, _, status in active_inference.values()
++                )
++                phase_detail = ""
++                if active_phases:
++                    phase_detail = "; accelerator stages=" + ", ".join(
++                        f"{name} x{count}"
++                        for name, count in sorted(active_phases.items())
++                    )
++                print(
++                    "[EVALUATION pipeline] "
++                    f"prepare={len(active_prepare)}, ready={len(ready_inference)}, "
++                    f"infer={len(active_inference)}/{controller.target_jobs}, "
++                    f"finalize={len(active_finalize)}, final-backlog={len(waiting_finalize)}, "
++                    f"pending={len(pending)}; {decision.reason}{phase_detail}",
++                    flush=True,
++                )
++                last_report = now
++            launch_inference(inference_pool)
++            report_stage_events()
++
++    report_stage_events()
++    if failures:
++        raise CampaignCliError(
++            f"Evaluation staged execution failed: {failures[0]}"
++        )
++    unfinished = (
++        len(pending)
++        + len(active_prepare)
++        + len(ready_inference)
++        + len(active_inference)
++        + len(waiting_finalize)
++        + len(active_finalize)
++    )
++    if unfinished:
++        raise CampaignCliError(
++            f"Evaluation pipeline stopped before {unfinished} queued/active task(s) completed."
++        )
++    return results
++
+ def _training_environment_for_plan(plan: Any) -> dict[str, str]:
+     env = configure_worker_thread_environment({}, threads=plan.cpu_threads_per_job)
+     # Avoid one process silently taking the complete CPU through PyTorch's
+@@ -8112,7 +8569,7 @@ def command_evaluate(args: argparse.Namespace) -> int:
+     # execute concurrently after a stale true-label evaluation is invalidated.
+     # This also permits checkpoints from different runs to share the same
+     # adaptive GPU/CPU admission controller.
+-    pending_evaluation_tasks: list[_AdaptiveInferenceTask] = []
++    pending_evaluation_tasks: list[_StagedEvaluationTask] = []
+     evaluation_contexts: list[dict[str, Any]] = []
+     def publish_evaluated_model(
+         context: dict[str, Any], selection: Any
+@@ -8522,14 +8979,11 @@ def command_evaluate(args: argparse.Namespace) -> int:
+ 
+             task_result_key = f"{run.content_digest}:{checkpoint.sha256}"
+ 
+-            def execute_checkpoint(
++            def prepare_checkpoint(
+                 *,
+                 active_run: Any = run,
+                 active_checkpoint: Any = checkpoint,
+                 active_model_path: Path = model_path,
+-                active_config_path: Path = config_path,
+-                active_job_root: Path = job_root,
+-                active_checkpoint_model_cache: Path = checkpoint_model_cache,
+                 active_target_path: Path = target_path,
+                 active_target_artifact: Any = target_artifact,
+                 active_replay_path: Path | None = replay_path,
+@@ -8538,32 +8992,11 @@ def command_evaluate(args: argparse.Namespace) -> int:
+                 active_training_replay_path: Path | None = training_replay_path,
+                 active_baseline_model: Path | None = baseline_model_for_evaluation,
+             ) -> Any:
+-                prediction_ready = mdstats.checkpoint_prediction_cache_complete(
+-                    prediction_cache_directory,
+-                    checkpoint_sha256=active_checkpoint.sha256,
+-                    target_geometry_identities=active_target_artifact.frame_uids,
+-                    policy=evaluation_policy,
+-                    replay_geometry_identities=(
+-                        None
+-                        if active_evaluation_replay_artifact is None
+-                        else active_evaluation_replay_artifact.geometry_identities
+-                    ),
+-                )
+-                calculator_model = None
+-                if not prediction_ready:
+-                    calculator_model = mdstats.materialize_mace_checkpoint_model(
+-                        active_checkpoint,
+-                        active_model_path,
+-                        mace_config_path=active_config_path,
+-                        job_working_directory=active_job_root,
+-                        cache_directory=active_checkpoint_model_cache,
+-                        wrapper_path=local_wrappers["mdstats-mace-train"],
+-                    )
+-                result = mdstats.evaluate_mace_checkpoint(
++                return mdstats.prepare_mace_checkpoint_evaluation(
+                     active_run,
+                     active_checkpoint,
+                     candidate_model_path=active_model_path,
+-                    calculator_model_path=calculator_model,
++                    calculator_model_path=None,
+                     target_monitor_path=active_target_path,
+                     target_monitor_artifact=active_target_artifact,
+                     policy=evaluation_policy,
+@@ -8577,16 +9010,49 @@ def command_evaluate(args: argparse.Namespace) -> int:
+                     foundation_prediction_manifest=foundation_prediction_manifest,
+                     foundation_prediction_root=foundation_prediction_root,
+                 )
++
++            def infer_checkpoint(
++                prepared: Any,
++                *,
++                active_checkpoint: Any = checkpoint,
++                active_model_path: Path = model_path,
++                active_config_path: Path = config_path,
++                active_job_root: Path = job_root,
++                active_checkpoint_model_cache: Path = checkpoint_model_cache,
++            ) -> Any:
++                calculator_model = None
++                if prepared.requires_candidate_inference:
++                    # Model reconstruction/conversion is accelerator-admitted in
++                    # OPT-EVAL4.  In particular, CuEq/OEq FX conversion can use
++                    # CUDA and must not occur in an unmetered CPU preparation
++                    # worker.
++                    calculator_model = mdstats.materialize_mace_checkpoint_model(
++                        active_checkpoint,
++                        active_model_path,
++                        mace_config_path=active_config_path,
++                        job_working_directory=active_job_root,
++                        cache_directory=active_checkpoint_model_cache,
++                        wrapper_path=local_wrappers["mdstats-mace-train"],
++                    )
++                return mdstats.run_prepared_mace_checkpoint_inference(
++                    prepared,
++                    calculator_model_path=calculator_model,
++                )
++
++            def finalize_checkpoint(prepared: Any, prediction_bundle: Any) -> Any:
++                result = mdstats.finalize_prepared_mace_checkpoint_evaluation(
++                    prepared, prediction_bundle
++                )
+                 # Keep reconstructable checkpoint-model caches until this run is
+-                # selected.  Immediate per-run export can then reuse the exact
++                # selected. Immediate per-run export can then reuse the exact
+                 # model bytes instead of reconstructing the selected checkpoint a
+                 # second time. Non-selected caches are removed after export.
+                 return mdstats.bind_checkpoint_evaluation_replay_provenance(
+                     result,
+                     None
+-                    if active_evaluation_replay_artifact is None
+-                    else active_evaluation_replay_artifact.label_mode,
+-                    training_replay_monitor_artifact_digest=active_run.replay_monitor_artifact_digest,
++                    if prepared.replay_monitor_artifact is None
++                    else prepared.replay_monitor_artifact.label_mode,
++                    training_replay_monitor_artifact_digest=prepared.run_plan.replay_monitor_artifact_digest,
+                 )
+ 
+             def commit_checkpoint_evaluation(
+@@ -8601,12 +9067,15 @@ def command_evaluate(args: argparse.Namespace) -> int:
+                 finalize_evaluated_run(active_context)
+ 
+             pending_evaluation_tasks.append(
+-                _AdaptiveInferenceTask(
++                _StagedEvaluationTask(
+                     display_index=display_index,
+                     key=task_result_key,
+                     label=label,
+-                    start_detail="target/replay monitor inference",
+-                    execute=execute_checkpoint,
++                    start_detail="target/replay evaluation pipeline",
++                    prepare=prepare_checkpoint,
++                    requires_inference=lambda prepared: bool(prepared.requires_model_inference),
++                    infer=infer_checkpoint,
++                    finalize=finalize_checkpoint,
+                     done_detail=lambda result, wall: (
+                         f"force={result.metric_record.force_component_rmse_ev_per_angstrom * 1000:.1f} meV/A; "
+                         f"wall={_ProgressReporter._duration(wall)}"
+@@ -8620,10 +9089,9 @@ def command_evaluate(args: argparse.Namespace) -> int:
+         # callback while unrelated campaign evaluations continue.
+         finalize_evaluated_run(context)
+ 
+-    _run_adaptive_inference_tasks(
++    _run_staged_evaluation_tasks(
+         pending_evaluation_tasks,
+         cfg=cfg,
+-        phase="evaluation",
+         device=evaluation_policy.device,
+         progress=checkpoint_progress,
+     )
+@@ -9891,10 +10359,12 @@ parallel_training_memory_growth_margin = 1.05
+ parallel_training_utilization_growth_margin = 1.05
+ parallel_training_monitor_interval_seconds = 10.0
+ # Evaluation and verification use a one-time single-job CUDA calibration. CUDA
+-# starts with exactly one job and samples GPU utilization plus incremental VRAM
+-# across a fixed five-minute wall-time window spanning setup, model loading,
+-# monitor work, and inference. Samples below the 1% activity floor are discarded
+-# independently for GPU utilization and VRAM. The highest 5% of retained samples
++# starts with exactly one job and samples GPU utilization plus incremental VRAM.
++# OPT-EVAL4 evaluation calibrates only the accelerator stage (checkpoint/model
++# materialization, serialized CuEq/OEq/FX conversion, and inference) because
++# monitor/cache preparation now runs in separate CPU workers. Verification still
++# calibrates its complete admitted case. Samples below the 1% activity floor are
++# discarded independently for GPU utilization and VRAM. The highest 5% of retained samples
+ # are discarded as transient peaks, then the next-highest 10% are averaged
+ # independently for GPU utilization and incremental VRAM (approximately the
+ # 85th--95th percentile band). The resulting estimate is fixed for the remaining
+@@ -9929,6 +10399,13 @@ parallel_inference_monitor_interval_seconds = 2.0
+ # Optional phase-specific overrides use the same suffixes, for example:
+ # parallel_evaluation_jobs, maximum_parallel_verification_jobs,
+ # evaluation_estimated_vram_mib_per_job, verification_gpu_utilization_fraction.
++# OPT-EVAL4 evaluation additionally has bounded CPU preparation/finalization
++# stages around accelerator inference. Zero means auto (currently up to two CPU
++# stage workers); the prepared buffer is also bounded so parsed monitors and
++# pending prediction arrays cannot grow without limit.
++parallel_evaluation_prepare_jobs = 0
++parallel_evaluation_finalize_jobs = 0
++evaluation_pipeline_buffer_jobs = 0
+ # Stop admitting new jobs after the first failed run; already-active jobs finish.
+ stop_scheduling_after_failure = true
+ 
+diff --git a/mdstats/training_data/campaign_execution.py b/mdstats/training_data/campaign_execution.py
+index d9aa231..9f9ce51 100644
+--- a/mdstats/training_data/campaign_execution.py
++++ b/mdstats/training_data/campaign_execution.py
+@@ -1645,14 +1645,20 @@ def _predict_model_on_atoms(
+ ) -> tuple[Any, ...]:
+     """Run only model inference; reference labels and metric policy are irrelevant."""
+ 
+-    install_mace_critical_fp64_patch()
+-    from .model_features import MaceCalculatorProvider
+     from .inference_parallel import mark_inference_workload_started
+ 
+     mark_inference_workload_started()
+     if not atoms_list:
+         raise TrainingDataInputError("Evaluation dataset is empty.")
+     if provider is None:
++        # The critical-FP64 patch belongs to MACE calculator construction.  A
++        # caller-supplied provider is already constructed/qualified (the staged
++        # campaign path uses MaceCalculatorProvider.from_model_path, which installs
++        # the patch itself).  Avoid re-importing/re-patching MACE for every batch
++        # when a private provider is intentionally being reused.
++        install_mace_critical_fp64_patch()
++        from .model_features import MaceCalculatorProvider
++
+         calculator_kwargs = dict(policy.acceleration_policy.calculator_kwargs())
+         if head is not None:
+             calculator_kwargs["head"] = head
+@@ -2323,7 +2329,100 @@ class CheckpointEvaluationRecord:
+         return result
+ 
+ 
+-def evaluate_mace_checkpoint(
++@dataclass(slots=True)
++class PreparedCheckpointEvaluation:
++    """CPU-prepared immutable inputs for one checkpoint evaluation.
++
++    This runtime-only object deliberately carries authenticated monitor objects,
++    immutable metric views, and any already durable prediction artifacts.  It is
++    not serialized into campaign state.  OPT-EVAL4 uses it to keep checkpoint
++    I/O/monitor parsing ahead of accelerator inference without sharing mutable
++    calculators between workers.
++    """
++
++    run_plan: TrainingCampaignRunPlan
++    checkpoint: CheckpointFileRecord
++    candidate_model_path: Path
++    calculator_model_path: Path | None
++    candidate_checkpoint_available: bool
++    target_monitor_path: Path
++    target_monitor_artifact: MaceExtxyzArtifact
++    target_atoms: tuple[Any, ...]
++    target_view: Any
++    policy: CheckpointEvaluationPolicy
++    prediction_cache_directory: Path | None
++    graph_cache_directory: Path | None
++    baseline_model_path: Path | None
++    baseline_sha256: str | None
++    foundation_prediction_manifest: Any | None
++    foundation_prediction_root: Path | None
++    target_candidate_artifact: Any | None
++    target_candidate_predictions: tuple[Any, ...] | None
++    target_candidate_cache_hit: bool
++    target_foundation_artifact: Any | None
++    target_foundation_predictions: tuple[Any, ...] | None
++    target_foundation_cache_hit: bool
++    replay_monitor_path: Path | None = None
++    replay_monitor_artifact: ReplayFileArtifact | None = None
++    training_replay_monitor_artifact: ReplayFileArtifact | None = None
++    training_replay_monitor_path: Path | None = None
++    replay_lineage_artifact: ReplayFileArtifact | None = None
++    replay_atoms: tuple[Any, ...] | None = None
++    replay_view: Any | None = None
++    replay_candidate_artifact: Any | None = None
++    replay_candidate_predictions: tuple[Any, ...] | None = None
++    replay_candidate_cache_hit: bool = False
++    replay_foundation_artifact: Any | None = None
++    replay_foundation_predictions: tuple[Any, ...] | None = None
++    replay_foundation_cache_hit: bool = False
++
++    @property
++    def requires_candidate_inference(self) -> bool:
++        return bool(
++            self.target_candidate_predictions is None
++            or (
++                self.replay_monitor_artifact is not None
++                and self.replay_candidate_predictions is None
++            )
++        )
++
++    @property
++    def requires_foundation_inference(self) -> bool:
++        return bool(
++            (
++                self.policy.evaluate_foundation_on_target
++                and self.target_foundation_predictions is None
++            )
++            or (
++                self.replay_monitor_artifact is not None
++                and self.replay_foundation_predictions is None
++            )
++        )
++
++    @property
++    def requires_model_inference(self) -> bool:
++        return self.requires_candidate_inference or self.requires_foundation_inference
++
++
++@dataclass(slots=True)
++class CheckpointEvaluationPredictionBundle:
++    """Prediction-stage output consumed by CPU metric/persistence finalization."""
++
++    target_candidate_predictions: tuple[Any, ...]
++    target_candidate_artifact: Any | None
++    target_foundation_predictions: tuple[Any, ...] | None
++    target_foundation_artifact: Any | None
++    replay_candidate_predictions: tuple[Any, ...] | None
++    replay_candidate_artifact: Any | None
++    replay_foundation_predictions: tuple[Any, ...] | None
++    replay_foundation_artifact: Any | None
++
++
++def _optional_cache_path(value: str | Path | None) -> Path | None:
++    return None if value is None else Path(value).resolve()
++
++
++def prepare_mace_checkpoint_evaluation(
+     run_plan: TrainingCampaignRunPlan,
+     checkpoint: CheckpointFileRecord,
+     *,
+@@ -2341,27 +2440,21 @@ def evaluate_mace_checkpoint(
+     graph_cache_directory: str | Path | None = None,
+     foundation_prediction_manifest: Any | None = None,
+     foundation_prediction_root: str | Path | None = None,
+-) -> CheckpointEvaluationRecord:
+-    """Evaluate foundation and candidate models on target and replay monitors.
+-
+-    OPT-EVAL2 makes predictions label-independent persistent artifacts.  Metrics
+-    may therefore be rebuilt after reference-label, threshold, or reporting
+-    changes without repeating MACE inference.  Foundation predictions may be
+-    imported from the authenticated DATA6 sweep and from the frozen
+-    foundation-generated replay pseudolabel artifact when their applicable
+-    model/geometry/source identities match the active evaluation.
++) -> PreparedCheckpointEvaluation:
++    """Authenticate/load monitor inputs without constructing accelerator models.
++
++    OPT-EVAL4 executes this stage in CPU preparation workers.  Cheap foundation
++    reuse from DATA6 or frozen replay pseudolabels is resolved here so cache-only
++    evaluations never occupy an accelerator slot.
+     """
+ 
+-    from .inference_parallel import (
+-        mark_inference_workload_started,
+-        report_inference_worker_phase,
+-    )
+-    from .model_features import MaceCalculatorProvider
++    from .inference_parallel import report_inference_worker_phase
++    from .evaluation_views import cached_evaluation_dataset_view
+ 
+-    mark_inference_workload_started("authenticating evaluation artifacts")
++    report_inference_worker_phase("authenticating evaluation artifacts")
+     candidate = Path(candidate_model_path).resolve()
+     calculator_model = (
+-        candidate if calculator_model_path is None else Path(calculator_model_path).resolve()
++        None if calculator_model_path is None else Path(calculator_model_path).resolve()
+     )
+     target = Path(target_monitor_path).resolve()
+     candidate_checkpoint_available = candidate.is_file()
+@@ -2373,15 +2466,15 @@ def evaluate_mace_checkpoint(
+         raise TrainingDataInputError("Target monitor bytes do not match the frozen artifact.")
+ 
+     report_inference_worker_phase("loading target monitor")
+-    target_atoms = _as_atoms_list(
+-        target,
+-        expected_sha256=target_monitor_artifact.sha256,
+-        use_cache=policy.cache_monitor_datasets,
++    target_atoms = tuple(
++        _as_atoms_list(
++            target,
++            expected_sha256=target_monitor_artifact.sha256,
++            use_cache=policy.cache_monitor_datasets,
++        )
+     )
+     if len(target_atoms) != target_monitor_artifact.configuration_count:
+         raise TrainingDataInputError("Target monitor configuration count changed after materialization.")
+-    from .evaluation_views import cached_evaluation_dataset_view
+-
+     target_view = cached_evaluation_dataset_view(
+         _path_cache_identity(target, target_monitor_artifact.sha256),
+         target_atoms,
+@@ -2392,74 +2485,32 @@ def evaluate_mace_checkpoint(
+         condition_keys=policy.condition_keys,
+     )
+ 
+-    candidate_provider: Any | None = None
+-
+-    def require_candidate_provider() -> Any:
+-        nonlocal candidate_provider
+-        if candidate_provider is not None:
+-            return candidate_provider
+-        if not candidate_checkpoint_available:
+-            raise TrainingDataInputError(
+-                "Candidate checkpoint bytes are unavailable and the required persistent prediction artifact is missing."
+-            )
+-        if not calculator_model.is_file():
+-            raise TrainingDataInputError("Deployable MACE model for checkpoint evaluation is missing.")
+-        candidate_kwargs = dict(policy.acceleration_policy.calculator_kwargs())
+-        candidate_kwargs["head"] = policy.target_head_name
+-        report_inference_worker_phase("loading candidate MACE model")
+-        candidate_provider = MaceCalculatorProvider.from_model_path(
+-            calculator_model,
+-            device=policy.device,
+-            default_dtype=policy.default_dtype,
+-            **candidate_kwargs,
+-        )
+-        return candidate_provider
++    prediction_cache = _optional_cache_path(prediction_cache_directory)
++    graph_cache = _optional_cache_path(graph_cache_directory)
++    foundation_root = _optional_cache_path(foundation_prediction_root)
+ 
+     target_candidate_artifact, target_candidate_predictions = _cached_evaluation_predictions(
+-        prediction_cache_directory,
++        prediction_cache,
+         model_sha256=checkpoint.sha256,
+         head=policy.target_head_name,
+         geometry_identities=target_monitor_artifact.frame_uids,
+         policy=policy,
+     )
+     target_candidate_cache_hit = target_candidate_predictions is not None
+-    if target_candidate_predictions is None:
+-        report_inference_worker_phase("evaluating candidate on LTA target monitor")
+-        target_candidate_predictions = _predict_model_on_monitor(
+-            calculator_model,
+-            target_atoms,
+-            head=policy.target_head_name,
+-            policy=policy,
+-            provider=require_candidate_provider(),
+-            geometry_identities=target_monitor_artifact.frame_uids,
+-            graph_cache_directory=graph_cache_directory,
+-        )
+-        target_candidate_artifact = _persist_evaluation_predictions(
+-            prediction_cache_directory,
+-            model_sha256=checkpoint.sha256,
+-            head=policy.target_head_name,
+-            geometry_identities=target_monitor_artifact.frame_uids,
+-            policy=policy,
+-            predictions=target_candidate_predictions,
+-            source_kind="model_inference",
+-        )
+-    else:
+-        report_inference_worker_phase("reusing persisted candidate target predictions")
+-    target_metrics = _metrics_from_predictions(
+-        target_atoms, target_candidate_predictions, policy=policy, view=target_view
+-    )
+ 
+-    baseline = None if replay_baseline_model_path is None else Path(replay_baseline_model_path).resolve()
++    baseline = (
++        None
++        if replay_baseline_model_path is None
++        else Path(replay_baseline_model_path).resolve()
++    )
+     baseline_sha = None
+-    baseline_path_value = None
+     if baseline is not None:
+         if not baseline.is_file():
+             raise TrainingDataInputError("Foundation baseline model is missing.")
+         baseline_sha = _sha256_file(baseline)
+-        baseline_path_value = str(baseline)
+ 
+-    target_foundation_metrics_raw = None
+     target_foundation_artifact = None
++    target_foundation_predictions = None
+     target_foundation_cache_hit = False
+     if policy.evaluate_foundation_on_target:
+         if baseline is None or baseline_sha is None:
+@@ -2467,7 +2518,7 @@ def evaluate_mace_checkpoint(
+                 "Foundation-on-target comparison requires replay_baseline_model_path."
+             )
+         target_foundation_artifact, target_foundation_predictions = _cached_evaluation_predictions(
+-            prediction_cache_directory,
++            prediction_cache,
+             model_sha256=baseline_sha,
+             head=policy.replay_baseline_head_name,
+             geometry_identities=target_monitor_artifact.frame_uids,
+@@ -2475,14 +2526,12 @@ def evaluate_mace_checkpoint(
+         )
+         target_foundation_cache_hit = target_foundation_predictions is not None
+         if target_foundation_predictions is None:
+-            # Every checkpoint worker shares the same foundation/dataset key.
+-            # Serialize the complete miss-resolution path (including cheap DATA6
+-            # import), then recheck the durable cache.  This prevents a launch
+-            # wave from redundantly reading the same sidecars or running the
+-            # foundation model while preserving parallel candidate inference.
++            # This import is CPU/I/O-only and common to every checkpoint.  Resolve
++            # it during preparation so no accelerator slot is consumed when DATA6
++            # already contains the required foundation outputs.
+             with _BASELINE_METRIC_CACHE_LOCK:
+                 target_foundation_artifact, target_foundation_predictions = _cached_evaluation_predictions(
+-                    prediction_cache_directory,
++                    prediction_cache,
+                     model_sha256=baseline_sha,
+                     head=policy.replay_baseline_head_name,
+                     geometry_identities=target_monitor_artifact.frame_uids,
+@@ -2491,17 +2540,19 @@ def evaluate_mace_checkpoint(
+                 if target_foundation_predictions is None:
+                     data6_source = _data6_foundation_predictions(
+                         foundation_prediction_manifest,
+-                        foundation_prediction_root,
++                        foundation_root,
+                         target_monitor_artifact.frame_uids,
+                         baseline_sha256=baseline_sha,
+                         head=policy.replay_baseline_head_name,
+                         policy=policy,
+                     )
+                     if data6_source is not None:
+-                        report_inference_worker_phase("reusing DATA6 foundation predictions on LTA target monitor")
++                        report_inference_worker_phase(
++                            "reusing DATA6 foundation predictions on LTA target monitor"
++                        )
+                         target_foundation_predictions, source_digest = data6_source
+                         target_foundation_artifact = _persist_evaluation_predictions(
+-                            prediction_cache_directory,
++                            prediction_cache,
+                             model_sha256=baseline_sha,
+                             head=policy.replay_baseline_head_name,
+                             geometry_identities=target_monitor_artifact.frame_uids,
+@@ -2510,49 +2561,23 @@ def evaluate_mace_checkpoint(
+                             source_kind="data6_foundation_prediction_manifest",
+                             source_digest=source_digest,
+                         )
+-                    else:
+-                        report_inference_worker_phase("evaluating foundation on LTA target monitor")
+-                        target_foundation_predictions = _predict_model_on_monitor(
+-                            baseline,
+-                            target_atoms,
+-                            head=policy.replay_baseline_head_name,
+-                            policy=policy,
+-                            geometry_identities=target_monitor_artifact.frame_uids,
+-                            graph_cache_directory=graph_cache_directory,
+-                        )
+-                        target_foundation_artifact = _persist_evaluation_predictions(
+-                            prediction_cache_directory,
+-                            model_sha256=baseline_sha,
+-                            head=policy.replay_baseline_head_name,
+-                            geometry_identities=target_monitor_artifact.frame_uids,
+-                            policy=policy,
+-                            predictions=target_foundation_predictions,
+-                            source_kind="model_inference",
+-                        )
+-        else:
+-            report_inference_worker_phase("reusing persisted foundation target predictions")
+-        target_foundation_metrics_raw = _metrics_from_predictions(
+-            target_atoms, target_foundation_predictions, policy=policy, view=target_view
+-        )
+ 
+-    # Keep two distinct replay identities:
+-    # - evaluation digest/sha identify the bytes actually carrying labels used
+-    #   for this evaluation (which may be an independent TRUE_DFT override);
+-    # - training-lineage digest identifies the replay monitor frozen into DATA8
+-    #   and the run plan.  Checkpoint admissibility is bound to the latter.
+-    replay_evaluation_digest = None
+-    replay_training_lineage_digest = None
+-    replay_sha = None
+-    replay_count = 0
+-    baseline_metric = None
+-    candidate_metric = None
+-    degradation = None
+-    baseline_replay_metrics_raw = None
+-    candidate_replay_metrics_raw = None
++    replay = None
++    replay_atoms = None
++    replay_view = None
++    lineage_artifact = None
++    training_replay_path = (
++        None
++        if training_replay_monitor_path is None
++        else Path(training_replay_monitor_path).resolve()
++    )
+     replay_candidate_artifact = None
+-    replay_foundation_artifact = None
++    replay_candidate_predictions = None
+     replay_candidate_cache_hit = False
++    replay_foundation_artifact = None
++    replay_foundation_predictions = None
+     replay_foundation_cache_hit = False
++
+     if run_plan.replay_monitor_artifact_digest is not None:
+         if replay_monitor_path is None or replay_monitor_artifact is None or baseline is None or baseline_sha is None:
+             raise TrainingDataInputError(
+@@ -2577,10 +2602,12 @@ def evaluate_mace_checkpoint(
+         if not replay.is_file() or _sha256_file(replay) != replay_monitor_artifact.sha256:
+             raise TrainingDataInputError("Replay monitor bytes do not match the evaluation artifact.")
+         report_inference_worker_phase("loading evaluation replay monitor")
+-        replay_atoms = _as_atoms_list(
+-            replay,
+-            expected_sha256=replay_monitor_artifact.sha256,
+-            use_cache=policy.cache_monitor_datasets,
++        replay_atoms = tuple(
++            _as_atoms_list(
++                replay,
++                expected_sha256=replay_monitor_artifact.sha256,
++                use_cache=policy.cache_monitor_datasets,
++            )
+         )
+         if len(replay_atoms) != replay_monitor_artifact.configuration_count:
+             raise TrainingDataInputError("Replay monitor configuration count changed after materialization.")
+@@ -2593,43 +2620,16 @@ def evaluate_mace_checkpoint(
+             focus_atomic_numbers=policy.focus_atomic_numbers,
+             condition_keys=policy.condition_keys,
+         )
+-
+         replay_candidate_artifact, replay_candidate_predictions = _cached_evaluation_predictions(
+-            prediction_cache_directory,
++            prediction_cache,
+             model_sha256=checkpoint.sha256,
+             head=policy.replay_head_name,
+             geometry_identities=replay_monitor_artifact.geometry_identities,
+             policy=policy,
+         )
+         replay_candidate_cache_hit = replay_candidate_predictions is not None
+-        if replay_candidate_predictions is None:
+-            report_inference_worker_phase("evaluating candidate on replay monitor")
+-            replay_candidate_predictions = _predict_model_on_monitor(
+-                calculator_model,
+-                replay_atoms,
+-                head=policy.replay_head_name,
+-                policy=policy,
+-                provider=require_candidate_provider(),
+-                geometry_identities=replay_monitor_artifact.geometry_identities,
+-                graph_cache_directory=graph_cache_directory,
+-            )
+-            replay_candidate_artifact = _persist_evaluation_predictions(
+-                prediction_cache_directory,
+-                model_sha256=checkpoint.sha256,
+-                head=policy.replay_head_name,
+-                geometry_identities=replay_monitor_artifact.geometry_identities,
+-                policy=policy,
+-                predictions=replay_candidate_predictions,
+-                source_kind="model_inference",
+-            )
+-        else:
+-            report_inference_worker_phase("reusing persisted candidate replay predictions")
+-        candidate_replay_metrics_raw = _metrics_from_predictions(
+-            replay_atoms, replay_candidate_predictions, policy=policy, view=replay_view
+-        )
+-
+         replay_foundation_artifact, replay_foundation_predictions = _cached_evaluation_predictions(
+-            prediction_cache_directory,
++            prediction_cache,
+             model_sha256=baseline_sha,
+             head=policy.replay_baseline_head_name,
+             geometry_identities=replay_monitor_artifact.geometry_identities,
+@@ -2637,13 +2637,11 @@ def evaluate_mace_checkpoint(
+         )
+         replay_foundation_cache_hit = replay_foundation_predictions is not None
+         if replay_foundation_predictions is None:
+-            # Replay foundation predictions are likewise common to every
+-            # checkpoint in the run/campaign.  Serialize pseudolabel import or
+-            # the one necessary foundation inference so followers become pure
+-            # cache hits.
++            # Frozen foundation pseudolabels are already prediction data; import
++            # them in CPU preparation rather than scheduling a redundant model.
+             with _BASELINE_METRIC_CACHE_LOCK:
+                 replay_foundation_artifact, replay_foundation_predictions = _cached_evaluation_predictions(
+-                    prediction_cache_directory,
++                    prediction_cache,
+                     model_sha256=baseline_sha,
+                     head=policy.replay_baseline_head_name,
+                     geometry_identities=replay_monitor_artifact.geometry_identities,
+@@ -2651,7 +2649,7 @@ def evaluate_mace_checkpoint(
+                 )
+                 if replay_foundation_predictions is None:
+                     pseudo_source = _pseudolabel_foundation_predictions(
+-                        training_replay_monitor_path,
++                        training_replay_path,
+                         lineage_artifact,
+                         replay_monitor_artifact,
+                         baseline_sha256=baseline_sha,
+@@ -2659,10 +2657,12 @@ def evaluate_mace_checkpoint(
+                         policy=policy,
+                     )
+                     if pseudo_source is not None:
+-                        report_inference_worker_phase("reusing frozen replay pseudolabels as foundation predictions")
++                        report_inference_worker_phase(
++                            "reusing frozen replay pseudolabels as foundation predictions"
++                        )
+                         replay_foundation_predictions, source_digest = pseudo_source
+                         replay_foundation_artifact = _persist_evaluation_predictions(
+-                            prediction_cache_directory,
++                            prediction_cache,
+                             model_sha256=baseline_sha,
+                             head=policy.replay_baseline_head_name,
+                             geometry_identities=replay_monitor_artifact.geometry_identities,
+@@ -2671,49 +2671,355 @@ def evaluate_mace_checkpoint(
+                             source_kind="foundation_pseudolabel_replay",
+                             source_digest=source_digest,
+                         )
+-                    else:
+-                        report_inference_worker_phase("evaluating foundation on replay monitor")
+-                        replay_foundation_predictions = _predict_model_on_monitor(
+-                            baseline,
+-                            replay_atoms,
+-                            head=policy.replay_baseline_head_name,
+-                            policy=policy,
+-                            geometry_identities=replay_monitor_artifact.geometry_identities,
+-                            graph_cache_directory=graph_cache_directory,
+-                        )
+-                        replay_foundation_artifact = _persist_evaluation_predictions(
+-                            prediction_cache_directory,
+-                            model_sha256=baseline_sha,
+-                            head=policy.replay_baseline_head_name,
+-                            geometry_identities=replay_monitor_artifact.geometry_identities,
+-                            policy=policy,
+-                            predictions=replay_foundation_predictions,
+-                            source_kind="model_inference",
+-                        )
++
++    prepared = PreparedCheckpointEvaluation(
++        run_plan=run_plan,
++        checkpoint=checkpoint,
++        candidate_model_path=candidate,
++        calculator_model_path=calculator_model,
++        candidate_checkpoint_available=candidate_checkpoint_available,
++        target_monitor_path=target,
++        target_monitor_artifact=target_monitor_artifact,
++        target_atoms=target_atoms,
++        target_view=target_view,
++        policy=policy,
++        prediction_cache_directory=prediction_cache,
++        graph_cache_directory=graph_cache,
++        baseline_model_path=baseline,
++        baseline_sha256=baseline_sha,
++        foundation_prediction_manifest=foundation_prediction_manifest,
++        foundation_prediction_root=foundation_root,
++        target_candidate_artifact=target_candidate_artifact,
++        target_candidate_predictions=target_candidate_predictions,
++        target_candidate_cache_hit=target_candidate_cache_hit,
++        target_foundation_artifact=target_foundation_artifact,
++        target_foundation_predictions=target_foundation_predictions,
++        target_foundation_cache_hit=target_foundation_cache_hit,
++        replay_monitor_path=replay,
++        replay_monitor_artifact=replay_monitor_artifact,
++        training_replay_monitor_artifact=training_replay_monitor_artifact,
++        training_replay_monitor_path=training_replay_path,
++        replay_lineage_artifact=lineage_artifact,
++        replay_atoms=replay_atoms,
++        replay_view=replay_view,
++        replay_candidate_artifact=replay_candidate_artifact,
++        replay_candidate_predictions=replay_candidate_predictions,
++        replay_candidate_cache_hit=replay_candidate_cache_hit,
++        replay_foundation_artifact=replay_foundation_artifact,
++        replay_foundation_predictions=replay_foundation_predictions,
++        replay_foundation_cache_hit=replay_foundation_cache_hit,
++    )
++    if prepared.requires_candidate_inference and not candidate_checkpoint_available:
++        raise TrainingDataInputError(
++            "Candidate checkpoint bytes are unavailable and the required persistent prediction artifact is missing."
++        )
++    return prepared
++
++
++def run_prepared_mace_checkpoint_inference(
++    prepared: PreparedCheckpointEvaluation,
++    *,
++    calculator_model_path: str | Path | None = None,
++) -> CheckpointEvaluationPredictionBundle:
++    """Run only missing model predictions for one CPU-prepared evaluation.
++
++    Candidate and foundation calculators are private to this invocation.  MACE's
++    CuEq/OEq/FX graph rewrites remain serialized by the process-wide conversion
++    guard in :mod:`model_features`, while independent admitted workers may execute
++    their actual model forwards on separate CUDA streams.
++    """
++
++    from .inference_parallel import (
++        mark_inference_workload_started,
++        report_inference_worker_phase,
++    )
++    from .model_features import MaceCalculatorProvider
++
++    policy = prepared.policy
++    active_calculator_model = (
++        Path(calculator_model_path).resolve()
++        if calculator_model_path is not None
++        else (
++            prepared.calculator_model_path
++            if prepared.calculator_model_path is not None
++            else prepared.candidate_model_path
++        )
++    )
++
++    target_candidate_artifact = prepared.target_candidate_artifact
++    target_candidate_predictions = prepared.target_candidate_predictions
++    target_foundation_artifact = prepared.target_foundation_artifact
++    target_foundation_predictions = prepared.target_foundation_predictions
++    replay_candidate_artifact = prepared.replay_candidate_artifact
++    replay_candidate_predictions = prepared.replay_candidate_predictions
++    replay_foundation_artifact = prepared.replay_foundation_artifact
++    replay_foundation_predictions = prepared.replay_foundation_predictions
++
++    candidate_provider: Any | None = None
++    baseline_provider: Any | None = None
++
++    def require_candidate_provider(head: str | None) -> Any:
++        nonlocal candidate_provider
++        if not active_calculator_model.is_file():
++            raise TrainingDataInputError("Deployable MACE model for checkpoint evaluation is missing.")
++        if candidate_provider is None:
++            mark_inference_workload_started("loading candidate MACE model / accelerator conversion")
++            candidate_kwargs = dict(policy.acceleration_policy.calculator_kwargs())
++            if head is not None:
++                candidate_kwargs["head"] = head
++            candidate_provider = MaceCalculatorProvider.from_model_path(
++                active_calculator_model,
++                device=policy.device,
++                default_dtype=policy.default_dtype,
++                **candidate_kwargs,
++            )
+         else:
+-            report_inference_worker_phase("reusing persisted foundation replay predictions")
+-        baseline_replay_metrics_raw = _metrics_from_predictions(
+-            replay_atoms, replay_foundation_predictions, policy=policy, view=replay_view
++            candidate_provider.set_head(head)
++        return candidate_provider
++
++    def require_baseline_provider(head: str | None) -> Any:
++        nonlocal baseline_provider
++        baseline = prepared.baseline_model_path
++        if baseline is None or not baseline.is_file():
++            raise TrainingDataInputError("Foundation baseline model is missing.")
++        if baseline_provider is None:
++            mark_inference_workload_started("loading foundation MACE model / accelerator conversion")
++            baseline_kwargs = dict(policy.acceleration_policy.calculator_kwargs())
++            if head is not None:
++                baseline_kwargs["head"] = head
++            baseline_provider = MaceCalculatorProvider.from_model_path(
++                baseline,
++                device=policy.device,
++                default_dtype=policy.default_dtype,
++                **baseline_kwargs,
++            )
++        else:
++            baseline_provider.set_head(head)
++        return baseline_provider
++
++    if target_candidate_predictions is None:
++        report_inference_worker_phase("GPU inference: candidate target monitor")
++        target_candidate_predictions = _predict_model_on_monitor(
++            active_calculator_model,
++            prepared.target_atoms,
++            head=policy.target_head_name,
++            policy=policy,
++            provider=require_candidate_provider(policy.target_head_name),
++            geometry_identities=prepared.target_monitor_artifact.frame_uids,
++            graph_cache_directory=prepared.graph_cache_directory,
++        )
++
++    if policy.evaluate_foundation_on_target and target_foundation_predictions is None:
++        if prepared.baseline_sha256 is None:
++            raise TrainingDataInputError("Foundation baseline identity is unavailable.")
++        # Foundation inference is shared by all checkpoint tasks.  Hold the
++        # single-flight lock across the one genuine model evaluation and durable
++        # publication so followers immediately become cache hits.
++        with _BASELINE_METRIC_CACHE_LOCK:
++            target_foundation_artifact, target_foundation_predictions = _cached_evaluation_predictions(
++                prepared.prediction_cache_directory,
++                model_sha256=prepared.baseline_sha256,
++                head=policy.replay_baseline_head_name,
++                geometry_identities=prepared.target_monitor_artifact.frame_uids,
++                policy=policy,
++            )
++            if target_foundation_predictions is None:
++                report_inference_worker_phase("GPU inference: foundation target monitor")
++                target_foundation_predictions = _predict_model_on_monitor(
++                    prepared.baseline_model_path,
++                    prepared.target_atoms,
++                    head=policy.replay_baseline_head_name,
++                    policy=policy,
++                    provider=require_baseline_provider(policy.replay_baseline_head_name),
++                    geometry_identities=prepared.target_monitor_artifact.frame_uids,
++                    graph_cache_directory=prepared.graph_cache_directory,
++                )
++                target_foundation_artifact = _persist_evaluation_predictions(
++                    prepared.prediction_cache_directory,
++                    model_sha256=prepared.baseline_sha256,
++                    head=policy.replay_baseline_head_name,
++                    geometry_identities=prepared.target_monitor_artifact.frame_uids,
++                    policy=policy,
++                    predictions=target_foundation_predictions,
++                    source_kind="model_inference",
++                )
++
++    if prepared.replay_monitor_artifact is not None:
++        if prepared.replay_atoms is None:
++            raise TrainingDataInputError("Prepared replay monitor is unavailable.")
++        if replay_candidate_predictions is None:
++            report_inference_worker_phase("GPU inference: candidate replay monitor")
++            replay_candidate_predictions = _predict_model_on_monitor(
++                active_calculator_model,
++                prepared.replay_atoms,
++                head=policy.replay_head_name,
++                policy=policy,
++                provider=require_candidate_provider(policy.replay_head_name),
++                geometry_identities=prepared.replay_monitor_artifact.geometry_identities,
++                graph_cache_directory=prepared.graph_cache_directory,
++            )
++        if replay_foundation_predictions is None:
++            if prepared.baseline_sha256 is None:
++                raise TrainingDataInputError("Foundation baseline identity is unavailable.")
++            with _BASELINE_METRIC_CACHE_LOCK:
++                replay_foundation_artifact, replay_foundation_predictions = _cached_evaluation_predictions(
++                    prepared.prediction_cache_directory,
++                    model_sha256=prepared.baseline_sha256,
++                    head=policy.replay_baseline_head_name,
++                    geometry_identities=prepared.replay_monitor_artifact.geometry_identities,
++                    policy=policy,
++                )
++                if replay_foundation_predictions is None:
++                    report_inference_worker_phase("GPU inference: foundation replay monitor")
++                    replay_foundation_predictions = _predict_model_on_monitor(
++                        prepared.baseline_model_path,
++                        prepared.replay_atoms,
++                        head=policy.replay_baseline_head_name,
++                        policy=policy,
++                        provider=require_baseline_provider(policy.replay_baseline_head_name),
++                        geometry_identities=prepared.replay_monitor_artifact.geometry_identities,
++                        graph_cache_directory=prepared.graph_cache_directory,
++                    )
++                    replay_foundation_artifact = _persist_evaluation_predictions(
++                        prepared.prediction_cache_directory,
++                        model_sha256=prepared.baseline_sha256,
++                        head=policy.replay_baseline_head_name,
++                        geometry_identities=prepared.replay_monitor_artifact.geometry_identities,
++                        policy=policy,
++                        predictions=replay_foundation_predictions,
++                        source_kind="model_inference",
++                    )
++
++    if target_candidate_predictions is None:
++        raise TrainingDataInputError("Candidate target predictions are unavailable after inference stage.")
++    return CheckpointEvaluationPredictionBundle(
++        target_candidate_predictions=target_candidate_predictions,
++        target_candidate_artifact=target_candidate_artifact,
++        target_foundation_predictions=target_foundation_predictions,
++        target_foundation_artifact=target_foundation_artifact,
++        replay_candidate_predictions=replay_candidate_predictions,
++        replay_candidate_artifact=replay_candidate_artifact,
++        replay_foundation_predictions=replay_foundation_predictions,
++        replay_foundation_artifact=replay_foundation_artifact,
++    )
++
++
++def finalize_prepared_mace_checkpoint_evaluation(
++    prepared: PreparedCheckpointEvaluation,
++    predictions: CheckpointEvaluationPredictionBundle,
++) -> CheckpointEvaluationRecord:
++    """Persist fresh candidate predictions and reduce metrics on CPU."""
++
++    from .inference_parallel import report_inference_worker_phase
++
++    report_inference_worker_phase("CPU finalization: prediction persistence and metrics")
++    policy = prepared.policy
++    target_candidate_artifact = predictions.target_candidate_artifact
++    if target_candidate_artifact is None:
++        target_candidate_artifact = _persist_evaluation_predictions(
++            prepared.prediction_cache_directory,
++            model_sha256=prepared.checkpoint.sha256,
++            head=policy.target_head_name,
++            geometry_identities=prepared.target_monitor_artifact.frame_uids,
++            policy=policy,
++            predictions=predictions.target_candidate_predictions,
++            source_kind="model_inference",
+         )
++    target_metrics = _metrics_from_predictions(
++        prepared.target_atoms,
++        predictions.target_candidate_predictions,
++        policy=policy,
++        view=prepared.target_view,
++    )
+ 
++    target_foundation_metrics_raw = None
++    target_foundation_artifact = predictions.target_foundation_artifact
++    if policy.evaluate_foundation_on_target:
++        if predictions.target_foundation_predictions is None:
++            raise TrainingDataInputError("Foundation target predictions are unavailable after inference stage.")
++        if target_foundation_artifact is None and prepared.baseline_sha256 is not None:
++            target_foundation_artifact = _persist_evaluation_predictions(
++                prepared.prediction_cache_directory,
++                model_sha256=prepared.baseline_sha256,
++                head=policy.replay_baseline_head_name,
++                geometry_identities=prepared.target_monitor_artifact.frame_uids,
++                policy=policy,
++                predictions=predictions.target_foundation_predictions,
++                source_kind="model_inference",
++            )
++        target_foundation_metrics_raw = _metrics_from_predictions(
++            prepared.target_atoms,
++            predictions.target_foundation_predictions,
++            policy=policy,
++            view=prepared.target_view,
++        )
++
++    replay_evaluation_digest = None
++    replay_training_lineage_digest = None
++    replay_sha = None
++    replay_count = 0
++    baseline_metric = None
++    candidate_metric = None
++    degradation = None
++    baseline_replay_metrics_raw = None
++    candidate_replay_metrics_raw = None
++    replay_candidate_artifact = predictions.replay_candidate_artifact
++    replay_foundation_artifact = predictions.replay_foundation_artifact
++
++    if prepared.replay_monitor_artifact is not None:
++        if prepared.replay_atoms is None or prepared.replay_view is None or prepared.replay_lineage_artifact is None:
++            raise TrainingDataInputError("Prepared replay evaluation inputs are incomplete.")
++        if predictions.replay_candidate_predictions is None or predictions.replay_foundation_predictions is None:
++            raise TrainingDataInputError("Replay predictions are unavailable after inference stage.")
++        if replay_candidate_artifact is None:
++            replay_candidate_artifact = _persist_evaluation_predictions(
++                prepared.prediction_cache_directory,
++                model_sha256=prepared.checkpoint.sha256,
++                head=policy.replay_head_name,
++                geometry_identities=prepared.replay_monitor_artifact.geometry_identities,
++                policy=policy,
++                predictions=predictions.replay_candidate_predictions,
++                source_kind="model_inference",
++            )
++        if replay_foundation_artifact is None and prepared.baseline_sha256 is not None:
++            replay_foundation_artifact = _persist_evaluation_predictions(
++                prepared.prediction_cache_directory,
++                model_sha256=prepared.baseline_sha256,
++                head=policy.replay_baseline_head_name,
++                geometry_identities=prepared.replay_monitor_artifact.geometry_identities,
++                policy=policy,
++                predictions=predictions.replay_foundation_predictions,
++                source_kind="model_inference",
++            )
++        candidate_replay_metrics_raw = _metrics_from_predictions(
++            prepared.replay_atoms,
++            predictions.replay_candidate_predictions,
++            policy=policy,
++            view=prepared.replay_view,
++        )
++        baseline_replay_metrics_raw = _metrics_from_predictions(
++            prepared.replay_atoms,
++            predictions.replay_foundation_predictions,
++            policy=policy,
++            view=prepared.replay_view,
++        )
+         baseline_metric = _replay_scalar(baseline_replay_metrics_raw, policy)
+         candidate_metric = _replay_scalar(candidate_replay_metrics_raw, policy)
+-        if replay_monitor_artifact.label_mode is ReplayLabelMode.FOUNDATION_PSEUDOLABEL:
++        if prepared.replay_monitor_artifact.label_mode is ReplayLabelMode.FOUNDATION_PSEUDOLABEL:
+             degradation = None
+         else:
+             degradation = max(0.0, candidate_metric - baseline_metric) / max(
+                 baseline_metric, policy.replay_baseline_floor
+             )
+-        replay_evaluation_digest = replay_monitor_artifact.content_digest
+-        replay_training_lineage_digest = lineage_artifact.content_digest
+-        replay_sha = replay_monitor_artifact.sha256
+-        replay_count = len(replay_atoms)
++        replay_evaluation_digest = prepared.replay_monitor_artifact.content_digest
++        replay_training_lineage_digest = prepared.replay_lineage_artifact.content_digest
++        replay_sha = prepared.replay_monitor_artifact.sha256
++        replay_count = len(prepared.replay_atoms)
+ 
+-    report_inference_worker_phase("finalizing evaluation metrics")
+     metric_record = CheckpointMetricRecord(
+-        run_plan_digest=run_plan.content_digest,
+-        checkpoint_sha256=checkpoint.sha256,
+-        target_monitor_artifact_digest=run_plan.target_monitor_artifact_digest,
++        run_plan_digest=prepared.run_plan.content_digest,
++        checkpoint_sha256=prepared.checkpoint.sha256,
++        target_monitor_artifact_digest=prepared.run_plan.target_monitor_artifact_digest,
+         energy_mae_ev_per_atom=target_metrics["energy_mae_ev_per_atom"],
+         force_component_rmse_ev_per_angstrom=target_metrics["force_component_rmse_ev_per_angstrom"],
+         focus_force_rmse_ev_per_angstrom=target_metrics["focus_force_rmse_ev_per_angstrom"],
+@@ -2724,59 +3030,137 @@ def evaluate_mace_checkpoint(
+         replay_baseline_metric=baseline_metric,
+         replay_candidate_metric=candidate_metric,
+         replay_degradation_fraction=degradation,
+-        replay_label_mode=(None if replay_monitor_artifact is None else replay_monitor_artifact.label_mode),
++        replay_label_mode=(
++            None
++            if prepared.replay_monitor_artifact is None
++            else prepared.replay_monitor_artifact.label_mode
++        ),
+         evaluation_notes=(
+             f"evaluation_policy:{policy.policy_digest}",
++            "evaluation_pipeline:prepared-inference-finalize-v1",
+             "prediction_metrics:label_independent_cache_v1",
+             "evaluation_view:immutable_preindexed_v1",
+-            *(("monitor_graph_cache:stable_shards_v1",) if graph_cache_directory is not None else ()),
+-            f"target_candidate_prediction_cache:{'hit' if target_candidate_cache_hit else 'miss'}",
+-            *((f"target_foundation_prediction_cache:{'hit' if target_foundation_cache_hit else 'miss'}",) if target_foundation_metrics_raw is not None else ()),
+-            *((f"replay_candidate_prediction_cache:{'hit' if replay_candidate_cache_hit else 'miss'}",) if candidate_replay_metrics_raw is not None else ()),
+-            *((f"replay_foundation_prediction_cache:{'hit' if replay_foundation_cache_hit else 'miss'}",) if baseline_replay_metrics_raw is not None else ()),
++            *(("monitor_graph_cache:stable_shards_v1",) if prepared.graph_cache_directory is not None else ()),
++            f"target_candidate_prediction_cache:{'hit' if prepared.target_candidate_cache_hit else 'miss'}",
++            *((f"target_foundation_prediction_cache:{'hit' if prepared.target_foundation_cache_hit else 'miss'}",) if target_foundation_metrics_raw is not None else ()),
++            *((f"replay_candidate_prediction_cache:{'hit' if prepared.replay_candidate_cache_hit else 'miss'}",) if candidate_replay_metrics_raw is not None else ()),
++            *((f"replay_foundation_prediction_cache:{'hit' if prepared.replay_foundation_cache_hit else 'miss'}",) if baseline_replay_metrics_raw is not None else ()),
+             *(("target_comparison:foundation_and_candidate",) if target_foundation_metrics_raw is not None else ()),
+             *((f"target_candidate_prediction_source:{target_candidate_artifact.source_kind}",) if target_candidate_artifact is not None else ()),
+             *((f"target_foundation_prediction_source:{target_foundation_artifact.source_kind}",) if target_foundation_artifact is not None else ()),
+             *((f"replay_candidate_prediction_source:{replay_candidate_artifact.source_kind}",) if replay_candidate_artifact is not None else ()),
+             *((f"replay_foundation_prediction_source:{replay_foundation_artifact.source_kind}",) if replay_foundation_artifact is not None else ()),
+             *(("replay_labels:evaluation_true_dft_override",)
+-              if replay_monitor_artifact is not None
+-              and training_replay_monitor_artifact is not None
+-              and replay_monitor_artifact.content_digest != training_replay_monitor_artifact.content_digest
++              if prepared.replay_monitor_artifact is not None
++              and prepared.training_replay_monitor_artifact is not None
++              and prepared.replay_monitor_artifact.content_digest
++              != prepared.training_replay_monitor_artifact.content_digest
+               else ()),
+             *(("replay_role:foundation_pseudolabel_regularization_diagnostic",)
+-              if replay_monitor_artifact is not None
+-              and replay_monitor_artifact.label_mode is ReplayLabelMode.FOUNDATION_PSEUDOLABEL
++              if prepared.replay_monitor_artifact is not None
++              and prepared.replay_monitor_artifact.label_mode is ReplayLabelMode.FOUNDATION_PSEUDOLABEL
+               else ()),
+         ),
+     )
+     return CheckpointEvaluationRecord(
+-        run_plan_digest=run_plan.content_digest,
+-        checkpoint_sha256=checkpoint.sha256,
++        run_plan_digest=prepared.run_plan.content_digest,
++        checkpoint_sha256=prepared.checkpoint.sha256,
+         evaluation_policy_digest=policy.policy_digest,
+-        target_monitor_artifact_digest=run_plan.target_monitor_artifact_digest,
+-        target_monitor_sha256=target_monitor_artifact.sha256,
++        target_monitor_artifact_digest=prepared.run_plan.target_monitor_artifact_digest,
++        target_monitor_sha256=prepared.target_monitor_artifact.sha256,
+         replay_monitor_artifact_digest=replay_evaluation_digest,
+         replay_monitor_sha256=replay_sha,
+-        candidate_model_path=str(candidate),
+-        candidate_model_sha256=checkpoint.sha256,
+-        replay_baseline_model_path=baseline_path_value,
+-        replay_baseline_model_sha256=baseline_sha,
++        candidate_model_path=str(prepared.candidate_model_path),
++        candidate_model_sha256=prepared.checkpoint.sha256,
++        replay_baseline_model_path=(
++            None if prepared.baseline_model_path is None else str(prepared.baseline_model_path)
++        ),
++        replay_baseline_model_sha256=prepared.baseline_sha256,
+         target_configuration_count=target_metrics["configuration_count"],
+         replay_configuration_count=replay_count,
+         condition_force_rmse_ev_per_angstrom=target_metrics["condition_force_rmse_ev_per_angstrom"],
+         metric_record=metric_record,
+         target_candidate_metrics=ModelDatasetMetricRecord.from_metrics(target_metrics),
+-        target_foundation_metrics=(None if target_foundation_metrics_raw is None else ModelDatasetMetricRecord.from_metrics(target_foundation_metrics_raw)),
+-        replay_candidate_metrics=(None if candidate_replay_metrics_raw is None else ModelDatasetMetricRecord.from_metrics(candidate_replay_metrics_raw)),
+-        replay_foundation_metrics=(None if baseline_replay_metrics_raw is None else ModelDatasetMetricRecord.from_metrics(baseline_replay_metrics_raw)),
+-        target_candidate_prediction_digest=(None if target_candidate_artifact is None else target_candidate_artifact.content_digest),
+-        target_foundation_prediction_digest=(None if target_foundation_artifact is None else target_foundation_artifact.content_digest),
+-        replay_candidate_prediction_digest=(None if replay_candidate_artifact is None else replay_candidate_artifact.content_digest),
+-        replay_foundation_prediction_digest=(None if replay_foundation_artifact is None else replay_foundation_artifact.content_digest),
++        target_foundation_metrics=(
++            None
++            if target_foundation_metrics_raw is None
++            else ModelDatasetMetricRecord.from_metrics(target_foundation_metrics_raw)
++        ),
++        replay_candidate_metrics=(
++            None
++            if candidate_replay_metrics_raw is None
++            else ModelDatasetMetricRecord.from_metrics(candidate_replay_metrics_raw)
++        ),
++        replay_foundation_metrics=(
++            None
++            if baseline_replay_metrics_raw is None
++            else ModelDatasetMetricRecord.from_metrics(baseline_replay_metrics_raw)
++        ),
++        target_candidate_prediction_digest=(
++            None if target_candidate_artifact is None else target_candidate_artifact.content_digest
++        ),
++        target_foundation_prediction_digest=(
++            None if target_foundation_artifact is None else target_foundation_artifact.content_digest
++        ),
++        replay_candidate_prediction_digest=(
++            None if replay_candidate_artifact is None else replay_candidate_artifact.content_digest
++        ),
++        replay_foundation_prediction_digest=(
++            None if replay_foundation_artifact is None else replay_foundation_artifact.content_digest
++        ),
+     )
+ 
+ 
++def evaluate_mace_checkpoint(
++    run_plan: TrainingCampaignRunPlan,
++    checkpoint: CheckpointFileRecord,
++    *,
++    candidate_model_path: str | Path,
++    target_monitor_path: str | Path,
++    calculator_model_path: str | Path | None = None,
++    target_monitor_artifact: MaceExtxyzArtifact,
++    policy: CheckpointEvaluationPolicy = CheckpointEvaluationPolicy(),
++    replay_monitor_path: str | Path | None = None,
++    replay_monitor_artifact: ReplayFileArtifact | None = None,
++    training_replay_monitor_artifact: ReplayFileArtifact | None = None,
++    training_replay_monitor_path: str | Path | None = None,
++    replay_baseline_model_path: str | Path | None = None,
++    prediction_cache_directory: str | Path | None = None,
++    graph_cache_directory: str | Path | None = None,
++    foundation_prediction_manifest: Any | None = None,
++    foundation_prediction_root: str | Path | None = None,
++) -> CheckpointEvaluationRecord:
++    """Compatibility wrapper for the OPT-EVAL4 staged evaluation contract.
++
++    Direct API callers retain the historical synchronous behavior.  The campaign
++    CLI invokes the three stages independently so CPU preparation/finalization can
++    overlap accelerator inference across different checkpoints.
++    """
++
++    prepared = prepare_mace_checkpoint_evaluation(
++        run_plan,
++        checkpoint,
++        candidate_model_path=candidate_model_path,
++        calculator_model_path=calculator_model_path,
++        target_monitor_path=target_monitor_path,
++        target_monitor_artifact=target_monitor_artifact,
++        policy=policy,
++        replay_monitor_path=replay_monitor_path,
++        replay_monitor_artifact=replay_monitor_artifact,
++        training_replay_monitor_artifact=training_replay_monitor_artifact,
++        training_replay_monitor_path=training_replay_monitor_path,
++        replay_baseline_model_path=replay_baseline_model_path,
++        prediction_cache_directory=prediction_cache_directory,
++        graph_cache_directory=graph_cache_directory,
++        foundation_prediction_manifest=foundation_prediction_manifest,
++        foundation_prediction_root=foundation_prediction_root,
++    )
++    prediction_bundle = run_prepared_mace_checkpoint_inference(
++        prepared,
++        calculator_model_path=calculator_model_path,
++    )
++    return finalize_prepared_mace_checkpoint_evaluation(prepared, prediction_bundle)
++
+ def bind_checkpoint_evaluation_replay_provenance(
+     record: CheckpointEvaluationRecord,
+     label_mode: ReplayLabelMode | str | None,
+diff --git a/mdstats/training_data/inference_parallel.py b/mdstats/training_data/inference_parallel.py
+index 6f4be85..4636926 100644
+--- a/mdstats/training_data/inference_parallel.py
++++ b/mdstats/training_data/inference_parallel.py
+@@ -518,10 +518,12 @@ class AdaptiveInferenceConcurrency:
+     def start_calibration(self, *, now: float | None = None) -> None:
+         """Start the fixed single-job CUDA calibration clock.
+ 
+-        The runner calls this as soon as the first CUDA task is submitted.  The
+-        clock therefore spans setup, checkpoint/model loading, monitor parsing,
+-        transfer, and inference.  Near-zero GPU/VRAM observations are filtered
+-        later instead of moving the start boundary deeper into the task.
++        The runner calls this as soon as the first CUDA task is submitted. In
++        OPT-EVAL4 evaluation this means the accelerator stage after CPU monitor
++        preparation; checkpoint/model materialization, accelerator conversion,
++        transfer, and inference remain inside the calibrated region. Verification
++        may still include broader per-case setup. Near-zero GPU/VRAM observations
++        are filtered later instead of moving the start boundary deeper into the task.
+         """
+ 
+         if not self.plan.uses_cuda or self._gpu_calibrated:
+@@ -575,8 +577,8 @@ class AdaptiveInferenceConcurrency:
+     ) -> tuple[float, int, int]:
+         """Return a peak-trimmed upper-band mean for bursty GPU workloads.
+ 
+-        Evaluation and verification are multi-stage jobs. Their very highest
+-        telemetry points are often short kernel-launch or allocation spikes and
++        Evaluation accelerator stages and verification cases are bursty workloads.
++        Their very highest telemetry points are often short kernel-launch or allocation spikes and
+         are a poor basis for fixed concurrency. We therefore discard the highest
+         configured fraction first (5% by default), then average the next upper
+         band (10% by default). With the defaults this is approximately
+diff --git a/pyproject.toml b/pyproject.toml
+index cc02b67..ecebdec 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.100a0"
++version = "0.20.101a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff --git a/tests/test_mlff_immediate_evaluated_model_reconciliation.py b/tests/test_mlff_immediate_evaluated_model_reconciliation.py
+index eea72b0..27171ff 100644
+--- a/tests/test_mlff_immediate_evaluated_model_reconciliation.py
++++ b/tests/test_mlff_immediate_evaluated_model_reconciliation.py
+@@ -21,7 +21,7 @@ def test_cached_only_runs_reconcile_before_new_inference_queue() -> None:
+     source = inspect.getsource(campaign_cli.command_evaluate)
+     prequeue = source.index("# Cached-only runs can be selected and exported")
+     finalize = source.index("finalize_evaluated_run(context)", prequeue)
+-    scheduler = source.index("_run_adaptive_inference_tasks(", finalize)
++    scheduler = source.index("_run_staged_evaluation_tasks(", finalize)
+     assert prequeue < finalize < scheduler
+ 
+ 
+diff --git a/tests/test_mlff_opt_eval3_monitor_graph_view_cache.py b/tests/test_mlff_opt_eval3_monitor_graph_view_cache.py
+index e81c256..aa6a952 100644
+--- a/tests/test_mlff_opt_eval3_monitor_graph_view_cache.py
++++ b/tests/test_mlff_opt_eval3_monitor_graph_view_cache.py
+@@ -194,6 +194,7 @@ def _graph_frames() -> tuple[Atoms, ...]:
+ 
+ def test_persistent_monitor_graph_shard_survives_memory_cache_clear(tmp_path: Path, monkeypatch) -> None:
+     torch = pytest.importorskip("torch")
++    pytest.importorskip("mace")
+     from mace import data as mace_data
+ 
+     previous_dtype = torch.get_default_dtype()
+@@ -237,6 +238,7 @@ def test_persistent_monitor_graph_shard_survives_memory_cache_clear(tmp_path: Pa
+ 
+ def test_corrupt_persistent_graph_is_rebuilt_from_source_geometry(tmp_path: Path, monkeypatch) -> None:
+     torch = pytest.importorskip("torch")
++    pytest.importorskip("mace")
+     from mace import data as mace_data
+ 
+     previous_dtype = torch.get_default_dtype()
+@@ -269,6 +271,7 @@ def test_corrupt_persistent_graph_is_rebuilt_from_source_geometry(tmp_path: Path
+ 
+ def test_parallel_monitor_graph_miss_is_single_flight(tmp_path: Path, monkeypatch) -> None:
+     torch = pytest.importorskip("torch")
++    pytest.importorskip("mace")
+     from mace import data as mace_data
+ 
+     previous_dtype = torch.get_default_dtype()
+@@ -308,6 +311,7 @@ def test_parallel_monitor_graph_miss_is_single_flight(tmp_path: Path, monkeypatc
+ 
+ def test_monitor_graph_identity_change_forces_new_shard(tmp_path: Path, monkeypatch) -> None:
+     torch = pytest.importorskip("torch")
++    pytest.importorskip("mace")
+     from mace import data as mace_data
+ 
+     previous_dtype = torch.get_default_dtype()
+diff --git a/tests/test_mlff_opt_eval3_specification.py b/tests/test_mlff_opt_eval3_specification.py
+index 8aec199..b3063e0 100644
+--- a/tests/test_mlff_opt_eval3_specification.py
++++ b/tests/test_mlff_opt_eval3_specification.py
+@@ -9,9 +9,9 @@ ROOT = Path(__file__).resolve().parents[1]
+ 
+ 
+ def test_opt_eval3_release_identity_and_documentation() -> None:
+-    assert mdstats.__version__ == "0.20.99a0"
++    # OPT-EVAL3 remains part of the frozen 0.20.99 MLFF scientific identity even
++    # when later execution-only package releases advance mdstats.__version__.
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+-    assert 'version = "0.20.99a0"' in (ROOT / "pyproject.toml").read_text()
+     assert model_features.MACE_MONITOR_GRAPH_CACHE_SCHEMA == "mdstats.mace-monitor-graph-cache.v1"
+     assert evaluation_views.EVALUATION_DATASET_VIEW_SCHEMA == "mdstats.evaluation-dataset-view.v1"
+     spec = ROOT / "docs/specs/training_data/mlff_opt_eval3_monitor_graph_view_cache_spec.md"
+@@ -28,7 +28,7 @@ def test_opt_eval3_release_identity_and_documentation() -> None:
+     ):
+         assert required in spec_text
+     assert "OPT-EVAL3 - monitor-level graph and immutable evaluation-view caching - implemented in 0.20.99a0" in manual_text
+-    assert "next implementation follow-up from this roadmap is **`OPT-EVAL4`**" in manual_text
++    assert "next implementation follow-up from this roadmap is **`OPT-VERIFY1`**" in manual_text
+ 
+ 
+ def test_lta_density_example_multiformat_update_is_in_release_tree() -> None:
+diff --git a/tests/test_mlff_opt_eval4_specification.py b/tests/test_mlff_opt_eval4_specification.py
+new file mode 100644
+index 0000000..abf530b
+--- /dev/null
++++ b/tests/test_mlff_opt_eval4_specification.py
+@@ -0,0 +1,56 @@
++from __future__ import annotations
++
++from pathlib import Path
++import inspect
++
++import mdstats
++from mdstats.training_data import campaign_cli
++
++
++ROOT = Path(__file__).resolve().parents[1]
++
++
++def test_opt_eval4_release_identity_preserves_mlff_compatibility() -> None:
++    assert mdstats.__version__ == "0.20.101a0"
++    assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
++    assert 'version = "0.20.101a0"' in (ROOT / "pyproject.toml").read_text()
++
++
++def test_opt_eval4_architecture_and_spec_record_pipeline_contract() -> None:
++    manual = (ROOT / "docs/arch_manuals/mlff_training_data_architecture.md").read_text()
++    spec = (
++        ROOT
++        / "docs/specs/training_data/mlff_opt_eval4_staged_evaluation_pipeline_spec.md"
++    ).read_text()
++    assert "OPT-EVAL4 - staged evaluation pipeline" in manual
++    assert "implemented in mdstats 0.20.101a0" in manual
++    assert "next implementation follow-up from this roadmap is **`OPT-VERIFY1`**" in manual
++    assert "CPU monitor/cache preparation" in manual
++    assert "accelerator-admitted checkpoint materialization" in manual
++    assert "Status: implemented in mdstats 0.20.101a0." in spec
++    assert "cache-only" in spec.lower()
++    assert "backpressure" in spec.lower()
++
++
++def test_opt_eval4_generated_config_exposes_bounded_cpu_pipeline_controls() -> None:
++    template = campaign_cli._config_template(
++        workspace="/tmp/workspace",
++        training_root="/tmp/training",
++        foundation_model="/tmp/foundation.model",
++        replay_train="/tmp/replay-train.extxyz",
++        replay_monitor="/tmp/replay-monitor.extxyz",
++    )
++    for line in (
++        "parallel_evaluation_prepare_jobs = 0",
++        "parallel_evaluation_finalize_jobs = 0",
++        "evaluation_pipeline_buffer_jobs = 0",
++    ):
++        assert line in template
++
++
++def test_campaign_evaluate_uses_staged_runner() -> None:
++    source = inspect.getsource(campaign_cli.command_evaluate)
++    assert "_run_staged_evaluation_tasks(" in source
++    assert "prepare_mace_checkpoint_evaluation" in source
++    assert "run_prepared_mace_checkpoint_inference" in source
++    assert "finalize_prepared_mace_checkpoint_evaluation" in source
+diff --git a/tests/test_mlff_opt_eval4_staged_evaluation_pipeline.py b/tests/test_mlff_opt_eval4_staged_evaluation_pipeline.py
+new file mode 100644
+index 0000000..1c8a749
+--- /dev/null
++++ b/tests/test_mlff_opt_eval4_staged_evaluation_pipeline.py
+@@ -0,0 +1,365 @@
++from __future__ import annotations
++
++import hashlib
++import threading
++import time
++from pathlib import Path
++
++import numpy as np
++import pytest
++from ase import Atoms
++from ase.io import write
++
++import mdstats
++from mdstats.training_data import campaign_cli, campaign_execution
++from mdstats.training_data.inference_parallel import CpuTelemetrySample
++from mdstats.training_data.model_features import AtomicModelPrediction, MaceCalculatorProvider
++from mdstats.training_data.resources import GpuResourceSnapshot, SystemResourceSnapshot
++
++
++def _h(text: str) -> str:
++    return hashlib.sha256(text.encode()).hexdigest()
++
++
++def _frame() -> Atoms:
++    atoms = Atoms(
++        numbers=[3, 8],
++        positions=[[0.0, 0.0, 0.0], [1.8, 0.0, 0.0]],
++        cell=np.eye(3) * 6.0,
++        pbc=True,
++    )
++    atoms.info["REF_energy"] = -2.0
++    atoms.arrays["REF_forces"] = np.zeros((2, 3), dtype=float)
++    atoms.info["REF_stress"] = np.zeros(6)
++    return atoms
++
++
++def _target_artifact(path: Path) -> mdstats.MaceExtxyzArtifact:
++    return mdstats.MaceExtxyzArtifact(
++        role="checkpoint_monitor",
++        relative_path=path.name,
++        sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
++        configuration_count=1,
++        frame_uids=(_h("opt-eval4-frame"),),
++        atomic_numbers=(3, 8),
++        policy_digest=_h("target-policy"),
++        sidecar_relative_path="target.manifest.json",
++        sidecar_sha256=_h("target-sidecar-file"),
++        sidecar_digest=_h("target-sidecar-record"),
++    )
++
++
++def _run_checkpoint(artifact: mdstats.MaceExtxyzArtifact, candidate: Path):
++    run = mdstats.TrainingCampaignRunPlan(
++        run_id="opt-eval4-run",
++        data8_bundle_digest=_h("data8"),
++        mace_job_artifact_digest=_h("job"),
++        job_id="job",
++        kind=mdstats.MaceJobKind.FINAL_DEVELOPMENT,
++        fold_index=None,
++        training_mode=mdstats.TrainingMode.NAIVE_FINE_TUNING,
++        selection_size=1,
++        seed=1,
++        protocol_family_digest=_h("family"),
++        protocol_variant_digest=_h("variant"),
++        protocol_digest=_h("protocol"),
++        checkpoint_metric_policy_digest=_h("metric-policy"),
++        target_monitor_artifact_digest=artifact.content_digest,
++        replay_monitor_artifact_digest=None,
++        relative_output_directory="run",
++    )
++    sha = hashlib.sha256(candidate.read_bytes()).hexdigest()
++    checkpoint = mdstats.CheckpointFileRecord(
++        run_plan_digest=run.content_digest,
++        candidate_id="candidate",
++        epoch=1,
++        relative_path=candidate.name,
++        sha256=sha,
++        size_bytes=candidate.stat().st_size,
++    )
++    return run, checkpoint
++
++
++class _Provider:
++    def set_head(self, head):
++        self.head = head
++
++
++def test_staged_scientific_api_cache_only_restart_needs_no_model(
++    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
++) -> None:
++    target = tmp_path / "target.extxyz"
++    write(target, [_frame()], format="extxyz")
++    artifact = _target_artifact(target)
++    candidate = tmp_path / "candidate.pt"
++    candidate.write_bytes(b"candidate")
++    run, checkpoint = _run_checkpoint(artifact, candidate)
++    cache = tmp_path / "predictions"
++    policy = mdstats.CheckpointEvaluationPolicy(condition_keys=())
++
++    monkeypatch.setattr(
++        MaceCalculatorProvider,
++        "from_model_path",
++        classmethod(lambda cls, *args, **kwargs: _Provider()),
++    )
++    calls = {"predict": 0}
++
++    def predict(model_path, atoms_list, *, head, policy, provider=None, **kwargs):
++        calls["predict"] += 1
++        return tuple(
++            AtomicModelPrediction(
++                energy_ev=float(atoms.info["REF_energy"]) + 0.1,
++                forces_ev_per_angstrom=np.full((len(atoms), 3), 0.05),
++                stress_ev_per_angstrom3=np.zeros((3, 3)),
++            )
++            for atoms in atoms_list
++        )
++
++    monkeypatch.setattr(campaign_execution, "_predict_model_on_monitor", predict)
++
++    prepared = mdstats.prepare_mace_checkpoint_evaluation(
++        run,
++        checkpoint,
++        candidate_model_path=candidate,
++        calculator_model_path=candidate,
++        target_monitor_path=target,
++        target_monitor_artifact=artifact,
++        policy=policy,
++        prediction_cache_directory=cache,
++    )
++    assert prepared.requires_model_inference
++    bundle = mdstats.run_prepared_mace_checkpoint_inference(
++        prepared, calculator_model_path=candidate
++    )
++    first = mdstats.finalize_prepared_mace_checkpoint_evaluation(prepared, bundle)
++    assert calls["predict"] == 1
++    assert "evaluation_pipeline:prepared-inference-finalize-v1" in first.metric_record.evaluation_notes
++
++    candidate.unlink()
++    prepared_cached = mdstats.prepare_mace_checkpoint_evaluation(
++        run,
++        checkpoint,
++        candidate_model_path=candidate,
++        target_monitor_path=target,
++        target_monitor_artifact=artifact,
++        policy=policy,
++        prediction_cache_directory=cache,
++    )
++    assert not prepared_cached.requires_model_inference
++    cached_bundle = mdstats.run_prepared_mace_checkpoint_inference(prepared_cached)
++    second = mdstats.finalize_prepared_mace_checkpoint_evaluation(
++        prepared_cached, cached_bundle
++    )
++    assert calls["predict"] == 1
++    assert second.metric_record.force_component_rmse_ev_per_angstrom == pytest.approx(
++        first.metric_record.force_component_rmse_ev_per_angstrom
++    )
++
++
++def _resources() -> SystemResourceSnapshot:
++    gib = 1024**3
++    return SystemResourceSnapshot(
++        cpu_threads_available=8,
++        cpu_fraction=0.90,
++        cpu_threads_budget=7,
++        ram_available_bytes=48 * gib,
++        ram_fraction=0.80,
++        ram_budget_bytes=int(48 * gib * 0.80),
++        gpu_memory_fraction=0.90,
++        gpu=GpuResourceSnapshot(False, 0, None, None, None, None, None, "test"),
++    )
++
++
++class _Probe:
++    def __init__(self, **kwargs):
++        pass
++
++    def sample(self, **kwargs):
++        return CpuTelemetrySample(time.monotonic(), 0.0)
++
++    def reset(self):
++        pass
++
++
++class _Progress:
++    def item_start(self, *args, **kwargs):
++        pass
++
++    def item_done(self, *args, **kwargs):
++        pass
++
++
++def _pipeline_cfg() -> dict:
++    return {
++        "performance": {"cpu_fraction": 0.90, "ram_fraction": 0.80},
++        "execution": {
++            "parallel_evaluation_jobs": 1,
++            "parallel_evaluation_prepare_jobs": 1,
++            "parallel_evaluation_finalize_jobs": 1,
++            "evaluation_pipeline_buffer_jobs": 2,
++            "evaluation_estimated_ram_mib_per_job": 1.0,
++            "parallel_evaluation_stabilization_seconds": 0.0,
++            "parallel_evaluation_cpu_stabilization_seconds": 0.0,
++            "parallel_evaluation_stability_samples": 2,
++            "parallel_evaluation_monitor_interval_seconds": 0.005,
++        },
++    }
++
++
++def test_staged_runner_overlaps_prepare_and_finalize_with_single_inference_slot(
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    monkeypatch.setattr(campaign_cli, "detect_system_resources", lambda **kwargs: _resources())
++    monkeypatch.setattr(campaign_cli, "CpuTelemetryProbe", _Probe)
++    monkeypatch.setattr(campaign_cli, "query_gpu_telemetry", lambda device: None)
++
++    lock = threading.Lock()
++    spans: dict[str, list[float]] = {}
++    callback_threads: list[int] = []
++    caller_thread = threading.get_ident()
++
++    def span(name: str, delay: float):
++        with lock:
++            spans[name] = [time.monotonic(), 0.0]
++        time.sleep(delay)
++        with lock:
++            spans[name][1] = time.monotonic()
++
++    def make_task(index: int) -> campaign_cli._StagedEvaluationTask:
++        def prepare():
++            span(f"prepare{index}", 0.08)
++            return index
++
++        def infer(prepared):
++            span(f"infer{index}", 0.18)
++            return prepared
++
++        def finalize(prepared, inferred):
++            span(f"finalize{index}", 0.10)
++            return inferred
++
++        return campaign_cli._StagedEvaluationTask(
++            display_index=index + 1,
++            key=f"task-{index}",
++            label=f"task-{index}",
++            start_detail="pipeline-test",
++            prepare=prepare,
++            requires_inference=lambda prepared: True,
++            infer=infer,
++            finalize=finalize,
++            done_detail=lambda result, wall: str(result),
++            on_success=lambda result: callback_threads.append(threading.get_ident()),
++        )
++
++    results = campaign_cli._run_staged_evaluation_tasks(
++        [make_task(0), make_task(1)],
++        cfg=_pipeline_cfg(),
++        device="cpu",
++        progress=_Progress(),
++    )
++    assert results == {"task-0": 0, "task-1": 1}
++    # With one inference slot, the second CPU prepare is launched as soon as the
++    # first prepared item enters inference and therefore overlaps infer0.
++    assert spans["prepare1"][0] < spans["infer0"][1]
++    assert spans["prepare1"][1] > spans["infer0"][0]
++    # CPU finalization of task0 overlaps the admitted inference of task1.
++    assert spans["finalize0"][0] < spans["infer1"][1]
++    assert spans["finalize0"][1] > spans["infer1"][0]
++    assert callback_threads and set(callback_threads) == {caller_thread}
++
++
++def test_cache_only_staged_task_bypasses_inference_pool(
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    monkeypatch.setattr(campaign_cli, "detect_system_resources", lambda **kwargs: _resources())
++    monkeypatch.setattr(campaign_cli, "CpuTelemetryProbe", _Probe)
++    monkeypatch.setattr(campaign_cli, "query_gpu_telemetry", lambda device: None)
++    execution_threads: list[str] = []
++
++    task = campaign_cli._StagedEvaluationTask(
++        display_index=1,
++        key="cached",
++        label="cached",
++        start_detail="cached",
++        prepare=lambda: "prepared",
++        requires_inference=lambda prepared: False,
++        infer=lambda prepared: execution_threads.append(threading.current_thread().name) or "predictions",
++        finalize=lambda prepared, predictions: (prepared, predictions),
++        done_detail=lambda result, wall: "done",
++    )
++    result = campaign_cli._run_staged_evaluation_tasks(
++        [task], cfg=_pipeline_cfg(), device="cpu", progress=_Progress()
++    )
++    assert result["cached"] == ("prepared", "predictions")
++    assert execution_threads
++    assert all(name.startswith("mdstats-eval-finalize") for name in execution_threads)
++
++@pytest.mark.parametrize(
++    "key",
++    ["parallel_evaluation_prepare_jobs", "parallel_evaluation_finalize_jobs"],
++)
++def test_staged_runner_rejects_negative_cpu_stage_worker_counts(
++    key: str, monkeypatch: pytest.MonkeyPatch
++) -> None:
++    monkeypatch.setattr(campaign_cli, "detect_system_resources", lambda **kwargs: _resources())
++    monkeypatch.setattr(campaign_cli, "CpuTelemetryProbe", _Probe)
++    monkeypatch.setattr(campaign_cli, "query_gpu_telemetry", lambda device: None)
++    cfg = _pipeline_cfg()
++    cfg["execution"][key] = -1
++    task = campaign_cli._StagedEvaluationTask(
++        display_index=1,
++        key="bad-config",
++        label="bad-config",
++        start_detail="bad-config",
++        prepare=lambda: "prepared",
++        requires_inference=lambda prepared: False,
++        infer=lambda prepared: "predictions",
++        finalize=lambda prepared, predictions: "done",
++        done_detail=lambda result, wall: "done",
++    )
++    with pytest.raises(campaign_cli.CampaignCliError, match="zero \\(auto\\) or positive"):
++        campaign_cli._run_staged_evaluation_tasks(
++            [task], cfg=cfg, device="cpu", progress=_Progress()
++        )
++
++
++def test_staged_runner_stage_failure_stops_new_work_without_deadlock(
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    monkeypatch.setattr(campaign_cli, "detect_system_resources", lambda **kwargs: _resources())
++    monkeypatch.setattr(campaign_cli, "CpuTelemetryProbe", _Probe)
++    monkeypatch.setattr(campaign_cli, "query_gpu_telemetry", lambda device: None)
++    cfg = _pipeline_cfg()
++    cfg["execution"]["evaluation_pipeline_buffer_jobs"] = 1
++    executed: list[str] = []
++
++    def make_task(index: int) -> campaign_cli._StagedEvaluationTask:
++        def prepare():
++            executed.append(f"prepare{index}")
++            if index == 0:
++                raise RuntimeError("prepare exploded")
++            return index
++
++        return campaign_cli._StagedEvaluationTask(
++            display_index=index + 1,
++            key=f"failure-{index}",
++            label=f"failure-{index}",
++            start_detail="failure-test",
++            prepare=prepare,
++            requires_inference=lambda prepared: True,
++            infer=lambda prepared: executed.append(f"infer{index}") or prepared,
++            finalize=lambda prepared, inferred: inferred,
++            done_detail=lambda result, wall: "done",
++        )
++
++    with pytest.raises(
++        campaign_cli.CampaignCliError,
++        match="stage=CPU preparation",
++    ):
++        campaign_cli._run_staged_evaluation_tasks(
++            [make_task(0), make_task(1)],
++            cfg=cfg,
++            device="cpu",
++            progress=_Progress(),
++        )
++    assert executed == ["prepare0"]

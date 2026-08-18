@@ -1,0 +1,12 @@
+{
+  "schema": "mdstats.foundation-audit1-hf1-pdf-qa.v1",
+  "version": "0.20.196a0",
+  "architecture_revision": 63,
+  "status": "pass",
+  "documents": [
+    {"path": "ARCHITECTURE_NOTES_MLFF_REV63.pdf", "pages": 1, "preflight": "pass", "visual_qa": "pass"},
+    {"path": "PATCH_NOTES_0.20.196a0.pdf", "pages": 1, "preflight": "pass", "visual_qa": "pass"},
+    {"path": "docs/specs/training_data/mlff_foundation_audit1_hf1_spec.pdf", "pages": 1, "preflight": "pass", "visual_qa": "pass"},
+    {"path": "mlff_training_data_architecture.pdf", "pages": 200, "preflight": "pass", "visual_qa": "revision-63 final page inspected; no clipping/overflow"}
+  ]
+}

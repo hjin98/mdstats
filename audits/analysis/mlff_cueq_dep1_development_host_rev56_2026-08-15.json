@@ -1,0 +1,473 @@
+{
+  "accelerator_capability_passed": false,
+  "blocking_reasons": [
+    "cueq-core_import",
+    "cueq-torch_import",
+    "cueq-ops_import",
+    "torch_cuda_available",
+    "cuda_device_inventory"
+  ],
+  "content_digest": "45a3d9aa919e557388dc6858feb64b7009f4eeaa838c097d4456f7f29b56f069",
+  "device": {
+    "content_digest": "202816db12be36ef56747494fad0338408726adb702aeee9cb98413d9862c3df",
+    "cuda_available": false,
+    "cuda_matmul_allow_tf32": false,
+    "cudnn_allow_tf32": true,
+    "cudnn_benchmark": false,
+    "cudnn_deterministic": false,
+    "cudnn_version": null,
+    "deterministic_algorithms": false,
+    "deterministic_debug_mode": 0,
+    "devices": [],
+    "float32_matmul_precision": "highest",
+    "nvcc": null,
+    "nvidia_smi": null,
+    "schema": "mdstats.cueq-dep1-device.v1",
+    "torch_cuda_version": null,
+    "torch_version": "2.10.0+cpu"
+  },
+  "distributions": [
+    {
+      "candidate_distributions": [
+        "torch"
+      ],
+      "content_addressed": true,
+      "content_digest": "fc11aa5d41b9376b9b2ceb98ee29ffa101987ac108efed7d2ae217b3752d59cb",
+      "direct_url_sha256": null,
+      "distribution_name": "torch",
+      "error_message": null,
+      "error_type": null,
+      "import_name": "torch",
+      "import_passed": true,
+      "logical_name": "torch",
+      "metadata_sha256": "d6031f9f56089c835e78a75875c1be87a34bcfdf5a79ef9f069084ed9244a5d4",
+      "module_file": "/opt/pyvenv/lib/python3.13/site-packages/torch/__init__.py",
+      "module_file_sha256": "51c90fe34a7cf869517d1bab4cd114498790e169ec668f1a154c35ec64117a5e",
+      "passed": true,
+      "record_sha256": "c8572fbb51934abe46df2324e28a28ef2497396667c581e0672d1ad216f5d394",
+      "required": true,
+      "schema": "mdstats.cueq-dep1-distribution.v1",
+      "version": "2.10.0+cpu",
+      "wheel_sha256": "c23d3bc911b23607dc80c499392728624064a62768780cc64a008d48e5451b61"
+    },
+    {
+      "candidate_distributions": [
+        "mace-torch"
+      ],
+      "content_addressed": true,
+      "content_digest": "4ca0770e410bbf0198598fd90d27b875d1ee5145c764c32ce0529cf71335abb9",
+      "direct_url_sha256": "d428bcaff660498b89993d74ca8f7fb69513d9c454774642b5bbc42b7ad8d22e",
+      "distribution_name": "mace-torch",
+      "error_message": null,
+      "error_type": null,
+      "import_name": "mace",
+      "import_passed": true,
+      "logical_name": "mace",
+      "metadata_sha256": "ce3a831df793896eb140235a93dc0281e161db56bb89a0790b9d1cae3154935d",
+      "module_file": "/mnt/data/mdstats_dep1_env/lib/python3.13/site-packages/mace/__init__.py",
+      "module_file_sha256": "e552c116b7d2c653f98b01f5c4fd599997f19f669a32bc6bf16396dd9f79365b",
+      "passed": true,
+      "record_sha256": "f83f1df280c25a0dabb7759652b5aa4f6f71201a6df921d69474bf97038f1638",
+      "required": true,
+      "schema": "mdstats.cueq-dep1-distribution.v1",
+      "version": "0.3.16",
+      "wheel_sha256": "69e6228a0d35958183cc1812f07c565ce837b95eb51bd8a33acba9fa4f68d6c9"
+    },
+    {
+      "candidate_distributions": [
+        "e3nn"
+      ],
+      "content_addressed": true,
+      "content_digest": "1cad299f6d11e603230fc70070800f373386760153a8a1b512e2c85b138103a0",
+      "direct_url_sha256": "197435f0adf47b47d87958852df027c3dd8f8942c7d4a3955035d273bd422044",
+      "distribution_name": "e3nn",
+      "error_message": null,
+      "error_type": null,
+      "import_name": "e3nn",
+      "import_passed": true,
+      "logical_name": "e3nn",
+      "metadata_sha256": "360b58c58f6f67071099dfbcbdaceb59ef0debead0d6568ec1f1cf2b76e43320",
+      "module_file": "/mnt/data/mdstats_dep1_env/lib/python3.13/site-packages/e3nn/__init__.py",
+      "module_file_sha256": "ab028ec222fd63edd5b2973d0f51d736204d5c43d44b7f0386415a2fb82759b2",
+      "passed": true,
+      "record_sha256": "144d09999dbd85ad239bc46b4921da1a85defaa1b6190eae0c40edcdb7a6fd82",
+      "required": true,
+      "schema": "mdstats.cueq-dep1-distribution.v1",
+      "version": "0.4.4",
+      "wheel_sha256": "7b0c04b9e8a8d42d977874ef4f5ee7f1d6542603afc82582b7459534b0a53fda"
+    },
+    {
+      "candidate_distributions": [
+        "cuequivariance"
+      ],
+      "content_addressed": false,
+      "content_digest": "ab107b2e7d8c7cab7556a2abf03b955e99d6f18ce4817d0d8ed04402a1003803",
+      "direct_url_sha256": null,
+      "distribution_name": null,
+      "error_message": "No module named 'cuequivariance'",
+      "error_type": "ModuleNotFoundError",
+      "import_name": "cuequivariance",
+      "import_passed": false,
+      "logical_name": "cueq-core",
+      "metadata_sha256": null,
+      "module_file": null,
+      "module_file_sha256": null,
+      "passed": false,
+      "record_sha256": null,
+      "required": true,
+      "schema": "mdstats.cueq-dep1-distribution.v1",
+      "version": null,
+      "wheel_sha256": null
+    },
+    {
+      "candidate_distributions": [
+        "cuequivariance-torch"
+      ],
+      "content_addressed": false,
+      "content_digest": "a1bc5fae10306d3508785873f165359426ed9bfe7a96197eb08cae053bafb90e",
+      "direct_url_sha256": null,
+      "distribution_name": null,
+      "error_message": "No module named 'cuequivariance_torch'",
+      "error_type": "ModuleNotFoundError",
+      "import_name": "cuequivariance_torch",
+      "import_passed": false,
+      "logical_name": "cueq-torch",
+      "metadata_sha256": null,
+      "module_file": null,
+      "module_file_sha256": null,
+      "passed": false,
+      "record_sha256": null,
+      "required": true,
+      "schema": "mdstats.cueq-dep1-distribution.v1",
+      "version": null,
+      "wheel_sha256": null
+    },
+    {
+      "candidate_distributions": [
+        "cuequivariance-ops-torch-cu13",
+        "cuequivariance-ops-torch-cu12",
+        "cuequivariance-ops-torch-cu11",
+        "cuequivariance-ops-torch"
+      ],
+      "content_addressed": false,
+      "content_digest": "0f6de7c74ae234b7ea42673c51a239f27b5a7b65116cee45cf68aa683504a121",
+      "direct_url_sha256": null,
+      "distribution_name": null,
+      "error_message": "No module named 'cuequivariance_ops_torch'",
+      "error_type": "ModuleNotFoundError",
+      "import_name": "cuequivariance_ops_torch",
+      "import_passed": false,
+      "logical_name": "cueq-ops",
+      "metadata_sha256": null,
+      "module_file": null,
+      "module_file_sha256": null,
+      "passed": false,
+      "record_sha256": null,
+      "required": true,
+      "schema": "mdstats.cueq-dep1-distribution.v1",
+      "version": null,
+      "wheel_sha256": null
+    },
+    {
+      "candidate_distributions": [
+        "openequivariance",
+        "OpenEquivariance"
+      ],
+      "content_addressed": false,
+      "content_digest": "281e3cc335731c2243f45d854391b9fb33285d44d776f774c7939bd02f7c7b93",
+      "direct_url_sha256": null,
+      "distribution_name": null,
+      "error_message": "No module named 'openequivariance'",
+      "error_type": "ModuleNotFoundError",
+      "import_name": "openequivariance",
+      "import_passed": false,
+      "logical_name": "oeq",
+      "metadata_sha256": null,
+      "module_file": null,
+      "module_file_sha256": null,
+      "passed": true,
+      "record_sha256": null,
+      "required": false,
+      "schema": "mdstats.cueq-dep1-distribution.v1",
+      "version": null,
+      "wheel_sha256": null
+    }
+  ],
+  "environment": [
+    [
+      "CUDA_VISIBLE_DEVICES",
+      null
+    ],
+    [
+      "CUDA_DEVICE_ORDER",
+      null
+    ],
+    [
+      "CUBLAS_WORKSPACE_CONFIG",
+      null
+    ],
+    [
+      "CUDA_LAUNCH_BLOCKING",
+      null
+    ],
+    [
+      "PYTORCH_ALLOC_CONF",
+      null
+    ],
+    [
+      "PYTORCH_CUDA_ALLOC_CONF",
+      null
+    ],
+    [
+      "CUEQ_TRITON_CACHE_DIR",
+      null
+    ],
+    [
+      "CUEQ_TRITON_IGNORE_EXISTING_CACHE",
+      null
+    ]
+  ],
+  "mace_runtime": {
+    "blocking_error_message": null,
+    "blocking_error_type": null,
+    "calculator_enable_cueq_supported": true,
+    "calculator_enable_oeq_supported": true,
+    "checkpoint_loads": [],
+    "checkpoints_passed": false,
+    "component_capabilities": [
+      {
+        "available": false,
+        "candidate_distributions": [
+          "cuequivariance"
+        ],
+        "content_digest": "c552cf67a5679861501c28860548fa5756992d78736aad0718fd50d614c1897b",
+        "error_message": "No module named 'cuequivariance'",
+        "error_type": "ModuleNotFoundError",
+        "import_name": "cuequivariance",
+        "import_passed": false,
+        "installed_distribution": null,
+        "logical_name": "cueq-core",
+        "schema": "mdstats.mace-runtime-component-capability.v1",
+        "version": null
+      },
+      {
+        "available": false,
+        "candidate_distributions": [
+          "cuequivariance-torch"
+        ],
+        "content_digest": "4c210c0c95e78ab941462109fa58e0ca19cb5ec9a530c159f3d1db11c497345d",
+        "error_message": "No module named 'cuequivariance_torch'",
+        "error_type": "ModuleNotFoundError",
+        "import_name": "cuequivariance_torch",
+        "import_passed": false,
+        "installed_distribution": null,
+        "logical_name": "cueq-torch",
+        "schema": "mdstats.mace-runtime-component-capability.v1",
+        "version": null
+      },
+      {
+        "available": false,
+        "candidate_distributions": [
+          "cuequivariance-ops-torch-cu13",
+          "cuequivariance-ops-torch-cu12",
+          "cuequivariance-ops-torch-cu11",
+          "cuequivariance-ops-torch"
+        ],
+        "content_digest": "545559ea8029a7431c43f5f9f230de53302582175277c06643e0663bddcb1bb4",
+        "error_message": "No module named 'cuequivariance_ops_torch'",
+        "error_type": "ModuleNotFoundError",
+        "import_name": "cuequivariance_ops_torch",
+        "import_passed": false,
+        "installed_distribution": null,
+        "logical_name": "cueq-ops",
+        "schema": "mdstats.mace-runtime-component-capability.v1",
+        "version": null
+      },
+      {
+        "available": false,
+        "candidate_distributions": [
+          "openequivariance",
+          "OpenEquivariance"
+        ],
+        "content_digest": "bc4a449757377c32b862ff5be29ffd9e8af502a9e4cfd16a7cd22d18b2c4fc3f",
+        "error_message": "No module named 'openequivariance'",
+        "error_type": "ModuleNotFoundError",
+        "import_name": "openequivariance",
+        "import_passed": false,
+        "installed_distribution": null,
+        "logical_name": "oeq",
+        "schema": "mdstats.mace-runtime-component-capability.v1",
+        "version": null
+      }
+    ],
+    "content_digest": "34d75d07a27b798ec5ea6ce731c12a74b6ab60f90249856a062906622f65e127",
+    "core_runtime_passed": true,
+    "cuda_available": false,
+    "cueq_backend_capability_passed": false,
+    "cueq_backend_failure_reasons": [
+      "cuEquivariance core/torch/ops capability is incomplete"
+    ],
+    "cueq_stack_available": false,
+    "dependency_target_passed": true,
+    "e3nn_backend_capability_passed": true,
+    "e3nn_backend_failure_reasons": [],
+    "e3nn_version": "0.4.4",
+    "mace_version": "0.3.16",
+    "oeq_available": false,
+    "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+    "policy": {
+      "policy_digest": "8ba7ca57012ec2fce9547904ef796162d1f0f3b2d5672ff1bf7615fe5c5e02f4",
+      "require_cueq_stack": false,
+      "require_oeq": false,
+      "required_e3nn_version": "0.4.4",
+      "required_mace_version": "0.3.16",
+      "schema": "mdstats.mace-runtime-freeze-policy.v1",
+      "source_lock": [
+        [
+          "mace/cli/run_train.py",
+          "4f219fce454279b54cb7a10af30e8e8508cb7b83b3ffa6981ed89dbe7dc8de8b"
+        ],
+        [
+          "mace/tools/train.py",
+          "ca700fa6685e75124ca725d83b2fa55303c0803c48a2ac0c4b543f8f63aa4dfc"
+        ],
+        [
+          "mace/tools/multihead_tools.py",
+          "a8b0d86bc314c8587e9140afe147553dcae7c4691f049c7d409e815854d9412f"
+        ],
+        [
+          "mace/tools/scripts_utils.py",
+          "de6b33ef2fc59e32408f0436d15a135ad0c63df3d23feeef8cc23e4a1b86bdb1"
+        ],
+        [
+          "mace/calculators/mace.py",
+          "97b17cef8d5880071068d1a05a97f1d432ffc57db00d23ba86c2c3049114a8ad"
+        ],
+        [
+          "mace/tools/arg_parser.py",
+          "9e583bbadc58492861655932c2dc71a069731eece3946ebc681e43f628149d86"
+        ],
+        [
+          "mace/cli/convert_e3nn_hybrid.py",
+          "11f7f601734182d00ce7cb21aa0c4efc096bad7341c0bdcbd211018ead731f20"
+        ],
+        [
+          "mace/cli/convert_e3nn_oeq.py",
+          "42511f11713e3b9b2569b78649da39ad4eadd676793666f3024c5222f06db7e9"
+        ]
+      ]
+    },
+    "python_version": "3.13.5",
+    "qualified_for_mh1_dep0": false,
+    "schema": "mdstats.mace-runtime-freeze-record.v2",
+    "semantic_source_compatibility_notes": [
+      "Exact MACE byte lock differs, but fixed-file training, selected-head, and CuEq CLI semantics passed."
+    ],
+    "semantic_source_compatibility_passed": true,
+    "source_compatibility_passed": true,
+    "source_evidence": [
+      {
+        "content_digest": "2cf00f9f584f81e3bd236e420410813b9b116ad9762b8fcda0ba20f19f21bb43",
+        "expected_sha256": "4f219fce454279b54cb7a10af30e8e8508cb7b83b3ffa6981ed89dbe7dc8de8b",
+        "matched": true,
+        "observed_sha256": "4f219fce454279b54cb7a10af30e8e8508cb7b83b3ffa6981ed89dbe7dc8de8b",
+        "relative_path": "mace/cli/run_train.py",
+        "schema": "mdstats.mace-runtime-source-evidence.v1"
+      },
+      {
+        "content_digest": "cfee1685c5c73d267d480954a268cf3ee0dabb3150ec78c909c10ab4db6f165b",
+        "expected_sha256": "ca700fa6685e75124ca725d83b2fa55303c0803c48a2ac0c4b543f8f63aa4dfc",
+        "matched": true,
+        "observed_sha256": "ca700fa6685e75124ca725d83b2fa55303c0803c48a2ac0c4b543f8f63aa4dfc",
+        "relative_path": "mace/tools/train.py",
+        "schema": "mdstats.mace-runtime-source-evidence.v1"
+      },
+      {
+        "content_digest": "328ba6b8a1b8506fc90a9fe6e66d8fdb31537ef8595dd597de73b147f6bab072",
+        "expected_sha256": "a8b0d86bc314c8587e9140afe147553dcae7c4691f049c7d409e815854d9412f",
+        "matched": true,
+        "observed_sha256": "a8b0d86bc314c8587e9140afe147553dcae7c4691f049c7d409e815854d9412f",
+        "relative_path": "mace/tools/multihead_tools.py",
+        "schema": "mdstats.mace-runtime-source-evidence.v1"
+      },
+      {
+        "content_digest": "81cb6b07245ccddf65a2de5bfb692dc1a6a755c6acedff5dc024b73c963a5d58",
+        "expected_sha256": "de6b33ef2fc59e32408f0436d15a135ad0c63df3d23feeef8cc23e4a1b86bdb1",
+        "matched": true,
+        "observed_sha256": "de6b33ef2fc59e32408f0436d15a135ad0c63df3d23feeef8cc23e4a1b86bdb1",
+        "relative_path": "mace/tools/scripts_utils.py",
+        "schema": "mdstats.mace-runtime-source-evidence.v1"
+      },
+      {
+        "content_digest": "887631fd7ed150cc6be48635ff56eaabafa40d2d018522b502087946fc879a5a",
+        "expected_sha256": "97b17cef8d5880071068d1a05a97f1d432ffc57db00d23ba86c2c3049114a8ad",
+        "matched": true,
+        "observed_sha256": "97b17cef8d5880071068d1a05a97f1d432ffc57db00d23ba86c2c3049114a8ad",
+        "relative_path": "mace/calculators/mace.py",
+        "schema": "mdstats.mace-runtime-source-evidence.v1"
+      },
+      {
+        "content_digest": "e59709417bfeabe9de572f4db4a8178f05095c11a3eb3a14ffeb7097cc7948ec",
+        "expected_sha256": "9e583bbadc58492861655932c2dc71a069731eece3946ebc681e43f628149d86",
+        "matched": true,
+        "observed_sha256": "9e583bbadc58492861655932c2dc71a069731eece3946ebc681e43f628149d86",
+        "relative_path": "mace/tools/arg_parser.py",
+        "schema": "mdstats.mace-runtime-source-evidence.v1"
+      },
+      {
+        "content_digest": "6f7a3c10b7eed060280a88954810e5315a769dd8e2ae05ab7e7adf5094dede34",
+        "expected_sha256": "11f7f601734182d00ce7cb21aa0c4efc096bad7341c0bdcbd211018ead731f20",
+        "matched": true,
+        "observed_sha256": "11f7f601734182d00ce7cb21aa0c4efc096bad7341c0bdcbd211018ead731f20",
+        "relative_path": "mace/cli/convert_e3nn_hybrid.py",
+        "schema": "mdstats.mace-runtime-source-evidence.v1"
+      },
+      {
+        "content_digest": "47835becb9039f6207441b1f6287d7411902c1494f26c1b11835e31bb488d71b",
+        "expected_sha256": "42511f11713e3b9b2569b78649da39ad4eadd676793666f3024c5222f06db7e9",
+        "matched": true,
+        "observed_sha256": "42511f11713e3b9b2569b78649da39ad4eadd676793666f3024c5222f06db7e9",
+        "relative_path": "mace/cli/convert_e3nn_oeq.py",
+        "schema": "mdstats.mace-runtime-source-evidence.v1"
+      }
+    ],
+    "source_lock_passed": true,
+    "supplied_artifacts": [
+      [
+        "dependencies.tar(2).gz",
+        "888d545a512396697c8583d69bc9ed33110914675f466a4cbcafc3e1e1407171"
+      ]
+    ],
+    "torch_cuda_version": null,
+    "torch_version": "2.10.0+cpu",
+    "training_enable_cueq_supported": true,
+    "training_enable_oeq_supported": true
+  },
+  "passed": false,
+  "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+  "policy": {
+    "environment_keys": [
+      "CUDA_VISIBLE_DEVICES",
+      "CUDA_DEVICE_ORDER",
+      "CUBLAS_WORKSPACE_CONFIG",
+      "CUDA_LAUNCH_BLOCKING",
+      "PYTORCH_ALLOC_CONF",
+      "PYTORCH_CUDA_ALLOC_CONF",
+      "CUEQ_TRITON_CACHE_DIR",
+      "CUEQ_TRITON_IGNORE_EXISTING_CACHE"
+    ],
+    "policy_digest": "198843dac69627f3ed3e80d6852a0a6a04cb31b1879ca094f337f2aacda05b59",
+    "require_cuda": true,
+    "require_oeq": false,
+    "required_e3nn_version": "0.4.4",
+    "required_mace_version": "0.3.16",
+    "schema": "mdstats.cueq-dep1-policy.v1",
+    "source_inference_kernel_mode": "e3nn",
+    "training_kernel_mode": "cueq_pure"
+  },
+  "python_version": "3.13.5",
+  "qualification_deferred_to_final_gpu": true,
+  "required_stack_content_addressed": false,
+  "schema": "mdstats.cueq-dep1-runtime.v1",
+  "version_contract_passed": true
+}

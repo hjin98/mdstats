@@ -1,0 +1,291 @@
+{
+  "browser_validation": {
+    "artifact_url_scheme": "http-loopback",
+    "browser": {},
+    "error": "RuntimeError: Loopback navigation was blocked and the artifact exceeds the bounded direct-injection limit: 186335598>67108864 bytes.",
+    "host": {
+      "platform": "Linux-4.4.0-x86_64-with-glibc2.41",
+      "python": "3.13.5"
+    },
+    "input_html": "/mnt/data/mdstats_0_19_53a0_TRAJECTORY4_all_species_density_trajectory_mean_framework_network.html",
+    "input_html_bytes": 186335598,
+    "loopback_navigation_error": "Error: Page.goto: net::ERR_BLOCKED_BY_ADMINISTRATOR at http://127.0.0.1:39343/mdstats_0_19_53a0_TRAJECTORY4_all_species_density_trajectory_mean_framework_network.html\nCall log:\n  - navigating to \"http://127.0.0.1:39343/mdstats_0_19_53a0_TRAJECTORY4_all_species_density_trajectory_mean_framework_network.html\", waiting until \"load\"\n",
+    "metrics": {
+      "elapsed_before_failure_seconds": 1.9740996079999604
+    },
+    "schema": "mdstats.density-browser-validation.v1",
+    "status": "failed"
+  },
+  "budget_report": {
+    "budget": {
+      "apply_after_display_replication": true,
+      "hard_limit": true,
+      "max_final_density_faces": 300000,
+      "max_final_density_vertices": 200000,
+      "max_final_html_bytes": 41943040,
+      "max_plotly_traces": 64,
+      "metadata": {},
+      "schema_version": "mdstats.browser-mesh-budget.v1"
+    },
+    "passed": false,
+    "profile": "interactive_browser",
+    "schema_version": "mdstats.browser-mesh-budget-report.v1",
+    "usage": {
+      "density_traces": [
+        {
+          "display_replication": 1,
+          "face_count": 3184902,
+          "metadata": {},
+          "retained_array_bytes": 0,
+          "schema_version": "mdstats.browser-mesh-trace-usage.v1",
+          "serialized_array_bytes": 0,
+          "serialized_face_count": 3184902,
+          "serialized_vertex_count": 1599109,
+          "trace_key": "raw-density-scene",
+          "vertex_count": 1599109
+        }
+      ],
+      "final_density_face_count": 3184902,
+      "final_density_vertex_count": 1599109,
+      "final_html_bytes": 186335598,
+      "metadata": {
+        "accounting": "aggregate_raw_density_scene",
+        "source_mesh_trace_count": 12
+      },
+      "non_density_trace_count": 172,
+      "plotly_trace_count": 173,
+      "retained_density_array_bytes": 0,
+      "schema_version": "mdstats.browser-mesh-usage.v1"
+    },
+    "violations": [
+      "final_density_faces=3184902>300000",
+      "final_density_vertices=1599109>200000",
+      "plotly_traces=173>64",
+      "final_html_bytes=186335598>41943040"
+    ]
+  },
+  "host": {
+    "platform": "Linux-4.4.0-x86_64-with-glibc2.41",
+    "python": "3.13.5"
+  },
+  "package_version": "0.19.53a0",
+  "required_reduction": {
+    "faces": 10.61634,
+    "html_bytes": 4.442586851119995,
+    "vertices": 7.995545
+  },
+  "schema": "mdstats.density-ld9-v0-calibration.v1",
+  "source_summary": {
+    "atom_count": 168,
+    "checkpoint_bytes": 231723721,
+    "density_sampling": "all 1500 frames",
+    "fields": [
+      {
+        "gaussian_bandwidth_angstrom": 0.06564463899930786,
+        "grid_shape": [
+          529,
+          529,
+          529
+        ],
+        "integral": 24.000000000000004,
+        "kernel_pair_count": 109892745,
+        "label": "Na density",
+        "sample_sd_reference_angstrom": 0.13130010330311645,
+        "spread_sampled_frame_count": 128,
+        "spread_source_frame_count": 1500,
+        "storage_summary": {
+          "estimated_bytes": 30321936,
+          "logical_grid_shape": [
+            529,
+            529,
+            529
+          ],
+          "logical_node_count": 148035889,
+          "metadata": {
+            "block_lattice_shape": [
+              34,
+              34,
+              34
+            ],
+            "block_shape": [
+              16,
+              16,
+              16
+            ],
+            "index_dtype": "int64",
+            "partial_masks_present": true,
+            "representation": "fixed_block_sparse",
+            "valid_value_count": 3204672,
+            "value_dtype": "float64"
+          },
+          "nonzero_node_count": 800683,
+          "realized_bytes": 30321936,
+          "schema_version": "mdstats.density-storage-summary.v1",
+          "storage_backend": "local_sparse",
+          "stored_block_count": 822,
+          "stored_value_count": 3366912
+        }
+      },
+      {
+        "gaussian_bandwidth_angstrom": 0.034145539853130645,
+        "grid_shape": [
+          1017,
+          1017,
+          1017
+        ],
+        "integral": 24.000000000000007,
+        "kernel_pair_count": 164722755,
+        "label": "Si density",
+        "sample_sd_reference_angstrom": 0.06833030957987517,
+        "spread_sampled_frame_count": 128,
+        "spread_source_frame_count": 1500,
+        "storage_summary": {
+          "estimated_bytes": 27512488,
+          "logical_grid_shape": [
+            1017,
+            1017,
+            1017
+          ],
+          "logical_node_count": 1051871913,
+          "metadata": {
+            "block_lattice_shape": [
+              64,
+              64,
+              64
+            ],
+            "block_shape": [
+              16,
+              16,
+              16
+            ],
+            "index_dtype": "int64",
+            "partial_masks_present": false,
+            "representation": "fixed_block_sparse",
+            "valid_value_count": 3436544,
+            "value_dtype": "float64"
+          },
+          "nonzero_node_count": 872009,
+          "realized_bytes": 27512488,
+          "schema_version": "mdstats.density-storage-summary.v1",
+          "storage_backend": "local_sparse",
+          "stored_block_count": 839,
+          "stored_value_count": 3436544
+        }
+      },
+      {
+        "gaussian_bandwidth_angstrom": 0.03417914766794671,
+        "grid_shape": [
+          1016,
+          1016,
+          1016
+        ],
+        "integral": 24.000000000000007,
+        "kernel_pair_count": 173327374,
+        "label": "Al density",
+        "sample_sd_reference_angstrom": 0.06836577293566128,
+        "spread_sampled_frame_count": 128,
+        "spread_source_frame_count": 1500,
+        "storage_summary": {
+          "estimated_bytes": 28922544,
+          "logical_grid_shape": [
+            1016,
+            1016,
+            1016
+          ],
+          "logical_node_count": 1048772096,
+          "metadata": {
+            "block_lattice_shape": [
+              64,
+              64,
+              64
+            ],
+            "block_shape": [
+              16,
+              16,
+              16
+            ],
+            "index_dtype": "int64",
+            "partial_masks_present": false,
+            "representation": "fixed_block_sparse",
+            "valid_value_count": 3612672,
+            "value_dtype": "float64"
+          },
+          "nonzero_node_count": 933950,
+          "realized_bytes": 28922544,
+          "schema_version": "mdstats.density-storage-summary.v1",
+          "storage_backend": "local_sparse",
+          "stored_block_count": 882,
+          "stored_value_count": 3612672
+        }
+      },
+      {
+        "gaussian_bandwidth_angstrom": 0.054859421849342595,
+        "grid_shape": [
+          633,
+          633,
+          633
+        ],
+        "integral": 96.00000000000003,
+        "kernel_pair_count": 567690747,
+        "label": "O density",
+        "sample_sd_reference_angstrom": 0.10973983081481313,
+        "spread_sampled_frame_count": 128,
+        "spread_source_frame_count": 1500,
+        "storage_summary": {
+          "estimated_bytes": 123796128,
+          "logical_grid_shape": [
+            633,
+            633,
+            633
+          ],
+          "logical_node_count": 253636137,
+          "metadata": {
+            "block_lattice_shape": [
+              40,
+              40,
+              40
+            ],
+            "block_shape": [
+              16,
+              16,
+              16
+            ],
+            "index_dtype": "int64",
+            "partial_masks_present": true,
+            "representation": "fixed_block_sparse",
+            "valid_value_count": 13385536,
+            "value_dtype": "float64"
+          },
+          "nonzero_node_count": 3411660,
+          "realized_bytes": 123796128,
+          "schema_version": "mdstats.density-storage-summary.v1",
+          "storage_backend": "local_sparse",
+          "stored_block_count": 3356,
+          "stored_value_count": 13746176
+        }
+      }
+    ],
+    "frame_count": 1500,
+    "html_bytes": 186335598,
+    "html_write_seconds": 3.480733861000772,
+    "mesh_face_count": 3184902,
+    "mesh_trace_count": 12,
+    "mesh_vertex_count": 1599109,
+    "package_version": "0.19.53a0",
+    "render_seconds_from_checkpoint": 729.132034452,
+    "species_counts": {
+      "Al": 24,
+      "Na": 24,
+      "O": 96,
+      "Si": 24
+    },
+    "spread_estimation": "128 deterministic stratified-random frames, seed 0",
+    "time_span_ps": [
+      0.0,
+      1.499
+    ],
+    "timestep_fs": 1.0,
+    "total_checkpoint_render_seconds": 733.5356384200004,
+    "trajectory_atom_count": 168
+  }
+}

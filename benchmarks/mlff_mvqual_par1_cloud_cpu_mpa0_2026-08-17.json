@@ -1,0 +1,112 @@
+{
+  "acceptance": {
+    "next_gate": "AUDIT-EVAL-PERF1",
+    "status": "PASS"
+  },
+  "active_foundation": {
+    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
+    "family": "MACE-MPA-0 medium",
+    "mh1_compatible": true
+  },
+  "architecture_revision": 99,
+  "date": "2026-08-17",
+  "exactness_note": "Campaign execution was already BLAS/OpenMP=1 before this gate. Applying process-wide BLAS=1 only to an otherwise unscoped direct API call can shift a SciPy Wasserstein diagnostic by ~1e-16 and therefore a cryptographic report digest. MVQUAL-PAR1 preserves campaign BLAS=1 authority and leaves unscoped direct API native-thread state unchanged.",
+  "execution": {
+    "current_scaling": {
+      "1_lane": {
+        "max_busy_workers": 1,
+        "trials_seconds": [
+          0.8640885149998212,
+          0.8361911660012993,
+          0.820107437999468,
+          0.8405604620002123,
+          0.8072046949982905
+        ],
+        "warm_median_seconds": 0.8281493020003836
+      },
+      "2_lanes": {
+        "max_busy_workers": 2,
+        "trials_seconds": [
+          0.4617476009989332,
+          0.4536317540005257,
+          0.4451332619992172,
+          0.4530999830003566,
+          0.449643472000389
+        ],
+        "warm_median_seconds": 0.4513717275003728
+      },
+      "4_lanes": {
+        "max_busy_workers": 4,
+        "trials_seconds": [
+          0.4521447179995448,
+          0.4576090300015494,
+          0.45909247399868036,
+          0.4329530400009389,
+          0.503536685000654
+        ],
+        "warm_median_seconds": 0.4583507520001149
+      },
+      "automatic_worker_ceiling": 4,
+      "explicit_higher_override_allowed": true,
+      "interpretation": "Most scaling is realized by two lanes on this cloud CPU; four lanes are retained as the conservative automatic ceiling because score jobs are memory-bandwidth/allocation heavy.",
+      "one_to_four_speedup": 1.806802537983348,
+      "one_to_two_speedup": 1.8347389779739796
+    },
+    "paired_four_lane": {
+      "control_driver": "serial same-N driver; cKDTree query_workers=4; BLAS/OpenMP=1",
+      "control_release": "0.20.231a0",
+      "control_trials_seconds": [
+        0.8545966790006787,
+        0.7728988580001896,
+        0.8364606480008661,
+        0.8959100770007353,
+        0.9465855070011457
+      ],
+      "control_warm_median_seconds": 0.8661853625008007,
+      "current_driver": "global same-N queue; 4 outer lanes; cKDTree query_workers=1/job; BLAS/OpenMP=1",
+      "current_release": "0.20.232a0",
+      "current_trials_seconds": [
+        0.4847390649993031,
+        0.4168904760008445,
+        0.4007583420006995,
+        0.4020226169996022,
+        0.41608737299975473
+      ],
+      "current_warm_median_seconds": 0.40905499499967846,
+      "speedup": 2.117527894999746
+    },
+    "queue_probe": {
+      "jobs_finished": 12,
+      "jobs_submitted": 12,
+      "max_busy_workers": 4,
+      "memory_backpressure_events": 0,
+      "queue_backpressure_events": 0
+    }
+  },
+  "gate": "MVQUAL-PAR1",
+  "interpretation": "Timing is same-host execution evidence. Complete qualification-plan equality, independent TARGET-DATA2B rescoring, MVIDX covered-mass cross-checks, hard-obligation decisions, and canonical comparison order remain scientific authority.",
+  "release": "0.20.232a0",
+  "schema": "mdstats.mlff-mvqual-par1-benchmark.v1",
+  "scientific": {
+    "comparison_and_progress_order": "historical domain/size order after canonical reduction",
+    "control_current_plan_exact": true,
+    "qualification_plan_digest": "2ebd7f5dc2b560e3150fe4849e7098be2eff56469779f15b2befda74059fc90b",
+    "scientific_authority_change": false,
+    "worker_count_plan_exact": true
+  },
+  "workload": {
+    "benchmark_boundary": "fixture construction excluded; complete same-N qualification-plan build timed",
+    "label_domains": 1,
+    "production_numeric_contract": "explicit StageResourceScope with BLAS/OpenMP=1",
+    "reference_frames": 16000,
+    "same_n_scoring_jobs": 12,
+    "target_sizes": [
+      128,
+      256,
+      512,
+      1024,
+      2048,
+      4096
+    ]
+  }
+}

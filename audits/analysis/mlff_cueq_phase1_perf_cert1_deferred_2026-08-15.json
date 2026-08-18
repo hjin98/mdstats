@@ -1,0 +1,38 @@
+{
+  "authority_version": "mdstats.cueq-phase1.training-only.2026-08.v1",
+  "blocking_reasons": [
+    "CUEQ_DEP1_RUNTIME_FREEZE",
+    "short_paired_adaptation_missing",
+    "representative_full_pair_missing"
+  ],
+  "content_digest": "85992087455325b24d7e997b3a166488168c0c3ff927db0276f2ee9c98d57972",
+  "cueq_dep1_passed": false,
+  "cueq_dep1_runtime_digest": "0e59a5c702db7e981cae4d8d451d0b2896e1a0b2c139ed0f4498a5869a2ab497",
+  "full_pairs": [],
+  "passed": false,
+  "phase_separated_execution_policy": {
+    "generated_default_change_authorized": false,
+    "source_cueq_execution_authorized": false,
+    "source_inference_kernel_mode": "e3nn",
+    "training_authorized": false,
+    "training_kernel_mode": "cueq_pure"
+  },
+  "policy": {
+    "authority_version": "mdstats.cueq-phase1.training-only.2026-08.v1",
+    "candidate_training_kernel_mode": "cueq_pure",
+    "content_digest": "9a4d70b368eeb7b7c7bca68e98db1ed3f99e01682f1c483a06488b9719434518",
+    "minimum_full_pairs": 1,
+    "reference_training_kernel_mode": "e3nn",
+    "require_available_physical_pass": true,
+    "require_eval2_pass": true,
+    "require_finite_training": true,
+    "require_hard_decision_agreement": true,
+    "require_identical_protocol": true,
+    "require_target_head_extraction": true,
+    "schema": "mdstats.cueq-phase1-policy.v1",
+    "short_epoch_budget": 8,
+    "source_inference_kernel_mode": "e3nn"
+  },
+  "schema": "mdstats.cueq-phase1-qualification.v1",
+  "short_pairs": []
+}

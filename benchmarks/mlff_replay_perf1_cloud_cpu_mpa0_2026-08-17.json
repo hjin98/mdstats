@@ -1,0 +1,102 @@
+{
+  "acceptance": {
+    "exact_replay_authority": true,
+    "next_gate": "CAMPAIGN-PERF-QUAL1",
+    "restart_index_reuse": true,
+    "source_mutation_invalidates": true,
+    "status": "PASS"
+  },
+  "active_foundation": {
+    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
+    "family": "MACE-MPA-0 medium",
+    "mh1_compatible": true,
+    "note": "REPLAY-PERF1 changes only replay indexing/materialization; no model-family-specific numerical path is introduced."
+  },
+  "architecture_revision": 101,
+  "date": "2026-08-17",
+  "execution": {
+    "full_source_parse_identity": {
+      "control_seconds": 7.641843772998982,
+      "current_seconds": 6.423186239999268,
+      "frames": 12000,
+      "speedup": 1.1897278838671588
+    },
+    "index": {
+      "authenticated_hit_seconds": 0.07091366700115032,
+      "build_seconds": 0.45059363399923313
+    },
+    "monitor_only_true_label_materialization": {
+      "control_median_seconds": 9.138929937000285,
+      "control_release": "0.20.233a0",
+      "control_trials_seconds": [
+        9.049325910000334,
+        9.228533964000235
+      ],
+      "current_median_seconds": 3.0124864780009375,
+      "current_release": "0.20.234a0",
+      "current_trials_seconds": [
+        2.9133628890012915,
+        3.1116100670005835
+      ],
+      "requested_frames": 2000,
+      "source_frames": 12000,
+      "speedup": 3.0336833057138923
+    },
+    "train_monitor_true_label_materialization": {
+      "control_median_seconds": 15.676349609499994,
+      "control_release": "0.20.233a0",
+      "control_trials_seconds": [
+        15.723951702000704,
+        15.628747516999283
+      ],
+      "current_median_seconds": 14.347956869500194,
+      "current_release": "0.20.234a0",
+      "current_trials_seconds": [
+        14.606789539999227,
+        14.089124199001162
+      ],
+      "requested_frames": 12000,
+      "source_frames": 12000,
+      "speedup": 1.0925841046277185
+    }
+  },
+  "implementation": {
+    "contiguous_chunk_parsing": true,
+    "corrupt_receipt_rebuild": true,
+    "geometry_identity_reuse": true,
+    "parser_parallelism": "serial",
+    "source_artifact_bound": true,
+    "source_change_invalidation": true,
+    "source_index_content_digest": "ce6c678ad556cff63be8ee75754d87cba2b3d08e80f544c5983fe4498dc0c5e1",
+    "source_index_receipt_schema": "mdstats.replay-source-index-receipt.v1",
+    "source_index_schema": "mdstats.replay-source-index.v1",
+    "source_order_bound": true,
+    "source_sha_bound": true,
+    "sparse_direct_seek": true,
+    "threaded_ase_parser_rejected_as_slower": true
+  },
+  "inputs": {
+    "dependency_archive_sha256": "888d545a512396697c8583d69bc9ed33110914675f466a4cbcafc3e1e1407171",
+    "replay_configuration_count": 12000,
+    "replay_source_artifact_digest": "9f43677d6100cea85f6de287fe1dd739322609fd82cbeb320e46f9434ce90688",
+    "replay_source_path": "replay_fps_12000.extxyz",
+    "replay_source_sha256": "187eed42fb2d6cf5e7e745ffed0ce34541e92c6a35ec9e654520cd3c7198403c",
+    "target_archive_sha256": "bc1b7e25ba338507ae38b260bcd283356de887b6c6cf762a2c146733f1c3c958"
+  },
+  "release": "0.20.234a0",
+  "schema": "mdstats.mlff-replay-perf1-benchmark.v1",
+  "scientific": {
+    "chunk_size_invariant": true,
+    "full_materialization_control_exact": true,
+    "monitor_control_exact": true,
+    "monitor_extxyz_sha256": "cc0f9b308becd5c027a2adc64fc251808323e19c217412d82ea3d50b3deab2cf",
+    "monitor_logical_digest": "633aae8a6deb1a3d857880f3eecd9bb40dbaedba8357a13944184c1bafbf1114",
+    "ordered_geometry_identity_digest": "89d5b7a678ed846557c1f15f6592058e9ee3b78d81eb3516a320d2eabca7659f",
+    "prediction_authority_changed": false,
+    "pseudolabel_authority_changed": false,
+    "split_authority_changed": false,
+    "train_extxyz_sha256": "e6977082593a5b5610292e13ae49df7afbdbb7744ea9fe496952952474636f8c",
+    "train_logical_digest": "8d7a29c35443cd8a8e7b2142157dce7c9804c8137d4a42e824edef9e42240901",
+    "true_label_authority_changed": false
+  }
+}

@@ -1,0 +1,292 @@
+{
+  "rows": [
+    {
+      "cell": "orthogonal",
+      "phase": "on_node",
+      "grid_shape": [
+        64,
+        64,
+        64
+      ],
+      "h_max": 0.1875,
+      "sigma_to_h_max": 0.0,
+      "gaussian_sigma": 0.0,
+      "cic_rms": 0.0,
+      "stencil_rms": 0.0,
+      "effective_rms": 0.0,
+      "effective_to_sigma": null
+    },
+    {
+      "cell": "orthogonal",
+      "phase": "half_node",
+      "grid_shape": [
+        64,
+        64,
+        64
+      ],
+      "h_max": 0.1875,
+      "sigma_to_h_max": 0.0,
+      "gaussian_sigma": 0.0,
+      "cic_rms": 0.07915981329984721,
+      "stencil_rms": 0.0,
+      "effective_rms": 0.07915981329984721,
+      "effective_to_sigma": null
+    },
+    {
+      "cell": "orthogonal",
+      "phase": "mixed",
+      "grid_shape": [
+        64,
+        64,
+        64
+      ],
+      "h_max": 0.1875,
+      "sigma_to_h_max": 0.0,
+      "gaussian_sigma": 0.0,
+      "cic_rms": 0.06370096153120447,
+      "stencil_rms": 0.0,
+      "effective_rms": 0.06370096153120447,
+      "effective_to_sigma": null
+    },
+    {
+      "cell": "orthogonal",
+      "phase": "on_node",
+      "grid_shape": [
+        64,
+        64,
+        64
+      ],
+      "h_max": 0.1875,
+      "sigma_to_h_max": 1.0,
+      "gaussian_sigma": 0.1875,
+      "cic_rms": 0.0,
+      "stencil_rms": 0.18749998121265213,
+      "effective_rms": 0.18749998121265213,
+      "effective_to_sigma": 0.9999998998008114
+    },
+    {
+      "cell": "orthogonal",
+      "phase": "half_node",
+      "grid_shape": [
+        64,
+        64,
+        64
+      ],
+      "h_max": 0.1875,
+      "sigma_to_h_max": 1.0,
+      "gaussian_sigma": 0.1875,
+      "cic_rms": 0.07915981329984721,
+      "stencil_rms": 0.18749998121265213,
+      "effective_rms": 0.20352522938547832,
+      "effective_to_sigma": 1.0854678900558843
+    },
+    {
+      "cell": "orthogonal",
+      "phase": "mixed",
+      "grid_shape": [
+        64,
+        64,
+        64
+      ],
+      "h_max": 0.1875,
+      "sigma_to_h_max": 1.0,
+      "gaussian_sigma": 0.1875,
+      "cic_rms": 0.06370096153120447,
+      "stencil_rms": 0.18749998121265213,
+      "effective_rms": 0.19802539093445792,
+      "effective_to_sigma": 1.056135418317109
+    },
+    {
+      "cell": "orthogonal",
+      "phase": "on_node",
+      "grid_shape": [
+        64,
+        64,
+        64
+      ],
+      "h_max": 0.1875,
+      "sigma_to_h_max": 2.0,
+      "gaussian_sigma": 0.375,
+      "cic_rms": 0.0,
+      "stencil_rms": 0.37499997523786943,
+      "effective_rms": 0.37499997523786943,
+      "effective_to_sigma": 0.9999999339676519
+    },
+    {
+      "cell": "orthogonal",
+      "phase": "half_node",
+      "grid_shape": [
+        64,
+        64,
+        64
+      ],
+      "h_max": 0.1875,
+      "sigma_to_h_max": 2.0,
+      "gaussian_sigma": 0.375,
+      "cic_rms": 0.07915981329984721,
+      "stencil_rms": 0.37499997523786943,
+      "effective_rms": 0.38326395274023534,
+      "effective_to_sigma": 1.0220372073072943
+    },
+    {
+      "cell": "orthogonal",
+      "phase": "mixed",
+      "grid_shape": [
+        64,
+        64,
+        64
+      ],
+      "h_max": 0.1875,
+      "sigma_to_h_max": 2.0,
+      "gaussian_sigma": 0.375,
+      "cic_rms": 0.06370096153120447,
+      "stencil_rms": 0.37499997523786943,
+      "effective_rms": 0.38037191527293746,
+      "effective_to_sigma": 1.0143251073944999
+    },
+    {
+      "cell": "lta_primitive",
+      "phase": "on_node",
+      "grid_shape": [
+        64,
+        64,
+        64
+      ],
+      "h_max": 0.27129688736915397,
+      "sigma_to_h_max": 0.0,
+      "gaussian_sigma": 0.0,
+      "cic_rms": 0.0,
+      "stencil_rms": 0.0,
+      "effective_rms": 0.0,
+      "effective_to_sigma": null
+    },
+    {
+      "cell": "lta_primitive",
+      "phase": "half_node",
+      "grid_shape": [
+        64,
+        64,
+        64
+      ],
+      "h_max": 0.27129688736915397,
+      "sigma_to_h_max": 0.0,
+      "gaussian_sigma": 0.0,
+      "cic_rms": 0.13564840077424078,
+      "stencil_rms": 0.0,
+      "effective_rms": 0.13564840077424078,
+      "effective_to_sigma": null
+    },
+    {
+      "cell": "lta_primitive",
+      "phase": "mixed",
+      "grid_shape": [
+        64,
+        64,
+        64
+      ],
+      "h_max": 0.27129688736915397,
+      "sigma_to_h_max": 0.0,
+      "gaussian_sigma": 0.0,
+      "cic_rms": 0.10539919266743261,
+      "stencil_rms": 0.0,
+      "effective_rms": 0.10539919266743261,
+      "effective_to_sigma": null
+    },
+    {
+      "cell": "lta_primitive",
+      "phase": "on_node",
+      "grid_shape": [
+        64,
+        64,
+        64
+      ],
+      "h_max": 0.27129688736915397,
+      "sigma_to_h_max": 1.0,
+      "gaussian_sigma": 0.27129688736915397,
+      "cic_rms": 0.0,
+      "stencil_rms": 0.271296872066389,
+      "effective_rms": 0.271296872066389,
+      "effective_to_sigma": 0.9999999435940269
+    },
+    {
+      "cell": "lta_primitive",
+      "phase": "half_node",
+      "grid_shape": [
+        64,
+        64,
+        64
+      ],
+      "h_max": 0.27129688736915397,
+      "sigma_to_h_max": 1.0,
+      "gaussian_sigma": 0.27129688736915397,
+      "cic_rms": 0.13564840077424078,
+      "stencil_rms": 0.271296872066389,
+      "effective_rms": 0.303319108243473,
+      "effective_to_sigma": 1.1180338675642318
+    },
+    {
+      "cell": "lta_primitive",
+      "phase": "mixed",
+      "grid_shape": [
+        64,
+        64,
+        64
+      ],
+      "h_max": 0.27129688736915397,
+      "sigma_to_h_max": 1.0,
+      "gaussian_sigma": 0.27129688736915397,
+      "cic_rms": 0.10539919266743261,
+      "stencil_rms": 0.271296872066389,
+      "effective_rms": 0.29105151194926515,
+      "effective_to_sigma": 1.0728155224030678
+    },
+    {
+      "cell": "lta_primitive",
+      "phase": "on_node",
+      "grid_shape": [
+        64,
+        64,
+        64
+      ],
+      "h_max": 0.27129688736915397,
+      "sigma_to_h_max": 2.0,
+      "gaussian_sigma": 0.5425937747383079,
+      "cic_rms": 0.0,
+      "stencil_rms": 0.5425937384754717,
+      "effective_rms": 0.5425937384754717,
+      "effective_to_sigma": 0.9999999331676146
+    },
+    {
+      "cell": "lta_primitive",
+      "phase": "half_node",
+      "grid_shape": [
+        64,
+        64,
+        64
+      ],
+      "h_max": 0.27129688736915397,
+      "sigma_to_h_max": 2.0,
+      "gaussian_sigma": 0.5425937747383079,
+      "cic_rms": 0.13564840077424078,
+      "stencil_rms": 0.5425937384754717,
+      "effective_rms": 0.5592928156747569,
+      "effective_to_sigma": 1.030776322386859
+    },
+    {
+      "cell": "lta_primitive",
+      "phase": "mixed",
+      "grid_shape": [
+        64,
+        64,
+        64
+      ],
+      "h_max": 0.27129688736915397,
+      "sigma_to_h_max": 2.0,
+      "gaussian_sigma": 0.5425937747383079,
+      "cic_rms": 0.10539919266743261,
+      "stencil_rms": 0.5425937384754717,
+      "effective_rms": 0.5527358816358271,
+      "effective_to_sigma": 1.0186918969028178
+    }
+  ]
+}

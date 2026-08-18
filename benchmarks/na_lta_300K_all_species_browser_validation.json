@@ -1,0 +1,69 @@
+{
+  "acceptance": {
+    "camera_orbit_fps": 17.46724890829694,
+    "first_complete_frame_seconds": 15.32253629600018,
+    "functional_passed": false,
+    "functional_violations": [
+      "first_complete_frame_exceeded",
+      "camera_orbit_fps_below_minimum"
+    ],
+    "js_heap_used_bytes": 91700000,
+    "metadata": {
+      "navigation_mode": "set-content-fallback",
+      "policy": {
+        "max_first_complete_frame_seconds": 15.0,
+        "max_js_heap_used_bytes": 536870912,
+        "max_trace_toggle_seconds": 1.0,
+        "metadata": {},
+        "min_camera_orbit_fps": 20.0,
+        "require_no_context_loss": true,
+        "require_physical_webgl_for_production": true,
+        "schema_version": "mdstats.browser-acceptance-policy.v1"
+      },
+      "validation_schema": "mdstats.density-browser-validation.v1"
+    },
+    "production_default_authorized": false,
+    "production_violations": [
+      "first_complete_frame_exceeded",
+      "camera_orbit_fps_below_minimum",
+      "physical_webgl_required:unavailable"
+    ],
+    "renderer_kind": "unavailable",
+    "schema_version": "mdstats.browser-acceptance-report.v1",
+    "trace_toggle_seconds": 0.16709999999962746,
+    "webgl_context_lost": false,
+    "webgl_renderer": null,
+    "webgl_vendor": null
+  },
+  "artifact_url_scheme": "http-loopback",
+  "browser": {
+    "device_memory_gib": null,
+    "hardware_concurrency": 56,
+    "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/144.0.0.0 Safari/537.36",
+    "version": "144.0.7559.96",
+    "webgl_renderer": null,
+    "webgl_vendor": null
+  },
+  "host": {
+    "platform": "Linux-4.4.0-x86_64-with-glibc2.41",
+    "python": "3.13.5"
+  },
+  "input_html": "/mnt/data/na_lta_300K_all_species_density_framework_trajectories.html",
+  "input_html_bytes": 34758038,
+  "loopback_navigation_error": "Error: Page.goto: net::ERR_BLOCKED_BY_ADMINISTRATOR at http://127.0.0.1:37131/na_lta_300K_all_species_density_framework_trajectories.html\nCall log:\n  - navigating to \"http://127.0.0.1:37131/na_lta_300K_all_species_density_framework_trajectories.html\", waiting until \"load\"\n",
+  "metrics": {
+    "camera_orbit_fps": 17.46724890829694,
+    "camera_orbit_seconds": 0.687,
+    "first_complete_frame_seconds": 15.32253629600018,
+    "js_heap_total_bytes": 109000000,
+    "js_heap_used_bytes": 91700000,
+    "mesh_trace_count": 12,
+    "scatter3d_trace_count": 16,
+    "trace_count": 28,
+    "trace_toggle_seconds": 0.16709999999962746,
+    "webgl_context_lost": false
+  },
+  "navigation_mode": "set-content-fallback",
+  "schema": "mdstats.density-browser-validation.v1",
+  "status": "passed"
+}

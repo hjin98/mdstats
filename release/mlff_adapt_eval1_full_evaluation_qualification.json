@@ -1,0 +1,63 @@
+{
+  "schema": "mdstats.mlff-adapt-eval1-qualification.v1",
+  "package_version": "0.20.126a0",
+  "gate": "ADAPT-EVAL1",
+  "date": "2026-08-09",
+  "status": "qualified",
+  "behavior": {
+    "generated_checkpoint_strategy": "adaptive_topk",
+    "eval_mf_partial_rounds_in_new_production_path": false,
+    "initial_finalist_count": 5,
+    "rescue_batch_size": 5,
+    "one_champion_per_run_input": true,
+    "common_full_target_domain_separate_from_256_online_monitor": true,
+    "full_true_replay_domain_separate_from_512_online_monitor": true,
+    "naive_true_replay_monitor_validation_only": true,
+    "naive_replay_gradients_added": false,
+    "naive_auxiliary_loader_order": [
+      "replay_monitor",
+      "target_head"
+    ],
+    "hard_target_replay_gates_precede_weighted_full_score": true,
+    "foundation_relative_replay_degradation": "diagnostic",
+    "binary_model_inference_dtype_preserved": true,
+    "mdstats_scientific_reductions_dtype": "float64",
+    "authenticated_prediction_reuse": true,
+    "historical_eval_mf_readable": true,
+    "final_verification_and_export": "pending ADAPT-VERIFY1"
+  },
+  "tests": [
+    {
+      "scope": "adaptive chain + historical EVAL-MF + installed real-MACE patch",
+      "result": "69 passed",
+      "note": "includes ADAPT-PREC1/MON1/STOP1/RANK1/EVAL1 and historical EVAL-MF regressions"
+    },
+    {
+      "scope": "campaign/evaluation runtime",
+      "result": "59 passed, 2 skipped",
+      "note": "skips require external real LTA root and supplied standalone MACE smoke package"
+    },
+    {
+      "scope": "MLFF specification/schema",
+      "result": "140 passed, 1 known pre-existing failure",
+      "note": "only failure is the inherited missing release/mlff_data9a9a_real_mpa0_restart_smoke.json fixture"
+    },
+    {
+      "scope": "ADAPT-EVAL1 focused including naive auxiliary replay validation",
+      "result": "5 passed"
+    },
+    {
+      "scope": "final focused EVAL1/MON1/historical-EVAL-MF regression after documentation freeze",
+      "result": "18 passed",
+      "note": "covers top-K/full-score policy, generated strategy/specification, full-target materialization, and historical EVAL-MF compatibility"
+    }
+  ],
+  "evaluation_policy": {
+    "target_force_rmse_threshold_ev_per_angstrom": 0.03,
+    "default_target_score_weight": 1.0,
+    "default_replay_score_weight": 1.0,
+    "default_replay_force_rmse_threshold_ev_per_angstrom": 0.03,
+    "score_expression": "(w_target * target_force_rmse + w_replay * replay_force_rmse) / (w_target + w_replay)",
+    "rescue_condition": "purchase next batch only when no already-purchased candidate is fully admissible"
+  }
+}

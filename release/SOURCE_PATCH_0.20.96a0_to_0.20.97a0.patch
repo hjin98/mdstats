@@ -1,0 +1,1396 @@
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' old/CHANGELOG.md new/CHANGELOG.md
+--- old/CHANGELOG.md	2026-08-07 09:27:38.000000000 +0000
++++ new/CHANGELOG.md	2026-08-07 10:51:14.826160501 +0000
+@@ -1,5 +1,12 @@
+ # Changelog
+ 
++## 0.20.97a0
++
++- Implement OPT-EVAL1 fast MACE checkpoint restoration using the completed training model as an architecture template, with exact state/dtype checks, mmap checkpoint loading, CuEq/OEq guarded conversion, and legacy subprocess fallback.
++- Reuse an already matching final training `.model` directly and perform qualified multi-head target extraction in-process.
++- Add reconstruction/export timing evidence and checkpoint-model cache schema v2 while accepting v1 cache receipts.
++
++
+ ## 0.20.96a0
+ 
+ - Fix restart-time `Replay monitor artifact lineage mismatch` for pseudolabel training campaigns evaluated against an independent true-DFT replay monitor.
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' old/PATCH_NOTES_0.20.97a0.md new/PATCH_NOTES_0.20.97a0.md
+--- old/PATCH_NOTES_0.20.97a0.md	1970-01-01 00:00:00.000000000 +0000
++++ new/PATCH_NOTES_0.20.97a0.md	2026-08-07 10:51:14.414693649 +0000
+@@ -0,0 +1,26 @@
++# mdstats 0.20.97a0 patch notes
++
++## OPT-EVAL1: fast checkpoint reconstruction and selected-model export
++
++0.20.97a0 implements the first recorded post-first-campaign optimization stage.
++Evaluation and post-selection publication no longer normally launch a fresh
++`mdstats-mace-train` process to reconstruct every raw MACE epoch checkpoint.
++
++The completed run `.model` is used as an architecture template.  Checkpoint storage is
++memory-mapped when PyTorch supports it; direct restoration requires exact state keys,
++shapes and dtypes; CuEq/OEq training-backend conversion is reproduced under the shared
++FX lock; and only `checkpoint["model"]` is restored.  A selected final checkpoint whose
++state already matches the completed training model reuses that model directly.
++Unsupported configurations and strict mismatches fail closed to the previous sandboxed
++restart-export implementation.  LoRA remains fallback-only.
++
++Multi-head target extraction now uses MACE's own `remove_pt_head` implementation
++in-process, with the existing qualified select-head wrapper retained as fallback.
++Parent-level export prints separate model-materialization and target-head export timing.
++Checkpoint-model cache schema v2 records the reconstruction method and elapsed time while
++remaining backward compatible with v1 cache receipts.
++
++Focused qualification verifies exact energy, force and stress equality on an actual
++MACE 0.3.16 model fixture, direct final-model reuse, dtype fail-closed behavior, guarded
++CuEq conversion, multi-head target extraction/reload, source-checkpoint immutability,
++and the existing restart/true-label/CuEq campaign contracts.
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' old/docs/arch_manuals/README.md new/docs/arch_manuals/README.md
+--- old/docs/arch_manuals/README.md	2026-08-07 09:36:32.000000000 +0000
++++ new/docs/arch_manuals/README.md	2026-08-07 10:54:00.603534336 +0000
+@@ -45,7 +45,7 @@
+ ## MLFF architecture
+ 
+ - `mlff_training_data_architecture.{md,pdf}`: canonical MLFF-DATA architecture
+-  through the current 0.20.96a0 campaign line, including the recorded
++  through the current 0.20.97a0 campaign line, including the recorded
+   post-first-campaign staged optimization roadmap (`OPT-EVAL1` through `OPT-CTRL1`). The generic core owns provenance, eligibility,
+   partitioning, leakage control, selection orchestration, replay, precision,
+   training-backend calls, deployment, and validation policy. Physical
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' old/docs/arch_manuals/mlff_checkpoint_model_reconstruction.md new/docs/arch_manuals/mlff_checkpoint_model_reconstruction.md
+--- old/docs/arch_manuals/mlff_checkpoint_model_reconstruction.md	2026-08-07 09:36:32.000000000 +0000
++++ new/docs/arch_manuals/mlff_checkpoint_model_reconstruction.md	2026-08-07 10:54:00.603678780 +0000
+@@ -54,7 +54,7 @@
+ ## Planned OPT-EVAL1 migration
+ 
+ The sandboxed restart-through-MACE reconstruction above remains the qualified
+-fallback as of 0.20.96a0, but the post-first-campaign optimization roadmap assigns
++fallback through 0.20.96a0; OPT-EVAL1 in 0.20.97a0 now assigns
+ its replacement the highest priority.  `OPT-EVAL1` will first reuse an authenticated
+ whole training model when it is state-identical to the selected checkpoint, then
+ reuse an authenticated checkpoint-model cache, then restore the checkpoint model
+@@ -67,3 +67,21 @@
+ for epoch state, deployment models remain distinct artifacts, source checkpoint bytes
+ remain immutable, and selected target-head publication remains atomic.
+ 
++
++
++## 0.20.97a0 direct-restoration implementation
++
++The post-first-campaign OPT-EVAL1 migration is now implemented.  Raw MACE 0.3.16
++checkpoints are first restored directly into the completed run's whole-model
++architecture template.  The direct path requires exact state-dict key, shape, and
++dtype compatibility and reproduces CuEq/OEq backend conversion under the shared FX
++serialization lock before loading checkpoint weights.  A final checkpoint whose state
++already matches the completed training model reuses that model directly.  Intermediate
++checkpoints are serialized only into the reconstructable checkpoint-model cache.
++
++Target-head extraction also has an in-process path using MACE's qualified
++``remove_pt_head`` implementation.  The legacy ``mdstats-mace-train`` restart-export
++and ``mdstats-mace-select-head`` wrappers remain fallback paths for unsupported or
++failed direct restoration.  LoRA remains intentionally fallback-only because the
++completed whole model contains merged adapter weights while the training checkpoint
++contains the adapter architecture.
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' old/docs/arch_manuals/mlff_training_data_architecture.md new/docs/arch_manuals/mlff_training_data_architecture.md
+--- old/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-07 09:36:32.000000000 +0000
++++ new/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-07 10:54:00.604213192 +0000
+@@ -3604,7 +3604,7 @@
+ phase-specific values and other custom shared values remain authoritative. This is a
+ runtime scheduling change only and does not alter scientific cache identities.
+ 
+-# Post-first-campaign optimization roadmap - planned after 0.20.96a0
++# Post-first-campaign optimization roadmap - recorded after 0.20.96a0
+ 
+ ## Architecture decision and sequencing rule
+ 
+@@ -3635,7 +3635,25 @@
+ improve runtime.  Performance-only changes should remain execution-policy or
+ reconstructable-cache changes unless the numerical computation itself changes.
+ 
+-## OPT-EVAL1 - fast checkpoint reconstruction and immediate export - highest priority
++## OPT-EVAL1 - fast checkpoint reconstruction and immediate export - implemented in 0.20.97a0
++
++### Implementation status
++
++OPT-EVAL1 is implemented in 0.20.97a0.  The runtime now uses the completed
++training ``.model`` as an authenticated architecture template, memory-maps modern
++PyTorch checkpoint storage where supported, requires exact state keys/shapes/dtypes
++before restoration, reproduces MACE CuEq/OEq training-backend conversion under the
++process-wide FX lock, and restores only ``checkpoint["model"]`` in-process.  If the
++completed training model already carries the selected checkpoint state (normally the
++last saved epoch), it is reused directly without another whole-model serialization.
++Multi-head target extraction now calls MACE's own ``remove_pt_head`` utility
++in-process and keeps the qualified wrapper as fallback.  LoRA and any strict state or
++backend mismatch fail closed to the legacy sandboxed restart-export path.
++
++The checkpoint-model cache records the reconstruction method and materialization
++time.  Parent-level publication reports separate model-materialization and target-head
++export timings so a user can distinguish post-selection work from scientific
++evaluation.  Existing v1 checkpoint-model cache receipts remain readable.
+ 
+ ### Motivation
+ 
+@@ -3704,6 +3722,15 @@
+ The timing instrumentation is part of `OPT-EVAL1`; it is not a reason to defer the
+ checkpoint reconstruction fix to a separate preliminary optimization stage.
+ 
++### OPT-EVAL1 qualification evidence
++
++Focused qualification includes exact energy, force, and stress equality for an actual
++MACE 0.3.16 e3nn model restored from a checkpoint state, exact target-head reload for
++a real multi-head ``ScaleShiftMACE`` fixture, checkpoint SHA immutability, direct
++final-epoch training-model reuse, dtype-mismatch fail-closed fallback, and guarded
++CuEq round-trip coverage.  The remaining subprocess route is therefore a compatibility
++fallback rather than the normal reconstruction path.
++
+ ## OPT-EVAL2 - persistent prediction artifacts and foundation reuse
+ 
+ Evaluation predictions and evaluation metrics should become distinct immutable or
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' old/docs/specs/training_data/mlff_opt_eval1_fast_checkpoint_reconstruction_spec.md new/docs/specs/training_data/mlff_opt_eval1_fast_checkpoint_reconstruction_spec.md
+--- old/docs/specs/training_data/mlff_opt_eval1_fast_checkpoint_reconstruction_spec.md	1970-01-01 00:00:00.000000000 +0000
++++ new/docs/specs/training_data/mlff_opt_eval1_fast_checkpoint_reconstruction_spec.md	2026-08-07 10:51:14.292838594 +0000
+@@ -0,0 +1,49 @@
++# MLFF OPT-EVAL1 fast checkpoint reconstruction specification
++
++Status: implemented in mdstats 0.20.97a0.
++
++## Objective
++
++Remove the dominant post-selection cost of launching a new MACE training process just
++to convert an already-trained epoch checkpoint into a deployable model.  No scientific
++evaluation identity or checkpoint metric changes in this stage.
++
++## Reconstruction order
++
++1. Authenticate the raw checkpoint and immutable DATA8 MACE config.
++2. Reuse a valid reconstructable checkpoint-model cache entry when available.
++3. Locate the completed training whole model under ``runs/<run>/models/<name>.model``.
++4. Restore the checkpoint directly:
++   - memory-map PyTorch storage when supported;
++   - require exact state keys, tensor shapes, and dtypes;
++   - for CuEq/OEq training, convert the deployable e3nn template back to the training
++     backend under the shared FX lock;
++   - compare the training-backend template state with ``checkpoint["model"]``;
++   - if already identical, reuse the completed whole model directly;
++   - otherwise ``load_state_dict(..., strict=True)`` and convert back to deployable e3nn;
++   - write an authenticated reconstructable cache receipt.
++5. Fall back to the legacy sandboxed ``mdstats-mace-train`` restart/export only when
++   the direct path is unsupported or fails its strict compatibility checks.
++
++LoRA is fallback-only in this version.
++
++## Target-head export
++
++Single-head models serialize directly.  Multi-head MACE models use MACE 0.3.16's own
++``remove_pt_head`` implementation in-process with temporary default-dtype scoping.
++The qualified ``mdstats-mace-select-head`` wrapper remains fallback-only.  Publication
++is staged beside the parent output and committed with ``os.replace``.
++
++## Cache compatibility
++
++The cache schema is v2 and records ``reconstruction_method`` plus
++``materialization_elapsed_seconds``.  v1 cache receipts produced by the legacy restart
++export remain valid and reusable when checkpoint/config/model hashes match.
++
++## Correctness gates
++
++Focused tests must cover: direct restoration without wrapper execution; exact reuse of
++a matching completed training model; rejection of silent dtype casts; fallback to the
++legacy path; guarded CuEq conversion; exact energy/force/stress equality for a real MACE
++0.3.16 model fixture; in-process multi-head target extraction and reload; source SHA
++immutability; atomic export and restart reconciliation.
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' old/mdstats/_version.py new/mdstats/_version.py
+--- old/mdstats/_version.py	2026-08-07 09:18:08.000000000 +0000
++++ new/mdstats/_version.py	2026-08-07 10:47:55.963387450 +0000
+@@ -1,3 +1,3 @@
+ """Package version."""
+ 
+-__version__ = "0.20.96a0"
++__version__ = "0.20.97a0"
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' old/mdstats/data/observable_owner_manuals.json new/mdstats/data/observable_owner_manuals.json
+--- old/mdstats/data/observable_owner_manuals.json	2026-08-07 07:48:03.000000000 +0000
++++ new/mdstats/data/observable_owner_manuals.json	2026-08-07 10:53:42.421390942 +0000
+@@ -1,6 +1,6 @@
+ {
+   "schema": "mdstats.observable-owner-manual-index.v1",
+-  "package_version": "0.20.94a0",
++  "package_version": "0.20.97a0",
+   "manuals": {
+     "structural-observables-architecture": {
+       "source_path": "docs/arch_manuals/structural_observables_architecture.md",
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' old/mdstats/training_data/campaign_cli.py new/mdstats/training_data/campaign_cli.py
+--- old/mdstats/training_data/campaign_cli.py	2026-08-07 09:18:08.000000000 +0000
++++ new/mdstats/training_data/campaign_cli.py	2026-08-07 10:47:55.964625044 +0000
+@@ -56,7 +56,7 @@
+     report_inference_worker_phase,
+ )
+ 
+-MLFF_DATA9B3_VERSION = "0.20.96a0"
++MLFF_DATA9B3_VERSION = "0.20.97a0"
+ # Parallel scheduling does not change the scientific NVE case identity. Keep
+ # the 0.20.85a0 runtime token so completed verification caches remain reusable.
+ VERIFICATION_RUNTIME_COMPATIBILITY_VERSION = "0.20.85a0"
+@@ -8132,6 +8132,12 @@
+         source = (
+             Path(evaluation_catalog.root_directory) / checkpoint.relative_path
+         ).resolve()
++        print(
++            f"[MODEL EXPORT] {run.run_id}: selected epoch "
++            f"{selection.selected_checkpoint_epoch}; checking training-model/cache/direct restore paths",
++            flush=True,
++        )
++        materialize_started = time.monotonic()
+         model_source = mdstats.materialize_mace_checkpoint_model(
+             checkpoint,
+             source,
+@@ -8140,6 +8146,18 @@
+             cache_directory=context["checkpoint_model_cache"],
+             wrapper_path=local_wrappers["mdstats-mace-train"],
+         )
++        reuse_note = (
++            "completed training model"
++            if model_source.parent.name == "models" and model_source.parent.parent == context["checkpoint_model_cache"].parent
++            else "checkpoint-model cache"
++        )
++        materialize_elapsed = time.monotonic() - materialize_started
++        print(
++            f"[MODEL EXPORT] {run.run_id}: deployable source ready via {reuse_note} "
++            f"in {materialize_elapsed:.2f}s; extracting target head",
++            flush=True,
++        )
++        export_started = time.monotonic()
+         member = mdstats.export_target_head_verification_model(
+             run,
+             selection,
+@@ -8157,6 +8175,12 @@
+         store.put_record(record_key, member)
+         context["export_record"] = member
+         shutil.rmtree(context["checkpoint_model_cache"], ignore_errors=True)
++        export_elapsed = time.monotonic() - export_started
++        print(
++            f"[MODEL EXPORT] {run.run_id}: atomic target-head export and receipt committed "
++            f"in {export_elapsed:.2f}s",
++            flush=True,
++        )
+         print(
+             f"[EVALUATED MODEL] {run.run_id}: {output} "
+             f"(epoch {selection.selected_checkpoint_epoch})",
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' old/mdstats/training_data/campaign_execution.py new/mdstats/training_data/campaign_execution.py
+--- old/mdstats/training_data/campaign_execution.py	2026-08-07 09:14:25.000000000 +0000
++++ new/mdstats/training_data/campaign_execution.py	2026-08-07 10:54:43.846428465 +0000
+@@ -27,6 +27,7 @@
+ from typing import Any, Callable, Mapping, Sequence
+ from collections import OrderedDict
+ from threading import RLock
++from copy import deepcopy
+ 
+ import numpy as np
+ 
+@@ -86,8 +87,10 @@
+     return sha256_file_cached(path)
+ 
+ 
+-MACE_CHECKPOINT_MODEL_CACHE_SCHEMA = "mdstats.mace-checkpoint-model-cache.v1"
+-MACE_CHECKPOINT_MODEL_EXPORT_CONTRACT = "mace-0.3.16-restart-export.v1"
++MACE_CHECKPOINT_MODEL_CACHE_SCHEMA = "mdstats.mace-checkpoint-model-cache.v2"
++MACE_CHECKPOINT_MODEL_CACHE_LEGACY_SCHEMA = "mdstats.mace-checkpoint-model-cache.v1"
++MACE_CHECKPOINT_MODEL_EXPORT_CONTRACT = "mace-0.3.16-direct-state-restore.v2"
++MACE_CHECKPOINT_MODEL_LEGACY_EXPORT_CONTRACT = "mace-0.3.16-restart-export.v1"
+ 
+ 
+ def _load_torch_payload(path: Path) -> Any:
+@@ -98,9 +101,25 @@
+             "MACE checkpoint inspection requires the optional torch package."
+         ) from exc
+     try:
+-        return torch.load(path, map_location="cpu", weights_only=False)
+-    except TypeError:  # pragma: no cover - older torch compatibility
+-        return torch.load(path, map_location="cpu")
++        # Modern PyTorch can memory-map zip-format checkpoints.  MACE checkpoints
++        # also contain optimizer/scheduler state that evaluation does not touch;
++        # mmap avoids eagerly faulting all of those tensors into RAM merely to
++        # restore ``checkpoint["model"]``.
++        return torch.load(path, map_location="cpu", weights_only=False, mmap=True)
++    except (TypeError, RuntimeError, ValueError):
++        try:
++            return torch.load(path, map_location="cpu", weights_only=False)
++        except TypeError:  # pragma: no cover - older torch compatibility
++            try:
++                return torch.load(path, map_location="cpu")
++            except Exception as exc:
++                raise TrainingDataInputError(
++                    f"Could not deserialize MACE candidate bytes: {path!s}."
++                ) from exc
++        except Exception as exc:
++            raise TrainingDataInputError(
++                f"Could not deserialize MACE candidate bytes: {path!s}."
++            ) from exc
+     except Exception as exc:
+         raise TrainingDataInputError(
+             f"Could not deserialize MACE candidate bytes: {path!s}."
+@@ -135,9 +154,15 @@
+         return False
+     try:
+         payload = json.loads(sidecar_path.read_text(encoding="utf-8"))
+-        if payload.get("schema") != MACE_CHECKPOINT_MODEL_CACHE_SCHEMA:
++        if payload.get("schema") not in {
++            MACE_CHECKPOINT_MODEL_CACHE_SCHEMA,
++            MACE_CHECKPOINT_MODEL_CACHE_LEGACY_SCHEMA,
++        }:
+             return False
+-        if payload.get("export_contract") != MACE_CHECKPOINT_MODEL_EXPORT_CONTRACT:
++        if payload.get("export_contract") not in {
++            MACE_CHECKPOINT_MODEL_EXPORT_CONTRACT,
++            MACE_CHECKPOINT_MODEL_LEGACY_EXPORT_CONTRACT,
++        }:
+             return False
+         if payload.get("checkpoint_sha256") != checkpoint_sha256:
+             return False
+@@ -150,6 +175,183 @@
+         return False
+ 
+ 
++
++def _bool_config(value: Any) -> bool:
++    if isinstance(value, bool):
++        return value
++    if value is None:
++        return False
++    return str(value).strip().lower() in {"1", "true", "yes", "on"}
++
++
++def _training_whole_model_path(cache_root: Path, name: str) -> Path | None:
++    """Return the stable whole-model artifact emitted by the completed MACE run."""
++
++    candidate = cache_root.parent / "models" / f"{name}.model"
++    return candidate if candidate.is_file() else None
++
++
++def _state_dict_structure_compatible(model: Any, state: Mapping[str, Any]) -> bool:
++    """Require exact state keys/shapes/dtypes so load_state_dict cannot cast silently."""
++
++    try:
++        current = model.state_dict()
++        if set(current) != set(state):
++            return False
++        for key, value in current.items():
++            other = state[key]
++            if getattr(value, "shape", None) != getattr(other, "shape", None):
++                return False
++            if getattr(value, "dtype", None) != getattr(other, "dtype", None):
++                return False
++        return True
++    except Exception:
++        return False
++
++
++def _state_dict_exactly_matches(model: Any, state: Mapping[str, Any]) -> bool:
++    """Return whether a model already carries exactly the checkpoint tensor state."""
++
++    if not _state_dict_structure_compatible(model, state):
++        return False
++    try:
++        current = model.state_dict()
++        for key, value in current.items():
++            other = state[key]
++            if hasattr(value, "device") and str(value.device) != "cpu":
++                value = value.detach().cpu()
++            if hasattr(other, "device") and str(other.device) != "cpu":
++                other = other.detach().cpu()
++            if hasattr(value, "equal"):
++                if not bool(value.equal(other)):
++                    return False
++            elif value != other:
++                return False
++        return True
++    except Exception:
++        return False
++
++
++def _restore_checkpoint_into_template(
++    template_path: Path,
++    checkpoint_payload: Mapping[str, Any],
++    config_payload: Mapping[str, Any],
++) -> tuple[Any, bool] | None:
++    """Restore one MACE checkpoint state into a completed-run architecture template.
++
++    MACE 0.3.16 checkpoints contain only ``state_dict`` data.  The stable whole
++    model written at the end of training supplies the architecture.  When training
++    used CuEquivariance or OpenEquivariance, MACE saves the final whole model after
++    converting it back to e3nn; reproduce the inverse/forward conversion around
++    ``load_state_dict`` so checkpoint parameter names match exactly.
++
++    ``None`` means this configuration is not yet qualified for the direct path and
++    the caller must use the legacy restart-export subprocess.
++    """
++
++    # LoRA checkpoints contain adapter modules while the completed whole model has
++    # merged weights. Reconstructing that architecture requires the training setup,
++    # so keep the legacy path for now rather than guessing.
++    if _bool_config(config_payload.get("lora")):
++        return None
++
++    model = _load_torch_payload(template_path)
++    if not _is_deployable_mace_model_payload(model):
++        return None
++    state = checkpoint_payload.get("model")
++    if not isinstance(state, Mapping):
++        return None
++
++    enable_cueq = _bool_config(config_payload.get("enable_cueq"))
++    only_cueq = _bool_config(config_payload.get("only_cueq"))
++    enable_oeq = _bool_config(config_payload.get("enable_oeq")) and not enable_cueq
++    conversion_device = str(config_payload.get("device", "cpu") or "cpu")
++
++    try:
++        # The conversion functions use PyTorch FX and therefore share the same
++        # process-wide lock as MACECalculator's guarded conversion path.
++        from .model_features import _MACE_ACCELERATOR_CONVERSION_LOCK
++
++        template_matches = False
++        if enable_cueq and not only_cueq:
++            from mace.cli.convert_e3nn_cueq import run as to_training_backend
++            from mace.cli.convert_cueq_e3nn import run as to_deployable_backend
++
++            with _MACE_ACCELERATOR_CONVERSION_LOCK:
++                model = to_training_backend(deepcopy(model), device=conversion_device)
++            if not _state_dict_structure_compatible(model, state):
++                return None
++            template_matches = _state_dict_exactly_matches(model, state)
++            if not template_matches:
++                model.load_state_dict(state, strict=True)
++            with _MACE_ACCELERATOR_CONVERSION_LOCK:
++                model = to_deployable_backend(deepcopy(model), device=conversion_device)
++        elif enable_oeq:
++            from mace.cli.convert_e3nn_oeq import run as to_training_backend
++            from mace.cli.convert_oeq_e3nn import run as to_deployable_backend
++
++            with _MACE_ACCELERATOR_CONVERSION_LOCK:
++                model = to_training_backend(deepcopy(model), device=conversion_device)
++            if not _state_dict_structure_compatible(model, state):
++                return None
++            template_matches = _state_dict_exactly_matches(model, state)
++            if not template_matches:
++                model.load_state_dict(state, strict=True)
++            with _MACE_ACCELERATOR_CONVERSION_LOCK:
++                model = to_deployable_backend(deepcopy(model), device=conversion_device)
++        else:
++            if not _state_dict_structure_compatible(model, state):
++                return None
++            template_matches = _state_dict_exactly_matches(model, state)
++            if not template_matches:
++                model.load_state_dict(state, strict=True)
++        return model.to("cpu"), template_matches
++    except (ImportError, ModuleNotFoundError):
++        return None
++    except Exception:
++        # A strict state mismatch or unsupported conversion means this MACE
++        # configuration is outside the qualified direct-restoration envelope.
++        # Preserve correctness by falling back to the old restart-export path.
++        return None
++
++
++def _write_checkpoint_model_cache(
++    model: Any,
++    *,
++    cached_model: Path,
++    cached_sidecar: Path,
++    checkpoint: CheckpointFileRecord,
++    config_sha256: str,
++    reconstruction_method: str,
++    elapsed_seconds: float,
++) -> Path:
++    import torch
++
++    temporary_target = cached_model.with_name(
++        f".{cached_model.stem}.{os.getpid()}.{time.time_ns()}.model"
++    )
++    torch.save(model, temporary_target)
++    os.replace(temporary_target, cached_model)
++    sidecar_payload = {
++        "schema": MACE_CHECKPOINT_MODEL_CACHE_SCHEMA,
++        "export_contract": MACE_CHECKPOINT_MODEL_EXPORT_CONTRACT,
++        "checkpoint_sha256": checkpoint.sha256,
++        "checkpoint_epoch": checkpoint.epoch,
++        "config_sha256": config_sha256,
++        "model_sha256": _sha256_file(cached_model),
++        "model_size_bytes": cached_model.stat().st_size,
++        "reconstruction_method": reconstruction_method,
++        "materialization_elapsed_seconds": float(elapsed_seconds),
++    }
++    temporary_sidecar = cached_sidecar.with_name(
++        f".{cached_sidecar.stem}.{os.getpid()}.{time.time_ns()}.json"
++    )
++    temporary_sidecar.write_text(
++        json.dumps(sidecar_payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
++    )
++    os.replace(temporary_sidecar, cached_sidecar)
++    return cached_model
++
+ def materialize_mace_checkpoint_model(
+     checkpoint: CheckpointFileRecord,
+     checkpoint_path: str | Path,
+@@ -166,10 +368,11 @@
+     MACE 0.3.16 ``*.pt`` epoch checkpoints contain state dictionaries for the
+     model, optimizer, and scheduler.  ``MACECalculator`` and ``select_head``
+     require a serialized ``torch.nn.Module`` instead.  For raw checkpoints this
+-    helper asks the qualified mdstats MACE training wrapper to reconstruct the
+-    original architecture from the immutable DATA8 configuration, load exactly
+-    the selected checkpoint, skip all further epochs, and save a CPU whole-model
+-    artifact.  Existing whole-model candidates are returned unchanged.
++    helper first restores the state directly into the completed run's whole-model
++    architecture template.  This avoids re-entering MACE training initialization.
++    The qualified mdstats MACE training-wrapper restart/export remains a fail-safe
++    fallback for configurations outside the direct-restoration envelope. Existing
++    whole-model candidates are returned unchanged.
+     """
+ 
+     from .inference_parallel import (
+@@ -177,6 +380,8 @@
+         report_inference_worker_phase,
+     )
+ 
++    materialization_started = time.monotonic()
++
+     # Checkpoint authentication is the first expensive per-candidate operation:
+     # it hashes and deserializes a potentially multi-gigabyte artifact.  Start
+     # telemetry here so model reconstruction/loading is represented even when
+@@ -204,7 +409,6 @@
+             "Candidate is neither a deployable MACE model nor a qualified MACE "
+             "training checkpoint containing model/optimizer/lr_scheduler state."
+         )
+-    del payload
+ 
+     try:
+         import yaml
+@@ -240,6 +444,43 @@
+     ):
+         return cached_model
+ 
++    report_inference_worker_phase("checking completed training model template")
++    template = _training_whole_model_path(cache_root, name)
++    if template is not None:
++        report_inference_worker_phase("restoring checkpoint weights directly")
++        restored = _restore_checkpoint_into_template(template, payload, loaded)
++        if restored is not None:
++            direct_model, template_matches = restored
++            if template_matches:
++                report_inference_worker_phase(
++                    "reusing completed training model directly "
++                    f"({time.monotonic() - materialization_started:.2f}s)"
++                )
++                return template.resolve()
++            report_inference_worker_phase("writing direct checkpoint-model cache")
++            result = _write_checkpoint_model_cache(
++                direct_model,
++                cached_model=cached_model,
++                cached_sidecar=cached_sidecar,
++                checkpoint=checkpoint,
++                config_sha256=config_sha256,
++                reconstruction_method="direct_state_restore",
++                elapsed_seconds=time.monotonic() - materialization_started,
++            )
++            if _sha256_file(source) != checkpoint.sha256:
++                result.unlink(missing_ok=True)
++                cached_sidecar.unlink(missing_ok=True)
++                raise TrainingDataInputError(
++                    "Direct checkpoint restoration changed the original restart checkpoint; "
++                    "the derived model was discarded."
++                )
++            report_inference_worker_phase(
++                "direct checkpoint restoration complete "
++                f"({time.monotonic() - materialization_started:.2f}s)"
++            )
++            return result
++
++    report_inference_worker_phase("direct restoration unavailable; using legacy restart export")
+     executable = str(wrapper_path or shutil.which("mdstats-mace-train") or "")
+     if not executable:
+         raise TrainingDataInputError(
+@@ -344,6 +585,8 @@
+         "config_sha256": config_sha256,
+         "model_sha256": _sha256_file(cached_model),
+         "model_size_bytes": cached_model.stat().st_size,
++        "reconstruction_method": "legacy_restart_export",
++        "materialization_elapsed_seconds": float(time.monotonic() - materialization_started),
+     }
+     temporary_sidecar = cache_root / f".{stem}.{os.getpid()}.json"
+     temporary_sidecar.write_text(
+@@ -359,6 +602,10 @@
+             "Checkpoint reconstruction changed the original restart checkpoint; "
+             "the derived model was discarded."
+         )
++    report_inference_worker_phase(
++        "legacy checkpoint reconstruction complete "
++        f"({time.monotonic() - materialization_started:.2f}s)"
++    )
+     return cached_model
+ 
+ 
+@@ -2688,29 +2935,54 @@
+                     f"{failure_prefix} requested head {target_head_name!r}, but the model "
+                     f"provides {list(heads)!r}."
+                 )
+-            executable = str(wrapper_path or shutil.which(required_wrapper) or "")
+-            if not executable or Path(executable).name != required_wrapper:
+-                raise TrainingDataInputError(
+-                    "Qualified target-head selection wrapper is unavailable."
++            in_process_error: Exception | None = None
++            try:
++                import torch
++                from mace.tools.scripts_utils import remove_pt_head
++
++                # ``mace_select_head`` changes the global default dtype while it
++                # reconstructs the single-head architecture. Reproduce that exact
++                # semantic locally, then restore the caller's dtype immediately.
++                previous_dtype = torch.get_default_dtype()
++                try:
++                    parameter = next(payload.parameters())
++                    torch.set_default_dtype(parameter.dtype)
++                    model = remove_pt_head(payload, target_head_name)
++                    model = model.to(target_device)
++                    torch.save(model, staged)
++                finally:
++                    torch.set_default_dtype(previous_dtype)
++            except Exception as exc:
++                in_process_error = exc
++                staged.unlink(missing_ok=True)
++
++            if not staged.is_file():
++                executable = str(wrapper_path or shutil.which(required_wrapper) or "")
++                if not executable or Path(executable).name != required_wrapper:
++                    detail = "" if in_process_error is None else f" In-process error: {in_process_error}"
++                    raise TrainingDataInputError(
++                        "Qualified target-head selection wrapper is unavailable." + detail
++                    )
++                command = (
++                    executable,
++                    "--head_name",
++                    target_head_name,
++                    "--target_device",
++                    target_device,
++                    "--output_file",
++                    str(staged),
++                    str(source_model),
+                 )
+-            command = (
+-                executable,
+-                "--head_name",
+-                target_head_name,
+-                "--target_device",
+-                target_device,
+-                "--output_file",
+-                str(staged),
+-                str(source_model),
+-            )
+-            completed = subprocess.run(
+-                command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False
+-            )
+-            if completed.returncode != 0 or not staged.is_file():
+-                raise TrainingDataInputError(
+-                    f"{failure_prefix} failed: "
+-                    + completed.stderr.decode("utf-8", errors="replace")[-1000:]
++                completed = subprocess.run(
++                    command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False
+                 )
++                if completed.returncode != 0 or not staged.is_file():
++                    detail = "" if in_process_error is None else f" In-process error: {in_process_error}"
++                    raise TrainingDataInputError(
++                        f"{failure_prefix} failed: "
++                        + completed.stderr.decode("utf-8", errors="replace")[-1000:]
++                        + detail
++                    )
+         if not staged.is_file() or staged.stat().st_size <= 0:
+             raise TrainingDataInputError(f"{failure_prefix} produced an empty model artifact.")
+         os.replace(staged, output)
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' old/pyproject.toml new/pyproject.toml
+--- old/pyproject.toml	2026-08-07 09:18:08.000000000 +0000
++++ new/pyproject.toml	2026-08-07 10:47:55.963263496 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.96a0"
++version = "0.20.97a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' old/tests/test_mlff_checkpoint_model_materialization.py new/tests/test_mlff_checkpoint_model_materialization.py
+--- old/tests/test_mlff_checkpoint_model_materialization.py	2026-08-07 03:23:02.000000000 +0000
++++ new/tests/test_mlff_checkpoint_model_materialization.py	2026-08-07 10:49:52.989508215 +0000
+@@ -180,3 +180,368 @@
+     restored = torch.load(output, map_location="cpu", weights_only=False)
+     assert restored.heads == ["target_head"]
+     assert member.source_checkpoint_sha256 == checkpoint_sha
++
++
++def _linear_checkpoint(path: Path, model: torch.nn.Module, *, epoch: int = 2) -> mdstats.CheckpointFileRecord:
++    torch.save(
++        {
++            "model": model.state_dict(),
++            "optimizer": {},
++            "lr_scheduler": {},
++        },
++        path,
++    )
++    return _record(path, epoch=epoch)
++
++
++def test_raw_checkpoint_restores_directly_from_completed_training_model(tmp_path: Path) -> None:
++    run_root = tmp_path / "run"
++    models = run_root / "models"
++    models.mkdir(parents=True)
++    cache = run_root / "checkpoint-model-cache"
++    job_root = tmp_path / "job"
++    job_root.mkdir()
++    config = job_root / "config.yaml"
++    config.write_text(
++        yaml.safe_dump({"name": "qualified-model", "seed": 17, "enable_cueq": False}),
++        encoding="utf-8",
++    )
++
++    template = torch.nn.Linear(2, 1)
++    with torch.no_grad():
++        template.weight.fill_(1.0)
++        template.bias.fill_(2.0)
++    template_path = models / "qualified-model.model"
++    torch.save(template, template_path)
++
++    selected = torch.nn.Linear(2, 1)
++    with torch.no_grad():
++        selected.weight.copy_(torch.tensor([[3.0, -4.0]]))
++        selected.bias.fill_(5.0)
++    checkpoint = run_root / "selected_epoch-2.pt"
++    checkpoint.parent.mkdir(parents=True, exist_ok=True)
++    record = _linear_checkpoint(checkpoint, selected, epoch=2)
++
++    resolved = mdstats.materialize_mace_checkpoint_model(
++        record,
++        checkpoint,
++        mace_config_path=config,
++        job_working_directory=job_root,
++        cache_directory=cache,
++        wrapper_path=tmp_path / "must-not-exist",
++    )
++
++    assert resolved.parent == cache
++    restored = torch.load(resolved, map_location="cpu", weights_only=False)
++    probe = torch.tensor([[0.25, -0.5]])
++    assert torch.equal(restored(probe), selected(probe))
++    # The stable training model is an immutable architecture template.
++    unchanged = torch.load(template_path, map_location="cpu", weights_only=False)
++    assert torch.equal(unchanged(probe), template(probe))
++    sidecar = resolved.with_suffix(".json")
++    payload = __import__("json").loads(sidecar.read_text(encoding="utf-8"))
++    assert payload["reconstruction_method"] == "direct_state_restore"
++
++
++def test_latest_checkpoint_reuses_completed_training_model_without_reserialization(tmp_path: Path) -> None:
++    run_root = tmp_path / "run"
++    models = run_root / "models"
++    models.mkdir(parents=True)
++    cache = run_root / "checkpoint-model-cache"
++    job_root = tmp_path / "job"
++    job_root.mkdir()
++    config = job_root / "config.yaml"
++    config.write_text(
++        yaml.safe_dump({"name": "qualified-model", "seed": 17}), encoding="utf-8"
++    )
++
++    final_model = torch.nn.Linear(2, 1)
++    with torch.no_grad():
++        final_model.weight.copy_(torch.tensor([[1.5, -2.5]]))
++        final_model.bias.fill_(0.75)
++    template_path = models / "qualified-model.model"
++    torch.save(final_model, template_path)
++    checkpoint = run_root / "qualified-model_epoch-29.pt"
++    checkpoint.parent.mkdir(parents=True, exist_ok=True)
++    record = _linear_checkpoint(checkpoint, final_model, epoch=29)
++
++    resolved = mdstats.materialize_mace_checkpoint_model(
++        record,
++        checkpoint,
++        mace_config_path=config,
++        job_working_directory=job_root,
++        cache_directory=cache,
++        wrapper_path=tmp_path / "must-not-exist",
++    )
++
++    assert resolved == template_path.resolve()
++    assert not cache.exists() or not tuple(cache.glob("checkpoint-*.model"))
++
++
++def test_direct_restore_matches_real_mace_energy_force_and_stress(tmp_path: Path, monkeypatch) -> None:
++    """OPT-EVAL1 correctness gate for an actual MACE 0.3.16 e3nn model."""
++
++    monkeypatch.setenv("TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD", "1")
++    pytest = __import__("pytest")
++    pytest.importorskip("mace")
++    e3nn = pytest.importorskip("e3nn")
++    import numpy as np
++    from copy import deepcopy
++    from mace import data, modules, tools
++
++    table = tools.AtomicNumberTable([1, 8])
++    model_config = dict(
++        r_max=3.0,
++        num_bessel=4,
++        num_polynomial_cutoff=4,
++        max_ell=1,
++        interaction_cls=modules.interaction_classes["RealAgnosticResidualInteractionBlock"],
++        interaction_cls_first=modules.interaction_classes["RealAgnosticResidualInteractionBlock"],
++        num_interactions=2,
++        num_elements=2,
++        hidden_irreps=e3nn.o3.Irreps("8x0e + 8x1o"),
++        MLP_irreps=e3nn.o3.Irreps("4x0e"),
++        gate=torch.nn.functional.silu,
++        atomic_energies=np.array([0.1, 0.2]),
++        avg_num_neighbors=3.0,
++        atomic_numbers=table.zs,
++        correlation=2,
++        radial_type="bessel",
++    )
++    template = modules.MACE(**model_config)
++    selected = deepcopy(template)
++    with torch.no_grad():
++        first_parameter = next(selected.parameters())
++        first_parameter.add_(0.03125)
++
++    run_root = tmp_path / "run"
++    models = run_root / "models"
++    models.mkdir(parents=True)
++    template_path = models / "tiny-mace.model"
++    torch.save(template, template_path)
++    checkpoint = run_root / "tiny-mace_epoch-7.pt"
++    record = _linear_checkpoint(checkpoint, selected, epoch=7)
++    job_root = tmp_path / "job"
++    job_root.mkdir()
++    config_path = job_root / "config.yaml"
++    config_path.write_text(
++        yaml.safe_dump({"name": "tiny-mace", "seed": 11, "enable_cueq": False}),
++        encoding="utf-8",
++    )
++
++    restored_path = mdstats.materialize_mace_checkpoint_model(
++        record,
++        checkpoint,
++        mace_config_path=config_path,
++        job_working_directory=job_root,
++        cache_directory=run_root / "checkpoint-model-cache",
++        wrapper_path=tmp_path / "must-not-exist",
++    )
++    restored = torch.load(restored_path, map_location="cpu", weights_only=False)
++
++    atoms_config = data.Configuration(
++        atomic_numbers=np.array([8, 1, 1]),
++        positions=np.array([[0.0, 0.0, 0.0], [0.9, 0.0, 0.0], [-0.2, 0.8, 0.0]]),
++        properties={},
++        property_weights={},
++    )
++    atomic_data = data.AtomicData.from_config(atoms_config, z_table=table, cutoff=3.0)
++    loader = tools.torch_geometric.dataloader.DataLoader(
++        dataset=[atomic_data], batch_size=1, shuffle=False, drop_last=False
++    )
++    batch = next(iter(loader)).to_dict()
++
++    expected = selected(batch, training=False, compute_force=True, compute_stress=True)
++    actual = restored(batch, training=False, compute_force=True, compute_stress=True)
++    for key in ("energy", "forces", "stress"):
++        assert torch.allclose(actual[key], expected[key], rtol=0.0, atol=0.0), key
++    assert _sha(checkpoint) == record.sha256
++
++
++def test_direct_restore_refuses_silent_dtype_cast_and_falls_back(tmp_path: Path) -> None:
++    run_root = tmp_path / "run"
++    models = run_root / "models"
++    models.mkdir(parents=True)
++    cache = run_root / "checkpoint-model-cache"
++    job_root = tmp_path / "job"
++    job_root.mkdir()
++    config = job_root / "config.yaml"
++    config.write_text(yaml.safe_dump({"name": "qualified-model", "seed": 3}), encoding="utf-8")
++
++    template = torch.nn.Linear(1, 1).float()
++    torch.save(template, models / "qualified-model.model")
++    selected = torch.nn.Linear(1, 1).double()
++    checkpoint = run_root / "qualified-model_epoch-4.pt"
++    record = _linear_checkpoint(checkpoint, selected, epoch=4)
++
++    marker = tmp_path / "fallback-called"
++    wrapper = tmp_path / "fake-mace-train"
++    wrapper.write_text(
++        "#!/usr/bin/env python\n"
++        "import pathlib, sys, torch, yaml\n"
++        f"pathlib.Path({str(marker)!r}).write_text('yes')\n"
++        "args=sys.argv[1:]\n"
++        "cfg=pathlib.Path(args[args.index('--config')+1])\n"
++        "p=yaml.safe_load(cfg.read_text())\n"
++        "out=pathlib.Path(p['model_dir'])/(p['name']+'.model')\n"
++        "out.parent.mkdir(parents=True, exist_ok=True)\n"
++        "torch.save(torch.nn.Linear(1,1).double(), out)\n",
++        encoding="utf-8",
++    )
++    wrapper.chmod(0o755)
++
++    resolved = mdstats.materialize_mace_checkpoint_model(
++        record,
++        checkpoint,
++        mace_config_path=config,
++        job_working_directory=job_root,
++        cache_directory=cache,
++        wrapper_path=wrapper,
++    )
++    assert marker.read_text() == "yes"
++    payload = __import__("json").loads(resolved.with_suffix(".json").read_text())
++    assert payload["reconstruction_method"] == "legacy_restart_export"
++
++
++def test_direct_restore_uses_guarded_cueq_roundtrip_when_configured(tmp_path: Path, monkeypatch) -> None:
++    import sys
++    import types
++
++    calls: list[str] = []
++    to_cueq = types.ModuleType("mace.cli.convert_e3nn_cueq")
++    to_e3nn = types.ModuleType("mace.cli.convert_cueq_e3nn")
++
++    def forward(model, device="cpu"):
++        calls.append(f"to_cueq:{device}")
++        return model
++
++    def backward(model, device="cpu"):
++        calls.append(f"to_e3nn:{device}")
++        return model
++
++    to_cueq.run = forward
++    to_e3nn.run = backward
++    monkeypatch.setitem(sys.modules, "mace.cli.convert_e3nn_cueq", to_cueq)
++    monkeypatch.setitem(sys.modules, "mace.cli.convert_cueq_e3nn", to_e3nn)
++
++    run_root = tmp_path / "run"
++    models = run_root / "models"
++    models.mkdir(parents=True)
++    job_root = tmp_path / "job"
++    job_root.mkdir()
++    config = job_root / "config.yaml"
++    config.write_text(
++        yaml.safe_dump(
++            {"name": "qualified-model", "seed": 5, "enable_cueq": True, "only_cueq": False}
++        ),
++        encoding="utf-8",
++    )
++    template = torch.nn.Linear(2, 1)
++    torch.save(template, models / "qualified-model.model")
++    selected = torch.nn.Linear(2, 1)
++    with torch.no_grad():
++        selected.weight.fill_(7.0)
++        selected.bias.fill_(-2.0)
++    checkpoint = run_root / "qualified-model_epoch-8.pt"
++    record = _linear_checkpoint(checkpoint, selected, epoch=8)
++
++    resolved = mdstats.materialize_mace_checkpoint_model(
++        record,
++        checkpoint,
++        mace_config_path=config,
++        job_working_directory=job_root,
++        cache_directory=run_root / "checkpoint-model-cache",
++        wrapper_path=tmp_path / "must-not-exist",
++    )
++    restored = torch.load(resolved, map_location="cpu", weights_only=False)
++    probe = torch.tensor([[1.0, 2.0]])
++    assert torch.equal(restored(probe), selected(probe))
++    assert calls == ["to_cueq:cpu", "to_e3nn:cpu"]
++
++
++def test_multihead_target_export_runs_in_process_without_wrapper(tmp_path: Path, monkeypatch) -> None:
++    monkeypatch.setenv("TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD", "1")
++    pytest = __import__("pytest")
++    pytest.importorskip("mace")
++    e3nn = pytest.importorskip("e3nn")
++    import numpy as np
++    from mace import modules
++
++    model = modules.ScaleShiftMACE(
++        r_max=3.0,
++        num_bessel=4,
++        num_polynomial_cutoff=4,
++        max_ell=1,
++        interaction_cls=modules.interaction_classes["RealAgnosticResidualInteractionBlock"],
++        interaction_cls_first=modules.interaction_classes["RealAgnosticResidualInteractionBlock"],
++        num_interactions=2,
++        num_elements=2,
++        hidden_irreps=e3nn.o3.Irreps("8x0e + 8x1o"),
++        MLP_irreps=e3nn.o3.Irreps("4x0e"),
++        gate=torch.nn.functional.silu,
++        atomic_energies=np.array([[0.1, 0.2], [0.3, 0.4]]),
++        avg_num_neighbors=3.0,
++        atomic_numbers=[1, 8],
++        correlation=2,
++        radial_type="bessel",
++        heads=["pt_head", "target_head"],
++        atomic_inter_scale=[1.0, 1.0],
++        atomic_inter_shift=[0.0, 0.0],
++    )
++    source_model = tmp_path / "multi.model"
++    torch.save(model, source_model)
++
++    checkpoint = tmp_path / "selected_epoch-0.pt"
++    checkpoint.write_bytes(b"checkpoint-identity")
++    sha = _sha(checkpoint)
++    run = mdstats.TrainingCampaignRunPlan(
++        run_id="mh-fold-00",
++        data8_bundle_digest="1" * 64,
++        mace_job_artifact_digest="2" * 64,
++        job_id="mh-fold-00",
++        kind=mdstats.MaceJobKind.CROSS_VALIDATION_FOLD,
++        fold_index=0,
++        training_mode=mdstats.TrainingMode.MULTIHEAD_REPLAY,
++        selection_size=1,
++        seed=1,
++        protocol_family_digest="3" * 64,
++        protocol_variant_digest="4" * 64,
++        protocol_digest="5" * 64,
++        checkpoint_metric_policy_digest="6" * 64,
++        target_monitor_artifact_digest="7" * 64,
++        replay_monitor_artifact_digest="8" * 64,
++        relative_output_directory="mh-fold-00",
++    )
++    decision = mdstats.CheckpointAdmissibilityDecision(
++        run_plan_digest=run.content_digest,
++        checkpoint_sha256=sha,
++        checkpoint_metric_record_digest="9" * 64,
++        checkpoint_metric_policy_digest=run.checkpoint_metric_policy_digest,
++        outcome=mdstats.CheckpointAdmissibilityOutcome.ADMISSIBLE,
++        primary_metric_name="force",
++        primary_metric_value=0.1,
++    )
++    selection = mdstats.CheckpointSelectionRecord(
++        run_plan_digest=run.content_digest,
++        checkpoint_catalog_digest="a" * 64,
++        checkpoint_metric_policy_digest=run.checkpoint_metric_policy_digest,
++        decisions=(decision,),
++        selected_checkpoint_sha256=sha,
++        selected_checkpoint_epoch=0,
++        selected_primary_metric_value=0.1,
++    )
++    output = tmp_path / "target.model"
++    member = mdstats.export_target_head_verification_model(
++        run,
++        selection,
++        checkpoint,
++        output,
++        source_model_path=source_model,
++        policy=mdstats.CommitteeExportPolicy(
++            target_head_name="target_head", target_device="cpu", minimum_members=1
++        ),
++        wrapper_path=tmp_path / "must-not-exist",
++    )
++    restored = torch.load(output, map_location="cpu", weights_only=False)
++    assert restored.heads == ["target_head"]
++    assert member.exported_model_sha256 == _sha(output)
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' old/tests/test_mlff_data0_architecture_specification.py new/tests/test_mlff_data0_architecture_specification.py
+--- old/tests/test_mlff_data0_architecture_specification.py	2026-08-07 09:18:08.000000000 +0000
++++ new/tests/test_mlff_data0_architecture_specification.py	2026-08-07 10:47:55.965499130 +0000
+@@ -263,4 +263,4 @@
+ def test_mlff_data0_pdf_and_version_artifacts_exist() -> None:
+     assert MANUAL_PDF.stat().st_size > 10_000
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.96a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.97a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' old/tests/test_mlff_data1_specification.py new/tests/test_mlff_data1_specification.py
+--- old/tests/test_mlff_data1_specification.py	2026-08-07 09:18:08.000000000 +0000
++++ new/tests/test_mlff_data1_specification.py	2026-08-07 10:47:55.967128215 +0000
+@@ -49,4 +49,4 @@
+     assert callable(mdstats.assign_balanced_round_robin)
+     assert callable(mdstats.build_complete_frame_block_plan)
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.96a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.97a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' old/tests/test_mlff_data2a_manifest_inference_specification.py new/tests/test_mlff_data2a_manifest_inference_specification.py
+--- old/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-07 09:18:08.000000000 +0000
++++ new/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-07 10:47:55.968279442 +0000
+@@ -15,8 +15,8 @@
+ 
+ 
+ def test_data2a_version_public_api_and_documented_contract() -> None:
+-    assert mdstats.__version__ == "0.20.96a0"
+-    assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.96a0"
++    assert mdstats.__version__ == "0.20.97a0"
++    assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.97a0"
+     assert callable(mdstats.infer_training_manifest_metadata)
+     policy = mdstats.ManifestInferencePolicy()
+     assert policy.filename_values_at_or_above_one_are_percent is True
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' old/tests/test_mlff_data9a2_specification.py new/tests/test_mlff_data9a2_specification.py
+--- old/tests/test_mlff_data9a2_specification.py	2026-08-07 09:18:08.000000000 +0000
++++ new/tests/test_mlff_data9a2_specification.py	2026-08-07 10:47:55.965681060 +0000
+@@ -23,7 +23,7 @@
+         "finite energy, force, and stress",
+     ):
+         assert required in text
+-    assert 'version = "0.20.96a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.97a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "DATA9A2 real-MACE realization is implemented in `0.20.39a0`" in ARCH.read_text()
+ 
+ 
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' old/tests/test_mlff_data9a3_specification.py new/tests/test_mlff_data9a3_specification.py
+--- old/tests/test_mlff_data9a3_specification.py	2026-08-07 09:18:08.000000000 +0000
++++ new/tests/test_mlff_data9a3_specification.py	2026-08-07 10:47:55.968131082 +0000
+@@ -9,5 +9,5 @@
+     assert "37,632" in text
+     assert "supported_with_temporal_blocks_only" in text
+     assert "production_replay_corpus_not_bound" in text
+-    assert 'version = "0.20.96a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.97a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "MLFF-DATA9A3 production qualification" in ARCH.read_text()
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' old/tests/test_mlff_data9a4_precision_specification.py new/tests/test_mlff_data9a4_precision_specification.py
+--- old/tests/test_mlff_data9a4_precision_specification.py	2026-08-07 09:18:08.000000000 +0000
++++ new/tests/test_mlff_data9a4_precision_specification.py	2026-08-07 10:47:55.967634305 +0000
+@@ -9,7 +9,7 @@
+     assert "float32" in text and "float64" in text
+     assert "MaceModelPrecisionRecord" in text
+     assert "MacePrecisionTransitionRecord" in text
+-    assert "version = \"0.20.96a0\"" in (ROOT / "pyproject.toml").read_text()
++    assert "version = \"0.20.97a0\"" in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_bind_precision_to_protocol() -> None:
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' old/tests/test_mlff_data9a5_critical_fp64_specification.py new/tests/test_mlff_data9a5_critical_fp64_specification.py
+--- old/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-07 09:18:08.000000000 +0000
++++ new/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-07 10:47:55.967072783 +0000
+@@ -14,7 +14,7 @@
+     assert 'version: "0.20.42a0"' in text
+     assert "training_force_jacobian_dtype = model" in text
+     assert "Python/ASE" in text
+-    assert 'version = "0.20.96a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.97a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_data9a5_architecture_declares_scope_and_limits() -> None:
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' old/tests/test_mlff_data9a5_deployment_specification.py new/tests/test_mlff_data9a5_deployment_specification.py
+--- old/tests/test_mlff_data9a5_deployment_specification.py	2026-08-07 09:18:08.000000000 +0000
++++ new/tests/test_mlff_data9a5_deployment_specification.py	2026-08-07 10:47:55.967408380 +0000
+@@ -13,7 +13,7 @@
+     assert 'version: "0.20.43a0"' in text
+     assert "downstream runtime owns" in text
+     assert "float32-to-float64 promotion does not restore" in text
+-    assert 'version = "0.20.96a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.97a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_keep_lammps_outside_mdstats_scope() -> None:
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' old/tests/test_mlff_data9a6c_observable_evidence_specification.py new/tests/test_mlff_data9a6c_observable_evidence_specification.py
+--- old/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-07 09:18:08.000000000 +0000
++++ new/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-07 10:47:55.968307894 +0000
+@@ -74,5 +74,5 @@
+ 
+ def test_packaged_owner_manual_index_is_valid() -> None:
+     payload = json.loads(MANUAL_INDEX.read_text(encoding="utf-8"))
+-    assert payload["package_version"] == "0.20.96a0"
++    assert payload["package_version"] == "0.20.97a0"
+     assert "structural-observables-architecture" in payload["manuals"]
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' old/tests/test_mlff_data9a7a_material_profile_specification.py new/tests/test_mlff_data9a7a_material_profile_specification.py
+--- old/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-07 09:18:08.000000000 +0000
++++ new/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-07 10:47:55.968674277 +0000
+@@ -64,4 +64,4 @@
+ 
+ 
+ def test_release_version_is_data9a7a() -> None:
+-    assert 'version = "0.20.96a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert 'version = "0.20.97a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' old/tests/test_mlff_data9a7b_specification.py new/tests/test_mlff_data9a7b_specification.py
+--- old/tests/test_mlff_data9a7b_specification.py	2026-08-07 09:18:08.000000000 +0000
++++ new/tests/test_mlff_data9a7b_specification.py	2026-08-07 10:47:55.966433575 +0000
+@@ -69,7 +69,7 @@
+ 
+ 
+ def test_data9a7b_public_exports_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.96a0"
++    assert mdstats.__version__ == "0.20.97a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert callable(mdstats.compute_local_structure_features)
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' old/tests/test_mlff_data9a7c_specification.py new/tests/test_mlff_data9a7c_specification.py
+--- old/tests/test_mlff_data9a7c_specification.py	2026-08-07 09:18:08.000000000 +0000
++++ new/tests/test_mlff_data9a7c_specification.py	2026-08-07 10:47:55.966036407 +0000
+@@ -47,7 +47,7 @@
+ 
+ 
+ def test_public_api_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.96a0"
++    assert mdstats.__version__ == "0.20.97a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert mdstats.MLFF_DATA9A7C_PARSER_VERSION == "0.20.49a0"
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' old/tests/test_mlff_data9a7d_specification.py new/tests/test_mlff_data9a7d_specification.py
+--- old/tests/test_mlff_data9a7d_specification.py	2026-08-07 09:18:08.000000000 +0000
++++ new/tests/test_mlff_data9a7d_specification.py	2026-08-07 10:47:55.967708195 +0000
+@@ -39,6 +39,6 @@
+ 
+ 
+ def test_data9a7d_runtime_versions() -> None:
+-    assert mdstats.__version__ == "0.20.96a0"
++    assert mdstats.__version__ == "0.20.97a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7D_PARSER_VERSION == "0.20.50a0"
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' old/tests/test_mlff_data9a7e_specification.py new/tests/test_mlff_data9a7e_specification.py
+--- old/tests/test_mlff_data9a7e_specification.py	2026-08-07 09:18:08.000000000 +0000
++++ new/tests/test_mlff_data9a7e_specification.py	2026-08-07 10:47:55.966086351 +0000
+@@ -39,7 +39,7 @@
+         "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
+         "CROSS_SYSTEM_QUALIFICATION_SUITE",
+     } <= nodes
+-    assert mdstats.__version__ == "0.20.96a0"
++    assert mdstats.__version__ == "0.20.97a0"
+     assert mdstats.MLFF_DATA9A7E_PARSER_VERSION == "0.20.51a0"
+     assert callable(mdstats.qualify_cross_system_case)
+     assert callable(mdstats.build_cross_system_qualification_suite)
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' old/tests/test_mlff_data9a8_specification.py new/tests/test_mlff_data9a8_specification.py
+--- old/tests/test_mlff_data9a8_specification.py	2026-08-07 09:18:08.000000000 +0000
++++ new/tests/test_mlff_data9a8_specification.py	2026-08-07 10:47:55.965837672 +0000
+@@ -66,7 +66,7 @@
+ 
+ 
+ def test_public_runtime_exposes_data9a8_without_removed_aliases() -> None:
+-    assert mdstats.__version__ == "0.20.96a0"
++    assert mdstats.__version__ == "0.20.97a0"
+     assert mdstats.MLFF_DATA9A8_PARSER_VERSION == "0.20.52a0"
+     assert mdstats.ObservableComparisonPolicy
+     assert mdstats.compare_mlff_observable_validation
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' old/tests/test_mlff_data9a9a_specification.py new/tests/test_mlff_data9a9a_specification.py
+--- old/tests/test_mlff_data9a9a_specification.py	2026-08-07 09:18:08.000000000 +0000
++++ new/tests/test_mlff_data9a9a_specification.py	2026-08-07 10:47:55.968063051 +0000
+@@ -65,7 +65,7 @@
+ 
+ 
+ def test_public_runtime_exports_data9a9a_contracts() -> None:
+-    assert mdstats.__version__ == "0.20.96a0"
++    assert mdstats.__version__ == "0.20.97a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A9A_VERSION
+     assert mdstats.Data6ModelSweepPlan
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' old/tests/test_mlff_data9a9b_specification.py new/tests/test_mlff_data9a9b_specification.py
+--- old/tests/test_mlff_data9a9b_specification.py	2026-08-07 09:18:08.000000000 +0000
++++ new/tests/test_mlff_data9a9b_specification.py	2026-08-07 10:47:55.966393816 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9b_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.96a0"
++    assert mdstats.__version__ == "0.20.97a0"
+     for name in (
+         "ProductionMaterializationPlan",
+         "ProductionMaterializationCheckpoint",
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' old/tests/test_mlff_data9a9c_specification.py new/tests/test_mlff_data9a9c_specification.py
+--- old/tests/test_mlff_data9a9c_specification.py	2026-08-07 09:18:08.000000000 +0000
++++ new/tests/test_mlff_data9a9c_specification.py	2026-08-07 10:47:55.968620347 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9c_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.96a0"
++    assert mdstats.__version__ == "0.20.97a0"
+     for name in (
+         "ProductionCorpusPlan", "ProductionExpectedRun",
+         "ProfileExtensionEvidenceRequirement", "ProductionCorpusQualificationRecord",
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' old/tests/test_mlff_data9a_specification.py new/tests/test_mlff_data9a_specification.py
+--- old/tests/test_mlff_data9a_specification.py	2026-08-07 09:18:08.000000000 +0000
++++ new/tests/test_mlff_data9a_specification.py	2026-08-07 10:47:55.968499898 +0000
+@@ -14,7 +14,7 @@
+ 
+ 
+ def test_data9a_runtime_specification_is_canonical() -> None:
+-    assert 'version = "0.20.96a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.97a0"' in (ROOT / "pyproject.toml").read_text()
+     architecture = ARCH.read_text()
+     stage = STAGE.read_text()
+     specification = SPEC.read_text()
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' old/tests/test_mlff_data9b1_specification.py new/tests/test_mlff_data9b1_specification.py
+--- old/tests/test_mlff_data9b1_specification.py	2026-08-07 09:18:08.000000000 +0000
++++ new/tests/test_mlff_data9b1_specification.py	2026-08-07 10:47:55.966218156 +0000
+@@ -18,8 +18,8 @@
+     assert "TrainingCampaignPlan" in text
+     assert "CheckpointSelectionRecord" in text
+     assert "mdstats-mace-train" in text
+-    assert mdstats.__version__ == "0.20.96a0"
+-    assert 'version = "0.20.96a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert mdstats.__version__ == "0.20.97a0"
++    assert 'version = "0.20.97a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+ 
+ 
+ def test_data9b1_is_integrated_into_manual_and_stage_plan() -> None:
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' old/tests/test_mlff_data9b2_specification.py new/tests/test_mlff_data9b2_specification.py
+--- old/tests/test_mlff_data9b2_specification.py	2026-08-07 09:18:08.000000000 +0000
++++ new/tests/test_mlff_data9b2_specification.py	2026-08-07 10:47:55.965365091 +0000
+@@ -23,7 +23,7 @@
+         'mdstats-mace-select-head',
+     ):
+         assert token in text
+-    assert mdstats.__version__ == '0.20.96a0'
++    assert mdstats.__version__ == '0.20.97a0'
+     assert mdstats.MLFF_DATA9B2_VERSION == '0.20.57a0'
+ 
+ 
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' old/tests/test_mlff_data9b3_campaign_cli_specification.py new/tests/test_mlff_data9b3_campaign_cli_specification.py
+--- old/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-07 09:18:08.000000000 +0000
++++ new/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-07 10:47:55.967529320 +0000
+@@ -16,8 +16,8 @@
+ 
+ 
+ def test_data9b3_version_and_user_surface() -> None:
+-    assert mdstats.__version__ == "0.20.96a0"
+-    assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.96a0"
++    assert mdstats.__version__ == "0.20.97a0"
++    assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.97a0"
+     assert TOOL.is_file()
+     assert TOOL.stat().st_mode & 0o111
+     spec = SPEC.read_text(encoding="utf-8")
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' old/tests/test_mlff_data9b3a_cueq_specification.py new/tests/test_mlff_data9b3a_cueq_specification.py
+--- old/tests/test_mlff_data9b3a_cueq_specification.py	2026-08-07 09:18:08.000000000 +0000
++++ new/tests/test_mlff_data9b3a_cueq_specification.py	2026-08-07 10:47:55.966182563 +0000
+@@ -16,8 +16,8 @@
+ 
+ 
+ def test_data9b3a_version_and_documented_surface() -> None:
+-    assert mdstats.__version__ == "0.20.96a0"
+-    assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.96a0"
++    assert mdstats.__version__ == "0.20.97a0"
++    assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.97a0"
+     text = "\n".join(
+         path.read_text(encoding="utf-8")
+         for path in (SPEC, GUIDE, MANUAL, STAGE, EXAMPLE)
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' old/tests/test_mlff_observable_validation_bridge.py new/tests/test_mlff_observable_validation_bridge.py
+--- old/tests/test_mlff_observable_validation_bridge.py	2026-08-07 09:18:08.000000000 +0000
++++ new/tests/test_mlff_observable_validation_bridge.py	2026-08-07 10:47:55.966938504 +0000
+@@ -128,7 +128,7 @@
+     assert payload["candidate_generation"]["generator_artifact_digest"] == D0
+     assert payload["reference_collection"]["geometry_digest"] != payload["candidate_collection"]["geometry_digest"]
+     assert payload["reference_runtime_identity"]["observable_api_version"].endswith("v2")
+-    assert payload["reference_runtime_identity"]["mdstats_executing_version"] == "0.20.96a0"
++    assert payload["reference_runtime_identity"]["mdstats_executing_version"] == "0.20.97a0"
+     assert set(payload["warnings_by_call"]) == {"rdf", "msd"}
+     assert set(payload["duration_seconds_by_call"]) == {"rdf", "msd"}
+     assert set(payload["result_identities"]) == {"rdf", "msd"}
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' old/tests/test_mlff_perf2_parallel_acceleration_specification.py new/tests/test_mlff_perf2_parallel_acceleration_specification.py
+--- old/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-07 09:18:08.000000000 +0000
++++ new/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-07 10:47:55.969018147 +0000
+@@ -10,8 +10,8 @@
+ 
+ 
+ def test_perf2_release_and_configuration_contract() -> None:
+-    assert mdstats.__version__ == "0.20.96a0"
+-    assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.96a0"
++    assert mdstats.__version__ == "0.20.97a0"
++    assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.97a0"
+     template = campaign_cli._config_template(
+         workspace="workspace",
+         training_root="training",
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pdf' old/tests/test_observable_validation_api.py new/tests/test_observable_validation_api.py
+--- old/tests/test_observable_validation_api.py	2026-08-07 09:18:08.000000000 +0000
++++ new/tests/test_observable_validation_api.py	2026-08-07 10:47:55.968361083 +0000
+@@ -223,7 +223,7 @@
+     assert result.results["oxygen_vdos"].total.shape == result.results["oxygen_spectrum"].scalar_spectrum.shape
+     assert set(result.warnings_by_call) == {call.call_id for call in make_recipe().calls}
+     assert result.runtime_identity["observable_api_version"].endswith("v2")
+-    assert result.runtime_identity["mdstats_executing_version"] == "0.20.96a0"
++    assert result.runtime_identity["mdstats_executing_version"] == "0.20.97a0"
+     assert len(result.runtime_identity["executing_module_sha256"]) == 64
+     assert all(len(value) == 64 for value in result.capability_digests.values())
+     assert set(result.result_identities) == {call.call_id for call in make_recipe().calls}

@@ -1,0 +1,20 @@
+{
+  "schema": "mdstats.mlff-prec2-real-mace-qualification.v1",
+  "package_version": "0.20.109a0",
+  "gate": "PREC2",
+  "mace_version": "0.3.16",
+  "backend": "e3nn",
+  "force_training_graph_executed": true,
+  "source_dtype": "float32",
+  "destination_dtype": "float64",
+  "learning_rate_before": 0.0001,
+  "learning_rate_after": 0.00005,
+  "model_uniformly_float64_after_transition": true,
+  "latest_only_restart_companion_present": true,
+  "transition_receipt_present": true,
+  "restart_equivalence_covered_by": "tests/test_mlff_prec2_precision_runtime.py::test_prec2_latest_only_companion_restores_exact_live_and_ema_state",
+  "real_mace_smoke_covered_by": "tests/test_mlff_prec2_real_mace.py::test_prec2_real_mace_0316_force_training_crosses_fp32_fp64_boundary",
+  "cueq_runtime_executed": false,
+  "cueq_runtime_reason": "cuequivariance and cuequivariance_torch are not present in the supplied qualification environment; existing CuEq source/adapter regressions pass and real CuEq activation remains a PREC3 requirement.",
+  "scientific_claim": "runtime-transition qualification only; this record does not claim refine/full-double RMSE equivalence"
+}

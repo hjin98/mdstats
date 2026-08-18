@@ -1,0 +1,203 @@
+{
+  "architecture_revision": 49,
+  "authority_version": "mdstats.size-fidelity1.coarse-screen-calibration.2026-08.v1",
+  "blocking_reason": "No authorizing foundation checkpoint and no qualifying GPU runtime were supplied; exhaustive real MACE 30-epoch calibration trajectories are therefore unavailable.",
+  "calibration_policy": {
+    "authority_version": "mdstats.size-fidelity1.coarse-screen-calibration.2026-08.v1",
+    "coarse_epoch_candidates": [
+      3,
+      4,
+      5
+    ],
+    "coarse_equivalence_candidates_mev_per_a": [
+      1.0,
+      2.0,
+      4.0
+    ],
+    "coarse_monitor_configuration_candidates": [
+      128,
+      256,
+      512,
+      1024
+    ],
+    "content_digest": "191a98486965afb16d0d04c27f21893b729af62eca7355c53f718288d764798a",
+    "minimum_calibration_seeds": 3,
+    "require_monitor_decision_equivalence": true,
+    "required_coarse_finalist_recall": 1.0,
+    "required_short_finalist_recall": 1.0,
+    "schema": "mdstats.size-fidelity1-policy.v1",
+    "screening_seeds": [
+      1,
+      2,
+      3
+    ]
+  },
+  "content_digest": "b28fd35c4ddc033209aadf070aa7119fadd961f308cbc5b367a546452be53c21",
+  "created_at_utc": "2026-08-15T22:46:07Z",
+  "default_target_size_grid": [
+    128,
+    256,
+    512,
+    1024,
+    2048,
+    4096,
+    8192
+  ],
+  "dependency_graph_schema": 31,
+  "document_sources": {
+    "architecture_md": {
+      "path": "docs/arch_manuals/mlff_training_data_architecture.md",
+      "sha256": "7927a9f1d80211b7d1628fef76cb56ebdc8920c9e180ef2ce412b41967ebba62"
+    },
+    "architecture_pdf": {
+      "path": "docs/arch_manuals/mlff_training_data_architecture.pdf",
+      "sha256": "a1192b2e3ac393a33d649c6c6f06997a667b5aa796bb18dba03402a5acf422c4"
+    },
+    "spec_md": {
+      "path": "docs/specs/training_data/mlff_size_fidelity1_coarse_screen_calibration_spec.md",
+      "sha256": "d80d466f584730f5bc11cae3603dad8a72d460930a827af523fb8b65a547ffa9"
+    },
+    "spec_pdf": {
+      "path": "docs/specs/training_data/mlff_size_fidelity1_coarse_screen_calibration_spec.pdf",
+      "sha256": "52f7f387513155f534bcabbb8ab57229446101c38525514e085bdfc1a798c1e1"
+    }
+  },
+  "host": {
+    "cgroup_cpu_max": "800000 100000",
+    "cgroup_memory_max": "4294967296",
+    "cpu_model": "AMD EPYC 9V74 80-Core Processor",
+    "cuda_available": false,
+    "cuda_device_count": 0,
+    "logical_cpus_visible": 9,
+    "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+    "python": "3.13.5",
+    "torch": "2.10.0+cpu"
+  },
+  "optimization_implications": {
+    "monitor_inference_reuse": "One full-development inference pass per checkpoint; 128/256/512/1024 monitor scores are deterministic reductions of the same per-frame prediction authority.",
+    "perf_p2r_required_matrix": "benchmark 3-7 coverage qualifiers and favorable/unfavorable survivor patterns after calibration is certified",
+    "perf_p2r_status": "blocked_until_size_fidelity1_scientific_pass"
+  },
+  "planning_counts_by_coverage_qualifier_count": [
+    {
+      "coverage_qualifier_count": 3,
+      "full_role_inference_endpoints": 45,
+      "monitor_views_per_coarse_endpoint": 4,
+      "note": "monitor views are reductions of one authenticated full-role prediction authority per checkpoint",
+      "training_runs": 9
+    },
+    {
+      "coverage_qualifier_count": 4,
+      "full_role_inference_endpoints": 60,
+      "monitor_views_per_coarse_endpoint": 4,
+      "note": "monitor views are reductions of one authenticated full-role prediction authority per checkpoint",
+      "training_runs": 12
+    },
+    {
+      "coverage_qualifier_count": 5,
+      "full_role_inference_endpoints": 75,
+      "monitor_views_per_coarse_endpoint": 4,
+      "note": "monitor views are reductions of one authenticated full-role prediction authority per checkpoint",
+      "training_runs": 15
+    },
+    {
+      "coverage_qualifier_count": 6,
+      "full_role_inference_endpoints": 90,
+      "monitor_views_per_coarse_endpoint": 4,
+      "note": "monitor views are reductions of one authenticated full-role prediction authority per checkpoint",
+      "training_runs": 18
+    },
+    {
+      "coverage_qualifier_count": 7,
+      "full_role_inference_endpoints": 105,
+      "monitor_views_per_coarse_endpoint": 4,
+      "note": "monitor views are reductions of one authenticated full-role prediction authority per checkpoint",
+      "training_runs": 21
+    }
+  ],
+  "production_target_size_policy": {
+    "coarse_practical_equivalence_mev_per_a": 1.0,
+    "coarse_target_monitor_configurations": 256,
+    "coarse_training_epochs": 3,
+    "final_training_epochs": 30,
+    "max_coarse_training_candidates": 4,
+    "max_short_training_candidates": 2,
+    "min_coverage_qualifiers": 3,
+    "policy_digest": "ebf5de461dc2b8c0b9a44cd5de7b71a62dc8e4e3be449fe4a1afcb62e9409034",
+    "policy_version": "mdstats.target-data2d.size-convergence.2026-08.v2",
+    "practical_equivalence_mev_per_a": 1.0,
+    "schema": "mdstats.target-size-convergence-policy.v2",
+    "screening_optimizer_seed": 1,
+    "short_training_epochs": 10
+  },
+  "qualification": {
+    "adjacent_scientific_tests": {
+      "failed": 0,
+      "log": "adjacent_final.log",
+      "passed": 71,
+      "warnings": 2
+    },
+    "compileall": "pass",
+    "focused_tests": {
+      "failed": 0,
+      "log": "focused_final.log",
+      "passed": 30
+    },
+    "historical_test_debt": {
+      "example": "tests/test_mlff_adapt_eval1_specification.py",
+      "result": "fails exact historical release literal: expects 0.20.140a0, current is 0.20.183a0; not changed to inflate qualification"
+    },
+    "package_collection": {
+      "collected": 3000,
+      "collection_skips": 3,
+      "errors": 0,
+      "log": "collect_final2.log",
+      "note": "requires tests/ on PYTHONPATH for one historical helper import"
+    },
+    "pdf_qa": {
+      "record": "MLFF_SIZE_FIDELITY1_PDF_QA_0.20.183a0.json",
+      "result": "pass"
+    },
+    "scientific_authorizing_run": "pending_not_executed_no_checkpoint_or_gpu",
+    "sdist_smoke": {
+      "failed": 0,
+      "log": "sdist_smoke_final.log",
+      "passed": 30,
+      "tests": "SIZE-FIDELITY1 + specification + SIZE-HALVE1 specification + TARGET-DATA2D"
+    },
+    "wheel_smoke": {
+      "authority_version": "mdstats.size-fidelity1.coarse-screen-calibration.2026-08.v1",
+      "log": "wheel_smoke_final.log",
+      "public_api_imports": "pass",
+      "result": "pass",
+      "version": "0.20.183a0"
+    }
+  },
+  "release": "0.20.183a0",
+  "schema": "mdstats.size-fidelity1-implementation-qualification.v1",
+  "scientific_acceptance": {
+    "calibration_training": "Every hard-coverage-qualified size must train uninterrupted to 30 epochs for every frozen calibration seed; no halving during calibration.",
+    "coarse_candidate_endpoints": [
+      3,
+      4,
+      5
+    ],
+    "final_endpoint": 30,
+    "hard_requirements": [
+      "coarse monitor promotion set exactly equals full-development promotion set for every seed",
+      "both eventual 30-epoch target finalists survive the coarse top-four screen for every seed",
+      "both eventual 30-epoch target finalists survive the epoch-10 top-two screen for every seed",
+      "eventual target winner survives both screens for every seed",
+      "largest target-size boundary is not falsely eliminated when it is an eventual finalist",
+      "checkpoint, training-run, foundation, policy, schedule, and evaluation-role identities are consistent and uninterrupted"
+    ],
+    "rank_correlation_authority": "diagnostic_only",
+    "short_endpoint": 10
+  },
+  "scientific_gate_closed": false,
+  "state": "execution_ready_scientific_run_pending",
+  "supplied_dependency_evidence": {
+    "authorizing_checkpoint_found": false,
+    "mace_source_archive": "dependencies/sources/mace_torch-0.3.16.tar.gz inside supplied dependencies.tar(1).gz"
+  }
+}

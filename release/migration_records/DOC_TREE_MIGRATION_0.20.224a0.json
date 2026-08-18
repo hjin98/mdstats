@@ -1,0 +1,28 @@
+{
+  "canonical_paths": {
+    "architecture": "docs/arch_manuals/mlff_training_data_architecture.md",
+    "architecture_chapters": "docs/arch_manuals/mlff_training_data/",
+    "dependency_graph": "docs/arch_manuals/mlff_training_data_dependency_graph.json",
+    "final_gpu_runbook": "docs/guides/mlff_final_gpu1_workstation_runbook.md",
+    "lineage_map": "docs/history/mlff/LINEAGE.md",
+    "qualification_logs": "release/qualification_logs/",
+    "release_lineage": "docs/history/mlff/release_notes/",
+    "revision_lineage": "docs/history/mlff/architecture_revisions/"
+  },
+  "date": "2026-08-17",
+  "gate": "DOC-ARCH1",
+  "preservation_policy": "historical documents were moved/deduplicated into lineage/evidence trees; selected full manual snapshots are retained for provenance",
+  "principles": [
+    "repository root contains package/build entry points only",
+    "current architecture lives under docs/arch_manuals",
+    "module/gate contracts live under docs/specs",
+    "operational runbooks live under docs/guides",
+    "historical revision/release commentary lives under docs/history/mlff",
+    "qualification/readiness evidence lives under release",
+    "benchmark evidence lives under benchmarks"
+  ],
+  "release": "0.20.224a0",
+  "root_files_after": 7,
+  "root_files_before": 369,
+  "schema": "mdstats.documentation-tree-migration.v1"
+}

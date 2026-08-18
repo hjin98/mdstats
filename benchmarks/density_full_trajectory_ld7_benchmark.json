@@ -1,0 +1,216 @@
+{
+  "schema": "mdstats.ld7-all-species-1300-benchmark.v1",
+  "frame_count": 1300,
+  "spread_sample_size": 128,
+  "species": {
+    "Na": {
+      "seconds": 13.744835508999586,
+      "grid_shape": [
+        525,
+        525,
+        525
+      ],
+      "logical_node_count": 144703125,
+      "sigma_angstrom": 0.06614478862977878,
+      "integral": 24.0,
+      "sample_sd_reference_angstrom": 0.13477846252637127,
+      "spread_sampled_frame_count": 128,
+      "spread_source_frame_count": 1300,
+      "kernel_pair_count": 96251957,
+      "group_batch_count": 3,
+      "source_group_count": 24,
+      "scatter_workspace_peak_bytes": 45513608,
+      "storage": {
+        "schema_version": "mdstats.density-storage-summary.v1",
+        "storage_backend": "local_sparse",
+        "logical_grid_shape": [
+          525,
+          525,
+          525
+        ],
+        "logical_node_count": 144703125,
+        "nonzero_node_count": 753890,
+        "stored_value_count": 3084288,
+        "stored_block_count": 753,
+        "estimated_bytes": 27776664,
+        "realized_bytes": 27776664,
+        "metadata": {
+          "block_lattice_shape": [
+            33,
+            33,
+            33
+          ],
+          "block_shape": [
+            16,
+            16,
+            16
+          ],
+          "index_dtype": "int64",
+          "partial_masks_present": true,
+          "representation": "fixed_block_sparse",
+          "valid_value_count": 3043056,
+          "value_dtype": "float64"
+        }
+      },
+      "scatter_implementation": "group_batched_two_pass_block_lookup_v1",
+      "reduction_implementation": "bounded_block_bincount_v1"
+    },
+    "Si": {
+      "seconds": 33.41979767599969,
+      "grid_shape": [
+        1121,
+        1121,
+        1121
+      ],
+      "logical_node_count": 1408694561,
+      "sigma_angstrom": 0.030977710999673384,
+      "integral": 24.0,
+      "sample_sd_reference_angstrom": 0.06312083976930617,
+      "spread_sampled_frame_count": 128,
+      "spread_source_frame_count": 1300,
+      "kernel_pair_count": 164431073,
+      "group_batch_count": 3,
+      "source_group_count": 24,
+      "scatter_workspace_peak_bytes": 50394792,
+      "storage": {
+        "schema_version": "mdstats.density-storage-summary.v1",
+        "storage_backend": "local_sparse",
+        "logical_grid_shape": [
+          1121,
+          1121,
+          1121
+        ],
+        "logical_node_count": 1408694561,
+        "nonzero_node_count": 936594,
+        "stored_value_count": 3641344,
+        "stored_block_count": 889,
+        "estimated_bytes": 29152088,
+        "realized_bytes": 29152088,
+        "metadata": {
+          "block_lattice_shape": [
+            71,
+            71,
+            71
+          ],
+          "block_shape": [
+            16,
+            16,
+            16
+          ],
+          "index_dtype": "int64",
+          "partial_masks_present": false,
+          "representation": "fixed_block_sparse",
+          "valid_value_count": 3641344,
+          "value_dtype": "float64"
+        }
+      },
+      "scatter_implementation": "group_batched_two_pass_block_lookup_v1",
+      "reduction_implementation": "bounded_block_bincount_v1"
+    },
+    "Al": {
+      "seconds": 16.555879082000047,
+      "grid_shape": [
+        1038,
+        1038,
+        1038
+      ],
+      "logical_node_count": 1118386872,
+      "sigma_angstrom": 0.033454734133558636,
+      "integral": 24.0,
+      "sample_sd_reference_angstrom": 0.06814523976927493,
+      "spread_sampled_frame_count": 128,
+      "spread_source_frame_count": 1300,
+      "kernel_pair_count": 158246794,
+      "group_batch_count": 3,
+      "source_group_count": 24,
+      "scatter_workspace_peak_bytes": 49995232,
+      "storage": {
+        "schema_version": "mdstats.density-storage-summary.v1",
+        "storage_backend": "local_sparse",
+        "logical_grid_shape": [
+          1038,
+          1038,
+          1038
+        ],
+        "logical_node_count": 1118386872,
+        "nonzero_node_count": 907021,
+        "stored_value_count": 3481600,
+        "stored_block_count": 850,
+        "estimated_bytes": 27873200,
+        "realized_bytes": 27873200,
+        "metadata": {
+          "block_lattice_shape": [
+            65,
+            65,
+            65
+          ],
+          "block_shape": [
+            16,
+            16,
+            16
+          ],
+          "index_dtype": "int64",
+          "partial_masks_present": false,
+          "representation": "fixed_block_sparse",
+          "valid_value_count": 3481600,
+          "value_dtype": "float64"
+        }
+      },
+      "scatter_implementation": "group_batched_two_pass_block_lookup_v1",
+      "reduction_implementation": "bounded_block_bincount_v1"
+    },
+    "O": {
+      "seconds": 60.15116384899966,
+      "grid_shape": [
+        690,
+        690,
+        690
+      ],
+      "logical_node_count": 328509000,
+      "sigma_angstrom": 0.050327556566136036,
+      "integral": 96.00000000000001,
+      "sample_sd_reference_angstrom": 0.10251901283994862,
+      "spread_sampled_frame_count": 128,
+      "spread_source_frame_count": 1300,
+      "kernel_pair_count": 558840991,
+      "group_batch_count": 12,
+      "source_group_count": 96,
+      "scatter_workspace_peak_bytes": 51658144,
+      "storage": {
+        "schema_version": "mdstats.density-storage-summary.v1",
+        "storage_backend": "local_sparse",
+        "logical_grid_shape": [
+          690,
+          690,
+          690
+        ],
+        "logical_node_count": 328509000,
+        "nonzero_node_count": 3617132,
+        "stored_value_count": 14725120,
+        "stored_block_count": 3595,
+        "estimated_bytes": 132612360,
+        "realized_bytes": 132612360,
+        "metadata": {
+          "block_lattice_shape": [
+            44,
+            44,
+            44
+          ],
+          "block_shape": [
+            16,
+            16,
+            16
+          ],
+          "index_dtype": "int64",
+          "partial_masks_present": true,
+          "representation": "fixed_block_sparse",
+          "valid_value_count": 13949184,
+          "value_dtype": "float64"
+        }
+      },
+      "scatter_implementation": "group_batched_two_pass_block_lookup_v1",
+      "reduction_implementation": "bounded_block_bincount_v1"
+    }
+  },
+  "total_seconds": 125.2780524750001
+}

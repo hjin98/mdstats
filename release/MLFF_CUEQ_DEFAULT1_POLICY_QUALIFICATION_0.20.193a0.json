@@ -1,0 +1,36 @@
+{
+  "schema": "mdstats.mlff-cueq-default1-policy-qualification.v1",
+  "release": "0.20.193a0",
+  "architecture_revision": 60,
+  "dependency_graph_schema": 42,
+  "gate": "CUEQ-DEFAULT1",
+  "status": "control_plane_pass_policy_enabled",
+  "generated_defaults": {
+    "source_backend": "e3nn",
+    "training_backend": "cueq",
+    "only_cueq": false,
+    "require_available": true
+  },
+  "scope": {
+    "cueq_default_authority": "TRAIN2 only",
+    "source_data6_pseudolabel_evaluation_verification_backend": "e3nn",
+    "source_cueq_default_enabled": false,
+    "silent_training_fallback_allowed": false,
+    "portable_e3nn_checkpoint_output": true,
+    "legacy_campaigns_without_training_backend_preserve_unified_semantics": true
+  },
+  "evidence": {
+    "current_adjacent_regression": {"passed": 120, "skipped_expected": 2, "failed": 0},
+    "current_specification_sync": {"passed": 22, "failed": 0},
+    "compileall": "pass",
+    "positive_cuda_cueq_performance_claimed": false,
+    "final_gpu1_positive_result_required_for_this_explicit_policy_revision": false,
+    "policy_revision_basis": "explicit_project_owner_request"
+  },
+  "historical_authority_preservation": {
+    "cueq_phase1_records_modified": false,
+    "perf_cert1_records_modified": false,
+    "final_gpu1_records_modified": false,
+    "historical_generated_default_change_authorized_fields_reinterpreted": false
+  }
+}

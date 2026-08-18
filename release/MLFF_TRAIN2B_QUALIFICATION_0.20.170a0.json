@@ -1,0 +1,96 @@
+{
+  "adversarial_checks": [
+    "10-of-30 pause resumes at the original full-horizon update index and LR",
+    "live parameters and Python/NumPy/Torch RNG state are perturbed after Stage B and restored before Stage C",
+    "changed LR authority rejects continuation",
+    "deliberately worsening validation cannot trip one-epoch patience in TRAIN2",
+    "native scheduler receives no LR-control steps in TRAIN2 runtime test",
+    "modified TRUE_DFT replay-monitor bytes fail closed",
+    "retired staged refine/mixed precision cannot coexist with TRAIN2B",
+    "pre-existing Stage-B model artifact cannot satisfy Stage-C completion without an artifact change"
+  ],
+  "date": "2026-08-13",
+  "gate": "TRAIN2B",
+  "qualification": {
+    "deliberate_deselection": "tests/test_mlff_mlcv_migrate1.py::test_migrate1_generated_default_uses_distinct_mlcv_strategy_and_storage_guard is obsolete for the intentional TRAIN2 new-generation default",
+    "expected_skip": "tests/test_mlff_campaign_cli.py:337 real LTA training root not supplied",
+    "focused_and_regression_pytest": {
+      "deliberately_deselected": 1,
+      "failed": 0,
+      "passed": 238,
+      "skipped": 1
+    },
+    "historical_test_debt": "older *_specification.py tests still pin package version 0.20.140a0; not TRAIN2B qualification evidence",
+    "pdf": {
+      "no_clipping_or_broken_glyphs": true,
+      "pages_after": 127,
+      "pages_before": 126,
+      "render_compare_changed_pages": 15,
+      "result": "passed",
+      "visually_inspected_pages": [
+        118,
+        119,
+        120,
+        121
+      ]
+    },
+    "python_compileall": "passed"
+  },
+  "schema": "mdstats.mlff-train2b-qualification.v1",
+  "scientific_contract": {
+    "continuation_restores": [
+      "live_non_ema_parameters",
+      "ema_shadow_state",
+      "python_rng",
+      "numpy_rng",
+      "torch_cpu_rng",
+      "torch_cuda_rng_if_present",
+      "base_lr_identity"
+    ],
+    "lr_step_authority": "per_optimizer_update",
+    "optimizer_state_carrier": "raw_mace_checkpoint_sha_bound_by_train2_companion",
+    "performance_driven_termination": false,
+    "planned_epochs": 30,
+    "precision_runtime": "one_fixed_fp32_or_fp64_stage",
+    "replay_training_control_authority": false,
+    "restart_reuses_full_horizon": true,
+    "stage_b_pause_completed_epochs": 10,
+    "true_dft_replay_monitor": "train2_true_replay",
+    "validation_driven_lr_mutation": false
+  },
+  "scope": {
+    "implemented": [
+      "fixed-budget TRAIN2 MACE runtime",
+      "per-update deterministic LR enforcement",
+      "authenticated 10-to-30 exact continuation",
+      "TRUE_DFT replay diagnostic injection",
+      "stage-aware campaign run geometry",
+      "runtime summary/history evidence",
+      "current TRAIN2 campaign example"
+    ],
+    "intentionally_deferred": [
+      "EVAL2 checkpoint selection and bootstrap ranking",
+      "DEPLOY/PES/RELAX/DYN qualification",
+      "SELECT2 production publication"
+    ]
+  },
+  "sha256": {
+    "CHANGELOG.md": "4f2166a9bae70c78625be3122a70e456e698b1937a941e97e8d41957fed7af3f",
+    "PKG-INFO": "72efe7ade84949d5296cfaaf0451bf23641583463c0bb35e07dc0be6b4c27dee",
+    "campaign.toml.example": "56eb17433644abaf09ed89e69da80d4910f52e579d18b36446978b8504aee522",
+    "docs/arch_manuals/mlff_training_data_architecture.md": "8637f2d390a8f67e34d78e64ecbf8c3cf14c59e4ce6012247cc1029d0b5d318f",
+    "docs/arch_manuals/mlff_training_data_architecture.pdf": "a56ef603e88a03aaed2de8452374c6a6dac3e04ec8e4c94c7706f2a9bbfcf326",
+    "mdstats/__init__.py": "d8978f2702bc509af7d4c2759783c9ae2d5fc07681c4564053824de60aad5ff7",
+    "mdstats/_version.py": "dd90bb2073bf530b47b63b5738f94a5e1ee34369292dbd8bcf1c7008920c38b6",
+    "mdstats/training_data/__init__.py": "ba469be82e4aeea4b1339cceffdbd26db30301c99ed44f266d8392216559ec04",
+    "mdstats/training_data/campaign_cli.py": "cc3dcf167062db485c16d1fb6d3b903b19073a699da644d5fe1854e9d1091b41",
+    "mdstats/training_data/campaign_execution.py": "5399d74d176d7321890dc30fcb4581d6dafcdb84b3c490d0687b14f7b3037c0d",
+    "mdstats/training_data/critical_precision_cli.py": "ce564d7224056644782c2eb1fc3a64ca1116b80dfaf5f8d88e482e0f711c543f",
+    "mdstats/training_data/train2_runtime.py": "95cdc1940ece185a980e765c747b6dca12ab30f6e5c95b0240afa3aa110e6617",
+    "pyproject.toml": "96881a222815b83f1c28b375e48d3befd1ea19c67085015087f828518f9fca35",
+    "release/PATCH_NOTES_0.20.170a0.md": "741bc94f8dc5025abb61a4e66d7cc7e0036d5a2b31529999663adeb5ca890d81",
+    "tests/test_mlff_train2b_runtime.py": "7aef0c6ca7fb3688b6e00cddc4606a303eb6c83c4972dff3825665978c2d2f11",
+    "tests/test_mlff_train2b_specification.py": "0079e3b1b50448751bfd1c32b82851f187e8a07e77df5f34b67840a101760509"
+  },
+  "version": "0.20.170a0"
+}

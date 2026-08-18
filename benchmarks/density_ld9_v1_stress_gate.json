@@ -1,0 +1,107 @@
+{
+  "schema_version": "mdstats.ld9-v1-stress-gate.v1",
+  "package_version": "0.19.59a0",
+  "source_scene": "mdstats_0_19_53a0_TRAJECTORY4_scene.pkl",
+  "scientific_field_policy": "reuse immutable saved fields and HDR thresholds",
+  "render_tile_shape": [
+    32,
+    32,
+    32
+  ],
+  "shells_benchmarked": [
+    0.5
+  ],
+  "rows": [
+    {
+      "species": "Na",
+      "label": "Na density",
+      "mass_fraction": 0.5,
+      "seconds": 9.296383782002522,
+      "candidate_cells": 45293,
+      "render_tiles": 110,
+      "marching_cubes_calls": 110,
+      "raw_vertices": 48177,
+      "raw_faces": 90310,
+      "indexed_vertices": 45505,
+      "indexed_faces": 90306,
+      "maximum_tile_transient_bytes": 322984,
+      "estimated_peak_bytes": 22109947,
+      "planning_bytes": 3265496,
+      "peak_rss_kib": 945428,
+      "measurement": "final isolated run"
+    },
+    {
+      "species": "Si",
+      "label": "Si density",
+      "mass_fraction": 0.5,
+      "seconds": 8.17400939700019,
+      "candidate_cells": 39064,
+      "render_tiles": 111,
+      "marching_cubes_calls": 111,
+      "raw_vertices": 42004,
+      "raw_faces": 77948,
+      "indexed_vertices": 39028,
+      "indexed_faces": 77948,
+      "maximum_tile_transient_bytes": 274468,
+      "estimated_peak_bytes": 20574517,
+      "planning_bytes": 2817048,
+      "peak_rss_kib": 935512,
+      "measurement": "final isolated run"
+    },
+    {
+      "species": "Al",
+      "label": "Al density",
+      "mass_fraction": 0.5,
+      "seconds": 8.15008324900191,
+      "candidate_cells": 42365,
+      "render_tiles": 88,
+      "marching_cubes_calls": 88,
+      "indexed_vertices": 42334,
+      "indexed_faces": 84552,
+      "maximum_tile_transient_bytes": 321032,
+      "estimated_peak_bytes": 20273776,
+      "peak_rss_kib": 947264,
+      "measurement": "isolated development run; unchanged extraction algorithm"
+    },
+    {
+      "species": "O",
+      "label": "O density",
+      "mass_fraction": 0.5,
+      "seconds": 29.79663477000213,
+      "candidate_cells": 156809,
+      "render_tiles": 385,
+      "marching_cubes_calls": 385,
+      "raw_faces": 312672,
+      "indexed_vertices": 157536,
+      "indexed_faces": 312668,
+      "maximum_tile_transient_bytes": 320360,
+      "estimated_peak_bytes": 70944600,
+      "peak_rss_kib": 1190008,
+      "measurement": "isolated development run; unchanged extraction algorithm"
+    }
+  ],
+  "aggregate": {
+    "seconds": 55.41711119800675,
+    "candidate_cells": 283531,
+    "render_tiles": 694,
+    "marching_cubes_calls": 694,
+    "indexed_faces": 565474,
+    "indexed_vertices": 284403,
+    "marching_cubes_call_reduction_vs_cellwise": 408.54610951008647
+  },
+  "legacy_na_50": {
+    "seconds": 21.691063354,
+    "tiled_seconds": 9.296383782002522,
+    "speedup": 2.3332796776304727
+  },
+  "legacy_full_12_shell_scene": {
+    "render_seconds": 729.132034452,
+    "faces": 3184902,
+    "vertices": 1599109
+  },
+  "interpretation": [
+    "V1 bounds tiled extraction and reduces marching-cubes invocation count; it does not simplify geometry.",
+    "The complete 12-shell browser gate is deferred until LD9-V2/V3 because unsimplified geometry knowingly violates the hard scene budget.",
+    "Periodic component labeling and strict topology validation remain enabled and are measured downstream costs."
+  ]
+}

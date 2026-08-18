@@ -1,0 +1,216 @@
+{
+  "acceptance": {
+    "advance_to": "AUDIT-EVAL-PERF1",
+    "broad_regression": "PASS",
+    "canonical_comparison_order": "PASS",
+    "exact_same_n_records": "PASS",
+    "scientific_policy_unchanged": "PASS",
+    "throughput_improved": "PASS",
+    "worker_count_invariance": "PASS"
+  },
+  "architecture_revision": 99,
+  "authority_change": {
+    "gpu": false,
+    "runtime_optimization": true,
+    "scientific": false
+  },
+  "content_digest": "9b164d272ddf4046bd05d925c2fab27b84a6dbaa3384d7c85f7079f244ebb852",
+  "date": "2026-08-17",
+  "documentation": {
+    "architecture_revision_note": {
+      "path": "docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV99.md",
+      "sha256": "b167b20ce6f3ba33a7cb954b95e97a0dea457d057aa95342605e1ed6ff8bdcb2"
+    },
+    "canonical_markdown": {
+      "path": "docs/arch_manuals/mlff_training_data_architecture.md",
+      "sha256": "2c4d7dafcca71621f0bb5783232b65b66fbe341167666ef15d947e4c14afdb29"
+    },
+    "canonical_pdf": {
+      "comparison_note": "Revision-98 and revision-99 49-page PDFs were compared at 50 dpi; 12 pages changed as expected. All 49 final pages rendered at 100 dpi; front matter and the changed performance/status/reference region were visually inspected with no clipping or overlap.",
+      "full_render": "PASS",
+      "pages": 49,
+      "path": "docs/arch_manuals/mlff_training_data_architecture.pdf",
+      "preflight": "PASS",
+      "sha256": "b78a8d65ce170d479dd26257ec1c53c5e1b31cb42c3993d82c73f927551a2343",
+      "visual_qa": "PASS"
+    },
+    "dependency_graph": {
+      "path": "docs/arch_manuals/mlff_training_data_dependency_graph.json",
+      "sha256": "bf3e08fcc98cf4cb218a090a4fcb29045a819d00e4eaaddce5bfdcc8e9a4dae1"
+    },
+    "release_note": {
+      "path": "docs/history/mlff/release_notes/PATCH_NOTES_0.20.232a0.md",
+      "sha256": "049e737a3369152c649af7743372d7ccb6bd5e71ff977b4ec074e52bde5a102c"
+    },
+    "spec": {
+      "path": "docs/specs/training_data/mlff_mvqual_par1_global_scoring_queue_spec.md",
+      "sha256": "2ed6a83f3517bde777a6c28db6a7bd750fd166fdf678a85f6e6e7a037374bd31"
+    }
+  },
+  "foundation": {
+    "active_qualification_family": "mace-mpa-0",
+    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
+    "mh1_supported_by_same_contract": true,
+    "note": "MVQUAL-PAR1 is model-family independent. MACE-MPA-0 medium is the active qualification checkpoint; MACE-MH-1 remains supported by the same target-data qualification execution contract.",
+    "variant": "medium"
+  },
+  "gate": "MVQUAL_PAR1_GLOBAL_SAME_N_SCORING_QUEUE",
+  "implementation": {
+    "automatic_worker_ceiling": 4,
+    "campaign_blas_threads": 1,
+    "canonical_reduction": "historical_domain_size_order",
+    "deterministic_work_queue": true,
+    "direct_api_native_environment_preserved_without_explicit_scope": true,
+    "explicit_higher_override_allowed": true,
+    "global_job_granularity": "domain_selector_target_size_score",
+    "implementation_manifest": {
+      "path": "benchmarks/mlff_mvqual_par1_implementation_manifest_0.20.232a0.json",
+      "sha256": "031fca3a242c96540c7a3410843e9e7bd568c3a286e9ee4c6b82db20f4ce52aa"
+    },
+    "native_tree_workers_per_parallel_job": 1,
+    "per_task_ram_admission": true
+  },
+  "inputs": {
+    "dependency_archive": {
+      "path": "/mnt/data/dependencies.tar(20260817-112644).gz",
+      "sha256": "888d545a512396697c8583d69bc9ed33110914675f466a4cbcafc3e1e1407171"
+    },
+    "replay_source": {
+      "path": "/mnt/data/replay_fps_12000.extxyz",
+      "sha256": "187eed42fb2d6cf5e7e745ffed0ce34541e92c6a35ec9e654520cd3c7198403c"
+    },
+    "target_archive": {
+      "path": "/mnt/data/training_LTA.tar(4).gz",
+      "sha256": "bc1b7e25ba338507ae38b260bcd283356de887b6c6cf762a2c146733f1c3c958"
+    }
+  },
+  "next_gate": "AUDIT-EVAL-PERF1",
+  "performance_evidence": {
+    "current_scaling": {
+      "1_lane": {
+        "max_busy_workers": 1,
+        "trials_seconds": [
+          0.8640885149998212,
+          0.8361911660012993,
+          0.820107437999468,
+          0.8405604620002123,
+          0.8072046949982905
+        ],
+        "warm_median_seconds": 0.8281493020003836
+      },
+      "2_lanes": {
+        "max_busy_workers": 2,
+        "trials_seconds": [
+          0.4617476009989332,
+          0.4536317540005257,
+          0.4451332619992172,
+          0.4530999830003566,
+          0.449643472000389
+        ],
+        "warm_median_seconds": 0.4513717275003728
+      },
+      "4_lanes": {
+        "max_busy_workers": 4,
+        "trials_seconds": [
+          0.4521447179995448,
+          0.4576090300015494,
+          0.45909247399868036,
+          0.4329530400009389,
+          0.503536685000654
+        ],
+        "warm_median_seconds": 0.4583507520001149
+      },
+      "automatic_worker_ceiling": 4,
+      "explicit_higher_override_allowed": true,
+      "interpretation": "Most scaling is realized by two lanes on this cloud CPU; four lanes are retained as the conservative automatic ceiling because score jobs are memory-bandwidth/allocation heavy.",
+      "one_to_four_speedup": 1.806802537983348,
+      "one_to_two_speedup": 1.8347389779739796
+    },
+    "interpretation": "Timing is same-host execution evidence. Complete qualification-plan equality, independent TARGET-DATA2B rescoring, MVIDX covered-mass cross-checks, hard-obligation decisions, and canonical comparison order remain scientific authority.",
+    "paired_four_lane": {
+      "control_driver": "serial same-N driver; cKDTree query_workers=4; BLAS/OpenMP=1",
+      "control_release": "0.20.231a0",
+      "control_trials_seconds": [
+        0.8545966790006787,
+        0.7728988580001896,
+        0.8364606480008661,
+        0.8959100770007353,
+        0.9465855070011457
+      ],
+      "control_warm_median_seconds": 0.8661853625008007,
+      "current_driver": "global same-N queue; 4 outer lanes; cKDTree query_workers=1/job; BLAS/OpenMP=1",
+      "current_release": "0.20.232a0",
+      "current_trials_seconds": [
+        0.4847390649993031,
+        0.4168904760008445,
+        0.4007583420006995,
+        0.4020226169996022,
+        0.41608737299975473
+      ],
+      "current_warm_median_seconds": 0.40905499499967846,
+      "speedup": 2.117527894999746
+    },
+    "primary_record": {
+      "path": "benchmarks/mlff_mvqual_par1_cloud_cpu_mpa0_2026-08-17.json",
+      "sha256": "b329b9861b8d182eb28347155c5352d5fbdc80a6c6ed87fe6af99f570ed2838d"
+    },
+    "queue_probe": {
+      "jobs_finished": 12,
+      "jobs_submitted": 12,
+      "max_busy_workers": 4,
+      "memory_backpressure_events": 0,
+      "queue_backpressure_events": 0
+    },
+    "report": {
+      "path": "benchmarks/mlff_mvqual_par1_cloud_cpu_mpa0_2026-08-17.md",
+      "sha256": "5215cb710f035ca2174534c18bf24f15a17357b9e4ddc6766d90926c1984f058"
+    }
+  },
+  "release": "0.20.232a0",
+  "schema": "mdstats.mlff-mvqual-par1-qualification.v1",
+  "scientific_oracles": {
+    "blas_authority_note": "Production campaign MVQUAL already ran under BLAS/OpenMP=1 before this gate. The optimized campaign preserves that authority; unscoped direct API calls preserve their prior native-thread environment.",
+    "comparison_progress_order_unchanged": true,
+    "control_current_plan_exact": true,
+    "hard_obligation_authority_unchanged": true,
+    "mvidx_covered_mass_crosscheck_unchanged": true,
+    "one_two_four_worker_plan_exact": true,
+    "qualification_plan_digest": "2ebd7f5dc2b560e3150fe4849e7098be2eff56469779f15b2befda74059fc90b",
+    "worker_count_execution_only": true
+  },
+  "status": "PASS",
+  "tests": {
+    "archival_spec_boundary": {
+      "excluded_from_current_release_pass_fail": [
+        "tests/test_mlff_target_data2c_mvidx1_specification.py"
+      ],
+      "reason": "Historical release-pinned MVIDX specification remains archival; current functional/scientific MVIDX authority is included in the 111-test regression."
+    },
+    "compileall": {
+      "paths": [
+        "mdstats",
+        "benchmarks",
+        "tools"
+      ],
+      "status": "PASS"
+    },
+    "current_gate_and_dependencies": {
+      "failed": 0,
+      "passed": 84,
+      "warnings": 3
+    },
+    "packaging_metadata": {
+      "pip_wheel_no_deps_no_build_isolation": "PASS",
+      "pyproject_version": "0.20.232a0",
+      "root_pkg_info_version": "0.20.232a0",
+      "wheel_metadata_name": "mdstats",
+      "wheel_metadata_version": "0.20.232a0"
+    },
+    "target_data2_functional_authority": {
+      "failed": 0,
+      "passed": 111,
+      "warning_class": "expected velocity-reconstruction/normalization warnings unchanged from prior authority",
+      "warnings": 18
+    }
+  }
+}

@@ -1,0 +1,1962 @@
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-0.20.143a0-complete-source-package/CHANGELOG.md ./CHANGELOG.md
+--- /mnt/data/mdstats-0.20.143a0-complete-source-package/CHANGELOG.md	2026-08-10 23:16:01.351424624 +0000
++++ ./CHANGELOG.md	2026-08-10 23:39:38.348976997 +0000
+@@ -1,3 +1,10 @@
++## 0.20.144a0 - 2026-08-10
++
++- Implement PAR-DENS5 as an optional FP64 CUDA density execution backend with runtime-only PyTorch discovery, no new hard GPU dependency, automatic complete CPU fallback, and execution metadata separated from scientific density identity.
++- Enforce the GPU resource contract: usable device memory is 80% of currently free VRAM, host staging remains under the PAR-DENS2 host budget, and at most one major scheduled density field owns a GPU at once while batching its tiles internally.
++- Add transfer/setup-aware GPU admission plus FP64 CUDA paths for dense CIC deposition, periodic/spectral Gaussian FFT operations, binary support-mask FFT dilation, and hybrid sparse/tiled FFT convolution; direct grouped sparse accumulation remains on the qualified CPU path.
++- Requalify the supplied 300 K Na-LTA trajectory on 101 stride-100 frames: GPU-off and auto-on-a-no-CUDA-host executions are bit-identical for Na/Si/O packed fields, integrals, content identities, and HDR thresholds; real-CUDA FP64 equivalence tests are included and conditionally skipped on this packaging host. PAR-DENS6 is now the next density gate.
++
+ ## 0.20.143a0 - 2026-08-10
+ 
+ - Implement PAR-DENS4 parallel trajectory preprocessing: framework graph reconstruction/lifting and periodic atomic-mean calculations run through bounded scheduler leases with deterministic frame/item-order validation and collation.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-0.20.143a0-complete-source-package/PATCH_NOTES_0.20.144a0.md ./PATCH_NOTES_0.20.144a0.md
+--- /mnt/data/mdstats-0.20.143a0-complete-source-package/PATCH_NOTES_0.20.144a0.md	1970-01-01 00:00:00.000000000 +0000
++++ ./PATCH_NOTES_0.20.144a0.md	2026-08-10 23:39:37.844606535 +0000
+@@ -0,0 +1,40 @@
++# mdstats 0.20.144a0 — PAR-DENS5 optional GPU density backend
++
++**Date:** 2026-08-10  
++**Gate:** PAR-DENS5  
++**Base:** mdstats 0.20.143a0
++
++## Summary
++
++This release implements the optional GPU execution gate for atomic/framework density preparation while preserving the PAR-DENS0--PAR-DENS4 CPU path as the scientific reference. GPU execution is an execution backend only: grid resolution, CIC semantics, Gaussian/operator identity, sparse support, HDR definition, field identities, and scientific planning authority do not depend on whether a kernel executes on CPU or CUDA.
++
++## GPU resource policy
++
++- CUDA discovery is runtime-optional through an already-available PyTorch installation; mdstats gains no hard Torch/CuPy dependency.
++- Automatic GPU admission uses **80% of currently free VRAM**, not 80% of total board memory.
++- Host staging remains bounded by the active PAR-DENS2 host-memory authority.
++- Only one major scheduled density field may own a CUDA device at once; that field may batch many FFT/support tiles internally.
++- Automatic selection prices setup and host/device transfer in addition to predicted compute time. A visible GPU is not sufficient for admission.
++- `MDSTATS_DENSITY_GPU=auto` is the default; `off` forces the CPU reference; `force` requests CUDA but cannot override VRAM/host-memory limits.
++- CUDA disappearance, allocation/kernel failure, insufficient VRAM, a busy major-job GPU, or an unfavorable cost estimate all fall back to CPU rather than making an otherwise valid density calculation fail.
++
++## Accelerated kernels
++
++The initial FP64 CUDA backend covers:
++
++- dense CIC deposition using sorted destination indices and FP64 segmented reduction;
++- canonical/dense periodic Gaussian convolution and legacy spectral filtering;
++- exact binary support-mask FFT dilation with the existing integer-roundoff certificate;
++- sufficiently large hybrid sparse/tiled FFT convolutions.
++
++Grouped target-owned direct sparse accumulation remains on the qualified CPU path in PAR-DENS5. Its packed irregular traffic and frequent host/device exchange are not promoted to CUDA without measured benefit and a deterministic reduction design.
++
++## Precision and provenance
++
++All CUDA inputs, transforms, reductions, and returned fields use FP64. FP32/mixed density accumulation is not authorized. GPU decision/report metadata records device identity, free/usable VRAM snapshot, predicted CPU/GPU cost, transfer bytes, required VRAM, selection/fallback reasons, and bounded decision exemplars. These execution details are not part of scientific field/content identity.
++
++## Qualification
++
++The supplied 300 K Na-LTA MLFF trajectory remains bound by SHA-256 `81c86cc40f5a11031f80817213eb558c02348494d1c6cad9b4775a5bc3c9f9cd` (10,001 frames, 168 atoms). A bounded stride-100 101-frame Na/Si/O, 64^3 local-sparse workload was run with GPU explicitly disabled and with automatic GPU selection. The packaging host exposes no CUDA runtime, so `auto` correctly records `cuda_unavailable` and uses the CPU path. The two runs are bit-identical for packed density values (`max |Δρ| = 0`), integrated populations, field content identities, and 50/80/95% HDR thresholds.
++
++Real-CUDA FP64 equivalence tests for circular FFT convolution and CIC deposition are included and run automatically on CUDA-capable test hosts; they are skipped on the packaging host because CUDA is unavailable. No GPU speedup is claimed from this host. PAR-DENS6 remains responsible for 100/1,000/10,000+ frame CPU/GPU performance qualification and production auto-tuning.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-0.20.143a0-complete-source-package/README.md ./README.md
+--- /mnt/data/mdstats-0.20.143a0-complete-source-package/README.md	2026-08-10 11:52:20.000000000 +0000
++++ ./README.md	2026-08-10 23:39:37.727846435 +0000
+@@ -1099,6 +1099,8 @@
+ 
+ The default atomic-density backend is selected automatically. Production local-sparse admission uses the exact mixed direct/FFT execution plan: nominal source-stencil contributions remain diagnostic, while actual direct pairs, FFT work, memory, and calibrated wall time control feasibility.
+ 
++As of `0.20.144a0`, PAR-DENS5 adds an optional FP64 CUDA execution backend for selected density kernels. GPU use is subordinate to the same scientific operators: `MDSTATS_DENSITY_GPU=auto` (default) selects CUDA only when device/VRAM availability and a transfer-aware cost estimate justify it, `off` forces the qualified CPU reference path, and `force` requests CUDA subject to the hard VRAM/host-memory safeguards. CUDA is optional; no GPU package is a hard mdstats dependency, at most one major density field owns a GPU at a time, usable VRAM is capped at 80% of the currently free device memory, and any unavailable/failed GPU path falls back to FP64 CPU execution.
++
+ 
+ Normative documents:
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-0.20.143a0-complete-source-package/docs/arch_manuals/mdstats_dynamical_framework_density_architecture_standard.md ./docs/arch_manuals/mdstats_dynamical_framework_density_architecture_standard.md
+--- /mnt/data/mdstats-0.20.143a0-complete-source-package/docs/arch_manuals/mdstats_dynamical_framework_density_architecture_standard.md	2026-08-10 23:16:18.155483414 +0000
++++ ./docs/arch_manuals/mdstats_dynamical_framework_density_architecture_standard.md	2026-08-10 23:45:04.227855817 +0000
+@@ -2,7 +2,7 @@
+ title: "mdstats Dynamical Framework and Density Plotting Architecture Standard"
+ subtitle: "Normative architecture for registered periodic density fields, basin-resolved adaptive widths, resource-aware parallel execution, and hard-budget browser visualization"
+ author: "mdstats architecture manual"
+-date: "2026-08-08"
++date: "2026-08-10"
+ geometry: margin=0.76in
+ fontsize: 10pt
+ toc: true
+@@ -42,7 +42,7 @@
+ - the implemented LD11 canonical-operator and automatic-backend default policy;
+ - the implemented LD17 separation of raw density-mesh work, scene visual targets,
+   and standalone terminal limits;
+-- the planned PAR-DENS0--PAR-DENS6 long-trajectory density refinement sequence, beginning with basin-aware vibrational spread estimation and continuing through CPU/GPU resource-aware parallel execution;
++- the PAR-DENS0--PAR-DENS5 long-trajectory density refinement sequence now implemented through optional FP64 GPU execution, with PAR-DENS6 retained as the final end-to-end qualification and auto-tuning gate;
+ - validation, migration, resource, and failure policies.
+ 
+ The former standalone local-sparse roadmap is superseded. Future planning changes
+@@ -4589,8 +4589,8 @@
+ **Status:** PAR-DENS0 is `completed` in `mdstats 0.20.120a0`; PAR-DENS1 and
+ PAR-DENS2 are `completed` in `mdstats 0.20.141a0`; PAR-DENS3 is `completed` in
+ `mdstats 0.20.142a0`; PAR-DENS4 is `completed` in `mdstats 0.20.143a0`; PAR-DENS5
+-is the next implementation gate. The remaining
+-gates stay ordered and inactive until their predecessors qualify.
++is `completed` in `mdstats 0.20.144a0`; PAR-DENS6 is the next implementation gate.
++The remaining gate stays inactive until its predecessor qualifies.
+ 
+ The trigger for this plan is the long-trajectory LTA density workflow. The current
+ plotting stack already owns a scheduler/cgroup-aware runtime budget through LD10 and
+@@ -5101,7 +5101,8 @@
+ 
+ ## PAR-DENS5 - optional GPU density backend
+ 
+-**Status:** `next`; PAR-DENS0--PAR-DENS4 now establish the qualified CPU baseline.
++**Status:** `completed` in `mdstats 0.20.144a0`; PAR-DENS0--PAR-DENS4 establish the
++qualified CPU reference path.
+ 
+ GPU work is an acceleration backend, not a scientific mode. Candidate kernels are CIC
+ deposition, finite-support Gaussian accumulation, support-mask dilation, grouped sparse
+@@ -5113,20 +5114,84 @@
+ M_{\rm GPU,max}=0.80M_{\rm GPU,available}.
+ $$
+ 
+-The first implementation should permit at most one major density job per GPU and batch
+-its tiles internally rather than launch competing species jobs that cause VRAM churn.
++The first implementation permits at most one major density job per GPU and batches its
++tiles internally rather than launching competing species jobs that cause VRAM churn.
+ Host staging buffers remain subject to the 80% host-memory budget.
+ 
+ FP64 scientific accumulation remains the reference contract. FP32 or mixed-precision
+ density accumulation is not authorized by this gate and would require separate
+-numerical-error qualification. CPU fallback must remain automatic and complete.
++numerical-error qualification. CPU fallback remains automatic and complete.
+ 
+-Automatic GPU selection must include host-device transfer and setup cost; a kernel is
+-not selected merely because a GPU exists.
++Automatic GPU selection includes host-device transfer and setup cost; a kernel is not
++selected merely because a GPU exists.
++
++### PAR-DENS5 implementation record (0.20.144a0)
++
++The optional accelerator is implemented in `mdstats.plotting.density_gpu`. CUDA is
++runtime-discovered through PyTorch only when PyTorch is already present in the user
++environment; mdstats does not add Torch or CuPy as a hard plotting dependency. The
++execution policy defaults to `MDSTATS_DENSITY_GPU=auto`, accepts `off` and `force` for
++reference/diagnostic runs, and always enforces the memory contract even under `force`.
++Device admission snapshots currently free VRAM and exposes only `floor(0.80 * free)`
++bytes to density work. Host transfer/staging bytes are checked against the active
++PAR-DENS2 memory lease before GPU admission.
++
++One process-global lock per CUDA device implements the first-gate one-major-job policy.
++A scheduled density field acquires the device lazily only after one of its kernels
++passes cost and memory admission, retains that ownership across its internal tiles,
++and releases/synchronizes at field completion. Concurrent species/framework fields
++that cannot obtain the device continue on CPU instead of waiting and creating GPU
++memory churn. Low-level standalone calls use the same lock at kernel scope.
++
++The automatic selector estimates GPU wall time as setup plus host/device transfer plus
++a calibrated/conservative fraction of the qualified CPU estimate. Work below the GPU
++amortization floor, transfer-bound work, insufficient-VRAM work, unavailable CUDA,
++and a busy field-owned GPU are rejected before allocation. A runtime CUDA failure also
++returns to the original CPU kernel. GPU decisions are recorded in a bounded journal
++with complete aggregate reason/kernel counts, device/free/usable-memory evidence, data
++transfer, required VRAM, and predicted CPU/GPU wall times.
++
++The initial CUDA realization remains FP64 throughout and covers the operations whose
++memory traffic can reasonably amortize device setup without changing scientific
++semantics:
++
++- dense CIC deposition uses FP64 source weights, sorted flattened destination nodes,
++  stable/ordered grouping where available, FP64 cumulative segmented reduction, and
++  unique-node assignment rather than an uncontrolled final-grid atomic scatter;
++- canonical periodic and legacy spectral Gaussian smoothing use FP64 CUDA FFTs while
++  preserving the existing discrete/spectral operator definitions;
++- binary support dilation may use FP64 CUDA linear FFT convolution and still passes the
++  existing integer-roundoff certificate before thresholding to exact support;
++- hybrid sparse/tiled FFT realization may execute sufficiently expensive FP64 tile
++  convolutions on CUDA under the field-owned device lease.
++
++Target-owned grouped direct sparse accumulation deliberately remains on CPU in this
++gate. Its irregular packed traffic would otherwise require frequent host/device
++movement or a new scatter/reduction authority. PAR-DENS5 does not claim acceleration
++where the transfer and deterministic-reduction design has not been qualified.
++
++GPU execution is excluded from field content identity and density-scene scientific
++approval. It is execution evidence only. This preserves the PAR-DENS2/PAR-DENS3 rule
++that worker/backend choice cannot change cache or scientific provenance. Kernel
++metadata may state `torch_cuda_fp64` versus `scipy_fft_cpu`, but operator identity,
++grid, support, integral, HDR definition, and density-content identities are unchanged.
++
++The supplied 10,001-frame 300 K Na-LTA trajectory was requalified on the same bounded
++stride-100, 101-frame, 64^3 local-sparse Na/Si/O density workload. The packaging host
++has no CUDA runtime, so `auto` correctly reports `cuda_unavailable` and exercises the
++complete CPU fallback. Explicit `off` and automatic execution produce `max |Delta
++rho| = 0` for every packed field, identical integrated populations, identical field
++content identities, and identical 50/80/95% HDR thresholds. Conditional real-CUDA
++unit tests compare the FP64 circular-FFT and CIC implementations with their qualified
++CPU references and run automatically on CUDA-capable hosts; they are skipped on this
++packaging host. Consequently no GPU performance factor is claimed here. PAR-DENS6
++owns hardware-scale CPU/GPU throughput, VRAM-peak, and auto-tuning qualification.
++
++PAR-DENS5 is therefore closed. PAR-DENS6 is the next and final PAR-DENS gate.
+ 
+ ## PAR-DENS6 - end-to-end qualification and auto-tuning
+ 
+-**Status:** `not_started`; final gate.
++**Status:** `next`; final gate.
+ 
+ PAR-DENS6 turns the previous gates into a production policy rather than a collection of
+ local optimizations.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-0.20.143a0-complete-source-package/mdstats/__init__.py ./mdstats/__init__.py
+--- /mnt/data/mdstats-0.20.143a0-complete-source-package/mdstats/__init__.py	2026-08-10 23:04:15.736077281 +0000
++++ ./mdstats/__init__.py	2026-08-10 23:39:13.250796227 +0000
+@@ -742,6 +742,15 @@
+     DENSITY_MESH_EXECUTION_REPORT_SCHEMA,
+     DensityMeshExecutionOptions,
+     DensityMeshExecutionReport,
++    DENSITY_GPU_DEVICE_SCHEMA,
++    DENSITY_GPU_POLICY_SCHEMA,
++    DENSITY_GPU_DECISION_SCHEMA,
++    DENSITY_GPU_REPORT_SCHEMA,
++    DensityGPUDevice,
++    DensityGPUExecutionPolicy,
++    DensityGPUDecision,
++    discover_density_gpu,
++    decide_gpu_execution,
+     DENSITY_SCHEDULER_POLICY_SCHEMA,
+     DENSITY_SCHEDULER_REPORT_SCHEMA,
+     DENSITY_TASK_REPORT_SCHEMA,
+@@ -1572,6 +1581,15 @@
+     "DENSITY_MESH_EXECUTION_REPORT_SCHEMA",
+     "DensityMeshExecutionOptions",
+     "DensityMeshExecutionReport",
++    "DENSITY_GPU_DEVICE_SCHEMA",
++    "DENSITY_GPU_POLICY_SCHEMA",
++    "DENSITY_GPU_DECISION_SCHEMA",
++    "DENSITY_GPU_REPORT_SCHEMA",
++    "DensityGPUDevice",
++    "DensityGPUExecutionPolicy",
++    "DensityGPUDecision",
++    "discover_density_gpu",
++    "decide_gpu_execution",
+     "DENSITY_SCHEDULER_POLICY_SCHEMA",
+     "DENSITY_SCHEDULER_REPORT_SCHEMA",
+     "DENSITY_TASK_REPORT_SCHEMA",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-0.20.143a0-complete-source-package/mdstats/_version.py ./mdstats/_version.py
+--- /mnt/data/mdstats-0.20.143a0-complete-source-package/mdstats/_version.py	2026-08-10 23:16:01.350255313 +0000
++++ ./mdstats/_version.py	2026-08-10 23:23:59.415950307 +0000
+@@ -1,3 +1,3 @@
+ """Package version."""
+ 
+-__version__ = "0.20.143a0"
++__version__ = "0.20.144a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-0.20.143a0-complete-source-package/mdstats/plotting/__init__.py ./mdstats/plotting/__init__.py
+--- /mnt/data/mdstats-0.20.143a0-complete-source-package/mdstats/plotting/__init__.py	2026-08-10 18:48:54.000000000 +0000
++++ ./mdstats/plotting/__init__.py	2026-08-10 23:31:11.923122384 +0000
+@@ -315,6 +315,17 @@
+     TiledMeshTileReport,
+     extract_tiled_density_mesh,
+ )
++from .density_gpu import (
++    DENSITY_GPU_DEVICE_SCHEMA,
++    DENSITY_GPU_POLICY_SCHEMA,
++    DENSITY_GPU_DECISION_SCHEMA,
++    DENSITY_GPU_REPORT_SCHEMA,
++    DensityGPUDevice,
++    DensityGPUExecutionPolicy,
++    DensityGPUDecision,
++    discover_density_gpu,
++    decide_gpu_execution,
++)
+ from .density_scheduler import (
+     DENSITY_SCHEDULER_POLICY_SCHEMA,
+     DENSITY_SCHEDULER_REPORT_SCHEMA,
+@@ -967,6 +978,15 @@
+     "scatter_periodic_stencil_sparse_optimized",
+     "plan_group_batched_sparse_targets_optimized",
+     "plan_sparse_target_nodes_optimized",
++    "DENSITY_GPU_DEVICE_SCHEMA",
++    "DENSITY_GPU_POLICY_SCHEMA",
++    "DENSITY_GPU_DECISION_SCHEMA",
++    "DENSITY_GPU_REPORT_SCHEMA",
++    "DensityGPUDevice",
++    "DensityGPUExecutionPolicy",
++    "DensityGPUDecision",
++    "discover_density_gpu",
++    "decide_gpu_execution",
+     "DENSITY_SCHEDULER_POLICY_SCHEMA",
+     "DENSITY_SCHEDULER_REPORT_SCHEMA",
+     "DENSITY_TASK_REPORT_SCHEMA",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-0.20.143a0-complete-source-package/mdstats/plotting/atomic_density.py ./mdstats/plotting/atomic_density.py
+--- /mnt/data/mdstats-0.20.143a0-complete-source-package/mdstats/plotting/atomic_density.py	2026-08-10 19:17:31.000000000 +0000
++++ ./mdstats/plotting/atomic_density.py	2026-08-10 23:30:50.508212234 +0000
+@@ -61,6 +61,7 @@
+     preferred_auto_backend,
+ )
+ from .density_kernel import smooth_periodic_node_masses
++from .density_gpu import try_gpu_cic_deposition
+ from .density_sparse_optimization import (
+     aggregate_periodic_cic_sparse_optimized,
+     get_periodic_gaussian_stencil_support,
+@@ -1504,6 +1505,16 @@
+ 
+ 
+ def _deposit_cic(fractional: FloatArray, sample_weights: FloatArray, shape: tuple[int, int, int]) -> FloatArray:
++    _budget, time_model, _derived = resolve_density_resource_limits()
++    cpu_estimate = (
++        8.0 * float(np.asarray(fractional).shape[0])
++        / max(1.0, float(time_model.direct_reduction_pairs_per_second))
++    )
++    gpu_grid = try_gpu_cic_deposition(
++        fractional, sample_weights, shape, cpu_estimate_seconds=cpu_estimate
++    )
++    if gpu_grid is not None:
++        return gpu_grid
+     grid = np.zeros(shape, dtype=np.float64)
+     scale = np.asarray(shape, dtype=np.float64)
+     scaled = fractional * scale
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-0.20.143a0-complete-source-package/mdstats/plotting/density_gpu.py ./mdstats/plotting/density_gpu.py
+--- /mnt/data/mdstats-0.20.143a0-complete-source-package/mdstats/plotting/density_gpu.py	1970-01-01 00:00:00.000000000 +0000
++++ ./mdstats/plotting/density_gpu.py	2026-08-10 23:41:18.923477994 +0000
+@@ -0,0 +1,756 @@
++"""Optional PAR-DENS5 GPU execution for density kernels.
++
++GPU execution is an execution backend only.  All public helpers in this module
++preserve the CPU scientific operator and FP64 accumulation contract.  CUDA is
++optional at runtime: mdstats has no hard torch/CuPy dependency, and every auto
++path falls back to the qualified CPU implementation when CUDA is unavailable,
++insufficiently provisioned, busy, or not predicted to amortize transfer/setup
++cost.
++
++The first PAR-DENS5 backend uses PyTorch CUDA when it is already available in
++the environment.  At most one major density kernel owns a CUDA device at a time
++inside a process.  Device admission is based on 80% of currently free VRAM,
++not total board memory, so co-resident workloads remain protected.
++"""
++
++from __future__ import annotations
++
++import math
++import os
++import threading
++import time
++from contextlib import contextmanager
++from contextvars import ContextVar
++from dataclasses import dataclass, field
++from typing import Any, Callable, Iterator, Literal, Mapping
++
++import numpy as np
++from numpy.typing import NDArray
++
++from .graph_errors import GraphAdapterError, GraphStyleError
++from .runtime_resources import active_density_resource_budget
++
++DENSITY_GPU_DEVICE_SCHEMA = "mdstats.density-gpu-device.v1"
++DENSITY_GPU_POLICY_SCHEMA = "mdstats.density-gpu-policy.v1"
++DENSITY_GPU_DECISION_SCHEMA = "mdstats.density-gpu-decision.v1"
++DENSITY_GPU_REPORT_SCHEMA = "mdstats.density-gpu-report.v1"
++
++_DEFAULT_VRAM_FRACTION = 0.80
++_DEFAULT_TRANSFER_BYTES_PER_SECOND = 12.0 * 1024**3
++_DEFAULT_SETUP_SECONDS = 0.003
++_DEFAULT_ASSUMED_GPU_SPEEDUP = 3.0
++_DEFAULT_MIN_CPU_SECONDS = 0.020
++
++GPUSelectionMode = Literal["auto", "off", "force"]
++
++
++def _fraction(value: Any, *, name: str) -> float:
++    result = float(value)
++    if not np.isfinite(result) or not 0.0 < result <= 1.0:
++        raise GraphStyleError(f"{name} must lie in (0, 1].")
++    return result
++
++
++def _positive_float(value: Any, *, name: str) -> float:
++    result = float(value)
++    if not np.isfinite(result) or result <= 0.0:
++        raise GraphStyleError(f"{name} must be finite and positive.")
++    return result
++
++
++def _nonnegative_float(value: Any, *, name: str) -> float:
++    result = float(value)
++    if not np.isfinite(result) or result < 0.0:
++        raise GraphStyleError(f"{name} must be finite and nonnegative.")
++    return result
++
++
++def _mode(value: Any) -> GPUSelectionMode:
++    text = str(value).strip().lower()
++    if text not in {"auto", "off", "force"}:
++        raise GraphStyleError("GPU density mode must be 'auto', 'off', or 'force'.")
++    return text  # type: ignore[return-value]
++
++
++@dataclass(frozen=True, slots=True)
++class DensityGPUDevice:
++    provider: str
++    device_index: int
++    name: str
++    total_memory_bytes: int
++    free_memory_bytes: int
++    usable_memory_bytes: int
++    memory_fraction: float = _DEFAULT_VRAM_FRACTION
++    compute_capability: str | None = None
++    schema_version: str = DENSITY_GPU_DEVICE_SCHEMA
++
++    def __post_init__(self) -> None:
++        if self.schema_version != DENSITY_GPU_DEVICE_SCHEMA:
++            raise GraphAdapterError(f"Unsupported GPU-device schema {self.schema_version!r}.")
++        if self.device_index < 0:
++            raise GraphStyleError("device_index must be nonnegative.")
++        if not self.provider or not self.name:
++            raise GraphStyleError("GPU provider and name must be nonempty.")
++        total = int(self.total_memory_bytes)
++        free = int(self.free_memory_bytes)
++        usable = int(self.usable_memory_bytes)
++        fraction = _fraction(self.memory_fraction, name="memory_fraction")
++        if total <= 0 or free < 0 or free > total or usable < 0 or usable > free:
++            raise GraphStyleError("Invalid GPU memory snapshot.")
++        if usable > int(math.floor(fraction * free)):
++            raise GraphStyleError("usable_memory_bytes exceeds the declared VRAM fraction.")
++
++    def to_json_dict(self) -> dict[str, Any]:
++        return {
++            "schema_version": self.schema_version,
++            "provider": self.provider,
++            "device_index": self.device_index,
++            "name": self.name,
++            "total_memory_bytes": self.total_memory_bytes,
++            "free_memory_bytes": self.free_memory_bytes,
++            "usable_memory_bytes": self.usable_memory_bytes,
++            "memory_fraction": self.memory_fraction,
++            "compute_capability": self.compute_capability,
++        }
++
++
++@dataclass(frozen=True, slots=True)
++class DensityGPUExecutionPolicy:
++    mode: GPUSelectionMode | str = "auto"
++    memory_fraction: float = _DEFAULT_VRAM_FRACTION
++    transfer_bytes_per_second: float = _DEFAULT_TRANSFER_BYTES_PER_SECOND
++    setup_seconds: float = _DEFAULT_SETUP_SECONDS
++    assumed_gpu_speedup: float = _DEFAULT_ASSUMED_GPU_SPEEDUP
++    min_cpu_seconds: float = _DEFAULT_MIN_CPU_SECONDS
++    schema_version: str = DENSITY_GPU_POLICY_SCHEMA
++
++    def __post_init__(self) -> None:
++        if self.schema_version != DENSITY_GPU_POLICY_SCHEMA:
++            raise GraphAdapterError(f"Unsupported GPU-policy schema {self.schema_version!r}.")
++        object.__setattr__(self, "mode", _mode(self.mode))
++        object.__setattr__(self, "memory_fraction", _fraction(self.memory_fraction, name="memory_fraction"))
++        object.__setattr__(self, "transfer_bytes_per_second", _positive_float(self.transfer_bytes_per_second, name="transfer_bytes_per_second"))
++        object.__setattr__(self, "setup_seconds", _nonnegative_float(self.setup_seconds, name="setup_seconds"))
++        object.__setattr__(self, "assumed_gpu_speedup", _positive_float(self.assumed_gpu_speedup, name="assumed_gpu_speedup"))
++        object.__setattr__(self, "min_cpu_seconds", _nonnegative_float(self.min_cpu_seconds, name="min_cpu_seconds"))
++
++    @classmethod
++    def from_environment(cls, environment: Mapping[str, str] | None = None) -> "DensityGPUExecutionPolicy":
++        env = os.environ if environment is None else environment
++        return cls(mode=env.get("MDSTATS_DENSITY_GPU", "auto"))
++
++    def to_json_dict(self) -> dict[str, Any]:
++        return {
++            "schema_version": self.schema_version,
++            "mode": self.mode,
++            "memory_fraction": self.memory_fraction,
++            "transfer_bytes_per_second": self.transfer_bytes_per_second,
++            "setup_seconds": self.setup_seconds,
++            "assumed_gpu_speedup": self.assumed_gpu_speedup,
++            "min_cpu_seconds": self.min_cpu_seconds,
++        }
++
++
++@dataclass(frozen=True, slots=True)
++class DensityGPUDecision:
++    kernel: str
++    selected: bool
++    reason: str
++    cpu_estimate_seconds: float
++    gpu_estimate_seconds: float | None
++    transfer_bytes: int
++    required_vram_bytes: int
++    device: DensityGPUDevice | None
++    mode: str
++    schema_version: str = DENSITY_GPU_DECISION_SCHEMA
++
++    def to_json_dict(self) -> dict[str, Any]:
++        return {
++            "schema_version": self.schema_version,
++            "kernel": self.kernel,
++            "selected": self.selected,
++            "reason": self.reason,
++            "cpu_estimate_seconds": self.cpu_estimate_seconds,
++            "gpu_estimate_seconds": self.gpu_estimate_seconds,
++            "transfer_bytes": self.transfer_bytes,
++            "required_vram_bytes": self.required_vram_bytes,
++            "device": None if self.device is None else self.device.to_json_dict(),
++            "mode": self.mode,
++        }
++
++
++@dataclass(slots=True)
++class _GPUJournal:
++    decisions: list[DensityGPUDecision] = field(default_factory=list)
++
++
++_GPU_JOURNAL: ContextVar[_GPUJournal | None] = ContextVar("mdstats_density_gpu_journal", default=None)
++_GPU_DEVICE_LOCKS: dict[tuple[str, int], threading.Lock] = {}
++_GPU_DEVICE_LOCKS_GUARD = threading.Lock()
++
++
++@dataclass(slots=True)
++class _DensityGPUMajorJob:
++    task_id: str
++    device_key: tuple[str, int] | None = None
++    device: DensityGPUDevice | None = None
++    lock: threading.Lock | None = None
++    acquired: bool = False
++    denied: bool = False
++
++
++_GPU_MAJOR_JOB: ContextVar[_DensityGPUMajorJob | None] = ContextVar(
++    "mdstats_density_gpu_major_job", default=None
++)
++
++
++@contextmanager
++def density_gpu_major_job_scope(task_id: str) -> Iterator[None]:
++    """Hold one GPU lazily for the lifetime of a scheduled density field.
++
++    The lock is acquired only if a kernel in the field actually passes GPU
++    cost/memory admission.  Once acquired it remains owned until the field
++    returns, so concurrent species/framework jobs cannot alternate tiles on the
++    same device and churn VRAM.
++    """
++
++    job = _DensityGPUMajorJob(task_id=str(task_id))
++    token = _GPU_MAJOR_JOB.set(job)
++    try:
++        yield None
++    finally:
++        if job.acquired and job.lock is not None:
++            # Return allocator-reserved VRAM at field granularity, not between
++            # individual tiles.  This keeps one species job resident while it
++            # works, then avoids starving the next field or an external process.
++            if job.device is not None and job.device.provider == "torch_cuda":
++                torch = _load_torch_cuda()
++                if torch is not None:
++                    try:
++                        torch.cuda.synchronize(job.device.device_index)
++                        torch.cuda.empty_cache()
++                    except Exception:
++                        pass
++            job.lock.release()
++            job.acquired = False
++        _GPU_MAJOR_JOB.reset(token)
++
++
++@contextmanager
++def density_gpu_journal_scope() -> Iterator[_GPUJournal]:
++    journal = _GPUJournal()
++    token = _GPU_JOURNAL.set(journal)
++    try:
++        yield journal
++    finally:
++        _GPU_JOURNAL.reset(token)
++
++
++def density_gpu_report(journal: _GPUJournal | None) -> dict[str, Any]:
++    decisions = [] if journal is None else list(journal.decisions)
++    selected = [item for item in decisions if item.selected]
++    devices = {
++        (item.device.provider, item.device.device_index): item.device
++        for item in decisions
++        if item.device is not None
++    }
++    reason_counts: dict[str, int] = {}
++    kernel_counts: dict[str, int] = {}
++    selected_kernel_counts: dict[str, int] = {}
++    for item in decisions:
++        reason_counts[item.reason] = reason_counts.get(item.reason, 0) + 1
++        kernel_counts[item.kernel] = kernel_counts.get(item.kernel, 0) + 1
++        if item.selected:
++            selected_kernel_counts[item.kernel] = selected_kernel_counts.get(item.kernel, 0) + 1
++    # Per-tile decisions can number in the thousands.  Persist bounded exemplars
++    # plus complete aggregate counts rather than bloating scene provenance.
++    sample = decisions[:32]
++    return {
++        "schema_version": DENSITY_GPU_REPORT_SCHEMA,
++        "attempt_count": len(decisions),
++        "gpu_selected_count": len(selected),
++        "cpu_fallback_count": len(decisions) - len(selected),
++        "reason_counts": reason_counts,
++        "kernel_counts": kernel_counts,
++        "selected_kernel_counts": selected_kernel_counts,
++        "devices": [device.to_json_dict() for device in devices.values()],
++        "decision_samples": [item.to_json_dict() for item in sample],
++        "decision_samples_truncated": len(decisions) > len(sample),
++    }
++
++
++def _record(decision: DensityGPUDecision) -> None:
++    journal = _GPU_JOURNAL.get()
++    if journal is not None:
++        journal.decisions.append(decision)
++
++
++def _replace_last_with_runtime_fallback(
++    decision: DensityGPUDecision, *, reason: str
++) -> None:
++    fallback = DensityGPUDecision(
++        decision.kernel,
++        False,
++        reason,
++        decision.cpu_estimate_seconds,
++        decision.gpu_estimate_seconds,
++        decision.transfer_bytes,
++        decision.required_vram_bytes,
++        decision.device,
++        decision.mode,
++    )
++    journal = _GPU_JOURNAL.get()
++    if journal is not None:
++        for index in range(len(journal.decisions) - 1, -1, -1):
++            if journal.decisions[index] == decision:
++                journal.decisions[index] = fallback
++                break
++    job = _GPU_MAJOR_JOB.get()
++    if job is not None:
++        if job.acquired and job.lock is not None:
++            job.lock.release()
++        job.acquired = False
++        job.lock = None
++        job.device_key = None
++        job.device = None
++        job.denied = True
++
++
++def _load_torch_cuda() -> Any | None:
++    try:
++        import torch  # type: ignore[import-not-found]
++    except Exception:
++        return None
++    try:
++        if not bool(torch.cuda.is_available()) or int(torch.cuda.device_count()) <= 0:
++            return None
++    except Exception:
++        return None
++    return torch
++
++
++def discover_density_gpu(
++    *,
++    policy: DensityGPUExecutionPolicy | None = None,
++    device_index: int = 0,
++) -> DensityGPUDevice | None:
++    resolved = DensityGPUExecutionPolicy.from_environment() if policy is None else policy
++    if resolved.mode == "off":
++        return None
++    torch = _load_torch_cuda()
++    if torch is None:
++        return None
++    try:
++        free, total = torch.cuda.mem_get_info(device_index)
++        props = torch.cuda.get_device_properties(device_index)
++        capability = None
++        major = getattr(props, "major", None)
++        minor = getattr(props, "minor", None)
++        if major is not None and minor is not None:
++            capability = f"{int(major)}.{int(minor)}"
++        usable = int(math.floor(resolved.memory_fraction * int(free)))
++        return DensityGPUDevice(
++            provider="torch_cuda",
++            device_index=int(device_index),
++            name=str(getattr(props, "name", f"cuda:{device_index}")),
++            total_memory_bytes=int(total),
++            free_memory_bytes=int(free),
++            usable_memory_bytes=max(0, usable),
++            memory_fraction=resolved.memory_fraction,
++            compute_capability=capability,
++        )
++    except Exception:
++        return None
++
++
++def decide_gpu_execution(
++    *,
++    kernel: str,
++    cpu_estimate_seconds: float,
++    transfer_bytes: int,
++    required_vram_bytes: int,
++    policy: DensityGPUExecutionPolicy | None = None,
++    device: DensityGPUDevice | None = None,
++) -> DensityGPUDecision:
++    resolved = DensityGPUExecutionPolicy.from_environment() if policy is None else policy
++    cpu = _nonnegative_float(cpu_estimate_seconds, name="cpu_estimate_seconds")
++    transfer = max(0, int(transfer_bytes))
++    required = max(0, int(required_vram_bytes))
++    job = _GPU_MAJOR_JOB.get()
++    active_device = (
++        job.device
++        if device is None and job is not None and job.acquired and job.device is not None
++        else (discover_density_gpu(policy=resolved) if device is None else device)
++    )
++    if resolved.mode == "off":
++        return DensityGPUDecision(kernel, False, "gpu_disabled", cpu, None, transfer, required, active_device, resolved.mode)
++    if active_device is None:
++        return DensityGPUDecision(kernel, False, "cuda_unavailable", cpu, None, transfer, required, None, resolved.mode)
++    host_budget = active_density_resource_budget()
++    if host_budget is not None and transfer > host_budget.max_memory_bytes:
++        return DensityGPUDecision(kernel, False, "host_staging_budget_exceeded", cpu, None, transfer, required, active_device, resolved.mode)
++    if required > active_device.usable_memory_bytes:
++        return DensityGPUDecision(kernel, False, "vram_budget_exceeded", cpu, None, transfer, required, active_device, resolved.mode)
++    gpu = resolved.setup_seconds + transfer / resolved.transfer_bytes_per_second + cpu / resolved.assumed_gpu_speedup
++    if resolved.mode == "force":
++        return DensityGPUDecision(kernel, True, "forced_within_vram_budget", cpu, gpu, transfer, required, active_device, resolved.mode)
++    if cpu < resolved.min_cpu_seconds:
++        return DensityGPUDecision(kernel, False, "cpu_work_below_gpu_amortization_floor", cpu, gpu, transfer, required, active_device, resolved.mode)
++    if gpu >= cpu:
++        return DensityGPUDecision(kernel, False, "transfer_setup_cost_not_amortized", cpu, gpu, transfer, required, active_device, resolved.mode)
++    return DensityGPUDecision(kernel, True, "predicted_gpu_wall_time_lower", cpu, gpu, transfer, required, active_device, resolved.mode)
++
++
++def _device_lock(device: DensityGPUDevice) -> threading.Lock:
++    key = (device.provider, device.device_index)
++    with _GPU_DEVICE_LOCKS_GUARD:
++        return _GPU_DEVICE_LOCKS.setdefault(key, threading.Lock())
++
++
++@contextmanager
++def _admitted_device(decision: DensityGPUDecision) -> Iterator[bool]:
++    if not decision.selected or decision.device is None:
++        _record(decision)
++        yield False
++        return
++    lock = _device_lock(decision.device)
++    job = _GPU_MAJOR_JOB.get()
++    if job is not None:
++        key = (decision.device.provider, decision.device.device_index)
++        if job.denied:
++            fallback = DensityGPUDecision(
++                decision.kernel, False, "gpu_busy_single_major_job_policy",
++                decision.cpu_estimate_seconds, decision.gpu_estimate_seconds,
++                decision.transfer_bytes, decision.required_vram_bytes,
++                decision.device, decision.mode,
++            )
++            _record(fallback)
++            yield False
++            return
++        if job.acquired:
++            if job.device_key != key:
++                fallback = DensityGPUDecision(
++                    decision.kernel, False, "major_job_bound_to_other_gpu",
++                    decision.cpu_estimate_seconds, decision.gpu_estimate_seconds,
++                    decision.transfer_bytes, decision.required_vram_bytes,
++                    decision.device, decision.mode,
++                )
++                _record(fallback)
++                yield False
++                return
++            _record(decision)
++            yield True
++            return
++        acquired = lock.acquire(blocking=False)
++        if not acquired:
++            job.denied = True
++            fallback = DensityGPUDecision(
++                decision.kernel, False, "gpu_busy_single_major_job_policy",
++                decision.cpu_estimate_seconds, decision.gpu_estimate_seconds,
++                decision.transfer_bytes, decision.required_vram_bytes,
++                decision.device, decision.mode,
++            )
++            _record(fallback)
++            yield False
++            return
++        job.device_key = key
++        job.device = decision.device
++        job.lock = lock
++        job.acquired = True
++        _record(decision)
++        yield True
++        return
++
++    # Standalone low-level calls acquire only for this kernel.  Scheduled scene
++    # fields use density_gpu_major_job_scope and therefore hold across all tiles.
++    acquired = lock.acquire(blocking=False)
++    if not acquired:
++        fallback = DensityGPUDecision(
++            decision.kernel, False, "gpu_busy_single_major_job_policy",
++            decision.cpu_estimate_seconds, decision.gpu_estimate_seconds,
++            decision.transfer_bytes, decision.required_vram_bytes,
++            decision.device, decision.mode,
++        )
++        _record(fallback)
++        yield False
++        return
++    _record(decision)
++    try:
++        yield True
++    finally:
++        lock.release()
++
++
++def _torch_cuda_tensor(torch: Any, array: NDArray[Any], device_index: int) -> Any:
++    return torch.as_tensor(np.asarray(array), dtype=torch.float64, device=f"cuda:{device_index}")
++
++
++def try_gpu_cic_deposition(
++    fractional: NDArray[np.float64],
++    sample_weights: NDArray[np.float64],
++    shape: tuple[int, int, int],
++    *,
++    cpu_estimate_seconds: float,
++    policy: DensityGPUExecutionPolicy | None = None,
++) -> NDArray[np.float64] | None:
++    """Return deterministic-order FP64 CUDA CIC deposition, or ``None``.
++
++    Contributions are sorted by flattened target node and reduced by cumulative
++    segment sums before a unique-index assignment.  This avoids concurrent
++    writes to the final grid and keeps the FP64 numerical contract explicit.
++    """
++
++    frac = np.asarray(fractional, dtype=np.float64, order="C")
++    weights = np.asarray(sample_weights, dtype=np.float64, order="C")
++    if frac.ndim != 2 or frac.shape[1:] != (3,) or weights.shape != (frac.shape[0],):
++        raise GraphAdapterError("GPU CIC requires fractional shape (n, 3) and aligned weights.")
++    if any(int(v) <= 0 for v in shape):
++        raise GraphAdapterError("GPU CIC shape entries must be positive.")
++    n = int(frac.shape[0])
++    nodes = int(np.prod(shape, dtype=object))
++    # Conservative live arrays: input + base/delta + 8 target indices +
++    # contributions + sorted copies + prefix/segment workspace + output.
++    # Sorting/grouping keeps several O(8N) int64/float64 arrays live at once
++    # (targets, contributions, permutation, sorted copies, unique/count/prefix
++    # workspaces).  Keep admission intentionally conservative so the 80%-of-free
++    # VRAM contract remains a protection limit rather than an optimistic estimate.
++    required = int(frac.nbytes + weights.nbytes + n * 768 + nodes * 8)
++    transfer = int(frac.nbytes + weights.nbytes + nodes * 8)
++    decision = decide_gpu_execution(
++        kernel="cic_deposition",
++        cpu_estimate_seconds=cpu_estimate_seconds,
++        transfer_bytes=transfer,
++        required_vram_bytes=required,
++        policy=policy,
++    )
++    with _admitted_device(decision) as admitted:
++        if not admitted:
++            return None
++        torch = _load_torch_cuda()
++        if torch is None or decision.device is None:
++            _replace_last_with_runtime_fallback(decision, reason="cuda_disappeared_cpu_fallback")
++            return None
++        try:
++            with torch.cuda.device(decision.device.device_index):
++                f = _torch_cuda_tensor(torch, frac, decision.device.device_index)
++                w = _torch_cuda_tensor(torch, weights, decision.device.device_index)
++                scale = torch.tensor(shape, dtype=torch.float64, device=f.device)
++                scaled = f * scale
++                base = torch.floor(scaled).to(dtype=torch.int64)
++                delta = scaled - base.to(dtype=torch.float64)
++                flat_parts = []
++                contribution_parts = []
++                sy, sz = int(shape[1]), int(shape[2])
++                for ox in (0, 1):
++                    wx = (1.0 - delta[:, 0]) if ox == 0 else delta[:, 0]
++                    ix = torch.remainder(base[:, 0] + ox, int(shape[0]))
++                    for oy in (0, 1):
++                        wy = (1.0 - delta[:, 1]) if oy == 0 else delta[:, 1]
++                        iy = torch.remainder(base[:, 1] + oy, int(shape[1]))
++                        for oz in (0, 1):
++                            wz = (1.0 - delta[:, 2]) if oz == 0 else delta[:, 2]
++                            iz = torch.remainder(base[:, 2] + oz, int(shape[2]))
++                            flat_parts.append((ix * sy + iy) * sz + iz)
++                            contribution_parts.append(w * wx * wy * wz)
++                flat = torch.cat(flat_parts)
++                contributions = torch.cat(contribution_parts)
++                try:
++                    order = torch.argsort(flat, stable=True)
++                except TypeError:  # older torch fallback
++                    order = torch.argsort(flat)
++                sorted_flat = flat[order]
++                sorted_values = contributions[order]
++                unique, counts = torch.unique_consecutive(sorted_flat, return_counts=True)
++                cumulative = torch.cumsum(sorted_values, dim=0, dtype=torch.float64)
++                ends = torch.cumsum(counts, dim=0) - 1
++                segment_ends = cumulative[ends]
++                previous = torch.cat(
++                    (
++                        torch.zeros(1, dtype=torch.float64, device=f.device),
++                        segment_ends[:-1],
++                    )
++                )
++                segment_sums = segment_ends - previous
++                grid = torch.zeros(nodes, dtype=torch.float64, device=f.device)
++                grid[unique] = segment_sums
++                torch.cuda.synchronize(decision.device.device_index)
++                return grid.reshape(shape).detach().cpu().numpy().astype(np.float64, copy=False)
++        except Exception:
++            _replace_last_with_runtime_fallback(decision, reason="gpu_execution_failed_cpu_fallback")
++            return None
++
++
++def try_gpu_linear_fft_convolution(
++    source: NDArray[np.float64],
++    kernel: NDArray[np.float64],
++    padded_shape: tuple[int, int, int],
++    *,
++    cpu_estimate_seconds: float,
++    kernel_name: str = "linear_fft_convolution",
++    policy: DensityGPUExecutionPolicy | None = None,
++) -> NDArray[np.float64] | None:
++    """Return FP64 CUDA linear convolution, or ``None`` for CPU fallback."""
++
++    source_np = np.asarray(source, dtype=np.float64, order="C")
++    kernel_np = np.asarray(kernel, dtype=np.float64, order="C")
++    padded_nodes = int(np.prod(padded_shape, dtype=object))
++    spectrum_nodes = int(padded_shape[0] * padded_shape[1] * (padded_shape[2] // 2 + 1))
++    transfer = int(source_np.nbytes + kernel_np.nbytes + padded_nodes * 8)
++    # Account for padded real work arrays, both spectra, the multiplied spectrum,
++    # inverse-transform output, and FFT workspace headroom.  Over-estimation is
++    # preferred to an OOM because GPU acceleration is optional.
++    required = int(
++        source_np.nbytes
++        + kernel_np.nbytes
++        + 4 * padded_nodes * 8
++        + 4 * spectrum_nodes * 16
++    )
++    decision = decide_gpu_execution(
++        kernel=kernel_name,
++        cpu_estimate_seconds=cpu_estimate_seconds,
++        transfer_bytes=transfer,
++        required_vram_bytes=required,
++        policy=policy,
++    )
++    with _admitted_device(decision) as admitted:
++        if not admitted:
++            return None
++        torch = _load_torch_cuda()
++        if torch is None or decision.device is None:
++            _replace_last_with_runtime_fallback(decision, reason="cuda_disappeared_cpu_fallback")
++            return None
++        try:
++            with torch.cuda.device(decision.device.device_index):
++                src = _torch_cuda_tensor(torch, source_np, decision.device.device_index)
++                ker = _torch_cuda_tensor(torch, kernel_np, decision.device.device_index)
++                spectrum = torch.fft.rfftn(src, s=padded_shape)
++                kernel_spectrum = torch.fft.rfftn(ker, s=padded_shape)
++                spectrum = spectrum * kernel_spectrum
++                result = torch.fft.irfftn(spectrum, s=padded_shape)
++                torch.cuda.synchronize(decision.device.device_index)
++                return result.detach().cpu().numpy().astype(np.float64, copy=False)
++        except Exception:
++            # Optional acceleration is never allowed to make an otherwise valid
++            # CPU calculation fail.  Record the final CPU fallback, not merely
++            # the earlier admission decision.
++            _replace_last_with_runtime_fallback(decision, reason="gpu_execution_failed_cpu_fallback")
++            return None
++
++
++def try_gpu_circular_fft_convolution(
++    mass: NDArray[np.float64],
++    kernel: NDArray[np.float64],
++    *,
++    cpu_estimate_seconds: float,
++    kernel_name: str = "circular_fft_convolution",
++    policy: DensityGPUExecutionPolicy | None = None,
++) -> NDArray[np.float64] | None:
++    """Return FP64 CUDA circular convolution on equal-shaped 3-D grids."""
++
++    mass_np = np.asarray(mass, dtype=np.float64, order="C")
++    kernel_np = np.asarray(kernel, dtype=np.float64, order="C")
++    if mass_np.shape != kernel_np.shape or mass_np.ndim != 3:
++        raise GraphAdapterError("GPU circular convolution requires equal-shaped 3-D arrays.")
++    nodes = int(mass_np.size)
++    complex_nodes = int(mass_np.shape[0] * mass_np.shape[1] * (mass_np.shape[2] // 2 + 1))
++    transfer = int(mass_np.nbytes + kernel_np.nbytes + mass_np.nbytes)
++    # Full complex FFTs can transiently retain lhs/rhs spectra, their product,
++    # and inverse output.  Include all of them plus real inputs/output.
++    required = int(3 * nodes * 8 + 4 * complex_nodes * 16)
++    decision = decide_gpu_execution(
++        kernel=kernel_name,
++        cpu_estimate_seconds=cpu_estimate_seconds,
++        transfer_bytes=transfer,
++        required_vram_bytes=required,
++        policy=policy,
++    )
++    with _admitted_device(decision) as admitted:
++        if not admitted:
++            return None
++        torch = _load_torch_cuda()
++        if torch is None or decision.device is None:
++            _replace_last_with_runtime_fallback(decision, reason="cuda_disappeared_cpu_fallback")
++            return None
++        try:
++            with torch.cuda.device(decision.device.device_index):
++                lhs = _torch_cuda_tensor(torch, mass_np, decision.device.device_index)
++                rhs = _torch_cuda_tensor(torch, kernel_np, decision.device.device_index)
++                result = torch.fft.ifftn(torch.fft.fftn(lhs) * torch.fft.fftn(rhs)).real
++                torch.cuda.synchronize(decision.device.device_index)
++                return result.detach().cpu().numpy().astype(np.float64, copy=False)
++        except Exception:
++            _replace_last_with_runtime_fallback(decision, reason="gpu_execution_failed_cpu_fallback")
++            return None
++
++
++def try_gpu_spectral_filter(
++    mass: NDArray[np.float64],
++    real_spectral_kernel: NDArray[np.float64],
++    *,
++    cpu_estimate_seconds: float,
++    kernel_name: str = "spectral_gaussian_filter",
++    policy: DensityGPUExecutionPolicy | None = None,
++) -> NDArray[np.float64] | None:
++    """Return FP64 CUDA inverse FFT of ``FFT(mass) * real_spectral_kernel``."""
++
++    mass_np = np.asarray(mass, dtype=np.float64, order="C")
++    kernel_np = np.asarray(real_spectral_kernel, dtype=np.float64, order="C")
++    if mass_np.shape != kernel_np.shape or mass_np.ndim != 3:
++        raise GraphAdapterError("GPU spectral filtering requires equal-shaped 3-D arrays.")
++    nodes = int(mass_np.size)
++    transfer = int(mass_np.nbytes + kernel_np.nbytes + mass_np.nbytes)
++    # Retain the real input/filter/output plus FFT, product, and inverse complex
++    # work arrays.  The explicit headroom keeps admission fail-safe.
++    required = int((3 * nodes * 8) + (3 * nodes * 16))
++    decision = decide_gpu_execution(
++        kernel=kernel_name,
++        cpu_estimate_seconds=cpu_estimate_seconds,
++        transfer_bytes=transfer,
++        required_vram_bytes=required,
++        policy=policy,
++    )
++    with _admitted_device(decision) as admitted:
++        if not admitted:
++            return None
++        torch = _load_torch_cuda()
++        if torch is None or decision.device is None:
++            _replace_last_with_runtime_fallback(decision, reason="cuda_disappeared_cpu_fallback")
++            return None
++        try:
++            with torch.cuda.device(decision.device.device_index):
++                lhs = _torch_cuda_tensor(torch, mass_np, decision.device.device_index)
++                filt = _torch_cuda_tensor(torch, kernel_np, decision.device.device_index)
++                result = torch.fft.ifftn(torch.fft.fftn(lhs) * filt).real
++                torch.cuda.synchronize(decision.device.device_index)
++                return result.detach().cpu().numpy().astype(np.float64, copy=False)
++        except Exception:
++            _replace_last_with_runtime_fallback(decision, reason="gpu_execution_failed_cpu_fallback")
++            return None
++
++
++def estimate_fft_cpu_seconds(node_count: int, *, work_units_per_second: float) -> float:
++    nodes = max(1, int(node_count))
++    rate = _positive_float(work_units_per_second, name="work_units_per_second")
++    work = nodes * max(1.0, math.log2(max(2, nodes)))
++    return work / rate
++
++
++__all__ = [
++    "DENSITY_GPU_DEVICE_SCHEMA",
++    "DENSITY_GPU_POLICY_SCHEMA",
++    "DENSITY_GPU_DECISION_SCHEMA",
++    "DENSITY_GPU_REPORT_SCHEMA",
++    "DensityGPUDevice",
++    "DensityGPUExecutionPolicy",
++    "DensityGPUDecision",
++    "density_gpu_journal_scope",
++    "density_gpu_major_job_scope",
++    "density_gpu_report",
++    "discover_density_gpu",
++    "decide_gpu_execution",
++    "estimate_fft_cpu_seconds",
++    "try_gpu_cic_deposition",
++    "try_gpu_linear_fft_convolution",
++    "try_gpu_circular_fft_convolution",
++    "try_gpu_spectral_filter",
++]
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-0.20.143a0-complete-source-package/mdstats/plotting/density_kernel.py ./mdstats/plotting/density_kernel.py
+--- /mnt/data/mdstats-0.20.143a0-complete-source-package/mdstats/plotting/density_kernel.py	2026-08-10 19:15:39.000000000 +0000
++++ ./mdstats/plotting/density_kernel.py	2026-08-10 23:25:47.811847546 +0000
+@@ -27,6 +27,11 @@
+ from .graph_errors import GraphAdapterError, GraphComplexityError
+ from .runtime_resources import resolve_density_resource_limits
+ from .density_scheduler import current_density_worker_count
++from .density_gpu import (
++    estimate_fft_cpu_seconds,
++    try_gpu_circular_fft_convolution,
++    try_gpu_spectral_filter,
++)
+ 
+ FloatArray = NDArray[np.float64]
+ IntArray = NDArray[np.int64]
+@@ -1047,10 +1052,21 @@
+     if stencil.gaussian_bandwidth == 0.0:
+         return mass
+     workers = current_density_worker_count(default=1)
+-    raw = ifftn(
+-        fftn(mass, workers=workers) * fftn(stencil.values, workers=workers),
+-        workers=workers,
+-    ).real
++    _budget, time_model, _derived = resolve_density_resource_limits()
++    cpu_estimate = estimate_fft_cpu_seconds(
++        int(mass.size), work_units_per_second=time_model.fft_work_units_per_second
++    )
++    raw = try_gpu_circular_fft_convolution(
++        mass,
++        stencil.values,
++        cpu_estimate_seconds=cpu_estimate,
++        kernel_name="dense_periodic_stencil_fft",
++    )
++    if raw is None:
++        raw = ifftn(
++            fftn(mass, workers=workers) * fftn(stencil.values, workers=workers),
++            workers=workers,
++        ).real
+     completed, _, _ = _complete_canonical_convolution(
+         raw,
+         original_mass=float(np.sum(mass, dtype=np.float64)),
+@@ -1081,7 +1097,19 @@
+     k2 = np.einsum("...i,...i->...", reciprocal, reciprocal, optimize=True)
+     kernel = np.exp(-0.5 * sigma * sigma * k2)
+     workers = current_density_worker_count(default=1)
+-    smoothed = ifftn(fftn(mass, workers=workers) * kernel, workers=workers).real
++    _budget, time_model, _derived = resolve_density_resource_limits()
++    cpu_estimate = estimate_fft_cpu_seconds(
++        int(mass.size), work_units_per_second=time_model.fft_work_units_per_second
++    )
++    smoothed = try_gpu_spectral_filter(
++        mass,
++        kernel,
++        cpu_estimate_seconds=cpu_estimate,
++        kernel_name="dense_legacy_spectral_gaussian",
++    )
++    execution_backend = "torch_cuda_fp64" if smoothed is not None else "scipy_fft_cpu"
++    if smoothed is None:
++        smoothed = ifftn(fftn(mass, workers=workers) * kernel, workers=workers).real
+     threshold = 1.0e-13 * max(1.0, float(np.max(np.abs(smoothed))))
+     clipped_count = int(np.count_nonzero(smoothed < threshold))
+     smoothed[smoothed < threshold] = 0.0
+@@ -1098,6 +1126,8 @@
+             "legacy_clipped_value_count": clipped_count,
+             "legacy_positive_tail_clipping": True,
+             "legacy_post_convolution_normalization_factor": factor,
++            "fft_execution_backend": execution_backend,
++            "gpu_execution_is_scientifically_neutral": True,
+         }
+     )
+ 
+@@ -1149,10 +1179,22 @@
+         kernel_tail_tolerance=kernel_options.kernel_tail_tolerance,
+     )
+     workers = current_density_worker_count(default=1)
+-    raw = ifftn(
+-        fftn(mass, workers=workers) * fftn(stencil.values, workers=workers),
+-        workers=workers,
+-    ).real
++    _budget, time_model, _derived = resolve_density_resource_limits()
++    cpu_estimate = estimate_fft_cpu_seconds(
++        int(mass.size), work_units_per_second=time_model.fft_work_units_per_second
++    )
++    raw = try_gpu_circular_fft_convolution(
++        mass,
++        stencil.values,
++        cpu_estimate_seconds=cpu_estimate,
++        kernel_name="dense_discrete_periodized_gaussian",
++    )
++    execution_backend = "torch_cuda_fp64" if raw is not None else "scipy_fft_cpu"
++    if raw is None:
++        raw = ifftn(
++            fftn(mass, workers=workers) * fftn(stencil.values, workers=workers),
++            workers=workers,
++        ).real
+     smoothed, negative_count, factor = _complete_canonical_convolution(
+         raw,
+         original_mass=float(np.sum(mass, dtype=np.float64)),
+@@ -1162,6 +1204,8 @@
+         "canonical_convolution_method": "fft",
+         "canonical_negative_roundoff_clipped": negative_count,
+         "canonical_post_convolution_normalization_factor": factor,
++        "fft_execution_backend": execution_backend,
++        "gpu_execution_is_scientifically_neutral": True,
+     }
+     return smoothed, freeze_json_mapping(diagnostics)
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-0.20.143a0-complete-source-package/mdstats/plotting/density_scheduler.py ./mdstats/plotting/density_scheduler.py
+--- /mnt/data/mdstats-0.20.143a0-complete-source-package/mdstats/plotting/density_scheduler.py	2026-08-10 23:01:21.252079978 +0000
++++ ./mdstats/plotting/density_scheduler.py	2026-08-10 23:46:38.694459363 +0000
+@@ -19,6 +19,7 @@
+ from contextvars import ContextVar
+ from concurrent.futures import Future, ProcessPoolExecutor, ThreadPoolExecutor, wait
+ from contextlib import contextmanager
++from contextvars import copy_context
+ from dataclasses import dataclass, field
+ from enum import Enum
+ from typing import Any, Callable, Generic, Iterable, Iterator, Mapping, Sequence, TypeVar
+@@ -26,6 +27,7 @@
+ import numpy as np
+ 
+ from .graph_errors import GraphAdapterError, GraphComplexityError, GraphStyleError
++from .density_gpu import density_gpu_major_job_scope
+ from .runtime_resources import RuntimeResourceBudget, density_resource_budget_scope
+ 
+ DENSITY_TASK_RESOURCES_SCHEMA = "mdstats.density-task-resources.v1"
+@@ -536,7 +538,8 @@
+             # can observe CPU tokens returned by completed sibling fields.
+             with density_worker_lease_scope(lease):
+                 with lease.budget_scope():
+-                    return scheduled[index].function(lease)
++                    with density_gpu_major_job_scope(resources[index].task_id):
++                        return scheduled[index].function(lease)
+ 
+         with ThreadPoolExecutor(
+             max_workers=parallel_limit,
+@@ -570,7 +573,12 @@
+                 for index in newly_admitted:
+                     lease = active[index]
+                     initial_workers[index] = lease.workers
+-                    future = executor.submit(task_runner, index, lease)
++                    # ThreadPoolExecutor does not propagate contextvars.  Copy the
++                    # caller context per field so PAR-DENS5 GPU journals and any
++                    # other execution-only scene context remain visible inside the
++                    # scheduled worker without sharing a Context object concurrently.
++                    context = copy_context()
++                    future = executor.submit(context.run, task_runner, index, lease)
+                     futures[future] = index
+                 if not futures:
+                     if pending:
+@@ -663,7 +671,8 @@
+         lease = DensityWorkerLease(resources, self.budget, workers)
+         with density_worker_lease_scope(lease):
+             with lease.budget_scope():
+-                yield lease
++                with density_gpu_major_job_scope(resources.task_id):
++                    yield lease
+         self._last_report = DensitySchedulerReport(
+             max_threads=self.budget.max_threads,
+             max_memory_bytes=self.budget.max_memory_bytes,
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-0.20.143a0-complete-source-package/mdstats/plotting/density_support_atlas.py ./mdstats/plotting/density_support_atlas.py
+--- /mnt/data/mdstats-0.20.143a0-complete-source-package/mdstats/plotting/density_support_atlas.py	2026-08-10 19:26:18.000000000 +0000
++++ ./mdstats/plotting/density_support_atlas.py	2026-08-10 23:26:32.850339075 +0000
+@@ -26,7 +26,7 @@
+ from typing import Any, Literal
+ 
+ import numpy as np
+-from scipy.fft import set_workers
++from scipy.fft import next_fast_len, set_workers
+ from scipy.signal import fftconvolve
+ from numpy.typing import NDArray
+ 
+@@ -58,6 +58,7 @@
+ from .graph_errors import GraphAdapterError, GraphComplexityError, GraphStyleError
+ from .runtime_resources import resolve_density_resource_limits
+ from .density_scheduler import current_density_worker_count, current_density_worker_lease
++from .density_gpu import estimate_fft_cpu_seconds, try_gpu_linear_fft_convolution
+ 
+ FloatArray = NDArray[np.float64]
+ IntArray = NDArray[np.int64]
+@@ -907,7 +908,7 @@
+     binary_kernel: FloatArray,
+     signed_minimum: NDArray[np.int64],
+     fft_workers: int,
+-) -> tuple[IntArray, UInt64Array, int, int]:
++) -> tuple[IntArray, UInt64Array, int, int, bool]:
+     """Exact binary dilation via zero-padded integer-count FFT convolution.
+ 
+     Source and stencil arrays are binary, so the true linear-convolution output
+@@ -930,12 +931,35 @@
+         int(source_extent[axis] + binary_kernel.shape[axis] - 1)
+         for axis in range(3)
+     )
+-    # scipy.signal.fftconvolve is backed by scipy.fft.  PAR-DENS3 binds its
+-    # default worker pool to the live scene lease instead of allowing an
+-    # unconstrained per-field transform.  Cross-block spectra are deliberately
+-    # not retained, preserving the existing bounded-workspace contract.
+-    with set_workers(max(1, int(fft_workers))):
+-        convolution = fftconvolve(source_dense, binary_kernel, mode="full")
++    # PAR-DENS5 may execute a sufficiently large binary convolution on CUDA,
++    # but only in FP64 and only when transfer/setup cost is predicted to be
++    # amortized under the 80% free-VRAM ceiling.  The CPU scipy path remains
++    # complete and authoritative for fallback.
++    padded_shape = tuple(next_fast_len(value) for value in full_shape)
++    _budget, time_model, _derived = resolve_density_resource_limits()
++    cpu_estimate = estimate_fft_cpu_seconds(
++        int(np.prod(padded_shape, dtype=object)),
++        work_units_per_second=time_model.fft_work_units_per_second,
++    )
++    gpu_full = try_gpu_linear_fft_convolution(
++        source_dense,
++        binary_kernel,
++        padded_shape,
++        cpu_estimate_seconds=cpu_estimate,
++        kernel_name="support_binary_fft_dilation",
++    )
++    used_gpu = gpu_full is not None
++    if gpu_full is None:
++        # scipy.signal.fftconvolve is backed by scipy.fft.  PAR-DENS3 binds its
++        # default worker pool to the live scene lease instead of allowing an
++        # unconstrained per-field transform.  Cross-block spectra are deliberately
++        # not retained, preserving the existing bounded-workspace contract.
++        with set_workers(max(1, int(fft_workers))):
++            convolution = fftconvolve(source_dense, binary_kernel, mode="full")
++    else:
++        convolution = gpu_full[
++            : full_shape[0], : full_shape[1], : full_shape[2]
++        ]
+     rounded = np.rint(convolution)
+     maximum_roundoff = float(np.max(np.abs(convolution - rounded)))
+     if maximum_roundoff > 1.0e-6:
+@@ -955,7 +979,7 @@
+         + brick_coordinates.nbytes
+         + fold_bytes
+     )
+-    return target_flats, target_words, brick_count, transient_bytes
++    return target_flats, target_words, brick_count, transient_bytes, used_gpu
+ 
+ def build_density_support_atlas(
+     source_field: PeriodicPackedCICSourceField3D,
+@@ -1006,15 +1030,17 @@
+     bitset_shift_operations = 0
+     maximum_lifted_brick_nodes = 0
+     maximum_lifted_transient_bytes = 0
++    gpu_fft_dilation_count = 0
++    cpu_fft_dilation_count = 0
+     binary_kernel: FloatArray | None = None
+     signed_minimum: NDArray[np.int64] | None = None
+     if resolved_backend == "fft":
+         binary_kernel, signed_minimum = _binary_stencil_kernel(routing)
+-    def dilate_row(source_row: int) -> tuple[int, IntArray, UInt64Array, int, int]:
++    def dilate_row(source_row: int) -> tuple[int, IntArray, UInt64Array, int, int, bool]:
+         source_block = source_field.source_block_indices[source_row]
+         if resolved_backend == "fft":
+             assert binary_kernel is not None and signed_minimum is not None
+-            local_flats, local_words, brick_nodes, transient_bytes = _dilate_source_block_fft(
++            local_flats, local_words, brick_nodes, transient_bytes, used_gpu = _dilate_source_block_fft(
+                 source_field.occupancy_bitsets[source_row],
+                 source_block,
+                 routing,
+@@ -1026,7 +1052,8 @@
+             local_flats, local_words, brick_nodes, transient_bytes = _dilate_source_block_bitset(
+                 source_field.occupancy_bitsets[source_row], source_block, routing
+             )
+-        return source_row, local_flats, local_words, brick_nodes, transient_bytes
++            used_gpu = False
++        return source_row, local_flats, local_words, brick_nodes, transient_bytes, used_gpu
+ 
+     # Bitset source blocks are independent.  Run bounded groups concurrently
+     # only when the enclosing field task has enough transient-memory slack for
+@@ -1072,8 +1099,13 @@
+                 thread_name_prefix="mdstats-density-atlas",
+             ) as pool:
+                 realized_group = tuple(pool.map(dilate_row, rows))
+-        for source_row, local_flats, local_words, brick_nodes, transient_bytes in realized_group:
++        for source_row, local_flats, local_words, brick_nodes, transient_bytes, used_gpu in realized_group:
+             bitset_shift_operations += routing.stencil_offset_count
++            if resolved_backend == "fft":
++                if used_gpu:
++                    gpu_fft_dilation_count += 1
++                else:
++                    cpu_fft_dilation_count += 1
+             maximum_lifted_brick_nodes = max(maximum_lifted_brick_nodes, brick_nodes)
+             maximum_lifted_transient_bytes = max(
+                 maximum_lifted_transient_bytes, transient_bytes
+@@ -1181,6 +1213,9 @@
+             "fft_kernel_transform_count": (
+                 source_field.source_block_count if resolved_backend == "fft" else 0
+             ),
++            "gpu_fft_dilation_count": gpu_fft_dilation_count,
++            "cpu_fft_dilation_count": cpu_fft_dilation_count,
++            "gpu_execution_is_scientifically_neutral": True,
+             "bit_order": "c_order_local_index_little_endian_uint64",
+             "stencil_identity": routing.stencil_identity,
+             "target_block_count": int(target_indices.shape[0]),
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-0.20.143a0-complete-source-package/mdstats/plotting/density_tiled_fft.py ./mdstats/plotting/density_tiled_fft.py
+--- /mnt/data/mdstats-0.20.143a0-complete-source-package/mdstats/plotting/density_tiled_fft.py	2026-08-10 19:17:48.000000000 +0000
++++ ./mdstats/plotting/density_tiled_fft.py	2026-08-10 23:26:07.436846261 +0000
+@@ -41,6 +41,7 @@
+ from .graph_errors import GraphAdapterError, GraphComplexityError, GraphStyleError
+ from .runtime_resources import resolve_density_resource_limits
+ from .density_scheduler import current_density_worker_count
++from .density_gpu import try_gpu_linear_fft_convolution
+ 
+ FloatArray = NDArray[np.float64]
+ IntArray = NDArray[np.int64]
+@@ -1038,6 +1039,8 @@
+     direct_pair_count = 0
+     direct_chunk_count = 0
+     fft_tile_count = 0
++    gpu_fft_tile_count = 0
++    cpu_fft_tile_count = 0
+     fft_kernel_transform_count = 0
+     ignored_fft_output_nodes = 0
+     peak_pair_count = 0
+@@ -1092,16 +1095,30 @@
+             source_dense[local[:, 0], local[:, 1], local[:, 2]] = values
+             padded_shape = tile.fft_padded_shape
+             fft_workers = live_fft_workers()
+-            spectrum = rfftn(source_dense, padded_shape, workers=fft_workers)
+-            if tile.cache_kernel_spectrum and padded_shape in kernel_spectra:
+-                kernel_spectrum = kernel_spectra[padded_shape]
+-            else:
+-                kernel_spectrum = rfftn(kernel, padded_shape, workers=fft_workers)
++            inverse = try_gpu_linear_fft_convolution(
++                source_dense,
++                kernel,
++                padded_shape,
++                cpu_estimate_seconds=float(tile.fft_cost_estimate_seconds),
++                kernel_name="hybrid_tiled_fft",
++            )
++            if inverse is not None:
++                gpu_fft_tile_count += 1
++                # The GPU backend currently transforms the kernel per admitted
++                # tile; this remains execution-only evidence.
+                 fft_kernel_transform_count += 1
+-                if tile.cache_kernel_spectrum:
+-                    kernel_spectra[padded_shape] = kernel_spectrum
+-            spectrum *= kernel_spectrum
+-            inverse = irfftn(spectrum, padded_shape, workers=fft_workers)
++            else:
++                cpu_fft_tile_count += 1
++                spectrum = rfftn(source_dense, padded_shape, workers=fft_workers)
++                if tile.cache_kernel_spectrum and padded_shape in kernel_spectra:
++                    kernel_spectrum = kernel_spectra[padded_shape]
++                else:
++                    kernel_spectrum = rfftn(kernel, padded_shape, workers=fft_workers)
++                    fft_kernel_transform_count += 1
++                    if tile.cache_kernel_spectrum:
++                        kernel_spectra[padded_shape] = kernel_spectrum
++                spectrum *= kernel_spectrum
++                inverse = irfftn(spectrum, padded_shape, workers=fft_workers)
+             full = inverse[
+                 : tile.full_convolution_shape[0],
+                 : tile.full_convolution_shape[1],
+@@ -1203,12 +1220,17 @@
+             "direct_pair_count": direct_pair_count,
+             "direct_chunk_count": direct_chunk_count,
+             "fft_kernel_transform_count": fft_kernel_transform_count,
++            "gpu_fft_tile_count": gpu_fft_tile_count,
++            "cpu_fft_tile_count": cpu_fft_tile_count,
++            "gpu_execution_is_scientifically_neutral": True,
+             "cached_fft_kernel_shape_count": len(kernel_spectra),
+             "ignored_zero_box_fft_output_nodes": ignored_fft_output_nodes,
+             "fft_nonpositive_node_repairs": repaired,
+             "peak_direct_chunk_pair_count": peak_pair_count,
+             "peak_fft_padded_node_count": peak_fft_padded_nodes,
+-            "fft_library": "scipy.fft",
++            "fft_library": (
++                "torch.cuda+scipy.fft" if gpu_fft_tile_count else "scipy.fft"
++            ),
+             "scipy_version": scipy_version,
+             "fft_workers": plan.options.fft_workers,
+             "fft_worker_execution_policy": (
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-0.20.143a0-complete-source-package/mdstats/plotting/framework_dynamics.py ./mdstats/plotting/framework_dynamics.py
+--- /mnt/data/mdstats-0.20.143a0-complete-source-package/mdstats/plotting/framework_dynamics.py	2026-08-10 23:04:51.195388434 +0000
++++ ./mdstats/plotting/framework_dynamics.py	2026-08-10 23:26:59.150409359 +0000
+@@ -117,6 +117,11 @@
+     DensityMeshExecutionOptions,
+     DensityMeshExecutionReport,
+ )
++from .density_gpu import (
++    DensityGPUExecutionPolicy,
++    density_gpu_journal_scope,
++    density_gpu_report,
++)
+ from .density_scheduler import (
+     DensityScheduledTask,
+     DensitySceneScheduler,
+@@ -3359,11 +3364,14 @@
+         raise GraphUnsupportedFeatureError(
+             "Runtime thread containment requires threadpoolctl."
+         ) from error
+-    with density_resource_budget_scope(resolved_resources.runtime_budget), threadpool_limits(
+-        limits=int(resolved_resources.max_threads)
++    gpu_policy = DensityGPUExecutionPolicy.from_environment()
++    with (
++        density_resource_budget_scope(resolved_resources.runtime_budget),
++        threadpool_limits(limits=int(resolved_resources.max_threads)),
++        density_gpu_journal_scope() as gpu_journal,
+     ):
+         if isinstance(topology, TopologyCatalog):
+-            return _prepare_partitioned_framework_dynamics_scene(
++            scene = _prepare_partitioned_framework_dynamics_scene(
+                 collection,
+                 topology,
+                 frame_indices=frame_indices,
+@@ -3379,23 +3387,33 @@
+                 progress=progress,
+                 progress_callback=progress_callback,
+             )
+-        if not isinstance(topology, FrameworkTopology):
+-            raise TypeError("topology must be FrameworkTopology or TopologyCatalog.")
+-        return _prepare_framework_dynamics_scene_impl(
+-            collection,
+-            topology,
+-            frame_indices=frame_indices,
+-            display_mode=display_mode,
+-            trajectory_selection=trajectory_selection,
+-            atomic_connectivity=atomic_connectivity,
+-            atomic_mean_graph_options=atomic_mean_graph_options,
+-            atomic_density_selections=atomic_density_selections,
+-            atomic_density_options=atomic_density_options,
+-            framework_density_options=framework_density_options,
+-            options=options,
+-            resources=resolved_resources,
+-            progress=progress,
+-            progress_callback=progress_callback,
++        else:
++            if not isinstance(topology, FrameworkTopology):
++                raise TypeError("topology must be FrameworkTopology or TopologyCatalog.")
++            scene = _prepare_framework_dynamics_scene_impl(
++                collection,
++                topology,
++                frame_indices=frame_indices,
++                display_mode=display_mode,
++                trajectory_selection=trajectory_selection,
++                atomic_connectivity=atomic_connectivity,
++                atomic_mean_graph_options=atomic_mean_graph_options,
++                atomic_density_selections=atomic_density_selections,
++                atomic_density_options=atomic_density_options,
++                framework_density_options=framework_density_options,
++                options=options,
++                resources=resolved_resources,
++                progress=progress,
++                progress_callback=progress_callback,
++            )
++        return replace(
++            scene,
++            metadata={
++                **dict(scene.metadata),
++                "density_gpu_policy": gpu_policy.to_json_dict(),
++                "density_gpu_summary": density_gpu_report(gpu_journal),
++                "density_gpu_scientific_precision": "fp64_only",
++            },
+         )
+ 
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-0.20.143a0-complete-source-package/pyproject.toml ./pyproject.toml
+--- /mnt/data/mdstats-0.20.143a0-complete-source-package/pyproject.toml	2026-08-10 23:16:01.350038204 +0000
++++ ./pyproject.toml	2026-08-10 23:23:59.416179032 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.143a0"
++version = "0.20.144a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-0.20.143a0-complete-source-package/release/par_dens5_na_lta_qualification.json ./release/par_dens5_na_lta_qualification.json
+--- /mnt/data/mdstats-0.20.143a0-complete-source-package/release/par_dens5_na_lta_qualification.json	1970-01-01 00:00:00.000000000 +0000
++++ ./release/par_dens5_na_lta_qualification.json	2026-08-10 23:41:50.500855489 +0000
+@@ -0,0 +1,111 @@
++{
++  "schema": "mdstats.par-dens5-na-lta-qualification.v1",
++  "package_version": "0.20.144a0",
++  "qualified_on": "2026-08-10",
++  "input": {
++    "basename": "dump.prod.Na_lta_300K.old.lammpstrj",
++    "sha256": "81c86cc40f5a11031f80817213eb558c02348494d1c6cad9b4775a5bc3c9f9cd",
++    "bytes": 183385600,
++    "full_frames": 10001,
++    "atoms_per_frame": 168,
++    "na_atoms": 24,
++    "type_map": {"1": "Si", "2": "Al", "3": "O", "4": "Na"}
++  },
++  "bounded_gpu_fallback_qualification": {
++    "stride": 100,
++    "selected_frames": 101,
++    "frame_semantics": "ensemble_for_density_only",
++    "lammps_units": "metal",
++    "supplied_timestep_ps": 0.001,
++    "density_selections": ["Na", "Si", "O"],
++    "registration_mode": "material",
++    "grid_shape": [64, 64, 64],
++    "gaussian_bandwidth_angstrom": 0.5,
++    "grid_backend": "local_sparse",
++    "storage_block_shape": [8, 8, 8],
++    "max_workspace_bytes": 4294967296,
++    "modes": ["off", "auto"],
++    "scene_seconds": [10.236071966999589, 7.979629222999847],
++    "timing_interpretation": "Both executions used the CPU reference path on a no-CUDA host; timing variation is not a GPU speedup measurement.",
++    "gpu_reports": {
++      "off": {
++        "attempt_count": 327,
++        "gpu_selected_count": 0,
++        "cpu_fallback_count": 327,
++        "reason_counts": {"gpu_disabled": 327},
++        "kernel_counts": {"support_binary_fft_dilation": 327}
++      },
++      "auto": {
++        "attempt_count": 327,
++        "gpu_selected_count": 0,
++        "cpu_fallback_count": 327,
++        "reason_counts": {"cuda_unavailable": 327},
++        "kernel_counts": {"support_binary_fft_dilation": 327}
++      }
++    },
++    "max_absolute_density_difference_by_field": {
++      "Na": 0.0,
++      "Si": 0.0,
++      "O": 0.0
++    },
++    "content_identity_equal_by_field": {"Na": true, "Si": true, "O": true},
++    "integrals": {
++      "Na": 24.0,
++      "Si": 24.0,
++      "O": 95.99999999999999
++    },
++    "hdr_mass_fractions": [0.5, 0.8, 0.95],
++    "hdr_thresholds": {
++      "Na": [0.13535502170665586, 0.04356945158092796, 0.008924842403607133],
++      "Si": [0.13014872580682016, 0.04220835910862338, 0.008678677027665721],
++      "O": [0.12807955256267922, 0.042884606058534634, 0.012718827334177382]
++    },
++    "hdr_thresholds_equal": true
++  },
++  "gpu_policy": {
++    "schema": "mdstats.density-gpu-policy.v1",
++    "default_mode": "auto",
++    "usable_vram_fraction": 0.8,
++    "usable_vram_basis": "currently_free_device_memory",
++    "host_staging_bound_by_active_par_dens2_budget": true,
++    "one_major_density_job_per_gpu_per_process": true,
++    "scientific_precision": "fp64_only",
++    "automatic_cpu_fallback": true,
++    "transfer_and_setup_cost_in_selection": true
++  },
++  "implemented_cuda_kernels": [
++    "dense_cic_deposition_fp64_segmented_reduction",
++    "periodic_circular_fft_convolution_fp64",
++    "legacy_spectral_gaussian_filter_fp64",
++    "binary_support_linear_fft_dilation_fp64",
++    "hybrid_sparse_tile_linear_fft_convolution_fp64"
++  ],
++  "deliberate_cpu_kernels": [
++    "target_owned_grouped_direct_sparse_accumulation"
++  ],
++  "acceptance": {
++    "logic_and_cpu_fallback_tests": "tests/test_density_par_dens5.py",
++    "real_cuda_fft_equivalence_test_present": true,
++    "real_cuda_cic_equivalence_test_present": true,
++    "real_cuda_tests_executed_on_packaging_host": false,
++    "real_cuda_skip_reason": "CUDA runtime unavailable on packaging host",
++    "real_trajectory_cpu_fallback_bit_identical": true,
++    "gpu_scientific_identity_neutral": true,
++    "gpu_speedup_claimed": false
++  },
++  "environment": {
++    "python": "3.13.5",
++    "numpy": "2.3.5",
++    "scipy": "1.17.0",
++    "torch": "2.10.0+cpu",
++    "torch_cuda_available": false,
++    "torch_cuda_device_count": 0
++  },
++  "interpretation": {
++    "purpose": "PAR-DENS5 optional-GPU policy, complete-fallback, precision-path, and real-trajectory execution-neutrality qualification",
++    "production_scientific_reference": "release/par_dens0_na_lta_qualification.json",
++    "prior_parallel_reference": "release/par_dens3_na_lta_qualification.json",
++    "hardware_gpu_performance_authorization": "deferred to PAR-DENS6 because the packaging host has no CUDA device",
++    "par_dens6_next": true
++  }
++}
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-0.20.143a0-complete-source-package/tests/test_density_par_dens5.py ./tests/test_density_par_dens5.py
+--- /mnt/data/mdstats-0.20.143a0-complete-source-package/tests/test_density_par_dens5.py	1970-01-01 00:00:00.000000000 +0000
++++ ./tests/test_density_par_dens5.py	2026-08-10 23:47:02.142573659 +0000
+@@ -0,0 +1,244 @@
++from __future__ import annotations
++
++import numpy as np
++import pytest
++from scipy.fft import ifftn, fftn
++
++from mdstats.plotting import density_gpu
++from mdstats.plotting.density_gpu import (
++    DENSITY_GPU_REPORT_SCHEMA,
++    DensityGPUDevice,
++    DensityGPUExecutionPolicy,
++    decide_gpu_execution,
++    density_gpu_journal_scope,
++    density_gpu_report,
++    discover_density_gpu,
++    try_gpu_circular_fft_convolution,
++)
++from mdstats.plotting.density_contracts import DensityKernelOptions
++from mdstats.plotting.density_kernel import smooth_periodic_node_masses
++
++
++def _device(*, free: int = 8 * 1024**3, fraction: float = 0.80) -> DensityGPUDevice:
++    return DensityGPUDevice(
++        provider="fixture_cuda",
++        device_index=0,
++        name="Fixture GPU",
++        total_memory_bytes=12 * 1024**3,
++        free_memory_bytes=free,
++        usable_memory_bytes=int(fraction * free),
++        memory_fraction=fraction,
++        compute_capability="8.6",
++    )
++
++
++def test_gpu_policy_defaults_to_eighty_percent_vram_and_auto_mode() -> None:
++    policy = DensityGPUExecutionPolicy()
++    assert policy.mode == "auto"
++    assert policy.memory_fraction == pytest.approx(0.80)
++    assert policy.to_json_dict()["memory_fraction"] == pytest.approx(0.80)
++
++
++def test_gpu_selection_prices_transfer_setup_and_vram() -> None:
++    device = _device()
++    policy = DensityGPUExecutionPolicy(
++        mode="auto",
++        setup_seconds=0.01,
++        transfer_bytes_per_second=10_000_000_000.0,
++        assumed_gpu_speedup=4.0,
++        min_cpu_seconds=0.0,
++    )
++    chosen = decide_gpu_execution(
++        kernel="fixture",
++        cpu_estimate_seconds=2.0,
++        transfer_bytes=100_000_000,
++        required_vram_bytes=1_000_000_000,
++        policy=policy,
++        device=device,
++    )
++    assert chosen.selected is True
++    assert chosen.reason == "predicted_gpu_wall_time_lower"
++    assert chosen.gpu_estimate_seconds == pytest.approx(0.52)
++
++    transfer_bound = decide_gpu_execution(
++        kernel="fixture",
++        cpu_estimate_seconds=0.05,
++        transfer_bytes=2_000_000_000,
++        required_vram_bytes=1_000_000_000,
++        policy=policy,
++        device=device,
++    )
++    assert transfer_bound.selected is False
++    assert transfer_bound.reason == "transfer_setup_cost_not_amortized"
++
++    vram_bound = decide_gpu_execution(
++        kernel="fixture",
++        cpu_estimate_seconds=10.0,
++        transfer_bytes=1,
++        required_vram_bytes=device.usable_memory_bytes + 1,
++        policy=policy,
++        device=device,
++    )
++    assert vram_bound.selected is False
++    assert vram_bound.reason == "vram_budget_exceeded"
++
++
++def test_cuda_absence_is_clean_cpu_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
++    monkeypatch.setattr(density_gpu, "_load_torch_cuda", lambda: None)
++    assert discover_density_gpu(policy=DensityGPUExecutionPolicy(mode="auto")) is None
++    with density_gpu_journal_scope() as journal:
++        result = try_gpu_circular_fft_convolution(
++            np.ones((8, 8, 8), dtype=np.float64),
++            np.ones((8, 8, 8), dtype=np.float64),
++            cpu_estimate_seconds=10.0,
++            policy=DensityGPUExecutionPolicy(mode="auto"),
++        )
++    assert result is None
++    report = density_gpu_report(journal)
++    assert report["schema_version"] == DENSITY_GPU_REPORT_SCHEMA
++    assert report["gpu_selected_count"] == 0
++    assert report["cpu_fallback_count"] == 1
++    assert report["decision_samples"][0]["reason"] == "cuda_unavailable"
++
++
++def test_gpu_disabled_dense_smoothing_is_identical_to_qualified_cpu_path(
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    monkeypatch.setenv("MDSTATS_DENSITY_GPU", "off")
++    rng = np.random.default_rng(42)
++    mass = rng.random((10, 11, 12), dtype=np.float64)
++    mass /= np.sum(mass, dtype=np.float64)
++    smoothed, metadata = smooth_periodic_node_masses(
++        mass,
++        np.diag([10.0, 11.0, 12.0]),
++        0.7,
++        DensityKernelOptions(),
++    )
++    assert smoothed.dtype == np.float64
++    assert np.sum(smoothed, dtype=np.float64) == pytest.approx(1.0, abs=5e-13)
++    assert metadata["fft_execution_backend"] == "scipy_fft_cpu"
++    assert metadata["gpu_execution_is_scientifically_neutral"] is True
++
++
++def test_forced_gpu_helper_matches_cpu_fp64_when_cuda_is_available() -> None:
++    device = discover_density_gpu(policy=DensityGPUExecutionPolicy(mode="force"))
++    if device is None:
++        pytest.skip("CUDA runtime unavailable on this test host")
++    rng = np.random.default_rng(7)
++    mass = rng.random((16, 16, 16), dtype=np.float64)
++    kernel = rng.random((16, 16, 16), dtype=np.float64)
++    gpu = try_gpu_circular_fft_convolution(
++        mass,
++        kernel,
++        cpu_estimate_seconds=1.0,
++        policy=DensityGPUExecutionPolicy(mode="force"),
++    )
++    assert gpu is not None
++    cpu = ifftn(fftn(mass) * fftn(kernel)).real
++    scale = max(1.0, float(np.max(np.abs(cpu))))
++    assert float(np.max(np.abs(gpu - cpu))) <= 5.0e-12 * scale
++
++
++def test_forced_gpu_cic_matches_cpu_when_cuda_is_available() -> None:
++    device = discover_density_gpu(policy=DensityGPUExecutionPolicy(mode="force"))
++    if device is None:
++        pytest.skip("CUDA runtime unavailable on this test host")
++    from mdstats.plotting.atomic_density import _deposit_cic
++    rng = np.random.default_rng(11)
++    fractional = rng.random((2048, 3), dtype=np.float64)
++    weights = rng.random(2048, dtype=np.float64)
++    weights /= np.sum(weights, dtype=np.float64)
++    # Keep the reference CPU path explicit rather than routing through _deposit_cic,
++    # which may itself select CUDA under the current environment.
++    shape = (32, 33, 34)
++    grid = np.zeros(shape, dtype=np.float64)
++    scaled = fractional * np.asarray(shape, dtype=np.float64)
++    base = np.floor(scaled).astype(np.int64)
++    delta = scaled - base
++    for ox in (0, 1):
++        wx = (1.0 - delta[:, 0]) if ox == 0 else delta[:, 0]
++        ix = (base[:, 0] + ox) % shape[0]
++        for oy in (0, 1):
++            wy = (1.0 - delta[:, 1]) if oy == 0 else delta[:, 1]
++            iy = (base[:, 1] + oy) % shape[1]
++            for oz in (0, 1):
++                wz = (1.0 - delta[:, 2]) if oz == 0 else delta[:, 2]
++                iz = (base[:, 2] + oz) % shape[2]
++                np.add.at(grid, (ix, iy, iz), weights * wx * wy * wz)
++    gpu = density_gpu.try_gpu_cic_deposition(
++        fractional,
++        weights,
++        shape,
++        cpu_estimate_seconds=1.0,
++        policy=DensityGPUExecutionPolicy(mode="force"),
++    )
++    assert gpu is not None
++    assert np.sum(gpu, dtype=np.float64) == pytest.approx(np.sum(grid, dtype=np.float64), abs=5e-13)
++    scale = max(1.0, float(np.max(np.abs(grid))))
++    assert float(np.max(np.abs(gpu - grid))) <= 2.0e-12 * scale
++
++
++def test_scene_scheduler_propagates_gpu_journal_into_worker_threads(monkeypatch: pytest.MonkeyPatch) -> None:
++    from mdstats.plotting.density_scheduler import (
++        DensityScheduledTask,
++        DensitySceneScheduler,
++        DensityTaskResources,
++    )
++    from mdstats.plotting.runtime_resources import RuntimeResourceBudget, RuntimeResourceSnapshot
++
++    monkeypatch.setenv("MDSTATS_DENSITY_GPU", "off")
++    snapshot = RuntimeResourceSnapshot(
++        logical_cpu_count=4,
++        affinity_cpu_count=4,
++        cgroup_cpu_quota=None,
++        scheduler_cpu_count=None,
++        available_cpu_count=4,
++        host_memory_available_bytes=2 * 1024**3,
++        cgroup_memory_limit_bytes=None,
++        cgroup_memory_current_bytes=None,
++        scheduler_memory_limit_bytes=None,
++        rlimit_as_bytes=None,
++        process_rss_bytes=1,
++        process_virtual_memory_bytes=1,
++        available_memory_bytes=2 * 1024**3,
++    )
++    budget = RuntimeResourceBudget(
++        max_memory_bytes=1024**3,
++        max_threads=2,
++        max_wall_time_seconds=1200.0,
++        memory_fraction=0.8,
++        thread_fraction=0.9,
++        snapshot=snapshot,
++        memory_override_source="fixture",
++        thread_override_source="fixture",
++        wall_time_override_source="fixture",
++    )
++    scheduler = DensitySceneScheduler(budget)
++    resources = DensityTaskResources(
++        task_id="gpu-journal-propagation",
++        construction_order=0,
++        retained_bytes=1,
++        transient_bytes=1,
++        minimum_workers=1,
++        preferred_workers=1,
++        backend="fixture",
++    )
++
++    def task(_lease):
++        decision = decide_gpu_execution(
++            kernel="journal_fixture",
++            cpu_estimate_seconds=1.0,
++            transfer_bytes=1,
++            required_vram_bytes=1,
++        )
++        # Record through a real helper so this exercises the scheduler worker
++        # context, not just decision construction.
++        with density_gpu._admitted_device(decision) as admitted:
++            assert admitted is False
++        return 7
++
++    with density_gpu_journal_scope() as journal:
++        assert scheduler.run((DensityScheduledTask(resources=resources, function=task),)) == (7,)
++    report = density_gpu_report(journal)
++    assert report["attempt_count"] == 1
++    assert report["reason_counts"] == {"gpu_disabled": 1}
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-0.20.143a0-complete-source-package/tests/test_density_par_dens5_qualification.py ./tests/test_density_par_dens5_qualification.py
+--- /mnt/data/mdstats-0.20.143a0-complete-source-package/tests/test_density_par_dens5_qualification.py	1970-01-01 00:00:00.000000000 +0000
++++ ./tests/test_density_par_dens5_qualification.py	2026-08-10 23:41:50.501925778 +0000
+@@ -0,0 +1,27 @@
++from __future__ import annotations
++
++import json
++from pathlib import Path
++
++ROOT = Path(__file__).resolve().parents[1]
++QUAL = ROOT / "release" / "par_dens5_na_lta_qualification.json"
++
++
++def test_par_dens5_na_lta_qualification_is_bound_and_fail_safe() -> None:
++    data = json.loads(QUAL.read_text(encoding="utf-8"))
++    assert data["schema"] == "mdstats.par-dens5-na-lta-qualification.v1"
++    assert data["package_version"] == "0.20.144a0"
++    assert data["input"]["sha256"] == "81c86cc40f5a11031f80817213eb558c02348494d1c6cad9b4775a5bc3c9f9cd"
++    run = data["bounded_gpu_fallback_qualification"]
++    assert run["selected_frames"] == 101
++    assert run["max_absolute_density_difference_by_field"] == {"Na": 0.0, "Si": 0.0, "O": 0.0}
++    assert all(run["content_identity_equal_by_field"].values())
++    assert run["hdr_thresholds_equal"] is True
++    assert run["gpu_reports"]["off"]["reason_counts"] == {"gpu_disabled": 327}
++    assert run["gpu_reports"]["auto"]["reason_counts"] == {"cuda_unavailable": 327}
++    policy = data["gpu_policy"]
++    assert policy["usable_vram_fraction"] == 0.8
++    assert policy["scientific_precision"] == "fp64_only"
++    assert policy["automatic_cpu_fallback"] is True
++    assert data["acceptance"]["gpu_speedup_claimed"] is False
++    assert data["interpretation"]["par_dens6_next"] is True
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-0.20.143a0-complete-source-package/tests/test_density_par_dens_architecture_plan.py ./tests/test_density_par_dens_architecture_plan.py
+--- /mnt/data/mdstats-0.20.143a0-complete-source-package/tests/test_density_par_dens_architecture_plan.py	2026-08-10 23:16:18.834259648 +0000
++++ ./tests/test_density_par_dens_architecture_plan.py	2026-08-10 23:40:04.831551429 +0000
+@@ -8,19 +8,20 @@
+ MANUAL = ROOT / "docs/arch_manuals/mdstats_dynamical_framework_density_architecture_standard.md"
+ 
+ 
+-def test_par_dens0_to_4_are_completed_and_par_dens5_is_next() -> None:
+-    assert mdstats.__version__ == "0.20.143a0"
++def test_par_dens0_to_5_are_completed_and_par_dens6_is_next() -> None:
++    assert mdstats.__version__ == "0.20.144a0"
+     text = MANUAL.read_text(encoding="utf-8")
+     assert "PAR-DENS0 is `completed` in `mdstats 0.20.120a0`" in text
+     assert "PAR-DENS2 are `completed` in `mdstats 0.20.141a0`" in text
+     assert "PAR-DENS3 is `completed` in" in text
+     assert "`mdstats 0.20.142a0`; PAR-DENS4 is `completed` in `mdstats 0.20.143a0`; PAR-DENS5" in text
+-    assert "is the next implementation gate" in text
++    assert "is `completed` in `mdstats 0.20.144a0`; PAR-DENS6 is the next implementation gate" in text
+     assert "### PAR-DENS0 implementation record (0.20.120a0)" in text
+     assert "### PAR-DENS1 implementation record (0.20.141a0)" in text
+     assert "### PAR-DENS2 implementation record (0.20.141a0)" in text
+     assert "### PAR-DENS3 implementation record (0.20.142a0)" in text
+     assert "### PAR-DENS4 implementation record (0.20.143a0)" in text
++    assert "### PAR-DENS5 implementation record (0.20.144a0)" in text
+ 
+ 
+ def test_par_dens_gates_are_present_in_normative_order() -> None:

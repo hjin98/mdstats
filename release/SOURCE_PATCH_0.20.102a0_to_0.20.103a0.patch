@@ -1,0 +1,2187 @@
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,3 +1,11 @@
++## 0.20.103a0
++
++- Complete MLFF roadmap stage OPT-CTRL1: persistent thread-local campaign SQLite connections, single-query optional record fetches, grouped parent-side commits, and reduced redundant JSON/record work.
++- Add durable strong-stat SHA-256 receipts under the campaign internal directory so unchanged immutable artifacts can be authenticated across restarts without rereading their bytes.
++- Prefer process-persistent direct NVML/libnvidia-ml GPU telemetry with `nvidia-smi` fallback, and reduce evaluation/verification polling after calibration when only the hard live-VRAM guard remains.
++- Stream replay ExtXYZ configuration-weight realization and reuse one top-level run-directory snapshot across cleanup subpasses.
++- Preserve the frozen MLFF scientific compatibility token at 0.20.99a0 and verification-case compatibility at 0.20.85a0.
++
+ ## 0.20.102a0
+ 
+ - Implement OPT-VERIFY1 bounded-verification optimization.
+--- a/PATCH_NOTES_0.20.103a0.md
++++ b/PATCH_NOTES_0.20.103a0.md
+@@ -0,0 +1,21 @@
++# mdstats 0.20.103a0 patch notes
++
++This release implements the final staged MLFF optimization roadmap item,
++**OPT-CTRL1**.
++
++- CampaignStore now keeps one SQLite connection per calling thread and avoids the
++  former duplicate SQL fetch/JSON decode in ordinary record restoration.
++- Optional record accessors remove common `has_record` + `get_record` double queries;
++  naturally grouped parent-side records can be committed in one transaction.
++- `<workspace>/.mdstats/hash-receipts.sqlite3` stores reconstructable SHA-256 receipts
++  keyed by strong file-stat identity for restart-time artifact authentication.
++- GPU telemetry prefers persistent direct NVML/libnvidia-ml calls and falls back to
++  `nvidia-smi`; evaluation/verification poll less frequently after CUDA calibration.
++- Replay configuration-weight staging is streamed frame-by-frame rather than loading
++  the complete ExtXYZ corpus into memory.
++- Campaign cleanup reuses one run-directory snapshot across related cleanup passes.
++- Runtime advances to 0.20.103a0 while MLFF scientific compatibility remains
++  0.20.99a0 and verification-case compatibility remains 0.20.85a0.
++
++No model, dataset, prediction, metric, checkpoint-selection, or verification acceptance
++identity changes.
+--- a/PKG-INFO
++++ b/PKG-INFO
+@@ -1,6 +1,6 @@
+ Metadata-Version: 2.4
+ Name: mdstats
+-Version: 0.20.101a0
++Version: 0.20.103a0
+ Summary: Transparent atomistic frame collections and structural/dynamical statistics
+ Requires-Python: >=3.10
+ Requires-Dist: numpy>=1.26
+--- a/docs/arch_manuals/README.md
++++ b/docs/arch_manuals/README.md
+@@ -45,7 +45,7 @@
+ ## MLFF architecture
+ 
+ - `mlff_training_data_architecture.{md,pdf}`: canonical MLFF-DATA architecture
+-  through the frozen 0.20.99a0 scientific campaign identity and the 0.20.102a0
++  through the frozen 0.20.99a0 scientific campaign identity and the 0.20.103a0
+   execution-optimization line, including the recorded post-first-campaign staged
+   optimization roadmap (`OPT-EVAL1` through `OPT-CTRL1`). The generic core owns provenance, eligibility,
+   partitioning, leakage control, selection orchestration, replay, precision,
+--- a/docs/arch_manuals/mlff_training_data_architecture.md
++++ b/docs/arch_manuals/mlff_training_data_architecture.md
+@@ -3921,23 +3921,54 @@
+ speedup. Detailed ownership and equivalence requirements are recorded in
+ `docs/specs/training_data/mlff_opt_verify1_verification_reuse_neighbor_scaling_spec.md`.
+ 
+-## OPT-CTRL1 - control-plane and telemetry cleanup
+-
+-After the model/data hot paths are optimized, clean up smaller repeated-work costs:
+-
+-- persistent or pooled parent-side SQLite connections;
+-- single-query optional record fetches instead of `has_record` plus `get_record`;
+-- batched commits where durability semantics permit;
+-- persistent immutable-file hash receipts keyed by strong file-stat identity;
+-- NVML/libnvidia-ml telemetry with `nvidia-smi` only as fallback;
+-- reduced post-calibration GPU polling when only the live VRAM hard guard remains;
+-- streaming replay-weight/extxyz rewriting where whole-file materialization is not
+-  scientifically required;
+-- removal of redundant directory scans and repeated JSON decoding.
+-
+-These are expected to improve restart/control-plane latency but are lower priority
+-than model reconstruction, prediction reuse, graph preparation, and verification
+-scaling.
++## OPT-CTRL1 - control-plane and telemetry cleanup - implemented in 0.20.103a0
++
++`OPT-CTRL1` is implemented in mdstats 0.20.103a0 and completes the staged
++optimization roadmap. It changes orchestration/runtime behavior only; the frozen MLFF
++scientific compatibility identity remains 0.20.99a0 and the verification-case runtime
++identity remains 0.20.85a0.
++
++Campaign SQLite access now uses one persistent connection per calling thread rather
++than reopening the database for every tiny lookup/write. Mutable SQLite connections
++are never shared between threads. `get_payload_optional()` and
++`get_record_optional()` provide one-query missing-record handling, and ordinary
++`get_record()` restoration no longer performs the former second SQL fetch/JSON decode.
++Naturally grouped parent-side state transitions can use `put_records()` to serialize
++filesystem-backed payloads first and then commit their compact SQLite rows in one
++transaction. Stage-state plus event publication is likewise one transaction.
++
++Artifact authentication now has an optional durable restart cache at
++`<workspace>/.mdstats/hash-receipts.sqlite3`. SHA-256 receipts are keyed by resolved
++path, device, inode, byte size, nanosecond mtime, and nanosecond ctime. A complete
++strong-stat identity match can reuse the previous digest after restart; any identity
++change forces a byte hash, and the existing post-hash stat race check remains
++binding. Receipt failures simply fall back to hashing and receipt pruning during
++campaign compaction cannot affect scientific correctness.
++
++GPU telemetry now prefers a process-persistent direct `libnvidia-ml`/NVML backend via
++`ctypes`, caching device handles and avoiding a new `nvidia-smi` process for every
++sample. `nvidia-smi` remains the fallback when NVML is unavailable. During the
++five-minute evaluation/verification calibration, the original sampling cadence is
++preserved. After calibration, the fixed GPU-utilization estimate is authoritative and
++only the live VRAM hard guard needs telemetry, so polling defaults to 30 seconds via
++`parallel_inference_post_calibration_monitor_interval_seconds`. A concurrency change
++forces an immediate follow-up sample. Training telemetry is unchanged because its
++admission controller still learns from live epoch-window observations.
++
++Replay configuration-weight realization now streams ExtXYZ configurations through
++ASE `iread()` and the high-precision writer instead of retaining the entire replay
++corpus as an `Atoms` list. Campaign cleanup snapshots the top-level run-directory list
++once and reuses it across active-child, obsolete-runtime, and checkpoint-model-cache
++cleanup, while completed-preflight cleanup reuses one payload fetch.
++
++Representative release-host microbenchmarks measured about 0.028 s for 3000 tiny
++SQLite metadata reads with the persistent connection versus 0.687 s with one database
++open per read (~24.5x lower connection overhead). Re-authenticating an unchanged 64
++MiB artifact after clearing process-local hash state measured about 0.010 s from the
++durable receipt versus 0.255 s for a fresh byte hash (~25.6x faster). These are
++control-plane microbenchmarks, not end-to-end campaign speedup promises. Detailed
++failure, compatibility, and qualification requirements are recorded in
++`docs/specs/training_data/mlff_opt_ctrl1_control_plane_telemetry_spec.md`.
+ 
+ ## Deferred or intentionally unchanged work
+ 
+@@ -3963,5 +3994,7 @@
+ 5. representative timing evidence demonstrates the intended improvement; and
+ 6. the legacy fallback, when retained, remains fail-closed and clearly reported.
+ 
+-The next implementation follow-up from this roadmap is **`OPT-CTRL1`**.
+-
++The staged optimization roadmap **OPT-EVAL1 through OPT-CTRL1 is complete**. Future
++optimization work should begin from new profiling evidence rather than extending this
++closed sequence by default.
++
+--- a/docs/specs/training_data/mlff_opt_ctrl1_control_plane_telemetry_spec.md
++++ b/docs/specs/training_data/mlff_opt_ctrl1_control_plane_telemetry_spec.md
+@@ -0,0 +1,144 @@
++# MLFF OPT-CTRL1 control-plane and telemetry optimization specification
++
++Status: implemented in mdstats 0.20.103a0.
++
++## Scope
++
++OPT-CTRL1 is the final stage of the staged MLFF optimization roadmap. It changes
++orchestration, persistence, telemetry, and staging I/O only. It does not change any
++scientific record identity, model weights, DATA6/DATA7/DATA8 content definition,
++evaluation metric, selection threshold, verification threshold, prediction cache
++schema, graph cache schema, or verification-case scientific identity.
++
++The frozen MLFF scientific compatibility token remains `0.20.99a0`; the verification
++runtime compatibility token remains `0.20.85a0`.
++
++## 1. CampaignStore connection ownership
++
++Each `CampaignStore` owns one persistent SQLite connection per calling thread. The
++connection is never shared between threads. This removes repeated `sqlite3.connect()`
++and PRAGMA setup from tiny orchestration operations while preserving sqlite3's default
++thread-affinity contract.
++
++`CampaignStore.close()` closes the current thread's connection explicitly. Process
++exit remains a valid final cleanup path.
++
++## 2. Single-query optional record access
++
++`get_payload_optional()` and `get_record_optional()` return `None` for a missing key.
++They perform one SQL payload lookup and one JSON decode. `get_record()` no longer
++performs an initial record lookup followed by a second call to `get_payload()` for
++ordinary records.
++
++Hot restart/evaluation/verification paths use the optional accessors rather than
++`has_record()` followed by `get_record()`/`get_payload()` where the missing-record
++case is expected and nonexceptional.
++
++## 3. Batched durable writes
++
++`CampaignStore.put_records()` serializes all filesystem-backed payloads before opening
++the SQLite transaction, then persists the compact SQLite rows with one `executemany()`
++transaction. It is used only for naturally grouped parent-side records where all rows
++belong to one orchestration transition, including training execution + checkpoint
++catalog and protocol-comparison + selected-family publication.
++
++Large external/sharded payload creation must never hold the SQLite write lock.
++
++## 4. Durable immutable-file SHA-256 receipts
++
++The campaign configures `<workspace>/.mdstats/hash-receipts.sqlite3` as an optional
++restart cache for SHA-256 authentication. A receipt is keyed by:
++
++- resolved absolute path;
++- device id;
++- inode;
++- byte size;
++- `mtime_ns`;
++- `ctime_ns`.
++
++The receipt only eliminates repeated byte reads when this entire strong stat identity
++matches. A changed identity forces a fresh hash. A post-hash stat comparison remains
++binding, so a file modified while hashing is retried exactly as before. Receipt-DB
++errors are performance-only failures and fall back to the in-process byte hash.
++
++The receipt table is bounded during campaign compaction; pruning receipts never
++invalidates scientific state because receipts are reconstructable acceleration data.
++
++## 5. NVML telemetry and fallback
++
++GPU telemetry first uses a process-persistent direct `libnvidia-ml.so.1` backend via
++`ctypes`. Device handles are cached per GPU index and the NVML library is initialized
++once per process. No additional Python package is required.
++
++If NVML cannot be loaded, initialized, or queried, mdstats falls back to the existing
++`nvidia-smi --query-gpu=...` subprocess path. If neither mechanism is available,
++telemetry remains unavailable exactly as before and resource planning uses the
++existing fallback estimates.
++
++## 6. Reduced post-calibration inference polling
++
++During the one-time CUDA calibration, evaluation/verification retain their existing
++high-frequency `parallel_inference_monitor_interval_seconds` telemetry cadence.
++After calibration, GPU-utilization samples no longer influence admission; only the
++hard live-VRAM guard remains. Therefore live GPU telemetry defaults to a 30-second
++cadence after calibration:
++
++`parallel_inference_post_calibration_monitor_interval_seconds = 30.0`
++
++The effective interval is never shorter than the normal monitor interval. Any
++concurrency transition forces the next live sample immediately. This optimization is
++limited to evaluation/verification inference scheduling; training keeps its original
++telemetry cadence because training admission continues to depend on live epoch-window
++resource observations.
++
++## 7. Streaming replay-weight realization
++
++Replay configuration-weight scaling no longer loads the complete ExtXYZ corpus into a
++Python list. It streams ASE `iread()` frames, applies `config_weight` scaling one
++configuration at a time, and writes the destination through the existing high-precision
++ExtXYZ writer to an atomic temporary file. Resident configuration count is therefore
++O(1) with corpus length.
++
++## 8. Cleanup scan reuse
++
++Campaign cleanup snapshots the run-directory list once and reuses that snapshot for
++active-child detection, obsolete-runtime cleanup, and checkpoint-model-cache cleanup.
++It no longer repeats the same top-level `runs/` directory scan for each sub-cleaner.
++
++Completed preflight cleanup also fetches the preflight payload once instead of
++performing separate existence and payload reads.
++
++## 9. Compatibility and failure behavior
++
++All new caches and pooling behavior are reconstructable. Failure of a receipt cache,
++NVML backend, optional-record fast path, or grouped-write optimization must either
++fall back to the previous qualified behavior or raise before scientific state is
++silently altered.
++
++No existing campaign must rerun prepare, train, evaluate, or verify merely because it
++is upgraded from 0.20.102a0 to 0.20.103a0.
++
++## 10. Qualification
++
++Required focused tests cover:
++
++- one persistent SQLite connection per thread;
++- one-query optional record restoration;
++- one-transaction grouped record publication;
++- durable SHA-256 reuse after process-local cache reset;
++- stat-identity invalidation of stale SHA-256 receipts;
++- NVML preference and `nvidia-smi` fallback;
++- reduced post-calibration telemetry cadence and unchanged calibration cadence;
++- streamed ExtXYZ replay-weight scaling;
++- existing campaign restart/evaluation/verification/cache regressions.
++
++Representative release-host microbenchmarks measured:
++
++- 3000 tiny SQLite metadata reads: about 0.028 s with the persistent connection vs
++  0.687 s when reopening SQLite for each read (~24.5x less connection overhead);
++- restart authentication of a 64 MiB immutable file: about 0.255 s for a fresh SHA-256
++  byte scan vs 0.010 s from a durable strong-stat receipt (~25.6x faster).
++
++These are isolated control-plane microbenchmarks, not end-to-end campaign speedup
++claims. NVML was not live-benchmarked on the release host when no NVIDIA driver device
++was available; preference/fallback behavior is covered deterministically.
+--- a/mdstats/_version.py
++++ b/mdstats/_version.py
+@@ -1,3 +1,3 @@
+ """Package version."""
+ 
+-__version__ = "0.20.102a0"
++__version__ = "0.20.103a0"
+--- a/mdstats/data/observable_owner_manuals.json
++++ b/mdstats/data/observable_owner_manuals.json
+@@ -1,6 +1,6 @@
+ {
+   "schema": "mdstats.observable-owner-manual-index.v1",
+-  "package_version": "0.20.102a0",
++  "package_version": "0.20.103a0",
+   "manuals": {
+     "structural-observables-architecture": {
+       "source_path": "docs/arch_manuals/structural_observables_architecture.md",
+--- a/mdstats/training_data/_common.py
++++ b/mdstats/training_data/_common.py
+@@ -4,6 +4,8 @@
+ 
+ import hashlib
+ import json
++import sqlite3
++import threading
+ from functools import lru_cache
+ from collections.abc import Mapping
+ from pathlib import Path
+@@ -96,6 +98,140 @@
+     return hasher.hexdigest()
+ 
+ 
++
++
++_SHA256_RECEIPT_LOCK = threading.RLock()
++_SHA256_RECEIPT_PATH: Path | None = None
++_SHA256_RECEIPT_LOCAL = threading.local()
++_SHA256_RECEIPT_SCHEMA = "mdstats.sha256-file-receipts.v1"
++_SHA256_HASHED_IN_PROCESS: set[tuple[str, int, int, int, int, int]] = set()
++
++
++def configure_sha256_receipt_store(path: str | Path | None) -> None:
++    """Configure an optional durable SHA-256 receipt database.
++
++    Receipts are keyed by resolved path plus device/inode/size/mtime/ctime.  They
++    are only a restart optimization: a stat-identity mismatch always forces a
++    fresh byte hash, and any database failure falls back to the in-process cache.
++    """
++
++    global _SHA256_RECEIPT_PATH
++    target = None if path is None else Path(path).expanduser().resolve()
++    with _SHA256_RECEIPT_LOCK:
++        previous = _SHA256_RECEIPT_PATH
++        _SHA256_RECEIPT_PATH = target
++        if previous != target:
++            connection = getattr(_SHA256_RECEIPT_LOCAL, "connection", None)
++            if connection is not None:
++                try:
++                    connection.close()
++                except Exception:
++                    pass
++                _SHA256_RECEIPT_LOCAL.connection = None
++                _SHA256_RECEIPT_LOCAL.connection_path = None
++
++
++def _sha256_receipt_connection() -> sqlite3.Connection | None:
++    path = _SHA256_RECEIPT_PATH
++    if path is None:
++        return None
++    try:
++        path.parent.mkdir(parents=True, exist_ok=True)
++        connection = getattr(_SHA256_RECEIPT_LOCAL, "connection", None)
++        connection_path = getattr(_SHA256_RECEIPT_LOCAL, "connection_path", None)
++        if connection is not None and connection_path == str(path):
++            return connection
++        if connection is not None:
++            try:
++                connection.close()
++            except Exception:
++                pass
++        connection = sqlite3.connect(path, timeout=5.0)
++        connection.execute("PRAGMA busy_timeout=5000")
++        connection.execute("PRAGMA synchronous=NORMAL")
++        connection.execute(
++            "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
++        )
++        connection.execute(
++            """
++            CREATE TABLE IF NOT EXISTS receipts (
++                path TEXT NOT NULL,
++                device INTEGER NOT NULL,
++                inode INTEGER NOT NULL,
++                size INTEGER NOT NULL,
++                mtime_ns INTEGER NOT NULL,
++                ctime_ns INTEGER NOT NULL,
++                sha256 TEXT NOT NULL,
++                PRIMARY KEY(path, device, inode, size, mtime_ns, ctime_ns)
++            )
++            """
++        )
++        connection.execute(
++            "INSERT OR REPLACE INTO meta(key,value) VALUES (?,?)",
++            ("schema", _SHA256_RECEIPT_SCHEMA),
++        )
++        connection.commit()
++        _SHA256_RECEIPT_LOCAL.connection = connection
++        _SHA256_RECEIPT_LOCAL.connection_path = str(path)
++        return connection
++    except Exception:
++        return None
++
++
++def _read_sha256_receipt(key: tuple[str, int, int, int, int, int]) -> str | None:
++    connection = _sha256_receipt_connection()
++    if connection is None:
++        return None
++    try:
++        row = connection.execute(
++            "SELECT sha256 FROM receipts WHERE path=? AND device=? AND inode=? AND size=? AND mtime_ns=? AND ctime_ns=?",
++            key,
++        ).fetchone()
++        if row is None:
++            return None
++        value = str(row[0])
++        if len(value) != 64 or any(ch not in "0123456789abcdef" for ch in value):
++            return None
++        return value
++    except Exception:
++        return None
++
++
++def _write_sha256_receipt(key: tuple[str, int, int, int, int, int], value: str) -> None:
++    connection = _sha256_receipt_connection()
++    if connection is None:
++        return
++    try:
++        connection.execute(
++            "INSERT OR REPLACE INTO receipts(path,device,inode,size,mtime_ns,ctime_ns,sha256) VALUES (?,?,?,?,?,?,?)",
++            (*key, value),
++        )
++        connection.commit()
++    except Exception:
++        pass
++
++
++def prune_sha256_receipts(*, maximum_rows: int = 100_000) -> None:
++    """Bound the optional durable receipt table without affecting correctness."""
++
++    connection = _sha256_receipt_connection()
++    if connection is None:
++        return
++    limit = max(1000, int(maximum_rows))
++    try:
++        count = int(connection.execute("SELECT COUNT(*) FROM receipts").fetchone()[0])
++        if count <= limit:
++            return
++        # No access timestamp is needed for correctness.  Retain the newest
++        # rowids, which naturally favors recently authenticated artifacts.
++        connection.execute(
++            "DELETE FROM receipts WHERE rowid NOT IN (SELECT rowid FROM receipts ORDER BY rowid DESC LIMIT ?)",
++            (limit,),
++        )
++        connection.commit()
++    except Exception:
++        pass
++
+ def sha256_file_cached(path: str | Path) -> str:
+     """Return SHA-256 while avoiding repeated full reads of unchanged files.
+ 
+@@ -117,7 +253,13 @@
+             int(before.st_mtime_ns),
+             int(before.st_ctime_ns),
+         )
+-        value = _sha256_file_for_identity(*key)
++        if key in _SHA256_HASHED_IN_PROCESS:
++            value = _sha256_file_for_identity(*key)
++        else:
++            value = _read_sha256_receipt(key)
++            if value is None:
++                value = _sha256_file_for_identity(*key)
++                _SHA256_HASHED_IN_PROCESS.add(key)
+         after = source.stat()
+         after_key = (
+             str(source),
+@@ -128,6 +270,7 @@
+             int(after.st_ctime_ns),
+         )
+         if after_key == key:
++            _write_sha256_receipt(key, value)
+             return value
+     raise TrainingDataInputError(
+         f"File changed repeatedly while hashing: {source!s}."
+--- a/mdstats/training_data/campaign_cli.py
++++ b/mdstats/training_data/campaign_cli.py
+@@ -33,7 +33,12 @@
+ import tomllib
+ from typing import Any, Callable, Iterable, Mapping, Sequence
+ 
+-from ._common import digest, sha256_file_cached
++from ._common import (
++    configure_sha256_receipt_store,
++    digest,
++    prune_sha256_receipts,
++    sha256_file_cached,
++)
+ from .mace_compatibility import mace_runtime_warning_handled
+ from .resources import (
+     configure_worker_thread_environment,
+@@ -57,8 +62,9 @@
+ )
+ 
+ # 0.20.100a0 changes plotting policy, 0.20.101a0 changes evaluation execution
+-# topology, and 0.20.102a0 changes only bounded-verification execution/scaling.
+-# None changes the frozen MLFF scientific/materialization identity, so existing
++# topology, 0.20.102a0 changes bounded-verification execution/scaling, and
++# 0.20.103a0 changes only orchestration/telemetry/control-plane execution. None
++# changes the frozen MLFF scientific/materialization identity, so existing
+ # 0.20.99a0 campaign state and prediction caches remain reusable.
+ MLFF_DATA9B3_VERSION = "0.20.99a0"
+ # Parallel scheduling does not change the scientific NVE case identity. Keep
+@@ -287,6 +293,8 @@
+     def __init__(self, path: str | Path):
+         self.path = Path(path)
+         self.path.parent.mkdir(parents=True, exist_ok=True)
++        self._db_local = threading.local()
++        configure_sha256_receipt_store(self.path.parent / "hash-receipts.sqlite3")
+         with self._connect() as db:
+             db.executescript(
+                 """
+@@ -322,9 +330,29 @@
+             db.execute("INSERT OR REPLACE INTO meta(key,value) VALUES (?,?)", ("schema", CAMPAIGN_STATE_SCHEMA))
+ 
+     def _connect(self) -> sqlite3.Connection:
+-        db = sqlite3.connect(self.path, timeout=30.0)
+-        db.execute("PRAGMA busy_timeout=30000")
++        """Return one persistent SQLite connection per calling thread.
++
++        Campaign orchestration performs many tiny record/meta lookups. Reopening
++        SQLite for every operation was measurable control-plane overhead, while
++        sharing a connection across worker threads would violate sqlite3's
++        thread-affinity contract. A thread-local connection gives us pooling
++        without weakening that ownership rule.
++        """
++
++        db = getattr(self._db_local, "connection", None)
++        if db is None:
++            db = sqlite3.connect(self.path, timeout=30.0)
++            db.execute("PRAGMA busy_timeout=30000")
++            self._db_local.connection = db
+         return db
++
++    def close(self) -> None:
++        db = getattr(self._db_local, "connection", None)
++        if db is not None:
++            try:
++                db.close()
++            finally:
++                self._db_local.connection = None
+ 
+     @property
+     def external_record_directory(self) -> Path:
+@@ -403,7 +431,9 @@
+             row = db.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
+         return default if row is None else json.loads(row[0])
+ 
+-    def put_record(self, key: str, record: Any) -> None:
++    def _encode_record_for_storage(self, key: str, record: Any) -> tuple[str, str | None, str]:
++        """Return ``(class_name, digest, payload_json)`` for one record."""
++
+         # DATA4 contains hundreds of thousands of nested scientific records.
+         # Persist it as checksummed JSONL shards before calling ``to_dict`` so
+         # campaign state never creates a second multi-gigabyte object graph.
+@@ -417,50 +447,80 @@
+                 record, self.external_record_directory, record_key=key
+             )
+             encoded = json.dumps(pointer, sort_keys=True, separators=(",", ":"))
+-            digest = record.content_digest
+-            class_name = type(record).__name__
+-        elif isinstance(record, Data6FeatureBundle):
++            return type(record).__name__, record.content_digest, encoded
++        if isinstance(record, Data6FeatureBundle):
+             pointer = write_data6_sharded_record(
+                 record, self.external_record_directory, record_key=key
+             )
+             encoded = json.dumps(pointer, sort_keys=True, separators=(",", ":"))
+-            digest = record.content_digest
+-            class_name = type(record).__name__
++            return type(record).__name__, record.content_digest, encoded
++
++        payload = record.to_dict() if hasattr(record, "to_dict") else record
++        if not isinstance(payload, Mapping):
++            raise CampaignCliError(f"Record {key!r} is not JSON-mappable.")
++        record_digest = payload.get("content_digest")
++        if record_digest is None and hasattr(record, "content_digest"):
++            record_digest = record.content_digest
++        class_name = type(record).__name__ if hasattr(record, "to_dict") else "mapping"
++
++        force_external = key in {"frame_catalog", "data4", "data6"}
++        if force_external:
++            encoded, _ = self._write_external_payload(key, payload)
+         else:
+-            payload = record.to_dict() if hasattr(record, "to_dict") else record
+-            if not isinstance(payload, Mapping):
+-                raise CampaignCliError(f"Record {key!r} is not JSON-mappable.")
+-            digest = payload.get("content_digest")
+-            if digest is None and hasattr(record, "content_digest"):
+-                digest = record.content_digest
+-            class_name = type(record).__name__ if hasattr(record, "to_dict") else "mapping"
+-
+-            # DATA3 is intrinsically large. Other records remain inline unless
+-            # compact serialization crosses the same safety threshold.
+-            force_external = key in {"frame_catalog", "data4", "data6"}
+-            if force_external:
++            encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"))
++            if len(encoded.encode("utf-8")) >= EXTERNAL_RECORD_THRESHOLD_BYTES:
+                 encoded, _ = self._write_external_payload(key, payload)
+-            else:
+-                encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+-                if len(encoded.encode("utf-8")) >= EXTERNAL_RECORD_THRESHOLD_BYTES:
+-                    encoded, _ = self._write_external_payload(key, payload)
+-
++        return class_name, record_digest, encoded
++
++    def put_record(self, key: str, record: Any) -> None:
++        class_name, record_digest, encoded = self._encode_record_for_storage(key, record)
+         with self._connect() as db:
+             db.execute(
+                 "INSERT OR REPLACE INTO records(key,class_name,digest,payload,updated_utc) VALUES (?,?,?,?,?)",
+-                (key, class_name, digest, encoded, _utc_now()),
+-            )
+-
+-    def get_payload(self, key: str) -> dict[str, Any]:
++                (key, class_name, record_digest, encoded, _utc_now()),
++            )
++
++    def put_records(self, records: Mapping[str, Any]) -> None:
++        """Persist several compact orchestration records in one transaction.
++
++        Large sharded/external payloads are fully materialized before the SQLite
++        transaction begins, so filesystem work never holds the database write
++        lock. This method is for naturally atomic parent-side record groups.
++        """
++
++        if not records:
++            return
++        encoded_rows: list[tuple[str, str, str | None, str, str]] = []
++        timestamp = _utc_now()
++        for key, record in records.items():
++            class_name, record_digest, encoded = self._encode_record_for_storage(
++                str(key), record
++            )
++            encoded_rows.append(
++                (str(key), class_name, record_digest, encoded, timestamp)
++            )
+         with self._connect() as db:
+-            row = db.execute("SELECT payload FROM records WHERE key=?", (key,)).fetchone()
+-        if row is None:
+-            raise CampaignCliError(f"Required campaign record is missing: {key}. Run `status` for the next step.")
+-        payload = json.loads(row[0])
++            db.executemany(
++                "INSERT OR REPLACE INTO records(key,class_name,digest,payload,updated_utc) VALUES (?,?,?,?,?)",
++                encoded_rows,
++            )
++
++    def _decode_record_payload(self, key: str, encoded: str) -> dict[str, Any]:
++        payload = json.loads(encoded)
+         if not isinstance(payload, dict):
+             raise CampaignCliError(f"Stored campaign record is invalid: {key}.")
+         if payload.get("schema") == EXTERNAL_RECORD_POINTER_SCHEMA:
+             return self._read_external_payload(payload, key=key)
++        return payload
++
++    def get_payload_optional(self, key: str) -> dict[str, Any] | None:
++        """Fetch one optional payload with one SQL query and one JSON decode."""
++
++        with self._connect() as db:
++            row = db.execute("SELECT payload FROM records WHERE key=?", (key,)).fetchone()
++        if row is None:
++            return None
++        payload = self._decode_record_payload(key, row[0])
+         from .data4_sharded_store import DATA4_SHARDED_POINTER_SCHEMA
+         from .data6_sharded_store import DATA6_SHARDED_POINTER_SCHEMA
+         if payload.get("schema") in {DATA4_SHARDED_POINTER_SCHEMA, DATA6_SHARDED_POINTER_SCHEMA}:
+@@ -469,12 +529,14 @@
+             )
+         return payload
+ 
+-    def get_record(self, key: str, cls: type[Any]) -> Any:
+-        with self._connect() as db:
+-            row = db.execute("SELECT payload FROM records WHERE key=?", (key,)).fetchone()
+-        if row is None:
++    def get_payload(self, key: str) -> dict[str, Any]:
++        payload = self.get_payload_optional(key)
++        if payload is None:
+             raise CampaignCliError(f"Required campaign record is missing: {key}. Run `status` for the next step.")
+-        payload = json.loads(row[0])
++        return payload
++
++    def _record_from_encoded_payload(self, key: str, encoded: str, cls: type[Any]) -> Any:
++        payload = self._decode_record_payload(key, encoded)
+         from .data4_bundle import Data4FeatureBundle
+         from .data4_sharded_store import (
+             DATA4_SHARDED_POINTER_SCHEMA, Data4ShardedStoreError,
+@@ -501,7 +563,26 @@
+                 )
+             except Data6ShardedStoreError as exc:
+                 raise CampaignCliError(str(exc)) from exc
+-        return cls.from_dict(self.get_payload(key))
++        if payload.get("schema") in {DATA4_SHARDED_POINTER_SCHEMA, DATA6_SHARDED_POINTER_SCHEMA}:
++            raise CampaignCliError(
++                f"Record {key!r} uses memory-bounded scientific shards but was requested as {cls.__name__}."
++            )
++        return cls.from_dict(payload)
++
++    def get_record_optional(self, key: str, cls: type[Any]) -> Any | None:
++        """Fetch one optional scientific record without a has/get double query."""
++
++        with self._connect() as db:
++            row = db.execute("SELECT payload FROM records WHERE key=?", (key,)).fetchone()
++        if row is None:
++            return None
++        return self._record_from_encoded_payload(key, row[0], cls)
++
++    def get_record(self, key: str, cls: type[Any]) -> Any:
++        record = self.get_record_optional(key, cls)
++        if record is None:
++            raise CampaignCliError(f"Required campaign record is missing: {key}. Run `status` for the next step.")
++        return record
+ 
+     def has_record(self, key: str) -> bool:
+         with self._connect() as db:
+@@ -583,14 +664,19 @@
+         # campaign parent is the sole database writer.
+         with self._connect() as db:
+             db.execute("VACUUM")
++        prune_sha256_receipts()
+ 
+     def set_stage(self, name: str, state: StageState, message: str) -> None:
++        timestamp = _utc_now()
+         with self._connect() as db:
+             db.execute(
+                 "INSERT OR REPLACE INTO stages(name,state,message,updated_utc) VALUES (?,?,?,?)",
+-                (name, state.value, message, _utc_now()),
+-            )
+-        self.event("info" if state is not StageState.FAILED else "error", name, message)
++                (name, state.value, message, timestamp),
++            )
++            db.execute(
++                "INSERT INTO events(timestamp_utc,level,stage,message) VALUES (?,?,?,?)",
++                (timestamp, "info" if state is not StageState.FAILED else "error", name, message),
++            )
+ 
+     def stage(self, name: str) -> tuple[StageState, str]:
+         with self._connect() as db:
+@@ -977,11 +1063,19 @@
+     return True
+ 
+ 
+-def _active_training_run_ids(paths: CampaignPaths) -> set[str]:
++def _active_training_run_ids(
++    paths: CampaignPaths,
++    *,
++    run_roots: Sequence[Path] | None = None,
++) -> set[str]:
+     active: set[str] = set()
+-    if not paths.runs.is_dir():
+-        return active
+-    for run_root in paths.runs.iterdir():
++    if run_roots is None:
++        if not paths.runs.is_dir():
++            return active
++        run_roots = tuple(
++            child for child in paths.runs.iterdir() if child.is_dir()
++        )
++    for run_root in run_roots:
+         marker = run_root / "active_process.json"
+         if not marker.is_file():
+             continue
+@@ -1228,19 +1322,18 @@
+     paths: CampaignPaths,
+     store: CampaignStore,
+ ) -> None:
+-    if not store.has_record("preflight_smoke"):
++    try:
++        preflight_payload = store.get_payload_optional("preflight_smoke")
++    except Exception:
+         return
+-    try:
+-        if not bool(store.get_payload("preflight_smoke").get("passed")):
+-            return
+-    except Exception:
++    if preflight_payload is None or not bool(preflight_payload.get("passed")):
+         return
+     root = paths.internal / "preflight-smoke"
+     if not root.is_dir():
+         return
+     diagnostic = root / "retained-diagnostic.json"
+     if not report.dry_run and not diagnostic.is_file():
+-        payload = store.get_payload("preflight_smoke")
++        payload = preflight_payload
+         tails = {
+             name: _diagnostic_log_tail(root / name)
+             for name in (
+@@ -1282,10 +1375,15 @@
+     paths: CampaignPaths,
+     *,
+     active_run_ids: set[str],
++    run_roots: Sequence[Path] | None = None,
+ ) -> None:
+-    if not paths.runs.is_dir():
+-        return
+-    for run_root in paths.runs.iterdir():
++    if run_roots is None:
++        if not paths.runs.is_dir():
++            return
++        run_roots = tuple(
++            child for child in paths.runs.iterdir() if child.is_dir()
++        )
++    for run_root in run_roots:
+         if not run_root.is_dir() or run_root.name in active_run_ids:
+             continue
+         diagnostic_root = run_root / "obsolete-runtime-diagnostics"
+@@ -1304,12 +1402,17 @@
+     paths: CampaignPaths,
+     *,
+     active_run_ids: set[str],
++    run_roots: Sequence[Path] | None = None,
+ ) -> None:
+     """Remove reconstructable whole-model checkpoint caches outside live runs."""
+ 
+-    if not paths.runs.is_dir():
+-        return
+-    for run_root in paths.runs.iterdir():
++    if run_roots is None:
++        if not paths.runs.is_dir():
++            return
++        run_roots = tuple(
++            child for child in paths.runs.iterdir() if child.is_dir()
++        )
++    for run_root in run_roots:
+         if not run_root.is_dir() or run_root.name in active_run_ids:
+             continue
+         _cleanup_remove(
+@@ -1339,17 +1442,22 @@
+         return report
+     stale_hours = max(0.25, float(_cfg(cfg, "cleanup", "stale_age_hours", 6.0)))
+     stale_before = time.time() - stale_hours * 3600.0
+-    active_run_ids = _active_training_run_ids(paths)
++    run_roots = (
++        tuple(child for child in paths.runs.iterdir() if child.is_dir())
++        if paths.runs.is_dir()
++        else ()
++    )
++    active_run_ids = _active_training_run_ids(paths, run_roots=run_roots)
+ 
+     _cleanup_orphan_record_storage(report, store, stale_before=stale_before)
+     _cleanup_materialization_storage(
+         report, paths, store, stale_before=stale_before
+     )
+     _cleanup_obsolete_training_runtimes(
+-        report, paths, active_run_ids=active_run_ids
++        report, paths, active_run_ids=active_run_ids, run_roots=run_roots
+     )
+     _cleanup_checkpoint_model_caches(
+-        report, paths, active_run_ids=active_run_ids
++        report, paths, active_run_ids=active_run_ids, run_roots=run_roots
+     )
+ 
+     if include_preparation_caches:
+@@ -3779,15 +3887,18 @@
+         build_blinded_predictions=True,
+     )
+     data6 = None
+-    if store.has_record("data6"):
+-        try:
+-            restored_data6 = store.get_record("data6", mdstats.Data6FeatureBundle)
+-        except Exception as exc:
+-            print(
+-                f"[DATA6 restart] finalized bundle cannot be restored ({exc}); rebuilding",
+-                flush=True,
+-            )
+-        else:
++    restored_data6 = None
++    try:
++        restored_data6 = store.get_record_optional(
++            "data6", mdstats.Data6FeatureBundle
++        )
++    except Exception as exc:
++        print(
++            f"[DATA6 restart] finalized bundle cannot be restored ({exc}); rebuilding",
++            flush=True,
++        )
++    else:
++        if restored_data6 is not None:
+             if _data6_bundle_matches_live_inputs(
+                 restored_data6,
+                 sources=sources,
+@@ -5388,10 +5499,11 @@
+     import mdstats
+     qualification = store.get_record("production_qualification", mdstats.ProductionCorpusQualificationRecord)
+     acceleration_probe_digest = None
+-    if store.has_record("acceleration_probe"):
+-        acceleration_probe_digest = store.get_record(
+-            "acceleration_probe", mdstats.MaceAccelerationProbe
+-        ).content_digest
++    acceleration_probe_record = store.get_record_optional(
++        "acceleration_probe", mdstats.MaceAccelerationProbe
++    )
++    if acceleration_probe_record is not None:
++        acceleration_probe_digest = acceleration_probe_record.content_digest
+     variants = _variant_specs(cfg)
+     modes = tuple(
+         sorted(
+@@ -5981,6 +6093,49 @@
+             return self._phase
+ 
+ 
++def _post_calibration_gpu_poll_seconds(
++    cfg: Mapping[str, Any], policy: InferenceConcurrencyPolicy
++) -> float:
++    """Return the cheaper live-VRAM polling cadence after calibration."""
++
++    configured = float(
++        _cfg(
++            cfg,
++            "execution",
++            "parallel_inference_post_calibration_monitor_interval_seconds",
++            30.0,
++        )
++    )
++    if not math.isfinite(configured) or configured <= 0.0:
++        raise CampaignCliError(
++            "[execution].parallel_inference_post_calibration_monitor_interval_seconds "
++            "must be positive."
++        )
++    return max(float(policy.monitor_interval_seconds), configured)
++
++
++def _maybe_query_inference_gpu_telemetry(
++    *,
++    cfg: Mapping[str, Any],
++    policy: InferenceConcurrencyPolicy,
++    controller: AdaptiveInferenceConcurrency,
++    device: str,
++    active_jobs: int,
++    now: float,
++    last_sample_monotonic: float,
++) -> tuple[Any | None, float]:
++    if not str(device).startswith("cuda") or int(active_jobs) <= 0:
++        return None, last_sample_monotonic
++    interval = (
++        _post_calibration_gpu_poll_seconds(cfg, policy)
++        if controller.gpu_calibrated
++        else float(policy.monitor_interval_seconds)
++    )
++    if last_sample_monotonic > 0.0 and now - last_sample_monotonic < interval:
++        return None, last_sample_monotonic
++    return query_gpu_telemetry(device), now
++
++
+ def _run_adaptive_inference_tasks(
+     tasks: Sequence[_AdaptiveInferenceTask],
+     *,
+@@ -6030,6 +6185,7 @@
+     stop_scheduling = False
+     last_report = 0.0
+     telemetry_ready_active_jobs: int | None = None
++    last_gpu_poll = 0.0
+ 
+     def execute_task(
+         task: _AdaptiveInferenceTask,
+@@ -6184,15 +6340,27 @@
+                 and telemetry_ready_active_jobs == len(active)
+             ):
+                 cpu_runtime_sample = cpu_probe.sample()
++            gpu_runtime_sample = None
++            if uses_cuda:
++                gpu_runtime_sample, last_gpu_poll = _maybe_query_inference_gpu_telemetry(
++                    cfg=cfg,
++                    policy=policy,
++                    controller=controller,
++                    device=device,
++                    active_jobs=len(active),
++                    now=now,
++                    last_sample_monotonic=last_gpu_poll,
++                )
+             decision = controller.observe(
+                 active_jobs=len(active),
+                 workload_active_jobs=workload_active_jobs,
+-                gpu_sample=(
+-                    query_gpu_telemetry(device) if uses_cuda and active else None
+-                ),
++                gpu_sample=gpu_runtime_sample,
+                 cpu_sample=cpu_runtime_sample,
+                 now=now,
+             )
++            if decision.changed and uses_cuda:
++                # Force a prompt live-VRAM sample after a concurrency transition.
++                last_gpu_poll = 0.0
+             if decision.changed:
+                 projected_memory = _format_bytes_gib(
+                     decision.predicted_memory_bytes_at_target
+@@ -6380,6 +6548,7 @@
+     stage_events_lock = threading.Lock()
+     last_report = 0.0
+     telemetry_ready_active_jobs: int | None = None
++    last_gpu_poll = 0.0
+ 
+     def report_stage_events() -> None:
+         with stage_events_lock:
+@@ -6631,17 +6800,26 @@
+                 and telemetry_ready_active_jobs == len(active_inference)
+             ):
+                 cpu_runtime_sample = cpu_probe.sample()
++            gpu_runtime_sample = None
++            if uses_cuda:
++                gpu_runtime_sample, last_gpu_poll = _maybe_query_inference_gpu_telemetry(
++                    cfg=cfg,
++                    policy=policy,
++                    controller=controller,
++                    device=device,
++                    active_jobs=len(active_inference),
++                    now=now,
++                    last_sample_monotonic=last_gpu_poll,
++                )
+             decision = controller.observe(
+                 active_jobs=len(active_inference),
+                 workload_active_jobs=workload_active_jobs,
+-                gpu_sample=(
+-                    query_gpu_telemetry(device)
+-                    if uses_cuda and active_inference
+-                    else None
+-                ),
++                gpu_sample=gpu_runtime_sample,
+                 cpu_sample=cpu_runtime_sample,
+                 now=now,
+             )
++            if decision.changed and uses_cuda:
++                last_gpu_poll = 0.0
+             if decision.changed:
+                 projected_memory = _format_bytes_gib(
+                     decision.predicted_memory_bytes_at_target
+@@ -7129,10 +7307,8 @@
+             )
+ 
+         key = f"execution:{run.run_id}"
+-        database_record = (
+-            store.get_record(key, mdstats.TrainingRunExecutionRecord)
+-            if store.has_record(key)
+-            else None
++        database_record = store.get_record_optional(
++            key, mdstats.TrainingRunExecutionRecord
+         )
+         local_record = _load_local_training_execution(
+             run_root, run, job, execution_policy
+@@ -7453,12 +7629,12 @@
+                         stop_scheduling = True
+                     continue
+ 
+-                store.put_record(task.state_key, record)
++                records_to_commit = {task.state_key: record}
+                 if record.checkpoint_catalog is not None:
+-                    store.put_record(
+-                        f"checkpoint_catalog:{task.run.run_id}",
+-                        record.checkpoint_catalog,
+-                    )
++                    records_to_commit[
++                        f"checkpoint_catalog:{task.run.run_id}"
++                    ] = record.checkpoint_catalog
++                store.put_records(records_to_commit)
+                 if record.state is mdstats.TrainingRunState.SUCCEEDED:
+                     training_progress.item_done(
+                         completed_progress,
+@@ -8588,26 +8764,25 @@
+         run = context["run"]
+         output = paths.models / f"{run.run_id}-target.model"
+         record_key = f"evaluated_model:{run.run_id}"
+-        if store.has_record(record_key):
+-            try:
+-                existing = store.get_record(
+-                    record_key, mdstats.VerificationModelRecord
+-                )
+-                if (
+-                    existing.run_plan_digest == run.content_digest
+-                    and existing.checkpoint_selection_record_digest
+-                    == selection.content_digest
+-                    and Path(existing.exported_model_path).resolve() == output.resolve()
+-                    and output.is_file()
+-                    and _sha256(output) == existing.exported_model_sha256
+-                ):
+-                    context["export_record"] = existing
+-                    shutil.rmtree(context["checkpoint_model_cache"], ignore_errors=True)
+-                    _ok(f"{run.run_id}: evaluated target model already available at {output}")
+-                    return existing
+-            except Exception:
+-                pass
+-            store.delete_record(record_key)
++        try:
++            existing = store.get_record_optional(
++                record_key, mdstats.VerificationModelRecord
++            )
++            if existing is not None and (
++                existing.run_plan_digest == run.content_digest
++                and existing.checkpoint_selection_record_digest
++                == selection.content_digest
++                and Path(existing.exported_model_path).resolve() == output.resolve()
++                and output.is_file()
++                and _sha256(output) == existing.exported_model_sha256
++            ):
++                context["export_record"] = existing
++                shutil.rmtree(context["checkpoint_model_cache"], ignore_errors=True)
++                _ok(f"{run.run_id}: evaluated target model already available at {output}")
++                return existing
++        except Exception:
++            pass
++        store.delete_record(record_key)
+ 
+         evaluation_catalog = context["evaluation_catalog"]
+         checkpoint = next(
+@@ -8702,10 +8877,8 @@
+         if selection_failure is not None:
+             failure_key = f"selection_failure:{run.run_id}"
+             store.put_record(failure_key, selection_failure)
+-            if store.has_record(f"selection:{run.run_id}"):
+-                store.delete_record(f"selection:{run.run_id}")
+-            if store.has_record(f"evaluated_model:{run.run_id}"):
+-                store.delete_record(f"evaluated_model:{run.run_id}")
++            store.delete_record(f"selection:{run.run_id}")
++            store.delete_record(f"evaluated_model:{run.run_id}")
+             stale_output = paths.models / f"{run.run_id}-target.model"
+             stale_output.unlink(missing_ok=True)
+             shutil.rmtree(context["checkpoint_model_cache"], ignore_errors=True)
+@@ -8720,8 +8893,7 @@
+             return
+ 
+         assert selection is not None
+-        if store.has_record(f"selection_failure:{run.run_id}"):
+-            store.delete_record(f"selection_failure:{run.run_id}")
++        store.delete_record(f"selection_failure:{run.run_id}")
+         store.put_record(f"selection:{run.run_id}", selection)
+         selections[run.content_digest] = selection
+         metric = next(
+@@ -8832,12 +9004,12 @@
+                 archived_key = (
+                     f"evaluation:{run.run_id}:{archived_checkpoint.sha256}"
+                 )
+-                if not store.has_record(archived_key):
+-                    continue
+                 try:
+-                    archived = store.get_record(
++                    archived = store.get_record_optional(
+                         archived_key, mdstats.CheckpointEvaluationRecord
+                     )
++                    if archived is None:
++                        continue
+                     stale = bool(
+                         archived.evaluation_policy_digest
+                         != evaluation_policy.policy_digest
+@@ -8892,9 +9064,11 @@
+             model_path = Path(execution.checkpoint_catalog.root_directory) / checkpoint.relative_path
+             key = f"evaluation:{run.run_id}:{checkpoint.sha256}"
+             evaluation = None
+-            if store.has_record(key):
+-                try:
+-                    candidate = store.get_record(key, mdstats.CheckpointEvaluationRecord)
++            try:
++                candidate = store.get_record_optional(
++                    key, mdstats.CheckpointEvaluationRecord
++                )
++                if candidate is not None:
+                     reusable = bool(
+                         candidate.run_plan_digest == run.content_digest
+                         and candidate.checkpoint_sha256 == checkpoint.sha256
+@@ -8912,13 +9086,19 @@
+                         and _sha256(target_path) == target_artifact.sha256
+                         and (
+                             evaluation_replay_artifact is None
+-                            or (replay_path is not None and replay_path.is_file() and _sha256(replay_path) == evaluation_replay_artifact.sha256)
++                            or (
++                                replay_path is not None
++                                and replay_path.is_file()
++                                and _sha256(replay_path) == evaluation_replay_artifact.sha256
++                            )
+                         )
+                     )
+                     if reusable:
+                         evaluation = mdstats.bind_checkpoint_evaluation_replay_provenance(
+                             candidate,
+-                            None if evaluation_replay_artifact is None else evaluation_replay_artifact.label_mode,
++                            None
++                            if evaluation_replay_artifact is None
++                            else evaluation_replay_artifact.label_mode,
+                             training_replay_monitor_artifact_digest=run.replay_monitor_artifact_digest,
+                         )
+                         if evaluation.content_digest != candidate.content_digest:
+@@ -8932,11 +9112,10 @@
+                             "evaluate",
+                             f"invalidated stale checkpoint evaluation {run.run_id} epoch {checkpoint.epoch}",
+                         )
+-                except Exception:
+-                    if store.has_record(key):
+-                        store.delete_record(key)
+-                        stale_evaluation_count += 1
+-                    evaluation = None
++            except Exception:
++                store.delete_record(key)
++                stale_evaluation_count += 1
++                evaluation = None
+             was_cached = evaluation is not None
+             label = f"{run.run_id}:epoch{checkpoint.epoch}"
+             if was_cached:
+@@ -9330,8 +9509,7 @@
+         "available_model_verification_set",
+         "interim_verification",
+     ):
+-        if store.has_record(key):
+-            store.delete_record(key)
++        store.delete_record(key)
+     interim_root = paths.models / "interim"
+     if interim_root.exists():
+         shutil.rmtree(interim_root)
+@@ -9354,8 +9532,12 @@
+     selected_family = next(
+         v for v in families if v.content_digest == comparison.selected_family_aggregate_digest
+     )
+-    store.put_record("protocol_comparison", comparison)
+-    store.put_record("selected_family", selected_family)
++    store.put_records(
++        {
++            "protocol_comparison": comparison,
++            "selected_family": selected_family,
++        }
++    )
+ 
+     members = []
+     final_selections = []
+@@ -9421,8 +9603,12 @@
+     freeze = mdstats.freeze_training_protocol(
+         qualification, campaign, comparison, selected_family, committee, final_selections
+     )
+-    store.put_record("committee", committee)
+-    store.put_record("protocol_freeze", freeze)
++    store.put_records(
++        {
++            "committee": committee,
++            "protocol_freeze": freeze,
++        }
++    )
+     summary = {
+         "selected_training_mode": comparison.selected_training_mode.value,
+         "selected_protocol_family_digest": comparison.selected_protocol_family_digest,
+@@ -9716,14 +9902,22 @@
+     cfg, paths = _load_config(args.config)
+     store = CampaignStore(paths.state_db)
+     evaluate_state, evaluate_message = _effective_stage(store, paths, "evaluate")
++    committee = (
++        store.get_record_optional("committee", mdstats.CommitteeIdentity)
++        if evaluate_state is StageState.COMPLETE
++        else None
++    )
++    freeze = (
++        store.get_record_optional("protocol_freeze", mdstats.ProtocolFreezeRecord)
++        if evaluate_state is StageState.COMPLETE
++        else None
++    )
+     full_verification = bool(
+         evaluate_state is StageState.COMPLETE
+-        and store.has_record("committee")
+-        and store.has_record("protocol_freeze")
++        and committee is not None
++        and freeze is not None
+     )
+     if full_verification:
+-        committee = store.get_record("committee", mdstats.CommitteeIdentity)
+-        freeze = store.get_record("protocol_freeze", mdstats.ProtocolFreezeRecord)
+         members = tuple(committee.members)
+         verification_set = None
+         evidence_warnings: tuple[str, ...] = ()
+@@ -9735,19 +9929,19 @@
+             raise CampaignCliError(
+                 f"Stage `evaluate` is not complete ({evaluate_message}) and interim verification is disabled."
+             )
+-        if not store.has_record("available_model_verification_set"):
++        verification_set = store.get_record_optional(
++            "available_model_verification_set",
++            mdstats.AvailableModelVerificationSet,
++        )
++        if verification_set is None:
+             raise CampaignCliError(
+                 "No completed-model verification set is available. Run `evaluate` after at least one training model completes."
+             )
+-        verification_set = store.get_record(
+-            "available_model_verification_set",
+-            mdstats.AvailableModelVerificationSet,
+-        )
+-        if not store.has_record("interim_evaluation"):
++        interim = store.get_payload_optional("interim_evaluation")
++        if interim is None:
+             raise CampaignCliError(
+                 "Interim evaluation scope is missing. Rerun `evaluate` before `verify`."
+             )
+-        interim = store.get_payload("interim_evaluation")
+         campaign = store.get_record(
+             "training_campaign", mdstats.TrainingCampaignPlan
+         )
+@@ -9921,11 +10115,10 @@
+         case_digest = _verification_case_digest(identity)
+         cache_key = f"verification_case:{case_digest}"
+         result = None
+-        if store.has_record(cache_key):
+-            candidate = store.get_payload(cache_key)
+-            if candidate.get("case_digest") == case_digest:
+-                result = dict(candidate["result"])
+-                reused_cases += 1
++        candidate = store.get_payload_optional(cache_key)
++        if candidate is not None and candidate.get("case_digest") == case_digest:
++            result = dict(candidate["result"])
++            reused_cases += 1
+         case_name = f"{tier}:{model.name}:{structure.name}:{temperature:g}K"
+         entry = {
+             "index": case_index,
+@@ -10550,6 +10743,11 @@
+ inference_memory_growth_margin = 1.05
+ inference_utilization_growth_margin = 1.05
+ parallel_inference_monitor_interval_seconds = 2.0
++# After CUDA calibration, the fixed per-job GPU-utilization estimate is authoritative.
++# Only the hard live-VRAM safety guard still needs telemetry, so poll it less often
++# instead of spawning/reading telemetry every scheduler tick. A concurrency change
++# forces an immediate sample regardless of this interval.
++parallel_inference_post_calibration_monitor_interval_seconds = 30.0
+ # Optional phase-specific overrides use the same suffixes, for example:
+ # parallel_evaluation_jobs, maximum_parallel_verification_jobs,
+ # evaluation_estimated_vram_mib_per_job, verification_gpu_utilization_fraction.
+--- a/mdstats/training_data/data8_bundle.py
++++ b/mdstats/training_data/data8_bundle.py
+@@ -8,6 +8,7 @@
+ import ast
+ import hashlib
+ import json
++import os
+ import shutil
+ 
+ try:
+@@ -25,7 +26,12 @@
+     MaceSourceProbe,
+     emulate_mace_v0316_loader_dry_run,
+ )
+-from .mace_export import MaceExtxyzArtifact, MaceExtxyzPolicy, write_mace_extxyz_artifact
++from .mace_export import (
++    MaceExtxyzArtifact,
++    MaceExtxyzPolicy,
++    _write_extxyz_high_precision,
++    write_mace_extxyz_artifact,
++)
+ from .protocol import (
+     FoundationCheckpointIdentity,
+     MaceJobArtifact,
+@@ -93,16 +99,26 @@
+     if scale <= 0.0:
+         raise TrainingDataInputError("Replay configuration-weight scale must be positive.")
+     try:
+-        from ase.io import read, write
++        from ase.io import iread
+     except ModuleNotFoundError as exc:  # pragma: no cover
+         raise TrainingDataInputError("ASE is required to stage weighted replay files.") from exc
+-    atoms_list = read(source, index=":", format="extxyz")
+-    if not isinstance(atoms_list, list):
+-        atoms_list = [atoms_list]
+-    for atoms in atoms_list:
+-        base = float(atoms.info.get("config_weight", 1.0))
+-        atoms.info["config_weight"] = base * float(scale)
+-    write(target, atoms_list, format="extxyz")
++
++    def weighted_stream():
++        for atoms in iread(source, index=":", format="extxyz"):
++            base = float(atoms.info.get("config_weight", 1.0))
++            atoms.info["config_weight"] = base * float(scale)
++            yield atoms
++
++    temporary = target.with_suffix(target.suffix + ".tmp")
++    try:
++        with temporary.open("w", encoding="utf-8", newline="") as handle:
++            _write_extxyz_high_precision(handle, weighted_stream())
++            handle.flush()
++            os.fsync(handle.fileno())
++        os.replace(temporary, target)
++    except Exception:
++        temporary.unlink(missing_ok=True)
++        raise
+ 
+ 
+ def _frames_for_units(data5_bundle: Any, unit_ids: Sequence[str]) -> tuple[str, ...]:
+--- a/mdstats/training_data/inference_parallel.py
++++ b/mdstats/training_data/inference_parallel.py
+@@ -921,6 +921,12 @@
+             predicted_util,
+         )
+ 
++    @property
++    def gpu_calibrated(self) -> bool:
++        """Whether the one-time CUDA admission calibration has completed."""
++
++        return bool(self._gpu_calibrated)
++
+     def observe(
+         self,
+         *,
+--- a/mdstats/training_data/training_parallel.py
++++ b/mdstats/training_data/training_parallel.py
+@@ -11,9 +11,12 @@
+ 
+ from collections import deque
+ from dataclasses import dataclass
++import atexit
++import ctypes
+ import math
+ import shutil
+ import subprocess
++import threading
+ import time
+ from typing import Deque
+ 
+@@ -112,12 +115,132 @@
+     return 0
+ 
+ 
+-def query_gpu_telemetry(device: str) -> GpuTelemetrySample | None:
+-    """Return one aggregate GPU sample without importing CUDA into the parent."""
+-
+-    if not str(device).startswith("cuda") or shutil.which("nvidia-smi") is None:
++class _NvmlUtilization(ctypes.Structure):
++    _fields_ = [("gpu", ctypes.c_uint), ("memory", ctypes.c_uint)]
++
++
++class _NvmlMemory(ctypes.Structure):
++    _fields_ = [
++        ("total", ctypes.c_ulonglong),
++        ("free", ctypes.c_ulonglong),
++        ("used", ctypes.c_ulonglong),
++    ]
++
++
++class _NvmlTelemetryBackend:
++    """Lazy process-persistent libnvidia-ml wrapper with no Python dependency."""
++
++    def __init__(self) -> None:
++        self._lock = threading.RLock()
++        self._library: ctypes.CDLL | None = None
++        self._initialized = False
++        self._failed = False
++        self._handles: dict[int, ctypes.c_void_p] = {}
++
++    def _ensure_initialized(self) -> bool:
++        with self._lock:
++            if self._initialized:
++                return True
++            if self._failed:
++                return False
++            try:
++                library = ctypes.CDLL("libnvidia-ml.so.1")
++                init = getattr(library, "nvmlInit_v2", None) or getattr(library, "nvmlInit")
++                get_handle = (
++                    getattr(library, "nvmlDeviceGetHandleByIndex_v2", None)
++                    or getattr(library, "nvmlDeviceGetHandleByIndex")
++                )
++                if init is None or get_handle is None:
++                    raise RuntimeError("required NVML symbols are unavailable")
++                init.restype = ctypes.c_int
++                get_handle.argtypes = [ctypes.c_uint, ctypes.POINTER(ctypes.c_void_p)]
++                get_handle.restype = ctypes.c_int
++                library.nvmlDeviceGetUtilizationRates.argtypes = [
++                    ctypes.c_void_p, ctypes.POINTER(_NvmlUtilization)
++                ]
++                library.nvmlDeviceGetUtilizationRates.restype = ctypes.c_int
++                library.nvmlDeviceGetMemoryInfo.argtypes = [
++                    ctypes.c_void_p, ctypes.POINTER(_NvmlMemory)
++                ]
++                library.nvmlDeviceGetMemoryInfo.restype = ctypes.c_int
++                if int(init()) != 0:
++                    raise RuntimeError("nvmlInit failed")
++                self._library = library
++                self._initialized = True
++                return True
++            except Exception:
++                self._failed = True
++                return False
++
++    def query(self, index: int) -> tuple[float, int, int] | None:
++        if not self._ensure_initialized():
++            return None
++        assert self._library is not None
++        with self._lock:
++            try:
++                handle = self._handles.get(int(index))
++                if handle is None:
++                    handle = ctypes.c_void_p()
++                    get_handle = (
++                        getattr(self._library, "nvmlDeviceGetHandleByIndex_v2", None)
++                        or getattr(self._library, "nvmlDeviceGetHandleByIndex")
++                    )
++                    if int(get_handle(ctypes.c_uint(int(index)), ctypes.byref(handle))) != 0:
++                        return None
++                    self._handles[int(index)] = handle
++                utilization = _NvmlUtilization()
++                memory = _NvmlMemory()
++                if int(
++                    self._library.nvmlDeviceGetUtilizationRates(
++                        handle, ctypes.byref(utilization)
++                    )
++                ) != 0:
++                    return None
++                if int(
++                    self._library.nvmlDeviceGetMemoryInfo(
++                        handle, ctypes.byref(memory)
++                    )
++                ) != 0:
++                    return None
++                return float(utilization.gpu), int(memory.used), int(memory.total)
++            except Exception:
++                return None
++
++    def shutdown(self) -> None:
++        with self._lock:
++            if not self._initialized or self._library is None:
++                return
++            try:
++                shutdown = getattr(self._library, "nvmlShutdown", None)
++                if shutdown is not None:
++                    shutdown()
++            except Exception:
++                pass
++            self._initialized = False
++            self._handles.clear()
++
++
++_NVML_TELEMETRY = _NvmlTelemetryBackend()
++atexit.register(_NVML_TELEMETRY.shutdown)
++
++
++def _query_gpu_telemetry_nvml(index: int) -> GpuTelemetrySample | None:
++    values = _NVML_TELEMETRY.query(index)
++    if values is None:
+         return None
+-    index = cuda_device_index(device)
++    utilization, used_bytes, total_bytes = values
++    return GpuTelemetrySample(
++        sampled_monotonic=time.monotonic(),
++        device_index=int(index),
++        utilization_percent=float(utilization),
++        used_bytes=int(used_bytes),
++        total_bytes=int(total_bytes),
++    )
++
++
++def _query_gpu_telemetry_nvidia_smi(index: int) -> GpuTelemetrySample | None:
++    if shutil.which("nvidia-smi") is None:
++        return None
+     try:
+         result = subprocess.run(
+             (
+@@ -145,6 +268,23 @@
+         )
+     except Exception:
+         return None
++
++
++def query_gpu_telemetry(device: str) -> GpuTelemetrySample | None:
++    """Return one GPU sample using persistent NVML, with ``nvidia-smi`` fallback.
++
++    Direct libnvidia-ml calls avoid spawning a process on every 10-second
++    scheduler poll. The fallback preserves compatibility on hosts where the
++    driver library is not discoverable from the Python process.
++    """
++
++    if not str(device).startswith("cuda"):
++        return None
++    index = cuda_device_index(device)
++    sample = _query_gpu_telemetry_nvml(index)
++    if sample is not None:
++        return sample
++    return _query_gpu_telemetry_nvidia_smi(index)
+ 
+ 
+ @dataclass(frozen=True, slots=True)
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.102a0"
++version = "0.20.103a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+--- a/tests/test_mlff_data0_architecture_specification.py
++++ b/tests/test_mlff_data0_architecture_specification.py
+@@ -263,4 +263,4 @@
+ def test_mlff_data0_pdf_and_version_artifacts_exist() -> None:
+     assert MANUAL_PDF.stat().st_size > 10_000
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.99a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.103a0"' in PYPROJECT.read_text(encoding="utf-8")
+--- a/tests/test_mlff_data1_specification.py
++++ b/tests/test_mlff_data1_specification.py
+@@ -49,4 +49,4 @@
+     assert callable(mdstats.assign_balanced_round_robin)
+     assert callable(mdstats.build_complete_frame_block_plan)
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.99a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.103a0"' in PYPROJECT.read_text(encoding="utf-8")
+--- a/tests/test_mlff_data2a_manifest_inference_specification.py
++++ b/tests/test_mlff_data2a_manifest_inference_specification.py
+@@ -15,7 +15,7 @@
+ 
+ 
+ def test_data2a_version_public_api_and_documented_contract() -> None:
+-    assert mdstats.__version__ == "0.20.99a0"
++    assert mdstats.__version__ == "0.20.103a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert callable(mdstats.infer_training_manifest_metadata)
+     policy = mdstats.ManifestInferencePolicy()
+--- a/tests/test_mlff_data9a2_specification.py
++++ b/tests/test_mlff_data9a2_specification.py
+@@ -23,7 +23,7 @@
+         "finite energy, force, and stress",
+     ):
+         assert required in text
+-    assert 'version = "0.20.99a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.103a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "DATA9A2 real-MACE realization is implemented in `0.20.39a0`" in ARCH.read_text()
+ 
+ 
+--- a/tests/test_mlff_data9a3_specification.py
++++ b/tests/test_mlff_data9a3_specification.py
+@@ -9,5 +9,5 @@
+     assert "37,632" in text
+     assert "supported_with_temporal_blocks_only" in text
+     assert "production_replay_corpus_not_bound" in text
+-    assert 'version = "0.20.99a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.103a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "MLFF-DATA9A3 production qualification" in ARCH.read_text()
+--- a/tests/test_mlff_data9a4_precision_specification.py
++++ b/tests/test_mlff_data9a4_precision_specification.py
+@@ -9,7 +9,7 @@
+     assert "float32" in text and "float64" in text
+     assert "MaceModelPrecisionRecord" in text
+     assert "MacePrecisionTransitionRecord" in text
+-    assert "version = \"0.20.99a0\"" in (ROOT / "pyproject.toml").read_text()
++    assert "version = \"0.20.103a0\"" in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_bind_precision_to_protocol() -> None:
+--- a/tests/test_mlff_data9a5_critical_fp64_specification.py
++++ b/tests/test_mlff_data9a5_critical_fp64_specification.py
+@@ -14,7 +14,7 @@
+     assert 'version: "0.20.42a0"' in text
+     assert "training_force_jacobian_dtype = model" in text
+     assert "Python/ASE" in text
+-    assert 'version = "0.20.99a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.103a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_data9a5_architecture_declares_scope_and_limits() -> None:
+--- a/tests/test_mlff_data9a5_deployment_specification.py
++++ b/tests/test_mlff_data9a5_deployment_specification.py
+@@ -13,7 +13,7 @@
+     assert 'version: "0.20.43a0"' in text
+     assert "downstream runtime owns" in text
+     assert "float32-to-float64 promotion does not restore" in text
+-    assert 'version = "0.20.99a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.103a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_keep_lammps_outside_mdstats_scope() -> None:
+--- a/tests/test_mlff_data9a6c_observable_evidence_specification.py
++++ b/tests/test_mlff_data9a6c_observable_evidence_specification.py
+@@ -74,5 +74,5 @@
+ 
+ def test_packaged_owner_manual_index_is_valid() -> None:
+     payload = json.loads(MANUAL_INDEX.read_text(encoding="utf-8"))
+-    assert payload["package_version"] == "0.20.99a0"
++    assert payload["package_version"] == "0.20.103a0"
+     assert "structural-observables-architecture" in payload["manuals"]
+--- a/tests/test_mlff_data9a7a_material_profile_specification.py
++++ b/tests/test_mlff_data9a7a_material_profile_specification.py
+@@ -64,4 +64,4 @@
+ 
+ 
+ def test_release_version_is_data9a7a() -> None:
+-    assert 'version = "0.20.99a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert 'version = "0.20.103a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+--- a/tests/test_mlff_data9a7b_specification.py
++++ b/tests/test_mlff_data9a7b_specification.py
+@@ -69,7 +69,7 @@
+ 
+ 
+ def test_data9a7b_public_exports_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.99a0"
++    assert mdstats.__version__ == "0.20.103a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert callable(mdstats.compute_local_structure_features)
+--- a/tests/test_mlff_data9a7c_specification.py
++++ b/tests/test_mlff_data9a7c_specification.py
+@@ -47,7 +47,7 @@
+ 
+ 
+ def test_public_api_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.99a0"
++    assert mdstats.__version__ == "0.20.103a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert mdstats.MLFF_DATA9A7C_PARSER_VERSION == "0.20.49a0"
+--- a/tests/test_mlff_data9a7d_specification.py
++++ b/tests/test_mlff_data9a7d_specification.py
+@@ -39,6 +39,6 @@
+ 
+ 
+ def test_data9a7d_runtime_versions() -> None:
+-    assert mdstats.__version__ == "0.20.99a0"
++    assert mdstats.__version__ == "0.20.103a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7D_PARSER_VERSION == "0.20.50a0"
+--- a/tests/test_mlff_data9a7e_specification.py
++++ b/tests/test_mlff_data9a7e_specification.py
+@@ -39,7 +39,7 @@
+         "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
+         "CROSS_SYSTEM_QUALIFICATION_SUITE",
+     } <= nodes
+-    assert mdstats.__version__ == "0.20.99a0"
++    assert mdstats.__version__ == "0.20.103a0"
+     assert mdstats.MLFF_DATA9A7E_PARSER_VERSION == "0.20.51a0"
+     assert callable(mdstats.qualify_cross_system_case)
+     assert callable(mdstats.build_cross_system_qualification_suite)
+--- a/tests/test_mlff_data9a8_specification.py
++++ b/tests/test_mlff_data9a8_specification.py
+@@ -66,7 +66,7 @@
+ 
+ 
+ def test_public_runtime_exposes_data9a8_without_removed_aliases() -> None:
+-    assert mdstats.__version__ == "0.20.99a0"
++    assert mdstats.__version__ == "0.20.103a0"
+     assert mdstats.MLFF_DATA9A8_PARSER_VERSION == "0.20.52a0"
+     assert mdstats.ObservableComparisonPolicy
+     assert mdstats.compare_mlff_observable_validation
+--- a/tests/test_mlff_data9a9a_specification.py
++++ b/tests/test_mlff_data9a9a_specification.py
+@@ -65,7 +65,7 @@
+ 
+ 
+ def test_public_runtime_exports_data9a9a_contracts() -> None:
+-    assert mdstats.__version__ == "0.20.99a0"
++    assert mdstats.__version__ == "0.20.103a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A9A_VERSION
+     assert mdstats.Data6ModelSweepPlan
+--- a/tests/test_mlff_data9a9b_specification.py
++++ b/tests/test_mlff_data9a9b_specification.py
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9b_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.99a0"
++    assert mdstats.__version__ == "0.20.103a0"
+     for name in (
+         "ProductionMaterializationPlan",
+         "ProductionMaterializationCheckpoint",
+--- a/tests/test_mlff_data9a9c_specification.py
++++ b/tests/test_mlff_data9a9c_specification.py
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9c_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.99a0"
++    assert mdstats.__version__ == "0.20.103a0"
+     for name in (
+         "ProductionCorpusPlan", "ProductionExpectedRun",
+         "ProfileExtensionEvidenceRequirement", "ProductionCorpusQualificationRecord",
+--- a/tests/test_mlff_data9a_specification.py
++++ b/tests/test_mlff_data9a_specification.py
+@@ -14,7 +14,7 @@
+ 
+ 
+ def test_data9a_runtime_specification_is_canonical() -> None:
+-    assert 'version = "0.20.99a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.103a0"' in (ROOT / "pyproject.toml").read_text()
+     architecture = ARCH.read_text()
+     stage = STAGE.read_text()
+     specification = SPEC.read_text()
+--- a/tests/test_mlff_data9b1_specification.py
++++ b/tests/test_mlff_data9b1_specification.py
+@@ -18,8 +18,8 @@
+     assert "TrainingCampaignPlan" in text
+     assert "CheckpointSelectionRecord" in text
+     assert "mdstats-mace-train" in text
+-    assert mdstats.__version__ == "0.20.99a0"
+-    assert 'version = "0.20.99a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert mdstats.__version__ == "0.20.103a0"
++    assert 'version = "0.20.103a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+ 
+ 
+ def test_data9b1_is_integrated_into_manual_and_stage_plan() -> None:
+--- a/tests/test_mlff_data9b2_specification.py
++++ b/tests/test_mlff_data9b2_specification.py
+@@ -23,7 +23,7 @@
+         'mdstats-mace-select-head',
+     ):
+         assert token in text
+-    assert mdstats.__version__ == '0.20.99a0'
++    assert mdstats.__version__ == '0.20.103a0'
+     assert mdstats.MLFF_DATA9B2_VERSION == '0.20.57a0'
+ 
+ 
+--- a/tests/test_mlff_data9b3_campaign_cli_specification.py
++++ b/tests/test_mlff_data9b3_campaign_cli_specification.py
+@@ -16,7 +16,7 @@
+ 
+ 
+ def test_data9b3_version_and_user_surface() -> None:
+-    assert mdstats.__version__ == "0.20.99a0"
++    assert mdstats.__version__ == "0.20.103a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert TOOL.is_file()
+     assert TOOL.stat().st_mode & 0o111
+--- a/tests/test_mlff_opt_ctrl1_control_plane.py
++++ b/tests/test_mlff_opt_ctrl1_control_plane.py
+@@ -0,0 +1,245 @@
++from __future__ import annotations
++
++from pathlib import Path
++from types import SimpleNamespace
++import threading
++
++import pytest
++
++from mdstats.training_data import campaign_cli
++from mdstats.training_data import training_parallel
++import mdstats.training_data._common as common
++import mdstats.training_data.data8_bundle as data8_bundle
++
++
++class _TinyRecord:
++    def __init__(self, value: int):
++        self.value = int(value)
++
++    def to_dict(self):
++        return {"schema": "tiny.v1", "value": self.value}
++
++    @classmethod
++    def from_dict(cls, payload):
++        return cls(int(payload["value"]))
++
++
++def test_campaign_store_reuses_one_connection_per_thread(tmp_path: Path) -> None:
++    store = campaign_cli.CampaignStore(tmp_path / ".mdstats" / "campaign.sqlite3")
++    first = store._connect()
++    store.set_meta("x", 1)
++    assert store._connect() is first
++
++    worker_ids: list[int] = []
++
++    def worker() -> None:
++        worker_ids.append(id(store._connect()))
++        assert store.get_meta("x") == 1
++
++    thread = threading.Thread(target=worker)
++    thread.start()
++    thread.join()
++    assert worker_ids
++    assert worker_ids[0] != id(first)
++
++
++def test_optional_record_fetch_is_one_select_and_one_decode(tmp_path: Path) -> None:
++    store = campaign_cli.CampaignStore(tmp_path / ".mdstats" / "campaign.sqlite3")
++    store.put_record("tiny", _TinyRecord(7))
++    statements: list[str] = []
++    db = store._connect()
++    db.set_trace_callback(statements.append)
++    try:
++        restored = store.get_record_optional("tiny", _TinyRecord)
++    finally:
++        db.set_trace_callback(None)
++    assert restored is not None and restored.value == 7
++    selects = [
++        statement
++        for statement in statements
++        if statement.lstrip().upper().startswith("SELECT PAYLOAD FROM RECORDS")
++    ]
++    assert len(selects) == 1
++    assert store.get_record_optional("missing", _TinyRecord) is None
++
++
++def test_put_records_batches_one_sqlite_transaction(tmp_path: Path) -> None:
++    store = campaign_cli.CampaignStore(tmp_path / ".mdstats" / "campaign.sqlite3")
++    statements: list[str] = []
++    db = store._connect()
++    db.set_trace_callback(statements.append)
++    try:
++        store.put_records({"a": _TinyRecord(1), "b": _TinyRecord(2)})
++    finally:
++        db.set_trace_callback(None)
++    assert store.get_record("a", _TinyRecord).value == 1
++    assert store.get_record("b", _TinyRecord).value == 2
++    assert sum(stmt.strip().upper() == "COMMIT" for stmt in statements) == 1
++
++
++def test_sha256_receipt_survives_process_cache_reset_and_invalidates_on_stat_change(
++    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
++) -> None:
++    receipt_db = tmp_path / ".mdstats" / "hash-receipts.sqlite3"
++    common.configure_sha256_receipt_store(receipt_db)
++    path = tmp_path / "artifact.bin"
++    path.write_bytes(b"stable artifact")
++    common._sha256_file_for_identity.cache_clear()
++    common._SHA256_HASHED_IN_PROCESS.clear()
++    expected = common.sha256_file_cached(path)
++    assert receipt_db.is_file()
++
++    # Simulate a fresh process-local hash cache. The durable receipt should be
++    # enough to authenticate the same strong stat identity without reading bytes.
++    common._sha256_file_for_identity.cache_clear()
++    common._SHA256_HASHED_IN_PROCESS.clear()
++
++    def forbidden_hash(*args, **kwargs):
++        raise AssertionError("file bytes were re-hashed despite a durable receipt")
++
++    monkeypatch.setattr(common, "_sha256_file_for_identity", forbidden_hash)
++    assert common.sha256_file_cached(path) == expected
++
++    # Changing the file changes size/mtime/ctime identity, so the old receipt is
++    # not reusable and a fresh hash would be required.
++    path.write_bytes(b"changed artifact with different size")
++    with pytest.raises(AssertionError, match="re-hashed"):
++        common.sha256_file_cached(path)
++
++
++def test_gpu_telemetry_prefers_nvml_and_falls_back_to_nvidia_smi(
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    nvml_sample = training_parallel.GpuTelemetrySample(
++        sampled_monotonic=1.0,
++        device_index=0,
++        utilization_percent=41.0,
++        used_bytes=3,
++        total_bytes=10,
++    )
++    monkeypatch.setattr(
++        training_parallel, "_query_gpu_telemetry_nvml", lambda index: nvml_sample
++    )
++    monkeypatch.setattr(
++        training_parallel,
++        "_query_gpu_telemetry_nvidia_smi",
++        lambda index: (_ for _ in ()).throw(AssertionError("fallback should not run")),
++    )
++    assert training_parallel.query_gpu_telemetry("cuda:0") is nvml_sample
++
++    fallback = training_parallel.GpuTelemetrySample(
++        sampled_monotonic=2.0,
++        device_index=0,
++        utilization_percent=12.0,
++        used_bytes=4,
++        total_bytes=10,
++    )
++    monkeypatch.setattr(training_parallel, "_query_gpu_telemetry_nvml", lambda index: None)
++    monkeypatch.setattr(
++        training_parallel, "_query_gpu_telemetry_nvidia_smi", lambda index: fallback
++    )
++    assert training_parallel.query_gpu_telemetry("cuda") is fallback
++    assert training_parallel.query_gpu_telemetry("cpu") is None
++
++
++def test_post_calibration_inference_gpu_polling_is_sparse(
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    calls: list[str] = []
++    sample = training_parallel.GpuTelemetrySample(1.0, 0, 10.0, 1, 10)
++    monkeypatch.setattr(
++        campaign_cli,
++        "query_gpu_telemetry",
++        lambda device: calls.append(device) or sample,
++    )
++    policy = SimpleNamespace(monitor_interval_seconds=2.0)
++    cfg = {
++        "execution": {
++            "parallel_inference_post_calibration_monitor_interval_seconds": 30.0
++        }
++    }
++    calibrated = SimpleNamespace(gpu_calibrated=True)
++    value, last = campaign_cli._maybe_query_inference_gpu_telemetry(
++        cfg=cfg,
++        policy=policy,
++        controller=calibrated,
++        device="cuda:0",
++        active_jobs=2,
++        now=100.0,
++        last_sample_monotonic=0.0,
++    )
++    assert value is sample and last == 100.0
++    value, last = campaign_cli._maybe_query_inference_gpu_telemetry(
++        cfg=cfg,
++        policy=policy,
++        controller=calibrated,
++        device="cuda:0",
++        active_jobs=2,
++        now=110.0,
++        last_sample_monotonic=last,
++    )
++    assert value is None and last == 100.0
++    value, last = campaign_cli._maybe_query_inference_gpu_telemetry(
++        cfg=cfg,
++        policy=policy,
++        controller=calibrated,
++        device="cuda:0",
++        active_jobs=2,
++        now=131.0,
++        last_sample_monotonic=last,
++    )
++    assert value is sample and last == 131.0
++    assert calls == ["cuda:0", "cuda:0"]
++
++    # During the one-time calibration, retain the original high-frequency cadence.
++    uncalibrated = SimpleNamespace(gpu_calibrated=False)
++    value, _ = campaign_cli._maybe_query_inference_gpu_telemetry(
++        cfg=cfg,
++        policy=policy,
++        controller=uncalibrated,
++        device="cuda:0",
++        active_jobs=1,
++        now=134.0,
++        last_sample_monotonic=131.0,
++    )
++    assert value is sample
++
++
++def test_replay_weight_scaling_streams_extxyz_frames(
++    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
++) -> None:
++    from ase import Atoms
++    from ase.io import iread as real_iread, read, write
++    import ase.io
++
++    source = tmp_path / "replay.extxyz"
++    target = tmp_path / "weighted.extxyz"
++    frames = []
++    for index in range(4):
++        atoms = Atoms("LiO", positions=[[0, 0, 0], [1.5, 0, 0]], cell=[8, 8, 8], pbc=True)
++        atoms.info["config_weight"] = float(index + 1)
++        frames.append(atoms)
++    write(source, frames, format="extxyz")
++
++    yielded = 0
++
++    def streaming_iread(*args, **kwargs):
++        nonlocal yielded
++        for atoms in real_iread(*args, **kwargs):
++            yielded += 1
++            yield atoms
++
++    monkeypatch.setattr(ase.io, "iread", streaming_iread)
++    original_writer = data8_bundle._write_extxyz_high_precision
++
++    def checking_writer(handle, images):
++        assert not isinstance(images, (list, tuple))
++        return original_writer(handle, images)
++
++    monkeypatch.setattr(data8_bundle, "_write_extxyz_high_precision", checking_writer)
++    data8_bundle._scale_extxyz_configuration_weights(source, target, scale=2.5)
++    observed = read(target, index=":", format="extxyz")
++    assert yielded == 4
++    assert [atoms.info["config_weight"] for atoms in observed] == pytest.approx(
++        [2.5, 5.0, 7.5, 10.0]
++    )
+--- a/tests/test_mlff_opt_ctrl1_specification.py
++++ b/tests/test_mlff_opt_ctrl1_specification.py
+@@ -0,0 +1,52 @@
++from __future__ import annotations
++
++from pathlib import Path
++import inspect
++
++import mdstats
++from mdstats.training_data import campaign_cli, training_parallel
++
++ROOT = Path(__file__).resolve().parents[1]
++
++
++def test_opt_ctrl1_release_identity_preserves_scientific_compatibility() -> None:
++    assert mdstats.__version__ == "0.20.103a0"
++    assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
++    assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
++    assert 'version = "0.20.103a0"' in (ROOT / "pyproject.toml").read_text()
++
++
++def test_opt_ctrl1_architecture_and_spec_close_roadmap() -> None:
++    manual = (ROOT / "docs/arch_manuals/mlff_training_data_architecture.md").read_text()
++    spec = (
++        ROOT
++        / "docs/specs/training_data/mlff_opt_ctrl1_control_plane_telemetry_spec.md"
++    ).read_text()
++    assert "OPT-CTRL1 - control-plane and telemetry cleanup - implemented in 0.20.103a0" in manual
++    assert "OPT-EVAL1 through OPT-CTRL1 is complete" in manual
++    assert "Status: implemented in mdstats 0.20.103a0." in spec
++    for token in (
++        "get_record_optional",
++        "hash-receipts.sqlite3",
++        "libnvidia-ml",
++        "parallel_inference_post_calibration_monitor_interval_seconds",
++        "iread()",
++    ):
++        assert token in spec
++
++
++def test_generated_config_records_post_calibration_poll_control() -> None:
++    template = campaign_cli._config_template(
++        workspace="/tmp/workspace",
++        training_root="/tmp/training",
++        foundation_model="/tmp/foundation.model",
++        replay_train="/tmp/replay-train.extxyz",
++        replay_monitor="/tmp/replay-monitor.extxyz",
++    )
++    assert "parallel_inference_post_calibration_monitor_interval_seconds = 30.0" in template
++
++
++def test_gpu_telemetry_implementation_prefers_nvml() -> None:
++    source = inspect.getsource(training_parallel.query_gpu_telemetry)
++    assert "_query_gpu_telemetry_nvml" in source
++    assert "_query_gpu_telemetry_nvidia_smi" in source
+--- a/tests/test_mlff_opt_eval3_specification.py
++++ b/tests/test_mlff_opt_eval3_specification.py
+@@ -28,7 +28,7 @@
+     ):
+         assert required in spec_text
+     assert "OPT-EVAL3 - monitor-level graph and immutable evaluation-view caching - implemented in 0.20.99a0" in manual_text
+-    assert "next implementation follow-up from this roadmap is **`OPT-VERIFY1`**" in manual_text
++    assert "OPT-EVAL1 through OPT-CTRL1 is complete" in manual_text
+ 
+ 
+ def test_lta_density_example_multiformat_update_is_in_release_tree() -> None:
+--- a/tests/test_mlff_opt_eval4_specification.py
++++ b/tests/test_mlff_opt_eval4_specification.py
+@@ -11,9 +11,9 @@
+ 
+ 
+ def test_opt_eval4_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.102a0"
++    assert mdstats.__version__ == "0.20.103a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+-    assert 'version = "0.20.102a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.103a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_eval4_architecture_and_spec_record_pipeline_contract() -> None:
+@@ -24,7 +24,7 @@
+     ).read_text()
+     assert "OPT-EVAL4 - staged evaluation pipeline" in manual
+     assert "implemented in mdstats 0.20.101a0" in manual
+-    assert "next implementation follow-up from this roadmap is **`OPT-CTRL1`**" in manual
++    assert "OPT-EVAL1 through OPT-CTRL1 is complete" in manual
+     assert "CPU monitor/cache preparation" in manual
+     assert "accelerator-admitted checkpoint materialization" in manual
+     assert "Status: implemented in mdstats 0.20.101a0." in spec
+--- a/tests/test_mlff_opt_verify1_specification.py
++++ b/tests/test_mlff_opt_verify1_specification.py
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_verify1_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.102a0"
++    assert mdstats.__version__ == "0.20.103a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.102a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.103a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_verify1_architecture_and_spec_record_contract() -> None:
+@@ -24,7 +24,7 @@
+     ).read_text()
+     assert "OPT-VERIFY1 - verification reuse and nearest-pair scaling" in manual
+     assert "implemented in mdstats 0.20.102a0" in manual
+-    assert "next implementation follow-up from this roadmap is **`OPT-CTRL1`**" in manual
++    assert "OPT-EVAL1 through OPT-CTRL1 is complete" in manual
+     assert "Status: implemented in mdstats 0.20.102a0." in spec
+     assert "thread-local" in spec.lower()
+     assert "neighbor-list" in spec.lower()
+--- a/tests/test_mlff_perf2_parallel_acceleration_specification.py
++++ b/tests/test_mlff_perf2_parallel_acceleration_specification.py
+@@ -10,7 +10,7 @@
+ 
+ 
+ def test_perf2_release_and_configuration_contract() -> None:
+-    assert mdstats.__version__ == "0.20.99a0"
++    assert mdstats.__version__ == "0.20.103a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     template = campaign_cli._config_template(
+         workspace="workspace",

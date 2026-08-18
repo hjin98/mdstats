@@ -1,0 +1,36 @@
+{
+  "authority_class": "E",
+  "benchmark": "benchmarks/mlff_perf_p3_cloud_cpu_2026-08-15.json",
+  "compileall": "passed",
+  "focused_regression": {
+    "failed": 0,
+    "passed": 179,
+    "warnings": 47
+  },
+  "foundation_audit_exact_digest": "a618301c7f8dad6f5cd8cfec4d39edea9303b5c2f1c52bf46b81507677808f9f",
+  "foundation_audit_peak_rss_reduction_percent": 8.021619669837401,
+  "gate": "PERF-P3",
+  "gpu_qualification": "deferred_to_FINAL-GPU1",
+  "next_gate": "VRAM1 + PERF-P4",
+  "package_collection": {
+    "collected": 3032,
+    "command": "PYTHONPATH=.:tests pytest --collect-only -q",
+    "note": "historical test-helper directory must be on PYTHONPATH for one legacy cross-test import",
+    "status": "complete"
+  },
+  "rejected_optimizations": [
+    "dense pair/radial scratch: RSS/throughput regression",
+    "chunked radial reduction: FP64 byte drift ~1e-16 to 8.9e-16"
+  ],
+  "release": "0.20.185a0",
+  "schema": "mdstats.mlff-perf-p3.qualification.2026-08.v1",
+  "specification_sweep": {
+    "failed": 70,
+    "note": "failures are dominated by archival exact-release/schema literals from older gates; current PERF-P3/current-roadmap specification slice is green",
+    "passed": 179,
+    "status": "historical_debt_not_gate_failure"
+  },
+  "status": "cpu_qualified_gpu_deferred",
+  "structural_exact_digest": "5786409f8f622b3e2d1183bcca9ef9859e3cfd7717970339f421d4f630d6ac4c",
+  "structural_median_wall_reduction_percent": 7.422761173717321
+}

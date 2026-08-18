@@ -1,0 +1,1911 @@
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/ARCHITECTURE_NOTES_MLFF_REV25.md b/ARCHITECTURE_NOTES_MLFF_REV25.md
+--- a/ARCHITECTURE_NOTES_MLFF_REV25.md	1970-01-01 00:00:00.000000000 +0000
++++ b/ARCHITECTURE_NOTES_MLFF_REV25.md	2026-08-09 14:53:48.337579588 +0000
+@@ -0,0 +1,31 @@
++# MLFF architecture revision 25 — ADAPT-PREC1 implementation
++
++mdstats 0.20.122a0 implements the first gate of the adaptive-training revision recorded
++in REV24.
++
++## Closed gate
++
++`ADAPT-PREC1` is complete for new campaigns:
++
++- learned-model precision is binary: `single` (FP32) or `double` (FP64);
++- staged `refine` and a user-facing `mixed` model mode are retired;
++- generated campaign TOML has no executable staged precision schedule;
++- new optimizer/DATA8 protocols are schedule-free, making staged optimizer/EMA promotion
++  unreachable from new production configuration;
++- model dtype follows training, evaluation inference, verification inference, committee
++  inference, and export without silent promotion;
++- mdstats-owned critical/scientific arithmetic is invariant FP64 under either learned-
++  model dtype; and
++- historical staged/refine evidence remains readable but production execution fails
++  closed rather than silently rewriting its identity.
++
++Historical PREC1-PREC3 implementation records remain part of the architecture as evidence
++for old campaigns. They are not production semantics for newly initialized campaigns.
++
++## Gates still open
++
++`ADAPT-MON1`, `ADAPT-STOP1`, `ADAPT-RANK1`, `ADAPT-EVAL1`, `ADAPT-VERIFY1`, and
++`ADAPT-MIGRATE1` remain unimplemented. In particular, 0.20.122a0 does **not** yet enable
++the planned 256/512 fixed monitors, criterion-driven epoch stopping, lightweight weighted
++ranking, or top-five full evaluation. Existing fixed-epoch monitor/EVAL-MF behavior
++remains authoritative until those later gates close.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/CHANGELOG.md b/CHANGELOG.md
+--- a/CHANGELOG.md	2026-08-09 14:32:32.329579588 +0000
++++ b/CHANGELOG.md	2026-08-09 14:53:49.605579588 +0000
+@@ -1,3 +1,11 @@
++## 0.20.122a0 - 2026-08-09
++
++- Implement ADAPT-PREC1: new MLFF campaigns expose only `single` (FP32 learned model) and `double` (FP64 learned model); staged `refine` and a user-facing `mixed` model mode are retired.
++- Remove executable staged precision schedules from newly generated TOML and new DATA8/optimizer identities, making the historical FP32→FP64 optimizer/EMA promotion path unreachable from new production campaigns.
++- Make mdstats-owned critical/scientific arithmetic invariant FP64 under both learned-model modes while preserving the selected model dtype through training, evaluation inference, verification, committee inference, and export.
++- Disable evaluation checkpoint/template dtype promotion so FP32 checkpoints are never silently evaluated/exported as FP64 models. Historical staged/refine evidence remains readable for audit/storage but production commands fail closed and require explicit migration.
++- Add the normative binary-model-precision specification, update the MLFF architecture/manual/user guide, and qualify binary precision with focused, real-MACE, evaluation/deployment, and broad specification regressions. ADAPT-MON1 remains the next gate.
++
+ ## 0.20.121a0 - 2026-08-09
+ 
+ - Record the new seven-gate MLFF adaptive-training/evaluation revision (`ADAPT-PREC1` through `ADAPT-MIGRATE1`) without changing runtime behavior in this release.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/PATCH_NOTES_0.20.122a0.md b/PATCH_NOTES_0.20.122a0.md
+--- a/PATCH_NOTES_0.20.122a0.md	1970-01-01 00:00:00.000000000 +0000
++++ b/PATCH_NOTES_0.20.122a0.md	2026-08-09 14:53:48.329579588 +0000
+@@ -0,0 +1,55 @@
++# mdstats 0.20.122a0 patch notes
++
++## ADAPT-PREC1 — binary learned-model precision
++
++This release implements the first gate of the post-0.20.120 adaptive MLFF revision.
++
++### Production precision contract
++
++New `mdstats-mlff-campaign init` configurations support exactly two learned-model modes:
++
++- `single`: FP32 model, training/autograd/optimizer state, MACE inference, verification,
++  committee/member inference, and export;
++- `double`: the same learned-model lifecycle in FP64.
++
++Plain `init` remains `single`. The staged `refine` profile and a user-facing `mixed`
++model mode are retired for new production campaigns. Generated TOML no longer contains a
++`[training.precision]` schedule, and new DATA8/optimizer identities carry no executable
++precision schedule. Consequently the historical FP32→FP64 optimizer/EMA promotion path
++is unreachable from a newly generated campaign.
++
++### FP64 scientific arithmetic remains invariant
++
++The model dtype does not lower mdstats-owned scientific arithmetic. Critical/global
++reductions where the qualified adapter applies, reference fitting, SVD/PCA, geometry,
++SSE/RMSE/statistical reductions, observables, regression, and mdstats-owned persistent MD
++bookkeeping remain FP64 under both model modes. This is not reported as a mixed model.
++
++### Exact inference dtype
++
++Evaluation, verification, and deployment inherit the learned-model dtype. Evaluation
++explicitly disables checkpoint/template dtype casting, so an FP32 checkpoint cannot be
++silently promoted and reported as an FP64 model. `double` remains FP64 through the same
++surfaces.
++
++### Historical compatibility
++
++Historical staged precision policies/classes remain deserializable for audit, status,
++storage, and archive compatibility. A historical `refine` campaign is reported as
++read-only staged evidence; production `prepare`, `preflight`, `train`, `evaluate`, and
++`verify` fail closed and require the user to choose a new `single` or `double` scientific
++identity instead of silently reinterpreting history.
++
++### Qualification
++
++The focused precision/runtime suite passes 43 tests. The broader MLFF
++specification/precision/real-MACE subset passes 169 tests with the one known pre-existing
++missing `release/mlff_data9a9a_real_mpa0_restart_smoke.json` case deselected. An
++additional 31 deployment/evaluation/compatibility tests pass. The full `test_mlff_*`
++collection was also started and reached the sandbox time limit without an observed
++failure before timeout; qualification therefore relies on the bounded high-value suites
++above rather than claiming a completed full-suite run.
++
++`ADAPT-MON1` remains the next implementation gate. Fixed 256-target/512-true-replay
++monitor construction and the later adaptive stopping/evaluation redesign are not enabled
++by this release.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/PKG-INFO b/PKG-INFO
+--- a/PKG-INFO	2026-08-09 14:26:04.017555992 +0000
++++ b/PKG-INFO	2026-08-09 14:47:08.460332483 +0000
+@@ -1,6 +1,6 @@
+ Metadata-Version: 2.4
+ Name: mdstats
+-Version: 0.20.121a0
++Version: 0.20.122a0
+ Summary: Transparent atomistic frame collections and structural/dynamical statistics
+ Requires-Python: >=3.10
+ Requires-Dist: numpy>=1.26
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/README.md b/README.md
+--- a/README.md	2026-08-09 04:15:00.000000000 +0000
++++ b/README.md	2026-08-09 14:48:20.190010590 +0000
+@@ -4,7 +4,7 @@
+ 
+ Checkpoint accuracy is judged against independent DFT labels. Foundation-generated replay pseudolabels remain the default replay training targets and an absolute behavioral-drift diagnostic. Set `[paths].replay_true_labels` to the original true-label replay directory so mdstats can evaluate both the foundation and fine-tuned checkpoint on the same target and replay geometries without changing training inputs.
+ 
+-Current development release: **0.20.111a0** (STOR1 read-only campaign storage accounting and ownership containment).
++Current development release: **0.20.122a0** (ADAPT-PREC1 binary learned-model precision and invariant FP64 scientific arithmetic).
+ 
+ ## Read-only campaign storage accounting in 0.20.111a0
+ 
+@@ -13,9 +13,13 @@
+ Configured training, foundation, replay, true-label, and campaign-config paths remain protected user/reference inputs even when physically located inside the workspace. Existing cleanup and checkpoint-pruning code now consumes the same real-path/symlink containment boundary, so a path found in TOML/SQLite/JSON never grants deletion authority over external data. STOR1 adds no new deletion mode; STOR2 is the next gate.
+ 
+ 
+-## Explicit precision profiles in 0.20.108a0
++## Binary learned-model precision in 0.20.122a0
+ 
+-`mdstats-mlff-campaign init` now accepts `--precision single|double|refine`; plain init is canonical `single`. The generated TOML exposes the complete precision schedule rather than hiding it behind a profile name. `refine` defaults to 80% FP32 then 20% FP64 training, with a 0.5 learning-rate scale at the refinement boundary, a hard three-FP64-epoch floor, and a 15,000-gradient-update reference floor calibrated for replay-sized exposure. DATA8 resolves epoch/update boundaries after loader exposure and binds the resolved schedule into training-protocol identity. If that reference update floor is mathematically impossible for the exact canonical profile (for example a default n512 target-only job) while the nominal FP64 tail already satisfies the hard epoch floor, DATA8 preserves the explicit 80/20 schedule and binds the achievable update floor; custom schedules remain strict. PREC1 freezes configuration/identity, PREC2 implements the live FP32→FP64 transition and exact restart state, and PREC3 activates the profiles end to end. Canonical `single` now uses native FP32 profile-controlled critical operations; `refine` evaluates/verifies/exports in FP64 and publishes a verified FP64 artifact even when an FP32-stage checkpoint wins.
++`mdstats-mlff-campaign init` now accepts only `--precision single|double`; plain init is canonical `single`. `single` means an FP32 learned model for training and every MACE inference path, while `double` means an FP64 learned model throughout training, evaluation, verification, committee inference, and export. New campaigns no longer generate a staged `[training.precision]` schedule: the former `refine` profile and any user-facing `mixed` model mode are retired. Historical staged/refine records remain readable for audit/archive, but production commands fail closed and require an explicit migration to `single` or `double`.
++
++Model dtype does not control mdstats-owned scientific arithmetic. Reference fitting, SVD/PCA, geometric linear algebra, SSE/RMSE/statistical reductions, observable analysis, and persistent mdstats-owned MD bookkeeping remain FP64 invariants for both model modes. Evaluation explicitly forbids checkpoint/template dtype promotion, so an FP32 checkpoint is never presented as an FP64 model merely for evaluation or export.
++
++The earlier PREC1-PREC3 staged-precision implementation remains documented as historical compatibility evidence; ADAPT-PREC1 supersedes its production precision semantics for newly initialized campaigns.
+ 
+ ## Guarded multi-fidelity checkpoint evaluation in 0.20.107a0
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/campaign.toml.example b/campaign.toml.example
+--- a/campaign.toml.example	2026-08-09 03:01:46.000000000 +0000
++++ b/campaign.toml.example	2026-08-09 14:40:36.016719389 +0000
+@@ -108,23 +108,9 @@
+ target_head_weight = 5.0
+ replay_head_weight = 1.0
+ 
+-[training.precision]
+-# PREC1 explicit protocol schedule. Canonical refine uses an 80/20 FP32->FP64
+-# split and scales the effective learning rate by 0.5 at the FP64 boundary.
+-# Fractions are resolved deterministically against max_num_epochs; with 30
+-# epochs refine becomes 24 FP32 + 6 FP64 epochs.
+-mode = "single_stage"
+-minimum_final_stage_epochs = 0
+-minimum_final_stage_gradient_updates = 0
+-preserve_optimizer_state = true
+-preserve_scheduler_state = true
+-preserve_ema_state = true
+-critical_operation_dtype = "float32"
+-
+-[[training.precision.stage]]
+-dtype = "float32"
+-fraction = 1.00
+-learning_rate_scale = 1.0
++# ADAPT-PREC1: model precision is binary and controls learned-model arithmetic only.
++# mdstats-owned scientific reductions/statistics and persistent MD bookkeeping remain FP64.
++# There is intentionally no [training.precision] staged/refine schedule.
+ 
+ [training.naive_fine_tuning]
+ # Three cross-validation folds plus one final-development run are created for
+@@ -360,7 +346,7 @@
+ replay_valid_configurations = 8
+ 
+ [export]
+-# Final deployment dtype is explicit and enforced for canonical precision profiles.
++# Exported learned-model dtype must match [campaign].precision_profile.
+ dtype = "float32"
+ 
+ [verification]
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/docs/README.md b/docs/README.md
+--- a/docs/README.md	2026-08-08 21:47:24.000000000 +0000
++++ b/docs/README.md	2026-08-09 14:56:40.819389989 +0000
+@@ -35,10 +35,13 @@
+   in 0.20.106a0 and EVAL-MF2 in 0.20.107a0: equal-fraction target/replay
+   monitor ladders, incremental prediction reuse, conservative survivor control, full
+   finalist evaluation, and comprehensive epoch reporting.
+-- `specs/training_data/mlff_staged_precision_profiles_spec.{md,pdf}` defines the PREC1-PREC3
+-  precision-profile roadmap; PREC1/PREC2/PREC3 are implemented through 0.20.110a0: `single`, `double`, and `refine` initialization,
+-  explicit staged schedules, in-process FP32-to-FP64 optimizer/EMA promotion, restart
+-  correctness, and campaign-wide qualification.
++- `specs/training_data/mlff_binary_model_precision_spec.{md,pdf}` defines ADAPT-PREC1,
++  implemented in 0.20.122a0: new campaigns use only `single` (FP32 learned model) or
++  `double` (FP64 learned model), exact model dtype follows every inference/export path,
++  and mdstats-owned scientific arithmetic remains invariant FP64.
++- `specs/training_data/mlff_staged_precision_profiles_spec.{md,pdf}` is retained as the
++  historical PREC1-PREC3 staged-precision compatibility specification for campaigns
++  created before ADAPT-PREC1; staged `refine` is no longer a new-production profile.
+ - `specs/training_data/mlff_storage_management_spec.{md,pdf}` defines the STOR1-STOR5
+   ownership-scoped storage roadmap; STOR1 is implemented in 0.20.111a0 with read-only
+   accounting and fail-closed ownership containment, while STOR2-STOR5 cover checkpoint
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/docs/arch_manuals/mlff_training_data_architecture.md b/docs/arch_manuals/mlff_training_data_architecture.md
+--- a/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-09 14:33:31.669579588 +0000
++++ b/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-09 14:47:32.421726448 +0000
+@@ -34,7 +34,7 @@
+ STAT1 and SAMP0 workflows consume those primitives without changing their
+ serialized evidence. MLFF-DATA2 is implemented in `0.20.30a0`: deterministic source manifests, VASP source catalogs, named energy selection, decomposed label domains, and per-label-domain structural atomic-reference identifiability are public runtime contracts. MLFF-DATA3 is implemented in `0.20.31a0`: manifest-bound frame occurrences, geometry and label identities, duplicate/restart detection, post-DFT eligibility, temperature conditions, reference-cell resolution, and rotation-separated finite strain are public runtime contracts. MLFF-DATA4 is implemented in `0.20.32a0` and generalized through DATA9A7d: partition-independent raw physical features, optional profile-extension states, protected event bursts, deterministic feature caches, and partition-role budget requests are public runtime contracts. MLFF-DATA5 is implemented in `0.20.33a0`: autocorrelation-aware partition units, role feasibility, deterministic outer evidence roles, independence grades, nested cross-validation monitors, blinding boundaries, and fail-closed leakage audits are public runtime contracts. MLFF-DATA6 is implemented in `0.20.34a0` and generalized through DATA9A7d: profile-aware universal and optional extension descriptors, optional checkpoint-bound MACE atomic descriptor sidecars, training-domain-only foundation residuals, blinded non-training predictions, and sealed locked-test prediction records are public runtime contracts. MLFF-DATA7 is implemented in `0.20.35a0`: canonical final/fold training domains, fold-local fitted metrics, domain-local atomic-reference fits, explicit objective and checkpoint policies, deterministic quota-interleaved selection ladders, and coverage reports are public runtime contracts. MLFF-DATA8 is implemented in `0.20.36a0`: verified MACE-readable extended-XYZ artifacts, explicit E0 mappings, replay train/monitor plans, a v0.3.16 source compatibility lock, complete training-protocol identities, loader dry-run exposure records, independent final/fold job bundles, and sealed locked-test metadata are public runtime contracts. MLFF-DATA9A hardening began in `0.20.37a0`, its offline runtime bootstrap is implemented in `0.20.38a0`, and DATA9A2 real-MACE realization is implemented in `0.20.39a0`: checkpoint-residual E0 fits, relocatable bundles, strict replay/XYZ audits, source-declared dependency manifests, isolated local-artifact installation, installed-environment qualification, v0.3.16 scalar-literal serialization, fixed-file target/replay weight realization, genuine parser/loader dry runs, bounded training, checkpoint/head inventory, target-head extraction, and finite evaluation round trips are public contracts. The supplied dependency bundle and MPA-0 checkpoint pass executable qualification. DATA9A3 in 0.20.40a0 qualifies the complete 27-source, 37,632-frame bulk-LTA target corpus through DATA5 with a passing leakage audit. DATA9A production execution remains open for checkpoint-bound production DATA6/DATA7 evidence, DATA8 job materialization, exact replay-corpus identity, and later protocol-matched training and freeze. DATA9A4 in 0.20.41a0 adds a protocol-bound selectable precision contract: the float64 MPA-0 checkpoint may initialize either a float32 or float64 fine-tuned model, and actual serialized parameter/buffer dtypes are immutable execution evidence rather than inferred from CLI text. DATA9A5a/9A5b in 0.20.42a0-0.20.43a0 close Python/ASE critical precision and deployment-artifact semantics. DATA9A6 in 0.20.44a0 introduces the analysis-owned observable-call bridge. DATA9A6b in 0.20.45a0 closes recipe dependency safety, collection and model lineage, runtime-duration/warning evidence, capability requirement schemas, documentation conflicts, and the thermomechanical/energetic analysis ownership plan. DATA9A6c in 0.20.46a0 verifies supplied identities against the actual collections, requires symmetric reference/candidate generation lineage for production evidence, binds analysis-owned result digests, freezes observable evidence roles and comparison-policy identity before locked evaluation, and corrects runtime/package identity and dependency ordering. DATA9A7a in 0.20.47a0 introduces user-declared compositional material profiles, phase components, atom-group catalogs, condition axes, independence axes, a declarative provider protocol, and DATA4 schema-v2 profile threading without changing existing feature or selection behavior. DATA9A7b in 0.20.48a0 adds an analysis-owned universal local-structure kernel, profile/atom-group-aware DATA6 structural catalogs, generic structural events, a DATA7 universal feature block, and generic per-species environment coverage without importing LTA. DATA9A7c in 0.20.49a0 derives immutable phase/geometry selection plans, profile-specific feature/event activation, geometry-aware atom-group priorities, DATA6-v3 plan lineage, and compositional observable-call recommendations. DATA9A7d in 0.20.50a0 migrates LTA behind generic optional profile-extension catalogs, advances DATA4/DATA6 canonical schemas, and replaces generic-core cation/site assumptions with focus groups, structural realizations, and extension coverage. DATA9A7e in 0.20.51a0 qualifies bounded crystal, amorphous, liquid, interface, and LTA DATA4-DATA7 paths, adds immutable qualification evidence, and makes MLFF LTA implementation imports lazy so generic workflows neither import nor serialize LTA-specific evidence. DATA9A8 in 0.20.52a0 adds frozen profile-aware observable comparison and acceptance policies. DATA9A9a in 0.20.53a0 adds the exact DATA5-authorized checkpoint-bound descriptor/prediction plan, per-frame restart sidecars, atomic checkpoints, corruption recovery, and DATA6 reuse without repeated foundation-model inference. DATA9A9b in 0.20.54a0 adds restartable final/fold DATA7 materialization, exact replay binding, complete DATA8 job-tree evidence, corruption-driven downstream invalidation, and a relocatable production materialization record. DATA9A9c in 0.20.55a0 adds the immutable production-corpus plan, evidence-derived foundation and residual-E0 qualification, numerical replay-label identity, content-addressed DATA8 generation promotion, self-verifying loaders, and generic optional-extension gate requirements. DATA9B1 in 0.20.56a0 adds passed-gate campaign-matrix freezing, protocol-family and seed-variant identities, content-addressed checkpoint catalogs, external metric records, deterministic hard-constraint admissibility, and fail-closed checkpoint selection. DATA9B2 in 0.20.57a0 adds supervised/restartable MACE execution, automatic target/replay checkpoint evaluation, fold/seed aggregation, learning curves, deterministic protocol comparison, target-head committee export, protocol freeze, and sealed-evaluation activation. DATA9B3 in 0.20.58a0 adds the unified source-checkout campaign CLI, one-database orchestration state, manifest approval, production preparation/training/evaluation commands, source-local precision-wrapper shims, and bounded NVE deployment verification. DATA9B3A in 0.20.59a0 makes the MACE acceleration backend a frozen campaign policy, auto-selects cuEquivariance at initialization when qualified, and propagates it through DATA6, DATA8, preflight, production training, checkpoint evaluation, and bounded verification without silent fallback. DATA2A in 0.20.60a0 adds XML-backed review-manifest metadata, percentage-aware filename strain candidates, exact LTA fixed-cell geometry verification, and fail-safe promotion before manual manifest approval. DATA2 interrupted-stream hardening in 0.20.61a0 adds EOF-qualified interrupted `vasprun.xml` recovery across ENS0, DATA2 source audit, and normalized trajectory loading while preserving strict rejection of ambiguous or mid-file corruption.
+ The post-0.20.105 evaluation/storage cycle implements EVAL-MF1 in 0.20.106a0 and EVAL-MF2 in 0.20.107a0: deterministic nested equal-fraction target/replay checkpoint screening, delta-only prediction reuse, conservative source/block-aware survivor guards, comprehensive epoch reporting, and full-fidelity finalist publication are now the generated production evaluation strategy.
+-The post-0.20.120 adaptive-training revision is recorded as architecture-only planning in 0.20.121a0. It proposes binary `single|double` model precision, fixed-budget common target/true-replay epoch monitors, target/replay weight-coupled early stopping, one lightweight champion per run, and top-five authoritative full evaluation. Until its migration gate closes, the implemented EVAL-MF/PREC behavior remains runtime-authoritative.
++The post-0.20.120 adaptive-training revision was recorded as architecture-only planning in 0.20.121a0. **ADAPT-PREC1 is implemented in 0.20.122a0**: new campaigns now use binary `single|double` learned-model precision, retire staged `refine`/user-facing `mixed` production semantics, propagate the checkpoint model dtype through inference/export, and keep mdstats-owned scientific arithmetic FP64. The later ADAPT-MON1 through ADAPT-MIGRATE1 gates remain pending; until those gates close, the existing fixed-epoch monitor and EVAL-MF evaluation behavior remains runtime-authoritative.
+ 
+ The central architectural rule is:
+ 
+@@ -4804,11 +4804,13 @@
+ 
+ # Post-0.20.120 adaptive-training, binary-precision, and evaluation-simplification roadmap
+ 
+-**Status:** architecture recorded in `mdstats 0.20.121a0`; runtime implementation is
+-`not_started` for all gates below. This roadmap supersedes the *production intent* of
+-the earlier staged-precision and EVAL-MF roadmaps once its corresponding migration
+-gates are implemented. Historical EVAL-MF/PREC records remain valid evidence for the
+-campaigns that created them and are not rewritten retrospectively.
++**Status:** architecture recorded in `mdstats 0.20.121a0`; `ADAPT-PREC1` is implemented
++in `mdstats 0.20.122a0`. `ADAPT-MON1` through `ADAPT-MIGRATE1` remain `not_started`.
++The binary learned-model precision contract now supersedes staged-precision production
++semantics for new campaigns, while the existing fixed-epoch monitor and EVAL-MF
++evaluation machinery remains runtime-authoritative until its later replacement gates
++close. Historical EVAL-MF/PREC records remain valid evidence for the campaigns that
++created them and are not rewritten retrospectively.
+ 
+ ## Motivation and evidence
+ 
+@@ -4870,7 +4872,7 @@
+ 
+ ## ADAPT-PREC1 - binary model precision and invariant FP64 scientific arithmetic
+ 
+-**Status:** `not_started`.
++**Status:** implemented in `mdstats 0.20.122a0`.
+ 
+ ### User-facing model precision
+ 
+@@ -4949,6 +4951,35 @@
+ 6. the retired schedule/optimizer-promotion machinery is no longer reachable from new
+    production configurations.
+ 
++### ADAPT-PREC1 implementation record (`0.20.122a0`)
++
++The production initializer now accepts only `--precision single|double`; plain `init`
++resolves to `single`. Generated TOML no longer writes a `[training.precision]` staged
++schedule. Instead, `[model].dtype`, `[training].dtype`, `[evaluation].dtype`,
++`[verification].dtype`, and `[export].dtype` are required to agree with the selected
++learned-model precision. Any mismatch fails closed before production work begins.
++
++New DATA8/optimizer identities are therefore schedule-free and cannot reach the PREC2
++FP32-to-FP64 optimizer/EMA promotion runtime. The historical precision-schedule classes
++and deserializers remain available only so old staged campaign evidence can be inspected
++and archived. A historical `refine` profile is reported as read-only historical metadata;
++production `prepare`, `preflight`, `train`, `evaluate`, and `verify` reject it with an
++explicit migration message rather than reinterpreting it.
++
++For both `single` and `double`, mdstats-owned critical/scientific arithmetic resolves to
++FP64. This includes the qualified critical energy/virial reduction policy where it is
++applicable and the existing NumPy/SciPy statistical/linear-algebra analysis paths. That
++policy does not change the learned-model dtype: `single` model forward/inference remains
++FP32 and `double` remains FP64. Evaluation checkpoint reconstruction explicitly disables
++checkpoint/template dtype casting, and verification/export inherit the checkpoint model
++dtype rather than a separate evaluation/deployment precision.
++
++Focused ADAPT-PREC1 qualification covers binary CLI generation, exact dtype propagation,
++no silent evaluator promotion, invariant FP64 critical arithmetic, historical staged
++readability/fail-closed production migration, and schedule-free DATA8 construction. The
++legacy staged-schedule API remains regression-tested as historical compatibility, not as
++a reachable new-campaign runtime.
++
+ ## ADAPT-MON1 - fixed-budget common online monitors
+ 
+ **Status:** `not_started`.
+@@ -5424,9 +5455,12 @@
+ 11. **history remains readable** - retired EVAL-MF/refine evidence is preserved without
+     silently controlling new campaigns.
+ 
+-Until `ADAPT-MIGRATE1` closes, the currently implemented EVAL-MF/PREC behavior remains the
+-runtime source of truth. This section is the staged implementation target, not a claim
+-that `0.20.121a0` already executes the redesigned policy.
++From `0.20.122a0`, the ADAPT-PREC1 binary learned-model precision contract is the runtime
++source of truth for new campaigns. Until the later migration gates close, the existing
++fixed-epoch monitor, checkpoint-ranking, EVAL-MF, and verification-selection behavior
++remains runtime-authoritative. This roadmap therefore mixes one completed precision gate
++with later staged implementation targets; it does not claim that the remaining adaptive
++training/evaluation policy is already active.
+ 
+ 
+ ## Deferred or intentionally unchanged work
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/docs/guides/mlff_campaign_cli_user_guide.md b/docs/guides/mlff_campaign_cli_user_guide.md
+--- a/docs/guides/mlff_campaign_cli_user_guide.md	2026-08-09 03:03:32.000000000 +0000
++++ b/docs/guides/mlff_campaign_cli_user_guide.md	2026-08-09 14:48:20.190545315 +0000
+@@ -87,6 +87,28 @@
+ costs more than one run, but it tells you whether replay is actually helping and
+ whether the result is seed-stable.
+ 
++### Model precision
++
++New campaigns expose exactly two learned-model precision modes:
++
++```bash
++python tools/mdstats-mlff-campaign.py --config campaign.toml init --precision single
++python tools/mdstats-mlff-campaign.py --config campaign.toml init --precision double
++```
++
++`single` is the default and keeps the MACE model FP32 through training, checkpoint
++monitor inference, evaluation, verification, committee inference, and export. `double`
++keeps the learned model FP64 through the same lifecycle. The former staged `refine`
++profile and a user-facing `mixed` model mode are retired for new campaigns; production
++commands fail closed on historical staged configurations rather than silently
++reinterpreting them.
++
++This model-dtype choice does not make mdstats numerical analysis low precision.
++Reference fitting, PCA/SVD, geometry, metric/statistical reductions, observable analysis,
++and mdstats-owned persistent MD bookkeeping remain FP64 under either model mode. An
++FP32 checkpoint is never dtype-promoted merely to evaluate or export it as an FP64
++model.
++
+ ### Acceleration backend
+ 
+ `init` probes the active CUDA/MACE environment once. When the complete
+@@ -212,8 +234,8 @@
+ ```
+ 
+ The command verifies all generated MACE job bytes and performs one real one-epoch
+-MACE run through the same critical-precision wrapper used by the production
+-campaign, then reloads the target head and checks finite predictions. When CuEq
++MACE run under the same binary learned-model dtype and invariant FP64 scientific
++arithmetic policy used by the production campaign, then reloads the target head and checks finite predictions. When CuEq
+ is selected, every generated YAML must contain `enable_cueq: true`, evaluation
+ uses the same backend, and the training log must show MACE converting the model
+ to CuEq. Use
+@@ -230,7 +252,7 @@
+ 
+ The dry run lists exact fold/final jobs. The real command supervises them,
+ preserves logs and every checkpoint, and resumes failed or interrupted attempts
+-with the qualified precision wrapper.
++with the qualified binary model-precision policy.
+ 
+ CUDA training uses adaptive process-level concurrency by default. The scheduler
+ checks the active CPU affinity/cgroup quota, available host RAM, and aggregate
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/docs/specs/training_data/README.md b/docs/specs/training_data/README.md
+--- a/docs/specs/training_data/README.md	2026-08-07 07:48:53.000000000 +0000
++++ b/docs/specs/training_data/README.md	2026-08-09 14:56:40.819683560 +0000
+@@ -133,3 +133,8 @@
+ - `MLFF-PERF4` (0.20.86a0): parallel evaluation and verification, projected GPU-utilization/VRAM admission, projected CPU-utilization admission, and package-wide 90% CPU/GPU defaults while RAM remains 80%.
+ - `MLFF-PERF5` (0.20.87a0): exclude initialization from evaluation/verification telemetry, begin calibration at the first real model forward pass, and require a trailing 60-second inference window before promotion.
+ - `MLFF-PERF6` (0.20.88a0): begin at the first computation-heavy stage, average the complete evaluation/verification workload for 20 seconds, keep training at 60 seconds, and report per-task stages.
++- ADAPT-PREC1 binary learned-model precision is implemented in `0.20.122a0`: new campaigns
++  support only `single|double`; staged `refine` remains historical/read-only, while
++  mdstats-owned scientific arithmetic remains FP64 under both model modes. See
++  `mlff_binary_model_precision_spec.{md,pdf}`.
++
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/docs/specs/training_data/mlff_binary_model_precision_spec.md b/docs/specs/training_data/mlff_binary_model_precision_spec.md
+--- a/docs/specs/training_data/mlff_binary_model_precision_spec.md	1970-01-01 00:00:00.000000000 +0000
++++ b/docs/specs/training_data/mlff_binary_model_precision_spec.md	2026-08-09 14:48:20.481579588 +0000
+@@ -0,0 +1,77 @@
++# MLFF ADAPT-PREC1 binary model precision specification
++
++Status: implemented in mdstats 0.20.122a0.
++
++## Purpose
++
++ADAPT-PREC1 defines one precision variable for the learned MACE model and removes staged
++FP32-to-FP64 refinement from new production campaign identity. It supersedes the
++production precision semantics of PREC1-PREC3 without rewriting historical campaign
++evidence.
++
++## Canonical model modes
++
++New campaign initialization supports exactly:
++
++- `single`: learned-model parameters/buffers, training/autograd, optimizer/EMA state, and
++  every MACE inference path use float32;
++- `double`: the same learned-model lifecycle uses float64.
++
++Plain `init` resolves to `single`. `refine` and user-facing `mixed` are not production
++model modes. No hardware heuristic may change the selected model dtype.
++
++The selected dtype must agree across `[model].dtype`, `[training].dtype`,
++`[evaluation].dtype`, `[verification].dtype`, and `[export].dtype`. Production commands
++fail closed on a mismatch.
++
++## Inference and export invariant
++
++A checkpoint is evaluated, verified, used by committee/member inference, and exported in
++its learned-model dtype. An FP32 checkpoint must not be cast to FP64 merely to satisfy a
++separate evaluation or deployment dtype. Checkpoint/template reconstruction therefore
++forbids model-dtype promotion in production evaluation.
++
++## FP64 scientific-arithmetic invariant
++
++Model dtype does not control mdstats-owned numerical analysis. Operations that are cheap
++relative to model inference and benefit from wider arithmetic remain float64 under both
++model modes, including:
++
++- elemental/reference-energy fitting, rank/SVD diagnostics, PCA/QR/SVD, feature scaling,
++  and deterministic selection-distance reductions;
++- cell/strain/geometric linear algebra;
++- SSE/RMSE/MAE, regression, confidence/statistical aggregation, and checkpoint scoring;
++- observable analysis and NVE drift fitting; and
++- mdstats-owned persistent MD positions, cell, velocities/momenta, and integration
++  bookkeeping where applicable.
++
++The qualified critical energy/virial reduction policy is also FP64 where that adapter is
++applicable. This does not make an FP32 network an FP64 model; operations inseparable from
++the MACE differentiation graph remain in the selected learned-model dtype.
++
++## New-campaign protocol identity
++
++New campaign TOML contains no `[training.precision]` staged schedule. New optimizer and
++DATA8 protocol identities therefore carry no resolved precision schedule and cannot
++reach the historical PREC2 optimizer/EMA promotion runtime. Binary model dtype is bound
++through the ordinary model/training/evaluation/verification/export identities.
++
++## Historical compatibility
++
++Historical staged `refine` schedules remain deserializable for reporting, storage,
++audit, and archive operations. They are read-only historical evidence. Production
++`prepare`, `preflight`, `train`, `evaluate`, and `verify` fail closed when such a profile
++is supplied and require the user to choose a new `single` or `double` scientific
++identity. Historical schedules are never silently flattened or reinterpreted.
++
++## Acceptance tests
++
++The gate is qualified only when tests prove:
++
++1. CLI initialization exposes only `single|double` and defaults to `single`;
++2. generated configs contain no staged precision schedule;
++3. model dtype is identical across training, evaluation, verification, and export;
++4. evaluation forbids checkpoint/template dtype promotion;
++5. FP64 critical/scientific arithmetic remains active for both learned-model dtypes;
++6. new DATA8/optimizer policies are schedule-free; and
++7. historical `refine` evidence remains readable while production execution rejects it.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/docs/specs/training_data/mlff_staged_precision_profiles_spec.md b/docs/specs/training_data/mlff_staged_precision_profiles_spec.md
+--- a/docs/specs/training_data/mlff_staged_precision_profiles_spec.md	2026-08-09 04:15:00.000000000 +0000
++++ b/docs/specs/training_data/mlff_staged_precision_profiles_spec.md	2026-08-09 14:48:20.190761900 +0000
+@@ -1,5 +1,12 @@
+ # MLFF PREC1-PREC3 staged-precision profile specification
+ 
++> **Historical compatibility specification.** PREC1-PREC3 describe the staged precision
++> implementation used by campaigns created before ADAPT-PREC1. From mdstats 0.20.122a0,
++> newly initialized production campaigns support only binary `single|double` learned-model
++> precision; `refine`/user-facing `mixed` production semantics are retired. Historical
++> staged schedules remain readable and regression-tested but cannot seed a new production
++> protocol silently. See `mlff_binary_model_precision_spec.md`.
++
+ Status: PREC1 implemented in mdstats 0.20.108a0; PREC2 implemented in mdstats 0.20.109a0; PREC3 implemented in mdstats 0.20.110a0. STOR1 is implemented in mdstats 0.20.111a0, STOR2 in mdstats 0.20.113a0, STOR3 in mdstats 0.20.114a0, STOR4 in mdstats 0.20.115a0, and STOR5 in mdstats 0.20.116a0; the post-0.20.105 evaluation/precision/storage roadmap is complete.
+ 
+ ## Purpose
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/mdstats/_version.py b/mdstats/_version.py
+--- a/mdstats/_version.py	2026-08-09 14:26:04.017314428 +0000
++++ b/mdstats/_version.py	2026-08-09 14:47:08.460259540 +0000
+@@ -1,3 +1,3 @@
+ """Package version."""
+ 
+-__version__ = "0.20.121a0"
++__version__ = "0.20.122a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/mdstats/data/observable_owner_manuals.json b/mdstats/data/observable_owner_manuals.json
+--- a/mdstats/data/observable_owner_manuals.json	2026-08-09 14:26:04.017876605 +0000
++++ b/mdstats/data/observable_owner_manuals.json	2026-08-09 14:51:50.822564677 +0000
+@@ -17,6 +17,6 @@
+       "uri": "mdstats-doc://vacf-dynamics-architecture/0.20.53a0"
+     }
+   },
+-  "package_version": "0.20.121a0",
++  "package_version": "0.20.122a0",
+   "schema": "mdstats.observable-owner-manual-index.v1"
+ }
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/mdstats/training_data/campaign_cli.py b/mdstats/training_data/campaign_cli.py
+--- a/mdstats/training_data/campaign_cli.py	2026-08-09 03:03:32.000000000 +0000
++++ b/mdstats/training_data/campaign_cli.py	2026-08-09 14:44:57.377579588 +0000
+@@ -827,8 +827,17 @@
+         raise CampaignCliError(f"Invalid [acceleration] policy: {exc}") from exc
+ 
+ 
+-def _precision_schedule_policy(cfg: Mapping[str, Any]) -> Any | None:
+-    """Return the explicit PREC1 schedule, preserving legacy configs as schedule-free."""
++_BINARY_PRECISION_DTYPES = {"single": "float32", "double": "float64"}
++_RETIRED_PRECISION_PROFILES = {"refine", "mixed"}
++
++
++def _legacy_precision_schedule_policy(cfg: Mapping[str, Any]) -> Any | None:
++    """Deserialize the pre-ADAPT-PREC1 staged schedule without authorizing it.
++
++    Historical schedule records remain readable for status/storage/reporting.  New
++    production execution must use :func:`_binary_model_precision_contract`, which
++    rejects staged/refine semantics and never returns this policy to DATA8/runtime.
++    """
+ 
+     import mdstats
+ 
+@@ -872,101 +881,218 @@
+             export_dtype=str(cfg.get("export", {}).get("dtype", training.get("dtype", "float32"))),
+         )
+     except Exception as exc:
+-        raise CampaignCliError(f"Invalid staged precision configuration: {exc}") from exc
++        raise CampaignCliError(f"Invalid historical staged precision configuration: {exc}") from exc
+     training_dtype = str(training.get("dtype", stages[0].dtype))
+     if training_dtype != stages[0].dtype:
+         raise CampaignCliError(
+-            "[training].dtype must equal the first [[training.precision.stage]].dtype."
++            "[training].dtype must equal the first historical [[training.precision.stage]].dtype."
+         )
+     mode = str(precision.get("mode", policy.mode))
+     if mode != policy.mode:
+         raise CampaignCliError(
+-            f"[training.precision].mode={mode!r} disagrees with the explicit stage count; "
++            f"[training.precision].mode={mode!r} disagrees with the historical stage count; "
+             f"expected {policy.mode!r}."
+         )
+     return policy
+ 
+ 
+-def _critical_precision_policy(cfg: Mapping[str, Any]) -> Any:
+-    """Return the profile-bound critical precision policy.
++def _binary_model_precision_contract(
++    cfg: Mapping[str, Any],
++    *,
++    allow_historical_refine: bool = False,
++) -> dict[str, Any]:
++    """Resolve the ADAPT-PREC1 learned-model dtype and validate all inference surfaces.
+ 
+-    Schedule-free configurations retain the historical critical-FP64 policy.
+-    Explicit PREC1 profiles bind the critical operation dtype into DATA8 and
+-    all runtime stages consume the same policy rather than inferring behavior
+-    from a local model dtype.
++    The precision mode controls only learned-model arithmetic.  mdstats-owned critical
++    reductions/statistics/MD bookkeeping remain FP64 and are not a user-selectable mode.
+     """
+ 
++    campaign = cfg.get("campaign", {})
++    training = cfg.get("training", {})
++    model = cfg.get("model", {})
++    requested = campaign.get("precision_profile")
++    requested_text = "" if requested is None else str(requested).strip().lower()
++
++    historical = _legacy_precision_schedule_policy(cfg)
++    if requested_text in _RETIRED_PRECISION_PROFILES or (
++        historical is not None and len(historical.stages) > 1
++    ):
++        if allow_historical_refine:
++            if historical is None:
++                raise CampaignCliError(
++                    "Historical staged precision evidence is incomplete: the configuration names "
++                    f"{requested_text!r} but contains no explicit schedule."
++                )
++            return {
++                "requested_profile": historical.requested_profile,
++                "model_dtype": historical.model_dtype,
++                "historical_schedule": historical,
++                "historical_read_only": True,
++            }
++        raise CampaignCliError(
++            "The staged `refine`/`mixed` precision mode is retired for production campaigns. "
++            "Choose `single` (FP32 learned model) or `double` (FP64 learned model). "
++            "Historical staged evidence remains readable through status/storage/reporting, "
++            "but cannot be resumed or silently reinterpreted under the binary precision contract."
++        )
++
++    # Pre-PREC/one-stage configurations are scientifically equivalent when every
++    # learned-model inference surface already agrees on one dtype.  Infer the binary
++    # label only when the profile is absent/legacy; explicit unknown profile names fail.
++    if requested_text in _BINARY_PRECISION_DTYPES:
++        profile = requested_text
++        expected_dtype = _BINARY_PRECISION_DTYPES[profile]
++        source = "explicit"
++    elif requested_text in {"", "legacy", "legacy_custom", "custom"}:
++        inferred_dtype = str(training.get("dtype", model.get("dtype", "float32")))
++        if inferred_dtype not in {"float32", "float64"}:
++            raise CampaignCliError(f"Unsupported learned-model dtype {inferred_dtype!r}.")
++        profile = "single" if inferred_dtype == "float32" else "double"
++        expected_dtype = inferred_dtype
++        source = "legacy_inferred"
++    else:
++        raise CampaignCliError(
++            f"Unsupported precision profile {requested_text!r}. New campaigns support only "
++            "`single` and `double`."
++        )
++
++    observed = {
++        "[model].dtype": str(model.get("dtype", expected_dtype)),
++        "[training].dtype": str(training.get("dtype", expected_dtype)),
++        "[evaluation].dtype": str(cfg.get("evaluation", {}).get("dtype", expected_dtype)),
++        "[verification].dtype": str(cfg.get("verification", {}).get("dtype", expected_dtype)),
++        "[export].dtype": str(cfg.get("export", {}).get("dtype", expected_dtype)),
++    }
++    mismatches = [f"{name}={value!r}" for name, value in observed.items() if value != expected_dtype]
++    if mismatches:
++        raise CampaignCliError(
++            f"Precision profile `{profile}` requires learned-model dtype {expected_dtype} for "
++            "training and every model-inference/export surface; mismatches: " + ", ".join(mismatches)
++        )
++
++    # Old single/double TOMLs may still contain a one-stage [training.precision]
++    # table. Validate it, but deliberately do not return it to DATA8/runtime; this
++    # makes staged transition machinery unreachable from the binary production path.
++    if historical is not None:
++        if len(historical.stages) != 1:
++            raise CampaignCliError("Binary precision cannot carry a staged training schedule.")
++        stage = historical.stages[0]
++        if stage.dtype != expected_dtype or abs(stage.fraction - 1.0) > 1.0e-12:
++            raise CampaignCliError(
++                "Historical one-stage precision metadata disagrees with the binary model dtype."
++            )
++        if abs(stage.learning_rate_scale - 1.0) > 1.0e-12:
++            raise CampaignCliError(
++                "Binary precision does not support a precision-stage learning-rate scale."
++            )
++
++    return {
++        "requested_profile": profile,
++        "model_dtype": expected_dtype,
++        "source": source,
++        "historical_schedule": historical,
++        "historical_read_only": False,
++    }
++
++
++def _precision_schedule_policy(cfg: Mapping[str, Any]) -> None:
++    """Validate ADAPT-PREC1 binary precision and return no executable schedule."""
++
++    _binary_model_precision_contract(cfg)
++    return None
++
++
++def _critical_precision_policy(cfg: Mapping[str, Any]) -> Any:
++    """Return invariant FP64 mdstats-owned scientific/critical arithmetic policy."""
++
+     import mdstats
+ 
+-    precision_schedule = _precision_schedule_policy(cfg)
+-    if precision_schedule is None:
+-        return mdstats.MaceCriticalPrecisionPolicy()
+-    return mdstats.MaceCriticalPrecisionPolicy.for_dtype(
+-        precision_schedule.critical_operation_dtype
+-    )
++    _binary_model_precision_contract(cfg)
++    return mdstats.MaceCriticalPrecisionPolicy()
+ 
+ 
+ def _precision_profile_payload(cfg: Mapping[str, Any]) -> dict[str, Any]:
+-    """Return one durable human-readable precision profile summary."""
++    """Return one durable human-readable binary/historical precision summary."""
+ 
+-    policy = _precision_schedule_policy(cfg)
+-    if policy is None:
++    import mdstats
++
++    try:
++        contract = _binary_model_precision_contract(cfg)
++    except CampaignCliError:
++        historical = _binary_model_precision_contract(cfg, allow_historical_refine=True)
++        schedule = historical["historical_schedule"]
++        preview = schedule.resolve(
++            max_num_epochs=int(_cfg(cfg, "training", "max_num_epochs", 30)),
++            require_update_floor=False,
++        )
+         return {
+-            "schema": "mdstats.mlff-precision-profile.v1",
+-            "requested_profile": "legacy",
+-            "mode": "legacy_one_stage",
+-            "model_dtype": str(_cfg(cfg, "model", "dtype", _cfg(cfg, "training", "dtype", "float32"))),
+-            "training_dtype": str(_cfg(cfg, "training", "dtype", "float32")),
+-            "critical_operation_dtype": "float64",
+-            "evaluation_dtype": str(_cfg(cfg, "evaluation", "dtype", _cfg(cfg, "training", "dtype", "float32"))),
+-            "verification_dtype": str(_cfg(cfg, "verification", "dtype", _cfg(cfg, "training", "dtype", "float32"))),
+-            "export_dtype": None,
+-            "policy_digest": None,
+-            "stages": [],
++            "schema": "mdstats.mlff-precision-profile.v2",
++            "requested_profile": schedule.requested_profile,
++            "mode": "historical_staged_read_only",
++            "model_dtype": schedule.model_dtype,
++            "training_dtype": schedule.stages[0].dtype,
++            "critical_operation_dtype": schedule.critical_operation_dtype,
++            "evaluation_dtype": schedule.evaluation_dtype,
++            "verification_dtype": schedule.verification_dtype,
++            "export_dtype": schedule.export_dtype,
++            "analysis_dtype": "float64",
++            "historical_read_only": True,
++            "policy_digest": schedule.policy_digest,
++            "stages": [
++                {
++                    "index": int(index),
++                    "dtype": stage.dtype,
++                    "epoch_start": int(stage.start_epoch),
++                    "epoch_stop": int(stage.stop_epoch),
++                    "epoch_count": int(stage.epoch_count),
++                    "learning_rate_scale": float(stage.learning_rate_scale),
++                }
++                for index, stage in enumerate(preview.stages)
++            ],
+         }
+-    preview = policy.resolve(
+-        max_num_epochs=int(_cfg(cfg, "training", "max_num_epochs", 30)),
+-        require_update_floor=False,
+-    )
++
++    dtype = str(contract["model_dtype"])
++    payload_base = {
++        "schema": "mdstats.mlff-binary-model-precision.v1",
++        "requested_profile": str(contract["requested_profile"]),
++        "model_dtype": dtype,
++        "analysis_dtype": "float64",
++        "source": str(contract["source"]),
++    }
+     return {
+-        "schema": "mdstats.mlff-precision-profile.v1",
+-        "requested_profile": policy.requested_profile,
+-        "mode": policy.mode,
+-        "model_dtype": policy.model_dtype,
+-        "training_dtype": policy.stages[0].dtype,
+-        "critical_operation_dtype": policy.critical_operation_dtype,
+-        "evaluation_dtype": policy.evaluation_dtype,
+-        "verification_dtype": policy.verification_dtype,
+-        "export_dtype": policy.export_dtype,
+-        "policy_digest": policy.policy_digest,
+-        "stages": [
+-            {
+-                "index": int(index),
+-                "dtype": stage.dtype,
+-                "epoch_start": int(stage.start_epoch),
+-                "epoch_stop": int(stage.stop_epoch),
+-                "epoch_count": int(stage.epoch_count),
+-                "learning_rate_scale": float(stage.learning_rate_scale),
+-            }
+-            for index, stage in enumerate(preview.stages)
+-        ],
++        "schema": "mdstats.mlff-precision-profile.v2",
++        "requested_profile": str(contract["requested_profile"]),
++        "mode": "binary_model_dtype",
++        "model_dtype": dtype,
++        "training_dtype": dtype,
++        "critical_operation_dtype": "float64",
++        "evaluation_dtype": dtype,
++        "verification_dtype": dtype,
++        "export_dtype": dtype,
++        "analysis_dtype": "float64",
++        "historical_read_only": False,
++        "policy_digest": digest(payload_base),
++        "stages": [],
+     }
+ 
+ 
+ def _print_precision_profile(cfg: Mapping[str, Any], *, prefix: str = "precision") -> dict[str, Any]:
+     payload = _precision_profile_payload(cfg)
+-    stages = payload["stages"]
+-    if stages:
++    if payload.get("historical_read_only"):
++        stages = payload["stages"]
+         stage_text = " -> ".join(
+             f"{item['epoch_count']}x{item['dtype']}@LRx{item['learning_rate_scale']:g}"
+             for item in stages
+         )
+-    else:
+-        stage_text = str(payload["training_dtype"])
++        _warn(
++            f"{prefix}: historical read-only profile={payload['requested_profile']}; "
++            f"training={stage_text}; model={payload['model_dtype']}; "
++            "production resume is disabled under ADAPT-PREC1"
++        )
++        return payload
+     _ok(
+-        f"{prefix}: profile={payload['requested_profile']}; training={stage_text}; "
+-        f"critical={payload['critical_operation_dtype']}; eval={payload['evaluation_dtype']}; "
+-        f"verify={payload['verification_dtype']}; export={payload['export_dtype'] or 'legacy'}"
++        f"{prefix}: profile={payload['requested_profile']}; model/training/inference/export="
++        f"{payload['model_dtype']}; mdstats scientific arithmetic={payload['analysis_dtype']}"
+     )
+     return payload
+ 
+@@ -977,12 +1103,12 @@
+     seed: int,
+     num_workers: int,
+ ) -> Any:
+-    """Build one protocol-frozen optimizer policy from the campaign config."""
++    """Build one protocol-frozen optimizer policy under binary model precision."""
+ 
+     import mdstats
+ 
+-    precision_schedule = _precision_schedule_policy(cfg)
+-    critical_precision = _critical_precision_policy(cfg)
++    contract = _binary_model_precision_contract(cfg)
++    model_dtype = str(contract["model_dtype"])
+     return mdstats.MaceOptimizerPolicy(
+         learning_rate=float(_cfg(cfg, "training", "learning_rate", 1.0e-4)),
+         batch_size=int(_cfg(cfg, "training", "batch_size", 2)),
+@@ -990,47 +1116,37 @@
+         num_workers=num_workers,
+         max_num_epochs=int(_cfg(cfg, "training", "max_num_epochs", 30)),
+         eval_interval=int(_cfg(cfg, "training", "eval_interval", 1)),
+-        default_dtype=str(_cfg(cfg, "training", "dtype", "float32")),
++        default_dtype=model_dtype,
+         device=str(_cfg(cfg, "training", "device", "cuda")),
+         seed=seed,
+-        critical_precision_policy=critical_precision,
++        critical_precision_policy=mdstats.MaceCriticalPrecisionPolicy(),
+         acceleration_policy=_acceleration_policy(cfg),
+-        precision_schedule_policy=precision_schedule,
++        precision_schedule_policy=None,
+     )
+ 
+ 
+ def _precision_template(profile: str) -> dict[str, str]:
+-    """Resolve one canonical init profile into TOML-visible dtypes and stage text."""
++    """Resolve one ADAPT-PREC1 init profile into TOML-visible model dtypes."""
+ 
+-    import mdstats
+-
+-    policy = mdstats.canonical_precision_schedule_policy(profile)
+-    training_dtype = policy.stages[0].dtype
+-    minimum_epochs = policy.minimum_final_stage_epochs
+-    minimum_updates = policy.minimum_final_stage_gradient_updates
+-    stage_lines: list[str] = []
+-    for stage in policy.stages:
+-        stage_lines.extend(
+-            [
+-                "[[training.precision.stage]]",
+-                f'dtype = "{stage.dtype}"',
+-                f"fraction = {stage.fraction:.2f}",
+-                f"learning_rate_scale = {stage.learning_rate_scale:.1f}",
+-                "",
+-            ]
++    normalized = str(profile).strip().lower()
++    if normalized not in _BINARY_PRECISION_DTYPES:
++        if normalized in _RETIRED_PRECISION_PROFILES:
++            raise CampaignCliError(
++                "The staged `refine`/`mixed` precision mode is retired. "
++                "Choose `single` or `double`."
++            )
++        raise CampaignCliError(
++            f"Unsupported precision profile {profile!r}; choose `single` or `double`."
+         )
++    dtype = _BINARY_PRECISION_DTYPES[normalized]
+     return {
+-        "profile": policy.requested_profile,
+-        "model_dtype": policy.model_dtype,
+-        "training_dtype": training_dtype,
+-        "critical_dtype": policy.critical_operation_dtype,
+-        "evaluation_dtype": policy.evaluation_dtype,
+-        "verification_dtype": policy.verification_dtype,
+-        "export_dtype": policy.export_dtype,
+-        "mode": policy.mode,
+-        "minimum_epochs": str(minimum_epochs),
+-        "minimum_updates": str(minimum_updates),
+-        "stages": "\n".join(stage_lines).rstrip(),
++        "profile": normalized,
++        "model_dtype": dtype,
++        "training_dtype": dtype,
++        "critical_dtype": "float64",
++        "evaluation_dtype": dtype,
++        "verification_dtype": dtype,
++        "export_dtype": dtype,
+     }
+ 
+ 
+@@ -2639,7 +2755,7 @@
+     print(f"Workspace:     {paths.workspace}")
+     print(f"Device:        {detected_device} (auto-detected and frozen in campaign.toml)")
+     print(f"Acceleration:  {detected_backend} (auto-detected and frozen in campaign.toml)")
+-    print(f"Precision:     {args.precision} (explicit profile and schedule frozen in campaign.toml)")
++    print(f"Precision:     {args.precision} (learned-model dtype frozen in campaign.toml; scientific analysis remains FP64)")
+     print("\nEdit the five input paths, then run:")
+     print(f"  python tools/mdstats-mlff-campaign.py --config {target} doctor")
+     return 0
+@@ -2654,23 +2770,15 @@
+     warnings: list[str] = []
+ 
+     try:
+-        precision_policy = _precision_schedule_policy(cfg)
+-        if precision_policy is None:
+-            _ok("precision: legacy one-stage configuration (no explicit PREC1 schedule)")
+-        else:
+-            preview = precision_policy.resolve(
+-                max_num_epochs=int(_cfg(cfg, "training", "max_num_epochs", 30)),
+-                require_update_floor=False,
+-            )
+-            stage_text = " -> ".join(
+-                f"{stage.epoch_count}x{stage.dtype}" for stage in preview.stages
+-            )
+-            _ok(
+-                f"precision profile: {precision_policy.requested_profile}; "
+-                f"epoch schedule={stage_text}; protocol-bound policy={precision_policy.policy_digest[:12]}"
+-            )
++        precision_contract = _binary_model_precision_contract(cfg)
++        _ok(
++            "precision: "
++            f"profile={precision_contract['requested_profile']}; "
++            f"learned-model dtype={precision_contract['model_dtype']}; "
++            "mdstats scientific arithmetic=float64"
++        )
+     except Exception as exc:
+-        failures.append(f"precision schedule is invalid: {exc}")
++        failures.append(f"model precision contract is invalid: {exc}")
+         _fail(failures[-1])
+ 
+     checks = [
+@@ -4824,6 +4932,7 @@
+ 
+ def command_prepare(args: argparse.Namespace) -> int:
+     cfg, paths = _load_config(args.config)
++    _binary_model_precision_contract(cfg)
+     store = CampaignStore(paths.state_db)
+     _require_stage_complete(store, paths, "doctor")
+ 
+@@ -5908,21 +6017,13 @@
+     import mdstats
+ 
+     cfg, paths = _load_config(args.config)
++    _binary_model_precision_contract(cfg)
+     store = CampaignStore(paths.state_db)
+     _require_stage_complete(store, paths, "prepare")
+     _mark_stage(store, paths, "preflight", StageState.RUNNING, "running bounded training preflight")
+     failures: list[str] = []
+     _print_header("Production preflight")
+-    precision_policy = _precision_schedule_policy(cfg)
+-    if precision_policy is not None:
+-        _ok(
+-            "precision profile: "
+-            f"{precision_policy.requested_profile}; training={precision_policy.mode}; "
+-            f"critical={precision_policy.critical_operation_dtype}; "
+-            f"evaluation={precision_policy.evaluation_dtype}; "
+-            f"verification={precision_policy.verification_dtype}; "
+-            f"export={precision_policy.export_dtype}"
+-        )
++    _print_precision_profile(cfg)
+     doctor_result = command_doctor(argparse.Namespace(config=args.config, embedded=True))
+     if doctor_result != 0:
+         failures.append("doctor failed")
+@@ -7774,6 +7875,7 @@
+     import mdstats
+ 
+     cfg, paths = _load_config(args.config)
++    _binary_model_precision_contract(cfg)
+     store = CampaignStore(paths.state_db)
+     _require_stage_complete(store, paths, "preflight")
+     if not store.has_record("preflight_smoke"):
+@@ -9447,9 +9549,7 @@
+                         job_working_directory=job_root,
+                         cache_directory=checkpoint_model_cache,
+                         wrapper_path=local_wrappers["mdstats-mace-train"],
+-                        allow_checkpoint_dtype_template_cast=(
+-                            evaluation_policy.critical_precision_policy is not None
+-                        ),
++                        allow_checkpoint_dtype_template_cast=False,
+                         evaluation_state_capsule=active_capsule_record,
+                     )
+                 return mdstats.run_prepared_mace_checkpoint_inference(
+@@ -10305,6 +10405,8 @@
+     import mdstats
+ 
+     cfg, paths = _load_config(args.config)
++    precision_contract = _binary_model_precision_contract(cfg)
++    model_dtype = str(precision_contract["model_dtype"])
+     store = CampaignStore(paths.state_db)
+     stored_campaign_digest = store.record_digest("training_campaign")
+     campaign = store.get_record("training_campaign", mdstats.TrainingCampaignPlan)
+@@ -10405,16 +10507,13 @@
+             f"({true_replay_resolution.monitor_artifact.configuration_count} configurations)"
+         )
+ 
+-    precision_schedule = _precision_schedule_policy(cfg)
+-    deployment_dtype = None if precision_schedule is None else precision_schedule.export_dtype
++    deployment_dtype = model_dtype
+     evaluation_policy = mdstats.CheckpointEvaluationPolicy(
+         focus_atomic_numbers=tuple(
+             int(v) for v in _cfg(cfg, "profile", "mobile_atomic_numbers", (3, 11, 19))
+         ),
+         device=str(_cfg(cfg, "evaluation", "device", _cfg(cfg, "training", "device", "cuda"))),
+-        default_dtype=str(
+-            _cfg(cfg, "evaluation", "dtype", _cfg(cfg, "training", "dtype", "float32"))
+-        ),
++        default_dtype=model_dtype,
+         replay_baseline_head_name=(
+             None
+             if _cfg(cfg, "evaluation", "replay_baseline_head", "") in (None, "")
+@@ -10436,9 +10535,7 @@
+             )
+         ),
+         acceleration_policy=_acceleration_policy(cfg),
+-        critical_precision_policy=(
+-            None if precision_schedule is None else _critical_precision_policy(cfg)
+-        ),
++        critical_precision_policy=_critical_precision_policy(cfg),
+     )
+     metric_policy = _checkpoint_metric_policy(cfg)
+ 
+@@ -10654,7 +10751,7 @@
+             job_working_directory=context["job_root"],
+             cache_directory=context["checkpoint_model_cache"],
+             wrapper_path=local_wrappers["mdstats-mace-train"],
+-            allow_checkpoint_dtype_template_cast=precision_schedule is not None,
++            allow_checkpoint_dtype_template_cast=False,
+         )
+         reuse_note = (
+             "completed training model"
+@@ -11110,7 +11207,7 @@
+                         job_working_directory=active_job_root,
+                         cache_directory=active_checkpoint_model_cache,
+                         wrapper_path=local_wrappers["mdstats-mace-train"],
+-                        allow_checkpoint_dtype_template_cast=precision_schedule is not None,
++                        allow_checkpoint_dtype_template_cast=False,
+                         evaluation_state_capsule=active_capsule_record,
+                     )
+                 return mdstats.run_prepared_mace_checkpoint_inference(
+@@ -11291,7 +11388,7 @@
+                 job_working_directory=job_root,
+                 cache_directory=paths.runs / run.run_id / "checkpoint-model-cache",
+                 wrapper_path=local_wrappers["mdstats-mace-train"],
+-                allow_checkpoint_dtype_template_cast=precision_schedule is not None,
++                allow_checkpoint_dtype_template_cast=False,
+             )
+             output = interim_dir / f"{run.run_id}-target.model"
+             try:
+@@ -11474,7 +11571,7 @@
+             job_working_directory=job_root,
+             cache_directory=paths.runs / run.run_id / "checkpoint-model-cache",
+             wrapper_path=local_wrappers["mdstats-mace-train"],
+-            allow_checkpoint_dtype_template_cast=precision_schedule is not None,
++            allow_checkpoint_dtype_template_cast=False,
+         )
+         output = paths.models / f"{run.run_id}-target.model"
+         try:
+@@ -11830,6 +11927,8 @@
+     import mdstats
+ 
+     cfg, paths = _load_config(args.config)
++    precision_contract = _binary_model_precision_contract(cfg)
++    model_dtype = str(precision_contract["model_dtype"])
+     store = CampaignStore(paths.state_db)
+     evaluate_state, evaluate_message = _effective_stage(store, paths, "evaluate")
+     committee = (
+@@ -11928,7 +12027,7 @@
+         if not path.is_file():
+             raise CampaignCliError(f"Verification structure not found: {path}")
+     device = str(_cfg(cfg, "verification", "device", _cfg(cfg, "training", "device", "cuda")))
+-    dtype = str(_cfg(cfg, "verification", "dtype", _cfg(cfg, "training", "dtype", "float32")))
++    dtype = model_dtype
+     temperatures = tuple(float(v) for v in _cfg(cfg, "verification", "temperatures_kelvin", (300.0, 700.0, 800.0)))
+     steps = int(args.steps if args.steps is not None else _cfg(cfg, "verification", "steps", 2000))
+     timestep = float(_cfg(cfg, "verification", "timestep_fs", 0.5))
+@@ -13413,20 +13512,9 @@
+ target_head_weight = 5.0
+ replay_head_weight = 1.0
+ 
+-[training.precision]
+-# PREC1 explicit protocol schedule. Canonical refine uses an 80/20 FP32->FP64
+-# split and scales the effective learning rate by 0.5 at the FP64 boundary.
+-# Fractions are resolved deterministically against max_num_epochs; with 30
+-# epochs refine becomes 24 FP32 + 6 FP64 epochs.
+-mode = "{precision['mode']}"
+-minimum_final_stage_epochs = {precision['minimum_epochs']}
+-minimum_final_stage_gradient_updates = {precision['minimum_updates']}
+-preserve_optimizer_state = true
+-preserve_scheduler_state = true
+-preserve_ema_state = true
+-critical_operation_dtype = "{precision['critical_dtype']}"
+-
+-{precision['stages']}
++# ADAPT-PREC1: model precision is binary and controls learned-model arithmetic only.
++# mdstats-owned scientific reductions/statistics and persistent MD bookkeeping remain FP64.
++# There is intentionally no [training.precision] staged/refine schedule.
+ 
+ [training.naive_fine_tuning]
+ # Three cross-validation folds plus one final-development run are created for
+@@ -13662,7 +13750,7 @@
+ replay_valid_configurations = 8
+ 
+ [export]
+-# Final deployment dtype is explicit and enforced by PREC3 for canonical profiles.
++# Exported learned-model dtype must match [campaign].precision_profile.
+ dtype = "{precision['export_dtype']}"
+ 
+ [verification]
+@@ -13755,11 +13843,11 @@
+ selection. `checkpoint_strategy = "bounded"` retains the historical shortlist mode and
+ `checkpoint_strategy = "exhaustive"` evaluates every saved checkpoint in full.
+ 
+-Precision is explicit at initialization. Plain `init` generates canonical `single`; use
+-`init --precision double` for FP64 throughout or `init --precision refine` for the canonical
+-80% FP32 -> 20% FP64 refinement schedule. PREC1 freezes configuration and protocol identity;
+-PREC2 implements the exact in-process FP32 -> FP64 transition and restart substrate. Production
+-profile activation is qualified by PREC3; the generated profile remains immutable and no hardware heuristic may substitute another precision mode.
++Precision is explicit at initialization. Plain `init` generates `single` (FP32 learned-model
++training/inference); use `init --precision double` for FP64 learned-model training/inference.
++Staged `refine`/`mixed` model precision is retired for new campaigns. mdstats-owned scientific
++reductions, statistics, and persistent MD bookkeeping remain FP64 in either model mode, and no
++hardware heuristic may substitute another learned-model dtype.
+ 
+ The final `verify` command is a bounded pre-deployment stability gate. Production
+ committee/final models receive the full configured structure x temperature NVE matrix.
+@@ -13798,9 +13886,9 @@
+     p.add_argument("--replay-true-labels")
+     p.add_argument(
+         "--precision",
+-        choices=("single", "double", "refine"),
++        choices=("single", "double"),
+         default="single",
+-        help="precision profile for the generated campaign (default: single)",
++        help="learned-model precision: single=FP32 or double=FP64 (default: single)",
+     )
+     p.add_argument("--force", action="store_true")
+     p.set_defaults(func=command_init)
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/mdstats/training_data/precision_schedule.py b/mdstats/training_data/precision_schedule.py
+--- a/mdstats/training_data/precision_schedule.py	2026-08-09 04:12:56.000000000 +0000
++++ b/mdstats/training_data/precision_schedule.py	2026-08-09 14:39:38.421096090 +0000
+@@ -450,7 +450,7 @@
+             requested_profile=profile.value,
+             stages=(PrecisionStage("float32", 1.0, 1.0),),
+             model_dtype="float32",
+-            critical_operation_dtype="float32",
++            critical_operation_dtype="float64",
+             evaluation_dtype="float32",
+             verification_dtype="float32",
+             export_dtype="float32",
+@@ -466,6 +466,10 @@
+             export_dtype="float64",
+         )
+     if profile is PrecisionProfile.REFINE:
++        # Historical compatibility only. ADAPT-PREC1 removes this profile from
++        # generated/production campaign configuration, but existing serialized
++        # refine evidence still needs a deterministic constructor for audits and
++        # migration tests. Production CLI validation rejects staged schedules.
+         return PrecisionSchedulePolicy(
+             requested_profile=profile.value,
+             stages=(
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/pyproject.toml b/pyproject.toml
+--- a/pyproject.toml	2026-08-09 14:26:04.017164291 +0000
++++ b/pyproject.toml	2026-08-09 14:47:08.460088357 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.121a0"
++version = "0.20.122a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/tests/test_density_par_dens_architecture_plan.py b/tests/test_density_par_dens_architecture_plan.py
+--- a/tests/test_density_par_dens_architecture_plan.py	2026-08-09 14:26:05.612813558 +0000
++++ b/tests/test_density_par_dens_architecture_plan.py	2026-08-09 14:47:08.465674834 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_par_dens0_is_completed_and_par_dens1_is_next() -> None:
+-    assert mdstats.__version__ == "0.20.121a0"
++    assert mdstats.__version__ == "0.20.122a0"
+     text = MANUAL.read_text(encoding="utf-8")
+     assert "PAR-DENS0 is `completed` in `mdstats 0.20.120a0`" in text
+     assert "PAR-DENS1 is the next" in text
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/tests/test_mlff_adapt_prec1_binary_precision.py b/tests/test_mlff_adapt_prec1_binary_precision.py
+--- a/tests/test_mlff_adapt_prec1_binary_precision.py	1970-01-01 00:00:00.000000000 +0000
++++ b/tests/test_mlff_adapt_prec1_binary_precision.py	2026-08-09 14:43:35.309579588 +0000
+@@ -0,0 +1,184 @@
++from __future__ import annotations
++
++import argparse
++from pathlib import Path
++import tomllib
++
++import pytest
++
++import mdstats
++from mdstats.training_data import campaign_cli
++
++
++def _cfg(profile: str = "single") -> dict:
++    text = campaign_cli._config_template(
++        workspace="work",
++        training_root="training",
++        foundation_model="foundation.model",
++        replay_train="replay-train.xyz",
++        replay_monitor="replay-monitor.xyz",
++        precision_profile=profile,
++        acceleration_backend="e3nn",
++        default_device="cpu",
++    )
++    return tomllib.loads(text)
++
++
++def test_init_parser_exposes_only_binary_precision_choices() -> None:
++    parser = campaign_cli.build_parser()
++    # argparse should reject retired production profiles before config generation.
++    with pytest.raises(SystemExit):
++        parser.parse_args(["init", "--precision", "refine"])
++    with pytest.raises(SystemExit):
++        parser.parse_args(["init", "--precision", "mixed"])
++    assert parser.parse_args(["init", "--precision", "single"]).precision == "single"
++    assert parser.parse_args(["init", "--precision", "double"]).precision == "double"
++
++
++@pytest.mark.parametrize(("profile", "dtype"), [("single", "float32"), ("double", "float64")])
++def test_generated_binary_config_has_one_model_dtype_and_no_schedule(profile: str, dtype: str) -> None:
++    cfg = _cfg(profile)
++    assert cfg["campaign"]["precision_profile"] == profile
++    assert cfg["model"]["dtype"] == dtype
++    assert cfg["training"]["dtype"] == dtype
++    assert cfg["evaluation"]["dtype"] == dtype
++    assert cfg["verification"]["dtype"] == dtype
++    assert cfg["export"]["dtype"] == dtype
++    assert "precision" not in cfg["training"]
++
++    contract = campaign_cli._binary_model_precision_contract(cfg)
++    assert contract["requested_profile"] == profile
++    assert contract["model_dtype"] == dtype
++    assert campaign_cli._precision_schedule_policy(cfg) is None
++
++    payload = campaign_cli._precision_profile_payload(cfg)
++    assert payload["mode"] == "binary_model_dtype"
++    assert payload["model_dtype"] == dtype
++    assert payload["training_dtype"] == dtype
++    assert payload["evaluation_dtype"] == dtype
++    assert payload["verification_dtype"] == dtype
++    assert payload["export_dtype"] == dtype
++    assert payload["critical_operation_dtype"] == "float64"
++    assert payload["analysis_dtype"] == "float64"
++    assert payload["stages"] == []
++
++
++@pytest.mark.parametrize("field", ["model", "training", "evaluation", "verification", "export"])
++def test_binary_precision_rejects_cross_dtype_inference_or_export_surface(field: str) -> None:
++    cfg = _cfg("single")
++    cfg[field]["dtype"] = "float64"
++    with pytest.raises(campaign_cli.CampaignCliError, match="requires learned-model dtype float32"):
++        campaign_cli._binary_model_precision_contract(cfg)
++
++
++def test_single_optimizer_is_fp32_model_with_fp64_critical_policy_and_no_schedule() -> None:
++    cfg = _cfg("single")
++    optimizer = campaign_cli._optimizer_policy(cfg, seed=1, num_workers=0)
++    assert optimizer.default_dtype == "float32"
++    assert optimizer.precision_schedule_policy is None
++    assert optimizer.critical_precision_policy.canonical_dtype == "float64"
++    assert optimizer.critical_precision_policy.observable_output_dtype == "float64"
++    assert optimizer.to_dict()["schema"] == "mdstats.mace-optimizer-policy.v4"
++
++
++def test_double_optimizer_is_fp64_model_with_fp64_critical_policy_and_no_schedule() -> None:
++    cfg = _cfg("double")
++    optimizer = campaign_cli._optimizer_policy(cfg, seed=2, num_workers=0)
++    assert optimizer.default_dtype == "float64"
++    assert optimizer.precision_schedule_policy is None
++    assert optimizer.critical_precision_policy.canonical_dtype == "float64"
++
++
++def _historical_refine_cfg() -> dict:
++    policy = mdstats.canonical_precision_schedule_policy("refine")
++    return {
++        "campaign": {"precision_profile": "refine"},
++        "model": {"dtype": "float64"},
++        "training": {
++            "dtype": "float32",
++            "max_num_epochs": 30,
++            "precision": {
++                "mode": "staged",
++                "minimum_final_stage_epochs": policy.minimum_final_stage_epochs,
++                "minimum_final_stage_gradient_updates": policy.minimum_final_stage_gradient_updates,
++                "preserve_optimizer_state": True,
++                "preserve_scheduler_state": True,
++                "preserve_ema_state": True,
++                "critical_operation_dtype": "float64",
++                "stage": [
++                    {
++                        "dtype": stage.dtype,
++                        "fraction": stage.fraction,
++                        "learning_rate_scale": stage.learning_rate_scale,
++                    }
++                    for stage in policy.stages
++                ],
++            },
++        },
++        "evaluation": {"dtype": "float64"},
++        "verification": {"dtype": "float64"},
++        "export": {"dtype": "float64"},
++    }
++
++
++def test_historical_refine_is_readable_but_not_production_executable() -> None:
++    cfg = _historical_refine_cfg()
++    payload = campaign_cli._precision_profile_payload(cfg)
++    assert payload["historical_read_only"] is True
++    assert payload["requested_profile"] == "refine"
++    assert [(stage["epoch_count"], stage["dtype"]) for stage in payload["stages"]] == [
++        (24, "float32"),
++        (6, "float64"),
++    ]
++    with pytest.raises(campaign_cli.CampaignCliError, match="retired"):
++        campaign_cli._binary_model_precision_contract(cfg)
++    with pytest.raises(campaign_cli.CampaignCliError, match="retired"):
++        campaign_cli._optimizer_policy(cfg, seed=1, num_workers=0)
++
++
++def test_historical_single_stage_metadata_is_validated_but_not_activated() -> None:
++    cfg = _cfg("single")
++    cfg["training"]["precision"] = {
++        "mode": "single_stage",
++        "minimum_final_stage_epochs": 0,
++        "minimum_final_stage_gradient_updates": 0,
++        "preserve_optimizer_state": True,
++        "preserve_scheduler_state": True,
++        "preserve_ema_state": True,
++        # Historical 0.20.121 single profiles used FP32 here. It is retained only
++        # as old metadata; ADAPT-PREC1 runtime critical arithmetic is now FP64.
++        "critical_operation_dtype": "float32",
++        "stage": [
++            {"dtype": "float32", "fraction": 1.0, "learning_rate_scale": 1.0}
++        ],
++    }
++    contract = campaign_cli._binary_model_precision_contract(cfg)
++    assert contract["model_dtype"] == "float32"
++    assert contract["historical_schedule"] is not None
++    assert campaign_cli._precision_schedule_policy(cfg) is None
++    optimizer = campaign_cli._optimizer_policy(cfg, seed=1, num_workers=0)
++    assert optimizer.precision_schedule_policy is None
++    assert optimizer.critical_precision_policy.canonical_dtype == "float64"
++
++
++def test_new_data8_protocol_has_no_resolved_precision_schedule(tmp_path: Path) -> None:
++    from tests.test_mlff_data8_mace_artifacts import _data7_bundles, _foundation, _probe
++
++    sources, frames, frame_data, _, data5, _, bundles = _data7_bundles(tmp_path)
++    optimizer = campaign_cli._optimizer_policy(_cfg("single"), seed=1, num_workers=0)
++    bundle = mdstats.build_data8_preparation_bundle(
++        sources,
++        frames,
++        frame_data,
++        data5,
++        bundles,
++        output_directory=tmp_path / "data8_adapt_prec1",
++        foundation_checkpoint=_foundation(tmp_path),
++        compatibility_probe=_probe(),
++        optimizer_policy=optimizer,
++        require_foundation_residual_e0=False,
++    )
++    assert bundle.jobs
++    assert all(job.protocol.resolved_precision_schedule is None for job in bundle.jobs)
++    assert all(job.protocol.optimizer_policy.precision_schedule_policy is None for job in bundle.jobs)
++    assert all(job.protocol.optimizer_policy.default_dtype == "float32" for job in bundle.jobs)
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/tests/test_mlff_adapt_prec1_specification.py b/tests/test_mlff_adapt_prec1_specification.py
+--- a/tests/test_mlff_adapt_prec1_specification.py	1970-01-01 00:00:00.000000000 +0000
++++ b/tests/test_mlff_adapt_prec1_specification.py	2026-08-09 14:48:31.333579588 +0000
+@@ -0,0 +1,34 @@
++from pathlib import Path
++
++import mdstats
++
++ROOT = Path(__file__).resolve().parents[1]
++SPEC = ROOT / "docs" / "specs" / "training_data" / "mlff_binary_model_precision_spec.md"
++MANUAL = ROOT / "docs" / "arch_manuals" / "mlff_training_data_architecture.md"
++
++
++def test_adapt_prec1_release_and_spec_contract():
++    assert mdstats.__version__ == "0.20.122a0"
++    text = SPEC.read_text(encoding="utf-8")
++    assert "Status: implemented in mdstats 0.20.122a0" in text
++    assert "`single`: learned-model" in text
++    assert "`double`: the same learned-model lifecycle uses float64" in text
++    assert "contains no `[training.precision]` staged schedule" in text
++    assert "FP64 scientific-arithmetic invariant" in text
++    assert "Historical staged `refine` schedules remain deserializable" in text
++
++
++def test_adapt_prec1_manual_is_closed_while_later_gates_remain_open():
++    text = MANUAL.read_text(encoding="utf-8")
++    assert "## ADAPT-PREC1 - binary model precision" in text
++    assert "**Status:** implemented in `mdstats 0.20.122a0`." in text
++    for heading in [
++        "## ADAPT-MON1",
++        "## ADAPT-STOP1",
++        "## ADAPT-RANK1",
++        "## ADAPT-EVAL1",
++        "## ADAPT-VERIFY1",
++        "## ADAPT-MIGRATE1",
++    ]:
++        start = text.index(heading)
++        assert "**Status:** `not_started`." in text[start : start + 1000]
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/tests/test_mlff_adaptive_training_revision_plan.py b/tests/test_mlff_adaptive_training_revision_plan.py
+--- a/tests/test_mlff_adaptive_training_revision_plan.py	2026-08-09 14:26:29.561445807 +0000
++++ b/tests/test_mlff_adaptive_training_revision_plan.py	2026-08-09 14:47:08.467006586 +0000
+@@ -6,7 +6,7 @@
+ 
+ def test_adaptive_revision_gate_order_and_defaults():
+     version_text = (ROOT / "mdstats" / "_version.py").read_text(encoding="utf-8")
+-    assert '__version__ = "0.20.121a0"' in version_text
++    assert '__version__ = "0.20.122a0"' in version_text
+     text = MANUAL.read_text(encoding="utf-8")
+     headings = [
+         "## ADAPT-PREC1",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/tests/test_mlff_data0_architecture_specification.py b/tests/test_mlff_data0_architecture_specification.py
+--- a/tests/test_mlff_data0_architecture_specification.py	2026-08-09 14:26:05.615981111 +0000
++++ b/tests/test_mlff_data0_architecture_specification.py	2026-08-09 14:47:08.466430897 +0000
+@@ -263,4 +263,4 @@
+ def test_mlff_data0_pdf_and_version_artifacts_exist() -> None:
+     assert MANUAL_PDF.stat().st_size > 10_000
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.121a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.122a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/tests/test_mlff_data1_specification.py b/tests/test_mlff_data1_specification.py
+--- a/tests/test_mlff_data1_specification.py	2026-08-09 14:26:05.614248366 +0000
++++ b/tests/test_mlff_data1_specification.py	2026-08-09 14:47:08.465983926 +0000
+@@ -49,4 +49,4 @@
+     assert callable(mdstats.assign_balanced_round_robin)
+     assert callable(mdstats.build_complete_frame_block_plan)
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.121a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.122a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/tests/test_mlff_data2a_manifest_inference_specification.py b/tests/test_mlff_data2a_manifest_inference_specification.py
+--- a/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-09 14:26:05.633778186 +0000
++++ b/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-09 14:47:08.469439685 +0000
+@@ -15,7 +15,7 @@
+ 
+ 
+ def test_data2a_version_public_api_and_documented_contract() -> None:
+-    assert mdstats.__version__ == "0.20.121a0"
++    assert mdstats.__version__ == "0.20.122a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert callable(mdstats.infer_training_manifest_metadata)
+     policy = mdstats.ManifestInferencePolicy()
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/tests/test_mlff_data9a2_specification.py b/tests/test_mlff_data9a2_specification.py
+--- a/tests/test_mlff_data9a2_specification.py	2026-08-09 14:26:05.605343750 +0000
++++ b/tests/test_mlff_data9a2_specification.py	2026-08-09 14:47:08.464292781 +0000
+@@ -23,7 +23,7 @@
+         "finite energy, force, and stress",
+     ):
+         assert required in text
+-    assert 'version = "0.20.121a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.122a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "DATA9A2 real-MACE realization is implemented in `0.20.39a0`" in ARCH.read_text()
+ 
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/tests/test_mlff_data9a3_specification.py b/tests/test_mlff_data9a3_specification.py
+--- a/tests/test_mlff_data9a3_specification.py	2026-08-09 14:26:05.636780294 +0000
++++ b/tests/test_mlff_data9a3_specification.py	2026-08-09 14:47:08.469881237 +0000
+@@ -9,5 +9,5 @@
+     assert "37,632" in text
+     assert "supported_with_temporal_blocks_only" in text
+     assert "production_replay_corpus_not_bound" in text
+-    assert 'version = "0.20.121a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.122a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "MLFF-DATA9A3 production qualification" in ARCH.read_text()
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/tests/test_mlff_data9a4_precision_specification.py b/tests/test_mlff_data9a4_precision_specification.py
+--- a/tests/test_mlff_data9a4_precision_specification.py	2026-08-09 14:26:05.627530899 +0000
++++ b/tests/test_mlff_data9a4_precision_specification.py	2026-08-09 14:47:08.468350758 +0000
+@@ -9,7 +9,7 @@
+     assert "float32" in text and "float64" in text
+     assert "MaceModelPrecisionRecord" in text
+     assert "MacePrecisionTransitionRecord" in text
+-    assert "version = \"0.20.121a0\"" in (ROOT / "pyproject.toml").read_text()
++    assert "version = \"0.20.122a0\"" in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_bind_precision_to_protocol() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/tests/test_mlff_data9a5_critical_fp64_specification.py b/tests/test_mlff_data9a5_critical_fp64_specification.py
+--- a/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-09 14:26:05.602464912 +0000
++++ b/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-09 14:47:08.463604057 +0000
+@@ -14,7 +14,7 @@
+     assert 'version: "0.20.42a0"' in text
+     assert "training_force_jacobian_dtype = model" in text
+     assert "Python/ASE" in text
+-    assert 'version = "0.20.121a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.122a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_data9a5_architecture_declares_scope_and_limits() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/tests/test_mlff_data9a5_deployment_specification.py b/tests/test_mlff_data9a5_deployment_specification.py
+--- a/tests/test_mlff_data9a5_deployment_specification.py	2026-08-09 14:26:05.602886455 +0000
++++ b/tests/test_mlff_data9a5_deployment_specification.py	2026-08-09 14:47:08.463712326 +0000
+@@ -13,7 +13,7 @@
+     assert 'version: "0.20.43a0"' in text
+     assert "downstream runtime owns" in text
+     assert "float32-to-float64 promotion does not restore" in text
+-    assert 'version = "0.20.121a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.122a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_keep_lammps_outside_mdstats_scope() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/tests/test_mlff_data9a6c_observable_evidence_specification.py b/tests/test_mlff_data9a6c_observable_evidence_specification.py
+--- a/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-09 05:00:29.000000000 +0000
++++ b/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-09 14:51:50.822784800 +0000
+@@ -74,5 +74,5 @@
+ 
+ def test_packaged_owner_manual_index_is_valid() -> None:
+     payload = json.loads(MANUAL_INDEX.read_text(encoding="utf-8"))
+-    assert payload["package_version"] == "0.20.120a0"
++    assert payload["package_version"] == "0.20.122a0"
+     assert "structural-observables-architecture" in payload["manuals"]
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/tests/test_mlff_data9a7a_material_profile_specification.py b/tests/test_mlff_data9a7a_material_profile_specification.py
+--- a/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-09 14:26:05.626803146 +0000
++++ b/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-09 14:47:08.468162656 +0000
+@@ -64,4 +64,4 @@
+ 
+ 
+ def test_release_version_is_data9a7a() -> None:
+-    assert 'version = "0.20.121a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert 'version = "0.20.122a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/tests/test_mlff_data9a7b_specification.py b/tests/test_mlff_data9a7b_specification.py
+--- a/tests/test_mlff_data9a7b_specification.py	2026-08-09 14:26:05.633977271 +0000
++++ b/tests/test_mlff_data9a7b_specification.py	2026-08-09 14:47:08.469490975 +0000
+@@ -69,7 +69,7 @@
+ 
+ 
+ def test_data9a7b_public_exports_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.121a0"
++    assert mdstats.__version__ == "0.20.122a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert callable(mdstats.compute_local_structure_features)
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/tests/test_mlff_data9a7c_specification.py b/tests/test_mlff_data9a7c_specification.py
+--- a/tests/test_mlff_data9a7c_specification.py	2026-08-09 14:26:05.601751086 +0000
++++ b/tests/test_mlff_data9a7c_specification.py	2026-08-09 14:47:08.463414224 +0000
+@@ -47,7 +47,7 @@
+ 
+ 
+ def test_public_api_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.121a0"
++    assert mdstats.__version__ == "0.20.122a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert mdstats.MLFF_DATA9A7C_PARSER_VERSION == "0.20.49a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/tests/test_mlff_data9a7d_specification.py b/tests/test_mlff_data9a7d_specification.py
+--- a/tests/test_mlff_data9a7d_specification.py	2026-08-09 14:26:05.617833338 +0000
++++ b/tests/test_mlff_data9a7d_specification.py	2026-08-09 14:47:08.466770294 +0000
+@@ -39,6 +39,6 @@
+ 
+ 
+ def test_data9a7d_runtime_versions() -> None:
+-    assert mdstats.__version__ == "0.20.121a0"
++    assert mdstats.__version__ == "0.20.122a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7D_PARSER_VERSION == "0.20.50a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/tests/test_mlff_data9a7e_specification.py b/tests/test_mlff_data9a7e_specification.py
+--- a/tests/test_mlff_data9a7e_specification.py	2026-08-09 14:26:05.623488353 +0000
++++ b/tests/test_mlff_data9a7e_specification.py	2026-08-09 14:47:08.467684376 +0000
+@@ -39,7 +39,7 @@
+         "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
+         "CROSS_SYSTEM_QUALIFICATION_SUITE",
+     } <= nodes
+-    assert mdstats.__version__ == "0.20.121a0"
++    assert mdstats.__version__ == "0.20.122a0"
+     assert mdstats.MLFF_DATA9A7E_PARSER_VERSION == "0.20.51a0"
+     assert callable(mdstats.qualify_cross_system_case)
+     assert callable(mdstats.build_cross_system_qualification_suite)
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/tests/test_mlff_data9a8_specification.py b/tests/test_mlff_data9a8_specification.py
+--- a/tests/test_mlff_data9a8_specification.py	2026-08-09 14:26:05.620258735 +0000
++++ b/tests/test_mlff_data9a8_specification.py	2026-08-09 14:47:08.467133503 +0000
+@@ -66,7 +66,7 @@
+ 
+ 
+ def test_public_runtime_exposes_data9a8_without_removed_aliases() -> None:
+-    assert mdstats.__version__ == "0.20.121a0"
++    assert mdstats.__version__ == "0.20.122a0"
+     assert mdstats.MLFF_DATA9A8_PARSER_VERSION == "0.20.52a0"
+     assert mdstats.ObservableComparisonPolicy
+     assert mdstats.compare_mlff_observable_validation
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/tests/test_mlff_data9a9a_specification.py b/tests/test_mlff_data9a9a_specification.py
+--- a/tests/test_mlff_data9a9a_specification.py	2026-08-09 14:26:05.622649558 +0000
++++ b/tests/test_mlff_data9a9a_specification.py	2026-08-09 14:47:08.467491898 +0000
+@@ -65,7 +65,7 @@
+ 
+ 
+ def test_public_runtime_exports_data9a9a_contracts() -> None:
+-    assert mdstats.__version__ == "0.20.121a0"
++    assert mdstats.__version__ == "0.20.122a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A9A_VERSION
+     assert mdstats.Data6ModelSweepPlan
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/tests/test_mlff_data9a9b_specification.py b/tests/test_mlff_data9a9b_specification.py
+--- a/tests/test_mlff_data9a9b_specification.py	2026-08-09 14:26:05.628522539 +0000
++++ b/tests/test_mlff_data9a9b_specification.py	2026-08-09 14:47:08.468639727 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9b_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.121a0"
++    assert mdstats.__version__ == "0.20.122a0"
+     for name in (
+         "ProductionMaterializationPlan",
+         "ProductionMaterializationCheckpoint",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/tests/test_mlff_data9a9c_specification.py b/tests/test_mlff_data9a9c_specification.py
+--- a/tests/test_mlff_data9a9c_specification.py	2026-08-09 14:26:05.598066135 +0000
++++ b/tests/test_mlff_data9a9c_specification.py	2026-08-09 14:47:08.462799574 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9c_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.121a0"
++    assert mdstats.__version__ == "0.20.122a0"
+     for name in (
+         "ProductionCorpusPlan", "ProductionExpectedRun",
+         "ProfileExtensionEvidenceRequirement", "ProductionCorpusQualificationRecord",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/tests/test_mlff_data9a_specification.py b/tests/test_mlff_data9a_specification.py
+--- a/tests/test_mlff_data9a_specification.py	2026-08-09 14:26:05.633631568 +0000
++++ b/tests/test_mlff_data9a_specification.py	2026-08-09 14:47:08.469390179 +0000
+@@ -14,7 +14,7 @@
+ 
+ 
+ def test_data9a_runtime_specification_is_canonical() -> None:
+-    assert 'version = "0.20.121a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.122a0"' in (ROOT / "pyproject.toml").read_text()
+     architecture = ARCH.read_text()
+     stage = STAGE.read_text()
+     specification = SPEC.read_text()
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/tests/test_mlff_data9b1_specification.py b/tests/test_mlff_data9b1_specification.py
+--- a/tests/test_mlff_data9b1_specification.py	2026-08-09 14:26:05.609579588 +0000
++++ b/tests/test_mlff_data9b1_specification.py	2026-08-09 14:47:08.465095364 +0000
+@@ -18,8 +18,8 @@
+     assert "TrainingCampaignPlan" in text
+     assert "CheckpointSelectionRecord" in text
+     assert "mdstats-mace-train" in text
+-    assert mdstats.__version__ == "0.20.121a0"
+-    assert 'version = "0.20.121a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert mdstats.__version__ == "0.20.122a0"
++    assert 'version = "0.20.122a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+ 
+ 
+ def test_data9b1_is_integrated_into_manual_and_stage_plan() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/tests/test_mlff_data9b2_specification.py b/tests/test_mlff_data9b2_specification.py
+--- a/tests/test_mlff_data9b2_specification.py	2026-08-09 14:26:05.632382525 +0000
++++ b/tests/test_mlff_data9b2_specification.py	2026-08-09 14:47:08.469202642 +0000
+@@ -23,7 +23,7 @@
+         'mdstats-mace-select-head',
+     ):
+         assert token in text
+-    assert mdstats.__version__ == '0.20.121a0'
++    assert mdstats.__version__ == '0.20.122a0'
+     assert mdstats.MLFF_DATA9B2_VERSION == '0.20.57a0'
+ 
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/tests/test_mlff_data9b3_campaign_cli_specification.py b/tests/test_mlff_data9b3_campaign_cli_specification.py
+--- a/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-09 14:26:05.614663997 +0000
++++ b/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-09 14:47:08.466142070 +0000
+@@ -16,7 +16,7 @@
+ 
+ 
+ def test_data9b3_version_and_user_surface() -> None:
+-    assert mdstats.__version__ == "0.20.121a0"
++    assert mdstats.__version__ == "0.20.122a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert TOOL.is_file()
+     assert TOOL.stat().st_mode & 0o111
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/tests/test_mlff_opt_ctrl1_specification.py b/tests/test_mlff_opt_ctrl1_specification.py
+--- a/tests/test_mlff_opt_ctrl1_specification.py	2026-08-09 14:26:05.593226728 +0000
++++ b/tests/test_mlff_opt_ctrl1_specification.py	2026-08-09 14:47:08.461886066 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_ctrl1_release_identity_preserves_scientific_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.121a0"
++    assert mdstats.__version__ == "0.20.122a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.121a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.122a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_ctrl1_architecture_and_spec_close_roadmap() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/tests/test_mlff_opt_eval4_specification.py b/tests/test_mlff_opt_eval4_specification.py
+--- a/tests/test_mlff_opt_eval4_specification.py	2026-08-09 14:26:05.606305274 +0000
++++ b/tests/test_mlff_opt_eval4_specification.py	2026-08-09 14:47:08.464485912 +0000
+@@ -11,9 +11,9 @@
+ 
+ 
+ def test_opt_eval4_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.121a0"
++    assert mdstats.__version__ == "0.20.122a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+-    assert 'version = "0.20.121a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.122a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_eval4_architecture_and_spec_record_pipeline_contract() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/tests/test_mlff_opt_verify1_specification.py b/tests/test_mlff_opt_verify1_specification.py
+--- a/tests/test_mlff_opt_verify1_specification.py	2026-08-09 14:26:05.605194909 +0000
++++ b/tests/test_mlff_opt_verify1_specification.py	2026-08-09 14:47:08.464193178 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_verify1_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.121a0"
++    assert mdstats.__version__ == "0.20.122a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.121a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.122a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_verify1_architecture_and_spec_record_contract() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/tests/test_mlff_perf2_parallel_acceleration_specification.py b/tests/test_mlff_perf2_parallel_acceleration_specification.py
+--- a/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-09 14:26:05.610679388 +0000
++++ b/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-09 14:47:08.465247904 +0000
+@@ -10,7 +10,7 @@
+ 
+ 
+ def test_perf2_release_and_configuration_contract() -> None:
+-    assert mdstats.__version__ == "0.20.121a0"
++    assert mdstats.__version__ == "0.20.122a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     template = campaign_cli._config_template(
+         workspace="workspace",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/tests/test_mlff_prec1_precision_profiles.py b/tests/test_mlff_prec1_precision_profiles.py
+--- a/tests/test_mlff_prec1_precision_profiles.py	2026-08-09 05:00:29.000000000 +0000
++++ b/tests/test_mlff_prec1_precision_profiles.py	2026-08-09 14:42:54.750930277 +0000
+@@ -30,45 +30,30 @@
+     ]) == 0
+     p_cfg, _ = campaign_cli._load_config(plain)
+     e_cfg, _ = campaign_cli._load_config(explicit)
+-    p = campaign_cli._precision_schedule_policy(p_cfg)
+-    e = campaign_cli._precision_schedule_policy(e_cfg)
+-    assert p is not None and e is not None
+-    assert p.to_dict() == e.to_dict()
+-    assert p.requested_profile == "single"
++    p = campaign_cli._binary_model_precision_contract(p_cfg)
++    e = campaign_cli._binary_model_precision_contract(e_cfg)
++    assert p["requested_profile"] == e["requested_profile"] == "single"
++    assert p["model_dtype"] == e["model_dtype"] == "float32"
++    assert campaign_cli._precision_schedule_policy(p_cfg) is None
++    assert campaign_cli._precision_schedule_policy(e_cfg) is None
+ 
+ 
+-def test_canonical_profiles_generate_explicit_pipeline_dtypes_and_stages() -> None:
++def test_canonical_profiles_generate_binary_model_dtypes_without_staged_schedule() -> None:
+     single = _template("single")
+     double = _template("double")
+-    refine = _template("refine")
+ 
+     assert (single["model"]["dtype"], single["training"]["dtype"], single["evaluation"]["dtype"],
+             single["verification"]["dtype"], single["export"]["dtype"]) == ("float32",) * 5
+-    assert single["training"]["precision"]["critical_operation_dtype"] == "float32"
+-    assert single["training"]["precision"]["mode"] == "single_stage"
+-    assert single["training"]["precision"]["stage"] == [
+-        {"dtype": "float32", "fraction": 1.0, "learning_rate_scale": 1.0}
+-    ]
+-
++    assert "precision" not in single["training"]
+     assert (double["model"]["dtype"], double["training"]["dtype"], double["evaluation"]["dtype"],
+             double["verification"]["dtype"], double["export"]["dtype"]) == ("float64",) * 5
+-    assert double["training"]["precision"]["critical_operation_dtype"] == "float64"
++    assert "precision" not in double["training"]
+ 
+-    assert refine["model"]["dtype"] == "float64"
+-    assert refine["training"]["dtype"] == "float32"
+-    assert refine["evaluation"]["dtype"] == "float64"
+-    assert refine["verification"]["dtype"] == "float64"
+-    assert refine["export"]["dtype"] == "float64"
+-    assert refine["training"]["precision"]["mode"] == "staged"
+-    assert refine["training"]["precision"]["stage"] == [
+-        {"dtype": "float32", "fraction": 0.8, "learning_rate_scale": 1.0},
+-        {"dtype": "float64", "fraction": 0.2, "learning_rate_scale": 0.5},
+-    ]
+-    assert refine["training"]["precision"]["minimum_final_stage_epochs"] == 3
+-    assert refine["training"]["precision"]["minimum_final_stage_gradient_updates"] == 15000
++    with pytest.raises(campaign_cli.CampaignCliError, match="retired"):
++        _template("refine")
+ 
+ 
+-def test_canonical_single_critical_policy_is_fp32() -> None:
++def test_canonical_single_critical_policy_is_fp64():
+     policy = mdstats.canonical_precision_schedule_policy("single")
+     optimizer = mdstats.MaceOptimizerPolicy(
+         default_dtype="float32",
+@@ -77,8 +62,8 @@
+         ),
+         precision_schedule_policy=policy,
+     )
+-    assert optimizer.critical_precision_policy.canonical_dtype == "float32"
+-    assert optimizer.critical_precision_policy.strategy == "native_model_precision_v1"
++    assert optimizer.critical_precision_policy.canonical_dtype == "float64"
++    assert optimizer.critical_precision_policy.strategy == "scaleshift_mace_0.3.16_runtime_patch_v1"
+ 
+ 
+ def test_precision_schedule_rejects_critical_policy_dtype_mismatch() -> None:
+@@ -87,10 +72,9 @@
+         mdstats.MaceOptimizerPolicy(
+             default_dtype="float32",
+             precision_schedule_policy=policy,
+-            critical_precision_policy=mdstats.MaceCriticalPrecisionPolicy(),
++            critical_precision_policy=mdstats.MaceCriticalPrecisionPolicy.for_dtype("float32"),
+         )
+ 
+-
+ def test_refine_30_epochs_resolves_to_24_plus_6_and_update_bounds() -> None:
+     policy = mdstats.canonical_precision_schedule_policy("refine")
+     resolved = policy.resolve(max_num_epochs=30, updates_per_epoch=5223, require_update_floor=True)
+@@ -226,11 +210,38 @@
+     assert mapped.critical_operation_dtype == "float64"
+ 
+ 
+-def test_config_parser_rejects_training_dtype_stage_mismatch() -> None:
+-    cfg = _template("refine")
+-    cfg["training"]["dtype"] = "float64"
+-    with pytest.raises(campaign_cli.CampaignCliError, match="first .*stage"):
++def test_production_parser_rejects_historical_refine_but_report_remains_readable() -> None:
++    policy = mdstats.canonical_precision_schedule_policy("refine")
++    cfg = {
++        "campaign": {"precision_profile": "refine"},
++        "model": {"dtype": policy.model_dtype},
++        "training": {
++            "dtype": policy.stages[0].dtype,
++            "max_num_epochs": 30,
++            "precision": {
++                "mode": policy.mode,
++                "minimum_final_stage_epochs": policy.minimum_final_stage_epochs,
++                "minimum_final_stage_gradient_updates": policy.minimum_final_stage_gradient_updates,
++                "critical_operation_dtype": policy.critical_operation_dtype,
++                "stage": [
++                    {
++                        "dtype": stage.dtype,
++                        "fraction": stage.fraction,
++                        "learning_rate_scale": stage.learning_rate_scale,
++                    }
++                    for stage in policy.stages
++                ],
++            },
++        },
++        "evaluation": {"dtype": "float64"},
++        "verification": {"dtype": "float64"},
++        "export": {"dtype": "float64"},
++    }
++    with pytest.raises(campaign_cli.CampaignCliError, match="retired"):
+         campaign_cli._precision_schedule_policy(cfg)
++    payload = campaign_cli._precision_profile_payload(cfg)
++    assert payload["historical_read_only"] is True
++    assert payload["requested_profile"] == "refine"
+ 
+ 
+ def test_data8_binds_resolved_schedule_after_loader_exposure(tmp_path: Path) -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/tests/test_mlff_prec1_specification.py b/tests/test_mlff_prec1_specification.py
+--- a/tests/test_mlff_prec1_specification.py	2026-08-09 14:26:05.627651832 +0000
++++ b/tests/test_mlff_prec1_specification.py	2026-08-09 14:47:08.468443119 +0000
+@@ -12,7 +12,7 @@
+ 
+ 
+ def test_prec1_release_and_architecture_status() -> None:
+-    assert mdstats.__version__ == "0.20.121a0"
++    assert mdstats.__version__ == "0.20.122a0"
+     manual = MANUAL.read_text(encoding="utf-8")
+     spec = SPEC.read_text(encoding="utf-8")
+     assert "PREC1 - precision profiles, explicit staged schedule, and init realization - implemented in 0.20.108a0" in manual
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/tests/test_mlff_prec3_profile_activation.py b/tests/test_mlff_prec3_profile_activation.py
+--- a/tests/test_mlff_prec3_profile_activation.py	2026-08-09 05:00:29.000000000 +0000
++++ b/tests/test_mlff_prec3_profile_activation.py	2026-08-09 14:43:06.373791668 +0000
+@@ -53,18 +53,19 @@
+     }
+ 
+ 
+-def test_prec3_explicit_profiles_bind_runtime_critical_policy() -> None:
++def test_adapt_prec1_binary_profiles_bind_invariant_fp64_critical_policy() -> None:
+     single = campaign_cli._critical_precision_policy(_cfg("single"))
+     double = campaign_cli._critical_precision_policy(_cfg("double"))
+-    refine = campaign_cli._critical_precision_policy(_cfg("refine"))
+     legacy = campaign_cli._critical_precision_policy({"training": {"dtype": "float32"}})
+ 
+-    assert single.observable_output_dtype == "float32"
+-    assert single.strategy == "native_model_precision_v1"
++    assert single.observable_output_dtype == "float64"
++    assert single.strategy == "scaleshift_mace_0.3.16_runtime_patch_v1"
+     assert double.observable_output_dtype == "float64"
+-    assert refine.observable_output_dtype == "float64"
+     assert legacy.observable_output_dtype == "float64"
+ 
++    with pytest.raises(campaign_cli.CampaignCliError, match="retired"):
++        campaign_cli._critical_precision_policy(_cfg("refine"))
++
+ 
+ def test_prec3_precision_report_is_profile_complete() -> None:
+     payload = campaign_cli._precision_profile_payload(_cfg("refine"))
+@@ -79,16 +80,17 @@
+     ]
+ 
+ 
+-def test_prec3_evaluation_policy_binds_explicit_single_critical_policy() -> None:
+-    critical = mdstats.MaceCriticalPrecisionPolicy.for_dtype("float32")
++def test_adapt_prec1_evaluation_policy_keeps_fp32_model_with_fp64_scientific_reductions() -> None:
++    critical = mdstats.MaceCriticalPrecisionPolicy()
+     policy = mdstats.CheckpointEvaluationPolicy(
+         device="cpu",
+         default_dtype="float32",
+         critical_precision_policy=critical,
+     )
+     restored = mdstats.CheckpointEvaluationPolicy.from_dict(policy.to_dict())
++    assert restored.default_dtype == "float32"
+     assert restored.active_critical_precision_policy.policy_digest == critical.policy_digest
+-    assert restored.active_critical_precision_policy.observable_output_dtype == "float32"
++    assert restored.active_critical_precision_policy.observable_output_dtype == "float64"
+     assert restored.to_dict()["schema"] == "mdstats.checkpoint-evaluation-policy.v5"
+ 
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.121a0_to_0.20.122a0.patch' a/tests/test_mlff_prec3_specification.py b/tests/test_mlff_prec3_specification.py
+--- a/tests/test_mlff_prec3_specification.py	2026-08-09 14:26:05.605066512 +0000
++++ b/tests/test_mlff_prec3_specification.py	2026-08-09 14:47:08.464111729 +0000
+@@ -16,7 +16,7 @@
+     manual = MANUAL.read_text(encoding="utf-8")
+     spec = SPEC.read_text(encoding="utf-8")
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+-    assert mdstats.__version__ == "0.20.121a0"
++    assert mdstats.__version__ == "0.20.122a0"
+     assert "PREC3 - campaign integration, qualification, and profile activation - implemented in 0.20.110a0" in manual
+     assert "PREC3 implementation closure (0.20.110a0)" in manual
+     assert "PREC3 implemented in mdstats 0.20.110a0" in spec

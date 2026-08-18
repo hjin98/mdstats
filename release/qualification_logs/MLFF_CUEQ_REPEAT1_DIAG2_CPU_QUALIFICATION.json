@@ -1,0 +1,24 @@
+{
+  "schema": "mdstats.cueq-repeat1-diag2.cpu-qualification.v1",
+  "release": "0.20.217a0",
+  "architecture_revision": 84,
+  "dependency_graph_schema": 66,
+  "gate": "CUEQ-REPEAT1-DIAG2",
+  "authorizing": false,
+  "active_train2_fp32_rtol": 1e-5,
+  "active_train2_fp32_atol": 1e-5,
+  "refined_self_statistics": ["Fmax", "Frmse", "Fp99", "Fp99.9", "force_count_above_1e-5"],
+  "deterministic_control": {
+    "isolated_subprocess": true,
+    "cublas_workspace_config": ":4096:8",
+    "torch_deterministic_algorithms": true,
+    "deterministic_debug_mode": "error",
+    "cudnn_benchmark": false,
+    "cudnn_deterministic": true,
+    "unsupported_policy": "report_and_persist_no_fallback"
+  },
+  "adjacent_regression": {"passed": 123, "skipped": 1, "warnings": 2},
+  "compileall": "passed",
+  "gpu_execution": "not_executed_on_development_host",
+  "next_action": "run MPA-0 doctor once and report both [DIAG] and [DIAG-DET] blocks"
+}

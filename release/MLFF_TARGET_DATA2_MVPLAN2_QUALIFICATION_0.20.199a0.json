@@ -1,0 +1,52 @@
+{
+  "schema": "mdstats.target-data2.mvplan2.qualification.2026-08.v1",
+  "release": "0.20.199a0",
+  "architecture_revision": 66,
+  "dependency_graph_schema": 48,
+  "gate": "TARGET-DATA2-MVPLAN2",
+  "status": "plan_only_pass",
+  "runtime_behavior_changed": false,
+  "executable_target_data2c_authority": "revision-64 v4 until MVMIGRATE1",
+  "fixed_candidate_sizes": [
+    128,
+    256,
+    512,
+    1024,
+    2048,
+    4096,
+    8192,
+    16384
+  ],
+  "hard_coverage_threshold_changed": false,
+  "major_revisions": [
+    "FEAS1 self-consistency/cross-support/capacity lower bound",
+    "exact sparse bidirectional MVIDX",
+    "two-phase deterministic FP64 MVSEL",
+    "multiplicity-based deficit-directed REPAIR",
+    "PERF-P2/P2R/P3/P4/P5 inheritance",
+    "same-N deficit/learning MVQUAL",
+    "coverage-qualified-only q->min(q,4)->2->1 funnel",
+    "q=4..8 SIZE-FIDELITY2 calibration"
+  ],
+  "next_implementation_gate": "TARGET-DATA2B-FEAS1",
+  "validation": {
+    "current_release_specification_tests": "35 passed",
+    "compileall": "pass",
+    "graph_json_validation": "pass",
+    "root_manual_graph_mirrors": "byte-identical markdown/json",
+    "runtime_source_diff_vs_0.20.198a0": "no mdstats runtime changes except _version.py; tools unchanged",
+    "pdf_preflight": "pass",
+    "manual_pages": 209,
+    "visual_review_pages": [
+      1,
+      205,
+      206,
+      207,
+      208,
+      209
+    ],
+    "mvplan2_spec_pages": 1,
+    "page1_diff_vs_rev65_pct_changed": 0.007685680332739156,
+    "historical_specification_sweep": "not a current-release metric; archival tests intentionally pin old versions/schemas"
+  }
+}

@@ -1,0 +1,65 @@
+{
+  "architecture_revision": 93,
+  "content_digest": "17c75b341b1f9eebd10a646d58c286d8c7c793419a1b7e1591829835db7faee2",
+  "files": [
+    {
+      "path": "mdstats/training_data/work_queue.py",
+      "sha256": "0a40548a8fc6491abb511f3b2936b9fbed14edf0c5941240a4e0431650c6ffde"
+    },
+    {
+      "path": "mdstats/training_data/resources.py",
+      "sha256": "ca7f3443eb1bfeaf4f3af03814ccdf64f4e497346a53973baea3a17d71a38f08"
+    },
+    {
+      "path": "mdstats/training_data/target_coverage_feasibility.py",
+      "sha256": "1246b52c93e0b914733eac5c3f7a52fc6a6c0bd23bba584fec9077c6d46bd5c1"
+    },
+    {
+      "path": "mdstats/training_data/campaign_cli.py",
+      "sha256": "86eba89aa10dd853f16c95595ced98658b0716a1f4fade09ff7a77111d6959df"
+    },
+    {
+      "path": "mdstats/training_data/__init__.py",
+      "sha256": "dc3e8cffc84d2f8aa0891133f8673b0177b6de73e894f967ca78a7ddf2655ec8"
+    },
+    {
+      "path": "mdstats/__init__.py",
+      "sha256": "4901922595069727952140da0a34f2889ede7f2934adb1436fb91b231a1a2c53"
+    },
+    {
+      "path": "benchmarks/benchmark_mlff_perfbase1.py",
+      "sha256": "364bd55a6680caf81d50cf132cdea67c753ebfad11ba9963b09f3d2af4b0487b"
+    },
+    {
+      "path": "tests/test_mlff_parcore1.py",
+      "sha256": "f2745aef1f740595f4b753422d3243027c14046cf0ce1b8c0961a222c8a15f7e"
+    },
+    {
+      "path": "tests/test_mlff_parcore1_specification.py",
+      "sha256": "cea370b98dc685bb9670c64447ad4182e96c72590e820529f6075f3ece47a16a"
+    },
+    {
+      "path": "docs/specs/training_data/mlff_parcore1_deterministic_work_queue_spec.md",
+      "sha256": "510ca0a17449b870a28c825fddc2864d356a672e4f1cd67fdacf515cb3a946b6"
+    },
+    {
+      "path": "docs/arch_manuals/mlff_training_data/00_front_matter.md",
+      "sha256": "1dbad48aedec0f1db10a59a87044a198180986124c595104c278fdec52536e0a"
+    },
+    {
+      "path": "docs/arch_manuals/mlff_training_data/60_execution_performance.md",
+      "sha256": "8a72c0c3652b71c013b5b336b1593060bcdd792812bcce911feed4d30f93de9a"
+    },
+    {
+      "path": "docs/arch_manuals/mlff_training_data/70_status_and_gates.md",
+      "sha256": "010432697b6380dc0792924c09c117ded78d81b0325e496bc63e5b45be5d6e98"
+    },
+    {
+      "path": "docs/arch_manuals/mlff_training_data_dependency_graph.json",
+      "sha256": "5c597373f31d141d6082263de9279200078b8915c718b470e373aa313437c3c2"
+    }
+  ],
+  "gate": "PARCORE1",
+  "release": "0.20.226a0",
+  "schema": "mdstats.mlff-parcore1-implementation-manifest.v1"
+}

@@ -1,0 +1,33 @@
+{
+  "schema": "mdstats.mlff-data6-recovery-hf1-pdf-qa.v1",
+  "version": "0.20.195a0",
+  "architecture_revision": 62,
+  "dependency_graph_schema": 44,
+  "status": "pass",
+  "artifacts": {
+    "architecture_note": {
+      "path": "ARCHITECTURE_NOTES_MLFF_REV62.pdf",
+      "pages": 1
+    },
+    "patch_notes": {
+      "path": "PATCH_NOTES_0.20.195a0.pdf",
+      "pages": 1
+    },
+    "hotfix_spec": {
+      "path": "docs/specs/training_data/mlff_data6_recovery_hf1_spec.pdf",
+      "pages": 1
+    },
+    "canonical_manual": {
+      "path": "docs/arch_manuals/mlff_training_data_architecture.pdf",
+      "pages": 199
+    }
+  },
+  "preflight": "all openable, unencrypted, non-scanned",
+  "visual_review": [
+    "ARCHITECTURE_NOTES_MLFF_REV62 page 1",
+    "PATCH_NOTES_0.20.195a0 page 1",
+    "hotfix spec page 1",
+    "canonical manual final page 199"
+  ],
+  "canonical_manual_sha256": "56d22e49c0407dec7c011a6fb31d337774a7002a2f5e100a2e601c36ad09cad7"
+}

@@ -1,0 +1,56 @@
+{
+  "schema": "mdstats.mlff.target-data2c-mvidx1.release-qualification.v1",
+  "release": "0.20.201a0",
+  "date": "2026-08-16",
+  "gate": "TARGET-DATA2C-MVIDX1",
+  "architecture_revision": 68,
+  "dependency_graph_schema": 50,
+  "status": "PASS",
+  "implementation_mode": "exact_sparse_index_substrate",
+  "runtime_selector_changed": false,
+  "current_target_data2c_runtime": "revision-64 TARGET-DATA2C v4 unchanged",
+  "authority": {
+    "family_scope": "required TARGET-DATA2B coverage families",
+    "sparse_directions": [
+      "witness_to_candidate",
+      "candidate_to_witness"
+    ],
+    "index_dtypes": {
+      "indices": "uint32",
+      "offsets": "uint64"
+    },
+    "hard_obligations": [
+      "required extent lower/upper obligations",
+      "protected/required strata",
+      "TARGET-DATA2A development correlation intervals"
+    ],
+    "native_persistence": "content-addressed NPY sidecars plus authenticated manifest/pointer",
+    "authoritative_state_separated_from_future_selector_caches": true,
+    "indexed_queries": [
+      "covered mask",
+      "covered mass",
+      "marginal gain",
+      "obligation selected counts"
+    ],
+    "selector_migration_authorized": false
+  },
+  "validation": {
+    "focused_mvidx1": {"passed": 7, "failed": 0},
+    "target_data2b_c_d_functional_slice": {"passed": 56, "failed": 0},
+    "campaign_orchestration_restart_slice": {"passed": 77, "skipped_expected": 1, "failed": 0},
+    "current_release_specifications": {"passed": 43, "failed": 0},
+    "compileall": "PASS",
+    "forward_inverse_adjacency_equivalence": "PASS",
+    "covered_mass_equivalence_vs_target_data2b_authority": "PASS",
+    "marginal_gain_equivalence_vs_target_data2b_authority": "PASS",
+    "worker_block_determinism": "PASS",
+    "native_persistence_roundtrip": "PASS",
+    "native_persistence_tamper_detection": "PASS",
+    "campaign_store_restart_and_storage_reference_discovery": "PASS",
+    "production_style_target_data2b_fixture": "PASS",
+    "pdf_preflight_and_visual_qa": "PASS",
+    "historical_version_pinned_specification_sweep": "excluded_from_current_release_metric",
+    "positive_cueq_runtime_fixtures": "excluded_from MVIDX1 acceptance on CPU development host; no positive CUEQ_DEP1_RUNTIME_FREEZE available"
+  },
+  "next_gate": "TARGET-DATA2C-MVSEL1"
+}

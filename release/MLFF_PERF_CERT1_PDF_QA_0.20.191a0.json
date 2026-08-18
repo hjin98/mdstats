@@ -1,0 +1,86 @@
+{
+  "architecture_revision": 58,
+  "corrective_actions": [
+    "wrapped FINAL-GPU1 v5 schema token in PERF-CERT1 specification",
+    "replaced full-digest table cells with digest prefixes in development-host PDF while retaining full hashes in machine-readable JSON evidence",
+    "condensed architecture revision note to one page",
+    "folded FINAL-GPU1 readiness-only disclaimer into page 4 to eliminate a one-line spill page"
+  ],
+  "date": "2026-08-15",
+  "records": [
+    {
+      "pages": 1,
+      "path": "ARCHITECTURE_NOTES_MLFF_REV58.pdf",
+      "preflight_ok": true,
+      "visual_result": "pass_no_clipping_overlap_or_overflow_observed",
+      "visually_inspected_pages": [
+        1
+      ],
+      "warnings": []
+    },
+    {
+      "pages": 3,
+      "path": "mlff_perf_cert1_end_to_end_certification_spec.pdf",
+      "preflight_ok": true,
+      "visual_result": "pass_no_clipping_overlap_or_overflow_observed",
+      "visually_inspected_pages": [
+        1,
+        2,
+        3
+      ],
+      "warnings": []
+    },
+    {
+      "pages": 4,
+      "path": "mlff_final_gpu1_deferred_qualification_spec.pdf",
+      "preflight_ok": true,
+      "visual_result": "pass_no_clipping_overlap_or_overflow_observed",
+      "visually_inspected_pages": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "warnings": []
+    },
+    {
+      "pages": 1,
+      "path": "PATCH_NOTES_0.20.191a0.pdf",
+      "preflight_ok": true,
+      "visual_result": "pass_no_clipping_overlap_or_overflow_observed",
+      "visually_inspected_pages": [
+        1
+      ],
+      "warnings": []
+    },
+    {
+      "pages": 2,
+      "path": "audits/analysis/mlff_perf_cert1_development_host_2026-08-15.pdf",
+      "preflight_ok": true,
+      "visual_result": "pass_no_clipping_overlap_or_overflow_observed",
+      "visually_inspected_pages": [
+        1,
+        2
+      ],
+      "warnings": []
+    },
+    {
+      "pages": 198,
+      "path": "mlff_training_data_architecture.pdf",
+      "preflight_ok": true,
+      "visual_result": "pass_no_clipping_overlap_or_overflow_observed",
+      "visually_inspected_pages": [
+        1,
+        195,
+        196,
+        197,
+        198
+      ],
+      "warnings": []
+    }
+  ],
+  "release": "0.20.191a0",
+  "renderer": "$HOME/skills/pdfs/scripts/render_pdf.py",
+  "result": "pass",
+  "schema": "mdstats.mlff-perf-cert1-pdf-qa.v1"
+}

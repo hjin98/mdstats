@@ -1,0 +1,55 @@
+{
+  "schema": "mdstats.mlff.target-data2-mvplan1.qualification.v1",
+  "release": "0.20.198a0",
+  "architecture_revision": 65,
+  "dependency_graph_schema": 47,
+  "gate": "TARGET-DATA2-MVPLAN1",
+  "status": "architecture_frozen_not_implemented",
+  "runtime_behavior_changed": false,
+  "current_executable_selector": "TARGET-DATA2C v4 / TARGET-DATA2C-RESCUE1",
+  "planned_candidate_sizes": [128, 256, 512, 1024, 2048, 4096, 8192, 16384],
+  "planned_hard_ceiling": 16384,
+  "coverage_threshold": 0.95,
+  "coverage_threshold_changed": false,
+  "planned_minimum_hard_qualifiers": 4,
+  "successive_fidelity": {
+    "epochs": [3, 10, 30],
+    "candidate_counts": [8, 4, 2, 1],
+    "meaning": "candidate-count reduction, not dataset-size halving"
+  },
+  "implementation_gates": [
+    "TARGET-DATA2B-FEAS1",
+    "TARGET-DATA2C-MVIDX1",
+    "TARGET-DATA2C-MVSEL1",
+    "TARGET-DATA2C-REPAIR1",
+    "TARGET-DATA2C-MVPERF1",
+    "TARGET-DATA2C-MVQUAL1",
+    "SIZE-HALVE2",
+    "SIZE-FIDELITY2",
+    "TARGET-DATA2C-MVMIGRATE1"
+  ],
+  "scientific_invariants": {
+    "hard_coverage_independent": true,
+    "locked_test_tuning_forbidden": true,
+    "exact_nested_prefixes_required": true,
+    "clustering_score_is_deletion_authority": false,
+    "redundancy_authority": "leave-one-out unique coverage",
+    "source_data6_backend": "e3nn",
+    "train2_backend": "cueq",
+    "acceleration_policy_changed": false
+  },
+  "tests": {
+    "current_release_specification_tests_passed": 32,
+    "current_release_specification_tests_failed": 0,
+    "focused_adjacent_sync_tests_passed": 17,
+    "compileall": "pass"
+  },
+  "pdf_qa": {
+    "canonical_manual_pages": 204,
+    "new_manual_pages_rendered": [199, 200, 201, 202, 203, 204],
+    "revision_note_pages": 1,
+    "normative_roadmap_spec_pages": 1,
+    "preflight": "pass",
+    "first_five_page_visual_diff": "only page 1 changed as expected from revision front matter"
+  }
+}

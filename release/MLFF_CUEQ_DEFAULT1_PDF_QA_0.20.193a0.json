@@ -1,0 +1,16 @@
+{
+  "schema": "mdstats.mlff-cueq-default1-pdf-qa.v1",
+  "release": "0.20.193a0",
+  "architecture_revision": 60,
+  "status": "pass",
+  "documents": [
+    {"path": "ARCHITECTURE_NOTES_MLFF_REV60.pdf", "pages": 1, "preflight": "pass", "render_review": "pass"},
+    {"path": "PATCH_NOTES_0.20.193a0.pdf", "pages": 1, "preflight": "pass", "render_review": "pass"},
+    {"path": "mlff_cueq_train_default1_policy_migration_spec.pdf", "pages": 1, "preflight": "pass", "render_review": "pass"},
+    {"path": "docs/guides/mlff_campaign_cli_user_guide.pdf", "pages": 16, "preflight": "pass", "render_review": "pass", "reviewed_pages": [15, 16]},
+    {"path": "docs/arch_manuals/mlff_training_data_architecture.pdf", "pages": 199, "preflight": "pass", "render_review": "pass", "reviewed_pages": [197, 198, 199]}
+  ],
+  "corrections": [
+    "Condensed the CUEQ-DEFAULT1 specification from a sparse two-page render to one page before release."
+  ]
+}

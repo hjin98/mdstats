@@ -1,0 +1,1702 @@
+diff -ruN '--exclude=SOURCE_PATCH_0.20.233a0_to_0.20.234a0.patch' '--exclude=SHA256SUMS_0.20.234a0.txt' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/CHANGELOG.md /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/CHANGELOG.md
+--- /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/CHANGELOG.md	2026-08-18 00:41:12.000000000 +0000
++++ /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/CHANGELOG.md	2026-08-18 01:29:04.277023352 +0000
+@@ -1,3 +1,12 @@
++## 0.20.234a0 - 2026-08-17
++
++- Implement REPLAY-PERF1 / architecture revision 101 as exact replay-source indexing and indexed materialization over the unified immutable replay corpus.
++- Add the source-SHA-bound `ReplaySourceIndex` byte-offset/natoms cache with authenticated reuse, relocation-safe locator rebinding, corruption rebuild, and explicit invalidation on source mutation.
++- Route true-label views, pseudo-label views, and foundation-prediction source iteration through deterministic indexed parsing; sparse role reconstruction seeks only requested frames and all indexed paths reuse authenticated source-order geometry identities.
++- Keep ASE ExtXYZ parsing serial after direct qualification showed threaded parser chunks regress wall time on this host.
++- On the supplied 12,000-frame replay source, reduce monitor-only true-label reconstruction from about 9.14 s to 3.01 s (~3.03x) with byte-identical output; full-source parse/identity improves ~1.19x and full train+monitor materialization ~1.09x.
++- Preserve the REPLAY-UNIFY1 5:1 split, true-label/pseudo-label authority, cached foundation predictions, active MACE-MPA-0 qualification, and model-generic MACE-MH-1 compatibility; next gate is CAMPAIGN-PERF-QUAL1.
++
+ ## 0.20.233a0 - 2026-08-17
+ 
+ - Implement AUDIT-EVAL-PERF1 / architecture revision 100 as exact CPU hardening around already materialized Foundation Audit and EVAL2 predictions.
+diff -ruN '--exclude=SOURCE_PATCH_0.20.233a0_to_0.20.234a0.patch' '--exclude=SHA256SUMS_0.20.234a0.txt' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/PKG-INFO /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/PKG-INFO
+--- /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/PKG-INFO	2026-08-18 00:37:24.000000000 +0000
++++ /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/PKG-INFO	2026-08-18 01:29:04.256293871 +0000
+@@ -1,6 +1,6 @@
+ Metadata-Version: 2.4
+ Name: mdstats
+-Version: 0.20.233a0
++Version: 0.20.234a0
+ Summary: Transparent atomistic frame collections and structural/dynamical statistics
+ Requires-Python: >=3.10
+ Requires-Dist: numpy>=1.26
+diff -ruN '--exclude=SOURCE_PATCH_0.20.233a0_to_0.20.234a0.patch' '--exclude=SHA256SUMS_0.20.234a0.txt' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/benchmarks/mlff_replay_perf1_cloud_cpu_mpa0_2026-08-17.json /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/benchmarks/mlff_replay_perf1_cloud_cpu_mpa0_2026-08-17.json
+--- /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/benchmarks/mlff_replay_perf1_cloud_cpu_mpa0_2026-08-17.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/benchmarks/mlff_replay_perf1_cloud_cpu_mpa0_2026-08-17.json	2026-08-18 01:30:30.211335094 +0000
+@@ -0,0 +1,102 @@
++{
++  "acceptance": {
++    "exact_replay_authority": true,
++    "next_gate": "CAMPAIGN-PERF-QUAL1",
++    "restart_index_reuse": true,
++    "source_mutation_invalidates": true,
++    "status": "PASS"
++  },
++  "active_foundation": {
++    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
++    "family": "MACE-MPA-0 medium",
++    "mh1_compatible": true,
++    "note": "REPLAY-PERF1 changes only replay indexing/materialization; no model-family-specific numerical path is introduced."
++  },
++  "architecture_revision": 101,
++  "date": "2026-08-17",
++  "execution": {
++    "full_source_parse_identity": {
++      "control_seconds": 7.641843772998982,
++      "current_seconds": 6.423186239999268,
++      "frames": 12000,
++      "speedup": 1.1897278838671588
++    },
++    "index": {
++      "authenticated_hit_seconds": 0.07091366700115032,
++      "build_seconds": 0.45059363399923313
++    },
++    "monitor_only_true_label_materialization": {
++      "control_median_seconds": 9.138929937000285,
++      "control_release": "0.20.233a0",
++      "control_trials_seconds": [
++        9.049325910000334,
++        9.228533964000235
++      ],
++      "current_median_seconds": 3.0124864780009375,
++      "current_release": "0.20.234a0",
++      "current_trials_seconds": [
++        2.9133628890012915,
++        3.1116100670005835
++      ],
++      "requested_frames": 2000,
++      "source_frames": 12000,
++      "speedup": 3.0336833057138923
++    },
++    "train_monitor_true_label_materialization": {
++      "control_median_seconds": 15.676349609499994,
++      "control_release": "0.20.233a0",
++      "control_trials_seconds": [
++        15.723951702000704,
++        15.628747516999283
++      ],
++      "current_median_seconds": 14.347956869500194,
++      "current_release": "0.20.234a0",
++      "current_trials_seconds": [
++        14.606789539999227,
++        14.089124199001162
++      ],
++      "requested_frames": 12000,
++      "source_frames": 12000,
++      "speedup": 1.0925841046277185
++    }
++  },
++  "implementation": {
++    "contiguous_chunk_parsing": true,
++    "corrupt_receipt_rebuild": true,
++    "geometry_identity_reuse": true,
++    "parser_parallelism": "serial",
++    "source_artifact_bound": true,
++    "source_change_invalidation": true,
++    "source_index_content_digest": "ce6c678ad556cff63be8ee75754d87cba2b3d08e80f544c5983fe4498dc0c5e1",
++    "source_index_receipt_schema": "mdstats.replay-source-index-receipt.v1",
++    "source_index_schema": "mdstats.replay-source-index.v1",
++    "source_order_bound": true,
++    "source_sha_bound": true,
++    "sparse_direct_seek": true,
++    "threaded_ase_parser_rejected_as_slower": true
++  },
++  "inputs": {
++    "dependency_archive_sha256": "888d545a512396697c8583d69bc9ed33110914675f466a4cbcafc3e1e1407171",
++    "replay_configuration_count": 12000,
++    "replay_source_artifact_digest": "9f43677d6100cea85f6de287fe1dd739322609fd82cbeb320e46f9434ce90688",
++    "replay_source_path": "replay_fps_12000.extxyz",
++    "replay_source_sha256": "187eed42fb2d6cf5e7e745ffed0ce34541e92c6a35ec9e654520cd3c7198403c",
++    "target_archive_sha256": "bc1b7e25ba338507ae38b260bcd283356de887b6c6cf762a2c146733f1c3c958"
++  },
++  "release": "0.20.234a0",
++  "schema": "mdstats.mlff-replay-perf1-benchmark.v1",
++  "scientific": {
++    "chunk_size_invariant": true,
++    "full_materialization_control_exact": true,
++    "monitor_control_exact": true,
++    "monitor_extxyz_sha256": "cc0f9b308becd5c027a2adc64fc251808323e19c217412d82ea3d50b3deab2cf",
++    "monitor_logical_digest": "633aae8a6deb1a3d857880f3eecd9bb40dbaedba8357a13944184c1bafbf1114",
++    "ordered_geometry_identity_digest": "89d5b7a678ed846557c1f15f6592058e9ee3b78d81eb3516a320d2eabca7659f",
++    "prediction_authority_changed": false,
++    "pseudolabel_authority_changed": false,
++    "split_authority_changed": false,
++    "train_extxyz_sha256": "e6977082593a5b5610292e13ae49df7afbdbb7744ea9fe496952952474636f8c",
++    "train_logical_digest": "8d7a29c35443cd8a8e7b2142157dce7c9804c8137d4a42e824edef9e42240901",
++    "true_label_authority_changed": false
++  }
++}
+diff -ruN '--exclude=SOURCE_PATCH_0.20.233a0_to_0.20.234a0.patch' '--exclude=SHA256SUMS_0.20.234a0.txt' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/benchmarks/mlff_replay_perf1_cloud_cpu_mpa0_2026-08-17.md /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/benchmarks/mlff_replay_perf1_cloud_cpu_mpa0_2026-08-17.md
+--- /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/benchmarks/mlff_replay_perf1_cloud_cpu_mpa0_2026-08-17.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/benchmarks/mlff_replay_perf1_cloud_cpu_mpa0_2026-08-17.md	2026-08-18 01:30:30.211437646 +0000
+@@ -0,0 +1,29 @@
++# REPLAY-PERF1 cloud CPU benchmark - mdstats 0.20.234a0
++
++Date: 2026-08-17  
++Architecture revision: 101  
++Active foundation: MACE-MPA-0 medium (`75428afe...fb638`); execution contract is MACE-MH-1 compatible.
++
++## Authority
++
++Supplied replay source: 12,000 frames, SHA-256 `187eed42fb2d6cf5e7e745ffed0ce34541e92c6a35ec9e654520cd3c7198403c`. The source artifact digest is `9f43677d6100cea85f6de287fe1dd739322609fd82cbeb320e46f9434ce90688`; the REPLAY-PERF1 byte index digest is `ce6c678ad556cff63be8ee75754d87cba2b3d08e80f544c5983fe4498dc0c5e1`.
++
++## Results
++
++| Workload | Untouched 0.20.233a0 | 0.20.234a0 | Speedup |
++|---|---:|---:|---:|
++| Monitor-only true-label view (2,000/12,000 frames) | 9.139 s | 3.012 s | 3.03x |
++| Full-source parse + geometry identity bookkeeping | 7.642 s | 6.423 s | 1.19x |
++| Full train+monitor true-label views | 15.676 s | 14.348 s | 1.09x |
++
++The one-time index build measured 0.451 s and an authenticated persisted index hit 0.071 s.
++
++Monitor output is byte-identical between control/current (`cc0f9b308becd5c027a2adc64fc251808323e19c217412d82ea3d50b3deab2cf`) and preserves logical digest `633aae8a6deb1a3d857880f3eecd9bb40dbaedba8357a13944184c1bafbf1114`. Full train materialization is likewise byte-identical (`e6977082593a5b5610292e13ae49df7afbdbb7744ea9fe496952952474636f8c`) with logical digest `8d7a29c35443cd8a8e7b2142157dce7c9804c8137d4a42e824edef9e42240901`.
++
++## Parser decision
++
++Direct tests of Python-threaded ASE ExtXYZ chunk parsing were slower than a single parser lane on this CPU. REPLAY-PERF1 therefore uses deterministic serial chunk parsing and obtains its gain from direct indexed seeks and reuse of authenticated source-order geometry identities rather than from executor overhead.
++
++## Acceptance
++
++PASS. Source, split, true-label, pseudo-label, prediction-cache, and view scientific authority are unchanged. Cache corruption/source mutation rebuild safely. Next gate: `CAMPAIGN-PERF-QUAL1`.
+diff -ruN '--exclude=SOURCE_PATCH_0.20.233a0_to_0.20.234a0.patch' '--exclude=SHA256SUMS_0.20.234a0.txt' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/benchmarks/mlff_replay_perf1_implementation_manifest_0.20.234a0.json /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/benchmarks/mlff_replay_perf1_implementation_manifest_0.20.234a0.json
+--- /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/benchmarks/mlff_replay_perf1_implementation_manifest_0.20.234a0.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/benchmarks/mlff_replay_perf1_implementation_manifest_0.20.234a0.json	2026-08-18 01:30:30.211516695 +0000
+@@ -0,0 +1,15 @@
++{
++  "architecture_revision": 101,
++  "files": [
++    "mdstats/training_data/replay_index.py",
++    "mdstats/training_data/replay.py",
++    "mdstats/training_data/replay_pseudolabel.py",
++    "mdstats/training_data/campaign_cli.py",
++    "tests/test_mlff_replay_perf1.py"
++  ],
++  "foundation_model_specific": false,
++  "next_gate": "CAMPAIGN-PERF-QUAL1",
++  "release": "0.20.234a0",
++  "schema": "mdstats.mlff-replay-perf1-implementation-manifest.v1",
++  "scientific_authority_change": false
++}
+diff -ruN '--exclude=SOURCE_PATCH_0.20.233a0_to_0.20.234a0.patch' '--exclude=SHA256SUMS_0.20.234a0.txt' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/docs/arch_manuals/mlff_training_data/00_front_matter.md /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/docs/arch_manuals/mlff_training_data/00_front_matter.md
+--- /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/docs/arch_manuals/mlff_training_data/00_front_matter.md	2026-08-18 00:41:12.000000000 +0000
++++ /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/docs/arch_manuals/mlff_training_data/00_front_matter.md	2026-08-18 01:29:04.256486692 +0000
+@@ -1,8 +1,8 @@
+ ---
+ geometry: "margin=0.75in"
+-architecture_revision: 100
+-release: "mdstats 0.20.233a0"
+-status: "current normative architecture; AUDIT-EVAL-PERF1 complete; REPLAY-PERF1 next"
++architecture_revision: 101
++release: "mdstats 0.20.234a0"
++status: "current normative architecture; REPLAY-PERF1 complete; CAMPAIGN-PERF-QUAL1 next"
+ last_updated: "2026-08-17"
+ ---
+ 
+@@ -76,4 +76,6 @@
+ 
+ ## Current release boundary
+ 
++Revision 101 completes `REPLAY-PERF1` without changing REPLAY-UNIFY1 scientific authority. The immutable selected replay ExtXYZ now has a reconstructible source-SHA-bound byte-offset/natoms index under the internal replay cache. Indexed materialization seeks only requested source frames, reuses the authenticated source-order geometry identities instead of recomputing them after every parse, and feeds the existing true-label, pseudo-label, and foundation-prediction paths through deterministic bounded contiguous chunks. ASE parsing itself remains serial because qualification showed Python-threaded ExtXYZ parsing is slower on the available CPU. On the supplied 12,000-frame replay corpus, monitor-only true-label reconstruction improves from about 9.14 s to 3.01 s (~3.03x) with byte-identical output; a full-source parse/identity pass improves from about 7.64 s to 6.42 s (~1.19x), and full train+monitor materialization improves more modestly from about 15.68 s to 14.35 s (~1.09x) because all frames must still be parsed and written. The active qualification checkpoint remains MACE-MPA-0 medium, while the replay index/materialization contract is foundation-model independent and valid for MACE-MH-1. `CAMPAIGN-PERF-QUAL1` is next.
++
+ Revision 100 completes `AUDIT-EVAL-PERF1` without changing model inference or GPU numerical authority. EVAL2 now caches immutable species/composition/focus/block indexing metadata per evaluation view, preallocates force-tail storage, and uses a memory-bounded batched paired bootstrap while preserving the deterministic RNG stream and exact persisted metric/bootstrap records on qualification fixtures. FOUNDATION-AUDIT1 now shares its DATA3 frame index and per-run species membership across domains, reuses force-square work, and batches tail quantiles while continuing to consume the already-authenticated DATA6 prediction sweep with zero additional model-provider calls. Same-host paired evidence shows about 1.92x faster repeated EVAL2 target reduction, 3.38x faster 2,000-replicate paired bootstrap, and a smaller ~1.06x foundation-audit CPU reduction on the available no-inference fixture. The active qualification checkpoint remains MACE-MPA-0 medium, while these CPU reducers remain foundation-model independent and valid for MACE-MH-1 campaigns. `REPLAY-PERF1` is next; GPU performance authority remains deferred.
+diff -ruN '--exclude=SOURCE_PATCH_0.20.233a0_to_0.20.234a0.patch' '--exclude=SHA256SUMS_0.20.234a0.txt' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/docs/arch_manuals/mlff_training_data/60_execution_performance.md /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/docs/arch_manuals/mlff_training_data/60_execution_performance.md
+--- /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/docs/arch_manuals/mlff_training_data/60_execution_performance.md	2026-08-18 00:37:57.000000000 +0000
++++ /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/docs/arch_manuals/mlff_training_data/60_execution_performance.md	2026-08-18 01:29:04.256997574 +0000
+@@ -166,10 +166,16 @@
+ | MVQUAL1 | independent same-N rescoring globally queued | PARCORE1 same-N jobs + batched sparse telemetry; canonical post-queue reduction |
+ | FOUNDATION-AUDIT1 | per-frame/species Python reductions | implemented shared frame/species metadata, reused squared-error work, batched tail quantiles; no new inference |
+ | EVAL2 CPU analysis | repeated species/composition/focus reconstruction and bootstrap Python loops | implemented cached static reduction metadata, preallocated tails, memory-bounded batched bootstrap |
+-| REPLAY-UNIFY1 | repeated serial ExtXYZ parsing/materialization | content-addressed byte-offset geometry/index cache; deterministic chunk parsing |
++| REPLAY-UNIFY1 | repeated serial ExtXYZ parsing/materialization | implemented source-SHA-bound byte-offset/natoms index; direct sparse seeks; deterministic bounded chunk parsing |
+ 
+ Existing DATA6 GPU inference, training orchestration, structural FPS/GEMM kernels, and independent trajectory verification are not rewritten merely to increase thread count; they are changed only if runtime profiling identifies a new dominant hotspot.
+ 
++### REPLAY-PERF1 indexed replay realization
++
++The selected replay ExtXYZ remains the only external replay authority. `ReplaySourceIndex` is reconstructible execution state keyed by the exact source bytes and source-artifact/source-order identities; it is never a substitute scientific authority. The index records frame byte offsets, byte lengths, and atom counts, allowing a requested subset such as the 2,000-frame monitor role to seek directly to those source frames. For a complete source traversal, contiguous frames are parsed in bounded chunks and their already-authenticated source-order geometry identities are reused. Parser chunk size is execution state and MUST NOT enter replay source, split, label, prediction, or view content identity.
++
++ASE ExtXYZ parsing remains serial. REPLAY-PERF1 qualification explicitly tested thread-parallel chunk parsing and found it slower on the available CPU, so concurrency is not introduced merely to increase worker count. Future campaign-level parallelism MAY overlap independent higher-level consumers only if a later profile shows a net gain without changing persisted replay bytes or prediction authority.
++
+ ## Progress and observability contract
+ 
+ Every stage expected to run long enough to appear stalled SHALL expose three layers:
+diff -ruN '--exclude=SOURCE_PATCH_0.20.233a0_to_0.20.234a0.patch' '--exclude=SHA256SUMS_0.20.234a0.txt' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/docs/arch_manuals/mlff_training_data/70_status_and_gates.md /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/docs/arch_manuals/mlff_training_data/70_status_and_gates.md
+--- /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/docs/arch_manuals/mlff_training_data/70_status_and_gates.md	2026-08-18 00:41:12.000000000 +0000
++++ /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/docs/arch_manuals/mlff_training_data/70_status_and_gates.md	2026-08-18 01:29:04.256723837 +0000
+@@ -113,13 +113,15 @@
+ 
+ **Next gate.** `REPLAY-PERF1`.
+ 
+-### Gate REPLAY-PERF1 - replay index/cache and chunk materialization
++### Gate REPLAY-PERF1 - replay index/cache and chunk materialization - COMPLETE
+ 
+-**Purpose.** Avoid repeated serial parsing of the immutable replay corpus.
++**Purpose.** Avoid repeated serial parsing of the immutable replay corpus without changing REPLAY-UNIFY1 source, label, split, prediction, or retention authority.
+ 
+-**Implementation.** Source-SHA-bound byte-offset/geometry index, deterministic chunk parsing/materialization, explicit invalidation on source change.
++**Implementation.** `0.20.234a0` adds `ReplaySourceIndex`, a reconstructible execution artifact bound to the exact source SHA-256, source-artifact digest, source-order geometry digest, byte size, frame offsets/lengths, and atom counts. The cache is stored beneath the campaign replay-internal tree, is independently authenticated on reuse, relocates without scientific change when identical source bytes move, and is rebuilt automatically on source mutation or receipt corruption. Indexed readers seek only requested source indices; contiguous requested frames are parsed in bounded chunks, while sparse monitor reconstruction does not scan unrelated frames. True-label materialization, pseudo-label materialization, and foundation-prediction cache construction reuse the authenticated source-order geometry identity instead of recomputing canonical geometry hashes after parsing. ExtXYZ parsing itself remains single-threaded: measured Python-threaded ASE parsing was slower, so REPLAY-PERF1 does not introduce a misleading parser thread pool.
+ 
+-**Acceptance.** Byte/label identity and split authority unchanged; restart reuses valid indexed geometry.
++**Acceptance. PASS.** On the supplied 12,000-frame replay corpus (`187eed42...98403c`), the persisted index has content digest `ce6c678a...c0c5e1`; first byte-index construction is about 0.45 s and an authenticated restart hit about 0.07 s on the qualification host. Monitor-only true-label reconstruction preserves logical digest `633aae8a...bf1114` and exact ExtXYZ SHA-256 `cc0f9b30...eab2cf` while improving median wall time from about 9.14 s to 3.01 s (~3.03x). A complete parse/geometry-identity pass preserves the ordered-identity digest while improving from about 7.64 s to 6.42 s (~1.19x). Full train+monitor materialization preserves byte-identical train and monitor files and improves more modestly from about 15.68 s to 14.35 s (~1.09x), as expected because every frame must still be parsed and written. Cache corruption and source mutation are fail-safe reconstruction events, and chunk size does not enter scientific identity.
++
++**Next gate.** `CAMPAIGN-PERF-QUAL1`.
+ 
+ ### Gate CAMPAIGN-PERF-QUAL1 - end-to-end optimization closure
+ 
+diff -ruN '--exclude=SOURCE_PATCH_0.20.233a0_to_0.20.234a0.patch' '--exclude=SHA256SUMS_0.20.234a0.txt' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/docs/arch_manuals/mlff_training_data_architecture.md /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/docs/arch_manuals/mlff_training_data_architecture.md
+--- /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-18 00:41:13.000000000 +0000
++++ /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-18 01:30:56.752015781 +0000
+@@ -1,8 +1,8 @@
+ ---
+ geometry: "margin=0.75in"
+-architecture_revision: 100
+-release: "mdstats 0.20.233a0"
+-status: "current normative architecture; AUDIT-EVAL-PERF1 complete; REPLAY-PERF1 next"
++architecture_revision: 101
++release: "mdstats 0.20.234a0"
++status: "current normative architecture; REPLAY-PERF1 complete; CAMPAIGN-PERF-QUAL1 next"
+ last_updated: "2026-08-17"
+ ---
+ 
+@@ -76,6 +76,8 @@
+ 
+ ## Current release boundary
+ 
++Revision 101 completes `REPLAY-PERF1` without changing REPLAY-UNIFY1 scientific authority. The immutable selected replay ExtXYZ now has a reconstructible source-SHA-bound byte-offset/natoms index under the internal replay cache. Indexed materialization seeks only requested source frames, reuses the authenticated source-order geometry identities instead of recomputing them after every parse, and feeds the existing true-label, pseudo-label, and foundation-prediction paths through deterministic bounded contiguous chunks. ASE parsing itself remains serial because qualification showed Python-threaded ExtXYZ parsing is slower on the available CPU. On the supplied 12,000-frame replay corpus, monitor-only true-label reconstruction improves from about 9.14 s to 3.01 s (~3.03x) with byte-identical output; a full-source parse/identity pass improves from about 7.64 s to 6.42 s (~1.19x), and full train+monitor materialization improves more modestly from about 15.68 s to 14.35 s (~1.09x) because all frames must still be parsed and written. The active qualification checkpoint remains MACE-MPA-0 medium, while the replay index/materialization contract is foundation-model independent and valid for MACE-MH-1. `CAMPAIGN-PERF-QUAL1` is next.
++
+ Revision 100 completes `AUDIT-EVAL-PERF1` without changing model inference or GPU numerical authority. EVAL2 now caches immutable species/composition/focus/block indexing metadata per evaluation view, preallocates force-tail storage, and uses a memory-bounded batched paired bootstrap while preserving the deterministic RNG stream and exact persisted metric/bootstrap records on qualification fixtures. FOUNDATION-AUDIT1 now shares its DATA3 frame index and per-run species membership across domains, reuses force-square work, and batches tail quantiles while continuing to consume the already-authenticated DATA6 prediction sweep with zero additional model-provider calls. Same-host paired evidence shows about 1.92x faster repeated EVAL2 target reduction, 3.38x faster 2,000-replicate paired bootstrap, and a smaller ~1.06x foundation-audit CPU reduction on the available no-inference fixture. The active qualification checkpoint remains MACE-MPA-0 medium, while these CPU reducers remain foundation-model independent and valid for MACE-MH-1 campaigns. `REPLAY-PERF1` is next; GPU performance authority remains deferred.
+ 
+ # Part I - Foundations and ownership
+@@ -2577,10 +2579,16 @@
+ | MVQUAL1 | independent same-N rescoring globally queued | PARCORE1 same-N jobs + batched sparse telemetry; canonical post-queue reduction |
+ | FOUNDATION-AUDIT1 | per-frame/species Python reductions | implemented shared frame/species metadata, reused squared-error work, batched tail quantiles; no new inference |
+ | EVAL2 CPU analysis | repeated species/composition/focus reconstruction and bootstrap Python loops | implemented cached static reduction metadata, preallocated tails, memory-bounded batched bootstrap |
+-| REPLAY-UNIFY1 | repeated serial ExtXYZ parsing/materialization | content-addressed byte-offset geometry/index cache; deterministic chunk parsing |
++| REPLAY-UNIFY1 | repeated serial ExtXYZ parsing/materialization | implemented source-SHA-bound byte-offset/natoms index; direct sparse seeks; deterministic bounded chunk parsing |
+ 
+ Existing DATA6 GPU inference, training orchestration, structural FPS/GEMM kernels, and independent trajectory verification are not rewritten merely to increase thread count; they are changed only if runtime profiling identifies a new dominant hotspot.
+ 
++### REPLAY-PERF1 indexed replay realization
++
++The selected replay ExtXYZ remains the only external replay authority. `ReplaySourceIndex` is reconstructible execution state keyed by the exact source bytes and source-artifact/source-order identities; it is never a substitute scientific authority. The index records frame byte offsets, byte lengths, and atom counts, allowing a requested subset such as the 2,000-frame monitor role to seek directly to those source frames. For a complete source traversal, contiguous frames are parsed in bounded chunks and their already-authenticated source-order geometry identities are reused. Parser chunk size is execution state and MUST NOT enter replay source, split, label, prediction, or view content identity.
++
++ASE ExtXYZ parsing remains serial. REPLAY-PERF1 qualification explicitly tested thread-parallel chunk parsing and found it slower on the available CPU, so concurrency is not introduced merely to increase worker count. Future campaign-level parallelism MAY overlap independent higher-level consumers only if a later profile shows a net gain without changing persisted replay bytes or prediction authority.
++
+ ## Progress and observability contract
+ 
+ Every stage expected to run long enough to appear stalled SHALL expose three layers:
+@@ -2740,13 +2748,15 @@
+ 
+ **Next gate.** `REPLAY-PERF1`.
+ 
+-### Gate REPLAY-PERF1 - replay index/cache and chunk materialization
++### Gate REPLAY-PERF1 - replay index/cache and chunk materialization - COMPLETE
++
++**Purpose.** Avoid repeated serial parsing of the immutable replay corpus without changing REPLAY-UNIFY1 source, label, split, prediction, or retention authority.
+ 
+-**Purpose.** Avoid repeated serial parsing of the immutable replay corpus.
++**Implementation.** `0.20.234a0` adds `ReplaySourceIndex`, a reconstructible execution artifact bound to the exact source SHA-256, source-artifact digest, source-order geometry digest, byte size, frame offsets/lengths, and atom counts. The cache is stored beneath the campaign replay-internal tree, is independently authenticated on reuse, relocates without scientific change when identical source bytes move, and is rebuilt automatically on source mutation or receipt corruption. Indexed readers seek only requested source indices; contiguous requested frames are parsed in bounded chunks, while sparse monitor reconstruction does not scan unrelated frames. True-label materialization, pseudo-label materialization, and foundation-prediction cache construction reuse the authenticated source-order geometry identity instead of recomputing canonical geometry hashes after parsing. ExtXYZ parsing itself remains single-threaded: measured Python-threaded ASE parsing was slower, so REPLAY-PERF1 does not introduce a misleading parser thread pool.
+ 
+-**Implementation.** Source-SHA-bound byte-offset/geometry index, deterministic chunk parsing/materialization, explicit invalidation on source change.
++**Acceptance. PASS.** On the supplied 12,000-frame replay corpus (`187eed42...98403c`), the persisted index has content digest `ce6c678a...c0c5e1`; first byte-index construction is about 0.45 s and an authenticated restart hit about 0.07 s on the qualification host. Monitor-only true-label reconstruction preserves logical digest `633aae8a...bf1114` and exact ExtXYZ SHA-256 `cc0f9b30...eab2cf` while improving median wall time from about 9.14 s to 3.01 s (~3.03x). A complete parse/geometry-identity pass preserves the ordered-identity digest while improving from about 7.64 s to 6.42 s (~1.19x). Full train+monitor materialization preserves byte-identical train and monitor files and improves more modestly from about 15.68 s to 14.35 s (~1.09x), as expected because every frame must still be parsed and written. Cache corruption and source mutation are fail-safe reconstruction events, and chunk size does not enter scientific identity.
+ 
+-**Acceptance.** Byte/label identity and split authority unchanged; restart reuses valid indexed geometry.
++**Next gate.** `CAMPAIGN-PERF-QUAL1`.
+ 
+ ### Gate CAMPAIGN-PERF-QUAL1 - end-to-end optimization closure
+ 
+Binary files /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/docs/arch_manuals/mlff_training_data_architecture.pdf and /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/docs/arch_manuals/mlff_training_data_architecture.pdf differ
+diff -ruN '--exclude=SOURCE_PATCH_0.20.233a0_to_0.20.234a0.patch' '--exclude=SHA256SUMS_0.20.234a0.txt' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/docs/arch_manuals/mlff_training_data_dependency_graph.json /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/docs/arch_manuals/mlff_training_data_dependency_graph.json
+--- /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-18 00:38:14.000000000 +0000
++++ /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-18 01:29:04.262974674 +0000
+@@ -1,8 +1,8 @@
+ {
+-  "architecture_revision": 100,
++  "architecture_revision": 101,
+   "branch": "MLFF-DATA",
+-  "description": "MLFF training-data dependency graph through architecture revision 100. AUDIT-EVAL-PERF1 hardens Foundation Audit and EVAL2 CPU reductions without changing inference/scientific authority; REPLAY-PERF1 is next.",
+-  "documentation_gate": "AUDIT_EVAL_PERF1_CPU_KERNELS",
++  "description": "MLFF training-data dependency graph through architecture revision 101. REPLAY-PERF1 adds exact source-bound replay indexing and indexed materialization without changing REPLAY-UNIFY1 scientific authority; CAMPAIGN-PERF-QUAL1 is next.",
++  "documentation_gate": "REPLAY_PERF1_INDEX_CACHE",
+   "edge_type_definitions": {
+     "execution_requires": "The upstream product must exist before execution.",
+     "fit_domain_requires": "The fitted object may inspect only the declared training domain.",
+@@ -3201,7 +3201,7 @@
+       ]
+     }
+   ],
+-  "next_gate": "REPLAY_PERF1_INDEX_CACHE",
++  "next_gate": "CAMPAIGN_PERF_QUAL1_CLOSURE",
+   "nodes": [
+     {
+       "id": "ACQUISITION_DECISIONS"
+@@ -5463,15 +5463,25 @@
+       "next_gate": "REPLAY_PERF1_INDEX_CACHE"
+     },
+     {
+-      "architecture_revision": 100,
+-      "authority_class": "planned_performance_exact_equivalence",
++      "architecture_revision": 101,
++      "authority_class": "performance_exact_equivalence",
+       "gate_name": "REPLAY-PERF1",
+       "id": "REPLAY_PERF1_INDEX_CACHE",
+-      "implementation_status": "planned",
+-      "scientific_authority_change": false
++      "implementation_status": "implemented_source_index_indexed_materialization",
++      "scientific_authority_change": false,
++      "implemented_release": "0.20.234a0",
++      "source_index_schema": "mdstats.replay-source-index.v1",
++      "source_index_receipt_schema": "mdstats.replay-source-index-receipt.v1",
++      "source_sha_bound": true,
++      "sparse_direct_seek": true,
++      "parser_parallelism": "serial_measured_authority",
++      "true_label_authority_changed": false,
++      "pseudolabel_authority_changed": false,
++      "prediction_authority_changed": false,
++      "next_gate": "CAMPAIGN_PERF_QUAL1_CLOSURE"
+     },
+     {
+-      "architecture_revision": 91,
++      "architecture_revision": 101,
+       "authority_class": "planned_performance_qualification",
+       "gate_name": "CAMPAIGN-PERF-QUAL1",
+       "id": "CAMPAIGN_PERF_QUAL1_CLOSURE",
+@@ -5479,5 +5489,5 @@
+       "scientific_authority_change": false
+     }
+   ],
+-  "schema_version": 80
++  "schema_version": 81
+ }
+diff -ruN '--exclude=SOURCE_PATCH_0.20.233a0_to_0.20.234a0.patch' '--exclude=SHA256SUMS_0.20.234a0.txt' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV101.md /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV101.md
+--- /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV101.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV101.md	2026-08-18 01:30:03.166433685 +0000
+@@ -0,0 +1,16 @@
++# MLFF architecture revision 101 - REPLAY-PERF1
++
++Release: mdstats 0.20.234a0  
++Date: 2026-08-17
++
++REPLAY-PERF1 completes the exact-equivalence replay parsing/materialization optimization gate.
++
++The unified selected replay ExtXYZ remains the only external replay authority. A new reconstructible `ReplaySourceIndex` binds exact source bytes and source-artifact/order identities to byte offsets, frame lengths, and atom counts. The campaign persists this cache beneath the internal replay tree and rebuilds it on source mutation or cache corruption.
++
++True-label views, pseudo-label views, and foundation-prediction source iteration can consume the index. Sparse requests seek only requested source frames; full requests parse bounded contiguous chunks. Authenticated source-order geometry identities are reused instead of re-hashing every parsed frame. ASE parser threading was rejected after qualification showed it regressed wall time.
++
++On the supplied 12,000-frame corpus, monitor-only true-label reconstruction improves about 3.03x with byte-identical output; complete source parsing/identity bookkeeping improves about 1.19x; complete train+monitor materialization improves about 1.09x. REPLAY-UNIFY1 source, split, true-label, pseudo-label, prediction-cache, and retention scientific authority is unchanged.
++
++The active qualification model remains MACE-MPA-0 medium. The replay execution contract is model-family independent and remains valid for MACE-MH-1.
++
++Next gate: CAMPAIGN-PERF-QUAL1.
+diff -ruN '--exclude=SOURCE_PATCH_0.20.233a0_to_0.20.234a0.patch' '--exclude=SHA256SUMS_0.20.234a0.txt' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/docs/history/mlff/architecture_revisions/INDEX.md /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/docs/history/mlff/architecture_revisions/INDEX.md
+--- /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/docs/history/mlff/architecture_revisions/INDEX.md	2026-08-18 00:38:52.000000000 +0000
++++ /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/docs/history/mlff/architecture_revisions/INDEX.md	2026-08-18 01:30:03.186433685 +0000
+@@ -82,3 +82,4 @@
+ | 98 | REPAIR-PAR1 / mdstats 0.20.231a0 | [MLFF architecture revision 98 - REPAIR-PAR1](ARCHITECTURE_NOTES_MLFF_REV98.md) | - |
+ | 99 | MVQUAL-PAR1 / mdstats 0.20.232a0 | [MLFF architecture revision 99 - MVQUAL-PAR1](ARCHITECTURE_NOTES_MLFF_REV99.md) | - |
+ | 100 | AUDIT-EVAL-PERF1 / mdstats 0.20.233a0 | [MLFF architecture revision 100 - AUDIT-EVAL-PERF1](ARCHITECTURE_NOTES_MLFF_REV100.md) | - |
++| 101 | REPLAY-PERF1 / mdstats 0.20.234a0 | [MLFF architecture revision 101 - REPLAY-PERF1](ARCHITECTURE_NOTES_MLFF_REV101.md) | - |
+diff -ruN '--exclude=SOURCE_PATCH_0.20.233a0_to_0.20.234a0.patch' '--exclude=SHA256SUMS_0.20.234a0.txt' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/docs/history/mlff/release_notes/INDEX.md /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/docs/history/mlff/release_notes/INDEX.md
+--- /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/docs/history/mlff/release_notes/INDEX.md	2026-08-18 00:38:52.000000000 +0000
++++ /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/docs/history/mlff/release_notes/INDEX.md	2026-08-18 01:30:03.198433685 +0000
+@@ -174,3 +174,4 @@
+ | `0.20.231a0` | [PATCH_NOTES_0.20.231a0.md](PATCH_NOTES_0.20.231a0.md) | - |
+ | `0.20.232a0` | [PATCH_NOTES_0.20.232a0.md](PATCH_NOTES_0.20.232a0.md) | - |
+ | `0.20.233a0` | [PATCH_NOTES_0.20.233a0.md](PATCH_NOTES_0.20.233a0.md) | - |
++| `0.20.234a0` | [PATCH_NOTES_0.20.234a0.md](PATCH_NOTES_0.20.234a0.md) | - |
+diff -ruN '--exclude=SOURCE_PATCH_0.20.233a0_to_0.20.234a0.patch' '--exclude=SHA256SUMS_0.20.234a0.txt' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.234a0.md /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.234a0.md
+--- /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.234a0.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.234a0.md	2026-08-18 01:30:03.182433685 +0000
+@@ -0,0 +1,11 @@
++# mdstats 0.20.234a0 - REPLAY-PERF1
++
++- Add authenticated `ReplaySourceIndex` byte-offset/natoms caching for the immutable single replay source.
++- Rebuild the index on source mutation or corrupt/stale cache receipts; allow identical-byte relocation without scientific change.
++- Route true-label, pseudo-label, and replay foundation-prediction source iteration through deterministic indexed frame access.
++- Direct sparse role reconstruction to only the source frames required by that role.
++- Reuse authenticated source-order geometry identities rather than recomputing geometry hashes after every parse.
++- Keep ASE ExtXYZ parsing serial because direct parser-thread benchmarking was slower.
++- Preserve exact REPLAY-UNIFY1 source/split/label/prediction/view authority.
++- Active qualification: MACE-MPA-0 medium; implementation remains MACE-MH-1 compatible.
++- Next gate: CAMPAIGN-PERF-QUAL1.
+diff -ruN '--exclude=SOURCE_PATCH_0.20.233a0_to_0.20.234a0.patch' '--exclude=SHA256SUMS_0.20.234a0.txt' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/docs/specs/training_data/mlff_replay_perf1_index_cache_spec.md /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/docs/specs/training_data/mlff_replay_perf1_index_cache_spec.md
+--- /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/docs/specs/training_data/mlff_replay_perf1_index_cache_spec.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/docs/specs/training_data/mlff_replay_perf1_index_cache_spec.md	2026-08-18 01:30:03.158433685 +0000
+@@ -0,0 +1,77 @@
++# REPLAY-PERF1 replay source-index/cache specification
++
++## Status
++
++Implemented in mdstats 0.20.234a0 / MLFF architecture revision 101.
++
++## Scientific invariants
++
++REPLAY-PERF1 is an exact-equivalence execution gate. It MUST NOT change:
++
++- the single selected replay ExtXYZ as external replay authority;
++- `ReplaySourceArtifact`, canonical replay geometry identity, or source true-label identity semantics;
++- deterministic 5:1 train/monitor split membership or split seed/rank authority;
++- independently retained source true labels;
++- foundation-prediction policy, checkpoint/head identity, prediction values, shard identity, or qualification thresholds;
++- pseudo-label train/monitor view labels or true-label monitor authority;
++- replay-retention/admissibility semantics;
++- MACE-MPA-0 versus MACE-MH-1 model-family behavior.
++
++The index is reconstructible execution state and is never a replacement scientific authority.
++
++## Source index
++
++`ReplaySourceIndex` uses schema `mdstats.replay-source-index.v1`. Its receipt uses `mdstats.replay-source-index-receipt.v1`.
++
++The index is bound to:
++
++- exact source SHA-256;
++- `ReplaySourceArtifact.content_digest`;
++- ordered `ReplaySourceArtifact.source_index_digest`;
++- exact source byte size;
++- ordered frame byte offsets and lengths;
++- per-frame atom counts.
++
++The source locator is not scientific identity. An identical source relocated to another path MAY rebind the locator without changing index content identity. A source-byte mutation, stale/corrupt receipt, count mismatch, or index-authentication failure MUST rebuild or fail closed rather than silently reuse stale offsets.
++
++Parser chunk size, buffer size, worker count, and cache directory MUST NOT enter replay scientific identity.
++
++## Indexed frame access
++
++Requested source indices MUST be strictly increasing and unique. Sparse selections seek directly to their indexed frame payloads. Contiguous selected frames MAY be coalesced into bounded parse chunks. Yield order remains increasing source index and is invariant to parse chunk size.
++
++For authenticated indexed reads, source-order geometry identity is taken from the already-authenticated `ReplaySourceArtifact.geometry_identities[source_index]`. Recomputing the canonical geometry hash after each ASE parse is unnecessary execution work and MUST NOT be required for scientific equivalence once the source SHA and index authority have been validated.
++
++## Materialization and prediction integration
++
++The canonical single-source campaign builds/reuses the source index beneath `.mdstats/replay-unified/source-index` and supplies it to:
++
++- true-label train/monitor view materialization;
++- pseudo-label train/monitor view materialization;
++- foundation-prediction cache source iteration.
++
++Monitor-only reconstruction MUST NOT scan unrelated train frames. Full train+monitor materialization still parses every required frame and therefore is expected to gain less than sparse reconstruction.
++
++Existing authenticated materialized-view and prediction-cache hits remain earlier exits and MUST NOT reopen the source.
++
++## Parser concurrency decision
++
++Python-threaded ASE ExtXYZ chunk parsing was directly benchmarked during the gate and was slower than one parser lane on the qualification host. REPLAY-PERF1 therefore keeps ExtXYZ parsing serial. This is a measured implementation decision, not a prohibition on future exact-equivalent parser work if a later profile identifies a faster backend.
++
++## Acceptance authority
++
++The supplied 12,000-frame replay source has SHA-256 `187eed42fb2d6cf5e7e745ffed0ce34541e92c6a35ec9e654520cd3c7198403c` and source-artifact digest `9f43677d6100cea85f6de287fe1dd739322609fd82cbeb320e46f9434ce90688`.
++
++The qualified index content digest is `ce6c678ad556cff63be8ee75754d87cba2b3d08e80f544c5983fe4498dc0c5e1`.
++
++Same-host paired evidence against untouched 0.20.233a0 records:
++
++- monitor-only true-label materialization: approximately 9.139 s -> 3.012 s median (~3.03x), exact logical digest `633aae8a6deb1a3d857880f3eecd9bb40dbaedba8357a13944184c1bafbf1114`, and exact output SHA-256 `cc0f9b308becd5c027a2adc64fc251808323e19c217412d82ea3d50b3deab2cf`;
++- complete source parse plus geometry-identity bookkeeping: approximately 7.642 s -> 6.423 s (~1.19x), exact ordered-identity digest `89d5b7a678ed846557c1f15f6592058e9ee3b78d81eb3516a320d2eabca7659f`;
++- complete train+monitor materialization: approximately 15.676 s -> 14.348 s (~1.09x), exact train logical digest `8d7a29c35443cd8a8e7b2142157dce7c9804c8137d4a42e824edef9e42240901`, exact train SHA-256 `e6977082593a5b5610292e13ae49df7afbdbb7744ea9fe496952952474636f8c`, and the same exact monitor artifacts above.
++
++The one-time byte-index build is approximately 0.451 s and an authenticated persisted hit approximately 0.071 s on the qualification host.
++
++Timing is execution evidence. Replay source/split/label/prediction/view identities remain scientific authority.
++
++The next optimization gate is `CAMPAIGN-PERF-QUAL1`.
+diff -ruN '--exclude=SOURCE_PATCH_0.20.233a0_to_0.20.234a0.patch' '--exclude=SHA256SUMS_0.20.234a0.txt' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/mdstats/__init__.py /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/mdstats/__init__.py
+--- /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/mdstats/__init__.py	2026-08-17 17:41:32.000000000 +0000
++++ /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/mdstats/__init__.py	2026-08-18 01:20:11.994779620 +0000
+@@ -3923,6 +3923,7 @@
+     ReplayLabelNamespace,
+     ReplaySingleSourceConfig,
+     ReplaySourceArtifact,
++    ReplaySourceIndex,
+     ReplaySplitManifest,
+     ReplaySplitRole,
+     ReplayTrueLabelCache,
+@@ -3954,6 +3955,10 @@
+     detect_default_acceleration_backend,
+     build_replay_split_manifest,
+     build_replay_true_label_cache,
++    build_replay_source_index,
++    iter_indexed_replay_frames,
++    replay_source_indices_for_identities,
++    validate_replay_source_index,
+     canonical_replay_geometry_identity,
+     build_local_replay_plan,
+     emulate_mace_v0316_loader_dry_run,
+@@ -4130,6 +4135,7 @@
+     "MaceOptimizerPolicy",
+     "MaceSidecarManifest",
+     "MaceSourceProbe",
++    "ReplaySourceIndex",
+     "ReplayFileArtifact",
+     "ReplayLabelMode",
+     "ReplayMode",
+@@ -4156,6 +4162,10 @@
+     "qualify_e3nn_realization",
+     "detect_default_acceleration_backend",
+     "replay_foundation_prediction_cache_key",
++    "build_replay_source_index",
++    "iter_indexed_replay_frames",
++    "replay_source_indices_for_identities",
++    "validate_replay_source_index",
+     "build_replay_foundation_prediction_cache",
+     "build_replay_pseudolabel_qualification",
+     "materialize_replay_pseudolabel_views",
+diff -ruN '--exclude=SOURCE_PATCH_0.20.233a0_to_0.20.234a0.patch' '--exclude=SHA256SUMS_0.20.234a0.txt' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/mdstats/_version.py /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/mdstats/_version.py
+--- /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/mdstats/_version.py	2026-08-18 00:37:24.000000000 +0000
++++ /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/mdstats/_version.py	2026-08-18 01:29:04.255982882 +0000
+@@ -1 +1 @@
+-__version__ = "0.20.233a0"
++__version__ = "0.20.234a0"
+diff -ruN '--exclude=SOURCE_PATCH_0.20.233a0_to_0.20.234a0.patch' '--exclude=SHA256SUMS_0.20.234a0.txt' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/mdstats/training_data/__init__.py /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/mdstats/training_data/__init__.py
+--- /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/mdstats/training_data/__init__.py	2026-08-17 17:41:32.000000000 +0000
++++ /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/mdstats/training_data/__init__.py	2026-08-18 01:19:03.405353309 +0000
+@@ -2097,6 +2097,19 @@
+ 
+ __all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
+ 
++from .replay_index import (
++    DEFAULT_REPLAY_INDEX_PARSE_CHUNK_SIZE,
++    REPLAY_SOURCE_INDEX_RECEIPT_SCHEMA,
++    REPLAY_SOURCE_INDEX_SCHEMA,
++    ReplaySourceIndex,
++    build_replay_source_index,
++    iter_indexed_replay_frames,
++    replay_source_indices_for_identities,
++    validate_replay_source_index,
++)
++
++__all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
++
+ from .replay_invalidation import (
+     REPLAY_INVALIDATION_PLAN_SCHEMA,
+     REPLAY_INVALIDATION_VERSION,
+diff -ruN '--exclude=SOURCE_PATCH_0.20.233a0_to_0.20.234a0.patch' '--exclude=SHA256SUMS_0.20.234a0.txt' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/mdstats/training_data/campaign_cli.py /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/mdstats/training_data/campaign_cli.py
+--- /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/mdstats/training_data/campaign_cli.py	2026-08-18 00:03:19.000000000 +0000
++++ /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/mdstats/training_data/campaign_cli.py	2026-08-18 01:19:01.854433685 +0000
+@@ -6173,6 +6173,7 @@
+     view_root = replay_root / "views"
+     replay_root.mkdir(parents=True, exist_ok=True)
+     source = _load_or_inspect_single_replay_source(source_path, replay_root)
++    source_index = mdstats.build_replay_source_index(source, replay_root / "source-index")
+     true_cache = mdstats.build_replay_true_label_cache(source)
+ 
+     replay_weight = float(_cfg(cfg, "training", "replay_head_weight", 1.0))
+@@ -6195,7 +6196,9 @@
+             split_ratio=single.split_ratio,
+             split_seed=single.split_seed,
+         )
+-        views = mdstats.materialize_replay_true_label_views(source, true_cache, split, view_root)
++        views = mdstats.materialize_replay_true_label_views(
++            source, true_cache, split, view_root, source_index=source_index
++        )
+         train_view = views[mdstats.ReplaySplitRole.TRAIN]
+         monitor_view = views[mdstats.ReplaySplitRole.MONITOR]
+         train_artifact = _inspect_unified_replay_artifact(
+@@ -6255,6 +6258,7 @@
+             batch_size=int(_cfg(cfg, "replay", "prediction_batch_size", 32)),
+             shard_size=int(_cfg(cfg, "replay", "prediction_shard_size", 256)),
+             graph_cache_directory=replay_root / "graph-cache",
++            source_index=source_index,
+         )
+         qualification_policy = mdstats.ReplayPseudolabelQualificationPolicy(
+             maximum_force_ev_per_angstrom=_optional_float(
+@@ -6279,10 +6283,15 @@
+             split_seed=single.split_seed,
+         )
+         pseudo_views = mdstats.materialize_replay_pseudolabel_views(
+-            source, prediction_cache, qualification, split, view_root
++            source, prediction_cache, qualification, split, view_root, source_index=source_index
+         )
+         true_views = mdstats.materialize_replay_true_label_views(
+-            source, true_cache, split, view_root, roles=(mdstats.ReplaySplitRole.MONITOR,)
++            source,
++            true_cache,
++            split,
++            view_root,
++            roles=(mdstats.ReplaySplitRole.MONITOR,),
++            source_index=source_index,
+         )
+         train_view = pseudo_views[mdstats.ReplaySplitRole.TRAIN]
+         monitor_view = pseudo_views[mdstats.ReplaySplitRole.MONITOR]
+@@ -6332,6 +6341,7 @@
+     context = {
+         "config": single,
+         "source": source,
++        "source_index": source_index,
+         "true_cache": true_cache,
+         "split": split,
+         "plan": plan,
+diff -ruN '--exclude=SOURCE_PATCH_0.20.233a0_to_0.20.234a0.patch' '--exclude=SHA256SUMS_0.20.234a0.txt' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/mdstats/training_data/replay.py /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/mdstats/training_data/replay.py
+--- /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/mdstats/training_data/replay.py	2026-08-16 23:31:52.000000000 +0000
++++ /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/mdstats/training_data/replay.py	2026-08-18 01:18:44.933628140 +0000
+@@ -14,6 +14,11 @@
+ 
+ from ._common import sha256_file_cached
+ from ._common import TrainingDataInputError, TrainingDataSerializationError, digest, validate_digest
++from .replay_index import (
++    ReplaySourceIndex,
++    iter_indexed_replay_frames,
++    replay_source_indices_for_identities,
++)
+ 
+ REPLAY_FILE_ARTIFACT_SCHEMA = "mdstats.replay-file-artifact.v4"
+ REPLAY_FILE_ARTIFACT_V3_SCHEMA = "mdstats.replay-file-artifact.v3"
+@@ -1039,6 +1044,7 @@
+     *,
+     roles: Sequence[ReplaySplitRole | str] = (ReplaySplitRole.TRAIN, ReplaySplitRole.MONITOR),
+     buffer_size: int = 64,
++    source_index: ReplaySourceIndex | None = None,
+ ) -> dict[ReplaySplitRole, ReplayTrueLabelViewArtifact]:
+     """Lazily materialize requested true-label replay roles in one source pass.
+ 
+@@ -1047,10 +1053,11 @@
+     bounded-memory streaming pass. No pseudo-label inference is involved.
+     """
+ 
+-    try:
+-        from ase.io import iread
+-    except ModuleNotFoundError as exc:  # pragma: no cover
+-        raise TrainingDataInputError("ASE is required to materialize true-label replay views.") from exc
++    if source_index is None:
++        try:
++            from ase.io import iread
++        except ModuleNotFoundError as exc:  # pragma: no cover
++            raise TrainingDataInputError("ASE is required to materialize true-label replay views.") from exc
+     if int(buffer_size) <= 0:
+         raise TrainingDataInputError("Replay materialization buffer_size must be positive.")
+     requested: list[ReplaySplitRole] = []
+@@ -1097,20 +1104,22 @@
+         raise TrainingDataInputError("Replay source file SHA-256 differs from the authenticated source artifact.")
+ 
+     role_membership = {role: set(_split_role_geometry_identities(split, role)) for role in pending}
+-    all_pending = set().union(*(role_membership.values()))
++    identity_role = {identity: role for role, identities in role_membership.items() for identity in identities}
++    all_pending = set(identity_role)
+     temporary_paths = {role: outputs[role].with_name(outputs[role].name + ".tmp") for role in pending}
+     writers = {role: _BufferedReplayExtXYZWriter(temporary_paths[role], buffer_size=int(buffer_size)) for role in pending}
+     seen: dict[ReplaySplitRole, set[str]] = {role: set() for role in pending}
++    if source_index is None:
++        frame_iterator = enumerate(iread(source_path, index=":", format="extxyz"))
++    else:
++        selected_indices = replay_source_indices_for_identities(source, all_pending)
++        frame_iterator = iter_indexed_replay_frames(
++            source, source_index, source_indices=selected_indices
++        )
+     try:
+-        for source_index, atoms in enumerate(iread(source_path, index=":", format="extxyz")):
+-            identity = canonical_replay_geometry_identity(atoms)
+-            if identity not in all_pending:
+-                continue
+-            matched_role = None
+-            for role in pending:
+-                if identity in role_membership[role]:
+-                    matched_role = role
+-                    break
++        for source_frame_index, atoms in frame_iterator:
++            identity = source.geometry_identities[source_frame_index]
++            matched_role = identity_role.get(identity)
+             if matched_role is None:
+                 continue
+             if identity in seen[matched_role]:
+@@ -1119,7 +1128,7 @@
+                 atoms,
+                 geometry_identity=identity,
+                 role=matched_role,
+-                source_index=source_index,
++                source_index=source_frame_index,
+                 cache=cache,
+                 label_mapping=label_mapping,
+                 cache_digest=cache_digest,
+diff -ruN '--exclude=SOURCE_PATCH_0.20.233a0_to_0.20.234a0.patch' '--exclude=SHA256SUMS_0.20.234a0.txt' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/mdstats/training_data/replay_index.py /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/mdstats/training_data/replay_index.py
+--- /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/mdstats/training_data/replay_index.py	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/mdstats/training_data/replay_index.py	2026-08-18 01:18:15.182433685 +0000
+@@ -0,0 +1,347 @@
++"""REPLAY-PERF1 source-bound ExtXYZ byte index and deterministic frame access.
++
++The index is reconstructible execution state.  It is bound to the exact replay
++source bytes and the already-authenticated ReplaySourceArtifact, but worker/
++chunk choices never enter scientific identity.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++from io import StringIO
++from pathlib import Path
++from typing import Any, Iterable, Iterator, Mapping, Sequence, TYPE_CHECKING
++import json
++
++from ._common import (
++    TrainingDataInputError,
++    TrainingDataSerializationError,
++    digest,
++    sha256_file_cached,
++    validate_digest,
++)
++
++if TYPE_CHECKING:  # pragma: no cover
++    from .replay import ReplaySourceArtifact
++
++REPLAY_SOURCE_INDEX_SCHEMA = "mdstats.replay-source-index.v1"
++REPLAY_SOURCE_INDEX_RECEIPT_SCHEMA = "mdstats.replay-source-index-receipt.v1"
++DEFAULT_REPLAY_INDEX_PARSE_CHUNK_SIZE = 128
++
++
++@dataclass(frozen=True, slots=True)
++class ReplaySourceIndex:
++    """Byte-level frame index for one immutable replay ExtXYZ source."""
++
++    source_path: str
++    source_sha256: str
++    source_artifact_digest: str
++    source_index_digest: str
++    file_size_bytes: int
++    frame_offsets: tuple[int, ...]
++    frame_lengths: tuple[int, ...]
++    atom_counts: tuple[int, ...]
++    serialization_schema: str = REPLAY_SOURCE_INDEX_SCHEMA
++
++    def __post_init__(self) -> None:
++        if self.serialization_schema != REPLAY_SOURCE_INDEX_SCHEMA:
++            raise TrainingDataInputError("Unsupported replay source-index schema.")
++        object.__setattr__(self, "source_sha256", validate_digest(self.source_sha256, name="source_sha256"))
++        object.__setattr__(
++            self,
++            "source_artifact_digest",
++            validate_digest(self.source_artifact_digest, name="source_artifact_digest"),
++        )
++        object.__setattr__(
++            self,
++            "source_index_digest",
++            validate_digest(self.source_index_digest, name="source_index_digest"),
++        )
++        offsets = tuple(int(v) for v in self.frame_offsets)
++        lengths = tuple(int(v) for v in self.frame_lengths)
++        natoms = tuple(int(v) for v in self.atom_counts)
++        if not offsets or not (len(offsets) == len(lengths) == len(natoms)):
++            raise TrainingDataInputError("Replay source index arrays are empty or inconsistent.")
++        if int(self.file_size_bytes) <= 0:
++            raise TrainingDataInputError("Replay source index file size must be positive.")
++        previous_end = 0
++        for index, (offset, length, count) in enumerate(zip(offsets, lengths, natoms, strict=True)):
++            if offset < 0 or length <= 0 or count <= 0:
++                raise TrainingDataInputError(f"Replay source index frame {index} is invalid.")
++            if index and offset < previous_end:
++                raise TrainingDataInputError("Replay source index frame ranges overlap or are out of order.")
++            previous_end = offset + length
++        if previous_end > int(self.file_size_bytes):
++            raise TrainingDataInputError("Replay source index extends beyond the source file.")
++        object.__setattr__(self, "frame_offsets", offsets)
++        object.__setattr__(self, "frame_lengths", lengths)
++        object.__setattr__(self, "atom_counts", natoms)
++        object.__setattr__(self, "file_size_bytes", int(self.file_size_bytes))
++
++    @property
++    def configuration_count(self) -> int:
++        return len(self.frame_offsets)
++
++    def _identity_payload(self) -> dict[str, Any]:
++        return {
++            "schema": self.serialization_schema,
++            "source_sha256": self.source_sha256,
++            "source_artifact_digest": self.source_artifact_digest,
++            "source_index_digest": self.source_index_digest,
++            "file_size_bytes": self.file_size_bytes,
++            "frame_offsets": list(self.frame_offsets),
++            "frame_lengths": list(self.frame_lengths),
++            "atom_counts": list(self.atom_counts),
++        }
++
++    @property
++    def content_digest(self) -> str:
++        return digest(self._identity_payload())
++
++    def to_dict(self) -> dict[str, Any]:
++        return {
++            **self._identity_payload(),
++            "source_path": self.source_path,
++            "configuration_count": self.configuration_count,
++            "content_digest": self.content_digest,
++        }
++
++    @classmethod
++    def from_dict(cls, payload: Mapping[str, Any]) -> "ReplaySourceIndex":
++        if payload.get("schema") != REPLAY_SOURCE_INDEX_SCHEMA:
++            raise TrainingDataSerializationError("Unsupported replay source-index schema.")
++        result = cls(
++            source_path=str(payload["source_path"]),
++            source_sha256=str(payload["source_sha256"]),
++            source_artifact_digest=str(payload["source_artifact_digest"]),
++            source_index_digest=str(payload["source_index_digest"]),
++            file_size_bytes=int(payload["file_size_bytes"]),
++            frame_offsets=tuple(int(v) for v in payload["frame_offsets"]),
++            frame_lengths=tuple(int(v) for v in payload["frame_lengths"]),
++            atom_counts=tuple(int(v) for v in payload["atom_counts"]),
++        )
++        if payload.get("configuration_count") not in (None, result.configuration_count):
++            raise TrainingDataSerializationError("Replay source-index configuration count mismatch.")
++        if payload.get("content_digest") not in (None, result.content_digest):
++            raise TrainingDataSerializationError("Replay source-index digest mismatch.")
++        return result
++
++
++def _scan_extxyz_frame_ranges(path: Path) -> tuple[tuple[int, ...], tuple[int, ...], tuple[int, ...]]:
++    offsets: list[int] = []
++    lengths: list[int] = []
++    atom_counts: list[int] = []
++    with path.open("rb") as handle:
++        while True:
++            start = handle.tell()
++            line = handle.readline()
++            if not line:
++                break
++            if not line.strip():
++                # ASE tolerates whitespace between frames.  It is not part of
++                # the indexed frame payload and therefore need not be parsed.
++                continue
++            try:
++                natoms = int(line.strip())
++            except ValueError as exc:
++                raise TrainingDataInputError(
++                    f"Replay ExtXYZ frame at byte {start} does not start with an integer atom count."
++                ) from exc
++            if natoms <= 0:
++                raise TrainingDataInputError(f"Replay ExtXYZ frame at byte {start} has non-positive atom count.")
++            if not handle.readline():
++                raise TrainingDataInputError("Replay ExtXYZ source ended before a frame comment line.")
++            for _ in range(natoms):
++                if not handle.readline():
++                    raise TrainingDataInputError("Replay ExtXYZ source ended inside an atom table.")
++            end = handle.tell()
++            offsets.append(start)
++            lengths.append(end - start)
++            atom_counts.append(natoms)
++    if not offsets:
++        raise TrainingDataInputError("Replay ExtXYZ source contains no indexable configurations.")
++    return tuple(offsets), tuple(lengths), tuple(atom_counts)
++
++
++def _index_receipt_path(cache_directory: str | Path) -> Path:
++    return Path(cache_directory).expanduser().resolve() / "replay-source-index.json"
++
++
++def _atomic_json(path: Path, payload: Mapping[str, Any]) -> None:
++    path.parent.mkdir(parents=True, exist_ok=True)
++    temporary = path.with_name(path.name + ".tmp")
++    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
++    temporary.replace(path)
++
++
++def validate_replay_source_index(source: "ReplaySourceArtifact", index: ReplaySourceIndex) -> None:
++    source_path = Path(source.path).expanduser().resolve()
++    if index.source_sha256 != source.sha256:
++        raise TrainingDataInputError("Replay source index SHA authority differs from the replay source artifact.")
++    if index.source_artifact_digest != source.content_digest:
++        raise TrainingDataInputError("Replay source index artifact authority differs from the replay source artifact.")
++    if index.source_index_digest != source.source_index_digest:
++        raise TrainingDataInputError("Replay source index geometry-order authority differs from the replay source artifact.")
++    if index.configuration_count != source.configuration_count:
++        raise TrainingDataInputError("Replay source index frame count differs from the replay source artifact.")
++    if tuple(index.atom_counts) and len(index.atom_counts) != source.configuration_count:
++        raise TrainingDataInputError("Replay source index atom-count cardinality is invalid.")
++    if not source_path.is_file():
++        raise TrainingDataInputError(f"Replay source file does not exist: {source_path!s}.")
++    stat = source_path.stat()
++    if int(stat.st_size) != index.file_size_bytes:
++        raise TrainingDataInputError("Replay source index file-size authority differs from the replay source bytes.")
++    if sha256_file_cached(source_path) != source.sha256:
++        raise TrainingDataInputError("Replay source bytes differ from their authenticated source artifact.")
++
++
++def build_replay_source_index(
++    source: "ReplaySourceArtifact",
++    cache_directory: str | Path | None = None,
++) -> ReplaySourceIndex:
++    """Load or build the exact byte index for ``source``.
++
++    The persisted cache is invalidated only by source/artifact identity.  Chunk
++    size and later materialization worker choices are deliberately absent from
++    the index identity.
++    """
++
++    source_path = Path(source.path).expanduser().resolve()
++    if not source_path.is_file():
++        raise TrainingDataInputError(f"Replay source file does not exist: {source_path!s}.")
++    if sha256_file_cached(source_path) != source.sha256:
++        raise TrainingDataInputError("Replay source bytes differ from their authenticated source artifact.")
++
++    receipt = None if cache_directory is None else _index_receipt_path(cache_directory)
++    if receipt is not None and receipt.is_file():
++        try:
++            payload = json.loads(receipt.read_text(encoding="utf-8"))
++            if payload.get("schema") == REPLAY_SOURCE_INDEX_RECEIPT_SCHEMA:
++                loaded = ReplaySourceIndex.from_dict(payload["index"])
++                rebound = ReplaySourceIndex(
++                    source_path=str(source_path),
++                    source_sha256=loaded.source_sha256,
++                    source_artifact_digest=loaded.source_artifact_digest,
++                    source_index_digest=loaded.source_index_digest,
++                    file_size_bytes=loaded.file_size_bytes,
++                    frame_offsets=loaded.frame_offsets,
++                    frame_lengths=loaded.frame_lengths,
++                    atom_counts=loaded.atom_counts,
++                )
++                validate_replay_source_index(source, rebound)
++                return rebound
++        except Exception:
++            # Reconstructible execution state: stale/corrupt receipts are simply
++            # rebuilt from authenticated source bytes.
++            pass
++
++    offsets, lengths, atom_counts = _scan_extxyz_frame_ranges(source_path)
++    result = ReplaySourceIndex(
++        source_path=str(source_path),
++        source_sha256=source.sha256,
++        source_artifact_digest=source.content_digest,
++        source_index_digest=source.source_index_digest,
++        file_size_bytes=int(source_path.stat().st_size),
++        frame_offsets=offsets,
++        frame_lengths=lengths,
++        atom_counts=atom_counts,
++    )
++    validate_replay_source_index(source, result)
++    if receipt is not None:
++        _atomic_json(receipt, {"schema": REPLAY_SOURCE_INDEX_RECEIPT_SCHEMA, "index": result.to_dict()})
++    return result
++
++
++def replay_source_indices_for_identities(
++    source: "ReplaySourceArtifact",
++    identities: Iterable[str],
++) -> tuple[int, ...]:
++    requested = set(str(v) for v in identities)
++    mapping = {identity: index for index, identity in enumerate(source.geometry_identities)}
++    missing = requested - mapping.keys()
++    if missing:
++        raise TrainingDataInputError(f"Replay indexed materialization requested {len(missing)} unknown geometries.")
++    return tuple(sorted(mapping[value] for value in requested))
++
++
++def _normalize_indices(count: int, source_indices: Sequence[int] | None) -> tuple[int, ...]:
++    if source_indices is None:
++        return tuple(range(count))
++    values = tuple(int(v) for v in source_indices)
++    if any(v < 0 or v >= count for v in values):
++        raise TrainingDataInputError("Replay indexed source selection is out of bounds.")
++    if any(a >= b for a, b in zip(values, values[1:])):
++        raise TrainingDataInputError("Replay indexed source selection must be strictly increasing and unique.")
++    return values
++
++
++def _contiguous_groups(indices: Sequence[int], *, maximum_frames: int) -> Iterator[tuple[int, ...]]:
++    if maximum_frames <= 0:
++        raise TrainingDataInputError("Replay indexed parse chunk size must be positive.")
++    current: list[int] = []
++    previous: int | None = None
++    for value in indices:
++        if current and (value != (previous or 0) + 1 or len(current) >= maximum_frames):
++            yield tuple(current)
++            current = []
++        current.append(value)
++        previous = value
++    if current:
++        yield tuple(current)
++
++
++def iter_indexed_replay_frames(
++    source: "ReplaySourceArtifact",
++    index: ReplaySourceIndex,
++    *,
++    source_indices: Sequence[int] | None = None,
++    chunk_size: int = DEFAULT_REPLAY_INDEX_PARSE_CHUNK_SIZE,
++) -> Iterator[tuple[int, Any]]:
++    """Yield ASE frames for exact source indices without scanning unrelated frames.
++
++    Contiguous requested frames are parsed as bounded chunks.  Sparse requests
++    seek directly to indexed frame payloads.  Yield order is always increasing
++    source index, independent of chunk size.
++    """
++
++    validate_replay_source_index(source, index)
++    requested = _normalize_indices(index.configuration_count, source_indices)
++    if not requested:
++        return
++    try:
++        from ase.io import read
++    except ModuleNotFoundError as exc:  # pragma: no cover
++        raise TrainingDataInputError("ASE is required for indexed replay parsing.") from exc
++    source_path = Path(source.path).expanduser().resolve()
++    with source_path.open("rb") as handle:
++        for group in _contiguous_groups(requested, maximum_frames=int(chunk_size)):
++            first = group[0]
++            last = group[-1]
++            start = index.frame_offsets[first]
++            end = index.frame_offsets[last] + index.frame_lengths[last]
++            handle.seek(start)
++            payload = handle.read(end - start)
++            try:
++                text = payload.decode("utf-8")
++            except UnicodeDecodeError as exc:
++                raise TrainingDataInputError("Replay ExtXYZ indexed payload is not valid UTF-8.") from exc
++            parsed = read(StringIO(text), index=":", format="extxyz")
++            frames = parsed if isinstance(parsed, list) else [parsed]
++            if len(frames) != len(group):
++                raise TrainingDataInputError("Replay indexed chunk parser returned the wrong frame count.")
++            for source_index, atoms in zip(group, frames, strict=True):
++                if len(atoms) != index.atom_counts[source_index]:
++                    raise TrainingDataInputError("Replay indexed frame atom count differs from the byte index.")
++                yield source_index, atoms
++
++
++__all__ = [
++    "DEFAULT_REPLAY_INDEX_PARSE_CHUNK_SIZE",
++    "REPLAY_SOURCE_INDEX_RECEIPT_SCHEMA",
++    "REPLAY_SOURCE_INDEX_SCHEMA",
++    "ReplaySourceIndex",
++    "build_replay_source_index",
++    "iter_indexed_replay_frames",
++    "replay_source_indices_for_identities",
++    "validate_replay_source_index",
++]
+diff -ruN '--exclude=SOURCE_PATCH_0.20.233a0_to_0.20.234a0.patch' '--exclude=SHA256SUMS_0.20.234a0.txt' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/mdstats/training_data/replay_pseudolabel.py /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/mdstats/training_data/replay_pseudolabel.py
+--- /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/mdstats/training_data/replay_pseudolabel.py	2026-08-17 00:50:14.000000000 +0000
++++ /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/mdstats/training_data/replay_pseudolabel.py	2026-08-18 01:18:46.324559539 +0000
+@@ -28,6 +28,7 @@
+ )
+ from .acceleration import MaceAccelerationKernelMode
+ from .foundation import FoundationInferenceIdentity, FoundationPotentialIdentity
++from .replay_index import ReplaySourceIndex, iter_indexed_replay_frames, replay_source_indices_for_identities
+ from .replay import (
+     ReplayLabelMode,
+     ReplayLabelNamespace,
+@@ -931,6 +932,7 @@
+     batch_size: int = DEFAULT_REPLAY_PREDICTION_BATCH_SIZE,
+     shard_size: int = DEFAULT_REPLAY_PREDICTION_SHARD_SIZE,
+     graph_cache_directory: str | Path | None = None,
++    source_index: ReplaySourceIndex | None = None,
+ ) -> ReplayFoundationPredictionCache:
+     """Return/create a reusable foundation-prediction cache for one replay source.
+ 
+@@ -1011,9 +1013,13 @@
+         batch_atoms.clear()
+         batch_ids.clear()
+ 
++    if source_index is None:
++        frame_iterator = enumerate(iread(source_path, index=":", format="extxyz"))
++    else:
++        frame_iterator = iter_indexed_replay_frames(source, source_index)
+     try:
+-        for atoms in iread(source_path, index=":", format="extxyz"):
+-            identity = canonical_replay_geometry_identity(atoms)
++        for source_frame_index, atoms in frame_iterator:
++            identity = source.geometry_identities[source_frame_index]
+             if identity in seen:
+                 raise TrainingDataInputError("Replay source yielded a duplicate geometry during pseudo-label prediction.")
+             seen.add(identity)
+@@ -1318,6 +1324,7 @@
+     roles: Sequence[ReplaySplitRole | str] = (ReplaySplitRole.TRAIN, ReplaySplitRole.MONITOR),
+     buffer_size: int = 64,
+     max_resident_prediction_shards: int = 4,
++    source_index: ReplaySourceIndex | None = None,
+ ) -> dict[ReplaySplitRole, ReplayPseudolabelViewArtifact]:
+     """Lazily materialize pseudo-label train/monitor views without model inference."""
+ 
+@@ -1374,21 +1381,23 @@
+         raise TrainingDataInputError("ASE is required to materialize replay pseudo-label views.") from exc
+ 
+     memberships = {role: set(_split_role_geometry_identities(split, role)) for role in pending}
+-    pending_union = set().union(*(memberships.values()))
++    identity_role = {identity: role for role, identities in memberships.items() for identity in identities}
++    pending_union = set(identity_role)
+     temporary = {role: outputs[role].with_name(outputs[role].name + ".tmp") for role in pending}
+     writers = {role: _BufferedReplayExtXYZWriter(temporary[role], buffer_size=int(buffer_size)) for role in pending}
+     seen = {role: set() for role in pending}
+     reader = _ReplayPredictionShardReader(cache, max_resident_shards=int(max_resident_prediction_shards))
++    if source_index is None:
++        frame_iterator = enumerate(iread(source_path, index=":", format="extxyz"))
++    else:
++        selected_indices = replay_source_indices_for_identities(source, pending_union)
++        frame_iterator = iter_indexed_replay_frames(
++            source, source_index, source_indices=selected_indices
++        )
+     try:
+-        for source_index, atoms in enumerate(iread(source_path, index=":", format="extxyz")):
+-            identity = canonical_replay_geometry_identity(atoms)
+-            if identity not in pending_union:
+-                continue
+-            matched = None
+-            for role in pending:
+-                if identity in memberships[role]:
+-                    matched = role
+-                    break
++        for source_frame_index, atoms in frame_iterator:
++            identity = source.geometry_identities[source_frame_index]
++            matched = identity_role.get(identity)
+             if matched is None:
+                 continue
+             if identity in seen[matched]:
+@@ -1398,7 +1407,7 @@
+                     atoms,
+                     geometry_identity=identity,
+                     role=matched,
+-                    source_index=source_index,
++                    source_index=source_frame_index,
+                     cache=cache,
+                     cache_digest=cache_digest,
+                     inference_digest=inference_digest,
+diff -ruN '--exclude=SOURCE_PATCH_0.20.233a0_to_0.20.234a0.patch' '--exclude=SHA256SUMS_0.20.234a0.txt' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/pyproject.toml /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/pyproject.toml
+--- /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/pyproject.toml	2026-08-18 00:37:24.000000000 +0000
++++ /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/pyproject.toml	2026-08-18 01:29:04.256207034 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.233a0"
++version = "0.20.234a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=SOURCE_PATCH_0.20.233a0_to_0.20.234a0.patch' '--exclude=SHA256SUMS_0.20.234a0.txt' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/release/qualification_logs/MLFF_REPLAY_PERF1_QUALIFICATION_0.20.234a0.json /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/release/qualification_logs/MLFF_REPLAY_PERF1_QUALIFICATION_0.20.234a0.json
+--- /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/release/qualification_logs/MLFF_REPLAY_PERF1_QUALIFICATION_0.20.234a0.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/release/qualification_logs/MLFF_REPLAY_PERF1_QUALIFICATION_0.20.234a0.json	2026-08-18 01:37:18.634651176 +0000
+@@ -0,0 +1,199 @@
++{
++  "acceptance": {
++    "advance_to": "CAMPAIGN-PERF-QUAL1",
++    "broad_regression": "PASS",
++    "exact_replay_authority": "PASS",
++    "full_source_no_material_regression": "PASS",
++    "source_index_restart_reuse": "PASS",
++    "source_mutation_invalidation": "PASS",
++    "subset_materialization_speedup": "PASS"
++  },
++  "architecture_revision": 101,
++  "authority_change": {
++    "gpu": false,
++    "model_inference": false,
++    "runtime_optimization": true,
++    "scientific": false
++  },
++  "content_digest": "7d5bbfe93fbf693b51b058a284fa896137b467b974beb1db57264cd2b3280570",
++  "date": "2026-08-17",
++  "dependency_graph_schema": 81,
++  "documentation": {
++    "architecture_revision_note": {
++      "path": "docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV101.md",
++      "sha256": "e51a3583d6667cace9fec0e70f8f2db1cf2273c99dbf587e846707fcc47b29d3"
++    },
++    "canonical_markdown": {
++      "path": "docs/arch_manuals/mlff_training_data_architecture.md",
++      "sha256": "6d5621f97a6e436b403dd6851ac18a092ae31dbe7b0f3d02e192e314faaae0f2"
++    },
++    "canonical_pdf": {
++      "comparison_note": "Revision-100 50-page PDF and revision-101 51-page PDF compared at 50 dpi; all 51 final pages rendered at 120 dpi. Front matter, performance/status region, and final reference page were visually inspected with no clipping or overlap.",
++      "full_render": "PASS",
++      "pages": 51,
++      "path": "docs/arch_manuals/mlff_training_data_architecture.pdf",
++      "preflight": "PASS",
++      "sha256": "b1459e10189bc6b8ba587a4d411eaaaf10d06f35441847c5de59af585e746d74",
++      "visual_qa": "PASS"
++    },
++    "dependency_graph": {
++      "path": "docs/arch_manuals/mlff_training_data_dependency_graph.json",
++      "sha256": "e4f84d2c7774b53784a3b1e8822cf544f63394a65378c7dff6e19439a6b29970"
++    },
++    "release_note": {
++      "path": "docs/history/mlff/release_notes/PATCH_NOTES_0.20.234a0.md",
++      "sha256": "fcdecec9ac74ae3a8e51646b82b6fe3c411a5f3cb91636af6580edf56647e540"
++    },
++    "spec": {
++      "path": "docs/specs/training_data/mlff_replay_perf1_index_cache_spec.md",
++      "sha256": "44b5a46ba270ccad3e0a40bb701f638a48c76b728b6d6a039003ac50cbf41a2e"
++    }
++  },
++  "foundation": {
++    "active_qualification_family": "mace-mpa-0",
++    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
++    "mh1_supported_by_same_contract": true,
++    "note": "REPLAY-PERF1 changes replay indexing/materialization only. MACE-MPA-0 medium is the active qualification checkpoint; MACE-MH-1 uses the same replay-source/index/materialization contract.",
++    "variant": "medium"
++  },
++  "gate": "REPLAY_PERF1_INDEX_CACHE",
++  "implementation": {
++    "contiguous_chunk_parsing": true,
++    "corrupt_receipt_rebuild": true,
++    "geometry_identity_reuse": true,
++    "implementation_manifest": {
++      "path": "benchmarks/mlff_replay_perf1_implementation_manifest_0.20.234a0.json",
++      "sha256": "1a5f2c23d2ff1c69eb4212645ad5203a2129ab00029be13c38a14b9f08358bdb"
++    },
++    "parser_parallelism": "serial_measured_authority",
++    "source_artifact_bound": true,
++    "source_change_invalidation": true,
++    "source_index_content_digest": "ce6c678ad556cff63be8ee75754d87cba2b3d08e80f544c5983fe4498dc0c5e1",
++    "source_index_receipt_schema": "mdstats.replay-source-index-receipt.v1",
++    "source_index_schema": "mdstats.replay-source-index.v1",
++    "source_order_bound": true,
++    "source_sha_bound": true,
++    "sparse_direct_seek": true,
++    "threaded_ase_parser_rejected_as_slower": true
++  },
++  "inputs": {
++    "dependency_archive": {
++      "path": "/mnt/data/dependencies.tar(20260817-112644).gz",
++      "sha256": "888d545a512396697c8583d69bc9ed33110914675f466a4cbcafc3e1e1407171"
++    },
++    "replay_source": {
++      "frames": 12000,
++      "path": "/mnt/data/replay_fps_12000.extxyz",
++      "sha256": "187eed42fb2d6cf5e7e745ffed0ce34541e92c6a35ec9e654520cd3c7198403c",
++      "source_artifact_digest": "9f43677d6100cea85f6de287fe1dd739322609fd82cbeb320e46f9434ce90688"
++    },
++    "target_archive": {
++      "path": "/mnt/data/training_LTA.tar(4).gz",
++      "sha256": "bc1b7e25ba338507ae38b260bcd283356de887b6c6cf762a2c146733f1c3c958"
++    }
++  },
++  "next_gate": "CAMPAIGN-PERF-QUAL1",
++  "performance_evidence": {
++    "full_source_parse_identity": {
++      "control_seconds": 7.641843772998982,
++      "current_seconds": 6.423186239999268,
++      "frames": 12000,
++      "speedup": 1.1897278838671588
++    },
++    "index": {
++      "authenticated_hit_seconds": 0.07091366700115032,
++      "build_seconds": 0.45059363399923313
++    },
++    "monitor_only_true_label_materialization": {
++      "control_median_seconds": 9.138929937000285,
++      "control_release": "0.20.233a0",
++      "control_trials_seconds": [
++        9.049325910000334,
++        9.228533964000235
++      ],
++      "current_median_seconds": 3.0124864780009375,
++      "current_release": "0.20.234a0",
++      "current_trials_seconds": [
++        2.9133628890012915,
++        3.1116100670005835
++      ],
++      "requested_frames": 2000,
++      "source_frames": 12000,
++      "speedup": 3.0336833057138923
++    },
++    "primary_record": {
++      "path": "benchmarks/mlff_replay_perf1_cloud_cpu_mpa0_2026-08-17.json",
++      "sha256": "89b30118d873aac690dd09f73949cbcd3078f67573f0086746c9c41395a7cdec"
++    },
++    "report": {
++      "path": "benchmarks/mlff_replay_perf1_cloud_cpu_mpa0_2026-08-17.md",
++      "sha256": "ad5873085880b20a2e2c407755f43a77980f526e24d90b99bf7bd6d506591d3c"
++    },
++    "train_monitor_true_label_materialization": {
++      "control_median_seconds": 15.676349609499994,
++      "control_release": "0.20.233a0",
++      "control_trials_seconds": [
++        15.723951702000704,
++        15.628747516999283
++      ],
++      "current_median_seconds": 14.347956869500194,
++      "current_release": "0.20.234a0",
++      "current_trials_seconds": [
++        14.606789539999227,
++        14.089124199001162
++      ],
++      "requested_frames": 12000,
++      "source_frames": 12000,
++      "speedup": 1.0925841046277185
++    }
++  },
++  "release": "0.20.234a0",
++  "schema": "mdstats.mlff-replay-perf1-qualification.v1",
++  "scientific_oracles": {
++    "chunk_size_invariant": true,
++    "full_materialization_control_exact": true,
++    "monitor_control_exact": true,
++    "monitor_extxyz_sha256": "cc0f9b308becd5c027a2adc64fc251808323e19c217412d82ea3d50b3deab2cf",
++    "monitor_logical_digest": "633aae8a6deb1a3d857880f3eecd9bb40dbaedba8357a13944184c1bafbf1114",
++    "ordered_geometry_identity_digest": "89d5b7a678ed846557c1f15f6592058e9ee3b78d81eb3516a320d2eabca7659f",
++    "prediction_authority_changed": false,
++    "pseudolabel_authority_changed": false,
++    "split_authority_changed": false,
++    "train_extxyz_sha256": "e6977082593a5b5610292e13ae49df7afbdbb7744ea9fe496952952474636f8c",
++    "train_logical_digest": "8d7a29c35443cd8a8e7b2142157dce7c9804c8137d4a42e824edef9e42240901",
++    "true_label_authority_changed": false
++  },
++  "status": "PASS",
++  "tests": {
++    "compileall": {
++      "paths": [
++        "mdstats",
++        "benchmarks",
++        "tools"
++      ],
++      "status": "PASS"
++    },
++    "current_gate_and_dependencies": {
++      "failed": 0,
++      "passed": 102,
++      "warnings": 3
++    },
++    "packaging_metadata": {
++      "pip_wheel_no_deps_no_build_isolation": "PASS",
++      "pyproject_version": "0.20.234a0",
++      "root_pkg_info_version": "0.20.234a0",
++      "wheel_metadata_name": "mdstats",
++      "wheel_metadata_version": "0.20.234a0"
++    },
++    "replay_specific": {
++      "failed": 0,
++      "passed": 46
++    },
++    "target_data2_functional_authority": {
++      "failed": 0,
++      "passed": 111,
++      "warning_class": "expected velocity-reconstruction/normalization warnings unchanged from prior authority",
++      "warnings": 18
++    }
++  }
++}
+diff -ruN '--exclude=SOURCE_PATCH_0.20.233a0_to_0.20.234a0.patch' '--exclude=SHA256SUMS_0.20.234a0.txt' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/tests/test_mlff_audit_eval_perf1_specification.py /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/tests/test_mlff_audit_eval_perf1_specification.py
+--- /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/tests/test_mlff_audit_eval_perf1_specification.py	2026-08-18 00:41:46.000000000 +0000
++++ /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/tests/test_mlff_audit_eval_perf1_specification.py	2026-08-18 01:31:30.686192536 +0000
+@@ -12,24 +12,20 @@
+ EVIDENCE = ROOT / "benchmarks/mlff_audit_eval_perf1_cloud_cpu_mpa0_2026-08-17.json"
+ 
+ 
+-def test_audit_eval_perf1_release_metadata_and_manual_are_synchronized() -> None:
+-    assert mdstats.__version__ == "0.20.233a0"
+-    assert 'version = "0.20.233a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+-    assert "Version: 0.20.233a0" in (ROOT / "PKG-INFO").read_text(encoding="utf-8")
++def test_audit_eval_perf1_historical_release_evidence_remains_available() -> None:
+     text = MANUAL.read_text(encoding="utf-8")
+-    assert "architecture_revision: 100" in text
+-    assert 'release: "mdstats 0.20.233a0"' in text
+     assert "Gate AUDIT-EVAL-PERF1 - Foundation Audit and EVAL2 CPU hardening - COMPLETE" in text
+-    assert "**Next gate.** `REPLAY-PERF1`." in text
+     assert SPEC.is_file()
++    assert (ROOT / "docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV100.md").is_file()
++    assert (ROOT / "docs/history/mlff/release_notes/PATCH_NOTES_0.20.233a0.md").is_file()
+ 
+ 
+ def test_audit_eval_perf1_dependency_graph_is_closed() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+-    assert graph["architecture_revision"] == 100
+-    assert graph["schema_version"] == 80
+-    assert graph["documentation_gate"] == "AUDIT_EVAL_PERF1_CPU_KERNELS"
+-    assert graph["next_gate"] == "REPLAY_PERF1_INDEX_CACHE"
++    assert graph["architecture_revision"] >= 100
++    assert graph["schema_version"] >= 80
++    assert graph["documentation_gate"] in {"AUDIT_EVAL_PERF1_CPU_KERNELS", "REPLAY_PERF1_INDEX_CACHE", "CAMPAIGN_PERF_QUAL1_CLOSURE"}
++    assert any(item["id"] == "REPLAY_PERF1_INDEX_CACHE" for item in graph["nodes"])
+     node = next(item for item in graph["nodes"] if item["id"] == "AUDIT_EVAL_PERF1_CPU_KERNELS")
+     assert node["implemented_release"] == "0.20.233a0"
+     assert node["implementation_status"] == "implemented_cached_metadata_batched_reducers"
+@@ -85,5 +81,5 @@
+ def test_audit_eval_perf1_history_records_are_present() -> None:
+     assert (ROOT / "docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV100.md").is_file()
+     assert (ROOT / "docs/history/mlff/release_notes/PATCH_NOTES_0.20.233a0.md").is_file()
+-    assert "0.20.233a0" in (ROOT / "CHANGELOG.md").read_text(encoding="utf-8").splitlines()[0]
++    assert "## 0.20.233a0 - 2026-08-17" in (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+     assert "0.20.233a0" in (ROOT / "docs/history/mlff/release_notes/INDEX.md").read_text(encoding="utf-8")
+diff -ruN '--exclude=SOURCE_PATCH_0.20.233a0_to_0.20.234a0.patch' '--exclude=SHA256SUMS_0.20.234a0.txt' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/tests/test_mlff_doc_arch1_specification.py /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/tests/test_mlff_doc_arch1_specification.py
+--- /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/tests/test_mlff_doc_arch1_specification.py	2026-08-18 00:41:46.000000000 +0000
++++ /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/tests/test_mlff_doc_arch1_specification.py	2026-08-18 01:30:55.280619665 +0000
+@@ -16,10 +16,10 @@
+ 
+ 
+ def test_doc_arch1_release_and_current_authority_are_synchronized():
+-    assert mdstats.__version__ == "0.20.233a0"
++    assert mdstats.__version__ == "0.20.234a0"
+     text = MANUAL.read_text(encoding="utf-8")
+-    assert "architecture_revision: 100" in text
+-    assert 'release: "mdstats 0.20.233a0"' in text
++    assert "architecture_revision: 101" in text
++    assert 'release: "mdstats 0.20.234a0"' in text
+     assert "# Part VI - Performance and execution architecture" in text
+     assert "# Part VII - Current implementation status and frozen forward gates" in text
+     assert "## Context retrieval index" in text
+@@ -72,17 +72,17 @@
+     revision_rows = [line for line in REV_INDEX.read_text().splitlines() if re.match(r"^\|\s*\d+\s*\|", line)]
+     revisions = [int(line.split("|")[1].strip()) for line in revision_rows]
+     assert revisions == sorted(set(revisions))
+-    assert revisions[-1] == 100
++    assert revisions[-1] == 101
+     assert "NEIGHBOR1" in REV_INDEX.read_text()
+-    assert "0.20.233a0" in REL_INDEX.read_text()
++    assert "0.20.234a0" in REL_INDEX.read_text()
+     assert (ROOT / "docs/history/mlff/LINEAGE.md").is_file()
+     assert (ROOT / "docs/history/mlff/manual_snapshots/mlff_training_data_architecture_rev090_full.md").is_file()
+ 
+ 
+ def test_doc_arch1_graph_and_directory_ownership_are_current():
+     graph = json.loads(GRAPH.read_text())
+-    assert graph["architecture_revision"] == 100
+-    assert graph["schema_version"] == 80
++    assert graph["architecture_revision"] == 101
++    assert graph["schema_version"] == 81
+     node_ids = {node["id"] for node in graph["nodes"]}
+     for node in (
+         "DOC_ARCH1_MANUAL_RESTRUCTURE_PERFORMANCE_ROADMAP",
+@@ -90,7 +90,7 @@
+         "NEIGHBOR1_SHARED_EXACT_ENGINE", "MVIDX_REUSE1_SPARSE_TRANSPOSE",
+         "COVREF_PAR1_GLOBAL_BLOCK_QUEUE", "MVKERNEL1_VECTOR_SPARSE_KERNELS",
+         "REPAIR_PAR1_PROPOSAL_QUEUE", "MVQUAL_PAR1_GLOBAL_SCORING_QUEUE",
+-        "AUDIT_EVAL_PERF1_CPU_KERNELS", "CAMPAIGN_PERF_QUAL1_CLOSURE",
++        "AUDIT_EVAL_PERF1_CPU_KERNELS", "REPLAY_PERF1_INDEX_CACHE", "CAMPAIGN_PERF_QUAL1_CLOSURE",
+     ):
+         assert node in node_ids
+     root_names = {p.name for p in ROOT.iterdir() if p.is_file()}
+diff -ruN '--exclude=SOURCE_PATCH_0.20.233a0_to_0.20.234a0.patch' '--exclude=SHA256SUMS_0.20.234a0.txt' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/tests/test_mlff_replay_perf1.py /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/tests/test_mlff_replay_perf1.py
+--- /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/tests/test_mlff_replay_perf1.py	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/tests/test_mlff_replay_perf1.py	2026-08-18 01:21:09.226433685 +0000
+@@ -0,0 +1,144 @@
++from __future__ import annotations
++
++import json
++from pathlib import Path
++
++import numpy as np
++import pytest
++
++from mdstats.training_data.replay import (
++    ReplaySplitRole,
++    build_replay_split_manifest,
++    build_replay_true_label_cache,
++    inspect_replay_source_extxyz,
++    materialize_replay_true_label_views,
++)
++from mdstats.training_data.replay_index import (
++    REPLAY_SOURCE_INDEX_RECEIPT_SCHEMA,
++    ReplaySourceIndex,
++    build_replay_source_index,
++    iter_indexed_replay_frames,
++    replay_source_indices_for_identities,
++)
++
++
++def _write_source(path: Path, count: int = 24) -> None:
++    pytest.importorskip("ase")
++    from ase import Atoms
++    from ase.calculators.singlepoint import SinglePointCalculator
++    from ase.io import write
++
++    frames = []
++    for i in range(count):
++        atoms = Atoms(
++            "H2",
++            positions=[[0.0, 0.0, 0.0], [0.0, 0.0, 0.70 + 0.003 * i]],
++            cell=[5.0, 5.0, 5.0],
++            pbc=True,
++        )
++        atoms.calc = SinglePointCalculator(
++            atoms,
++            energy=-5.0 - i,
++            forces=np.full((2, 3), 0.001 * (i + 1), dtype=np.float64),
++            stress=np.arange(6, dtype=np.float64) * 1.0e-4 * (i + 1),
++        )
++        frames.append(atoms)
++    write(path, frames, format="extxyz")
++
++
++def test_source_index_round_trip_cache_hit_and_corruption_rebuild(tmp_path: Path) -> None:
++    source_path = tmp_path / "replay.extxyz"
++    _write_source(source_path, 24)
++    source = inspect_replay_source_extxyz(source_path)
++    cache = tmp_path / "index"
++    first = build_replay_source_index(source, cache)
++    assert first.configuration_count == source.configuration_count
++    assert first.source_sha256 == source.sha256
++    assert ReplaySourceIndex.from_dict(first.to_dict()) == first
++
++    receipt = cache / "replay-source-index.json"
++    payload = json.loads(receipt.read_text(encoding="utf-8"))
++    assert payload["schema"] == REPLAY_SOURCE_INDEX_RECEIPT_SCHEMA
++    payload["index"]["frame_offsets"][3] += 1
++    receipt.write_text(json.dumps(payload), encoding="utf-8")
++    rebuilt = build_replay_source_index(source, cache)
++    assert rebuilt.content_digest == first.content_digest
++    assert rebuilt.frame_offsets == first.frame_offsets
++
++
++def test_source_index_invalidates_when_source_bytes_change(tmp_path: Path) -> None:
++    source_path = tmp_path / "replay.extxyz"
++    cache = tmp_path / "index"
++    _write_source(source_path, 12)
++    first_source = inspect_replay_source_extxyz(source_path)
++    first = build_replay_source_index(first_source, cache)
++    _write_source(source_path, 13)
++    second_source = inspect_replay_source_extxyz(source_path)
++    second = build_replay_source_index(second_source, cache)
++    assert second.source_sha256 != first.source_sha256
++    assert second.configuration_count == 13
++    assert second.content_digest != first.content_digest
++
++
++def test_indexed_frame_reader_is_chunk_size_invariant_and_exact(tmp_path: Path) -> None:
++    source_path = tmp_path / "replay.extxyz"
++    _write_source(source_path, 24)
++    source = inspect_replay_source_extxyz(source_path)
++    index = build_replay_source_index(source, tmp_path / "index")
++    requested = (0, 1, 5, 9, 10, 11, 23)
++    first = list(iter_indexed_replay_frames(source, index, source_indices=requested, chunk_size=1))
++    second = list(iter_indexed_replay_frames(source, index, source_indices=requested, chunk_size=8))
++    assert [i for i, _ in first] == list(requested) == [i for i, _ in second]
++    from mdstats.training_data.replay import canonical_replay_geometry_identity
++    assert [canonical_replay_geometry_identity(a) for _, a in first] == [source.geometry_identities[i] for i in requested]
++    assert [canonical_replay_geometry_identity(a) for _, a in second] == [source.geometry_identities[i] for i in requested]
++
++
++def test_monitor_only_materialization_with_index_reads_only_monitor_source_indices(tmp_path: Path, monkeypatch) -> None:
++    source_path = tmp_path / "replay.extxyz"
++    _write_source(source_path, 30)
++    source = inspect_replay_source_extxyz(source_path)
++    index = build_replay_source_index(source, tmp_path / "index")
++    cache = build_replay_true_label_cache(source)
++    split = build_replay_split_manifest(source, split_ratio=(5, 1), split_seed=42)
++    expected = replay_source_indices_for_identities(source, split.monitor_geometry_identities)
++
++    import mdstats.training_data.replay as replay_module
++    original = replay_module.iter_indexed_replay_frames
++    calls = []
++
++    def counted(source_arg, index_arg, **kwargs):
++        calls.append(tuple(kwargs.get("source_indices") or ()))
++        yield from original(source_arg, index_arg, **kwargs)
++
++    monkeypatch.setattr(replay_module, "iter_indexed_replay_frames", counted)
++    import ase.io
++    monkeypatch.setattr(ase.io, "iread", lambda *a, **k: (_ for _ in ()).throw(AssertionError("indexed path must not scan with iread")))
++    result = materialize_replay_true_label_views(
++        source,
++        cache,
++        split,
++        tmp_path / "views",
++        roles=(ReplaySplitRole.MONITOR,),
++        source_index=index,
++        buffer_size=2,
++    )[ReplaySplitRole.MONITOR]
++    assert result.configuration_count == split.monitor_count
++    assert calls == [expected]
++    assert len(expected) == split.monitor_count
++
++
++def test_indexed_and_streaming_true_label_views_have_identical_authority(tmp_path: Path) -> None:
++    source_path = tmp_path / "replay.extxyz"
++    _write_source(source_path, 36)
++    source = inspect_replay_source_extxyz(source_path)
++    index = build_replay_source_index(source, tmp_path / "index")
++    cache = build_replay_true_label_cache(source)
++    split = build_replay_split_manifest(source, split_ratio=(5, 1), split_seed=17)
++    old = materialize_replay_true_label_views(source, cache, split, tmp_path / "stream")
++    new = materialize_replay_true_label_views(source, cache, split, tmp_path / "indexed", source_index=index)
++    for role in (ReplaySplitRole.TRAIN, ReplaySplitRole.MONITOR):
++        assert new[role].logical_digest == old[role].logical_digest
++        assert new[role].geometry_set_digest == old[role].geometry_set_digest
++        assert new[role].true_label_set_digest == old[role].true_label_set_digest
++        assert Path(new[role].path).read_bytes() == Path(old[role].path).read_bytes()
+diff -ruN '--exclude=SOURCE_PATCH_0.20.233a0_to_0.20.234a0.patch' '--exclude=SHA256SUMS_0.20.234a0.txt' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/tests/test_mlff_replay_perf1_specification.py /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/tests/test_mlff_replay_perf1_specification.py
+--- /mnt/data/mdstats-replayperf1-control/mdstats-0.20.233a0/tests/test_mlff_replay_perf1_specification.py	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-replayperf1-work/mdstats-0.20.233a0/tests/test_mlff_replay_perf1_specification.py	2026-08-18 01:30:54.018433685 +0000
+@@ -0,0 +1,93 @@
++from __future__ import annotations
++
++import json
++from pathlib import Path
++
++import mdstats
++from mdstats.training_data.replay_index import (
++    REPLAY_SOURCE_INDEX_RECEIPT_SCHEMA,
++    REPLAY_SOURCE_INDEX_SCHEMA,
++)
++
++ROOT = Path(__file__).resolve().parents[1]
++MANUAL = ROOT / "docs/arch_manuals/mlff_training_data_architecture.md"
++GRAPH = ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json"
++SPEC = ROOT / "docs/specs/training_data/mlff_replay_perf1_index_cache_spec.md"
++EVIDENCE = ROOT / "benchmarks/mlff_replay_perf1_cloud_cpu_mpa0_2026-08-17.json"
++
++
++def test_replay_perf1_release_metadata_and_manual_are_synchronized() -> None:
++    assert mdstats.__version__ == "0.20.234a0"
++    assert 'version = "0.20.234a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert "Version: 0.20.234a0" in (ROOT / "PKG-INFO").read_text(encoding="utf-8")
++    text = MANUAL.read_text(encoding="utf-8")
++    assert "architecture_revision: 101" in text
++    assert 'release: "mdstats 0.20.234a0"' in text
++    assert "Gate REPLAY-PERF1 - replay index/cache and chunk materialization - COMPLETE" in text
++    assert "**Next gate.** `CAMPAIGN-PERF-QUAL1`." in text
++    assert SPEC.is_file()
++
++
++def test_replay_perf1_dependency_graph_is_closed() -> None:
++    graph = json.loads(GRAPH.read_text(encoding="utf-8"))
++    assert graph["architecture_revision"] == 101
++    assert graph["schema_version"] == 81
++    assert graph["documentation_gate"] == "REPLAY_PERF1_INDEX_CACHE"
++    assert graph["next_gate"] == "CAMPAIGN_PERF_QUAL1_CLOSURE"
++    node = next(item for item in graph["nodes"] if item["id"] == "REPLAY_PERF1_INDEX_CACHE")
++    assert node["implemented_release"] == "0.20.234a0"
++    assert node["implementation_status"] == "implemented_source_index_indexed_materialization"
++    assert node["source_index_schema"] == REPLAY_SOURCE_INDEX_SCHEMA
++    assert node["source_index_receipt_schema"] == REPLAY_SOURCE_INDEX_RECEIPT_SCHEMA
++    assert node["scientific_authority_change"] is False
++    assert node["parser_parallelism"] == "serial_measured_authority"
++
++
++def test_replay_perf1_code_contains_exact_index_and_integration_contract() -> None:
++    index_code = (ROOT / "mdstats/training_data/replay_index.py").read_text(encoding="utf-8")
++    replay_code = (ROOT / "mdstats/training_data/replay.py").read_text(encoding="utf-8")
++    pseudo_code = (ROOT / "mdstats/training_data/replay_pseudolabel.py").read_text(encoding="utf-8")
++    campaign = (ROOT / "mdstats/training_data/campaign_cli.py").read_text(encoding="utf-8")
++    for token in (
++        "class ReplaySourceIndex",
++        "_scan_extxyz_frame_ranges",
++        "iter_indexed_replay_frames",
++        "source_artifact_digest",
++        "source_index_digest",
++        "frame_offsets",
++        "frame_lengths",
++        "atom_counts",
++    ):
++        assert token in index_code
++    assert "source_index: ReplaySourceIndex | None = None" in replay_code
++    assert "source_index: ReplaySourceIndex | None = None" in pseudo_code
++    assert 'replay_root / "source-index"' in campaign
++    assert "source_index=source_index" in campaign
++
++
++def test_replay_perf1_frozen_benchmark_evidence_is_consistent() -> None:
++    evidence = json.loads(EVIDENCE.read_text(encoding="utf-8"))
++    assert evidence["release"] == "0.20.234a0"
++    assert evidence["architecture_revision"] == 101
++    assert evidence["acceptance"]["status"] == "PASS"
++    assert evidence["acceptance"]["next_gate"] == "CAMPAIGN-PERF-QUAL1"
++    assert evidence["active_foundation"]["family"] == "MACE-MPA-0 medium"
++    assert evidence["active_foundation"]["checkpoint_sha256"] == (
++        "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638"
++    )
++    assert evidence["active_foundation"]["mh1_compatible"] is True
++    assert evidence["inputs"]["replay_source_sha256"] == (
++        "187eed42fb2d6cf5e7e745ffed0ce34541e92c6a35ec9e654520cd3c7198403c"
++    )
++    assert evidence["scientific"]["monitor_control_exact"] is True
++    assert evidence["scientific"]["full_materialization_control_exact"] is True
++    assert evidence["execution"]["monitor_only_true_label_materialization"]["speedup"] > 2.5
++    assert evidence["execution"]["full_source_parse_identity"]["speedup"] > 1.0
++    assert evidence["execution"]["train_monitor_true_label_materialization"]["speedup"] > 1.0
++
++
++def test_replay_perf1_history_records_are_present() -> None:
++    assert (ROOT / "docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV101.md").is_file()
++    assert (ROOT / "docs/history/mlff/release_notes/PATCH_NOTES_0.20.234a0.md").is_file()
++    assert "0.20.234a0" in (ROOT / "CHANGELOG.md").read_text(encoding="utf-8").splitlines()[0]
++    assert "0.20.234a0" in (ROOT / "docs/history/mlff/release_notes/INDEX.md").read_text(encoding="utf-8")

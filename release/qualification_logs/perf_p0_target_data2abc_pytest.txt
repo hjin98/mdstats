@@ -1,0 +1,14 @@
+.....................................                                    [100%]
+=============================== warnings summary ===============================
+tests/test_mlff_target_data2a_role_freeze.py: 6 warnings
+tests/test_mlff_target_data2b_coverage.py: 5 warnings
+tests/test_mlff_target_data2c_ladder.py: 2 warnings
+  /mnt/data/mdstats_perf_p0/work/mdstats-0.20.179a0-complete-source-package-perf-p0/mdstats/io/vasp.py:406: VelocityReconstructionWarning: Velocities were reconstructed from unwrapped Cartesian positions. High-frequency velocity spectra may be distorted.
+    collection = normalize_raw_frame_collection(
+
+tests/test_mlff_target_data2b_coverage.py::test_target_data2b_consumes_profile_features_and_environment_classes_through_generic_adapter
+  /mnt/data/mdstats_perf_p0/work/mdstats-0.20.179a0-complete-source-package-perf-p0/mdstats/preprocess/normalize.py:151: VelocityReconstructionWarning: Only two frames are available; assigning the same first-order finite-difference velocity to both frames.
+    velocities = reconstruct_velocities(cartesian, raw.times)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+37 passed, 14 warnings in 8.82s

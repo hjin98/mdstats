@@ -1,0 +1,23 @@
+{
+  "environment": {
+    "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+    "python": "3.13.5"
+  },
+  "focused_tests": {
+    "failed": 0,
+    "passed": 74,
+    "skipped": 0,
+    "test_files": [
+      "tests/test_graphics3d_gfx4_dependencies.py",
+      "tests/test_graphics3d_contracts.py",
+      "tests/test_graphics3d_layers.py",
+      "tests/test_graphics3d_cli.py",
+      "tests/test_framework_dynamics.py",
+      "tests/test_graph_3d.py"
+    ]
+  },
+  "gate": "GFX3D-4",
+  "mdstats_version": "0.20.149a0",
+  "next_gate": "GFX3D-5",
+  "schema_version": "mdstats.gfx3d4-focused-qualification.v1"
+}

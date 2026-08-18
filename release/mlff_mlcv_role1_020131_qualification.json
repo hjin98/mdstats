@@ -1,0 +1,82 @@
+{
+  "ancillary_regression_fix": {
+    "campaign_evaluation_warning_scope": "Moved campaign checkpoint evaluation warning-condensation decorator to command_evaluate so setup-time MACE/PyTorch warnings are condensed."
+  },
+  "default_campaign": {
+    "cross_validation_folds": 3,
+    "enabled_training_modes": [
+      "multihead_replay"
+    ],
+    "final_development_fits_per_seed": 1,
+    "naive_fine_tuning_default_enabled": false,
+    "nominal_training_runs": 12,
+    "optimizer_seeds": [
+      1,
+      2,
+      3
+    ]
+  },
+  "documentation": {
+    "architecture_markdown_sha256": "9ea7060c6a00a1b604091b6dfde819f8f18e590448eb95dd8f55772d638d2331",
+    "architecture_pdf_pages": 100,
+    "architecture_pdf_sha256": "13e246b00b9da57a9d06826220e525499e51c1cb6ff6de2c58654893e41deae6",
+    "architecture_render_compare_changed_pages": 16,
+    "campaign_guide_markdown_sha256": "8f8b4d30214ce858bec856a2f1c304237e20d4599120e37a26d7ed8c7d2b2aab",
+    "campaign_guide_pdf_pages": 13,
+    "campaign_guide_pdf_sha256": "bfb5cb839ecbc46fd278613aeaeeb6b465442b630187c8e6aa87641bdb670edc",
+    "campaign_guide_render_compare_changed_pages": 1,
+    "pdf_preflight_openable": true
+  },
+  "gate": "MLCV-ROLE1",
+  "implemented_authority": {
+    "authoritative_replay_validation_requires_true_dft": true,
+    "authority_version": "mdstats.mlcv-role-authority.2026-08.v1",
+    "data5_split_authority": "data5_correlation_aware_partition_units",
+    "data8_schema": "mdstats.data8-preparation-bundle.v4",
+    "final_roles": [
+      "target_final_validation",
+      "target_locked_test"
+    ],
+    "fold_roles": [
+      "target_gradient_training",
+      "target_checkpoint_selection",
+      "target_outer_cv_evaluation"
+    ],
+    "locked_test_selection_rejected": true,
+    "outer_cv_checkpoint_selection_rejected": true,
+    "replay_roles": [
+      "replay_gradient_training",
+      "replay_true_validation"
+    ],
+    "replay_training_validation_geometry_overlap_rejected": true,
+    "schema": "mdstats.mlcv-role-catalog.v1"
+  },
+  "package_version": "0.20.131a0",
+  "schema": "mdstats.mlff-mlcv-role1-qualification.v1",
+  "scope_boundary": {
+    "adaptive_stop_semantics_changed": false,
+    "full_evaluation_semantics_changed": false,
+    "lightweight_rank_semantics_changed": false,
+    "monitor_materialization_changed": false,
+    "next_gate": "MLCV-MON1"
+  },
+  "status": "passed",
+  "tests": {
+    "broad_mlff_regression_excluding_missing_historical_smoke_fixture": {
+      "failed": 0,
+      "passed": 718,
+      "skipped": 16
+    },
+    "focused_role_seed_gate": {
+      "failed": 0,
+      "passed": 13,
+      "skipped": 0
+    },
+    "historical_data9a9a_specification_file": {
+      "failed": 1,
+      "passed": 4,
+      "reason": "release/mlff_data9a9a_real_mpa0_restart_smoke.json is absent from the supplied 0.20.130a0 source package; pre-existing packaging gap"
+    },
+    "mace_runtime": "mace-torch 0.3.16 imported from supplied dependency archive; PyTorch 2.10.0+cpu"
+  }
+}

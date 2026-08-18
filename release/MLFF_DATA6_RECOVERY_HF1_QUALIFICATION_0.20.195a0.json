@@ -1,0 +1,46 @@
+{
+  "schema": "mdstats.mlff-data6-recovery-hf1-qualification.v1",
+  "version": "0.20.195a0",
+  "architecture_revision": 62,
+  "dependency_graph_schema": 44,
+  "gate": "DATA6-RECOVERY-HF1",
+  "status": "implemented_cpu_control_plane_qualified",
+  "failure_observed": "NameError: name 'np' is not defined",
+  "repair": "module-level import numpy as np in mdstats.training_data.campaign_cli",
+  "scientific_identity_changed": false,
+  "restart_compatibility_preserved": true,
+  "source_backend_policy_changed": false,
+  "training_backend_policy_changed": false,
+  "torchscript_deprecation_warnings_causal": false,
+  "regression": "tests/test_mlff_campaign_performance.py::test_prepare_sweep_recovery_calibration_uses_numpy_linspace",
+  "validation": {
+    "focused_and_adjacent_pytest": {
+      "passed": 99,
+      "skipped": 1,
+      "failed": 0,
+      "skip_reason": "real LTA training root not supplied"
+    },
+    "branch_regression": "tests/test_mlff_campaign_performance.py::test_prepare_sweep_recovery_calibration_uses_numpy_linspace",
+    "compileall": "pass",
+    "pdf_preflight": "pass",
+    "pdf_visual_qa": "pass"
+  },
+  "pdfs": {
+    "architecture_note": {
+      "path": "ARCHITECTURE_NOTES_MLFF_REV62.pdf",
+      "pages": 1
+    },
+    "patch_notes": {
+      "path": "PATCH_NOTES_0.20.195a0.pdf",
+      "pages": 1
+    },
+    "hotfix_spec": {
+      "path": "docs/specs/training_data/mlff_data6_recovery_hf1_spec.pdf",
+      "pages": 1
+    },
+    "canonical_manual": {
+      "path": "docs/arch_manuals/mlff_training_data_architecture.pdf",
+      "pages": 199
+    }
+  }
+}

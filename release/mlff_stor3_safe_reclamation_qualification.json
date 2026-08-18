@@ -1,0 +1,41 @@
+{
+  "schema": "mdstats.mlff-stor3-qualification.v1",
+  "runtime_version": "0.20.114a0",
+  "architecture_revision": 32,
+  "date": "2026-08-08",
+  "scope": "filesystem/lifecycle-safe campaign reclamation",
+  "capability_loss": [],
+  "external_inputs_touched": false,
+  "scientific_prediction_caches_touched": false,
+  "selected_production_checkpoint_touched": false,
+  "selected_production_model_touched": false,
+  "active_run_roots_reclaimed": false,
+  "evaluation_graph_cache_requires_authoritative_evaluation": true,
+  "cleanup_manifest_append_only": true,
+  "cleanup_manifest_contains_predelete_identity": true,
+  "cleanup_manifest_contains_preserved_capabilities": true,
+  "low_disk_safe_reclamation_precedes_training_interruption": true,
+  "low_disk_threshold_does_not_broaden_cleanup_authority": true,
+  "ownership_boundary": "STOR1 real-path/symlink containment",
+  "automatic_safe_classes": [
+    "garbage_orphan_records",
+    "stale_data8_staging_and_unreferenced_generations",
+    "obsolete_runtime_after_compact_diagnostic",
+    "checkpoint_model_cache",
+    "frame_cache_after_preflight",
+    "shared_data7_cache_after_prepare",
+    "successful_preflight_heavy_temporaries",
+    "evaluation_graph_view_cache_after_authoritative_evaluation"
+  ],
+  "explicitly_protected_classes": [
+    "external_source_training_replay_true_label_inputs",
+    "selected_production_models",
+    "selected_production_raw_checkpoints",
+    "campaign_protocol_selection_verification_records",
+    "diagnostic_logs_training_histories_compact_json_csv",
+    "active_training_restart_state",
+    "evaluation_predictions",
+    "data6_model_sweep_predictions",
+    "true_label_replay_artifacts"
+  ]
+}

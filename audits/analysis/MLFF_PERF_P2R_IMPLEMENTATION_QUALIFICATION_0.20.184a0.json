@@ -1,0 +1,184 @@
+{
+  "accelerator_qualification_status": "pending_final_gpu1",
+  "architecture_revision": 51,
+  "benchmark": {
+    "cache_hit_median_wall_seconds": 0.01733279500012941,
+    "fresh_median_wall_seconds": 0.07969622800010256,
+    "full_width_saved_fraction_max": 0.8566929133858268,
+    "full_width_saved_fraction_min": 0.17191601049868765,
+    "limitations": [
+      "This benchmark does not execute MACE training or inference.",
+      "DATA8 timing is a bounded deterministic development fixture, not an LTA production-volume throughput claim.",
+      "Whole-funnel GPU/VRAM/utilization and resumed-versus-uninterrupted MACE evidence remain deferred to FINAL-GPU1.",
+      "Structure-epoch exposure is an exact work proxy, not a wall-time prediction."
+    ],
+    "median_speedup": 4.59800211099869,
+    "median_wall_reduction_fraction": 0.7825142364315272,
+    "record": {
+      "path": "benchmarks/mlff_perf_p2r_cloud_cpu_2026-08-15.json",
+      "sha256": "149c51ffabb96de1f6ff278204ef76182d04bb1788800c704c3f762532adad5d",
+      "size_bytes": 22152
+    },
+    "repeats": 15,
+    "scientific_authority_exact": true,
+    "scope": "cpu_control_plane_only_no_mace_training_no_gpu_claim"
+  },
+  "content_digest": "1465c3f5458d5be6ba8b9ff770494d1cb5dbd5c374f96e2399bfde9081238911",
+  "created_at_utc": "2026-08-16T00:09:49Z",
+  "dependency_graph_schema": 33,
+  "documents": {
+    "architecture_md": {
+      "path": "docs/arch_manuals/mlff_training_data_architecture.md",
+      "sha256": "9409093565d264fabba8070e6d4e5f836fe4a4dde2a021cafce7792b3f54e0d5",
+      "size_bytes": 641132
+    },
+    "architecture_pdf": {
+      "path": "docs/arch_manuals/mlff_training_data_architecture.pdf",
+      "sha256": "6432c52038f1dc4899e299c6480f610ef7c1db9c02a7712bcc8e98c8a5ac7eda",
+      "size_bytes": 879159
+    },
+    "final_gpu1_spec_md": {
+      "path": "docs/specs/training_data/mlff_final_gpu1_deferred_qualification_spec.md",
+      "sha256": "619f8a0a0ccb1be4f0935dc2b0b82c264f6acc60989b9306ba5016658675132b",
+      "size_bytes": 6073
+    },
+    "final_gpu1_spec_pdf": {
+      "path": "docs/specs/training_data/mlff_final_gpu1_deferred_qualification_spec.pdf",
+      "sha256": "d3bb550b1871b06c5cf2c46d199915e412fe9e079e6409e00b77ef9bef732410",
+      "size_bytes": 41909
+    },
+    "perf_p2r_spec_md": {
+      "path": "docs/specs/training_data/mlff_perf_p2r_successive_fidelity_execution_spec.md",
+      "sha256": "a324368b51e4cd30afbdeff00715b76b75f9336e6d8a1c1dd006e431c106b57a",
+      "size_bytes": 7552
+    },
+    "perf_p2r_spec_pdf": {
+      "path": "docs/specs/training_data/mlff_perf_p2r_successive_fidelity_execution_spec.pdf",
+      "sha256": "3acafe10e96148555d0d96b4a89d961e96e2ab152dfa2e4e607af65fbc5de38f",
+      "size_bytes": 53797
+    },
+    "revision_51_md": {
+      "path": "ARCHITECTURE_NOTES_MLFF_REV51.md",
+      "sha256": "5f04718b32173f5d2c9123cdabd12c7976766161f4d67672298c4b2165c534db",
+      "size_bytes": 2212
+    },
+    "revision_51_pdf": {
+      "path": "ARCHITECTURE_NOTES_MLFF_REV51.pdf",
+      "sha256": "7fc077b09a41f724a01f691ff84613460481b469958a50f96f4714adaadcb6ae",
+      "size_bytes": 24919
+    }
+  },
+  "final_gpu1": {
+    "blocking_requirements": [
+      "torch_cuda_available",
+      "cuequivariance_stack_available"
+    ],
+    "deferred_gpu_gates": [
+      "PREC3_REAL_CUEQ_ACTIVATION",
+      "MH1_ACCEL1_CUEQ_NUMERICAL_PARITY",
+      "MH1_DATA6_1_CUEQ_DESCRIPTOR_SELECTION_PARITY",
+      "MH1_TRAIN1_CUEQ_TRAINING_REALIZATION",
+      "MH1_CERT1_GENERATED_DEFAULT_CUEQ_MATRIX",
+      "SIZE_FIDELITY1_EXHAUSTIVE_CALIBRATION",
+      "PERF_P2R_WHOLE_FUNNEL_GPU_PERFORMANCE"
+    ],
+    "policy": {
+      "cpu_reference_qualification_continues_during_development": true,
+      "gpu_qualification_deferred_until_final_release": true,
+      "intermediate_gpu_success_claims_allowed": false
+    },
+    "qualification_state": "deferred_not_executed"
+  },
+  "foundation_models": [
+    {
+      "exists": true,
+      "expected_sha256": "ec00a2705854622fbbd898ccfb7701072fcd674709102d009fb919c1b8cc5dde",
+      "family": "mace_mh_1",
+      "identity_passed": true,
+      "label": "MACE-MH-1",
+      "path": "/mnt/data/mace-mh-1.model",
+      "required_head": "omat_pbe",
+      "sha256": "ec00a2705854622fbbd898ccfb7701072fcd674709102d009fb919c1b8cc5dde",
+      "size_bytes": 59208715
+    },
+    {
+      "exists": true,
+      "expected_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
+      "family": "mace_mpa_0",
+      "identity_passed": true,
+      "label": "MACE-MPA-0-medium",
+      "path": "/mnt/data/mace-mpa-0-medium.model",
+      "required_head": "default",
+      "sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
+      "size_bytes": 79462305
+    }
+  ],
+  "implementation_status": "pass",
+  "implemented_contracts": {
+    "admitted_ladder_width_grid": [
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "authenticated_data8_fixed_file_cache": true,
+    "cache_and_execution_geometry_excluded_from_scientific_identity": true,
+    "cache_corruption_rejected": true,
+    "coarse_epoch_grid": [
+      3,
+      4,
+      5
+    ],
+    "coarse_target_only_evidence_permissions": true,
+    "exact_incremental_exposure_authority": true,
+    "no_repaid_prefix_orchestration": true,
+    "parameterized_stage_plan": true,
+    "shared_frame_array_index": true
+  },
+  "mdstats_version": "0.20.184a0",
+  "next_gate": "PERF-P3",
+  "qualification_tests": {
+    "broad_mlff_run": {
+      "first_isolated_failure": "historical ARCHIVAL ADAPT-EVAL1 exact-version assertion expecting mdstats 0.20.140a0",
+      "last_reported_progress_fraction_approx": 0.24,
+      "observed_failure_markers_approx": 20,
+      "status": "incomplete_not_promoted",
+      "timeout_seconds": 600
+    },
+    "broader_synchronized_current_gate_slice": {
+      "failed": 0,
+      "passed": 117,
+      "skipped": 1,
+      "warnings": 28
+    },
+    "compileall": "pass",
+    "final_corrected_authority_slice": {
+      "failed": 0,
+      "passed": 74,
+      "warnings": 9
+    },
+    "focused_perf_p2r_implementation_specification_slice": {
+      "failed": 0,
+      "passed": 21,
+      "warnings": 9
+    },
+    "package_collection": {
+      "collected": 3026,
+      "command_requires_historical_tests_path_on_PYTHONPATH": true
+    },
+    "real_foundation_cpu_e3nn_regression": {
+      "failed": 0,
+      "note": "Supplied MACE-MH-1 and MACE-MPA-0-medium; CPU/e3nn only.",
+      "passed": 27,
+      "skipped": 1
+    }
+  },
+  "release_blockers_remaining": [
+    "FINAL-GPU1, including SIZE-FIDELITY1 empirical calibration and PERF-P2R accelerator realization"
+  ],
+  "schema": "mdstats.perf-p2r-implementation-qualification.2026-08.v1",
+  "scientific_default_authorized_by_perf_p2r": false,
+  "scope": "CPU/control-plane implementation qualification only; accelerator scientific/performance evidence is deferred to FINAL-GPU1.",
+  "whole_funnel_gpu_claim": false
+}

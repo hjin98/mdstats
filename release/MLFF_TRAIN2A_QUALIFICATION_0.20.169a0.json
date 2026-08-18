@@ -1,0 +1,94 @@
+{
+  "adversarial_checks": [
+    "replay observables are rejected from CheckpointSelectionPolicy metrics and API",
+    "replay-admissible candidates with different replay margin receive identical target ordering evidence",
+    "replay ceiling exceedance rejects candidate while replay improvement provides no reward",
+    "TRAIN2 and historical AdaptiveTrainingStopPolicy cannot coexist in one protocol",
+    "partial TRAIN2 policy sets fail closed",
+    "explicit historical early-stop/replay-score/replay-fraction controls fail migration validation under train2",
+    "historical v5 protocol round-trips with unchanged digest semantics",
+    "new v6 production materialization round-trips with complete TRAIN2 authority",
+    "historical seed-extension regression remains explicitly historical rather than silently migrated"
+  ],
+  "date": "2026-08-13",
+  "gate": "TRAIN2A",
+  "qualification": {
+    "documentation_audit": {
+      "historical_data0_failed": 1,
+      "historical_data0_passed": 7,
+      "known_failure": "historical test hard-codes pyproject version 0.20.140a0",
+      "train2a_spec_passed": 2
+    },
+    "expected_skip": "tests/test_mlff_campaign_cli.py:337 real LTA training root not supplied",
+    "focused_and_regression_pytest": {
+      "failed": 0,
+      "passed": 233,
+      "skipped": 1,
+      "warnings": 71
+    },
+    "pdf": {
+      "no_clipping_or_broken_glyphs": true,
+      "pages_after": 126,
+      "pages_before": 126,
+      "render_compare_changed_pages": 17,
+      "result": "passed",
+      "visually_inspected_pages": [
+        117,
+        118,
+        120,
+        122,
+        123
+      ]
+    },
+    "python_compileall": "passed"
+  },
+  "schema": "mdstats.mlff-train2a-qualification.v1",
+  "scientific_contract": {
+    "allowed_replay_degradation_mev_per_a": 30.0,
+    "historical_adaptive_schema_preserved": "mdstats.training-protocol-identity.v5",
+    "new_materialization_schema": "mdstats.production-materialization-plan.v6",
+    "new_policy_runtime_enabled": false,
+    "new_protocol_schema": "mdstats.training-protocol-identity.v6",
+    "performance_driven_training_termination_allowed": false,
+    "replay_positive_ranking_credit": false,
+    "replay_role": "hard_foundation_relative_true_dft_admissibility_only",
+    "replay_tie_break_authority": false
+  },
+  "scope": {
+    "implemented": [
+      "four orthogonal versioned TRAIN2/EVAL2 policy authorities",
+      "hard TRUE_DFT replay-degradation admissibility with target-only checkpoint selection authority",
+      "v6 training-protocol and production-materialization identities for complete TRAIN2 policy sets",
+      "configuration-level migration guard against mixed historical/new controls",
+      "new init defaults policy_generation=train2 and checkpoint_strategy=train2_target_first",
+      "fail-closed train/evaluate/verify boundary until TRAIN2B/EVAL2/SELECT2 runtime gates",
+      "historical adaptive v5 serialization/digest and execution compatibility"
+    ],
+    "intentionally_deferred": [
+      "TRAIN2B fixed-budget optimizer execution and per-update LR scheduler stepping",
+      "EVAL2 full checkpoint trajectory purchase/bootstrap comparison",
+      "DEPLOY/PES/RELAX/DYN verification and SELECT2 production publication"
+    ]
+  },
+  "sha256": {
+    "CHANGELOG.md": "d228d9b62ef88c9c3dbc53316b35a167cbb38f87250b9ef6190e543064f799a3",
+    "PKG-INFO": "85499b1e5cb463f9ef1a878d57a368f7ec10bc1882354849530d00d68d2f23db",
+    "docs/arch_manuals/mlff_training_data_architecture.md": "61d264910911b5d66eb67da0eafd854d60b54ebabd68a0e6f8f353c286f3aa92",
+    "docs/arch_manuals/mlff_training_data_architecture.pdf": "d39cf63e0bd2d203b2dd72cb89fef376cca4cfaccbd4efe2f732c372883c3781",
+    "mdstats/__init__.py": "740d124ac15e0bddd8e4a0624a8cae60785d537f794c4e5da4609220e0f25ac3",
+    "mdstats/_version.py": "a93d08f73249b0ef3ae98d11d566440fc45bb26d220e4ac5cbce500f90d7a039",
+    "mdstats/training_data/__init__.py": "3bdb9a6656b3cdf39c96f8367ace9125cf6f56bef3a2a806eb5a70cd1acf591f",
+    "mdstats/training_data/campaign_cli.py": "7efc7dddd913f367595254b60f80945f011f332a94cc8f7056088019acb7d11f",
+    "mdstats/training_data/data8_bundle.py": "634ea17bd8d0444d160b0b3215163cb3f15f18855b852c33eaf07329de2f9a35",
+    "mdstats/training_data/production_materialization.py": "b69f728ca20840361f93a6581e70dd6e2d053085e67c9477c07b05c6091bcbd8",
+    "mdstats/training_data/protocol.py": "2a61dbd843a1c8b5b61820ccbe9fc401320d654f9b93be854c54cd64aa57509e",
+    "mdstats/training_data/train2_policy.py": "9e404ca92a59840bd544d53d3890498fcec2563738e87e03fb46d254c0c46c11",
+    "pyproject.toml": "201cd575db9a8d86fa674f56642854c4beb69f16d6ace9f8307eacd361325fbe",
+    "release/PATCH_NOTES_0.20.169a0.md": "4d56ba8be83ba7d0c0d95ad8d8e4cddf04f3ff40b0caecc4326a4aca0235175a",
+    "tests/test_mlff_campaign_cli.py": "0183b78743339495ddfd2a3a93eb5ffb5c8cfedf3dbd2330e01a5918f771045a",
+    "tests/test_mlff_data9a9b_production_materialization.py": "94acea355698e398e520a666d66b9271e4591f6d4f134a8a7a6458a532f2b14c",
+    "tests/test_mlff_train2a_policy.py": "bb437863f5ba6f20c227a51474d4dbb59ac7ab339d846d08406c12651f54251b",
+    "tests/test_mlff_train2a_specification.py": "783b3e5b4d1a11185f891168f60d04e7f8381580d94243f1f893a26e9829e8eb"
+  },
+  "version": "0.20.169a0"
+}

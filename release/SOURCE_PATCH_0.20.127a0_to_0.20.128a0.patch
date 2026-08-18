@@ -1,0 +1,2452 @@
+diff -ruN a/ARCHITECTURE_NOTES_MLFF_REV24.md b/ARCHITECTURE_NOTES_MLFF_REV24.md
+--- a/ARCHITECTURE_NOTES_MLFF_REV24.md	2026-08-09 22:47:14.622838487 +0000
++++ b/ARCHITECTURE_NOTES_MLFF_REV24.md	2026-08-09 23:57:31.745609098 +0000
+@@ -1,6 +1,6 @@
+ # MLFF architecture revision 24 planning notes
+ 
+-This source-tree note records the adaptive-training and evaluation-simplification revision opened after mdstats 0.20.120a0. The original seven-gate plan is preserved below; implementation has now closed ADAPT-PREC1 (0.20.122a0), ADAPT-MON1 (0.20.123a0), ADAPT-STOP1 (0.20.124a0), ADAPT-RANK1 (0.20.125a0), ADAPT-EVAL1 (0.20.126a0), and ADAPT-VERIFY1 (0.20.127a0). Only ADAPT-MIGRATE1 remains pending.
++This source-tree note records the adaptive-training and evaluation-simplification revision opened after mdstats 0.20.120a0. The original seven-gate plan is preserved below; implementation is now complete through ADAPT-PREC1 (0.20.122a0), ADAPT-MON1 (0.20.123a0), ADAPT-STOP1 (0.20.124a0), ADAPT-RANK1 (0.20.125a0), ADAPT-EVAL1 (0.20.126a0), ADAPT-VERIFY1 (0.20.127a0), and ADAPT-MIGRATE1 (0.20.128a0).
+ 
+ Ordered gates:
+ 
+diff -ruN a/ARCHITECTURE_NOTES_MLFF_REV31.md b/ARCHITECTURE_NOTES_MLFF_REV31.md
+--- a/ARCHITECTURE_NOTES_MLFF_REV31.md	1970-01-01 00:00:00.000000000 +0000
++++ b/ARCHITECTURE_NOTES_MLFF_REV31.md	2026-08-09 23:49:17.110360773 +0000
+@@ -0,0 +1,33 @@
++# MLFF architecture revision 31 - ADAPT-MIGRATE1 migration closure
++
++This release implements the final `ADAPT-MIGRATE1` gate and closes the seven-gate adaptive MLFF
++campaign revision introduced in 0.20.121a0.
++
++Implemented contract:
++
++- add `ProtocolFreezeAuthorityRecord`, a schema-neutral lifecycle/storage adapter that validates
++  either historical committee freezes or adaptive deployment freezes without replacing the original
++  scientific freeze evidence;
++- add immutable `AdaptiveMigrationRecord` evidence binding EVAL1, VERIFY1, deployment, adaptive
++  freeze, generic authority, learned-model dtype, invariant FP64 scientific arithmetic, and preserved
++  historical evaluator-record keys;
++- reconcile completed 0.20.127 adaptive campaigns idempotently by replacing only the duplicated
++  generic adaptive-freeze alias with the new authority record while preserving
++  `adaptive_protocol_freeze` and all historical evidence;
++- derive evaluator authority from immutable run protocol identity: adaptive STOP1/RANK1 campaigns
++  require `adaptive_topk`, while historical campaigns retain their original
++  bounded/exhaustive/multi-fidelity semantics and cannot be silently reinterpreted;
++- make post-freeze EVAL1 immutable: later `evaluate` commands authenticate/reuse the frozen
++  full-evaluation authority rather than creating a second selection history under one campaign ID;
++- require schema-valid freeze authority for consequential STOR operations instead of accepting mere
++  presence of a `protocol_freeze` key;
++- keep `storage report` read-only by reading migration/freeze summary through SQLite `mode=ro`;
++- preserve all STOR1-STOR5 ownership, capability-loss, archive, and deletion boundaries; migration
++  adds no cleanup authority;
++- retain historical EVAL-MF, committee, and staged/refine records as readable campaign evidence;
++  retired algorithms cannot silently regain authority over a new adaptive campaign; and
++- qualify the completed PREC1->MON1->STOP1->RANK1->EVAL1->VERIFY1->MIGRATE1 lifecycle together,
++  including legacy evaluator/precision and storage/restart compatibility.
++
++The canonical contract is documented in
++`docs/specs/training_data/mlff_adaptive_migration_spec.{md,pdf}` and the MLFF architecture manual.
+diff -ruN a/CHANGELOG.md b/CHANGELOG.md
+--- a/CHANGELOG.md	2026-08-09 22:43:41.155390613 +0000
++++ b/CHANGELOG.md	2026-08-09 23:49:17.511596356 +0000
+@@ -1,3 +1,11 @@
++## 0.20.128a0 - 2026-08-09
++
++- Implement ADAPT-MIGRATE1 and close the seven-gate adaptive MLFF revision with schema-neutral protocol-freeze authority plus immutable adaptive migration evidence.
++- Reconcile completed 0.20.127 adaptive freeze aliases without rerunning scientific work or deleting historical EVAL-MF/committee evidence; ambiguous dual authority fails closed.
++- Bind evaluator semantics to immutable campaign protocol identity so adaptive campaigns cannot regain historical EVAL-MF authority, and historical campaigns cannot be silently reinterpreted as `adaptive_topk`.
++- Make post-freeze adaptive evaluation immutable/reusable, require schema-valid freeze authority for consequential storage actions, and keep STOR1 reporting read-only via SQLite `mode=ro`.
++- Preserve all existing scientific thresholds, monitor sizes, binary learned-model dtype semantics, FP64 scientific arithmetic, storage ownership boundaries, and historical record readability.
++
+ ## 0.20.127a0 - 2026-08-09
+ 
+ - Implement ADAPT-VERIFY1 score-ordered deployment verification: verify the best fully admissible ADAPT-EVAL1 candidate first and deterministically fall back to the next already fully evaluated candidate only after a hard verification failure.
+diff -ruN a/PATCH_NOTES_0.20.128a0.md b/PATCH_NOTES_0.20.128a0.md
+--- a/PATCH_NOTES_0.20.128a0.md	1970-01-01 00:00:00.000000000 +0000
++++ b/PATCH_NOTES_0.20.128a0.md	2026-08-09 23:49:17.110986059 +0000
+@@ -0,0 +1,43 @@
++# mdstats 0.20.128a0 patch notes
++
++## ADAPT-MIGRATE1 - adaptive campaign migration and compatibility closure
++
++This release implements the seventh and final gate of the post-0.20.120 MLFF adaptive revision.
++It changes no target/replay thresholds, monitor sizes, ranking weights, evaluation scoring, or
++verification physics established by ADAPT-PREC1 through ADAPT-VERIFY1. It closes the schema,
++restart, storage-authority, and historical-compatibility boundaries around those policies.
++
++### Schema-neutral freeze authority
++
++Generic lifecycle/storage code now consumes `ProtocolFreezeAuthorityRecord` instead of assuming the
++`protocol_freeze` database key contains one historical scientific record type. The adapter points to
++the original historical or adaptive scientific freeze and protects its deployed model SHA-256
++identities; it does not rewrite the scientific freeze.
++
++Adaptive deployments also receive an immutable `AdaptiveMigrationRecord` binding the full EVAL1,
++VERIFY1, deployment-model, adaptive-freeze, and generic-authority lineage together with the
++`single|double` learned-model inference dtype and invariant FP64 scientific-analysis dtype.
++
++### 0.20.127 compatibility and stale-evidence closure
++
++Completed 0.20.127 adaptive campaigns can be reconciled by rerunning `verify`. Existing inference,
++full-evaluation, NVE, deployment, and adaptive-freeze evidence is reused; only the generic freeze
++alias is upgraded and the migration receipt is added. The operation is idempotent and historical
++EVAL-MF/committee records are preserved.
++
++Adaptive campaigns cannot be switched back to historical evaluators by editing TOML, and historical
++campaigns cannot be switched to `adaptive_topk` without a new scientific campaign identity. Once an
++adaptive deployment is frozen, later `evaluate` calls reuse the frozen EVAL1 authority instead of
++creating a second selection history.
++
++### Storage safety
++
++STOR4/STOR5 consequential actions now require a schema-valid protocol-freeze authority rather than
++mere record-key presence. `storage report` remains non-mutating and reads authority/history summary
++through a read-only SQLite connection. No migration rule broadens ownership or deletion authority.
++
++### Revision closure
++
++ADAPT-PREC1, MON1, STOP1, RANK1, EVAL1, VERIFY1, and MIGRATE1 are now implemented end to end for new
++campaigns. Historical staged `refine`, EVAL-MF, and committee records remain readable for the
++campaigns that created them but no longer control adaptive production identities.
+diff -ruN a/README.md b/README.md
+--- a/README.md	2026-08-09 22:21:21.759634388 +0000
++++ b/README.md	2026-08-09 23:54:48.443061966 +0000
+@@ -4,7 +4,21 @@
+ 
+ Checkpoint accuracy is judged against independent DFT labels. Foundation-generated replay pseudolabels remain the default replay training targets and an absolute behavioral-drift diagnostic. Set `[paths].replay_true_labels` to the original true-label replay directory so mdstats can evaluate both the foundation and fine-tuned checkpoint on the same target and replay geometries without changing training inputs.
+ 
+-Current development release: **0.20.126a0** (ADAPT-EVAL1 adaptive top-K full evaluation on top of binary learned-model precision, fixed common online monitors, adaptive stopping, and one-champion-per-run lightweight ranking).
++Current development release: **0.20.128a0** (ADAPT-MIGRATE1 closure of the seven-gate adaptive MLFF campaign: binary learned-model precision, fixed common monitors, adaptive stopping/ranking, top-K full evaluation, score-ordered verification fallback, and schema-aware migration/storage authority).
++
++
++## Adaptive migration and compatibility closure in 0.20.128a0
++
++ADAPT-MIGRATE1 closes the seven-gate adaptive revision. New adaptive campaign identity now prevents
++TOML edits from switching back to historical bounded/exhaustive/EVAL-MF evaluators, while historical
++campaigns cannot be silently reinterpreted as `adaptive_topk`. Generic storage/restart code consumes
++a schema-neutral protocol-freeze authority record that points to the original historical committee
++freeze or adaptive deployment freeze without rewriting it. Completed 0.20.127 adaptive campaigns can
++be reconciled by rerunning `verify`; completed inference/evaluation/NVE evidence is reused and only the
++generic authority alias plus immutable migration receipt are added. Consequential STOR operations now
++require a schema-valid freeze authority, and `storage report` reads migration/freeze summary through a
++read-only SQLite connection. Historical EVAL-MF/refine/committee evidence remains readable and is not
++deleted by migration.
+ 
+ ## Adaptive top-K full evaluation in 0.20.126a0
+ 
+@@ -23,8 +37,8 @@
+ fine-tuning remains target-only for gradients but receives the same fixed true-replay online monitor
+ as validation-only evidence through its target head, making lightweight scores comparable with
+ multi-head replay runs. Historical `bounded`, `exhaustive`, and `multi_fidelity` evaluators remain
+-available for compatible old campaigns. ADAPT-VERIFY1 remains the next gate for final verification,
+-fallback, and export.
++available for compatible old campaigns. ADAPT-VERIFY1 in 0.20.127a0 performs score-ordered
++bounded verification fallback and publishes only the first passing target-head model.
+ 
+ ## Adaptive stopping and run-local ranking in 0.20.124a0-0.20.125a0
+ 
+@@ -48,8 +62,7 @@
+ independent 512-configuration TRUE_DFT replay online monitor. The target monitor is selected
+ deterministically from DATA5 outer-monitor evidence with condition/run/time coverage and reused
+ by every competing run. Multi-head replay validation uses the true-label monitor while replay
+-gradient training remains independently configured. Adaptive stopping is the next gate; this
+-release still obeys `max_num_epochs` and the existing evaluator.
++gradient training remains independently configured. ADAPT-STOP1 and the later adaptive ranking/evaluation gates now consume these fixed monitor identities.
+ 
+ ## Binary learned-model precision in 0.20.122a0
+ 
+diff -ruN a/docs/README.md b/docs/README.md
+--- a/docs/README.md	2026-08-09 22:43:40.621414682 +0000
++++ b/docs/README.md	2026-08-09 23:49:34.907075365 +0000
+@@ -56,6 +56,9 @@
+   implemented in 0.20.127a0: score-ordered bounded deployment verification, deterministic fallback
+   across already fully evaluated admissible candidates, exact verified target-head publication, and
+   binary learned-model dtype propagation with invariant FP64 scientific bookkeeping.
++- `specs/training_data/mlff_adaptive_migration_spec.{md,pdf}` defines ADAPT-MIGRATE1,
++  implemented in 0.20.128a0: schema-neutral protocol-freeze authority, restart/stale-evidence
++  closure, historical evaluator readability, and storage lifecycle compatibility.
+ - `specs/training_data/mlff_staged_precision_profiles_spec.{md,pdf}` is retained as the
+   historical PREC1-PREC3 staged-precision compatibility specification for campaigns
+   created before ADAPT-PREC1; staged `refine` is no longer a new-production profile.
+@@ -107,3 +110,4 @@
+ those results but does not redefine their physical algorithms.
+ 
+ Runtime note: 0.20.112a0 condenses repeated upstream MACE/PyTorch evaluation warnings; the architecture roadmap remains STOR1 -> STOR2.
++
+diff -ruN a/docs/arch_manuals/README.md b/docs/arch_manuals/README.md
+--- a/docs/arch_manuals/README.md	2026-08-09 22:47:14.622978185 +0000
++++ b/docs/arch_manuals/README.md	2026-08-09 23:45:36.157957163 +0000
+@@ -49,7 +49,7 @@
+   execution-optimization line, the 0.20.104a0 source-tool/package-integrity repair,
+   and the 0.20.105a0 progress-timing correctness repair. It records the completed
+   post-first-campaign roadmap (`OPT-EVAL1` through `OPT-CTRL1`) and the planned
+-  post-0.20.105 evaluation/precision/storage roadmap and the post-0.20.120 adaptive revision. `EVAL-MF1/MF2` remain historical compatibility architecture; `ADAPT-PREC1` through `ADAPT-VERIFY1` are implemented in 0.20.122a0--0.20.127a0, while only ADAPT-MIGRATE1 remains pending.
++  post-0.20.105 evaluation/precision/storage roadmap and the post-0.20.120 adaptive revision. `EVAL-MF1/MF2` remain historical compatibility architecture; `ADAPT-PREC1` through `ADAPT-MIGRATE1` are implemented in 0.20.122a0--0.20.128a0; the adaptive revision is complete.
+   The generic core owns provenance, eligibility,
+   partitioning, leakage control, selection orchestration, replay, precision,
+   training-backend calls, deployment, and validation policy. Physical
+diff -ruN a/docs/arch_manuals/mlff_training_data_architecture.md b/docs/arch_manuals/mlff_training_data_architecture.md
+--- a/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-09 22:37:40.667775702 +0000
++++ b/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-09 23:54:05.892116179 +0000
+@@ -34,7 +34,7 @@
+ STAT1 and SAMP0 workflows consume those primitives without changing their
+ serialized evidence. MLFF-DATA2 is implemented in `0.20.30a0`: deterministic source manifests, VASP source catalogs, named energy selection, decomposed label domains, and per-label-domain structural atomic-reference identifiability are public runtime contracts. MLFF-DATA3 is implemented in `0.20.31a0`: manifest-bound frame occurrences, geometry and label identities, duplicate/restart detection, post-DFT eligibility, temperature conditions, reference-cell resolution, and rotation-separated finite strain are public runtime contracts. MLFF-DATA4 is implemented in `0.20.32a0` and generalized through DATA9A7d: partition-independent raw physical features, optional profile-extension states, protected event bursts, deterministic feature caches, and partition-role budget requests are public runtime contracts. MLFF-DATA5 is implemented in `0.20.33a0`: autocorrelation-aware partition units, role feasibility, deterministic outer evidence roles, independence grades, nested cross-validation monitors, blinding boundaries, and fail-closed leakage audits are public runtime contracts. MLFF-DATA6 is implemented in `0.20.34a0` and generalized through DATA9A7d: profile-aware universal and optional extension descriptors, optional checkpoint-bound MACE atomic descriptor sidecars, training-domain-only foundation residuals, blinded non-training predictions, and sealed locked-test prediction records are public runtime contracts. MLFF-DATA7 is implemented in `0.20.35a0`: canonical final/fold training domains, fold-local fitted metrics, domain-local atomic-reference fits, explicit objective and checkpoint policies, deterministic quota-interleaved selection ladders, and coverage reports are public runtime contracts. MLFF-DATA8 is implemented in `0.20.36a0`: verified MACE-readable extended-XYZ artifacts, explicit E0 mappings, replay train/monitor plans, a v0.3.16 source compatibility lock, complete training-protocol identities, loader dry-run exposure records, independent final/fold job bundles, and sealed locked-test metadata are public runtime contracts. MLFF-DATA9A hardening began in `0.20.37a0`, its offline runtime bootstrap is implemented in `0.20.38a0`, and DATA9A2 real-MACE realization is implemented in `0.20.39a0`: checkpoint-residual E0 fits, relocatable bundles, strict replay/XYZ audits, source-declared dependency manifests, isolated local-artifact installation, installed-environment qualification, v0.3.16 scalar-literal serialization, fixed-file target/replay weight realization, genuine parser/loader dry runs, bounded training, checkpoint/head inventory, target-head extraction, and finite evaluation round trips are public contracts. The supplied dependency bundle and MPA-0 checkpoint pass executable qualification. DATA9A3 in 0.20.40a0 qualifies the complete 27-source, 37,632-frame bulk-LTA target corpus through DATA5 with a passing leakage audit. DATA9A production execution remains open for checkpoint-bound production DATA6/DATA7 evidence, DATA8 job materialization, exact replay-corpus identity, and later protocol-matched training and freeze. DATA9A4 in 0.20.41a0 adds a protocol-bound selectable precision contract: the float64 MPA-0 checkpoint may initialize either a float32 or float64 fine-tuned model, and actual serialized parameter/buffer dtypes are immutable execution evidence rather than inferred from CLI text. DATA9A5a/9A5b in 0.20.42a0-0.20.43a0 close Python/ASE critical precision and deployment-artifact semantics. DATA9A6 in 0.20.44a0 introduces the analysis-owned observable-call bridge. DATA9A6b in 0.20.45a0 closes recipe dependency safety, collection and model lineage, runtime-duration/warning evidence, capability requirement schemas, documentation conflicts, and the thermomechanical/energetic analysis ownership plan. DATA9A6c in 0.20.46a0 verifies supplied identities against the actual collections, requires symmetric reference/candidate generation lineage for production evidence, binds analysis-owned result digests, freezes observable evidence roles and comparison-policy identity before locked evaluation, and corrects runtime/package identity and dependency ordering. DATA9A7a in 0.20.47a0 introduces user-declared compositional material profiles, phase components, atom-group catalogs, condition axes, independence axes, a declarative provider protocol, and DATA4 schema-v2 profile threading without changing existing feature or selection behavior. DATA9A7b in 0.20.48a0 adds an analysis-owned universal local-structure kernel, profile/atom-group-aware DATA6 structural catalogs, generic structural events, a DATA7 universal feature block, and generic per-species environment coverage without importing LTA. DATA9A7c in 0.20.49a0 derives immutable phase/geometry selection plans, profile-specific feature/event activation, geometry-aware atom-group priorities, DATA6-v3 plan lineage, and compositional observable-call recommendations. DATA9A7d in 0.20.50a0 migrates LTA behind generic optional profile-extension catalogs, advances DATA4/DATA6 canonical schemas, and replaces generic-core cation/site assumptions with focus groups, structural realizations, and extension coverage. DATA9A7e in 0.20.51a0 qualifies bounded crystal, amorphous, liquid, interface, and LTA DATA4-DATA7 paths, adds immutable qualification evidence, and makes MLFF LTA implementation imports lazy so generic workflows neither import nor serialize LTA-specific evidence. DATA9A8 in 0.20.52a0 adds frozen profile-aware observable comparison and acceptance policies. DATA9A9a in 0.20.53a0 adds the exact DATA5-authorized checkpoint-bound descriptor/prediction plan, per-frame restart sidecars, atomic checkpoints, corruption recovery, and DATA6 reuse without repeated foundation-model inference. DATA9A9b in 0.20.54a0 adds restartable final/fold DATA7 materialization, exact replay binding, complete DATA8 job-tree evidence, corruption-driven downstream invalidation, and a relocatable production materialization record. DATA9A9c in 0.20.55a0 adds the immutable production-corpus plan, evidence-derived foundation and residual-E0 qualification, numerical replay-label identity, content-addressed DATA8 generation promotion, self-verifying loaders, and generic optional-extension gate requirements. DATA9B1 in 0.20.56a0 adds passed-gate campaign-matrix freezing, protocol-family and seed-variant identities, content-addressed checkpoint catalogs, external metric records, deterministic hard-constraint admissibility, and fail-closed checkpoint selection. DATA9B2 in 0.20.57a0 adds supervised/restartable MACE execution, automatic target/replay checkpoint evaluation, fold/seed aggregation, learning curves, deterministic protocol comparison, target-head committee export, protocol freeze, and sealed-evaluation activation. DATA9B3 in 0.20.58a0 adds the unified source-checkout campaign CLI, one-database orchestration state, manifest approval, production preparation/training/evaluation commands, source-local precision-wrapper shims, and bounded NVE deployment verification. DATA9B3A in 0.20.59a0 makes the MACE acceleration backend a frozen campaign policy, auto-selects cuEquivariance at initialization when qualified, and propagates it through DATA6, DATA8, preflight, production training, checkpoint evaluation, and bounded verification without silent fallback. DATA2A in 0.20.60a0 adds XML-backed review-manifest metadata, percentage-aware filename strain candidates, exact LTA fixed-cell geometry verification, and fail-safe promotion before manual manifest approval. DATA2 interrupted-stream hardening in 0.20.61a0 adds EOF-qualified interrupted `vasprun.xml` recovery across ENS0, DATA2 source audit, and normalized trajectory loading while preserving strict rejection of ambiguous or mid-file corruption.
+ The post-0.20.105 evaluation/storage cycle implements EVAL-MF1 in 0.20.106a0 and EVAL-MF2 in 0.20.107a0: deterministic nested equal-fraction target/replay checkpoint screening, delta-only prediction reuse, conservative source/block-aware survivor guards, comprehensive epoch reporting, and full-fidelity finalist publication are now the generated production evaluation strategy.
+-The post-0.20.120 adaptive-training revision was recorded as architecture-only planning in 0.20.121a0. **ADAPT-PREC1 is implemented in 0.20.122a0**, **ADAPT-MON1 in 0.20.123a0**, **ADAPT-STOP1 in 0.20.124a0**, **ADAPT-RANK1 in 0.20.125a0**, and **ADAPT-EVAL1 in 0.20.126a0**, and **ADAPT-VERIFY1 in 0.20.127a0**: new campaigns use binary `single|double` learned-model precision, fixed common target/true-replay online monitors, criterion-driven epoch termination, zero-new-inference one-champion-per-run screening, top-K authoritative full evaluation, and score-ordered bounded verification with deterministic fallback to the next already fully evaluated admissible candidate. Only the first verification-passing target-head artifact is published. EVAL-MF and historical committee workflows remain readable but are no longer the generated adaptive production path.
++The post-0.20.120 adaptive-training revision was recorded as architecture-only planning in 0.20.121a0. **ADAPT-PREC1 is implemented in 0.20.122a0**, **ADAPT-MON1 in 0.20.123a0**, **ADAPT-STOP1 in 0.20.124a0**, **ADAPT-RANK1 in 0.20.125a0**, **ADAPT-EVAL1 in 0.20.126a0**, **ADAPT-VERIFY1 in 0.20.127a0**, and **ADAPT-MIGRATE1 in 0.20.128a0**: new campaigns use binary `single|double` learned-model precision, fixed common target/true-replay online monitors, criterion-driven epoch termination, zero-new-inference one-champion-per-run screening, top-K authoritative full evaluation, score-ordered bounded verification with deterministic fallback, and schema-aware migration/storage authority. Only the first verification-passing target-head artifact is published. EVAL-MF and historical committee workflows remain readable but are no longer the generated adaptive production path. The seven-gate adaptive revision is complete.
+ 
+ The central architectural rule is:
+ 
+@@ -4806,8 +4806,9 @@
+ 
+ **Status:** architecture recorded in `mdstats 0.20.121a0`; `ADAPT-PREC1` is implemented
+ in `mdstats 0.20.122a0`, `ADAPT-MON1` in `mdstats 0.20.123a0`, `ADAPT-STOP1` in
+-`mdstats 0.20.124a0`, `ADAPT-RANK1` in `mdstats 0.20.125a0`, and `ADAPT-EVAL1` in
+-`mdstats 0.20.127a0`. `ADAPT-VERIFY1` is implemented; only `ADAPT-MIGRATE1` remains `not_started`.
++`mdstats 0.20.124a0`, `ADAPT-RANK1` in `mdstats 0.20.125a0`, `ADAPT-EVAL1` in
++`mdstats 0.20.126a0`, `ADAPT-VERIFY1` in `mdstats 0.20.127a0`, and `ADAPT-MIGRATE1` in
++`mdstats 0.20.128a0`. The seven-gate adaptive revision is complete.
+ Binary learned-model precision, fixed common online monitors, criterion-driven training
+ termination, and top-K full evaluation now supersede the corresponding legacy production
+ semantics for new campaigns. EVAL-MF remains readable and explicitly selectable only for
+@@ -5534,10 +5535,12 @@
+ 
+ ## ADAPT-MIGRATE1 - schema, restart, storage, and historical compatibility closure
+ 
+-**Status:** `not_started`.
++**Status:** implemented in `mdstats 0.20.128a0`.
+ 
+-The final gate removes obsolete production plumbing only after the new training and
+-evaluation path has qualified end to end.
++The final gate closes authority, restart, storage, and historical-compatibility seams after the
++new training/evaluation/deployment path has qualified end to end. It deliberately does not change
++the scientific policies established by ADAPT-PREC1 through ADAPT-VERIFY1 and does not delete
++historical evidence.
+ 
+ ### Schema and identity migration
+ 
+@@ -5591,6 +5594,31 @@
+ capability-loss rules. The migration gate must not broaden deletion authority or delete
+ historical evidence merely because the producing algorithm is no longer the default.
+ 
++### ADAPT-MIGRATE1 implementation record (`0.20.128a0`)
++
++The implemented closure adds a schema-neutral `ProtocolFreezeAuthorityRecord` rather than making
++generic lifecycle code guess whether `protocol_freeze` contains a historical committee freeze or
++an adaptive deployment freeze. The original scientific freeze remains intact. Historical freezes
++are adapted read-only without inventing a model dtype; adaptive freezes bind the learned-model
++dtype and invariant FP64 scientific-analysis dtype.
++
++Completed `0.20.127a0` adaptive campaigns are reconciled idempotently: the duplicated adaptive
++freeze under the generic `protocol_freeze` alias is replaced only at that alias by the new authority
++record, while `adaptive_protocol_freeze`, EVAL1/VERIFY1/deployment evidence, and all historical
++EVAL-MF/committee records are preserved. An immutable `AdaptiveMigrationRecord` binds the complete
++lineage and records the preserved historical-evidence keys.
++
++Evaluation semantics are now protected by immutable campaign identity. Adaptive STOP1/RANK1
++campaigns must use `adaptive_topk`; historical campaigns cannot be reinterpreted as adaptive by
++editing TOML, and adaptive campaigns cannot regain EVAL-MF authority the same way. After an adaptive
++protocol freeze exists, `evaluate` authenticates/reuses the frozen EVAL1 decision rather than
++creating a second post-freeze selection history.
++
++STOR1-STOR5 retain their existing ownership and capability-loss rules, but consequential storage
++operations now require a schema-valid protocol-freeze authority rather than mere record-key
++presence. STOR1 reporting reads that summary through a read-only SQLite connection, so migration
++reporting does not mutate the campaign database.
++
+ ### End-to-end qualification
+ 
+ Qualification shall include at least:
+@@ -5635,12 +5663,11 @@
+ 11. **history remains readable** - retired EVAL-MF/refine evidence is preserved without
+     silently controlling new campaigns.
+ 
+-From `0.20.122a0`, the ADAPT-PREC1 binary learned-model precision contract is the runtime
+-source of truth for new campaigns. Until the later migration gates close, the existing
+-fixed-epoch monitor, checkpoint-ranking, EVAL-MF, and verification-selection behavior
+-remains runtime-authoritative. This roadmap therefore mixes one completed precision gate
+-with later staged implementation targets; it does not claim that the remaining adaptive
+-training/evaluation policy is already active.
++As of `0.20.128a0`, all seven adaptive gates are implemented. New campaigns use the binary
++model-precision, common-monitor, adaptive-stop, run-local ranking, top-K full-evaluation, sequential
++verification-fallback, and schema-aware migration/storage authority path end to end. Historical
++EVAL-MF/refine/committee records remain readable only for the campaigns that created them and do not
++silently control new adaptive campaign identities.
+ 
+ 
+ ## Deferred or intentionally unchanged work
+diff -ruN a/docs/guides/mlff_campaign_cli_user_guide.md b/docs/guides/mlff_campaign_cli_user_guide.md
+--- a/docs/guides/mlff_campaign_cli_user_guide.md	2026-08-09 22:37:40.668134175 +0000
++++ b/docs/guides/mlff_campaign_cli_user_guide.md	2026-08-09 23:45:59.413337004 +0000
+@@ -391,6 +391,20 @@
+ 
+ The compact result is `results/fine-tuning-result.json`.
+ 
++
++ADAPT-MIGRATE1 is active in 0.20.128a0 and closes the adaptive revision. Immutable run protocol
++identity now prevents an adaptive campaign from being switched back to historical
++`bounded|exhaustive|multi_fidelity` evaluation by editing TOML, and prevents a historical campaign
++from being reinterpreted as `adaptive_topk` without a new scientific campaign identity. A
++schema-neutral protocol-freeze authority record lets storage/restart code validate either historical
++committee freezes or adaptive deployment freezes without changing the original scientific evidence.
++Completed 0.20.127 adaptive campaigns are reconciled by rerunning `verify` once: model inference,
++full evaluation, and NVE are reused; only the generic freeze-authority alias and immutable migration
++receipt are added. Once an adaptive deployment is frozen, later `evaluate` invocations only reuse
++the frozen EVAL1 authority and do not create a second selection history. `storage report` exposes
++freeze authority and preserved historical evaluator evidence read-only, while STOR cleanup/deletion
++boundaries are unchanged.
++
+ ## 7. Verify bounded MD stability
+ 
+ Add equilibrated verification structures to `[verification].structures`, then:
+diff -ruN a/docs/specs/training_data/README.md b/docs/specs/training_data/README.md
+--- a/docs/specs/training_data/README.md	2026-08-09 19:54:31.000000000 +0000
++++ b/docs/specs/training_data/README.md	2026-08-09 23:49:16.992734818 +0000
+@@ -141,4 +141,10 @@
+   preparation binds a deterministic 256-configuration target monitor from the common DATA5
+   outer-monitor domain and a deterministic 512-configuration TRUE_DFT replay monitor. See
+   `mlff_online_monitor_spec.{md,pdf}`.
++- ADAPT-STOP1, ADAPT-RANK1, ADAPT-EVAL1, and ADAPT-VERIFY1 are implemented in
++  `0.20.124a0`--`0.20.127a0`; their specifications freeze adaptive stopping, one-champion-per-run
++  lightweight ranking, top-K full evaluation, and score-ordered bounded verification.
++- ADAPT-MIGRATE1 is implemented in `0.20.128a0`: schema-neutral protocol-freeze authority,
++  restart/stale-evidence closure, historical evaluator readability, and storage compatibility. See
++  `mlff_adaptive_migration_spec.{md,pdf}`. The seven-gate adaptive revision is complete.
+ 
+diff -ruN a/docs/specs/training_data/mlff_adaptive_migration_spec.md b/docs/specs/training_data/mlff_adaptive_migration_spec.md
+--- a/docs/specs/training_data/mlff_adaptive_migration_spec.md	1970-01-01 00:00:00.000000000 +0000
++++ b/docs/specs/training_data/mlff_adaptive_migration_spec.md	2026-08-09 23:45:35.737495799 +0000
+@@ -0,0 +1,187 @@
++# MLFF ADAPT-MIGRATE1 migration and compatibility closure specification
++
++Status: implemented in `mdstats 0.20.128a0`.
++
++## Purpose
++
++ADAPT-MIGRATE1 closes the post-0.20.120 adaptive campaign revision without changing the
++scientific policies established by ADAPT-PREC1 through ADAPT-VERIFY1. Its responsibility is to
++make the new lifecycle authoritative, restart-safe, storage-safe, and compatible with historical
++campaign evidence.
++
++The gate does **not** delete or reinterpret historical EVAL-MF, staged-precision, committee, or
++protocol-freeze evidence. It adds an explicit schema-neutral authority layer so generic lifecycle
++code no longer guesses a scientific freeze type from a database key.
++
++## Final adaptive production contract
++
++New campaigns use the completed adaptive chain:
++
++```text
++binary model precision (single|double)
++        -> fixed common 256 target / 512 true-replay monitors
++        -> adaptive STOP1 training
++        -> one RANK1 champion per run
++        -> EVAL1 top-5 full evaluation with next-5 rescue
++        -> VERIFY1 score-ordered bounded verification fallback
++        -> one verified deployment model + frozen authority
++```
++
++The resolved defaults remain:
++
++```toml
++[training]
++max_num_epochs = 30
++online_target_monitor_configurations = 256
++online_replay_monitor_configurations = 512
++target_stop_fraction = 0.80
++replay_stop_multiplier = 1.20
++
++[acceptance]
++maximum_target_force_rmse_ev_per_angstrom = 0.030
++
++[evaluation]
++target_score_weight = 1.0
++replay_score_weight = 1.0
++finalist_count = 5
++finalist_rescue_batch_size = 5
++checkpoint_strategy = "adaptive_topk"
++```
++
++The replay ceiling remains derived from the target threshold and score weights unless a separately
++versioned future policy explicitly changes that contract.
++
++## Schema-neutral protocol-freeze authority
++
++`ProtocolFreezeAuthorityRecord` is the generic lifecycle/storage authority adapter. It contains:
++
++- authority kind: `historical_committee` or `adaptive_deployment`;
++- campaign and production-qualification lineage;
++- the original scientific freeze schema and digest;
++- protected production-model SHA-256 identities;
++- source freeze timestamp; and
++- for adaptive deployment only, the learned-model inference dtype plus invariant FP64 scientific
++  analysis dtype.
++
++The adapter never replaces the original scientific freeze record. Historical
++`ProtocolFreezeRecord` and adaptive `AdaptiveProtocolFreezeRecord` remain the authoritative
++scientific evidence for their respective campaign generations.
++
++Historical committee freezes predate the binary precision contract, so migration must not invent a
++model dtype for them.
++
++## 0.20.127 adaptive alias reconciliation
++
++`0.20.127a0` stored the adaptive scientific freeze itself under both
++`adaptive_protocol_freeze` and the generic `protocol_freeze` key. On the first verified adaptive
++reconciliation under `>=0.20.128a0`, mdstats:
++
++1. authenticates the complete EVAL1 -> VERIFY1 -> deployment -> adaptive-freeze lineage;
++2. preserves `adaptive_protocol_freeze` unchanged;
++3. replaces only the generic `protocol_freeze` alias with a
++   `ProtocolFreezeAuthorityRecord` derived from that freeze;
++4. preserves all historical evaluator/committee records; and
++5. writes one immutable `AdaptiveMigrationRecord` plus `results/adaptive-migration.json`.
++
++The operation is idempotent. A second reconciliation must reproduce the same migration identity.
++A historical committee freeze and adaptive freeze claiming generic authority in the same campaign
++is an ambiguity and fails closed.
++
++## AdaptiveMigrationRecord
++
++The migration closure record binds:
++
++- campaign plan digest;
++- authoritative ADAPT-EVAL1 digest;
++- ADAPT-VERIFY1 digest;
++- deployment-model digest;
++- adaptive scientific-freeze digest;
++- generic freeze-authority digest;
++- learned-model inference dtype;
++- invariant `float64` scientific-analysis dtype;
++- preserved historical evaluator evidence keys; and
++- the migration version.
++
++The source adaptive freeze timestamp is reused as the closure timestamp so migration identity is
++stable across exact restart/reconciliation.
++
++## Evaluation migration boundary
++
++Algorithm migration is determined from immutable campaign/run protocol identity, not from an
++editable TOML string.
++
++- A campaign whose run protocols contain ADAPT-STOP1 policy identity must use
++  `checkpoint_strategy = "adaptive_topk"`.
++- A historical/pre-adaptive campaign may continue to use its historical
++  `bounded|exhaustive|multi_fidelity` evaluator.
++- A historical campaign cannot be switched to `adaptive_topk` without preparing a new scientific
++  campaign identity.
++- An adaptive campaign cannot regain historical EVAL-MF authority by editing its TOML.
++
++Once an adaptive deployment protocol is frozen, later `evaluate` invocations only authenticate and
++reuse the frozen EVAL1 record. They do not create a second evaluation history under the same
++campaign identity.
++
++## Restart and stale-evidence rules
++
++The migration layer preserves the restart guarantees of each implemented adaptive gate:
++
++- STOP1 reuses fixed monitor membership and authenticated stop history;
++- RANK1 is regenerated only from STOP1 + frozen checkpoint-catalog evidence;
++- EVAL1 reuses authenticated completed full predictions and finalist decisions;
++- VERIFY1 reuses authenticated completed bounded-NVE cases;
++- a verified/frozen adaptive campaign reconciles its migration authority without rerunning model
++  inference, training, or verification.
++
++Missing, mismatched, or partially rewritten lineage fails closed. A stale authority adapter cannot
++unlock storage or change selection.
++
++## Historical readability
++
++Historical evidence remains readable but cannot control a new adaptive campaign. This includes:
++
++- EVAL-MF policy/round/evaluation records;
++- bounded/exhaustive evaluator records;
++- historical committee and committee-member records;
++- historical `ProtocolFreezeRecord`;
++- `single`, `double`, and retired `refine` precision-profile records; and
++- staged-precision/restart evidence created by the campaign that originally owned it.
++
++New `refine` production execution remains prohibited by ADAPT-PREC1.
++
++## Storage contract
++
++STOR1-STOR5 ownership/deletion boundaries are unchanged.
++
++Consequential storage operations no longer treat mere presence of a `protocol_freeze` key as
++authority. The payload must parse as a recognized historical/adaptive freeze or the new generic
++authority record and must pass its digest/schema validation.
++
++`storage report` remains read-only. It reads migration/freeze summary through a read-only SQLite
++connection and reports:
++
++- protocol-freeze authority kind/source; and
++- preserved historical evaluator evidence keys.
++
++Migration does not broaden cleanup authority. Retired EVAL-MF prediction shards, staged-precision
++state, and other historical artifacts remain governed only by their existing STOR lifecycle and
++capability-loss rules.
++
++## Qualification requirements
++
++The final adaptive revision is qualified only when the combined suite demonstrates:
++
++1. binary `single|double` learned-model dtype propagation;
++2. the frozen 256-target / 512-true-replay monitor identities and statistical-rationale evidence;
++3. target-success, replay-exhaustion, max-epoch, and no-admissible STOP1 outcomes;
++4. 1:1, 2:1, and 1:2 weight-derived replay ceilings;
++5. run champions occurring before the final stopping epoch;
++6. top-five full evaluation and next-five rescue;
++7. exact restart/reuse during adaptive training and full finalist evaluation;
++8. score-ordered VERIFY1 fallback and byte-identical publication of the first passing model;
++9. historical EVAL-MF/refine/freeze readability without adaptive authority leakage;
++10. schema-aware storage/report safety; and
++11. idempotent 0.20.127 adaptive-freeze alias migration with no historical evidence deletion.
++
++The release qualification record is
++`release/mlff_adapt_migrate1_lifecycle_qualification.json`.
+diff -ruN a/mdstats/__init__.py b/mdstats/__init__.py
+--- a/mdstats/__init__.py	2026-08-09 22:32:30.027341084 +0000
++++ b/mdstats/__init__.py	2026-08-09 23:35:29.183477740 +0000
+@@ -4863,3 +4863,25 @@
+     "ordered_admissible_candidates",
+     "verification_rejection_reasons",
+ ]
++
++from .training_data import (
++    PROTOCOL_FREEZE_AUTHORITY_SCHEMA,
++    ADAPTIVE_MIGRATION_RECORD_SCHEMA,
++    ADAPT_MIGRATE1_VERSION,
++    ProtocolFreezeAuthorityRecord,
++    AdaptiveMigrationRecord,
++    protocol_freeze_authority_from_historical,
++    protocol_freeze_authority_from_adaptive,
++    protocol_freeze_authority_from_payload,
++)
++
++__all__ += [
++    "PROTOCOL_FREEZE_AUTHORITY_SCHEMA",
++    "ADAPTIVE_MIGRATION_RECORD_SCHEMA",
++    "ADAPT_MIGRATE1_VERSION",
++    "ProtocolFreezeAuthorityRecord",
++    "AdaptiveMigrationRecord",
++    "protocol_freeze_authority_from_historical",
++    "protocol_freeze_authority_from_adaptive",
++    "protocol_freeze_authority_from_payload",
++]
+diff -ruN a/mdstats/_version.py b/mdstats/_version.py
+--- a/mdstats/_version.py	2026-08-09 22:31:24.505385273 +0000
++++ b/mdstats/_version.py	2026-08-09 23:28:40.797651734 +0000
+@@ -1,3 +1,3 @@
+ """Package version."""
+ 
+-__version__ = "0.20.127a0"
++__version__ = "0.20.128a0"
+diff -ruN a/mdstats/data/observable_owner_manuals.json b/mdstats/data/observable_owner_manuals.json
+--- a/mdstats/data/observable_owner_manuals.json	2026-08-09 22:31:24.505430391 +0000
++++ b/mdstats/data/observable_owner_manuals.json	2026-08-09 23:36:34.397028129 +0000
+@@ -17,6 +17,6 @@
+       "uri": "mdstats-doc://vacf-dynamics-architecture/0.20.53a0"
+     }
+   },
+-  "package_version": "0.20.127a0",
++  "package_version": "0.20.128a0",
+   "schema": "mdstats.observable-owner-manual-index.v1"
+ }
+diff -ruN a/mdstats/training_data/__init__.py b/mdstats/training_data/__init__.py
+--- a/mdstats/training_data/__init__.py	2026-08-09 22:32:30.027341084 +0000
++++ b/mdstats/training_data/__init__.py	2026-08-09 23:29:48.123465407 +0000
+@@ -1142,3 +1142,16 @@
+ )
+ 
+ __all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
++
++from .adaptive_migration import (
++    PROTOCOL_FREEZE_AUTHORITY_SCHEMA,
++    ADAPTIVE_MIGRATION_RECORD_SCHEMA,
++    ADAPT_MIGRATE1_VERSION,
++    ProtocolFreezeAuthorityRecord,
++    AdaptiveMigrationRecord,
++    protocol_freeze_authority_from_historical,
++    protocol_freeze_authority_from_adaptive,
++    protocol_freeze_authority_from_payload,
++)
++
++__all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
+diff -ruN a/mdstats/training_data/adaptive_migration.py b/mdstats/training_data/adaptive_migration.py
+--- a/mdstats/training_data/adaptive_migration.py	1970-01-01 00:00:00.000000000 +0000
++++ b/mdstats/training_data/adaptive_migration.py	2026-08-09 23:29:40.047318227 +0000
+@@ -0,0 +1,340 @@
++"""ADAPT-MIGRATE1 schema authority and migration-closure evidence.
++
++This module deliberately does not replace historical freeze records.  It provides a
++small schema-aware authority layer so storage/restart code can validate either the
++legacy committee freeze or the adaptive deployment freeze without guessing a record
++type from the generic ``protocol_freeze`` key.
++"""
++from __future__ import annotations
++
++from dataclasses import dataclass
++from typing import Any, Mapping
++
++from ._common import (
++    TrainingDataInputError,
++    TrainingDataSerializationError,
++    digest,
++    validate_digest,
++)
++
++PROTOCOL_FREEZE_AUTHORITY_SCHEMA = "mdstats.protocol-freeze-authority.v1"
++ADAPTIVE_MIGRATION_RECORD_SCHEMA = "mdstats.adaptive-migration-record.v1"
++ADAPT_MIGRATE1_VERSION = "0.20.128a0"
++
++_AUTHORITY_KINDS = {"historical_committee", "adaptive_deployment"}
++
++
++@dataclass(frozen=True, slots=True)
++class ProtocolFreezeAuthorityRecord:
++    """Schema-neutral proof that a campaign has one authoritative frozen protocol.
++
++    ``source_record_digest`` always points at the original scientific freeze record;
++    this record is only an authority adapter for generic storage/lifecycle consumers.
++    It never rewrites or weakens the underlying freeze evidence.
++    """
++
++    authority_kind: str
++    campaign_plan_digest: str
++    production_qualification_digest: str
++    source_record_schema: str
++    source_record_digest: str
++    protected_model_sha256: tuple[str, ...]
++    frozen_at_utc: str
++    model_inference_dtype: str | None = None
++    scientific_analysis_dtype: str | None = None
++
++    def __post_init__(self) -> None:
++        kind = str(self.authority_kind).strip()
++        if kind not in _AUTHORITY_KINDS:
++            raise TrainingDataInputError(
++                "Protocol-freeze authority kind must be historical_committee or adaptive_deployment."
++            )
++        object.__setattr__(self, "authority_kind", kind)
++        for name in (
++            "campaign_plan_digest",
++            "production_qualification_digest",
++            "source_record_digest",
++        ):
++            object.__setattr__(
++                self, name, validate_digest(getattr(self, name), name=name)
++            )
++        schema = str(self.source_record_schema).strip()
++        if not schema:
++            raise TrainingDataInputError(
++                "Protocol-freeze authority requires a source record schema."
++            )
++        object.__setattr__(self, "source_record_schema", schema)
++        models = tuple(
++            validate_digest(str(value), name="protected_model_sha256")
++            for value in self.protected_model_sha256
++        )
++        if not models or len(set(models)) != len(models):
++            raise TrainingDataInputError(
++                "Protocol-freeze authority requires distinct protected model SHA-256 identities."
++            )
++        object.__setattr__(self, "protected_model_sha256", models)
++        if not str(self.frozen_at_utc).strip():
++            raise TrainingDataInputError(
++                "Protocol-freeze authority requires the source freeze timestamp."
++            )
++        if kind == "adaptive_deployment":
++            dtype = str(self.model_inference_dtype).strip().lower()
++            if dtype not in {"float32", "float64"}:
++                raise TrainingDataInputError(
++                    "Adaptive protocol-freeze authority requires float32 or float64 model inference dtype."
++                )
++            if str(self.scientific_analysis_dtype).strip().lower() != "float64":
++                raise TrainingDataInputError(
++                    "Adaptive protocol-freeze authority requires float64 scientific arithmetic."
++                )
++            object.__setattr__(self, "model_inference_dtype", dtype)
++            object.__setattr__(self, "scientific_analysis_dtype", "float64")
++        else:
++            # Historical committee records predate the binary model-dtype contract.
++            # Preserve unknown dtype rather than inventing one during migration.
++            if self.model_inference_dtype not in (None, ""):
++                raise TrainingDataInputError(
++                    "Historical protocol-freeze authority must not invent a model dtype."
++                )
++            if self.scientific_analysis_dtype not in (None, ""):
++                raise TrainingDataInputError(
++                    "Historical protocol-freeze authority must not invent an analysis dtype."
++                )
++            object.__setattr__(self, "model_inference_dtype", None)
++            object.__setattr__(self, "scientific_analysis_dtype", None)
++
++    def _payload(self) -> dict[str, Any]:
++        return {
++            "schema": PROTOCOL_FREEZE_AUTHORITY_SCHEMA,
++            "authority_kind": self.authority_kind,
++            "campaign_plan_digest": self.campaign_plan_digest,
++            "production_qualification_digest": self.production_qualification_digest,
++            "source_record_schema": self.source_record_schema,
++            "source_record_digest": self.source_record_digest,
++            "protected_model_sha256": list(self.protected_model_sha256),
++            "frozen_at_utc": self.frozen_at_utc,
++            "model_inference_dtype": self.model_inference_dtype,
++            "scientific_analysis_dtype": self.scientific_analysis_dtype,
++        }
++
++    @property
++    def content_digest(self) -> str:
++        return digest(self._payload())
++
++    def to_dict(self) -> dict[str, Any]:
++        return {**self._payload(), "content_digest": self.content_digest}
++
++    @classmethod
++    def from_dict(cls, payload: Mapping[str, Any]) -> "ProtocolFreezeAuthorityRecord":
++        if payload.get("schema") != PROTOCOL_FREEZE_AUTHORITY_SCHEMA:
++            raise TrainingDataSerializationError(
++                "Unsupported protocol-freeze authority schema."
++            )
++        result = cls(
++            authority_kind=str(payload["authority_kind"]),
++            campaign_plan_digest=str(payload["campaign_plan_digest"]),
++            production_qualification_digest=str(payload["production_qualification_digest"]),
++            source_record_schema=str(payload["source_record_schema"]),
++            source_record_digest=str(payload["source_record_digest"]),
++            protected_model_sha256=tuple(
++                str(value) for value in payload["protected_model_sha256"]
++            ),
++            frozen_at_utc=str(payload["frozen_at_utc"]),
++            model_inference_dtype=(
++                None
++                if payload.get("model_inference_dtype") in (None, "")
++                else str(payload["model_inference_dtype"])
++            ),
++            scientific_analysis_dtype=(
++                None
++                if payload.get("scientific_analysis_dtype") in (None, "")
++                else str(payload["scientific_analysis_dtype"])
++            ),
++        )
++        if payload.get("content_digest") not in (None, result.content_digest):
++            raise TrainingDataSerializationError(
++                "Protocol-freeze authority digest mismatch."
++            )
++        return result
++
++
++@dataclass(frozen=True, slots=True)
++class AdaptiveMigrationRecord:
++    """Immutable closure receipt for one completed adaptive campaign."""
++
++    campaign_plan_digest: str
++    adaptive_full_evaluation_digest: str
++    adaptive_verification_digest: str
++    adaptive_deployment_model_digest: str
++    adaptive_protocol_freeze_digest: str
++    protocol_freeze_authority_digest: str
++    model_inference_dtype: str
++    scientific_analysis_dtype: str
++    historical_evidence_keys: tuple[str, ...]
++    migrated_at_utc: str
++    migrated_legacy_protocol_freeze_alias_schema: str | None = None
++    migration_version: str = ADAPT_MIGRATE1_VERSION
++
++    def __post_init__(self) -> None:
++        for name in (
++            "campaign_plan_digest",
++            "adaptive_full_evaluation_digest",
++            "adaptive_verification_digest",
++            "adaptive_deployment_model_digest",
++            "adaptive_protocol_freeze_digest",
++            "protocol_freeze_authority_digest",
++        ):
++            object.__setattr__(
++                self, name, validate_digest(getattr(self, name), name=name)
++            )
++        dtype = str(self.model_inference_dtype).strip().lower()
++        if dtype not in {"float32", "float64"}:
++            raise TrainingDataInputError(
++                "Adaptive migration model dtype must be float32 or float64."
++            )
++        if str(self.scientific_analysis_dtype).strip().lower() != "float64":
++            raise TrainingDataInputError(
++                "Adaptive migration scientific arithmetic must remain float64."
++            )
++        object.__setattr__(self, "model_inference_dtype", dtype)
++        object.__setattr__(self, "scientific_analysis_dtype", "float64")
++        keys = tuple(str(value) for value in self.historical_evidence_keys)
++        if tuple(sorted(set(keys))) != keys:
++            raise TrainingDataInputError(
++                "Adaptive migration historical evidence keys must be sorted and unique."
++            )
++        object.__setattr__(self, "historical_evidence_keys", keys)
++        if str(self.migration_version) != ADAPT_MIGRATE1_VERSION:
++            raise TrainingDataInputError(
++                f"Adaptive migration version must be {ADAPT_MIGRATE1_VERSION}."
++            )
++        if not str(self.migrated_at_utc).strip():
++            raise TrainingDataInputError("Adaptive migration requires a timestamp.")
++        legacy = self.migrated_legacy_protocol_freeze_alias_schema
++        if legacy is not None and not str(legacy).strip():
++            raise TrainingDataInputError(
++                "Migrated legacy freeze-alias schema must be nonempty when present."
++            )
++
++    def _payload(self) -> dict[str, Any]:
++        return {
++            "schema": ADAPTIVE_MIGRATION_RECORD_SCHEMA,
++            "migration_version": self.migration_version,
++            "campaign_plan_digest": self.campaign_plan_digest,
++            "adaptive_full_evaluation_digest": self.adaptive_full_evaluation_digest,
++            "adaptive_verification_digest": self.adaptive_verification_digest,
++            "adaptive_deployment_model_digest": self.adaptive_deployment_model_digest,
++            "adaptive_protocol_freeze_digest": self.adaptive_protocol_freeze_digest,
++            "protocol_freeze_authority_digest": self.protocol_freeze_authority_digest,
++            "model_inference_dtype": self.model_inference_dtype,
++            "scientific_analysis_dtype": self.scientific_analysis_dtype,
++            "historical_evidence_keys": list(self.historical_evidence_keys),
++            "migrated_legacy_protocol_freeze_alias_schema": self.migrated_legacy_protocol_freeze_alias_schema,
++            "migrated_at_utc": self.migrated_at_utc,
++        }
++
++    @property
++    def content_digest(self) -> str:
++        return digest(self._payload())
++
++    def to_dict(self) -> dict[str, Any]:
++        return {**self._payload(), "content_digest": self.content_digest}
++
++    @classmethod
++    def from_dict(cls, payload: Mapping[str, Any]) -> "AdaptiveMigrationRecord":
++        if payload.get("schema") != ADAPTIVE_MIGRATION_RECORD_SCHEMA:
++            raise TrainingDataSerializationError(
++                "Unsupported adaptive migration-record schema."
++            )
++        result = cls(
++            campaign_plan_digest=str(payload["campaign_plan_digest"]),
++            adaptive_full_evaluation_digest=str(payload["adaptive_full_evaluation_digest"]),
++            adaptive_verification_digest=str(payload["adaptive_verification_digest"]),
++            adaptive_deployment_model_digest=str(payload["adaptive_deployment_model_digest"]),
++            adaptive_protocol_freeze_digest=str(payload["adaptive_protocol_freeze_digest"]),
++            protocol_freeze_authority_digest=str(payload["protocol_freeze_authority_digest"]),
++            model_inference_dtype=str(payload["model_inference_dtype"]),
++            scientific_analysis_dtype=str(payload["scientific_analysis_dtype"]),
++            historical_evidence_keys=tuple(
++                str(value) for value in payload.get("historical_evidence_keys", ())
++            ),
++            migrated_at_utc=str(payload["migrated_at_utc"]),
++            migrated_legacy_protocol_freeze_alias_schema=(
++                None
++                if payload.get("migrated_legacy_protocol_freeze_alias_schema") in (None, "")
++                else str(payload["migrated_legacy_protocol_freeze_alias_schema"])
++            ),
++            migration_version=str(payload.get("migration_version", ADAPT_MIGRATE1_VERSION)),
++        )
++        if payload.get("content_digest") not in (None, result.content_digest):
++            raise TrainingDataSerializationError(
++                "Adaptive migration-record digest mismatch."
++            )
++        return result
++
++
++def protocol_freeze_authority_from_historical(freeze: Any) -> ProtocolFreezeAuthorityRecord:
++    """Adapt one verified historical ``ProtocolFreezeRecord`` without mutating it."""
++
++    return ProtocolFreezeAuthorityRecord(
++        authority_kind="historical_committee",
++        campaign_plan_digest=str(freeze.campaign_plan_digest),
++        production_qualification_digest=str(freeze.production_qualification_digest),
++        source_record_schema="mdstats.protocol-freeze-record.v1",
++        source_record_digest=str(freeze.content_digest),
++        protected_model_sha256=tuple(str(v) for v in freeze.committee_member_model_sha256),
++        frozen_at_utc=str(freeze.frozen_at_utc),
++    )
++
++
++def protocol_freeze_authority_from_adaptive(freeze: Any) -> ProtocolFreezeAuthorityRecord:
++    """Adapt one verified ``AdaptiveProtocolFreezeRecord`` without mutating it."""
++
++    return ProtocolFreezeAuthorityRecord(
++        authority_kind="adaptive_deployment",
++        campaign_plan_digest=str(freeze.campaign_plan_digest),
++        production_qualification_digest=str(freeze.production_qualification_digest),
++        source_record_schema="mdstats.adaptive-protocol-freeze.v1",
++        source_record_digest=str(freeze.content_digest),
++        protected_model_sha256=(str(freeze.exported_model_sha256),),
++        frozen_at_utc=str(freeze.frozen_at_utc),
++        model_inference_dtype=str(freeze.model_inference_dtype),
++        scientific_analysis_dtype=str(freeze.scientific_analysis_dtype),
++    )
++
++
++def protocol_freeze_authority_from_payload(
++    payload: Mapping[str, Any],
++) -> ProtocolFreezeAuthorityRecord:
++    """Read current authority, legacy committee freeze, or 0.20.127 adaptive alias."""
++
++    schema = payload.get("schema")
++    if schema == PROTOCOL_FREEZE_AUTHORITY_SCHEMA:
++        return ProtocolFreezeAuthorityRecord.from_dict(payload)
++    if schema == "mdstats.protocol-freeze-record.v1":
++        from .campaign_execution import ProtocolFreezeRecord
++
++        return protocol_freeze_authority_from_historical(
++            ProtocolFreezeRecord.from_dict(payload)
++        )
++    if schema == "mdstats.adaptive-protocol-freeze.v1":
++        from .adaptive_verification import AdaptiveProtocolFreezeRecord
++
++        return protocol_freeze_authority_from_adaptive(
++            AdaptiveProtocolFreezeRecord.from_dict(payload)
++        )
++    raise TrainingDataSerializationError(
++        f"Unsupported protocol-freeze authority source schema: {schema!r}."
++    )
++
++
++__all__ = [
++    "PROTOCOL_FREEZE_AUTHORITY_SCHEMA",
++    "ADAPTIVE_MIGRATION_RECORD_SCHEMA",
++    "ADAPT_MIGRATE1_VERSION",
++    "ProtocolFreezeAuthorityRecord",
++    "AdaptiveMigrationRecord",
++    "protocol_freeze_authority_from_historical",
++    "protocol_freeze_authority_from_adaptive",
++    "protocol_freeze_authority_from_payload",
++]
+diff -ruN a/mdstats/training_data/campaign_cli.py b/mdstats/training_data/campaign_cli.py
+--- a/mdstats/training_data/campaign_cli.py	2026-08-09 22:38:21.479353792 +0000
++++ b/mdstats/training_data/campaign_cli.py	2026-08-09 23:45:59.411500529 +0000
+@@ -1354,6 +1354,310 @@
+         result[name] = target
+     return result
+ 
++def _historical_algorithm_evidence_keys(store: "CampaignStore") -> tuple[str, ...]:
++    """Return preserved records produced by retired MLFF ranking/evaluation paths.
++
++    ADAPT-MIGRATE1 treats these as historical evidence.  Merely becoming
++    non-default never grants deletion authority.
++    """
++
++    prefixes = (
++        "evaluation:",
++        "multifidelity_policy:",
++        "multifidelity_round:",
++        "committee_member:",
++    )
++    exact = {"protocol_comparison", "committee"}
++    if hasattr(store, "record_keys"):
++        keys = tuple(store.record_keys())
++    elif hasattr(store, "records") and isinstance(store.records, Mapping):
++        keys = tuple(str(key) for key in store.records)
++    else:
++        keys = ()
++    return tuple(
++        sorted(
++            key
++            for key in keys
++            if key in exact or any(key.startswith(prefix) for prefix in prefixes)
++        )
++    )
++
++
++def _protocol_freeze_authority(store: "CampaignStore") -> Any | None:
++    """Resolve historical, 0.20.127 adaptive-alias, or current freeze authority.
++
++    Generic storage/reclamation code must validate the schema and digest rather
++    than treating presence of the ``protocol_freeze`` key as sufficient proof.
++    """
++
++    import mdstats
++
++    payload = store.get_payload_optional("protocol_freeze")
++    if payload is None:
++        return None
++    try:
++        return mdstats.protocol_freeze_authority_from_payload(payload)
++    except Exception as exc:
++        raise CampaignCliError(
++            "The generic protocol_freeze authority record is malformed or uses an "
++            f"unsupported schema: {exc}"
++        ) from exc
++
++
++def _read_storage_migration_summary(
++    state_db: Path,
++) -> tuple[Any | None, tuple[str, ...]]:
++    """Read freeze/historical summary without mutating the campaign state DB."""
++
++    if not state_db.is_file():
++        return None, ()
++    import mdstats
++
++    uri = f"file:{state_db.resolve()}?mode=ro"
++    try:
++        db = sqlite3.connect(uri, uri=True, timeout=30.0)
++        try:
++            row = db.execute(
++                "SELECT payload FROM records WHERE key='protocol_freeze'"
++            ).fetchone()
++            key_rows = db.execute("SELECT key FROM records ORDER BY key").fetchall()
++        finally:
++            db.close()
++    except sqlite3.Error as exc:
++        raise CampaignCliError(
++            f"Could not read campaign migration/storage authority state: {exc}"
++        ) from exc
++    authority = None
++    if row is not None:
++        try:
++            payload = json.loads(row[0])
++            if not isinstance(payload, Mapping):
++                raise TypeError("protocol_freeze payload is not a mapping")
++            # Protocol freeze records are intentionally compact and never externalized.
++            if payload.get("schema") == EXTERNAL_RECORD_POINTER_SCHEMA:
++                raise TypeError("protocol_freeze unexpectedly uses an external pointer")
++            authority = mdstats.protocol_freeze_authority_from_payload(payload)
++        except Exception as exc:
++            raise CampaignCliError(
++                f"Stored protocol-freeze authority is unreadable: {exc}"
++            ) from exc
++    keys = tuple(str(row[0]) for row in key_rows)
++    prefixes = ("evaluation:", "multifidelity_policy:", "multifidelity_round:", "committee_member:")
++    exact = {"protocol_comparison", "committee"}
++    historical = tuple(
++        key for key in keys if key in exact or any(key.startswith(prefix) for prefix in prefixes)
++    )
++    return authority, historical
++
++
++def _has_authoritative_protocol_freeze(store: "CampaignStore") -> bool:
++    return _protocol_freeze_authority(store) is not None
++
++
++def _campaign_uses_adaptive_training(campaign: Any) -> bool:
++    """Return whether immutable run protocols belong to the adaptive lifecycle."""
++
++    runs = tuple(getattr(campaign, "runs", ()))
++    if not runs:
++        return False
++    flags = tuple(
++        getattr(getattr(run, "protocol", None), "adaptive_stop_policy", None) is not None
++        for run in runs
++    )
++    if any(flags) and not all(flags):
++        raise CampaignCliError(
++            "Campaign contains a mixture of adaptive and historical training protocol "
++            "identities. Refusing to infer one evaluation semantics."
++        )
++    return all(flags)
++
++
++def _enforce_evaluation_migration_boundary(campaign: Any, checkpoint_strategy: str) -> None:
++    """Prevent retired evaluators from silently controlling adaptive campaigns."""
++
++    strategy = str(checkpoint_strategy).strip().lower()
++    adaptive = _campaign_uses_adaptive_training(campaign)
++    if adaptive and strategy != "adaptive_topk":
++        raise CampaignCliError(
++            "This campaign was prepared with the adaptive STOP1/RANK1 protocol, so "
++            "evaluation must use checkpoint_strategy='adaptive_topk'. Historical "
++            "bounded/exhaustive/multi_fidelity evaluators remain readable for legacy "
++            "campaigns but cannot control a new adaptive campaign."
++        )
++    if not adaptive and strategy == "adaptive_topk":
++        raise CampaignCliError(
++            "This campaign predates adaptive STOP1/RANK1 protocol identity and cannot "
++            "be resumed under adaptive_topk semantics without a new scientific campaign "
++            "identity. Keep its historical evaluator for reporting, or prepare a new campaign."
++        )
++
++
++def _reuse_frozen_adaptive_evaluation(
++    paths: "CampaignPaths", store: "CampaignStore"
++) -> bool:
++    """Refuse to mutate EVAL1 evidence after adaptive deployment is frozen.
++
++    A completed adaptive protocol freeze is the scientific authority boundary.  Once
++    present, a later ``evaluate`` invocation may only authenticate/reuse the frozen
++    EVAL1 record; configuration edits must not create a second selection history under
++    the same campaign identity.
++    """
++
++    import mdstats
++
++    freeze = store.get_record_optional(
++        "adaptive_protocol_freeze", mdstats.AdaptiveProtocolFreezeRecord
++    )
++    if freeze is None:
++        return False
++    evaluation = store.get_record_optional(
++        "adaptive_full_evaluation", mdstats.AdaptiveFullEvaluationRecord
++    )
++    if evaluation is None:
++        raise CampaignCliError(
++            "Adaptive protocol freeze exists but authoritative ADAPT-EVAL1 evidence is missing."
++        )
++    if freeze.adaptive_full_evaluation_digest != evaluation.content_digest:
++        raise CampaignCliError(
++            "Adaptive protocol freeze/full-evaluation digest mismatch; refusing stale evaluation evidence."
++        )
++    _reconcile_adaptive_migration(paths, store)
++    _mark_stage(
++        store,
++        paths,
++        "evaluate",
++        StageState.COMPLETE,
++        "ADAPT-EVAL1 is immutable because the adaptive deployment protocol is already frozen",
++    )
++    _ok(
++        "reused frozen ADAPT-EVAL1 authority; post-freeze configuration edits do not rerun evaluation"
++    )
++    return True
++
++
++def _reconcile_adaptive_migration(
++    paths: "CampaignPaths", store: "CampaignStore"
++) -> Any | None:
++    """Close the ADAPT-MIGRATE1 authority bridge for a verified adaptive campaign.
++
++    This is intentionally idempotent.  It upgrades only the *generic authority
++    alias* used by storage/lifecycle consumers; the original adaptive freeze and
++    every historical record remain byte-for-byte scientific evidence.
++    """
++
++    import mdstats
++
++    freeze = store.get_record_optional(
++        "adaptive_protocol_freeze", mdstats.AdaptiveProtocolFreezeRecord
++    )
++    if freeze is None:
++        return None
++    evaluation = store.get_record_optional(
++        "adaptive_full_evaluation", mdstats.AdaptiveFullEvaluationRecord
++    )
++    verification = store.get_record_optional(
++        "adaptive_verification", mdstats.AdaptiveVerificationRecord
++    )
++    deployment = store.get_record_optional(
++        "adaptive_deployment_model", mdstats.AdaptiveDeploymentModelRecord
++    )
++    if evaluation is None or verification is None or deployment is None:
++        raise CampaignCliError(
++            "Adaptive protocol freeze exists without complete EVAL1/VERIFY1/deployment "
++            "lineage. Refusing partial migration."
++        )
++    if not (
++        freeze.campaign_plan_digest == evaluation.campaign_plan_digest
++        == verification.campaign_plan_digest
++        == deployment.campaign_plan_digest
++    ):
++        raise CampaignCliError("Adaptive migration campaign lineage mismatch.")
++    if freeze.adaptive_full_evaluation_digest != evaluation.content_digest:
++        raise CampaignCliError("Adaptive migration full-evaluation lineage mismatch.")
++    if freeze.adaptive_verification_digest != verification.content_digest:
++        raise CampaignCliError("Adaptive migration verification lineage mismatch.")
++    if freeze.adaptive_deployment_model_digest != deployment.content_digest:
++        raise CampaignCliError("Adaptive migration deployment lineage mismatch.")
++    if freeze.exported_model_sha256 != deployment.exported_model_sha256:
++        raise CampaignCliError("Adaptive migration published-model SHA-256 mismatch.")
++
++    existing = store.get_record_optional(
++        "adaptive_migration", mdstats.AdaptiveMigrationRecord
++    )
++    alias_payload = store.get_payload_optional("protocol_freeze")
++    alias_schema = None if alias_payload is None else str(alias_payload.get("schema"))
++
++    if existing is not None:
++        authority = _protocol_freeze_authority(store)
++        if authority is None:
++            raise CampaignCliError(
++                "ADAPT-MIGRATE1 closure exists but protocol-freeze authority disappeared."
++            )
++        if existing.protocol_freeze_authority_digest != authority.content_digest:
++            raise CampaignCliError(
++                "ADAPT-MIGRATE1 closure/authority digest mismatch; refusing stale evidence."
++            )
++        if existing.adaptive_protocol_freeze_digest != freeze.content_digest:
++            raise CampaignCliError(
++                "ADAPT-MIGRATE1 closure points at a different adaptive freeze."
++            )
++        return existing
++
++    if alias_payload is not None and alias_schema == mdstats.PROTOCOL_FREEZE_RECORD_SCHEMA:
++        raise CampaignCliError(
++            "A historical committee protocol freeze and an adaptive protocol freeze both "
++            "claim generic authority in the same campaign. Refusing ambiguous migration."
++        )
++    if alias_payload is not None and alias_schema not in {
++        mdstats.ADAPTIVE_PROTOCOL_FREEZE_SCHEMA,
++        mdstats.PROTOCOL_FREEZE_AUTHORITY_SCHEMA,
++    }:
++        raise CampaignCliError(
++            f"Unsupported generic protocol-freeze authority schema during migration: {alias_schema!r}."
++        )
++
++    authority = mdstats.protocol_freeze_authority_from_adaptive(freeze)
++    if alias_schema == mdstats.PROTOCOL_FREEZE_AUTHORITY_SCHEMA:
++        current = mdstats.ProtocolFreezeAuthorityRecord.from_dict(alias_payload)
++        if current.content_digest != authority.content_digest:
++            raise CampaignCliError(
++                "Existing protocol-freeze authority disagrees with adaptive freeze evidence."
++            )
++    else:
++        # 0.20.127a0 stored the adaptive scientific freeze itself under this
++        # generic key. Replace only that alias; keep adaptive_protocol_freeze.
++        store.put_record("protocol_freeze", authority)
++
++    record = mdstats.AdaptiveMigrationRecord(
++        campaign_plan_digest=freeze.campaign_plan_digest,
++        adaptive_full_evaluation_digest=evaluation.content_digest,
++        adaptive_verification_digest=verification.content_digest,
++        adaptive_deployment_model_digest=deployment.content_digest,
++        adaptive_protocol_freeze_digest=freeze.content_digest,
++        protocol_freeze_authority_digest=authority.content_digest,
++        model_inference_dtype=freeze.model_inference_dtype,
++        scientific_analysis_dtype=freeze.scientific_analysis_dtype,
++        historical_evidence_keys=_historical_algorithm_evidence_keys(store),
++        migrated_at_utc=freeze.frozen_at_utc,
++        migrated_legacy_protocol_freeze_alias_schema=(
++            mdstats.ADAPTIVE_PROTOCOL_FREEZE_SCHEMA
++            if alias_schema == mdstats.ADAPTIVE_PROTOCOL_FREEZE_SCHEMA
++            else None
++        ),
++    )
++    store.put_record("adaptive_migration", record)
++    result_path = paths.results / "adaptive-migration.json"
++    _atomic_json(result_path, record.to_dict())
++    event = getattr(store, "event", None)
++    if callable(event):
++        event(
++            "info",
++            "migration",
++            "ADAPT-MIGRATE1 closed schema/restart/storage authority migration",
++        )
++    return record
++
++
+ def _atomic_json(path: Path, payload: Mapping[str, Any]) -> None:
+     path.parent.mkdir(parents=True, exist_ok=True)
+     temp = path.with_suffix(path.suffix + ".tmp")
+@@ -11108,6 +11412,9 @@
+     requested_checkpoint_strategy = str(
+         _cfg(cfg, "evaluation", "checkpoint_strategy", "bounded")
+     ).strip().lower()
++    _enforce_evaluation_migration_boundary(campaign, requested_checkpoint_strategy)
++    if requested_checkpoint_strategy == "adaptive_topk" and _reuse_frozen_adaptive_evaluation(paths, store):
++        return 0
+     if full_evaluation:
+         runs_to_evaluate = tuple(campaign.runs)
+         stage_message = (
+@@ -12705,6 +13012,7 @@
+             )
+         if freeze.adaptive_verification_digest != existing.content_digest:
+             raise CampaignCliError("Adaptive protocol freeze/verification digest mismatch.")
++        _reconcile_adaptive_migration(paths, store)
+         _mark_stage(
+             store,
+             paths,
+@@ -12796,7 +13104,7 @@
+     verification_runtime_digest = digest(
+         {
+             "schema": "mdstats.mlff-adaptive-verification-runtime.v1",
+-            "mdstats_version": "0.20.127a0",
++            "mdstats_version": "0.20.128a0",
+             "configured_mace_version": str(_cfg(cfg, "runtime", "mace_version", "0.3.16")),
+             "doctor_versions": doctor_versions,
+         }
+@@ -13208,18 +13516,19 @@
+         scientific_analysis_dtype="float64",
+         frozen_at_utc=_utc_now(),
+     )
++    authority = mdstats.protocol_freeze_authority_from_adaptive(freeze)
+     store.put_records(
+         {
+             "adaptive_verification": record,
+             "adaptive_deployment_model": deployment,
+             "adaptive_protocol_freeze": freeze,
+-            # Compatibility authority token for existing storage lifecycle gates.
+-            # ADAPT-MIGRATE1 will remove the remaining old ProtocolFreezeRecord type
+-            # assumptions; the schema remains explicit and cannot be mistaken for
+-            # a historical committee freeze by typed readers.
+-            "protocol_freeze": freeze,
++            # Generic lifecycle consumers bind to an explicit schema-neutral
++            # authority adapter; the scientific adaptive freeze remains intact
++            # under adaptive_protocol_freeze.
++            "protocol_freeze": authority,
+         }
+     )
++    migration = _reconcile_adaptive_migration(paths, store)
+ 
+     full_eval_metric = store.get_record(
+         f"adaptive_full_evaluation:{selected_run.run_id}:{selected_candidate.checkpoint_sha256}",
+@@ -13231,6 +13540,7 @@
+         **record.to_dict(),
+         "selected_model": deployment.to_dict(),
+         "adaptive_protocol_freeze": freeze.to_dict(),
++        "adaptive_migration": None if migration is None else migration.to_dict(),
+         "precision": precision_profile,
+         "model_inference_dtype": model_dtype,
+         "scientific_analysis_dtype": "float64",
+@@ -13319,6 +13629,14 @@
+     checkpoint_strategy = str(
+         _cfg(cfg, "evaluation", "checkpoint_strategy", "bounded")
+     ).strip().lower()
++    campaign_for_migration = None
++    get_record_optional = getattr(store, "get_record_optional", None)
++    if callable(get_record_optional):
++        campaign_for_migration = get_record_optional(
++            "training_campaign", mdstats.TrainingCampaignPlan
++        )
++    if campaign_for_migration is not None:
++        _enforce_evaluation_migration_boundary(campaign_for_migration, checkpoint_strategy)
+     if evaluate_state is StageState.COMPLETE and checkpoint_strategy == "adaptive_topk":
+         return _command_verify_adaptive_topk(
+             args, cfg=cfg, paths=paths, store=store, model_dtype=model_dtype
+@@ -13836,6 +14154,9 @@
+     """STOR1 read-only campaign storage accounting and ownership report."""
+ 
+     cfg, paths = _load_config(args.config)
++    freeze_authority, historical_evidence = _read_storage_migration_summary(
++        paths.state_db
++    )
+     protected_inputs = configured_protected_inputs(
+         cfg, config_dir=paths.config_dir, config_path=paths.config
+     )
+@@ -13845,6 +14166,10 @@
+         largest_limit=int(getattr(args, "top", 20)),
+     )
+     payload = report.to_dict()
++    payload["protocol_freeze_authority"] = (
++        None if freeze_authority is None else freeze_authority.to_dict()
++    )
++    payload["historical_algorithm_evidence_keys"] = list(historical_evidence)
+     destination = paths.results / "storage-report.json"
+     boundary = CampaignOwnershipBoundary(
+         paths.workspace, protected_inputs=protected_inputs
+@@ -14121,7 +14446,7 @@
+     store: CampaignStore,
+ ) -> None:
+     verify_state, _ = _effective_stage(store, paths, "verify")
+-    if verify_state is not StageState.COMPLETE or not store.has_record("protocol_freeze"):
++    if verify_state is not StageState.COMPLETE or not _has_authoritative_protocol_freeze(store):
+         report.skipped.append("compact tier requires full verification plus an authoritative protocol freeze")
+         return
+     if not _production_models_present(paths):
+@@ -14423,7 +14748,7 @@
+     if running:
+         raise CampaignCliError("Refusing immutable deduplication while campaign stages are running: " + ", ".join(running))
+     verify_state, _ = _effective_stage(store, paths, "verify")
+-    if verify_state is not StageState.COMPLETE or not store.has_record("protocol_freeze"):
++    if verify_state is not StageState.COMPLETE or not _has_authoritative_protocol_freeze(store):
+         raise CampaignCliError("STOR5 deduplication requires completed verification and an authoritative protocol freeze.")
+     protected_inputs = configured_protected_inputs(cfg, config_dir=paths.config_dir, config_path=paths.config)
+     boundary = CampaignOwnershipBoundary(paths.workspace, protected_inputs=protected_inputs)
+@@ -14724,6 +15049,39 @@
+     print(f"\nWorkspace: {paths.workspace}")
+     print(f"State DB:  {paths.state_db}")
+     print(f"Results:   {paths.results}")
++    authority = _protocol_freeze_authority(store)
++    if authority is not None:
++        print(
++            "Freeze authority: "
++            f"{authority.authority_kind} ({authority.source_record_schema}; "
++            f"source={authority.source_record_digest[:12]}...)",
++            flush=True,
++        )
++    try:
++        import mdstats
++        migration = store.get_record_optional(
++            "adaptive_migration", mdstats.AdaptiveMigrationRecord
++        )
++    except Exception as exc:
++        raise CampaignCliError(f"Adaptive migration evidence is unreadable: {exc}") from exc
++    if migration is not None:
++        print(
++            f"Adaptive migration: complete ({migration.migration_version}; "
++            f"historical records preserved={len(migration.historical_evidence_keys)})",
++            flush=True,
++        )
++    elif authority is not None and authority.authority_kind == "adaptive_deployment":
++        print(
++            "Adaptive migration: pending authority-alias closure; rerun `verify` once under "
++            "mdstats >=0.20.128a0 to reconcile 0.20.127 evidence.",
++            flush=True,
++        )
++    historical = _historical_algorithm_evidence_keys(store)
++    if historical:
++        print(
++            f"Historical evaluator evidence: {len(historical)} preserved record(s); read-only for adaptive selection.",
++            flush=True,
++        )
+     if next_command:
+         print(f"\nNext command: python tools/mdstats-mlff-campaign.py --config {paths.config} {next_command}")
+     else:
+@@ -15187,7 +15545,7 @@
+ 3. prepare    Infer XML metadata, build leakage-safe MACE data, and freeze common 256-target/512-true-replay online monitors.
+ 4. preflight  Verify every job and run the required real one-epoch smoke.
+ 5. train      Execute configured fold/final, seed, size, and naive/replay jobs with safe resume; common monitors are validated each epoch.
+-6. evaluate   Screen saved epochs through the still-current EVAL-MF policy; ADAPT-EVAL1 retirement is a later gate.
++6. evaluate   Rank one champion per run and fully evaluate adaptive finalists in score order; historical campaigns retain their original evaluator.
+ 7. verify     For adaptive_topk, run the full NVE matrix on the best fully admissible candidate and fall back by full score until one passes; publish only the verified winner. Historical evaluators retain committee/fold verification behavior.
+ 
+ Use `status` at any time. It reports the next command and never advances a failed gate.
+@@ -15264,6 +15622,19 @@
+ verification behavior. This bounded gate does not replace matched RDF, coordination, site-population,
+ VDOS, or diffusion validation.
+ 
++ADAPT-MIGRATE1 is active in 0.20.128a0 and closes the adaptive revision. Immutable run protocol
++identity now prevents an adaptive campaign from being switched back to historical
++`bounded|exhaustive|multi_fidelity` evaluation by editing TOML, and prevents a historical campaign
++from being reinterpreted as `adaptive_topk` without a new scientific campaign identity. A
++schema-neutral protocol-freeze authority record lets storage/restart code validate either historical
++committee freezes or adaptive deployment freezes without changing the original scientific evidence.
++Completed 0.20.127 adaptive campaigns are reconciled by rerunning `verify` once: model inference,
++full evaluation, and NVE are reused; only the generic freeze-authority alias and immutable migration
++receipt are added. Once an adaptive deployment is frozen, later `evaluate` invocations only reuse
++the frozen EVAL1 authority and do not create a second selection history. `storage report` exposes
++freeze authority and preserved historical evaluator evidence read-only, while STOR cleanup/deletion
++boundaries are unchanged.
++
+ When the result is weak: first check E0/reference-energy consistency if energies are bad
+ but forces are reasonable; increase structurally independent data rather than adjacent
+ AIMD frames; add mobile-ion transition and strained/high-force environments; lower the
+diff -ruN a/pyproject.toml b/pyproject.toml
+--- a/pyproject.toml	2026-08-09 22:31:24.505255580 +0000
++++ b/pyproject.toml	2026-08-09 23:28:40.797785513 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.127a0"
++version = "0.20.128a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN a/release/mlff_adapt_migrate1_lifecycle_qualification.json b/release/mlff_adapt_migrate1_lifecycle_qualification.json
+--- a/release/mlff_adapt_migrate1_lifecycle_qualification.json	1970-01-01 00:00:00.000000000 +0000
++++ b/release/mlff_adapt_migrate1_lifecycle_qualification.json	2026-08-09 23:56:24.402456612 +0000
+@@ -0,0 +1,97 @@
++{
++  "schema": "mdstats.mlff-adapt-migrate1-qualification.v1",
++  "package_version": "0.20.128a0",
++  "gate": "ADAPT-MIGRATE1",
++  "date": "2026-08-09",
++  "status": "qualified",
++  "revision_status": "ADAPT-PREC1 through ADAPT-MIGRATE1 implemented; seven-gate adaptive revision complete",
++  "migration_contract": {
++    "protocol_freeze_authority_schema": "mdstats.protocol-freeze-authority.v1",
++    "adaptive_migration_record_schema": "mdstats.adaptive-migration-record.v1",
++    "historical_scientific_freeze_rewritten": false,
++    "adaptive_scientific_freeze_rewritten": false,
++    "020127_adaptive_generic_alias_reconciled_idempotently": true,
++    "ambiguous_dual_historical_adaptive_authority": "fail_closed",
++    "adaptive_campaign_historical_evaluator_reactivation": "prohibited",
++    "historical_campaign_adaptive_topk_reinterpretation": "prohibited_without_new_campaign_identity",
++    "post_freeze_adaptive_evaluation": "authenticate_and_reuse_frozen_EVAL1_only",
++    "storage_authority_requires_schema_validation": true,
++    "storage_report_sqlite_mode": "read_only",
++    "storage_deletion_authority_broadened": false,
++    "historical_eval_mf_committee_refine_evidence_preserved": true
++  },
++  "precision_and_scientific_arithmetic": {
++    "single_model_inference_dtype": "float32",
++    "double_model_inference_dtype": "float64",
++    "scientific_analysis_dtype": "float64",
++    "new_refine_or_mixed_model_mode": false
++  },
++  "monitor_rationale_evidence": {
++    "target_default_configurations": 256,
++    "target_sampling": "common condition/trajectory/time-balanced systematic",
++    "target_force_rmse_95pct_resampling_half_width_mev_per_angstrom": 0.325,
++    "replay_default_configurations": 512,
++    "replay_labels": "TRUE_DFT",
++    "replay_force_rmse_95pct_random_subset_half_width_mev_per_angstrom": 2.704,
++    "provenance": "2026-08-09 fixed-checkpoint validation-size regression recorded in the adaptive architecture rationale"
++  },
++  "adaptive_policy_defaults": {
++    "maximum_target_force_rmse_ev_per_angstrom": 0.03,
++    "target_stop_fraction": 0.8,
++    "replay_stop_multiplier": 1.2,
++    "target_score_weight": 1.0,
++    "replay_score_weight": 1.0,
++    "default_derived_replay_force_rmse_ev_per_angstrom": 0.03,
++    "default_target_stop_force_rmse_ev_per_angstrom": 0.024,
++    "default_replay_stop_force_rmse_ev_per_angstrom": 0.036,
++    "max_num_epochs": 30,
++    "finalist_count": 5,
++    "finalist_rescue_batch_size": 5,
++    "checkpoint_strategy": "adaptive_topk"
++  },
++  "qualification": [
++    {
++      "scope": "complete adaptive lifecycle + historical EVAL-MF/refine + restart + STOR1-STOR5 + campaign CLI",
++      "result": "161 passed, 1 skipped",
++      "skip": "real LTA training root not supplied"
++    },
++    {
++      "scope": "MLFF specification/version/schema sweep",
++      "result": "146 passed, 1 deselected",
++      "deselection": "pre-existing release/mlff_data9a9a_real_mpa0_restart_smoke.json fixture absent from supplied source package"
++    },
++    {
++      "scope": "ADAPT-MIGRATE1 authority/reconciliation/storage-read-only focused runtime",
++      "result": "9 passed"
++    }
++  ],
++  "required_outcome_coverage": {
++    "binary_single_double_dtype": true,
++    "target_stop": true,
++    "replay_stop": true,
++    "max_epoch_stop": true,
++    "no_admissible_checkpoint": true,
++    "weight_ratio_1_to_1": true,
++    "weight_ratio_2_to_1": true,
++    "weight_ratio_1_to_2": true,
++    "champion_before_terminal_epoch": true,
++    "top_five_and_next_five_rescue": true,
++    "training_stop_restart": true,
++    "full_evaluation_restart_reuse": true,
++    "verification_score_ordered_fallback": true,
++    "first_passing_model_exact_bytes_published": true,
++    "historical_eval_mf_readable": true,
++    "historical_refine_readable_but_not_new_production": true,
++    "storage_authority_and_ownership_safety": true,
++    "020127_alias_migration_idempotent": true
++  },
++  "known_external_evidence_gap": {
++    "description": "The inherited DATA9A9A real-MPA0 restart-smoke release JSON is absent from the supplied source tree. The test has been the same known pre-existing gap throughout the adaptive releases and is not fabricated by MIGRATE1.",
++    "gate_impact": "none; unrelated to adaptive schema/restart/storage migration"
++  },
++  "pdf_verification": {
++    "mlff_adaptive_migration_spec.pdf": "5 pages rendered at 160 dpi and visually inspected",
++    "mlff_training_data_architecture.pdf": "89 pages; changed ADAPT-MIGRATE1/completion pages 87-89 rendered and visually inspected",
++    "mlff_campaign_cli_user_guide.pdf": "13 pages; changed migration/verification pages 8-9 rendered and visually inspected"
++  }
++}
+diff -ruN a/tests/test_mlff_adapt_eval1_specification.py b/tests/test_mlff_adapt_eval1_specification.py
+--- a/tests/test_mlff_adapt_eval1_specification.py	2026-08-09 22:40:21.430479428 +0000
++++ b/tests/test_mlff_adapt_eval1_specification.py	2026-08-09 23:46:08.427394910 +0000
+@@ -11,7 +11,7 @@
+ 
+ 
+ def test_adapt_eval1_release_identity_and_specification() -> None:
+-    assert mdstats.__version__ == "0.20.127a0"
++    assert mdstats.__version__ == "0.20.128a0"
+     text = SPEC.read_text(encoding="utf-8")
+     assert "Status: implemented in mdstats 0.20.126a0" in text
+     assert 'checkpoint_strategy = "adaptive_topk"' in text
+diff -ruN a/tests/test_mlff_adapt_migrate1_migration.py b/tests/test_mlff_adapt_migrate1_migration.py
+--- a/tests/test_mlff_adapt_migrate1_migration.py	1970-01-01 00:00:00.000000000 +0000
++++ b/tests/test_mlff_adapt_migrate1_migration.py	2026-08-09 23:53:41.019517221 +0000
+@@ -0,0 +1,317 @@
++from __future__ import annotations
++
++import hashlib
++from pathlib import Path
++from types import SimpleNamespace
++
++import pytest
++
++import mdstats
++from mdstats.training_data import campaign_cli
++
++
++def _sha(text: str) -> str:
++    return hashlib.sha256(text.encode()).hexdigest()
++
++
++def _candidate():
++    return mdstats.FullEvaluationCandidateRecord(
++        finalist_rank=1,
++        finalist_batch_index=1,
++        run_plan_digest=_sha("run"),
++        run_id="run-1",
++        checkpoint_sha256=_sha("checkpoint"),
++        checkpoint_epoch=4,
++        evaluation_record_digest=_sha("eval"),
++        target_force_rmse_ev_per_angstrom=0.024,
++        replay_force_rmse_ev_per_angstrom=0.026,
++        full_score_ev_per_angstrom=0.025,
++        admissible=True,
++        rejection_reasons=(),
++        replay_foundation_force_rmse_ev_per_angstrom=0.020,
++        replay_absolute_degradation_ev_per_angstrom=0.006,
++        replay_fractional_degradation=0.30,
++    )
++
++
++def _adaptive_records(tmp_path: Path):
++    candidate = _candidate()
++    evaluation = mdstats.AdaptiveFullEvaluationRecord(
++        campaign_plan_digest=_sha("campaign"),
++        policy_digest=_sha("eval-policy"),
++        finalist_queue_digest=_sha("queue"),
++        full_target_artifact_digest=_sha("target-domain"),
++        full_replay_artifact_digest=_sha("replay-domain"),
++        evaluated_candidates=(candidate,),
++        completed_batch_count=1,
++        outcome="admissible_candidates_available",
++    )
++    attempt = mdstats.AdaptiveVerificationCandidateRecord(
++        adaptive_full_evaluation_digest=evaluation.content_digest,
++        verification_policy_digest=_sha("verify-policy"),
++        full_evaluation_candidate_digest=candidate.content_digest,
++        finalist_rank=1,
++        finalist_batch_index=1,
++        run_plan_digest=candidate.run_plan_digest,
++        run_id=candidate.run_id,
++        checkpoint_sha256=candidate.checkpoint_sha256,
++        checkpoint_epoch=candidate.checkpoint_epoch,
++        full_score_ev_per_angstrom=candidate.full_score_ev_per_angstrom,
++        target_force_rmse_ev_per_angstrom=candidate.target_force_rmse_ev_per_angstrom,
++        replay_force_rmse_ev_per_angstrom=candidate.replay_force_rmse_ev_per_angstrom,
++        candidate_model_sha256=_sha("model"),
++        model_inference_dtype="float32",
++        scientific_analysis_dtype="float64",
++        verification_case_digests=(_sha("case"),),
++        passed=True,
++        rejection_reasons=(),
++    )
++    verification = mdstats.AdaptiveVerificationRecord(
++        campaign_plan_digest=_sha("campaign"),
++        adaptive_full_evaluation_digest=evaluation.content_digest,
++        verification_policy_digest=_sha("verify-policy"),
++        attempts=(attempt,),
++        outcome="verified_candidate_selected",
++        selected_attempt_digest=attempt.content_digest,
++    )
++    model_path = tmp_path / "selected.model"
++    model_path.write_bytes(b"verified")
++    model_sha = hashlib.sha256(model_path.read_bytes()).hexdigest()
++    deployment = mdstats.AdaptiveDeploymentModelRecord(
++        campaign_plan_digest=_sha("campaign"),
++        adaptive_full_evaluation_digest=evaluation.content_digest,
++        adaptive_verification_digest=verification.content_digest,
++        selected_full_evaluation_candidate_digest=candidate.content_digest,
++        selected_verification_attempt_digest=attempt.content_digest,
++        run_plan_digest=candidate.run_plan_digest,
++        run_id=candidate.run_id,
++        checkpoint_sha256=candidate.checkpoint_sha256,
++        checkpoint_epoch=candidate.checkpoint_epoch,
++        target_head_name="target_head",
++        model_inference_dtype="float32",
++        scientific_analysis_dtype="float64",
++        exported_model_path=str(model_path),
++        exported_model_sha256=model_sha,
++        byte_size=model_path.stat().st_size,
++    )
++    freeze = mdstats.AdaptiveProtocolFreezeRecord(
++        production_qualification_digest=_sha("qualification"),
++        campaign_plan_digest=_sha("campaign"),
++        adaptive_full_evaluation_digest=evaluation.content_digest,
++        adaptive_verification_digest=verification.content_digest,
++        adaptive_deployment_model_digest=deployment.content_digest,
++        selected_full_evaluation_candidate_digest=candidate.content_digest,
++        full_target_artifact_digest=evaluation.full_target_artifact_digest,
++        full_replay_artifact_digest=evaluation.full_replay_artifact_digest,
++        exported_model_sha256=model_sha,
++        model_inference_dtype="float32",
++        scientific_analysis_dtype="float64",
++        frozen_at_utc="2026-08-09T23:00:00+00:00",
++    )
++    return evaluation, verification, deployment, freeze
++
++
++def test_authority_adapter_roundtrip_for_adaptive_freeze(tmp_path: Path):
++    _, _, _, freeze = _adaptive_records(tmp_path)
++    authority = mdstats.protocol_freeze_authority_from_adaptive(freeze)
++    assert authority.authority_kind == "adaptive_deployment"
++    assert authority.source_record_digest == freeze.content_digest
++    assert authority.protected_model_sha256 == (freeze.exported_model_sha256,)
++    assert authority.model_inference_dtype == "float32"
++    assert authority.scientific_analysis_dtype == "float64"
++    assert mdstats.ProtocolFreezeAuthorityRecord.from_dict(authority.to_dict()) == authority
++    assert mdstats.protocol_freeze_authority_from_payload(freeze.to_dict()) == authority
++
++
++def test_historical_protocol_freeze_remains_readable_through_authority_adapter():
++    freeze = mdstats.ProtocolFreezeRecord(
++        production_qualification_digest=_sha("qualification"),
++        campaign_plan_digest=_sha("campaign"),
++        source_catalog_digest=_sha("source"),
++        frame_catalog_digest=_sha("frames"),
++        data5_bundle_digest=_sha("data5"),
++        protocol_comparison_record_digest=_sha("comparison"),
++        selected_protocol_family_digest=_sha("family"),
++        selected_family_aggregate_digest=_sha("aggregate"),
++        committee_identity_digest=_sha("committee"),
++        committee_member_model_sha256=(_sha("model-a"), _sha("model-b")),
++        final_checkpoint_selection_record_digests=(_sha("sel-a"), _sha("sel-b")),
++        frozen_at_utc="2026-08-01T00:00:00+00:00",
++    )
++    authority = mdstats.protocol_freeze_authority_from_payload(freeze.to_dict())
++    assert authority.authority_kind == "historical_committee"
++    assert authority.source_record_digest == freeze.content_digest
++    assert authority.model_inference_dtype is None
++    assert authority.protected_model_sha256 == freeze.committee_member_model_sha256
++
++
++def test_reconcile_upgrades_020127_adaptive_alias_without_deleting_history(tmp_path: Path):
++    paths = SimpleNamespace(
++        state_db=tmp_path / ".mdstats" / "campaign.sqlite3",
++        results=tmp_path / "results",
++    )
++    paths.results.mkdir(parents=True)
++    store = campaign_cli.CampaignStore(paths.state_db)
++    evaluation, verification, deployment, freeze = _adaptive_records(tmp_path)
++    store.put_records({
++        "adaptive_full_evaluation": evaluation,
++        "adaptive_verification": verification,
++        "adaptive_deployment_model": deployment,
++        "adaptive_protocol_freeze": freeze,
++        # Exact 0.20.127a0 compatibility alias.
++        "protocol_freeze": freeze,
++        "committee": {"schema": "historical.test", "content_digest": _sha("old")},
++        "multifidelity_policy:old-run": {"schema": "historical.mf"},
++    })
++    migration = campaign_cli._reconcile_adaptive_migration(paths, store)
++    assert migration.migrated_legacy_protocol_freeze_alias_schema == mdstats.ADAPTIVE_PROTOCOL_FREEZE_SCHEMA
++    assert migration.historical_evidence_keys == ("committee", "multifidelity_policy:old-run")
++    assert store.get_payload("adaptive_protocol_freeze")["schema"] == mdstats.ADAPTIVE_PROTOCOL_FREEZE_SCHEMA
++    assert store.get_payload("protocol_freeze")["schema"] == mdstats.PROTOCOL_FREEZE_AUTHORITY_SCHEMA
++    assert store.has_record("committee")
++    assert store.has_record("multifidelity_policy:old-run")
++    assert (paths.results / "adaptive-migration.json").is_file()
++    # Exact restart/reconciliation is idempotent.
++    assert campaign_cli._reconcile_adaptive_migration(paths, store) == migration
++
++
++def test_reconcile_refuses_dual_historical_and_adaptive_authority(tmp_path: Path):
++    paths = SimpleNamespace(
++        state_db=tmp_path / ".mdstats" / "campaign.sqlite3",
++        results=tmp_path / "results",
++    )
++    paths.results.mkdir(parents=True)
++    store = campaign_cli.CampaignStore(paths.state_db)
++    evaluation, verification, deployment, freeze = _adaptive_records(tmp_path)
++    store.put_records({
++        "adaptive_full_evaluation": evaluation,
++        "adaptive_verification": verification,
++        "adaptive_deployment_model": deployment,
++        "adaptive_protocol_freeze": freeze,
++        "protocol_freeze": {
++            "schema": mdstats.PROTOCOL_FREEZE_RECORD_SCHEMA,
++            "content_digest": _sha("legacy-freeze"),
++        },
++    })
++    with pytest.raises(campaign_cli.CampaignCliError, match="historical committee protocol freeze"):
++        campaign_cli._reconcile_adaptive_migration(paths, store)
++
++
++def test_storage_authority_requires_valid_schema_not_key_presence(tmp_path: Path):
++    store = campaign_cli.CampaignStore(tmp_path / ".mdstats" / "campaign.sqlite3")
++    store.put_record("protocol_freeze", {"schema": "bogus.freeze.v1"})
++    with pytest.raises(campaign_cli.CampaignCliError, match="unsupported schema"):
++        campaign_cli._has_authoritative_protocol_freeze(store)
++
++
++def test_evaluation_migration_boundary_separates_adaptive_and_historical_campaigns():
++    adaptive = SimpleNamespace(
++        runs=(SimpleNamespace(protocol=SimpleNamespace(adaptive_stop_policy=object())),)
++    )
++    historical = SimpleNamespace(
++        runs=(SimpleNamespace(protocol=SimpleNamespace(adaptive_stop_policy=None)),)
++    )
++    campaign_cli._enforce_evaluation_migration_boundary(adaptive, "adaptive_topk")
++    campaign_cli._enforce_evaluation_migration_boundary(historical, "multi_fidelity")
++    with pytest.raises(campaign_cli.CampaignCliError, match="must use checkpoint_strategy='adaptive_topk'"):
++        campaign_cli._enforce_evaluation_migration_boundary(adaptive, "multi_fidelity")
++    with pytest.raises(campaign_cli.CampaignCliError, match="predates adaptive STOP1/RANK1"):
++        campaign_cli._enforce_evaluation_migration_boundary(historical, "adaptive_topk")
++
++
++def test_migration_record_roundtrip_and_fp64_analysis_invariant(tmp_path: Path):
++    evaluation, verification, deployment, freeze = _adaptive_records(tmp_path)
++    authority = mdstats.protocol_freeze_authority_from_adaptive(freeze)
++    record = mdstats.AdaptiveMigrationRecord(
++        campaign_plan_digest=freeze.campaign_plan_digest,
++        adaptive_full_evaluation_digest=evaluation.content_digest,
++        adaptive_verification_digest=verification.content_digest,
++        adaptive_deployment_model_digest=deployment.content_digest,
++        adaptive_protocol_freeze_digest=freeze.content_digest,
++        protocol_freeze_authority_digest=authority.content_digest,
++        model_inference_dtype="float64",
++        scientific_analysis_dtype="float64",
++        historical_evidence_keys=("committee",),
++        migrated_at_utc=freeze.frozen_at_utc,
++    )
++    assert mdstats.AdaptiveMigrationRecord.from_dict(record.to_dict()) == record
++    with pytest.raises(Exception, match="float64"):
++        mdstats.AdaptiveMigrationRecord(
++            campaign_plan_digest=freeze.campaign_plan_digest,
++            adaptive_full_evaluation_digest=evaluation.content_digest,
++            adaptive_verification_digest=verification.content_digest,
++            adaptive_deployment_model_digest=deployment.content_digest,
++            adaptive_protocol_freeze_digest=freeze.content_digest,
++            protocol_freeze_authority_digest=authority.content_digest,
++            model_inference_dtype="float32",
++            scientific_analysis_dtype="float32",
++            historical_evidence_keys=(),
++            migrated_at_utc=freeze.frozen_at_utc,
++        )
++
++
++def test_frozen_adaptive_evaluation_is_reused_not_recomputed(tmp_path: Path):
++    config = tmp_path / "campaign.toml"
++    config.write_text("[campaign]\nid='test'\n", encoding="utf-8")
++    paths = SimpleNamespace(
++        state_db=tmp_path / ".mdstats" / "campaign.sqlite3",
++        results=tmp_path / "results",
++        config=config,
++    )
++    paths.results.mkdir(parents=True)
++    store = campaign_cli.CampaignStore(paths.state_db)
++    evaluation, verification, deployment, freeze = _adaptive_records(tmp_path)
++    store.put_records({
++        "adaptive_full_evaluation": evaluation,
++        "adaptive_verification": verification,
++        "adaptive_deployment_model": deployment,
++        "adaptive_protocol_freeze": freeze,
++        "protocol_freeze": mdstats.protocol_freeze_authority_from_adaptive(freeze),
++    })
++    assert campaign_cli._reuse_frozen_adaptive_evaluation(paths, store) is True
++    migration = store.get_record("adaptive_migration", mdstats.AdaptiveMigrationRecord)
++    assert migration.adaptive_full_evaluation_digest == evaluation.content_digest
++    state, message = store.stage("evaluate")
++    assert state is campaign_cli.StageState.COMPLETE
++    assert "immutable" in message
++
++
++def test_storage_report_reads_migration_authority_without_mutating_state_db(tmp_path: Path):
++    config = tmp_path / "campaign.toml"
++    config.write_text(
++        campaign_cli._config_template(
++            workspace="work",
++            training_root="../training",
++            foundation_model="../foundation.model",
++            replay_train="../replay-train.xyz",
++            replay_monitor="../replay-monitor.xyz",
++            replay_true_labels="../true-labels",
++        ),
++        encoding="utf-8",
++    )
++    _cfg, paths = campaign_cli._load_config(config)
++    store = campaign_cli.CampaignStore(paths.state_db)
++    historical = mdstats.ProtocolFreezeRecord(
++        production_qualification_digest=_sha("qualification"),
++        campaign_plan_digest=_sha("campaign"),
++        source_catalog_digest=_sha("source"),
++        frame_catalog_digest=_sha("frames"),
++        data5_bundle_digest=_sha("data5"),
++        protocol_comparison_record_digest=_sha("comparison"),
++        selected_protocol_family_digest=_sha("family"),
++        selected_family_aggregate_digest=_sha("aggregate"),
++        committee_identity_digest=_sha("committee"),
++        committee_member_model_sha256=(_sha("model-a"),),
++        final_checkpoint_selection_record_digests=(_sha("sel-a"),),
++        frozen_at_utc="2026-08-01T00:00:00+00:00",
++    )
++    store.put_record("protocol_freeze", historical)
++    store.put_record("multifidelity_round:legacy", {"schema": "historical.mf"})
++    before = hashlib.sha256(paths.state_db.read_bytes()).hexdigest()
++    rc = campaign_cli.command_storage(SimpleNamespace(config=str(config), top=5))
++    after = hashlib.sha256(paths.state_db.read_bytes()).hexdigest()
++    assert rc == 0
++    assert before == after
++    payload = __import__("json").loads((paths.results / "storage-report.json").read_text())
++    assert payload["protocol_freeze_authority"]["authority_kind"] == "historical_committee"
++    assert payload["historical_algorithm_evidence_keys"] == ["multifidelity_round:legacy"]
+diff -ruN a/tests/test_mlff_adapt_migrate1_specification.py b/tests/test_mlff_adapt_migrate1_specification.py
+--- a/tests/test_mlff_adapt_migrate1_specification.py	1970-01-01 00:00:00.000000000 +0000
++++ b/tests/test_mlff_adapt_migrate1_specification.py	2026-08-09 23:56:24.836133821 +0000
+@@ -0,0 +1,71 @@
++from __future__ import annotations
++
++from pathlib import Path
++
++import mdstats
++from mdstats.training_data import campaign_cli
++
++ROOT = Path(__file__).resolve().parents[1]
++SPEC = ROOT / "docs" / "specs" / "training_data" / "mlff_adaptive_migration_spec.md"
++ARCH = ROOT / "docs" / "arch_manuals" / "mlff_training_data_architecture.md"
++QUAL = ROOT / "release" / "mlff_adapt_migrate1_lifecycle_qualification.json"
++
++
++def test_adapt_migrate1_release_identity_and_specification() -> None:
++    assert mdstats.__version__ == "0.20.128a0"
++    assert 'version = "0.20.128a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    text = SPEC.read_text(encoding="utf-8")
++    assert "Status: implemented in `mdstats 0.20.128a0`." in text
++    assert "ProtocolFreezeAuthorityRecord" in text
++    assert "AdaptiveMigrationRecord" in text
++    assert "0.20.127 adaptive alias reconciliation" in text
++    assert "storage report` remains read-only" in text
++    assert "does **not** delete or reinterpret historical EVAL-MF" in text
++
++
++def test_architecture_closes_all_seven_adaptive_gates() -> None:
++    text = ARCH.read_text(encoding="utf-8")
++    section = text[text.index("## ADAPT-MIGRATE1") : text.index("## Completion rule for the adaptive-training revision")]
++    assert "**Status:** implemented in `mdstats 0.20.128a0`." in section
++    assert "### ADAPT-MIGRATE1 implementation record (`0.20.128a0`)" in section
++    assert "ProtocolFreezeAuthorityRecord" in section
++    assert "AdaptiveMigrationRecord" in section
++    assert "all seven adaptive gates are implemented" in text
++
++
++def test_migration_source_exposes_fail_closed_authority_and_evaluator_boundaries() -> None:
++    source = Path(campaign_cli.__file__).read_text(encoding="utf-8")
++    assert "def _enforce_evaluation_migration_boundary" in source
++    assert "def _reconcile_adaptive_migration" in source
++    assert "def _reuse_frozen_adaptive_evaluation" in source
++    assert "def _read_storage_migration_summary" in source
++    assert "ProtocolFreezeAuthorityRecord" in (ROOT / "mdstats" / "training_data" / "adaptive_migration.py").read_text(encoding="utf-8")
++    assert "mode=ro" in source
++
++
++def test_generated_config_keeps_final_adaptive_defaults() -> None:
++    source = Path(campaign_cli.__file__).read_text(encoding="utf-8")
++    for expected in (
++        "max_num_epochs = 30",
++        "online_target_monitor_configurations = 256",
++        "online_replay_monitor_configurations = 512",
++        "target_stop_fraction = 0.80",
++        "replay_stop_multiplier = 1.20",
++        "maximum_target_force_rmse_ev_per_angstrom = 0.030",
++        "target_score_weight = 1.0",
++        "replay_score_weight = 1.0",
++        "finalist_count = 5",
++        "finalist_rescue_batch_size = 5",
++        'checkpoint_strategy = "adaptive_topk"',
++    ):
++        assert expected in source
++
++
++def test_migrate1_release_qualification_is_frozen() -> None:
++    import json
++    payload = json.loads(QUAL.read_text(encoding="utf-8"))
++    assert payload["schema"] == "mdstats.mlff-adapt-migrate1-qualification.v1"
++    assert payload["package_version"] == "0.20.128a0"
++    assert payload["status"] == "qualified"
++    assert payload["required_outcome_coverage"]["top_five_and_next_five_rescue"] is True
++    assert payload["migration_contract"]["storage_deletion_authority_broadened"] is False
+diff -ruN a/tests/test_mlff_adapt_mon1_specification.py b/tests/test_mlff_adapt_mon1_specification.py
+--- a/tests/test_mlff_adapt_mon1_specification.py	2026-08-09 22:40:21.445712593 +0000
++++ b/tests/test_mlff_adapt_mon1_specification.py	2026-08-09 23:46:08.432060348 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_adapt_mon1_release_and_normative_defaults():
+-    assert mdstats.__version__ == "0.20.127a0"
++    assert mdstats.__version__ == "0.20.128a0"
+     text = SPEC.read_text(encoding="utf-8")
+     assert "Status: implemented in mdstats 0.20.123a0" in text
+     assert "256 configurations" in text
+diff -ruN a/tests/test_mlff_adapt_prec1_specification.py b/tests/test_mlff_adapt_prec1_specification.py
+--- a/tests/test_mlff_adapt_prec1_specification.py	2026-08-09 22:40:21.448003234 +0000
++++ b/tests/test_mlff_adapt_prec1_specification.py	2026-08-09 23:46:31.225484106 +0000
+@@ -8,7 +8,7 @@
+ 
+ 
+ def test_adapt_prec1_release_and_spec_contract():
+-    assert mdstats.__version__ == "0.20.127a0"
++    assert mdstats.__version__ == "0.20.128a0"
+     text = SPEC.read_text(encoding="utf-8")
+     assert "Status: implemented in mdstats 0.20.122a0" in text
+     assert "`single`: learned-model" in text
+@@ -18,7 +18,7 @@
+     assert "Historical staged `refine` schedules remain deserializable" in text
+ 
+ 
+-def test_adapt_prec1_manual_tracks_closed_adaptive_gates_and_open_migration():
++def test_adapt_prec1_manual_tracks_completed_adaptive_revision():
+     text = MANUAL.read_text(encoding="utf-8")
+     assert "## ADAPT-PREC1 - binary model precision" in text
+     assert "**Status:** implemented in `mdstats 0.20.122a0`." in text
+@@ -33,4 +33,4 @@
+     verify_start = text.index("## ADAPT-VERIFY1")
+     assert "**Status:** implemented in `mdstats 0.20.127a0`." in text[verify_start : verify_start + 1000]
+     migrate_start = text.index("## ADAPT-MIGRATE1")
+-    assert "**Status:** `not_started`." in text[migrate_start : migrate_start + 1000]
++    assert "**Status:** implemented in `mdstats 0.20.128a0`." in text[migrate_start : migrate_start + 1200]
+diff -ruN a/tests/test_mlff_adapt_rank1_specification.py b/tests/test_mlff_adapt_rank1_specification.py
+--- a/tests/test_mlff_adapt_rank1_specification.py	2026-08-09 22:40:21.429714689 +0000
++++ b/tests/test_mlff_adapt_rank1_specification.py	2026-08-09 23:46:08.427206670 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_adapt_rank1_release_and_spec_contract() -> None:
+-    assert mdstats.__version__ == "0.20.127a0"
++    assert mdstats.__version__ == "0.20.128a0"
+     text = SPEC.read_text(encoding="utf-8")
+     assert "Status: implemented in mdstats 0.20.125a0" in text
+     assert "zero" in text.lower() and "inference" in text.lower()
+diff -ruN a/tests/test_mlff_adapt_verify1_specification.py b/tests/test_mlff_adapt_verify1_specification.py
+--- a/tests/test_mlff_adapt_verify1_specification.py	2026-08-09 22:40:21.440772026 +0000
++++ b/tests/test_mlff_adapt_verify1_specification.py	2026-08-09 23:46:08.430300507 +0000
+@@ -11,7 +11,7 @@
+ 
+ 
+ def test_adapt_verify1_release_identity_and_specification() -> None:
+-    assert mdstats.__version__ == "0.20.127a0"
++    assert mdstats.__version__ == "0.20.128a0"
+     text = SPEC.read_text(encoding="utf-8")
+     assert "Status: implemented in `mdstats 0.20.127a0`." in text
+     assert "fallback_to_next_full_evaluation_candidate = true" in text
+diff -ruN a/tests/test_mlff_adaptive_training_revision_plan.py b/tests/test_mlff_adaptive_training_revision_plan.py
+--- a/tests/test_mlff_adaptive_training_revision_plan.py	2026-08-09 22:40:21.436241499 +0000
++++ b/tests/test_mlff_adaptive_training_revision_plan.py	2026-08-09 23:46:31.225613820 +0000
+@@ -6,7 +6,7 @@
+ 
+ def test_adaptive_revision_gate_order_and_defaults():
+     version_text = (ROOT / "mdstats" / "_version.py").read_text(encoding="utf-8")
+-    assert '__version__ = "0.20.127a0"' in version_text
++    assert '__version__ = "0.20.128a0"' in version_text
+     text = MANUAL.read_text(encoding="utf-8")
+     headings = [
+         "## ADAPT-PREC1",
+@@ -38,3 +38,8 @@
+     assert "retirement of EVAL-MF screening" in text
+     assert "full **true-label** replay" in text
+     assert "Historical EVAL-MF/PREC records remain valid evidence" in " ".join(text.split())
++    assert "seven-gate adaptive revision is complete" in text
++    migrate = text[text.index("## ADAPT-MIGRATE1") : text.index("## Completion rule for the adaptive-training revision")]
++    assert "**Status:** implemented in `mdstats 0.20.128a0`." in migrate
++    assert "ProtocolFreezeAuthorityRecord" in migrate
++    assert "AdaptiveMigrationRecord" in migrate
+diff -ruN a/tests/test_mlff_data0_architecture_specification.py b/tests/test_mlff_data0_architecture_specification.py
+--- a/tests/test_mlff_data0_architecture_specification.py	2026-08-09 22:40:21.447737278 +0000
++++ b/tests/test_mlff_data0_architecture_specification.py	2026-08-09 23:46:08.433507513 +0000
+@@ -263,4 +263,4 @@
+ def test_mlff_data0_pdf_and_version_artifacts_exist() -> None:
+     assert MANUAL_PDF.stat().st_size > 10_000
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.127a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.128a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN a/tests/test_mlff_data1_specification.py b/tests/test_mlff_data1_specification.py
+--- a/tests/test_mlff_data1_specification.py	2026-08-09 22:40:21.434042444 +0000
++++ b/tests/test_mlff_data1_specification.py	2026-08-09 23:46:08.428735066 +0000
+@@ -49,4 +49,4 @@
+     assert callable(mdstats.assign_balanced_round_robin)
+     assert callable(mdstats.build_complete_frame_block_plan)
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.127a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.128a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN a/tests/test_mlff_data2a_manifest_inference_specification.py b/tests/test_mlff_data2a_manifest_inference_specification.py
+--- a/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-09 22:40:21.446275752 +0000
++++ b/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-09 23:46:08.432595434 +0000
+@@ -15,7 +15,7 @@
+ 
+ 
+ def test_data2a_version_public_api_and_documented_contract() -> None:
+-    assert mdstats.__version__ == "0.20.127a0"
++    assert mdstats.__version__ == "0.20.128a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert callable(mdstats.infer_training_manifest_metadata)
+     policy = mdstats.ManifestInferencePolicy()
+diff -ruN a/tests/test_mlff_data9a2_specification.py b/tests/test_mlff_data9a2_specification.py
+--- a/tests/test_mlff_data9a2_specification.py	2026-08-09 22:40:21.433841855 +0000
++++ b/tests/test_mlff_data9a2_specification.py	2026-08-09 23:46:08.428623309 +0000
+@@ -23,7 +23,7 @@
+         "finite energy, force, and stress",
+     ):
+         assert required in text
+-    assert 'version = "0.20.127a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.128a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "DATA9A2 real-MACE realization is implemented in `0.20.39a0`" in ARCH.read_text()
+ 
+ 
+diff -ruN a/tests/test_mlff_data9a3_specification.py b/tests/test_mlff_data9a3_specification.py
+--- a/tests/test_mlff_data9a3_specification.py	2026-08-09 22:40:21.442273221 +0000
++++ b/tests/test_mlff_data9a3_specification.py	2026-08-09 23:46:08.430688364 +0000
+@@ -9,5 +9,5 @@
+     assert "37,632" in text
+     assert "supported_with_temporal_blocks_only" in text
+     assert "production_replay_corpus_not_bound" in text
+-    assert 'version = "0.20.127a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.128a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "MLFF-DATA9A3 production qualification" in ARCH.read_text()
+diff -ruN a/tests/test_mlff_data9a4_precision_specification.py b/tests/test_mlff_data9a4_precision_specification.py
+--- a/tests/test_mlff_data9a4_precision_specification.py	2026-08-09 22:40:40.499913451 +0000
++++ b/tests/test_mlff_data9a4_precision_specification.py	2026-08-09 23:46:08.431384070 +0000
+@@ -9,7 +9,7 @@
+     assert "float32" in text and "float64" in text
+     assert "MaceModelPrecisionRecord" in text
+     assert "MacePrecisionTransitionRecord" in text
+-    assert "version = \"0.20.127a0\"" in (ROOT / "pyproject.toml").read_text()
++    assert "version = \"0.20.128a0\"" in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_bind_precision_to_protocol() -> None:
+diff -ruN a/tests/test_mlff_data9a5_critical_fp64_specification.py b/tests/test_mlff_data9a5_critical_fp64_specification.py
+--- a/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-09 22:40:21.442825383 +0000
++++ b/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-09 23:46:08.430970545 +0000
+@@ -14,7 +14,7 @@
+     assert 'version: "0.20.42a0"' in text
+     assert "training_force_jacobian_dtype = model" in text
+     assert "Python/ASE" in text
+-    assert 'version = "0.20.127a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.128a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_data9a5_architecture_declares_scope_and_limits() -> None:
+diff -ruN a/tests/test_mlff_data9a5_deployment_specification.py b/tests/test_mlff_data9a5_deployment_specification.py
+--- a/tests/test_mlff_data9a5_deployment_specification.py	2026-08-09 22:40:21.448649937 +0000
++++ b/tests/test_mlff_data9a5_deployment_specification.py	2026-08-09 23:46:08.434056450 +0000
+@@ -13,7 +13,7 @@
+     assert 'version: "0.20.43a0"' in text
+     assert "downstream runtime owns" in text
+     assert "float32-to-float64 promotion does not restore" in text
+-    assert 'version = "0.20.127a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.128a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_keep_lammps_outside_mdstats_scope() -> None:
+diff -ruN a/tests/test_mlff_data9a6c_observable_evidence_specification.py b/tests/test_mlff_data9a6c_observable_evidence_specification.py
+--- a/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-09 22:40:21.446658532 +0000
++++ b/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-09 23:46:08.432810374 +0000
+@@ -74,5 +74,5 @@
+ 
+ def test_packaged_owner_manual_index_is_valid() -> None:
+     payload = json.loads(MANUAL_INDEX.read_text(encoding="utf-8"))
+-    assert payload["package_version"] == "0.20.127a0"
++    assert payload["package_version"] == "0.20.128a0"
+     assert "structural-observables-architecture" in payload["manuals"]
+diff -ruN a/tests/test_mlff_data9a7a_material_profile_specification.py b/tests/test_mlff_data9a7a_material_profile_specification.py
+--- a/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-09 22:40:21.447485273 +0000
++++ b/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-09 23:46:08.433236890 +0000
+@@ -64,4 +64,4 @@
+ 
+ 
+ def test_release_version_is_data9a7a() -> None:
+-    assert 'version = "0.20.127a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert 'version = "0.20.128a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+diff -ruN a/tests/test_mlff_data9a7b_specification.py b/tests/test_mlff_data9a7b_specification.py
+--- a/tests/test_mlff_data9a7b_specification.py	2026-08-09 22:40:21.447768154 +0000
++++ b/tests/test_mlff_data9a7b_specification.py	2026-08-09 23:46:08.433592910 +0000
+@@ -69,7 +69,7 @@
+ 
+ 
+ def test_data9a7b_public_exports_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.127a0"
++    assert mdstats.__version__ == "0.20.128a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert callable(mdstats.compute_local_structure_features)
+diff -ruN a/tests/test_mlff_data9a7c_specification.py b/tests/test_mlff_data9a7c_specification.py
+--- a/tests/test_mlff_data9a7c_specification.py	2026-08-09 22:40:21.446923206 +0000
++++ b/tests/test_mlff_data9a7c_specification.py	2026-08-09 23:46:08.432876703 +0000
+@@ -47,7 +47,7 @@
+ 
+ 
+ def test_public_api_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.127a0"
++    assert mdstats.__version__ == "0.20.128a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert mdstats.MLFF_DATA9A7C_PARSER_VERSION == "0.20.49a0"
+diff -ruN a/tests/test_mlff_data9a7d_specification.py b/tests/test_mlff_data9a7d_specification.py
+--- a/tests/test_mlff_data9a7d_specification.py	2026-08-09 22:40:21.442046023 +0000
++++ b/tests/test_mlff_data9a7d_specification.py	2026-08-09 23:46:08.430601235 +0000
+@@ -39,6 +39,6 @@
+ 
+ 
+ def test_data9a7d_runtime_versions() -> None:
+-    assert mdstats.__version__ == "0.20.127a0"
++    assert mdstats.__version__ == "0.20.128a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7D_PARSER_VERSION == "0.20.50a0"
+diff -ruN a/tests/test_mlff_data9a7e_specification.py b/tests/test_mlff_data9a7e_specification.py
+--- a/tests/test_mlff_data9a7e_specification.py	2026-08-09 22:40:21.444854926 +0000
++++ b/tests/test_mlff_data9a7e_specification.py	2026-08-09 23:46:08.431830335 +0000
+@@ -39,7 +39,7 @@
+         "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
+         "CROSS_SYSTEM_QUALIFICATION_SUITE",
+     } <= nodes
+-    assert mdstats.__version__ == "0.20.127a0"
++    assert mdstats.__version__ == "0.20.128a0"
+     assert mdstats.MLFF_DATA9A7E_PARSER_VERSION == "0.20.51a0"
+     assert callable(mdstats.qualify_cross_system_case)
+     assert callable(mdstats.build_cross_system_qualification_suite)
+diff -ruN a/tests/test_mlff_data9a8_specification.py b/tests/test_mlff_data9a8_specification.py
+--- a/tests/test_mlff_data9a8_specification.py	2026-08-09 22:40:21.430360211 +0000
++++ b/tests/test_mlff_data9a8_specification.py	2026-08-09 23:46:08.427350714 +0000
+@@ -66,7 +66,7 @@
+ 
+ 
+ def test_public_runtime_exposes_data9a8_without_removed_aliases() -> None:
+-    assert mdstats.__version__ == "0.20.127a0"
++    assert mdstats.__version__ == "0.20.128a0"
+     assert mdstats.MLFF_DATA9A8_PARSER_VERSION == "0.20.52a0"
+     assert mdstats.ObservableComparisonPolicy
+     assert mdstats.compare_mlff_observable_validation
+diff -ruN a/tests/test_mlff_data9a9a_specification.py b/tests/test_mlff_data9a9a_specification.py
+--- a/tests/test_mlff_data9a9a_specification.py	2026-08-09 22:40:21.441256267 +0000
++++ b/tests/test_mlff_data9a9a_specification.py	2026-08-09 23:46:08.430431282 +0000
+@@ -65,7 +65,7 @@
+ 
+ 
+ def test_public_runtime_exports_data9a9a_contracts() -> None:
+-    assert mdstats.__version__ == "0.20.127a0"
++    assert mdstats.__version__ == "0.20.128a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A9A_VERSION
+     assert mdstats.Data6ModelSweepPlan
+diff -ruN a/tests/test_mlff_data9a9b_specification.py b/tests/test_mlff_data9a9b_specification.py
+--- a/tests/test_mlff_data9a9b_specification.py	2026-08-09 22:40:21.431628870 +0000
++++ b/tests/test_mlff_data9a9b_specification.py	2026-08-09 23:46:08.427749157 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9b_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.127a0"
++    assert mdstats.__version__ == "0.20.128a0"
+     for name in (
+         "ProductionMaterializationPlan",
+         "ProductionMaterializationCheckpoint",
+diff -ruN a/tests/test_mlff_data9a9c_specification.py b/tests/test_mlff_data9a9c_specification.py
+--- a/tests/test_mlff_data9a9c_specification.py	2026-08-09 22:40:21.444687176 +0000
++++ b/tests/test_mlff_data9a9c_specification.py	2026-08-09 23:46:08.431675134 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9c_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.127a0"
++    assert mdstats.__version__ == "0.20.128a0"
+     for name in (
+         "ProductionCorpusPlan", "ProductionExpectedRun",
+         "ProfileExtensionEvidenceRequirement", "ProductionCorpusQualificationRecord",
+diff -ruN a/tests/test_mlff_data9a_specification.py b/tests/test_mlff_data9a_specification.py
+--- a/tests/test_mlff_data9a_specification.py	2026-08-09 22:40:21.443955707 +0000
++++ b/tests/test_mlff_data9a_specification.py	2026-08-09 23:46:08.431229610 +0000
+@@ -14,7 +14,7 @@
+ 
+ 
+ def test_data9a_runtime_specification_is_canonical() -> None:
+-    assert 'version = "0.20.127a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.128a0"' in (ROOT / "pyproject.toml").read_text()
+     architecture = ARCH.read_text()
+     stage = STAGE.read_text()
+     specification = SPEC.read_text()
+diff -ruN a/tests/test_mlff_data9b1_specification.py b/tests/test_mlff_data9b1_specification.py
+--- a/tests/test_mlff_data9b1_specification.py	2026-08-09 22:40:21.442075276 +0000
++++ b/tests/test_mlff_data9b1_specification.py	2026-08-09 23:46:08.430655706 +0000
+@@ -18,8 +18,8 @@
+     assert "TrainingCampaignPlan" in text
+     assert "CheckpointSelectionRecord" in text
+     assert "mdstats-mace-train" in text
+-    assert mdstats.__version__ == "0.20.127a0"
+-    assert 'version = "0.20.127a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert mdstats.__version__ == "0.20.128a0"
++    assert 'version = "0.20.128a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+ 
+ 
+ def test_data9b1_is_integrated_into_manual_and_stage_plan() -> None:
+diff -ruN a/tests/test_mlff_data9b2_specification.py b/tests/test_mlff_data9b2_specification.py
+--- a/tests/test_mlff_data9b2_specification.py	2026-08-09 22:40:21.442452618 +0000
++++ b/tests/test_mlff_data9b2_specification.py	2026-08-09 23:46:08.430785359 +0000
+@@ -23,7 +23,7 @@
+         'mdstats-mace-select-head',
+     ):
+         assert token in text
+-    assert mdstats.__version__ == '0.20.127a0'
++    assert mdstats.__version__ == '0.20.128a0'
+     assert mdstats.MLFF_DATA9B2_VERSION == '0.20.57a0'
+ 
+ 
+diff -ruN a/tests/test_mlff_data9b3_campaign_cli_specification.py b/tests/test_mlff_data9b3_campaign_cli_specification.py
+--- a/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-09 22:40:21.435556609 +0000
++++ b/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-09 23:46:08.429299126 +0000
+@@ -16,7 +16,7 @@
+ 
+ 
+ def test_data9b3_version_and_user_surface() -> None:
+-    assert mdstats.__version__ == "0.20.127a0"
++    assert mdstats.__version__ == "0.20.128a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert TOOL.is_file()
+     assert TOOL.stat().st_mode & 0o111
+diff -ruN a/tests/test_mlff_opt_ctrl1_specification.py b/tests/test_mlff_opt_ctrl1_specification.py
+--- a/tests/test_mlff_opt_ctrl1_specification.py	2026-08-09 22:40:21.447698891 +0000
++++ b/tests/test_mlff_opt_ctrl1_specification.py	2026-08-09 23:46:08.433393944 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_ctrl1_release_identity_preserves_scientific_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.127a0"
++    assert mdstats.__version__ == "0.20.128a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.127a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.128a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_ctrl1_architecture_and_spec_close_roadmap() -> None:
+diff -ruN a/tests/test_mlff_opt_eval4_specification.py b/tests/test_mlff_opt_eval4_specification.py
+--- a/tests/test_mlff_opt_eval4_specification.py	2026-08-09 22:40:21.439778296 +0000
++++ b/tests/test_mlff_opt_eval4_specification.py	2026-08-09 23:46:08.430064656 +0000
+@@ -11,9 +11,9 @@
+ 
+ 
+ def test_opt_eval4_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.127a0"
++    assert mdstats.__version__ == "0.20.128a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+-    assert 'version = "0.20.127a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.128a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_eval4_architecture_and_spec_record_pipeline_contract() -> None:
+diff -ruN a/tests/test_mlff_opt_verify1_specification.py b/tests/test_mlff_opt_verify1_specification.py
+--- a/tests/test_mlff_opt_verify1_specification.py	2026-08-09 22:40:21.447297954 +0000
++++ b/tests/test_mlff_opt_verify1_specification.py	2026-08-09 23:46:08.433055810 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_verify1_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.127a0"
++    assert mdstats.__version__ == "0.20.128a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.127a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.128a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_verify1_architecture_and_spec_record_contract() -> None:
+diff -ruN a/tests/test_mlff_perf2_parallel_acceleration_specification.py b/tests/test_mlff_perf2_parallel_acceleration_specification.py
+--- a/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-09 22:40:21.442795829 +0000
++++ b/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-09 23:46:08.430854011 +0000
+@@ -10,7 +10,7 @@
+ 
+ 
+ def test_perf2_release_and_configuration_contract() -> None:
+-    assert mdstats.__version__ == "0.20.127a0"
++    assert mdstats.__version__ == "0.20.128a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     template = campaign_cli._config_template(
+         workspace="workspace",
+diff -ruN a/tests/test_mlff_prec1_specification.py b/tests/test_mlff_prec1_specification.py
+--- a/tests/test_mlff_prec1_specification.py	2026-08-09 22:40:21.430611795 +0000
++++ b/tests/test_mlff_prec1_specification.py	2026-08-09 23:46:08.427481489 +0000
+@@ -12,7 +12,7 @@
+ 
+ 
+ def test_prec1_release_and_architecture_status() -> None:
+-    assert mdstats.__version__ == "0.20.127a0"
++    assert mdstats.__version__ == "0.20.128a0"
+     manual = MANUAL.read_text(encoding="utf-8")
+     spec = SPEC.read_text(encoding="utf-8")
+     assert "PREC1 - precision profiles, explicit staged schedule, and init realization - implemented in 0.20.108a0" in manual
+diff -ruN a/tests/test_mlff_prec3_specification.py b/tests/test_mlff_prec3_specification.py
+--- a/tests/test_mlff_prec3_specification.py	2026-08-09 22:40:21.447456991 +0000
++++ b/tests/test_mlff_prec3_specification.py	2026-08-09 23:46:08.433120176 +0000
+@@ -16,7 +16,7 @@
+     manual = MANUAL.read_text(encoding="utf-8")
+     spec = SPEC.read_text(encoding="utf-8")
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+-    assert mdstats.__version__ == "0.20.127a0"
++    assert mdstats.__version__ == "0.20.128a0"
+     assert "PREC3 - campaign integration, qualification, and profile activation - implemented in 0.20.110a0" in manual
+     assert "PREC3 implementation closure (0.20.110a0)" in manual
+     assert "PREC3 implemented in mdstats 0.20.110a0" in spec
+diff -ruN a/tests/test_mlff_stor4_manual_reclamation.py b/tests/test_mlff_stor4_manual_reclamation.py
+--- a/tests/test_mlff_stor4_manual_reclamation.py	2026-08-09 22:40:21.436116323 +0000
++++ b/tests/test_mlff_stor4_manual_reclamation.py	2026-08-09 23:39:00.209610913 +0000
+@@ -6,6 +6,8 @@
+ 
+ import pytest
+ 
++import mdstats
++
+ from mdstats.training_data import campaign_cli
+ from mdstats.training_data.storage_accounting import (
+     build_campaign_storage_report,
+@@ -13,6 +15,19 @@
+ )
+ 
+ 
++
++
++def _freeze_authority():
++    return mdstats.ProtocolFreezeAuthorityRecord(
++        authority_kind="historical_committee",
++        campaign_plan_digest="1" * 64,
++        production_qualification_digest="2" * 64,
++        source_record_schema=mdstats.PROTOCOL_FREEZE_RECORD_SCHEMA,
++        source_record_digest="3" * 64,
++        protected_model_sha256=("4" * 64,),
++        frozen_at_utc="2026-08-01T00:00:00+00:00",
++    )
++
+ def _config(tmp_path: Path) -> Path:
+     (tmp_path / "training").mkdir()
+     (tmp_path / "foundation.model").write_bytes(b"foundation")
+@@ -102,7 +117,7 @@
+     store = campaign_cli.CampaignStore(paths.state_db)
+     _complete(store, paths, "evaluate")
+     _complete(store, paths, "verify")
+-    store.put_record("protocol_freeze", {"schema": "test.freeze.v1", "content_digest": "freeze"})
++    store.put_record("protocol_freeze", _freeze_authority())
+ 
+     production = paths.models / "final-target.model"
+     production.write_bytes(b"production-model")
+diff -ruN a/tests/test_mlff_stor5_archive_deduplication.py b/tests/test_mlff_stor5_archive_deduplication.py
+--- a/tests/test_mlff_stor5_archive_deduplication.py	2026-08-09 22:40:21.438304090 +0000
++++ b/tests/test_mlff_stor5_archive_deduplication.py	2026-08-09 23:39:00.209758893 +0000
+@@ -6,10 +6,25 @@
+ 
+ import pytest
+ 
++import mdstats
++
+ from mdstats.training_data import campaign_cli
+ from mdstats.training_data.storage_accounting import build_campaign_storage_report, configured_protected_inputs
+ 
+ 
++
++
++def _freeze_authority():
++    return mdstats.ProtocolFreezeAuthorityRecord(
++        authority_kind="historical_committee",
++        campaign_plan_digest="1" * 64,
++        production_qualification_digest="2" * 64,
++        source_record_schema=mdstats.PROTOCOL_FREEZE_RECORD_SCHEMA,
++        source_record_digest="3" * 64,
++        protected_model_sha256=("4" * 64,),
++        frozen_at_utc="2026-08-01T00:00:00+00:00",
++    )
++
+ def _config(tmp_path: Path) -> Path:
+     (tmp_path / "training").mkdir()
+     (tmp_path / "foundation.model").write_bytes(b"foundation")
+@@ -47,7 +62,7 @@
+     _cfg, paths = campaign_cli._load_config(config)
+     store = campaign_cli.CampaignStore(paths.state_db)
+     _complete(store, paths, "verify")
+-    store.put_record("protocol_freeze", {"schema": "test.freeze.v1", "content_digest": "freeze"})
++    store.put_record("protocol_freeze", _freeze_authority())
+     left = paths.internal / "evaluation-predictions" / "a.bin"
+     right = paths.internal / "model-sweep" / "b.bin"
+     left.parent.mkdir(parents=True); right.parent.mkdir(parents=True)
+@@ -80,7 +95,7 @@
+     store = campaign_cli.CampaignStore(paths.state_db)
+     _complete(store, paths, "evaluate")
+     _complete(store, paths, "verify")
+-    store.put_record("protocol_freeze", {"schema": "test.freeze.v1", "content_digest": "freeze"})
++    store.put_record("protocol_freeze", _freeze_authority())
+     production = paths.models / "production.model"
+     production.write_bytes(b"production-model")
+     prediction = paths.internal / "evaluation-predictions" / "pred.bin"
+@@ -166,7 +181,7 @@
+     store = campaign_cli.CampaignStore(paths.state_db)
+     _complete(store, paths, "evaluate")
+     _complete(store, paths, "verify")
+-    store.put_record("protocol_freeze", {"schema": "test.freeze.v1", "content_digest": "freeze"})
++    store.put_record("protocol_freeze", _freeze_authority())
+     (paths.models / "production.model").write_bytes(b"production")
+     a = paths.internal / "evaluation-predictions" / "a.bin"
+     b = paths.data / "variant" / "b.bin"

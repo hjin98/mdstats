@@ -1,0 +1,1170 @@
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SHA256SUMS_0.20.238a0.txt' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' '--exclude=SOURCE_PATCH_0.20.237a0_to_0.20.238a0.patch' /mnt/data/mdstats-debug/mdstats-0.20.237a0/CHANGELOG.md /mnt/data/mdstats-mvidx-ooc-work/CHANGELOG.md
+--- /mnt/data/mdstats-debug/mdstats-0.20.237a0/CHANGELOG.md	2026-08-18 03:41:10.000000000 +0000
++++ /mnt/data/mdstats-mvidx-ooc-work/CHANGELOG.md	2026-08-18 04:12:13.732764344 +0000
+@@ -1,3 +1,11 @@
++## 0.20.238a0 - 2026-08-17
++
++- Harden TARGET-DATA2C MVIDX for multi-billion-edge NEIGHBOR1 caches with an exact out-of-core CSR-to-CSC inversion path. Large inverse edge arrays are written directly as NPY memmaps with bounded chunk scratch instead of requiring the complete inverse plus SciPy transpose workspace in anonymous RAM.
++- Make MVIDX queue admission account for bounded out-of-core scratch rather than full-family edge payload when file-backed inversion is active; explicit campaign RAM ceilings remain fail-closed.
++- Hard-link whole mmap-backed NPY arrays into the authenticated MVIDX native store when source and destination share a filesystem, avoiding duplicate tens-of-GiB copies.
++- Add a disk-space preflight for the inverse payload and periodic canonical MVIDX progress heartbeats with HH:MM:SS elapsed/ETA.
++- Preserve the exact TARGET-DATA2C scientific authority: in-memory and out-of-core inverse arrays are byte-identical and all prior TARGET-DATA2 scientific tests remain unchanged.
++
+ ## 0.20.237a0 - 2026-08-17
+ 
+ - Standardize MLFF progress and heartbeat presentation across campaign stages without changing scientific or execution authority.
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SHA256SUMS_0.20.238a0.txt' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' '--exclude=SOURCE_PATCH_0.20.237a0_to_0.20.238a0.patch' /mnt/data/mdstats-debug/mdstats-0.20.237a0/PKG-INFO /mnt/data/mdstats-mvidx-ooc-work/PKG-INFO
+--- /mnt/data/mdstats-debug/mdstats-0.20.237a0/PKG-INFO	2026-08-18 03:41:10.000000000 +0000
++++ /mnt/data/mdstats-mvidx-ooc-work/PKG-INFO	2026-08-18 04:12:13.722443794 +0000
+@@ -1,6 +1,6 @@
+ Metadata-Version: 2.4
+ Name: mdstats
+-Version: 0.20.237a0
++Version: 0.20.238a0
+ Summary: Transparent atomistic frame collections and structural/dynamical statistics
+ Requires-Python: >=3.10
+ Requires-Dist: numpy>=1.26
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SHA256SUMS_0.20.238a0.txt' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' '--exclude=SOURCE_PATCH_0.20.237a0_to_0.20.238a0.patch' /mnt/data/mdstats-debug/mdstats-0.20.237a0/benchmarks/mlff_mvidx_ooc_scaling_implementation_manifest_0.20.238a0.json /mnt/data/mdstats-mvidx-ooc-work/benchmarks/mlff_mvidx_ooc_scaling_implementation_manifest_0.20.238a0.json
+--- /mnt/data/mdstats-debug/mdstats-0.20.237a0/benchmarks/mlff_mvidx_ooc_scaling_implementation_manifest_0.20.238a0.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-mvidx-ooc-work/benchmarks/mlff_mvidx_ooc_scaling_implementation_manifest_0.20.238a0.json	2026-08-18 04:18:50.920882737 +0000
+@@ -0,0 +1,16 @@
++{
++  "architecture_revision": 103,
++  "changed_runtime_files": [
++    "mdstats/training_data/target_coverage_sparse_index.py",
++    "mdstats/training_data/target_coverage_sparse_index_store.py",
++    "mdstats/training_data/campaign_cli.py"
++  ],
++  "content_digest": "476f616742b93731f0c0e0151cbace48a327a80728241f829b061b6156d547a7",
++  "dependency_graph_schema": 83,
++  "next_gate": "FINAL_GPU1_DEFERRED_RELEASE_QUALIFICATION",
++  "qualification_record": "release/qualification_logs/MLFF_MVIDX_OOC_SCALING_QUALIFICATION_0.20.238a0.json",
++  "release": "0.20.238a0",
++  "schema": "mdstats.mlff-mvidx-ooc-scaling-implementation-manifest.2026-08.v1",
++  "scientific_authority_change": false,
++  "spec": "docs/specs/training_data/mlff_mvidx_out_of_core_scaling_spec.md"
++}
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SHA256SUMS_0.20.238a0.txt' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' '--exclude=SOURCE_PATCH_0.20.237a0_to_0.20.238a0.patch' /mnt/data/mdstats-debug/mdstats-0.20.237a0/benchmarks/mlff_mvidx_ooc_scaling_report_0.20.238a0.md /mnt/data/mdstats-mvidx-ooc-work/benchmarks/mlff_mvidx_ooc_scaling_report_0.20.238a0.md
+--- /mnt/data/mdstats-debug/mdstats-0.20.237a0/benchmarks/mlff_mvidx_ooc_scaling_report_0.20.238a0.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-mvidx-ooc-work/benchmarks/mlff_mvidx_ooc_scaling_report_0.20.238a0.md	2026-08-18 04:18:50.920998286 +0000
+@@ -0,0 +1,11 @@
++# MLFF MVIDX multi-billion-edge scaling hardening - 0.20.238a0
++
++The production failure occurred after a NEIGHBOR1 cache hit with 9,505,021,522 exact edges and 165 required families. PARCORE1 rejected one family because its full in-memory inversion estimate was 6.41 GiB while the stage RAM budget was 5.09 GiB. Reducing inverse worker count cannot solve a single-task-above-budget failure.
++
++0.20.238a0 retains the normal compiled SciPy in-memory transpose for small/direct-API work, but campaign families with inverse payloads >= 8 MiB use an exact row-chunk out-of-core transpose. The final candidate-to-witness uint32 payload is written directly as NPY memmap, bounded chunk scratch is admitted by PARCORE1, and whole NPY-backed arrays are hard-linked into the durable native record where possible. The reported 9.505-billion-edge cache implies about 35.41 GiB of inverse uint32 edge storage; the campaign now preflights that disk requirement plus safety headroom before starting.
++
++At the reported 5.09-GiB stage RAM budget, the same family class is admitted at roughly 0.64 GiB of bounded task accounting rather than 6.41 GiB of full-family in-memory accounting, permitting up to 7 such tasks by RAM admission before other work is considered.
++
++Exactness qualification forces many source-row chunks and compares the result byte-for-byte against the original deterministic full SciPy transpose. Complete MVIDX content digests are unchanged between in-memory and out-of-core paths. The original 111 TARGET-DATA2 scientific tests remain passing with the same 18 warnings; four new out-of-core tests raise the combined functional count to 115.
++
++Architecture revision 103 and dependency schema 83 are unchanged. FINAL-GPU1 remains next.
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SHA256SUMS_0.20.238a0.txt' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' '--exclude=SOURCE_PATCH_0.20.237a0_to_0.20.238a0.patch' /mnt/data/mdstats-debug/mdstats-0.20.237a0/docs/arch_manuals/mlff_training_data/00_front_matter.md /mnt/data/mdstats-mvidx-ooc-work/docs/arch_manuals/mlff_training_data/00_front_matter.md
+--- /mnt/data/mdstats-debug/mdstats-0.20.237a0/docs/arch_manuals/mlff_training_data/00_front_matter.md	2026-08-18 03:41:10.000000000 +0000
++++ /mnt/data/mdstats-mvidx-ooc-work/docs/arch_manuals/mlff_training_data/00_front_matter.md	2026-08-18 04:12:41.253656834 +0000
+@@ -1,8 +1,8 @@
+ ---
+ geometry: "margin=0.75in"
+ architecture_revision: 103
+-release: "mdstats 0.20.237a0"
+-status: "current normative architecture; revision 103 unchanged; MLFF progress reporting normalized; exact-equivalence CPU optimization closed; FINAL-GPU1 next"
++release: "mdstats 0.20.238a0"
++status: "current normative architecture; revision 103 unchanged; MVIDX multi-billion-edge scaling hardened; exact-equivalence CPU optimization closed; FINAL-GPU1 next"
+ last_updated: "2026-08-17"
+ ---
+ 
+@@ -76,6 +76,8 @@
+ 
+ ## Current release boundary
+ 
++`mdstats 0.20.238a0` is an exact-equivalence MVIDX scaling-hardening release on architecture revision 103. Multi-billion-edge NEIGHBOR1 caches may exceed the anonymous-RAM capacity required by the original full-family SciPy transpose even when the final scientific uint32/uint64 sparse arrays are valid. Campaign MVIDX therefore uses bounded row-chunk CSR-to-CSC transposes for large families, writes candidate-to-witness arrays directly as file-backed NPY memmaps, hard-links whole mmap-backed arrays into the authenticated native store on the same filesystem, and reloads the durable mmap authority before removing transient build paths. Queue admission accounts bounded transient scratch rather than the complete inverse payload for this path. A disk-space preflight fails before inversion if the exact inverse edge payload plus safety headroom cannot fit. In-memory and out-of-core arrays are required to be byte-identical and produce the same MVIDX content digest. This hardening changes execution/storage realization only; revision 103, schema 83, scientific authority, MPA-0/MH-1 semantics, and the `FINAL-GPU1` next-gate decision remain unchanged.
++
+ `mdstats 0.20.237a0` is a presentation-only maintenance release on top of architecture revision 103. It standardizes MLFF progress and heartbeat output across preparation, TARGET-DATA2, model sweep, training, inference/evaluation schedulers, and qualification callbacks. Every elapsed/ETA field now uses fixed-width `HH:MM:SS`; unavailable ETA is `--:--:--`; progress counters, rates, phase/status fields, and semicolon delimiters follow the common Part VI observability contract. No scientific identity, scheduler authority, model-family behavior, dependency-graph node, or CPU/GPU gate decision changes. `FINAL-GPU1` remains next.
+ 
+ Revision 103 completes `MVSTATE-REUSE1` and closes the exact-equivalence CPU optimization program. MVSEL now emits authenticated exact sparse-state checkpoints at materializable target rungs; REPAIR consumes those checkpoints only while its state is still identical to MVSEL and falls back to the historical carried-forward arithmetic after the first accepted repair swap. Pure checkpoint reconciliation after repair divergence was rejected because it perturbed FP64 representative-gain arrays at the 1e-17--1e-16 level. On the common 8,192-candidate/six-family closure fixture, untouched 0.20.235a0 takes about 12.00 s while 0.20.236a0 takes about 11.02 s excluding persistence; including the one-time ~0.18 s authenticated cache write, the fresh chain is about 11.19 s. REPAIR itself improves from about 5.37 s to 4.27 s with exact selection/repair/qualification digests. Cumulative fresh-chain speedup versus the PERFBASE1-era 0.20.225a0 authority is about 2.44x. Remaining target-chain cost is dominated by the exact sequential sparse-state arithmetic itself, so no further CPU-only gate is justified under the exact-equivalence policy. `FINAL-GPU1` is next; positive accelerator qualification remains deferred to that workstation gate.
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SHA256SUMS_0.20.238a0.txt' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' '--exclude=SOURCE_PATCH_0.20.237a0_to_0.20.238a0.patch' /mnt/data/mdstats-debug/mdstats-0.20.237a0/docs/arch_manuals/mlff_training_data/60_execution_performance.md /mnt/data/mdstats-mvidx-ooc-work/docs/arch_manuals/mlff_training_data/60_execution_performance.md
+--- /mnt/data/mdstats-debug/mdstats-0.20.237a0/docs/arch_manuals/mlff_training_data/60_execution_performance.md	2026-08-18 03:41:10.000000000 +0000
++++ /mnt/data/mdstats-mvidx-ooc-work/docs/arch_manuals/mlff_training_data/60_execution_performance.md	2026-08-18 04:12:41.254180132 +0000
+@@ -253,3 +253,9 @@
+ The revision-92 CPU evidence uses the supplied LTA target archive and unified 12,000-frame replay source plus deterministic synthetic FEAS1/MVIDX1/MVSEL1 workloads. The supplied TARGET-DATA2B radius workload is a fixed 4,100-frame, eight-family representative cache spanning low/high temperature and hydrostatic strain; the complete 27-file target archive is authenticated separately. On the qualification host the automatic CPU budget is three lanes, so the bounded-intermediate schedule aliases the two-lane schedule. Stages that are serial in the current implementation record the requested schedule separately from actual allocated lanes rather than reporting fictitious parallelism.
+ 
+ The canonical evidence is `benchmarks/mlff_perfbase1_lta_cloud_cpu_mpa0_2026-08-17.{json,md}`. All repeated trials preserve exact scientific-output digests. The active MPA-0 medium checkpoint is bound by SHA-256 `75428afe3a1d...fb493e38604fb638`. MACE model inference is not claimed on the cloud host because that runtime was not part of the authoritative measurement environment; Foundation Audit/EVAL2 inference baselines remain explicitly unavailable there rather than being synthesized.
++
++### Multi-billion-edge MVIDX out-of-core hardening
++
++As of `0.20.238a0`, campaign MVIDX MUST NOT require the complete candidate-to-witness inverse edge payload plus full-family SciPy transpose workspace to coexist in anonymous RAM. When the inverse payload for a family exceeds the execution threshold, MVIDX performs deterministic source-row chunk transposes, appends each candidate column in ascending source-row chunk order, and writes the exact `<u4` candidate-witness array directly to an NPY memmap. Candidate offsets remain canonical `<u8`. Chunk size and concurrent family count are execution-only and are admitted under the explicit `StageResourceScope` RAM budget. The out-of-core result SHALL be byte-identical to the in-memory deterministic transpose.
++
++Whole-array NPY memmaps may be hard-linked into the native MVIDX record when source and destination share a filesystem; this is persistence reuse, not scientific identity. The campaign SHALL reload the durable native record before transient build paths are removed. Required inverse disk capacity is preflighted from exact edge cardinality, and MVIDX reports canonical `HH:MM:SS` elapsed/ETA heartbeats during long inversion.
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SHA256SUMS_0.20.238a0.txt' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' '--exclude=SOURCE_PATCH_0.20.237a0_to_0.20.238a0.patch' /mnt/data/mdstats-debug/mdstats-0.20.237a0/docs/arch_manuals/mlff_training_data/70_status_and_gates.md /mnt/data/mdstats-mvidx-ooc-work/docs/arch_manuals/mlff_training_data/70_status_and_gates.md
+--- /mnt/data/mdstats-debug/mdstats-0.20.237a0/docs/arch_manuals/mlff_training_data/70_status_and_gates.md	2026-08-18 02:52:14.000000000 +0000
++++ /mnt/data/mdstats-mvidx-ooc-work/docs/arch_manuals/mlff_training_data/70_status_and_gates.md	2026-08-18 04:12:41.254564826 +0000
+@@ -141,6 +141,9 @@
+ 
+ **Acceptance. PASS; CPU OPTIMIZATION CLOSED.** On the common 8,192-candidate/six-family fixture, the untouched 0.20.235a0 chain median is about 12.00 s. MVSTATE-REUSE1 is about 11.02 s excluding persistence and about 11.19 s including the one-time cache write (~1.07x fresh-chain speedup); REPAIR improves about 5.37 s -> 4.27 s (~1.26x). All FEAS1/NEIGHBOR1/MVIDX1/MVSEL1/REPAIR1/MVQUAL1 digests remain exact, cache restart/tamper/stale-lineage behavior is qualified, and peak RSS remains within budget. Relative to the PERFBASE1-era 27.26 s chain, the fresh accumulated CPU realization is about 2.44x faster. The residual tail is exact sequential sparse-state arithmetic rather than another material duplicate execution artifact.
+ 
++
++`0.20.238a0` hardens the already-complete MVIDX-REUSE1 execution path for production caches containing billions of exact NEIGHBOR1 edges. Large inversions are now file-backed and chunked under explicit RAM admission, with exact byte-equivalence to the in-memory transpose. This is an execution/storage maintenance adaptation under revision 103 and does not reopen the CPU optimization gate sequence.
++
+ **Next gate.** `FINAL-GPU1` workstation qualification.
+ 
+ ## Explicit non-goals
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SHA256SUMS_0.20.238a0.txt' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' '--exclude=SOURCE_PATCH_0.20.237a0_to_0.20.238a0.patch' /mnt/data/mdstats-debug/mdstats-0.20.237a0/docs/arch_manuals/mlff_training_data_architecture.md /mnt/data/mdstats-mvidx-ooc-work/docs/arch_manuals/mlff_training_data_architecture.md
+--- /mnt/data/mdstats-debug/mdstats-0.20.237a0/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-18 03:41:12.000000000 +0000
++++ /mnt/data/mdstats-mvidx-ooc-work/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-18 04:12:42.710263695 +0000
+@@ -1,8 +1,8 @@
+ ---
+ geometry: "margin=0.75in"
+ architecture_revision: 103
+-release: "mdstats 0.20.237a0"
+-status: "current normative architecture; revision 103 unchanged; MLFF progress reporting normalized; exact-equivalence CPU optimization closed; FINAL-GPU1 next"
++release: "mdstats 0.20.238a0"
++status: "current normative architecture; revision 103 unchanged; MVIDX multi-billion-edge scaling hardened; exact-equivalence CPU optimization closed; FINAL-GPU1 next"
+ last_updated: "2026-08-17"
+ ---
+ 
+@@ -76,6 +76,8 @@
+ 
+ ## Current release boundary
+ 
++`mdstats 0.20.238a0` is an exact-equivalence MVIDX scaling-hardening release on architecture revision 103. Multi-billion-edge NEIGHBOR1 caches may exceed the anonymous-RAM capacity required by the original full-family SciPy transpose even when the final scientific uint32/uint64 sparse arrays are valid. Campaign MVIDX therefore uses bounded row-chunk CSR-to-CSC transposes for large families, writes candidate-to-witness arrays directly as file-backed NPY memmaps, hard-links whole mmap-backed arrays into the authenticated native store on the same filesystem, and reloads the durable mmap authority before removing transient build paths. Queue admission accounts bounded transient scratch rather than the complete inverse payload for this path. A disk-space preflight fails before inversion if the exact inverse edge payload plus safety headroom cannot fit. In-memory and out-of-core arrays are required to be byte-identical and produce the same MVIDX content digest. This hardening changes execution/storage realization only; revision 103, schema 83, scientific authority, MPA-0/MH-1 semantics, and the `FINAL-GPU1` next-gate decision remain unchanged.
++
+ `mdstats 0.20.237a0` is a presentation-only maintenance release on top of architecture revision 103. It standardizes MLFF progress and heartbeat output across preparation, TARGET-DATA2, model sweep, training, inference/evaluation schedulers, and qualification callbacks. Every elapsed/ETA field now uses fixed-width `HH:MM:SS`; unavailable ETA is `--:--:--`; progress counters, rates, phase/status fields, and semicolon delimiters follow the common Part VI observability contract. No scientific identity, scheduler authority, model-family behavior, dependency-graph node, or CPU/GPU gate decision changes. `FINAL-GPU1` remains next.
+ 
+ Revision 103 completes `MVSTATE-REUSE1` and closes the exact-equivalence CPU optimization program. MVSEL now emits authenticated exact sparse-state checkpoints at materializable target rungs; REPAIR consumes those checkpoints only while its state is still identical to MVSEL and falls back to the historical carried-forward arithmetic after the first accepted repair swap. Pure checkpoint reconciliation after repair divergence was rejected because it perturbed FP64 representative-gain arrays at the 1e-17--1e-16 level. On the common 8,192-candidate/six-family closure fixture, untouched 0.20.235a0 takes about 12.00 s while 0.20.236a0 takes about 11.02 s excluding persistence; including the one-time ~0.18 s authenticated cache write, the fresh chain is about 11.19 s. REPAIR itself improves from about 5.37 s to 4.27 s with exact selection/repair/qualification digests. Cumulative fresh-chain speedup versus the PERFBASE1-era 0.20.225a0 authority is about 2.44x. Remaining target-chain cost is dominated by the exact sequential sparse-state arithmetic itself, so no further CPU-only gate is justified under the exact-equivalence policy. `FINAL-GPU1` is next; positive accelerator qualification remains deferred to that workstation gate.
+@@ -2667,6 +2669,12 @@
+ 
+ The canonical evidence is `benchmarks/mlff_perfbase1_lta_cloud_cpu_mpa0_2026-08-17.{json,md}`. All repeated trials preserve exact scientific-output digests. The active MPA-0 medium checkpoint is bound by SHA-256 `75428afe3a1d...fb493e38604fb638`. MACE model inference is not claimed on the cloud host because that runtime was not part of the authoritative measurement environment; Foundation Audit/EVAL2 inference baselines remain explicitly unavailable there rather than being synthesized.
+ 
++### Multi-billion-edge MVIDX out-of-core hardening
++
++As of `0.20.238a0`, campaign MVIDX MUST NOT require the complete candidate-to-witness inverse edge payload plus full-family SciPy transpose workspace to coexist in anonymous RAM. When the inverse payload for a family exceeds the execution threshold, MVIDX performs deterministic source-row chunk transposes, appends each candidate column in ascending source-row chunk order, and writes the exact `<u4` candidate-witness array directly to an NPY memmap. Candidate offsets remain canonical `<u8`. Chunk size and concurrent family count are execution-only and are admitted under the explicit `StageResourceScope` RAM budget. The out-of-core result SHALL be byte-identical to the in-memory deterministic transpose.
++
++Whole-array NPY memmaps may be hard-linked into the native MVIDX record when source and destination share a filesystem; this is persistence reuse, not scientific identity. The campaign SHALL reload the durable native record before transient build paths are removed. Required inverse disk capacity is preflighted from exact edge cardinality, and MVIDX reports canonical `HH:MM:SS` elapsed/ETA heartbeats during long inversion.
++
+ # Part VII - Current implementation status and frozen forward gates
+ 
+ ## Current authority snapshot
+@@ -2810,6 +2818,9 @@
+ 
+ **Acceptance. PASS; CPU OPTIMIZATION CLOSED.** On the common 8,192-candidate/six-family fixture, the untouched 0.20.235a0 chain median is about 12.00 s. MVSTATE-REUSE1 is about 11.02 s excluding persistence and about 11.19 s including the one-time cache write (~1.07x fresh-chain speedup); REPAIR improves about 5.37 s -> 4.27 s (~1.26x). All FEAS1/NEIGHBOR1/MVIDX1/MVSEL1/REPAIR1/MVQUAL1 digests remain exact, cache restart/tamper/stale-lineage behavior is qualified, and peak RSS remains within budget. Relative to the PERFBASE1-era 27.26 s chain, the fresh accumulated CPU realization is about 2.44x faster. The residual tail is exact sequential sparse-state arithmetic rather than another material duplicate execution artifact.
+ 
++
++`0.20.238a0` hardens the already-complete MVIDX-REUSE1 execution path for production caches containing billions of exact NEIGHBOR1 edges. Large inversions are now file-backed and chunked under explicit RAM admission, with exact byte-equivalence to the in-memory transpose. This is an execution/storage maintenance adaptation under revision 103 and does not reopen the CPU optimization gate sequence.
++
+ **Next gate.** `FINAL-GPU1` workstation qualification.
+ 
+ ## Explicit non-goals
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SHA256SUMS_0.20.238a0.txt' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' '--exclude=SOURCE_PATCH_0.20.237a0_to_0.20.238a0.patch' /mnt/data/mdstats-debug/mdstats-0.20.237a0/docs/history/mlff/release_notes/INDEX.md /mnt/data/mdstats-mvidx-ooc-work/docs/history/mlff/release_notes/INDEX.md
+--- /mnt/data/mdstats-debug/mdstats-0.20.237a0/docs/history/mlff/release_notes/INDEX.md	2026-08-18 03:41:10.000000000 +0000
++++ /mnt/data/mdstats-mvidx-ooc-work/docs/history/mlff/release_notes/INDEX.md	2026-08-18 04:13:32.214433685 +0000
+@@ -178,3 +178,5 @@
+ | `0.20.235a0` | [PATCH_NOTES_0.20.235a0.md](PATCH_NOTES_0.20.235a0.md) | - |
+ - [mdstats 0.20.236a0 - MVSTATE-REUSE1](PATCH_NOTES_0.20.236a0.md)
+ - [mdstats 0.20.237a0 - MLFF progress-format consistency maintenance](PATCH_NOTES_0.20.237a0.md)
++
++- [mdstats 0.20.238a0 - MVIDX multi-billion-edge scaling hardening](PATCH_NOTES_0.20.238a0.md)
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SHA256SUMS_0.20.238a0.txt' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' '--exclude=SOURCE_PATCH_0.20.237a0_to_0.20.238a0.patch' /mnt/data/mdstats-debug/mdstats-0.20.237a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.238a0.md /mnt/data/mdstats-mvidx-ooc-work/docs/history/mlff/release_notes/PATCH_NOTES_0.20.238a0.md
+--- /mnt/data/mdstats-debug/mdstats-0.20.237a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.238a0.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-mvidx-ooc-work/docs/history/mlff/release_notes/PATCH_NOTES_0.20.238a0.md	2026-08-18 04:13:32.210433685 +0000
+@@ -0,0 +1,3 @@
++# mdstats 0.20.238a0 - MVIDX multi-billion-edge scaling hardening
++
++This maintenance release keeps MLFF architecture revision 103 and dependency schema 83 unchanged while hardening the completed MVIDX-REUSE1 execution path for production NEIGHBOR1 caches with billions of exact edges. Large inverse families use bounded row-chunk deterministic transposes and file-backed NPY memmaps, PARCORE1 admission charges bounded scratch rather than the complete inverse edge payload, and the native MVIDX store hard-links whole mmap-backed NPY arrays when possible. A disk-space preflight fails before inversion if the exact inverse payload cannot fit. Scientific sparse arrays and content digests remain byte-identical to the in-memory path. FINAL-GPU1 remains next.
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SHA256SUMS_0.20.238a0.txt' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' '--exclude=SOURCE_PATCH_0.20.237a0_to_0.20.238a0.patch' /mnt/data/mdstats-debug/mdstats-0.20.237a0/docs/specs/training_data/README.md /mnt/data/mdstats-mvidx-ooc-work/docs/specs/training_data/README.md
+--- /mnt/data/mdstats-debug/mdstats-0.20.237a0/docs/specs/training_data/README.md	2026-08-18 03:41:10.000000000 +0000
++++ /mnt/data/mdstats-mvidx-ooc-work/docs/specs/training_data/README.md	2026-08-18 04:12:41.254831418 +0000
+@@ -156,3 +156,5 @@
+ - `mlff_cueq_dep1_runtime_freeze_spec.{md,pdf}`: current `0.20.188a0` CUEQ-DEP1 authority for content-addressed CuEq core/Torch/CUDA-ops distributions, CUDA/determinism provenance, fail-closed runtime capture, and FINAL-GPU1 integration. Positive accelerator evidence remains deferred to the final release workstation run.
+ - `mlff_mvstate_reuse1_selector_repair_handoff_spec.md`: 0.20.236a0 exact MVSEL-to-REPAIR sparse-state checkpoint handoff, authenticated bundled persistence, post-divergence exactness boundary, and CPU optimization closure.
+ - `mlff_progress_reporting_format_spec.md`: current 0.20.237a0 presentation-only MLFF progress grammar (`HH:MM:SS` elapsed/ETA, canonical counters/rates/status fields) with revision 103 and FINAL-GPU1 authority unchanged.
++
++- `mlff_mvidx_out_of_core_scaling_spec.md`: 0.20.238a0 exact-equivalence multi-billion-edge MVIDX file-backed/chunked inversion hardening.
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SHA256SUMS_0.20.238a0.txt' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' '--exclude=SOURCE_PATCH_0.20.237a0_to_0.20.238a0.patch' /mnt/data/mdstats-debug/mdstats-0.20.237a0/docs/specs/training_data/mlff_mvidx_out_of_core_scaling_spec.md /mnt/data/mdstats-mvidx-ooc-work/docs/specs/training_data/mlff_mvidx_out_of_core_scaling_spec.md
+--- /mnt/data/mdstats-debug/mdstats-0.20.237a0/docs/specs/training_data/mlff_mvidx_out_of_core_scaling_spec.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-mvidx-ooc-work/docs/specs/training_data/mlff_mvidx_out_of_core_scaling_spec.md	2026-08-18 04:12:41.254732286 +0000
+@@ -0,0 +1,11 @@
++# MVIDX multi-billion-edge out-of-core scaling hardening
++
++Implemented in mdstats 0.20.238a0 under MLFF architecture revision 103 and dependency schema 83. This is exact-equivalence execution/storage maintenance; `FINAL-GPU1` remains the next scientific release gate.
++
++For campaign execution, an MVIDX family whose inverse uint32 edge payload is at least 8 MiB is eligible for file-backed inversion. Candidate counts are accumulated in bounded chunks. Source witness rows are then partitioned into ascending row chunks, each chunk is transposed with the same deterministic SciPy counting transpose, and candidate columns are appended into their preallocated final ranges. Since row chunks are strictly ascending and each local CSC column is sorted, the resulting candidate-to-witness arrays are byte-identical to the full in-memory transpose.
++
++The final inverse edge payload is an NPY memmap. PARCORE1 admission charges bounded transpose scratch and O(C) counters rather than the complete file-backed edge payload. The explicit campaign RAM budget remains fail-closed. Whole NPY-backed arrays may be hard-linked into the native MVIDX record on the same filesystem. Campaign persistence reloads the durable native record before removing transient build files.
++
++The campaign SHALL preflight free disk space for the exact inverse edge payload plus at least 5% or 1 GiB safety headroom, whichever is larger. Missing space fails before inversion. Large-row validation is chunked to bounded temporary memory. Progress uses the common MLFF grammar with `HH:MM:SS` elapsed/ETA.
++
++Scientific schemas, edge membership, index dtypes, canonical ordering, MVIDX content digests, target selection/repair/qualification, MPA-0/MH-1 semantics, and GPU authority are unchanged.
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SHA256SUMS_0.20.238a0.txt' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' '--exclude=SOURCE_PATCH_0.20.237a0_to_0.20.238a0.patch' /mnt/data/mdstats-debug/mdstats-0.20.237a0/mdstats/_version.py /mnt/data/mdstats-mvidx-ooc-work/mdstats/_version.py
+--- /mnt/data/mdstats-debug/mdstats-0.20.237a0/mdstats/_version.py	2026-08-18 03:41:10.000000000 +0000
++++ /mnt/data/mdstats-mvidx-ooc-work/mdstats/_version.py	2026-08-18 04:12:13.722084210 +0000
+@@ -1 +1 @@
+-__version__ = "0.20.237a0"
++__version__ = "0.20.238a0"
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SHA256SUMS_0.20.238a0.txt' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' '--exclude=SOURCE_PATCH_0.20.237a0_to_0.20.238a0.patch' /mnt/data/mdstats-debug/mdstats-0.20.237a0/mdstats/training_data/campaign_cli.py /mnt/data/mdstats-mvidx-ooc-work/mdstats/training_data/campaign_cli.py
+--- /mnt/data/mdstats-debug/mdstats-0.20.237a0/mdstats/training_data/campaign_cli.py	2026-08-18 03:42:16.000000000 +0000
++++ /mnt/data/mdstats-mvidx-ooc-work/mdstats/training_data/campaign_cli.py	2026-08-18 04:10:13.666433685 +0000
+@@ -4791,26 +4791,60 @@
+         tree_workers=1,
+         blas_threads=1,
+     )
++    required_inverse_edges = sum(
++        neighborhoods.domain(domain.label_domain_id).family(family.family_id).edge_count
++        for domain in coverage_reference.domains
++        for family in domain.families
++        if family.required
++    )
++    required_inverse_bytes = int(required_inverse_edges) * np.dtype("<u4").itemsize
++    store.external_record_directory.mkdir(parents=True, exist_ok=True)
++    disk_free = int(shutil.disk_usage(store.external_record_directory).free)
++    disk_safety = max(1 * 1024**3, int(math.ceil(required_inverse_bytes * 0.05)))
++    if disk_free < required_inverse_bytes + disk_safety:
++        raise CampaignCliError(
++            "TARGET-DATA2C-MVIDX1 out-of-core inverse requires approximately "
++            f"{required_inverse_bytes / 1024**3:.1f} GiB plus "
++            f"{disk_safety / 1024**3:.1f} GiB safety headroom, but only "
++            f"{disk_free / 1024**3:.1f} GiB is free under {store.external_record_directory}."
++        )
+     print(
+         f"[TARGET-DATA2C-MVIDX1] NEIGHBOR1 cache hit; geometry sweep=skipped; query block setting={block_size}; "
+-        f"layout=uint32 indices/uint64 offsets; MVIDX-REUSE1 inverse-workers={mvidx_workers}",
++        f"layout=uint32 indices/uint64 offsets; MVIDX-REUSE1 inverse-workers={mvidx_workers}; "
++        f"large-inverse-storage=file-backed; inverse-disk={required_inverse_bytes / 1024**3:.1f} GiB; "
++        f"disk-free={disk_free / 1024**3:.1f} GiB",
+         flush=True,
+     )
+     started = time.monotonic()
+-    index = mdstats.build_target_coverage_sparse_index(
+-        coverage_reference,
+-        role_freeze,
+-        feasibility,
+-        policy=policy,
+-        exact_neighborhood_store=neighborhoods,
+-        query_workers=1,
+-        query_block_size=block_size,
+-        global_workers=mvidx_workers,
+-        resource_scope=mvidx_scope,
+-        progress_interval_seconds=progress_interval,
+-        progress_callback=lambda message: print(f"[TARGET-DATA2C-MVIDX1] {message}", flush=True),
++    mvidx_build_root = Path(
++        tempfile.mkdtemp(prefix="mvidx-out-of-core-build-", dir=store.external_record_directory)
+     )
+-    store.put_record("target_coverage_sparse_index", index)
++    try:
++        index = mdstats.build_target_coverage_sparse_index(
++            coverage_reference,
++            role_freeze,
++            feasibility,
++            policy=policy,
++            exact_neighborhood_store=neighborhoods,
++            query_workers=1,
++            query_block_size=block_size,
++            global_workers=mvidx_workers,
++            resource_scope=mvidx_scope,
++            out_of_core_directory=mvidx_build_root,
++            progress_interval_seconds=progress_interval,
++            progress_callback=lambda message: print(f"[TARGET-DATA2C-MVIDX1] {message}", flush=True),
++        )
++        store.put_record("target_coverage_sparse_index", index)
++        # Reload the native record before removing transient build paths.  Large
++        # arrays are now read-only memmaps owned by the durable campaign store.
++        persisted = store.get_record("target_coverage_sparse_index", mdstats.TargetCoverageSparseIndex)
++        if persisted.content_digest != index.content_digest:
++            raise CampaignCliError(
++                "TARGET-DATA2C-MVIDX1 persisted native authority changed during out-of-core handoff."
++            )
++        index = persisted
++    finally:
++        shutil.rmtree(mvidx_build_root, ignore_errors=True)
+     for domain in index.domains:
+         edge_count = sum(item.edge_count for item in domain.families)
+         required_obligations = sum(item.required for item in domain.obligations)
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SHA256SUMS_0.20.238a0.txt' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' '--exclude=SOURCE_PATCH_0.20.237a0_to_0.20.238a0.patch' /mnt/data/mdstats-debug/mdstats-0.20.237a0/mdstats/training_data/target_coverage_sparse_index.py /mnt/data/mdstats-mvidx-ooc-work/mdstats/training_data/target_coverage_sparse_index.py
+--- /mnt/data/mdstats-debug/mdstats-0.20.237a0/mdstats/training_data/target_coverage_sparse_index.py	2026-08-18 03:25:50.000000000 +0000
++++ /mnt/data/mdstats-mvidx-ooc-work/mdstats/training_data/target_coverage_sparse_index.py	2026-08-18 04:09:35.784319398 +0000
+@@ -19,6 +19,8 @@
+ 
+ from dataclasses import dataclass, field
+ import math
++from pathlib import Path
++import time
+ from typing import Any, Callable, Mapping, Sequence
+ 
+ import numpy as np
+@@ -36,6 +38,11 @@
+ )
+ from .target_coverage_feasibility import validate_target_coverage_feasibility_authority
+ from .resources import StageResourceScope, available_cpu_threads
++from .progress_timing import (
++    ProgressRateTracker,
++    format_progress_fraction,
++    format_progress_timing_fields,
++)
+ from .work_queue import DeterministicWorkQueue
+ 
+ 
+@@ -50,6 +57,11 @@
+ _UINT32_MAX = int(np.iinfo(np.uint32).max)
+ _INT32_MAX = int(np.iinfo(np.int32).max)
+ _TOLERANCE = 1.0e-12
++_MIB = 1024 ** 2
++_MVIDX_OUT_OF_CORE_MIN_OUTPUT_BYTES = 8 * _MIB
++_MVIDX_OUT_OF_CORE_TASK_ADMISSION_BYTES = 768 * _MIB
++_MVIDX_OUT_OF_CORE_CHUNK_SCRATCH_BYTES = 384 * _MIB
++_MVIDX_VALIDATION_CHUNK_EDGES = 8 * 1024 * 1024
+ 
+ 
+ def _canonical_array(
+@@ -74,24 +86,35 @@
+ 
+ 
+ def _validate_sorted_unique_rows(offsets: np.ndarray, indices: np.ndarray, *, name: str) -> None:
+-    """Validate strict within-row ordering without one Python call per row.
++    """Validate strict within-row ordering with bounded temporary memory.
+ 
+-    Adjacent comparisons are vectorized across the complete edge array.  Pairs
+-    that straddle a CSR row boundary are masked out, leaving exactly the same
+-    predicate as the historical per-row loop.
++    The predicate is identical to the historical per-row and MVKERNEL1
++    vectorized validators.  Large file-backed MVIDX arrays can contain hundreds
++    of millions of edges, so adjacent comparisons are evaluated in bounded
++    edge chunks.  Only positions that actually violate monotonicity are tested
++    against CSR row boundaries; cross-row pairs remain ignored exactly.
+     """
+ 
+-    if indices.size < 2:
++    edge_count = int(indices.size)
++    if edge_count < 2:
+         return
+-    same_row = np.ones(indices.size - 1, dtype=np.bool_)
+-    boundaries = np.asarray(offsets[1:-1], dtype=np.int64) - 1
+-    boundaries = boundaries[(boundaries >= 0) & (boundaries < same_row.size)]
+-    if boundaries.size:
+-        same_row[boundaries] = False
+-    if np.any((indices[1:] <= indices[:-1]) & same_row):
+-        raise TrainingDataInputError(
+-            f"TARGET-DATA2C-MVIDX1 {name} rows must be strictly sorted and duplicate-free."
+-        )
++    pair_count = edge_count - 1
++    chunk = max(1, int(_MVIDX_VALIDATION_CHUNK_EDGES))
++    for start in range(0, pair_count, chunk):
++        stop = min(pair_count, start + chunk)
++        bad = np.flatnonzero(indices[start + 1 : stop + 1] <= indices[start:stop])
++        if bad.size == 0:
++            continue
++        positions = bad.astype(np.int64, copy=False) + int(start) + 1
++        boundary_rows = np.searchsorted(offsets, positions, side="left")
++        is_boundary = np.zeros(positions.size, dtype=np.bool_)
++        valid = boundary_rows < len(offsets)
++        if np.any(valid):
++            is_boundary[valid] = offsets[boundary_rows[valid]] == positions[valid]
++        if np.any(~is_boundary):
++            raise TrainingDataInputError(
++                f"TARGET-DATA2C-MVIDX1 {name} rows must be strictly sorted and duplicate-free."
++            )
+ 
+ 
+ def _inline_array_payload(array: np.ndarray) -> list[Any]:
+@@ -653,6 +676,148 @@
+     rows.setflags(write=False)
+     return offsets, rows
+ 
++def _out_of_core_chunk_row_stop(
++    row_offsets: np.ndarray,
++    *,
++    row_start: int,
++    row_count: int,
++    maximum_edges: int,
++) -> int:
++    """Return the next canonical row boundary for one bounded transpose chunk."""
++
++    if row_start >= row_count:
++        return row_count
++    edge_start = int(row_offsets[row_start])
++    target = edge_start + max(1, int(maximum_edges))
++    stop = int(np.searchsorted(row_offsets, target, side="right") - 1)
++    stop = max(row_start + 1, min(row_count, stop))
++    return stop
++
++
++def _csr_inverse_out_of_core(
++    row_offsets: np.ndarray,
++    row_columns: np.ndarray,
++    *,
++    row_count: int,
++    column_count: int,
++    output_path: str | Path,
++    chunk_scratch_bytes: int = _MVIDX_OUT_OF_CORE_CHUNK_SCRATCH_BYTES,
++) -> tuple[np.ndarray, np.ndarray]:
++    """Return exact CSC-equivalent arrays with file-backed inverse indices.
++
++    This is the large-scale MVIDX path.  The final ``candidate_witnesses``
++    payload is created directly as an NPY memmap, while deterministic SciPy
++    counting transposes are performed on ascending source-row chunks.  For each
++    candidate column, chunk-local source rows are appended in ascending chunk
++    order, which is byte-identical to the full canonical CSR->CSC transpose.
++    Floating-point arithmetic is not involved.
++    """
++
++    edge_count = int(len(row_columns))
++    if column_count > _INT32_MAX or row_count > _INT32_MAX:
++        raise TrainingDataInputError(
++            "TARGET-DATA2C-MVIDX1 v1 sparse transpose requires cardinalities below int32 range."
++        )
++    destination = Path(output_path)
++    destination.parent.mkdir(parents=True, exist_ok=True)
++
++    # One bounded-memory O(E) pass establishes final canonical column offsets.
++    # ``np.bincount`` may promote integer inputs internally, so never hand it
++    # the complete multi-hundred-million-edge uint32 memmap at once.
++    counts = np.zeros(int(column_count), dtype=np.uint64)
++    count_chunk_edges = max(1, int(chunk_scratch_bytes) // 16)
++    for edge_start in range(0, edge_count, count_chunk_edges):
++        edge_stop = min(edge_count, edge_start + count_chunk_edges)
++        counts += np.bincount(
++            row_columns[edge_start:edge_stop], minlength=int(column_count)
++        ).astype(np.uint64, copy=False)
++    offsets = np.empty(int(column_count) + 1, dtype="<u8")
++    offsets[0] = 0
++    np.cumsum(counts, dtype=np.uint64, out=offsets[1:])
++    if int(offsets[-1]) != edge_count:
++        raise TrainingDataInputError("TARGET-DATA2C-MVIDX1 out-of-core transpose edge count mismatch.")
++
++    rows = np.lib.format.open_memmap(
++        destination, mode="w+", dtype="<u4", shape=(edge_count,)
++    )
++    written = np.zeros(int(column_count), dtype=np.uint64)
++
++    # Conservative scratch accounting: SciPy owns uint8 CSR/CSC data plus one
++    # int32 CSC index payload and temporary counting workspace.  Sixteen bytes
++    # per chunk edge leaves headroom for allocator/backend variation.
++    maximum_chunk_edges = max(1, int(chunk_scratch_bytes) // 16)
++    row_start = 0
++    try:
++        while row_start < int(row_count):
++            row_stop = _out_of_core_chunk_row_stop(
++                row_offsets,
++                row_start=row_start,
++                row_count=int(row_count),
++                maximum_edges=maximum_chunk_edges,
++            )
++            edge_start = int(row_offsets[row_start])
++            edge_stop = int(row_offsets[row_stop])
++            local_edge_count = edge_stop - edge_start
++            if local_edge_count > 0:
++                local_offsets = (
++                    np.asarray(row_offsets[row_start : row_stop + 1], dtype=np.int64) - edge_start
++                )
++                local_columns = row_columns[edge_start:edge_stop].view(np.int32)
++                data = np.ones(local_edge_count, dtype=np.uint8)
++                matrix = csr_matrix(
++                    (data, local_columns, local_offsets),
++                    shape=(row_stop - row_start, int(column_count)),
++                )
++                inverse = matrix.tocsc(copy=True)
++                inverse.sort_indices()
++                local_counts = np.diff(inverse.indptr).astype(np.uint64, copy=False)
++                nonempty = np.flatnonzero(local_counts)
++                for column in nonempty:
++                    column = int(column)
++                    src_start = int(inverse.indptr[column])
++                    src_stop = int(inverse.indptr[column + 1])
++                    dst_start = int(offsets[column] + written[column])
++                    dst_stop = dst_start + (src_stop - src_start)
++                    np.add(
++                        inverse.indices[src_start:src_stop],
++                        np.uint32(row_start),
++                        out=rows[dst_start:dst_stop],
++                        casting="unsafe",
++                    )
++                written += local_counts
++                # Bound dirty file-backed pages before the next large chunk.
++                rows.flush()
++                del inverse, matrix, data, local_offsets, local_columns, local_counts, nonempty
++            row_start = row_stop
++    except Exception:
++        try:
++            rows.flush()
++        finally:
++            del rows
++            destination.unlink(missing_ok=True)
++        raise
++
++    if not np.array_equal(written, counts):
++        del rows
++        destination.unlink(missing_ok=True)
++        raise TrainingDataInputError("TARGET-DATA2C-MVIDX1 out-of-core transpose fill mismatch.")
++    rows.flush()
++    offsets.setflags(write=False)
++    rows.setflags(write=False)
++    return offsets, rows
++
++
++def _family_uses_out_of_core_inverse(
++    neighborhood: TargetCoverageExactNeighborhoodFamily,
++    *,
++    out_of_core_directory: str | Path | None,
++) -> bool:
++    return (
++        out_of_core_directory is not None
++        and int(neighborhood.edge_count) * np.dtype("<u4").itemsize
++        >= _MVIDX_OUT_OF_CORE_MIN_OUTPUT_BYTES
++    )
++
+ 
+ def _build_family_sparse_index_from_neighborhood(
+     family: Any,
+@@ -660,8 +825,15 @@
+     *,
+     candidate_count: int,
+     inverse_workers: int = 1,
++    inverse_output_path: str | Path | None = None,
++    inverse_chunk_scratch_bytes: int = _MVIDX_OUT_OF_CORE_CHUNK_SCRATCH_BYTES,
+ ) -> TargetCoverageSparseFamilyIndex:
+-    """Adopt authenticated NEIGHBOR1 forward CSR and build the legacy inverse."""
++    """Adopt authenticated NEIGHBOR1 forward CSR and build the exact inverse.
++
++    ``inverse_output_path`` is execution-only.  When supplied, the inverse edge
++    payload is built out-of-core into that NPY member while preserving the same
++    canonical candidate->witness arrays and scientific digest.
++    """
+ 
+     if neighborhood.family_id != family.family_id or neighborhood.family_digest != family.content_digest:
+         raise TrainingDataInputError(
+@@ -673,13 +845,23 @@
+         )
+     witness_offsets = np.asarray(neighborhood.witness_offsets, dtype="<u8")
+     witness_candidates = np.asarray(neighborhood.witness_candidates, dtype="<u4")
+-    candidate_offsets, candidate_witnesses = _csr_inverse(
+-        witness_offsets,
+-        witness_candidates,
+-        row_count=neighborhood.witness_count,
+-        column_count=candidate_count,
+-        workers=inverse_workers,
+-    )
++    if inverse_output_path is None:
++        candidate_offsets, candidate_witnesses = _csr_inverse(
++            witness_offsets,
++            witness_candidates,
++            row_count=neighborhood.witness_count,
++            column_count=candidate_count,
++            workers=inverse_workers,
++        )
++    else:
++        candidate_offsets, candidate_witnesses = _csr_inverse_out_of_core(
++            witness_offsets,
++            witness_candidates,
++            row_count=neighborhood.witness_count,
++            column_count=candidate_count,
++            output_path=inverse_output_path,
++            chunk_scratch_bytes=inverse_chunk_scratch_bytes,
++        )
+     return TargetCoverageSparseFamilyIndex(
+         family_id=family.family_id,
+         family_digest=family.content_digest,
+@@ -841,9 +1023,20 @@
+     )
+ 
+ 
+-def _family_build_memory_estimate(neighborhood: TargetCoverageExactNeighborhoodFamily) -> int:
+-    # Persistent inverse indices plus temporary SciPy data/index arrays and
+-    # vectorized validation masks.  This is execution-only admission evidence.
++def _family_build_memory_estimate(
++    neighborhood: TargetCoverageExactNeighborhoodFamily,
++    *,
++    out_of_core: bool = False,
++    out_of_core_admission_bytes: int = _MVIDX_OUT_OF_CORE_TASK_ADMISSION_BYTES,
++) -> int:
++    if out_of_core:
++        # The final inverse edge array is file-backed.  Admission therefore
++        # covers bounded SciPy chunk scratch, validation workspace, and O(C)
++        # counters rather than the complete edge payload.
++        candidate_bytes = (int(neighborhood.candidate_count) + 1) * 32
++        return max(1, int(out_of_core_admission_bytes) + candidate_bytes)
++    # In-memory path: persistent inverse indices plus temporary SciPy
++    # data/index arrays and vectorized validation workspace.
+     edge_bytes = int(neighborhood.edge_count) * 18
+     offset_bytes = (int(neighborhood.candidate_count) + 1) * 16
+     return max(1, edge_bytes + offset_bytes)
+@@ -857,6 +1050,8 @@
+     inverse_workers: int,
+     progress_callback: Callable[[str], None] | None,
+     resource_scope: StageResourceScope | None = None,
++    out_of_core_directory: str | Path | None = None,
++    progress_interval_seconds: float = 30.0,
+ ) -> tuple[
+     tuple[TargetCoverageSparseFamilyIndex, ...],
+     tuple[TargetCoverageHardObligation, ...],
+@@ -871,17 +1066,49 @@
+     cached_domain = neighborhoods.domain(domain.label_domain_id)
+     workers = max(1, min(int(inverse_workers), len(required) + 1))
+ 
+-    def build_family(family: Any) -> TargetCoverageSparseFamilyIndex:
++    ooc_root = None if out_of_core_directory is None else Path(out_of_core_directory)
++    if ooc_root is not None:
++        ooc_root.mkdir(parents=True, exist_ok=True)
++    ooc_admission_bytes = int(_MVIDX_OUT_OF_CORE_TASK_ADMISSION_BYTES)
++    if resource_scope is not None and resource_scope.ram_budget_bytes is not None:
++        budget = max(1, int(resource_scope.ram_budget_bytes))
++        # Large inversions are I/O/memory-bandwidth heavy.  Reserve enough
++        # anonymous scratch for at most eight simultaneous OOC transposes; the
++        # deterministic queue may admit fewer when other work is resident.
++        lane_budget = max(1, min(int(workers), 8))
++        ooc_admission_bytes = min(
++            ooc_admission_bytes,
++            max(1, budget // lane_budget),
++            budget,
++        )
++    ooc_chunk_scratch_bytes = max(8 * _MIB, min(
++        int(_MVIDX_OUT_OF_CORE_CHUNK_SCRATCH_BYTES),
++        max(1, ooc_admission_bytes // 2),
++    ))
++    ooc_chunk_scratch_bytes = min(ooc_chunk_scratch_bytes, max(1, ooc_admission_bytes))
++
++    def build_family(position: int, family: Any) -> TargetCoverageSparseFamilyIndex:
+         cached_family = cached_domain.family(family.family_id)
++        use_ooc = _family_uses_out_of_core_inverse(
++            cached_family, out_of_core_directory=ooc_root
++        )
++        output_path = None
++        if use_ooc:
++            output_path = ooc_root / (
++                f"domain-{domain.label_domain_id}-family-{position:04d}-"
++                f"{family.content_digest[:16]}-candidate-witnesses.npy"
++            )
+         return _build_family_sparse_index_from_neighborhood(
+             family,
+             cached_family,
+             candidate_count=len(domain.frame_uids),
+             inverse_workers=1,
++            inverse_output_path=output_path,
++            inverse_chunk_scratch_bytes=ooc_chunk_scratch_bytes,
+         )
+ 
+     if workers == 1:
+-        family_indices = tuple(build_family(family) for family in required)
++        family_indices = tuple(build_family(position, family) for position, family in enumerate(required))
+         obligation_result = _build_obligation_sparse_index(domain, role_domain, inverse_workers=1)
+         return (family_indices, *obligation_result)
+ 
+@@ -915,13 +1142,20 @@
+     ) as queue:
+         for position, family in enumerate(required):
+             cached_family = cached_domain.family(family.family_id)
++            use_ooc = _family_uses_out_of_core_inverse(
++                cached_family, out_of_core_directory=ooc_root
++            )
+             queue.submit(
+                 task_id=f"family-{position:06d}-{family.family_id}",
+                 canonical_order=(0, position),
+                 function=build_family,
+-                args=(family,),
+-                task_kind="mvidx-family-inverse",
+-                estimated_memory_bytes=_family_build_memory_estimate(cached_family),
++                args=(position, family),
++                task_kind=("mvidx-family-inverse-ooc" if use_ooc else "mvidx-family-inverse"),
++                estimated_memory_bytes=_family_build_memory_estimate(
++                    cached_family,
++                    out_of_core=use_ooc,
++                    out_of_core_admission_bytes=ooc_admission_bytes,
++                ),
+                 locality_key=f"{domain.label_domain_id}:{family.family_id}",
+             )
+         queue.submit(
+@@ -935,29 +1169,66 @@
+             locality_key=f"{domain.label_domain_id}:obligations",
+         )
+         expected = len(required) + 1
+-        while queue.snapshot().finished_tasks < expected:
+-            queue.wait_for_completion()
+-            for completion in queue.drain_completed():
+-                if completion.canonical_order[0] == 0:
+-                    family = required[int(completion.canonical_order[1])]
+-                    results[("family", family.family_id)] = completion.value
+-                else:
+-                    results[("obligations", "0")] = completion.value
+-        for completion in queue.drain_completed():
++        total_edges = sum(
++            int(cached_domain.family(family.family_id).edge_count) for family in required
++        )
++        completed_edges = 0
++        started = time.monotonic()
++        last_report = started
++        tracker = ProgressRateTracker(
++            completed=0,
++            started_at=started,
++            minimum_recent_window_seconds=max(1.0, float(progress_interval_seconds)),
++        )
++
++        def consume_completion(completion: Any) -> None:
++            nonlocal completed_edges
+             if completion.canonical_order[0] == 0:
+                 family = required[int(completion.canonical_order[1])]
+                 results[("family", family.family_id)] = completion.value
++                completed_edges += int(cached_domain.family(family.family_id).edge_count)
+             else:
+                 results[("obligations", "0")] = completion.value
++
++        while queue.snapshot().finished_tasks < expected:
++            queue.wait_for_completion(timeout=max(0.1, float(progress_interval_seconds)))
++            for completion in queue.drain_completed():
++                consume_completion(completion)
++            now = time.monotonic()
++            snapshot = queue.snapshot()
++            if progress_callback is not None and (
++                now - last_report >= float(progress_interval_seconds)
++                or snapshot.finished_tasks >= expected
++            ):
++                timing = tracker.snapshot(
++                    completed=min(completed_edges, total_edges), total=max(1, total_edges), now=now
++                )
++                progress_callback(
++                    f"status=running; domain={domain.label_domain_id}; "
++                    f"progress={format_progress_fraction(snapshot.finished_tasks, expected)}; "
++                    f"{format_progress_timing_fields(elapsed_seconds=timing.elapsed_seconds, eta_seconds=timing.eta_seconds, recent_rate=timing.recent_rate, average_rate=timing.average_rate, rate_unit='edge/s')}; "
++                    f"busy={snapshot.busy_workers}/{snapshot.allocated_workers}; "
++                    f"ram-accounted={snapshot.inflight_memory_bytes + snapshot.completed_memory_bytes + snapshot.reserved_memory_bytes}; "
++                    f"ram-budget={snapshot.memory_budget_bytes if snapshot.memory_budget_bytes is not None else 'unbounded'}"
++                )
++                last_report = now
++        for completion in queue.drain_completed():
++            consume_completion(completion)
+         snapshot = queue.snapshot()
+ 
+     family_indices = tuple(results[("family", family.family_id)] for family in required)
+     obligation_result = results[("obligations", "0")]
+     if progress_callback is not None:
++        ooc_families = sum(
++            _family_uses_out_of_core_inverse(
++                cached_domain.family(family.family_id), out_of_core_directory=ooc_root
++            )
++            for family in required
++        )
+         progress_callback(
+             f"status=complete; domain={domain.label_domain_id}; phase=MVIDX-REUSE1-sparse-inversion; "
+             f"workers={workers}; max-busy={snapshot.max_busy_workers}; "
+-            f"families={len(required)}; geometry=skipped"
++            f"families={len(required)}; out-of-core-families={ooc_families}; geometry=skipped"
+         )
+     return (family_indices, *obligation_result)
+ 
+@@ -972,6 +1243,7 @@
+     query_block_size: int = 512,
+     global_workers: int | None = None,
+     resource_scope: StageResourceScope | None = None,
++    out_of_core_directory: str | Path | None = None,
+     progress_interval_seconds: float = 30.0,
+     progress_callback: Callable[[str], None] | None = None,
+ ) -> TargetCoverageSparseIndex:
+@@ -1057,6 +1329,8 @@
+             inverse_workers=inverse_workers,
+             progress_callback=progress_callback,
+             resource_scope=resource_scope,
++            out_of_core_directory=out_of_core_directory,
++            progress_interval_seconds=interval,
+         )
+         domains.append(
+             TargetCoverageSparseDomainIndex(
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SHA256SUMS_0.20.238a0.txt' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' '--exclude=SOURCE_PATCH_0.20.237a0_to_0.20.238a0.patch' /mnt/data/mdstats-debug/mdstats-0.20.237a0/mdstats/training_data/target_coverage_sparse_index_store.py /mnt/data/mdstats-mvidx-ooc-work/mdstats/training_data/target_coverage_sparse_index_store.py
+--- /mnt/data/mdstats-debug/mdstats-0.20.237a0/mdstats/training_data/target_coverage_sparse_index_store.py	2026-08-16 16:10:24.000000000 +0000
++++ /mnt/data/mdstats-mvidx-ooc-work/mdstats/training_data/target_coverage_sparse_index_store.py	2026-08-18 04:03:20.737829185 +0000
+@@ -4,6 +4,7 @@
+ 
+ import hashlib
+ import json
++import mmap
+ import os
+ from pathlib import Path
+ import shutil
+@@ -76,8 +77,63 @@
+         return self.tell()
+ 
+ 
++def _root_memmap(array: np.ndarray) -> np.memmap | None:
++    current: Any = array
++    visited: set[int] = set()
++    while isinstance(current, np.ndarray) and id(current) not in visited:
++        visited.add(id(current))
++        if isinstance(current, np.memmap) and isinstance(current.base, mmap.mmap):
++            return current
++        current = getattr(current, "base", None)
++    return None
++
++
++def _whole_npy_memmap_source(array: np.ndarray) -> Path | None:
++    """Return the backing NPY file when ``array`` covers one complete memmap."""
++
++    root = _root_memmap(array)
++    if root is None or not array.flags.c_contiguous:
++        return None
++    filename = getattr(root, "filename", None)
++    if filename is None:
++        return None
++    source = Path(os.fspath(filename)).resolve()
++    if source.suffix.lower() != ".npy" or not source.is_file():
++        return None
++    if (
++        int(array.ctypes.data) != int(root.ctypes.data)
++        or int(array.nbytes) != int(root.nbytes)
++        or tuple(array.shape) != tuple(root.shape)
++        or array.dtype != root.dtype
++    ):
++        return None
++    try:
++        probe = np.load(source, mmap_mode="r", allow_pickle=False)
++    except (OSError, ValueError):
++        return None
++    try:
++        if tuple(probe.shape) != tuple(array.shape) or probe.dtype != array.dtype:
++            return None
++    finally:
++        del probe
++    return source
++
++
+ def _write_npy(path: Path, array: np.ndarray) -> dict[str, Any]:
+     contiguous = np.ascontiguousarray(array)
++    source = _whole_npy_memmap_source(contiguous)
++    if source is not None:
++        try:
++            os.link(source, path)
++        except OSError:
++            source = None
++        else:
++            return {
++                "relative_path": path.name,
++                "sha256": _sha256_file(source),
++                "size_bytes": source.stat().st_size,
++                "array_reference": _coverage_array_reference(contiguous),
++            }
+     with path.open("wb") as raw_handle:
+         handle = _HashingBinaryWriter(raw_handle)
+         np.save(handle, contiguous, allow_pickle=False)
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SHA256SUMS_0.20.238a0.txt' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' '--exclude=SOURCE_PATCH_0.20.237a0_to_0.20.238a0.patch' /mnt/data/mdstats-debug/mdstats-0.20.237a0/pyproject.toml /mnt/data/mdstats-mvidx-ooc-work/pyproject.toml
+--- /mnt/data/mdstats-debug/mdstats-0.20.237a0/pyproject.toml	2026-08-18 03:41:10.000000000 +0000
++++ /mnt/data/mdstats-mvidx-ooc-work/pyproject.toml	2026-08-18 04:12:13.722283669 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.237a0"
++version = "0.20.238a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SHA256SUMS_0.20.238a0.txt' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' '--exclude=SOURCE_PATCH_0.20.237a0_to_0.20.238a0.patch' /mnt/data/mdstats-debug/mdstats-0.20.237a0/release/qualification_logs/MLFF_MVIDX_OOC_SCALING_QUALIFICATION_0.20.238a0.json /mnt/data/mdstats-mvidx-ooc-work/release/qualification_logs/MLFF_MVIDX_OOC_SCALING_QUALIFICATION_0.20.238a0.json
+--- /mnt/data/mdstats-debug/mdstats-0.20.237a0/release/qualification_logs/MLFF_MVIDX_OOC_SCALING_QUALIFICATION_0.20.238a0.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-mvidx-ooc-work/release/qualification_logs/MLFF_MVIDX_OOC_SCALING_QUALIFICATION_0.20.238a0.json	2026-08-18 04:19:26.460988427 +0000
+@@ -0,0 +1,65 @@
++{
++  "active_foundation": {
++    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
++    "family": "MACE-MPA-0 medium",
++    "mh1_compatible": true
++  },
++  "architecture_revision": 103,
++  "content_digest": "8017c9eeb72984af9479d1d498563a8522af4680544b6a0a74ee0d5805ed447e",
++  "dependency_graph_schema": 83,
++  "documentation": {
++    "architecture_revision_unchanged": true,
++    "manual_pages": 53,
++    "pdf_preflight": "PASS",
++    "pdf_render": "PASS"
++  },
++  "gpu_authority_change": false,
++  "incident": {
++    "domain": "label-domain-5aa1ee5d50cd0b23",
++    "failing_task_id": "family-000020-profile:lta:2fe54e6e3a8eb90c",
++    "in_memory_estimate_bytes": 6884623396,
++    "inferred_failing_family_edges": 382446714,
++    "inverse_workers": 28,
++    "required_families": 165,
++    "stage_ram_budget_bytes": 5463923097,
++    "total_exact_edges": 9505021522
++  },
++  "next_gate": "FINAL_GPU1_DEFERRED_RELEASE_QUALIFICATION",
++  "release": "0.20.238a0",
++  "resolution": {
++    "disk_safety_rule": "max(1 GiB, 5% of exact inverse payload)",
++    "example_ooc_task_admission_bytes_at_reported_budget": 684155475,
++    "example_ooc_task_admission_gib_at_reported_budget": 0.6371694384142756,
++    "maximum_simultaneous_tasks_by_admission_only": 7,
++    "out_of_core_threshold_bytes": 8388608,
++    "persistence": "whole NPY memmaps hard-linked when source/destination share a filesystem",
++    "total_inverse_uint32_payload_bytes": 38020086088,
++    "total_inverse_uint32_payload_gib": 35.4089644625783
++  },
++  "schema": "mdstats.mlff-mvidx-ooc-scaling-qualification.2026-08.v1",
++  "scientific_authority_change": false,
++  "status": "PASS_EXACT_EQUIVALENCE_SCALING_HARDENING",
++  "tests": {
++    "affected_current_surface": {
++      "failed": 0,
++      "passed": 34,
++      "warnings": 1
++    },
++    "compileall": "PASS",
++    "new_mvidx_ooc_regressions": {
++      "failed": 0,
++      "passed": 4
++    },
++    "target_data2_original_authority": {
++      "failed": 0,
++      "passed": 111,
++      "warnings": 18
++    },
++    "target_data2_with_new_regressions": {
++      "failed": 0,
++      "passed": 115,
++      "warnings": 18
++    },
++    "wheel_version": "0.20.238a0"
++  }
++}
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SHA256SUMS_0.20.238a0.txt' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' '--exclude=SOURCE_PATCH_0.20.237a0_to_0.20.238a0.patch' /mnt/data/mdstats-debug/mdstats-0.20.237a0/tests/test_mlff_doc_arch1_specification.py /mnt/data/mdstats-mvidx-ooc-work/tests/test_mlff_doc_arch1_specification.py
+--- /mnt/data/mdstats-debug/mdstats-0.20.237a0/tests/test_mlff_doc_arch1_specification.py	2026-08-18 03:41:10.000000000 +0000
++++ /mnt/data/mdstats-mvidx-ooc-work/tests/test_mlff_doc_arch1_specification.py	2026-08-18 04:13:32.003082384 +0000
+@@ -16,10 +16,10 @@
+ 
+ 
+ def test_doc_arch1_release_and_current_authority_are_synchronized():
+-    assert mdstats.__version__ == "0.20.237a0"
++    assert mdstats.__version__ == "0.20.238a0"
+     text = MANUAL.read_text(encoding="utf-8")
+     assert "architecture_revision: 103" in text
+-    assert 'release: "mdstats 0.20.237a0"' in text
++    assert 'release: "mdstats 0.20.238a0"' in text
+     assert "# Part VI - Performance and execution architecture" in text
+     assert "# Part VII - Current implementation status and frozen forward gates" in text
+     assert "## Context retrieval index" in text
+@@ -74,7 +74,7 @@
+     assert revisions == sorted(set(revisions))
+     assert revisions[-1] == 103
+     assert "NEIGHBOR1" in REV_INDEX.read_text()
+-    assert "0.20.237a0" in REL_INDEX.read_text()
++    assert "0.20.238a0" in REL_INDEX.read_text()
+     assert (ROOT / "docs/history/mlff/LINEAGE.md").is_file()
+     assert (ROOT / "docs/history/mlff/manual_snapshots/mlff_training_data_architecture_rev090_full.md").is_file()
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SHA256SUMS_0.20.238a0.txt' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' '--exclude=SOURCE_PATCH_0.20.237a0_to_0.20.238a0.patch' /mnt/data/mdstats-debug/mdstats-0.20.237a0/tests/test_mlff_mvidx_out_of_core_scaling_specification.py /mnt/data/mdstats-mvidx-ooc-work/tests/test_mlff_mvidx_out_of_core_scaling_specification.py
+--- /mnt/data/mdstats-debug/mdstats-0.20.237a0/tests/test_mlff_mvidx_out_of_core_scaling_specification.py	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-mvidx-ooc-work/tests/test_mlff_mvidx_out_of_core_scaling_specification.py	2026-08-18 04:19:00.642433685 +0000
+@@ -0,0 +1,58 @@
++from __future__ import annotations
++
++import json
++from pathlib import Path
++
++import mdstats
++
++ROOT = Path(__file__).resolve().parents[1]
++MANUAL = ROOT / "docs/arch_manuals/mlff_training_data_architecture.md"
++GRAPH = ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json"
++SPEC = ROOT / "docs/specs/training_data/mlff_mvidx_out_of_core_scaling_spec.md"
++
++
++def test_mvidx_ooc_release_metadata_and_forward_gate() -> None:
++    assert mdstats.__version__ == "0.20.238a0"
++    assert 'version = "0.20.238a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert "Version: 0.20.238a0" in (ROOT / "PKG-INFO").read_text(encoding="utf-8")
++    text = MANUAL.read_text(encoding="utf-8")
++    assert 'release: "mdstats 0.20.238a0"' in text
++    assert "architecture_revision: 103" in text
++    assert "Multi-billion-edge MVIDX out-of-core hardening" in text
++    graph = json.loads(GRAPH.read_text(encoding="utf-8"))
++    assert graph["architecture_revision"] == 103
++    assert graph["schema_version"] == 83
++    assert graph["next_gate"] == "FINAL_GPU1_DEFERRED_RELEASE_QUALIFICATION"
++
++
++def test_mvidx_ooc_spec_freezes_exact_execution_contract() -> None:
++    text = SPEC.read_text(encoding="utf-8")
++    for token in (
++        "byte-identical",
++        "NPY memmap",
++        "bounded",
++        "hard-linked",
++        "disk",
++        "FINAL-GPU1",
++    ):
++        assert token in text
++    source = (ROOT / "mdstats/training_data/target_coverage_sparse_index.py").read_text(encoding="utf-8")
++    assert "_csr_inverse_out_of_core" in source
++    assert "_MVIDX_OUT_OF_CORE_MIN_OUTPUT_BYTES" in source
++    store = (ROOT / "mdstats/training_data/target_coverage_sparse_index_store.py").read_text(encoding="utf-8")
++    assert "_whole_npy_memmap_source" in store
++
++
++def test_mvidx_ooc_qualification_record_binds_reported_failure_and_fix() -> None:
++    q = json.loads(
++        (ROOT / "release/qualification_logs/MLFF_MVIDX_OOC_SCALING_QUALIFICATION_0.20.238a0.json").read_text(
++            encoding="utf-8"
++        )
++    )
++    assert q["status"] == "PASS_EXACT_EQUIVALENCE_SCALING_HARDENING"
++    assert q["scientific_authority_change"] is False
++    assert q["incident"]["total_exact_edges"] == 9_505_021_522
++    assert q["incident"]["in_memory_estimate_bytes"] > q["incident"]["stage_ram_budget_bytes"]
++    assert q["resolution"]["total_inverse_uint32_payload_gib"] > 35.0
++    assert q["tests"]["target_data2_original_authority"]["passed"] == 111
++    assert q["next_gate"] == "FINAL_GPU1_DEFERRED_RELEASE_QUALIFICATION"
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SHA256SUMS_0.20.238a0.txt' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' '--exclude=SOURCE_PATCH_0.20.237a0_to_0.20.238a0.patch' /mnt/data/mdstats-debug/mdstats-0.20.237a0/tests/test_mlff_progress_reporting_format_specification.py /mnt/data/mdstats-mvidx-ooc-work/tests/test_mlff_progress_reporting_format_specification.py
+--- /mnt/data/mdstats-debug/mdstats-0.20.237a0/tests/test_mlff_progress_reporting_format_specification.py	2026-08-18 03:48:26.000000000 +0000
++++ /mnt/data/mdstats-mvidx-ooc-work/tests/test_mlff_progress_reporting_format_specification.py	2026-08-18 04:13:32.003271476 +0000
+@@ -11,12 +11,12 @@
+ 
+ 
+ def test_progress_format_release_metadata_and_architecture_boundary() -> None:
+-    assert mdstats.__version__ == "0.20.237a0"
+-    assert 'version = "0.20.237a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+-    assert "Version: 0.20.237a0" in (ROOT / "PKG-INFO").read_text(encoding="utf-8")
++    # 0.20.237a0 is the frozen introduction release; later maintenance
++    # releases retain the same revision-103 presentation contract.
++    assert tuple(int(part) for part in mdstats.__version__.split(".")[:2]) >= (0, 20)
+     text = MANUAL.read_text(encoding="utf-8")
+     assert "architecture_revision: 103" in text
+-    assert 'release: "mdstats 0.20.237a0"' in text
++    assert "0.20.237a0" in text
+     assert "FINAL-GPU1" in text
+ 
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SHA256SUMS_0.20.237a0.txt' '--exclude=SHA256SUMS_0.20.238a0.txt' '--exclude=SOURCE_PATCH_0.20.236a0_to_0.20.237a0.patch' '--exclude=SOURCE_PATCH_0.20.237a0_to_0.20.238a0.patch' /mnt/data/mdstats-debug/mdstats-0.20.237a0/tests/test_mlff_target_data2c_mvidx1.py /mnt/data/mdstats-mvidx-ooc-work/tests/test_mlff_target_data2c_mvidx1.py
+--- /mnt/data/mdstats-debug/mdstats-0.20.237a0/tests/test_mlff_target_data2c_mvidx1.py	2026-08-18 03:27:32.000000000 +0000
++++ /mnt/data/mdstats-mvidx-ooc-work/tests/test_mlff_target_data2c_mvidx1.py	2026-08-18 04:16:00.826433685 +0000
+@@ -198,3 +198,137 @@
+         assert {item.family_id for item in domain.families} == required_ids
+         assert all(item.edge_count >= item.witness_count for item in domain.families)
+         assert len(domain.correlation_unit_ids) >= 1
++
++
++def test_mvidx1_out_of_core_inverse_is_byte_exact_across_many_chunks(tmp_path: Path) -> None:
++    rng = np.random.default_rng(20260817)
++    row_count = 500
++    column_count = 200
++    rows = [
++        np.sort(rng.choice(column_count, size=int(rng.integers(0, 50)), replace=False)).astype("<u4")
++        for _ in range(row_count)
++    ]
++    offsets = np.empty(row_count + 1, dtype="<u8")
++    offsets[0] = 0
++    np.cumsum(np.asarray([len(row) for row in rows], dtype=np.uint64), out=offsets[1:])
++    columns = np.concatenate(rows).astype("<u4")
++
++    expected_offsets, expected_rows = mvidx._csr_inverse(
++        offsets, columns, row_count=row_count, column_count=column_count
++    )
++    actual_offsets, actual_rows = mvidx._csr_inverse_out_of_core(
++        offsets,
++        columns,
++        row_count=row_count,
++        column_count=column_count,
++        output_path=tmp_path / "candidate-witnesses.npy",
++        # Deliberately tiny scratch forces many source-row chunks.
++        chunk_scratch_bytes=4096,
++    )
++    assert np.array_equal(actual_offsets, expected_offsets)
++    assert np.array_equal(actual_rows, expected_rows)
++    assert isinstance(actual_rows, np.memmap)
++
++
++def test_mvidx1_out_of_core_family_path_preserves_complete_index_digest(
++    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
++) -> None:
++    reference, role = _reference_and_role(split_units=True)
++    feasibility, neighborhoods = mdstats.build_target_coverage_feasibility_artifacts(
++        reference, role, query_workers=1, query_block_size=3, block_workers=2
++    )
++    expected = mdstats.build_target_coverage_sparse_index(
++        reference,
++        role,
++        feasibility,
++        exact_neighborhood_store=neighborhoods,
++        query_workers=1,
++        global_workers=2,
++    )
++    monkeypatch.setattr(mvidx, "_MVIDX_OUT_OF_CORE_MIN_OUTPUT_BYTES", 1)
++    actual = mdstats.build_target_coverage_sparse_index(
++        reference,
++        role,
++        feasibility,
++        exact_neighborhood_store=neighborhoods,
++        query_workers=1,
++        global_workers=2,
++        out_of_core_directory=tmp_path / "ooc",
++    )
++    assert actual.content_digest == expected.content_digest
++    for expected_domain, actual_domain in zip(expected.domains, actual.domains, strict=True):
++        for expected_family, actual_family in zip(expected_domain.families, actual_domain.families, strict=True):
++            assert np.array_equal(actual_family.candidate_offsets, expected_family.candidate_offsets)
++            assert np.array_equal(actual_family.candidate_witnesses, expected_family.candidate_witnesses)
++
++
++def test_mvidx1_native_store_hardlinks_whole_out_of_core_npy(
++    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
++) -> None:
++    from mdstats.training_data import target_coverage_sparse_index_store as native_store
++
++    reference, role = _reference_and_role(split_units=True)
++    feasibility, neighborhoods = mdstats.build_target_coverage_feasibility_artifacts(
++        reference, role, query_workers=1, query_block_size=3, block_workers=2
++    )
++    monkeypatch.setattr(mvidx, "_MVIDX_OUT_OF_CORE_MIN_OUTPUT_BYTES", 1)
++    build_root = tmp_path / "build"
++    index = mdstats.build_target_coverage_sparse_index(
++        reference,
++        role,
++        feasibility,
++        exact_neighborhood_store=neighborhoods,
++        query_workers=1,
++        global_workers=1,
++        out_of_core_directory=build_root,
++    )
++    family = index.domains[0].families[0]
++    source = native_store._whole_npy_memmap_source(family.candidate_witnesses)
++    assert source is not None and source.is_file()
++
++    records = tmp_path / "records"
++    pointer = mdstats.write_target_coverage_sparse_index_native_record(index, records)
++    manifest = tmp_path / pointer["relative_path"]
++    payload = json.loads(manifest.read_text(encoding="utf-8"))
++    descriptor = payload["domains"][0]["families"][0]["arrays"]["candidate_witnesses"]
++    durable = manifest.parent / descriptor["relative_path"]
++    assert source.samefile(durable)
++
++    restored = mdstats.read_target_coverage_sparse_index_native_record(pointer, tmp_path)
++    assert restored.content_digest == index.content_digest
++
++
++def test_mvidx1_out_of_core_queue_respects_explicit_small_ram_budget(
++    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
++) -> None:
++    from mdstats.training_data.resources import StageResourceScope
++
++    reference, role = _reference_and_role(split_units=True)
++    feasibility, neighborhoods = mdstats.build_target_coverage_feasibility_artifacts(
++        reference, role, query_workers=1, query_block_size=3, block_workers=2
++    )
++    expected = mdstats.build_target_coverage_sparse_index(
++        reference, role, feasibility, exact_neighborhood_store=neighborhoods
++    )
++    monkeypatch.setattr(mvidx, "_MVIDX_OUT_OF_CORE_MIN_OUTPUT_BYTES", 1)
++    scope = StageResourceScope(
++        stage_name="mvidx-ooc-test",
++        cpu_threads_available=2,
++        cpu_threads_budget=2,
++        python_workers=2,
++        structural_workers=1,
++        tree_workers=1,
++        blas_threads=1,
++        pytorch_cpu_workers=1,
++        ram_budget_bytes=32 * 1024 * 1024,
++    )
++    actual = mdstats.build_target_coverage_sparse_index(
++        reference,
++        role,
++        feasibility,
++        exact_neighborhood_store=neighborhoods,
++        global_workers=2,
++        resource_scope=scope,
++        out_of_core_directory=tmp_path / "ooc-budgeted",
++    )
++    assert actual.content_digest == expected.content_digest

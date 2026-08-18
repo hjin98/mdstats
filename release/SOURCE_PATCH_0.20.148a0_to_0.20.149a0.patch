@@ -1,0 +1,1575 @@
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' /mnt/data/mdstats-0.20.148a0-complete-source-package/CHANGELOG.md /mnt/data/mdstats_gfx4_work/mdstats-0.20.148a0-complete-source-package/CHANGELOG.md
+--- /mnt/data/mdstats-0.20.148a0-complete-source-package/CHANGELOG.md	2026-08-11 09:46:08.484099351 +0000
++++ /mnt/data/mdstats_gfx4_work/mdstats-0.20.148a0-complete-source-package/CHANGELOG.md	2026-08-11 10:06:47.071955837 +0000
+@@ -1,3 +1,10 @@
++## 0.20.149a0 - 2026-08-11
++
++- Complete GFX3D-4 with product-level scientific dependency planning for framework topology, atomic connectivity, atomic trajectory, and atomic density instead of one monolithic `FrameworkDynamicsScene` dependency key.
++- Add scene-context single-flight caching so concurrent identical dependency misses execute the resolver once, with deterministic dependency-plan collation and cache/timing state excluded from scientific identity.
++- Add the lazy LTA GFX3D dependency source: requested products have distinct dependency authority while the existing qualified framework-dynamics scientific owner may batch compatible work once internally; manifest-only mode performs no scientific preparation.
++- Requalify the supplied 300 K Na-LTA source at stride 500: all four product keys are served by one qualified source preparation, omitted layers omit their product dependency, and 0.20.148a0 versus 0.20.149a0 mean-framework/Na-trajectory/Na-density hashes plus density-planning authority are exactly identical. Focused GFX3D/framework/renderer qualification: 74 passed.
++
+ ## 0.20.148a0 - 2026-08-11
+ 
+ - Complete GFX3D-3 with the packaged `mdstats-3d` command and source-tree `tools/mdstats-3d.py` launcher.
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' /mnt/data/mdstats-0.20.148a0-complete-source-package/PATCH_NOTES_0.20.149a0.md /mnt/data/mdstats_gfx4_work/mdstats-0.20.148a0-complete-source-package/PATCH_NOTES_0.20.149a0.md
+--- /mnt/data/mdstats-0.20.148a0-complete-source-package/PATCH_NOTES_0.20.149a0.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats_gfx4_work/mdstats-0.20.148a0-complete-source-package/PATCH_NOTES_0.20.149a0.md	2026-08-11 10:06:46.617259049 +0000
+@@ -0,0 +1,84 @@
++# mdstats 0.20.149a0 patch notes
++
++## GFX3D-4 - shared dependency planning and cache authority
++
++This release completes GFX3D-4.  The universal 3-D graphics stack now plans
++scientific products at layer granularity rather than treating one prepared
++`FrameworkDynamicsScene` as the scientific dependency of every layer.
++
++### Product-level dependency authority
++
++The four currently implemented layer families declare distinct scientific
++providers:
++
++- `framework_topology_product`
++- `atomic_connectivity_product`
++- `atomic_trajectory_product`
++- `atomic_density_product`
++
++A scene containing only a subset of those layers plans only that subset of
++product dependencies.  Duplicate layer instances with the same scientific
++request share one dependency key.
++
++The current LTA/framework-dynamics scientific owner is intentionally allowed to
++batch compatible products internally.  This preserves the qualified existing
++scientific algorithms while exposing product-level authority to GFX3D.  On the
++real Na-LTA all-four-layer qualification, four product dependencies were served
++from one qualified framework-dynamics preparation.
++
++### Single-flight cache semantics
++
++`GraphicsSceneContext` now provides in-memory single-flight dependency
++resolution.  Concurrent misses for the same scientific dependency execute the
++resolver once; other consumers wait for and reuse the same result.  Resolution
++order and cache state are execution evidence only and do not alter scientific
++identity.
++
++Dependency results are collated deterministically in the canonical dependency
++plan order even when independent resolution begins concurrently.
++
++This gate intentionally does not introduce a durable GFX3D product cache.
++Durable scientific caches owned by existing subsystems remain authoritative.
++
++### CLI and manifest behavior
++
++The GFX3D-3 CLI now creates a lazy scientific dependency source.  Therefore
++`--manifest-only` can expose the exact product-level dependency plan without
++executing topology, connectivity, trajectory-preparation, or density work.
++
++A real preparation uses the same dependency source and shared
++`GraphicsSceneContext`.  Dependency-level timing/cache evidence and source
++batch-preparation evidence are recorded separately from scientific identities.
++
++### Scientific equivalence
++
++The supplied 300 K Na-LTA MLFF trajectory was requalified at stride 500
++(21 frames, 168 atoms).  Compared with 0.20.148a0, 0.20.149a0 produced exactly
++identical hashes for:
++
++- mean framework positions;
++- Na trajectory positions;
++- Na density field values.
++
++The Na density integral remained `23.999999999999996`, and the density-planning
++approval ID remained
++`0d0c876f4aa4f87ec6795bd04944017838bfe0eab11a8c6d70e66c15906132cc`.
++
++This is an architecture/cache-authority gate, not a numerical-kernel
++optimization gate; no wall-time speedup claim is made.
++
++### Focused qualification
++
++Focused GFX3D/framework/renderer qualification passes **74 tests** with no
++failures or skips.  This includes concurrent single-flight resolution,
++duplicate dependency deduplication, product-level plans, cache-neutral
++identity, all GFX3D-1/2/3 contracts, CLI behavior, and legacy rendering
++compatibility.
++
++### Compatibility boundary
++
++`FrameworkDynamicsScene` remains a qualified scientific-owner batch and a
++temporary compatibility reference for the current Plotly renderer.  Layers no
++longer depend scientifically on a monolithic scene key.  GFX3D-5 will remove
++this remaining renderer coupling by completing renderer-neutral layer
++primitives and universal interaction semantics.
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' /mnt/data/mdstats-0.20.148a0-complete-source-package/docs/arch_manuals/mdstats_3d_graphics_architecture.md /mnt/data/mdstats_gfx4_work/mdstats-0.20.148a0-complete-source-package/docs/arch_manuals/mdstats_3d_graphics_architecture.md
+--- /mnt/data/mdstats-0.20.148a0-complete-source-package/docs/arch_manuals/mdstats_3d_graphics_architecture.md	2026-08-11 09:35:40.498000631 +0000
++++ /mnt/data/mdstats_gfx4_work/mdstats-0.20.148a0-complete-source-package/docs/arch_manuals/mdstats_3d_graphics_architecture.md	2026-08-11 10:08:52.104041891 +0000
+@@ -64,7 +64,7 @@
+ The architecture distinguishes three statuses:
+ 
+ `current baseline`
+-: behavior implemented through `mdstats 0.20.148a0` and available for migration;
++: behavior implemented through `mdstats 0.20.149a0` and available for migration;
+ 
+ `normative target`
+ : behavior required by this standard but not yet implemented;
+@@ -72,7 +72,7 @@
+ `deferred`
+ : behavior intentionally left to a later approved layer or renderer specification.
+ 
+-As of `mdstats 0.20.148a0`, **GFX3D-1 through GFX3D-3 are implemented**. The universal immutable request, selection, dependency, context, identity, registry, manifest, renderer-neutral primitive, generic render-result, and legacy compatibility contracts live under `mdstats.graphics3d`. GFX3D-2 adds registered independent `FrameworkTopologyLayer`, `AtomicConnectivityLayer`, `AtomicTrajectoryLayer`, and `AtomicDensityLayer` adapters over the already-qualified `FrameworkDynamicsScene` scientific products, plus a common layer-keyed Plotly composer. GFX3D-3 adds the packaged `mdstats-3d` command, the source-checkout `tools/mdstats-3d.py` launcher, strict TOML compilation, layer shorthand, the source-aware `lta-mixed-alkali-density` compatibility preset, canonical manifest-only mode, deterministic precedence/overwrite behavior, and a compatibility shim at the historical example path. Raw scientific preparation is still provided through the current framework-dynamics compatibility provider; GFX3D-4 is responsible for replacing that one composite provider with the complete generic dependency DAG.
++As of `mdstats 0.20.149a0`, **GFX3D-1 through GFX3D-4 are implemented**. The universal immutable request, selection, dependency, context, identity, registry, manifest, renderer-neutral primitive, generic render-result, and legacy compatibility contracts live under `mdstats.graphics3d`. GFX3D-2 adds registered independent `FrameworkTopologyLayer`, `AtomicConnectivityLayer`, `AtomicTrajectoryLayer`, and `AtomicDensityLayer` adapters plus a common layer-keyed Plotly composer. GFX3D-3 adds the packaged `mdstats-3d` command, strict TOML compilation, layer shorthand, the source-aware `lta-mixed-alkali-density` compatibility preset, canonical manifest-only mode, deterministic precedence/overwrite behavior, and the historical example compatibility shim. GFX3D-4 replaces the raw CLI's monolithic layer dependency with product-level framework/connectivity/trajectory/density keys, adds single-flight shared cache authority, deterministic parallel dependency resolution, source-level batching under the owning scientific scheduler, and dependency timing/cache evidence. The qualified framework-dynamics implementation may still batch joint preparation internally, but layers no longer treat the composite scene object as their scientific dependency.
+ 
+ The central design rule is:
+ 
+@@ -1839,7 +1839,7 @@
+ 
+ The command supports VASP XML/XDATCAR/concatenated-CONTCAR trajectories and native LAMMPS dumps, including explicit LAMMPS units/timestep/type mapping and topology overrides. `--manifest-only` resolves the source and canonical request without framework/connectivity/density preparation. Normal execution writes both a self-contained Plotly HTML artifact and a canonical scene-manifest JSON. Existing output/manifest paths are protected unless `--force` is explicit. Unknown TOML keys and ambiguous scientific selections fail closed.
+ 
+-The historical `examples/plot_lta_mixed_alkali_density.py` is now a compatibility shim around the same command authority. When invoked without a config, preset, or explicit layers, it injects the `lta-mixed-alkali-density` preset and preserves the historical default HTML filename. The migrated LTA scientific provider retains the previous T-O-T framework mapping, hysteretic cutoff calibration, mobile-ion/O connectivity, framework registration, trajectory, and density defaults. It is explicitly transitional: GFX3D-4 will move raw scientific products into independent dependency providers so non-framework scenes no longer need a `FrameworkDynamicsScene` compatibility source.
++The historical `examples/plot_lta_mixed_alkali_density.py` is now a compatibility shim around the same command authority. When invoked without a config, preset, or explicit layers, it injects the `lta-mixed-alkali-density` preset and preserves the historical default HTML filename. The migrated LTA scientific provider retains the previous T-O-T framework mapping, hysteretic cutoff calibration, mobile-ion/O connectivity, framework registration, trajectory, and density defaults. Under GFX3D-4 these products are exposed through separate dependency keys; the current Plotly compatibility backend may still retain a temporary prepared-scene reference until GFX3D-5 removes renderer coupling.
+ 
+ ## GFX3D-4 - shared dependency planning and cache authority
+ 
+@@ -1866,6 +1866,20 @@
+ - scientific identities are independent of cache location/hit state;
+ - real Na-LTA benchmark shows reduced redundant work without changing results.
+ 
++### Implemented authority (`0.20.149a0`)
++
++GFX3D-4 is implemented. Built-in raw-source layers now request one of four scientific product providers: `framework_topology_product`, `atomic_connectivity_product`, `atomic_trajectory_product`, or `atomic_density_product`. Equal keys deduplicate before execution. `GraphicsSceneContext.resolve_dependency()` uses a single-flight cache, so concurrent requests for the same scientific key execute exactly one resolver; waiters consume the stored result. Cache hits, waits, failures, resolver wall time, and provider execution records are execution evidence only and do not enter `GraphicsDependencyKey.identity`.
++
++The current LTA source is represented by `LTAGraphics3DDependencySource`. It retains the existing framework/connectivity/density algorithms as the scientific owner and may batch jointly qualified preparation once, but exposes the resulting products separately to the scene DAG. Thus a framework + trajectory + density scene has three dependency keys, while adding connectivity produces four; duplicate instances of one layer family share their product dependency. Manifest-only mode constructs these product keys without scientific preparation.
++
++Dependency resolution may begin concurrently, but result collation follows dependency-plan order. The current LTA provider serializes its one joint scientific preparation under the existing framework-dynamics CPU/RAM scheduler and then serves each product, so dependency parallelism cannot create a second resource authority. Durable scientific product caching is deliberately not authorized yet: GFX3D-4 cache policy is explicit in-memory single-flight reuse for one scene context, and durable cache location/hit state is excluded from scientific identity.
++
++On the supplied Na-LTA trajectory (`10,001` frames x `168` atoms), the authenticated source SHA-256 is:
++
++`81c86cc40f5a11031f80817213eb558c02348494d1c6cad9b4775a5bc3c9f9cd`
++
++A stride-500 four-family qualification resolves four product dependencies from one source scientific preparation (`preparation_count = 1`). A framework + Na trajectory + Na density scene resolves exactly three dependencies and omits connectivity. Against `0.20.148a0`, mean-framework coordinates, Na trajectory coordinates, Na density values, density integral, and density planning approval ID are byte/identity identical. No wall-time speedup is claimed from this architecture-only migration because text trajectory parsing and the same qualified scientific owner dominate the bounded smoke; the qualified reduction is elimination of duplicate dependency authority and guaranteed one-execution reuse.
++
+ ## GFX3D-5 - universal rendering and interaction semantics
+ 
+ ### Scope
+@@ -2071,12 +2085,18 @@
+ 
+ # Recommended next implementation
+ 
+-GFX3D-1 through GFX3D-3 are complete through `mdstats 0.20.148a0`. The next implementation gate is **GFX3D-4 - shared dependency planning and cache authority**.
++GFX3D-1 through GFX3D-4 are complete through `mdstats 0.20.149a0`. The next implementation gate is **GFX3D-5 - universal rendering and interaction semantics**.
+ 
+-The universal CLI is now production-facing and the historical LTA hybrid script is a compatibility preset/shim. The remaining architectural coupling is below the command surface: all four current layer adapters still consume one already-prepared `FrameworkDynamicsScene`. GFX3D-4 must replace that compatibility dependency with explicit shared providers for registration, topology, connectivity, trajectories, densities, resource scheduling, and future ring/cage/site products so omitted scientific products are never prepared merely because the legacy composite object requires them.
++The universal CLI now has both a stable command/configuration surface and product-level scientific dependency authority. The remaining architectural coupling is in rendering: `render_graphics3d_plotly()` still reuses the qualified fixed composite renderer one layer at a time through a temporary `source_scene` compatibility reference. GFX3D-5 must replace that backend coupling with renderer-neutral prepared primitives, a generic layer tree/visibility model, universal legend/order/view semantics, and shared periodic/browser-budget controls.
+ 
+ # Revision record
+ 
++## 2026-08-11 - GFX3D-4 implementation (`0.20.149a0`)
++
++Replaced the raw CLI's monolithic `framework_dynamics_scene` layer dependency with product-level `framework_topology_product`, `atomic_connectivity_product`, `atomic_trajectory_product`, and `atomic_density_product` keys. Added `Graphics3DDependencySource` / `GraphicsScientificProduct`, the `LTAGraphics3DDependencySource` raw-source authority, single-flight concurrent cache resolution, deterministic dependency-plan collation, dependency timing/cache evidence, explicit in-memory/no-durable-cache policy, and source-level qualified batching under the existing framework-dynamics resource scheduler. Legacy prepared `FrameworkDynamicsScene` inputs remain supported through the historical adapter path.
++
++Focused qualification covers product-key planning, duplicate density dependency deduplication, eight-way concurrent single-flight execution, cache-state-neutral identity, LTA source one-preparation batching, GFX3D-1/2/3 compatibility, and the existing framework/Plotly renderer. A real Na-LTA stride-500 four-family preparation resolves four product dependencies from one source preparation; a three-family framework + Na trajectory + Na density run omits connectivity and generates the expected self-contained HTML. Mean-framework coordinates, Na trajectory coordinates, Na density values/integral, and density planning approval identity are exactly unchanged from `0.20.148a0`.
++
+ ## 2026-08-11 - GFX3D-3 implementation (`0.20.148a0`)
+ 
+ Promoted the prototype workflow into the universal packaged `mdstats-3d` CLI and source-checkout `tools/mdstats-3d.py` launcher. Added strict TOML configuration, source-aware preset expansion, layer shorthand, deterministic configuration precedence, source/input resolution, canonical manifest-only mode, protected HTML/manifest outputs, concise fail-closed errors, and the `lta-mixed-alkali-density` compatibility preset. The historical example path now delegates to the same command authority while preserving its input helpers and default output behavior.
+Binary files /mnt/data/mdstats-0.20.148a0-complete-source-package/docs/arch_manuals/mdstats_3d_graphics_architecture.pdf and /mnt/data/mdstats_gfx4_work/mdstats-0.20.148a0-complete-source-package/docs/arch_manuals/mdstats_3d_graphics_architecture.pdf differ
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' /mnt/data/mdstats-0.20.148a0-complete-source-package/docs/guides/mdstats_3d_graphics_user_guide.md /mnt/data/mdstats_gfx4_work/mdstats-0.20.148a0-complete-source-package/docs/guides/mdstats_3d_graphics_user_guide.md
+--- /mnt/data/mdstats-0.20.148a0-complete-source-package/docs/guides/mdstats_3d_graphics_user_guide.md	2026-08-11 09:35:40.653096375 +0000
++++ /mnt/data/mdstats_gfx4_work/mdstats-0.20.148a0-complete-source-package/docs/guides/mdstats_3d_graphics_user_guide.md	2026-08-11 10:04:25.821697447 +0000
+@@ -21,7 +21,7 @@
+ 
+ # What `mdstats-3d` does
+ 
+-`mdstats-3d` is the universal configurable 3-D scene command introduced in `mdstats 0.20.148a0`.
++`mdstats-3d` is the universal configurable 3-D scene command introduced in `mdstats 0.20.148a0`; `0.20.149a0` adds the GFX3D-4 shared scientific dependency DAG underneath the same command surface.
+ 
+ The first four independent graphical layer types are:
+ 
+@@ -250,14 +250,12 @@
+ 
+ The wall-time value is advisory; it is not a hard scientific stop.
+ 
+-# A note about GFX3D-3's current provider
++# Shared scientific dependencies (GFX3D-4)
+ 
+-The command surface and layer composition are now universal, but the first raw scientific provider still uses the existing qualified `FrameworkDynamicsScene` preparation machinery. Consequently, the current CLI is most mature for zeolite/framework trajectories such as the LTA workflow from which it was promoted.
++The command surface and layer composition are universal, and raw preparation now exposes separate framework-topology, atomic-connectivity, trajectory, and density product dependencies. Omitted layer families omit their dependency key. Duplicate instances share equal keys, and concurrent requests for one scientific key execute once within a scene context.
+ 
+-GFX3D-4 will split raw preparation into independent shared providers. That will allow non-framework trajectory/density scenes and future ring, cage, site, and kinetics layers to request only the scientific dependencies they actually need.
++The LTA provider still uses the qualified framework-dynamics machinery internally when that scientific owner needs joint registration/density planning. That batching is hidden behind the dependency DAG and does not make the composite scene object the scientific dependency of every layer.
+ 
+ # What comes next
+ 
+-The next architecture gate is **GFX3D-4 - shared dependency planning and cache authority**.
+-
+-After that, GFX3D-5 will complete generic layer-tree interaction, visibility grouping, camera/view presets, periodic-display controls, and renderer-neutral browser accounting.
++The next architecture gate is **GFX3D-5 - universal rendering and interaction semantics**. It will complete generic layer-tree interaction, visibility grouping, camera/view presets, periodic-display controls, and renderer-neutral browser accounting.
+Binary files /mnt/data/mdstats-0.20.148a0-complete-source-package/docs/guides/mdstats_3d_graphics_user_guide.pdf and /mnt/data/mdstats_gfx4_work/mdstats-0.20.148a0-complete-source-package/docs/guides/mdstats_3d_graphics_user_guide.pdf differ
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' /mnt/data/mdstats-0.20.148a0-complete-source-package/docs/specifications/mdstats_gfx3d_cli_spec.md /mnt/data/mdstats_gfx4_work/mdstats-0.20.148a0-complete-source-package/docs/specifications/mdstats_gfx3d_cli_spec.md
+--- /mnt/data/mdstats-0.20.148a0-complete-source-package/docs/specifications/mdstats_gfx3d_cli_spec.md	2026-08-11 09:35:40.648115059 +0000
++++ /mnt/data/mdstats_gfx4_work/mdstats-0.20.148a0-complete-source-package/docs/specifications/mdstats_gfx3d_cli_spec.md	2026-08-11 10:04:25.821484501 +0000
+@@ -24,7 +24,7 @@
+ 
+ # Status and authority
+ 
+-This specification is the normative user-facing contract for **GFX3D-3**, implemented in `mdstats 0.20.148a0`.
++This specification is the normative user-facing contract for the universal CLI through **GFX3D-4**, implemented in `mdstats 0.20.149a0`.
+ 
+ Architecture authority remains:
+ 
+@@ -166,7 +166,7 @@
+ 
+ `camera` and `periodic_images` are reserved view records. Complete universal view semantics are a GFX3D-5 deliverable.
+ 
+-The density numerical options above are source-wide because GFX3D-3 still prepares current density products through one qualified `FrameworkDynamicsScene` provider. Per-layer raw scientific density providers belong to GFX3D-4.
++The density numerical options above remain source-wide because the qualified density owner performs one jointly planned density scene. Under GFX3D-4, density layers depend on the product-level `atomic_density_product` key rather than on a monolithic scene key; duplicate density layers share that dependency.
+ 
+ ## Input table
+ 
+@@ -237,7 +237,7 @@
+ 
+ The universal selection vocabulary also reserves atom IDs, atom indices, framework roles, topology IDs, rings, cages, sites, states, and transitions. A registered layer MUST reject selection fields it does not support.
+ 
+-Scientific `analysis` tables are included in the canonical layer contract. GFX3D-3 adapters over already-prepared products accept only analysis values that can actually be applied; silently ignored scientific options are forbidden.
++Scientific `analysis` tables are included in the canonical layer contract. GFX3D adapters accept only analysis values that can actually be applied by the owning scientific provider; silently ignored scientific options are forbidden.
+ 
+ # Built-in compatibility preset
+ 
+@@ -383,11 +383,11 @@
+ 
+ # Current scientific-provider boundary
+ 
+-GFX3D-3 is universal at the **scene/CLI composition** level but intentionally transitional at raw scientific preparation.
++Through GFX3D-4 the command is universal at both the **scene/CLI composition** and **product dependency** levels for the four current layer families.
+ 
+-The four current layer adapters still consume one prepared `FrameworkDynamicsScene`. The migrated aluminosilicate provider therefore still prepares the mean framework coordinate gauge even when the visible framework layer is omitted. Trajectory, atomic-connectivity, and density products are only requested when their corresponding layers need them.
++The built-in raw-source dependency types are `framework_topology_product`, `atomic_connectivity_product`, `atomic_trajectory_product`, and `atomic_density_product`. Equal scientific dependency keys deduplicate before execution, and concurrent requests for the same key are single-flight. The current aluminosilicate/LTA scientific provider may batch compatible framework-dynamics work once under the existing qualified CPU/RAM scheduler, but layers consume separate scientific products rather than a monolithic scene key.
+ 
+-This is not the final dependency architecture. GFX3D-4 MUST split the composite provider into explicit shared dependencies so raw trajectory, framework topology, connectivity, density, and later ring/cage/site products can be prepared independently and deduplicated through the scene DAG.
++The current provider still uses framework registration as a scientific prerequisite for framework-registered trajectory, connectivity, and density products. This is legitimate scientific dependency reuse, not a renderer requirement. Future ring/cage/site providers must join the same DAG with their own explicit product keys.
+ 
+ # Error and exit semantics
+ 
+@@ -421,6 +421,6 @@
+ - current framework/Plotly compatibility;
+ - historical LTA example input-helper compatibility.
+ 
+-The implementation record for `0.20.148a0` reports **83 focused tests passed**.
++The GFX3D-3 implementation record for `0.20.148a0` reports **83 focused tests passed**. GFX3D-4 adds focused dependency-DAG/single-flight qualification in `0.20.149a0`; see the release record for the exact focused count.
+ 
+ A bounded real source-tree smoke used the authenticated 300 K Na-LTA trajectory with stride 500 (21 frames x 168 atoms), compiled `framework + trajectory:Na + density:Na`, wrote the canonical manifest, and generated a self-contained HTML artifact using a bounded non-adaptive density configuration.
+Binary files /mnt/data/mdstats-0.20.148a0-complete-source-package/docs/specifications/mdstats_gfx3d_cli_spec.pdf and /mnt/data/mdstats_gfx4_work/mdstats-0.20.148a0-complete-source-package/docs/specifications/mdstats_gfx3d_cli_spec.pdf differ
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' /mnt/data/mdstats-0.20.148a0-complete-source-package/mdstats/__init__.py /mnt/data/mdstats_gfx4_work/mdstats-0.20.148a0-complete-source-package/mdstats/__init__.py
+--- /mnt/data/mdstats-0.20.148a0-complete-source-package/mdstats/__init__.py	2026-08-11 09:26:57.417644814 +0000
++++ /mnt/data/mdstats_gfx4_work/mdstats-0.20.148a0-complete-source-package/mdstats/__init__.py	2026-08-11 10:00:07.919368067 +0000
+@@ -5133,7 +5133,7 @@
+     "build_mlcv_lifecycle_authority", "mlcv_replay_semantics_stale_boundary", "protocol_freeze_authority_from_mlcv",
+ ]
+ 
+-# GFX3D-3 universal configurable 3-D graphics CLI (0.20.148a0).
++# GFX3D-4 shared dependency DAG and cache authority (0.20.149a0).
+ from .graphics3d import (
+     GRAPHICS_DEPENDENCY_KEY_SCHEMA,
+     GRAPHICS_LAYER_REQUEST_SCHEMA,
+@@ -5181,6 +5181,14 @@
+     identity_digest,
+     plan_graphics_scene_dependencies,
+     GFX3D2_LAYER_SCHEMA,
++    GFX3D4_LAYER_SCHEMA,
++    FRAMEWORK_PRODUCT_PROVIDER,
++    CONNECTIVITY_PRODUCT_PROVIDER,
++    TRAJECTORY_PRODUCT_PROVIDER,
++    DENSITY_PRODUCT_PROVIDER,
++    Graphics3DDependencySource,
++    GraphicsScientificProduct,
++    LTAGraphics3DDependencySource,
+     FrameworkTopologyLayer,
+     AtomicConnectivityLayer,
+     AtomicTrajectoryLayer,
+@@ -5245,6 +5253,14 @@
+     "identity_digest",
+     "plan_graphics_scene_dependencies",
+     "GFX3D2_LAYER_SCHEMA",
++    "GFX3D4_LAYER_SCHEMA",
++    "FRAMEWORK_PRODUCT_PROVIDER",
++    "CONNECTIVITY_PRODUCT_PROVIDER",
++    "TRAJECTORY_PRODUCT_PROVIDER",
++    "DENSITY_PRODUCT_PROVIDER",
++    "Graphics3DDependencySource",
++    "GraphicsScientificProduct",
++    "LTAGraphics3DDependencySource",
+     "FrameworkTopologyLayer",
+     "AtomicConnectivityLayer",
+     "AtomicTrajectoryLayer",
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' /mnt/data/mdstats-0.20.148a0-complete-source-package/mdstats/_version.py /mnt/data/mdstats_gfx4_work/mdstats-0.20.148a0-complete-source-package/mdstats/_version.py
+--- /mnt/data/mdstats-0.20.148a0-complete-source-package/mdstats/_version.py	2026-08-11 09:26:32.393295969 +0000
++++ /mnt/data/mdstats_gfx4_work/mdstats-0.20.148a0-complete-source-package/mdstats/_version.py	2026-08-11 10:00:20.462896666 +0000
+@@ -1,3 +1,3 @@
+ """Package version."""
+ 
+-__version__ = "0.20.148a0"
++__version__ = "0.20.149a0"
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' /mnt/data/mdstats-0.20.148a0-complete-source-package/mdstats/graphics3d/__init__.py /mnt/data/mdstats_gfx4_work/mdstats-0.20.148a0-complete-source-package/mdstats/graphics3d/__init__.py
+--- /mnt/data/mdstats-0.20.148a0-complete-source-package/mdstats/graphics3d/__init__.py	2026-08-11 09:26:41.415110200 +0000
++++ /mnt/data/mdstats_gfx4_work/mdstats-0.20.148a0-complete-source-package/mdstats/graphics3d/__init__.py	2026-08-11 09:59:35.266303028 +0000
+@@ -51,12 +51,23 @@
+ 
+ from .layers import (
+     GFX3D2_LAYER_SCHEMA,
++    GFX3D4_LAYER_SCHEMA,
+     AtomicConnectivityLayer,
+     AtomicDensityLayer,
+     AtomicTrajectoryLayer,
+     FrameworkTopologyLayer,
+     register_builtin_graphics3d_layers,
+ )
++
++from .providers import (
++    CONNECTIVITY_PRODUCT_PROVIDER,
++    DENSITY_PRODUCT_PROVIDER,
++    FRAMEWORK_PRODUCT_PROVIDER,
++    TRAJECTORY_PRODUCT_PROVIDER,
++    Graphics3DDependencySource,
++    GraphicsScientificProduct,
++)
++from .lta_preset import LTAGraphics3DDependencySource
+ from .prepare import prepare_graphics3d_scene
+ from .plotly_renderer import render_graphics3d_plotly
+ 
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' /mnt/data/mdstats-0.20.148a0-complete-source-package/mdstats/graphics3d/cli.py /mnt/data/mdstats_gfx4_work/mdstats-0.20.148a0-complete-source-package/mdstats/graphics3d/cli.py
+--- /mnt/data/mdstats-0.20.148a0-complete-source-package/mdstats/graphics3d/cli.py	2026-08-11 09:33:28.926843593 +0000
++++ /mnt/data/mdstats_gfx4_work/mdstats-0.20.148a0-complete-source-package/mdstats/graphics3d/cli.py	2026-08-11 09:54:12.108704684 +0000
+@@ -22,7 +22,11 @@
+ )
+ from .context import GraphicsSceneContext
+ from .errors import Graphics3DError, Graphics3DValidationError
+-from .lta_preset import detect_present_species, read_input_trajectory, prepare_legacy_source_scene
++from .lta_preset import (
++    LTAGraphics3DDependencySource,
++    detect_present_species,
++    read_input_trajectory,
++)
+ from .manifest import GraphicsSceneManifest
+ from .plotly_renderer import render_graphics3d_plotly
+ from .prepare import prepare_graphics3d_scene
+@@ -170,6 +174,7 @@
+     present_species: Sequence[str],
+     trajectory,
+     preset: str | None,
++    dependency_source: Any = None,
+ ) -> GraphicsSceneManifest:
+     mapping = {
+         str(index): int(z)
+@@ -177,7 +182,7 @@
+     }
+     return build_graphics_scene_manifest(
+         request,
+-        context=GraphicsSceneContext(source_identity=source_sha256),
++        context=GraphicsSceneContext(source=dependency_source, source_identity=source_sha256),
+         source_descriptors=(
+             {
+                 "path": str(trajectory_path.resolve()),
+@@ -311,6 +316,14 @@
+         max_browser_faces = request.output.get("max_browser_faces")
+ 
+         source_sha = _sha256(args.trajectory)
++        scientific_source = LTAGraphics3DDependencySource(
++            trajectory=trajectory,
++            request=request,
++            input_options=input_options,
++            output_path=output_path,
++            source_identity=source_sha,
++            progress=None,
++        )
+         manifest = _manifest_for_source(
+             request,
+             trajectory_path=args.trajectory,
+@@ -319,6 +332,7 @@
+             present_species=present_species,
+             trajectory=trajectory,
+             preset=compiled.preset,
++            dependency_source=scientific_source,
+         )
+         if args.print_manifest:
+             print(manifest.to_json(indent=2))
+@@ -332,32 +346,15 @@
+         _ensure_writable(output_path, force=args.force)
+         _ensure_writable(manifest_path, force=args.force)
+         _progress(enabled_progress, "PREPARE", f"preparing {len(request.enabled_layers)} enabled layers")
+-        prepared_source, topology_metadata = prepare_legacy_source_scene(
+-            trajectory,
+-            request,
+-            input_options=input_options,
+-            output_path=output_path,
+-            progress=None,
+-        )
+-        # Preserve an explicit source atom map so density-only scenes can resolve
+-        # scientific species without preparing a trajectory/connectivity layer.
+-        prepared_source = replace(
+-            prepared_source,
++        context = GraphicsSceneContext(
++            source=scientific_source,
++            source_identity=source_sha,
++            resources=dict(request.resources),
+             metadata={
+-                **dict(prepared_source.metadata),
+-                "gfx3d_atomic_number_by_atom": {
+-                    str(index): int(z) for index, z in enumerate(trajectory.atomic_numbers)
+-                },
+                 "gfx3d_cli_schema": GFX3D_CLI_SCHEMA,
+-                "gfx3d_topology_resolution": topology_metadata,
++                "gfx3d_dependency_gate": "GFX3D-4",
+             },
+         )
+-        context = GraphicsSceneContext(
+-            source=prepared_source,
+-            source_identity=source_sha,
+-            resources=prepared_source.resources,
+-            metadata={"gfx3d_cli_schema": GFX3D_CLI_SCHEMA},
+-        )
+         prepared = prepare_graphics3d_scene(request, context=context)
+         prepared = replace(prepared, manifest=manifest)
+         _progress(enabled_progress, "RENDER", f"rendering {len(prepared.layers)} independent layers")
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' /mnt/data/mdstats-0.20.148a0-complete-source-package/mdstats/graphics3d/context.py /mnt/data/mdstats_gfx4_work/mdstats-0.20.148a0-complete-source-package/mdstats/graphics3d/context.py
+--- /mnt/data/mdstats-0.20.148a0-complete-source-package/mdstats/graphics3d/context.py	2026-08-11 08:14:53.000000000 +0000
++++ /mnt/data/mdstats_gfx4_work/mdstats-0.20.148a0-complete-source-package/mdstats/graphics3d/context.py	2026-08-11 09:53:33.941674416 +0000
+@@ -3,6 +3,7 @@
+ from __future__ import annotations
+ 
+ import threading
++import time
+ from collections.abc import Callable, Mapping
+ from dataclasses import dataclass, field
+ from types import MappingProxyType
+@@ -19,8 +20,13 @@
+     """Execution context shared by every layer in one universal scene.
+ 
+     The cache is keyed only by :class:`GraphicsDependencyKey` scientific
+-    identity. Cache hit/miss state is execution evidence and is intentionally
++    identity. Cache hit/miss state, resolver timing, storage location, and
++    waiting on another resolver are execution evidence and are intentionally
+     absent from those identities.
++
++    GFX3D-4 adds *single-flight* resolution: concurrent requests for one
++    scientific key execute its resolver exactly once. Other callers wait for
++    the owning resolution and then consume the same cached object.
+     """
+ 
+     source: Any = None
+@@ -31,44 +37,150 @@
+     metadata: Mapping[str, Any] = field(default_factory=dict)
+     _cache: dict[str, Any] = field(default_factory=dict, init=False, repr=False)
+     _lock: threading.RLock = field(default_factory=threading.RLock, init=False, repr=False)
++    _inflight: dict[str, threading.Event] = field(default_factory=dict, init=False, repr=False)
++    _failures: dict[str, BaseException] = field(default_factory=dict, init=False, repr=False)
++    _records: dict[str, dict[str, Any]] = field(default_factory=dict, init=False, repr=False)
+     _hits: int = field(default=0, init=False, repr=False)
+     _misses: int = field(default=0, init=False, repr=False)
++    _waits: int = field(default=0, init=False, repr=False)
+ 
+     def __post_init__(self) -> None:
+         self.display_gauge = MappingProxyType(dict(self.display_gauge))
+         self.metadata = MappingProxyType(dict(self.metadata))
+ 
++    def _record_hit_locked(self, key: GraphicsDependencyKey, *, waited: bool = False) -> None:
++        self._hits += 1
++        if waited:
++            self._waits += 1
++        record = self._records.setdefault(
++            key.identity,
++            {
++                "provider_type": key.provider_type,
++                "resolver_executions": 0,
++                "cache_hits": 0,
++                "wait_hits": 0,
++                "resolver_wall_seconds": 0.0,
++            },
++        )
++        record["cache_hits"] = int(record["cache_hits"]) + 1
++        if waited:
++            record["wait_hits"] = int(record["wait_hits"]) + 1
++
+     def resolve_dependency(self, key: GraphicsDependencyKey, resolver: Callable[[], T]) -> T:
+         if not isinstance(key, GraphicsDependencyKey):
+             raise Graphics3DDependencyError("key must be GraphicsDependencyKey.")
+         identity = key.identity
++        owner = False
++        event: threading.Event
+         with self._lock:
+             if identity in self._cache:
+-                self._hits += 1
++                self._record_hit_locked(key)
+                 return self._cache[identity]
++            if identity in self._failures:
++                error = self._failures[identity]
++                raise Graphics3DDependencyError(
++                    f"Previous resolution of GFX3D dependency {key.provider_type!r} failed."
++                ) from error
++            event = self._inflight.get(identity)  # type: ignore[assignment]
++            if event is None:
++                event = threading.Event()
++                self._inflight[identity] = event
++                owner = True
++
++        if not owner:
++            event.wait()
++            with self._lock:
++                if identity in self._cache:
++                    self._record_hit_locked(key, waited=True)
++                    return self._cache[identity]
++                error = self._failures.get(identity)
++            raise Graphics3DDependencyError(
++                f"Concurrent resolution of GFX3D dependency {key.provider_type!r} failed."
++            ) from error
++
++        started = time.perf_counter()
+         try:
+             value = resolver()
+-        except Graphics3DDependencyError:
++        except Graphics3DDependencyError as error:
++            with self._lock:
++                self._failures[identity] = error
++                self._records[identity] = {
++                    "provider_type": key.provider_type,
++                    "resolver_executions": 1,
++                    "cache_hits": 0,
++                    "wait_hits": 0,
++                    "resolver_wall_seconds": float(time.perf_counter() - started),
++                    "failed": True,
++                }
++                self._inflight.pop(identity, None)
++                event.set()
+             raise
+         except Exception as error:
+-            raise Graphics3DDependencyError(
++            wrapped = Graphics3DDependencyError(
+                 f"Failed to resolve GFX3D dependency {key.provider_type!r}."
+-            ) from error
++            )
++            with self._lock:
++                self._failures[identity] = error
++                self._records[identity] = {
++                    "provider_type": key.provider_type,
++                    "resolver_executions": 1,
++                    "cache_hits": 0,
++                    "wait_hits": 0,
++                    "resolver_wall_seconds": float(time.perf_counter() - started),
++                    "failed": True,
++                }
++                self._inflight.pop(identity, None)
++                event.set()
++            raise wrapped from error
++
++        wall = time.perf_counter() - started
+         with self._lock:
+-            existing = self._cache.get(identity)
+-            if existing is not None:
+-                self._hits += 1
+-                return existing
+             self._cache[identity] = value
+             self._misses += 1
++            self._records[identity] = {
++                "provider_type": key.provider_type,
++                "resolver_executions": 1,
++                "cache_hits": 0,
++                "wait_hits": 0,
++                "resolver_wall_seconds": float(wall),
++                "failed": False,
++            }
++            self._inflight.pop(identity, None)
++            event.set()
+         return value
+ 
+     def put_dependency(self, key: GraphicsDependencyKey, value: Any) -> None:
+         with self._lock:
+             self._cache[key.identity] = value
++            self._failures.pop(key.identity, None)
++            self._records.setdefault(
++                key.identity,
++                {
++                    "provider_type": key.provider_type,
++                    "resolver_executions": 0,
++                    "cache_hits": 0,
++                    "wait_hits": 0,
++                    "resolver_wall_seconds": 0.0,
++                    "failed": False,
++                    "preseeded": True,
++                },
++            )
+ 
+     def cache_report(self) -> Mapping[str, int]:
+         with self._lock:
++            # Preserve the GFX3D-1 public summary shape.  GFX3D-4 wait/failure
++            # detail is available through dependency_report() rather than
++            # changing historical callers that compare this mapping exactly.
+             return MappingProxyType(
+                 {"entries": len(self._cache), "hits": self._hits, "misses": self._misses}
+             )
++
++    def dependency_report(self) -> Mapping[str, Mapping[str, Any]]:
++        """Return execution-only dependency timing/cache evidence by key identity."""
++        with self._lock:
++            return MappingProxyType(
++                {
++                    identity: MappingProxyType(dict(record))
++                    for identity, record in sorted(self._records.items())
++                }
++            )
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' /mnt/data/mdstats-0.20.148a0-complete-source-package/mdstats/graphics3d/layers.py /mnt/data/mdstats_gfx4_work/mdstats-0.20.148a0-complete-source-package/mdstats/graphics3d/layers.py
+--- /mnt/data/mdstats-0.20.148a0-complete-source-package/mdstats/graphics3d/layers.py	2026-08-11 09:26:40.779914232 +0000
++++ /mnt/data/mdstats_gfx4_work/mdstats-0.20.148a0-complete-source-package/mdstats/graphics3d/layers.py	2026-08-11 09:51:47.154036771 +0000
+@@ -1,10 +1,9 @@
+-"""GFX3D-2 built-in layer adapters for current prepared scientific products.
++"""Built-in GFX3D layer adapters.
+ 
+-The initial adapters deliberately consume the already-qualified
+-:class:`~mdstats.plotting.framework_dynamics.FrameworkDynamicsScene`.  They do
+-not recompute framework topology, connectivity, trajectories, or densities.
+-This is the migration bridge that proves independent composability before the
+-GFX3D-4 dependency DAG takes ownership of raw scientific preparation.
++GFX3D-4 makes the four layer families depend on product-level scientific keys.
++Prepared ``FrameworkDynamicsScene`` input remains supported as a historical
++compatibility source, but raw CLI scenes no longer expose one monolithic scene
++key to every layer.
+ """
+ 
+ from __future__ import annotations
+@@ -26,8 +25,18 @@
+ from .errors import Graphics3DDependencyError, Graphics3DValidationError
+ from .identity import identity_digest
+ from .registry import GraphicsLayerRegistration, GraphicsLayerRegistry
++from .providers import (
++    CONNECTIVITY_PRODUCT_PROVIDER,
++    DENSITY_PRODUCT_PROVIDER,
++    FRAMEWORK_PRODUCT_PROVIDER,
++    TRAJECTORY_PRODUCT_PROVIDER,
++    GraphicsScientificProduct,
++    resolve_source_dependency,
++    source_dependency_key,
++)
+ 
+ GFX3D2_LAYER_SCHEMA = "mdstats.graphics3d.layer-adapter.v2"
++GFX3D4_LAYER_SCHEMA = "mdstats.graphics3d.layer-adapter.v4"
+ LEGACY_SCENE_PROVIDER = "framework_dynamics_scene"
+ 
+ 
+@@ -38,23 +47,54 @@
+     )
+ 
+ 
++def _dependency_key(context: GraphicsSceneContext, product_provider: str) -> GraphicsDependencyKey:
++    from mdstats.plotting.framework_dynamics import FrameworkDynamicsScene
++
++    if isinstance(context.source, FrameworkDynamicsScene):
++        return _legacy_scene_key(context)
++    return source_dependency_key(context, product_provider)
++
++
+ def resolve_builtin_dependency(key: GraphicsDependencyKey, context: GraphicsSceneContext) -> Any:
+-    """Resolve one GFX3D-2 built-in provider from the shared scene context."""
++    """Resolve one built-in dependency through legacy or GFX3D-4 authority."""
+ 
+-    if key.provider_type != LEGACY_SCENE_PROVIDER:
+-        raise Graphics3DDependencyError(
+-            f"GFX3D-2 has no built-in resolver for provider {key.provider_type!r}."
+-        )
+-    from mdstats.plotting.framework_dynamics import FrameworkDynamicsScene
++    if key.provider_type == LEGACY_SCENE_PROVIDER:
++        from mdstats.plotting.framework_dynamics import FrameworkDynamicsScene
++
++        source = context.source
++        if not isinstance(source, FrameworkDynamicsScene):
++            raise Graphics3DDependencyError(
++                "Legacy framework_dynamics_scene dependency requires context.source to be "
++                "a prepared FrameworkDynamicsScene."
++            )
++        return source
++    return resolve_source_dependency(key, context)
+ 
+-    source = context.source
+-    if not isinstance(source, FrameworkDynamicsScene):
+-        raise Graphics3DDependencyError(
+-            "The GFX3D-2 built-in layers currently require context.source to be a "
+-            "prepared FrameworkDynamicsScene. Raw-source preparation is deferred to GFX3D-4."
+-        )
+-    return source
+ 
++def _resolved_product(
++    resolved_dependencies: dict[str, Any],
++    *,
++    product_provider: str,
++) -> tuple[Any, Any]:
++    """Return ``(scientific product, renderer compatibility scene)``."""
++
++    if product_provider in resolved_dependencies:
++        product = resolved_dependencies[product_provider]
++        if not isinstance(product, GraphicsScientificProduct):
++            raise Graphics3DDependencyError(
++                f"Dependency {product_provider!r} is not GraphicsScientificProduct."
++            )
++        return product.value, product.source_scene
++    scene = _scene_from_dependencies(resolved_dependencies)
++    if product_provider == FRAMEWORK_PRODUCT_PROVIDER:
++        return scene.mean_framework, scene
++    if product_provider == CONNECTIVITY_PRODUCT_PROVIDER:
++        return scene.atomic_mean_graph, scene
++    if product_provider == TRAJECTORY_PRODUCT_PROVIDER:
++        return scene.trajectory_paths, scene
++    if product_provider == DENSITY_PRODUCT_PROVIDER:
++        return tuple(scene.atomic_density_fields), scene
++    raise Graphics3DDependencyError(f"Unknown built-in product {product_provider!r}.")
+ 
+ 
+ 
+@@ -253,11 +293,11 @@
+     """Independent framework-topology layer adapter."""
+ 
+     def dependencies(self, request: GraphicsLayer3DRequest, context: GraphicsSceneContext):
+-        return (GraphicsDependencyRequest(_legacy_scene_key(context)),)
++        return (GraphicsDependencyRequest(_dependency_key(context, FRAMEWORK_PRODUCT_PROVIDER)),)
+ 
+     def prepare(self, request, resolved_dependencies, context):
+         _validate_prepared_analysis_options(request)
+-        scene = _scene_from_dependencies(resolved_dependencies)
++        mean_framework, scene = _resolved_product(resolved_dependencies, product_provider=FRAMEWORK_PRODUCT_PROVIDER)
+         identity = identity_digest(
+             GFX3D2_LAYER_SCHEMA + ".framework",
+             {"request": request.scientific_identity, "source": scene.metadata.get("source_framework_topology_digest")},
+@@ -265,7 +305,7 @@
+         return PreparedGraphicsLayer3D(
+             request=request,
+             scientific_identity=identity,
+-            product_refs={"mean_framework": scene.mean_framework, "source_scene": scene},
++            product_refs={"mean_framework": mean_framework, "source_scene": scene},
+             provenance={"adapter_schema": GFX3D2_LAYER_SCHEMA, "source_scene_schema": scene.metadata.get("schema_version")},
+         )
+ 
+@@ -278,16 +318,16 @@
+     """Independent averaged atomic-connectivity layer adapter."""
+ 
+     def dependencies(self, request: GraphicsLayer3DRequest, context: GraphicsSceneContext):
+-        return (GraphicsDependencyRequest(_legacy_scene_key(context)),)
++        return (GraphicsDependencyRequest(_dependency_key(context, CONNECTIVITY_PRODUCT_PROVIDER)),)
+ 
+     def prepare(self, request, resolved_dependencies, context):
+         _validate_prepared_analysis_options(request)
+-        scene = _scene_from_dependencies(resolved_dependencies)
+-        if scene.atomic_mean_graph is None:
++        source_graph, scene = _resolved_product(resolved_dependencies, product_provider=CONNECTIVITY_PRODUCT_PROVIDER)
++        if source_graph is None:
+             raise Graphics3DValidationError(
+                 "Atomic connectivity layer requested but the prepared source scene has no atomic_mean_graph."
+             )
+-        graph = _filter_connectivity(scene.atomic_mean_graph, request.selection)
++        graph = _filter_connectivity(source_graph, request.selection)
+         identity = identity_digest(
+             GFX3D2_LAYER_SCHEMA + ".connectivity",
+             {"request": request.scientific_identity, "source_mode": graph.mode, "atoms": graph.atom_indices},
+@@ -308,16 +348,16 @@
+     """Independent prepared atomic-trajectory layer adapter."""
+ 
+     def dependencies(self, request: GraphicsLayer3DRequest, context: GraphicsSceneContext):
+-        return (GraphicsDependencyRequest(_legacy_scene_key(context)),)
++        return (GraphicsDependencyRequest(_dependency_key(context, TRAJECTORY_PRODUCT_PROVIDER)),)
+ 
+     def prepare(self, request, resolved_dependencies, context):
+         _validate_prepared_analysis_options(request)
+-        scene = _scene_from_dependencies(resolved_dependencies)
+-        if scene.trajectory_paths is None:
++        source_paths, scene = _resolved_product(resolved_dependencies, product_provider=TRAJECTORY_PRODUCT_PROVIDER)
++        if source_paths is None:
+             raise Graphics3DValidationError(
+                 "Atomic trajectory layer requested but the prepared source scene has no trajectory_paths."
+             )
+-        paths = _filter_trajectory(scene.trajectory_paths, request.selection)
++        paths = _filter_trajectory(source_paths, request.selection)
+         identity = identity_digest(
+             GFX3D2_LAYER_SCHEMA + ".trajectory",
+             {"request": request.scientific_identity, "atoms": paths.atom_indices, "mode": str(paths.display_mode)},
+@@ -342,11 +382,11 @@
+     """
+ 
+     def dependencies(self, request: GraphicsLayer3DRequest, context: GraphicsSceneContext):
+-        return (GraphicsDependencyRequest(_legacy_scene_key(context)),)
++        return (GraphicsDependencyRequest(_dependency_key(context, DENSITY_PRODUCT_PROVIDER)),)
+ 
+     def prepare(self, request, resolved_dependencies, context):
+         _validate_prepared_analysis_options(request, allowed=frozenset({"field_key", "source_kind"}))
+-        scene = _scene_from_dependencies(resolved_dependencies)
++        _density_bundle, scene = _resolved_product(resolved_dependencies, product_provider=DENSITY_PRODUCT_PROVIDER)
+         field, source_kind = _select_density(scene, request)
+         identity = identity_digest(
+             GFX3D2_LAYER_SCHEMA + ".density",
+@@ -374,31 +414,31 @@
+     registrations = (
+         GraphicsLayerRegistration(
+             layer_type="framework",
+-            schema_version=GFX3D2_LAYER_SCHEMA + ".framework",
++            schema_version=GFX3D4_LAYER_SCHEMA + ".framework",
+             adapter_factory=FrameworkTopologyLayer,
+             supported_selection_fields=frozenset(),
+-            required_dependency_providers=(LEGACY_SCENE_PROVIDER,),
++            required_dependency_providers=(FRAMEWORK_PRODUCT_PROVIDER,),
+         ),
+         GraphicsLayerRegistration(
+             layer_type="connectivity",
+-            schema_version=GFX3D2_LAYER_SCHEMA + ".connectivity",
++            schema_version=GFX3D4_LAYER_SCHEMA + ".connectivity",
+             adapter_factory=AtomicConnectivityLayer,
+             supported_selection_fields=frozenset({"species", "atom_indices", "pairs"}),
+-            required_dependency_providers=(LEGACY_SCENE_PROVIDER,),
++            required_dependency_providers=(CONNECTIVITY_PRODUCT_PROVIDER,),
+         ),
+         GraphicsLayerRegistration(
+             layer_type="trajectory",
+-            schema_version=GFX3D2_LAYER_SCHEMA + ".trajectory",
++            schema_version=GFX3D4_LAYER_SCHEMA + ".trajectory",
+             adapter_factory=AtomicTrajectoryLayer,
+             supported_selection_fields=frozenset({"species", "atom_indices"}),
+-            required_dependency_providers=(LEGACY_SCENE_PROVIDER,),
++            required_dependency_providers=(TRAJECTORY_PRODUCT_PROVIDER,),
+         ),
+         GraphicsLayerRegistration(
+             layer_type="density",
+-            schema_version=GFX3D2_LAYER_SCHEMA + ".density",
++            schema_version=GFX3D4_LAYER_SCHEMA + ".density",
+             adapter_factory=AtomicDensityLayer,
+             supported_selection_fields=frozenset({"species", "atom_indices"}),
+-            required_dependency_providers=(LEGACY_SCENE_PROVIDER,),
++            required_dependency_providers=(DENSITY_PRODUCT_PROVIDER,),
+         ),
+     )
+     for registration in registrations:
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' /mnt/data/mdstats-0.20.148a0-complete-source-package/mdstats/graphics3d/lta_preset.py /mnt/data/mdstats_gfx4_work/mdstats-0.20.148a0-complete-source-package/mdstats/graphics3d/lta_preset.py
+--- /mnt/data/mdstats-0.20.148a0-complete-source-package/mdstats/graphics3d/lta_preset.py	2026-08-11 09:25:17.901705833 +0000
++++ /mnt/data/mdstats_gfx4_work/mdstats-0.20.148a0-complete-source-package/mdstats/graphics3d/lta_preset.py	2026-08-11 10:02:11.135319667 +0000
+@@ -1,21 +1,35 @@
+-"""Current aluminosilicate/LTA scientific provider used by the GFX3D-3 CLI.
++"""Aluminosilicate/LTA scientific provider used by the universal GFX3D CLI.
+ 
+-This module is intentionally a compatibility scientific provider. GFX3D-4 will
+-move raw dependency preparation into the generic dependency DAG. The algorithms
+-here are migrated from ``examples/plot_lta_mixed_alkali_density.py`` without
+-changing their scientific definitions.
++GFX3D-4 exposes the qualified framework/connectivity/trajectory/density results
++through product-level dependency keys while retaining the owning scientific
++algorithms migrated from ``examples/plot_lta_mixed_alkali_density.py``.
+ """
+ from __future__ import annotations
+ 
+ import json
+ import time
++import threading
++from dataclasses import dataclass, field, replace
+ from pathlib import Path
+-from types import SimpleNamespace
++from types import MappingProxyType, SimpleNamespace
+ from typing import Any, Mapping, Sequence
+ 
+ import numpy as np
+ from ase.data import chemical_symbols
+ 
++from .contracts import GraphicsDependencyKey, GraphicsScene3DRequest
++from .context import GraphicsSceneContext
++from .errors import Graphics3DDependencyError
++from .identity import identity_digest
++from .providers import (
++    CONNECTIVITY_PRODUCT_PROVIDER,
++    DENSITY_PRODUCT_PROVIDER,
++    FRAMEWORK_PRODUCT_PROVIDER,
++    PRODUCT_PROVIDER_TYPES,
++    TRAJECTORY_PRODUCT_PROVIDER,
++    GraphicsScientificProduct,
++)
++
+ from mdstats import (
+     AtomicDensityOptions,
+     AtomicDensitySelection,
+@@ -267,6 +281,197 @@
+     return tuple(selected)
+ 
+ 
++
++
++def _file_identity(path_value: Any) -> Mapping[str, Any] | None:
++    if path_value is None:
++        return None
++    path = Path(path_value)
++    if not path.exists() or not path.is_file():
++        return {"path": str(path)}
++    import hashlib
++    digest = hashlib.sha256()
++    with path.open("rb") as handle:
++        for chunk in iter(lambda: handle.read(4 * 1024 * 1024), b""):
++            digest.update(chunk)
++    return {"sha256": digest.hexdigest(), "size_bytes": int(path.stat().st_size)}
++
++
++def _lta_source_scientific_identity(
++    trajectory: Any,
++    request: GraphicsScene3DRequest,
++    input_options: Mapping[str, Any],
++    source_identity: str | None,
++) -> str:
++    """Scientific identity of the current LTA raw-source provider.
++
++    Cache/storage/output choices are deliberately excluded.  Source parsing and
++    topology/connectivity choices that can change a scientific product are
++    included even when they originate from CLI input options rather than the
++    scene request.
++    """
++    scientific_input = {
++        "source_identity": source_identity,
++        "n_frames": int(trajectory.n_frames),
++        "n_atoms": int(trajectory.n_atoms),
++        "stride": input_options.get("stride"),
++        "timestep_fs": input_options.get("timestep_fs"),
++        "lammps_units": input_options.get("lammps_units"),
++        "lammps_timestep": input_options.get("lammps_timestep"),
++        "lammps_type_map": input_options.get("lammps_type_map"),
++        "framework_formation_cutoff": input_options.get("framework_formation_cutoff"),
++        "framework_breaking_cutoff": input_options.get("framework_breaking_cutoff"),
++        "topology_override": _file_identity(input_options.get("topology")),
++        "lammps_log": _file_identity(input_options.get("lammps_log")),
++        "scene_scientific_identity": request.scientific_identity,
++    }
++    return identity_digest("mdstats.graphics3d.lta-source-science.gfx3d4.v1", scientific_input)
++
++
++@dataclass(slots=True)
++class LTAGraphics3DDependencySource:
++    """GFX3D-4 product-level provider for the current LTA CLI science.
++
++    The qualified framework-dynamics implementation still owns the numerical
++    preparation.  This provider batches that owner's joint work once, then
++    exposes independent framework/connectivity/trajectory/density products to
++    the universal dependency DAG.  Layers therefore no longer depend on a
++    monolithic ``FrameworkDynamicsScene`` key.
++    """
++
++    trajectory: Any
++    request: GraphicsScene3DRequest
++    input_options: Mapping[str, Any]
++    output_path: Path
++    source_identity: str | None = None
++    progress: Any = None
++    _scene: Any = field(default=None, init=False, repr=False)
++    _topology_metadata: Mapping[str, Any] = field(default_factory=dict, init=False, repr=False)
++    _lock: threading.RLock = field(default_factory=threading.RLock, init=False, repr=False)
++    _preparation_count: int = field(default=0, init=False, repr=False)
++    _preparation_wall_seconds: float = field(default=0.0, init=False, repr=False)
++
++    def __post_init__(self) -> None:
++        if not isinstance(self.request, GraphicsScene3DRequest):
++            raise TypeError("request must be GraphicsScene3DRequest.")
++        self.input_options = MappingProxyType(dict(self.input_options))
++        self.output_path = Path(self.output_path)
++
++    @property
++    def scientific_identity(self) -> str:
++        return _lta_source_scientific_identity(
++            self.trajectory, self.request, self.input_options, self.source_identity
++        )
++
++    def dependency_key(self, provider_type: str) -> GraphicsDependencyKey:
++        provider = str(provider_type).strip().lower()
++        if provider not in PRODUCT_PROVIDER_TYPES:
++            raise Graphics3DDependencyError(
++                f"LTA GFX3D source does not provide {provider!r}."
++            )
++        return GraphicsDependencyKey(
++            provider,
++            {
++                "source_scientific_identity": self.scientific_identity,
++                "product_schema": "mdstats.graphics3d.lta-product.gfx3d4.v1",
++            },
++        )
++
++    def _prepare_once(self) -> Any:
++        with self._lock:
++            if self._scene is not None:
++                return self._scene
++            started = time.perf_counter()
++            scene, topology_metadata = prepare_legacy_source_scene(
++                self.trajectory,
++                self.request,
++                input_options=self.input_options,
++                output_path=self.output_path,
++                progress=self.progress,
++            )
++            scene = replace(
++                scene,
++                metadata={
++                    **dict(scene.metadata),
++                    "gfx3d_atomic_number_by_atom": {
++                        str(index): int(z)
++                        for index, z in enumerate(self.trajectory.atomic_numbers)
++                    },
++                    "gfx3d_provider_gate": "GFX3D-4",
++                    "gfx3d_dependency_source_identity": self.scientific_identity,
++                    "gfx3d_topology_resolution": dict(topology_metadata),
++                },
++            )
++            self._scene = scene
++            self._topology_metadata = MappingProxyType(dict(topology_metadata))
++            self._preparation_count += 1
++            self._preparation_wall_seconds += float(time.perf_counter() - started)
++            return scene
++
++    def resolve_graphics3d_dependency(
++        self, key: GraphicsDependencyKey, context: GraphicsSceneContext
++    ) -> GraphicsScientificProduct:
++        del context
++        if key.provider_type not in PRODUCT_PROVIDER_TYPES:
++            raise Graphics3DDependencyError(
++                f"LTA GFX3D source cannot resolve {key.provider_type!r}."
++            )
++        expected = self.dependency_key(key.provider_type)
++        if expected.identity != key.identity:
++            raise Graphics3DDependencyError(
++                f"GFX3D dependency key for {key.provider_type!r} does not match this source authority."
++            )
++        scene = self._prepare_once()
++        if key.provider_type == FRAMEWORK_PRODUCT_PROVIDER:
++            value = scene.mean_framework
++        elif key.provider_type == CONNECTIVITY_PRODUCT_PROVIDER:
++            value = scene.atomic_mean_graph
++            if value is None:
++                raise Graphics3DDependencyError(
++                    "Atomic-connectivity product was requested but not prepared by the source plan."
++                )
++        elif key.provider_type == TRAJECTORY_PRODUCT_PROVIDER:
++            value = scene.trajectory_paths
++            if value is None:
++                raise Graphics3DDependencyError(
++                    "Atomic-trajectory product was requested but not prepared by the source plan."
++                )
++        else:
++            value = tuple(scene.atomic_density_fields)
++            if not value and scene.framework_density_fields is None:
++                raise Graphics3DDependencyError(
++                    "Density product was requested but the source plan prepared no density fields."
++                )
++        return GraphicsScientificProduct(
++            provider_type=key.provider_type,
++            value=value,
++            source_scene=scene,
++            provenance={
++                "provider_gate": "GFX3D-4",
++                "source_scientific_identity": self.scientific_identity,
++                "batched_owner": "mdstats.plotting.framework_dynamics",
++                "scientific_identity_includes_cache_state": False,
++            },
++        )
++
++    @property
++    def topology_metadata(self) -> Mapping[str, Any]:
++        return self._topology_metadata
++
++    def preparation_report(self) -> Mapping[str, Any]:
++        with self._lock:
++            return MappingProxyType(
++                {
++                    "schema_version": "mdstats.graphics3d.lta-provider-report.gfx3d4.v1",
++                    "preparation_count": int(self._preparation_count),
++                    "preparation_wall_seconds": float(self._preparation_wall_seconds),
++                    "prepared": self._scene is not None,
++                    "scientific_identity": self.scientific_identity,
++                    "cache_policy": "scene_context_in_memory_single_flight",
++                    "durable_product_cache": False,
++                }
++            )
++
+ def prepare_legacy_source_scene(
+     trajectory,
+     request,
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' /mnt/data/mdstats-0.20.148a0-complete-source-package/mdstats/graphics3d/prepare.py /mnt/data/mdstats_gfx4_work/mdstats-0.20.148a0-complete-source-package/mdstats/graphics3d/prepare.py
+--- /mnt/data/mdstats-0.20.148a0-complete-source-package/mdstats/graphics3d/prepare.py	2026-08-11 08:32:13.000000000 +0000
++++ /mnt/data/mdstats_gfx4_work/mdstats-0.20.148a0-complete-source-package/mdstats/graphics3d/prepare.py	2026-08-11 09:52:21.100258993 +0000
+@@ -1,7 +1,8 @@
+-"""GFX3D-2 scene preparation over registered independent layer adapters."""
++"""Universal GFX3D scene preparation over shared scientific dependencies."""
+ 
+ from __future__ import annotations
+ 
++from concurrent.futures import ThreadPoolExecutor
+ from typing import Any
+ 
+ from .contracts import PreparedGraphicsScene3D, GraphicsScene3DRequest
+@@ -13,6 +14,20 @@
+ from .scene import plan_graphics_scene_dependencies
+ 
+ 
++def _dependency_workers(context: GraphicsSceneContext, count: int) -> int:
++    if count <= 1:
++        return 1
++    resources = context.resources
++    maximum = getattr(resources, "max_threads", None)
++    if maximum is None and isinstance(resources, dict):
++        maximum = resources.get("max_threads")
++    try:
++        maximum = int(maximum) if maximum is not None else 1
++    except (TypeError, ValueError):
++        maximum = 1
++    return max(1, min(int(count), maximum))
++
++
+ def prepare_graphics3d_scene(
+     request: GraphicsScene3DRequest,
+     *,
+@@ -21,18 +36,33 @@
+ ) -> PreparedGraphicsScene3D:
+     """Prepare enabled GFX3D layers from one shared scientific context.
+ 
+-    GFX3D-2 resolves the current prepared ``FrameworkDynamicsScene`` once and
+-    exposes its existing scientific products through independent layer adapters.
++    GFX3D-4 resolves product-level scientific dependencies. Equal scientific
++    keys are single-flight cached by :class:`GraphicsSceneContext`; independent
++    keys may begin concurrently, while source providers remain responsible for
++    their owning subsystem's CPU/RAM admission and may batch qualified joint
++    work internally.
+     """
+ 
+     plan = plan_graphics_scene_dependencies(request, context=context, registry=registry)
+-    resolved_by_provider: dict[str, Any] = {}
+-    for entry in plan:
+-        value = context.resolve_dependency(
++
++    def resolve_entry(entry):
++        return context.resolve_dependency(
+             entry.key,
+             lambda key=entry.key: resolve_builtin_dependency(key, context),
+         )
+-        resolved_by_provider[entry.key.provider_type] = value
++
++    workers = _dependency_workers(context, len(plan))
++    if workers == 1:
++        values = tuple(resolve_entry(entry) for entry in plan)
++    else:
++        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="mdstats-gfx3d-dependency") as executor:
++            futures = tuple(executor.submit(resolve_entry, entry) for entry in plan)
++            # Construction order is authority; completion order is not.
++            values = tuple(future.result() for future in futures)
++
++    resolved_by_provider: dict[str, Any] = {
++        entry.key.provider_type: value for entry, value in zip(plan, values, strict=True)
++    }
+ 
+     prepared = []
+     for layer_request in request.enabled_layers:
+@@ -44,34 +74,46 @@
+             )
+         prepared.append(adapter.prepare(layer_request, resolved_by_provider, context))
+ 
++    compatibility_scene = next(
++        (
++            layer.product_refs.get("source_scene")
++            for layer in prepared
++            if layer.product_refs.get("source_scene") is not None
++        ),
++        None,
++    )
++    display_cell = getattr(compatibility_scene, "display_cell", None)
++    source_metadata = getattr(compatibility_scene, "metadata", {}) if compatibility_scene is not None else {}
++    provider_report = {}
+     source = context.source
+-    display_cell = getattr(source, "display_cell", None)
++    report_method = getattr(source, "preparation_report", None)
++    if callable(report_method):
++        provider_report = dict(report_method())
++
+     manifest = GraphicsSceneManifest(
+         request=request,
+         dependency_plan=plan,
+         frame_selection={
+-            "frame_indices": tuple(int(v) for v in getattr(source, "frame_indices", ()))
+-        },
+-        coordinate_policy={
+-            "registration_mode": getattr(source, "metadata", {}).get("registration_mode")
+-            if source is not None
+-            else None
+-        },
+-        display_cell_policy={
+-            "policy": getattr(source, "metadata", {}).get("display_cell_policy")
+-            if source is not None
+-            else None
++            "frame_indices": tuple(int(v) for v in getattr(compatibility_scene, "frame_indices", ()))
+         },
++        coordinate_policy={"registration_mode": source_metadata.get("registration_mode")},
++        display_cell_policy={"policy": source_metadata.get("display_cell_policy")},
+     )
+     return PreparedGraphicsScene3D(
+         layers=tuple(prepared),
+         manifest=manifest,
+         display_gauge={} if display_cell is None else {"cell": display_cell},
+         metadata={
+-            "schema_version": "mdstats.graphics3d.prepared-scene.gfx3d2.v1",
+-            "source_scene_schema": getattr(source, "metadata", {}).get("schema_version")
+-            if source is not None
+-            else None,
++            "schema_version": "mdstats.graphics3d.prepared-scene.gfx3d4.v1",
++            "source_scene_schema": source_metadata.get("schema_version"),
+             "dependency_cache_report": dict(context.cache_report()),
++            "dependency_execution_report": {
++                identity: dict(record) for identity, record in context.dependency_report().items()
++            },
++            "dependency_parallel_workers": int(workers),
++            "dependency_cache_identity_includes_hit_state": False,
++            "dependency_cache_policy": "in_memory_single_flight_v1",
++            "durable_dependency_cache": False,
++            "source_provider_report": provider_report,
+         },
+     )
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' /mnt/data/mdstats-0.20.148a0-complete-source-package/mdstats/graphics3d/providers.py /mnt/data/mdstats_gfx4_work/mdstats-0.20.148a0-complete-source-package/mdstats/graphics3d/providers.py
+--- /mnt/data/mdstats-0.20.148a0-complete-source-package/mdstats/graphics3d/providers.py	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats_gfx4_work/mdstats-0.20.148a0-complete-source-package/mdstats/graphics3d/providers.py	2026-08-11 09:50:30.323924316 +0000
+@@ -0,0 +1,91 @@
++"""GFX3D-4 scientific dependency-provider contracts.
++
++The universal layer graph consumes product-level dependencies.  A source
++provider may batch preparation internally when the owning scientific subsystem
++has a qualified joint planner, but layers never depend on that composite batch
++object as their scientific dependency.
++"""
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from types import MappingProxyType
++from typing import Any, Mapping, Protocol, runtime_checkable
++
++from .contracts import GraphicsDependencyKey
++from .context import GraphicsSceneContext
++from .errors import Graphics3DDependencyError
++
++FRAMEWORK_PRODUCT_PROVIDER = "framework_topology_product"
++CONNECTIVITY_PRODUCT_PROVIDER = "atomic_connectivity_product"
++TRAJECTORY_PRODUCT_PROVIDER = "atomic_trajectory_product"
++DENSITY_PRODUCT_PROVIDER = "atomic_density_product"
++PRODUCT_PROVIDER_TYPES = frozenset(
++    {
++        FRAMEWORK_PRODUCT_PROVIDER,
++        CONNECTIVITY_PRODUCT_PROVIDER,
++        TRAJECTORY_PRODUCT_PROVIDER,
++        DENSITY_PRODUCT_PROVIDER,
++    }
++)
++
++
++@dataclass(frozen=True, slots=True)
++class GraphicsScientificProduct:
++    """One prepared scientific product exposed to a GFX3D layer.
++
++    ``source_scene`` is a temporary renderer-compatibility reference.  It is
++    execution plumbing for the current Plotly backend and is not the dependency
++    identity.  GFX3D-5 removes the renderer's need for it.
++    """
++
++    provider_type: str
++    value: Any
++    source_scene: Any = None
++    provenance: Mapping[str, Any] = field(default_factory=dict)
++
++    def __post_init__(self) -> None:
++        provider = str(self.provider_type).strip().lower()
++        if provider not in PRODUCT_PROVIDER_TYPES:
++            raise Graphics3DDependencyError(f"Unknown GFX3D scientific product provider {provider!r}.")
++        object.__setattr__(self, "provider_type", provider)
++        object.__setattr__(self, "provenance", MappingProxyType(dict(self.provenance)))
++
++
++@runtime_checkable
++class Graphics3DDependencySource(Protocol):
++    """Source-side product resolver used by the GFX3D-4 dependency DAG."""
++
++    def dependency_key(self, provider_type: str) -> GraphicsDependencyKey: ...
++
++    def resolve_graphics3d_dependency(
++        self, key: GraphicsDependencyKey, context: GraphicsSceneContext
++    ) -> GraphicsScientificProduct: ...
++
++
++def source_dependency_key(context: GraphicsSceneContext, provider_type: str) -> GraphicsDependencyKey:
++    source = context.source
++    if isinstance(source, Graphics3DDependencySource):
++        return source.dependency_key(provider_type)
++    raise Graphics3DDependencyError(
++        f"The current GFX3D source does not provide product dependency {provider_type!r}."
++    )
++
++
++def resolve_source_dependency(
++    key: GraphicsDependencyKey, context: GraphicsSceneContext
++) -> GraphicsScientificProduct:
++    source = context.source
++    if not isinstance(source, Graphics3DDependencySource):
++        raise Graphics3DDependencyError(
++            "GFX3D product-level dependency resolution requires a Graphics3DDependencySource."
++        )
++    result = source.resolve_graphics3d_dependency(key, context)
++    if not isinstance(result, GraphicsScientificProduct):
++        raise Graphics3DDependencyError(
++            f"Source resolver for {key.provider_type!r} did not return GraphicsScientificProduct."
++        )
++    if result.provider_type != key.provider_type:
++        raise Graphics3DDependencyError(
++            f"Source returned product {result.provider_type!r} for requested {key.provider_type!r}."
++        )
++    return result
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' /mnt/data/mdstats-0.20.148a0-complete-source-package/pyproject.toml /mnt/data/mdstats_gfx4_work/mdstats-0.20.148a0-complete-source-package/pyproject.toml
+--- /mnt/data/mdstats-0.20.148a0-complete-source-package/pyproject.toml	2026-08-11 09:26:32.393188920 +0000
++++ /mnt/data/mdstats_gfx4_work/mdstats-0.20.148a0-complete-source-package/pyproject.toml	2026-08-11 10:00:20.462174174 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.148a0"
++version = "0.20.149a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' /mnt/data/mdstats-0.20.148a0-complete-source-package/release/gfx3d4_focused_test_record.json /mnt/data/mdstats_gfx4_work/mdstats-0.20.148a0-complete-source-package/release/gfx3d4_focused_test_record.json
+--- /mnt/data/mdstats-0.20.148a0-complete-source-package/release/gfx3d4_focused_test_record.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats_gfx4_work/mdstats-0.20.148a0-complete-source-package/release/gfx3d4_focused_test_record.json	2026-08-11 10:06:47.774557264 +0000
+@@ -0,0 +1,23 @@
++{
++  "environment": {
++    "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
++    "python": "3.13.5"
++  },
++  "focused_tests": {
++    "failed": 0,
++    "passed": 74,
++    "skipped": 0,
++    "test_files": [
++      "tests/test_graphics3d_gfx4_dependencies.py",
++      "tests/test_graphics3d_contracts.py",
++      "tests/test_graphics3d_layers.py",
++      "tests/test_graphics3d_cli.py",
++      "tests/test_framework_dynamics.py",
++      "tests/test_graph_3d.py"
++    ]
++  },
++  "gate": "GFX3D-4",
++  "mdstats_version": "0.20.149a0",
++  "next_gate": "GFX3D-5",
++  "schema_version": "mdstats.gfx3d4-focused-qualification.v1"
++}
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' /mnt/data/mdstats-0.20.148a0-complete-source-package/release/gfx3d4_na_lta_qualification.json /mnt/data/mdstats_gfx4_work/mdstats-0.20.148a0-complete-source-package/release/gfx3d4_na_lta_qualification.json
+--- /mnt/data/mdstats-0.20.148a0-complete-source-package/release/gfx3d4_na_lta_qualification.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats_gfx4_work/mdstats-0.20.148a0-complete-source-package/release/gfx3d4_na_lta_qualification.json	2026-08-11 10:06:47.774483154 +0000
+@@ -0,0 +1,62 @@
++{
++  "dependency_authority": {
++    "all_four_context_entries": 4,
++    "all_four_layer_plan": [
++      "framework_topology_product",
++      "atomic_connectivity_product",
++      "atomic_trajectory_product",
++      "atomic_density_product"
++    ],
++    "all_four_source_preparation_count": 1,
++    "cache_policy": "scene_context_in_memory_single_flight",
++    "durable_product_cache": false,
++    "three_layer_omits_connectivity": true,
++    "three_layer_plan": [
++      "framework_topology_product",
++      "atomic_trajectory_product",
++      "atomic_density_product"
++    ]
++  },
++  "environment": {
++    "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
++    "python": "3.13.5"
++  },
++  "gate": "GFX3D-4",
++  "mdstats_version": "0.20.149a0",
++  "next_gate": "GFX3D-5",
++  "performance_statement": "No wall-time speedup is claimed for GFX3D-4; qualification demonstrates reduced duplicate dependency authority/work and exact scientific equivalence.",
++  "real_cli_smoke": {
++    "html_path": "/mnt/data/gfx4_na_lta.html",
++    "html_size_bytes": 6766620,
++    "layers": [
++      "framework",
++      "trajectory:Na",
++      "density:Na"
++    ],
++    "manifest_path": "/mnt/data/gfx4_na_lta.scene.json",
++    "result": "pass"
++  },
++  "schema_version": "mdstats.gfx3d4-na-lta-qualification.v1",
++  "scientific_equivalence_0_20_148a0_to_0_20_149a0": {
++    "density_planning_approval_id": "0d0c876f4aa4f87ec6795bd04944017838bfe0eab11a8c6d70e66c15906132cc",
++    "exact_match": true,
++    "mean_framework_positions_sha256": "a646f0712ef8aa0c49f06826367a83848a8273f7a0803c7e5ff7ce938764025e",
++    "na_density_integral": 23.999999999999996,
++    "na_density_values_sha256": "7dfe8c055122a0a5ee1ab47fe50c1f827158aa65447057794936e5544747a9f8",
++    "na_trajectory_positions_sha256": "bd1184330923381803db1e0f09cab8e93605fb4b6e954cd95074367e019635be"
++  },
++  "source": {
++    "atoms": 168,
++    "path": "/mnt/data/dump.prod.Na_lta_300K.old(1).lammpstrj",
++    "qualified_frames": 21,
++    "sha256": "81c86cc40f5a11031f80817213eb558c02348494d1c6cad9b4775a5bc3c9f9cd",
++    "stride": 500,
++    "total_frames": 10001,
++    "type_map": {
++      "1": "Si",
++      "2": "Al",
++      "3": "O",
++      "4": "Na"
++    }
++  }
++}
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' /mnt/data/mdstats-0.20.148a0-complete-source-package/tests/test_graphics3d_gfx4_dependencies.py /mnt/data/mdstats_gfx4_work/mdstats-0.20.148a0-complete-source-package/tests/test_graphics3d_gfx4_dependencies.py
+--- /mnt/data/mdstats-0.20.148a0-complete-source-package/tests/test_graphics3d_gfx4_dependencies.py	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats_gfx4_work/mdstats-0.20.148a0-complete-source-package/tests/test_graphics3d_gfx4_dependencies.py	2026-08-11 09:55:31.458042331 +0000
+@@ -0,0 +1,149 @@
++from __future__ import annotations
++
++from concurrent.futures import ThreadPoolExecutor
++from pathlib import Path
++from types import SimpleNamespace
++from dataclasses import dataclass, field
++import threading
++import time
++
++from mdstats.graphics3d import (
++    GraphicsDependencyKey,
++    GraphicsLayer3DRequest,
++    GraphicsScene3DRequest,
++    GraphicsSceneContext,
++    GraphicsSelection,
++    plan_graphics_scene_dependencies,
++)
++from mdstats.graphics3d.lta_preset import LTAGraphics3DDependencySource
++from mdstats.graphics3d.providers import (
++    CONNECTIVITY_PRODUCT_PROVIDER,
++    DENSITY_PRODUCT_PROVIDER,
++    FRAMEWORK_PRODUCT_PROVIDER,
++    TRAJECTORY_PRODUCT_PROVIDER,
++    GraphicsScientificProduct,
++)
++
++
++class _PlanningSource:
++    def dependency_key(self, provider_type: str) -> GraphicsDependencyKey:
++        return GraphicsDependencyKey(provider_type, {"source": "same-science"})
++
++    def resolve_graphics3d_dependency(self, key, context):  # pragma: no cover - planning only
++        return GraphicsScientificProduct(key.provider_type, object())
++
++
++def _request(*layers: GraphicsLayer3DRequest) -> GraphicsScene3DRequest:
++    return GraphicsScene3DRequest(layers=tuple(layers))
++
++
++def test_product_level_dependency_plan_replaces_monolithic_scene_key() -> None:
++    request = _request(
++        GraphicsLayer3DRequest("framework", "framework"),
++        GraphicsLayer3DRequest("connectivity", "connectivity"),
++        GraphicsLayer3DRequest("trajectory", "trajectory", selection=GraphicsSelection(species=("Na",))),
++        GraphicsLayer3DRequest("density", "density", selection=GraphicsSelection(species=("Na",))),
++    )
++    plan = plan_graphics_scene_dependencies(
++        request, context=GraphicsSceneContext(source=_PlanningSource(), source_identity="raw")
++    )
++    assert tuple(entry.key.provider_type for entry in plan) == (
++        FRAMEWORK_PRODUCT_PROVIDER,
++        CONNECTIVITY_PRODUCT_PROVIDER,
++        TRAJECTORY_PRODUCT_PROVIDER,
++        DENSITY_PRODUCT_PROVIDER,
++    )
++    assert "framework_dynamics_scene" not in {entry.key.provider_type for entry in plan}
++
++
++def test_duplicate_density_instances_share_one_dependency_key() -> None:
++    request = _request(
++        GraphicsLayer3DRequest("Na density A", "density", selection=GraphicsSelection(species=("Na",))),
++        GraphicsLayer3DRequest("Na density B", "density", selection=GraphicsSelection(species=("Na",))),
++    )
++    plan = plan_graphics_scene_dependencies(
++        request, context=GraphicsSceneContext(source=_PlanningSource(), source_identity="raw")
++    )
++    assert len(plan) == 1
++    assert plan[0].key.provider_type == DENSITY_PRODUCT_PROVIDER
++    assert plan[0].consumers == ("Na density A", "Na density B")
++
++
++def test_scene_context_single_flight_executes_concurrent_resolver_once() -> None:
++    context = GraphicsSceneContext(source_identity="same")
++    key = GraphicsDependencyKey("expensive", {"science": 1})
++    lock = threading.Lock()
++    calls = 0
++    token = object()
++
++    def resolver():
++        nonlocal calls
++        with lock:
++            calls += 1
++        time.sleep(0.03)
++        return token
++
++    with ThreadPoolExecutor(max_workers=8) as pool:
++        values = tuple(pool.map(lambda _: context.resolve_dependency(key, resolver), range(8)))
++    assert all(value is token for value in values)
++    assert calls == 1
++    report = dict(context.dependency_report()[key.identity])
++    assert report["resolver_executions"] == 1
++    assert report["cache_hits"] == 7
++    assert report["wait_hits"] >= 1
++
++
++def test_cache_state_does_not_change_dependency_identity() -> None:
++    key = GraphicsDependencyKey("atomic_trajectory_product", {"source": "abc"})
++    before = key.identity
++    context = GraphicsSceneContext(source_identity="abc")
++    context.resolve_dependency(key, lambda: object())
++    context.resolve_dependency(key, lambda: object())
++    assert key.identity == before
++
++
++def test_lta_source_batches_product_resolution_once(monkeypatch, tmp_path: Path) -> None:
++    import mdstats.graphics3d.lta_preset as lta
++
++    request = _request(
++        GraphicsLayer3DRequest("framework", "framework"),
++        GraphicsLayer3DRequest("trajectory", "trajectory", selection=GraphicsSelection(species=("Na",))),
++    )
++    trajectory = SimpleNamespace(
++        n_frames=3,
++        n_atoms=4,
++        atomic_numbers=[14, 13, 8, 11],
++    )
++    @dataclass(frozen=True)
++    class FakeScene:
++        mean_framework: object = "framework-product"
++        trajectory_paths: object = "trajectory-product"
++        atomic_mean_graph: object = None
++        atomic_density_fields: tuple = ()
++        framework_density_fields: object = None
++        metadata: dict = field(default_factory=dict)
++
++    fake_scene = FakeScene()
++    calls = []
++
++    def fake_prepare(*args, **kwargs):
++        calls.append(1)
++        return fake_scene, {"source": "test"}
++
++    monkeypatch.setattr(lta, "prepare_legacy_source_scene", fake_prepare)
++    source = LTAGraphics3DDependencySource(
++        trajectory=trajectory,
++        request=request,
++        input_options={"stride": 1},
++        output_path=tmp_path / "scene.html",
++        source_identity="trajectory-sha",
++    )
++    context = GraphicsSceneContext(source=source, source_identity="trajectory-sha")
++    fw_key = source.dependency_key(FRAMEWORK_PRODUCT_PROVIDER)
++    tr_key = source.dependency_key(TRAJECTORY_PRODUCT_PROVIDER)
++    fw = context.resolve_dependency(fw_key, lambda: source.resolve_graphics3d_dependency(fw_key, context))
++    tr = context.resolve_dependency(tr_key, lambda: source.resolve_graphics3d_dependency(tr_key, context))
++    assert fw.value == "framework-product"
++    assert tr.value == "trajectory-product"
++    assert calls == [1]
++    assert dict(source.preparation_report())["preparation_count"] == 1

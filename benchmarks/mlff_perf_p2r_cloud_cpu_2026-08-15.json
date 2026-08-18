@@ -1,0 +1,860 @@
+{
+  "benchmark_scope": "cpu_control_plane_only_no_mace_training_no_gpu_claim",
+  "cpu_model": "AMD EPYC 9V74 80-Core Processor",
+  "created_at_utc": "2026-08-15T23:56:56.933151Z",
+  "data8_fixed_file_cache": {
+    "cache_bytes": 152891,
+    "cache_file_count": 33,
+    "cache_generation_count": 11,
+    "cache_hit": {
+      "count": 15,
+      "process_cpu_seconds": {
+        "maximum": 0.02048492599999996,
+        "median": 0.01732511400000014,
+        "minimum": 0.016107943000000624
+      },
+      "read_characters_median": 157667,
+      "wall_seconds": {
+        "maximum": 0.020481319000282383,
+        "median": 0.01733279500012941,
+        "minimum": 0.016105478000099538
+      },
+      "write_characters_median": 80429
+    },
+    "cache_population": {
+      "io_delta": {
+        "cancelled_write_bytes": 0,
+        "rchar": 794307,
+        "read_bytes": 0,
+        "syscr": 309,
+        "syscw": 52,
+        "wchar": 233320,
+        "write_bytes": 331776
+      },
+      "process_cpu_seconds": 0.07441705699999979,
+      "wall_seconds": 0.10504712600004495
+    },
+    "fresh": {
+      "count": 15,
+      "process_cpu_seconds": {
+        "maximum": 0.06557461000000009,
+        "median": 0.0619233329999993,
+        "minimum": 0.06034078700000034
+      },
+      "read_characters_median": 641416,
+      "wall_seconds": {
+        "maximum": 0.08455342400020527,
+        "median": 0.07969622800010256,
+        "minimum": 0.07621203500002594
+      },
+      "write_characters_median": 204478
+    },
+    "median_speedup": 4.59800211099869,
+    "median_wall_reduction_fraction": 0.7825142364315272,
+    "repeats": 15,
+    "scientific_authority_exact": true
+  },
+  "fixture": {
+    "data5_bundle_digest": "645083c786e35e192a792a7471a666551f7cccba56beb0621be285246f033f40",
+    "data7_bundle_digests": [
+      "bd0d88c425edae4ce0ddcc6fffbd2feb8b6d77766e2d5274451fd45395771bb1",
+      "3f14cb393f0f9a7fd7c2792fbf8018296be3a34804fdc14ce431e72d48203300",
+      "414890e1772a41ad7455d462e5e610aacfd76c3a1b021194699cca83d75b85e9",
+      "0bee4ecdc321f17841683c72533b932ac61febb19aaede9e60ba76f0a140927e"
+    ],
+    "frame_catalog_digest": "c5d537b01da568008cc666c995fb09197ef74be9bdae975a47147225d342857e",
+    "job_count": 4
+  },
+  "limitations": [
+    "This benchmark does not execute MACE training or inference.",
+    "DATA8 timing is a bounded deterministic development fixture, not an LTA production-volume throughput claim.",
+    "Whole-funnel GPU/VRAM/utilization and resumed-versus-uninterrupted MACE evidence remain deferred to FINAL-GPU1.",
+    "Structure-epoch exposure is an exact work proxy, not a wall-time prediction."
+  ],
+  "logical_cpu_count": 9,
+  "mdstats_version": "0.20.184a0",
+  "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+  "python": "3.13.5",
+  "schema": "mdstats.perf-p2r-cpu-benchmark.2026-08.v1",
+  "successive_fidelity_exposure": {
+    "formula": "coarse*sum(A) + (10-coarse)*sum(S4) + 20*sum(S2)",
+    "full_width_saved_fraction_max": 0.8566929133858268,
+    "full_width_saved_fraction_min": 0.17191601049868765,
+    "rows": [
+      {
+        "admitted_sizes": [
+          128,
+          256,
+          512
+        ],
+        "admitted_width": 3,
+        "coarse_epoch": 3,
+        "coarse_survivor_sizes": [
+          128,
+          256,
+          512
+        ],
+        "content_digest": "24960a1402d9f83d3b5bd608e098cf8f1365aadcf44307e5a175cd794c9fb8a9",
+        "exhaustive_structure_epochs": 26880,
+        "incremental_structure_epochs": 16640,
+        "saved_fraction": 0.38095238095238093,
+        "short_survivor_sizes": [
+          128,
+          256
+        ],
+        "survivor_case": "smallest"
+      },
+      {
+        "admitted_sizes": [
+          128,
+          256,
+          512
+        ],
+        "admitted_width": 3,
+        "coarse_epoch": 3,
+        "coarse_survivor_sizes": [
+          128,
+          256,
+          512
+        ],
+        "content_digest": "ea2ee90b273d726819fb7d0030089b78b566e6f1f076b001be4e813ddb9065ba",
+        "exhaustive_structure_epochs": 26880,
+        "incremental_structure_epochs": 24320,
+        "saved_fraction": 0.09523809523809523,
+        "short_survivor_sizes": [
+          256,
+          512
+        ],
+        "survivor_case": "largest"
+      },
+      {
+        "admitted_sizes": [
+          128,
+          256,
+          512,
+          1024
+        ],
+        "admitted_width": 4,
+        "coarse_epoch": 3,
+        "coarse_survivor_sizes": [
+          128,
+          256,
+          512,
+          1024
+        ],
+        "content_digest": "f19eb083c7303f6f105290970c07bce109f0d329acffc85c33ad133ca5c23703",
+        "exhaustive_structure_epochs": 57600,
+        "incremental_structure_epochs": 26880,
+        "saved_fraction": 0.5333333333333333,
+        "short_survivor_sizes": [
+          128,
+          256
+        ],
+        "survivor_case": "smallest"
+      },
+      {
+        "admitted_sizes": [
+          128,
+          256,
+          512,
+          1024
+        ],
+        "admitted_width": 4,
+        "coarse_epoch": 3,
+        "coarse_survivor_sizes": [
+          128,
+          256,
+          512,
+          1024
+        ],
+        "content_digest": "a5a9db36b73009bc1bd60cf27b47de76f40dcafc01bc19c7bb9bd72c2cc77dfc",
+        "exhaustive_structure_epochs": 57600,
+        "incremental_structure_epochs": 49920,
+        "saved_fraction": 0.13333333333333333,
+        "short_survivor_sizes": [
+          512,
+          1024
+        ],
+        "survivor_case": "largest"
+      },
+      {
+        "admitted_sizes": [
+          128,
+          256,
+          512,
+          1024,
+          2048
+        ],
+        "admitted_width": 5,
+        "coarse_epoch": 3,
+        "coarse_survivor_sizes": [
+          128,
+          256,
+          512,
+          1024
+        ],
+        "content_digest": "4ef642ba66c5da39620c69052b818a47b915f1cdc7530995529cd531c0908a66",
+        "exhaustive_structure_epochs": 119040,
+        "incremental_structure_epochs": 33024,
+        "saved_fraction": 0.7225806451612903,
+        "short_survivor_sizes": [
+          128,
+          256
+        ],
+        "survivor_case": "smallest"
+      },
+      {
+        "admitted_sizes": [
+          128,
+          256,
+          512,
+          1024,
+          2048
+        ],
+        "admitted_width": 5,
+        "coarse_epoch": 3,
+        "coarse_survivor_sizes": [
+          256,
+          512,
+          1024,
+          2048
+        ],
+        "content_digest": "a135051ed78ddd10f39825c62cc2aa133a850982e6c44b68fde92928954f34ea",
+        "exhaustive_structure_epochs": 119040,
+        "incremental_structure_epochs": 100224,
+        "saved_fraction": 0.15806451612903225,
+        "short_survivor_sizes": [
+          1024,
+          2048
+        ],
+        "survivor_case": "largest"
+      },
+      {
+        "admitted_sizes": [
+          128,
+          256,
+          512,
+          1024,
+          2048,
+          4096
+        ],
+        "admitted_width": 6,
+        "coarse_epoch": 3,
+        "coarse_survivor_sizes": [
+          128,
+          256,
+          512,
+          1024
+        ],
+        "content_digest": "94ba1dee2ff4df7ba4e839e20a8fb9e254e11e8568488c035122ca23baff617a",
+        "exhaustive_structure_epochs": 241920,
+        "incremental_structure_epochs": 45312,
+        "saved_fraction": 0.8126984126984127,
+        "short_survivor_sizes": [
+          128,
+          256
+        ],
+        "survivor_case": "smallest"
+      },
+      {
+        "admitted_sizes": [
+          128,
+          256,
+          512,
+          1024,
+          2048,
+          4096
+        ],
+        "admitted_width": 6,
+        "coarse_epoch": 3,
+        "coarse_survivor_sizes": [
+          512,
+          1024,
+          2048,
+          4096
+        ],
+        "content_digest": "ce20ab8ad2cfd43f870cf055f4166b104e93785abfe755597dad06c664c4d361",
+        "exhaustive_structure_epochs": 241920,
+        "incremental_structure_epochs": 200832,
+        "saved_fraction": 0.16984126984126985,
+        "short_survivor_sizes": [
+          2048,
+          4096
+        ],
+        "survivor_case": "largest"
+      },
+      {
+        "admitted_sizes": [
+          128,
+          256,
+          512,
+          1024,
+          2048,
+          4096,
+          8192
+        ],
+        "admitted_width": 7,
+        "coarse_epoch": 3,
+        "coarse_survivor_sizes": [
+          128,
+          256,
+          512,
+          1024
+        ],
+        "content_digest": "3ace9d5257c63bc9be1bea98684ebcbc25d6bfbc7b029e657543b246946bc1b3",
+        "exhaustive_structure_epochs": 487680,
+        "incremental_structure_epochs": 69888,
+        "saved_fraction": 0.8566929133858268,
+        "short_survivor_sizes": [
+          128,
+          256
+        ],
+        "survivor_case": "smallest"
+      },
+      {
+        "admitted_sizes": [
+          128,
+          256,
+          512,
+          1024,
+          2048,
+          4096,
+          8192
+        ],
+        "admitted_width": 7,
+        "coarse_epoch": 3,
+        "coarse_survivor_sizes": [
+          1024,
+          2048,
+          4096,
+          8192
+        ],
+        "content_digest": "df44f94c3148ef7aeab7e6d9347baa4428c55884b6da1b23afc6742bd08c9c92",
+        "exhaustive_structure_epochs": 487680,
+        "incremental_structure_epochs": 402048,
+        "saved_fraction": 0.17559055118110237,
+        "short_survivor_sizes": [
+          4096,
+          8192
+        ],
+        "survivor_case": "largest"
+      },
+      {
+        "admitted_sizes": [
+          128,
+          256,
+          512
+        ],
+        "admitted_width": 3,
+        "coarse_epoch": 4,
+        "coarse_survivor_sizes": [
+          128,
+          256,
+          512
+        ],
+        "content_digest": "7ef0852968a1c5166c92beb9650852a064407cfbcadfbb1cf811b0bd3a2568db",
+        "exhaustive_structure_epochs": 26880,
+        "incremental_structure_epochs": 16640,
+        "saved_fraction": 0.38095238095238093,
+        "short_survivor_sizes": [
+          128,
+          256
+        ],
+        "survivor_case": "smallest"
+      },
+      {
+        "admitted_sizes": [
+          128,
+          256,
+          512
+        ],
+        "admitted_width": 3,
+        "coarse_epoch": 4,
+        "coarse_survivor_sizes": [
+          128,
+          256,
+          512
+        ],
+        "content_digest": "ad2e8bb02e84405335459f5e846c0262ebb8f42b194161d8895bdcba094a4519",
+        "exhaustive_structure_epochs": 26880,
+        "incremental_structure_epochs": 24320,
+        "saved_fraction": 0.09523809523809523,
+        "short_survivor_sizes": [
+          256,
+          512
+        ],
+        "survivor_case": "largest"
+      },
+      {
+        "admitted_sizes": [
+          128,
+          256,
+          512,
+          1024
+        ],
+        "admitted_width": 4,
+        "coarse_epoch": 4,
+        "coarse_survivor_sizes": [
+          128,
+          256,
+          512,
+          1024
+        ],
+        "content_digest": "75198767b843c76de159fb9bb7cc9831960ac812d8d567e264592d4f23f9bc9a",
+        "exhaustive_structure_epochs": 57600,
+        "incremental_structure_epochs": 26880,
+        "saved_fraction": 0.5333333333333333,
+        "short_survivor_sizes": [
+          128,
+          256
+        ],
+        "survivor_case": "smallest"
+      },
+      {
+        "admitted_sizes": [
+          128,
+          256,
+          512,
+          1024
+        ],
+        "admitted_width": 4,
+        "coarse_epoch": 4,
+        "coarse_survivor_sizes": [
+          128,
+          256,
+          512,
+          1024
+        ],
+        "content_digest": "92e86b7d1f26bf4712742d0eb8732b10e7e17a21815879a512ba0b44d7f59faf",
+        "exhaustive_structure_epochs": 57600,
+        "incremental_structure_epochs": 49920,
+        "saved_fraction": 0.13333333333333333,
+        "short_survivor_sizes": [
+          512,
+          1024
+        ],
+        "survivor_case": "largest"
+      },
+      {
+        "admitted_sizes": [
+          128,
+          256,
+          512,
+          1024,
+          2048
+        ],
+        "admitted_width": 5,
+        "coarse_epoch": 4,
+        "coarse_survivor_sizes": [
+          128,
+          256,
+          512,
+          1024
+        ],
+        "content_digest": "6565f9cc9d7ae3ae4e9f3bc00b8c6850f02d92263d12fa6627a65e793899e8a5",
+        "exhaustive_structure_epochs": 119040,
+        "incremental_structure_epochs": 35072,
+        "saved_fraction": 0.7053763440860215,
+        "short_survivor_sizes": [
+          128,
+          256
+        ],
+        "survivor_case": "smallest"
+      },
+      {
+        "admitted_sizes": [
+          128,
+          256,
+          512,
+          1024,
+          2048
+        ],
+        "admitted_width": 5,
+        "coarse_epoch": 4,
+        "coarse_survivor_sizes": [
+          256,
+          512,
+          1024,
+          2048
+        ],
+        "content_digest": "29802507e175961455d19a5b733597ad0d62c92da7c3c39d9ba8741c782f2db0",
+        "exhaustive_structure_epochs": 119040,
+        "incremental_structure_epochs": 100352,
+        "saved_fraction": 0.15698924731182795,
+        "short_survivor_sizes": [
+          1024,
+          2048
+        ],
+        "survivor_case": "largest"
+      },
+      {
+        "admitted_sizes": [
+          128,
+          256,
+          512,
+          1024,
+          2048,
+          4096
+        ],
+        "admitted_width": 6,
+        "coarse_epoch": 4,
+        "coarse_survivor_sizes": [
+          128,
+          256,
+          512,
+          1024
+        ],
+        "content_digest": "fab399a28bf63991d14c29d6eb060088b285d01c47daad89e2a9d4e6aefc4796",
+        "exhaustive_structure_epochs": 241920,
+        "incremental_structure_epochs": 51456,
+        "saved_fraction": 0.7873015873015873,
+        "short_survivor_sizes": [
+          128,
+          256
+        ],
+        "survivor_case": "smallest"
+      },
+      {
+        "admitted_sizes": [
+          128,
+          256,
+          512,
+          1024,
+          2048,
+          4096
+        ],
+        "admitted_width": 6,
+        "coarse_epoch": 4,
+        "coarse_survivor_sizes": [
+          512,
+          1024,
+          2048,
+          4096
+        ],
+        "content_digest": "efe7a0d0178fee6231231fcab7c71a542bfefa240b2930f086543b70a28cba25",
+        "exhaustive_structure_epochs": 241920,
+        "incremental_structure_epochs": 201216,
+        "saved_fraction": 0.16825396825396827,
+        "short_survivor_sizes": [
+          2048,
+          4096
+        ],
+        "survivor_case": "largest"
+      },
+      {
+        "admitted_sizes": [
+          128,
+          256,
+          512,
+          1024,
+          2048,
+          4096,
+          8192
+        ],
+        "admitted_width": 7,
+        "coarse_epoch": 4,
+        "coarse_survivor_sizes": [
+          128,
+          256,
+          512,
+          1024
+        ],
+        "content_digest": "cd14376714dd5c40dc6c3369ae523e5b13a2e7869a06815a1aadd9d13819155e",
+        "exhaustive_structure_epochs": 487680,
+        "incremental_structure_epochs": 84224,
+        "saved_fraction": 0.8272965879265092,
+        "short_survivor_sizes": [
+          128,
+          256
+        ],
+        "survivor_case": "smallest"
+      },
+      {
+        "admitted_sizes": [
+          128,
+          256,
+          512,
+          1024,
+          2048,
+          4096,
+          8192
+        ],
+        "admitted_width": 7,
+        "coarse_epoch": 4,
+        "coarse_survivor_sizes": [
+          1024,
+          2048,
+          4096,
+          8192
+        ],
+        "content_digest": "3189d17f2c5a5e558bc1ebd8d36f5d9914c786ad9c0a2a2660a583ce5be2d292",
+        "exhaustive_structure_epochs": 487680,
+        "incremental_structure_epochs": 402944,
+        "saved_fraction": 0.17375328083989502,
+        "short_survivor_sizes": [
+          4096,
+          8192
+        ],
+        "survivor_case": "largest"
+      },
+      {
+        "admitted_sizes": [
+          128,
+          256,
+          512
+        ],
+        "admitted_width": 3,
+        "coarse_epoch": 5,
+        "coarse_survivor_sizes": [
+          128,
+          256,
+          512
+        ],
+        "content_digest": "c95141683fa5def5d5e5899e0ded6cc7eda222eb80e9547742f529b737aa90dd",
+        "exhaustive_structure_epochs": 26880,
+        "incremental_structure_epochs": 16640,
+        "saved_fraction": 0.38095238095238093,
+        "short_survivor_sizes": [
+          128,
+          256
+        ],
+        "survivor_case": "smallest"
+      },
+      {
+        "admitted_sizes": [
+          128,
+          256,
+          512
+        ],
+        "admitted_width": 3,
+        "coarse_epoch": 5,
+        "coarse_survivor_sizes": [
+          128,
+          256,
+          512
+        ],
+        "content_digest": "ef6b90ecda4c3e0341bbb14e34965c8d3c6b5b549f754937a7a278b06c194628",
+        "exhaustive_structure_epochs": 26880,
+        "incremental_structure_epochs": 24320,
+        "saved_fraction": 0.09523809523809523,
+        "short_survivor_sizes": [
+          256,
+          512
+        ],
+        "survivor_case": "largest"
+      },
+      {
+        "admitted_sizes": [
+          128,
+          256,
+          512,
+          1024
+        ],
+        "admitted_width": 4,
+        "coarse_epoch": 5,
+        "coarse_survivor_sizes": [
+          128,
+          256,
+          512,
+          1024
+        ],
+        "content_digest": "a6215e998a9038155e7056cc045a9e6867950563f572e263477318b7c7579858",
+        "exhaustive_structure_epochs": 57600,
+        "incremental_structure_epochs": 26880,
+        "saved_fraction": 0.5333333333333333,
+        "short_survivor_sizes": [
+          128,
+          256
+        ],
+        "survivor_case": "smallest"
+      },
+      {
+        "admitted_sizes": [
+          128,
+          256,
+          512,
+          1024
+        ],
+        "admitted_width": 4,
+        "coarse_epoch": 5,
+        "coarse_survivor_sizes": [
+          128,
+          256,
+          512,
+          1024
+        ],
+        "content_digest": "9f7d9b0749ff2094b4cbd5cb648319901dcc94dbba524c7a0ad2cbd242fcabd0",
+        "exhaustive_structure_epochs": 57600,
+        "incremental_structure_epochs": 49920,
+        "saved_fraction": 0.13333333333333333,
+        "short_survivor_sizes": [
+          512,
+          1024
+        ],
+        "survivor_case": "largest"
+      },
+      {
+        "admitted_sizes": [
+          128,
+          256,
+          512,
+          1024,
+          2048
+        ],
+        "admitted_width": 5,
+        "coarse_epoch": 5,
+        "coarse_survivor_sizes": [
+          128,
+          256,
+          512,
+          1024
+        ],
+        "content_digest": "9078a0356c0f8e21ccb30bc0cff0089fcd3ed9126b9351dd1ff02628ed7feccf",
+        "exhaustive_structure_epochs": 119040,
+        "incremental_structure_epochs": 37120,
+        "saved_fraction": 0.6881720430107527,
+        "short_survivor_sizes": [
+          128,
+          256
+        ],
+        "survivor_case": "smallest"
+      },
+      {
+        "admitted_sizes": [
+          128,
+          256,
+          512,
+          1024,
+          2048
+        ],
+        "admitted_width": 5,
+        "coarse_epoch": 5,
+        "coarse_survivor_sizes": [
+          256,
+          512,
+          1024,
+          2048
+        ],
+        "content_digest": "f5f3d4a71d684fb6af251bbe634e7057bdc36baf41b25c84b1069274a3ed5d80",
+        "exhaustive_structure_epochs": 119040,
+        "incremental_structure_epochs": 100480,
+        "saved_fraction": 0.15591397849462366,
+        "short_survivor_sizes": [
+          1024,
+          2048
+        ],
+        "survivor_case": "largest"
+      },
+      {
+        "admitted_sizes": [
+          128,
+          256,
+          512,
+          1024,
+          2048,
+          4096
+        ],
+        "admitted_width": 6,
+        "coarse_epoch": 5,
+        "coarse_survivor_sizes": [
+          128,
+          256,
+          512,
+          1024
+        ],
+        "content_digest": "ec0a988a8bf4f812ab6371aebd6329a471cda7a206ddcfac1b1dc3bd8ea27e0d",
+        "exhaustive_structure_epochs": 241920,
+        "incremental_structure_epochs": 57600,
+        "saved_fraction": 0.7619047619047619,
+        "short_survivor_sizes": [
+          128,
+          256
+        ],
+        "survivor_case": "smallest"
+      },
+      {
+        "admitted_sizes": [
+          128,
+          256,
+          512,
+          1024,
+          2048,
+          4096
+        ],
+        "admitted_width": 6,
+        "coarse_epoch": 5,
+        "coarse_survivor_sizes": [
+          512,
+          1024,
+          2048,
+          4096
+        ],
+        "content_digest": "03fc17c3eb320e306b45419b3717f9e0c35bbfa66b5d3c6e713beb041c933e5b",
+        "exhaustive_structure_epochs": 241920,
+        "incremental_structure_epochs": 201600,
+        "saved_fraction": 0.16666666666666666,
+        "short_survivor_sizes": [
+          2048,
+          4096
+        ],
+        "survivor_case": "largest"
+      },
+      {
+        "admitted_sizes": [
+          128,
+          256,
+          512,
+          1024,
+          2048,
+          4096,
+          8192
+        ],
+        "admitted_width": 7,
+        "coarse_epoch": 5,
+        "coarse_survivor_sizes": [
+          128,
+          256,
+          512,
+          1024
+        ],
+        "content_digest": "92558c1494a495eb4961694feeb74ffc3cf7d654602beb613c06c8450f8b9f0e",
+        "exhaustive_structure_epochs": 487680,
+        "incremental_structure_epochs": 98560,
+        "saved_fraction": 0.7979002624671916,
+        "short_survivor_sizes": [
+          128,
+          256
+        ],
+        "survivor_case": "smallest"
+      },
+      {
+        "admitted_sizes": [
+          128,
+          256,
+          512,
+          1024,
+          2048,
+          4096,
+          8192
+        ],
+        "admitted_width": 7,
+        "coarse_epoch": 5,
+        "coarse_survivor_sizes": [
+          1024,
+          2048,
+          4096,
+          8192
+        ],
+        "content_digest": "6f417c23e0066f244e9aae55b83f491857f9d47d2399888935d64b12e0ecf345",
+        "exhaustive_structure_epochs": 487680,
+        "incremental_structure_epochs": 403840,
+        "saved_fraction": 0.17191601049868765,
+        "short_survivor_sizes": [
+          4096,
+          8192
+        ],
+        "survivor_case": "largest"
+      }
+    ]
+  }
+}

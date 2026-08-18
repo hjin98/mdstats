@@ -1,0 +1,3869 @@
+{
+  "authority_version": "mdstats.mlff-perfbase1.2026-08.v1",
+  "baseline_id": "lta-perfbase1-cloud-cpu-mpa0-2026-08-17",
+  "content_digest": "5b8e1d8315cc103d317fd6bb8948bf8f699ef834873e9d2b1983345536d32ece",
+  "created_at_utc": "2026-08-17T11:56:19.026944Z",
+  "execution_digest": "a431a0d611d2fb7be855a1daa9a901cb90434bc054ddb03d6bc896d64ee6a597",
+  "foundation_family": "mace-mpa-0",
+  "foundation_model_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
+  "foundation_variant": "medium",
+  "limitations": [
+    "Cloud CPU authority is cgroup-constrained; automatic workers use mdstats' detected CPU budget.",
+    "TARGET-DATA2B family extraction/target XML parsing is performed once outside timed radius trials; replay parsing is timed directly.",
+    "FEAS1/MVIDX1/MVSEL1 scaling workloads are deterministic synthetic authorities so algorithmic changes can be compared without model inference noise.",
+    "No GPU performance authority is asserted by PERFBASE1."
+  ],
+  "schema": "mdstats.mlff-perfbase1-record.v1",
+  "scientific_digest": "d16fdb3a52112192789a27f1515380ec29e8ac278e70b6b0bf669753a77e39df",
+  "source_artifacts": [
+    {
+      "byte_count": 238842694,
+      "content_digest": "a273c185627571b9d397f9daf3e0caf6bcc370a4b4da947a1255aa9a6ea750ad",
+      "logical_path": "inputs/training_LTA.tar.gz",
+      "role": "target_training_archive",
+      "schema": "mdstats.perf-base0-artifact-identity.v1",
+      "sha256": "bc1b7e25ba338507ae38b260bcd283356de887b6c6cf762a2c146733f1c3c958"
+    },
+    {
+      "byte_count": 46805203,
+      "content_digest": "acf37861e4b2e9c83e9b80b4d019022773c5db6ba1f8e1510389d6e820d19033",
+      "logical_path": "inputs/replay_fps_12000.extxyz",
+      "role": "unified_replay_source",
+      "schema": "mdstats.perf-base0-artifact-identity.v1",
+      "sha256": "187eed42fb2d6cf5e7e745ffed0ce34541e92c6a35ec9e654520cd3c7198403c"
+    },
+    {
+      "byte_count": 79462305,
+      "content_digest": "d8874c600d153e0cbaffae76c74419e98397952510cc0b7cc90f3f44457e1181",
+      "logical_path": "inputs/foundation.model",
+      "role": "active_foundation_checkpoint",
+      "schema": "mdstats.perf-base0-artifact-identity.v1",
+      "sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638"
+    },
+    {
+      "byte_count": 1825,
+      "content_digest": "56f7d3da3717e72f5bbe4b47171a6f420d62e3c8a87737ced61b319ded5630aa",
+      "logical_path": "inputs/perfbase1_implementation_manifest.json",
+      "role": "implementation_manifest",
+      "schema": "mdstats.perf-base0-artifact-identity.v1",
+      "sha256": "8fa45b19b6c596b097ad2685b3314e6d7196ce06e6d7f5bdf0b316848569dc65"
+    },
+    {
+      "byte_count": 5944647,
+      "content_digest": "c29c383c7f630acdbd15c38538699fa7750d7e86fdb5905dd6c4d97ce1e0b08e",
+      "logical_path": "inputs/dependencies.tar.gz",
+      "role": "dependency_bundle",
+      "schema": "mdstats.perf-base0-artifact-identity.v1",
+      "sha256": "888d545a512396697c8583d69bc9ed33110914675f466a4cbcafc3e1e1407171"
+    },
+    {
+      "byte_count": 1647644,
+      "content_digest": "ddae89f41c0a7c7163192000f1c66445f7efdabe5e9efc3fb7df00bd5e717acf",
+      "logical_path": "inputs/perfbase1_target_family_cache.npz",
+      "role": "derived_target_family_cache",
+      "schema": "mdstats.perf-base0-artifact-identity.v1",
+      "sha256": "5eddf2a3df8f7922161fa4ab49c11a8d5d2d51835ed8aa3e44211eb49bda9f4f"
+    }
+  ],
+  "source_version": "0.20.225a0",
+  "unavailable_workloads": [
+    "FOUNDATION-AUDIT1 model-inference and residual-reduction baseline (MACE runtime unavailable on cloud host)",
+    "EVAL2 checkpoint-inference/statistics baseline (MACE runtime unavailable on cloud host)"
+  ],
+  "workloads": [
+    {
+      "content_digest": "c3ae6b635b6a35e76571526ab2dae575f4a9886418f591e7e66047c1fff85956",
+      "corpus_digests": [
+        "40c0f4279036856f750c7302f8eb2450fb199deb6283dd5c1ad536188b0cb5e3"
+      ],
+      "notes": [],
+      "policy_digests": [
+        "28ebdd2ca82c615dac619803ed551bd039e2cac3c3ec961b1093374dc0fe834d"
+      ],
+      "schema": "mdstats.mlff-perfbase1-workload.v1",
+      "scientific_digest": "479d4cac0fa657e924e338c3caa12e30cfc26ba8bd68faa99c5129bbfa3a0f22",
+      "scientific_output_digest": "823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d",
+      "throughput_unit": "family-elements",
+      "trials": [
+        {
+          "allocated_workers": 1,
+          "assigned_lane_occupancy": 1.0386803645424716,
+          "content_digest": "0907e520828647af408e08f92e56d172f5bd23a0f82f53fca6abeb8a7633b830",
+          "counters": {
+            "family_count": 8,
+            "family_elements": 32800,
+            "throughput_count": 32800,
+            "throughput_per_second": 55772.09562899715,
+            "throughput_unit": "family-elements"
+          },
+          "effective_cpu_cores": 1.0386803645424716,
+          "environment": {
+            "affinity_cpu_count": 5,
+            "cgroup_cpu_max": "400000 100000",
+            "cgroup_cpu_quota_cores": 4.0,
+            "cgroup_cpuset_effective": "0-4",
+            "cgroup_memory_max": "4294967296",
+            "cpu_model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+            "cuda_visible_devices": null,
+            "environment_threads": {
+              "MKL_NUM_THREADS": "1",
+              "NUMEXPR_NUM_THREADS": "1",
+              "OMP_NUM_THREADS": "1",
+              "OPENBLAS_NUM_THREADS": "1",
+              "VECLIB_MAXIMUM_THREADS": "1"
+            },
+            "logical_cpu_count": 5,
+            "machine": "x86_64",
+            "package_versions": {
+              "ase": "3.29.0",
+              "e3nn": null,
+              "mace-torch": null,
+              "mdstats": null,
+              "mdstats_source": "0.20.225a0",
+              "numpy": "2.3.5",
+              "scipy": "1.17.0",
+              "threadpoolctl": "3.6.0",
+              "torch": "2.10.0+cpu"
+            },
+            "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+            "processor": "",
+            "python_implementation": "CPython",
+            "python_version": "3.13.5",
+            "threadpools": [
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              },
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              }
+            ]
+          },
+          "events": [
+            "Current serial family/block driver; explicit native cKDTree worker count."
+          ],
+          "measured_at_utc": "2026-08-17T11:56:19.026944Z",
+          "persisted_bytes": 0,
+          "process_cpu_seconds": 0.6108559410000005,
+          "process_peak_rss_bytes": 273489920,
+          "queue": {},
+          "repeat_index": 0,
+          "requested_workers": 1,
+          "rss_end_bytes": 273666048,
+          "rss_start_bytes": 269500416,
+          "sampled_peak_rss_bytes": 273666048,
+          "schedule_label": "serial",
+          "schema": "mdstats.mlff-perfbase1-trial.v1",
+          "scientific_output_digest": "823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d",
+          "temporary_array_bytes": 262400,
+          "wall_seconds": 0.5881077200001528,
+          "worker_settings": {
+            "ckdtree_query_workers": 1,
+            "row_block_size": 1024
+          },
+          "workload_id": "target_data2b_reference_radii"
+        },
+        {
+          "allocated_workers": 1,
+          "assigned_lane_occupancy": 1.0277090782436993,
+          "content_digest": "952e2443fc29c949507aa465141ef530218060a56b6e40ae8b8bac158db2135c",
+          "counters": {
+            "family_count": 8,
+            "family_elements": 32800,
+            "throughput_count": 32800,
+            "throughput_per_second": 51530.67308329209,
+            "throughput_unit": "family-elements"
+          },
+          "effective_cpu_cores": 1.0277090782436993,
+          "environment": {
+            "affinity_cpu_count": 5,
+            "cgroup_cpu_max": "400000 100000",
+            "cgroup_cpu_quota_cores": 4.0,
+            "cgroup_cpuset_effective": "0-4",
+            "cgroup_memory_max": "4294967296",
+            "cpu_model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+            "cuda_visible_devices": null,
+            "environment_threads": {
+              "MKL_NUM_THREADS": "1",
+              "NUMEXPR_NUM_THREADS": "1",
+              "OMP_NUM_THREADS": "1",
+              "OPENBLAS_NUM_THREADS": "1",
+              "VECLIB_MAXIMUM_THREADS": "1"
+            },
+            "logical_cpu_count": 5,
+            "machine": "x86_64",
+            "package_versions": {
+              "ase": "3.29.0",
+              "e3nn": null,
+              "mace-torch": null,
+              "mdstats": null,
+              "mdstats_source": "0.20.225a0",
+              "numpy": "2.3.5",
+              "scipy": "1.17.0",
+              "threadpoolctl": "3.6.0",
+              "torch": "2.10.0+cpu"
+            },
+            "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+            "processor": "",
+            "python_implementation": "CPython",
+            "python_version": "3.13.5",
+            "threadpools": [
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              },
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              }
+            ]
+          },
+          "events": [
+            "Current serial family/block driver; explicit native cKDTree worker count."
+          ],
+          "measured_at_utc": "2026-08-17T11:56:26.149461Z",
+          "persisted_bytes": 0,
+          "process_cpu_seconds": 0.6541513190000003,
+          "process_peak_rss_bytes": 273485824,
+          "queue": {},
+          "repeat_index": 1,
+          "requested_workers": 1,
+          "rss_end_bytes": 273825792,
+          "rss_start_bytes": 269680640,
+          "sampled_peak_rss_bytes": 273825792,
+          "schedule_label": "serial",
+          "schema": "mdstats.mlff-perfbase1-trial.v1",
+          "scientific_output_digest": "823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d",
+          "temporary_array_bytes": 262400,
+          "wall_seconds": 0.6365140999998857,
+          "worker_settings": {
+            "ckdtree_query_workers": 1,
+            "row_block_size": 1024
+          },
+          "workload_id": "target_data2b_reference_radii"
+        },
+        {
+          "allocated_workers": 2,
+          "assigned_lane_occupancy": 0.6759040925132618,
+          "content_digest": "a64a776f21dafd9c023fc75acab9c5035d858be51ae060923a0d13ada91e9f76",
+          "counters": {
+            "family_count": 8,
+            "family_elements": 32800,
+            "throughput_count": 32800,
+            "throughput_per_second": 69705.15681364393,
+            "throughput_unit": "family-elements"
+          },
+          "effective_cpu_cores": 1.3518081850265236,
+          "environment": {
+            "affinity_cpu_count": 5,
+            "cgroup_cpu_max": "400000 100000",
+            "cgroup_cpu_quota_cores": 4.0,
+            "cgroup_cpuset_effective": "0-4",
+            "cgroup_memory_max": "4294967296",
+            "cpu_model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+            "cuda_visible_devices": null,
+            "environment_threads": {
+              "MKL_NUM_THREADS": "1",
+              "NUMEXPR_NUM_THREADS": "1",
+              "OMP_NUM_THREADS": "1",
+              "OPENBLAS_NUM_THREADS": "1",
+              "VECLIB_MAXIMUM_THREADS": "1"
+            },
+            "logical_cpu_count": 5,
+            "machine": "x86_64",
+            "package_versions": {
+              "ase": "3.29.0",
+              "e3nn": null,
+              "mace-torch": null,
+              "mdstats": null,
+              "mdstats_source": "0.20.225a0",
+              "numpy": "2.3.5",
+              "scipy": "1.17.0",
+              "threadpoolctl": "3.6.0",
+              "torch": "2.10.0+cpu"
+            },
+            "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+            "processor": "",
+            "python_implementation": "CPython",
+            "python_version": "3.13.5",
+            "threadpools": [
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              },
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              }
+            ]
+          },
+          "events": [
+            "Current serial family/block driver; explicit native cKDTree worker count."
+          ],
+          "measured_at_utc": "2026-08-17T11:56:37.542329Z",
+          "persisted_bytes": 0,
+          "process_cpu_seconds": 0.6360979660000003,
+          "process_peak_rss_bytes": 273813504,
+          "queue": {},
+          "repeat_index": 0,
+          "requested_workers": 2,
+          "rss_end_bytes": 274124800,
+          "rss_start_bytes": 269778944,
+          "sampled_peak_rss_bytes": 274137088,
+          "schedule_label": "dual",
+          "schema": "mdstats.mlff-perfbase1-trial.v1",
+          "scientific_output_digest": "823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d",
+          "temporary_array_bytes": 262400,
+          "wall_seconds": 0.4705534209999769,
+          "worker_settings": {
+            "ckdtree_query_workers": 2,
+            "row_block_size": 1024
+          },
+          "workload_id": "target_data2b_reference_radii"
+        },
+        {
+          "allocated_workers": 2,
+          "assigned_lane_occupancy": 0.6965286409587242,
+          "content_digest": "5fbee73653ec41bbd9d9c3dd968f6d821b9a63d41488a68f176ad50733094a0c",
+          "counters": {
+            "family_count": 8,
+            "family_elements": 32800,
+            "throughput_count": 32800,
+            "throughput_per_second": 73808.66574627109,
+            "throughput_unit": "family-elements"
+          },
+          "effective_cpu_cores": 1.3930572819174485,
+          "environment": {
+            "affinity_cpu_count": 5,
+            "cgroup_cpu_max": "400000 100000",
+            "cgroup_cpu_quota_cores": 4.0,
+            "cgroup_cpuset_effective": "0-4",
+            "cgroup_memory_max": "4294967296",
+            "cpu_model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+            "cuda_visible_devices": null,
+            "environment_threads": {
+              "MKL_NUM_THREADS": "1",
+              "NUMEXPR_NUM_THREADS": "1",
+              "OMP_NUM_THREADS": "1",
+              "OPENBLAS_NUM_THREADS": "1",
+              "VECLIB_MAXIMUM_THREADS": "1"
+            },
+            "logical_cpu_count": 5,
+            "machine": "x86_64",
+            "package_versions": {
+              "ase": "3.29.0",
+              "e3nn": null,
+              "mace-torch": null,
+              "mdstats": null,
+              "mdstats_source": "0.20.225a0",
+              "numpy": "2.3.5",
+              "scipy": "1.17.0",
+              "threadpoolctl": "3.6.0",
+              "torch": "2.10.0+cpu"
+            },
+            "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+            "processor": "",
+            "python_implementation": "CPython",
+            "python_version": "3.13.5",
+            "threadpools": [
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              },
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              }
+            ]
+          },
+          "events": [
+            "Current serial family/block driver; explicit native cKDTree worker count."
+          ],
+          "measured_at_utc": "2026-08-17T11:56:44.545807Z",
+          "persisted_bytes": 0,
+          "process_cpu_seconds": 0.6190638779999995,
+          "process_peak_rss_bytes": 273555456,
+          "queue": {},
+          "repeat_index": 1,
+          "requested_workers": 2,
+          "rss_end_bytes": 273842176,
+          "rss_start_bytes": 269565952,
+          "sampled_peak_rss_bytes": 273854464,
+          "schedule_label": "dual",
+          "schema": "mdstats.mlff-perfbase1-trial.v1",
+          "scientific_output_digest": "823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d",
+          "temporary_array_bytes": 262400,
+          "wall_seconds": 0.4443922630000543,
+          "worker_settings": {
+            "ckdtree_query_workers": 2,
+            "row_block_size": 1024
+          },
+          "workload_id": "target_data2b_reference_radii"
+        },
+        {
+          "allocated_workers": 2,
+          "assigned_lane_occupancy": 0.6759040925132618,
+          "content_digest": "4ee9c1edcc8a206bdc34e90429bb358e12f316ff1b1e1f7026f99f1d7c9fb2d1",
+          "counters": {
+            "family_count": 8,
+            "family_elements": 32800,
+            "throughput_count": 32800,
+            "throughput_per_second": 69705.15681364393,
+            "throughput_unit": "family-elements"
+          },
+          "effective_cpu_cores": 1.3518081850265236,
+          "environment": {
+            "affinity_cpu_count": 5,
+            "cgroup_cpu_max": "400000 100000",
+            "cgroup_cpu_quota_cores": 4.0,
+            "cgroup_cpuset_effective": "0-4",
+            "cgroup_memory_max": "4294967296",
+            "cpu_model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+            "cuda_visible_devices": null,
+            "environment_threads": {
+              "MKL_NUM_THREADS": "1",
+              "NUMEXPR_NUM_THREADS": "1",
+              "OMP_NUM_THREADS": "1",
+              "OPENBLAS_NUM_THREADS": "1",
+              "VECLIB_MAXIMUM_THREADS": "1"
+            },
+            "logical_cpu_count": 5,
+            "machine": "x86_64",
+            "package_versions": {
+              "ase": "3.29.0",
+              "e3nn": null,
+              "mace-torch": null,
+              "mdstats": null,
+              "mdstats_source": "0.20.225a0",
+              "numpy": "2.3.5",
+              "scipy": "1.17.0",
+              "threadpoolctl": "3.6.0",
+              "torch": "2.10.0+cpu"
+            },
+            "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+            "processor": "",
+            "python_implementation": "CPython",
+            "python_version": "3.13.5",
+            "threadpools": [
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              },
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              }
+            ]
+          },
+          "events": [
+            "Current serial family/block driver; explicit native cKDTree worker count."
+          ],
+          "measured_at_utc": "2026-08-17T11:56:37.542329Z",
+          "persisted_bytes": 0,
+          "process_cpu_seconds": 0.6360979660000003,
+          "process_peak_rss_bytes": 273813504,
+          "queue": {},
+          "repeat_index": 0,
+          "requested_workers": 2,
+          "rss_end_bytes": 274124800,
+          "rss_start_bytes": 269778944,
+          "sampled_peak_rss_bytes": 274137088,
+          "schedule_label": "intermediate",
+          "schema": "mdstats.mlff-perfbase1-trial.v1",
+          "scientific_output_digest": "823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d",
+          "temporary_array_bytes": 262400,
+          "wall_seconds": 0.4705534209999769,
+          "worker_settings": {
+            "ckdtree_query_workers": 2,
+            "row_block_size": 1024
+          },
+          "workload_id": "target_data2b_reference_radii"
+        },
+        {
+          "allocated_workers": 2,
+          "assigned_lane_occupancy": 0.6965286409587242,
+          "content_digest": "f60fe64226c1fb5980826c179bc2977ad62539265cb1993edaecffeb72dd4665",
+          "counters": {
+            "family_count": 8,
+            "family_elements": 32800,
+            "throughput_count": 32800,
+            "throughput_per_second": 73808.66574627109,
+            "throughput_unit": "family-elements"
+          },
+          "effective_cpu_cores": 1.3930572819174485,
+          "environment": {
+            "affinity_cpu_count": 5,
+            "cgroup_cpu_max": "400000 100000",
+            "cgroup_cpu_quota_cores": 4.0,
+            "cgroup_cpuset_effective": "0-4",
+            "cgroup_memory_max": "4294967296",
+            "cpu_model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+            "cuda_visible_devices": null,
+            "environment_threads": {
+              "MKL_NUM_THREADS": "1",
+              "NUMEXPR_NUM_THREADS": "1",
+              "OMP_NUM_THREADS": "1",
+              "OPENBLAS_NUM_THREADS": "1",
+              "VECLIB_MAXIMUM_THREADS": "1"
+            },
+            "logical_cpu_count": 5,
+            "machine": "x86_64",
+            "package_versions": {
+              "ase": "3.29.0",
+              "e3nn": null,
+              "mace-torch": null,
+              "mdstats": null,
+              "mdstats_source": "0.20.225a0",
+              "numpy": "2.3.5",
+              "scipy": "1.17.0",
+              "threadpoolctl": "3.6.0",
+              "torch": "2.10.0+cpu"
+            },
+            "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+            "processor": "",
+            "python_implementation": "CPython",
+            "python_version": "3.13.5",
+            "threadpools": [
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              },
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              }
+            ]
+          },
+          "events": [
+            "Current serial family/block driver; explicit native cKDTree worker count."
+          ],
+          "measured_at_utc": "2026-08-17T11:56:44.545807Z",
+          "persisted_bytes": 0,
+          "process_cpu_seconds": 0.6190638779999995,
+          "process_peak_rss_bytes": 273555456,
+          "queue": {},
+          "repeat_index": 1,
+          "requested_workers": 2,
+          "rss_end_bytes": 273842176,
+          "rss_start_bytes": 269565952,
+          "sampled_peak_rss_bytes": 273854464,
+          "schedule_label": "intermediate",
+          "schema": "mdstats.mlff-perfbase1-trial.v1",
+          "scientific_output_digest": "823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d",
+          "temporary_array_bytes": 262400,
+          "wall_seconds": 0.4443922630000543,
+          "worker_settings": {
+            "ckdtree_query_workers": 2,
+            "row_block_size": 1024
+          },
+          "workload_id": "target_data2b_reference_radii"
+        },
+        {
+          "allocated_workers": 3,
+          "assigned_lane_occupancy": 0.49751805762155926,
+          "content_digest": "ddaeaf0a2cf5f8cde8ddb1277c3d8205a9a28dd566051ec825bac8950eeeed89",
+          "counters": {
+            "family_count": 8,
+            "family_elements": 32800,
+            "throughput_count": 32800,
+            "throughput_per_second": 68837.91770812591,
+            "throughput_unit": "family-elements"
+          },
+          "effective_cpu_cores": 1.4925541728646778,
+          "environment": {
+            "affinity_cpu_count": 5,
+            "cgroup_cpu_max": "400000 100000",
+            "cgroup_cpu_quota_cores": 4.0,
+            "cgroup_cpuset_effective": "0-4",
+            "cgroup_memory_max": "4294967296",
+            "cpu_model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+            "cuda_visible_devices": null,
+            "environment_threads": {
+              "MKL_NUM_THREADS": "1",
+              "NUMEXPR_NUM_THREADS": "1",
+              "OMP_NUM_THREADS": "1",
+              "OPENBLAS_NUM_THREADS": "1",
+              "VECLIB_MAXIMUM_THREADS": "1"
+            },
+            "logical_cpu_count": 5,
+            "machine": "x86_64",
+            "package_versions": {
+              "ase": "3.29.0",
+              "e3nn": null,
+              "mace-torch": null,
+              "mdstats": null,
+              "mdstats_source": "0.20.225a0",
+              "numpy": "2.3.5",
+              "scipy": "1.17.0",
+              "threadpoolctl": "3.6.0",
+              "torch": "2.10.0+cpu"
+            },
+            "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+            "processor": "",
+            "python_implementation": "CPython",
+            "python_version": "3.13.5",
+            "threadpools": [
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              },
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              }
+            ]
+          },
+          "events": [
+            "Current serial family/block driver; explicit native cKDTree worker count."
+          ],
+          "measured_at_utc": "2026-08-17T11:56:55.981232Z",
+          "persisted_bytes": 0,
+          "process_cpu_seconds": 0.7111745750000003,
+          "process_peak_rss_bytes": 273436672,
+          "queue": {},
+          "repeat_index": 0,
+          "requested_workers": 3,
+          "rss_end_bytes": 273801216,
+          "rss_start_bytes": 269463552,
+          "sampled_peak_rss_bytes": 273809408,
+          "schedule_label": "auto",
+          "schema": "mdstats.mlff-perfbase1-trial.v1",
+          "scientific_output_digest": "823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d",
+          "temporary_array_bytes": 262400,
+          "wall_seconds": 0.47648158300012255,
+          "worker_settings": {
+            "ckdtree_query_workers": 3,
+            "row_block_size": 1024
+          },
+          "workload_id": "target_data2b_reference_radii"
+        },
+        {
+          "allocated_workers": 3,
+          "assigned_lane_occupancy": 0.5282727666669961,
+          "content_digest": "0a2deaaad03f1b0075d456d7baa5cde013cc918d6d6e05540d8ccf437d463776",
+          "counters": {
+            "family_count": 8,
+            "family_elements": 32800,
+            "throughput_count": 32800,
+            "throughput_per_second": 88587.47420921137,
+            "throughput_unit": "family-elements"
+          },
+          "effective_cpu_cores": 1.5848183000009883,
+          "environment": {
+            "affinity_cpu_count": 5,
+            "cgroup_cpu_max": "400000 100000",
+            "cgroup_cpu_quota_cores": 4.0,
+            "cgroup_cpuset_effective": "0-4",
+            "cgroup_memory_max": "4294967296",
+            "cpu_model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+            "cuda_visible_devices": null,
+            "environment_threads": {
+              "MKL_NUM_THREADS": "1",
+              "NUMEXPR_NUM_THREADS": "1",
+              "OMP_NUM_THREADS": "1",
+              "OPENBLAS_NUM_THREADS": "1",
+              "VECLIB_MAXIMUM_THREADS": "1"
+            },
+            "logical_cpu_count": 5,
+            "machine": "x86_64",
+            "package_versions": {
+              "ase": "3.29.0",
+              "e3nn": null,
+              "mace-torch": null,
+              "mdstats": null,
+              "mdstats_source": "0.20.225a0",
+              "numpy": "2.3.5",
+              "scipy": "1.17.0",
+              "threadpoolctl": "3.6.0",
+              "torch": "2.10.0+cpu"
+            },
+            "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+            "processor": "",
+            "python_implementation": "CPython",
+            "python_version": "3.13.5",
+            "threadpools": [
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              },
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              }
+            ]
+          },
+          "events": [
+            "Current serial family/block driver; explicit native cKDTree worker count."
+          ],
+          "measured_at_utc": "2026-08-17T11:57:02.794995Z",
+          "persisted_bytes": 0,
+          "process_cpu_seconds": 0.5867876999999995,
+          "process_peak_rss_bytes": 273739776,
+          "queue": {},
+          "repeat_index": 1,
+          "requested_workers": 3,
+          "rss_end_bytes": 274108416,
+          "rss_start_bytes": 269709312,
+          "sampled_peak_rss_bytes": 274124800,
+          "schedule_label": "auto",
+          "schema": "mdstats.mlff-perfbase1-trial.v1",
+          "scientific_output_digest": "823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d",
+          "temporary_array_bytes": 262400,
+          "wall_seconds": 0.3702555049999319,
+          "worker_settings": {
+            "ckdtree_query_workers": 3,
+            "row_block_size": 1024
+          },
+          "workload_id": "target_data2b_reference_radii"
+        }
+      ],
+      "workload_id": "target_data2b_reference_radii",
+      "workload_kind": "supplied"
+    },
+    {
+      "content_digest": "029602ea1393a47b5c7135b54416ac4cdaf48a1ad03da4a2f78edf4793d14225",
+      "corpus_digests": [
+        "52388572fc43dd1f4bcb02a944854c2aa30ac9953ac2df09f3c2c1bd0a161920"
+      ],
+      "notes": [],
+      "policy_digests": [
+        "28ebdd2ca82c615dac619803ed551bd039e2cac3c3ec961b1093374dc0fe834d"
+      ],
+      "schema": "mdstats.mlff-perfbase1-workload.v1",
+      "scientific_digest": "a416ad5a4c35ce0eb4d30779f88415828024bbde1e96663b2e134d0e25f25627",
+      "scientific_output_digest": "937214c70d1f2baae883993082f1ceb25bea6007a5a2be0beee045262f5c0613",
+      "throughput_unit": "witnesses",
+      "trials": [
+        {
+          "allocated_workers": 1,
+          "assigned_lane_occupancy": 1.020432989856885,
+          "content_digest": "a29b4fef29be21a4401b0a1c9ed4735eb2cec522363af86ffbeeda42bcc509c2",
+          "counters": {
+            "edges": 3194880,
+            "profiles": 6,
+            "throughput_count": 49152,
+            "throughput_per_second": 27987.472030394114,
+            "throughput_unit": "witnesses",
+            "witnesses": 49152
+          },
+          "effective_cpu_cores": 1.020432989856885,
+          "environment": {
+            "affinity_cpu_count": 5,
+            "cgroup_cpu_max": "400000 100000",
+            "cgroup_cpu_quota_cores": 4.0,
+            "cgroup_cpuset_effective": "0-4",
+            "cgroup_memory_max": "4294967296",
+            "cpu_model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+            "cuda_visible_devices": null,
+            "environment_threads": {
+              "MKL_NUM_THREADS": "1",
+              "NUMEXPR_NUM_THREADS": "1",
+              "OMP_NUM_THREADS": "1",
+              "OPENBLAS_NUM_THREADS": "1",
+              "VECLIB_MAXIMUM_THREADS": "1"
+            },
+            "logical_cpu_count": 5,
+            "machine": "x86_64",
+            "package_versions": {
+              "ase": "3.29.0",
+              "e3nn": null,
+              "mace-torch": null,
+              "mdstats": null,
+              "mdstats_source": "0.20.225a0",
+              "numpy": "2.3.5",
+              "scipy": "1.17.0",
+              "threadpoolctl": "3.6.0",
+              "torch": "2.10.0+cpu"
+            },
+            "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+            "processor": "",
+            "python_implementation": "CPython",
+            "python_version": "3.13.5",
+            "threadpools": [
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              },
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              }
+            ]
+          },
+          "events": [
+            "PERF3 campaign-wide single-level FEAS1 queue; cKDTree workers=1/task."
+          ],
+          "measured_at_utc": "2026-08-17T11:57:14.482803Z",
+          "persisted_bytes": 11355,
+          "process_cpu_seconds": 1.7920990600000009,
+          "process_peak_rss_bytes": 278614016,
+          "queue": {
+            "max_busy_workers": 0,
+            "max_pending_tasks": 0,
+            "max_queued_tasks": 0,
+            "mean_busy_workers": 0.0,
+            "mean_pending_tasks": 0.0,
+            "mean_queued_tasks": 0.0,
+            "observed": true,
+            "progress_messages": 28,
+            "sample_count": 21,
+            "worker_capacity": 1
+          },
+          "repeat_index": 0,
+          "requested_workers": 1,
+          "rss_end_bytes": 278777856,
+          "rss_start_bytes": 277245952,
+          "sampled_peak_rss_bytes": 278777856,
+          "schedule_label": "serial",
+          "schema": "mdstats.mlff-perfbase1-trial.v1",
+          "scientific_output_digest": "937214c70d1f2baae883993082f1ceb25bea6007a5a2be0beee045262f5c0613",
+          "temporary_array_bytes": 0,
+          "wall_seconds": 1.7562143499999365,
+          "worker_settings": {
+            "global_workers": 1,
+            "query_block_size": 512,
+            "tree_workers_per_task": 1
+          },
+          "workload_id": "target_data2b_feas1"
+        },
+        {
+          "allocated_workers": 1,
+          "assigned_lane_occupancy": 1.0211044940086764,
+          "content_digest": "7a3821f19224134c4e6d14bcd8ddbabcee8bb638302af5328e5628693e6bda80",
+          "counters": {
+            "edges": 3194880,
+            "profiles": 6,
+            "throughput_count": 49152,
+            "throughput_per_second": 27378.4323367999,
+            "throughput_unit": "witnesses",
+            "witnesses": 49152
+          },
+          "effective_cpu_cores": 1.0211044940086764,
+          "environment": {
+            "affinity_cpu_count": 5,
+            "cgroup_cpu_max": "400000 100000",
+            "cgroup_cpu_quota_cores": 4.0,
+            "cgroup_cpuset_effective": "0-4",
+            "cgroup_memory_max": "4294967296",
+            "cpu_model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+            "cuda_visible_devices": null,
+            "environment_threads": {
+              "MKL_NUM_THREADS": "1",
+              "NUMEXPR_NUM_THREADS": "1",
+              "OMP_NUM_THREADS": "1",
+              "OPENBLAS_NUM_THREADS": "1",
+              "VECLIB_MAXIMUM_THREADS": "1"
+            },
+            "logical_cpu_count": 5,
+            "machine": "x86_64",
+            "package_versions": {
+              "ase": "3.29.0",
+              "e3nn": null,
+              "mace-torch": null,
+              "mdstats": null,
+              "mdstats_source": "0.20.225a0",
+              "numpy": "2.3.5",
+              "scipy": "1.17.0",
+              "threadpoolctl": "3.6.0",
+              "torch": "2.10.0+cpu"
+            },
+            "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+            "processor": "",
+            "python_implementation": "CPython",
+            "python_version": "3.13.5",
+            "threadpools": [
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              },
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              }
+            ]
+          },
+          "events": [
+            "PERF3 campaign-wide single-level FEAS1 queue; cKDTree workers=1/task."
+          ],
+          "measured_at_utc": "2026-08-17T11:57:23.419006Z",
+          "persisted_bytes": 11355,
+          "process_cpu_seconds": 1.8331702659999998,
+          "process_peak_rss_bytes": 278577152,
+          "queue": {
+            "max_busy_workers": 0,
+            "max_pending_tasks": 0,
+            "max_queued_tasks": 0,
+            "mean_busy_workers": 0.0,
+            "mean_pending_tasks": 0.0,
+            "mean_queued_tasks": 0.0,
+            "observed": true,
+            "progress_messages": 30,
+            "sample_count": 23,
+            "worker_capacity": 1
+          },
+          "repeat_index": 1,
+          "requested_workers": 1,
+          "rss_end_bytes": 278691840,
+          "rss_start_bytes": 277250048,
+          "sampled_peak_rss_bytes": 278695936,
+          "schedule_label": "serial",
+          "schema": "mdstats.mlff-perfbase1-trial.v1",
+          "scientific_output_digest": "937214c70d1f2baae883993082f1ceb25bea6007a5a2be0beee045262f5c0613",
+          "temporary_array_bytes": 0,
+          "wall_seconds": 1.7952817529999265,
+          "worker_settings": {
+            "global_workers": 1,
+            "query_block_size": 512,
+            "tree_workers_per_task": 1
+          },
+          "workload_id": "target_data2b_feas1"
+        },
+        {
+          "allocated_workers": 2,
+          "assigned_lane_occupancy": 0.8332740275443247,
+          "content_digest": "aae1cfe84d4da2cc6d7414d707364141f90568b961bf89bb0acde1efc60e6103",
+          "counters": {
+            "edges": 3194880,
+            "profiles": 6,
+            "throughput_count": 49152,
+            "throughput_per_second": 50798.837190721606,
+            "throughput_unit": "witnesses",
+            "witnesses": 49152
+          },
+          "effective_cpu_cores": 1.6665480550886493,
+          "environment": {
+            "affinity_cpu_count": 5,
+            "cgroup_cpu_max": "400000 100000",
+            "cgroup_cpu_quota_cores": 4.0,
+            "cgroup_cpuset_effective": "0-4",
+            "cgroup_memory_max": "4294967296",
+            "cpu_model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+            "cuda_visible_devices": null,
+            "environment_threads": {
+              "MKL_NUM_THREADS": "1",
+              "NUMEXPR_NUM_THREADS": "1",
+              "OMP_NUM_THREADS": "1",
+              "OPENBLAS_NUM_THREADS": "1",
+              "VECLIB_MAXIMUM_THREADS": "1"
+            },
+            "logical_cpu_count": 5,
+            "machine": "x86_64",
+            "package_versions": {
+              "ase": "3.29.0",
+              "e3nn": null,
+              "mace-torch": null,
+              "mdstats": null,
+              "mdstats_source": "0.20.225a0",
+              "numpy": "2.3.5",
+              "scipy": "1.17.0",
+              "threadpoolctl": "3.6.0",
+              "torch": "2.10.0+cpu"
+            },
+            "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+            "processor": "",
+            "python_implementation": "CPython",
+            "python_version": "3.13.5",
+            "threadpools": [
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              },
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              }
+            ]
+          },
+          "events": [
+            "PERF3 campaign-wide single-level FEAS1 queue; cKDTree workers=1/task."
+          ],
+          "measured_at_utc": "2026-08-17T11:57:36.030251Z",
+          "persisted_bytes": 11355,
+          "process_cpu_seconds": 1.6125205720000002,
+          "process_peak_rss_bytes": 290930688,
+          "queue": {
+            "max_busy_workers": 2,
+            "max_pending_tasks": 3,
+            "max_queued_tasks": 1,
+            "mean_busy_workers": 1.9047619047619047,
+            "mean_pending_tasks": 2.857142857142857,
+            "mean_queued_tasks": 0.9523809523809523,
+            "observed": true,
+            "progress_messages": 28,
+            "sample_count": 21,
+            "worker_capacity": 2
+          },
+          "repeat_index": 0,
+          "requested_workers": 2,
+          "rss_end_bytes": 291536896,
+          "rss_start_bytes": 277200896,
+          "sampled_peak_rss_bytes": 291540992,
+          "schedule_label": "dual",
+          "schema": "mdstats.mlff-perfbase1-trial.v1",
+          "scientific_output_digest": "937214c70d1f2baae883993082f1ceb25bea6007a5a2be0beee045262f5c0613",
+          "temporary_array_bytes": 0,
+          "wall_seconds": 0.9675812030000088,
+          "worker_settings": {
+            "global_workers": 2,
+            "query_block_size": 512,
+            "tree_workers_per_task": 1
+          },
+          "workload_id": "target_data2b_feas1"
+        },
+        {
+          "allocated_workers": 2,
+          "assigned_lane_occupancy": 0.8118839120359755,
+          "content_digest": "6745b43476cd203240ab5cbb9fb3d1a298bc0f1421d113c906db90035d580a8f",
+          "counters": {
+            "edges": 3194880,
+            "profiles": 6,
+            "throughput_count": 49152,
+            "throughput_per_second": 49346.637200911435,
+            "throughput_unit": "witnesses",
+            "witnesses": 49152
+          },
+          "effective_cpu_cores": 1.623767824071951,
+          "environment": {
+            "affinity_cpu_count": 5,
+            "cgroup_cpu_max": "400000 100000",
+            "cgroup_cpu_quota_cores": 4.0,
+            "cgroup_cpuset_effective": "0-4",
+            "cgroup_memory_max": "4294967296",
+            "cpu_model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+            "cuda_visible_devices": null,
+            "environment_threads": {
+              "MKL_NUM_THREADS": "1",
+              "NUMEXPR_NUM_THREADS": "1",
+              "OMP_NUM_THREADS": "1",
+              "OPENBLAS_NUM_THREADS": "1",
+              "VECLIB_MAXIMUM_THREADS": "1"
+            },
+            "logical_cpu_count": 5,
+            "machine": "x86_64",
+            "package_versions": {
+              "ase": "3.29.0",
+              "e3nn": null,
+              "mace-torch": null,
+              "mdstats": null,
+              "mdstats_source": "0.20.225a0",
+              "numpy": "2.3.5",
+              "scipy": "1.17.0",
+              "threadpoolctl": "3.6.0",
+              "torch": "2.10.0+cpu"
+            },
+            "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+            "processor": "",
+            "python_implementation": "CPython",
+            "python_version": "3.13.5",
+            "threadpools": [
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              },
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              }
+            ]
+          },
+          "events": [
+            "PERF3 campaign-wide single-level FEAS1 queue; cKDTree workers=1/task."
+          ],
+          "measured_at_utc": "2026-08-17T11:57:43.829795Z",
+          "persisted_bytes": 11355,
+          "process_cpu_seconds": 1.6173632209999997,
+          "process_peak_rss_bytes": 291446784,
+          "queue": {
+            "max_busy_workers": 2,
+            "max_pending_tasks": 3,
+            "max_queued_tasks": 1,
+            "mean_busy_workers": 1.9047619047619047,
+            "mean_pending_tasks": 2.857142857142857,
+            "mean_queued_tasks": 0.9523809523809523,
+            "observed": true,
+            "progress_messages": 28,
+            "sample_count": 21,
+            "worker_capacity": 2
+          },
+          "repeat_index": 1,
+          "requested_workers": 2,
+          "rss_end_bytes": 291745792,
+          "rss_start_bytes": 277299200,
+          "sampled_peak_rss_bytes": 291758080,
+          "schedule_label": "dual",
+          "schema": "mdstats.mlff-perfbase1-trial.v1",
+          "scientific_output_digest": "937214c70d1f2baae883993082f1ceb25bea6007a5a2be0beee045262f5c0613",
+          "temporary_array_bytes": 0,
+          "wall_seconds": 0.9960557150000113,
+          "worker_settings": {
+            "global_workers": 2,
+            "query_block_size": 512,
+            "tree_workers_per_task": 1
+          },
+          "workload_id": "target_data2b_feas1"
+        },
+        {
+          "allocated_workers": 2,
+          "assigned_lane_occupancy": 0.8332740275443247,
+          "content_digest": "b8337d5151cd30f732c1aecbe50b6a6389d80ec5d6206ef9f71c7b5a863d58e1",
+          "counters": {
+            "edges": 3194880,
+            "profiles": 6,
+            "throughput_count": 49152,
+            "throughput_per_second": 50798.837190721606,
+            "throughput_unit": "witnesses",
+            "witnesses": 49152
+          },
+          "effective_cpu_cores": 1.6665480550886493,
+          "environment": {
+            "affinity_cpu_count": 5,
+            "cgroup_cpu_max": "400000 100000",
+            "cgroup_cpu_quota_cores": 4.0,
+            "cgroup_cpuset_effective": "0-4",
+            "cgroup_memory_max": "4294967296",
+            "cpu_model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+            "cuda_visible_devices": null,
+            "environment_threads": {
+              "MKL_NUM_THREADS": "1",
+              "NUMEXPR_NUM_THREADS": "1",
+              "OMP_NUM_THREADS": "1",
+              "OPENBLAS_NUM_THREADS": "1",
+              "VECLIB_MAXIMUM_THREADS": "1"
+            },
+            "logical_cpu_count": 5,
+            "machine": "x86_64",
+            "package_versions": {
+              "ase": "3.29.0",
+              "e3nn": null,
+              "mace-torch": null,
+              "mdstats": null,
+              "mdstats_source": "0.20.225a0",
+              "numpy": "2.3.5",
+              "scipy": "1.17.0",
+              "threadpoolctl": "3.6.0",
+              "torch": "2.10.0+cpu"
+            },
+            "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+            "processor": "",
+            "python_implementation": "CPython",
+            "python_version": "3.13.5",
+            "threadpools": [
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              },
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              }
+            ]
+          },
+          "events": [
+            "PERF3 campaign-wide single-level FEAS1 queue; cKDTree workers=1/task."
+          ],
+          "measured_at_utc": "2026-08-17T11:57:36.030251Z",
+          "persisted_bytes": 11355,
+          "process_cpu_seconds": 1.6125205720000002,
+          "process_peak_rss_bytes": 290930688,
+          "queue": {
+            "max_busy_workers": 2,
+            "max_pending_tasks": 3,
+            "max_queued_tasks": 1,
+            "mean_busy_workers": 1.9047619047619047,
+            "mean_pending_tasks": 2.857142857142857,
+            "mean_queued_tasks": 0.9523809523809523,
+            "observed": true,
+            "progress_messages": 28,
+            "sample_count": 21,
+            "worker_capacity": 2
+          },
+          "repeat_index": 0,
+          "requested_workers": 2,
+          "rss_end_bytes": 291536896,
+          "rss_start_bytes": 277200896,
+          "sampled_peak_rss_bytes": 291540992,
+          "schedule_label": "intermediate",
+          "schema": "mdstats.mlff-perfbase1-trial.v1",
+          "scientific_output_digest": "937214c70d1f2baae883993082f1ceb25bea6007a5a2be0beee045262f5c0613",
+          "temporary_array_bytes": 0,
+          "wall_seconds": 0.9675812030000088,
+          "worker_settings": {
+            "global_workers": 2,
+            "query_block_size": 512,
+            "tree_workers_per_task": 1
+          },
+          "workload_id": "target_data2b_feas1"
+        },
+        {
+          "allocated_workers": 2,
+          "assigned_lane_occupancy": 0.8118839120359755,
+          "content_digest": "2a9947c464b2c13ae8fc358b3b8048022b7b3b1080a12801ad880c6dcc1e145b",
+          "counters": {
+            "edges": 3194880,
+            "profiles": 6,
+            "throughput_count": 49152,
+            "throughput_per_second": 49346.637200911435,
+            "throughput_unit": "witnesses",
+            "witnesses": 49152
+          },
+          "effective_cpu_cores": 1.623767824071951,
+          "environment": {
+            "affinity_cpu_count": 5,
+            "cgroup_cpu_max": "400000 100000",
+            "cgroup_cpu_quota_cores": 4.0,
+            "cgroup_cpuset_effective": "0-4",
+            "cgroup_memory_max": "4294967296",
+            "cpu_model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+            "cuda_visible_devices": null,
+            "environment_threads": {
+              "MKL_NUM_THREADS": "1",
+              "NUMEXPR_NUM_THREADS": "1",
+              "OMP_NUM_THREADS": "1",
+              "OPENBLAS_NUM_THREADS": "1",
+              "VECLIB_MAXIMUM_THREADS": "1"
+            },
+            "logical_cpu_count": 5,
+            "machine": "x86_64",
+            "package_versions": {
+              "ase": "3.29.0",
+              "e3nn": null,
+              "mace-torch": null,
+              "mdstats": null,
+              "mdstats_source": "0.20.225a0",
+              "numpy": "2.3.5",
+              "scipy": "1.17.0",
+              "threadpoolctl": "3.6.0",
+              "torch": "2.10.0+cpu"
+            },
+            "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+            "processor": "",
+            "python_implementation": "CPython",
+            "python_version": "3.13.5",
+            "threadpools": [
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              },
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              }
+            ]
+          },
+          "events": [
+            "PERF3 campaign-wide single-level FEAS1 queue; cKDTree workers=1/task."
+          ],
+          "measured_at_utc": "2026-08-17T11:57:43.829795Z",
+          "persisted_bytes": 11355,
+          "process_cpu_seconds": 1.6173632209999997,
+          "process_peak_rss_bytes": 291446784,
+          "queue": {
+            "max_busy_workers": 2,
+            "max_pending_tasks": 3,
+            "max_queued_tasks": 1,
+            "mean_busy_workers": 1.9047619047619047,
+            "mean_pending_tasks": 2.857142857142857,
+            "mean_queued_tasks": 0.9523809523809523,
+            "observed": true,
+            "progress_messages": 28,
+            "sample_count": 21,
+            "worker_capacity": 2
+          },
+          "repeat_index": 1,
+          "requested_workers": 2,
+          "rss_end_bytes": 291745792,
+          "rss_start_bytes": 277299200,
+          "sampled_peak_rss_bytes": 291758080,
+          "schedule_label": "intermediate",
+          "schema": "mdstats.mlff-perfbase1-trial.v1",
+          "scientific_output_digest": "937214c70d1f2baae883993082f1ceb25bea6007a5a2be0beee045262f5c0613",
+          "temporary_array_bytes": 0,
+          "wall_seconds": 0.9960557150000113,
+          "worker_settings": {
+            "global_workers": 2,
+            "query_block_size": 512,
+            "tree_workers_per_task": 1
+          },
+          "workload_id": "target_data2b_feas1"
+        },
+        {
+          "allocated_workers": 3,
+          "assigned_lane_occupancy": 0.6492447742078408,
+          "content_digest": "6586a08b4313309c3da29d29b257e70d896841bc5e7036e961de8d7adca49abb",
+          "counters": {
+            "edges": 3194880,
+            "profiles": 6,
+            "throughput_count": 49152,
+            "throughput_per_second": 55852.822394977506,
+            "throughput_unit": "witnesses",
+            "witnesses": 49152
+          },
+          "effective_cpu_cores": 1.9477343226235224,
+          "environment": {
+            "affinity_cpu_count": 5,
+            "cgroup_cpu_max": "400000 100000",
+            "cgroup_cpu_quota_cores": 4.0,
+            "cgroup_cpuset_effective": "0-4",
+            "cgroup_memory_max": "4294967296",
+            "cpu_model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+            "cuda_visible_devices": null,
+            "environment_threads": {
+              "MKL_NUM_THREADS": "1",
+              "NUMEXPR_NUM_THREADS": "1",
+              "OMP_NUM_THREADS": "1",
+              "OPENBLAS_NUM_THREADS": "1",
+              "VECLIB_MAXIMUM_THREADS": "1"
+            },
+            "logical_cpu_count": 5,
+            "machine": "x86_64",
+            "package_versions": {
+              "ase": "3.29.0",
+              "e3nn": null,
+              "mace-torch": null,
+              "mdstats": null,
+              "mdstats_source": "0.20.225a0",
+              "numpy": "2.3.5",
+              "scipy": "1.17.0",
+              "threadpoolctl": "3.6.0",
+              "torch": "2.10.0+cpu"
+            },
+            "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+            "processor": "",
+            "python_implementation": "CPython",
+            "python_version": "3.13.5",
+            "threadpools": [
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              },
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              }
+            ]
+          },
+          "events": [
+            "PERF3 campaign-wide single-level FEAS1 queue; cKDTree workers=1/task."
+          ],
+          "measured_at_utc": "2026-08-17T11:57:55.798275Z",
+          "persisted_bytes": 11355,
+          "process_cpu_seconds": 1.7140590810000003,
+          "process_peak_rss_bytes": 296472576,
+          "queue": {
+            "max_busy_workers": 3,
+            "max_pending_tasks": 5,
+            "max_queued_tasks": 2,
+            "mean_busy_workers": 2.857142857142857,
+            "mean_pending_tasks": 4.666666666666667,
+            "mean_queued_tasks": 1.8095238095238095,
+            "observed": true,
+            "progress_messages": 28,
+            "sample_count": 21,
+            "worker_capacity": 3
+          },
+          "repeat_index": 0,
+          "requested_workers": 3,
+          "rss_end_bytes": 297107456,
+          "rss_start_bytes": 277217280,
+          "sampled_peak_rss_bytes": 297111552,
+          "schedule_label": "auto",
+          "schema": "mdstats.mlff-perfbase1-trial.v1",
+          "scientific_output_digest": "937214c70d1f2baae883993082f1ceb25bea6007a5a2be0beee045262f5c0613",
+          "temporary_array_bytes": 0,
+          "wall_seconds": 0.8800271479999537,
+          "worker_settings": {
+            "global_workers": 3,
+            "query_block_size": 512,
+            "tree_workers_per_task": 1
+          },
+          "workload_id": "target_data2b_feas1"
+        },
+        {
+          "allocated_workers": 3,
+          "assigned_lane_occupancy": 0.6551522351358158,
+          "content_digest": "6ee0c3595edd9988d5ebb45a04ffc63e7b467d12a329d59be5a70659b777fc00",
+          "counters": {
+            "edges": 3194880,
+            "profiles": 6,
+            "throughput_count": 49152,
+            "throughput_per_second": 59333.81746873412,
+            "throughput_unit": "witnesses",
+            "witnesses": 49152
+          },
+          "effective_cpu_cores": 1.9654567054074474,
+          "environment": {
+            "affinity_cpu_count": 5,
+            "cgroup_cpu_max": "400000 100000",
+            "cgroup_cpu_quota_cores": 4.0,
+            "cgroup_cpuset_effective": "0-4",
+            "cgroup_memory_max": "4294967296",
+            "cpu_model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+            "cuda_visible_devices": null,
+            "environment_threads": {
+              "MKL_NUM_THREADS": "1",
+              "NUMEXPR_NUM_THREADS": "1",
+              "OMP_NUM_THREADS": "1",
+              "OPENBLAS_NUM_THREADS": "1",
+              "VECLIB_MAXIMUM_THREADS": "1"
+            },
+            "logical_cpu_count": 5,
+            "machine": "x86_64",
+            "package_versions": {
+              "ase": "3.29.0",
+              "e3nn": null,
+              "mace-torch": null,
+              "mdstats": null,
+              "mdstats_source": "0.20.225a0",
+              "numpy": "2.3.5",
+              "scipy": "1.17.0",
+              "threadpoolctl": "3.6.0",
+              "torch": "2.10.0+cpu"
+            },
+            "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+            "processor": "",
+            "python_implementation": "CPython",
+            "python_version": "3.13.5",
+            "threadpools": [
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              },
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              }
+            ]
+          },
+          "events": [
+            "PERF3 campaign-wide single-level FEAS1 queue; cKDTree workers=1/task."
+          ],
+          "measured_at_utc": "2026-08-17T11:58:03.591238Z",
+          "persisted_bytes": 11355,
+          "process_cpu_seconds": 1.6281798829999996,
+          "process_peak_rss_bytes": 297136128,
+          "queue": {
+            "max_busy_workers": 3,
+            "max_pending_tasks": 5,
+            "max_queued_tasks": 2,
+            "mean_busy_workers": 2.857142857142857,
+            "mean_pending_tasks": 4.619047619047619,
+            "mean_queued_tasks": 1.7619047619047619,
+            "observed": true,
+            "progress_messages": 28,
+            "sample_count": 21,
+            "worker_capacity": 3
+          },
+          "repeat_index": 1,
+          "requested_workers": 3,
+          "rss_end_bytes": 297545728,
+          "rss_start_bytes": 277458944,
+          "sampled_peak_rss_bytes": 297549824,
+          "schedule_label": "auto",
+          "schema": "mdstats.mlff-perfbase1-trial.v1",
+          "scientific_output_digest": "937214c70d1f2baae883993082f1ceb25bea6007a5a2be0beee045262f5c0613",
+          "temporary_array_bytes": 0,
+          "wall_seconds": 0.8283977349999532,
+          "worker_settings": {
+            "global_workers": 3,
+            "query_block_size": 512,
+            "tree_workers_per_task": 1
+          },
+          "workload_id": "target_data2b_feas1"
+        }
+      ],
+      "workload_id": "target_data2b_feas1",
+      "workload_kind": "synthetic"
+    },
+    {
+      "content_digest": "1ff10d184d4494751f1dd38b9c904fa497ac9aaa9a1e00069c1e88cc667c80aa",
+      "corpus_digests": [
+        "52388572fc43dd1f4bcb02a944854c2aa30ac9953ac2df09f3c2c1bd0a161920"
+      ],
+      "notes": [],
+      "policy_digests": [
+        "28ebdd2ca82c615dac619803ed551bd039e2cac3c3ec961b1093374dc0fe834d"
+      ],
+      "schema": "mdstats.mlff-perfbase1-workload.v1",
+      "scientific_digest": "7eab0131b02a3f9aaad768132ddff863035a3ebfdb865952b8c16cd719106f16",
+      "scientific_output_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
+      "throughput_unit": "edges",
+      "trials": [
+        {
+          "allocated_workers": 1,
+          "assigned_lane_occupancy": 1.018562644625868,
+          "content_digest": "0edbcdb18b7fe6165148bb0d4397357c65daea3327d021624b47dd8b3d3a559b",
+          "counters": {
+            "edges": 3194880,
+            "families": 6,
+            "progress_messages": 102,
+            "throughput_count": 3194880,
+            "throughput_per_second": 1463771.4531117838,
+            "throughput_unit": "edges"
+          },
+          "effective_cpu_cores": 1.018562644625868,
+          "environment": {
+            "affinity_cpu_count": 5,
+            "cgroup_cpu_max": "400000 100000",
+            "cgroup_cpu_quota_cores": 4.0,
+            "cgroup_cpuset_effective": "0-4",
+            "cgroup_memory_max": "4294967296",
+            "cpu_model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+            "cuda_visible_devices": null,
+            "environment_threads": {
+              "MKL_NUM_THREADS": "1",
+              "NUMEXPR_NUM_THREADS": "1",
+              "OMP_NUM_THREADS": "1",
+              "OPENBLAS_NUM_THREADS": "1",
+              "VECLIB_MAXIMUM_THREADS": "1"
+            },
+            "logical_cpu_count": 5,
+            "machine": "x86_64",
+            "package_versions": {
+              "ase": "3.29.0",
+              "e3nn": null,
+              "mace-torch": null,
+              "mdstats": null,
+              "mdstats_source": "0.20.225a0",
+              "numpy": "2.3.5",
+              "scipy": "1.17.0",
+              "threadpoolctl": "3.6.0",
+              "torch": "2.10.0+cpu"
+            },
+            "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+            "processor": "",
+            "python_implementation": "CPython",
+            "python_version": "3.13.5",
+            "threadpools": [
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              },
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              }
+            ]
+          },
+          "events": [
+            "Current MVIDX1 repeats exact geometry sweep; native cKDTree workers vary by schedule."
+          ],
+          "measured_at_utc": "2026-08-17T11:58:18.823829Z",
+          "persisted_bytes": 38463590,
+          "process_cpu_seconds": 2.2231513089999995,
+          "process_peak_rss_bytes": 598773760,
+          "queue": {
+            "observed": false,
+            "progress_messages": 102
+          },
+          "repeat_index": 0,
+          "requested_workers": 1,
+          "rss_end_bytes": 309407744,
+          "rss_start_bytes": 278671360,
+          "sampled_peak_rss_bytes": 309407744,
+          "schedule_label": "serial",
+          "schema": "mdstats.mlff-perfbase1-trial.v1",
+          "scientific_output_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
+          "temporary_array_bytes": 0,
+          "wall_seconds": 2.1826358159999018,
+          "worker_settings": {
+            "ckdtree_query_workers": 1,
+            "query_block_size": 512
+          },
+          "workload_id": "target_data2c_mvidx1"
+        },
+        {
+          "allocated_workers": 1,
+          "assigned_lane_occupancy": 1.0172420774075512,
+          "content_digest": "1b15ab8c0cec2b66970deb4294f62c5d5a9c397cf5f973c672023fa4e316d83c",
+          "counters": {
+            "edges": 3194880,
+            "families": 6,
+            "progress_messages": 102,
+            "throughput_count": 3194880,
+            "throughput_per_second": 1479290.653850549,
+            "throughput_unit": "edges"
+          },
+          "effective_cpu_cores": 1.0172420774075512,
+          "environment": {
+            "affinity_cpu_count": 5,
+            "cgroup_cpu_max": "400000 100000",
+            "cgroup_cpu_quota_cores": 4.0,
+            "cgroup_cpuset_effective": "0-4",
+            "cgroup_memory_max": "4294967296",
+            "cpu_model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+            "cuda_visible_devices": null,
+            "environment_threads": {
+              "MKL_NUM_THREADS": "1",
+              "NUMEXPR_NUM_THREADS": "1",
+              "OMP_NUM_THREADS": "1",
+              "OPENBLAS_NUM_THREADS": "1",
+              "VECLIB_MAXIMUM_THREADS": "1"
+            },
+            "logical_cpu_count": 5,
+            "machine": "x86_64",
+            "package_versions": {
+              "ase": "3.29.0",
+              "e3nn": null,
+              "mace-torch": null,
+              "mdstats": null,
+              "mdstats_source": "0.20.225a0",
+              "numpy": "2.3.5",
+              "scipy": "1.17.0",
+              "threadpoolctl": "3.6.0",
+              "torch": "2.10.0+cpu"
+            },
+            "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+            "processor": "",
+            "python_implementation": "CPython",
+            "python_version": "3.13.5",
+            "threadpools": [
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              },
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              }
+            ]
+          },
+          "events": [
+            "Current MVIDX1 repeats exact geometry sweep; native cKDTree workers vary by schedule."
+          ],
+          "measured_at_utc": "2026-08-17T11:58:31.627985Z",
+          "persisted_bytes": 38463590,
+          "process_cpu_seconds": 2.1969762059999995,
+          "process_peak_rss_bytes": 599080960,
+          "queue": {
+            "observed": false,
+            "progress_messages": 102
+          },
+          "repeat_index": 1,
+          "requested_workers": 1,
+          "rss_end_bytes": 310001664,
+          "rss_start_bytes": 278638592,
+          "sampled_peak_rss_bytes": 310001664,
+          "schedule_label": "serial",
+          "schema": "mdstats.mlff-perfbase1-trial.v1",
+          "scientific_output_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
+          "temporary_array_bytes": 0,
+          "wall_seconds": 2.159737838999945,
+          "worker_settings": {
+            "ckdtree_query_workers": 1,
+            "query_block_size": 512
+          },
+          "workload_id": "target_data2c_mvidx1"
+        },
+        {
+          "allocated_workers": 2,
+          "assigned_lane_occupancy": 0.5003067624032325,
+          "content_digest": "f3062dbc0ac6f9321eb5110059c0b4435eae96d3c053eb067b22d38c26a0ed28",
+          "counters": {
+            "edges": 3194880,
+            "families": 6,
+            "progress_messages": 102,
+            "throughput_count": 3194880,
+            "throughput_per_second": 1385698.2921045963,
+            "throughput_unit": "edges"
+          },
+          "effective_cpu_cores": 1.000613524806465,
+          "environment": {
+            "affinity_cpu_count": 5,
+            "cgroup_cpu_max": "400000 100000",
+            "cgroup_cpu_quota_cores": 4.0,
+            "cgroup_cpuset_effective": "0-4",
+            "cgroup_memory_max": "4294967296",
+            "cpu_model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+            "cuda_visible_devices": null,
+            "environment_threads": {
+              "MKL_NUM_THREADS": "1",
+              "NUMEXPR_NUM_THREADS": "1",
+              "OMP_NUM_THREADS": "1",
+              "OPENBLAS_NUM_THREADS": "1",
+              "VECLIB_MAXIMUM_THREADS": "1"
+            },
+            "logical_cpu_count": 5,
+            "machine": "x86_64",
+            "package_versions": {
+              "ase": "3.29.0",
+              "e3nn": null,
+              "mace-torch": null,
+              "mdstats": null,
+              "mdstats_source": "0.20.225a0",
+              "numpy": "2.3.5",
+              "scipy": "1.17.0",
+              "threadpoolctl": "3.6.0",
+              "torch": "2.10.0+cpu"
+            },
+            "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+            "processor": "",
+            "python_implementation": "CPython",
+            "python_version": "3.13.5",
+            "threadpools": [
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              },
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              }
+            ]
+          },
+          "events": [
+            "Current MVIDX1 repeats exact geometry sweep; native cKDTree workers vary by schedule."
+          ],
+          "measured_at_utc": "2026-08-17T11:58:48.092549Z",
+          "persisted_bytes": 38463590,
+          "process_cpu_seconds": 2.307024665,
+          "process_peak_rss_bytes": 599121920,
+          "queue": {
+            "observed": false,
+            "progress_messages": 102
+          },
+          "repeat_index": 0,
+          "requested_workers": 2,
+          "rss_end_bytes": 309391360,
+          "rss_start_bytes": 278880256,
+          "sampled_peak_rss_bytes": 309395456,
+          "schedule_label": "dual",
+          "schema": "mdstats.mlff-perfbase1-trial.v1",
+          "scientific_output_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
+          "temporary_array_bytes": 0,
+          "wall_seconds": 2.305610115999798,
+          "worker_settings": {
+            "ckdtree_query_workers": 2,
+            "query_block_size": 512
+          },
+          "workload_id": "target_data2c_mvidx1"
+        },
+        {
+          "allocated_workers": 2,
+          "assigned_lane_occupancy": 0.49880839439313296,
+          "content_digest": "002ddaa07ef8b76726383ad6d96f49ac47f927fe747f116e1d7eb3cfa825f9d6",
+          "counters": {
+            "edges": 3194880,
+            "families": 6,
+            "progress_messages": 102,
+            "throughput_count": 3194880,
+            "throughput_per_second": 1404700.0065961024,
+            "throughput_unit": "edges"
+          },
+          "effective_cpu_cores": 0.9976167887862659,
+          "environment": {
+            "affinity_cpu_count": 5,
+            "cgroup_cpu_max": "400000 100000",
+            "cgroup_cpu_quota_cores": 4.0,
+            "cgroup_cpuset_effective": "0-4",
+            "cgroup_memory_max": "4294967296",
+            "cpu_model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+            "cuda_visible_devices": null,
+            "environment_threads": {
+              "MKL_NUM_THREADS": "1",
+              "NUMEXPR_NUM_THREADS": "1",
+              "OMP_NUM_THREADS": "1",
+              "OPENBLAS_NUM_THREADS": "1",
+              "VECLIB_MAXIMUM_THREADS": "1"
+            },
+            "logical_cpu_count": 5,
+            "machine": "x86_64",
+            "package_versions": {
+              "ase": "3.29.0",
+              "e3nn": null,
+              "mace-torch": null,
+              "mdstats": null,
+              "mdstats_source": "0.20.225a0",
+              "numpy": "2.3.5",
+              "scipy": "1.17.0",
+              "threadpoolctl": "3.6.0",
+              "torch": "2.10.0+cpu"
+            },
+            "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+            "processor": "",
+            "python_implementation": "CPython",
+            "python_version": "3.13.5",
+            "threadpools": [
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              },
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              }
+            ]
+          },
+          "events": [
+            "Current MVIDX1 repeats exact geometry sweep; native cKDTree workers vary by schedule."
+          ],
+          "measured_at_utc": "2026-08-17T11:59:00.731930Z",
+          "persisted_bytes": 38463590,
+          "process_cpu_seconds": 2.269001147000001,
+          "process_peak_rss_bytes": 599449600,
+          "queue": {
+            "observed": false,
+            "progress_messages": 102
+          },
+          "repeat_index": 1,
+          "requested_workers": 2,
+          "rss_end_bytes": 310243328,
+          "rss_start_bytes": 278597632,
+          "sampled_peak_rss_bytes": 310247424,
+          "schedule_label": "dual",
+          "schema": "mdstats.mlff-perfbase1-trial.v1",
+          "scientific_output_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
+          "temporary_array_bytes": 0,
+          "wall_seconds": 2.2744215739999163,
+          "worker_settings": {
+            "ckdtree_query_workers": 2,
+            "query_block_size": 512
+          },
+          "workload_id": "target_data2c_mvidx1"
+        },
+        {
+          "allocated_workers": 2,
+          "assigned_lane_occupancy": 0.5003067624032325,
+          "content_digest": "7e788fc8dacb202123089cb5574cebdfc43064c5226fbd7a27d8873eb5786f49",
+          "counters": {
+            "edges": 3194880,
+            "families": 6,
+            "progress_messages": 102,
+            "throughput_count": 3194880,
+            "throughput_per_second": 1385698.2921045963,
+            "throughput_unit": "edges"
+          },
+          "effective_cpu_cores": 1.000613524806465,
+          "environment": {
+            "affinity_cpu_count": 5,
+            "cgroup_cpu_max": "400000 100000",
+            "cgroup_cpu_quota_cores": 4.0,
+            "cgroup_cpuset_effective": "0-4",
+            "cgroup_memory_max": "4294967296",
+            "cpu_model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+            "cuda_visible_devices": null,
+            "environment_threads": {
+              "MKL_NUM_THREADS": "1",
+              "NUMEXPR_NUM_THREADS": "1",
+              "OMP_NUM_THREADS": "1",
+              "OPENBLAS_NUM_THREADS": "1",
+              "VECLIB_MAXIMUM_THREADS": "1"
+            },
+            "logical_cpu_count": 5,
+            "machine": "x86_64",
+            "package_versions": {
+              "ase": "3.29.0",
+              "e3nn": null,
+              "mace-torch": null,
+              "mdstats": null,
+              "mdstats_source": "0.20.225a0",
+              "numpy": "2.3.5",
+              "scipy": "1.17.0",
+              "threadpoolctl": "3.6.0",
+              "torch": "2.10.0+cpu"
+            },
+            "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+            "processor": "",
+            "python_implementation": "CPython",
+            "python_version": "3.13.5",
+            "threadpools": [
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              },
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              }
+            ]
+          },
+          "events": [
+            "Current MVIDX1 repeats exact geometry sweep; native cKDTree workers vary by schedule."
+          ],
+          "measured_at_utc": "2026-08-17T11:58:48.092549Z",
+          "persisted_bytes": 38463590,
+          "process_cpu_seconds": 2.307024665,
+          "process_peak_rss_bytes": 599121920,
+          "queue": {
+            "observed": false,
+            "progress_messages": 102
+          },
+          "repeat_index": 0,
+          "requested_workers": 2,
+          "rss_end_bytes": 309391360,
+          "rss_start_bytes": 278880256,
+          "sampled_peak_rss_bytes": 309395456,
+          "schedule_label": "intermediate",
+          "schema": "mdstats.mlff-perfbase1-trial.v1",
+          "scientific_output_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
+          "temporary_array_bytes": 0,
+          "wall_seconds": 2.305610115999798,
+          "worker_settings": {
+            "ckdtree_query_workers": 2,
+            "query_block_size": 512
+          },
+          "workload_id": "target_data2c_mvidx1"
+        },
+        {
+          "allocated_workers": 2,
+          "assigned_lane_occupancy": 0.49880839439313296,
+          "content_digest": "e8004f4988fcdd5d5983e2ffa24726dfe6f031f5cfbe9cf929fd0cca93cb657b",
+          "counters": {
+            "edges": 3194880,
+            "families": 6,
+            "progress_messages": 102,
+            "throughput_count": 3194880,
+            "throughput_per_second": 1404700.0065961024,
+            "throughput_unit": "edges"
+          },
+          "effective_cpu_cores": 0.9976167887862659,
+          "environment": {
+            "affinity_cpu_count": 5,
+            "cgroup_cpu_max": "400000 100000",
+            "cgroup_cpu_quota_cores": 4.0,
+            "cgroup_cpuset_effective": "0-4",
+            "cgroup_memory_max": "4294967296",
+            "cpu_model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+            "cuda_visible_devices": null,
+            "environment_threads": {
+              "MKL_NUM_THREADS": "1",
+              "NUMEXPR_NUM_THREADS": "1",
+              "OMP_NUM_THREADS": "1",
+              "OPENBLAS_NUM_THREADS": "1",
+              "VECLIB_MAXIMUM_THREADS": "1"
+            },
+            "logical_cpu_count": 5,
+            "machine": "x86_64",
+            "package_versions": {
+              "ase": "3.29.0",
+              "e3nn": null,
+              "mace-torch": null,
+              "mdstats": null,
+              "mdstats_source": "0.20.225a0",
+              "numpy": "2.3.5",
+              "scipy": "1.17.0",
+              "threadpoolctl": "3.6.0",
+              "torch": "2.10.0+cpu"
+            },
+            "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+            "processor": "",
+            "python_implementation": "CPython",
+            "python_version": "3.13.5",
+            "threadpools": [
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              },
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 1,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              }
+            ]
+          },
+          "events": [
+            "Current MVIDX1 repeats exact geometry sweep; native cKDTree workers vary by schedule."
+          ],
+          "measured_at_utc": "2026-08-17T11:59:00.731930Z",
+          "persisted_bytes": 38463590,
+          "process_cpu_seconds": 2.269001147000001,
+          "process_peak_rss_bytes": 599449600,
+          "queue": {
+            "observed": false,
+            "progress_messages": 102
+          },
+          "repeat_index": 1,
+          "requested_workers": 2,
+          "rss_end_bytes": 310243328,
+          "rss_start_bytes": 278597632,
+          "sampled_peak_rss_bytes": 310247424,
+          "schedule_label": "intermediate",
+          "schema": "mdstats.mlff-perfbase1-trial.v1",
+          "scientific_output_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
+          "temporary_array_bytes": 0,
+          "wall_seconds": 2.2744215739999163,
+          "worker_settings": {
+            "ckdtree_query_workers": 2,
+            "query_block_size": 512
+          },
+          "workload_id": "target_data2c_mvidx1"
+        },
+        {
+          "allocated_workers": 3,
+          "assigned_lane_occupancy": 0.33374976628891145,
+          "content_digest": "fb216dd000964b1e474161a3f82bdef80092383e9da9ab03a085c7229cc18453",
+          "counters": {
+            "edges": 3194880,
+            "families": 6,
+            "progress_messages": 102,
+            "throughput_count": 3194880,
+            "throughput_per_second": 1341678.699596903,
+            "throughput_unit": "edges"
+          },
+          "effective_cpu_cores": 1.0012492988667343,
+          "environment": {
+            "affinity_cpu_count": 5,
+            "cgroup_cpu_max": "400000 100000",
+            "cgroup_cpu_quota_cores": 4.0,
+            "cgroup_cpuset_effective": "0-4",
+            "cgroup_memory_max": "4294967296",
+            "cpu_model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+            "cuda_visible_devices": null,
+            "environment_threads": {
+              "MKL_NUM_THREADS": null,
+              "NUMEXPR_NUM_THREADS": null,
+              "OMP_NUM_THREADS": null,
+              "OPENBLAS_NUM_THREADS": null,
+              "VECLIB_MAXIMUM_THREADS": null
+            },
+            "logical_cpu_count": 5,
+            "machine": "x86_64",
+            "package_versions": {
+              "ase": "3.29.0",
+              "e3nn": null,
+              "mace-torch": null,
+              "mdstats": null,
+              "mdstats_source": "0.20.225a0",
+              "numpy": "2.3.5",
+              "scipy": "1.17.0",
+              "threadpoolctl": "3.6.0",
+              "torch": "2.10.0+cpu"
+            },
+            "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+            "processor": "",
+            "python_implementation": "CPython",
+            "python_version": "3.13.5",
+            "threadpools": [
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 5,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              },
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 5,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              }
+            ]
+          },
+          "events": [
+            "Current MVIDX1 repeats exact geometry sweep; native cKDTree workers vary by schedule."
+          ],
+          "measured_at_utc": "2026-08-17T12:00:30.572165Z",
+          "persisted_bytes": 38463590,
+          "process_cpu_seconds": 2.384230561999999,
+          "process_peak_rss_bytes": 600248320,
+          "queue": {
+            "observed": false,
+            "progress_messages": 102
+          },
+          "repeat_index": 0,
+          "requested_workers": 3,
+          "rss_end_bytes": 311463936,
+          "rss_start_bytes": 278675456,
+          "sampled_peak_rss_bytes": 311468032,
+          "schedule_label": "auto",
+          "schema": "mdstats.mlff-perfbase1-trial.v1",
+          "scientific_output_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
+          "temporary_array_bytes": 0,
+          "wall_seconds": 2.381255662000058,
+          "worker_settings": {
+            "ckdtree_query_workers": 3,
+            "query_block_size": 512
+          },
+          "workload_id": "target_data2c_mvidx1"
+        },
+        {
+          "allocated_workers": 3,
+          "assigned_lane_occupancy": 0.3337888273754725,
+          "content_digest": "a3d321ed7192be18a3d556c2c332844afe5b2243f81b098e92c7e5d4238958e5",
+          "counters": {
+            "edges": 3194880,
+            "families": 6,
+            "progress_messages": 102,
+            "throughput_count": 3194880,
+            "throughput_per_second": 1324209.4519558682,
+            "throughput_unit": "edges"
+          },
+          "effective_cpu_cores": 1.0013664821264174,
+          "environment": {
+            "affinity_cpu_count": 5,
+            "cgroup_cpu_max": "400000 100000",
+            "cgroup_cpu_quota_cores": 4.0,
+            "cgroup_cpuset_effective": "0-4",
+            "cgroup_memory_max": "4294967296",
+            "cpu_model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+            "cuda_visible_devices": null,
+            "environment_threads": {
+              "MKL_NUM_THREADS": null,
+              "NUMEXPR_NUM_THREADS": null,
+              "OMP_NUM_THREADS": null,
+              "OPENBLAS_NUM_THREADS": null,
+              "VECLIB_MAXIMUM_THREADS": null
+            },
+            "logical_cpu_count": 5,
+            "machine": "x86_64",
+            "package_versions": {
+              "ase": "3.29.0",
+              "e3nn": null,
+              "mace-torch": null,
+              "mdstats": null,
+              "mdstats_source": "0.20.225a0",
+              "numpy": "2.3.5",
+              "scipy": "1.17.0",
+              "threadpoolctl": "3.6.0",
+              "torch": "2.10.0+cpu"
+            },
+            "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+            "processor": "",
+            "python_implementation": "CPython",
+            "python_version": "3.13.5",
+            "threadpools": [
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 5,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              },
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 5,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              }
+            ]
+          },
+          "events": [
+            "Current MVIDX1 repeats exact geometry sweep; native cKDTree workers vary by schedule."
+          ],
+          "measured_at_utc": "2026-08-17T12:00:43.662184Z",
+          "persisted_bytes": 38463590,
+          "process_cpu_seconds": 2.4159665540000006,
+          "process_peak_rss_bytes": 600629248,
+          "queue": {
+            "observed": false,
+            "progress_messages": 102
+          },
+          "repeat_index": 1,
+          "requested_workers": 3,
+          "rss_end_bytes": 311558144,
+          "rss_start_bytes": 278859776,
+          "sampled_peak_rss_bytes": 311562240,
+          "schedule_label": "auto",
+          "schema": "mdstats.mlff-perfbase1-trial.v1",
+          "scientific_output_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
+          "temporary_array_bytes": 0,
+          "wall_seconds": 2.412669683999866,
+          "worker_settings": {
+            "ckdtree_query_workers": 3,
+            "query_block_size": 512
+          },
+          "workload_id": "target_data2c_mvidx1"
+        }
+      ],
+      "workload_id": "target_data2c_mvidx1",
+      "workload_kind": "synthetic"
+    },
+    {
+      "content_digest": "a824cc89ce2ecdcdd2e0d0e70219bfd3a086d1975a0046d5f7d224ae12784dd5",
+      "corpus_digests": [
+        "52388572fc43dd1f4bcb02a944854c2aa30ac9953ac2df09f3c2c1bd0a161920"
+      ],
+      "notes": [],
+      "policy_digests": [
+        "28ebdd2ca82c615dac619803ed551bd039e2cac3c3ec961b1093374dc0fe834d"
+      ],
+      "schema": "mdstats.mlff-perfbase1-workload.v1",
+      "scientific_digest": "bf8421d4b83222033a9da29b050727caab3766c11da8ab495e93630e955629cf",
+      "scientific_output_digest": "ca1ba32846ff7e9c0074a1f095f5ba1625e7a632bb96d28994bc0088733ad806",
+      "throughput_unit": "selected-ranks",
+      "trials": [
+        {
+          "allocated_workers": 1,
+          "assigned_lane_occupancy": 1.0157106184910514,
+          "content_digest": "0cc7b721168c7de705d3c909641742906b640569c085f584b77381ea36881a2d",
+          "counters": {
+            "candidate_count": 8192,
+            "edge_count": 393216,
+            "selected_count": 4096,
+            "throughput_count": 4096,
+            "throughput_per_second": 1343.0862679406446,
+            "throughput_unit": "selected-ranks"
+          },
+          "effective_cpu_cores": 1.0157106184910514,
+          "environment": {
+            "affinity_cpu_count": 5,
+            "cgroup_cpu_max": "400000 100000",
+            "cgroup_cpu_quota_cores": 4.0,
+            "cgroup_cpuset_effective": "0-4",
+            "cgroup_memory_max": "4294967296",
+            "cpu_model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+            "cuda_visible_devices": null,
+            "environment_threads": {
+              "MKL_NUM_THREADS": null,
+              "NUMEXPR_NUM_THREADS": null,
+              "OMP_NUM_THREADS": null,
+              "OPENBLAS_NUM_THREADS": null,
+              "VECLIB_MAXIMUM_THREADS": null
+            },
+            "logical_cpu_count": 5,
+            "machine": "x86_64",
+            "package_versions": {
+              "ase": "3.29.0",
+              "e3nn": null,
+              "mace-torch": null,
+              "mdstats": null,
+              "mdstats_source": "0.20.225a0",
+              "numpy": "2.3.5",
+              "scipy": "1.17.0",
+              "threadpoolctl": "3.6.0",
+              "torch": "2.10.0+cpu"
+            },
+            "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+            "processor": "",
+            "python_implementation": "CPython",
+            "python_version": "3.13.5",
+            "threadpools": [
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 5,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              },
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 5,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              }
+            ]
+          },
+          "events": [
+            "Sequential rank authority; baseline exposes sparse Python/update cost rather than fake outer parallelism."
+          ],
+          "measured_at_utc": "2026-08-17T12:00:58.763047Z",
+          "persisted_bytes": 0,
+          "process_cpu_seconds": 3.0976049659999996,
+          "process_peak_rss_bytes": 275615744,
+          "queue": {},
+          "repeat_index": 0,
+          "requested_workers": 1,
+          "rss_end_bytes": 275972096,
+          "rss_start_bytes": 275689472,
+          "sampled_peak_rss_bytes": 275972096,
+          "schedule_label": "serial",
+          "schema": "mdstats.mlff-perfbase1-trial.v1",
+          "scientific_output_digest": "ca1ba32846ff7e9c0074a1f095f5ba1625e7a632bb96d28994bc0088733ad806",
+          "temporary_array_bytes": 0,
+          "wall_seconds": 3.049692412000013,
+          "worker_settings": {
+            "requested_stage_workers": 1,
+            "sequential_rank_authority": true
+          },
+          "workload_id": "target_data2c_mvsel1_kernel"
+        },
+        {
+          "allocated_workers": 1,
+          "assigned_lane_occupancy": 1.0086983287507858,
+          "content_digest": "b7c6f5cae30b34eeae8527ce6e563503d13bbbdc63f442b2bbac5006c0f3781f",
+          "counters": {
+            "candidate_count": 8192,
+            "edge_count": 393216,
+            "selected_count": 4096,
+            "throughput_count": 4096,
+            "throughput_per_second": 1360.1705855283556,
+            "throughput_unit": "selected-ranks"
+          },
+          "effective_cpu_cores": 1.0086983287507858,
+          "environment": {
+            "affinity_cpu_count": 5,
+            "cgroup_cpu_max": "400000 100000",
+            "cgroup_cpu_quota_cores": 4.0,
+            "cgroup_cpuset_effective": "0-4",
+            "cgroup_memory_max": "4294967296",
+            "cpu_model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+            "cuda_visible_devices": null,
+            "environment_threads": {
+              "MKL_NUM_THREADS": null,
+              "NUMEXPR_NUM_THREADS": null,
+              "OMP_NUM_THREADS": null,
+              "OPENBLAS_NUM_THREADS": null,
+              "VECLIB_MAXIMUM_THREADS": null
+            },
+            "logical_cpu_count": 5,
+            "machine": "x86_64",
+            "package_versions": {
+              "ase": "3.29.0",
+              "e3nn": null,
+              "mace-torch": null,
+              "mdstats": null,
+              "mdstats_source": "0.20.225a0",
+              "numpy": "2.3.5",
+              "scipy": "1.17.0",
+              "threadpoolctl": "3.6.0",
+              "torch": "2.10.0+cpu"
+            },
+            "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+            "processor": "",
+            "python_implementation": "CPython",
+            "python_version": "3.13.5",
+            "threadpools": [
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 5,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              },
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 5,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              }
+            ]
+          },
+          "events": [
+            "Sequential rank authority; baseline exposes sparse Python/update cost rather than fake outer parallelism."
+          ],
+          "measured_at_utc": "2026-08-17T12:01:08.477613Z",
+          "persisted_bytes": 0,
+          "process_cpu_seconds": 3.0375810199999993,
+          "process_peak_rss_bytes": 275169280,
+          "queue": {},
+          "repeat_index": 1,
+          "requested_workers": 1,
+          "rss_end_bytes": 275546112,
+          "rss_start_bytes": 275247104,
+          "sampled_peak_rss_bytes": 275546112,
+          "schedule_label": "serial",
+          "schema": "mdstats.mlff-perfbase1-trial.v1",
+          "scientific_output_digest": "ca1ba32846ff7e9c0074a1f095f5ba1625e7a632bb96d28994bc0088733ad806",
+          "temporary_array_bytes": 0,
+          "wall_seconds": 3.011386985999934,
+          "worker_settings": {
+            "requested_stage_workers": 1,
+            "sequential_rank_authority": true
+          },
+          "workload_id": "target_data2c_mvsel1_kernel"
+        },
+        {
+          "allocated_workers": 1,
+          "assigned_lane_occupancy": 1.0169087984072336,
+          "content_digest": "8afdaaeff366297224f921a14e4bc3d9fe4640983a0037366828dc3ee225a801",
+          "counters": {
+            "candidate_count": 8192,
+            "edge_count": 393216,
+            "selected_count": 4096,
+            "throughput_count": 4096,
+            "throughput_per_second": 1437.6185831323992,
+            "throughput_unit": "selected-ranks"
+          },
+          "effective_cpu_cores": 1.0169087984072336,
+          "environment": {
+            "affinity_cpu_count": 5,
+            "cgroup_cpu_max": "400000 100000",
+            "cgroup_cpu_quota_cores": 4.0,
+            "cgroup_cpuset_effective": "0-4",
+            "cgroup_memory_max": "4294967296",
+            "cpu_model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+            "cuda_visible_devices": null,
+            "environment_threads": {
+              "MKL_NUM_THREADS": null,
+              "NUMEXPR_NUM_THREADS": null,
+              "OMP_NUM_THREADS": null,
+              "OPENBLAS_NUM_THREADS": null,
+              "VECLIB_MAXIMUM_THREADS": null
+            },
+            "logical_cpu_count": 5,
+            "machine": "x86_64",
+            "package_versions": {
+              "ase": "3.29.0",
+              "e3nn": null,
+              "mace-torch": null,
+              "mdstats": null,
+              "mdstats_source": "0.20.225a0",
+              "numpy": "2.3.5",
+              "scipy": "1.17.0",
+              "threadpoolctl": "3.6.0",
+              "torch": "2.10.0+cpu"
+            },
+            "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+            "processor": "",
+            "python_implementation": "CPython",
+            "python_version": "3.13.5",
+            "threadpools": [
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 5,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              },
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 5,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              }
+            ]
+          },
+          "events": [
+            "Sequential rank authority; baseline exposes sparse Python/update cost rather than fake outer parallelism."
+          ],
+          "measured_at_utc": "2026-08-17T12:01:18.218641Z",
+          "persisted_bytes": 0,
+          "process_cpu_seconds": 2.897332079,
+          "process_peak_rss_bytes": 275677184,
+          "queue": {},
+          "repeat_index": 0,
+          "requested_workers": 2,
+          "rss_end_bytes": 275980288,
+          "rss_start_bytes": 275763200,
+          "sampled_peak_rss_bytes": 275984384,
+          "schedule_label": "dual",
+          "schema": "mdstats.mlff-perfbase1-trial.v1",
+          "scientific_output_digest": "ca1ba32846ff7e9c0074a1f095f5ba1625e7a632bb96d28994bc0088733ad806",
+          "temporary_array_bytes": 0,
+          "wall_seconds": 2.8491562699998667,
+          "worker_settings": {
+            "requested_stage_workers": 2,
+            "sequential_rank_authority": true
+          },
+          "workload_id": "target_data2c_mvsel1_kernel"
+        },
+        {
+          "allocated_workers": 1,
+          "assigned_lane_occupancy": 1.0126763874246711,
+          "content_digest": "d2104140232fc78f1e0bca70b52591cc73c6eff9d48b140be1cf9bc5fbb8377b",
+          "counters": {
+            "candidate_count": 8192,
+            "edge_count": 393216,
+            "selected_count": 4096,
+            "throughput_count": 4096,
+            "throughput_per_second": 1298.933916731904,
+            "throughput_unit": "selected-ranks"
+          },
+          "effective_cpu_cores": 1.0126763874246711,
+          "environment": {
+            "affinity_cpu_count": 5,
+            "cgroup_cpu_max": "400000 100000",
+            "cgroup_cpu_quota_cores": 4.0,
+            "cgroup_cpuset_effective": "0-4",
+            "cgroup_memory_max": "4294967296",
+            "cpu_model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+            "cuda_visible_devices": null,
+            "environment_threads": {
+              "MKL_NUM_THREADS": null,
+              "NUMEXPR_NUM_THREADS": null,
+              "OMP_NUM_THREADS": null,
+              "OPENBLAS_NUM_THREADS": null,
+              "VECLIB_MAXIMUM_THREADS": null
+            },
+            "logical_cpu_count": 5,
+            "machine": "x86_64",
+            "package_versions": {
+              "ase": "3.29.0",
+              "e3nn": null,
+              "mace-torch": null,
+              "mdstats": null,
+              "mdstats_source": "0.20.225a0",
+              "numpy": "2.3.5",
+              "scipy": "1.17.0",
+              "threadpoolctl": "3.6.0",
+              "torch": "2.10.0+cpu"
+            },
+            "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+            "processor": "",
+            "python_implementation": "CPython",
+            "python_version": "3.13.5",
+            "threadpools": [
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 5,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              },
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 5,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              }
+            ]
+          },
+          "events": [
+            "Sequential rank authority; baseline exposes sparse Python/update cost rather than fake outer parallelism."
+          ],
+          "measured_at_utc": "2026-08-17T12:01:44.313593Z",
+          "persisted_bytes": 0,
+          "process_cpu_seconds": 3.1933283359999995,
+          "process_peak_rss_bytes": 275484672,
+          "queue": {},
+          "repeat_index": 1,
+          "requested_workers": 2,
+          "rss_end_bytes": 275947520,
+          "rss_start_bytes": 275664896,
+          "sampled_peak_rss_bytes": 275947520,
+          "schedule_label": "dual",
+          "schema": "mdstats.mlff-perfbase1-trial.v1",
+          "scientific_output_digest": "ca1ba32846ff7e9c0074a1f095f5ba1625e7a632bb96d28994bc0088733ad806",
+          "temporary_array_bytes": 0,
+          "wall_seconds": 3.15335518400002,
+          "worker_settings": {
+            "requested_stage_workers": 2,
+            "sequential_rank_authority": true
+          },
+          "workload_id": "target_data2c_mvsel1_kernel"
+        },
+        {
+          "allocated_workers": 1,
+          "assigned_lane_occupancy": 1.0169087984072336,
+          "content_digest": "97ae77f63184ca628cf49385a2cc1e1cdaeee3d3d6a2fd64f6ecda8d004d7505",
+          "counters": {
+            "candidate_count": 8192,
+            "edge_count": 393216,
+            "selected_count": 4096,
+            "throughput_count": 4096,
+            "throughput_per_second": 1437.6185831323992,
+            "throughput_unit": "selected-ranks"
+          },
+          "effective_cpu_cores": 1.0169087984072336,
+          "environment": {
+            "affinity_cpu_count": 5,
+            "cgroup_cpu_max": "400000 100000",
+            "cgroup_cpu_quota_cores": 4.0,
+            "cgroup_cpuset_effective": "0-4",
+            "cgroup_memory_max": "4294967296",
+            "cpu_model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+            "cuda_visible_devices": null,
+            "environment_threads": {
+              "MKL_NUM_THREADS": null,
+              "NUMEXPR_NUM_THREADS": null,
+              "OMP_NUM_THREADS": null,
+              "OPENBLAS_NUM_THREADS": null,
+              "VECLIB_MAXIMUM_THREADS": null
+            },
+            "logical_cpu_count": 5,
+            "machine": "x86_64",
+            "package_versions": {
+              "ase": "3.29.0",
+              "e3nn": null,
+              "mace-torch": null,
+              "mdstats": null,
+              "mdstats_source": "0.20.225a0",
+              "numpy": "2.3.5",
+              "scipy": "1.17.0",
+              "threadpoolctl": "3.6.0",
+              "torch": "2.10.0+cpu"
+            },
+            "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+            "processor": "",
+            "python_implementation": "CPython",
+            "python_version": "3.13.5",
+            "threadpools": [
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 5,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              },
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 5,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              }
+            ]
+          },
+          "events": [
+            "Sequential rank authority; baseline exposes sparse Python/update cost rather than fake outer parallelism."
+          ],
+          "measured_at_utc": "2026-08-17T12:01:18.218641Z",
+          "persisted_bytes": 0,
+          "process_cpu_seconds": 2.897332079,
+          "process_peak_rss_bytes": 275677184,
+          "queue": {},
+          "repeat_index": 0,
+          "requested_workers": 2,
+          "rss_end_bytes": 275980288,
+          "rss_start_bytes": 275763200,
+          "sampled_peak_rss_bytes": 275984384,
+          "schedule_label": "intermediate",
+          "schema": "mdstats.mlff-perfbase1-trial.v1",
+          "scientific_output_digest": "ca1ba32846ff7e9c0074a1f095f5ba1625e7a632bb96d28994bc0088733ad806",
+          "temporary_array_bytes": 0,
+          "wall_seconds": 2.8491562699998667,
+          "worker_settings": {
+            "requested_stage_workers": 2,
+            "sequential_rank_authority": true
+          },
+          "workload_id": "target_data2c_mvsel1_kernel"
+        },
+        {
+          "allocated_workers": 1,
+          "assigned_lane_occupancy": 1.0126763874246711,
+          "content_digest": "eb2c7e7ead4bd581eb232cf9f36e5f52f45be46506d7b1068f7a5e5b204f5346",
+          "counters": {
+            "candidate_count": 8192,
+            "edge_count": 393216,
+            "selected_count": 4096,
+            "throughput_count": 4096,
+            "throughput_per_second": 1298.933916731904,
+            "throughput_unit": "selected-ranks"
+          },
+          "effective_cpu_cores": 1.0126763874246711,
+          "environment": {
+            "affinity_cpu_count": 5,
+            "cgroup_cpu_max": "400000 100000",
+            "cgroup_cpu_quota_cores": 4.0,
+            "cgroup_cpuset_effective": "0-4",
+            "cgroup_memory_max": "4294967296",
+            "cpu_model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+            "cuda_visible_devices": null,
+            "environment_threads": {
+              "MKL_NUM_THREADS": null,
+              "NUMEXPR_NUM_THREADS": null,
+              "OMP_NUM_THREADS": null,
+              "OPENBLAS_NUM_THREADS": null,
+              "VECLIB_MAXIMUM_THREADS": null
+            },
+            "logical_cpu_count": 5,
+            "machine": "x86_64",
+            "package_versions": {
+              "ase": "3.29.0",
+              "e3nn": null,
+              "mace-torch": null,
+              "mdstats": null,
+              "mdstats_source": "0.20.225a0",
+              "numpy": "2.3.5",
+              "scipy": "1.17.0",
+              "threadpoolctl": "3.6.0",
+              "torch": "2.10.0+cpu"
+            },
+            "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+            "processor": "",
+            "python_implementation": "CPython",
+            "python_version": "3.13.5",
+            "threadpools": [
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 5,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              },
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 5,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              }
+            ]
+          },
+          "events": [
+            "Sequential rank authority; baseline exposes sparse Python/update cost rather than fake outer parallelism."
+          ],
+          "measured_at_utc": "2026-08-17T12:01:44.313593Z",
+          "persisted_bytes": 0,
+          "process_cpu_seconds": 3.1933283359999995,
+          "process_peak_rss_bytes": 275484672,
+          "queue": {},
+          "repeat_index": 1,
+          "requested_workers": 2,
+          "rss_end_bytes": 275947520,
+          "rss_start_bytes": 275664896,
+          "sampled_peak_rss_bytes": 275947520,
+          "schedule_label": "intermediate",
+          "schema": "mdstats.mlff-perfbase1-trial.v1",
+          "scientific_output_digest": "ca1ba32846ff7e9c0074a1f095f5ba1625e7a632bb96d28994bc0088733ad806",
+          "temporary_array_bytes": 0,
+          "wall_seconds": 3.15335518400002,
+          "worker_settings": {
+            "requested_stage_workers": 2,
+            "sequential_rank_authority": true
+          },
+          "workload_id": "target_data2c_mvsel1_kernel"
+        },
+        {
+          "allocated_workers": 1,
+          "assigned_lane_occupancy": 1.0171143189660885,
+          "content_digest": "aa614cfaf1346d9afe7183f1696cdca5100ebdf0acceba860f4f72e8f55a52bc",
+          "counters": {
+            "candidate_count": 8192,
+            "edge_count": 393216,
+            "selected_count": 4096,
+            "throughput_count": 4096,
+            "throughput_per_second": 1437.90394977564,
+            "throughput_unit": "selected-ranks"
+          },
+          "effective_cpu_cores": 1.0171143189660885,
+          "environment": {
+            "affinity_cpu_count": 5,
+            "cgroup_cpu_max": "400000 100000",
+            "cgroup_cpu_quota_cores": 4.0,
+            "cgroup_cpuset_effective": "0-4",
+            "cgroup_memory_max": "4294967296",
+            "cpu_model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+            "cuda_visible_devices": null,
+            "environment_threads": {
+              "MKL_NUM_THREADS": null,
+              "NUMEXPR_NUM_THREADS": null,
+              "OMP_NUM_THREADS": null,
+              "OPENBLAS_NUM_THREADS": null,
+              "VECLIB_MAXIMUM_THREADS": null
+            },
+            "logical_cpu_count": 5,
+            "machine": "x86_64",
+            "package_versions": {
+              "ase": "3.29.0",
+              "e3nn": null,
+              "mace-torch": null,
+              "mdstats": null,
+              "mdstats_source": "0.20.225a0",
+              "numpy": "2.3.5",
+              "scipy": "1.17.0",
+              "threadpoolctl": "3.6.0",
+              "torch": "2.10.0+cpu"
+            },
+            "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+            "processor": "",
+            "python_implementation": "CPython",
+            "python_version": "3.13.5",
+            "threadpools": [
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 5,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              },
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 5,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              }
+            ]
+          },
+          "events": [
+            "Sequential rank authority; baseline exposes sparse Python/update cost rather than fake outer parallelism."
+          ],
+          "measured_at_utc": "2026-08-17T12:01:58.455234Z",
+          "persisted_bytes": 0,
+          "process_cpu_seconds": 2.8973425180000003,
+          "process_peak_rss_bytes": 275492864,
+          "queue": {},
+          "repeat_index": 0,
+          "requested_workers": 3,
+          "rss_end_bytes": 275914752,
+          "rss_start_bytes": 275632128,
+          "sampled_peak_rss_bytes": 275914752,
+          "schedule_label": "auto",
+          "schema": "mdstats.mlff-perfbase1-trial.v1",
+          "scientific_output_digest": "ca1ba32846ff7e9c0074a1f095f5ba1625e7a632bb96d28994bc0088733ad806",
+          "temporary_array_bytes": 0,
+          "wall_seconds": 2.8485908259999633,
+          "worker_settings": {
+            "requested_stage_workers": 3,
+            "sequential_rank_authority": true
+          },
+          "workload_id": "target_data2c_mvsel1_kernel"
+        },
+        {
+          "allocated_workers": 1,
+          "assigned_lane_occupancy": 1.0139852662642956,
+          "content_digest": "350df0c6fe57fd65c21ea5ada41b3f09d7f1389dd0288328662586756fd034de",
+          "counters": {
+            "candidate_count": 8192,
+            "edge_count": 393216,
+            "selected_count": 4096,
+            "throughput_count": 4096,
+            "throughput_per_second": 1452.4642553413728,
+            "throughput_unit": "selected-ranks"
+          },
+          "effective_cpu_cores": 1.0139852662642956,
+          "environment": {
+            "affinity_cpu_count": 5,
+            "cgroup_cpu_max": "400000 100000",
+            "cgroup_cpu_quota_cores": 4.0,
+            "cgroup_cpuset_effective": "0-4",
+            "cgroup_memory_max": "4294967296",
+            "cpu_model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+            "cuda_visible_devices": null,
+            "environment_threads": {
+              "MKL_NUM_THREADS": null,
+              "NUMEXPR_NUM_THREADS": null,
+              "OMP_NUM_THREADS": null,
+              "OPENBLAS_NUM_THREADS": null,
+              "VECLIB_MAXIMUM_THREADS": null
+            },
+            "logical_cpu_count": 5,
+            "machine": "x86_64",
+            "package_versions": {
+              "ase": "3.29.0",
+              "e3nn": null,
+              "mace-torch": null,
+              "mdstats": null,
+              "mdstats_source": "0.20.225a0",
+              "numpy": "2.3.5",
+              "scipy": "1.17.0",
+              "threadpoolctl": "3.6.0",
+              "torch": "2.10.0+cpu"
+            },
+            "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+            "processor": "",
+            "python_implementation": "CPython",
+            "python_version": "3.13.5",
+            "threadpools": [
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 5,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              },
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 5,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              }
+            ]
+          },
+          "events": [
+            "Sequential rank authority; baseline exposes sparse Python/update cost rather than fake outer parallelism."
+          ],
+          "measured_at_utc": "2026-08-17T12:02:08.001581Z",
+          "persisted_bytes": 0,
+          "process_cpu_seconds": 2.8594739149999997,
+          "process_peak_rss_bytes": 275365888,
+          "queue": {},
+          "repeat_index": 1,
+          "requested_workers": 3,
+          "rss_end_bytes": 275652608,
+          "rss_start_bytes": 275296256,
+          "sampled_peak_rss_bytes": 275652608,
+          "schedule_label": "auto",
+          "schema": "mdstats.mlff-perfbase1-trial.v1",
+          "scientific_output_digest": "ca1ba32846ff7e9c0074a1f095f5ba1625e7a632bb96d28994bc0088733ad806",
+          "temporary_array_bytes": 0,
+          "wall_seconds": 2.8200349749999987,
+          "worker_settings": {
+            "requested_stage_workers": 3,
+            "sequential_rank_authority": true
+          },
+          "workload_id": "target_data2c_mvsel1_kernel"
+        }
+      ],
+      "workload_id": "target_data2c_mvsel1_kernel",
+      "workload_kind": "synthetic"
+    },
+    {
+      "content_digest": "e3722a26b619399178e2843bed35915c63c1e956606ac873007b581f626e1151",
+      "corpus_digests": [
+        "e97d77d189e21422f9cb302cb0e243f87be2f8a4a7593b3a67c32f0ee9fa1190"
+      ],
+      "notes": [],
+      "policy_digests": [
+        "28ebdd2ca82c615dac619803ed551bd039e2cac3c3ec961b1093374dc0fe834d"
+      ],
+      "schema": "mdstats.mlff-perfbase1-workload.v1",
+      "scientific_digest": "b8e7927480d5bb6dba3e942cdd1cb9972095c298c6a21f2ca4f99fc2e8b60453",
+      "scientific_output_digest": "12100732e5b14450645bff77f4db4ab487450ce06aee247f9aedfa99fdb67372",
+      "throughput_unit": "frames",
+      "trials": [
+        {
+          "allocated_workers": 1,
+          "assigned_lane_occupancy": 1.0155728380339342,
+          "content_digest": "6c7d9aa3539eb0b1a94df908c3830afc5d8ba442328b2ea0cea108a785fee87d",
+          "counters": {
+            "atom_count": 325061,
+            "frame_count": 12000,
+            "throughput_count": 12000,
+            "throughput_per_second": 1551.765776020633,
+            "throughput_unit": "frames"
+          },
+          "effective_cpu_cores": 1.0155728380339342,
+          "environment": {
+            "affinity_cpu_count": 5,
+            "cgroup_cpu_max": "400000 100000",
+            "cgroup_cpu_quota_cores": 4.0,
+            "cgroup_cpuset_effective": "0-4",
+            "cgroup_memory_max": "4294967296",
+            "cpu_model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+            "cuda_visible_devices": null,
+            "environment_threads": {
+              "MKL_NUM_THREADS": null,
+              "NUMEXPR_NUM_THREADS": null,
+              "OMP_NUM_THREADS": null,
+              "OPENBLAS_NUM_THREADS": null,
+              "VECLIB_MAXIMUM_THREADS": null
+            },
+            "logical_cpu_count": 5,
+            "machine": "x86_64",
+            "package_versions": {
+              "ase": "3.29.0",
+              "e3nn": null,
+              "mace-torch": null,
+              "mdstats": null,
+              "mdstats_source": "0.20.225a0",
+              "numpy": "2.3.5",
+              "scipy": "1.17.0",
+              "threadpoolctl": "3.6.0",
+              "torch": "2.10.0+cpu"
+            },
+            "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+            "processor": "",
+            "python_implementation": "CPython",
+            "python_version": "3.13.5",
+            "threadpools": [
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 5,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              },
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 5,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              }
+            ]
+          },
+          "events": [
+            "Current REPLAY-UNIFY1 immutable unified ExtXYZ source; sequential ASE parse baseline."
+          ],
+          "measured_at_utc": "2026-08-17T12:02:20.365261Z",
+          "persisted_bytes": 0,
+          "process_cpu_seconds": 7.853552543,
+          "process_peak_rss_bytes": 270569472,
+          "queue": {},
+          "repeat_index": 0,
+          "requested_workers": 1,
+          "rss_end_bytes": 270843904,
+          "rss_start_bytes": 268042240,
+          "sampled_peak_rss_bytes": 270843904,
+          "schedule_label": "serial",
+          "schema": "mdstats.mlff-perfbase1-trial.v1",
+          "scientific_output_digest": "12100732e5b14450645bff77f4db4ab487450ce06aee247f9aedfa99fdb67372",
+          "temporary_array_bytes": 0,
+          "wall_seconds": 7.733125827000094,
+          "worker_settings": {
+            "parser_workers": 1,
+            "requested_stage_workers": 1
+          },
+          "workload_id": "replay_unified_extxyz_ingest"
+        },
+        {
+          "allocated_workers": 1,
+          "assigned_lane_occupancy": 1.0100804594771264,
+          "content_digest": "1b8d2a791b0c12a1f901b12995357c2555bf7cc0be04b53614f6c5449a1f7fd0",
+          "counters": {
+            "atom_count": 325061,
+            "frame_count": 12000,
+            "throughput_count": 12000,
+            "throughput_per_second": 1539.7215899569,
+            "throughput_unit": "frames"
+          },
+          "effective_cpu_cores": 1.0100804594771264,
+          "environment": {
+            "affinity_cpu_count": 5,
+            "cgroup_cpu_max": "400000 100000",
+            "cgroup_cpu_quota_cores": 4.0,
+            "cgroup_cpuset_effective": "0-4",
+            "cgroup_memory_max": "4294967296",
+            "cpu_model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+            "cuda_visible_devices": null,
+            "environment_threads": {
+              "MKL_NUM_THREADS": null,
+              "NUMEXPR_NUM_THREADS": null,
+              "OMP_NUM_THREADS": null,
+              "OPENBLAS_NUM_THREADS": null,
+              "VECLIB_MAXIMUM_THREADS": null
+            },
+            "logical_cpu_count": 5,
+            "machine": "x86_64",
+            "package_versions": {
+              "ase": "3.29.0",
+              "e3nn": null,
+              "mace-torch": null,
+              "mdstats": null,
+              "mdstats_source": "0.20.225a0",
+              "numpy": "2.3.5",
+              "scipy": "1.17.0",
+              "threadpoolctl": "3.6.0",
+              "torch": "2.10.0+cpu"
+            },
+            "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+            "processor": "",
+            "python_implementation": "CPython",
+            "python_version": "3.13.5",
+            "threadpools": [
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 5,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              },
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 5,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              }
+            ]
+          },
+          "events": [
+            "Current REPLAY-UNIFY1 immutable unified ExtXYZ source; sequential ASE parse baseline."
+          ],
+          "measured_at_utc": "2026-08-17T12:02:34.629289Z",
+          "persisted_bytes": 0,
+          "process_cpu_seconds": 7.872180005,
+          "process_peak_rss_bytes": 270495744,
+          "queue": {},
+          "repeat_index": 1,
+          "requested_workers": 1,
+          "rss_end_bytes": 270729216,
+          "rss_start_bytes": 268013568,
+          "sampled_peak_rss_bytes": 270733312,
+          "schedule_label": "serial",
+          "schema": "mdstats.mlff-perfbase1-trial.v1",
+          "scientific_output_digest": "12100732e5b14450645bff77f4db4ab487450ce06aee247f9aedfa99fdb67372",
+          "temporary_array_bytes": 0,
+          "wall_seconds": 7.793616767000003,
+          "worker_settings": {
+            "parser_workers": 1,
+            "requested_stage_workers": 1
+          },
+          "workload_id": "replay_unified_extxyz_ingest"
+        },
+        {
+          "allocated_workers": 1,
+          "assigned_lane_occupancy": 1.0158585028779228,
+          "content_digest": "fb2cc779eca4df01959d586e69a4cfa7c496f1c863f1707b8fa8e201f18f0d83",
+          "counters": {
+            "atom_count": 325061,
+            "frame_count": 12000,
+            "throughput_count": 12000,
+            "throughput_per_second": 1564.4038364886273,
+            "throughput_unit": "frames"
+          },
+          "effective_cpu_cores": 1.0158585028779228,
+          "environment": {
+            "affinity_cpu_count": 5,
+            "cgroup_cpu_max": "400000 100000",
+            "cgroup_cpu_quota_cores": 4.0,
+            "cgroup_cpuset_effective": "0-4",
+            "cgroup_memory_max": "4294967296",
+            "cpu_model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+            "cuda_visible_devices": null,
+            "environment_threads": {
+              "MKL_NUM_THREADS": null,
+              "NUMEXPR_NUM_THREADS": null,
+              "OMP_NUM_THREADS": null,
+              "OPENBLAS_NUM_THREADS": null,
+              "VECLIB_MAXIMUM_THREADS": null
+            },
+            "logical_cpu_count": 5,
+            "machine": "x86_64",
+            "package_versions": {
+              "ase": "3.29.0",
+              "e3nn": null,
+              "mace-torch": null,
+              "mdstats": null,
+              "mdstats_source": "0.20.225a0",
+              "numpy": "2.3.5",
+              "scipy": "1.17.0",
+              "threadpoolctl": "3.6.0",
+              "torch": "2.10.0+cpu"
+            },
+            "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+            "processor": "",
+            "python_implementation": "CPython",
+            "python_version": "3.13.5",
+            "threadpools": [
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 5,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              },
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 5,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              }
+            ]
+          },
+          "events": [
+            "Current REPLAY-UNIFY1 immutable unified ExtXYZ source; sequential ASE parse baseline."
+          ],
+          "measured_at_utc": "2026-08-17T12:02:52.261112Z",
+          "persisted_bytes": 0,
+          "process_cpu_seconds": 7.792298733999999,
+          "process_peak_rss_bytes": 270774272,
+          "queue": {},
+          "repeat_index": 0,
+          "requested_workers": 2,
+          "rss_end_bytes": 270999552,
+          "rss_start_bytes": 268292096,
+          "sampled_peak_rss_bytes": 271003648,
+          "schedule_label": "dual",
+          "schema": "mdstats.mlff-perfbase1-trial.v1",
+          "scientific_output_digest": "12100732e5b14450645bff77f4db4ab487450ce06aee247f9aedfa99fdb67372",
+          "temporary_array_bytes": 0,
+          "wall_seconds": 7.670653651000066,
+          "worker_settings": {
+            "parser_workers": 1,
+            "requested_stage_workers": 2
+          },
+          "workload_id": "replay_unified_extxyz_ingest"
+        },
+        {
+          "allocated_workers": 1,
+          "assigned_lane_occupancy": 1.0154000713582414,
+          "content_digest": "d1448cc9b09c8b78631c915cfcdfeb7c2ba9a3db29ab114e6683b55c6defed3f",
+          "counters": {
+            "atom_count": 325061,
+            "frame_count": 12000,
+            "throughput_count": 12000,
+            "throughput_per_second": 1563.8916846070517,
+            "throughput_unit": "frames"
+          },
+          "effective_cpu_cores": 1.0154000713582414,
+          "environment": {
+            "affinity_cpu_count": 5,
+            "cgroup_cpu_max": "400000 100000",
+            "cgroup_cpu_quota_cores": 4.0,
+            "cgroup_cpuset_effective": "0-4",
+            "cgroup_memory_max": "4294967296",
+            "cpu_model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+            "cuda_visible_devices": null,
+            "environment_threads": {
+              "MKL_NUM_THREADS": null,
+              "NUMEXPR_NUM_THREADS": null,
+              "OMP_NUM_THREADS": null,
+              "OPENBLAS_NUM_THREADS": null,
+              "VECLIB_MAXIMUM_THREADS": null
+            },
+            "logical_cpu_count": 5,
+            "machine": "x86_64",
+            "package_versions": {
+              "ase": "3.29.0",
+              "e3nn": null,
+              "mace-torch": null,
+              "mdstats": null,
+              "mdstats_source": "0.20.225a0",
+              "numpy": "2.3.5",
+              "scipy": "1.17.0",
+              "threadpoolctl": "3.6.0",
+              "torch": "2.10.0+cpu"
+            },
+            "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+            "processor": "",
+            "python_implementation": "CPython",
+            "python_version": "3.13.5",
+            "threadpools": [
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 5,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              },
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 5,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              }
+            ]
+          },
+          "events": [
+            "Current REPLAY-UNIFY1 immutable unified ExtXYZ source; sequential ASE parse baseline."
+          ],
+          "measured_at_utc": "2026-08-17T12:03:06.228360Z",
+          "persisted_bytes": 0,
+          "process_cpu_seconds": 7.791332978,
+          "process_peak_rss_bytes": 270643200,
+          "queue": {},
+          "repeat_index": 1,
+          "requested_workers": 2,
+          "rss_end_bytes": 270880768,
+          "rss_start_bytes": 268214272,
+          "sampled_peak_rss_bytes": 270884864,
+          "schedule_label": "dual",
+          "schema": "mdstats.mlff-perfbase1-trial.v1",
+          "scientific_output_digest": "12100732e5b14450645bff77f4db4ab487450ce06aee247f9aedfa99fdb67372",
+          "temporary_array_bytes": 0,
+          "wall_seconds": 7.673165678999794,
+          "worker_settings": {
+            "parser_workers": 1,
+            "requested_stage_workers": 2
+          },
+          "workload_id": "replay_unified_extxyz_ingest"
+        },
+        {
+          "allocated_workers": 1,
+          "assigned_lane_occupancy": 1.0158585028779228,
+          "content_digest": "c5952960553638a7ec5bcc40bae344c372c7482a5a02ace6c0810bcfd832836d",
+          "counters": {
+            "atom_count": 325061,
+            "frame_count": 12000,
+            "throughput_count": 12000,
+            "throughput_per_second": 1564.4038364886273,
+            "throughput_unit": "frames"
+          },
+          "effective_cpu_cores": 1.0158585028779228,
+          "environment": {
+            "affinity_cpu_count": 5,
+            "cgroup_cpu_max": "400000 100000",
+            "cgroup_cpu_quota_cores": 4.0,
+            "cgroup_cpuset_effective": "0-4",
+            "cgroup_memory_max": "4294967296",
+            "cpu_model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+            "cuda_visible_devices": null,
+            "environment_threads": {
+              "MKL_NUM_THREADS": null,
+              "NUMEXPR_NUM_THREADS": null,
+              "OMP_NUM_THREADS": null,
+              "OPENBLAS_NUM_THREADS": null,
+              "VECLIB_MAXIMUM_THREADS": null
+            },
+            "logical_cpu_count": 5,
+            "machine": "x86_64",
+            "package_versions": {
+              "ase": "3.29.0",
+              "e3nn": null,
+              "mace-torch": null,
+              "mdstats": null,
+              "mdstats_source": "0.20.225a0",
+              "numpy": "2.3.5",
+              "scipy": "1.17.0",
+              "threadpoolctl": "3.6.0",
+              "torch": "2.10.0+cpu"
+            },
+            "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+            "processor": "",
+            "python_implementation": "CPython",
+            "python_version": "3.13.5",
+            "threadpools": [
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 5,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              },
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 5,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              }
+            ]
+          },
+          "events": [
+            "Current REPLAY-UNIFY1 immutable unified ExtXYZ source; sequential ASE parse baseline."
+          ],
+          "measured_at_utc": "2026-08-17T12:02:52.261112Z",
+          "persisted_bytes": 0,
+          "process_cpu_seconds": 7.792298733999999,
+          "process_peak_rss_bytes": 270774272,
+          "queue": {},
+          "repeat_index": 0,
+          "requested_workers": 2,
+          "rss_end_bytes": 270999552,
+          "rss_start_bytes": 268292096,
+          "sampled_peak_rss_bytes": 271003648,
+          "schedule_label": "intermediate",
+          "schema": "mdstats.mlff-perfbase1-trial.v1",
+          "scientific_output_digest": "12100732e5b14450645bff77f4db4ab487450ce06aee247f9aedfa99fdb67372",
+          "temporary_array_bytes": 0,
+          "wall_seconds": 7.670653651000066,
+          "worker_settings": {
+            "parser_workers": 1,
+            "requested_stage_workers": 2
+          },
+          "workload_id": "replay_unified_extxyz_ingest"
+        },
+        {
+          "allocated_workers": 1,
+          "assigned_lane_occupancy": 1.0154000713582414,
+          "content_digest": "4feaaaf55c974020833109a01e96f8cdd7dee3c834e7fd9b6bbef302b5643b65",
+          "counters": {
+            "atom_count": 325061,
+            "frame_count": 12000,
+            "throughput_count": 12000,
+            "throughput_per_second": 1563.8916846070517,
+            "throughput_unit": "frames"
+          },
+          "effective_cpu_cores": 1.0154000713582414,
+          "environment": {
+            "affinity_cpu_count": 5,
+            "cgroup_cpu_max": "400000 100000",
+            "cgroup_cpu_quota_cores": 4.0,
+            "cgroup_cpuset_effective": "0-4",
+            "cgroup_memory_max": "4294967296",
+            "cpu_model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+            "cuda_visible_devices": null,
+            "environment_threads": {
+              "MKL_NUM_THREADS": null,
+              "NUMEXPR_NUM_THREADS": null,
+              "OMP_NUM_THREADS": null,
+              "OPENBLAS_NUM_THREADS": null,
+              "VECLIB_MAXIMUM_THREADS": null
+            },
+            "logical_cpu_count": 5,
+            "machine": "x86_64",
+            "package_versions": {
+              "ase": "3.29.0",
+              "e3nn": null,
+              "mace-torch": null,
+              "mdstats": null,
+              "mdstats_source": "0.20.225a0",
+              "numpy": "2.3.5",
+              "scipy": "1.17.0",
+              "threadpoolctl": "3.6.0",
+              "torch": "2.10.0+cpu"
+            },
+            "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+            "processor": "",
+            "python_implementation": "CPython",
+            "python_version": "3.13.5",
+            "threadpools": [
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 5,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              },
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 5,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              }
+            ]
+          },
+          "events": [
+            "Current REPLAY-UNIFY1 immutable unified ExtXYZ source; sequential ASE parse baseline."
+          ],
+          "measured_at_utc": "2026-08-17T12:03:06.228360Z",
+          "persisted_bytes": 0,
+          "process_cpu_seconds": 7.791332978,
+          "process_peak_rss_bytes": 270643200,
+          "queue": {},
+          "repeat_index": 1,
+          "requested_workers": 2,
+          "rss_end_bytes": 270880768,
+          "rss_start_bytes": 268214272,
+          "sampled_peak_rss_bytes": 270884864,
+          "schedule_label": "intermediate",
+          "schema": "mdstats.mlff-perfbase1-trial.v1",
+          "scientific_output_digest": "12100732e5b14450645bff77f4db4ab487450ce06aee247f9aedfa99fdb67372",
+          "temporary_array_bytes": 0,
+          "wall_seconds": 7.673165678999794,
+          "worker_settings": {
+            "parser_workers": 1,
+            "requested_stage_workers": 2
+          },
+          "workload_id": "replay_unified_extxyz_ingest"
+        },
+        {
+          "allocated_workers": 1,
+          "assigned_lane_occupancy": 1.0192933221710694,
+          "content_digest": "b3b85fa78532668d5aee0b823c1d948f3e457bb7948e9895c65a479025d29ab3",
+          "counters": {
+            "atom_count": 325061,
+            "frame_count": 12000,
+            "throughput_count": 12000,
+            "throughput_per_second": 1456.8568847838285,
+            "throughput_unit": "frames"
+          },
+          "effective_cpu_cores": 1.0192933221710694,
+          "environment": {
+            "affinity_cpu_count": 5,
+            "cgroup_cpu_max": "400000 100000",
+            "cgroup_cpu_quota_cores": 4.0,
+            "cgroup_cpuset_effective": "0-4",
+            "cgroup_memory_max": "4294967296",
+            "cpu_model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+            "cuda_visible_devices": null,
+            "environment_threads": {
+              "MKL_NUM_THREADS": null,
+              "NUMEXPR_NUM_THREADS": null,
+              "OMP_NUM_THREADS": null,
+              "OPENBLAS_NUM_THREADS": null,
+              "VECLIB_MAXIMUM_THREADS": null
+            },
+            "logical_cpu_count": 5,
+            "machine": "x86_64",
+            "package_versions": {
+              "ase": "3.29.0",
+              "e3nn": null,
+              "mace-torch": null,
+              "mdstats": null,
+              "mdstats_source": "0.20.225a0",
+              "numpy": "2.3.5",
+              "scipy": "1.17.0",
+              "threadpoolctl": "3.6.0",
+              "torch": "2.10.0+cpu"
+            },
+            "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+            "processor": "",
+            "python_implementation": "CPython",
+            "python_version": "3.13.5",
+            "threadpools": [
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 5,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              },
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 5,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              }
+            ]
+          },
+          "events": [
+            "Current REPLAY-UNIFY1 immutable unified ExtXYZ source; sequential ASE parse baseline."
+          ],
+          "measured_at_utc": "2026-08-17T12:03:24.507163Z",
+          "persisted_bytes": 0,
+          "process_cpu_seconds": 8.395828028,
+          "process_peak_rss_bytes": 270385152,
+          "queue": {},
+          "repeat_index": 0,
+          "requested_workers": 3,
+          "rss_end_bytes": 270802944,
+          "rss_start_bytes": 268046336,
+          "sampled_peak_rss_bytes": 270802944,
+          "schedule_label": "auto",
+          "schema": "mdstats.mlff-perfbase1-trial.v1",
+          "scientific_output_digest": "12100732e5b14450645bff77f4db4ab487450ce06aee247f9aedfa99fdb67372",
+          "temporary_array_bytes": 0,
+          "wall_seconds": 8.23691065700018,
+          "worker_settings": {
+            "parser_workers": 1,
+            "requested_stage_workers": 3
+          },
+          "workload_id": "replay_unified_extxyz_ingest"
+        },
+        {
+          "allocated_workers": 1,
+          "assigned_lane_occupancy": 1.0168662534020576,
+          "content_digest": "34b1e1d73e01d96939fdaba4dd88b916d63dd97fb536cfbdd0e60354de12c725",
+          "counters": {
+            "atom_count": 325061,
+            "frame_count": 12000,
+            "throughput_count": 12000,
+            "throughput_per_second": 1418.1952023603326,
+            "throughput_unit": "frames"
+          },
+          "effective_cpu_cores": 1.0168662534020576,
+          "environment": {
+            "affinity_cpu_count": 5,
+            "cgroup_cpu_max": "400000 100000",
+            "cgroup_cpu_quota_cores": 4.0,
+            "cgroup_cpuset_effective": "0-4",
+            "cgroup_memory_max": "4294967296",
+            "cpu_model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
+            "cuda_visible_devices": null,
+            "environment_threads": {
+              "MKL_NUM_THREADS": null,
+              "NUMEXPR_NUM_THREADS": null,
+              "OMP_NUM_THREADS": null,
+              "OPENBLAS_NUM_THREADS": null,
+              "VECLIB_MAXIMUM_THREADS": null
+            },
+            "logical_cpu_count": 5,
+            "machine": "x86_64",
+            "package_versions": {
+              "ase": "3.29.0",
+              "e3nn": null,
+              "mace-torch": null,
+              "mdstats": null,
+              "mdstats_source": "0.20.225a0",
+              "numpy": "2.3.5",
+              "scipy": "1.17.0",
+              "threadpoolctl": "3.6.0",
+              "torch": "2.10.0+cpu"
+            },
+            "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+            "processor": "",
+            "python_implementation": "CPython",
+            "python_version": "3.13.5",
+            "threadpools": [
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 5,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              },
+              {
+                "architecture": "SkylakeX",
+                "internal_api": "openblas",
+                "num_threads": 5,
+                "prefix": "libscipy_openblas",
+                "threading_layer": "pthreads",
+                "user_api": "blas",
+                "version": "0.3.30"
+              }
+            ]
+          },
+          "events": [
+            "Current REPLAY-UNIFY1 immutable unified ExtXYZ source; sequential ASE parse baseline."
+          ],
+          "measured_at_utc": "2026-08-17T12:03:39.774871Z",
+          "persisted_bytes": 0,
+          "process_cpu_seconds": 8.604171711,
+          "process_peak_rss_bytes": 270991360,
+          "queue": {},
+          "repeat_index": 1,
+          "requested_workers": 3,
+          "rss_end_bytes": 271355904,
+          "rss_start_bytes": 268607488,
+          "sampled_peak_rss_bytes": 271355904,
+          "schedule_label": "auto",
+          "schema": "mdstats.mlff-perfbase1-trial.v1",
+          "scientific_output_digest": "12100732e5b14450645bff77f4db4ab487450ce06aee247f9aedfa99fdb67372",
+          "temporary_array_bytes": 0,
+          "wall_seconds": 8.461458606000178,
+          "worker_settings": {
+            "parser_workers": 1,
+            "requested_stage_workers": 3
+          },
+          "workload_id": "replay_unified_extxyz_ingest"
+        }
+      ],
+      "workload_id": "replay_unified_extxyz_ingest",
+      "workload_kind": "supplied"
+    }
+  ]
+}

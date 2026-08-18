@@ -1,0 +1,2192 @@
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/CHANGELOG.md /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/CHANGELOG.md
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/CHANGELOG.md	2026-08-08 23:17:59.336620103 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/CHANGELOG.md	2026-08-08 23:37:07.015983416 +0000
+@@ -1,3 +1,13 @@
++## 0.20.116a0 - 2026-08-08
++
++- Implement STOR5 exact immutable content-addressed hardlink deduplication through `deduplicate [--apply]`, gated by completed verification and protocol freeze.
++- Implement authenticated self-contained `tar+gzip` cold archives with per-member hashes, manifest/archive digests, explicit `archive create|verify|restore`, exact staged restore, conflict refusal, and final re-verification.
++- Enable `cleanup --tier archive --apply` only after the consequential hot representation is archived, independently read-back verified, and registered; failed archive verification never authorizes hot deletion.
++- Dereference campaign-internal hardlinks into archive bytes and prune orphan content-store objects after reclamation so deduplication cannot defeat archive disk savings.
++- Preserve all STOR1 ownership protections, production models, selected raw checkpoints, campaign provenance, and diagnostics.
++- Restore the historical 0.20.76 legacy-schema JSON fixtures to the source distribution and include `tests/fixtures/` in `MANIFEST.in`, fixing packaged compatibility-test coverage.
++- Advance the MLFF architecture dependency graph to revision 34 and close the post-0.20.105 EVAL-MF/PREC/STOR implementation roadmap.
++
+ ## 0.20.115a0 - 2026-08-08
+ 
+ - Implement STOR4 manual tiered MLFF reclamation (`safe`, `cache`, `recompute`, `compact`, `archive`) with mandatory capability planning and explicit apply authorization for consequential tiers.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/MANIFEST.in /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/MANIFEST.in
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/MANIFEST.in	2026-08-08 11:03:02.000000000 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/MANIFEST.in	2026-08-08 23:37:01.504595337 +0000
+@@ -12,3 +12,5 @@
+ recursive-include tests *.py
+ recursive-include tests/data *
+ global-exclude *.py[cod]
++
++recursive-include tests/fixtures *
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/PATCH_NOTES_0.20.116a0.md /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/PATCH_NOTES_0.20.116a0.md
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/PATCH_NOTES_0.20.116a0.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/PATCH_NOTES_0.20.116a0.md	2026-08-08 23:37:07.016160038 +0000
+@@ -0,0 +1,12 @@
++# mdstats 0.20.116a0 patch notes
++
++- Implement MLFF STOR5 immutable exact-byte deduplication and authenticated reversible cold archival.
++- Add `deduplicate [--apply]`: after verification plus protocol freeze, known immutable campaign-owned families are SHA-256 grouped and exact duplicates may be atomically replaced by same-filesystem hardlinks backed by `.mdstats/content-store/sha256/...`. Active checkpoints, campaign state, logs, production models, selected raw checkpoints, configured external inputs, and symlink targets are excluded.
++- Add `archive create|verify|restore`. Cold archives are self-contained `tar+gzip` objects with workspace-relative members, per-file SHA-256/size/mode records, a manifest-content digest, and archive SHA-256. Hardlinks are dereferenced in the archive so restoration never depends on the hot content store.
++- Enable `cleanup --tier archive --apply`: after the mandatory STOR4 plan and any independently lossless STOR2 checkpoint compaction, mdstats recollects the exact consequential hot layout, creates and independently verifies the archive, commits its receipt, and only then deletes archived hot roots. Any archive/manifest/member/ownership failure leaves consequential hot bytes intact.
++- Add exact restore staging/conflict checks and post-restore rehashing. Existing conflicting bytes are never overwritten. Restore receipts are persisted in campaign state/results.
++- Prune orphan content-addressed objects after reclamation so prior deduplication cannot pin bytes that archive/cleanup has removed from the hot layout.
++- Extend STOR1 storage classification with `immutable_content_store` and `cold_archive` families.
++- Advance the MLFF architecture dependency graph to revision 34. The post-0.20.105 EVAL-MF/PREC/STOR roadmap is complete.
++
++- Restore the historical 0.20.76 legacy-schema JSON fixtures to packaged sdists so compatibility tests exercise the same byte identities as the source tree.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/README.md /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/README.md
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/README.md	2026-08-08 23:18:04.294184082 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/README.md	2026-08-08 23:27:07.204789353 +0000
+@@ -8,7 +8,7 @@
+ 
+ ## Read-only campaign storage accounting in 0.20.111a0
+ 
+-Run `mdstats-mlff-campaign storage -c campaign.toml` to inventory the campaign workspace without reclaiming anything. STOR1 reports logical bytes, inode-deduplicated allocated physical bytes, unique-inode logical bytes, ownership/retention families, protected external inputs, symlink escapes, future reclamation eligibility, capability loss, and the largest files/directories. The JSON report is written to `results/storage-report.json` only when that destination is itself inside the verified ownership boundary.
++Run `mdstats-mlff-campaign storage -c campaign.toml` to inventory the campaign workspace without reclaiming anything. STOR5 adds `deduplicate [--apply]` for exact immutable hardlink deduplication and `archive create|verify|restore`; `cleanup --tier archive --apply` deletes consequential hot representations only after a verified reversible archive exists. STOR1 reports logical bytes, inode-deduplicated allocated physical bytes, unique-inode logical bytes, ownership/retention families, protected external inputs, symlink escapes, future reclamation eligibility, capability loss, and the largest files/directories. The JSON report is written to `results/storage-report.json` only when that destination is itself inside the verified ownership boundary.
+ 
+ Configured training, foundation, replay, true-label, and campaign-config paths remain protected user/reference inputs even when physically located inside the workspace. Existing cleanup and checkpoint-pruning code now consumes the same real-path/symlink containment boundary, so a path found in TOML/SQLite/JSON never grants deletion authority over external data. STOR1 adds no new deletion mode; STOR2 is the next gate.
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/docs/arch_manuals/mlff_training_data_architecture.md /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/docs/arch_manuals/mlff_training_data_architecture.md
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-08 23:08:20.074613419 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-08 23:27:23.739653518 +0000
+@@ -4712,25 +4712,53 @@
+ 
+ The implementation keeps these tiers cumulative and explicit. `cleanup --tier safe` uses only lifecycle-safe reclamation; `cache` additionally removes reconstructable acceleration caches. `recompute` may remove DATA6/model-sweep, evaluation-prediction, and verified true-label replay materializations after the required downstream stages complete and only while configured reconstruction inputs still exist. `compact` requires full verification, a protocol freeze, and a protected exported production model before it may remove nonselected evaluation capsules, nonproduction per-run model copies, or hot DATA7/DATA8 materializations.
+ 
+-Every invocation first emits and writes `results/manual-reclamation-plan-<tier>.json`. `recompute` and `compact` do not apply unless `--apply` is explicit. `archive` is plan-only and `archive --apply` fails closed until STOR5 supplies authenticated reversible archive/restore semantics. Diagnostic text/log records remain retained at every tier. External inputs, workspace production models, selected production raw checkpoints, and campaign protocol/selection/verification records are never STOR4 deletion candidates.
++Every invocation first emits and writes `results/manual-reclamation-plan-<tier>.json`. `recompute` and `compact` do not apply unless `--apply` is explicit. With STOR5, `archive --apply` additionally requires successful archive creation, independent member verification, and a committed archive receipt before consequential hot deletion. Diagnostic text/log records remain retained at every tier. External inputs, workspace production models, selected production raw checkpoints, and campaign protocol/selection/verification records are never STOR4 deletion candidates.
+ 
+ The capability report covers training restart, exact checkpoint re-evaluation, metric-only recomputation, DATA7 reselection, DATA8 rematerialization, current production inference, and verification replay. It distinguishes fully preserved capability from capability that remains possible only after reinference/rematerialization. Intentional higher-tier capability losses are appended to `results/cleanup-manifest.jsonl`; STOR3 automatic events retain the stricter empty-loss contract.
+ 
+-## STOR5 - immutable deduplication and optional cold archival - planned
++## STOR5 - immutable deduplication and authenticated cold archival - implemented in 0.20.116a0
+ 
+-After ownership/accounting and lifecycle cleanup are qualified, immutable campaign
+-artifacts may be deduplicated by content. Same-filesystem hardlinks or copy-on-write
+-reflinks are preferred where supported; fallback remains ordinary atomic copy.
+-Logical and physical storage accounting must distinguish these cases.
+-
+-Cold artifacts that are no longer latency-sensitive may optionally be converted from
+-mmap-friendly hot representations to compressed archives with authenticated manifests.
+-Archival conversion is reversible: a restore command reconstructs the required hot
+-layout and verifies all content identities before the campaign consumes it. Archive
+-failure never deletes the original until the new representation is fully authenticated.
++STOR5 implements two optional physical-storage optimizations while preserving the
++scientific checkpoint/model/data identities frozen by the earlier gates.
+ 
+-STOR5 is an optional optimization. It may not delay EVAL-MF1/2, PREC1--PREC3, or the ownership and
+-safe-cleanup work in STOR1--STOR4.
++`deduplicate` is plan-only by default and requires completed verification plus an
++authoritative protocol freeze. It scans only known campaign-owned immutable families
++(DATA7/DATA8 materializations, qualified scientific/reconstructable caches,
++nonselected evaluation capsules, nonproduction run models, and checkpoint-model
++caches). Exact byte duplicates are grouped by SHA-256. With `--apply`, a canonical
++object is materialized under `.mdstats/content-store/sha256/<prefix>/<digest>` and
++same-filesystem duplicates are atomically replaced by hardlinks to that object. Active
++checkpoints, SQLite state, logs, production models, selected raw checkpoints, and every
++configured external input are excluded. Symlinks are never followed. STOR1 accounting
++continues to report logical bytes separately from inode-deduplicated physical bytes.
++
++Cold archival is available independently through `archive create`, `archive verify`, and
++`archive restore`, and is integrated into `cleanup --tier archive --apply`. Only
++consequential STOR4 `recompute`/`compact` actions require archival; disposable `safe`
++and `cache` material does not. The archive is a self-contained `tar+gzip` object under
++`.mdstats/cold-archive/` with workspace-relative members, SHA-256/size/mode for every
++file, an authenticated manifest-content digest, and an archive SHA-256. Hardlinked hot
++files are dereferenced into ordinary archive members so a later restore does not depend
++on the content store.
++
++The destructive order is binding and fail-closed: emit the STOR4 capability plan; apply
++any independently lossless STOR2 nonselected-checkpoint compaction; recollect the exact
++post-STOR2 archive roots; create the archive; independently read back and hash every
++member; persist the archive receipt in campaign state; only then remove the represented
++hot roots. The cleanup audit changes those actions from irreversible capability loss to
++`archive_restore_available=true` with the archive identity attached. Archive creation,
++member verification, receipt persistence, or ownership failure leaves consequential hot
++bytes in place.
++
++`archive restore` re-verifies both manifest and archive, reconstructs members beneath a
++campaign-owned staging tree, authenticates every staged file, preflights all hot
++destinations, refuses conflicting existing content, atomically installs missing files,
++and hashes the final layout again before writing a restore receipt. `archive verify` is
++read-only. Orphan content-addressed objects whose last hot hardlink has disappeared are
++pruned after reclamation so earlier deduplication cannot pin deleted hot bytes on disk.
++
++STOR5 is optional for users but fully implemented. It closes the post-0.20.105
++EVAL-MF/PREC/STOR roadmap; no further gate is required by this roadmap.
+ 
+ ## New-roadmap completion rule
+ 
+@@ -4754,7 +4782,7 @@
+ 8. **capability loss is explicit** - any manual higher-tier reclamation states exactly
+    what can no longer be restarted, recomputed, or re-evaluated cheaply.
+ 
+-`EVAL-MF1` is implemented in 0.20.106a0, `EVAL-MF2` in 0.20.107a0, `PREC1` in 0.20.108a0, `PREC2` in 0.20.109a0, `PREC3` in 0.20.110a0, `STOR1` in 0.20.111a0, `STOR2` in 0.20.113a0, `STOR3` in 0.20.114a0, and `STOR4` in 0.20.115a0. The next implementation gate is `STOR5`. The remaining required implementation sequence is `STOR5`.
++`EVAL-MF1` is implemented in 0.20.106a0, `EVAL-MF2` in 0.20.107a0, `PREC1` in 0.20.108a0, `PREC2` in 0.20.109a0, `PREC3` in 0.20.110a0, `STOR1` in 0.20.111a0, `STOR2` in 0.20.113a0, `STOR3` in 0.20.114a0, `STOR4` in 0.20.115a0, and `STOR5` in 0.20.116a0. The post-0.20.105 evaluation, precision, and storage implementation roadmap is complete.
+ Storage implementation does not begin until EVAL-MF and staged-precision work establish
+ the checkpoint, prediction, optimizer-state, and dtype lifetimes that storage policy
+ must respect.
+@@ -4786,5 +4814,5 @@
+ The staged optimization roadmap **OPT-EVAL1 through OPT-CTRL1 is complete**. The
+ post-0.20.105 multi-fidelity-evaluation/staged-precision/storage roadmap above is a
+ separate cycle opened by new production-scale profiling, FP64-training, and storage
+-evidence. `EVAL-MF1`, `EVAL-MF2`, `PREC1`, `PREC2`, `PREC3`, `STOR1`, `STOR2`, `STOR3`, and `STOR4` are implemented through 0.20.115a0; the next implementation gate is `STOR5`.
++evidence. `EVAL-MF1`, `EVAL-MF2`, `PREC1`, `PREC2`, `PREC3`, `STOR1`, `STOR2`, `STOR3`, `STOR4`, and `STOR5` are implemented through 0.20.116a0; this roadmap is closed.
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/docs/arch_manuals/mlff_training_data_dependency_graph.json /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/docs/arch_manuals/mlff_training_data_dependency_graph.json
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-08 23:07:12.121285095 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-08 23:27:31.208174015 +0000
+@@ -1,7 +1,7 @@
+ {
+-  "architecture_revision": 33,
++  "architecture_revision": 34,
+   "branch": "MLFF-DATA",
+-  "description": "MLFF training-data dependency graph through DATA2A automatic review-manifest inference,  DATA9B3A frozen e3nn/cuEquivariance campaigns, MLFF-PERF2 resource-aware process/GPU execution,  EVAL-MF1/MF2 multi-fidelity checkpoint evaluation, and PREC1-PREC3 explicit precision profiles,  staged runtime transitions, cross-stage evaluation, and deployment activation. STOR1 ownership/storage accounting, STOR2 authenticated completed-checkpoint compaction, STOR3 lifecycle-safe automatic reclamation, and STOR4 manual capability-aware tiered reclamation are implemented; STOR5 remains planned. Scientific DATA9 identity remains unchanged.",
++  "description": "MLFF training-data dependency graph through DATA2A automatic review-manifest inference,  DATA9B3A frozen e3nn/cuEquivariance campaigns, MLFF-PERF2 resource-aware process/GPU execution,  EVAL-MF1/MF2 multi-fidelity checkpoint evaluation, and PREC1-PREC3 explicit precision profiles,  staged runtime transitions, cross-stage evaluation, and deployment activation. STOR1 ownership/storage accounting, STOR2 authenticated completed-checkpoint compaction, STOR3 lifecycle-safe automatic reclamation, STOR4 manual capability-aware tiered reclamation, and STOR5 immutable deduplication plus authenticated reversible cold archival are implemented. The post-0.20.105 EVAL-MF/PREC/STOR roadmap is complete. Scientific DATA9 identity remains unchanged.",
+   "documentation_gate": "MLFF-DATA0",
+   "edge_type_definitions": {
+     "execution_requires": "The upstream product must exist before execution.",
+@@ -2597,6 +2597,26 @@
+       "from": "LIFECYCLE_SAFE_RECLAMATION_POLICY",
+       "to": "TIERED_STORAGE_RECLAMATION_PLAN",
+       "type": "execution_requires"
++    },
++    {
++      "from": "CAMPAIGN_ARTIFACT_OWNERSHIP_CATALOG",
++      "to": "IMMUTABLE_CONTENT_STORE",
++      "type": "execution_requires"
++    },
++    {
++      "from": "CAMPAIGN_STORAGE_REPORT",
++      "to": "IMMUTABLE_CONTENT_STORE",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "COLD_ARCHIVE_MANIFEST",
++      "to": "COLD_ARCHIVE_RESTORE_RECEIPT",
++      "type": "produces"
++    },
++    {
++      "from": "COLD_ARCHIVE_MANIFEST",
++      "to": "CAMPAIGN_CLEANUP_MANIFEST",
++      "type": "optional_enrichment"
+     }
+   ],
+   "forbidden_dependencies": [
+@@ -2887,7 +2907,12 @@
+       "id": "CHECKPOINT_SURVIVOR_RECORD"
+     },
+     {
+-      "id": "COLD_ARCHIVE_MANIFEST"
++      "id": "COLD_ARCHIVE_MANIFEST",
++      "implementation_status": "implemented",
++      "implemented_version": "0.20.116a0",
++      "representation": "tar+gzip",
++      "authenticated": true,
++      "reversible_restore": true
+     },
+     {
+       "id": "COMMITTEE_EXPORT_POLICY"
+@@ -3440,7 +3465,7 @@
+         "compact",
+         "archive"
+       ],
+-      "archive_apply_requires": "STOR5"
++      "archive_apply_requires": "verified COLD_ARCHIVE_MANIFEST"
+     },
+     {
+       "id": "TRAINED_COMMITTEE"
+@@ -3504,6 +3529,18 @@
+     },
+     {
+       "id": "LIFECYCLE_SAFE_RECLAMATION_POLICY"
++    },
++    {
++      "id": "IMMUTABLE_CONTENT_STORE",
++      "implementation_status": "implemented",
++      "implemented_version": "0.20.116a0",
++      "identity": "sha256",
++      "physical_representation": "same_filesystem_hardlink"
++    },
++    {
++      "id": "COLD_ARCHIVE_RESTORE_RECEIPT",
++      "implementation_status": "implemented",
++      "implemented_version": "0.20.116a0"
+     }
+   ],
+   "schema_version": 26
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/docs/guides/mlff_campaign_cli_user_guide.md /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/docs/guides/mlff_campaign_cli_user_guide.md
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/docs/guides/mlff_campaign_cli_user_guide.md	2026-08-08 23:10:44.803017407 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/docs/guides/mlff_campaign_cli_user_guide.md	2026-08-08 23:27:07.204441025 +0000
+@@ -24,11 +24,15 @@
+ python tools/mdstats-mlff-campaign.py --config campaign.toml cleanup --tier recompute --apply
+ python tools/mdstats-mlff-campaign.py --config campaign.toml cleanup --tier compact --apply
+ python tools/mdstats-mlff-campaign.py --config campaign.toml cleanup --tier archive --dry-run
++python tools/mdstats-mlff-campaign.py --config campaign.toml cleanup --tier archive --apply
++python tools/mdstats-mlff-campaign.py --config campaign.toml archive verify
++python tools/mdstats-mlff-campaign.py --config campaign.toml archive restore
++python tools/mdstats-mlff-campaign.py --config campaign.toml deduplicate
++python tools/mdstats-mlff-campaign.py --config campaign.toml deduplicate --apply
+ ```
+ 
+ Every cleanup invocation prints and writes a capability plan first. `recompute` and
+-`compact` require explicit `--apply`. `archive` remains plan-only until STOR5 provides
+-a verified reversible archive/restore implementation. External inputs, workspace
++`compact` require explicit `--apply`. `archive --apply` is additionally gated by STOR5: consequential hot bytes are removed only after a compressed archive is created, independently verified, and registered. `archive restore` reconstructs and re-verifies the exact hot layout. `deduplicate` is plan-only unless `--apply` is given and operates only on verified/frozen immutable campaign-owned files. External inputs, workspace
+ production models, selected production raw checkpoints, protocol/selection/verification
+ records, and diagnostic logs are never STOR4 deletion candidates.
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/docs/specs/training_data/mlff_staged_precision_profiles_spec.md /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/docs/specs/training_data/mlff_staged_precision_profiles_spec.md
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/docs/specs/training_data/mlff_staged_precision_profiles_spec.md	2026-08-08 23:07:33.501395228 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/docs/specs/training_data/mlff_staged_precision_profiles_spec.md	2026-08-08 23:27:07.204299816 +0000
+@@ -1,6 +1,6 @@
+ # MLFF PREC1-PREC3 staged-precision profile specification
+ 
+-Status: PREC1 implemented in mdstats 0.20.108a0; PREC2 implemented in mdstats 0.20.109a0; PREC3 implemented in mdstats 0.20.110a0. STOR1 is implemented in mdstats 0.20.111a0, STOR2 in mdstats 0.20.113a0, and STOR3 in mdstats 0.20.114a0 and STOR4 in mdstats 0.20.115a0; STOR5 remains planned.
++Status: PREC1 implemented in mdstats 0.20.108a0; PREC2 implemented in mdstats 0.20.109a0; PREC3 implemented in mdstats 0.20.110a0. STOR1 is implemented in mdstats 0.20.111a0, STOR2 in mdstats 0.20.113a0, STOR3 in mdstats 0.20.114a0, STOR4 in mdstats 0.20.115a0, and STOR5 in mdstats 0.20.116a0; the post-0.20.105 evaluation/precision/storage roadmap is complete.
+ 
+ ## Purpose
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/docs/specs/training_data/mlff_storage_management_spec.md /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/docs/specs/training_data/mlff_storage_management_spec.md
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/docs/specs/training_data/mlff_storage_management_spec.md	2026-08-08 23:07:33.500202627 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/docs/specs/training_data/mlff_storage_management_spec.md	2026-08-08 23:27:07.204184184 +0000
+@@ -1,6 +1,6 @@
+ # MLFF STOR1-STOR5 campaign storage-management specification
+ 
+-Status: STOR1 implemented in 0.20.111a0; STOR2 implemented in 0.20.113a0; STOR3 implemented in 0.20.114a0; STOR4 implemented in 0.20.115a0; STOR5 planned.
++Status: STOR1 implemented in 0.20.111a0; STOR2 implemented in 0.20.113a0; STOR3 implemented in 0.20.114a0; STOR4 implemented in 0.20.115a0; STOR5 implemented in 0.20.116a0. The storage roadmap is complete.
+ 
+ ## Purpose
+ 
+@@ -118,22 +118,49 @@
+ - `archive`: explicitly selected cold reproducibility material converted to verified
+   archival representation.
+ 
+-The implementation distinguishes planning from authorization. `safe` and `cache` retain the pre-STOR4 low-consequence behavior; `recompute` and `compact` are plan-only unless `--apply` is supplied. `archive` is intentionally plan-only in STOR4 and `archive --apply` fails closed until STOR5 can create and verify a reversible archival representation.
++The implementation distinguishes planning from authorization. `safe` and `cache` retain the pre-STOR4 low-consequence behavior; `recompute` and `compact` are plan-only unless `--apply` is supplied. With STOR5, `archive --apply` first creates and independently verifies a reversible cold archive of every consequential `recompute`/`compact` hot artifact; only after that receipt is committed may those hot representations be removed.
+ 
+ The capability plan states the status of training restart, exact checkpoint re-evaluation, metric-only recomputation, DATA7 reselection, DATA8 rematerialization, current production inference, and verification replay. `recompute` requires authoritative evaluation plus the continued availability of configured reconstruction inputs before scientific prediction/DATA6 caches can be removed. `compact` additionally requires full verification, an authoritative protocol freeze, and a protected production model; it may then remove nonselected evaluation capsules, nonproduction per-run model copies, and hot DATA7/DATA8 materializations. Selected production raw checkpoints, workspace production models, protocol/selection/verification records, and default diagnostics/logs are never STOR4 deletion candidates.
+ 
+ Every consequential manual deletion is recorded in the append-only cleanup manifest with its intentional capability-loss set. STOR3 automatic cleanup continues to require an empty capability-loss set.
+ 
+-## STOR5 - deduplication and cold archival
++## STOR5 - immutable deduplication and authenticated cold archival - implemented in 0.20.116a0
+ 
+-Immutable identical campaign-owned artifacts may use content-addressed storage with
+-hardlinks/reflinks where safe and supported. Storage reporting distinguishes logical
+-from physical usage.
+-
+-Cold mmap-oriented artifacts may optionally be compressed after protocol freeze. The
+-archive has an authenticated manifest and a reversible restore path. Original hot
+-artifacts are removed only after archive verification succeeds. Archive corruption or
+-restore mismatch fails closed.
++STOR5 closes the optional physical-storage layer without changing scientific identities.
++`deduplicate` scans only verified/frozen campaign-owned immutable families. Exact byte
++duplicates are SHA-256 grouped and, with explicit `--apply`, replaced atomically by
++same-filesystem hardlinks backed by `.mdstats/content-store/sha256/<prefix>/<digest>`.
++The command is plan-only by default, excludes active checkpoints/state/logs/production
++artifacts, refuses to run before verification plus protocol freeze, and never follows
++symlinks. Storage accounting therefore continues to distinguish logical bytes from
++inode-deduplicated physical allocation.
++
++Cold archival is exposed through `archive create|verify|restore` and through
++`cleanup --tier archive --apply`. Archive candidates are the consequential STOR4
++`recompute`/`compact` actions only; safe/cache garbage need not be archived. The archive
++is a self-contained `tar+gzip` representation under `.mdstats/cold-archive/`, with
++workspace-relative member paths, per-file SHA-256/size/mode records, an authenticated
++manifest digest, and an archive SHA-256. Campaign-internal hardlinks are dereferenced
++when archiving so the archive remains self-contained after hot links and the content
++store disappear.
++
++Deletion order is binding: plan -> lossless STOR2 checkpoint compaction -> collect the
++post-STOR2 hot layout -> create archive -> independently read back and authenticate every
++member -> commit the archive receipt -> delete only the represented hot roots. Archived
++actions record `archive_restore_available=true` and no irreversible scientific
++capability loss. Corruption, unsafe paths, missing members, or hash mismatch fail closed
++before consequential deletion.
++
++`archive restore` verifies the registered manifest/archive again, reconstructs files in a
++campaign-owned staging tree, authenticates staged bytes, preflights all destinations for
++conflicts, installs only missing exact files, and rehashes the final hot layout. Existing
++conflicting bytes are never overwritten. A restore receipt is persisted in campaign
++state/results. `archive verify` is read-only.
++
++STOR5 also garbage-collects content-store objects whose last hot hardlink was removed, so
++prior deduplication cannot defeat later archive/cleanup disk savings. External source,
++foundation, replay, and true-label paths remain outside both deduplication and archival
++authority.
+ 
+ ## Ordering
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/mdstats/_version.py /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/mdstats/_version.py
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/mdstats/_version.py	2026-08-08 23:07:11.546824709 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/mdstats/_version.py	2026-08-08 23:27:07.203997187 +0000
+@@ -1,3 +1,3 @@
+ """Package version."""
+ 
+-__version__ = "0.20.115a0"
++__version__ = "0.20.116a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/mdstats/data/observable_owner_manuals.json /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/mdstats/data/observable_owner_manuals.json
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/mdstats/data/observable_owner_manuals.json	2026-08-08 23:07:11.547062662 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/mdstats/data/observable_owner_manuals.json	2026-08-08 23:27:07.204047852 +0000
+@@ -17,6 +17,6 @@
+       "uri": "mdstats-doc://vacf-dynamics-architecture/0.20.53a0"
+     }
+   },
+-  "package_version": "0.20.115a0",
++  "package_version": "0.20.116a0",
+   "schema": "mdstats.observable-owner-manual-index.v1"
+ }
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/mdstats/training_data/campaign_cli.py /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/mdstats/training_data/campaign_cli.py
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/mdstats/training_data/campaign_cli.py	2026-08-08 23:10:44.805007351 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/mdstats/training_data/campaign_cli.py	2026-08-08 23:29:30.007888685 +0000
+@@ -41,6 +41,14 @@
+     configured_protected_inputs,
+ )
+ from .storage_reclamation import append_cleanup_manifest, filesystem_identity
++from .storage_archive import (
++    StorageArchiveError,
++    create_cold_archive,
++    deduplicate_immutable_files,
++    prune_orphan_content_store,
++    restore_cold_archive,
++    verify_cold_archive,
++)
+ 
+ from ._common import (
+     configure_sha256_receipt_store,
+@@ -83,7 +91,8 @@
+ # 0.20.112a0 is a warning-condensation hotfix for MACE/PyTorch evaluation/runtime noise, and
+ # 0.20.113a0 implements STOR2 authenticated nonselected-checkpoint compaction, and
+ # 0.20.114a0 implements STOR3 lifecycle-safe automatic reclamation/audit manifests, and
+-# 0.20.115a0 implements STOR4 manual tiered reclamation/capability plans.
++# 0.20.115a0 implements STOR4 manual tiered reclamation/capability plans, and
++# 0.20.116a0 implements STOR5 immutable deduplication and authenticated cold archive/restore.
+ # None changes the frozen MLFF scientific/materialization identity, so existing
+ # 0.20.99a0 campaign state and prediction caches remain reusable.
+ MLFF_DATA9B3_VERSION = "0.20.99a0"
+@@ -12452,6 +12461,25 @@
+             "status": "preserved_with_recomputation",
+             "detail": "true-label replay materialization is removed; protected true-label inputs must be rematerialized",
+         }
++    if tier == "archive":
++        affected = {
++            "metric_only_recomputation": "metric_only_recomputation",
++            "data7_reselection_without_reinference": "data7_reselection",
++            "data8_hot_materialization": "data8_rematerialization",
++            "nonselected_checkpoint_reevaluation": "exact_checkpoint_reevaluation",
++            "verification_replay_without_reconstruction": "verification_replay",
++        }
++        for loss, capability in affected.items():
++            if loss in losses:
++                status[capability] = {
++                    "status": "preserved_via_archive",
++                    "detail": "hot representation may be removed only after STOR5 archive verification; authenticated restore reconstructs the exact bytes",
++                }
++        if "data8_hot_materialization" in losses:
++            status["training_restart"] = {
++                "status": "preserved_via_archive",
++                "detail": "selected restart checkpoint is retained and archived DATA8 bytes can be restored exactly before continuation",
++            }
+     status["current_production_inference"] = {
+         "status": "preserved",
+         "detail": "workspace production models are never STOR4 deletion candidates",
+@@ -12459,7 +12487,8 @@
+     return {
+         "requested_tier": tier,
+         "capabilities": status,
+-        "declared_capability_losses": sorted(losses),
++        "declared_capability_losses": [] if tier == "archive" else sorted(losses),
++        "archived_capabilities": sorted(losses) if tier == "archive" else [],
+     }
+ 
+ 
+@@ -12700,7 +12729,7 @@
+         item = capabilities[name]
+         print(f"  {name}: {item['status']} - {item['detail']}", flush=True)
+     if payload.get("archive_representation_required"):
+-        _warn("archive tier is plan-only until STOR5 provides authenticated archive/restore support")
++        _warn("archive tier requires an authenticated STOR5 archive before consequential hot representations are removed")
+ 
+ 
+ def _build_manual_tier_report(
+@@ -12759,6 +12788,231 @@
+         },
+     )
+ 
++
++def _stor5_archive_directory(paths: CampaignPaths) -> Path:
++    return paths.internal / "cold-archive"
++
++
++def _stor5_archive_actions(actions: Sequence[Mapping[str, Any]]) -> tuple[dict[str, Any], ...]:
++    """Return consequential STOR4 actions whose hot bytes must be preserved by STOR5."""
++
++    result = []
++    for action in actions:
++        if str(action.get("cleanup_class", "")) not in {"manual_recompute", "manual_compact"}:
++            continue
++        if not action.get("capability_loss"):
++            continue
++        path = Path(str(action.get("path", "")))
++        if not path.exists() or path.is_symlink():
++            # A symlink target is never campaign-owned archival content.  The
++            # link object itself may be safely unlinked by lower tiers, but STOR5
++            # will never traverse or preserve an external target by accident.
++            continue
++        result.append(dict(action))
++    return tuple(result)
++
++
++def _stor5_archive_receipt(paths: CampaignPaths, manifest: Mapping[str, Any]) -> dict[str, Any]:
++    archive_dir = _stor5_archive_directory(paths)
++    manifest_path = archive_dir / f"cold-{manifest['archive_id']}.manifest.json"
++    return {
++        "schema": "mdstats.mlff-cold-archive-receipt.v1",
++        "created_utc": _utc_now(),
++        "archive_id": manifest["archive_id"],
++        "manifest_relative_path": str(manifest_path.relative_to(paths.workspace)),
++        "manifest_sha256": _sha256(manifest_path),
++        "archive_relative_path": str((archive_dir / manifest["archive_file"]).relative_to(paths.workspace)),
++        "archive_sha256": manifest["archive_sha256"],
++        "archive_size_bytes": int(manifest["archive_size_bytes"]),
++        "hot_logical_bytes": int(manifest["hot_logical_bytes"]),
++        "verified": True,
++    }
++
++
++def _stor5_latest_manifest_path(paths: CampaignPaths, store: CampaignStore) -> Path:
++    if not store.has_record("cold_archive:latest"):
++        raise CampaignCliError("No authenticated STOR5 cold archive is registered for this campaign.")
++    receipt = store.get_payload("cold_archive:latest")
++    relative = Path(str(receipt.get("manifest_relative_path", "")))
++    if relative.is_absolute() or ".." in relative.parts:
++        raise CampaignCliError("Stored cold-archive manifest locator is invalid.")
++    path = paths.workspace / relative
++    if not path.is_file():
++        raise CampaignCliError(f"Registered cold-archive manifest is missing: {path}")
++    if _sha256(path) != receipt.get("manifest_sha256"):
++        raise CampaignCliError("Registered cold-archive manifest SHA-256 mismatch.")
++    return path
++
++
++def _stor5_register_archive(paths: CampaignPaths, store: CampaignStore, manifest: Mapping[str, Any]) -> dict[str, Any]:
++    receipt = _stor5_archive_receipt(paths, manifest)
++    store.put_record(f"cold_archive:{manifest['archive_id']}", receipt)
++    store.put_record("cold_archive:latest", receipt)
++    return receipt
++
++
++def _stor5_create_from_actions(
++    paths: CampaignPaths,
++    store: CampaignStore,
++    boundary: CampaignOwnershipBoundary,
++    actions: Sequence[Mapping[str, Any]],
++) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
++    archive_actions = _stor5_archive_actions(actions)
++    if not archive_actions:
++        return None, None
++    try:
++        manifest = create_cold_archive(
++            paths.workspace,
++            [Path(str(action["path"])) for action in archive_actions],
++            boundary=boundary,
++            archive_directory=_stor5_archive_directory(paths),
++            source_actions=archive_actions,
++        )
++        # Independent read-back verification is mandatory before the receipt is
++        # committed and before any hot representation is eligible for deletion.
++        manifest_path = _stor5_archive_directory(paths) / f"cold-{manifest['archive_id']}.manifest.json"
++        verified = verify_cold_archive(manifest_path)
++        receipt = _stor5_register_archive(paths, store, verified)
++        return verified, receipt
++    except StorageArchiveError as exc:
++        raise CampaignCliError(f"STOR5 cold archive creation/verification failed closed: {exc}") from exc
++
++
++def _stor5_mark_archived_actions(
++    report: _CampaignCleanupReport,
++    paths: CampaignPaths,
++    manifest: Mapping[str, Any] | None,
++) -> None:
++    if manifest is None:
++        return
++    archived_roots = {
++        str((paths.workspace / str(relative)).resolve())
++        for relative in manifest.get("roots", ())
++    }
++    for action in report.actions:
++        action_path = str(Path(str(action.get("path", ""))).resolve())
++        if action_path not in archived_roots:
++            continue
++        prior_loss = list(action.get("capability_loss", ()))
++        action["archived_capability_loss"] = prior_loss
++        action["capability_loss"] = []
++        action["archive_id"] = str(manifest["archive_id"])
++        action["archive_restore_available"] = True
++
++
++def _stor5_dedup_roots(paths: CampaignPaths) -> tuple[Path, ...]:
++    roots: list[Path] = [
++        paths.data,
++        paths.internal / "frame-cache",
++        paths.internal / "data7-cache",
++        paths.internal / "evaluation-graphs",
++        paths.internal / "evaluation-predictions",
++        paths.internal / "model-sweep",
++        paths.internal / "true-label-replay",
++    ]
++    if paths.runs.is_dir() and not paths.runs.is_symlink():
++        for run_root in sorted(paths.runs.iterdir()):
++            if not run_root.is_dir() or run_root.is_symlink():
++                continue
++            roots.extend((
++                run_root / "evaluation-capsules",
++                run_root / "models",
++                run_root / "checkpoint-model-cache",
++            ))
++    return tuple(path for path in roots if path.exists() and not path.is_symlink())
++
++
++def command_deduplicate(args: argparse.Namespace) -> int:
++    """STOR5 exact-byte immutable deduplication after protocol freeze."""
++
++    cfg, paths = _load_config(args.config)
++    store = CampaignStore(paths.state_db)
++    running = [name for name, _ in PIPELINE if store.stage(name)[0] is StageState.RUNNING]
++    if running:
++        raise CampaignCliError("Refusing immutable deduplication while campaign stages are running: " + ", ".join(running))
++    verify_state, _ = _effective_stage(store, paths, "verify")
++    if verify_state is not StageState.COMPLETE or not store.has_record("protocol_freeze"):
++        raise CampaignCliError("STOR5 deduplication requires completed verification and an authoritative protocol freeze.")
++    protected_inputs = configured_protected_inputs(cfg, config_dir=paths.config_dir, config_path=paths.config)
++    boundary = CampaignOwnershipBoundary(paths.workspace, protected_inputs=protected_inputs)
++    try:
++        report = deduplicate_immutable_files(
++            paths.workspace,
++            _stor5_dedup_roots(paths),
++            boundary=boundary,
++            content_store=paths.internal / "content-store",
++            apply=bool(getattr(args, "apply", False)),
++        )
++    except StorageArchiveError as exc:
++        raise CampaignCliError(f"STOR5 deduplication failed closed: {exc}") from exc
++    destination = paths.results / "deduplication-report.json"
++    authorized, detail = boundary.destructive_authorization(destination)
++    if authorized:
++        _atomic_json(destination, report)
++    else:
++        _warn(f"deduplication report write denied by ownership boundary: {detail}")
++    print(
++        "STOR5 immutable deduplication: "
++        f"groups={report['group_count']}; potential={_format_storage_bytes(report['potential_reclaimed_bytes'])}; "
++        f"applied={bool(report['applied'])}; reclaimed~={_format_storage_bytes(report['reclaimed_bytes_estimate'])}",
++        flush=True,
++    )
++    if not bool(getattr(args, "apply", False)):
++        _warn("Deduplication plan only; rerun with `deduplicate --apply` to replace exact duplicates with content-addressed hardlinks.")
++    return 0
++
++
++def command_archive(args: argparse.Namespace) -> int:
++    """STOR5 create/verify/restore an authenticated reversible cold archive."""
++
++    cfg, paths = _load_config(args.config)
++    protected_inputs = configured_protected_inputs(cfg, config_dir=paths.config_dir, config_path=paths.config)
++    boundary = CampaignOwnershipBoundary(paths.workspace, protected_inputs=protected_inputs)
++    state_authorized, state_detail = boundary.destructive_authorization(paths.state_db)
++    if not state_authorized:
++        raise CampaignCliError(f"Refusing archive operation because campaign state is outside ownership boundary: {state_detail}")
++    store = CampaignStore(paths.state_db)
++    action = str(args.archive_action)
++    if action == "create":
++        running = [name for name, _ in PIPELINE if store.stage(name)[0] is StageState.RUNNING]
++        if running:
++            raise CampaignCliError("Refusing cold archival while campaign stages are running: " + ", ".join(running))
++        report = _build_manual_tier_report("archive", cfg, paths, store, dry_run=True)
++        manifest, receipt = _stor5_create_from_actions(paths, store, boundary, report.actions)
++        if manifest is None:
++            _warn("No consequential recompute/compact hot artifacts are currently eligible for cold archival.")
++            return 0
++        _ok(
++            f"cold archive created and verified: id={manifest['archive_id']}; "
++            f"hot={_format_storage_bytes(manifest['hot_logical_bytes'])}; "
++            f"archive={_format_storage_bytes(manifest['archive_size_bytes'])}"
++        )
++        _atomic_json(paths.results / "cold-archive-latest.json", receipt)
++        return 0
++    manifest_path = _stor5_latest_manifest_path(paths, store)
++    if action == "verify":
++        try:
++            manifest = verify_cold_archive(manifest_path)
++        except StorageArchiveError as exc:
++            raise CampaignCliError(f"Cold archive verification failed: {exc}") from exc
++        _ok(f"cold archive verified: {manifest['archive_id']} ({len(manifest['entries'])} entries)")
++        return 0
++    if action == "restore":
++        try:
++            receipt = restore_cold_archive(paths.workspace, manifest_path, boundary=boundary)
++        except StorageArchiveError as exc:
++            raise CampaignCliError(f"Cold archive restore failed closed: {exc}") from exc
++        receipt["created_utc"] = _utc_now()
++        store.put_record(f"cold_archive_restore:{receipt['archive_id']}", receipt)
++        _atomic_json(paths.results / f"cold-archive-restore-{receipt['archive_id']}.json", receipt)
++        _ok(
++            f"cold archive restored and reverified: {receipt['archive_id']}; "
++            f"restored_files={receipt['restored_files']}; already_present={receipt['already_present_files']}"
++        )
++        return 0
++    raise CampaignCliError(f"Unknown archive action: {action!r}")
++
++
+ def command_cleanup(args: argparse.Namespace) -> int:
+     """STOR4 manual tiered reclamation with a mandatory capability plan."""
+ 
+@@ -12791,12 +13045,6 @@
+         raise CampaignCliError(f"Unknown cleanup tier {tier!r}.")
+     if bool(getattr(args, "apply", False)) and bool(args.dry_run):
+         raise CampaignCliError("Choose either --dry-run or --apply, not both.")
+-    if tier == "archive" and bool(getattr(args, "apply", False)):
+-        raise CampaignCliError(
+-            "STOR4 archive is plan-only. STOR5 must create and verify an authenticated "
+-            "archive representation before any hot artifact can be removed."
+-        )
+-
+     # A manual reclamation invocation may never race an executing stage.  Safe
+     # automatic cleanup already has its own active-run exclusions, but higher
+     # manual tiers operate on whole cache/materialization families.
+@@ -12862,9 +13110,9 @@
+     else:
+         _warn(f"manual reclamation plan write denied by ownership boundary: {plan_detail}")
+ 
+-    if bool(args.dry_run) or archive_pending:
+-        if archive_pending:
+-            _warn("No archive conversion or deletion was performed; STOR5 is required to apply this tier.")
++    if bool(args.dry_run) or (tier == "archive" and not apply_requested):
++        if tier == "archive":
++            _warn("Archive tier plan only; rerun with `cleanup --tier archive --apply` to create, verify, and then remove archived hot representations.")
+         return 0
+ 
+     consequential = _MANUAL_RECLAMATION_RANK[tier] >= _MANUAL_RECLAMATION_RANK["recompute"]
+@@ -12875,6 +13123,9 @@
+         )
+         return 0
+ 
++    archive_manifest = None
++    archive_receipt = None
++
+     # Apply phase.  The plan has already been printed/written above.
+     safe_report = _campaign_cleanup(
+         cfg,
+@@ -12896,14 +13147,37 @@
+         )
+         _print_cleanup_report(checkpoint_report)
+ 
++    if tier == "archive":
++        # STOR2 may have created authenticated evaluation capsules while replacing
++        # raw nonselected checkpoints above. Archive the *post-STOR2* hot layout so
++        # a later restore reproduces exactly what the archive-tier deletion removes.
++        archive_source_plan = _build_manual_tier_report(
++            "archive", cfg, paths, store, dry_run=True
++        )
++        archive_manifest, archive_receipt = _stor5_create_from_actions(
++            paths, store, boundary, archive_source_plan.actions
++        )
++        if archive_manifest is not None:
++            plan_payload["archive_representation_required"] = False
++            plan_payload["archive_representation"] = archive_receipt
++            if plan_authorized:
++                _atomic_json(plan_path, plan_payload)
++            _ok(
++                f"STOR5 archive verified before consequential hot deletion: id={archive_manifest['archive_id']}; "
++                f"hot={_format_storage_bytes(archive_manifest['hot_logical_bytes'])}; "
++                f"archive={_format_storage_bytes(archive_manifest['archive_size_bytes'])}"
++            )
++
+     if _MANUAL_RECLAMATION_RANK[tier] >= _MANUAL_RECLAMATION_RANK["cache"]:
+         manual_report = _build_manual_tier_report(
+             tier, cfg, paths, store, dry_run=False
+         )
+-        if tier == "compact":
++        if tier in {"compact", "archive"}:
+             _record_manual_compact_state(store, manual_report)
+-        # For recompute/compact actions the audit intentionally carries non-empty
+-        # capability_loss.  STOR3 automatic events remain empty by construction.
++        if tier == "archive":
++            _stor5_mark_archived_actions(manual_report, paths, archive_manifest)
++        # Recompute/compact carry intentional losses. Archive actions that were
++        # authenticated above instead record reversible archived capability.
+         _append_cleanup_audit_manifest(
+             manual_report,
+             paths,
+@@ -12922,6 +13196,18 @@
+             )
+         _print_cleanup_report(manual_report)
+ 
++    try:
++        cas_prune = prune_orphan_content_store(
++            paths.internal / "content-store", boundary=boundary
++        )
++        if cas_prune["objects_removed"]:
++            _ok(
++                f"STOR5 content store pruned {cas_prune['objects_removed']} orphan object(s); "
++                f"released~={_format_storage_bytes(cas_prune['bytes_released_estimate'])}"
++            )
++    except StorageArchiveError as exc:
++        _warn(f"content-store orphan pruning skipped: {exc}")
++
+     disk = shutil.disk_usage(paths.workspace)
+     print(
+         f"Workspace: {paths.workspace}\n"
+@@ -13277,7 +13563,7 @@
+ # Conservative lifecycle cleanup runs automatically at train/evaluate/verify boundaries.
+ # Manual retention is CLI-selected: cleanup --tier safe|cache|recompute|compact|archive.
+ # Every tier emits a capability plan first; recompute/compact require --apply; archive
+-# remains plan-only until STOR5 provides authenticated archive/restore support.
++# additionally creates and verifies a reversible STOR5 cold archive before consequential hot deletion.
+ enabled = true
+ # Young temporary trees are retained to avoid racing a recently interrupted process.
+ stale_age_hours = 6.0
+@@ -13421,8 +13707,10 @@
+ Use `storage` at any time for the STOR1 read-only ownership/storage inventory; it
+ performs no reclamation and will not follow workspace symlinks into external data.
+ Use `cleanup --tier safe|cache|recompute|compact|archive` for STOR4 manual retention.
+-Every tier prints a capability plan first; `recompute`/`compact` require `--apply`, and
+-`archive` remains plan-only until STOR5 supplies verified archive/restore support.
++Every tier prints a capability plan first; `recompute`/`compact` require `--apply`.
++`archive --apply` first creates and verifies a reversible STOR5 cold archive. Use
++`archive verify|restore` for integrity checking/restoration and `deduplicate [--apply]`
++for exact immutable content-addressed hardlink deduplication after protocol freeze.
+ 
+ Seeds and folds
+ ---------------
+@@ -13605,7 +13893,7 @@
+     p.add_argument("--dry-run", action="store_true", help="print/write the mandatory capability plan without deleting anything")
+     p.add_argument(
+         "--apply", action="store_true",
+-        help="authorize consequential recompute/compact reclamation after the plan is shown; archive remains STOR5-only",
++        help="authorize consequential reclamation after the plan is shown; archive additionally creates and verifies a reversible STOR5 cold archive first",
+     )
+     p.add_argument(
+         "--keep-preparation-caches", action="store_true",
+@@ -13617,6 +13905,14 @@
+     )
+     p.set_defaults(func=command_cleanup)
+ 
++    p = sub.add_parser("deduplicate", help="STOR5 exact-byte immutable content-addressed deduplication")
++    p.add_argument("--apply", action="store_true", help="replace exact immutable duplicates with same-filesystem content-addressed hardlinks")
++    p.set_defaults(func=command_deduplicate)
++
++    p = sub.add_parser("archive", help="STOR5 authenticated cold archive create/verify/restore")
++    p.add_argument("archive_action", choices=("create", "verify", "restore"), help="create a verified archive, verify the registered archive, or restore its exact hot layout")
++    p.set_defaults(func=command_archive)
++
+     p = sub.add_parser("status", help="show stage state, paths, and the next safe command")
+     p.set_defaults(func=command_status)
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/mdstats/training_data/storage_accounting.py /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/mdstats/training_data/storage_accounting.py
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/mdstats/training_data/storage_accounting.py	2026-08-08 23:01:42.958364270 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/mdstats/training_data/storage_accounting.py	2026-08-08 23:23:03.643842688 +0000
+@@ -369,6 +369,10 @@
+             return (parts[1], ArtifactRetentionClass.RECONSTRUCTABLE_CACHE, "stor3_automatic_safe", "cache", ("faster_recomputation",))
+         if len(parts) >= 2 and parts[1] in {"model-sweep", "evaluation-predictions", "true-label-replay"}:
+             return (parts[1], ArtifactRetentionClass.SCIENTIFIC_CACHE, "prohibited", "recompute", ("metric_only_or_reanalysis_without_inference",))
++        if len(parts) >= 2 and parts[1] == "content-store":
++            return ("immutable_content_store", ArtifactRetentionClass.INTERMEDIATE, "prohibited", "stor5_managed", ("physical_deduplication_backing",))
++        if len(parts) >= 2 and parts[1] == "cold-archive":
++            return ("cold_archive", ArtifactRetentionClass.PROTECTED_DIAGNOSTIC, "prohibited", "stor5_managed", ("archived_hot_representation_restore",))
+         if len(parts) >= 2 and parts[1] == "preflight-smoke":
+             return ("preflight_artifacts", ArtifactRetentionClass.INTERMEDIATE, "stor3_automatic_safe_after_success", "cache", ("preflight_reexecution",))
+         return ("internal_campaign_artifacts", ArtifactRetentionClass.INTERMEDIATE, "not_yet_qualified", "manual_review_only", ("campaign_reanalysis",))
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/mdstats/training_data/storage_archive.py /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/mdstats/training_data/storage_archive.py
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/mdstats/training_data/storage_archive.py	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/mdstats/training_data/storage_archive.py	2026-08-08 23:25:52.888580088 +0000
+@@ -0,0 +1,496 @@
++from __future__ import annotations
++
++import hashlib
++import json
++import os
++import shutil
++import stat
++import tarfile
++import tempfile
++from pathlib import Path
++from typing import Any, Iterable, Mapping, Sequence
++
++from .storage_accounting import CampaignOwnershipBoundary
++
++COLD_ARCHIVE_MANIFEST_SCHEMA = "mdstats.mlff-cold-archive-manifest.v1"
++DEDUPLICATION_REPORT_SCHEMA = "mdstats.mlff-immutable-deduplication-report.v1"
++RESTORE_RECEIPT_SCHEMA = "mdstats.mlff-cold-archive-restore.v1"
++
++
++class StorageArchiveError(RuntimeError):
++    pass
++
++
++def _sha256_file(path: Path) -> str:
++    h = hashlib.sha256()
++    with path.open("rb") as handle:
++        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
++            h.update(chunk)
++    return h.hexdigest()
++
++
++def _canonical_digest(payload: Mapping[str, Any]) -> str:
++    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
++    return hashlib.sha256(encoded).hexdigest()
++
++
++def _atomic_json(path: Path, payload: Mapping[str, Any]) -> None:
++    path.parent.mkdir(parents=True, exist_ok=True)
++    fd, name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
++    tmp = Path(name)
++    try:
++        with os.fdopen(fd, "w", encoding="utf-8") as handle:
++            json.dump(payload, handle, indent=2, sort_keys=True)
++            handle.write("\n")
++            handle.flush()
++            os.fsync(handle.fileno())
++        os.replace(tmp, path)
++    except Exception:
++        tmp.unlink(missing_ok=True)
++        raise
++
++
++def _workspace_relative(path: Path, workspace: Path) -> str:
++    absolute = Path(os.path.abspath(os.fspath(path)))
++    root = Path(os.path.abspath(os.fspath(workspace)))
++    try:
++        rel = absolute.relative_to(root)
++    except ValueError as exc:
++        raise StorageArchiveError(f"archive path escapes workspace: {path}") from exc
++    if not rel.parts or ".." in rel.parts:
++        raise StorageArchiveError(f"invalid archive-relative path: {path}")
++    return rel.as_posix()
++
++
++def _normalize_roots(paths: Sequence[Path]) -> tuple[Path, ...]:
++    unique = sorted({Path(os.path.abspath(os.fspath(p))) for p in paths}, key=lambda p: (len(p.parts), str(p)))
++    kept: list[Path] = []
++    for path in unique:
++        if any(path == parent or parent in path.parents for parent in kept):
++            continue
++        kept.append(path)
++    return tuple(kept)
++
++
++def collect_archive_entries(
++    workspace: Path,
++    roots: Sequence[Path],
++    *,
++    boundary: CampaignOwnershipBoundary,
++) -> tuple[tuple[Path, ...], tuple[dict[str, Any], ...]]:
++    """Collect a complete, symlink-free immutable archive inventory."""
++
++    root = Path(os.path.abspath(os.fspath(workspace)))
++    normalized = _normalize_roots([p for p in roots if p.exists() or p.is_symlink()])
++    entries: list[dict[str, Any]] = []
++    for candidate in normalized:
++        if candidate.is_symlink():
++            raise StorageArchiveError(f"refusing to archive symlink root: {candidate}")
++        authorized, detail = boundary.traversal_authorization(candidate)
++        if not authorized:
++            raise StorageArchiveError(f"archive root is not campaign-owned: {detail}: {candidate}")
++        if candidate.is_file():
++            scan: Iterable[Path] = (candidate,)
++        elif candidate.is_dir():
++            scan = (candidate, *sorted(candidate.rglob("*")))
++        else:
++            raise StorageArchiveError(f"unsupported archive root type: {candidate}")
++        for path in scan:
++            if path.is_symlink():
++                raise StorageArchiveError(f"refusing to archive symlink member: {path}")
++            authorized, detail = boundary.destructive_authorization(path)
++            if not authorized:
++                raise StorageArchiveError(f"archive member is not campaign-owned: {detail}: {path}")
++            st = path.lstat()
++            rel = _workspace_relative(path, root)
++            if stat.S_ISDIR(st.st_mode):
++                entries.append({"path": rel, "kind": "directory", "mode": stat.S_IMODE(st.st_mode)})
++            elif stat.S_ISREG(st.st_mode):
++                entries.append({
++                    "path": rel,
++                    "kind": "file",
++                    "size_bytes": int(st.st_size),
++                    "mode": stat.S_IMODE(st.st_mode),
++                    "sha256": _sha256_file(path),
++                })
++            else:
++                raise StorageArchiveError(f"unsupported archive member type: {path}")
++    entries.sort(key=lambda item: (item["path"], item["kind"]))
++    return normalized, tuple(entries)
++
++
++def verify_cold_archive(manifest_path: Path) -> dict[str, Any]:
++    manifest_path = Path(manifest_path)
++    try:
++        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
++    except Exception as exc:
++        raise StorageArchiveError(f"cannot read cold-archive manifest: {manifest_path}: {exc}") from exc
++    if manifest.get("schema") != COLD_ARCHIVE_MANIFEST_SCHEMA:
++        raise StorageArchiveError(f"unsupported cold-archive manifest schema: {manifest.get('schema')!r}")
++    expected_manifest_digest = manifest.get("manifest_content_digest")
++    observed_manifest_digest = _canonical_digest({k: v for k, v in manifest.items() if k != "manifest_content_digest"})
++    if expected_manifest_digest != observed_manifest_digest:
++        raise StorageArchiveError("cold-archive manifest content digest mismatch")
++    archive_path = manifest_path.parent / str(manifest.get("archive_file", ""))
++    if not archive_path.is_file():
++        raise StorageArchiveError(f"cold archive is missing: {archive_path}")
++    observed_archive_sha = _sha256_file(archive_path)
++    if observed_archive_sha != manifest.get("archive_sha256"):
++        raise StorageArchiveError("cold archive SHA-256 mismatch")
++
++    expected = {str(item["path"]): item for item in manifest.get("entries", [])}
++    observed: dict[str, dict[str, Any]] = {}
++    try:
++        with tarfile.open(archive_path, mode="r:gz") as tar:
++            for member in tar:
++                name = member.name.rstrip("/")
++                path = Path(name)
++                if path.is_absolute() or ".." in path.parts or not path.parts:
++                    raise StorageArchiveError(f"unsafe archive member path: {member.name!r}")
++                if name in observed:
++                    raise StorageArchiveError(f"duplicate archive member: {name}")
++                if member.isdir():
++                    observed[name] = {"path": name, "kind": "directory", "mode": member.mode & 0o7777}
++                elif member.isfile():
++                    stream = tar.extractfile(member)
++                    if stream is None:
++                        raise StorageArchiveError(f"cannot read archive member: {name}")
++                    h = hashlib.sha256(); count = 0
++                    for chunk in iter(lambda: stream.read(1024 * 1024), b""):
++                        h.update(chunk); count += len(chunk)
++                    observed[name] = {
++                        "path": name, "kind": "file", "mode": member.mode & 0o7777,
++                        "size_bytes": count, "sha256": h.hexdigest(),
++                    }
++                else:
++                    raise StorageArchiveError(f"unsupported non-file archive member: {name}")
++    except StorageArchiveError:
++        raise
++    except Exception as exc:
++        raise StorageArchiveError(f"cold archive cannot be verified: {exc}") from exc
++
++    if set(observed) != set(expected):
++        missing = sorted(set(expected) - set(observed))[:5]
++        extra = sorted(set(observed) - set(expected))[:5]
++        raise StorageArchiveError(f"cold archive member set mismatch; missing={missing}, extra={extra}")
++    for name, item in expected.items():
++        got = observed[name]
++        for key in ("kind", "mode"):
++            if got.get(key) != item.get(key):
++                raise StorageArchiveError(f"cold archive member metadata mismatch for {name}: {key}")
++        if item["kind"] == "file":
++            for key in ("size_bytes", "sha256"):
++                if got.get(key) != item.get(key):
++                    raise StorageArchiveError(f"cold archive member content mismatch for {name}: {key}")
++    return manifest
++
++
++def create_cold_archive(
++    workspace: Path,
++    roots: Sequence[Path],
++    *,
++    boundary: CampaignOwnershipBoundary,
++    archive_directory: Path,
++    source_actions: Sequence[Mapping[str, Any]] = (),
++) -> dict[str, Any]:
++    workspace = Path(os.path.abspath(os.fspath(workspace)))
++    archive_directory = Path(archive_directory)
++    authorized, detail = boundary.destructive_authorization(archive_directory)
++    if not authorized:
++        raise StorageArchiveError(f"archive directory is not campaign-owned: {detail}: {archive_directory}")
++    normalized_roots, entries = collect_archive_entries(workspace, roots, boundary=boundary)
++    if not entries:
++        raise StorageArchiveError("no eligible hot artifacts were found for cold archival")
++    inventory = {
++        "workspace_layout_version": 1,
++        "roots": [_workspace_relative(p, workspace) for p in normalized_roots],
++        "entries": list(entries),
++    }
++    archive_id = _canonical_digest(inventory)[:32]
++    archive_directory.mkdir(parents=True, exist_ok=True)
++    archive_name = f"cold-{archive_id}.tar.gz"
++    manifest_name = f"cold-{archive_id}.manifest.json"
++    archive_path = archive_directory / archive_name
++    manifest_path = archive_directory / manifest_name
++
++    preexisting_pair = manifest_path.is_file() and archive_path.is_file()
++    if preexisting_pair:
++        manifest = verify_cold_archive(manifest_path)
++        if manifest.get("archive_id") == archive_id:
++            return manifest
++
++    fd, tmp_name = tempfile.mkstemp(prefix=f".{archive_name}.", suffix=".tmp", dir=archive_directory)
++    os.close(fd)
++    tmp_archive = Path(tmp_name)
++    try:
++        # Dereference campaign-internal hardlinks so the archive remains fully
++        # self-contained even after the content-addressed store/hot links vanish.
++        with tarfile.open(tmp_archive, mode="w:gz", compresslevel=6, dereference=True) as tar:
++            for item in entries:
++                source = workspace / item["path"]
++                info = tar.gettarinfo(str(source), arcname=item["path"])
++                info.uid = 0; info.gid = 0; info.uname = ""; info.gname = ""; info.mtime = 0
++                if item["kind"] == "directory":
++                    tar.addfile(info)
++                else:
++                    with source.open("rb") as handle:
++                        tar.addfile(info, handle)
++        with tmp_archive.open("rb") as handle:
++            os.fsync(handle.fileno())
++        os.replace(tmp_archive, archive_path)
++        archive_sha = _sha256_file(archive_path)
++        manifest: dict[str, Any] = {
++            "schema": COLD_ARCHIVE_MANIFEST_SCHEMA,
++            "archive_id": archive_id,
++            "compression": "tar+gzip",
++            "archive_file": archive_name,
++            "archive_sha256": archive_sha,
++            "archive_size_bytes": archive_path.stat().st_size,
++            "hot_logical_bytes": sum(int(item.get("size_bytes", 0)) for item in entries if item["kind"] == "file"),
++            "roots": inventory["roots"],
++            "entries": list(entries),
++            "source_actions": [dict(item) for item in source_actions],
++        }
++        manifest["manifest_content_digest"] = _canonical_digest({k: v for k, v in manifest.items() if k != "manifest_content_digest"})
++        _atomic_json(manifest_path, manifest)
++        verify_cold_archive(manifest_path)
++        return manifest
++    except Exception:
++        tmp_archive.unlink(missing_ok=True)
++        # A newly created pair is transactional: failed verification leaves no
++        # archive receipt behind. Never remove a pre-existing authenticated pair.
++        if not preexisting_pair:
++            archive_path.unlink(missing_ok=True)
++            manifest_path.unlink(missing_ok=True)
++        raise
++
++
++def restore_cold_archive(
++    workspace: Path,
++    manifest_path: Path,
++    *,
++    boundary: CampaignOwnershipBoundary,
++) -> dict[str, Any]:
++    workspace = Path(os.path.abspath(os.fspath(workspace)))
++    manifest = verify_cold_archive(manifest_path)
++    archive_path = Path(manifest_path).parent / manifest["archive_file"]
++    staging_root = workspace / ".mdstats" / "archive-restore-staging" / str(manifest["archive_id"])
++    authorized, detail = boundary.destructive_authorization(staging_root)
++    if not authorized:
++        raise StorageArchiveError(f"restore staging root is not campaign-owned: {detail}")
++    if staging_root.exists():
++        shutil.rmtree(staging_root)
++    staging_root.mkdir(parents=True, exist_ok=True)
++    expected = {str(item["path"]): item for item in manifest["entries"]}
++    try:
++        with tarfile.open(archive_path, mode="r:gz") as tar:
++            members = {member.name.rstrip("/"): member for member in tar}
++            for name, item in expected.items():
++                stage = staging_root / name
++                if item["kind"] == "directory":
++                    stage.mkdir(parents=True, exist_ok=True)
++                    os.chmod(stage, int(item["mode"]))
++                    continue
++                stage.parent.mkdir(parents=True, exist_ok=True)
++                stream = tar.extractfile(members[name])
++                if stream is None:
++                    raise StorageArchiveError(f"cannot extract archived file: {name}")
++                with stage.open("wb") as handle:
++                    shutil.copyfileobj(stream, handle, length=1024 * 1024)
++                os.chmod(stage, int(item["mode"]))
++                if stage.stat().st_size != int(item["size_bytes"]) or _sha256_file(stage) != item["sha256"]:
++                    raise StorageArchiveError(f"restored staging file failed authentication: {name}")
++
++        # Fail before installing anything if a conflicting hot file exists.
++        for name, item in expected.items():
++            destination = workspace / name
++            authorized, detail = boundary.destructive_authorization(destination)
++            if not authorized:
++                raise StorageArchiveError(f"restore destination is not campaign-owned: {detail}: {destination}")
++            if item["kind"] == "directory":
++                if destination.exists() and not destination.is_dir():
++                    raise StorageArchiveError(f"restore destination conflicts with non-directory: {destination}")
++            elif destination.exists():
++                if not destination.is_file() or destination.is_symlink():
++                    raise StorageArchiveError(f"restore destination conflicts with non-file: {destination}")
++                if destination.stat().st_size != int(item["size_bytes"]) or _sha256_file(destination) != item["sha256"]:
++                    raise StorageArchiveError(f"restore destination already exists with different content: {destination}")
++
++        restored_files = 0
++        reused_files = 0
++        directories = sorted((item for item in expected.values() if item["kind"] == "directory"), key=lambda x: len(Path(x["path"]).parts))
++        for item in directories:
++            destination = workspace / item["path"]
++            destination.mkdir(parents=True, exist_ok=True)
++            os.chmod(destination, int(item["mode"]))
++        for name, item in expected.items():
++            if item["kind"] != "file":
++                continue
++            destination = workspace / name
++            if destination.exists():
++                reused_files += 1
++                continue
++            destination.parent.mkdir(parents=True, exist_ok=True)
++            os.replace(staging_root / name, destination)
++            restored_files += 1
++
++        for name, item in expected.items():
++            if item["kind"] != "file":
++                continue
++            destination = workspace / name
++            if destination.stat().st_size != int(item["size_bytes"]) or _sha256_file(destination) != item["sha256"]:
++                raise StorageArchiveError(f"post-restore authentication failed: {destination}")
++        return {
++            "schema": RESTORE_RECEIPT_SCHEMA,
++            "archive_id": manifest["archive_id"],
++            "archive_sha256": manifest["archive_sha256"],
++            "restored_files": restored_files,
++            "already_present_files": reused_files,
++            "verified_entry_count": len(expected),
++        }
++    finally:
++        shutil.rmtree(staging_root, ignore_errors=True)
++
++
++def _iter_dedup_files(roots: Sequence[Path], boundary: CampaignOwnershipBoundary) -> Iterable[Path]:
++    for root in _normalize_roots([p for p in roots if p.exists()]):
++        if root.is_symlink():
++            continue
++        authorized, _ = boundary.traversal_authorization(root)
++        if not authorized:
++            continue
++        scan = (root,) if root.is_file() else root.rglob("*")
++        for path in scan:
++            if path.is_symlink() or not path.is_file():
++                continue
++            authorized, _ = boundary.destructive_authorization(path)
++            if authorized:
++                yield path
++
++
++def deduplicate_immutable_files(
++    workspace: Path,
++    roots: Sequence[Path],
++    *,
++    boundary: CampaignOwnershipBoundary,
++    content_store: Path,
++    apply: bool,
++) -> dict[str, Any]:
++    """Plan/apply exact-byte hardlink deduplication for frozen immutable files."""
++
++    workspace = Path(os.path.abspath(os.fspath(workspace)))
++    by_size: dict[int, list[Path]] = {}
++    for path in _iter_dedup_files(roots, boundary):
++        size = path.stat().st_size
++        if size <= 0:
++            continue
++        by_size.setdefault(size, []).append(path)
++    groups: list[dict[str, Any]] = []
++    for size, paths in by_size.items():
++        if len(paths) < 2:
++            continue
++        by_hash: dict[str, list[Path]] = {}
++        for path in paths:
++            by_hash.setdefault(_sha256_file(path), []).append(path)
++        for sha, members in by_hash.items():
++            inode_groups = {(p.stat().st_dev, p.stat().st_ino) for p in members}
++            if len(members) < 2 or len(inode_groups) < 2:
++                continue
++            groups.append({
++                "sha256": sha,
++                "size_bytes": size,
++                "paths": sorted(_workspace_relative(p, workspace) for p in members),
++                "unique_inode_count_before": len(inode_groups),
++                "potential_reclaimed_bytes": size * (len(inode_groups) - 1),
++            })
++    groups.sort(key=lambda item: (-int(item["potential_reclaimed_bytes"]), item["sha256"]))
++    reclaimed = 0
++    linked = 0
++    skipped: list[str] = []
++    if apply and groups:
++        authorized, detail = boundary.destructive_authorization(content_store)
++        if not authorized:
++            raise StorageArchiveError(f"content store is not campaign-owned: {detail}: {content_store}")
++        for group in groups:
++            sha = str(group["sha256"]); size = int(group["size_bytes"])
++            members = [workspace / rel for rel in group["paths"]]
++            object_path = content_store / "sha256" / sha[:2] / sha
++            object_path.parent.mkdir(parents=True, exist_ok=True)
++            if object_path.exists():
++                if not object_path.is_file() or object_path.stat().st_size != size or _sha256_file(object_path) != sha:
++                    raise StorageArchiveError(f"content-addressed object collision/corruption: {object_path}")
++            else:
++                source = members[0]
++                if source.stat().st_dev != object_path.parent.stat().st_dev:
++                    skipped.append(f"cross-device content object not deduplicated: {source}")
++                    continue
++                tmp = object_path.parent / f".{sha}.tmp-{os.getpid()}"
++                tmp.unlink(missing_ok=True)
++                os.link(source, tmp)
++                os.replace(tmp, object_path)
++            obj_stat = object_path.stat()
++            for member in members:
++                st = member.stat()
++                if (st.st_dev, st.st_ino) == (obj_stat.st_dev, obj_stat.st_ino):
++                    continue
++                if st.st_dev != obj_stat.st_dev:
++                    skipped.append(f"cross-device duplicate not deduplicated: {member}")
++                    continue
++                if member.stat().st_size != size or _sha256_file(member) != sha:
++                    raise StorageArchiveError(f"deduplication source changed during operation: {member}")
++                tmp = member.parent / f".{member.name}.dedup-{os.getpid()}"
++                tmp.unlink(missing_ok=True)
++                os.link(object_path, tmp)
++                os.replace(tmp, member)
++                linked += 1
++                reclaimed += size
++        # Remove orphan content objects that have no campaign path link.
++        if content_store.exists():
++            for object_path in content_store.rglob("*"):
++                if object_path.is_file() and not object_path.is_symlink() and object_path.stat().st_nlink <= 1:
++                    object_path.unlink()
++    return {
++        "schema": DEDUPLICATION_REPORT_SCHEMA,
++        "applied": bool(apply),
++        "group_count": len(groups),
++        "groups": groups,
++        "potential_reclaimed_bytes": sum(int(item["potential_reclaimed_bytes"]) for item in groups),
++        "reclaimed_bytes_estimate": reclaimed,
++        "links_replaced": linked,
++        "skipped": skipped,
++        "method": "same-filesystem-content-addressed-hardlink",
++    }
++
++
++def prune_orphan_content_store(content_store: Path, *, boundary: CampaignOwnershipBoundary) -> dict[str, int]:
++    """Remove CAS objects whose only remaining hardlink is the store object itself."""
++
++    content_store = Path(content_store)
++    if not content_store.exists():
++        return {"objects_removed": 0, "bytes_released_estimate": 0}
++    authorized, detail = boundary.traversal_authorization(content_store)
++    if not authorized:
++        raise StorageArchiveError(f"content-store traversal is not campaign-owned: {detail}: {content_store}")
++    removed = 0; released = 0
++    for path in sorted(content_store.rglob("*"), reverse=True):
++        if path.is_symlink():
++            continue
++        if path.is_file():
++            auth, _ = boundary.destructive_authorization(path)
++            if not auth:
++                continue
++            st = path.stat()
++            if st.st_nlink <= 1:
++                released += int(st.st_size)
++                path.unlink()
++                removed += 1
++        elif path.is_dir():
++            try:
++                path.rmdir()
++            except OSError:
++                pass
++    try:
++        content_store.rmdir()
++    except OSError:
++        pass
++    return {"objects_removed": removed, "bytes_released_estimate": released}
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/pyproject.toml /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/pyproject.toml
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/pyproject.toml	2026-08-08 23:07:11.546956755 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/pyproject.toml	2026-08-08 23:27:07.203872221 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.115a0"
++version = "0.20.116a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/release/mlff_stor5_archive_deduplication_qualification.json /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/release/mlff_stor5_archive_deduplication_qualification.json
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/release/mlff_stor5_archive_deduplication_qualification.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/release/mlff_stor5_archive_deduplication_qualification.json	2026-08-08 23:28:27.062391376 +0000
+@@ -0,0 +1,32 @@
++{
++  "architecture_revision": 34,
++  "archive": {
++    "archive_id": "9a779477f35d56bdb7ccc97e11a8ceb9",
++    "archive_sha256_present": true,
++    "archive_size_bytes": 20242,
++    "compression_ratio_archive_over_hot": 0.0019867287071992563,
++    "corruption_detection_qualified": true,
++    "hot_logical_bytes": 10188608,
++    "hot_representations_deleted_after_verification": true,
++    "manifest_content_digest_present": true,
++    "restore_exact_sha256": true,
++    "verified_before_hot_deletion": true
++  },
++  "deduplication": {
++    "applied_reclaimed_bytes_estimate": 4194304,
++    "content_addressed_method": "same-filesystem-content-addressed-hardlink",
++    "exact_duplicate_hardlink_equal": true,
++    "planned_duplicate_groups": 1,
++    "potential_reclaimed_bytes": 4194304
++  },
++  "notes": "Filesystem/archive qualification; STOR5 introduces no model numerics or scientific-data identity change.",
++  "runtime_version": "0.20.116a0",
++  "schema": "mdstats.mlff-stor5-qualification.v1",
++  "scientific_identity_changed": false,
++  "security": {
++    "external_inputs_touched": false,
++    "production_models_touched": false,
++    "selected_production_checkpoint_policy": "protected_by_STOR4_STOR5",
++    "symlink_targets_followed": false
++  }
++}
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/fixtures/legacy_schema_0_20_76/data5.json /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/fixtures/legacy_schema_0_20_76/data5.json
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/fixtures/legacy_schema_0_20_76/data5.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/fixtures/legacy_schema_0_20_76/data5.json	2026-08-08 23:37:01.500595337 +0000
+@@ -0,0 +1 @@
++{"schema": "mdstats.data5-partition-bundle.v1", "parser_version": "0.20.33a0", "dataset_id": "data5", "source_catalog_digest": "fc47bfe4204935a0af8f6614fa395e2da5b3acab3c083efa0914bd280ed212bd", "frame_catalog_digest": "c5d537b01da568008cc666c995fb09197ef74be9bdae975a47147225d342857e", "data4_bundle_digest": "de6000f7305074aac15bcf7c412f8ac64ebc0e55a7e9a055c35e6999d2d73444", "partition_policy": {"schema": "mdstats.mlff-partition-policy.v1", "policy_version": "mdstats.mlff-data5.partition.2026-07.v1", "role_budget": {"schema": "mdstats.partition-role-budget-policy.v1", "policy_version": "mdstats.mlff-data4.partition-role-budget.2026-07.v1", "development_minimum_independent_units": 4, "outer_monitor_minimum_independent_units": 1, "calibration_minimum_independent_units": 1, "locked_interpolation_test_minimum_independent_units": 1, "cross_validation_folds": 3, "checkpoint_monitor_minimum_units_per_fold": 1, "purge_units_between_roles": 0, "allow_calibration_deferral": true, "allow_external_challenge_tests": true, "required_condition_axes": ["composition", "temperature_condition", "strain_class", "regime"], "policy_digest": "58787e783d376099e72f41ade8d7b8bc372a79f6f6328338d735ed04d45c65cc"}, "block_policy": {"schema": "mdstats.complete-frame-block-policy.v1", "policy_version": "mdstats.complete-frame-block-policy.2026-07.v1", "minimum_block_frames": 4, "autocorrelation_block_multiplier": 2.0, "explicit_block_length_frames": 4, "remainder_strategy": "balanced_all_frames", "autocorrelation_policy": {"schema": "mdstats.sampling-autocorrelation-policy.v1", "policy_version": "mdstats.sampling-autocorrelation.initial-positive-sequence.2026-07.v1", "estimator": "fft_unbiased_initial_positive_sequence", "minimum_observations": 3, "minimum_tau_frames": 0.5, "maximum_tau_fraction": 0.5, "variance_floor": 2.220446049250313e-16, "signature": "a1fdaa697e95434514f1aa47be71c3028f3a9e1f4a67c94ddf90c58eda94ca4c"}, "signature": "47b562ebad5ced5afcfeee36feaa214a901c2daec418e04f90366ab72b48846e"}, "accepted_eligibility_states": ["eligible"], "autocorrelation_observables": ["energy_per_atom_ev", "force_component_rms_ev_per_angstrom", "pressure_ev_per_angstrom3", "instantaneous_temperature_kelvin", "cell_volume_angstrom3"], "merge_protected_event_windows": true, "require_condition_coverage_in_outer_roles": true, "allow_global_role_fallback": true, "minimum_units_per_condition_for_full_outer_roles": 7, "policy_digest": "2719d96563290c54ba410cbbe9553eb8f5d36c22a26b96abab16e911910abe2d"}, "unit_catalog": {"schema": "mdstats.partition-unit-catalog.v1", "dataset_id": "data5", "source_catalog_digest": "fc47bfe4204935a0af8f6614fa395e2da5b3acab3c083efa0914bd280ed212bd", "frame_catalog_digest": "c5d537b01da568008cc666c995fb09197ef74be9bdae975a47147225d342857e", "data4_bundle_digest": "de6000f7305074aac15bcf7c412f8ac64ebc0e55a7e9a055c35e6999d2d73444", "policy_digest": "2719d96563290c54ba410cbbe9553eb8f5d36c22a26b96abab16e911910abe2d", "units": [{"schema": "mdstats.partition-unit.v2", "unit_id": "5f3f26d4a900f9952d4203c37bcabe17efb3f0b125e77a6dd769e042debabb31", "run_id": "run", "label_domain_id": "label-domain-ded5fa94ad149c34", "condition": {"schema": "mdstats.partition-condition-key.v1", "label_domain_id": "label-domain-ded5fa94ad149c34", "reduced_formula": "LiO", "temperature_condition": "700K", "strain_class": "unstrained", "regime": "production", "user_labels": {}, "condition_id": "90c04414040bfab1351bc08c4957318ccdaca67656894cb9a294c00ac1a5ae1f"}, "source_frame_start": 0, "source_frame_stop": 4, "frame_uids": ["011725b1664dd4df4703e849027f231ecdf2028da6248cdad5c24db87d45cfad", "d109ec04e31451019bf250bb12f583219b3d2e7c8be8effddc87b9fbe09f09d8", "c31886dae3b06ef1ea92f009ae686afc2a560610d0b4b26d410ad208b8f5f0ab", "d9af564762d4f139adeabbdd58b6de3b8ff2b93455d812e2a92977c7f28c3bf7"], "block_plan_signature": "41a21e1c4bfc2da63f4ea815160ec6ed6d539e27291deaf9b1df75a9f4311034", "event_ids": [], "contains_protected_event_frames": false, "maximum_autocorrelation_time_frames": 9.540382110290924, "effective_sample_count": 0.20963520924834447, "replica_id": null, "structural_realization_id": null, "reference_group": "bulk", "independence_grade": "purged_temporal_block", "independence_evidence_codes": ["single_run_autocorrelation_aware_temporal_block"], "content_digest": "1208741e77e46443acee8da873a39f0a6b6fb48f8c58fa5c33546b60f24678f4"}, {"schema": "mdstats.partition-unit.v2", "unit_id": "9cd5f3c0894b33515c0ff8ff7699024383a72cd928f511a5d8d4b597e7e5eec7", "run_id": "run", "label_domain_id": "label-domain-ded5fa94ad149c34", "condition": {"schema": "mdstats.partition-condition-key.v1", "label_domain_id": "label-domain-ded5fa94ad149c34", "reduced_formula": "LiO", "temperature_condition": "700K", "strain_class": "unstrained", "regime": "production", "user_labels": {}, "condition_id": "90c04414040bfab1351bc08c4957318ccdaca67656894cb9a294c00ac1a5ae1f"}, "source_frame_start": 4, "source_frame_stop": 12, "frame_uids": ["b24a513ae16938629b25f3d5983aeb8af78e63b0d4e75e9210a049a81c7abb14", "e4f279d678cf8cd6f68a9094e1ad39c840870e07634375a2e6bf7b8f68f78e53", "b2827ca28ba8a27396cf2d2a8e5a9a1a77a155af539f8415a725fc7f3b01dd0e", "56d656062e5eac1bba47aa8c382764585acdc06c875be0a31e22207c8eb7e1bd", "12c0c935ffe1d79b6e4270bdd03e994b4b5a6a99b6680d034fd721b75997af67", "fa24b0da440a43c71566b2eeed4bdf5549b3ea4292c7fda3056efa2af73a1a58", "0cbcd9d4ea3974b11eebdc9a2d24e1ddd8194c075a00a61a04999556730c21de", "354d8213f0ef0125fe4f2f021bd15a218f7b8927d22a95a132f15754784ba343"], "block_plan_signature": "41a21e1c4bfc2da63f4ea815160ec6ed6d539e27291deaf9b1df75a9f4311034", "event_ids": ["c89236bbe6df0e25dcb6f41bc4851a71e2690a685198f6d192d61b6dc09b8e5e"], "contains_protected_event_frames": true, "maximum_autocorrelation_time_frames": 9.540382110290924, "effective_sample_count": 0.41927041849668895, "replica_id": null, "structural_realization_id": null, "reference_group": "bulk", "independence_grade": "purged_temporal_block", "independence_evidence_codes": ["single_run_autocorrelation_aware_temporal_block"], "content_digest": "c93a07b113202201dec8b67f8cf16a310adf57927c6f4b48a03cf7c768baa212"}, {"schema": "mdstats.partition-unit.v2", "unit_id": "362c2801db60f5a6eb4a644b7b373899026a0757ecb7dd589405966ac0855311", "run_id": "run", "label_domain_id": "label-domain-ded5fa94ad149c34", "condition": {"schema": "mdstats.partition-condition-key.v1", "label_domain_id": "label-domain-ded5fa94ad149c34", "reduced_formula": "LiO", "temperature_condition": "700K", "strain_class": "unstrained", "regime": "production", "user_labels": {}, "condition_id": "90c04414040bfab1351bc08c4957318ccdaca67656894cb9a294c00ac1a5ae1f"}, "source_frame_start": 12, "source_frame_stop": 16, "frame_uids": ["fed466fe7497b8d36f76dfff057f58ee7965c2acaaa0671d1f2ad4c4d5a13498", "9b1ed08080bc625d6e52acff7548c744c0d74c85ee4f60575f2c81a2cd802c44", "c9cacc144e0397cb47715456ff4dbed1eab3f4406012ad025a5268dbdc4eedae", "b97c9339b30a8b2b90a143a2577b9b0c8a7743ff1c48520dca474dfb5261167a"], "block_plan_signature": "41a21e1c4bfc2da63f4ea815160ec6ed6d539e27291deaf9b1df75a9f4311034", "event_ids": [], "contains_protected_event_frames": false, "maximum_autocorrelation_time_frames": 9.540382110290924, "effective_sample_count": 0.20963520924834447, "replica_id": null, "structural_realization_id": null, "reference_group": "bulk", "independence_grade": "purged_temporal_block", "independence_evidence_codes": ["single_run_autocorrelation_aware_temporal_block"], "content_digest": "ceb3e74e32fb219d31424d635198ad857fcab732e7e8282420cea98b3317efd9"}, {"schema": "mdstats.partition-unit.v2", "unit_id": "9e360b7b85e726f179566fec20820b7bf39db1f7fd3b84fbab00136e3e41867d", "run_id": "run", "label_domain_id": "label-domain-ded5fa94ad149c34", "condition": {"schema": "mdstats.partition-condition-key.v1", "label_domain_id": "label-domain-ded5fa94ad149c34", "reduced_formula": "LiO", "temperature_condition": "700K", "strain_class": "unstrained", "regime": "production", "user_labels": {}, "condition_id": "90c04414040bfab1351bc08c4957318ccdaca67656894cb9a294c00ac1a5ae1f"}, "source_frame_start": 16, "source_frame_stop": 20, "frame_uids": ["1a38981856205c1bfb9b62885b45e810f8125a13f593ae8d9cb025607c73f068", "033eefed8b8fb3aa6bec64d7e4046f7057de3df9388f56c3417805c531d3eeca", "bae79401980b451ba92a59a716e95837dd074fce3c4113c9e39cafbceb300164", "c88fc391e77a69a2cd635f4055edcbe74b7a041cbfd45b93d3a86dd5d42a55ab"], "block_plan_signature": "41a21e1c4bfc2da63f4ea815160ec6ed6d539e27291deaf9b1df75a9f4311034", "event_ids": [], "contains_protected_event_frames": false, "maximum_autocorrelation_time_frames": 9.540382110290924, "effective_sample_count": 0.20963520924834447, "replica_id": null, "structural_realization_id": null, "reference_group": "bulk", "independence_grade": "purged_temporal_block", "independence_evidence_codes": ["single_run_autocorrelation_aware_temporal_block"], "content_digest": "db0a5171c9ae01d9ccd52263b1806b38d180520afde4c83cd315a7cceb8471b4"}, {"schema": "mdstats.partition-unit.v2", "unit_id": "ff7e40eebbbc5d131355da5bb5a32c4cebc1286657309a4775472f000d0a0da0", "run_id": "run", "label_domain_id": "label-domain-ded5fa94ad149c34", "condition": {"schema": "mdstats.partition-condition-key.v1", "label_domain_id": "label-domain-ded5fa94ad149c34", "reduced_formula": "LiO", "temperature_condition": "700K", "strain_class": "unstrained", "regime": "production", "user_labels": {}, "condition_id": "90c04414040bfab1351bc08c4957318ccdaca67656894cb9a294c00ac1a5ae1f"}, "source_frame_start": 20, "source_frame_stop": 24, "frame_uids": ["4636b9896ee69f0963eae8c7b91044cc4c10dc7a5967dcc663c6062b622a7e94", "228d57519d4ab561e73380c8a0346049f7056275538c1c06f58d941b6a4f1852", "aee1239a1e7ac8d11dee088900ba96df0f7ddd8546fa25534987519922a6fde2", "8cbe8afddb1fb955904ac5a5c0b7c67be919f66734c6af7ebf08ebf998b37e9f"], "block_plan_signature": "41a21e1c4bfc2da63f4ea815160ec6ed6d539e27291deaf9b1df75a9f4311034", "event_ids": [], "contains_protected_event_frames": false, "maximum_autocorrelation_time_frames": 9.540382110290924, "effective_sample_count": 0.20963520924834447, "replica_id": null, "structural_realization_id": null, "reference_group": "bulk", "independence_grade": "purged_temporal_block", "independence_evidence_codes": ["single_run_autocorrelation_aware_temporal_block"], "content_digest": "04c52cfbc3ab840aacaaa481dad49cb192bcac1091afaa3d4e438394206cf132"}, {"schema": "mdstats.partition-unit.v2", "unit_id": "0f4c6d37911d6ce19d99962c64d1aec2364fa4412a4ef1388259f18aff024cd6", "run_id": "run", "label_domain_id": "label-domain-ded5fa94ad149c34", "condition": {"schema": "mdstats.partition-condition-key.v1", "label_domain_id": "label-domain-ded5fa94ad149c34", "reduced_formula": "LiO", "temperature_condition": "700K", "strain_class": "unstrained", "regime": "production", "user_labels": {}, "condition_id": "90c04414040bfab1351bc08c4957318ccdaca67656894cb9a294c00ac1a5ae1f"}, "source_frame_start": 24, "source_frame_stop": 28, "frame_uids": ["bd55d97992e97ac8d46c2e836b316616a7766076d78e78484e551d3553a49731", "7bb646c27a02401ee54ac563c02305389735d56bc7c24e25d5712a3fb7027f88", "6dc29ad111cbaf4278f3023a664d9a133875a13d4ad5eb1321a94ec7b5499585", "608301dcb87e1b34a32bb3e073cc1dfdfe295ee83dec96ddf56fea2c6690d612"], "block_plan_signature": "41a21e1c4bfc2da63f4ea815160ec6ed6d539e27291deaf9b1df75a9f4311034", "event_ids": [], "contains_protected_event_frames": false, "maximum_autocorrelation_time_frames": 9.540382110290924, "effective_sample_count": 0.20963520924834447, "replica_id": null, "structural_realization_id": null, "reference_group": "bulk", "independence_grade": "purged_temporal_block", "independence_evidence_codes": ["single_run_autocorrelation_aware_temporal_block"], "content_digest": "2ae296b91af459dc9cce1b70e3b126305062542c03f235c5d0efe787a1305254"}, {"schema": "mdstats.partition-unit.v2", "unit_id": "4f3fbc93a8f68c14b4f7e80946a8a68eb310a98336f24d986c7af9e847c25c21", "run_id": "run", "label_domain_id": "label-domain-ded5fa94ad149c34", "condition": {"schema": "mdstats.partition-condition-key.v1", "label_domain_id": "label-domain-ded5fa94ad149c34", "reduced_formula": "LiO", "temperature_condition": "700K", "strain_class": "unstrained", "regime": "production", "user_labels": {}, "condition_id": "90c04414040bfab1351bc08c4957318ccdaca67656894cb9a294c00ac1a5ae1f"}, "source_frame_start": 28, "source_frame_stop": 32, "frame_uids": ["d994c6f551186e84d33ae5be59b6e81ae95243ea83fc57f3438c3c880da88a11", "5b2f8dc247ff4e11098623946dd1731113dddc491183398c3efca9bc9a928f5b", "c7e97ad57f28844e0ad4a65852d881bcd291d5b61549ad9ae5c7e6b5933ef890", "66f1afad91e1314e1520b06967c22bd80443e1276a720a2ec22849c41c96d7bc"], "block_plan_signature": "41a21e1c4bfc2da63f4ea815160ec6ed6d539e27291deaf9b1df75a9f4311034", "event_ids": [], "contains_protected_event_frames": false, "maximum_autocorrelation_time_frames": 9.540382110290924, "effective_sample_count": 0.20963520924834447, "replica_id": null, "structural_realization_id": null, "reference_group": "bulk", "independence_grade": "purged_temporal_block", "independence_evidence_codes": ["single_run_autocorrelation_aware_temporal_block"], "content_digest": "13bd46a0dca611d2725f769d45071cd04e1f438540fc33629dea5a9f497ccba5"}, {"schema": "mdstats.partition-unit.v2", "unit_id": "56b9264f73c43281cd1a46ce8c7ccdea3c9c1de9bfe1b94eea1bc679c74e3678", "run_id": "run", "label_domain_id": "label-domain-ded5fa94ad149c34", "condition": {"schema": "mdstats.partition-condition-key.v1", "label_domain_id": "label-domain-ded5fa94ad149c34", "reduced_formula": "LiO", "temperature_condition": "700K", "strain_class": "unstrained", "regime": "production", "user_labels": {}, "condition_id": "90c04414040bfab1351bc08c4957318ccdaca67656894cb9a294c00ac1a5ae1f"}, "source_frame_start": 32, "source_frame_stop": 36, "frame_uids": ["da77a125b2b1ff93a584b76be750e62624732a45e222b6b9b5f73ac688da9329", "673858b92f03e0700b547aba6fb4cacc6e3dc494e5b2646e14128273a77ec35f", "80cf69905d28416c4870ef3f8377c01e97f4cdb7d1603bc5a3eb7dd664d6a925", "985a9ba640134cd9a3bd67499418c7cd8a9088255e2c7a6919957c26a41b48d1"], "block_plan_signature": "41a21e1c4bfc2da63f4ea815160ec6ed6d539e27291deaf9b1df75a9f4311034", "event_ids": [], "contains_protected_event_frames": false, "maximum_autocorrelation_time_frames": 9.540382110290924, "effective_sample_count": 0.20963520924834447, "replica_id": null, "structural_realization_id": null, "reference_group": "bulk", "independence_grade": "purged_temporal_block", "independence_evidence_codes": ["single_run_autocorrelation_aware_temporal_block"], "content_digest": "4f9a6a935b906a42af39049b977ac854755c6c7a2831ba940813c72df63b94ac"}, {"schema": "mdstats.partition-unit.v2", "unit_id": "c9d013c827d794f3b96643bf69f8d71b213512fab8a024e75d9bc8425a6e0b16", "run_id": "run", "label_domain_id": "label-domain-ded5fa94ad149c34", "condition": {"schema": "mdstats.partition-condition-key.v1", "label_domain_id": "label-domain-ded5fa94ad149c34", "reduced_formula": "LiO", "temperature_condition": "700K", "strain_class": "unstrained", "regime": "production", "user_labels": {}, "condition_id": "90c04414040bfab1351bc08c4957318ccdaca67656894cb9a294c00ac1a5ae1f"}, "source_frame_start": 36, "source_frame_stop": 40, "frame_uids": ["dcd82461941cb56b140a60af0a3e99a99ea2598b1b6122d359c610f7d5959343", "5ec51fae11748e87a983889119067314bbf565e4d7f504a4ea4d54ee3e77cdde", "f1c9611b70c7d49e899ac184dadb11bacfd78f948c32f92f1dde7e8c5619a8a2", "6d08cbab6444eb80ca4f118e9b33f01fb46b1644bc3375a5e122e3b54e92ea6d"], "block_plan_signature": "41a21e1c4bfc2da63f4ea815160ec6ed6d539e27291deaf9b1df75a9f4311034", "event_ids": [], "contains_protected_event_frames": false, "maximum_autocorrelation_time_frames": 9.540382110290924, "effective_sample_count": 0.20963520924834447, "replica_id": null, "structural_realization_id": null, "reference_group": "bulk", "independence_grade": "purged_temporal_block", "independence_evidence_codes": ["single_run_autocorrelation_aware_temporal_block"], "content_digest": "c14b3168e2dc8b645251dd08c5f12c0190a5bbc57fee598c32e8d102ff8ad6c4"}, {"schema": "mdstats.partition-unit.v2", "unit_id": "2ddaeea0eff240696280ca5b349cf9c75f73d83f472697d32b2a5caafc1b33b2", "run_id": "run", "label_domain_id": "label-domain-ded5fa94ad149c34", "condition": {"schema": "mdstats.partition-condition-key.v1", "label_domain_id": "label-domain-ded5fa94ad149c34", "reduced_formula": "LiO", "temperature_condition": "700K", "strain_class": "unstrained", "regime": "production", "user_labels": {}, "condition_id": "90c04414040bfab1351bc08c4957318ccdaca67656894cb9a294c00ac1a5ae1f"}, "source_frame_start": 40, "source_frame_stop": 44, "frame_uids": ["6b43f926d1c0e261f7c1a6419236fe5ff41967ccd0221a5d3c951bf3fe037f75", "283a83fb679e381b57a3be9545da441c5b422559989cd60852675b2c2df3c9f3", "3d4666b98796e1c5ecfb9b2def09c44b960881dc2e894bc18d0cf8cf189bda58", "b2f86122fcf2f055bf160a3720e6d2b85992c01412f792f405206c3de182794a"], "block_plan_signature": "41a21e1c4bfc2da63f4ea815160ec6ed6d539e27291deaf9b1df75a9f4311034", "event_ids": [], "contains_protected_event_frames": false, "maximum_autocorrelation_time_frames": 9.540382110290924, "effective_sample_count": 0.20963520924834447, "replica_id": null, "structural_realization_id": null, "reference_group": "bulk", "independence_grade": "purged_temporal_block", "independence_evidence_codes": ["single_run_autocorrelation_aware_temporal_block"], "content_digest": "f70a42434d0799e03431df994a2192966377be849372aa8b1643585707c3c508"}, {"schema": "mdstats.partition-unit.v2", "unit_id": "ad3c7ba79103d7918fa8bd96239299f4987b4fd426ca65dac93be048e30ce4be", "run_id": "run", "label_domain_id": "label-domain-ded5fa94ad149c34", "condition": {"schema": "mdstats.partition-condition-key.v1", "label_domain_id": "label-domain-ded5fa94ad149c34", "reduced_formula": "LiO", "temperature_condition": "700K", "strain_class": "unstrained", "regime": "production", "user_labels": {}, "condition_id": "90c04414040bfab1351bc08c4957318ccdaca67656894cb9a294c00ac1a5ae1f"}, "source_frame_start": 44, "source_frame_stop": 48, "frame_uids": ["6373cfba2436a76bb8fc4af1d9409a6903ecb57b561bc014bcfc33741f02043e", "8e79eee752e357cc3512f267f7449d79cdb3ba8f628cf44d0a86da5fbfa114d1", "9fb68e3a320e64680323a493a4592612b992640c6d7f45d83b3706481b5ddab3", "0e792e7631673922cf048b46c27abbdae436d36100f6f3041970998481d8f8aa"], "block_plan_signature": "41a21e1c4bfc2da63f4ea815160ec6ed6d539e27291deaf9b1df75a9f4311034", "event_ids": [], "contains_protected_event_frames": false, "maximum_autocorrelation_time_frames": 9.540382110290924, "effective_sample_count": 0.20963520924834447, "replica_id": null, "structural_realization_id": null, "reference_group": "bulk", "independence_grade": "purged_temporal_block", "independence_evidence_codes": ["single_run_autocorrelation_aware_temporal_block"], "content_digest": "4b4da0cf2cf08896877ef643d749c9e5aeb9228b8b3c2c0da63a07c96fb35655"}], "run_block_plan_signatures": {"run": "41a21e1c4bfc2da63f4ea815160ec6ed6d539e27291deaf9b1df75a9f4311034"}, "content_digest": "06992b49d58ec7919ebf127b674008bfa15732e01e67d377ff78fb11f7411588"}, "feasibility_reports": [{"schema": "mdstats.partition-feasibility-report.v1", "label_domain_id": "label-domain-ded5fa94ad149c34", "policy_digest": "2719d96563290c54ba410cbbe9553eb8f5d36c22a26b96abab16e911910abe2d", "unit_catalog_digest": "06992b49d58ec7919ebf127b674008bfa15732e01e67d377ff78fb11f7411588", "outcome": "supported_with_temporal_blocks_only", "available_unit_count": 11, "available_condition_count": 1, "requested_cross_validation_folds": 3, "resolved_cross_validation_folds": 3, "calibration_deferred": false, "temporal_blocks_only": true, "per_condition_unit_counts": {"90c04414040bfab1351bc08c4957318ccdaca67656894cb9a294c00ac1a5ae1f": 11}, "missing_outer_role_conditions": {"locked_interpolation_test": [], "outer_monitor": [], "uncertainty_calibration": []}, "reason_codes": ["no_independent_replica_or_run_support"], "content_digest": "e6e97d7c04a7f4d6cd2c8a68a8c7a12a03524a54f78dff5f575b9626cea78e0c"}], "outer_partitions": [{"schema": "mdstats.outer-partition.v1", "label_domain_id": "label-domain-ded5fa94ad149c34", "policy_digest": "2719d96563290c54ba410cbbe9553eb8f5d36c22a26b96abab16e911910abe2d", "unit_catalog_digest": "06992b49d58ec7919ebf127b674008bfa15732e01e67d377ff78fb11f7411588", "feasibility_report_digest": "e6e97d7c04a7f4d6cd2c8a68a8c7a12a03524a54f78dff5f575b9626cea78e0c", "assignments": [{"schema": "mdstats.outer-role-assignment.v1", "unit_id": "0f4c6d37911d6ce19d99962c64d1aec2364fa4412a4ef1388259f18aff024cd6", "label_domain_id": "label-domain-ded5fa94ad149c34", "role": "uncertainty_calibration", "assignment_reason_codes": ["deterministic_calibration_anchor"], "content_digest": "08732b8b2d3e38a8b9f0100146428fe3732af34785217b9327a226b22a56fba1"}, {"schema": "mdstats.outer-role-assignment.v1", "unit_id": "2ddaeea0eff240696280ca5b349cf9c75f73d83f472697d32b2a5caafc1b33b2", "label_domain_id": "label-domain-ded5fa94ad149c34", "role": "development", "assignment_reason_codes": ["remaining_eligible_development_unit"], "content_digest": "6aa09f7eb74936c0f622b3981c03baf9d86c6a2c62f38d286c99324704a9ca71"}, {"schema": "mdstats.outer-role-assignment.v1", "unit_id": "362c2801db60f5a6eb4a644b7b373899026a0757ecb7dd589405966ac0855311", "label_domain_id": "label-domain-ded5fa94ad149c34", "role": "outer_monitor", "assignment_reason_codes": ["deterministic_outer_monitor_anchor"], "content_digest": "22c6541919e52be1fb1f83509fb838392ae5e7e4be8f4588f6f3ac905dcf249b"}, {"schema": "mdstats.outer-role-assignment.v1", "unit_id": "4f3fbc93a8f68c14b4f7e80946a8a68eb310a98336f24d986c7af9e847c25c21", "label_domain_id": "label-domain-ded5fa94ad149c34", "role": "development", "assignment_reason_codes": ["remaining_eligible_development_unit"], "content_digest": "b7f2f26f4c02daf222137a848866e24f977f50382419782ea3ba65ff9e2fd98a"}, {"schema": "mdstats.outer-role-assignment.v1", "unit_id": "56b9264f73c43281cd1a46ce8c7ccdea3c9c1de9bfe1b94eea1bc679c74e3678", "label_domain_id": "label-domain-ded5fa94ad149c34", "role": "development", "assignment_reason_codes": ["remaining_eligible_development_unit"], "content_digest": "dfaf2eb2e26eeeb854b5e6d654931859efd3b88a6c65424112fe5a47678870e7"}, {"schema": "mdstats.outer-role-assignment.v1", "unit_id": "5f3f26d4a900f9952d4203c37bcabe17efb3f0b125e77a6dd769e042debabb31", "label_domain_id": "label-domain-ded5fa94ad149c34", "role": "development", "assignment_reason_codes": ["remaining_eligible_development_unit"], "content_digest": "309b67dde8ed8074103364c793644fea655f55e9d2e8cdc0c18132a12792eca0"}, {"schema": "mdstats.outer-role-assignment.v1", "unit_id": "9cd5f3c0894b33515c0ff8ff7699024383a72cd928f511a5d8d4b597e7e5eec7", "label_domain_id": "label-domain-ded5fa94ad149c34", "role": "development", "assignment_reason_codes": ["remaining_eligible_development_unit"], "content_digest": "db49767b89722175b43a862d289f2f05db6ee51aa54aff594819b8cadab32d6c"}, {"schema": "mdstats.outer-role-assignment.v1", "unit_id": "9e360b7b85e726f179566fec20820b7bf39db1f7fd3b84fbab00136e3e41867d", "label_domain_id": "label-domain-ded5fa94ad149c34", "role": "development", "assignment_reason_codes": ["remaining_eligible_development_unit"], "content_digest": "4ae472e9cd91de09793a0274d3a953d9d47d6e6796bcea4fc2477eaa4d2dd9b8"}, {"schema": "mdstats.outer-role-assignment.v1", "unit_id": "ad3c7ba79103d7918fa8bd96239299f4987b4fd426ca65dac93be048e30ce4be", "label_domain_id": "label-domain-ded5fa94ad149c34", "role": "development", "assignment_reason_codes": ["remaining_eligible_development_unit"], "content_digest": "acdf123bafd111f7d54dd0f189b31121532fd75860ac40faebd33c0abb5cdcaa"}, {"schema": "mdstats.outer-role-assignment.v1", "unit_id": "c9d013c827d794f3b96643bf69f8d71b213512fab8a024e75d9bc8425a6e0b16", "label_domain_id": "label-domain-ded5fa94ad149c34", "role": "locked_interpolation_test", "assignment_reason_codes": ["deterministic_locked_test_anchor"], "content_digest": "509ef7e6ef4b79025bf6282ffd56ac479082148c90aa6f06faedfc05cb21393b"}, {"schema": "mdstats.outer-role-assignment.v1", "unit_id": "ff7e40eebbbc5d131355da5bb5a32c4cebc1286657309a4775472f000d0a0da0", "label_domain_id": "label-domain-ded5fa94ad149c34", "role": "development", "assignment_reason_codes": ["remaining_eligible_development_unit"], "content_digest": "25bcfb76113ee8cf94c2fb84bb269f64c865099090634b45c1e3ffce59e3a5e2"}], "content_digest": "39dd52ff76e64392625269db36a4571af4d7feff46b72eae6c1141b70446e43b"}], "independence_reports": [{"schema": "mdstats.partition-independence-report.v1", "label_domain_id": "label-domain-ded5fa94ad149c34", "unit_catalog_digest": "06992b49d58ec7919ebf127b674008bfa15732e01e67d377ff78fb11f7411588", "grade_counts": {"purged_temporal_block": 11}, "weakest_grade": "purged_temporal_block", "notes": [], "content_digest": "f3a0e9f4a469b4960cbb56d5298a955d1f68981a40abda004c5d077c1dbf55e2"}], "cross_validation_plans": [{"schema": "mdstats.cross-validation-plan.v1", "label_domain_id": "label-domain-ded5fa94ad149c34", "policy_digest": "2719d96563290c54ba410cbbe9553eb8f5d36c22a26b96abab16e911910abe2d", "outer_partition_digest": "39dd52ff76e64392625269db36a4571af4d7feff46b72eae6c1141b70446e43b", "resolved_fold_count": 3, "folds": [{"schema": "mdstats.cross-validation-fold.v1", "fold_index": 0, "training_unit_ids": ["4f3fbc93a8f68c14b4f7e80946a8a68eb310a98336f24d986c7af9e847c25c21", "56b9264f73c43281cd1a46ce8c7ccdea3c9c1de9bfe1b94eea1bc679c74e3678", "9cd5f3c0894b33515c0ff8ff7699024383a72cd928f511a5d8d4b597e7e5eec7", "9e360b7b85e726f179566fec20820b7bf39db1f7fd3b84fbab00136e3e41867d"], "checkpoint_monitor_unit_ids": ["ad3c7ba79103d7918fa8bd96239299f4987b4fd426ca65dac93be048e30ce4be"], "evaluation_unit_ids": ["2ddaeea0eff240696280ca5b349cf9c75f73d83f472697d32b2a5caafc1b33b2", "5f3f26d4a900f9952d4203c37bcabe17efb3f0b125e77a6dd769e042debabb31", "ff7e40eebbbc5d131355da5bb5a32c4cebc1286657309a4775472f000d0a0da0"], "purged_unit_ids": [], "content_digest": "d1c5c088fcf7e71f3818d97ec38f1f378960f8b256d820265890fa2a161cbabf"}, {"schema": "mdstats.cross-validation-fold.v1", "fold_index": 1, "training_unit_ids": ["56b9264f73c43281cd1a46ce8c7ccdea3c9c1de9bfe1b94eea1bc679c74e3678", "5f3f26d4a900f9952d4203c37bcabe17efb3f0b125e77a6dd769e042debabb31", "9e360b7b85e726f179566fec20820b7bf39db1f7fd3b84fbab00136e3e41867d", "ff7e40eebbbc5d131355da5bb5a32c4cebc1286657309a4775472f000d0a0da0"], "checkpoint_monitor_unit_ids": ["2ddaeea0eff240696280ca5b349cf9c75f73d83f472697d32b2a5caafc1b33b2"], "evaluation_unit_ids": ["4f3fbc93a8f68c14b4f7e80946a8a68eb310a98336f24d986c7af9e847c25c21", "9cd5f3c0894b33515c0ff8ff7699024383a72cd928f511a5d8d4b597e7e5eec7", "ad3c7ba79103d7918fa8bd96239299f4987b4fd426ca65dac93be048e30ce4be"], "purged_unit_ids": [], "content_digest": "85f90f578f66ffa393642c7388f073df070c3e26a8673719b827be97bedcd50d"}, {"schema": "mdstats.cross-validation-fold.v1", "fold_index": 2, "training_unit_ids": ["2ddaeea0eff240696280ca5b349cf9c75f73d83f472697d32b2a5caafc1b33b2", "4f3fbc93a8f68c14b4f7e80946a8a68eb310a98336f24d986c7af9e847c25c21", "5f3f26d4a900f9952d4203c37bcabe17efb3f0b125e77a6dd769e042debabb31", "9cd5f3c0894b33515c0ff8ff7699024383a72cd928f511a5d8d4b597e7e5eec7", "ff7e40eebbbc5d131355da5bb5a32c4cebc1286657309a4775472f000d0a0da0"], "checkpoint_monitor_unit_ids": ["ad3c7ba79103d7918fa8bd96239299f4987b4fd426ca65dac93be048e30ce4be"], "evaluation_unit_ids": ["56b9264f73c43281cd1a46ce8c7ccdea3c9c1de9bfe1b94eea1bc679c74e3678", "9e360b7b85e726f179566fec20820b7bf39db1f7fd3b84fbab00136e3e41867d"], "purged_unit_ids": [], "content_digest": "0c481b3f97d826f9cddd78b8a4cefda71b3949a08404a05f070a793878a30c23"}], "content_digest": "af095861d73cc6372910b4fdb11fa0274e192da288ab1e2a4b47b9b59c2022c0"}], "blinding_boundaries": {"schema": "mdstats.blinding-boundary-catalog.v1", "policy_digest": "ca346b74fd4ff500112d937c96d239414733620c32ea5f2e411c3317d07d003b", "outer_partition_digests": ["39dd52ff76e64392625269db36a4571af4d7feff46b72eae6c1141b70446e43b"], "boundaries": [{"schema": "mdstats.role-blinding-boundary.v1", "role": "development", "operation_access": {"checkpoint_monitoring": "forbidden", "label_derived_selection": "allowed", "post_freeze_evaluation": "forbidden", "raw_geometry_access": "allowed", "uncertainty_calibration": "forbidden"}, "reason_codes": ["canonical_mlff_data5_role_boundary"], "content_digest": "3bb82ac0cbd08fcba9a47d76f7318cc7623b46f78d3c43d7840c10bdf0291c51"}, {"schema": "mdstats.role-blinding-boundary.v1", "role": "excluded", "operation_access": {"checkpoint_monitoring": "provenance_only", "label_derived_selection": "provenance_only", "post_freeze_evaluation": "provenance_only", "raw_geometry_access": "provenance_only", "uncertainty_calibration": "provenance_only"}, "reason_codes": ["canonical_mlff_data5_role_boundary"], "content_digest": "4024bd3bddf33c46f47203ab8e34cd57c540e529c886ab2409f7d5e4c61c930e"}, {"schema": "mdstats.role-blinding-boundary.v1", "role": "locked_interpolation_test", "operation_access": {"checkpoint_monitoring": "forbidden", "label_derived_selection": "forbidden", "post_freeze_evaluation": "sealed_until_protocol_freeze", "raw_geometry_access": "sealed_until_protocol_freeze", "uncertainty_calibration": "forbidden"}, "reason_codes": ["canonical_mlff_data5_role_boundary"], "content_digest": "c500e956fa3de11d4b671ed46c0820b3262bbbf24350ab905c184cfbf0cf1819"}, {"schema": "mdstats.role-blinding-boundary.v1", "role": "outer_monitor", "operation_access": {"checkpoint_monitoring": "allowed", "label_derived_selection": "forbidden", "post_freeze_evaluation": "forbidden", "raw_geometry_access": "allowed", "uncertainty_calibration": "forbidden"}, "reason_codes": ["canonical_mlff_data5_role_boundary"], "content_digest": "3ef35ff7365dba3cab32ca42d9a189a64b1813294eef8c92faf5cee915907b7c"}, {"schema": "mdstats.role-blinding-boundary.v1", "role": "purged", "operation_access": {"checkpoint_monitoring": "provenance_only", "label_derived_selection": "provenance_only", "post_freeze_evaluation": "provenance_only", "raw_geometry_access": "provenance_only", "uncertainty_calibration": "provenance_only"}, "reason_codes": ["canonical_mlff_data5_role_boundary"], "content_digest": "4fe6c101d8bd0ecbe1f444a446e6bb4f73475c37b7b2c9bbf5ef31f610543aad"}, {"schema": "mdstats.role-blinding-boundary.v1", "role": "uncertainty_calibration", "operation_access": {"checkpoint_monitoring": "forbidden", "label_derived_selection": "forbidden", "post_freeze_evaluation": "forbidden", "raw_geometry_access": "allowed", "uncertainty_calibration": "allowed"}, "reason_codes": ["canonical_mlff_data5_role_boundary"], "content_digest": "47cc5b6b55619cf6c0060132ac91b8e96d45b4ad8943ff85e45299b8256b5c2e"}], "content_digest": "00be1223c6f1a04093d7e9098cb25011d41f2bb867f3c13af549b3b741306917"}, "leakage_audit": {"schema": "mdstats.mlff-leakage-audit-report.v1", "policy_digest": "677057aa57ad6903e05cdc5968af04f9da4bbb9675c0976c172211fb1bef12f3", "unit_catalog_digest": "06992b49d58ec7919ebf127b674008bfa15732e01e67d377ff78fb11f7411588", "outer_partition_digests": ["39dd52ff76e64392625269db36a4571af4d7feff46b72eae6c1141b70446e43b"], "cross_validation_plan_digests": ["af095861d73cc6372910b4fdb11fa0274e192da288ab1e2a4b47b9b59c2022c0"], "findings": [{"schema": "mdstats.mlff-leakage-finding.v1", "code": "no_partition_leakage_detected", "severity": "info", "label_domain_id": null, "unit_ids": [], "frame_uids": [], "message": "All DATA5 identity, event-window, role, and fold checks passed.", "content_digest": "9afd8b1e6cffef84c0e88125dc117d47a1a1b93e1df1be7594754413cddeca81"}], "content_digest": "43e208f18974dd2f6ed8093cc4463c1ee2ba378dd026d6d8f21992f927ea2664", "passed": true}, "notes": ["DATA5 assigns statistical roles only; fitted transforms, selection, model residuals, E0 fits, and MACE artifacts remain downstream."], "content_digest": "6c641b6d5dff7c21d404af5433ddde7e1fb2b9a50f6b953d3bee372d691bb3ec"}
+\ No newline at end of file
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/fixtures/legacy_schema_0_20_76/production_plan.json /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/fixtures/legacy_schema_0_20_76/production_plan.json
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/fixtures/legacy_schema_0_20_76/production_plan.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/fixtures/legacy_schema_0_20_76/production_plan.json	2026-08-08 23:37:01.504595337 +0000
+@@ -0,0 +1 @@
++{"schema": "mdstats.production-materialization-plan.v2", "plan_version": "mdstats.mlff-data9a9c.production-gate-integrity.2026-07.v1", "dataset_id": "data5", "source_catalog_digest": "fc47bfe4204935a0af8f6614fa395e2da5b3acab3c083efa0914bd280ed212bd", "frame_catalog_digest": "c5d537b01da568008cc666c995fb09197ef74be9bdae975a47147225d342857e", "data4_bundle_digest": "de6000f7305074aac15bcf7c412f8ac64ebc0e55a7e9a055c35e6999d2d73444", "data5_bundle_digest": "6c641b6d5dff7c21d404af5433ddde7e1fb2b9a50f6b953d3bee372d691bb3ec", "data6_bundle_digest": "f8eef08b9f5d0928832993bd84966f133888b579bf7545ac73c48c236b6769a0", "data6_model_sweep_checkpoint_digest": "fe36236d53ccedb99a4e795941765d12db2ecc5807061d6a25adf6ce2add703f", "data6_descriptor_manifest_digest": "bbf9d6247314b96bce42254a308c7c8c5cbc028aa6ca3a17a90480d4f8af207c", "data6_prediction_manifest_digest": "33abd5ba3fb99653a60423c7db67a28947693cd7b999b64a765e1b40f7efa685", "domains": [{"schema": "mdstats.feature-fit-domain.v1", "label_domain_id": "label-domain-ded5fa94ad149c34", "kind": "cross_validation_training", "data5_bundle_digest": "6c641b6d5dff7c21d404af5433ddde7e1fb2b9a50f6b953d3bee372d691bb3ec", "unit_ids": ["4f3fbc93a8f68c14b4f7e80946a8a68eb310a98336f24d986c7af9e847c25c21", "56b9264f73c43281cd1a46ce8c7ccdea3c9c1de9bfe1b94eea1bc679c74e3678", "9cd5f3c0894b33515c0ff8ff7699024383a72cd928f511a5d8d4b597e7e5eec7", "9e360b7b85e726f179566fec20820b7bf39db1f7fd3b84fbab00136e3e41867d"], "frame_uids": ["033eefed8b8fb3aa6bec64d7e4046f7057de3df9388f56c3417805c531d3eeca", "0cbcd9d4ea3974b11eebdc9a2d24e1ddd8194c075a00a61a04999556730c21de", "12c0c935ffe1d79b6e4270bdd03e994b4b5a6a99b6680d034fd721b75997af67", "1a38981856205c1bfb9b62885b45e810f8125a13f593ae8d9cb025607c73f068", "354d8213f0ef0125fe4f2f021bd15a218f7b8927d22a95a132f15754784ba343", "56d656062e5eac1bba47aa8c382764585acdc06c875be0a31e22207c8eb7e1bd", "5b2f8dc247ff4e11098623946dd1731113dddc491183398c3efca9bc9a928f5b", "66f1afad91e1314e1520b06967c22bd80443e1276a720a2ec22849c41c96d7bc", "673858b92f03e0700b547aba6fb4cacc6e3dc494e5b2646e14128273a77ec35f", "80cf69905d28416c4870ef3f8377c01e97f4cdb7d1603bc5a3eb7dd664d6a925", "985a9ba640134cd9a3bd67499418c7cd8a9088255e2c7a6919957c26a41b48d1", "b24a513ae16938629b25f3d5983aeb8af78e63b0d4e75e9210a049a81c7abb14", "b2827ca28ba8a27396cf2d2a8e5a9a1a77a155af539f8415a725fc7f3b01dd0e", "bae79401980b451ba92a59a716e95837dd074fce3c4113c9e39cafbceb300164", "c7e97ad57f28844e0ad4a65852d881bcd291d5b61549ad9ae5c7e6b5933ef890", "c88fc391e77a69a2cd635f4055edcbe74b7a041cbfd45b93d3a86dd5d42a55ab", "d994c6f551186e84d33ae5be59b6e81ae95243ea83fc57f3438c3c880da88a11", "da77a125b2b1ff93a584b76be750e62624732a45e222b6b9b5f73ac688da9329", "e4f279d678cf8cd6f68a9094e1ad39c840870e07634375a2e6bf7b8f68f78e53", "fa24b0da440a43c71566b2eeed4bdf5549b3ea4292c7fda3056efa2af73a1a58"], "fold_index": 0, "content_digest": "c5bfd618c2059d20ad81c5ffb3d578c74cd464023503189ff23c32760eff2216"}, {"schema": "mdstats.feature-fit-domain.v1", "label_domain_id": "label-domain-ded5fa94ad149c34", "kind": "cross_validation_training", "data5_bundle_digest": "6c641b6d5dff7c21d404af5433ddde7e1fb2b9a50f6b953d3bee372d691bb3ec", "unit_ids": ["56b9264f73c43281cd1a46ce8c7ccdea3c9c1de9bfe1b94eea1bc679c74e3678", "5f3f26d4a900f9952d4203c37bcabe17efb3f0b125e77a6dd769e042debabb31", "9e360b7b85e726f179566fec20820b7bf39db1f7fd3b84fbab00136e3e41867d", "ff7e40eebbbc5d131355da5bb5a32c4cebc1286657309a4775472f000d0a0da0"], "frame_uids": ["011725b1664dd4df4703e849027f231ecdf2028da6248cdad5c24db87d45cfad", "033eefed8b8fb3aa6bec64d7e4046f7057de3df9388f56c3417805c531d3eeca", "1a38981856205c1bfb9b62885b45e810f8125a13f593ae8d9cb025607c73f068", "228d57519d4ab561e73380c8a0346049f7056275538c1c06f58d941b6a4f1852", "4636b9896ee69f0963eae8c7b91044cc4c10dc7a5967dcc663c6062b622a7e94", "673858b92f03e0700b547aba6fb4cacc6e3dc494e5b2646e14128273a77ec35f", "80cf69905d28416c4870ef3f8377c01e97f4cdb7d1603bc5a3eb7dd664d6a925", "8cbe8afddb1fb955904ac5a5c0b7c67be919f66734c6af7ebf08ebf998b37e9f", "985a9ba640134cd9a3bd67499418c7cd8a9088255e2c7a6919957c26a41b48d1", "aee1239a1e7ac8d11dee088900ba96df0f7ddd8546fa25534987519922a6fde2", "bae79401980b451ba92a59a716e95837dd074fce3c4113c9e39cafbceb300164", "c31886dae3b06ef1ea92f009ae686afc2a560610d0b4b26d410ad208b8f5f0ab", "c88fc391e77a69a2cd635f4055edcbe74b7a041cbfd45b93d3a86dd5d42a55ab", "d109ec04e31451019bf250bb12f583219b3d2e7c8be8effddc87b9fbe09f09d8", "d9af564762d4f139adeabbdd58b6de3b8ff2b93455d812e2a92977c7f28c3bf7", "da77a125b2b1ff93a584b76be750e62624732a45e222b6b9b5f73ac688da9329"], "fold_index": 1, "content_digest": "b24a512a301aad74a3dd88a7b05ad0bd537de92baed45045f3aea6db5b898a65"}, {"schema": "mdstats.feature-fit-domain.v1", "label_domain_id": "label-domain-ded5fa94ad149c34", "kind": "cross_validation_training", "data5_bundle_digest": "6c641b6d5dff7c21d404af5433ddde7e1fb2b9a50f6b953d3bee372d691bb3ec", "unit_ids": ["2ddaeea0eff240696280ca5b349cf9c75f73d83f472697d32b2a5caafc1b33b2", "4f3fbc93a8f68c14b4f7e80946a8a68eb310a98336f24d986c7af9e847c25c21", "5f3f26d4a900f9952d4203c37bcabe17efb3f0b125e77a6dd769e042debabb31", "9cd5f3c0894b33515c0ff8ff7699024383a72cd928f511a5d8d4b597e7e5eec7", "ff7e40eebbbc5d131355da5bb5a32c4cebc1286657309a4775472f000d0a0da0"], "frame_uids": ["011725b1664dd4df4703e849027f231ecdf2028da6248cdad5c24db87d45cfad", "0cbcd9d4ea3974b11eebdc9a2d24e1ddd8194c075a00a61a04999556730c21de", "12c0c935ffe1d79b6e4270bdd03e994b4b5a6a99b6680d034fd721b75997af67", "228d57519d4ab561e73380c8a0346049f7056275538c1c06f58d941b6a4f1852", "283a83fb679e381b57a3be9545da441c5b422559989cd60852675b2c2df3c9f3", "354d8213f0ef0125fe4f2f021bd15a218f7b8927d22a95a132f15754784ba343", "3d4666b98796e1c5ecfb9b2def09c44b960881dc2e894bc18d0cf8cf189bda58", "4636b9896ee69f0963eae8c7b91044cc4c10dc7a5967dcc663c6062b622a7e94", "56d656062e5eac1bba47aa8c382764585acdc06c875be0a31e22207c8eb7e1bd", "5b2f8dc247ff4e11098623946dd1731113dddc491183398c3efca9bc9a928f5b", "66f1afad91e1314e1520b06967c22bd80443e1276a720a2ec22849c41c96d7bc", "6b43f926d1c0e261f7c1a6419236fe5ff41967ccd0221a5d3c951bf3fe037f75", "8cbe8afddb1fb955904ac5a5c0b7c67be919f66734c6af7ebf08ebf998b37e9f", "aee1239a1e7ac8d11dee088900ba96df0f7ddd8546fa25534987519922a6fde2", "b24a513ae16938629b25f3d5983aeb8af78e63b0d4e75e9210a049a81c7abb14", "b2827ca28ba8a27396cf2d2a8e5a9a1a77a155af539f8415a725fc7f3b01dd0e", "b2f86122fcf2f055bf160a3720e6d2b85992c01412f792f405206c3de182794a", "c31886dae3b06ef1ea92f009ae686afc2a560610d0b4b26d410ad208b8f5f0ab", "c7e97ad57f28844e0ad4a65852d881bcd291d5b61549ad9ae5c7e6b5933ef890", "d109ec04e31451019bf250bb12f583219b3d2e7c8be8effddc87b9fbe09f09d8", "d994c6f551186e84d33ae5be59b6e81ae95243ea83fc57f3438c3c880da88a11", "d9af564762d4f139adeabbdd58b6de3b8ff2b93455d812e2a92977c7f28c3bf7", "e4f279d678cf8cd6f68a9094e1ad39c840870e07634375a2e6bf7b8f68f78e53", "fa24b0da440a43c71566b2eeed4bdf5549b3ea4292c7fda3056efa2af73a1a58"], "fold_index": 2, "content_digest": "2f45359aab14355ffa94d69d06f1b008bc83520155d27fecdfceeef6e55b2fb4"}, {"schema": "mdstats.feature-fit-domain.v1", "label_domain_id": "label-domain-ded5fa94ad149c34", "kind": "final_development", "data5_bundle_digest": "6c641b6d5dff7c21d404af5433ddde7e1fb2b9a50f6b953d3bee372d691bb3ec", "unit_ids": ["2ddaeea0eff240696280ca5b349cf9c75f73d83f472697d32b2a5caafc1b33b2", "4f3fbc93a8f68c14b4f7e80946a8a68eb310a98336f24d986c7af9e847c25c21", "56b9264f73c43281cd1a46ce8c7ccdea3c9c1de9bfe1b94eea1bc679c74e3678", "5f3f26d4a900f9952d4203c37bcabe17efb3f0b125e77a6dd769e042debabb31", "9cd5f3c0894b33515c0ff8ff7699024383a72cd928f511a5d8d4b597e7e5eec7", "9e360b7b85e726f179566fec20820b7bf39db1f7fd3b84fbab00136e3e41867d", "ad3c7ba79103d7918fa8bd96239299f4987b4fd426ca65dac93be048e30ce4be", "ff7e40eebbbc5d131355da5bb5a32c4cebc1286657309a4775472f000d0a0da0"], "frame_uids": ["011725b1664dd4df4703e849027f231ecdf2028da6248cdad5c24db87d45cfad", "033eefed8b8fb3aa6bec64d7e4046f7057de3df9388f56c3417805c531d3eeca", "0cbcd9d4ea3974b11eebdc9a2d24e1ddd8194c075a00a61a04999556730c21de", "0e792e7631673922cf048b46c27abbdae436d36100f6f3041970998481d8f8aa", "12c0c935ffe1d79b6e4270bdd03e994b4b5a6a99b6680d034fd721b75997af67", "1a38981856205c1bfb9b62885b45e810f8125a13f593ae8d9cb025607c73f068", "228d57519d4ab561e73380c8a0346049f7056275538c1c06f58d941b6a4f1852", "283a83fb679e381b57a3be9545da441c5b422559989cd60852675b2c2df3c9f3", "354d8213f0ef0125fe4f2f021bd15a218f7b8927d22a95a132f15754784ba343", "3d4666b98796e1c5ecfb9b2def09c44b960881dc2e894bc18d0cf8cf189bda58", "4636b9896ee69f0963eae8c7b91044cc4c10dc7a5967dcc663c6062b622a7e94", "56d656062e5eac1bba47aa8c382764585acdc06c875be0a31e22207c8eb7e1bd", "5b2f8dc247ff4e11098623946dd1731113dddc491183398c3efca9bc9a928f5b", "6373cfba2436a76bb8fc4af1d9409a6903ecb57b561bc014bcfc33741f02043e", "66f1afad91e1314e1520b06967c22bd80443e1276a720a2ec22849c41c96d7bc", "673858b92f03e0700b547aba6fb4cacc6e3dc494e5b2646e14128273a77ec35f", "6b43f926d1c0e261f7c1a6419236fe5ff41967ccd0221a5d3c951bf3fe037f75", "80cf69905d28416c4870ef3f8377c01e97f4cdb7d1603bc5a3eb7dd664d6a925", "8cbe8afddb1fb955904ac5a5c0b7c67be919f66734c6af7ebf08ebf998b37e9f", "8e79eee752e357cc3512f267f7449d79cdb3ba8f628cf44d0a86da5fbfa114d1", "985a9ba640134cd9a3bd67499418c7cd8a9088255e2c7a6919957c26a41b48d1", "9fb68e3a320e64680323a493a4592612b992640c6d7f45d83b3706481b5ddab3", "aee1239a1e7ac8d11dee088900ba96df0f7ddd8546fa25534987519922a6fde2", "b24a513ae16938629b25f3d5983aeb8af78e63b0d4e75e9210a049a81c7abb14", "b2827ca28ba8a27396cf2d2a8e5a9a1a77a155af539f8415a725fc7f3b01dd0e", "b2f86122fcf2f055bf160a3720e6d2b85992c01412f792f405206c3de182794a", "bae79401980b451ba92a59a716e95837dd074fce3c4113c9e39cafbceb300164", "c31886dae3b06ef1ea92f009ae686afc2a560610d0b4b26d410ad208b8f5f0ab", "c7e97ad57f28844e0ad4a65852d881bcd291d5b61549ad9ae5c7e6b5933ef890", "c88fc391e77a69a2cd635f4055edcbe74b7a041cbfd45b93d3a86dd5d42a55ab", "d109ec04e31451019bf250bb12f583219b3d2e7c8be8effddc87b9fbe09f09d8", "d994c6f551186e84d33ae5be59b6e81ae95243ea83fc57f3438c3c880da88a11", "d9af564762d4f139adeabbdd58b6de3b8ff2b93455d812e2a92977c7f28c3bf7", "da77a125b2b1ff93a584b76be750e62624732a45e222b6b9b5f73ac688da9329", "e4f279d678cf8cd6f68a9094e1ad39c840870e07634375a2e6bf7b8f68f78e53", "fa24b0da440a43c71566b2eeed4bdf5549b3ea4292c7fda3056efa2af73a1a58"], "fold_index": null, "content_digest": "2f8f297a475878e473c3bb965efd5fdbef009b426636d4ed07cdd96e02691c36"}], "feature_metric_policy": {"schema": "mdstats.feature-metric-policy.v1", "policy_version": "mdstats.mlff-data7.feature-metric.2026-08.v3", "blocks": [{"schema": "mdstats.feature-block-policy.v1", "name": "raw_physical", "weight": 1.0, "scaling": "robust_iqr", "include_missing_indicators": true, "normalize_by_dimension": true, "pca_components": null, "required": true, "content_digest": "6ca57091f55b5e05a7784020fb7ee7ab190627de81cb5bdd9833e1244539672d"}], "minimum_scale": 1e-12, "tie_tolerance": 1e-12, "policy_digest": "1b3419dfd39c5347bf3fc33830be2a0408fd11bf20fdd330321e7ba247c20c4d"}, "atomic_reference_policy": {"schema": "mdstats.atomic-reference-fit-policy.v2", "policy_version": "mdstats.mlff-data9a.atomic-reference-fit.2026-07.v2", "fit_mode": "from_scratch_total_energy", "ridge_lambda": 0.0, "allow_rank_deficient_fixed_domain": true, "prior_by_atomic_number": {}, "relative_singular_value_tolerance": 1e-12, "policy_digest": "c24111585917ac0cfa7a12abd39f2375c18fa838dbb433912febef196f739f2f"}, "objective_policy": {"schema": "mdstats.training-objective-policy.v2", "policy_version": "mdstats.mlff-data7.training-objective.2026-07.v2", "energy_weight": 1.0, "forces_weight": 10.0, "stress_weight": 1.0, "group_aware_force_objective": false, "focus_atom_group_ids": [], "focus_atomic_numbers": [], "policy_digest": "0205492b6225abdc87bd0d053778072ec160a8dde81fd59b6cdf94bbcadba9eb"}, "configuration_weight_policy": {"schema": "mdstats.configuration-weight-policy.v1", "policy_version": "mdstats.mlff-data7.configuration-weight.2026-07.v1", "equalize_condition_strata": true, "event_anchor_multiplier": 2.0, "protected_event_multiplier": 1.25, "degraded_frame_multiplier": 0.5, "minimum_configuration_weight": 0.05, "maximum_configuration_weight": 10.0, "policy_digest": "c60cbf39dbab6c02bfea9b649d1164f40cb14983b17f1b98a1ebb461c3da69f6"}, "checkpoint_metric_policy": {"schema": "mdstats.checkpoint-metric-policy.v2", "policy_version": "mdstats.mlff-data7.checkpoint-metric.2026-07.v2", "primary_metric": "target_force_component_rmse", "focus_atom_group_ids": [], "focus_atomic_numbers": [], "maximum_energy_mae_ev_per_atom": null, "maximum_focus_force_rmse_ev_per_angstrom": null, "maximum_stress_rmse_ev_per_angstrom3": null, "maximum_worst_condition_force_rmse_ev_per_angstrom": null, "maximum_replay_degradation_fraction": 0.2, "policy_digest": "aba856bdc371233cdeb7a667342cc87a0491f5379a159f710e56756cf5d3340c"}, "selection_budget_policy": {"schema": "mdstats.selection-budget-policy.v1", "policy_version": "mdstats.mlff-data7.selection-budget.2026-07.v1", "target_sizes": [4, 8], "representative_fraction": 0.35, "species_environment_fraction": 0.25, "rare_event_fraction": 0.15, "metric_fps_fraction": 0.15, "difficulty_fraction": 0.1, "fps_tie_tolerance": 1e-12, "policy_digest": "b624ec979df325aa5a211b04db5da82005715e39bb75667f7bc3fee41c272ccd"}, "foundation_checkpoint": {"schema": "mdstats.foundation-checkpoint-identity.v2", "sha256": "0dad39cdabec5115c03cfd3ff0419dc99465aaea5c4afe8ff728e18c4e4ac4d1", "foundation_head": "default", "model_family": "MACE-MPA-0", "reference": "/mnt/data/legacy_schema_fixture/plan_work/foundation.model", "content_digest": "2116b401d7f93fe56e27bc9e0675aa0e152c4088f3fc0eec5e5d7c680f2e059f"}, "foundation_reference_energies": [], "compatibility_policy": {"schema": "mdstats.mace-compatibility-policy.v1", "package_name": "mace-torch", "package_version": "0.3.16", "release_tag": "v0.3.16", "release_commit": "4d2da09", "run_train_source_url": "https://raw.githubusercontent.com/ACEsuit/mace/v0.3.16/mace/cli/run_train.py", "train_source_url": "https://raw.githubusercontent.com/ACEsuit/mace/v0.3.16/mace/tools/train.py", "multihead_source_url": "https://raw.githubusercontent.com/ACEsuit/mace/v0.3.16/mace/tools/multihead_tools.py", "policy_version": "mdstats.mlff-data8.mace-compatibility.2026-07.v1", "policy_digest": "fef0accabc9edd04b6d8ecbe28b4680b5d2049a97bc0632a3655444c7f583f35"}, "compatibility_probe": {"schema": "mdstats.mace-source-probe.v1", "policy_digest": "fef0accabc9edd04b6d8ecbe28b4680b5d2049a97bc0632a3655444c7f583f35", "run_train_sha256": "e2b76abf438c96f5eafb4efd4d4b58f8bdca3a9890d0a5ce15cc1c88a86332a7", "train_sha256": "e586f4a38e4157acfc05736c68c1060fe1bf48604a4651aa25c6a5347d201d9f", "multihead_sha256": "2b71843a48b96a1eb1af203a39dd65d776123e0f12045a38c2eb20e0fd5e0213", "pt_head_sorted_first": true, "target_validation_head_is_last": true, "native_checkpoint_uses_last_validation_head": true, "implicit_target_duplication_present": true, "dry_run_supported": true, "save_all_checkpoints_supported": true, "fixed_file_adapter_supported": true, "evidence_notes": ["Source-text probes are semantic locks, not a substitute for an installed MACE dry run."], "content_digest": "23bd490cbb1d1ec46a7ba40ec1c11ade106572cbb248f5302973c979e2795eeb"}, "replay_plan": {"schema": "mdstats.replay-preparation-plan.v3", "mode": "preselected", "train_artifact": {"schema": "mdstats.replay-file-artifact.v3", "sha256": "aed9bb8c8a52f4bb278271523f63ee2c8aff669c1e3582a19e1af0bb64bc32a1", "configuration_count": 4, "atomic_numbers": [3, 8], "geometry_identities": ["c4c284b1cbaefed13b638038107f9949202a70bad9a697ff18985d95448870ec", "771470452b9108bc94c333bf5b7dc3dc544fe1e60a33710b23d1eb75c42ccfbd", "c0cb590e8ac46848ed9ddd6bb583e5e846c8a37347f7c2b56cbac2e797c5e3de", "0a099d9bb876c0039712b3b0e4221257f9e8dbbc10d8a05d1ecb1dfbb076590a"], "label_identities": ["8a375c242094b8affa5d23f7f0d8ecb92ae903852dae0eda372fa983f102312e", "e0b5f484490e4f9494782dd3795664af252a82b19eb4aea5b1af847cd94422f4", "5b03992c5364a6ac63b1c07800df860e26185470827b440dab4b2f497a23bfad", "baf10f2fa3b68da3503a802e22b5a79a017eba10623e4118fcb9dfc5786aa3f3"], "label_payload_digest": "103658675e1217453df357f55ed446808bd5ef384bb69ee8e132a9af04eb4a1a", "energy_key": "REF_energy", "forces_key": "REF_forces", "stress_key": "REF_stress", "stress_present_count": 4, "stress_coverage_fraction": 1.0, "label_mode": "unspecified", "foundation_checkpoint_digest": null, "path": "/mnt/data/legacy_schema_fixture/plan_work/replay_train.xyz", "content_digest": "486c142d1e91b721c38f521abda7d40c8f4fc067ae4c0e2a5d78a363c4ee04b4"}, "monitor_artifact": {"schema": "mdstats.replay-file-artifact.v3", "sha256": "e1dd8111b0bb3320c5f7d42b97d9e9907e1f398e16e33625c1245084b2b2d59f", "configuration_count": 2, "atomic_numbers": [3, 8], "geometry_identities": ["41260c0f5e9e5097a418b9eca51313204e442ee9668d0ce01d2aae6e358415d0", "f539bc799a7c61cc0db497c1f621b01a074205fdeb9a7220c8749216e185b105"], "label_identities": ["8a375c242094b8affa5d23f7f0d8ecb92ae903852dae0eda372fa983f102312e", "e0b5f484490e4f9494782dd3795664af252a82b19eb4aea5b1af847cd94422f4"], "label_payload_digest": "cd2a8ce32e186bdd80c54cf7bebb341653726592c07bb4ae0febe54f76869708", "energy_key": "REF_energy", "forces_key": "REF_forces", "stress_key": "REF_stress", "stress_present_count": 2, "stress_coverage_fraction": 1.0, "label_mode": "unspecified", "foundation_checkpoint_digest": null, "path": "/mnt/data/legacy_schema_fixture/plan_work/replay_monitor.xyz", "content_digest": "1f5bbbe00f96b72c337ffcd4c41d6734b4902b217baa99b500bb066a77b3bad2"}, "source_replay_path": null, "requested_train_count": null, "filtering_type": "combinations", "subselect": "fps", "seed": 42, "head_weight": 1.0, "target_weight": 10.0, "selection_command": [], "retention_policy": {"schema": "mdstats.replay-retention-policy.v1", "metric": "force_rmse", "maximum_degradation_fraction": 0.2, "require_disjoint_monitor": true, "failure_behavior": "reject_checkpoint", "policy_digest": "2ac165cbb4226ee2b23d8a91be5d7c3e30e2b0141d62a9698455b9aed5da52cf"}, "ready_for_fixed_file_training": true, "content_digest": "224acc2c68979caca2ba85a4a5630635221c76832488f64078defb09d88c13da"}, "optimizer_policy": {"schema": "mdstats.mace-optimizer-policy.v4", "learning_rate": 0.0001, "batch_size": 1, "valid_batch_size": 1, "num_workers": 0, "max_num_epochs": 2, "eval_interval": 1, "ema": true, "ema_decay": 0.99999, "amsgrad": true, "weight_decay": 1e-06, "clip_grad": 10.0, "default_dtype": "float64", "device": "cpu", "seed": 1, "critical_precision_policy": {"schema": "mdstats.mace-critical-precision-policy.v1", "energy_accumulation_dtype": "float64", "virial_accumulation_dtype": "float64", "observable_output_dtype": "float64", "md_state_dtype": "float64", "allow_tf32": false, "differentiate_from_accumulated_energy": true, "training_force_jacobian_dtype": "model", "strategy": "scaleshift_mace_0.3.16_runtime_patch_v1", "policy_digest": "85377e6011eee3b21a2088326e3d79a7cfc90256c37ccf90f319538d2e71f30e"}, "acceleration_policy": {"schema": "mdstats.mace-acceleration-policy.v1", "backend": "e3nn", "enable_cueq": false, "only_cueq": false, "require_available": true, "policy_digest": "25c60a7f8361bfeb24d3c47e047536d97d8e2e8b5af8b2109b11f0368fe09e0f"}, "policy_digest": "e07ca1e31ba6548e5fa4055c0bc5dbe653a6f0cb936d98b0cf87c0b41462b880"}, "checkpoint_control_policy": {"schema": "mdstats.mace-checkpoint-control-policy.v1", "mode": "native_target_last_with_external_constraint_audit", "target_head_name": "target_head", "replay_head_name": "pt_head", "save_all_checkpoints": true, "native_patience": 1000000, "require_target_last_validation_head": true, "require_external_checkpoint_audit": true, "policy_digest": "8c97a2022c3a604460abe759ba47bd7a42477ad4bffc46117f516a073acd27e9"}, "extxyz_policy": {"schema": "mdstats.mace-extxyz-policy.v1", "energy_key": "REF_energy", "forces_key": "REF_forces", "stress_key": "REF_stress", "stress_units": "eV/Angstrom^3", "stress_representation": "ase_voigt_6_xx_yy_zz_yz_xz_xy", "stress_sign": "ase_tensile_positive", "config_type_prefix": "mdstats", "policy_version": "mdstats.mlff-data8.extxyz.2026-07.v1", "policy_digest": "0faceb4bfdb95c902ceec1299a5bf9649e7ec3002d7547dc113ac4e9180a2586"}, "real_pt_data_ratio_threshold": 0.0, "selection_size": null, "require_foundation_residual_e0": false, "require_replay": true, "content_digest": "38b1f7f17f9ca3926610191a87a8f2867867f7ebe69bacb4ca41f7578cc27f07"}
+\ No newline at end of file
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_campaign_cli.py /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_campaign_cli.py
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_campaign_cli.py	2026-08-08 23:07:11.556192988 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_campaign_cli.py	2026-08-08 23:31:06.169776827 +0000
+@@ -13,7 +13,7 @@
+     parser = campaign_cli.build_parser()
+     choices = parser._subparsers._group_actions[0].choices
+     assert tuple(choices) == (
+-        "init", "doctor", "prepare", "preflight", "train", "evaluate", "verify", "storage", "cleanup", "status", "advance", "guide"
++        "init", "doctor", "prepare", "preflight", "train", "evaluate", "verify", "storage", "cleanup", "deduplicate", "archive", "status", "advance", "guide"
+     )
+ 
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data0_architecture_specification.py /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data0_architecture_specification.py
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data0_architecture_specification.py	2026-08-08 23:07:11.554903153 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data0_architecture_specification.py	2026-08-08 23:31:06.169627756 +0000
+@@ -78,7 +78,7 @@
+ def test_mlff_data0_dependency_graph_is_acyclic_and_has_forbidden_edges() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["branch"] == "MLFF-DATA"
+-    assert graph["architecture_revision"] == 33
++    assert graph["architecture_revision"] == 34
+     assert graph["documentation_gate"] == "MLFF-DATA0"
+     assert graph["schema_version"] == 26
+ 
+@@ -263,4 +263,4 @@
+ def test_mlff_data0_pdf_and_version_artifacts_exist() -> None:
+     assert MANUAL_PDF.stat().st_size > 10_000
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.115a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.116a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data1_specification.py /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data1_specification.py
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data1_specification.py	2026-08-08 23:07:11.561450073 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data1_specification.py	2026-08-08 23:31:06.172723362 +0000
+@@ -49,4 +49,4 @@
+     assert callable(mdstats.assign_balanced_round_robin)
+     assert callable(mdstats.build_complete_frame_block_plan)
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.115a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.116a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data2a_manifest_inference_specification.py /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data2a_manifest_inference_specification.py
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-08 23:07:11.563127463 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-08 23:31:06.172996037 +0000
+@@ -15,7 +15,7 @@
+ 
+ 
+ def test_data2a_version_public_api_and_documented_contract() -> None:
+-    assert mdstats.__version__ == "0.20.115a0"
++    assert mdstats.__version__ == "0.20.116a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert callable(mdstats.infer_training_manifest_metadata)
+     policy = mdstats.ManifestInferencePolicy()
+@@ -39,7 +39,7 @@
+ def test_data2a_dependency_graph_requires_verified_promotion_before_approval() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 33
++    assert graph["architecture_revision"] == 34
+     nodes = {node["id"] for node in graph["nodes"]}
+     assert {
+         "FILENAME_STRAIN_CANDIDATE",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a2_specification.py /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a2_specification.py
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a2_specification.py	2026-08-08 23:07:11.556258014 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a2_specification.py	2026-08-08 23:31:06.169809256 +0000
+@@ -23,7 +23,7 @@
+         "finite energy, force, and stress",
+     ):
+         assert required in text
+-    assert 'version = "0.20.115a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.116a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "DATA9A2 real-MACE realization is implemented in `0.20.39a0`" in ARCH.read_text()
+ 
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a3_specification.py /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a3_specification.py
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a3_specification.py	2026-08-08 23:07:11.565980740 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a3_specification.py	2026-08-08 23:31:06.173800642 +0000
+@@ -9,5 +9,5 @@
+     assert "37,632" in text
+     assert "supported_with_temporal_blocks_only" in text
+     assert "production_replay_corpus_not_bound" in text
+-    assert 'version = "0.20.115a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.116a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "MLFF-DATA9A3 production qualification" in ARCH.read_text()
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a4_precision_specification.py /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a4_precision_specification.py
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a4_precision_specification.py	2026-08-08 23:07:11.558065588 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a4_precision_specification.py	2026-08-08 23:31:06.170123803 +0000
+@@ -9,7 +9,7 @@
+     assert "float32" in text and "float64" in text
+     assert "MaceModelPrecisionRecord" in text
+     assert "MacePrecisionTransitionRecord" in text
+-    assert "version = \"0.20.115a0\"" in (ROOT / "pyproject.toml").read_text()
++    assert "version = \"0.20.116a0\"" in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_bind_precision_to_protocol() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a5_critical_fp64_specification.py /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a5_critical_fp64_specification.py
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-08 23:07:11.553095729 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-08 23:31:06.169260170 +0000
+@@ -14,7 +14,7 @@
+     assert 'version: "0.20.42a0"' in text
+     assert "training_force_jacobian_dtype = model" in text
+     assert "Python/ASE" in text
+-    assert 'version = "0.20.115a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.116a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_data9a5_architecture_declares_scope_and_limits() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a5_deployment_specification.py /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a5_deployment_specification.py
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a5_deployment_specification.py	2026-08-08 23:07:11.557706595 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a5_deployment_specification.py	2026-08-08 23:31:06.170066097 +0000
+@@ -13,7 +13,7 @@
+     assert 'version: "0.20.43a0"' in text
+     assert "downstream runtime owns" in text
+     assert "float32-to-float64 promotion does not restore" in text
+-    assert 'version = "0.20.115a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.116a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_keep_lammps_outside_mdstats_scope() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a6b_architecture_consistency_specification.py /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a6b_architecture_consistency_specification.py
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a6b_architecture_consistency_specification.py	2026-08-08 23:07:11.561206361 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a6b_architecture_consistency_specification.py	2026-08-08 23:31:06.172475534 +0000
+@@ -61,7 +61,7 @@
+ def test_dependency_graph_treats_lta_as_optional() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 33
++    assert graph["architecture_revision"] == 34
+     nodes = {node["id"] for node in graph["nodes"]}
+     assert "MATERIAL_PROFILE_IDENTITY" in nodes
+     assert "LTA_PROFILE_EXTENSION" in nodes
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a6c_observable_evidence_specification.py /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a6c_observable_evidence_specification.py
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-08 23:07:11.566335276 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-08 23:31:06.173887641 +0000
+@@ -38,7 +38,7 @@
+ def test_dependency_graph_places_policy_before_evidence_and_forbids_reverse_edge() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 33
++    assert graph["architecture_revision"] == 34
+     edges = {(e["from"], e["to"]) for e in graph["edges"]}
+     assert ("OBSERVABLE_COMPARISON_POLICY", "OBSERVABLE_VALIDATION_ACTIVATION_RECORD") in edges
+     assert ("OBSERVABLE_VALIDATION_ACTIVATION_RECORD", "OBSERVABLE_VALIDATION_EVIDENCE") in edges
+@@ -74,5 +74,5 @@
+ 
+ def test_packaged_owner_manual_index_is_valid() -> None:
+     payload = json.loads(MANUAL_INDEX.read_text(encoding="utf-8"))
+-    assert payload["package_version"] == "0.20.115a0"
++    assert payload["package_version"] == "0.20.116a0"
+     assert "structural-observables-architecture" in payload["manuals"]
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a7a_material_profile_specification.py /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a7a_material_profile_specification.py
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-08 23:07:11.553347924 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-08 23:31:06.169386678 +0000
+@@ -41,7 +41,7 @@
+ def test_data9a7a_dependency_graph_contains_contract_chain() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 33
++    assert graph["architecture_revision"] == 34
+     nodes = {item["id"] for item in graph["nodes"]}
+     required = {
+         "MATERIAL_PROFILE_PROVIDER_IDENTITY",
+@@ -64,4 +64,4 @@
+ 
+ 
+ def test_release_version_is_data9a7a() -> None:
+-    assert 'version = "0.20.115a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert 'version = "0.20.116a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a7b_specification.py /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a7b_specification.py
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a7b_specification.py	2026-08-08 23:07:11.566211282 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a7b_specification.py	2026-08-08 23:31:06.173829955 +0000
+@@ -44,7 +44,7 @@
+ def test_data9a7b_dependency_graph_has_analysis_to_selection_chain() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 33
++    assert graph["architecture_revision"] == 34
+     nodes = {item["id"] for item in graph["nodes"]}
+     assert {
+         "ANALYSIS_LOCAL_STRUCTURE_FEATURES",
+@@ -69,7 +69,7 @@
+ 
+ 
+ def test_data9a7b_public_exports_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.115a0"
++    assert mdstats.__version__ == "0.20.116a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert callable(mdstats.compute_local_structure_features)
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a7c_specification.py /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a7c_specification.py
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a7c_specification.py	2026-08-08 23:07:11.559458246 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a7c_specification.py	2026-08-08 23:31:06.170741239 +0000
+@@ -34,7 +34,7 @@
+ def test_dependency_graph_contains_phase_geometry_contracts() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 33
++    assert graph["architecture_revision"] == 34
+     nodes = {node["id"] for node in graph["nodes"]}
+     assert {
+         "PHASE_GEOMETRY_SELECTION_PLAN",
+@@ -47,7 +47,7 @@
+ 
+ 
+ def test_public_api_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.115a0"
++    assert mdstats.__version__ == "0.20.116a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert mdstats.MLFF_DATA9A7C_PARSER_VERSION == "0.20.49a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a7d_specification.py /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a7d_specification.py
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a7d_specification.py	2026-08-08 23:07:11.559042469 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a7d_specification.py	2026-08-08 23:31:06.170603635 +0000
+@@ -21,7 +21,7 @@
+ def test_data9a7d_dependency_graph_contract() -> None:
+     graph = json.loads((ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json").read_text())
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 33
++    assert graph["architecture_revision"] == 34
+     nodes = {item["id"] for item in graph["nodes"]}
+     assert {
+         "OPTIONAL_PROFILE_EXTENSION_PROVIDER",
+@@ -39,6 +39,6 @@
+ 
+ 
+ def test_data9a7d_runtime_versions() -> None:
+-    assert mdstats.__version__ == "0.20.115a0"
++    assert mdstats.__version__ == "0.20.116a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7D_PARSER_VERSION == "0.20.50a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a7e_specification.py /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a7e_specification.py
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a7e_specification.py	2026-08-08 23:07:11.551872463 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a7e_specification.py	2026-08-08 23:31:06.168402046 +0000
+@@ -31,7 +31,7 @@
+ def test_data9a7e_dependency_graph_and_public_api() -> None:
+     graph = json.loads((ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json").read_text())
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 33
++    assert graph["architecture_revision"] == 34
+     nodes = {item["id"] for item in graph["nodes"]}
+     assert {
+         "CROSS_SYSTEM_QUALIFICATION_POLICY",
+@@ -39,7 +39,7 @@
+         "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
+         "CROSS_SYSTEM_QUALIFICATION_SUITE",
+     } <= nodes
+-    assert mdstats.__version__ == "0.20.115a0"
++    assert mdstats.__version__ == "0.20.116a0"
+     assert mdstats.MLFF_DATA9A7E_PARSER_VERSION == "0.20.51a0"
+     assert callable(mdstats.qualify_cross_system_case)
+     assert callable(mdstats.build_cross_system_qualification_suite)
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a8_specification.py /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a8_specification.py
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a8_specification.py	2026-08-08 23:07:11.560163142 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a8_specification.py	2026-08-08 23:31:06.172199655 +0000
+@@ -44,7 +44,7 @@
+ def test_dependency_graph_places_policy_upstream_and_forbids_posthoc_thresholds() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 33
++    assert graph["architecture_revision"] == 34
+     nodes = {node["id"] for node in graph["nodes"]}
+     for node in (
+         "OBSERVABLE_COMPARISON_RULES",
+@@ -66,7 +66,7 @@
+ 
+ 
+ def test_public_runtime_exposes_data9a8_without_removed_aliases() -> None:
+-    assert mdstats.__version__ == "0.20.115a0"
++    assert mdstats.__version__ == "0.20.116a0"
+     assert mdstats.MLFF_DATA9A8_PARSER_VERSION == "0.20.52a0"
+     assert mdstats.ObservableComparisonPolicy
+     assert mdstats.compare_mlff_observable_validation
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a9a_specification.py /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a9a_specification.py
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a9a_specification.py	2026-08-08 23:07:11.556858796 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a9a_specification.py	2026-08-08 23:31:06.169908733 +0000
+@@ -47,7 +47,7 @@
+ def test_dependency_graph_contains_restartable_model_sweep_chain() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 33
++    assert graph["architecture_revision"] == 34
+     nodes = {node["id"] for node in graph["nodes"]}
+     required = {
+         "DATA6_MODEL_SWEEP_EXECUTION_POLICY",
+@@ -65,7 +65,7 @@
+ 
+ 
+ def test_public_runtime_exports_data9a9a_contracts() -> None:
+-    assert mdstats.__version__ == "0.20.115a0"
++    assert mdstats.__version__ == "0.20.116a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A9A_VERSION
+     assert mdstats.Data6ModelSweepPlan
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a9b_specification.py /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a9b_specification.py
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a9b_specification.py	2026-08-08 23:07:11.563379608 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a9b_specification.py	2026-08-08 23:31:06.173100903 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9b_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.115a0"
++    assert mdstats.__version__ == "0.20.116a0"
+     for name in (
+         "ProductionMaterializationPlan",
+         "ProductionMaterializationCheckpoint",
+@@ -40,7 +40,7 @@
+ def test_dependency_graph_contains_data9a9b_chain() -> None:
+     graph = json.loads((ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json").read_text())
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 33
++    assert graph["architecture_revision"] == 34
+     nodes = {item["id"] for item in graph["nodes"]}
+     required = {
+         "PRODUCTION_MATERIALIZATION_PLAN",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a9c_specification.py /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a9c_specification.py
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a9c_specification.py	2026-08-08 23:07:11.564113668 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a9c_specification.py	2026-08-08 23:31:06.173237896 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9c_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.115a0"
++    assert mdstats.__version__ == "0.20.116a0"
+     for name in (
+         "ProductionCorpusPlan", "ProductionExpectedRun",
+         "ProfileExtensionEvidenceRequirement", "ProductionCorpusQualificationRecord",
+@@ -38,7 +38,7 @@
+ def test_dependency_graph_contains_integrity_gate_chain() -> None:
+     graph = json.loads((ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json").read_text())
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 33
++    assert graph["architecture_revision"] == 34
+     nodes = {item["id"] for item in graph["nodes"]}
+     assert {"PRODUCTION_CORPUS_PLAN", "REPLAY_LABEL_PAYLOAD_IDENTITY",
+             "DATA8_ATOMIC_PROMOTION", "PRODUCTION_GATE_INTEGRITY_EVIDENCE"} <= nodes
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a_specification.py /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a_specification.py
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a_specification.py	2026-08-08 23:07:11.565812560 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a_specification.py	2026-08-08 23:31:06.173678510 +0000
+@@ -14,7 +14,7 @@
+ 
+ 
+ def test_data9a_runtime_specification_is_canonical() -> None:
+-    assert 'version = "0.20.115a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.116a0"' in (ROOT / "pyproject.toml").read_text()
+     architecture = ARCH.read_text()
+     stage = STAGE.read_text()
+     specification = SPEC.read_text()
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9b1_specification.py /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9b1_specification.py
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9b1_specification.py	2026-08-08 23:07:11.559257728 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9b1_specification.py	2026-08-08 23:31:06.170713759 +0000
+@@ -18,8 +18,8 @@
+     assert "TrainingCampaignPlan" in text
+     assert "CheckpointSelectionRecord" in text
+     assert "mdstats-mace-train" in text
+-    assert mdstats.__version__ == "0.20.115a0"
+-    assert 'version = "0.20.115a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert mdstats.__version__ == "0.20.116a0"
++    assert 'version = "0.20.116a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+ 
+ 
+ def test_data9b1_is_integrated_into_manual_and_stage_plan() -> None:
+@@ -33,7 +33,7 @@
+ 
+ def test_data9b1_dependency_graph_nodes_and_gates() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+-    assert graph["architecture_revision"] == 33
++    assert graph["architecture_revision"] == 34
+     nodes = {item["id"] for item in graph["nodes"]}
+     for node in (
+         "TRAINING_CAMPAIGN_POLICY",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9b2_specification.py /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9b2_specification.py
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9b2_specification.py	2026-08-08 23:07:11.562515044 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9b2_specification.py	2026-08-08 23:31:06.172868247 +0000
+@@ -23,7 +23,7 @@
+         'mdstats-mace-select-head',
+     ):
+         assert token in text
+-    assert mdstats.__version__ == '0.20.115a0'
++    assert mdstats.__version__ == '0.20.116a0'
+     assert mdstats.MLFF_DATA9B2_VERSION == '0.20.57a0'
+ 
+ 
+@@ -37,7 +37,7 @@
+ 
+ def test_data9b2_dependency_graph_records_and_edges() -> None:
+     graph = json.loads(GRAPH.read_text(encoding='utf-8'))
+-    assert graph['architecture_revision'] == 33
++    assert graph['architecture_revision'] == 34
+     assert graph['schema_version'] == 26
+     nodes = {v['id'] for v in graph['nodes']}
+     for node in (
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9b3_campaign_cli_specification.py /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9b3_campaign_cli_specification.py
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-08 23:07:11.561745241 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-08 23:31:06.172781098 +0000
+@@ -16,7 +16,7 @@
+ 
+ 
+ def test_data9b3_version_and_user_surface() -> None:
+-    assert mdstats.__version__ == "0.20.115a0"
++    assert mdstats.__version__ == "0.20.116a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert TOOL.is_file()
+     assert TOOL.stat().st_mode & 0o111
+@@ -55,7 +55,7 @@
+ def test_data9b3_dependency_graph_contract() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 33
++    assert graph["architecture_revision"] == 34
+     nodes = {node["id"] for node in graph["nodes"]}
+     required = {
+         "CAMPAIGN_CLI_CONFIGURATION",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9b3a_cueq_specification.py /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9b3a_cueq_specification.py
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9b3a_cueq_specification.py	2026-08-08 23:07:11.553289337 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9b3a_cueq_specification.py	2026-08-08 23:31:06.169351837 +0000
+@@ -42,7 +42,7 @@
+ def test_data9b3a_dependency_graph_contract() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 33
++    assert graph["architecture_revision"] == 34
+     nodes = {node["id"] for node in graph["nodes"]}
+     assert {"MACE_ACCELERATION_POLICY", "MACE_ACCELERATION_PROBE"} <= nodes
+     edges = {(edge["from"], edge["to"], edge["type"]) for edge in graph["edges"]}
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_eval_storage_roadmap_specification.py /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_eval_storage_roadmap_specification.py
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_eval_storage_roadmap_specification.py	2026-08-08 23:08:19.510118664 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_eval_storage_roadmap_specification.py	2026-08-08 23:31:06.178935000 +0000
+@@ -12,6 +12,7 @@
+ STOR2_EVIDENCE = ROOT / "release" / "mlff_stor2_checkpoint_compaction_qualification.json"
+ STOR3_EVIDENCE = ROOT / "release" / "mlff_stor3_safe_reclamation_qualification.json"
+ STOR4_EVIDENCE = ROOT / "release" / "mlff_stor4_manual_reclamation_qualification.json"
++STOR5_EVIDENCE = ROOT / "release" / "mlff_stor5_archive_deduplication_qualification.json"
+ 
+ 
+ def test_eval_precision_storage_roadmap_is_recorded_in_binding_order() -> None:
+@@ -32,7 +33,7 @@
+     assert positions == sorted(positions)
+     assert "EVAL-MF2 - conservative survivor control, diagnostics, and default migration - implemented in 0.20.107a0" in text
+     assert "`PREC1` in 0.20.108a0" in text
+-    assert "The next implementation gate is `STOR5`" in text
++    assert "The post-0.20.105 evaluation, precision, and storage implementation roadmap is complete." in text
+     assert "STOR3 - automatic lifecycle-safe reclamation - implemented in 0.20.114a0" in text
+     assert "STOR4 - manual tiered reclamation with capability-loss reporting - implemented in 0.20.115a0" in text
+     assert "STOR1 - campaign storage accounting and ownership boundary - implemented in 0.20.111a0" in text
+@@ -82,10 +83,10 @@
+         assert token in text
+ 
+ 
+-def test_dependency_graph_revision_33_contains_eval_precision_storage_nodes() -> None:
++def test_dependency_graph_revision_34_contains_eval_precision_storage_nodes() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 33
++    assert graph["architecture_revision"] == 34
+     nodes = {node["id"] for node in graph["nodes"]}
+     for node in (
+         "NESTED_CHECKPOINT_EVALUATION_PLAN",
+@@ -102,12 +103,15 @@
+         "TIERED_STORAGE_RECLAMATION_PLAN",
+         "CAMPAIGN_CLEANUP_MANIFEST",
+         "LIFECYCLE_SAFE_RECLAMATION_POLICY",
++        "IMMUTABLE_CONTENT_STORE",
++        "COLD_ARCHIVE_MANIFEST",
++        "COLD_ARCHIVE_RESTORE_RECEIPT",
+     ):
+         assert node in nodes
+     stor4 = next(node for node in graph["nodes"] if node["id"] == "TIERED_STORAGE_RECLAMATION_PLAN")
+     assert stor4["implementation_status"] == "implemented"
+     assert stor4["implemented_version"] == "0.20.115a0"
+-    assert stor4["archive_apply_requires"] == "STOR5"
++    assert stor4["archive_apply_requires"] == "verified COLD_ARCHIVE_MANIFEST"
+ 
+ 
+ def test_stor2_real_mace_qualification_records_exact_equivalence_and_savings() -> None:
+@@ -151,3 +155,16 @@
+     assert payload["selected_production_checkpoint_touched"] is False
+     assert payload["diagnostic_logs_touched"] is False
+     assert payload["manual_manifest_records_capability_loss"] is True
++
++
++def test_stor5_qualification_records_reversible_archive_and_deduplication() -> None:
++    payload = json.loads(STOR5_EVIDENCE.read_text(encoding="utf-8"))
++    assert payload["schema"] == "mdstats.mlff-stor5-qualification.v1"
++    assert payload["runtime_version"] == "0.20.116a0"
++    assert payload["architecture_revision"] == 34
++    assert payload["deduplication"]["exact_duplicate_hardlink_equal"] is True
++    assert payload["archive"]["verified_before_hot_deletion"] is True
++    assert payload["archive"]["restore_exact_sha256"] is True
++    assert payload["archive"]["corruption_detection_qualified"] is True
++    assert payload["security"]["external_inputs_touched"] is False
++    assert payload["security"]["production_models_touched"] is False
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_opt_ctrl1_specification.py /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_opt_ctrl1_specification.py
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_opt_ctrl1_specification.py	2026-08-08 23:07:11.565204517 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_opt_ctrl1_specification.py	2026-08-08 23:31:06.173523730 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_ctrl1_release_identity_preserves_scientific_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.115a0"
++    assert mdstats.__version__ == "0.20.116a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.115a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.116a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_ctrl1_architecture_and_spec_close_roadmap() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_opt_eval4_specification.py /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_opt_eval4_specification.py
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_opt_eval4_specification.py	2026-08-08 23:07:11.565233681 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_opt_eval4_specification.py	2026-08-08 23:31:06.173548567 +0000
+@@ -11,9 +11,9 @@
+ 
+ 
+ def test_opt_eval4_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.115a0"
++    assert mdstats.__version__ == "0.20.116a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+-    assert 'version = "0.20.115a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.116a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_eval4_architecture_and_spec_record_pipeline_contract() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_opt_verify1_specification.py /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_opt_verify1_specification.py
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_opt_verify1_specification.py	2026-08-08 23:07:11.550224206 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_opt_verify1_specification.py	2026-08-08 23:31:06.167747274 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_verify1_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.115a0"
++    assert mdstats.__version__ == "0.20.116a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.115a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.116a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_verify1_architecture_and_spec_record_contract() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_perf2_parallel_acceleration_specification.py /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_perf2_parallel_acceleration_specification.py
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-08 23:07:11.560718938 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-08 23:31:06.172420412 +0000
+@@ -10,7 +10,7 @@
+ 
+ 
+ def test_perf2_release_and_configuration_contract() -> None:
+-    assert mdstats.__version__ == "0.20.115a0"
++    assert mdstats.__version__ == "0.20.116a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     template = campaign_cli._config_template(
+         workspace="workspace",
+@@ -43,7 +43,7 @@
+         .read_text(encoding="utf-8")
+     )
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 33
++    assert graph["architecture_revision"] == 34
+     nodes = {item["id"] for item in graph["nodes"]}
+     assert {
+         "SYSTEM_RESOURCE_SNAPSHOT",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_prec1_specification.py /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_prec1_specification.py
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_prec1_specification.py	2026-08-08 23:09:39.476513066 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_prec1_specification.py	2026-08-08 23:31:06.170040118 +0000
+@@ -12,15 +12,15 @@
+ 
+ 
+ def test_prec1_release_and_architecture_status() -> None:
+-    assert mdstats.__version__ == "0.20.115a0"
++    assert mdstats.__version__ == "0.20.116a0"
+     manual = MANUAL.read_text(encoding="utf-8")
+     spec = SPEC.read_text(encoding="utf-8")
+     assert "PREC1 - precision profiles, explicit staged schedule, and init realization - implemented in 0.20.108a0" in manual
+     assert "PREC1 implemented in mdstats 0.20.108a0" in spec
+-    assert "the next implementation gate is `STOR5`" in manual
++    assert "The post-0.20.105 evaluation, precision, and storage implementation roadmap is complete." in manual
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 33
++    assert graph["architecture_revision"] == 34
+ 
+ 
+ def test_prec1_public_contract_is_exported() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_prec2_specification.py /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_prec2_specification.py
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_prec2_specification.py	2026-08-08 23:09:39.476667586 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_prec2_specification.py	2026-08-08 23:31:06.169688847 +0000
+@@ -14,8 +14,8 @@
+     assert "latest-only authenticated companion" in manual
+     assert "real MACE 0.3.16" in manual
+     assert "no fabricated real-CuEq execution evidence is claimed" in manual
+-    assert "the next implementation gate is `STOR5`" in manual
++    assert "The post-0.20.105 evaluation, precision, and storage implementation roadmap is complete." in manual
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 33
++    assert graph["architecture_revision"] == 34
+     node_ids = {node["id"] for node in graph["nodes"]}
+     assert "PRECISION_RUNTIME_COMPANION" in node_ids
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_prec3_specification.py /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_prec3_specification.py
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_prec3_specification.py	2026-08-08 23:09:39.476718131 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_prec3_specification.py	2026-08-08 23:31:06.172659868 +0000
+@@ -16,13 +16,13 @@
+     manual = MANUAL.read_text(encoding="utf-8")
+     spec = SPEC.read_text(encoding="utf-8")
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+-    assert mdstats.__version__ == "0.20.115a0"
++    assert mdstats.__version__ == "0.20.116a0"
+     assert "PREC3 - campaign integration, qualification, and profile activation - implemented in 0.20.110a0" in manual
+     assert "PREC3 implementation closure (0.20.110a0)" in manual
+     assert "PREC3 implemented in mdstats 0.20.110a0" in spec
+-    assert "The next implementation gate is `STOR5`" in manual
++    assert "The post-0.20.105 evaluation, precision, and storage implementation roadmap is complete." in manual
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 33
++    assert graph["architecture_revision"] == 34
+ 
+ 
+ def test_prec3_qualification_evidence_is_transparent_about_cueq() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_stor4_manual_reclamation.py /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_stor4_manual_reclamation.py
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_stor4_manual_reclamation.py	2026-08-08 23:07:11.558598259 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_stor4_manual_reclamation.py	2026-08-08 23:31:06.170414955 +0000
+@@ -138,7 +138,7 @@
+     assert compact["production_models_retained"] is True
+ 
+ 
+-def test_archive_tier_is_plan_only_until_stor5(tmp_path: Path) -> None:
++def test_archive_tier_dry_run_requires_stor5_representation_and_ineligible_apply_is_nondestructive(tmp_path: Path) -> None:
+     config = _config(tmp_path)
+     _cfg, paths = campaign_cli._load_config(config)
+     victim = paths.internal / "evaluation-predictions"
+@@ -149,8 +149,9 @@
+     assert payload["archive_representation_required"] is True
+     assert (victim / "p.bin").read_bytes() == b"keep"
+ 
+-    with pytest.raises(campaign_cli.CampaignCliError, match="STOR5"):
+-        campaign_cli.command_cleanup(_args(config, tier="archive", apply=True))
++    # STOR5 is implemented now, but this campaign has not completed evaluation,
++    # so the scientific cache is not an eligible consequential archive action.
++    assert campaign_cli.command_cleanup(_args(config, tier="archive", apply=True)) == 0
+     assert (victim / "p.bin").read_bytes() == b"keep"
+ 
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.115a0_to_0.20.116a0.patch' /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_stor5_archive_deduplication.py /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_stor5_archive_deduplication.py
+--- /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_stor5_archive_deduplication.py	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats115_work/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_stor5_archive_deduplication.py	2026-08-08 23:31:06.173071028 +0000
+@@ -0,0 +1,184 @@
++from __future__ import annotations
++
++import json
++from pathlib import Path
++from types import SimpleNamespace
++
++import pytest
++
++from mdstats.training_data import campaign_cli
++from mdstats.training_data.storage_accounting import build_campaign_storage_report, configured_protected_inputs
++
++
++def _config(tmp_path: Path) -> Path:
++    (tmp_path / "training").mkdir()
++    (tmp_path / "foundation.model").write_bytes(b"foundation")
++    (tmp_path / "replay-train.xyz").write_text("", encoding="utf-8")
++    (tmp_path / "replay-monitor.xyz").write_text("", encoding="utf-8")
++    (tmp_path / "true-labels").mkdir()
++    path = tmp_path / "campaign.toml"
++    path.write_text(
++        campaign_cli._config_template(
++            workspace="work",
++            training_root="training",
++            foundation_model="foundation.model",
++            replay_train="replay-train.xyz",
++            replay_monitor="replay-monitor.xyz",
++            replay_true_labels="true-labels",
++        ),
++        encoding="utf-8",
++    )
++    return path
++
++
++def _complete(store: campaign_cli.CampaignStore, paths: campaign_cli.CampaignPaths, stage: str) -> None:
++    campaign_cli._mark_stage(store, paths, stage, campaign_cli.StageState.COMPLETE, "complete")
++
++
++def _cleanup_args(config: Path, *, tier: str, apply: bool = False, dry_run: bool = False):
++    return SimpleNamespace(
++        config=str(config), tier=tier, apply=apply, dry_run=dry_run,
++        keep_preparation_caches=False, keep_unselected_checkpoints=True,
++    )
++
++
++def test_stor5_deduplicate_exact_immutable_files_after_freeze(tmp_path: Path) -> None:
++    config = _config(tmp_path)
++    _cfg, paths = campaign_cli._load_config(config)
++    store = campaign_cli.CampaignStore(paths.state_db)
++    _complete(store, paths, "verify")
++    store.put_record("protocol_freeze", {"schema": "test.freeze.v1", "content_digest": "freeze"})
++    left = paths.internal / "evaluation-predictions" / "a.bin"
++    right = paths.internal / "model-sweep" / "b.bin"
++    left.parent.mkdir(parents=True); right.parent.mkdir(parents=True)
++    payload = b"duplicate-scientific-bytes" * 4096
++    left.write_bytes(payload); right.write_bytes(payload)
++
++    args = SimpleNamespace(config=str(config), apply=False)
++    assert campaign_cli.command_deduplicate(args) == 0
++    assert left.stat().st_ino != right.stat().st_ino
++    plan = json.loads((paths.results / "deduplication-report.json").read_text())
++    assert plan["group_count"] == 1
++    assert plan["potential_reclaimed_bytes"] >= len(payload)
++
++    args.apply = True
++    assert campaign_cli.command_deduplicate(args) == 0
++    assert left.read_bytes() == payload == right.read_bytes()
++    assert (left.stat().st_dev, left.stat().st_ino) == (right.stat().st_dev, right.stat().st_ino)
++    assert (paths.internal / "content-store").is_dir()
++
++
++def test_stor5_deduplicate_requires_verified_frozen_campaign(tmp_path: Path) -> None:
++    config = _config(tmp_path)
++    with pytest.raises(campaign_cli.CampaignCliError, match="verification.*protocol freeze"):
++        campaign_cli.command_deduplicate(SimpleNamespace(config=str(config), apply=True))
++
++
++def test_stor5_archive_apply_is_reversible_and_preserves_production(tmp_path: Path) -> None:
++    config = _config(tmp_path)
++    _cfg, paths = campaign_cli._load_config(config)
++    store = campaign_cli.CampaignStore(paths.state_db)
++    _complete(store, paths, "evaluate")
++    _complete(store, paths, "verify")
++    store.put_record("protocol_freeze", {"schema": "test.freeze.v1", "content_digest": "freeze"})
++    production = paths.models / "production.model"
++    production.write_bytes(b"production-model")
++    prediction = paths.internal / "evaluation-predictions" / "pred.bin"
++    prediction.parent.mkdir(parents=True)
++    prediction_bytes = b"prediction" * 1000
++    prediction.write_bytes(prediction_bytes)
++    data_file = paths.data / "variant" / "data8" / "train.extxyz"
++    data_file.parent.mkdir(parents=True)
++    data_bytes = b"data8-hot" * 2000
++    data_file.write_bytes(data_bytes)
++
++    assert campaign_cli.command_cleanup(_cleanup_args(config, tier="archive", apply=True)) == 0
++    assert not prediction.exists()
++    assert not paths.data.exists()
++    assert production.read_bytes() == b"production-model"
++    receipt = store.get_payload("cold_archive:latest")
++    manifest_path = paths.workspace / receipt["manifest_relative_path"]
++    archive_path = paths.workspace / receipt["archive_relative_path"]
++    assert manifest_path.is_file() and archive_path.is_file()
++    assert campaign_cli.command_archive(SimpleNamespace(config=str(config), archive_action="verify")) == 0
++
++    plan = json.loads((paths.results / "manual-reclamation-plan-archive.json").read_text())
++    assert plan["archive_representation_required"] is False
++    assert plan["archive_representation"]["verified"] is True
++    assert plan["capability_report"]["capabilities"]["metric_only_recomputation"]["status"] == "preserved_via_archive"
++
++    assert campaign_cli.command_archive(SimpleNamespace(config=str(config), archive_action="restore")) == 0
++    assert prediction.read_bytes() == prediction_bytes
++    assert data_file.read_bytes() == data_bytes
++    assert production.read_bytes() == b"production-model"
++
++
++def test_stor5_archive_corruption_fails_closed(tmp_path: Path) -> None:
++    config = _config(tmp_path)
++    _cfg, paths = campaign_cli._load_config(config)
++    store = campaign_cli.CampaignStore(paths.state_db)
++    _complete(store, paths, "evaluate")
++    victim = paths.internal / "evaluation-predictions" / "pred.bin"
++    victim.parent.mkdir(parents=True); victim.write_bytes(b"important" * 1000)
++    assert campaign_cli.command_archive(SimpleNamespace(config=str(config), archive_action="create")) == 0
++    receipt = store.get_payload("cold_archive:latest")
++    archive_path = paths.workspace / receipt["archive_relative_path"]
++    with archive_path.open("ab") as handle:
++        handle.write(b"corruption")
++    with pytest.raises(campaign_cli.CampaignCliError, match="verification failed"):
++        campaign_cli.command_archive(SimpleNamespace(config=str(config), archive_action="verify"))
++    assert victim.is_file()
++
++
++def test_stor5_archive_never_traverses_external_symlink(tmp_path: Path) -> None:
++    config = _config(tmp_path)
++    _cfg, paths = campaign_cli._load_config(config)
++    store = campaign_cli.CampaignStore(paths.state_db)
++    _complete(store, paths, "evaluate")
++    external = tmp_path / "external"
++    external.mkdir(); important = external / "user.bin"; important.write_bytes(b"never-touch")
++    link = paths.internal / "evaluation-predictions"
++    link.symlink_to(external, target_is_directory=True)
++    assert campaign_cli.command_cleanup(_cleanup_args(config, tier="archive", apply=True)) == 0
++    assert important.read_bytes() == b"never-touch"
++    assert not link.exists() and not link.is_symlink()
++
++
++def test_stor5_storage_report_classifies_archive_and_content_store(tmp_path: Path) -> None:
++    config = _config(tmp_path)
++    cfg, paths = campaign_cli._load_config(config)
++    content = paths.internal / "content-store" / "sha256" / "aa" / "obj"
++    archive = paths.internal / "cold-archive" / "cold-x.tar.gz"
++    content.parent.mkdir(parents=True); archive.parent.mkdir(parents=True)
++    content.write_bytes(b"content"); archive.write_bytes(b"archive")
++    report = build_campaign_storage_report(
++        paths.workspace,
++        protected_inputs=configured_protected_inputs(cfg, config_dir=paths.config_dir, config_path=paths.config),
++    ).to_dict()
++    families = {item["family"]: item for item in report["families"]}
++    assert families["immutable_content_store"]["manual_reclamation_eligibility"] == "stor5_managed"
++    assert families["cold_archive"]["manual_reclamation_eligibility"] == "stor5_managed"
++
++
++def test_stor5_archive_prunes_orphan_dedup_content_objects(tmp_path: Path) -> None:
++    config = _config(tmp_path)
++    _cfg, paths = campaign_cli._load_config(config)
++    store = campaign_cli.CampaignStore(paths.state_db)
++    _complete(store, paths, "evaluate")
++    _complete(store, paths, "verify")
++    store.put_record("protocol_freeze", {"schema": "test.freeze.v1", "content_digest": "freeze"})
++    (paths.models / "production.model").write_bytes(b"production")
++    a = paths.internal / "evaluation-predictions" / "a.bin"
++    b = paths.data / "variant" / "b.bin"
++    a.parent.mkdir(parents=True); b.parent.mkdir(parents=True)
++    payload = b"dedup-then-archive" * 4096
++    a.write_bytes(payload); b.write_bytes(payload)
++    assert campaign_cli.command_deduplicate(SimpleNamespace(config=str(config), apply=True)) == 0
++    assert a.stat().st_ino == b.stat().st_ino
++    assert any((paths.internal / "content-store").rglob("*"))
++
++    assert campaign_cli.command_cleanup(_cleanup_args(config, tier="archive", apply=True)) == 0
++    content_store = paths.internal / "content-store"
++    assert not content_store.exists() or not any(p.is_file() for p in content_store.rglob("*"))
++    assert campaign_cli.command_archive(SimpleNamespace(config=str(config), archive_action="restore")) == 0
++    assert a.read_bytes() == payload and b.read_bytes() == payload

@@ -1,0 +1,141 @@
+{
+  "adversarial_checks": [
+    "transient three-sample structural excursion remains below persistence threshold and passes",
+    "persistent protected-structure damage fails",
+    "large NVE energy drift fails",
+    "wrong mean rollout temperature fails",
+    "common plan uses candidate-independent RELAX reference bases and deterministic shared velocity seeds",
+    "campaign and case authorities round-trip without losing failure evidence",
+    "fake deterministic LAMMPS rollout writes/parses authenticated trajectory and log artifacts",
+    "explicit run-0 frame is recorded before velocity initialization",
+    "expanded configurations fall back from fast neighbor-list search to exact periodic all-pairs minimum distance",
+    "missing/nonfinite force evidence becomes an explicit numerical failure rather than bypassing the case record",
+    "Stage-C physical evidence is bound back to TARGET-DATA2D before production target-corpus materialization"
+  ],
+  "date": "2026-08-13",
+  "gate": "DYN-VERIFY2",
+  "qualification": {
+    "additional_checkpoint_materialization_hardening": {
+      "failed": 0,
+      "passed": 24,
+      "skipped": 0
+    },
+    "expected_skips": [
+      "tests/test_mlff_campaign_cli.py:337 real LTA training root not supplied"
+    ],
+    "final_current_gate_specification_batch": {
+      "failed": 0,
+      "passed": 13,
+      "skipped": 0
+    },
+    "historical_test_debt": [
+      "tests/test_mlff_data9a9a_specification.py retains the historical exact-version assertion pinned to 0.20.140a0",
+      "release/mlff_data9a9a_real_mpa0_restart_smoke.json is external historical smoke evidence and is not present in this supplied package"
+    ],
+    "pdf": {
+      "full_compare_dpi": 40,
+      "inspection_dpi": 150,
+      "no_clipping_overlap_or_broken_glyphs": true,
+      "pages_after": 133,
+      "pages_before": 131,
+      "preflight": "passed",
+      "visually_inspected_pages": [
+        128,
+        129,
+        130
+      ]
+    },
+    "primary_cross_gate_pytest": {
+      "failed": 0,
+      "passed": 234,
+      "skipped": 1
+    },
+    "public_import": "mdstats 0.20.175a0 / mdstats.dyn-verify2.2026-08.v1",
+    "python_compileall": "passed",
+    "real_lammps_execution": "not fabricated; fake deterministic LAMMPS execution/parser is tested and campaign-time DYN requires the exact DEPLOY-authenticated LAMMPS executable plus ML-IAP artifact"
+  },
+  "schema": "mdstats.mlff-dyn-verify2-qualification.v1",
+  "scientific_contract": {
+    "aggregation_rule": "every common base/temperature case is a hard gate; transient damage below the persistence window does not fail, and no averaging can hide a failed case",
+    "base_authority": "common candidate-independent DFT-relaxed RELAX-VERIFY1 reference cohort",
+    "candidate_membership": "only candidates that passed DEPLOY-VERIFY1, PES-VERIFY1, and RELAX-VERIFY1 enter DYN-VERIFY2",
+    "generated_lta_topology_groups": [
+      "framework"
+    ],
+    "maximum_base_configurations": 2,
+    "numerical_hard_bounds": {
+      "absolute_nve_energy_drift_ev_per_atom_per_ps": 0.026,
+      "maximum_force_ev_per_angstrom": 100.0,
+      "minimum_pair_distance_angstrom": 0.8,
+      "nve_mean_temperature_relative_tolerance": 0.3,
+      "nvt_mean_temperature_relative_tolerance": 0.2
+    },
+    "nve": {
+      "duration_ps": 1.0,
+      "steps": 2000
+    },
+    "nvt": {
+      "damping_fs": 100.0,
+      "duration_ps": 0.2,
+      "steps": 400,
+      "thermostat": "Langevin"
+    },
+    "persistent_structure": {
+      "new_bond_cutoff_scale": 1.1,
+      "persistent_damage_duration_fs": 50.0,
+      "persistent_damage_samples": 10,
+      "protected_angle_rmse_degrees": 15.0,
+      "protected_bond_rmse_angstrom": 0.15,
+      "protected_max_displacement_angstrom": 1.5,
+      "protected_rms_displacement_angstrom": 0.6,
+      "reference_bond_break_ratio": 1.35,
+      "topology_cutoff_scale": 1.2
+    },
+    "pre_velocity_reference": "explicit LAMMPS run 0 frame before velocity creation",
+    "production_handoff": "production-size final-development candidates remain WAITING for SELECT2 after DYN; DYN is qualification-only and has zero positive ranking weight",
+    "sample_interval_fs": 5.0,
+    "sample_interval_steps": 10,
+    "stage_c_handoff": "complete DEPLOY->PES->RELAX->DYN physical pass/fail evidence is attached to both 30-epoch target-size finalists and consumed by TARGET-DATA2D; selected outcome materializes TARGET-DATA2E",
+    "temperatures_kelvin": [
+      300.0,
+      800.0
+    ],
+    "timestep_fs": 0.5,
+    "velocity_seed_base": 314159
+  },
+  "scope": {
+    "implemented": [
+      "immutable DYN policy/plan/case/run/campaign records",
+      "candidate-independent short deployed ML-IAP/LAMMPS NVT->NVE rollout grid",
+      "numerical energy/temperature/minimum-distance/force diagnostics",
+      "persistent protected-topology/displacement/bond/angle structural damage gate",
+      "authenticated restart reuse against ML-IAP, LAMMPS, plan, trajectory, and log bytes",
+      "TARGET-DATA2D Stage-C physical qualification handoff and TARGET-DATA2E materialization trigger"
+    ],
+    "intentionally_deferred": [
+      "SELECT2 physics-qualified lexicographic final production selection",
+      "AL2 next-generation enrichment"
+    ]
+  },
+  "sha256": {
+    "CHANGELOG.md": "b0dcc5048c04365ee985d781c70c01a8a79a2510f3c4ceb9f89c7cd288cb254a",
+    "PKG-INFO": "2507e2ef61c0a7153cc41251e71ae5c8704474f274e1b92d15bb482abe48afae",
+    "README.md": "de8afcb4a7755bb2813489293f01c840fb59fc61a3f472dda737dcdbe26bf501",
+    "campaign.toml.example": "dd61d6ae288f8431076263af1c7e4ea30eba360a785fc43e2a923e53b9630532",
+    "docs/arch_manuals/mlff_training_data_architecture.md": "a49bc2f43a915452a5574c29255701a54d5380075d9aa00bc0a297d94032944f",
+    "docs/arch_manuals/mlff_training_data_architecture.pdf": "bf2d859019c540d31ff24ed92908c1e6ff71858a67a907514c9305745b21988f",
+    "mdstats/__init__.py": "b462ce5351dffd7d90cfbc80b6ce36166207f5bcb8356e1617bef0d6b0fe28a8",
+    "mdstats/_version.py": "91e76abcda5d2ec5937a2b3af4881862fcc20ddca02123c92ea388eb6eda1115",
+    "mdstats/training_data/__init__.py": "8d0171c7cc0f6c2ff0b78e160c9f91de3be6c5d536850f3446041f2e401209be",
+    "mdstats/training_data/campaign_cli.py": "fcd8d23dee13a36deab1c438075caf027eac44d23904d0fcffe69548a20692de",
+    "mdstats/training_data/dyn_verify.py": "9bd136fe09348ce74b7506a043c61b3414937fbf8ad8273d465c401a3facdfb2",
+    "pyproject.toml": "08fb4046eabdc083601a4b9f531d02e769e0fcbd494f4991cbb48c6f63f28336",
+    "release/PATCH_NOTES_0.20.175a0.md": "f0937f75ddcc862182029b3460f2f0a086b4ab3227f8d7a42aa7035feb1e8e76",
+    "tests/test_mlff_deploy_verify1_specification.py": "8a778540fc8802b7562e08f08028b48bfd0e9e0c6a7255adeb4f65e9638e2dcf",
+    "tests/test_mlff_dyn_verify2.py": "4db4b4b88ad440dff5fbb7d8ffb0960e1b0ee94128b44005bca5f9d5c8e977fa",
+    "tests/test_mlff_dyn_verify2_specification.py": "0b6970ba440134c711d5b6cd14a7a716dd440b79897f9102ff5e5a60b4feaa54",
+    "tests/test_mlff_eval2_specification.py": "9220decbf9bbd801f471447fe3427d88e81311a6f58421852486d2ac730e0902",
+    "tests/test_mlff_pes_verify1_specification.py": "97fffba62500b926b4469350132e0bfbae833c198086c3b5310c390087fee2ef",
+    "tests/test_mlff_relax_verify1_specification.py": "8e7006fd9fb2b826fd17c9f32dd458615d51137150f63b81ea20f5c071d45100"
+  }
+}

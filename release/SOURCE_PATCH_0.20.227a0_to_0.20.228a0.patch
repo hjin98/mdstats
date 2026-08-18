@@ -1,0 +1,1176 @@
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/CHANGELOG.md /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/CHANGELOG.md
+--- /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/CHANGELOG.md	2026-08-17 17:55:43.000000000 +0000
++++ /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/CHANGELOG.md	2026-08-17 21:34:11.330433685 +0000
+@@ -1,3 +1,14 @@
++## 0.20.228a0 - 2026-08-17
++
++- Implement MVIDX-REUSE1 / architecture revision 95 as an exact-equivalence optimization of TARGET-DATA2C sparse-index inversion after NEIGHBOR1 removes the duplicate geometry sweep.
++- Keep NEIGHBOR1 forward CSR and all MVIDX scientific semantics fixed while parallelizing independent required-family inversions and hard-obligation construction through the PARCORE1 deterministic work queue.
++- Retain the deterministic compiled SciPy counting transpose as the per-component CSR-to-CSC kernel; reject an exact Python-threaded intra-family range-fill prototype because qualification hardware showed it slower than the compiled kernel.
++- Replace row-by-row Python canonical-CSR validation with an equivalent vectorized boundary-aware monotonicity check, removing tens of thousands of tiny validation calls on large sparse graphs.
++- Preserve exact MVIDX1 digest `e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c` for 1/2/3-worker schedules and byte-identical inverse arrays.
++- On the same-host frozen synthetic authority, reduce cached MVIDX median wall time from about 0.590 s in untouched 0.20.227a0 to about 0.156/0.118/0.087 s at 1/2/3 lanes, about 6.8x faster at the available three-lane budget.
++- Preserve 111/111 TARGET-DATA2 functional tests with the same 18 expected warnings; keep active qualification on supplied MACE-MPA-0 medium while preserving the same runtime contract for MACE-MH-1.
++- Next optimization gate is COVREF-PAR1.
++
+ ## 0.20.227a0 - 2026-08-17
+ 
+ - Implement NEIGHBOR1 / architecture revision 94 as an exact-equivalence shared neighborhood engine for TARGET-DATA2B FEAS1 and TARGET-DATA2C MVIDX1.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/benchmarks/mlff_mvidx_reuse1_cloud_cpu_mpa0_2026-08-17.json /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/benchmarks/mlff_mvidx_reuse1_cloud_cpu_mpa0_2026-08-17.json
+--- /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/benchmarks/mlff_mvidx_reuse1_cloud_cpu_mpa0_2026-08-17.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/benchmarks/mlff_mvidx_reuse1_cloud_cpu_mpa0_2026-08-17.json	2026-08-17 21:27:35.398822097 +0000
+@@ -0,0 +1,104 @@
++{
++  "acceptance": {
++    "exact_digest_preserved": true,
++    "geometry_recomputed_on_cache_hit": false,
++    "next_gate": "COVREF-PAR1",
++    "status": "PASS",
++    "three_lane_speedup": 6.790009507639671,
++    "vectorized_validator_exact_predicate": true,
++    "worker_count_digest_invariant": true
++  },
++  "active_foundation": {
++    "checkpoint": "mace-mpa-0-medium(4).model",
++    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
++    "family": "mace-mpa-0",
++    "foundation_specific_logic_in_gate": false,
++    "mh1_supported_by_same_contract": true
++  },
++  "architecture_revision": 95,
++  "control_0_20_227a0": {
++    "digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
++    "maxrss_kib": 329620,
++    "release": "0.20.227a0",
++    "results": {
++      "1": {
++        "digest_count": 1,
++        "median_cpu_seconds": 0.5898240875000003,
++        "median_wall_seconds": 0.590266875999987,
++        "wall_seconds": [
++          0.6542696980000073,
++          0.634971002000043,
++          0.5746901500000376,
++          0.5929818880000539,
++          0.5571911380000074,
++          0.58755186399992
++        ]
++      }
++    }
++  },
++  "date": "2026-08-17",
++  "mvidx_reuse1_0_20_228a0": {
++    "digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
++    "maxrss_kib": 342944,
++    "release": "0.20.228a0",
++    "results": {
++      "1": {
++        "digest_count": 1,
++        "median_cpu_seconds": 0.1559803259999999,
++        "median_wall_seconds": 0.1562867385000004,
++        "wall_seconds": [
++          0.21666074999996,
++          0.1538215499999751,
++          0.16667836400006308,
++          0.15875192700002572,
++          0.1320256239999935,
++          0.14978740399999424
++        ]
++      },
++      "2": {
++        "digest_count": 1,
++        "median_cpu_seconds": 0.21631941000000054,
++        "median_wall_seconds": 0.1176901005000559,
++        "wall_seconds": [
++          0.1508505619999596,
++          0.11091565500009892,
++          0.14538606999997228,
++          0.09770137700002124,
++          0.12446454600001289,
++          0.10656783000001724
++        ]
++      },
++      "3": {
++        "digest_count": 1,
++        "median_cpu_seconds": 0.1772775805000002,
++        "median_wall_seconds": 0.08693167149999681,
++        "wall_seconds": [
++          0.08600062599998637,
++          0.0894707740000058,
++          0.08786271700000725,
++          0.06073274599998513,
++          0.09871143999998822,
++          0.08444936499995492
++        ]
++      }
++    }
++  },
++  "release": "0.20.228a0",
++  "schema": "mdstats.mlff-mvidx-reuse1-benchmark.v1",
++  "scientific_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
++  "summary": {
++    "control_serial_median_seconds": 0.590266875999987,
++    "current_serial_median_seconds": 0.1562867385000004,
++    "current_three_lane_median_seconds": 0.08693167149999681,
++    "current_two_lane_median_seconds": 0.1176901005000559,
++    "serial_speedup": 3.7768199763154273,
++    "three_lane_speedup": 6.790009507639671
++  },
++  "workload": {
++    "edge_count": 3194880,
++    "family_count": 6,
++    "query_block_size": 512,
++    "source": "PERFBASE1 deterministic synthetic TARGET-DATA2B authority via NEIGHBOR1 cache",
++    "witness_count": 49152
++  }
++}
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/benchmarks/mlff_mvidx_reuse1_cloud_cpu_mpa0_2026-08-17.md /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/benchmarks/mlff_mvidx_reuse1_cloud_cpu_mpa0_2026-08-17.md
+--- /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/benchmarks/mlff_mvidx_reuse1_cloud_cpu_mpa0_2026-08-17.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/benchmarks/mlff_mvidx_reuse1_cloud_cpu_mpa0_2026-08-17.md	2026-08-17 21:27:35.398905182 +0000
+@@ -0,0 +1,16 @@
++# MVIDX-REUSE1 cloud CPU qualification
++
++Release `0.20.228a0`, architecture revision 95. Active campaign provenance is the supplied MACE-MPA-0 medium checkpoint (`75428afe3a1d...`); the gate is foundation-generic and applies unchanged to MACE-MH-1.
++
++The workload is the frozen PERFBASE1/NEIGHBOR1 synthetic authority: 6 required families, 49,152 witnesses, and 3,194,880 exact forward edges. All schedules reproduce MVIDX digest `e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c` exactly.
++
++| realization | median wall time | speedup vs untouched 0.20.227a0 |
++|---|---:|---:|
++| untouched 0.20.227a0 cached MVIDX | 0.590 s | 1.00x |
++| 0.20.228a0, 1 lane | 0.156 s | 3.78x |
++| 0.20.228a0, 2 lanes | 0.118 s | 5.02x |
++| 0.20.228a0, 3 lanes | 0.087 s | 6.79x |
++
++The performance gain comes from vectorized CSR row validation plus PARCORE1 scheduling of independent required-family/obligation inversions. Timing is execution evidence only; exact sparse arrays and digest equality are scientific authority.
++
++**Acceptance: PASS. Next gate: COVREF-PAR1.**
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/benchmarks/mlff_mvidx_reuse1_implementation_manifest_0.20.228a0.json /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/benchmarks/mlff_mvidx_reuse1_implementation_manifest_0.20.228a0.json
+--- /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/benchmarks/mlff_mvidx_reuse1_implementation_manifest_0.20.228a0.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/benchmarks/mlff_mvidx_reuse1_implementation_manifest_0.20.228a0.json	2026-08-17 21:34:26.779870682 +0000
+@@ -0,0 +1,40 @@
++{
++  "active_foundation": {
++    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
++    "family": "mace-mpa-0",
++    "foundation_specific_logic_in_gate": false,
++    "mh1_supported_by_same_contract": true,
++    "variant": "medium"
++  },
++  "architecture_revision": 95,
++  "authority_change": {
++    "gpu": false,
++    "runtime_optimization": true,
++    "scientific": false
++  },
++  "content_digest": "c3bf8538159a7fe249309e196efe4f92e3e258d1dc151d33accbaa44b92b3897",
++  "date": "2026-08-17",
++  "files": {
++    "benchmarks/mlff_mvidx_reuse1_cloud_cpu_mpa0_2026-08-17.json": "2b8d37608d1438a18c05c6d4e93c14078c85984e2836b06e821cfc6e64522f55",
++    "benchmarks/mlff_mvidx_reuse1_cloud_cpu_mpa0_2026-08-17.md": "1474a30eab322c32224a16f85d62074209d0361c6c07ba9635683ac775562c87",
++    "docs/arch_manuals/mlff_training_data/00_front_matter.md": "a1f76305efdc4b72388ea8c977aad9eb038d81de2f9dd02d5b0044443e13172e",
++    "docs/arch_manuals/mlff_training_data/60_execution_performance.md": "ac2b189ed8eecf413d154f187235462f3320c6779bbf9cd9b2ca695f58016af7",
++    "docs/arch_manuals/mlff_training_data/70_status_and_gates.md": "a193b9b4d556e38073ae39f3861e3741600627c2f1a85a66735216768888825a",
++    "docs/arch_manuals/mlff_training_data_dependency_graph.json": "494bb8deb9b9d97ebde251c34c92b39b8ac9c1f17cd8904aac5c8c07ebbc564f",
++    "docs/specs/training_data/mlff_mvidx_reuse1_sparse_inversion_spec.md": "c72dd77bf68e217d7519ecaafbbe3d0c4e06b3ab919e8c99f54efc592513c32c",
++    "mdstats/training_data/campaign_cli.py": "4180038270d4f7897600e02fa85cc1377b293d20bffdb103294ac4fad6efa49f",
++    "mdstats/training_data/target_coverage_sparse_index.py": "f78ab9f5cb3c460d4d1bc541d91e28bbcc1dea60afca2cb52fd6513086f8747e",
++    "tests/test_mlff_mvidx_reuse1_specification.py": "bc59a18a250dac847917f685cee2bd5fafa8c243e802b6b3382f6e619a69b55b"
++  },
++  "gate": "MVIDX-REUSE1",
++  "implementation": {
++    "parallelism": "independent family inversions and hard-obligation construction via DeterministicWorkQueue",
++    "per_component_transpose": "deterministic compiled SciPy CSR-to-CSC counting transpose",
++    "rejected_prototype": "Python-threaded intra-family disjoint range fill; exact but slower on qualification hardware",
++    "validator": "vectorized boundary-aware sorted/unique CSR-row predicate"
++  },
++  "next_gate": "COVREF-PAR1",
++  "release": "0.20.228a0",
++  "schema": "mdstats.mlff-mvidx-reuse1-implementation-manifest.v1",
++  "scientific_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c"
++}
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/docs/arch_manuals/README.md /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/docs/arch_manuals/README.md
+--- /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/docs/arch_manuals/README.md	2026-08-17 11:07:16.000000000 +0000
++++ /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/docs/arch_manuals/README.md	2026-08-17 21:25:32.357762499 +0000
+@@ -44,7 +44,7 @@
+ 
+ ## MLFF architecture
+ 
+-- `mlff_training_data_architecture.{md,pdf}`: current normative MLFF training-data/fine-tuning architecture, revision 91. The manual is state-oriented and includes theory, ownership, target-data multi-view algorithms, execution/performance design, current status, and forward gates.
++- `mlff_training_data_architecture.{md,pdf}`: current normative MLFF training-data/fine-tuning architecture, revision 95. The manual is state-oriented and includes theory, ownership, target-data multi-view algorithms, execution/performance design, current status, and forward gates.
+ - `mlff_training_data/`: numbered maintainable chapter sources for the assembled manual. Use `tools/build_mlff_architecture_manual.py`; do not hand-edit only the assembled file.
+ - `mlff_training_data_dependency_graph.json`: machine-readable current dependency and gate graph.
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/docs/arch_manuals/mlff_training_data/00_front_matter.md /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/docs/arch_manuals/mlff_training_data/00_front_matter.md
+--- /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/docs/arch_manuals/mlff_training_data/00_front_matter.md	2026-08-17 17:55:43.000000000 +0000
++++ /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/docs/arch_manuals/mlff_training_data/00_front_matter.md	2026-08-17 21:25:32.357148724 +0000
+@@ -1,8 +1,8 @@
+ ---
+ geometry: "margin=0.75in"
+-architecture_revision: 94
+-release: "mdstats 0.20.227a0"
+-status: "current normative architecture; NEIGHBOR1 complete; MVIDX-REUSE1 next"
++architecture_revision: 95
++release: "mdstats 0.20.228a0"
++status: "current normative architecture; MVIDX-REUSE1 complete; COVREF-PAR1 next"
+ last_updated: "2026-08-17"
+ ---
+ 
+@@ -76,4 +76,4 @@
+ 
+ ## Current release boundary
+ 
+-Revision 94 implements `NEIGHBOR1` on top of the `PARCORE1` scheduler. FEAS1 now compresses each exact cKDTree witness block into canonical witness-oriented CSR while performing its unchanged support/capacity reduction, persists that forward graph as a reconstructible authenticated execution cache, and releases ragged neighbor objects immediately after canonical reduction. MVIDX1 adopts the authenticated forward CSR and therefore performs no second geometric sweep on a cache hit; a missing or stale cache is rebuilt once through the same global exact engine. The existing MVIDX CSR-to-CSC inversion remains unchanged and is the subject of the next `MVIDX-REUSE1` gate. Scientific FEAS1/MVIDX authorities, TARGET-DATA2 selection semantics, training/evaluation semantics, and GPU authority are unchanged. The active qualification checkpoint remains MACE-MPA-0 medium, while NEIGHBOR1 contains no foundation-specific assumptions and remains valid for MACE-MH-1 campaigns. GPU performance authority remains deferred.
++Revision 95 completes `MVIDX-REUSE1` on top of `NEIGHBOR1` and `PARCORE1`. On an authenticated NEIGHBOR1 cache hit, MVIDX1 now performs no geometry and schedules independent required-family inversions plus hard-obligation inversion through one bounded deterministic work queue. Each individual CSR-to-CSC conversion remains a deterministic compiled counting transpose with one native execution lane; canonical family order is restored after arbitrary task completion. The former per-row sorted/unique validator is replaced by an exact vectorized CSR-boundary-masked predicate, removing the dominant Python-loop overhead. Scientific FEAS1/MVIDX authorities, TARGET-DATA2 selection semantics, training/evaluation semantics, and GPU authority are unchanged. The active qualification checkpoint remains MACE-MPA-0 medium, while the optimization contains no foundation-specific assumptions and remains valid for MACE-MH-1 campaigns. `COVREF-PAR1` is next; GPU performance authority remains deferred.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/docs/arch_manuals/mlff_training_data/60_execution_performance.md /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/docs/arch_manuals/mlff_training_data/60_execution_performance.md
+--- /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/docs/arch_manuals/mlff_training_data/60_execution_performance.md	2026-08-17 17:55:43.000000000 +0000
++++ /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/docs/arch_manuals/mlff_training_data/60_execution_performance.md	2026-08-17 21:25:32.357443506 +0000
+@@ -76,7 +76,11 @@
+ 
+ The cache is reconstructible execution state rather than a new scientific authority. Family identity binds label-domain ID, frame-domain/candidate ordering digest, family digest, candidate/witness cardinalities, frozen metric/tolerance semantics, and cache-format version. Worker count, query-block size, queue depth, timing, and progress settings are deliberately excluded. Native persistence authenticates manifests and each NumPy array by checksum plus scientific array reference; campaign storage records the cache independently of FEAS1 so restart may validate/reuse it.
+ 
+-MVIDX1 now adopts authenticated forward CSR directly and performs only its existing sparse inversion and obligation/metadata construction on a cache hit. `target_coverage_sparse_index.py` no longer owns a cKDTree/query-ball implementation. If the cache is missing, corrupt, or stale, MVIDX1 rebuilds forward CSR once through the same global `ExactNeighborhoodEngine`, persists it, and then proceeds. It must never revive the former duplicate serial-family/nested-tree geometry sweep. The CSR-to-CSC inversion itself is intentionally unchanged until `MVIDX-REUSE1`.
++MVIDX1 adopts authenticated forward CSR directly and performs no geometric query on a cache hit. `target_coverage_sparse_index.py` no longer owns a cKDTree/query-ball implementation. If the cache is missing, corrupt, or stale, MVIDX1 rebuilds forward CSR once through the same global `ExactNeighborhoodEngine`, persists it, and then proceeds. It must never revive the former duplicate serial-family/nested-tree geometry sweep.
++
++`MVIDX-REUSE1` (`0.20.228a0`) parallelizes the remaining inverse/metadata work at the natural independent-component boundary. Required-family inversions and hard-obligation inversion are immutable tasks on `DeterministicWorkQueue`; each task uses the deterministic compiled SciPy CSR-to-CSC counting transpose with one native lane, and canonical required-family order is restored after completion. This avoids nested sparse-kernel parallelism and atomics while allowing the outer queue to occupy the campaign CPU budget. An experimental Python-threaded intra-family degree/prefix/range-fill realization was exact but slower on the frozen authority and was therefore rejected rather than promoted.
++
++The prior row-by-row strict-order validator was also a measured MVIDX hotspot. Revision 95 replaces it with one vectorized adjacent-index comparison and masks pairs crossing CSR row boundaries. The predicate is mathematically identical: every within-row adjacent pair must remain strictly increasing; worker count and queue completion order remain execution-only.
+ 
+ ## Memory budget and persistence
+ 
+@@ -137,7 +141,7 @@
+ |---|---|---|
+ | TARGET-DATA2B reference-radius/coverage | serial block driver with nested cKDTree workers | global block tasks, one tree worker/task, early constant-family rejection, shared scaled workspaces |
+ | FEAS1 | global PARCORE1 queue plus implemented streamed exact CSR | retain exact reduction; downstream sparse-kernel work only |
+-| MVIDX1 | duplicate geometry eliminated by NEIGHBOR1; legacy CSR-to-CSC inversion remains | MVIDX-REUSE1 stable parallel CSR-to-CSC transpose |
++| MVIDX1 | authenticated graph adoption; inverse/validator Python overhead | implemented MVIDX-REUSE1 component-level queue plus vectorized CSR validation |
+ | MVSEL1 | Python ragged gathers and sparse update overhead | vectorized CSR gather, indexed weights, incremental counters; preserve sequential rank authority |
+ | REPAIR1 | serial proposal shortlist and repeated intersections | parallel immutable-state proposal scoring, stamp arrays, fused sparse scans, O(1) rank map |
+ | MVQUAL1 | independent same-N rescoring serialized | global scoring queue and batched sparse telemetry |
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/docs/arch_manuals/mlff_training_data/70_status_and_gates.md /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/docs/arch_manuals/mlff_training_data/70_status_and_gates.md
+--- /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/docs/arch_manuals/mlff_training_data/70_status_and_gates.md	2026-08-17 18:04:17.000000000 +0000
++++ /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/docs/arch_manuals/mlff_training_data/70_status_and_gates.md	2026-08-17 21:31:58.138974431 +0000
+@@ -2,11 +2,11 @@
+ 
+ ## Current authority snapshot
+ 
+-The current campaign architecture retains the scientific contracts established by DATA1-DATA9, conventional nested CV, target/replay evaluation, MACE adapter/version locks, deployment verification, TARGET-DATA2 multi-view selection, and FINAL-GPU1 deferral. Revision 94 completes `NEIGHBOR1`, which reuses exact FEAS1 neighborhoods in MVIDX1 without altering dataset membership, radii, coverage threshold, target-size ceiling, MACE model semantics, or GPU qualification authority.
++The current campaign architecture retains the scientific contracts established by DATA1-DATA9, conventional nested CV, target/replay evaluation, MACE adapter/version locks, deployment verification, TARGET-DATA2 multi-view selection, and FINAL-GPU1 deferral. Revision 95 completes `MVIDX-REUSE1`, which reduces cached MVIDX1 to authenticated graph adoption, deterministic parallel component inversion, vectorized sparse validation, and obligation metadata without altering dataset membership, radii, coverage threshold, target-size ceiling, MACE model semantics, or GPU qualification authority.
+ 
+ The most recent implemented performance gate is:
+ 
+-- **NEIGHBOR1 (`0.20.227a0`)** - one shared exact cKDTree/CSR engine for FEAS1 and MVIDX1, with authenticated restartable forward-CSR cache and exact PERFBASE1 scientific equivalence.
++- **MVIDX-REUSE1 (`0.20.228a0`)** - cached MVIDX component-level sparse inversion on the shared deterministic scheduler plus exact vectorized CSR validation; NEIGHBOR1 geometry reuse remains unchanged.
+ 
+ `PERFBASE1` (`0.20.225a0`) remains the frozen measurement authority used to judge subsequent optimization gates. `TARGET-DATA2B-FEAS1-PERF3` (`0.20.223a0`) is the direct predecessor scheduler whose successful global single-level execution pattern PARCORE1 generalizes.
+ 
+@@ -48,15 +48,17 @@
+ 
+ **Acceptance. PASS.** On the PERFBASE1 synthetic authority (6 families, 49,152 witnesses, 3,194,880 exact edges), FEAS1, the NEIGHBOR1 cache, and cached/rebuilt MVIDX1 remain digest-identical across worker/block settings. Their SHA-256 values begin `937214c70d1f`, `0220c89084fe`, and `e408bd25dcc9`; the complete values are frozen in the gate qualification record. A cache-hit regression test replaces the geometric query method with a fail-fast sentinel and still passes, proving zero second geometric queries. Native-array round trip/tamper tests pass. On the cgroup-limited three-lane cloud CPU, final two-repeat medians reduce FEAS1->MVIDX1 wall time from about 2.77 s in untouched `0.20.226a0` to about 1.03 s with NEIGHBOR1 (about 2.68x end-to-end); one-worker total improves from about 2.20 s to about 1.28 s. Timing is execution evidence only; digest equality is the authority.
+ 
+-**Next gate.** `MVIDX-REUSE1`.
++**Succeeded by.** `MVIDX-REUSE1` in `0.20.228a0`.
+ 
+-### Gate MVIDX-REUSE1 - stable parallel sparse inversion
++### Gate MVIDX-REUSE1 - stable parallel sparse inversion - COMPLETE
+ 
+ **Purpose.** Reduce MVIDX to authenticated graph adoption, deterministic CSR-to-CSC inversion, and obligation metadata.
+ 
+-**Implementation.** Two-pass degree/prefix/range fill without atomics; global fallback queue only when the FEAS cache is absent.
++**Implementation.** `0.20.228a0` schedules independent required-family inverse builds and hard-obligation inversion through `DeterministicWorkQueue` under one `StageResourceScope`. Each individual transpose uses the deterministic compiled SciPy counting transpose with one native lane; canonical family order is restored after arbitrary task completion, so no atomics or nested sparse-kernel threads are required. The measured row-by-row sorted/unique validator is replaced by one vectorized adjacent-index comparison with CSR-boundary masking. The originally sketched Python-threaded intra-family degree/prefix/range fill was implemented experimentally and rejected because it was slower than the compiled kernel on the frozen workload.
+ 
+-**Acceptance.** Forward/inverse adjacency exact; canonical ordering stable across worker counts; measured geometry time is eliminated on cache reuse.
++**Acceptance. PASS.** The frozen MVIDX digest (SHA-256 prefix `e408bd25dcc9`; full value in the qualification record) is unchanged across one-, two-, and three-lane schedules, with byte-identical candidate offsets and candidate-to-witness arrays. On the same cgroup-limited cloud CPU, untouched `0.20.227a0` cached MVIDX measured about 0.59 s median, while revision 95 measured about 0.16 s at one lane, 0.12 s at two lanes, and 0.087 s at three lanes; the final paired three-lane gain is about 6.8x. Timing is execution evidence only; sparse-array/digest equality is scientific authority.
++
++**Next gate.** `COVREF-PAR1`.
+ 
+ ### Gate COVREF-PAR1 - TARGET-DATA2B exact CPU parallelization
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/docs/arch_manuals/mlff_training_data_architecture.md /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/docs/arch_manuals/mlff_training_data_architecture.md
+--- /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-17 18:04:18.000000000 +0000
++++ /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-17 21:31:59.568419905 +0000
+@@ -1,8 +1,8 @@
+ ---
+ geometry: "margin=0.75in"
+-architecture_revision: 94
+-release: "mdstats 0.20.227a0"
+-status: "current normative architecture; NEIGHBOR1 complete; MVIDX-REUSE1 next"
++architecture_revision: 95
++release: "mdstats 0.20.228a0"
++status: "current normative architecture; MVIDX-REUSE1 complete; COVREF-PAR1 next"
+ last_updated: "2026-08-17"
+ ---
+ 
+@@ -76,7 +76,7 @@
+ 
+ ## Current release boundary
+ 
+-Revision 94 implements `NEIGHBOR1` on top of the `PARCORE1` scheduler. FEAS1 now compresses each exact cKDTree witness block into canonical witness-oriented CSR while performing its unchanged support/capacity reduction, persists that forward graph as a reconstructible authenticated execution cache, and releases ragged neighbor objects immediately after canonical reduction. MVIDX1 adopts the authenticated forward CSR and therefore performs no second geometric sweep on a cache hit; a missing or stale cache is rebuilt once through the same global exact engine. The existing MVIDX CSR-to-CSC inversion remains unchanged and is the subject of the next `MVIDX-REUSE1` gate. Scientific FEAS1/MVIDX authorities, TARGET-DATA2 selection semantics, training/evaluation semantics, and GPU authority are unchanged. The active qualification checkpoint remains MACE-MPA-0 medium, while NEIGHBOR1 contains no foundation-specific assumptions and remains valid for MACE-MH-1 campaigns. GPU performance authority remains deferred.
++Revision 95 completes `MVIDX-REUSE1` on top of `NEIGHBOR1` and `PARCORE1`. On an authenticated NEIGHBOR1 cache hit, MVIDX1 now performs no geometry and schedules independent required-family inversions plus hard-obligation inversion through one bounded deterministic work queue. Each individual CSR-to-CSC conversion remains a deterministic compiled counting transpose with one native execution lane; canonical family order is restored after arbitrary task completion. The former per-row sorted/unique validator is replaced by an exact vectorized CSR-boundary-masked predicate, removing the dominant Python-loop overhead. Scientific FEAS1/MVIDX authorities, TARGET-DATA2 selection semantics, training/evaluation semantics, and GPU authority are unchanged. The active qualification checkpoint remains MACE-MPA-0 medium, while the optimization contains no foundation-specific assumptions and remains valid for MACE-MH-1 campaigns. `COVREF-PAR1` is next; GPU performance authority remains deferred.
+ 
+ # Part I - Foundations and ownership
+ 
+@@ -2487,7 +2487,11 @@
+ 
+ The cache is reconstructible execution state rather than a new scientific authority. Family identity binds label-domain ID, frame-domain/candidate ordering digest, family digest, candidate/witness cardinalities, frozen metric/tolerance semantics, and cache-format version. Worker count, query-block size, queue depth, timing, and progress settings are deliberately excluded. Native persistence authenticates manifests and each NumPy array by checksum plus scientific array reference; campaign storage records the cache independently of FEAS1 so restart may validate/reuse it.
+ 
+-MVIDX1 now adopts authenticated forward CSR directly and performs only its existing sparse inversion and obligation/metadata construction on a cache hit. `target_coverage_sparse_index.py` no longer owns a cKDTree/query-ball implementation. If the cache is missing, corrupt, or stale, MVIDX1 rebuilds forward CSR once through the same global `ExactNeighborhoodEngine`, persists it, and then proceeds. It must never revive the former duplicate serial-family/nested-tree geometry sweep. The CSR-to-CSC inversion itself is intentionally unchanged until `MVIDX-REUSE1`.
++MVIDX1 adopts authenticated forward CSR directly and performs no geometric query on a cache hit. `target_coverage_sparse_index.py` no longer owns a cKDTree/query-ball implementation. If the cache is missing, corrupt, or stale, MVIDX1 rebuilds forward CSR once through the same global `ExactNeighborhoodEngine`, persists it, and then proceeds. It must never revive the former duplicate serial-family/nested-tree geometry sweep.
++
++`MVIDX-REUSE1` (`0.20.228a0`) parallelizes the remaining inverse/metadata work at the natural independent-component boundary. Required-family inversions and hard-obligation inversion are immutable tasks on `DeterministicWorkQueue`; each task uses the deterministic compiled SciPy CSR-to-CSC counting transpose with one native lane, and canonical required-family order is restored after completion. This avoids nested sparse-kernel parallelism and atomics while allowing the outer queue to occupy the campaign CPU budget. An experimental Python-threaded intra-family degree/prefix/range-fill realization was exact but slower on the frozen authority and was therefore rejected rather than promoted.
++
++The prior row-by-row strict-order validator was also a measured MVIDX hotspot. Revision 95 replaces it with one vectorized adjacent-index comparison and masks pairs crossing CSR row boundaries. The predicate is mathematically identical: every within-row adjacent pair must remain strictly increasing; worker count and queue completion order remain execution-only.
+ 
+ ## Memory budget and persistence
+ 
+@@ -2548,7 +2552,7 @@
+ |---|---|---|
+ | TARGET-DATA2B reference-radius/coverage | serial block driver with nested cKDTree workers | global block tasks, one tree worker/task, early constant-family rejection, shared scaled workspaces |
+ | FEAS1 | global PARCORE1 queue plus implemented streamed exact CSR | retain exact reduction; downstream sparse-kernel work only |
+-| MVIDX1 | duplicate geometry eliminated by NEIGHBOR1; legacy CSR-to-CSC inversion remains | MVIDX-REUSE1 stable parallel CSR-to-CSC transpose |
++| MVIDX1 | authenticated graph adoption; inverse/validator Python overhead | implemented MVIDX-REUSE1 component-level queue plus vectorized CSR validation |
+ | MVSEL1 | Python ragged gathers and sparse update overhead | vectorized CSR gather, indexed weights, incremental counters; preserve sequential rank authority |
+ | REPAIR1 | serial proposal shortlist and repeated intersections | parallel immutable-state proposal scoring, stamp arrays, fused sparse scans, O(1) rank map |
+ | MVQUAL1 | independent same-N rescoring serialized | global scoring queue and batched sparse telemetry |
+@@ -2606,11 +2610,11 @@
+ 
+ ## Current authority snapshot
+ 
+-The current campaign architecture retains the scientific contracts established by DATA1-DATA9, conventional nested CV, target/replay evaluation, MACE adapter/version locks, deployment verification, TARGET-DATA2 multi-view selection, and FINAL-GPU1 deferral. Revision 94 completes `NEIGHBOR1`, which reuses exact FEAS1 neighborhoods in MVIDX1 without altering dataset membership, radii, coverage threshold, target-size ceiling, MACE model semantics, or GPU qualification authority.
++The current campaign architecture retains the scientific contracts established by DATA1-DATA9, conventional nested CV, target/replay evaluation, MACE adapter/version locks, deployment verification, TARGET-DATA2 multi-view selection, and FINAL-GPU1 deferral. Revision 95 completes `MVIDX-REUSE1`, which reduces cached MVIDX1 to authenticated graph adoption, deterministic parallel component inversion, vectorized sparse validation, and obligation metadata without altering dataset membership, radii, coverage threshold, target-size ceiling, MACE model semantics, or GPU qualification authority.
+ 
+ The most recent implemented performance gate is:
+ 
+-- **NEIGHBOR1 (`0.20.227a0`)** - one shared exact cKDTree/CSR engine for FEAS1 and MVIDX1, with authenticated restartable forward-CSR cache and exact PERFBASE1 scientific equivalence.
++- **MVIDX-REUSE1 (`0.20.228a0`)** - cached MVIDX component-level sparse inversion on the shared deterministic scheduler plus exact vectorized CSR validation; NEIGHBOR1 geometry reuse remains unchanged.
+ 
+ `PERFBASE1` (`0.20.225a0`) remains the frozen measurement authority used to judge subsequent optimization gates. `TARGET-DATA2B-FEAS1-PERF3` (`0.20.223a0`) is the direct predecessor scheduler whose successful global single-level execution pattern PARCORE1 generalizes.
+ 
+@@ -2652,15 +2656,17 @@
+ 
+ **Acceptance. PASS.** On the PERFBASE1 synthetic authority (6 families, 49,152 witnesses, 3,194,880 exact edges), FEAS1, the NEIGHBOR1 cache, and cached/rebuilt MVIDX1 remain digest-identical across worker/block settings. Their SHA-256 values begin `937214c70d1f`, `0220c89084fe`, and `e408bd25dcc9`; the complete values are frozen in the gate qualification record. A cache-hit regression test replaces the geometric query method with a fail-fast sentinel and still passes, proving zero second geometric queries. Native-array round trip/tamper tests pass. On the cgroup-limited three-lane cloud CPU, final two-repeat medians reduce FEAS1->MVIDX1 wall time from about 2.77 s in untouched `0.20.226a0` to about 1.03 s with NEIGHBOR1 (about 2.68x end-to-end); one-worker total improves from about 2.20 s to about 1.28 s. Timing is execution evidence only; digest equality is the authority.
+ 
+-**Next gate.** `MVIDX-REUSE1`.
++**Succeeded by.** `MVIDX-REUSE1` in `0.20.228a0`.
+ 
+-### Gate MVIDX-REUSE1 - stable parallel sparse inversion
++### Gate MVIDX-REUSE1 - stable parallel sparse inversion - COMPLETE
+ 
+ **Purpose.** Reduce MVIDX to authenticated graph adoption, deterministic CSR-to-CSC inversion, and obligation metadata.
+ 
+-**Implementation.** Two-pass degree/prefix/range fill without atomics; global fallback queue only when the FEAS cache is absent.
++**Implementation.** `0.20.228a0` schedules independent required-family inverse builds and hard-obligation inversion through `DeterministicWorkQueue` under one `StageResourceScope`. Each individual transpose uses the deterministic compiled SciPy counting transpose with one native lane; canonical family order is restored after arbitrary task completion, so no atomics or nested sparse-kernel threads are required. The measured row-by-row sorted/unique validator is replaced by one vectorized adjacent-index comparison with CSR-boundary masking. The originally sketched Python-threaded intra-family degree/prefix/range fill was implemented experimentally and rejected because it was slower than the compiled kernel on the frozen workload.
++
++**Acceptance. PASS.** The frozen MVIDX digest (SHA-256 prefix `e408bd25dcc9`; full value in the qualification record) is unchanged across one-, two-, and three-lane schedules, with byte-identical candidate offsets and candidate-to-witness arrays. On the same cgroup-limited cloud CPU, untouched `0.20.227a0` cached MVIDX measured about 0.59 s median, while revision 95 measured about 0.16 s at one lane, 0.12 s at two lanes, and 0.087 s at three lanes; the final paired three-lane gain is about 6.8x. Timing is execution evidence only; sparse-array/digest equality is scientific authority.
+ 
+-**Acceptance.** Forward/inverse adjacency exact; canonical ordering stable across worker counts; measured geometry time is eliminated on cache reuse.
++**Next gate.** `COVREF-PAR1`.
+ 
+ ### Gate COVREF-PAR1 - TARGET-DATA2B exact CPU parallelization
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/docs/arch_manuals/mlff_training_data_dependency_graph.json /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/docs/arch_manuals/mlff_training_data_dependency_graph.json
+--- /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-17 17:55:43.000000000 +0000
++++ /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-17 21:26:02.155686208 +0000
+@@ -1,8 +1,8 @@
+ {
+-  "architecture_revision": 94,
++  "architecture_revision": 95,
+   "branch": "MLFF-DATA",
+-  "description": "MLFF training-data dependency graph through architecture revision 94. NEIGHBOR1 implements one shared exact FEAS1/MVIDX forward-neighborhood engine and authenticated CSR reuse; MVIDX-REUSE1 is next.",
+-  "documentation_gate": "NEIGHBOR1_SHARED_EXACT_ENGINE",
++  "description": "MLFF training-data dependency graph through architecture revision 95. MVIDX-REUSE1 implements exact cached sparse-inversion parallelism and vectorized CSR validation; COVREF-PAR1 is next.",
++  "documentation_gate": "MVIDX_REUSE1_SPARSE_TRANSPOSE",
+   "edge_type_definitions": {
+     "execution_requires": "The upstream product must exist before execution.",
+     "fit_domain_requires": "The fitted object may inspect only the declared training domain.",
+@@ -3201,7 +3201,7 @@
+       ]
+     }
+   ],
+-  "next_gate": "MVIDX_REUSE1_SPARSE_TRANSPOSE",
++  "next_gate": "COVREF_PAR1_GLOBAL_BLOCK_QUEUE",
+   "nodes": [
+     {
+       "id": "ACQUISITION_DECISIONS"
+@@ -5364,17 +5364,25 @@
+       "streamed_csr_execution_cache": true
+     },
+     {
+-      "architecture_revision": 91,
+-      "authority_class": "planned_performance_exact_equivalence",
++      "active_foundation_qualification": "MACE-MPA-0 medium",
++      "architecture_revision": 95,
++      "authority_class": "performance_exact_equivalence",
+       "gate_name": "MVIDX-REUSE1",
+       "id": "MVIDX_REUSE1_SPARSE_TRANSPOSE",
+-      "implementation_status": "planned",
++      "implementation_status": "implemented",
++      "implemented_release": "0.20.228a0",
++      "mh1_supported_by_same_contract": true,
++      "mvidx_scientific_output_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
++      "parallel_granularity": "independent required-family and obligation inversions",
+       "repeat_geometry_on_cache_hit": false,
++      "runtime_optimization_change": true,
+       "scientific_authority_change": false,
+-      "stable_parallel_csr_to_csc": true
++      "single_native_sparse_kernel_per_task": true,
++      "stable_parallel_csr_to_csc": true,
++      "vectorized_sorted_unique_row_validation": true
+     },
+     {
+-      "architecture_revision": 91,
++      "architecture_revision": 95,
+       "authority_class": "planned_performance_exact_equivalence",
+       "gate_name": "COVREF-PAR1",
+       "id": "COVREF_PAR1_GLOBAL_BLOCK_QUEUE",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV95.md /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV95.md
+--- /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV95.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV95.md	2026-08-17 21:26:02.442433685 +0000
+@@ -0,0 +1,13 @@
++# MLFF Architecture Revision 95
++
++**Gate:** `MVIDX-REUSE1`  
++**Release:** `mdstats 0.20.228a0`  
++**Date:** 2026-08-17
++
++Revision 95 closes the residual cached-MVIDX CPU hotspot after NEIGHBOR1 removed duplicate geometry. Required-family inverse adjacency builds and the hard-obligation inversion are independent immutable tasks scheduled through the PARCORE1 deterministic queue under a bounded stage resource scope. Each individual CSR-to-CSC operation remains a deterministic compiled SciPy counting transpose with one native execution lane; canonical family ordering is restored after task completion.
++
++Profiling also identified the historical row-by-row strict-order validator as the dominant remaining Python overhead. It is replaced by one vectorized adjacent-index predicate with CSR-row-boundary masking, which is mathematically identical to validating every row independently.
++
++An experimental Python-threaded intra-family degree/prefix/range-fill transpose was exact but slower than the compiled sparse kernel on the frozen authority and was not promoted. This revision changes execution only: the MVIDX scientific digest, inverse arrays, obligations, TARGET-DATA2 semantics, MACE-MPA-0/MACE-MH-1 model semantics, and GPU authority remain unchanged.
++
++`COVREF-PAR1` is the next optimization gate.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/docs/history/mlff/architecture_revisions/INDEX.md /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/docs/history/mlff/architecture_revisions/INDEX.md
+--- /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/docs/history/mlff/architecture_revisions/INDEX.md	2026-08-17 17:55:43.000000000 +0000
++++ /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/docs/history/mlff/architecture_revisions/INDEX.md	2026-08-17 21:26:03.712084048 +0000
+@@ -76,3 +76,4 @@
+ | 92 | PERFBASE1 / mdstats 0.20.225a0 | [MLFF Architecture Revision 92](ARCHITECTURE_NOTES_MLFF_REV92.md) | - |
+ | 93 | PARCORE1 / mdstats 0.20.226a0 | [MLFF Architecture Revision 93](ARCHITECTURE_NOTES_MLFF_REV93.md) | - |
+ | 94 | NEIGHBOR1 / mdstats 0.20.227a0 | [MLFF Architecture Revision 94](ARCHITECTURE_NOTES_MLFF_REV94.md) | - |
++| 95 | MVIDX-REUSE1 / mdstats 0.20.228a0 | [MLFF Architecture Revision 95](ARCHITECTURE_NOTES_MLFF_REV95.md) | - |
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/docs/history/mlff/release_notes/INDEX.md /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/docs/history/mlff/release_notes/INDEX.md
+--- /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/docs/history/mlff/release_notes/INDEX.md	2026-08-17 17:55:43.000000000 +0000
++++ /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/docs/history/mlff/release_notes/INDEX.md	2026-08-17 21:26:03.712355666 +0000
+@@ -168,3 +168,4 @@
+ | `0.20.225a0` | [PATCH_NOTES_0.20.225a0.md](PATCH_NOTES_0.20.225a0.md) | - |
+ | `0.20.226a0` | [PATCH_NOTES_0.20.226a0.md](PATCH_NOTES_0.20.226a0.md) | - |
+ | `0.20.227a0` | [PATCH_NOTES_0.20.227a0.md](PATCH_NOTES_0.20.227a0.md) | - |
++| `0.20.228a0` | [PATCH_NOTES_0.20.228a0.md](PATCH_NOTES_0.20.228a0.md) | - |
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.228a0.md /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.228a0.md
+--- /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.228a0.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.228a0.md	2026-08-17 21:26:02.446433685 +0000
+@@ -0,0 +1,8 @@
++# mdstats 0.20.228a0 patch notes
++
++- Completed MLFF optimization gate `MVIDX-REUSE1`.
++- Parallelized independent cached-MVIDX family and hard-obligation inversion tasks through `DeterministicWorkQueue`.
++- Replaced the per-row CSR sorted/unique validation loop with an exact vectorized boundary-aware predicate.
++- Preserved byte-identical inverse adjacency and the frozen MVIDX scientific digest across worker schedules.
++- Kept NEIGHBOR1 cache reuse, TARGET-DATA2 scientific semantics, MPA-0/MH-1 foundation support, and GPU authority unchanged.
++- Advanced the frozen optimization sequence to `COVREF-PAR1`.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/docs/specs/training_data/mlff_mvidx_reuse1_sparse_inversion_spec.md /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/docs/specs/training_data/mlff_mvidx_reuse1_sparse_inversion_spec.md
+--- /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/docs/specs/training_data/mlff_mvidx_reuse1_sparse_inversion_spec.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/docs/specs/training_data/mlff_mvidx_reuse1_sparse_inversion_spec.md	2026-08-17 21:25:07.158433685 +0000
+@@ -0,0 +1,14 @@
++# MVIDX-REUSE1 stable sparse inversion specification
++
++**Release:** `mdstats 0.20.228a0`  
++**Architecture revision:** 95
++
++MVIDX-REUSE1 is an exact-equivalence execution optimization. It does not alter TARGET-DATA2B/C geometry, candidate membership, hard obligations, sparse scientific schemas, MACE-MPA-0/MACE-MH-1 semantics, training, evaluation, or GPU authority.
++
++On a NEIGHBOR1 cache hit, MVIDX consumes authenticated witness-to-candidate CSR and performs only inverse adjacency plus hard-obligation metadata. Independent required-family inversions and the obligation-table inversion are scheduled through `DeterministicWorkQueue` under one `StageResourceScope`. Each individual CSR-to-CSC conversion is the deterministic compiled SciPy counting transpose and is single-native-thread work; outer tasks provide concurrency without nested numerical oversubscription or atomics.
++
++Canonical required-family order is restored after arbitrary task completion order. Worker count, task completion order, timing, and queue telemetry are execution-only. Candidate-to-witness arrays must be byte-identical for every qualified worker schedule.
++
++The historical per-row sorted/unique validator is replaced by one vectorized adjacent-index comparison with CSR-boundary masking. This is the same predicate: comparisons that cross row boundaries are ignored, while every within-row pair must be strictly increasing.
++
++The active CPU qualification uses the supplied MACE-MPA-0 medium checkpoint identity only as campaign provenance. This gate contains no foundation-model-specific logic and applies unchanged to MACE-MH-1.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/mdstats/_version.py /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/mdstats/_version.py
+--- /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/mdstats/_version.py	2026-08-17 17:55:43.000000000 +0000
++++ /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/mdstats/_version.py	2026-08-17 21:25:32.356996425 +0000
+@@ -1 +1 @@
+-__version__ = "0.20.227a0"
++__version__ = "0.20.228a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/mdstats/training_data/campaign_cli.py /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/mdstats/training_data/campaign_cli.py
+--- /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/mdstats/training_data/campaign_cli.py	2026-08-17 17:42:34.000000000 +0000
++++ /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/mdstats/training_data/campaign_cli.py	2026-08-17 21:23:24.516880202 +0000
+@@ -4669,9 +4669,19 @@
+             f"edges={neighborhoods.edge_count}; digest={neighborhoods.content_digest[:12]}..."
+         )
+ 
++    _, mvidx_workers, mvidx_resources = _target_coverage_feasibility_parallelism(
++        cfg, coverage_reference, query_block_size=block_size
++    )
++    mvidx_scope = build_stage_resource_scope(
++        mvidx_resources,
++        stage_name="TARGET-DATA2C-MVIDX-REUSE1",
++        python_workers=mvidx_workers,
++        tree_workers=1,
++        blas_threads=1,
++    )
+     print(
+         f"[TARGET-DATA2C-MVIDX1] NEIGHBOR1 cache hit; geometry sweep=skipped; query block setting={block_size}; "
+-        "layout=uint32 indices/uint64 offsets; inverse remains MVIDX1 v1 pending MVIDX-REUSE1",
++        f"layout=uint32 indices/uint64 offsets; MVIDX-REUSE1 inverse-workers={mvidx_workers}",
+         flush=True,
+     )
+     started = time.monotonic()
+@@ -4683,6 +4693,8 @@
+         exact_neighborhood_store=neighborhoods,
+         query_workers=1,
+         query_block_size=block_size,
++        global_workers=mvidx_workers,
++        resource_scope=mvidx_scope,
+         progress_interval_seconds=progress_interval,
+         progress_callback=lambda message: print(f"[TARGET-DATA2C-MVIDX1] {message}", flush=True),
+     )
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/mdstats/training_data/target_coverage_sparse_index.py /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/mdstats/training_data/target_coverage_sparse_index.py
+--- /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/mdstats/training_data/target_coverage_sparse_index.py	2026-08-17 17:40:12.000000000 +0000
++++ /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/mdstats/training_data/target_coverage_sparse_index.py	2026-08-17 21:24:13.619295647 +0000
+@@ -24,6 +24,7 @@
+ import numpy as np
+ from scipy.sparse import csr_matrix
+ 
++
+ from ._common import TrainingDataInputError, TrainingDataSerializationError, digest, validate_digest
+ from .target_coverage import _coverage_array_reference, _validate_array_reference
+ from .target_coverage_exact_neighborhood import (
+@@ -33,6 +34,8 @@
+     validate_target_coverage_exact_neighborhood_store,
+ )
+ from .target_coverage_feasibility import validate_target_coverage_feasibility_authority
++from .resources import StageResourceScope, available_cpu_threads, available_memory_bytes
++from .work_queue import DeterministicWorkQueue
+ 
+ 
+ TARGET_COVERAGE_SPARSE_INDEX_POLICY_SCHEMA = "mdstats.target-coverage-sparse-index-policy.v1"
+@@ -70,12 +73,24 @@
+ 
+ 
+ def _validate_sorted_unique_rows(offsets: np.ndarray, indices: np.ndarray, *, name: str) -> None:
+-    for start, stop in zip(offsets[:-1], offsets[1:], strict=True):
+-        row = indices[int(start):int(stop)]
+-        if row.size > 1 and np.any(row[1:] <= row[:-1]):
+-            raise TrainingDataInputError(
+-                f"TARGET-DATA2C-MVIDX1 {name} rows must be strictly sorted and duplicate-free."
+-            )
++    """Validate strict within-row ordering without one Python call per row.
++
++    Adjacent comparisons are vectorized across the complete edge array.  Pairs
++    that straddle a CSR row boundary are masked out, leaving exactly the same
++    predicate as the historical per-row loop.
++    """
++
++    if indices.size < 2:
++        return
++    same_row = np.ones(indices.size - 1, dtype=np.bool_)
++    boundaries = np.asarray(offsets[1:-1], dtype=np.int64) - 1
++    boundaries = boundaries[(boundaries >= 0) & (boundaries < same_row.size)]
++    if boundaries.size:
++        same_row[boundaries] = False
++    if np.any((indices[1:] <= indices[:-1]) & same_row):
++        raise TrainingDataInputError(
++            f"TARGET-DATA2C-MVIDX1 {name} rows must be strictly sorted and duplicate-free."
++        )
+ 
+ 
+ def _inline_array_payload(array: np.ndarray) -> list[Any]:
+@@ -609,22 +624,27 @@
+     *,
+     row_count: int,
+     column_count: int,
++    workers: int = 1,
+ ) -> tuple[np.ndarray, np.ndarray]:
+-    """Return exact column->row CSR-equivalent arrays from row->column CSR."""
++    """Return exact column->row CSR-equivalent arrays from row->column CSR.
++
++    MVIDX-REUSE1 deliberately keeps each individual transpose single-threaded
++    and parallelizes independent families/obligation tables at the outer queue.
++    SciPy's compiled CSR->CSC conversion is a deterministic counting transpose;
++    no atomics or floating-point reductions participate in scientific output.
++    """
+ 
+     edge_count = len(row_columns)
+     if column_count > _INT32_MAX or row_count > _INT32_MAX:
+         raise TrainingDataInputError("TARGET-DATA2C-MVIDX1 v1 sparse transpose requires cardinalities below int32 range.")
+-    # SciPy's C-level CSR->CSC conversion is a deterministic counting transpose
+-    # and avoids Python loops over tens of millions of edges.  The uint32 edge
+-    # array can be viewed as signed int32 because v1 candidate/witness counts
+-    # are explicitly below INT32_MAX.
+     data = np.ones(edge_count, dtype=np.uint8)
+     matrix = csr_matrix(
+         (data, row_columns.view(np.int32), np.asarray(row_offsets, dtype=np.int64)),
+         shape=(row_count, column_count),
+     )
+     inverse = matrix.tocsc(copy=True)
++    # csr->csc emits sorted source-row indices for canonical CSR input.  Keep
++    # the explicit sort as a fail-safe against backend/version differences.
+     inverse.sort_indices()
+     offsets = np.asarray(inverse.indptr, dtype="<u8")
+     rows = np.asarray(inverse.indices, dtype="<u4")
+@@ -638,6 +658,7 @@
+     neighborhood: TargetCoverageExactNeighborhoodFamily,
+     *,
+     candidate_count: int,
++    inverse_workers: int = 1,
+ ) -> TargetCoverageSparseFamilyIndex:
+     """Adopt authenticated NEIGHBOR1 forward CSR and build the legacy inverse."""
+ 
+@@ -656,6 +677,7 @@
+         witness_candidates,
+         row_count=neighborhood.witness_count,
+         column_count=candidate_count,
++        workers=inverse_workers,
+     )
+     return TargetCoverageSparseFamilyIndex(
+         family_id=family.family_id,
+@@ -772,6 +794,8 @@
+ def _build_obligation_sparse_index(
+     domain: Any,
+     role_domain: Any,
++    *,
++    inverse_workers: int = 1,
+ ) -> tuple[
+     tuple[TargetCoverageHardObligation, ...],
+     np.ndarray,
+@@ -792,10 +816,148 @@
+         candidates,
+         row_count=len(obligations),
+         column_count=len(domain.frame_uids),
++        workers=inverse_workers,
+     )
+     return obligations, offsets, candidates, candidate_offsets, candidate_obligations, unit_ids, unit_codes
+ 
+ 
++
++def _mvidx_resource_scope(workers: int) -> StageResourceScope:
++    available = available_cpu_threads()
++    allocated = max(1, min(int(workers), int(available)))
++    return StageResourceScope(
++        stage_name="TARGET-DATA2C-MVIDX-REUSE1",
++        cpu_threads_available=int(available),
++        cpu_threads_budget=int(allocated),
++        python_workers=int(allocated),
++        structural_workers=1,
++        tree_workers=1,
++        blas_threads=1,
++        pytorch_cpu_workers=1,
++        ram_budget_bytes=available_memory_bytes(),
++    )
++
++
++def _family_build_memory_estimate(neighborhood: TargetCoverageExactNeighborhoodFamily) -> int:
++    # Persistent inverse indices plus temporary SciPy data/index arrays and
++    # vectorized validation masks.  This is execution-only admission evidence.
++    edge_bytes = int(neighborhood.edge_count) * 18
++    offset_bytes = (int(neighborhood.candidate_count) + 1) * 16
++    return max(1, edge_bytes + offset_bytes)
++
++
++def _build_domain_sparse_components(
++    domain: Any,
++    role_domain: Any,
++    neighborhoods: TargetCoverageExactNeighborhoodStore,
++    *,
++    inverse_workers: int,
++    progress_callback: Callable[[str], None] | None,
++    resource_scope: StageResourceScope | None = None,
++) -> tuple[
++    tuple[TargetCoverageSparseFamilyIndex, ...],
++    tuple[TargetCoverageHardObligation, ...],
++    np.ndarray,
++    np.ndarray,
++    np.ndarray,
++    np.ndarray,
++    tuple[str, ...],
++    np.ndarray,
++]:
++    required = tuple(sorted((item for item in domain.families if item.required), key=lambda item: item.family_id))
++    cached_domain = neighborhoods.domain(domain.label_domain_id)
++    workers = max(1, min(int(inverse_workers), len(required) + 1))
++
++    def build_family(family: Any) -> TargetCoverageSparseFamilyIndex:
++        cached_family = cached_domain.family(family.family_id)
++        return _build_family_sparse_index_from_neighborhood(
++            family,
++            cached_family,
++            candidate_count=len(domain.frame_uids),
++            inverse_workers=1,
++        )
++
++    if workers == 1:
++        family_indices = tuple(build_family(family) for family in required)
++        obligation_result = _build_obligation_sparse_index(domain, role_domain, inverse_workers=1)
++        return (family_indices, *obligation_result)
++
++    if resource_scope is None:
++        scope = _mvidx_resource_scope(workers)
++    else:
++        if int(resource_scope.python_workers) < workers:
++            raise TrainingDataInputError(
++                "TARGET-DATA2C-MVIDX-REUSE1 resource scope has fewer Python workers than requested."
++            )
++        scope = StageResourceScope(
++            stage_name=resource_scope.stage_name,
++            cpu_threads_available=resource_scope.cpu_threads_available,
++            cpu_threads_budget=resource_scope.cpu_threads_budget,
++            python_workers=workers,
++            structural_workers=1,
++            tree_workers=1,
++            blas_threads=1,
++            pytorch_cpu_workers=1,
++            gpu_jobs=resource_scope.gpu_jobs,
++            ram_budget_bytes=resource_scope.ram_budget_bytes,
++        )
++    results: dict[tuple[str, str], Any] = {}
++    with DeterministicWorkQueue(
++        scope,
++        max_ready_tasks=max(1, 2 * workers),
++        max_inflight_tasks=max(1, 2 * workers),
++        max_completed_tasks=max(1, 2 * workers),
++        heartbeat_interval_seconds=30.0,
++        thread_name_prefix="mdstats-mvidx-reuse1",
++    ) as queue:
++        for position, family in enumerate(required):
++            cached_family = cached_domain.family(family.family_id)
++            queue.submit(
++                task_id=f"family-{position:06d}-{family.family_id}",
++                canonical_order=(0, position),
++                function=build_family,
++                args=(family,),
++                task_kind="mvidx-family-inverse",
++                estimated_memory_bytes=_family_build_memory_estimate(cached_family),
++                locality_key=f"{domain.label_domain_id}:{family.family_id}",
++            )
++        queue.submit(
++            task_id="hard-obligations",
++            canonical_order=(1, 0),
++            function=_build_obligation_sparse_index,
++            args=(domain, role_domain),
++            kwargs={"inverse_workers": 1},
++            task_kind="mvidx-obligation-inverse",
++            estimated_memory_bytes=max(1, len(domain.frame_uids) * 32),
++            locality_key=f"{domain.label_domain_id}:obligations",
++        )
++        expected = len(required) + 1
++        while queue.snapshot().finished_tasks < expected:
++            queue.wait_for_completion()
++            for completion in queue.drain_completed():
++                if completion.canonical_order[0] == 0:
++                    family = required[int(completion.canonical_order[1])]
++                    results[("family", family.family_id)] = completion.value
++                else:
++                    results[("obligations", "0")] = completion.value
++        for completion in queue.drain_completed():
++            if completion.canonical_order[0] == 0:
++                family = required[int(completion.canonical_order[1])]
++                results[("family", family.family_id)] = completion.value
++            else:
++                results[("obligations", "0")] = completion.value
++        snapshot = queue.snapshot()
++
++    family_indices = tuple(results[("family", family.family_id)] for family in required)
++    obligation_result = results[("obligations", "0")]
++    if progress_callback is not None:
++        progress_callback(
++            f"{domain.label_domain_id}: MVIDX-REUSE1 sparse inversion queue; "
++            f"workers={workers}; max-busy={snapshot.max_busy_workers}; "
++            f"families={len(required)}; geometry=skipped"
++        )
++    return (family_indices, *obligation_result)
++
+ def build_target_coverage_sparse_index(
+     target_coverage_reference: Any,
+     target_data_role_freeze: Any,
+@@ -806,6 +968,7 @@
+     query_workers: int = 1,
+     query_block_size: int = 512,
+     global_workers: int | None = None,
++    resource_scope: StageResourceScope | None = None,
+     progress_interval_seconds: float = 30.0,
+     progress_callback: Callable[[str], None] | None = None,
+ ) -> TargetCoverageSparseIndex:
+@@ -815,6 +978,12 @@
+     workers = int(query_workers)
+     block = int(query_block_size)
+     interval = float(progress_interval_seconds)
++    requested_inverse_workers = int(workers if global_workers is None else global_workers)
++    if requested_inverse_workers < 1:
++        raise TrainingDataInputError(
++            "TARGET-DATA2C-MVIDX1 global_workers must be positive when supplied."
++        )
++    inverse_workers = requested_inverse_workers
+     if workers < 1 or block < 1 or interval <= 0.0:
+         raise TrainingDataInputError(
+             "TARGET-DATA2C-MVIDX1 query_workers/query_block_size/progress_interval_seconds must be positive."
+@@ -860,26 +1029,17 @@
+         if set(domain.frame_uids) != set(role_domain.size_development_frame_uids):
+             raise TrainingDataInputError("TARGET-DATA2C-MVIDX1 coverage/role frame-domain mismatch.")
+         required = tuple(sorted((item for item in domain.families if item.required), key=lambda item: item.family_id))
+-        family_indices: list[TargetCoverageSparseFamilyIndex] = []
+-        for position, family in enumerate(required, start=1):
+-            if progress_callback is not None:
+-                progress_callback(
+-                    f"{domain.label_domain_id}: family {position}/{len(required)} {family.family_id} ({len(family.values)} witnesses)"
+-                )
+-            cached_family = neighborhoods.domain(domain.label_domain_id).family(family.family_id)
+-            if progress_callback is not None:
+-                progress_callback(
+-                    f"{domain.label_domain_id}: family {family.family_id}: NEIGHBOR1 cache hit; "
+-                    f"witnesses={cached_family.witness_count}; edges={cached_family.edge_count}; geometry=skipped"
+-                )
+-            family_indices.append(
+-                _build_family_sparse_index_from_neighborhood(
+-                    family,
+-                    cached_family,
+-                    candidate_count=len(domain.frame_uids),
+-                )
++        if progress_callback is not None:
++            edge_count = sum(
++                neighborhoods.domain(domain.label_domain_id).family(family.family_id).edge_count
++                for family in required
++            )
++            progress_callback(
++                f"{domain.label_domain_id}: NEIGHBOR1 cache hit for {len(required)} required families; "
++                f"edges={edge_count}; geometry=skipped; inverse-workers={inverse_workers}"
+             )
+         (
++            family_indices,
+             obligations,
+             obligation_offsets,
+             obligation_candidates,
+@@ -887,7 +1047,14 @@
+             candidate_obligations,
+             unit_ids,
+             unit_codes,
+-        ) = _build_obligation_sparse_index(domain, role_domain)
++        ) = _build_domain_sparse_components(
++            domain,
++            role_domain,
++            neighborhoods,
++            inverse_workers=inverse_workers,
++            progress_callback=progress_callback,
++            resource_scope=resource_scope,
++        )
+         domains.append(
+             TargetCoverageSparseDomainIndex(
+                 label_domain_id=domain.label_domain_id,
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/pyproject.toml /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/pyproject.toml
+--- /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/pyproject.toml	2026-08-17 17:55:43.000000000 +0000
++++ /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/pyproject.toml	2026-08-17 21:25:32.356809499 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.227a0"
++version = "0.20.228a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/release/qualification_logs/MLFF_MVIDX_REUSE1_QUALIFICATION_0.20.228a0.json /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/release/qualification_logs/MLFF_MVIDX_REUSE1_QUALIFICATION_0.20.228a0.json
+--- /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/release/qualification_logs/MLFF_MVIDX_REUSE1_QUALIFICATION_0.20.228a0.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/release/qualification_logs/MLFF_MVIDX_REUSE1_QUALIFICATION_0.20.228a0.json	2026-08-17 21:34:49.984140971 +0000
+@@ -0,0 +1,147 @@
++{
++  "acceptance": {
++    "advance_to": "COVREF-PAR1",
++    "broad_regression": "PASS",
++    "exact_scientific_equivalence": "PASS",
++    "material_cached_mvidx_improvement": "PASS",
++    "stable_inverse_arrays": "PASS",
++    "worker_count_invariance": "PASS"
++  },
++  "architecture_revision": 95,
++  "authority_change": {
++    "gpu": false,
++    "runtime_optimization": true,
++    "scientific": false
++  },
++  "content_digest": "820b75cdd722270285b1fb68b53779e4b7bb0de112591b94edfe58265a86f17e",
++  "date": "2026-08-17",
++  "dependency_graph_schema": 76,
++  "documentation": {
++    "architecture_revision_note": {
++      "path": "docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV95.md",
++      "sha256": "046dd12f7fb250e01ccbd487a1f34d042914acdbab92c8c8b5ddbf7b96349271"
++    },
++    "canonical_markdown": {
++      "path": "docs/arch_manuals/mlff_training_data_architecture.md",
++      "sha256": "8eb0ff72695a9254ad531529bfde98d4bed1c02b50f5dc9c3d3d57f4b29be358"
++    },
++    "canonical_pdf": {
++      "full_render": "PASS",
++      "pages": 47,
++      "path": "docs/arch_manuals/mlff_training_data_architecture.pdf",
++      "preflight": "PASS",
++      "sha256": "dd27145881dfb22a6a55f24817b51d41b57edbb93b017476ccf932b1580233b3",
++      "visual_qa": "PASS"
++    },
++    "dependency_graph": {
++      "path": "docs/arch_manuals/mlff_training_data_dependency_graph.json",
++      "sha256": "494bb8deb9b9d97ebde251c34c92b39b8ac9c1f17cd8904aac5c8c07ebbc564f"
++    },
++    "pdf_comparison_note": "Before/after wrapper timed out while producing intermediate renders; the final 47-page PDF itself fully rendered and changed pages were visually inspected directly.",
++    "release_note": {
++      "path": "docs/history/mlff/release_notes/PATCH_NOTES_0.20.228a0.md",
++      "sha256": "a33f8b75ddca7743e2d01c370461620cfa5baf9e8669e87c8fad690a272093ae"
++    },
++    "spec": {
++      "path": "docs/specs/training_data/mlff_mvidx_reuse1_sparse_inversion_spec.md",
++      "sha256": "c72dd77bf68e217d7519ecaafbbe3d0c4e06b3ab919e8c99f54efc592513c32c"
++    }
++  },
++  "foundation": {
++    "active_qualification_family": "mace-mpa-0",
++    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
++    "mh1_supported_by_same_contract": true,
++    "note": "MVIDX-REUSE1 contains no foundation-model-specific sparse-index semantics; MPA-0 is the active qualification checkpoint and MACE-MH-1 remains supported by the same runtime contract.",
++    "variant": "medium"
++  },
++  "gate": "MVIDX-REUSE1_STABLE_PARALLEL_SPARSE_INVERSION",
++  "implementation": {
++    "canonical_order_restored_after_parallel_completion": true,
++    "implementation_manifest": {
++      "content_digest": "c3bf8538159a7fe249309e196efe4f92e3e258d1dc151d33accbaa44b92b3897",
++      "path": "benchmarks/mlff_mvidx_reuse1_implementation_manifest_0.20.228a0.json",
++      "sha256": "b23607f3125d2d855c5cbc8a6ac65a5738e404b03f2ab4baf00524e8a9ed6323"
++    },
++    "nested_sparse_kernel_threading": false,
++    "parallel_granularity": "independent required-family inversions and hard-obligation construction via DeterministicWorkQueue",
++    "per_component_kernel": "single-task deterministic compiled SciPy CSR-to-CSC counting transpose",
++    "rejected_intra_family_python_parallel_prototype": "exact but slower than compiled sparse transpose on qualification hardware",
++    "vectorized_canonical_csr_validator": true
++  },
++  "inputs": {
++    "dependency_archive": {
++      "path": "/mnt/data/dependencies.tar(20260817-112644).gz",
++      "sha256": "888d545a512396697c8583d69bc9ed33110914675f466a4cbcafc3e1e1407171"
++    },
++    "replay_source": {
++      "path": "/mnt/data/replay_fps_12000.extxyz",
++      "sha256": "187eed42fb2d6cf5e7e745ffed0ce34541e92c6a35ec9e654520cd3c7198403c"
++    },
++    "target_archive": {
++      "path": "/mnt/data/training_LTA.tar(4).gz",
++      "sha256": "bc1b7e25ba338507ae38b260bcd283356de887b6c6cf762a2c146733f1c3c958"
++    }
++  },
++  "next_gate": "COVREF-PAR1",
++  "performance_evidence": {
++    "control_0_20_227a0_serial_median_seconds": 0.590266875999987,
++    "current_0_20_228a0": {
++      "one_lane_median_seconds": 0.1562867385000004,
++      "three_lane_median_seconds": 0.08693167149999681,
++      "two_lane_median_seconds": 0.1176901005000559
++    },
++    "interpretation": "Execution timing is same-host evidence; exact sparse-index digest and byte equality are scientific authority.",
++    "primary_record": {
++      "path": "benchmarks/mlff_mvidx_reuse1_cloud_cpu_mpa0_2026-08-17.json",
++      "sha256": "2b8d37608d1438a18c05c6d4e93c14078c85984e2836b06e821cfc6e64522f55"
++    },
++    "report": {
++      "path": "benchmarks/mlff_mvidx_reuse1_cloud_cpu_mpa0_2026-08-17.md",
++      "sha256": "1474a30eab322c32224a16f85d62074209d0361c6c07ba9635683ac775562c87"
++    },
++    "serial_speedup": 3.7768199763154273,
++    "three_lane_speedup": 6.790009507639671
++  },
++  "release": "0.20.228a0",
++  "schema": "mdstats.mlff-mvidx-reuse1-qualification.v1",
++  "scientific_oracles": {
++    "inverse_arrays_byte_identical": true,
++    "mvidx1_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
++    "neighborhood_geometry_recomputed_on_cache_hit": false,
++    "worker_count_invariant": true,
++    "workload": {
++      "exact_edges": 3194880,
++      "families": 6,
++      "query_block_size": 512,
++      "witnesses": 49152
++    }
++  },
++  "status": "PASS",
++  "tests": {
++    "archival_spec_boundary": {
++      "excluded_from_current_release_pass_fail": [
++        "tests/test_mlff_target_data2c_mvidx1_specification.py"
++      ],
++      "reason": "Historical release-pinned specification asserts 0.20.209a0 / architecture revision 76 and is retained as archival evidence; runtime/scientific test_mlff_target_data2c_mvidx1.py is part of the 111-test current authority."
++    },
++    "compileall": {
++      "paths": [
++        "mdstats",
++        "benchmarks",
++        "tools"
++      ],
++      "status": "PASS"
++    },
++    "current_gate_and_dependencies": {
++      "failed": 0,
++      "passed": 42,
++      "warnings": 1
++    },
++    "target_data2_functional_authority": {
++      "failed": 0,
++      "passed": 111,
++      "warning_class": "expected velocity-reconstruction/normalization warnings unchanged from prior authority",
++      "warnings": 18
++    }
++  }
++}
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/tests/test_mlff_doc_arch1_specification.py /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/tests/test_mlff_doc_arch1_specification.py
+--- /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/tests/test_mlff_doc_arch1_specification.py	2026-08-17 17:57:09.000000000 +0000
++++ /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/tests/test_mlff_doc_arch1_specification.py	2026-08-17 21:26:44.570354165 +0000
+@@ -16,10 +16,10 @@
+ 
+ 
+ def test_doc_arch1_release_and_current_authority_are_synchronized():
+-    assert mdstats.__version__ == "0.20.227a0"
++    assert mdstats.__version__ == "0.20.228a0"
+     text = MANUAL.read_text(encoding="utf-8")
+-    assert "architecture_revision: 94" in text
+-    assert 'release: "mdstats 0.20.227a0"' in text
++    assert "architecture_revision: 95" in text
++    assert 'release: "mdstats 0.20.228a0"' in text
+     assert "# Part VI - Performance and execution architecture" in text
+     assert "# Part VII - Current implementation status and frozen forward gates" in text
+     assert "## Context retrieval index" in text
+@@ -51,7 +51,7 @@
+     assert "ExactNeighborhoodEngine" in text
+     assert "MVIDX1 SHALL reuse the exact neighborhood output produced by FEAS1" in text
+     assert "worker count, query block size" in text.lower()
+-    assert "stable parallel CSR-to-CSC transpose" in text
++    assert "stable parallel sparse inversion" in text
+     assert "P_{\\mathrm{outer}}\\times P_{\\mathrm{native}}" in text
+     assert "workers-busy" not in text  # prose uses implementation-neutral busy/allocated naming
+     assert "busy/allocated workers" in text
+@@ -72,7 +72,7 @@
+     revision_rows = [line for line in REV_INDEX.read_text().splitlines() if re.match(r"^\|\s*\d+\s*\|", line)]
+     revisions = [int(line.split("|")[1].strip()) for line in revision_rows]
+     assert revisions == sorted(set(revisions))
+-    assert revisions[-1] == 94
++    assert revisions[-1] == 95
+     assert "NEIGHBOR1" in REV_INDEX.read_text()
+     assert "0.20.227a0" in REL_INDEX.read_text()
+     assert (ROOT / "docs/history/mlff/LINEAGE.md").is_file()
+@@ -81,7 +81,7 @@
+ 
+ def test_doc_arch1_graph_and_directory_ownership_are_current():
+     graph = json.loads(GRAPH.read_text())
+-    assert graph["architecture_revision"] == 94
++    assert graph["architecture_revision"] == 95
+     assert graph["schema_version"] == 76
+     node_ids = {node["id"] for node in graph["nodes"]}
+     for node in (
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/tests/test_mlff_mvidx_reuse1_specification.py /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/tests/test_mlff_mvidx_reuse1_specification.py
+--- /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/tests/test_mlff_mvidx_reuse1_specification.py	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/tests/test_mlff_mvidx_reuse1_specification.py	2026-08-17 21:26:00.657405706 +0000
+@@ -0,0 +1,79 @@
++from __future__ import annotations
++
++import json
++from pathlib import Path
++
++import numpy as np
++import pytest
++
++import mdstats
++from mdstats.training_data import target_coverage_sparse_index as mvidx
++from tests.test_mlff_target_data2b_feas1 import _reference_and_role
++
++ROOT = Path(__file__).resolve().parents[1]
++MANUAL = ROOT / "docs/arch_manuals/mlff_training_data_architecture.md"
++GRAPH = ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json"
++SPEC = ROOT / "docs/specs/training_data/mlff_mvidx_reuse1_sparse_inversion_spec.md"
++EVIDENCE = ROOT / "benchmarks/mlff_mvidx_reuse1_cloud_cpu_mpa0_2026-08-17.json"
++
++
++def test_mvidx_reuse1_worker_count_is_execution_only() -> None:
++    reference, role = _reference_and_role(split_units=True)
++    feasibility, neighborhoods = mdstats.build_target_coverage_feasibility_artifacts(
++        reference, role, query_workers=1, query_block_size=3, block_workers=2
++    )
++    indices = [
++        mdstats.build_target_coverage_sparse_index(
++            reference,
++            role,
++            feasibility,
++            exact_neighborhood_store=neighborhoods,
++            query_workers=1,
++            global_workers=workers,
++        )
++        for workers in (1, 2, 3)
++    ]
++    assert len({item.content_digest for item in indices}) == 1
++    for domain0, domain1 in zip(indices[0].domains, indices[-1].domains, strict=True):
++        for family0, family1 in zip(domain0.families, domain1.families, strict=True):
++            assert np.array_equal(family0.candidate_offsets, family1.candidate_offsets)
++            assert np.array_equal(family0.candidate_witnesses, family1.candidate_witnesses)
++
++
++def test_mvidx_reuse1_vectorized_row_validator_matches_row_semantics() -> None:
++    offsets = np.asarray([0, 2, 2, 5, 6], dtype="<u8")
++    good = np.asarray([1, 4, 0, 3, 7, 2], dtype="<u4")
++    mvidx._validate_sorted_unique_rows(offsets, good, name="test")
++    for bad in (
++        np.asarray([4, 1, 0, 3, 7, 2], dtype="<u4"),
++        np.asarray([1, 4, 0, 0, 7, 2], dtype="<u4"),
++    ):
++        with pytest.raises(mdstats.TrainingDataInputError, match="strictly sorted"):
++            mvidx._validate_sorted_unique_rows(offsets, bad, name="test")
++
++
++def test_mvidx_reuse1_release_docs_and_evidence_are_current() -> None:
++    assert mdstats.__version__ == "0.20.228a0"
++    text = MANUAL.read_text(encoding="utf-8")
++    assert "architecture_revision: 95" in text
++    assert "Gate MVIDX-REUSE1 - stable parallel sparse inversion - COMPLETE" in text
++    assert "**Next gate.** `COVREF-PAR1`." in text
++    assert SPEC.is_file() and EVIDENCE.is_file()
++    evidence = json.loads(EVIDENCE.read_text(encoding="utf-8"))
++    assert evidence["release"] == "0.20.228a0"
++    assert evidence["scientific_digest"] == "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c"
++    assert evidence["acceptance"]["status"] == "PASS"
++    assert evidence["acceptance"]["three_lane_speedup"] > 2.0
++    assert evidence["acceptance"]["next_gate"] == "COVREF-PAR1"
++
++
++def test_mvidx_reuse1_dependency_graph_is_closed() -> None:
++    graph = json.loads(GRAPH.read_text(encoding="utf-8"))
++    assert graph["architecture_revision"] == 95
++    assert graph["documentation_gate"] == "MVIDX_REUSE1_SPARSE_TRANSPOSE"
++    assert graph["next_gate"] == "COVREF_PAR1_GLOBAL_BLOCK_QUEUE"
++    node = next(item for item in graph["nodes"] if item["id"] == "MVIDX_REUSE1_SPARSE_TRANSPOSE")
++    assert node["implementation_status"] == "implemented"
++    assert node["implemented_release"] == "0.20.228a0"
++    assert node["scientific_authority_change"] is False
++    assert node["mvidx_scientific_output_digest"] == "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/tests/test_mlff_neighbor1_specification.py /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/tests/test_mlff_neighbor1_specification.py
+--- /mnt/data/mdstats-mvidxreuse1-old/mdstats-0.20.227a0/tests/test_mlff_neighbor1_specification.py	2026-08-17 17:57:09.000000000 +0000
++++ /mnt/data/mdstats-mvidxreuse1-work/mdstats-0.20.228a0/tests/test_mlff_neighbor1_specification.py	2026-08-17 21:26:26.576898997 +0000
+@@ -16,21 +16,18 @@
+ 
+ 
+ def test_neighbor1_release_manual_and_spec_are_current() -> None:
+-    assert mdstats.__version__ == "0.20.227a0"
+     text = MANUAL.read_text(encoding="utf-8")
+-    assert "architecture_revision: 94" in text
+-    assert 'release: "mdstats 0.20.227a0"' in text
+     assert "Gate NEIGHBOR1 - shared FEAS1/MVIDX exact-neighborhood engine - COMPLETE" in text
+-    assert "**Next gate.** `MVIDX-REUSE1`." in text
++    assert "MVIDX-REUSE1" in text
+     assert SPEC.is_file() and REV.is_file() and PATCH.is_file() and EVIDENCE.is_file()
+ 
+ 
+ def test_neighbor1_dependency_graph_closes_gate_and_advances_sparse_transpose() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+-    assert graph["architecture_revision"] == 94
++    assert graph["architecture_revision"] >= 94
+     assert graph["schema_version"] == 76
+-    assert graph["documentation_gate"] == "NEIGHBOR1_SHARED_EXACT_ENGINE"
+-    assert graph["next_gate"] == "MVIDX_REUSE1_SPARSE_TRANSPOSE"
++    assert graph["documentation_gate"] in {"NEIGHBOR1_SHARED_EXACT_ENGINE", "MVIDX_REUSE1_SPARSE_TRANSPOSE"}
++    assert "MVIDX_REUSE1_SPARSE_TRANSPOSE" in {node["id"] for node in graph["nodes"]}
+     node = next(item for item in graph["nodes"] if item["id"] == "NEIGHBOR1_SHARED_EXACT_ENGINE")
+     assert node["implementation_status"] == "implemented"
+     assert node["implemented_release"] == "0.20.227a0"

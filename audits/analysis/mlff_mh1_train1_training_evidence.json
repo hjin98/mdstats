@@ -1,0 +1,106 @@
+{
+  "bounded_real_training": {
+    "architecture_preserved": {
+      "first_linear_output_irreps": "128x0e",
+      "use_edge_irreps_first": true
+    },
+    "backend": "e3nn",
+    "epoch0_checkpoint_sha256": "025c9e1ab58d06e4a7aafad719ba83629a7d0d2fc79bb819bcb0240bfe97971f",
+    "epochs": 1,
+    "gradient_updates": 2,
+    "trained_heads": [
+      "pt_head",
+      "target_head"
+    ],
+    "trained_model_dtype": "float64",
+    "trained_multihead_model_sha256": "3aa3c6b02b11c6571eddeefdba5db102797b9de07d81b01ea59c50cc15274cd1",
+    "training_completed": true,
+    "training_log_relative": "../../../../tiny_smoke/logs/mdstats_final_smoke_run-1.log"
+  },
+  "cli_realization": {
+    "loader_dry_run_passed": true,
+    "parsed_foundation_head": "omat_pbe",
+    "parsed_foundation_model_sha256": "7b6f3cce6d2086164082f1cb5739098de2db990d6a49f0d60e66a3a0f1ae545e",
+    "parsed_head_names": [
+      "target_head",
+      "pt_head"
+    ],
+    "parsed_multiheads_finetuning": true,
+    "passed": true,
+    "record_digest": "b216491aae4cb0d3dddffb642952b53b2a347feb2f8f4cfbe330efe15c18c561",
+    "schema": "mdstats.mace-config-realization-record.v4"
+  },
+  "cueq_training": {
+    "silent_e3nn_fallback_permitted": false,
+    "status": "blocked_runtime_missing_cueq_oeq_cuda"
+  },
+  "data8": {
+    "bundle_digest": "0f04443116174c9ae9c173a51acfb944a98eba639107e902f77e4016a457630a",
+    "bundle_schema": "mdstats.data8-preparation-bundle.v5",
+    "job_digest": "f65a3a95a6e196eac649eecb9df3a170d9cc435e3db13f6b7e5c0196f9369778",
+    "job_schema": "mdstats.mace-job-artifact.v1",
+    "protocol_digest": "4e4f12be03d787d04436ecc96abd71a8c39b4ae4863cb2d7e3a15f7e15254d39",
+    "protocol_schema": "mdstats.training-protocol-identity.v7",
+    "replay_train_configurations": 1,
+    "target_train_configurations": 1
+  },
+  "date": "2026-08-14",
+  "evidence_digest": "6f174165cf20bb56731c88774b8a8c68e208e9fa37057de1816cd6dbc2be7168",
+  "executable_training_foundation": {
+    "checkpoint_reference": "shared/foundation/selected_head/mace-mh-1-omat_pbe-selected-head.model",
+    "checkpoint_sha256": "7b6f3cce6d2086164082f1cb5739098de2db990d6a49f0d60e66a3a0f1ae545e",
+    "extract1_gate_evidence_digest": "46d546f71abcd5a0e4dfa09a30fb4df62288248cceef90125c088b4f62055081",
+    "selected_head_qualification_digest": "0f49db0ff9da291fbb4d70430c71189552a531d0239d92c06d0ca4024b05e365"
+  },
+  "gate": "MH1-TRAIN1",
+  "harness_note": "The monolithic full-smoke helper exceeds the interactive tool invocation window after scientific phases complete; the same immutable tiny DATA8 job was therefore qualified phase-by-phase. A permanent slow integration test covers the bounded epoch path.",
+  "precision": {
+    "critical_audit_digest": "1148de8c0c8bb9df8bb081e0f5c81695c990546561b3bfa98ad5b7bdd4751c80",
+    "critical_audit_passed": true,
+    "critical_audit_schema": "mdstats.mace-critical-precision-audit.v1",
+    "transition_digest": "939ee173c8277789768d129de9566c1be4076ac680eddc09dd375396712dd8ef",
+    "transition_passed": true,
+    "transition_schema": "mdstats.mace-precision-transition-record.v2"
+  },
+  "runtime": {
+    "ase_version": "3.29.0",
+    "backend": "e3nn",
+    "mace_version": "0.3.16",
+    "qualified_for_cli_smoke": true,
+    "runtime_record_content_digest": "d7d78f83377aff3e0ce61b94f9bbc9aff58ee5b3378009505b0a8320a4ecc10d",
+    "torch_version": "2.10.0+cpu"
+  },
+  "schema": "mdstats.mlff-mh1-train1-evidence.v1",
+  "scientific_foundation": {
+    "family": "mace_mh_1",
+    "foundation_potential_identity_digest": "06bf87891d6addebd3ea300fa23fd6401f0b74897f5676394e99507d03c8fc59",
+    "head": "omat_pbe",
+    "source_checkpoint_sha256": "ec00a2705854622fbbd898ccfb7701072fcd674709102d009fb919c1b8cc5dde"
+  },
+  "scope": {
+    "evaluation_scoring_changed": false,
+    "stopping_lr_policy_changed": false,
+    "training_policy_changed": false
+  },
+  "status": "implemented_e3nn_pass_cueq_runtime_blocked",
+  "target_head_roundtrip": {
+    "dtype": "float64",
+    "first_linear_output_irreps": "128x0e",
+    "heads": [
+      "target_head"
+    ],
+    "independent_evaluation_count": 4,
+    "independent_evaluation_finite": true,
+    "independent_evaluation_sha256": "a2a87e115d1f3246d6cb0881bfc5b4bb9fed72f5be59d771118ee79913f5122b",
+    "stock_extraction_passed": true,
+    "target_model_sha256": "d52bbe703abf9a31e03a4ec067d7b091f3f0e5a13df514a95b6a2d3ee04b5c90",
+    "use_edge_irreps_first": true
+  },
+  "test_summary": {
+    "additional_focused_slice": "14 passed, 2 deselected",
+    "prior_gate_train2_legacy": "44 passed, 5 deselected",
+    "production_materialization_qualification": "19 passed",
+    "real_cli_realization": "1 passed",
+    "train1_non_slow": "2 passed, 2 deselected"
+  }
+}

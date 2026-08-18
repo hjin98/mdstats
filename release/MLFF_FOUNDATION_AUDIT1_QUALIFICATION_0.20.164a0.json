@@ -1,0 +1,41 @@
+{
+  "contracts": [
+    "foundation audit consumes exactly the TARGET-DATA2A training-eligible development domains",
+    "foundation baseline reuses completed DATA6 prediction sidecars with zero repeated model inference",
+    "static target metrics include global energy/force/stress, species macro/per-species force error, and P90/P95/P99 atomic vector-error tails",
+    "available DATA6 structural evidence yields generic pair-distance/angular-environment/coordination-conditioned force summaries",
+    "physical probe slots are frozen as deferred_protocol rather than fabricated passes",
+    "prepare restart receipt binds FOUNDATION_AUDIT_VERSION and the persisted foundation_target_audit",
+    "preflight and train fail closed when the audit authority is missing or stale"
+  ],
+  "gate": "FOUNDATION-AUDIT1",
+  "schema": "mdstats.mlff-foundation-audit1-qualification.v1",
+  "sha256": {
+    "CHANGELOG.md": "548bf341d8ca4a7daa80c4d67a9c442af8c23ad0b69e509d7a87edf4dca9f1ab",
+    "PATCH_NOTES_0.20.164a0.md": "07dca968493c64b2532a01e66c7ac5f46da1b1fd06309fd4e32f2706efaa2883",
+    "docs/arch_manuals/mlff_training_data_architecture.md": "d3fbea214c50caf60041d24be62d6db91054548bf9456967d2a28d8198d42014",
+    "docs/arch_manuals/mlff_training_data_architecture.pdf": "fe4aeae205ac686979594f361f41c0abd4fa51e0a5cf319d610f9e0529f7aea9",
+    "mdstats/__init__.py": "93d7662f55d264cd0aa39352af31b913a0210c45cc1c2984a936ab51109b901e",
+    "mdstats/_version.py": "275b0396da0bd3561e068d5824ee98b59428c68347197817f3953700d04a963f",
+    "mdstats/training_data/__init__.py": "3682ca00b4a19325b2e9b5ca6a985f44c8ff55c64b55e6781e993ad7c7ee3ebb",
+    "mdstats/training_data/campaign_cli.py": "94d7d008388f9c4d95d330b7d4f73ee487db1614de7e03c13fce75bfa775d111",
+    "mdstats/training_data/foundation_audit.py": "76b48c8a957f2ec1ff6400513d8fdb107e12a0d9e8097f3fac10388ad8934bd0",
+    "pyproject.toml": "d585dca096ae08552370b2d3f081dc54bce00cb63e79d982e09ce33551dc232d",
+    "tests/test_mlff_foundation_audit1.py": "535e4882e624287e687b1778e718758feae536748a116181b2058426e5c64b7d",
+    "tests/test_mlff_foundation_audit1_specification.py": "dd09612e67db1c3bb4a30a0273faa00194bd742543295a89b81f1e749cb52e31"
+  },
+  "status": "passed",
+  "summary": {
+    "focused_regression": "85 passed, 1 skipped",
+    "historical_unrelated_failure": "tests/test_mlff_data0_architecture_specification.py still hard-codes pyproject version 0.20.140a0",
+    "pdf_changed_pages_visually_checked": [
+      107,
+      108,
+      109
+    ],
+    "pdf_pages": 124,
+    "pdf_preflight": "openable, 124 pages, not encrypted, not scanned",
+    "skipped": "real LTA training root not supplied to synthetic campaign CLI suite"
+  },
+  "version": "0.20.164a0"
+}

@@ -1,0 +1,41 @@
+{
+  "schema": "mdstats.cueq-repeat1-diag3.cpu-qualification.v1",
+  "release": "0.20.218a0",
+  "architecture_revision": 85,
+  "dependency_graph_schema": 67,
+  "gate": "CUEQ-REPEAT1-DIAG3",
+  "authorizing": false,
+  "active_train2_fp32_parity": {
+    "rtol": 1e-05,
+    "atol": 1e-05,
+    "changed": false
+  },
+  "diagnostic": {
+    "warmup_count_per_backend": 1,
+    "post_warmup_samples_per_backend": 10,
+    "e3nn_self_pairs": 45,
+    "cueq_self_pairs": 45,
+    "cross_pairs": 100,
+    "comparison_mode": "all_pairs",
+    "record_schema": "mdstats.training-acceleration-repeatability-diagnostic.v2"
+  },
+  "qualification": {
+    "cueq_focused_suite": {
+      "passed": 53,
+      "failed": 0
+    },
+    "release_critical_focused_suite": {
+      "passed": 25,
+      "failed": 0,
+      "note": "overlaps the CuEq-focused suite; counts are not additive"
+    },
+    "source_compile": "passed",
+    "pdf_render_qa": "passed"
+  },
+  "gpu_qualification": "not_executed_deferred_to_user_workstation",
+  "notes": [
+    "DIAG3 is non-authorizing",
+    "FINAL-GPU1 remains archival",
+    "historical repeatability-diagnostic v1 records remain readable"
+  ]
+}

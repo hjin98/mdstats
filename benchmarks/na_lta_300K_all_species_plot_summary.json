@@ -1,0 +1,117 @@
+{
+  "html_path": "/mnt/data/na_lta_300K_all_species_density_framework_trajectories.html",
+  "html_bytes": 34758038,
+  "sha256": "5a58a6c2d0db0e81aff54bff49b43f5efecb478fbe0080c97fe8a34c460a2bbe",
+  "title": "300 K Na-LTA: all-species densities, trajectories, atomic mean net, and mean framework",
+  "trace_count": 28,
+  "mesh_trace_count": 12,
+  "scatter3d_trace_count": 16,
+  "density_face_count": 629416,
+  "density_vertex_count": 319367,
+  "trajectory_traces": [
+    "O trajectories",
+    "Na trajectories",
+    "Al trajectories",
+    "Si trajectories"
+  ],
+  "endpoint_traces": [
+    {
+      "name": "All-species trajectories start",
+      "legendgroup": "trajectory-endpoint:start",
+      "showlegend": true,
+      "point_count": 168
+    },
+    {
+      "name": "All-species trajectories end",
+      "legendgroup": "trajectory-endpoint:end",
+      "showlegend": true,
+      "point_count": 168
+    }
+  ],
+  "density_traces": [
+    {
+      "name": "Na density",
+      "legendgroup": "atomic-density-0",
+      "showlegend": true,
+      "vertices": 26088,
+      "faces": 51364
+    },
+    {
+      "name": "Na density",
+      "legendgroup": "atomic-density-0",
+      "showlegend": false,
+      "vertices": 15567,
+      "faces": 30610
+    },
+    {
+      "name": "Na density",
+      "legendgroup": "atomic-density-0",
+      "showlegend": false,
+      "vertices": 7922,
+      "faces": 15492
+    },
+    {
+      "name": "Si density",
+      "legendgroup": "atomic-density-1",
+      "showlegend": true,
+      "vertices": 21970,
+      "faces": 43844
+    },
+    {
+      "name": "Si density",
+      "legendgroup": "atomic-density-1",
+      "showlegend": false,
+      "vertices": 13054,
+      "faces": 26012
+    },
+    {
+      "name": "Si density",
+      "legendgroup": "atomic-density-1",
+      "showlegend": false,
+      "vertices": 6625,
+      "faces": 13154
+    },
+    {
+      "name": "Al density",
+      "legendgroup": "atomic-density-2",
+      "showlegend": true,
+      "vertices": 22064,
+      "faces": 44032
+    },
+    {
+      "name": "Al density",
+      "legendgroup": "atomic-density-2",
+      "showlegend": false,
+      "vertices": 13138,
+      "faces": 26180
+    },
+    {
+      "name": "Al density",
+      "legendgroup": "atomic-density-2",
+      "showlegend": false,
+      "vertices": 6672,
+      "faces": 13248
+    },
+    {
+      "name": "O density",
+      "legendgroup": "atomic-density-3",
+      "showlegend": true,
+      "vertices": 98274,
+      "faces": 193124
+    },
+    {
+      "name": "O density",
+      "legendgroup": "atomic-density-3",
+      "showlegend": false,
+      "vertices": 58230,
+      "faces": 114338
+    },
+    {
+      "name": "O density",
+      "legendgroup": "atomic-density-3",
+      "showlegend": false,
+      "vertices": 29763,
+      "faces": 58018
+    }
+  ]
+}

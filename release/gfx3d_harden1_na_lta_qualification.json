@@ -1,0 +1,45 @@
+{
+  "schema": "mdstats.graphics3d.harden1-na-lta-qualification.v1",
+  "package_version": "0.20.156a0",
+  "trajectory": {
+    "name": "dump.prod.Na_lta_300K.old(1).lammpstrj",
+    "sha256": "81c86cc40f5a11031f80817213eb558c02348494d1c6cad9b4775a5bc3c9f9cd",
+    "full_frame_count": 10001,
+    "atom_count": 168,
+    "type_map": "1=Si,2=Al,3=O,4=Na"
+  },
+  "authenticated_topology_cache_smoke": {
+    "stride": 500,
+    "frames": 21,
+    "first_prepare_seconds": 1.5468556369996804,
+    "second_prepare_seconds": 0.37112519499987684,
+    "first_source": "inferred_hysteretic_catalog",
+    "second_source": "authenticated_topology_cache",
+    "cache_authentication": "passed",
+    "catalog_consistency": "partitioned",
+    "topology_count": 21,
+    "mean_framework_exact_equal": true,
+    "cache_bytes": 923727
+  },
+  "long_static_topology_framework_qualification": {
+    "frames": 10001,
+    "fixed_topology_prepare_seconds": 11.2328,
+    "projected_framework_registration_seconds_approx": 0.5,
+    "note": "Measured after the static-cell bulk projected-geometry implementation on the hardening branch; the later GFX3D dominant-category optimization does not alter the static-topology path."
+  },
+  "bounded_before_after": {
+    "frames": 1001,
+    "before_static_bulk_seconds": 13.1667,
+    "after_static_bulk_seconds": 1.1663,
+    "speedup": 11.289461544200462
+  },
+  "scientific_contract": {
+    "density_semantics_changed": false,
+    "framework_mapping_changed": false,
+    "connectivity_cutoffs_changed": false,
+    "trajectory_registration_semantics_changed": false,
+    "renderer_primitive_semantics_changed": false,
+    "variable_cell_fallback_preserved": true,
+    "periodic_multiedge_fallback_preserved": true
+  }
+}

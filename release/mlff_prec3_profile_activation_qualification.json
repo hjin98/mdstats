@@ -1,0 +1,26 @@
+{
+  "architecture_revision": 29,
+  "backend_qualification": {
+    "cueq_production_requirement": "A CuEq-selected campaign must pass the normal real-MACE preflight in its CuEq-enabled runtime before production training.",
+    "cueq_real_runtime_executed": false,
+    "cueq_reason": "cuequivariance and cuequivariance_torch are unavailable in the release qualification environment",
+    "e3nn_real_mace_executed": true
+  },
+  "mace_version": "0.3.16",
+  "notes": [
+    "PREC3 qualifies arithmetic realization and campaign integration, not equality of refine and double RMSE.",
+    "No real CuEq execution claim is made in this release environment."
+  ],
+  "package_version": "0.20.110a0",
+  "qualified_behaviors": [
+    "canonical_single_native_fp32_critical_policy",
+    "canonical_double_fp64_policy",
+    "canonical_refine_fp32_to_fp64_staged_runtime",
+    "fp32_refine_checkpoint_evaluated_under_fp64_policy",
+    "fp32_refine_winner_exactly_promoted_to_fp64_deployment",
+    "profile_reporting_and_durable_precision_summary",
+    "legacy_schedule_free_critical_fp64_backward_compatibility"
+  ],
+  "schema": "mdstats.mlff-prec3-qualification.v1",
+  "scientific_equivalence_claimed": false
+}

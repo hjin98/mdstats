@@ -1,0 +1,104 @@
+{
+  "acceptance": {
+    "exact_scientific_output_digest_across_worker_schedules": true,
+    "foundation_generic_scheduler_with_mpa0_active_and_mh1_supported": true,
+    "full_budget_all_lanes_active": true,
+    "next_gate": "NEIGHBOR1",
+    "no_measured_full_budget_throughput_regression": true,
+    "no_resource_budget_oversubscription": true,
+    "status": "PASS",
+    "target_data2_functional_authority_unchanged": true
+  },
+  "active_foundation": {
+    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
+    "family": "mace-mpa-0",
+    "mh1_supported_by_same_contract": true,
+    "scheduler_foundation_generic": true,
+    "variant": "medium"
+  },
+  "architecture_revision": 93,
+  "artifacts": {
+    "dependency_graph_sha256": "5c597373f31d141d6082263de9279200078b8915c718b470e373aa313437c3c2",
+    "release_note": "docs/history/mlff/release_notes/PATCH_NOTES_0.20.226a0.md",
+    "release_note_sha256": "07f39a47f2020b78be7974ccb14837f17fe081ba36ac4e6bd8255cbea0916af0",
+    "revision_note": "docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV93.md",
+    "revision_note_sha256": "fdb8bdc562c7ebf75838a70bae5c0c07b3216fa2c758b68b85b64948ea77d758",
+    "spec": "docs/specs/training_data/mlff_parcore1_deterministic_work_queue_spec.md",
+    "spec_sha256": "510ca0a17449b870a28c825fddc2864d356a672e4f1cd67fdacf515cb3a946b6"
+  },
+  "authority_change": {
+    "foundation_model_semantics": false,
+    "gpu": false,
+    "runtime_optimization": true,
+    "scientific": false
+  },
+  "benchmark": {
+    "all_auto_lanes_observed_active": true,
+    "frozen_perfbase1_auto_wall_ratio": 0.9705546843169933,
+    "implementation_manifest": "benchmarks/mlff_parcore1_implementation_manifest_0.20.226a0.json",
+    "implementation_manifest_sha256": "886777959fbd6a5c6187c39c065dc5de7fb80ad54a08fd142a03446a4f050ed1",
+    "paired_auto_control_median_wall_seconds": 0.9386478534997877,
+    "paired_auto_parcore1_median_wall_seconds": 0.8290598864996355,
+    "paired_auto_wall_ratio": 0.8832491156384698,
+    "record": "benchmarks/mlff_parcore1_feas1_cloud_cpu_mpa0_2026-08-17.json",
+    "record_content_digest": "209cfef018a61ebb4e9b77b438c3479052a1b16e230717258647a0b38d2f92b7",
+    "record_sha256": "07651d67e9623efbe271edf63c983750175243b97ace3e222bc4327cb20dd035",
+    "report": "benchmarks/mlff_parcore1_feas1_cloud_cpu_mpa0_2026-08-17.md",
+    "report_sha256": "b6b3ffc38f21b169e594dd85160a9474fe750d5eb9377b427792646e94c6e913",
+    "scientific_output_digest": "937214c70d1f2baae883993082f1ceb25bea6007a5a2be0beee045262f5c0613",
+    "status": "PASS"
+  },
+  "date": "2026-08-17",
+  "dependency_graph_schema_version": 75,
+  "gate": "PARCORE1",
+  "implementation": {
+    "executing_lanes_bounded_by_stage_scope": true,
+    "feas1_migrated": true,
+    "heartbeat_telemetry": true,
+    "locality_metadata": true,
+    "memory_admission_backpressure": true,
+    "native_thread_quarantine_for_explicit_campaign_scope": true,
+    "numa_affinity_activated": false,
+    "o1_memory_telemetry": true,
+    "ordered_reduction": true,
+    "persistent_memory_reservations": true,
+    "ready_inflight_completed_bounded": true,
+    "shared_queue_module": "mdstats.training_data.work_queue",
+    "task_identity_errors": true
+  },
+  "manual": {
+    "before_after_render_compare": "performed against 0.20.225a0; page count 46 -> 47",
+    "canonical_markdown": "docs/arch_manuals/mlff_training_data_architecture.md",
+    "canonical_pdf": "docs/arch_manuals/mlff_training_data_architecture.pdf",
+    "layout_pages_spot_checked": [
+      36,
+      40,
+      41,
+      47
+    ],
+    "markdown_sha256": "2b92b98e1d7956341e5c1f85efc00d02d2173b63af4f40338fff5f40ef00dc1e",
+    "pdf_pages": 47,
+    "pdf_preflight": "PASS",
+    "pdf_sha256": "c128f362d9d3fb4e88fea428aaca1d3a08f40088e1b5427e40f49cd59f33906f",
+    "rendered_pages": 47,
+    "visual_qa": "PASS; no clipping/overlap/broken glyphs on changed pages after long-code-span corrections"
+  },
+  "release": "0.20.226a0",
+  "schema": "mdstats.mlff-parcore1-qualification.v1",
+  "tests": {
+    "historical_version_pinned_specifications": {
+      "qualification_role": "archival; excluded from current-release pass/fail",
+      "reason": "historical tests intentionally assert their release/revision as current authority; current DOC-ARCH/PERFBASE tests were made successor-safe where they remain normative"
+    },
+    "parcore1_and_current_documentation": {
+      "failed": 0,
+      "passed": 21
+    },
+    "python_compileall": "passed",
+    "target_data2_functional": {
+      "failed": 0,
+      "passed": 111,
+      "warnings": 18
+    }
+  }
+}

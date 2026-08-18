@@ -1,0 +1,43 @@
+{
+  "schema": "mdstats.mlff-campaign-default-qualification.v1",
+  "package_version": "0.20.129a0",
+  "date": "2026-08-09",
+  "status": "qualified",
+  "adaptive_revision_status": "ADAPT-PREC1 through ADAPT-MIGRATE1 remain closed; no adaptive scientific policy changed",
+  "generated_training_matrix": {
+    "enabled_methods": ["multihead_replay"],
+    "disabled_by_default_but_configurable_methods": ["naive_fine_tuning"],
+    "selection_sizes": [512],
+    "optimizer_seeds": [1, 2, 3, 4],
+    "cross_validation_folds_per_seed": 3,
+    "final_development_runs_per_seed": 1,
+    "jobs_per_seed": 4,
+    "total_default_training_jobs": 16,
+    "fold_partition_seed": 104729,
+    "shared_fold_partition_across_seeds": true
+  },
+  "compatibility": {
+    "existing_toml_rewritten": false,
+    "historical_modes_seeds_configs_readable": true,
+    "nested_method_parser_implicit_seed_fallback_changed": false,
+    "adaptive_thresholds_changed": false,
+    "adaptive_monitor_sizes_changed": false,
+    "adaptive_ranking_or_evaluation_changed": false,
+    "precision_semantics_changed": false
+  },
+  "qualification": [
+    {
+      "scope": "ADAPT-PREC1/MON1/STOP1/RANK1/EVAL1/VERIFY1/MIGRATE1 focused suite with supplied MACE 0.3.16 dependencies importable",
+      "result": "80 passed"
+    },
+    {
+      "scope": "campaign CLI + seed/fold matrix + adaptive + MLFF specification/version sweep",
+      "result": "241 passed, 1 skipped, 1 deselected",
+      "skip": "real LTA training root not supplied",
+      "deselection": "pre-existing release/mlff_data9a9a_real_mpa0_restart_smoke.json fixture absent from supplied source package"
+    }
+  ],
+  "pdf_verification": {
+    "mlff_campaign_cli_user_guide.pdf": "13 pages rendered with pdftoppm at 120 dpi; changed default-policy page visually inspected; no new clipping/overlap observed"
+  }
+}

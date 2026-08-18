@@ -1,0 +1,81 @@
+{
+  "schema": "mdstats.gfx3d-harden6-qualification.v1",
+  "version": "0.20.161a0",
+  "date": "2026-08-12",
+  "status": "pass",
+  "scope": "GFX3D/PAR-DENS production-time calibration authority and Phase-B sparse artifact reuse",
+  "scientific_numerics_changed": false,
+  "focused_tests": {
+    "passed": 175,
+    "failed": 0,
+    "warnings": 25,
+    "elapsed_seconds": 10.43,
+    "test_files": [
+      "tests/test_runtime_resources_ld10.py",
+      "tests/test_density_par_dens2_scheduler.py",
+      "tests/test_density_support_atlas.py",
+      "tests/test_density_tiled_fft.py",
+      "tests/test_atomic_density.py",
+      "tests/test_framework_dynamics.py",
+      "tests/test_graphics3d_cli.py",
+      "tests/test_graphics3d_contracts.py",
+      "tests/test_graphics3d_gfx4_dependencies.py",
+      "tests/test_graphics3d_gfx5_rendering.py",
+      "tests/test_graphics3d_layers.py",
+      "tests/test_graphics3d_harden1.py",
+      "tests/test_graphics3d_harden3.py"
+    ]
+  },
+  "root_cause": {
+    "scheduler_deadlock": false,
+    "finding": "Scheduled fields re-entered resolve_density_resource_limits() under live 9/9/10-worker leases and could launch fresh worker-count-specific FFT/BLAS calibration before the first field progress callback.",
+    "concurrency_issue": "Concurrent calibration used SciPy FFT and process-global threadpoolctl native-thread limits from multiple field threads.",
+    "fix": "Bind the scene-resolved DensityTimeModel in context and inherit it through scheduled/nested density execution so production realization never recalibrates by worker lease."
+  },
+  "phase_b_reuse": {
+    "reused_artifacts": [
+      "aggregated periodic CIC source",
+      "finite Gaussian stencil",
+      "packed positive CIC source",
+      "periodic block routing",
+      "exact support atlas"
+    ],
+    "duplicate_sparse_planning_removed": true,
+    "scientific_cache_identity_unchanged": true,
+    "auto_non_sparse_sidecars_discarded": true
+  },
+  "support_atlas_resource_resolution": {
+    "before": "resource/time model resolution once per source block",
+    "after": "resource/time model resolution once per support atlas",
+    "support_identity_changed": false
+  },
+  "real_na_lta_stride_500_smoke": {
+    "input": "dump.prod.Na_lta_300K.old(2).lammpstrj",
+    "stride": 500,
+    "type_map": "1=Al,2=Na,3=O,4=Si",
+    "density_fields": 4,
+    "cpu_tokens": 4,
+    "density_planning_start_seconds_approx": 1.4,
+    "density_scheduler_start_seconds_approx": 11.6,
+    "first_field_progress_seconds_approx": 11.6,
+    "al_complete_seconds_approx": 15.1,
+    "na_complete_seconds_approx": 16.1,
+    "si_complete_seconds_approx": 18.4,
+    "o_complete_seconds_approx": 24.1,
+    "density_realization_complete_seconds_approx": 24.1,
+    "source_preparation_complete_seconds_approx": 24.5,
+    "silent_post_admission_interval_removed": true,
+    "direct_pair_counts": {
+      "Al": 45393032,
+      "Na": 45240660,
+      "Si": 45338370,
+      "O": 181328875
+    }
+  },
+  "remaining_hotspots": [
+    "Phase-B planning remains serial across independent density species",
+    "FFT support-atlas dilation recomputes binary-kernel spectra per source block",
+    "Near-static framework-species adaptive density produces extremely fine grids and large direct-pair counts",
+    "Sparse isosurface connected-component labeling remains a downstream rendering hotspot"
+  ]
+}

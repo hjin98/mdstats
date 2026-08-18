@@ -1,0 +1,71 @@
+{
+  "content_digest": "66d804c5b8bc186eb66861995c493e8e5d0f11f9bbbd339d8da7b090650dbe0e",
+  "created_at_utc": "2026-08-16T00:09:49Z",
+  "fonts": "all inspected fonts embedded",
+  "markdown_is_authoritative": true,
+  "mdstats_version": "0.20.184a0",
+  "pdfs": [
+    {
+      "pages": 193,
+      "path": "mlff_training_data_architecture.pdf",
+      "sha256": "6432c52038f1dc4899e299c6480f610ef7c1db9c02a7712bcc8e98c8a5ac7eda",
+      "size_bytes": 879159
+    },
+    {
+      "pages": 3,
+      "path": "mlff_perf_p2r_successive_fidelity_execution_spec.pdf",
+      "sha256": "3acafe10e96148555d0d96b4a89d961e96e2ab152dfa2e4e607af65fbc5de38f",
+      "size_bytes": 53797
+    },
+    {
+      "pages": 3,
+      "path": "mlff_final_gpu1_deferred_qualification_spec.pdf",
+      "sha256": "d3bb550b1871b06c5cf2c46d199915e412fe9e079e6409e00b77ef9bef732410",
+      "size_bytes": 41909
+    },
+    {
+      "pages": 4,
+      "path": "mlff_size_fidelity1_coarse_screen_calibration_spec.pdf",
+      "sha256": "91576befd3e3c585094fee23947861357932e13119b31c340ee7b814dea31cec",
+      "size_bytes": 57257
+    },
+    {
+      "pages": 2,
+      "path": "ARCHITECTURE_NOTES_MLFF_REV50.pdf",
+      "sha256": "e6b3a9a806acc65163b2f9f18e1234559b6232198ad978a9bb0f2d34093d168f",
+      "size_bytes": 31731
+    },
+    {
+      "pages": 2,
+      "path": "ARCHITECTURE_NOTES_MLFF_REV51.pdf",
+      "sha256": "7fc077b09a41f724a01f691ff84613460481b469958a50f96f4714adaadcb6ae",
+      "size_bytes": 24919
+    },
+    {
+      "pages": 2,
+      "path": "PATCH_NOTES_0.20.184a0.pdf",
+      "sha256": "5ca93f800054a3f26b6bfce4ee63ca6039501886886dc1368a8f9a9336090f73",
+      "size_bytes": 32536
+    },
+    {
+      "pages": 2,
+      "path": "benchmarks/mlff_perf_p2r_cloud_cpu_2026-08-15.pdf",
+      "sha256": "786d9848a0484197299ad2ed2e50a80fed377e7d9e9d20d6549627b7eb592f35",
+      "size_bytes": 45925
+    }
+  ],
+  "preflight": "all listed PDFs openable, unencrypted, non-scanned",
+  "renderer": "Pandoc/XeLaTeX via pdf skill md_to_pdf.py",
+  "schema": "mdstats.perf-p2r-pdf-qa.2026-08.v1",
+  "status": "pass",
+  "visual_review": {
+    "architecture_manual": "whole-document 72 dpi contact-sheet sanity plus high-resolution review of changed final-gate/PERF-P2R pages",
+    "defects_corrected_before_release": [
+      "foundation SHA-256 table overflow in architecture manual replaced by wrapped blocks",
+      "PERF-P2R specification compressed from sparse five-page layout to three pages with no clipping",
+      "benchmark orphan reference page removed"
+    ],
+    "remaining_gate_local_clipping_or_overlap": false,
+    "smaller_documents": "all pages reviewed at 160-180 dpi"
+  }
+}

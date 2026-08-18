@@ -1,0 +1,1905 @@
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SOURCE_PATCH_0.20.149a0_to_0.20.150a0.patch' /mnt/data/mdstats-0.20.149a0-complete-source-package/CHANGELOG.md /mnt/data/mdstats_gfx5_work/CHANGELOG.md
+--- /mnt/data/mdstats-0.20.149a0-complete-source-package/CHANGELOG.md	2026-08-11 10:30:15.040033135 +0000
++++ /mnt/data/mdstats_gfx5_work/CHANGELOG.md	2026-08-11 10:43:36.426812702 +0000
+@@ -1,3 +1,11 @@
++## 0.20.150a0 - 2026-08-11
++
++- Complete GFX3D-5 universal renderer-neutral composition: built-in layers emit generic primitives and the common Plotly backend contains no built-in science-family dispatch.
++- Remove renderer-only `source_scene` references from prepared built-in layer products.
++- Add named layer visibility groups, render priority, reproducible camera presets, scene-wide periodic display replication, universal view controls, and generic browser payload/budget accounting.
++- Extend `mdstats-3d` with camera, periodic-image, cell, visibility, axes, background, and viewport controls plus TOML layer priority.
++- Requalify the supplied 300 K Na-LTA stride-500 scene: scientific products are exactly identical to 0.20.149a0; a 2x1x1 renderer-neutral view produces 20 traces and 149,896 density faces with explicit payload evidence. Focused qualification: 83 passed.
++
+ ## 0.20.149a0 - 2026-08-11
+ 
+ - Complete GFX3D-4 with product-level scientific dependency planning for framework topology, atomic connectivity, atomic trajectory, and atomic density instead of one monolithic `FrameworkDynamicsScene` dependency key.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SOURCE_PATCH_0.20.149a0_to_0.20.150a0.patch' /mnt/data/mdstats-0.20.149a0-complete-source-package/PATCH_NOTES_0.20.150a0.md /mnt/data/mdstats_gfx5_work/PATCH_NOTES_0.20.150a0.md
+--- /mnt/data/mdstats-0.20.149a0-complete-source-package/PATCH_NOTES_0.20.150a0.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats_gfx5_work/PATCH_NOTES_0.20.150a0.md	2026-08-11 10:43:36.004726090 +0000
+@@ -0,0 +1,70 @@
++# mdstats 0.20.150a0
++
++## GFX3D-5 - universal rendering and interaction semantics
++
++This release closes the foundational GFX3D-1 through GFX3D-5 architecture.
++
++### Renderer-neutral layer output
++
++- Removed the temporary built-in `source_scene` renderer reference from prepared framework, connectivity, trajectory, and density layer products.
++- Built-in layer adapters now emit renderer-neutral `PointSet3D`, `SegmentSet3D`, `PolylineSet3D`, `TriangleMesh3D`, and `CellWireframe3D` primitives directly from already-prepared scientific products.
++- Replaced the GFX3D legacy-composite Plotly composition path with a generic primitive-only Plotly backend.
++- The common renderer contains no built-in framework/connectivity/trajectory/density dispatch. A mock fifth registered layer renders without modifying the common result schema.
++
++### Universal interaction and view semantics
++
++- Named layers are independent legend/visibility groups; Plotly group-click toggles one whole layer.
++- Added render-only integer layer `priority`; declaration order remains the deterministic tie-break.
++- Added scene-level `visible_layers` initial-state override.
++- Added reproducible camera/view semantics: orthographic/perspective projection, explicit camera eye, and `[100]`, `[010]`, `[001]`, `[110]`, `[101]`, `[011]`, `[111]`, and `isometric` presets.
++- Added scene-wide periodic display replication through canonical, `NxMxK`, explicit-shift, and count/origin forms.
++- Periodic replication is a view transformation over prepared primitives and does not alter density normalization, trajectory weights, connectivity occupancy, or scientific identities.
++- Added universal background, axis, width, height, and cell visibility controls.
++
++### Browser payload authority
++
++- Added renderer-neutral browser payload accounting for trace count, point count, segment count, triangle faces, and estimated geometry bytes.
++- Added explicit compact/balanced/quality browser budgets.
++- Budget failures raise a clear error; requested layers are never silently dropped.
++- Per-layer payload contribution and total payload/budget records are render evidence only.
++
++### CLI/config additions
++
++Added:
++
++- `--camera`
++- `--periodic-images`
++- `--cell-mode`
++- repeatable `--visible-layer`
++- `--show-axes`
++- `--background`
++- `--width`
++- `--height`
++- TOML `[[layer]].priority`
++- matching `[scene]` view records.
++
++### Scientific invariance
++
++Using the supplied 300 K Na-LTA MLFF trajectory at stride 500 (21 frames x 168 atoms), GFX3D-5 reproduces the `0.20.149a0` scientific products exactly:
++
++- mean-framework coordinate SHA-256: `a646f0712ef8aa0c49f06826367a83848a8273f7a0803c7e5ff7ce938764025e`
++- Na trajectory coordinate SHA-256: `bd1184330923381803db1e0f09cab8e93605fb4b6e954cd95074367e019635be`
++- Na density SHA-256: `7dfe8c055122a0a5ee1ab47fe50c1f827158aa65447057794936e5544747a9f8`
++- density integral: `23.999999999999996`
++- density-planning approval ID: `0d0c876f4aa4f87ec6795bd04944017838bfe0eab11a8c6d70e66c15906132cc`
++
++A 2x1x1 `[111]` renderer-neutral qualification produces 20 Plotly traces and 149,896 displayed density faces with about 5.46 MB of estimated geometry payload. Only the explicitly requested Na-density layer starts visible. Built-in prepared layer products contain zero renderer-only `source_scene` references.
++
++### Tests
++
++Focused GFX3D/framework/renderer qualification:
++
++- **83 passed**
++- **0 failed**
++- **0 skipped**
++
++The warning stream consists only of the existing legacy equal-aspect/orientation diagnostics exercised by compatibility tests.
++
++### Next visualization extension
++
++The universal GFX3D foundation is now complete. The next scientific visualization gate is `GFX3D-RING1`, which should expose the existing ring scientific authority through the stable layer/primitive architecture.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SOURCE_PATCH_0.20.149a0_to_0.20.150a0.patch' /mnt/data/mdstats-0.20.149a0-complete-source-package/docs/arch_manuals/mdstats_3d_graphics_architecture.md /mnt/data/mdstats_gfx5_work/docs/arch_manuals/mdstats_3d_graphics_architecture.md
+--- /mnt/data/mdstats-0.20.149a0-complete-source-package/docs/arch_manuals/mdstats_3d_graphics_architecture.md	2026-08-11 10:08:52.104041891 +0000
++++ /mnt/data/mdstats_gfx5_work/docs/arch_manuals/mdstats_3d_graphics_architecture.md	2026-08-11 10:42:42.660818141 +0000
+@@ -64,7 +64,7 @@
+ The architecture distinguishes three statuses:
+ 
+ `current baseline`
+-: behavior implemented through `mdstats 0.20.149a0` and available for migration;
++: behavior implemented through `mdstats 0.20.150a0` and available for migration;
+ 
+ `normative target`
+ : behavior required by this standard but not yet implemented;
+@@ -72,7 +72,7 @@
+ `deferred`
+ : behavior intentionally left to a later approved layer or renderer specification.
+ 
+-As of `mdstats 0.20.149a0`, **GFX3D-1 through GFX3D-4 are implemented**. The universal immutable request, selection, dependency, context, identity, registry, manifest, renderer-neutral primitive, generic render-result, and legacy compatibility contracts live under `mdstats.graphics3d`. GFX3D-2 adds registered independent `FrameworkTopologyLayer`, `AtomicConnectivityLayer`, `AtomicTrajectoryLayer`, and `AtomicDensityLayer` adapters plus a common layer-keyed Plotly composer. GFX3D-3 adds the packaged `mdstats-3d` command, strict TOML compilation, layer shorthand, the source-aware `lta-mixed-alkali-density` compatibility preset, canonical manifest-only mode, deterministic precedence/overwrite behavior, and the historical example compatibility shim. GFX3D-4 replaces the raw CLI's monolithic layer dependency with product-level framework/connectivity/trajectory/density keys, adds single-flight shared cache authority, deterministic parallel dependency resolution, source-level batching under the owning scientific scheduler, and dependency timing/cache evidence. The qualified framework-dynamics implementation may still batch joint preparation internally, but layers no longer treat the composite scene object as their scientific dependency.
++As of `mdstats 0.20.150a0`, **GFX3D-1 through GFX3D-5 are implemented**. The universal immutable request, selection, dependency, context, identity, registry, manifest, renderer-neutral primitive, generic render-result, and legacy compatibility contracts live under `mdstats.graphics3d`. GFX3D-2 adds registered independent `FrameworkTopologyLayer`, `AtomicConnectivityLayer`, `AtomicTrajectoryLayer`, and `AtomicDensityLayer` adapters. GFX3D-3 adds the packaged `mdstats-3d` command, strict TOML compilation, layer shorthand, the source-aware `lta-mixed-alkali-density` compatibility preset, canonical manifest-only mode, deterministic precedence/overwrite behavior, and the historical example compatibility shim. GFX3D-4 replaces the raw CLI's monolithic layer dependency with product-level framework/connectivity/trajectory/density keys plus single-flight shared cache authority. GFX3D-5 removes the remaining renderer coupling: layer adapters emit renderer-neutral primitives, the common Plotly backend dispatches only on primitive classes, and view state, periodic replication, visibility, render priority, generic legend grouping, and browser-payload accounting are universal render semantics rather than scientific-layer special cases.
+ 
+ The central design rule is:
+ 
+@@ -1882,29 +1882,26 @@
+ 
+ ## GFX3D-5 - universal rendering and interaction semantics
+ 
+-### Scope
++### Implemented authority (`0.20.150a0`)
+ 
+-Complete the generic render result and interaction model.
++GFX3D-5 is implemented. Built-in layer adapters now materialize renderer-neutral `PointSet3D`, `SegmentSet3D`, `PolylineSet3D`, `TriangleMesh3D`, and `CellWireframe3D` primitives from already-prepared scientific products. `render_graphics3d_plotly()` contains no built-in framework/connectivity/trajectory/density dispatch; it understands only the common primitive vocabulary and therefore accepts newly registered layer types without changing the common result schema. The temporary `source_scene` renderer reference has been removed from prepared built-in layer products.
+ 
+-Required work:
++Named layers are Plotly legend groups with group-click visibility semantics. Declaration order remains canonical while the render-only integer `render_priority` may change backend draw order without changing scientific identity. `initially_visible` and scene-level `visible_layers` determine interactive starting state only. Camera projection, named `[100]`/`[110]`/`[111]`/isometric presets, explicit camera eyes, background/axis controls, and width/height are reproducible view records.
+ 
+-- generic layer tree;
+-- layer visibility groups;
+-- generic legend grouping;
+-- explicit layer ordering/render priority;
+-- view presets;
+-- periodic display controls shared across layers;
+-- generic browser payload accounting;
+-- reproducible view record;
+-- renderer-neutral primitive provenance;
+-- compatibility wrapper for `plot_framework_dynamics_3d` where feasible.
++Periodic display replication is one scene-wide view transformation. `periodic_images` accepts a canonical reference image, rectangular `NxMxK` counts, or explicit lattice-image shifts. The same lattice shift is applied to every prepared primitive, so framework, connectivity, trajectories, densities, and future layers cannot drift into different periodic display gauges. Display replication does not duplicate scientific occupancy, density normalization, trajectory weights, or scientific evidence.
+ 
+-### Acceptance
++The renderer measures generic trace, point, segment, face, and estimated geometry-byte payload before Plotly construction and checks the selected browser profile. Budget failure is explicit; requested layers are never silently dropped. Per-layer payload contribution, primitive count, display-replication count, render priority, view state, and browser budget are render evidence only.
++
++The supplied Na-LTA trajectory remains scientifically invariant against `0.20.149a0`: mean-framework coordinates, Na trajectory coordinates, Na density values/integral, and density-planning authority are exactly identical. A stride-500 21-frame renderer-neutral scene with 2x1x1 periodic display produces 20 Plotly traces, 149,896 mesh faces, and about 5.46 MB of estimated geometry payload; only the requested Na-density layer is initially visible in the qualification view.
++
++### Acceptance - satisfied
+ 
+ - no generic renderer code contains science-domain dispatch for built-in layer types;
+ - adding a mock fifth layer through the registry requires no common result-schema change;
+-- visibility/camera changes do not alter scientific identities;
+-- browser budget failures remain explicit rather than silently dropping requested layers.
++- visibility/camera/periodic-display changes do not alter scientific identities;
++- render priority changes backend ordering only;
++- browser budget failures remain explicit rather than silently dropping requested layers;
++- built-in prepared layer products no longer carry a renderer-only `source_scene` reference.
+ 
+ # Post-foundation scientific visualization gates
+ 
+@@ -2085,12 +2082,16 @@
+ 
+ # Recommended next implementation
+ 
+-GFX3D-1 through GFX3D-4 are complete through `mdstats 0.20.149a0`. The next implementation gate is **GFX3D-5 - universal rendering and interaction semantics**.
+-
+-The universal CLI now has both a stable command/configuration surface and product-level scientific dependency authority. The remaining architectural coupling is in rendering: `render_graphics3d_plotly()` still reuses the qualified fixed composite renderer one layer at a time through a temporary `source_scene` compatibility reference. GFX3D-5 must replace that backend coupling with renderer-neutral prepared primitives, a generic layer tree/visibility model, universal legend/order/view semantics, and shared periodic/browser-budget controls.
++GFX3D-1 through GFX3D-5 are complete through `mdstats 0.20.150a0`. The universal scene/dependency/rendering foundation is therefore closed. The next visualization work should begin with the first scientific extension gate, **GFX3D-RING1 - ring visualization adapter**, after confirming the ring scientific authority to expose from the framework/ring subsystem. Cage, site, assignment, transition-path, and Markov-network layers can then follow without another common scene redesign.
+ 
+ # Revision record
+ 
++## 2026-08-11 - GFX3D-5 implementation (`0.20.150a0`)
++
++Removed the remaining legacy composite-renderer coupling from `render_graphics3d_plotly()`. Built-in adapters now emit renderer-neutral primitive records directly from prepared framework, connectivity, trajectory, and density products. Added generic primitive-only Plotly realization, layer legend groups, visibility overrides, integer render priority, scene-wide periodic image replication, reproducible camera/view presets, and generic browser payload/budget evidence. The renderer has no built-in layer-family dispatch and a mock fifth registered layer renders without a result-schema change.
++
++Focused qualification covers all GFX3D-1 through GFX3D-5 contracts plus the legacy framework/graph renderers: 83 passed. A real 21-frame Na-LTA stride-500 qualification verifies zero `source_scene` renderer references in prepared layer products, one underlying source preparation, exact scientific-product equality to `0.20.149a0`, 2x1x1 shared periodic replication, camera/visibility semantics, and explicit browser payload accounting.
++
+ ## 2026-08-11 - GFX3D-4 implementation (`0.20.149a0`)
+ 
+ Replaced the raw CLI's monolithic `framework_dynamics_scene` layer dependency with product-level `framework_topology_product`, `atomic_connectivity_product`, `atomic_trajectory_product`, and `atomic_density_product` keys. Added `Graphics3DDependencySource` / `GraphicsScientificProduct`, the `LTAGraphics3DDependencySource` raw-source authority, single-flight concurrent cache resolution, deterministic dependency-plan collation, dependency timing/cache evidence, explicit in-memory/no-durable-cache policy, and source-level qualified batching under the existing framework-dynamics resource scheduler. Legacy prepared `FrameworkDynamicsScene` inputs remain supported through the historical adapter path.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SOURCE_PATCH_0.20.149a0_to_0.20.150a0.patch' /mnt/data/mdstats-0.20.149a0-complete-source-package/docs/guides/mdstats_3d_graphics_user_guide.md /mnt/data/mdstats_gfx5_work/docs/guides/mdstats_3d_graphics_user_guide.md
+--- /mnt/data/mdstats-0.20.149a0-complete-source-package/docs/guides/mdstats_3d_graphics_user_guide.md	2026-08-11 10:04:25.821697447 +0000
++++ /mnt/data/mdstats_gfx5_work/docs/guides/mdstats_3d_graphics_user_guide.md	2026-08-11 10:43:12.213075803 +0000
+@@ -21,7 +21,7 @@
+ 
+ # What `mdstats-3d` does
+ 
+-`mdstats-3d` is the universal configurable 3-D scene command introduced in `mdstats 0.20.148a0`; `0.20.149a0` adds the GFX3D-4 shared scientific dependency DAG underneath the same command surface.
++`mdstats-3d` is the universal configurable 3-D scene command introduced in `mdstats 0.20.148a0`; `0.20.149a0` adds the shared scientific dependency DAG and `0.20.150a0` completes renderer-neutral layer composition, universal view controls, layer visibility groups, periodic replication, and browser-payload accounting.
+ 
+ The first four independent graphical layer types are:
+ 
+@@ -207,6 +207,51 @@
+ 
+ only those two CLI layers are displayed.
+ 
++
++# View, visibility, and periodic display
++
++View controls are universal and do not change the scientific products in the scene. For example:
++
++```bash
++mdstats-3d dump.lammpstrj \
++  --config na_lta.toml \
++  --camera "[111]" \
++  --periodic-images 2x2x1 \
++  --visible-layer "LTA framework" \
++  --visible-layer "Na density"
++```
++
++Useful view options are:
++
++```text
++--projection orthographic|perspective
++--camera [100]|[110]|[111]|isometric
++--periodic-images 2x2x1
++--cell-mode reference|none
++--visible-layer NAME
++--show-axes
++--background light|dark|transparent
++--width N
++--height N
++```
++
++`--visible-layer` may be repeated. Layers not listed start hidden but remain inside the self-contained HTML and can be toggled from the legend without recomputation. Plotly group-click toggles a complete named layer.
++
++Equivalent TOML is:
++
++```toml
++[scene]
++projection = "orthographic"
++camera = "[111]"
++periodic_images = "2x2x1"
++visible_layers = ["LTA framework", "Na density"]
++cell_mode = "reference"
++```
++
++Periodic replication is display-only. A 2x2x1 scene does not multiply density normalization, trajectory weights, connectivity occupancy, or any scientific evidence.
++
++A layer may also set `priority = -10`, `0`, `10`, etc. in its `[[layer]]` table to control draw order. Priority is render-only; declaration order breaks ties.
++
+ # Output protection
+ 
+ `mdstats-3d` does not overwrite an existing HTML or scene manifest by default.
+@@ -250,12 +295,12 @@
+ 
+ The wall-time value is advisory; it is not a hard scientific stop.
+ 
+-# Shared scientific dependencies (GFX3D-4)
++# Shared scientific dependencies and renderer-neutral output
+ 
+ The command surface and layer composition are universal, and raw preparation now exposes separate framework-topology, atomic-connectivity, trajectory, and density product dependencies. Omitted layer families omit their dependency key. Duplicate instances share equal keys, and concurrent requests for one scientific key execute once within a scene context.
+ 
+-The LTA provider still uses the qualified framework-dynamics machinery internally when that scientific owner needs joint registration/density planning. That batching is hidden behind the dependency DAG and does not make the composite scene object the scientific dependency of every layer.
++The LTA provider still uses the qualified framework-dynamics machinery internally when that scientific owner needs joint registration/density planning. That batching is hidden behind the dependency DAG and does not make the composite scene object the scientific dependency of every layer. As of GFX3D-5, prepared layers also no longer carry the composite scene merely so the renderer can work: each adapter emits renderer-neutral primitives and the common Plotly backend only knows primitive classes.
+ 
+ # What comes next
+ 
+-The next architecture gate is **GFX3D-5 - universal rendering and interaction semantics**. It will complete generic layer-tree interaction, visibility grouping, camera/view presets, periodic-display controls, and renderer-neutral browser accounting.
++The common GFX3D foundation is complete through GFX3D-5. The next visualization extension is **GFX3D-RING1**, which will expose the existing ring scientific authority as an independent registered layer before cage, site, assignment, transition-path, and Markov-network layers are added.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SOURCE_PATCH_0.20.149a0_to_0.20.150a0.patch' /mnt/data/mdstats-0.20.149a0-complete-source-package/docs/specifications/mdstats_gfx3d_cli_spec.md /mnt/data/mdstats_gfx5_work/docs/specifications/mdstats_gfx3d_cli_spec.md
+--- /mnt/data/mdstats-0.20.149a0-complete-source-package/docs/specifications/mdstats_gfx3d_cli_spec.md	2026-08-11 10:04:25.821484501 +0000
++++ /mnt/data/mdstats_gfx5_work/docs/specifications/mdstats_gfx3d_cli_spec.md	2026-08-11 10:43:12.212920061 +0000
+@@ -24,7 +24,7 @@
+ 
+ # Status and authority
+ 
+-This specification is the normative user-facing contract for the universal CLI through **GFX3D-4**, implemented in `mdstats 0.20.149a0`.
++This specification is the normative user-facing contract for the universal CLI through **GFX3D-5**, implemented in `mdstats 0.20.150a0`.
+ 
+ Architecture authority remains:
+ 
+@@ -162,9 +162,17 @@
+ density_max_smearing_to_sample_sd_ratio = 0.50
+ density_sample_sd_quantile = 0.10
+ projection = "orthographic"
++camera = "[111]"
++periodic_images = "2x2x1"
++visible_layers = ["framework", "Na density"]
++cell_mode = "reference"
++show_axes = false
++background = "light"
++width = 1000
++height = 800
+ ```
+ 
+-`camera` and `periodic_images` are reserved view records. Complete universal view semantics are a GFX3D-5 deliverable.
++The view-only keys above are render provenance and do not enter scene/layer scientific identities. `camera` accepts `[100]`, `[010]`, `[001]`, `[110]`, `[101]`, `[011]`, `[111]`, `isometric`, a three-value eye, or an explicit camera table. `periodic_images` accepts `reference`, an `NxMxK` count, a three-integer count array, an explicit array of lattice shifts, or `{counts=[...], origin=[...]}`. Periodic display is applied scene-wide to all renderer-neutral primitives.
+ 
+ The density numerical options above remain source-wide because the qualified density owner performs one jointly planned density scene. Under GFX3D-4, density layers depend on the product-level `atomic_density_product` key rather than on a monolithic scene key; duplicate density layers share that dependency.
+ 
+@@ -221,6 +229,7 @@
+ render = { line_width = 1.6, opacity = 0.28, show_legend = true }
+ visible = true
+ enabled = true
++priority = 0
+ 
+ [[layer]]
+ type = "connectivity"
+@@ -421,6 +430,6 @@
+ - current framework/Plotly compatibility;
+ - historical LTA example input-helper compatibility.
+ 
+-The GFX3D-3 implementation record for `0.20.148a0` reports **83 focused tests passed**. GFX3D-4 adds focused dependency-DAG/single-flight qualification in `0.20.149a0`; see the release record for the exact focused count.
++The GFX3D-5 implementation record for `0.20.150a0` reports **83 focused tests passed** across GFX3D-1 through GFX3D-5 plus the legacy framework/graph renderers. The real Na-LTA renderer-neutral qualification is recorded separately in the release evidence.
+ 
+ A bounded real source-tree smoke used the authenticated 300 K Na-LTA trajectory with stride 500 (21 frames x 168 atoms), compiled `framework + trajectory:Na + density:Na`, wrote the canonical manifest, and generated a self-contained HTML artifact using a bounded non-adaptive density configuration.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SOURCE_PATCH_0.20.149a0_to_0.20.150a0.patch' /mnt/data/mdstats-0.20.149a0-complete-source-package/mdstats/__init__.py /mnt/data/mdstats_gfx5_work/mdstats/__init__.py
+--- /mnt/data/mdstats-0.20.149a0-complete-source-package/mdstats/__init__.py	2026-08-11 10:00:07.919368067 +0000
++++ /mnt/data/mdstats_gfx5_work/mdstats/__init__.py	2026-08-11 10:41:03.689075532 +0000
+@@ -5133,7 +5133,7 @@
+     "build_mlcv_lifecycle_authority", "mlcv_replay_semantics_stale_boundary", "protocol_freeze_authority_from_mlcv",
+ ]
+ 
+-# GFX3D-4 shared dependency DAG and cache authority (0.20.149a0).
++# GFX3D-5 universal renderer-neutral composition and view authority (0.20.150a0).
+ from .graphics3d import (
+     GRAPHICS_DEPENDENCY_KEY_SCHEMA,
+     GRAPHICS_LAYER_REQUEST_SCHEMA,
+@@ -5151,6 +5151,8 @@
+     Graphics3DRegistryError,
+     Graphics3DRenderResult,
+     Graphics3DValidationError,
++    GraphicsBrowserBudget,
++    GraphicsBrowserPayload,
+     GraphicsDependencyKey,
+     GraphicsDependencyPlanEntry,
+     GraphicsDependencyRequest,
+@@ -5195,6 +5197,11 @@
+     AtomicDensityLayer,
+     prepare_graphics3d_scene,
+     render_graphics3d_plotly,
++    measure_browser_payload,
++    resolve_camera,
++    resolve_periodic_image_shifts,
++    resolve_view_visibility,
++    GFX3D5_PLOTLY_SCHEMA,
+     BUILTIN_PRESETS,
+     GFX3D_CONFIG_SCHEMA,
+     LTA_MIXED_ALKALI_PRESET,
+@@ -5223,6 +5230,8 @@
+     "Graphics3DRegistryError",
+     "Graphics3DRenderResult",
+     "Graphics3DValidationError",
++    "GraphicsBrowserBudget",
++    "GraphicsBrowserPayload",
+     "GraphicsDependencyKey",
+     "GraphicsDependencyPlanEntry",
+     "GraphicsDependencyRequest",
+@@ -5267,6 +5276,11 @@
+     "AtomicDensityLayer",
+     "prepare_graphics3d_scene",
+     "render_graphics3d_plotly",
++    "measure_browser_payload",
++    "resolve_camera",
++    "resolve_periodic_image_shifts",
++    "resolve_view_visibility",
++    "GFX3D5_PLOTLY_SCHEMA",
+     "BUILTIN_PRESETS",
+     "GFX3D_CONFIG_SCHEMA",
+     "LTA_MIXED_ALKALI_PRESET",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SOURCE_PATCH_0.20.149a0_to_0.20.150a0.patch' /mnt/data/mdstats-0.20.149a0-complete-source-package/mdstats/_version.py /mnt/data/mdstats_gfx5_work/mdstats/_version.py
+--- /mnt/data/mdstats-0.20.149a0-complete-source-package/mdstats/_version.py	2026-08-11 10:00:20.462896666 +0000
++++ /mnt/data/mdstats_gfx5_work/mdstats/_version.py	2026-08-11 10:40:39.264387134 +0000
+@@ -1,3 +1,3 @@
+ """Package version."""
+ 
+-__version__ = "0.20.149a0"
++__version__ = "0.20.150a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SOURCE_PATCH_0.20.149a0_to_0.20.150a0.patch' /mnt/data/mdstats-0.20.149a0-complete-source-package/mdstats/graphics3d/__init__.py /mnt/data/mdstats_gfx5_work/mdstats/graphics3d/__init__.py
+--- /mnt/data/mdstats-0.20.149a0-complete-source-package/mdstats/graphics3d/__init__.py	2026-08-11 09:59:35.266303028 +0000
++++ /mnt/data/mdstats_gfx5_work/mdstats/graphics3d/__init__.py	2026-08-11 10:40:39.264253065 +0000
+@@ -69,7 +69,9 @@
+ )
+ from .lta_preset import LTAGraphics3DDependencySource
+ from .prepare import prepare_graphics3d_scene
+-from .plotly_renderer import render_graphics3d_plotly
++from .plotly_renderer import GFX3D5_PLOTLY_SCHEMA, render_graphics3d_plotly
++from .browser import GraphicsBrowserBudget, GraphicsBrowserPayload, measure_browser_payload
++from .view import resolve_camera, resolve_periodic_image_shifts, resolve_view_visibility
+ 
+ register_builtin_graphics3d_layers(DEFAULT_GRAPHICS_LAYER_REGISTRY)
+ from .scene import build_graphics_scene_manifest, plan_graphics_scene_dependencies
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SOURCE_PATCH_0.20.149a0_to_0.20.150a0.patch' /mnt/data/mdstats-0.20.149a0-complete-source-package/mdstats/graphics3d/browser.py /mnt/data/mdstats_gfx5_work/mdstats/graphics3d/browser.py
+--- /mnt/data/mdstats-0.20.149a0-complete-source-package/mdstats/graphics3d/browser.py	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats_gfx5_work/mdstats/graphics3d/browser.py	2026-08-11 10:34:12.837960579 +0000
+@@ -0,0 +1,85 @@
++"""Generic browser-payload accounting for GFX3D-5."""
++from __future__ import annotations
++
++from dataclasses import dataclass
++from typing import Iterable
++
++import numpy as np
++
++from .errors import Graphics3DValidationError
++from .primitives import (
++    ArrowSet3D, CellWireframe3D, GraphicsPrimitive3D, PointSet3D,
++    PolylineSet3D, SegmentSet3D, TextLabelSet3D, TriangleMesh3D,
++)
++
++
++@dataclass(frozen=True, slots=True)
++class GraphicsBrowserPayload:
++    trace_count: int = 0
++    point_count: int = 0
++    segment_count: int = 0
++    face_count: int = 0
++    estimated_geometry_bytes: int = 0
++
++    def to_json_dict(self) -> dict[str, int]:
++        return {
++            "trace_count": int(self.trace_count),
++            "point_count": int(self.point_count),
++            "segment_count": int(self.segment_count),
++            "face_count": int(self.face_count),
++            "estimated_geometry_bytes": int(self.estimated_geometry_bytes),
++        }
++
++
++@dataclass(frozen=True, slots=True)
++class GraphicsBrowserBudget:
++    max_traces: int = 512
++    max_points: int = 5_000_000
++    max_faces: int = 1_500_000
++    max_geometry_bytes: int = 512 * 1024 * 1024
++
++    @classmethod
++    def for_profile(cls, profile: str) -> "GraphicsBrowserBudget":
++        key = str(profile).strip().lower()
++        if key in {"interactive_browser", "balanced"}:
++            return cls()
++        if key == "compact":
++            return cls(max_traces=320, max_points=2_000_000, max_faces=600_000, max_geometry_bytes=256 * 1024 * 1024)
++        if key in {"quality", "raw_reference"}:
++            return cls(max_traces=1024, max_points=10_000_000, max_faces=3_000_000, max_geometry_bytes=1024 * 1024 * 1024)
++        raise Graphics3DValidationError(f"Unknown GFX3D browser profile {profile!r}.")
++
++    def validate(self, payload: GraphicsBrowserPayload) -> None:
++        checks = (
++            (payload.trace_count, self.max_traces, "traces"),
++            (payload.point_count, self.max_points, "points"),
++            (payload.face_count, self.max_faces, "faces"),
++            (payload.estimated_geometry_bytes, self.max_geometry_bytes, "geometry bytes"),
++        )
++        for actual, maximum, label in checks:
++            if int(actual) > int(maximum):
++                raise Graphics3DValidationError(
++                    f"GFX3D browser payload requires {actual} {label}, exceeding the explicit budget {maximum}; "
++                    "reduce requested display replication/detail or increase the browser budget explicitly."
++                )
++
++
++def measure_browser_payload(primitives: Iterable[GraphicsPrimitive3D]) -> GraphicsBrowserPayload:
++    traces = points = segments = faces = nbytes = 0
++    for primitive in primitives:
++        traces += 1
++        if isinstance(primitive, PointSet3D):
++            points += len(primitive.positions); nbytes += primitive.positions.nbytes
++        elif isinstance(primitive, PolylineSet3D):
++            points += len(primitive.points); nbytes += primitive.points.nbytes + primitive.offsets.nbytes
++        elif isinstance(primitive, SegmentSet3D):
++            segments += len(primitive.segments); points += 2 * len(primitive.segments); nbytes += primitive.segments.nbytes
++        elif isinstance(primitive, TriangleMesh3D):
++            points += len(primitive.vertices); faces += len(primitive.faces); nbytes += primitive.vertices.nbytes + primitive.faces.nbytes
++        elif isinstance(primitive, ArrowSet3D):
++            points += len(primitive.origins); nbytes += primitive.origins.nbytes + primitive.vectors.nbytes
++        elif isinstance(primitive, TextLabelSet3D):
++            points += len(primitive.positions); nbytes += primitive.positions.nbytes + sum(len(s.encode("utf8")) for s in primitive.labels)
++        elif isinstance(primitive, CellWireframe3D):
++            segments += 12; points += 24; nbytes += primitive.cell.nbytes + primitive.origin.nbytes
++    return GraphicsBrowserPayload(traces, points, segments, faces, int(nbytes))
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SOURCE_PATCH_0.20.149a0_to_0.20.150a0.patch' /mnt/data/mdstats-0.20.149a0-complete-source-package/mdstats/graphics3d/cli.py /mnt/data/mdstats_gfx5_work/mdstats/graphics3d/cli.py
+--- /mnt/data/mdstats-0.20.149a0-complete-source-package/mdstats/graphics3d/cli.py	2026-08-11 09:54:12.108704684 +0000
++++ /mnt/data/mdstats_gfx5_work/mdstats/graphics3d/cli.py	2026-08-11 10:38:07.206366242 +0000
+@@ -88,6 +88,14 @@
+     parser.add_argument("--framework-breaking-cutoff", type=float, default=None)
+     parser.add_argument("--title", default=None, help="Figure title override.")
+     parser.add_argument("--projection", choices=("orthographic", "perspective"), default=None)
++    parser.add_argument("--camera", default=None, help="Camera preset ([100], [110], [111], isometric) or TOML camera record.")
++    parser.add_argument("--periodic-images", default=None, help="Scene-wide display replication, e.g. 2x2x1.")
++    parser.add_argument("--cell-mode", choices=("reference", "none"), default=None)
++    parser.add_argument("--visible-layer", action="append", default=[], help="Initial visible-layer override; repeat by layer name.")
++    parser.add_argument("--show-axes", action="store_true", default=None)
++    parser.add_argument("--background", choices=("light", "dark", "transparent"), default=None)
++    parser.add_argument("--width", type=int, default=None)
++    parser.add_argument("--height", type=int, default=None)
+     parser.add_argument("--max-memory", default=None, help="Package-owned memory ceiling, e.g. 12GiB.")
+     parser.add_argument("--max-threads", type=int, default=None)
+     parser.add_argument("--wall-time-target", "--max-wall-time", dest="wall_time_target", type=float, default=None, help="Advisory scene wall-time target; --max-wall-time is a compatibility alias.")
+@@ -223,9 +231,6 @@
+     title = request.scene_options.get("title")
+     if title:
+         result.artifact.update_layout(title=str(title))
+-    projection = request.view.get("projection")
+-    if projection:
+-        result.artifact.update_scenes(camera_projection_type=str(projection))
+     result.artifact.update_layout(
+         legend={"itemsizing": "constant", "groupclick": "togglegroup"},
+         margin={"l": 0, "r": 0, "t": 55, "b": 0},
+@@ -281,7 +286,18 @@
+                 "LTA: detected-species densities, trajectories, atomic mean net, and mean framework "
+                 f"({mobile_text}; {trajectory.n_frames} frames)"
+             )
+-        cli_scene = {"title": args.title or automatic_title, "projection": args.projection}
++        cli_scene = {
++            "title": args.title or automatic_title,
++            "projection": args.projection,
++            "camera": args.camera,
++            "periodic_images": args.periodic_images,
++            "cell_mode": args.cell_mode,
++            "visible_layers": tuple(args.visible_layer) if args.visible_layer else None,
++            "show_axes": args.show_axes,
++            "background": args.background,
++            "width": args.width,
++            "height": args.height,
++        }
+         cli_resources = {
+             "max_memory": args.max_memory,
+             "max_threads": args.max_threads,
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SOURCE_PATCH_0.20.149a0_to_0.20.150a0.patch' /mnt/data/mdstats-0.20.149a0-complete-source-package/mdstats/graphics3d/config.py /mnt/data/mdstats_gfx5_work/mdstats/graphics3d/config.py
+--- /mnt/data/mdstats-0.20.149a0-complete-source-package/mdstats/graphics3d/config.py	2026-08-11 09:33:28.000000000 +0000
++++ /mnt/data/mdstats_gfx5_work/mdstats/graphics3d/config.py	2026-08-11 10:34:21.345805242 +0000
+@@ -19,7 +19,8 @@
+     "connectivity_mode", "occupancy_threshold", "density_grid_interval",
+     "density_gaussian_to_grid_ratio", "density_adaptive_smearing",
+     "density_max_smearing_to_sample_sd_ratio", "density_sample_sd_quantile",
+-    "projection", "camera", "periodic_images",
++    "projection", "camera", "periodic_images", "visible_layers", "cell_mode",
++    "show_axes", "background", "width", "height",
+ })
+ _ALLOWED_INPUT = frozenset({
+     "format", "stride", "timestep_fs", "lammps_log", "lammps_units",
+@@ -29,7 +30,7 @@
+ _ALLOWED_RESOURCES = frozenset({"max_memory", "max_threads", "wall_time_target"})
+ _ALLOWED_OUTPUT = frozenset({"path", "manifest", "browser_profile", "max_browser_faces"})
+ _ALLOWED_LAYER = frozenset({
+-    "type", "name", "enabled", "visible", "initially_visible",
++    "type", "name", "enabled", "visible", "initially_visible", "priority",
+     "selection", "analysis", "render", "metadata",
+ })
+ _ALLOWED_SELECTION = frozenset(GraphicsSelection.__dataclass_fields__)
+@@ -156,6 +157,7 @@
+         render_options=dict(value.get("render", {})),
+         enabled=bool(value.get("enabled", True)),
+         initially_visible=bool(visible),
++        render_priority=int(value.get("priority", 0)),
+         metadata=dict(value.get("metadata", {})),
+     )
+ 
+@@ -329,7 +331,7 @@
+         input_cfg.update({k: v for k, v in cli_input.items() if v is not None})
+ 
+     # Pull view-only settings out of scene for an explicit identity boundary.
+-    view_keys = ("projection", "camera", "periodic_images")
++    view_keys = ("projection", "camera", "periodic_images", "visible_layers", "cell_mode", "show_axes", "background", "width", "height")
+     view = {key: scene_cfg.pop(key) for key in view_keys if key in scene_cfg}
+     request = GraphicsScene3DRequest(
+         layers=layers,
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SOURCE_PATCH_0.20.149a0_to_0.20.150a0.patch' /mnt/data/mdstats-0.20.149a0-complete-source-package/mdstats/graphics3d/contracts.py /mnt/data/mdstats_gfx5_work/mdstats/graphics3d/contracts.py
+--- /mnt/data/mdstats-0.20.149a0-complete-source-package/mdstats/graphics3d/contracts.py	2026-08-11 08:24:00.000000000 +0000
++++ /mnt/data/mdstats_gfx5_work/mdstats/graphics3d/contracts.py	2026-08-11 10:34:21.345552697 +0000
+@@ -175,6 +175,7 @@
+     render_options: Mapping[str, Any] = field(default_factory=dict)
+     enabled: bool = True
+     initially_visible: bool = True
++    render_priority: int = 0
+     metadata: Mapping[str, Any] = field(default_factory=dict)
+ 
+     def __post_init__(self) -> None:
+@@ -184,6 +185,9 @@
+             raise Graphics3DValidationError("selection must be GraphicsSelection.")
+         if not isinstance(self.enabled, bool) or not isinstance(self.initially_visible, bool):
+             raise Graphics3DValidationError("enabled and initially_visible must be bool.")
++        if isinstance(self.render_priority, bool) or not isinstance(self.render_priority, int):
++            raise Graphics3DValidationError("render_priority must be an integer.")
++        object.__setattr__(self, "render_priority", int(self.render_priority))
+         object.__setattr__(self, "analysis_options", _freeze_mapping(self.analysis_options, field_name="analysis_options"))
+         object.__setattr__(self, "render_options", _freeze_mapping(self.render_options, field_name="render_options"))
+         object.__setattr__(self, "metadata", _freeze_mapping(self.metadata, field_name="metadata"))
+@@ -209,6 +213,7 @@
+                 "render_options": self.render_options,
+                 "initially_visible": self.initially_visible,
+                 "enabled": self.enabled,
++                "render_priority": self.render_priority,
+             },
+         )
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SOURCE_PATCH_0.20.149a0_to_0.20.150a0.patch' /mnt/data/mdstats-0.20.149a0-complete-source-package/mdstats/graphics3d/layers.py /mnt/data/mdstats_gfx5_work/mdstats/graphics3d/layers.py
+--- /mnt/data/mdstats-0.20.149a0-complete-source-package/mdstats/graphics3d/layers.py	2026-08-11 09:51:47.154036771 +0000
++++ /mnt/data/mdstats_gfx5_work/mdstats/graphics3d/layers.py	2026-08-11 10:35:37.925953997 +0000
+@@ -12,7 +12,8 @@
+ from typing import Any
+ 
+ import numpy as np
+-from ase.data import atomic_numbers
++from ase.data import atomic_numbers, chemical_symbols
++from ase.data.colors import jmol_colors
+ 
+ from .contracts import (
+     GraphicsDependencyKey,
+@@ -25,6 +26,7 @@
+ from .errors import Graphics3DDependencyError, Graphics3DValidationError
+ from .identity import identity_digest
+ from .registry import GraphicsLayerRegistration, GraphicsLayerRegistry
++from .primitives import CellWireframe3D, PointSet3D, PolylineSet3D, SegmentSet3D, TriangleMesh3D
+ from .providers import (
+     CONNECTIVITY_PRODUCT_PROVIDER,
+     DENSITY_PRODUCT_PROVIDER,
+@@ -40,6 +42,199 @@
+ LEGACY_SCENE_PROVIDER = "framework_dynamics_scene"
+ 
+ 
++
++
++def _css_jmol(number: int) -> str:
++    rgb = np.asarray(jmol_colors[int(number)], dtype=np.float64)
++    return f"rgb({round(rgb[0]*255)}, {round(rgb[1]*255)}, {round(rgb[2]*255)})"
++
++
++def _framework_render_primitives(prepared: PreparedGraphicsLayer3D) -> tuple[Any, ...]:
++    graph = prepared.product_refs["mean_framework"]
++    if graph.node_positions_3d is None:
++        raise Graphics3DValidationError("Framework topology layer requires finite 3-D node positions.")
++    positions = np.asarray(graph.node_positions_3d, dtype=np.float64)
++    shifts = (
++        np.zeros((len(graph.edge_endpoints), 3), dtype=np.int64)
++        if graph.edge_image_shifts is None
++        else np.asarray(graph.edge_image_shifts, dtype=np.int64)
++    )
++    cell = np.asarray(graph.cell, dtype=np.float64) if graph.cell is not None else None
++    segments = np.empty((len(graph.edge_endpoints), 2, 3), dtype=np.float64)
++    for idx, (edge, shift) in enumerate(zip(graph.edge_endpoints, shifts, strict=True)):
++        i, j = map(int, edge)
++        segments[idx, 0] = positions[i]
++        segments[idx, 1] = positions[j] + (np.asarray(shift, dtype=np.float64) @ cell if cell is not None else 0.0)
++    options = dict(prepared.request.render_options)
++    edge_color = str(options.get("edge_color", "rgb(100,100,100)"))
++    edge_width = float(options.get("edge_width", 3.0))
++    edge_opacity = float(options.get("edge_opacity", 0.70))
++    node_size = float(options.get("node_size", 7.0))
++    node_opacity = float(options.get("node_opacity", 0.96))
++    allowed = {"edge_color", "edge_width", "edge_opacity", "node_size", "node_opacity", "show_legend"}
++    unknown = set(options) - allowed
++    if unknown:
++        raise Graphics3DValidationError("Unsupported framework render options: " + ", ".join(sorted(unknown)))
++    numbers = graph.node_attributes.get("atomic_number")
++    primitives: list[Any] = [
++        SegmentSet3D(
++            owner_layer=prepared.request.name, primitive_id="framework-edges", segments=segments,
++            scientific_refs=(prepared.scientific_identity,),
++            render_attributes={"name": "Framework bonds", "color": edge_color, "width": edge_width, "opacity": edge_opacity, "showlegend": False},
++        )
++    ]
++    if cell is not None:
++        primitives.append(CellWireframe3D(
++            owner_layer=prepared.request.name, primitive_id="framework-cell", cell=cell, origin=np.zeros(3),
++            scientific_refs=(prepared.scientific_identity,),
++            render_attributes={"name": "Unit cell", "color": "#666666", "width": 3.2, "opacity": 0.72, "showlegend": False, "view_role": "cell"},
++        ))
++    if numbers is None:
++        primitives.append(PointSet3D(
++            owner_layer=prepared.request.name, primitive_id="framework-nodes", positions=positions,
++            scientific_refs=(prepared.scientific_identity,),
++            render_attributes={"name": "Framework", "size": node_size, "color": "rgb(80,80,80)", "opacity": node_opacity, "showlegend": bool(options.get("show_legend", True))},
++        ))
++    else:
++        nums = np.asarray(numbers, dtype=np.int64)
++        for number in sorted(set(int(v) for v in nums.tolist())):
++            mask = nums == number
++            primitives.append(PointSet3D(
++                owner_layer=prepared.request.name, primitive_id=f"framework-nodes-{number}", positions=positions[mask],
++                scientific_refs=(prepared.scientific_identity,),
++                render_attributes={"name": chemical_symbols[number], "size": node_size, "color": _css_jmol(number), "opacity": node_opacity, "showlegend": bool(options.get("show_legend", True))},
++            ))
++    return tuple(primitives)
++
++
++def _connectivity_render_primitives(prepared: PreparedGraphicsLayer3D) -> tuple[Any, ...]:
++    from mdstats.plotting.framework_dynamics import AtomicMeanGraph3DRenderOptions
++    graph = prepared.product_refs["atomic_mean_graph"]
++    opts = AtomicMeanGraph3DRenderOptions(**dict(prepared.request.render_options))
++    positions = np.asarray(graph.display_positions, dtype=np.float64)
++    cell = np.asarray(graph.display_cell, dtype=np.float64)
++    segments = np.empty((len(graph.edge_endpoints), 2, 3), dtype=np.float64)
++    for idx, ((i, j), shift) in enumerate(zip(graph.edge_endpoints, graph.edge_image_shifts, strict=True)):
++        segments[idx, 0] = positions[int(i)]
++        segments[idx, 1] = positions[int(j)] + np.asarray(shift, dtype=np.float64) @ cell
++    primitives: list[Any] = []
++    if len(segments):
++        primitives.append(SegmentSet3D(
++            owner_layer=prepared.request.name, primitive_id="connectivity-edges", segments=segments,
++            scientific_refs=(prepared.scientific_identity,),
++            render_attributes={"name": "Atomic bonds", "color": opts.edge_color, "width": opts.edge_width, "opacity": opts.edge_opacity, "showlegend": opts.show_legend},
++        ))
++    numbers = np.asarray(graph.atomic_numbers, dtype=np.int64)
++    atoms = tuple(int(v) for v in graph.atom_indices)
++    for number in sorted(set(int(v) for v in numbers.tolist())):
++        mask = numbers == number
++        hover = tuple(f"atom={atoms[i]}<br>species={chemical_symbols[number]}" for i in np.flatnonzero(mask))
++        primitives.append(PointSet3D(
++            owner_layer=prepared.request.name, primitive_id=f"connectivity-nodes-{number}", positions=positions[mask],
++            scientific_refs=(prepared.scientific_identity,),
++            render_attributes={"name": chemical_symbols[number], "size": opts.node_size, "color": _css_jmol(number), "opacity": opts.node_opacity, "showlegend": opts.show_legend, "hovertext": hover},
++        ))
++    return tuple(primitives)
++
++
++def _trajectory_polylines(paths: Any, atom_positions: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
++    points: list[np.ndarray] = []
++    offsets = [0]
++    for local_index in atom_positions:
++        coords = np.asarray(paths.display_positions[int(local_index)], dtype=np.float64)
++        breaks = np.asarray(paths.segment_breaks[int(local_index)], dtype=bool)
++        start = 0
++        for position, is_break in enumerate(breaks):
++            if is_break:
++                segment = coords[start:position+1]
++                if len(segment) >= 2:
++                    points.append(segment); offsets.append(offsets[-1] + len(segment))
++                start = position + 1
++        segment = coords[start:]
++        if len(segment) >= 2:
++            points.append(segment); offsets.append(offsets[-1] + len(segment))
++    if not points:
++        return np.empty((0,3), dtype=np.float64), np.asarray([0], dtype=np.int64)
++    return np.concatenate(points, axis=0), np.asarray(offsets, dtype=np.int64)
++
++
++def _trajectory_render_primitives(prepared: PreparedGraphicsLayer3D) -> tuple[Any, ...]:
++    from mdstats.plotting.framework_dynamics import Trajectory3DRenderOptions
++    paths = prepared.product_refs["trajectory_paths"]
++    opts = Trajectory3DRenderOptions(**dict(prepared.request.render_options))
++    numbers = np.asarray(paths.atomic_numbers, dtype=np.int64)
++    primitives: list[Any] = []
++    groups = [(number, np.flatnonzero(numbers == number)) for number in sorted(set(int(v) for v in numbers.tolist()))]
++    if not opts.group_by_species:
++        groups = [(int(numbers[i]), np.asarray([i], dtype=np.int64)) for i in range(len(numbers))]
++    for group_position, (number, indices) in enumerate(groups):
++        points, offsets = _trajectory_polylines(paths, indices)
++        if len(points):
++            label = chemical_symbols[number] if opts.group_by_species else f"{chemical_symbols[number]} atom {paths.atom_indices[int(indices[0])]}"
++            primitives.append(PolylineSet3D(
++                owner_layer=prepared.request.name, primitive_id=f"trajectory-{group_position}", points=points, offsets=offsets,
++                scientific_refs=(prepared.scientific_identity,),
++                render_attributes={"name": label, "color": _css_jmol(number), "width": opts.line_width, "opacity": opts.opacity, "showlegend": opts.show_legend},
++            ))
++        if opts.show_start_end and len(indices):
++            starts = np.asarray(paths.display_positions, dtype=np.float64)[indices, 0, :]
++            ends = np.asarray(paths.display_positions, dtype=np.float64)[indices, -1, :]
++            primitives.append(PointSet3D(
++                owner_layer=prepared.request.name, primitive_id=f"trajectory-start-{group_position}", positions=starts,
++                scientific_refs=(prepared.scientific_identity,),
++                render_attributes={"name": "start", "color": _css_jmol(number), "size": opts.endpoint_size, "opacity": 1.0, "symbol": "circle", "showlegend": False},
++            ))
++            primitives.append(PointSet3D(
++                owner_layer=prepared.request.name, primitive_id=f"trajectory-end-{group_position}", positions=ends,
++                scientific_refs=(prepared.scientific_identity,),
++                render_attributes={"name": "end", "color": _css_jmol(number), "size": opts.endpoint_size, "opacity": 1.0, "symbol": "diamond", "showlegend": False},
++            ))
++    return tuple(primitives)
++
++
++def _density_render_primitives(prepared: PreparedGraphicsLayer3D, context: GraphicsSceneContext) -> tuple[Any, ...]:
++    from mdstats.plotting.atomic_density import AtomicDensity3DRenderOptions, density_mesh_arrays, density_voxel_cloud_arrays
++    field = prepared.product_refs["density_field"]
++    opts = AtomicDensity3DRenderOptions(**dict(prepared.request.render_options))
++    number = None
++    if prepared.request.selection.species and len(prepared.request.selection.species) == 1:
++        number = int(atomic_numbers[prepared.request.selection.species[0]])
++    color = _css_jmol(number) if number is not None else "rgb(70,110,210)"
++    fractions = tuple(float(v) for v in opts.mass_fractions)
++    primitives: list[Any] = []
++    if opts.render_mode == "mesh":
++        maximum = int(opts.standalone_final_mesh_faces)
++        resources = context.resources
++        if isinstance(resources, dict):
++            profile = resources.get("mesh_profile")
++            budget = getattr(profile, "budget", None)
++            if budget is not None:
++                maximum = min(maximum, int(getattr(budget, "max_final_density_faces", maximum)))
++        n = max(1, len(fractions) - 1)
++        for position, fraction in enumerate(fractions):
++            vertices, faces, threshold = density_mesh_arrays(field, fraction, max_faces=maximum)
++            alpha = opts.inner_opacity + (opts.outer_opacity - opts.inner_opacity) * (position / n)
++            primitives.append(TriangleMesh3D(
++                owner_layer=prepared.request.name, primitive_id=f"density-shell-{position}", vertices=vertices, faces=faces,
++                scientific_refs=(prepared.scientific_identity, str(field.field_key)),
++                render_attributes={"name": str(field.label), "color": color, "opacity": float(alpha), "showlegend": bool(opts.show_legend and position == len(fractions)-1), "mass_fraction": fraction, "hdr_threshold": float(threshold)},
++            ))
++    else:
++        points, intensities, threshold = density_voxel_cloud_arrays(field, fractions[-1], max_points=opts.cloud_max_points)
++        primitives.append(PointSet3D(
++            owner_layer=prepared.request.name, primitive_id="density-cloud", positions=points,
++            scientific_refs=(prepared.scientific_identity, str(field.field_key)),
++            render_attributes={"name": str(field.label), "size": opts.cloud_point_size, "color": color, "opacity": opts.cloud_opacity, "showlegend": opts.show_legend, "intensities": intensities.tolist(), "hdr_threshold": float(threshold)},
++        ))
++    if opts.show_samples and getattr(field, "sample_positions", None) is not None:
++        samples = np.asarray(field.sample_positions, dtype=np.float64).reshape(-1,3)
++        primitives.append(PointSet3D(
++            owner_layer=prepared.request.name, primitive_id="density-samples", positions=samples,
++            scientific_refs=(prepared.scientific_identity,),
++            render_attributes={"name": f"{field.label} samples", "size": opts.sample_size, "color": color, "opacity": opts.sample_opacity, "showlegend": False},
++        ))
++    return tuple(primitives)
++
+ def _legacy_scene_key(context: GraphicsSceneContext) -> GraphicsDependencyKey:
+     return GraphicsDependencyKey(
+         LEGACY_SCENE_PROVIDER,
+@@ -305,12 +500,12 @@
+         return PreparedGraphicsLayer3D(
+             request=request,
+             scientific_identity=identity,
+-            product_refs={"mean_framework": mean_framework, "source_scene": scene},
++            product_refs={"mean_framework": mean_framework},
+             provenance={"adapter_schema": GFX3D2_LAYER_SCHEMA, "source_scene_schema": scene.metadata.get("schema_version")},
+         )
+ 
+     def render_primitives(self, prepared, context):
+-        return prepared.primitives
++        return _framework_render_primitives(prepared)
+ 
+ 
+ @dataclass(frozen=True, slots=True)
+@@ -335,12 +530,12 @@
+         return PreparedGraphicsLayer3D(
+             request=request,
+             scientific_identity=identity,
+-            product_refs={"atomic_mean_graph": graph, "source_scene": scene},
++            product_refs={"atomic_mean_graph": graph},
+             provenance={"adapter_schema": GFX3D2_LAYER_SCHEMA},
+         )
+ 
+     def render_primitives(self, prepared, context):
+-        return prepared.primitives
++        return _connectivity_render_primitives(prepared)
+ 
+ 
+ @dataclass(frozen=True, slots=True)
+@@ -365,12 +560,12 @@
+         return PreparedGraphicsLayer3D(
+             request=request,
+             scientific_identity=identity,
+-            product_refs={"trajectory_paths": paths, "source_scene": scene},
++            product_refs={"trajectory_paths": paths},
+             provenance={"adapter_schema": GFX3D2_LAYER_SCHEMA},
+         )
+ 
+     def render_primitives(self, prepared, context):
+-        return prepared.primitives
++        return _trajectory_render_primitives(prepared)
+ 
+ 
+ @dataclass(frozen=True, slots=True)
+@@ -400,12 +595,12 @@
+         return PreparedGraphicsLayer3D(
+             request=request,
+             scientific_identity=identity,
+-            product_refs={"density_field": field, "density_source_kind": source_kind, "source_scene": scene},
++            product_refs={"density_field": field, "density_source_kind": source_kind},
+             provenance={"adapter_schema": GFX3D2_LAYER_SCHEMA, "field_key": str(field.field_key), "source_kind": source_kind},
+         )
+ 
+     def render_primitives(self, prepared, context):
+-        return prepared.primitives
++        return _density_render_primitives(prepared, context)
+ 
+ 
+ def register_builtin_graphics3d_layers(registry: GraphicsLayerRegistry) -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SOURCE_PATCH_0.20.149a0_to_0.20.150a0.patch' /mnt/data/mdstats-0.20.149a0-complete-source-package/mdstats/graphics3d/plotly_renderer.py /mnt/data/mdstats_gfx5_work/mdstats/graphics3d/plotly_renderer.py
+--- /mnt/data/mdstats-0.20.149a0-complete-source-package/mdstats/graphics3d/plotly_renderer.py	2026-08-11 08:32:13.000000000 +0000
++++ /mnt/data/mdstats_gfx5_work/mdstats/graphics3d/plotly_renderer.py	2026-08-11 10:36:22.569751432 +0000
+@@ -1,117 +1,182 @@
+-"""GFX3D-2 common Plotly renderer for independent prepared layers.
+-
+-This renderer intentionally reuses the qualified legacy Plotly rendering
+-functions one layer at a time.  Scientific products are never recomputed.  The
+-fixed composite renderer therefore acts as a backend compatibility engine while
+-GFX3D owns layer composition and trace ownership.
+-"""
+-
++"""Universal Plotly backend over renderer-neutral GFX3D primitives (GFX3D-5)."""
+ from __future__ import annotations
+ 
+-from dataclasses import replace
++from collections import OrderedDict
+ from typing import Any
+ 
+-from .contracts import PreparedGraphicsLayer3D, PreparedGraphicsScene3D
+-from .errors import Graphics3DValidationError
++import numpy as np
++
++from .browser import GraphicsBrowserBudget, measure_browser_payload
++from .context import GraphicsSceneContext
++from .contracts import PreparedGraphicsScene3D
++from .errors import Graphics3DRegistryError, Graphics3DValidationError
++from .primitives import (
++    ArrowSet3D,
++    CellWireframe3D,
++    GraphicsPrimitive3D,
++    PointSet3D,
++    PolylineSet3D,
++    SegmentSet3D,
++    TextLabelSet3D,
++    TriangleMesh3D,
++)
++from .registry import DEFAULT_GRAPHICS_LAYER_REGISTRY, GraphicsLayer3DAdapter, GraphicsLayerRegistry
+ from .render_result import Graphics3DRenderResult, GraphicsLayerRenderResult
++from .view import replicate_primitive, resolve_camera, resolve_periodic_image_shifts, resolve_view_visibility
+ 
++GFX3D5_PLOTLY_SCHEMA = "mdstats.graphics3d.plotly-render-result.gfx3d5.v1"
+ 
+-def _render_options(layer: PreparedGraphicsLayer3D) -> dict[str, Any]:
+-    from mdstats.plotting.atomic_density import AtomicDensity3DRenderOptions
+-    from mdstats.plotting.framework_density import FrameworkDensity3DRenderOptions
+-    from mdstats.plotting.framework_dynamics import (
+-        AtomicMeanGraph3DRenderOptions,
+-        Trajectory3DRenderOptions,
+-    )
+ 
+-    values = dict(layer.request.render_options)
+-    if layer.request.layer_type == "trajectory":
+-        return {"trajectory_options": Trajectory3DRenderOptions(**values)}
+-    if layer.request.layer_type == "connectivity":
+-        return {"atomic_mean_graph_options": AtomicMeanGraph3DRenderOptions(**values)}
+-    if layer.request.layer_type == "density":
+-        source_kind = str(layer.product_refs.get("density_source_kind", "atomic"))
+-        if source_kind == "atomic":
+-            return {"density_options": AtomicDensity3DRenderOptions(**values)}
+-        return {"framework_density_options": FrameworkDensity3DRenderOptions(**values)}
+-    if values:
+-        # Framework style belongs to GraphStyle/Graph3DRenderOptions in the legacy
+-        # backend and is intentionally deferred to GFX3D-5's universal style model.
++def _legacy_periodic_shifts(periodic: Any) -> tuple[tuple[int, int, int], ...] | None:
++    if periodic is None:
++        return None
++    from mdstats.plotting.periodic_graph import CanonicalCellDisplay, ExpandedCellDisplay, LocalUnwrappedDisplay
++    if isinstance(periodic, CanonicalCellDisplay):
++        return ((0, 0, 0),)
++    if isinstance(periodic, ExpandedCellDisplay):
++        ranges = periodic.image_ranges
++        return tuple(
++            (i, j, k)
++            for i in range(ranges[0][0], ranges[0][1] + 1)
++            for j in range(ranges[1][0], ranges[1][1] + 1)
++            for k in range(ranges[2][0], ranges[2][1] + 1)
++        )
++    if isinstance(periodic, LocalUnwrappedDisplay):
+         raise Graphics3DValidationError(
+-            "GFX3D-2 framework render_options are not yet mapped to the legacy GraphStyle; "
+-            "leave them empty until GFX3D-5 universal styling."
++            "LocalUnwrappedDisplay is graph-specific and is not a universal GFX3D view transform; "
++            "use explicit view.periodic_images or keep the legacy graph renderer for that diagnostic."
+         )
+-    return {}
++    raise Graphics3DValidationError(f"Unsupported periodic display object {type(periodic).__name__}.")
+ 
+ 
+-def _single_layer_legacy_scene(layer: PreparedGraphicsLayer3D):
+-    from mdstats.plotting.framework_density import FrameworkDensityFields
+-
+-    source = layer.product_refs.get("source_scene")
+-    if source is None:
+-        raise Graphics3DValidationError(
+-            f"Prepared layer {layer.request.name!r} has no source_scene compatibility reference."
+-        )
+-    kwargs: dict[str, Any] = {
+-        "trajectory_paths": None,
+-        "atomic_mean_graph": None,
+-        "atomic_density_fields": (),
+-        "framework_density_fields": None,
+-        "topology_categories": (),
+-        "topology_catalog": None,
++def _cell_from_scene(scene: PreparedGraphicsScene3D) -> np.ndarray | None:
++    raw = scene.display_gauge.get("cell")
++    if raw is None:
++        for layer in scene.layers:
++            for key in ("mean_framework", "atomic_mean_graph", "density_field"):
++                product = layer.product_refs.get(key)
++                if product is None:
++                    continue
++                raw = getattr(product, "cell", None)
++                if raw is None:
++                    raw = getattr(product, "display_cell", None)
++                if raw is not None:
++                    break
++            if raw is not None:
++                break
++    if raw is None:
++        return None
++    cell = np.asarray(raw, dtype=np.float64)
++    return cell if cell.shape == (3, 3) else None
++
++
++def _line_xyz_from_segments(segments: np.ndarray) -> tuple[list[float | None], list[float | None], list[float | None]]:
++    x: list[float | None] = []
++    y: list[float | None] = []
++    z: list[float | None] = []
++    for start, stop in np.asarray(segments, dtype=np.float64):
++        x.extend((float(start[0]), float(stop[0]), None))
++        y.extend((float(start[1]), float(stop[1]), None))
++        z.extend((float(start[2]), float(stop[2]), None))
++    return x, y, z
++
++
++def _line_xyz_from_polylines(points: np.ndarray, offsets: np.ndarray) -> tuple[list[float | None], list[float | None], list[float | None]]:
++    x: list[float | None] = []
++    y: list[float | None] = []
++    z: list[float | None] = []
++    for start, stop in zip(offsets[:-1], offsets[1:], strict=True):
++        segment = points[int(start):int(stop)]
++        if len(segment) == 0:
++            continue
++        x.extend([float(v) for v in segment[:, 0]] + [None])
++        y.extend([float(v) for v in segment[:, 1]] + [None])
++        z.extend([float(v) for v in segment[:, 2]] + [None])
++    return x, y, z
++
++
++def _cell_segments(cell: np.ndarray, origin: np.ndarray) -> np.ndarray:
++    corners = np.asarray(
++        [origin + np.asarray((i, j, k), dtype=float) @ cell for i in (0, 1) for j in (0, 1) for k in (0, 1)],
++        dtype=np.float64,
++    )
++    keys = [(i, j, k) for i in (0, 1) for j in (0, 1) for k in (0, 1)]
++    by_key = {key: corners[pos] for pos, key in enumerate(keys)}
++    edges = []
++    for key in keys:
++        for axis in range(3):
++            if key[axis] == 0:
++                other = list(key); other[axis] = 1
++                edges.append((by_key[key], by_key[tuple(other)]))
++    return np.asarray(edges, dtype=np.float64)
++
++
++def _primitive_trace(go: Any, primitive: GraphicsPrimitive3D, *, visible: bool, legend_group: str, group_title: str | None) -> Any:
++    a = dict(primitive.render_attributes)
++    name = str(a.get("name", primitive.primitive_id))
++    showlegend = bool(a.get("showlegend", True))
++    common = {
++        "name": name,
++        "legendgroup": legend_group,
++        "showlegend": showlegend,
++        "visible": True if visible else "legendonly",
++        "hoverinfo": "skip",
+     }
+-    kind = layer.request.layer_type
+-    if kind == "trajectory":
+-        kwargs["trajectory_paths"] = layer.product_refs["trajectory_paths"]
+-    elif kind == "connectivity":
+-        kwargs["atomic_mean_graph"] = layer.product_refs["atomic_mean_graph"]
+-    elif kind == "density":
+-        field = layer.product_refs["density_field"]
+-        source_kind = str(layer.product_refs.get("density_source_kind", "atomic"))
+-        if source_kind == "atomic":
+-            kwargs["atomic_density_fields"] = (field,)
+-        else:
+-            is_vertex = "vertex" in source_kind
+-            kwargs["framework_density_fields"] = FrameworkDensityFields(
+-                vertex_density=field if is_vertex else None,
+-                edge_length_density=None if is_vertex else field,
+-                edge_source=(
+-                    source.framework_density_fields.edge_source
+-                    if source.framework_density_fields is not None
+-                    else "projected"
+-                ),
+-                metadata={"gfx3d2_single_layer": True},
+-            )
+-    elif kind != "framework":
+-        raise Graphics3DValidationError(f"Unsupported GFX3D-2 layer type {kind!r}.")
+-    return replace(source, **kwargs)
+-
+-
+-def _owned_trace_indices(layer: PreparedGraphicsLayer3D, result: Any) -> tuple[int, ...]:
+-    if layer.request.layer_type == "framework":
+-        values = set(int(v) for v in result.base_result.cell_trace_indices)
+-        for mapping in (
+-            result.base_result.node_trace_indices,
+-            result.base_result.edge_trace_indices,
+-            result.base_result.hover_trace_indices,
+-        ):
+-            for indices in mapping.values():
+-                values.update(int(v) for v in indices)
+-        return tuple(sorted(values))
+-    if layer.request.layer_type == "connectivity":
+-        values = set()
+-        for indices in result.atomic_mean_graph_trace_indices.values():
+-            values.update(int(v) for v in indices)
+-        return tuple(sorted(values))
+-    if layer.request.layer_type == "trajectory":
+-        values = set(int(v) for v in result.endpoint_trace_indices)
+-        for indices in result.trajectory_trace_indices.values():
+-            values.update(int(v) for v in indices)
+-        return tuple(sorted(values))
+-    field = layer.product_refs["density_field"]
+-    source_kind = str(layer.product_refs.get("density_source_kind", "atomic"))
+-    mapping = result.density_trace_indices if source_kind == "atomic" else result.framework_density_trace_indices
+-    return tuple(int(v) for v in mapping.get(str(field.field_key), ()))
++    if group_title is not None:
++        common["legendgrouptitle"] = {"text": group_title}
++    if isinstance(primitive, PointSet3D):
++        marker: dict[str, Any] = {
++            "size": float(a.get("size", 5.0)),
++            "color": a.get("color", "rgb(80,80,80)"),
++            "opacity": float(a.get("opacity", 1.0)),
++            "symbol": a.get("symbol", "circle"),
++        }
++        intensities = a.get("intensities")
++        if intensities is not None:
++            marker.update({"color": intensities, "colorscale": [[0.0, a.get("color", "#999999")], [1.0, a.get("color", "#999999")]], "cmin": 0.0, "cmax": 1.0, "showscale": False})
++        hover = a.get("hovertext")
++        if hover is not None:
++            common.update({"hoverinfo": None, "hovertext": hover, "hovertemplate": "%{hovertext}<extra></extra>"})
++        return go.Scatter3d(x=primitive.positions[:, 0], y=primitive.positions[:, 1], z=primitive.positions[:, 2], mode="markers", marker=marker, **common)
++    if isinstance(primitive, SegmentSet3D):
++        x, y, z = _line_xyz_from_segments(primitive.segments)
++        return go.Scatter3d(x=x, y=y, z=z, mode="lines", line={"color": a.get("color", "#777777"), "width": float(a.get("width", 2.0)), "dash": a.get("dash", "solid")}, opacity=float(a.get("opacity", 1.0)), **common)
++    if isinstance(primitive, PolylineSet3D):
++        x, y, z = _line_xyz_from_polylines(primitive.points, primitive.offsets)
++        return go.Scatter3d(x=x, y=y, z=z, mode="lines", line={"color": a.get("color", "#777777"), "width": float(a.get("width", 2.0)), "dash": a.get("dash", "solid")}, opacity=float(a.get("opacity", 1.0)), **common)
++    if isinstance(primitive, TriangleMesh3D):
++        return go.Mesh3d(x=primitive.vertices[:, 0], y=primitive.vertices[:, 1], z=primitive.vertices[:, 2], i=primitive.faces[:, 0], j=primitive.faces[:, 1], k=primitive.faces[:, 2], color=a.get("color", "#6699cc"), opacity=float(a.get("opacity", 0.35)), flatshading=bool(a.get("flatshading", False)), lighting=a.get("lighting", {"ambient": 0.72, "diffuse": 0.58, "specular": 0.12, "roughness": 0.88, "fresnel": 0.04}), **common)
++    if isinstance(primitive, ArrowSet3D):
++        # Plotly cones are the backend-neutral arrow realization.
++        return go.Cone(x=primitive.origins[:, 0], y=primitive.origins[:, 1], z=primitive.origins[:, 2], u=primitive.vectors[:, 0], v=primitive.vectors[:, 1], w=primitive.vectors[:, 2], colorscale=[[0, a.get("color", "#555555")], [1, a.get("color", "#555555")]], showscale=False, sizemode="absolute", sizeref=float(a.get("size", 1.0)), opacity=float(a.get("opacity", 1.0)), **common)
++    if isinstance(primitive, TextLabelSet3D):
++        return go.Scatter3d(x=primitive.positions[:, 0], y=primitive.positions[:, 1], z=primitive.positions[:, 2], mode="text", text=primitive.labels, textfont={"color": a.get("color", "#222222"), "size": int(a.get("size", 12))}, **common)
++    if isinstance(primitive, CellWireframe3D):
++        x, y, z = _line_xyz_from_segments(_cell_segments(primitive.cell, primitive.origin))
++        return go.Scatter3d(x=x, y=y, z=z, mode="lines", line={"color": a.get("color", "#666666"), "width": float(a.get("width", 3.2))}, opacity=float(a.get("opacity", 0.72)), **common)
++    raise Graphics3DValidationError(f"Plotly backend does not support primitive type {type(primitive).__name__}.")
++
++
++def _primitive_positions(primitives: list[GraphicsPrimitive3D]) -> np.ndarray:
++    arrays: list[np.ndarray] = []
++    for p in primitives:
++        if isinstance(p, PointSet3D): arrays.append(p.positions)
++        elif isinstance(p, PolylineSet3D): arrays.append(p.points)
++        elif isinstance(p, SegmentSet3D): arrays.append(p.segments.reshape(-1,3))
++        elif isinstance(p, TriangleMesh3D): arrays.append(p.vertices)
++        elif isinstance(p, ArrowSet3D): arrays.extend((p.origins, p.origins + p.vectors))
++        elif isinstance(p, TextLabelSet3D): arrays.append(p.positions)
++        elif isinstance(p, CellWireframe3D): arrays.append(_cell_segments(p.cell, p.origin).reshape(-1,3))
++    arrays = [a for a in arrays if len(a)]
++    return np.concatenate(arrays, axis=0) if arrays else np.zeros((1,3), dtype=float)
++
++
++def _scene_ranges(positions: np.ndarray) -> tuple[list[float], list[float], list[float]]:
++    lo = np.min(positions, axis=0); hi = np.max(positions, axis=0)
++    span = hi - lo
++    span[span < 1e-9] = max(float(np.max(span)), 1.0)
++    pad = 0.05 * span
++    return tuple([float(a), float(b)] for a, b in zip(lo-pad, hi+pad, strict=True))  # type: ignore[return-value]
+ 
+ 
+ def render_graphics3d_plotly(
+@@ -120,64 +185,123 @@
+     periodic: Any = None,
+     browser_profile: str = "interactive_browser",
+     mesh_profile: Any = None,
++    registry: GraphicsLayerRegistry = DEFAULT_GRAPHICS_LAYER_REGISTRY,
+ ) -> Graphics3DRenderResult:
+-    """Render arbitrary prepared layer combinations into one Plotly figure."""
+-
++    """Render a prepared GFX3D scene using only renderer-neutral primitives."""
+     if not isinstance(scene, PreparedGraphicsScene3D):
+         raise Graphics3DValidationError("scene must be PreparedGraphicsScene3D.")
+     if not scene.layers:
+         raise Graphics3DValidationError("Prepared GFX3D scene has no enabled layers.")
+-
+     import plotly.graph_objects as go
+-    from mdstats.plotting.framework_dynamics import plot_framework_dynamics_3d
+ 
+-    output = go.Figure()
+-    layer_results: dict[str, GraphicsLayerRenderResult] = {}
++    view = dict(scene.manifest.request.view)
++    legacy_shifts = _legacy_periodic_shifts(periodic)
++    shifts = legacy_shifts if legacy_shifts is not None else resolve_periodic_image_shifts(view)
++    cell = _cell_from_scene(scene)
++    layer_names = tuple(layer.request.name for layer in scene.layers)
++    visible_override = resolve_view_visibility(view, layer_names)
++
++    render_context = GraphicsSceneContext(
++        source=scene,
++        source_identity=getattr(scene.manifest, "scene_identity", None),
++        resources={"mesh_profile": mesh_profile, "browser_profile": browser_profile},
++    )
++    materialized_by_layer: dict[str, tuple[GraphicsPrimitive3D, ...]] = {}
++    canonical_by_layer: dict[str, tuple[GraphicsPrimitive3D, ...]] = {}
++    ordered_layers = sorted(enumerate(scene.layers), key=lambda item: (item[1].request.render_priority, item[0]))
++    all_materialized: list[GraphicsPrimitive3D] = []
++    for _, layer in ordered_layers:
++        registration = registry.get(layer.request.layer_type)
++        adapter = registration.adapter_factory()
++        if not isinstance(adapter, GraphicsLayer3DAdapter):
++            raise Graphics3DRegistryError(f"Adapter for {layer.request.layer_type!r} does not satisfy GraphicsLayer3DAdapter.")
++        canonical = tuple(adapter.render_primitives(layer, render_context))
++        if any(not isinstance(p, GraphicsPrimitive3D) for p in canonical):
++            raise Graphics3DValidationError(f"Layer {layer.request.name!r} emitted a non-GFX3D primitive.")
++        canonical_by_layer[layer.request.name] = canonical
++        expanded: list[GraphicsPrimitive3D] = []
++        for primitive in canonical:
++            expanded.extend(replicate_primitive(primitive, cell=cell, shifts=shifts))
++        materialized_by_layer[layer.request.name] = tuple(expanded)
++        all_materialized.extend(expanded)
++
++    profile_name = browser_profile
++    if mesh_profile is not None:
++        profile_name = str(getattr(mesh_profile, "name", getattr(mesh_profile, "profile", profile_name)))
++        if profile_name not in {"compact", "balanced", "quality", "interactive_browser", "raw_reference"}:
++            # BrowserMeshProfile string representation is implementation-specific; the generic profile remains balanced.
++            profile_name = "balanced"
++    budget = GraphicsBrowserBudget.for_profile(profile_name)
++    payload = measure_browser_payload(all_materialized)
++    budget.validate(payload)
++
++    figure = go.Figure()
++    temporary_indices: dict[str, list[int]] = {name: [] for name in layer_names}
+     warnings: list[str] = []
+-    base_layout_copied = False
++    for _, layer in ordered_layers:
++        visible = layer.request.initially_visible if visible_override is None else layer.request.name in visible_override
++        first_group_trace = True
++        for primitive in materialized_by_layer[layer.request.name]:
++            attrs = dict(primitive.render_attributes)
++            if attrs.get("view_role") == "cell" and str(view.get("cell_mode", "reference")) == "none":
++                continue
++            trace = _primitive_trace(
++                go,
++                primitive,
++                visible=visible,
++                legend_group=layer.request.name,
++                group_title=layer.request.name if first_group_trace else None,
++            )
++            first_group_trace = False
++            figure.add_trace(trace)
++            temporary_indices[layer.request.name].append(len(figure.data)-1)
++
++    positions = _primitive_positions(all_materialized)
++    ranges = _scene_ranges(positions)
++    show_axes = bool(view.get("show_axes", False))
++    background = str(view.get("background", "light"))
++    if background == "dark": paper, scene_color, font = "#111111", "#111111", "#F2F2F2"
++    elif background == "transparent": paper, scene_color, font = "rgba(0,0,0,0)", "rgba(0,0,0,0)", "#202020"
++    else: paper, scene_color, font = "white", "white", "#202020"
++    axis = {"visible": show_axes, "showgrid": show_axes, "zeroline": False, "showbackground": show_axes, "backgroundcolor": scene_color}
++    figure.update_layout(
++        width=int(view.get("width", 1000)), height=int(view.get("height", 800)),
++        paper_bgcolor=paper, plot_bgcolor=paper, font={"color": font},
++        scene={
++            "xaxis": {**axis, "title": "x", "range": ranges[0]},
++            "yaxis": {**axis, "title": "y", "range": ranges[1]},
++            "zaxis": {**axis, "title": "z", "range": ranges[2]},
++            "camera": resolve_camera(view), "aspectmode": "data", "bgcolor": scene_color,
++        },
++        legend={"itemsizing": "constant", "groupclick": "togglegroup", "tracegroupgap": 4},
++        uirevision="mdstats-gfx3d-v1",
++    )
+ 
++    layer_results = OrderedDict()
+     for layer in scene.layers:
+-        legacy_scene = _single_layer_legacy_scene(layer)
+-        result = plot_framework_dynamics_3d(
+-            legacy_scene,
+-            periodic=periodic,
+-            browser_profile=browser_profile,
+-            mesh_profile=mesh_profile,
+-            **_render_options(layer),
+-        )
+-        if not base_layout_copied:
+-            output.update_layout(result.figure.layout)
+-            base_layout_copied = True
+-        owned = _owned_trace_indices(layer, result)
+-        added: list[int] = []
+-        for old_index in owned:
+-            trace = result.figure.data[old_index]
+-            trace.visible = True if layer.request.initially_visible else "legendonly"
+-            output.add_trace(trace)
+-            added.append(len(output.data) - 1)
++        layer_payload = measure_browser_payload(materialized_by_layer.get(layer.request.name, ()))
+         layer_results[layer.request.name] = GraphicsLayerRenderResult(
+             layer_name=layer.request.name,
+-            backend_object_indices=tuple(added),
++            backend_object_indices=tuple(temporary_indices[layer.request.name]),
+             legend_group=layer.request.name,
+             scientific_identity=layer.scientific_identity,
+             render_identity=layer.render_identity,
+             metadata={
+-                "renderer": "plotly",
+-                "gfx3d_gate": "GFX3D-2",
+-                "legacy_backend_trace_count": len(result.figure.data),
+-                "owned_trace_count": len(added),
++                "renderer": "plotly", "gfx3d_gate": "GFX3D-5",
++                "primitive_count": len(canonical_by_layer.get(layer.request.name, ())),
++                "display_primitive_count": len(materialized_by_layer.get(layer.request.name, ())),
++                "browser_payload": layer_payload.to_json_dict(),
++                "render_priority": int(layer.request.render_priority),
+             },
+         )
+-        warnings.extend(str(v) for v in result.base_result.warnings)
+-
+     return Graphics3DRenderResult(
+-        artifact=output,
+-        scene=scene,
+-        layer_results=layer_results,
++        artifact=figure, scene=scene, layer_results=layer_results,
+         render_metadata={
+-            "renderer": "plotly",
+-            "schema_version": "mdstats.graphics3d.plotly-render-result.gfx3d2.v1",
+-            "layer_count": len(scene.layers),
++            "renderer": "plotly", "schema_version": GFX3D5_PLOTLY_SCHEMA,
++            "layer_count": len(scene.layers), "periodic_image_shifts": tuple(tuple(v) for v in shifts),
++            "browser_profile": profile_name, "browser_payload": payload.to_json_dict(),
++            "browser_budget": {"max_traces": budget.max_traces, "max_points": budget.max_points, "max_faces": budget.max_faces, "max_geometry_bytes": budget.max_geometry_bytes},
++            "view": view, "scientific_identity_includes_view": False,
+         },
+-        warnings=tuple(dict.fromkeys(warnings)),
++        warnings=tuple(warnings),
+     )
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SOURCE_PATCH_0.20.149a0_to_0.20.150a0.patch' /mnt/data/mdstats-0.20.149a0-complete-source-package/mdstats/graphics3d/prepare.py /mnt/data/mdstats_gfx5_work/mdstats/graphics3d/prepare.py
+--- /mnt/data/mdstats-0.20.149a0-complete-source-package/mdstats/graphics3d/prepare.py	2026-08-11 09:52:21.100258993 +0000
++++ /mnt/data/mdstats_gfx5_work/mdstats/graphics3d/prepare.py	2026-08-11 10:36:31.311849192 +0000
+@@ -75,15 +75,22 @@
+         prepared.append(adapter.prepare(layer_request, resolved_by_provider, context))
+ 
+     compatibility_scene = next(
+-        (
+-            layer.product_refs.get("source_scene")
+-            for layer in prepared
+-            if layer.product_refs.get("source_scene") is not None
+-        ),
++        (getattr(value, "source_scene", None) for value in values if getattr(value, "source_scene", None) is not None),
+         None,
+     )
+     display_cell = getattr(compatibility_scene, "display_cell", None)
+     source_metadata = getattr(compatibility_scene, "metadata", {}) if compatibility_scene is not None else {}
++    if display_cell is None:
++        for layer in prepared:
++            for product in layer.product_refs.values():
++                candidate = getattr(product, "display_cell", None)
++                if candidate is None:
++                    candidate = getattr(product, "cell", None)
++                if candidate is not None:
++                    display_cell = candidate
++                    break
++            if display_cell is not None:
++                break
+     provider_report = {}
+     source = context.source
+     report_method = getattr(source, "preparation_report", None)
+@@ -104,7 +111,7 @@
+         manifest=manifest,
+         display_gauge={} if display_cell is None else {"cell": display_cell},
+         metadata={
+-            "schema_version": "mdstats.graphics3d.prepared-scene.gfx3d4.v1",
++            "schema_version": "mdstats.graphics3d.prepared-scene.gfx3d5.v1",
+             "source_scene_schema": source_metadata.get("schema_version"),
+             "dependency_cache_report": dict(context.cache_report()),
+             "dependency_execution_report": {
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SOURCE_PATCH_0.20.149a0_to_0.20.150a0.patch' /mnt/data/mdstats-0.20.149a0-complete-source-package/mdstats/graphics3d/view.py /mnt/data/mdstats_gfx5_work/mdstats/graphics3d/view.py
+--- /mnt/data/mdstats-0.20.149a0-complete-source-package/mdstats/graphics3d/view.py	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats_gfx5_work/mdstats/graphics3d/view.py	2026-08-11 10:34:12.837217392 +0000
+@@ -0,0 +1,180 @@
++"""Renderer-neutral GFX3D view and periodic-display semantics (GFX3D-5)."""
++from __future__ import annotations
++
++from collections.abc import Mapping, Sequence
++from itertools import product
++from typing import Any
++
++import numpy as np
++
++from .errors import Graphics3DValidationError
++from .primitives import (
++    ArrowSet3D,
++    CellWireframe3D,
++    GraphicsPrimitive3D,
++    PointSet3D,
++    PolylineSet3D,
++    SegmentSet3D,
++    TextLabelSet3D,
++    TriangleMesh3D,
++)
++
++
++def _triplet(value: Any, *, name: str, integer: bool = False) -> tuple[Any, Any, Any]:
++    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)) or len(value) != 3:
++        raise Graphics3DValidationError(f"{name} must contain exactly three values.")
++    if integer:
++        result = tuple(int(v) for v in value)
++    else:
++        result = tuple(float(v) for v in value)
++    return result  # type: ignore[return-value]
++
++
++def resolve_periodic_image_shifts(view: Mapping[str, Any]) -> tuple[tuple[int, int, int], ...]:
++    """Resolve one scene-wide periodic display declaration.
++
++    Supported forms for ``view.periodic_images`` are:
++    - omitted / ``"reference"`` / ``"1x1x1"`` -> only the canonical image;
++    - ``"NxMxK"`` or ``[N, M, K]`` -> nonnegative image counts from the reference cell;
++    - ``[[i,j,k], ...]`` -> explicit integer image shifts;
++    - ``{counts=[N,M,K], origin=[i,j,k]}`` -> shifted rectangular image block.
++    """
++    raw = view.get("periodic_images")
++    if raw is None or raw in ("reference", "1x1x1", "none"):
++        return ((0, 0, 0),)
++    if isinstance(raw, str):
++        text = raw.strip().lower().replace("×", "x")
++        parts = text.split("x")
++        if len(parts) != 3:
++            raise Graphics3DValidationError(
++                "view.periodic_images string must be 'reference' or an NxMxK count such as '2x2x1'."
++            )
++        counts = tuple(int(v) for v in parts)
++        origin = (0, 0, 0)
++    elif isinstance(raw, Mapping):
++        counts = _triplet(raw.get("counts", (1, 1, 1)), name="periodic_images.counts", integer=True)
++        origin = _triplet(raw.get("origin", (0, 0, 0)), name="periodic_images.origin", integer=True)
++    elif isinstance(raw, Sequence) and not isinstance(raw, (str, bytes)):
++        if len(raw) == 3 and all(isinstance(v, (int, np.integer)) and not isinstance(v, bool) for v in raw):
++            counts = tuple(int(v) for v in raw)
++            origin = (0, 0, 0)
++        else:
++            shifts = tuple(_triplet(item, name="periodic image shift", integer=True) for item in raw)
++            if not shifts:
++                raise Graphics3DValidationError("view.periodic_images explicit shift list cannot be empty.")
++            return tuple(dict.fromkeys(shifts))
++    else:
++        raise Graphics3DValidationError("Unsupported view.periodic_images declaration.")
++    if any(int(v) <= 0 for v in counts):
++        raise Graphics3DValidationError("periodic image counts must be positive integers.")
++    return tuple(
++        (int(origin[0] + i), int(origin[1] + j), int(origin[2] + k))
++        for i, j, k in product(range(int(counts[0])), range(int(counts[1])), range(int(counts[2])))
++    )
++
++
++def resolve_view_visibility(view: Mapping[str, Any], layer_names: Sequence[str]) -> frozenset[str] | None:
++    raw = view.get("visible_layers")
++    if raw is None:
++        return None
++    if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes)):
++        raise Graphics3DValidationError("view.visible_layers must be an array of layer names.")
++    values = tuple(str(v).strip() for v in raw)
++    unknown = set(values) - set(layer_names)
++    if unknown:
++        raise Graphics3DValidationError(
++            "view.visible_layers names are not present in the scene: " + ", ".join(sorted(unknown))
++        )
++    return frozenset(values)
++
++
++def resolve_camera(view: Mapping[str, Any]) -> dict[str, Any]:
++    projection = str(view.get("projection", "orthographic"))
++    if projection not in {"orthographic", "perspective"}:
++        raise Graphics3DValidationError("view.projection must be 'orthographic' or 'perspective'.")
++    camera: dict[str, Any] = {"projection": {"type": projection}}
++    raw = view.get("camera")
++    if raw is None:
++        return camera
++    if isinstance(raw, str):
++        key = raw.strip().lower().replace("[", "").replace("]", "")
++        directions = {
++            "100": (1.8, 0.0, 0.0),
++            "010": (0.0, 1.8, 0.0),
++            "001": (0.0, 0.0, 1.8),
++            "110": (1.35, 1.35, 0.0),
++            "101": (1.35, 0.0, 1.35),
++            "011": (0.0, 1.35, 1.35),
++            "111": (1.2, 1.2, 1.2),
++            "isometric": (1.2, 1.2, 1.2),
++        }
++        if key not in directions:
++            raise Graphics3DValidationError(
++                "Unknown camera preset; use [100], [010], [001], [110], [101], [011], [111], or isometric."
++            )
++        eye = directions[key]
++        camera["eye"] = dict(zip(("x", "y", "z"), eye, strict=True))
++        return camera
++    if isinstance(raw, Mapping):
++        if "eye" in raw:
++            eye = _triplet(raw["eye"], name="camera.eye")
++            camera["eye"] = dict(zip(("x", "y", "z"), eye, strict=True))
++        if "up" in raw:
++            up = _triplet(raw["up"], name="camera.up")
++            camera["up"] = dict(zip(("x", "y", "z"), up, strict=True))
++        if "center" in raw:
++            center = _triplet(raw["center"], name="camera.center")
++            camera["center"] = dict(zip(("x", "y", "z"), center, strict=True))
++        return camera
++    eye = _triplet(raw, name="view.camera")
++    if not np.all(np.isfinite(eye)) or np.linalg.norm(np.asarray(eye, dtype=float)) == 0:
++        raise Graphics3DValidationError("view.camera eye must be finite and nonzero.")
++    camera["eye"] = dict(zip(("x", "y", "z"), eye, strict=True))
++    return camera
++
++
++def replicate_primitive(
++    primitive: GraphicsPrimitive3D,
++    *,
++    cell: np.ndarray | None,
++    shifts: Sequence[tuple[int, int, int]],
++) -> tuple[GraphicsPrimitive3D, ...]:
++    """Replicate one primitive by scene-wide lattice image shifts."""
++    if len(shifts) == 1 and tuple(shifts[0]) == (0, 0, 0):
++        return (primitive,)
++    if cell is None:
++        raise Graphics3DValidationError("Periodic display replication requires a scene display cell.")
++    matrix = np.asarray(cell, dtype=np.float64)
++    if matrix.shape != (3, 3):
++        raise Graphics3DValidationError("Scene display cell must have shape (3,3).")
++    result: list[GraphicsPrimitive3D] = []
++    for shift in shifts:
++        delta = np.asarray(shift, dtype=np.float64) @ matrix
++        attrs = {**dict(primitive.render_attributes), "image_shift": tuple(int(v) for v in shift)}
++        pid = primitive.primitive_id + f"@{shift[0]},{shift[1]},{shift[2]}"
++        common = dict(
++            owner_layer=primitive.owner_layer,
++            primitive_id=pid,
++            render_attributes=attrs,
++            scientific_refs=primitive.scientific_refs,
++        )
++        if isinstance(primitive, PointSet3D):
++            value = PointSet3D(**common, positions=primitive.positions + delta)
++        elif isinstance(primitive, PolylineSet3D):
++            value = PolylineSet3D(**common, points=primitive.points + delta, offsets=primitive.offsets)
++        elif isinstance(primitive, SegmentSet3D):
++            value = SegmentSet3D(**common, segments=primitive.segments + delta)
++        elif isinstance(primitive, TriangleMesh3D):
++            value = TriangleMesh3D(**common, vertices=primitive.vertices + delta, faces=primitive.faces)
++        elif isinstance(primitive, ArrowSet3D):
++            value = ArrowSet3D(**common, origins=primitive.origins + delta, vectors=primitive.vectors)
++        elif isinstance(primitive, TextLabelSet3D):
++            value = TextLabelSet3D(**common, positions=primitive.positions + delta, labels=primitive.labels)
++        elif isinstance(primitive, CellWireframe3D):
++            value = CellWireframe3D(**common, cell=primitive.cell, origin=primitive.origin + delta)
++        else:  # pragma: no cover - future primitive must opt into replication explicitly
++            raise Graphics3DValidationError(
++                f"Periodic display replication does not support primitive type {type(primitive).__name__}."
++            )
++        result.append(value)
++    return tuple(result)
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SOURCE_PATCH_0.20.149a0_to_0.20.150a0.patch' /mnt/data/mdstats-0.20.149a0-complete-source-package/pyproject.toml /mnt/data/mdstats_gfx5_work/pyproject.toml
+--- /mnt/data/mdstats-0.20.149a0-complete-source-package/pyproject.toml	2026-08-11 10:00:20.462174174 +0000
++++ /mnt/data/mdstats_gfx5_work/pyproject.toml	2026-08-11 10:41:03.688419238 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.149a0"
++version = "0.20.150a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SOURCE_PATCH_0.20.149a0_to_0.20.150a0.patch' /mnt/data/mdstats-0.20.149a0-complete-source-package/release/gfx3d5_focused_pytest.txt /mnt/data/mdstats_gfx5_work/release/gfx3d5_focused_pytest.txt
+--- /mnt/data/mdstats-0.20.149a0-complete-source-package/release/gfx3d5_focused_pytest.txt	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats_gfx5_work/release/gfx3d5_focused_pytest.txt	2026-08-11 10:45:24.540970488 +0000
+@@ -0,0 +1,58 @@
++........................................................................ [ 86%]
++...........                                                              [100%]
++=============================== warnings summary ===============================
++tests/test_graphics3d_contracts.py::test_current_framework_dynamics_render_result_adapts_to_layer_keyed_result
++tests/test_framework_dynamics.py::test_composite_legend_groups_paths_and_recomputes_equal_aspect
++tests/test_framework_dynamics.py::test_plotly_composite_adds_paths_endpoints_and_serializes
++tests/test_framework_dynamics.py::test_composite_render_adds_atomic_mean_graph_species_traces
++  /mnt/data/mdstats_gfx5_work/mdstats/plotting/framework_dynamics.py:4871: RuntimeWarning:
++  
++  Equal-aspect display added range padding along a degenerate coordinate axis.
++
++tests/test_graph_3d.py::test_canonical_3d_render_hover_and_html
++  /mnt/data/mdstats_gfx5_work/tests/test_graph_3d.py:53: RuntimeWarning:
++  
++  Equal-aspect display added range padding along a degenerate coordinate axis.
++
++tests/test_graph_3d.py::test_local_and_expanded_3d_geometry
++  /mnt/data/mdstats_gfx5_work/tests/test_graph_3d.py:73: RuntimeWarning:
++  
++  Equal-aspect display added range padding along a degenerate coordinate axis.
++
++tests/test_graph_3d.py::test_local_and_expanded_3d_geometry
++  /mnt/data/mdstats_gfx5_work/tests/test_graph_3d.py:73: RuntimeWarning:
++  
++  Axes and unit-cell wireframes are both hidden; absolute orientation may be unclear.
++
++tests/test_graph_3d.py::test_local_and_expanded_3d_geometry
++  /mnt/data/mdstats_gfx5_work/tests/test_graph_3d.py:84: RuntimeWarning:
++  
++  Equal-aspect display added range padding along a degenerate coordinate axis.
++
++tests/test_graph_3d.py::test_directed_parallel_and_self_loop_guards
++  /mnt/data/mdstats_gfx5_work/tests/test_graph_3d.py:174: RuntimeWarning:
++  
++  Equal-aspect display added range padding along a degenerate coordinate axis.
++
++tests/test_graph_3d.py::test_directed_parallel_and_self_loop_guards
++  /mnt/data/mdstats_gfx5_work/tests/test_graph_3d.py:174: RuntimeWarning:
++  
++  Axes and unit-cell wireframes are both hidden; absolute orientation may be unclear.
++
++tests/test_graph_3d.py::test_directed_parallel_and_self_loop_guards
++  /mnt/data/mdstats_gfx5_work/tests/test_graph_3d.py:193: RuntimeWarning:
++  
++  Equal-aspect display added range padding along a degenerate coordinate axis.
++
++tests/test_graph_3d.py::test_directed_parallel_and_self_loop_guards
++  /mnt/data/mdstats_gfx5_work/tests/test_graph_3d.py:193: RuntimeWarning:
++  
++  Axes and unit-cell wireframes are both hidden; absolute orientation may be unclear.
++
++tests/test_graph_3d.py::test_segmented_gradient_mode_is_explicit
++  /mnt/data/mdstats_gfx5_work/tests/test_graph_3d.py:214: RuntimeWarning:
++  
++  Axes and unit-cell wireframes are both hidden; absolute orientation may be unclear.
++
++-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
++83 passed, 13 warnings in 5.41s
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SOURCE_PATCH_0.20.149a0_to_0.20.150a0.patch' /mnt/data/mdstats-0.20.149a0-complete-source-package/release/gfx3d5_focused_test_record.json /mnt/data/mdstats_gfx5_work/release/gfx3d5_focused_test_record.json
+--- /mnt/data/mdstats-0.20.149a0-complete-source-package/release/gfx3d5_focused_test_record.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats_gfx5_work/release/gfx3d5_focused_test_record.json	2026-08-11 10:45:24.540585857 +0000
+@@ -0,0 +1,30 @@
++{
++  "acceptance": {
++    "browser_budget_failure_is_explicit": true,
++    "mock_fifth_layer_requires_no_result_schema_change": true,
++    "periodic_replication_is_scene_wide": true,
++    "prepared_builtin_layers_have_no_source_scene_renderer_reference": true,
++    "render_priority_is_render_only": true,
++    "renderer_has_no_builtin_layer_family_dispatch": true,
++    "view_changes_preserve_scientific_identity": true
++  },
++  "date": "2026-08-11",
++  "failed": 0,
++  "gate": "GFX3D-5",
++  "mdstats_version": "0.20.150a0",
++  "passed": 83,
++  "pytest_output": "release/gfx3d5_focused_pytest.txt",
++  "schema_version": "mdstats.graphics3d.gfx3d5-focused-test-record.v1",
++  "skipped": 0,
++  "tests": [
++    "tests/test_graphics3d_contracts.py",
++    "tests/test_graphics3d_layers.py",
++    "tests/test_graphics3d_gfx4_dependencies.py",
++    "tests/test_graphics3d_gfx5_rendering.py",
++    "tests/test_graphics3d_cli.py",
++    "tests/test_framework_dynamics.py",
++    "tests/test_graph_3d.py"
++  ],
++  "warning_scope": "existing legacy equal-aspect/orientation diagnostics",
++  "warnings": 13
++}
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SOURCE_PATCH_0.20.149a0_to_0.20.150a0.patch' /mnt/data/mdstats-0.20.149a0-complete-source-package/release/gfx3d5_na_lta_qualification.json /mnt/data/mdstats_gfx5_work/release/gfx3d5_na_lta_qualification.json
+--- /mnt/data/mdstats-0.20.149a0-complete-source-package/release/gfx3d5_na_lta_qualification.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats_gfx5_work/release/gfx3d5_na_lta_qualification.json	2026-08-11 10:45:24.049908167 +0000
+@@ -0,0 +1,107 @@
++{
++  "atoms": 168,
++  "browser_payload": {
++    "estimated_geometry_bytes": 5457616,
++    "face_count": 149896,
++    "point_count": 77528,
++    "segment_count": 36,
++    "trace_count": 20
++  },
++  "dependency_cache_report": {
++    "entries": 3,
++    "hits": 0,
++    "misses": 3
++  },
++  "frames": 21,
++  "html_canonical_bytes": 6794313,
++  "html_periodic_bytes": 8742291,
++  "layer_payloads": {
++    "Na density": {
++      "estimated_geometry_bytes": 5427648,
++      "face_count": 149896,
++      "point_count": 76256,
++      "segment_count": 0,
++      "trace_count": 6
++    },
++    "Na trajectory": {
++      "estimated_geometry_bytes": 26896,
++      "face_count": 0,
++      "point_count": 1104,
++      "segment_count": 0,
++      "trace_count": 6
++    },
++    "framework": {
++      "estimated_geometry_bytes": 3072,
++      "face_count": 0,
++      "point_count": 168,
++      "segment_count": 36,
++      "trace_count": 8
++    }
++  },
++  "layers": [
++    "framework",
++    "Na trajectory",
++    "Na density"
++  ],
++  "mdstats_version": "0.20.150a0",
++  "periodic_image_shifts": [
++    [
++      0,
++      0,
++      0
++    ],
++    [
++      1,
++      0,
++      0
++    ]
++  ],
++  "prepared_scene_schema": "mdstats.graphics3d.prepared-scene.gfx3d5.v1",
++  "render_schema": "mdstats.graphics3d.plotly-render-result.gfx3d5.v1",
++  "schema_version": "mdstats.graphics3d.gfx3d5-na-lta-qualification.v1",
++  "scientific_hash_current_0_20_150a0": {
++    "density": "7dfe8c055122a0a5ee1ab47fe50c1f827158aa65447057794936e5544747a9f8",
++    "density_type": "PeriodicScalarField3D",
++    "field_key": "atomic-density-0",
++    "integral": 23.999999999999996,
++    "mean_positions": "a646f0712ef8aa0c49f06826367a83848a8273f7a0803c7e5ff7ce938764025e",
++    "planning": "0d0c876f4aa4f87ec6795bd04944017838bfe0eab11a8c6d70e66c15906132cc",
++    "trajectory_positions": "bd1184330923381803db1e0f09cab8e93605fb4b6e954cd95074367e019635be"
++  },
++  "scientific_hash_reference_0_20_149a0": {
++    "density": "7dfe8c055122a0a5ee1ab47fe50c1f827158aa65447057794936e5544747a9f8",
++    "density_type": "PeriodicScalarField3D",
++    "field_key": "atomic-density-0",
++    "integral": 23.999999999999996,
++    "mean_positions": "a646f0712ef8aa0c49f06826367a83848a8273f7a0803c7e5ff7ce938764025e",
++    "planning": "0d0c876f4aa4f87ec6795bd04944017838bfe0eab11a8c6d70e66c15906132cc",
++    "trajectory_positions": "bd1184330923381803db1e0f09cab8e93605fb4b6e954cd95074367e019635be"
++  },
++  "scientific_products_exactly_identical_to_0_20_149a0": true,
++  "source_path": "/mnt/data/dump.prod.Na_lta_300K.old(1).lammpstrj",
++  "source_provider_report": {
++    "cache_policy": "scene_context_in_memory_single_flight",
++    "durable_product_cache": false,
++    "preparation_count": 1,
++    "preparation_wall_seconds": 2.5094401160004054,
++    "prepared": true,
++    "schema_version": "mdstats.graphics3d.lta-provider-report.gfx3d4.v1",
++    "scientific_identity": "3d626a4a4eb2fbb61a747e5cffedc008fecbcdccd2ebcabd656ea838554e811e"
++  },
++  "source_scene_refs_in_layer_products": 0,
++  "source_sha256": "81c86cc40f5a11031f80817213eb558c02348494d1c6cad9b4775a5bc3c9f9cd",
++  "trace_count": 20,
++  "view": {
++    "camera": "[111]",
++    "periodic_images": "2x1x1",
++    "projection": "orthographic",
++    "visible_layers": [
++      "Na density"
++    ]
++  },
++  "visible_trace_counts": {
++    "Na density": 6,
++    "Na trajectory": 0,
++    "framework": 0
++  }
++}
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SOURCE_PATCH_0.20.149a0_to_0.20.150a0.patch' /mnt/data/mdstats-0.20.149a0-complete-source-package/tests/test_graphics3d_gfx5_rendering.py /mnt/data/mdstats_gfx5_work/tests/test_graphics3d_gfx5_rendering.py
+--- /mnt/data/mdstats-0.20.149a0-complete-source-package/tests/test_graphics3d_gfx5_rendering.py	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats_gfx5_work/tests/test_graphics3d_gfx5_rendering.py	2026-08-11 10:41:16.376016589 +0000
+@@ -0,0 +1,146 @@
++from __future__ import annotations
++
++from dataclasses import dataclass
++from pathlib import Path
++
++import numpy as np
++import pytest
++
++from mdstats.graphics3d import (
++    DEFAULT_GRAPHICS_LAYER_REGISTRY,
++    GraphicsLayer3DRequest,
++    GraphicsLayerRegistration,
++    GraphicsLayerRegistry,
++    GraphicsScene3DRequest,
++    GraphicsSceneContext,
++    GraphicsSelection,
++    PointSet3D,
++    PreparedGraphicsLayer3D,
++    PreparedGraphicsScene3D,
++    prepare_graphics3d_scene,
++    render_graphics3d_plotly,
++)
++from mdstats.graphics3d.browser import GraphicsBrowserBudget, measure_browser_payload
++from mdstats.graphics3d.errors import Graphics3DValidationError
++from mdstats.graphics3d.manifest import GraphicsSceneManifest
++from mdstats.graphics3d.view import resolve_periodic_image_shifts
++from tests.test_graphics3d_layers import full_legacy_scene
++
++
++def _scene_request(*, view=None, priorities=(0, 0)):
++    return GraphicsScene3DRequest(
++        layers=(
++            GraphicsLayer3DRequest("framework", "framework", render_priority=priorities[0]),
++            GraphicsLayer3DRequest(
++                "Na trajectory", "trajectory", selection=GraphicsSelection(species=("Na",)),
++                render_priority=priorities[1],
++            ),
++        ),
++        view={} if view is None else view,
++    )
++
++
++def test_builtin_prepared_layers_no_longer_expose_renderer_source_scene(full_legacy_scene):
++    scene = prepare_graphics3d_scene(
++        _scene_request(),
++        context=GraphicsSceneContext(source=full_legacy_scene, source_identity="gfx5-no-source-scene"),
++    )
++    assert all("source_scene" not in layer.product_refs for layer in scene.layers)
++    rendered = render_graphics3d_plotly(scene)
++    assert rendered.render_metadata["schema_version"].endswith("gfx3d5.v1")
++    assert all(result.metadata["primitive_count"] > 0 for result in rendered.layer_results.values())
++
++
++def test_view_visibility_camera_and_periodicity_do_not_change_scientific_identity(full_legacy_scene):
++    base = prepare_graphics3d_scene(
++        _scene_request(),
++        context=GraphicsSceneContext(source=full_legacy_scene, source_identity="gfx5-view-a"),
++    )
++    altered = prepare_graphics3d_scene(
++        _scene_request(view={"camera": "[111]", "projection": "perspective", "periodic_images": [2, 1, 1], "visible_layers": ["Na trajectory"]}),
++        context=GraphicsSceneContext(source=full_legacy_scene, source_identity="gfx5-view-b"),
++    )
++    assert [l.scientific_identity for l in base.layers] == [l.scientific_identity for l in altered.layers]
++    result = render_graphics3d_plotly(altered)
++    assert result.render_metadata["periodic_image_shifts"] == [[0, 0, 0], [1, 0, 0]]
++    assert result.artifact.layout.scene.camera.projection.type == "perspective"
++    for index in result.layer_results["framework"].backend_object_indices:
++        assert result.artifact.data[index].visible == "legendonly"
++    for index in result.layer_results["Na trajectory"].backend_object_indices:
++        assert result.artifact.data[index].visible is True
++
++
++def test_render_priority_controls_backend_order_not_result_schema(full_legacy_scene):
++    scene = prepare_graphics3d_scene(
++        _scene_request(priorities=(10, -5)),
++        context=GraphicsSceneContext(source=full_legacy_scene, source_identity="gfx5-priority"),
++    )
++    result = render_graphics3d_plotly(scene)
++    assert tuple(result.layer_results) == ("framework", "Na trajectory")
++    assert min(result.layer_results["Na trajectory"].backend_object_indices) < min(result.layer_results["framework"].backend_object_indices)
++
++
++def test_periodic_image_resolution_is_deterministic_and_strict():
++    assert resolve_periodic_image_shifts({"periodic_images": "2x1x2"}) == (
++        (0,0,0), (0,0,1), (1,0,0), (1,0,1)
++    )
++    assert resolve_periodic_image_shifts({"periodic_images": [[0,0,0], [-1,0,0]]}) == ((0,0,0), (-1,0,0))
++    with pytest.raises(Graphics3DValidationError):
++        resolve_periodic_image_shifts({"periodic_images": [0,1,1]})
++
++
++def test_browser_payload_budget_failure_is_explicit():
++    primitive = PointSet3D(owner_layer="mock", primitive_id="many", positions=np.zeros((11,3)))
++    payload = measure_browser_payload((primitive,))
++    with pytest.raises(Graphics3DValidationError, match="browser payload"):
++        GraphicsBrowserBudget(max_traces=10, max_points=10, max_faces=10, max_geometry_bytes=10_000).validate(payload)
++
++
++def test_mock_fifth_layer_uses_common_renderer_without_result_schema_change():
++    layer_type = "mock-gfx5"
++    @dataclass(frozen=True, slots=True)
++    class MockLayer:
++        def dependencies(self, request, context): return ()
++        def prepare(self, request, resolved_dependencies, context):
++            return PreparedGraphicsLayer3D(request=request, scientific_identity=request.scientific_identity, product_refs={})
++        def render_primitives(self, prepared, context):
++            return (PointSet3D(owner_layer=prepared.request.name, primitive_id="point", positions=np.asarray([[1.,2.,3.]]), scientific_refs=(prepared.scientific_identity,), render_attributes={"name":"Mock"}),)
++    registry = GraphicsLayerRegistry()
++    for registration in DEFAULT_GRAPHICS_LAYER_REGISTRY.registrations():
++        registry.register(registration)
++    registry.register(GraphicsLayerRegistration(layer_type=layer_type, schema_version="test.mock.v1", adapter_factory=MockLayer))
++    request = GraphicsScene3DRequest(layers=(GraphicsLayer3DRequest("Mock", layer_type),))
++    prepared = prepare_graphics3d_scene(request, context=GraphicsSceneContext(source_identity="mock"), registry=registry)
++    result = render_graphics3d_plotly(prepared, registry=registry)
++    assert tuple(result.layer_results) == ("Mock",)
++    assert len(result.artifact.data) == 1
++    assert result.layer_results["Mock"].metadata["primitive_count"] == 1
++
++
++def test_common_plotly_renderer_has_no_builtin_science_family_dispatch():
++    source = Path("mdstats/graphics3d/plotly_renderer.py").read_text()
++    for token in ('layer_type == "framework"', 'layer_type == "connectivity"', 'layer_type == "trajectory"', 'layer_type == "density"'):
++        assert token not in source
++
++def test_config_compiles_priority_and_view_records_without_scientific_pollution():
++    from mdstats.graphics3d.config import compile_graphics3d_config
++    payload = {
++        "scene": {"projection": "perspective", "camera": "[110]", "periodic_images": "2x1x1", "visible_layers": ["framework"]},
++        "layer": [{"type": "framework", "name": "framework", "priority": -3}],
++    }
++    compiled = compile_graphics3d_config(payload, present_species=("Si", "O"))
++    assert compiled.request.layers[0].render_priority == -3
++    assert compiled.request.view["camera"] == "[110]"
++    assert compiled.request.view["periodic_images"] == "2x1x1"
++    scientific = compiled.request.scientific_identity
++    altered = GraphicsScene3DRequest(layers=compiled.request.layers, view={"camera": "[111]"})
++    assert altered.scientific_identity == scientific
++
++
++def test_cli_accepts_universal_view_overrides():
++    from mdstats.graphics3d.cli import parse_arguments
++    args = parse_arguments(["traj.lammpstrj", "--layer", "framework", "--camera", "[111]", "--periodic-images", "2x1x1", "--visible-layer", "framework", "--background", "dark"])
++    assert args.camera == "[111]"
++    assert args.periodic_images == "2x1x1"
++    assert args.visible_layer == ["framework"]
++    assert args.background == "dark"

@@ -1,0 +1,26 @@
+{
+  "schema": "mdstats.mlff-mh1-doctor-hotfix3-phase-split.v1",
+  "date": "2026-08-14",
+  "trigger": {
+    "source_cueq_pure_parity": {
+      "energy_max_abs": 1.418,
+      "force_max_abs": 0.7567,
+      "stress_max_abs": 0.01332,
+      "descriptor_max_abs": 2.464,
+      "selection_identical": false
+    }
+  },
+  "correction": {
+    "source_foundation_inference": "original multi-head foundation, e3nn vs pure/hybrid CuEq",
+    "training_foundation": "exact executable training foundation; MH-1 uses EXTRACT1-derived single-head checkpoint, e3nn vs pure CuEq",
+    "qualification": "both inference and training parity must pass; no tolerance relaxation; no silent fallback"
+  },
+  "tests": {
+    "affected_slice": "63 passed, 7 deselected"
+  },
+  "files": {
+    "mdstats/training_data/acceleration.py": "fb70543bbe917ba64f374510f81017b73fa721f5ca0f32f4052f63d00f39e9de",
+    "mdstats/training_data/campaign_cli.py": "ec7d34eae9ff142b2787b1ba84075d6db51582510a871313c394cc93af1f3d23",
+    "tests/test_mlff_mh1_accel1.py": "34e78faee950f0c68d65f4599a7ddf839cf728c8555e423989391f6fbd7510ac"
+  }
+}

@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mdstats"
+version = "0.20.240a0"
+description = "Transparent atomistic frame collections and structural/dynamical statistics"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.26",
+  "ase>=3.26",
+  "scipy>=1.11",
+  "matplotlib>=3.8",
+  "networkx>=3.4",
+  "threadpoolctl>=3.1",
+  "packaging>=23",
+  "tomli>=2.0; python_version < '3.11'",
+]
+
+[project.scripts]
+mdstats-mace-train = "mdstats.training_data.critical_precision_cli:train_main"
+mdstats-mace-eval = "mdstats.training_data.critical_precision_cli:eval_main"
+mdstats-mace-select-head = "mdstats.training_data.critical_precision_cli:select_head_main"
+mdstats-3d = "mdstats.graphics3d.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+markers = [
+  "slow: real external-runtime smoke tests that may take tens of seconds",
+]
+
+[tool.setuptools.packages.find]
+include = ["mdstats*"]
+exclude = ["tests*", "examples*"]
+
+[tool.setuptools.package-data]
+mdstats = ["data/*.json"]
+
+[project.optional-dependencies]
+manifest = ["PyYAML>=6.0"]
+interactive = ["plotly>=5.20", "scikit-image>=0.22", "fast-simplification>=0.1.13", "cloudpickle>=3.0"]

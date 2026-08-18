@@ -1,0 +1,69 @@
+{
+  "compatibility": {
+    "legacy_v1_digest_preserved": true,
+    "legacy_v1_semantics_preserved": true,
+    "legacy_v1_silent_upgrade": false,
+    "new_policy_schema": "mdstats.adaptive-training-stop-policy.v2",
+    "new_state_schema": "mdstats.adaptive-training-stop-state.v2"
+  },
+  "date": "2026-08-10",
+  "default_campaign": {
+    "cross_validation_folds": 3,
+    "final_runs_per_seed": 1,
+    "method": "multihead_replay",
+    "nominal_training_runs": 12,
+    "optimizer_seeds": [
+      1,
+      2,
+      3
+    ]
+  },
+  "foundation_replay_feasibility": {
+    "artifact_sha256_authenticated": true,
+    "evidence_domain": "R_full",
+    "exact_restart_reuses_frozen_evidence": true,
+    "label_domain": "TRUE_DFT",
+    "loader_removed_before_epoch_loop": true,
+    "one_time_before_epoch_zero": true
+  },
+  "gate": "MLCV-STOP1",
+  "lightweight_stop_policy": {
+    "full_acceptance_deferred_to": "MLCV-SELECT1",
+    "full_thresholds_disqualify_lightweight_checkpoint": false,
+    "hard_max_epochs": 30,
+    "minimum_completed_epochs_before_margin_stop": 3,
+    "replay_exhaustion_multiplier": 1.2,
+    "replay_full_validation_reference_ev_per_angstrom_at_1_to_1": 0.03,
+    "replay_stop_ev_per_angstrom_at_1_to_1": 0.036,
+    "target_full_validation_reference_ev_per_angstrom": 0.03,
+    "target_stop_ev_per_angstrom": 0.024,
+    "target_success_fraction": 0.8
+  },
+  "package_version": "0.20.133a0",
+  "qualification": {
+    "broad_mlff_dependency_independent": {
+      "deselected": 1,
+      "failures": 0,
+      "passed": 720,
+      "skipped": 32
+    },
+    "deselected_reason": "Historical test requires release/mlff_data9a9a_real_mpa0_restart_smoke.json, absent from the supplied source package.",
+    "optional_runtime_notes": "MACE/e3nn/torch_ema/real checkpoint tests skip when their optional runtime or external artifacts are not mounted; the supplied dependency archive does not provide torch_geometric to this Python runtime.",
+    "pdf_preflight": {
+      "architecture_pages": 101,
+      "encrypted": false,
+      "guide_pages": 13,
+      "likely_scanned": false,
+      "openable": true,
+      "xfa": false
+    }
+  },
+  "schema": "mdstats.mlff-mlcv-stop1-qualification.v1",
+  "scope_boundary": {
+    "cv_aggregation": "pending MLCV-AGG1",
+    "final_only_production_competition": "pending MLCV-FINAL1",
+    "full_checkpoint_selection": "pending MLCV-SELECT1",
+    "run_local_top_five": "pending MLCV-RANK1"
+  },
+  "status": "qualified"
+}

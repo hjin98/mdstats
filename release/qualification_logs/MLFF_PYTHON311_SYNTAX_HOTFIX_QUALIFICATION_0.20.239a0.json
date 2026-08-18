@@ -1,0 +1,60 @@
+{
+  "architecture_revision": 103,
+  "content_digest": "15b528f549bc9849b9fcd406bcac190cdc2f936434a6689cdbc92007a25e2132",
+  "dependency_graph_schema": 83,
+  "documentation": {
+    "architecture_revision_unchanged": true,
+    "manual_pages": 53,
+    "pdf_preflight": "PASS",
+    "pdf_render": "PASS"
+  },
+  "gpu_authority_change": false,
+  "incident": {
+    "cause": "multiline function call embedded directly in an f-string expression; incompatible with pre-PEP-701 Python grammar",
+    "exception": "SyntaxError: unterminated string literal",
+    "file": "mdstats/training_data/campaign_cli.py",
+    "line_in_0.20.238a0": 8318,
+    "runtime": "Python 3.11"
+  },
+  "next_gate": "FINAL_GPU1_DEFERRED_RELEASE_QUALIFICATION",
+  "release": "0.20.239a0",
+  "resolution": {
+    "change": "precompute format_progress_timing_fields(...) into timing_fields before f-string interpolation",
+    "mvidx_ooc_semantics_changed": false,
+    "progress_semantics_changed": false
+  },
+  "schema": "mdstats.mlff-python311-syntax-hotfix-qualification.2026-08.v1",
+  "scientific_authority_change": false,
+  "status": "PASS_PYTHON311_SYNTAX_HOTFIX",
+  "tests": {
+    "campaign_cli_help_import": "PASS",
+    "final_focused_surface": {
+      "archival_release_pin_failures_excluded": 2,
+      "failed": 0,
+      "passed": 23,
+      "warnings": 1
+    },
+    "focused_runtime_progress_current_tests": {
+      "failed": 0,
+      "passed": 23,
+      "warnings": 1
+    },
+    "known_archival_release_pin_tests_excluded": [
+      "test_data6_recovery_hf1_release_graph_and_runtime_import",
+      "test_data6_architecture_status"
+    ],
+    "python311_grammar_files_parsed": 932,
+    "target_data2_original_authority": {
+      "failed": 0,
+      "passed": 111,
+      "warnings": 18
+    },
+    "target_data2_plus_ooc": {
+      "failed": 0,
+      "passed": 115,
+      "warnings": 18
+    },
+    "wheel_version": "0.20.239a0",
+    "whole_tree_compileall_host": "PASS"
+  }
+}

@@ -1,0 +1,248 @@
+{
+  "certification_matrix": [
+    {
+      "backend": "e3nn",
+      "evidence": "BASE0 real FP32/FP64 numerical reference plus current 4/4 BASE0 regression",
+      "foundation": "MACE-MPA-0-medium",
+      "head": "default",
+      "required_level": "full regression",
+      "status": "PASS"
+    },
+    {
+      "backend": "cueq",
+      "blockers": [
+        "cuequivariance unavailable",
+        "cuequivariance_torch unavailable",
+        "CuEq CUDA ops/runtime unavailable"
+      ],
+      "foundation": "MACE-MPA-0-medium",
+      "head": "default",
+      "required_level": "full regression",
+      "status": "BLOCKED_RUNTIME"
+    },
+    {
+      "backend": "e3nn",
+      "blocked": [
+        "official MACE 0.3.16 ML-IAP export requires CuEquivariance runtime",
+        "LAMMPS run-0 unavailable"
+      ],
+      "foundation": "MACE-MH-1",
+      "head": "omat_pbe",
+      "passed": [
+        "identity/head resolution",
+        "inference",
+        "E0",
+        "DATA6/DATA7 descriptor lineage",
+        "selected-head extraction parity",
+        "DATA8 bounded replay training",
+        "EVAL1/PES lineage",
+        "learned target-head parity"
+      ],
+      "required_level": "full production",
+      "status": "PASS_THROUGH_LEARNED_TARGET_HEAD__DEPLOYMENT_RUNTIME_BLOCKED"
+    },
+    {
+      "backend": "cueq",
+      "blockers": [
+        "cuequivariance unavailable",
+        "cuequivariance_torch unavailable",
+        "cuequivariance ops/CUDA unavailable",
+        "OpenEquivariance unavailable",
+        "LAMMPS executable unavailable"
+      ],
+      "foundation": "MACE-MH-1",
+      "head": "omat_pbe",
+      "required_level": "full production and generated default",
+      "status": "BLOCKED_RUNTIME"
+    },
+    {
+      "backend": "e3nn",
+      "evidence": "real checkpoint explicit-head provider gives finite E/F and native invariant descriptors; identity differs from omat_pbe",
+      "foundation": "MACE-MH-1",
+      "head": "omol",
+      "required_level": "identity + inference + DATA6 lineage",
+      "status": "PASS"
+    },
+    {
+      "backend": "cueq",
+      "blockers": [
+        "CuEq/OEQ/CUDA runtime unavailable"
+      ],
+      "foundation": "MACE-MH-1",
+      "head": "omol",
+      "required_level": "identity + accelerator/descriptor parity",
+      "status": "BLOCKED_RUNTIME"
+    },
+    {
+      "backend": "any",
+      "evidence": "real fixture test rejects invalid and missing source heads before calculator construction",
+      "foundation": "MACE-MH-1",
+      "head": "invalid or omitted",
+      "required_level": "hard failure",
+      "status": "PASS"
+    }
+  ],
+  "content_digest": "873375af6bb75b76ccbd10f7d1cffe3531b9841d1e912ce7b513d6ffaf067beb",
+  "date": "2026-08-14",
+  "full_revision_certified": false,
+  "gate": "MH1-CERT1",
+  "generated_default": {
+    "foundation_family": "mace_mh_1",
+    "foundation_head": "omat_pbe",
+    "requested_backend": "cueq"
+  },
+  "generated_default_end_to_end_certified": false,
+  "known_archival_test_state": {
+    "archival_preexisting_failures": 51,
+    "locked_historical_specifications_modified": false,
+    "order_pollution_failures_repassed_in_isolation": 2
+  },
+  "lineage_audit": {
+    "canonical_raw_sha_only_foundation_lineage_present": false,
+    "derived_selected_head_distinct_from_scientific_source": true,
+    "learned_target_head_distinct_from_extract1_foundation_artifact": true,
+    "pseudolabel_generator_identity_inference_qualified": true,
+    "raw_sha_fields_remaining": "legacy schema readers only",
+    "scientific_foundation_identity_head_qualified": true
+  },
+  "locked_inputs": {
+    "dependency_archive": {
+      "path": "dependencies.tar(20260814-095402).gz",
+      "sha256": "888d545a512396697c8583d69bc9ed33110914675f466a4cbcafc3e1e1407171"
+    },
+    "mh1": {
+      "immutable_after_certification": true,
+      "path": "mace-mh-1.model",
+      "sha256": "ec00a2705854622fbbd898ccfb7701072fcd674709102d009fb919c1b8cc5dde"
+    },
+    "mpa0": {
+      "immutable_after_certification": true,
+      "path": "mace-mpa-0-medium(3).model",
+      "sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638"
+    }
+  },
+  "next_required_action": "Rerun ACCEL1/DEPLOY1/CERT1 authorization cells in an environment containing CuEquivariance, OpenEquivariance, usable CUDA, and an ML-IAP-capable LAMMPS executable. No additional mdstats architecture gate is required before that runtime certification.",
+  "policy_preservation": {
+    "files": {
+      "mdstats/training_data/eval2.py": "1e96949bbbfdb61c3c7cdeb92e5bccc46b96b884f84f34b211eb2a75843cb577",
+      "mdstats/training_data/lightweight_rank.py": "c4dafbf233ed1075d4b8b6b1c37d4a7205ab593b0c360f9346cf7e08d99a7ac1",
+      "mdstats/training_data/target_size_convergence.py": "717a60bfdb3da7639efdb0974be0241661925c2e07c93da4c3e847f9eee74e6f",
+      "mdstats/training_data/train2_policy.py": "9e404ca92a59840bd544d53d3890498fcec2563738e87e03fb46d254c0c46c11"
+    },
+    "statement": "CERT1 changes retention/certification only; completed TRAIN2/EVAL2/target-size ranking policy is unchanged from DEPLOY1."
+  },
+  "predecessor_package": {
+    "path": "mdstats-0.20.177a0-complete-source-package-mh1-deploy1.zip",
+    "sha256": "a82438f021c429a5ae4b48d19388e1756af9571c7ee825e4cd3c5d4de5c850ee"
+  },
+  "prior_gate_evidence": {
+    "mlff_mh1_accel1_acceleration_evidence.json": {
+      "content_digest": "fe96fe97fde0728f4db2ad374921d151fd9eab8fad5238ab48522cb3d36451cd",
+      "file_sha256": "45564e615a0c206484105cea56482a0e97f4a754938812337481b4c5bea7cbe7"
+    },
+    "mlff_mh1_base0_mpa0_regression_evidence.json": {
+      "content_digest": null,
+      "file_sha256": "9dc55c995899a27de4b4e9645fe7e1d202faf02e4ce5ac8d0f6fe3b2f92db079"
+    },
+    "mlff_mh1_config1_configuration_evidence.json": {
+      "content_digest": "45f8e3b4248c0a6ba6cc36bd7a0cdb62e7cb181f9030ada6f51a89a8bab46ecd",
+      "file_sha256": "c7eae0a1d268bc7a1e19925d0ab4fae77458037330b25d4669dfa80324538377"
+    },
+    "mlff_mh1_data6_1_descriptor_evidence.json": {
+      "content_digest": "3b7323902c6bdf842833dd98cfa6d3016234f4879e93caa90743aa9b59a783a1",
+      "file_sha256": "4596b1cbb6140519ab486608a781a7ff0c6c9805eb1e40bf5108a6c0c925af79"
+    },
+    "mlff_mh1_dep0_runtime_freeze_evidence.json": {
+      "content_digest": "00a98ff9d1ea5ac94af91a8581cb7118d599df4d3d42c522271c2da44b36a862",
+      "file_sha256": "f3389d860f42defca104777dd097352fb5074e9b97e6893f1f57bee35e974398"
+    },
+    "mlff_mh1_deploy1_deployment_evidence.json": {
+      "content_digest": "16f7b7e821831d024c0d8f52c57f1f05343eba44f7fe4a3206ee1b4f9ca44ec2",
+      "file_sha256": "0ba21ace8033ed4410e082dad14657c81bd0720070c412dc9c88d2ddac3689bf"
+    },
+    "mlff_mh1_eval1_evaluation_evidence.json": {
+      "content_digest": "9723c726edb8315fe57731a739ec7ab745fc62f8748c7a102a6e35d260462379",
+      "file_sha256": "99f417a3b2ccc1a5209f4a3949db62795bac33daa9792056469a25534491dd55"
+    },
+    "mlff_mh1_extract1_selected_head_evidence.json": {
+      "content_digest": null,
+      "file_sha256": "ba0eae98d9ec2942d6c74cd5eeb0bf115a7ed463e7efdc6db8dd9ffcb99c64bf"
+    },
+    "mlff_mh1_id1_foundation_evidence.json": {
+      "content_digest": null,
+      "file_sha256": "a3de782aadc4208733848da31d2590fcc69c0907a0197098f3a6343b8d892db1"
+    },
+    "mlff_mh1_inf1_head_aware_inference_evidence.json": {
+      "content_digest": "5d6996df30285cdf6a632274407d14a57d937e0bb6433c740411d60c94ff00cd",
+      "file_sha256": "eb162362461f27207fc72f6c4dfd19a0a611e3eac7b2cc1bae4a9a2142fe0932"
+    },
+    "mlff_mh1_lineage1_evidence.json": {
+      "content_digest": "356750755fd4e73224493e47f0570dbfc23ac8c71969b731c6bcb0d9463b7480",
+      "file_sha256": "b149ec371c4750e0189d76103f91db4c25e613005471c057356e147f18ea698e"
+    },
+    "mlff_mh1_train1_training_evidence.json": {
+      "content_digest": null,
+      "file_sha256": "8458c86b93c6660bd0682ccd1facd6f292310894548e3078ee2dd133dad92116"
+    }
+  },
+  "production_modified_files": {
+    "mdstats/training_data/campaign_cli.py": "ed346ee2b58d76c3936098e2747c0e9bf76a54f6acf54d984c2cfd55bd5b73f5",
+    "mdstats/training_data/storage_accounting.py": "6e56a305600f0e8cef632bc439a4d6724fa2bd1cdcc20516f36e5be93ea67ec9"
+  },
+  "runtime_blockers": {
+    "cuequivariance": false,
+    "cuequivariance_cuda_ops": false,
+    "cuequivariance_torch": false,
+    "lammps_executable": false,
+    "openequivariance": false,
+    "silent_e3nn_fallback_permitted": false,
+    "usable_cuda": false
+  },
+  "schema": "mdstats.mlff-mh1-cert1-evidence.v1",
+  "source_version": "0.20.177a0",
+  "status": "implementation_complete_runtime_certification_blocked",
+  "storage_closure": {
+    "data6_predictions_and_descriptors": "rebuildable under existing cache policy",
+    "foundation_identity_and_acceleration_realization": "protected campaign-state evidence",
+    "original_foundation_checkpoint": {
+      "automatic_reclamation": "prohibited",
+      "manual_reclamation": "prohibited",
+      "retention": "protected external input"
+    },
+    "selected_head_training_foundation": {
+      "automatic_reclamation": "prohibited",
+      "capabilities": [
+        "mh1_selected_head_training_restart",
+        "exact_training_foundation_reproduction"
+      ],
+      "manual_reclamation": "prohibited",
+      "path_family": ".mdstats/foundation-selected-head",
+      "retention": "restart_critical"
+    }
+  },
+  "tests": {
+    "base0_current_real_mpa0": {
+      "failed": 0,
+      "passed": 4
+    },
+    "broad_mlff_sweep": {
+      "interpretation": "No CERT1 production regression identified. 51 failures are archival/pre-existing release/source-text/spec assertions; 2 order-dependent TRAIN2 failures repassed in isolated fresh process.",
+      "observed_failures": 53,
+      "passed": 996
+    },
+    "cert1_real_fixture_cells": {
+      "deselected_non_slow": 2,
+      "failed": 0,
+      "passed": 2
+    },
+    "cert1_storage_non_slow": {
+      "deselected_slow": 2,
+      "failed": 0,
+      "passed": 39
+    },
+    "train2_eval2_functional_fresh_process": {
+      "failed": 0,
+      "passed": 35
+    }
+  }
+}

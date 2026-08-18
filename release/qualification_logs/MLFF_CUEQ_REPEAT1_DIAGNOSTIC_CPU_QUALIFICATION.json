@@ -1,0 +1,25 @@
+{
+  "schema": "mdstats.mlff-cueq-repeat1-diagnostic-cpu-qualification.v1",
+  "release": "0.20.216a0",
+  "architecture_revision": 83,
+  "dependency_graph_schema": 65,
+  "gate": "CUEQ-REPEAT1-DIAG",
+  "status": "implemented_non_authorizing_pending_workstation_measurement",
+  "diagnostic_schema": "mdstats.training-acceleration-repeatability-diagnostic.v1",
+  "repeat_count": 10,
+  "force_reporting_threshold": 1e-05,
+  "active_train2_fp32_rtol": 1e-05,
+  "active_train2_fp32_atol": 1e-05,
+  "parity_policy_changed_by_this_gate": false,
+  "gpu_measurement_performed": false,
+  "focused_tests": {"passed": 4, "failed": 0},
+  "adjacent_regression": {"passed": 132, "skipped": 1, "failed": 0},
+  "compileall": "passed",
+  "pdf_render_qa": {
+    "revision_note": "passed",
+    "diagnostic_spec": "passed",
+    "full_manual_pages_rendered": 232,
+    "full_manual": "passed"
+  },
+  "final_gpu1_revision82_handoff": "archival_pending_repeatability_interpretation"
+}

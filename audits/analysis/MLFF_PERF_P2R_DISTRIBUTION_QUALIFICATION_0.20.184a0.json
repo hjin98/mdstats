@@ -1,0 +1,61 @@
+{
+  "accelerator_qualification_status": "pending_final_gpu1",
+  "artifacts": {
+    "sdist": {
+      "path": "dist/mdstats-0.20.184a0.tar.gz",
+      "sha256": "7d1d25a8d32c428f1dcdde43fb644b3d0f244918209814ca43524b1893ab9b36",
+      "size_bytes": 32731383
+    },
+    "wheel": {
+      "path": "dist/mdstats-0.20.184a0-py3-none-any.whl",
+      "sha256": "fefaf4ec07df002ab8e12af7f11bbc9c4c74b5b06edaa5bfbf8c2bb6b5ea80bf",
+      "size_bytes": 2720569
+    }
+  },
+  "content_digest": "34a5fc454392e0d2b4c4ca1b54667fb0f8243664ad6f12331e2d12705beae5c1",
+  "created_at_utc": "2026-08-16T00:12:43Z",
+  "limitations": [
+    "No CUDA/CuEquivariance qualification was executed by design.",
+    "SIZE-FIDELITY1 empirical survivor calibration remains FINAL-GPU1 work.",
+    "PERF-P2R whole-funnel GPU throughput/VRAM/utilization remains FINAL-GPU1 work."
+  ],
+  "manifest_hardening": [
+    "canonical root architecture Markdown/PDF included in sdist",
+    "canonical root dependency graph included in sdist",
+    "current PERF-P2R/FINAL-GPU1/SIZE-FIDELITY1 root specifications included in sdist",
+    "benchmark PDFs included in sdist"
+  ],
+  "mdstats_version": "0.20.184a0",
+  "schema": "mdstats.perf-p2r-distribution-qualification.2026-08.v1",
+  "sdist_smoke": {
+    "benchmark_pdf_present": true,
+    "canonical_root_dependency_graph_present": true,
+    "canonical_root_manual_present": true,
+    "failed": 0,
+    "final_gpu_tool_present": true,
+    "passed": 26,
+    "tests": [
+      "test_mlff_perf_p2r.py",
+      "test_mlff_perf_p2r_specification.py",
+      "test_mlff_data8_mace_artifacts.py",
+      "test_mlff_final_gpu1.py",
+      "test_mlff_final_gpu1_specification.py"
+    ],
+    "warnings": 9
+  },
+  "status": "pass",
+  "wheel_smoke": {
+    "failed": 0,
+    "imported_version": "0.20.184a0",
+    "note": "FINAL-GPU1 is a source/sdist release harness under tools/, not a wheel-installed console entry point.",
+    "parameter_grid_coarse_epochs": [
+      3,
+      4,
+      5
+    ],
+    "passed": 7,
+    "tests": [
+      "test_mlff_perf_p2r.py"
+    ]
+  }
+}

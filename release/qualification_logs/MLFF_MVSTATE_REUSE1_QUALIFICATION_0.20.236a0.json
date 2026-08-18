@@ -1,0 +1,84 @@
+{
+  "active_foundation": {
+    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
+    "family": "MACE-MPA-0 medium",
+    "mh1_compatible": true
+  },
+  "architecture_revision": 103,
+  "build": {
+    "compileall": "PASS",
+    "wheel_build": "PASS_NO_BUILD_ISOLATION",
+    "wheel_version": "0.20.236a0"
+  },
+  "closure_decision": {
+    "cpu_optimization_program_closed": true,
+    "next_gate": "FINAL_GPU1_DEFERRED_RELEASE_QUALIFICATION",
+    "reason": "remaining target-data tail is dominated by exact sequential sparse-state arithmetic; no material duplicated reconstructible CPU execution state remains under exact-equivalence authority"
+  },
+  "content_digest": "d60a451e09c569a45b4ca936e286b238ebccab12316ca9ccb22040082b7edb09",
+  "dependency_graph_schema": 83,
+  "documentation": {
+    "manual_markdown_sha256": "e7a0e86a71e7828734bec60ff1651044379644d898526f896bdefeb73b14385c",
+    "manual_pdf_pages": 52,
+    "manual_pdf_sha256": "368524a543d0e01ddc30613ae2997e3f6aa28fc599d1e6bff084eb5be3dfa912",
+    "pdf_full_render": "PASS",
+    "pdf_preflight": "PASS",
+    "pdf_revision_102_to_103_compare": "PASS",
+    "pdf_visual_qa": "PASS"
+  },
+  "evidence": {
+    "content_digest": "6574082019480b5ea3cbe82e9cee2295db477bb74685123dfd569ab08aa320ac",
+    "path": "benchmarks/mlff_mvstate_reuse1_cloud_cpu_mpa0_2026-08-17.json",
+    "sha256": "8711406910eb4a055ee2ec878cdd0ead38a4affb98c545d83ca931e03d8ad24e"
+  },
+  "gate": "MVSTATE-REUSE1",
+  "gpu_authority_change": false,
+  "implementation": {
+    "bundled_npz_persistence": true,
+    "checkpoint_use": "pre_repair_divergence_only",
+    "exact_batched_gather_preparation": true,
+    "fresh_campaign_in_memory_handoff": true,
+    "historical_replay_fallback": true,
+    "native_manifest_schema": "mdstats.target-multi-view-selection-state-native-manifest.v1",
+    "post_divergence_checkpoint_reconciliation_rejected": true,
+    "state_cache_schema": "mdstats.target-multi-view-selection-state-cache.v1"
+  },
+  "performance": {
+    "cache_read_median_seconds": 0.12541601300108596,
+    "cache_write_median_seconds": 0.17597612850113364,
+    "control_0_20_235_target_chain_median_seconds": 11.998227584501365,
+    "cumulative_fresh_speedup_vs_0_20_225_perfbase": 2.4351176667259553,
+    "fresh_speedup_vs_0_20_235": 1.0719762783496567,
+    "mvstate_fresh_target_chain_seconds_including_cache_write": 11.192624153001816,
+    "mvstate_target_chain_median_seconds_excluding_persistence": 11.016648024500682,
+    "peak_rss_ratio_vs_0_20_235": 1.0560040043956296,
+    "repair_control_median_seconds": 5.365011229499942,
+    "repair_mvstate_median_seconds": 4.272232458999497,
+    "repair_speedup": 1.255786355491611
+  },
+  "release": "0.20.236a0",
+  "schema": "mdstats.mlff-mvstate-reuse1-qualification.v1",
+  "scientific": {
+    "all_exact": true,
+    "feasibility_digest": "937214c70d1f2baae883993082f1ceb25bea6007a5a2be0beee045262f5c0613",
+    "mvidx_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
+    "qualification_digest": "c19f2f9c3a328c7003e169bd9584277b21e72a6720caa588cf3879bd1cac1b25",
+    "repair_digest": "ab7dc752555114bcd756913187e1d0eb7069c2e9a093f2a8a41130f485cdc33f",
+    "selection_digest": "c179df6cfbb3b052c866d17bcf54aa5088ebc1998b35259afd3bd0ca163e8b8d",
+    "state_cache_digest": "9904a0c96c83f4fdfe47558dc115d59664ab1a5a5456e687b9d7d3c75c1912db"
+  },
+  "scientific_authority_change": false,
+  "status": "PASS_CPU_OPTIMIZATION_CLOSED",
+  "tests": {
+    "current_optimization_documentation": {
+      "failed": 0,
+      "passed": 116,
+      "warnings": 3
+    },
+    "target_data2_scientific_authority": {
+      "failed": 0,
+      "passed": 111,
+      "warnings": 18
+    }
+  }
+}

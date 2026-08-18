@@ -1,0 +1,2746 @@
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' mdstats-0.20.105a0-complete-source-package/ARCHITECTURE_NOTES_MLFF_REV23.md mdstats-0.20.105a0-architecture-rev23-plan/ARCHITECTURE_NOTES_MLFF_REV23.md
+--- mdstats-0.20.105a0-complete-source-package/ARCHITECTURE_NOTES_MLFF_REV23.md	1970-01-01 00:00:00.000000000 +0000
++++ mdstats-0.20.105a0-architecture-rev23-plan/ARCHITECTURE_NOTES_MLFF_REV23.md	2026-08-08 11:02:43.770732144 +0000
+@@ -0,0 +1,13 @@
++# MLFF architecture revision 23 planning notes
++
++This source-tree planning update records the next implementation sequence after mdstats 0.20.105a0. It does **not** claim runtime implementation.
++
++1. EVAL-MF1 - nested multi-fidelity checkpoint evaluation core.
++2. EVAL-MF2 - conservative survivor control, comprehensive epoch reporting, and production-default qualification.
++3. STOR1 - storage accounting and campaign/user ownership boundary.
++4. STOR2 - lossless completed-checkpoint evaluation-state compaction.
++5. STOR3 - automatic lifecycle-safe reclamation.
++6. STOR4 - manual tiered reclamation with capability-loss reporting.
++7. STOR5 - immutable deduplication and optional cold archival.
++
++The canonical details are in `docs/arch_manuals/mlff_training_data_architecture.md`, `docs/specs/training_data/mlff_eval_mf_successive_halving_spec.md`, and `docs/specs/training_data/mlff_storage_management_spec.md`.
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' mdstats-0.20.105a0-complete-source-package/CHANGELOG.md mdstats-0.20.105a0-architecture-rev23-plan/CHANGELOG.md
+--- mdstats-0.20.105a0-complete-source-package/CHANGELOG.md	2026-08-08 09:32:42.000000000 +0000
++++ mdstats-0.20.105a0-architecture-rev23-plan/CHANGELOG.md	2026-08-08 11:02:43.770527360 +0000
+@@ -1,3 +1,10 @@
++## Architecture revision 23 - planned after 0.20.105a0
++
++- Record `EVAL-MF1`/`EVAL-MF2` as the next MLFF implementation gates: deterministic nested multi-fidelity checkpoint evaluation using the same nominal target/replay monitor fraction at each round, incremental prediction reuse, conservative survivor control, full-fidelity finalist selection, and comprehensive per-epoch reporting.
++- Record `STOR1`--`STOR5` after evaluation: ownership-scoped storage accounting, lossless completed-checkpoint evaluation capsules, automatic lifecycle-safe cleanup, manual tiered reclamation with explicit capability loss, and optional immutable deduplication/cold archival.
++- Freeze the deletion safety boundary: external user-supplied source/training/replay/true-label data are never cleanup targets; final selected production models/checkpoints and inexpensive diagnostic text/log records are retained by default.
++- This is an architecture/specification revision only. It does not implement the new evaluator or storage policy and does not change the 0.20.105a0 runtime/scientific compatibility identity.
++
+ ## 0.20.105a0
+ 
+ - Fix MLFF DATA6 progress timing so batched/sharded completion callbacks are not mistaken for numerical throughput. DATA6 now coalesces progress notification after each persistence drain, samples recent throughput only over real wall-clock windows, and derives ETA from cumulative post-restart work rate.
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' mdstats-0.20.105a0-complete-source-package/MANIFEST.in mdstats-0.20.105a0-architecture-rev23-plan/MANIFEST.in
+--- mdstats-0.20.105a0-complete-source-package/MANIFEST.in	2026-08-08 09:05:37.000000000 +0000
++++ mdstats-0.20.105a0-architecture-rev23-plan/MANIFEST.in	2026-08-08 11:03:02.011908084 +0000
+@@ -1,5 +1,6 @@
+ include README.md
+ include CHANGELOG.md
++include ARCHITECTURE_NOTES_*.md
+ include campaign.toml.example
+ include PATCH_NOTES_*.md
+ recursive-include docs *.md *.pdf *.png *.json
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' mdstats-0.20.105a0-complete-source-package/docs/README.md mdstats-0.20.105a0-architecture-rev23-plan/docs/README.md
+--- mdstats-0.20.105a0-complete-source-package/docs/README.md	2026-08-08 09:03:46.000000000 +0000
++++ mdstats-0.20.105a0-architecture-rev23-plan/docs/README.md	2026-08-08 11:04:24.097591463 +0000
+@@ -18,7 +18,7 @@
+   selectable and critical precision, production qualification, campaign
+   freezing, checkpoint inventory, and constrained selection.
+ - `arch_manuals/mlff_training_data_dependency_graph.json` is schema 26,
+-  architecture revision 22. LTA/ring/site features remain optional enrichment
++  architecture revision 23. LTA/ring/site features remain optional enrichment
+   rather than generic-core assumptions.
+ - `specs/training_data/mlff_data_stage_plan_spec.{md,pdf}` defines the gated
+   implementation order. DATA9A9a-c and DATA9B1-B3A are implemented; the real production corpus
+@@ -30,6 +30,13 @@
+ - `specs/training_data/mlff_data2a_manifest_inference_gate_spec.{md,pdf}` defines
+   XML-backed ensemble/temperature/fixed-cell inference, filename strain candidates,
+   exact LTA geometry verification, conservative rejection, and manifest approval.
++- `specs/training_data/mlff_eval_mf_successive_halving_spec.{md,pdf}` defines the planned
++  EVAL-MF1/MF2 nested multi-fidelity checkpoint evaluator: equal-fraction target/replay
++  monitor ladders, incremental prediction reuse, conservative survivor control, full
++  finalist evaluation, and comprehensive epoch reporting.
++- `specs/training_data/mlff_storage_management_spec.{md,pdf}` defines the planned STOR1-STOR5
++  ownership-scoped storage roadmap: accounting, checkpoint compaction, automatic safe
++  reclamation, manual tiered cleanup, and optional deduplication/cold archival.
+ - `specs/training_data/mlff_data9b1_campaign_checkpoint_control_spec.{md,pdf}`
+   defines the passed-gate campaign matrix, checkpoint byte catalog, metric
+   admissibility, and deterministic fail-closed selection contracts.
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' mdstats-0.20.105a0-complete-source-package/docs/arch_manuals/README.md mdstats-0.20.105a0-architecture-rev23-plan/docs/arch_manuals/README.md
+--- mdstats-0.20.105a0-complete-source-package/docs/arch_manuals/README.md	2026-08-08 09:32:42.000000000 +0000
++++ mdstats-0.20.105a0-architecture-rev23-plan/docs/arch_manuals/README.md	2026-08-08 11:04:24.097462402 +0000
+@@ -46,14 +46,16 @@
+ 
+ - `mlff_training_data_architecture.{md,pdf}`: canonical MLFF-DATA architecture
+   through the frozen 0.20.99a0 scientific campaign identity, the 0.20.103a0
+-  execution-optimization line, and the 0.20.104a0 source-tool/package-integrity repair, and the 0.20.105a0
+-  progress-timing correctness repair, including the recorded post-first-campaign staged
+-  optimization roadmap (`OPT-EVAL1` through `OPT-CTRL1`). The generic core owns provenance, eligibility,
++  execution-optimization line, the 0.20.104a0 source-tool/package-integrity repair,
++  and the 0.20.105a0 progress-timing correctness repair. It records the completed
++  post-first-campaign roadmap (`OPT-EVAL1` through `OPT-CTRL1`) and the planned
++  post-0.20.105 `EVAL-MF1/MF2` plus `STOR1`--`STOR5` evaluation/storage roadmap.
++  The generic core owns provenance, eligibility,
+   partitioning, leakage control, selection orchestration, replay, precision,
+   training-backend calls, deployment, and validation policy. Physical
+   observables remain analysis-owned. LTA/ring/site semantics are an optional
+   profile extensions. DATA9A7a declarative contracts, DATA9A7b universal structural providers, DATA9A7c phase/geometry profiles, DATA9A7d optional-extension/LTA migration, and DATA9A7e cross-system qualification, DATA9A8 observable comparison, and DATA9A9a restartable production model sweeps are implemented.
+ - `mlff_training_data_dependency_graph.json`: machine-readable schema-26,
+-  architecture-revision-22 dependency graph. It separates generic material
++  architecture-revision-23 dependency graph. It separates generic material
+   profiles and observable validation from optional LTA enrichment and freezes
+-  holdout/protocol-exclusion dependencies. Revision 20 adds DATA2A automatic review-manifest inference and verified strain promotion.
++  holdout/protocol-exclusion dependencies. Revision 23 adds planned nested multi-fidelity checkpoint evaluation and ownership-scoped storage-management dependencies; earlier DATA2A and scientific identities remain unchanged.
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' mdstats-0.20.105a0-complete-source-package/docs/arch_manuals/mlff_training_data_architecture.md mdstats-0.20.105a0-architecture-rev23-plan/docs/arch_manuals/mlff_training_data_architecture.md
+--- mdstats-0.20.105a0-complete-source-package/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-08 01:30:43.000000000 +0000
++++ mdstats-0.20.105a0-architecture-rev23-plan/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-08 10:59:52.131782462 +0000
+@@ -2,7 +2,7 @@
+ title: "mdstats MLFF Training-Data Architecture"
+ subtitle: "Canonical architecture and staged implementation"
+ author: "mdstats project"
+-date: "2026-08-07 (revision: post-first-campaign optimization roadmap)"
++date: "2026-08-08 (revision: multi-fidelity evaluation and storage-management roadmap)"
+ geometry: margin=0.78in
+ toc: true
+ toc-depth: 3
+@@ -3970,6 +3970,377 @@
+ failure, compatibility, and qualification requirements are recorded in
+ `docs/specs/training_data/mlff_opt_ctrl1_control_plane_telemetry_spec.md`.
+ 
++
++# Post-0.20.105 campaign evaluation and storage-management roadmap
++
++## Motivation and sequencing decision
++
++The first production-scale FP32 campaign exposed a new pair of practical limits after
++`OPT-EVAL1` through `OPT-CTRL1` had removed the dominant reconstruction,
++preparation, and control-plane overheads:
++
++1. evaluating only four shortlisted epochs is inexpensive but provides weak coverage
++   of a 30-epoch training history; and
++2. retaining optimizer-bearing checkpoints and other campaign-owned intermediate
++   artifacts can consume tens of gigabytes before a campaign is fully evaluated.
++
++This is new profiling and operational evidence, so it opens a **new** staged roadmap;
++it does not reopen or invalidate the completed `OPT-EVAL1`--`OPT-CTRL1` roadmap.
++The evaluation policy is implemented first because storage reclamation must not delete
++an artifact that the new evaluator may still need.
++
++The binding implementation order is:
++
++1. `EVAL-MF1` - nested multi-fidelity checkpoint evaluation core;
++2. `EVAL-MF2` - conservative survivor control, reporting, and production-default
++   qualification;
++3. `STOR1` - campaign storage accounting and ownership boundary;
++4. `STOR2` - lossless completed-checkpoint compaction;
++5. `STOR3` - automatic lifecycle-safe reclamation;
++6. `STOR4` - manual tiered reclamation with explicit capability-loss reporting;
++7. `STOR5` - immutable deduplication and optional cold archival.
++
++No storage stage may weaken the source-ownership boundary, final-model retention, or
++scientific lineage merely to reclaim disk space.
++
++## EVAL-MF1 - nested multi-fidelity checkpoint evaluation core - planned next
++
++### Goal
++
++Replace the current production dependence on a small fixed checkpoint shortlist with a
++multi-round evaluator that examines **every saved epoch at low fidelity**, progressively
++allocates more monitor labels to the most promising epochs, and performs the final
++scientific decision only on full authoritative monitor data.
++
++For a typical 30-epoch campaign the initial planned ladder is approximately:
++
++```text
++round 1: 30 checkpoints x 10% target monitor + 10% replay monitor
++                         -> retain about one third
++round 2: ~10 checkpoints x 33% target monitor + 33% replay monitor
++                         -> retain a conservative finalist set
++round 3: ~4-6 checkpoints x 100% target monitor + 100% replay monitor
++                         -> authoritative admissibility and selection
++```
++
++The fractions, survivor fraction, and minimum finalist count are execution-policy
++parameters and shall be configurable. The default ladder is a starting production
++policy, not a scientific constant.
++
++### Equal-fidelity target/replay invariant
++
++At every partial round a fraction `f` means the same nominal fraction of **each**
++authorized monitor domain:
++
++$$
++|T_r| \approx f_r |T|, \qquad |R_r| \approx f_r |R|.
++$$
++
++Target and replay data remain distinct scientific domains and retain their existing
++metric meanings and checkpoint-policy roles; they are not pooled into one artificial
++RMSE. However, the evaluator shall not allocate a systematically higher fidelity to
++one domain than the other. Integer rounding and mandatory stratum minima may make the
++realized counts differ slightly, but both domains use the same declared round fraction
++and subset-construction rules.
++
++For naive fine-tuning, where no replay monitor is part of the frozen protocol, the same
++ladder applies to the target monitor alone.
++
++### Deterministic nested monitor subsets
++
++Each complete target/replay monitor obtains one immutable deterministic evaluation
++order before any checkpoint result is visible. Round subsets are prefixes of that
++order:
++
++$$
++T_1 \subset T_2 \subset \cdots \subset T_K=T,
++\qquad
++R_1 \subset R_2 \subset \cdots \subset R_K=R.
++$$
++
++The ordering shall preserve the monitor's declared condition/source structure rather
++than sample correlated MD frames as iid observations. At minimum, construction must be
++balanced over available condition axes, source/trajectory groups, and other frozen
++monitor strata, with deterministic temporal spacing inside a source where applicable.
++Subset construction is label-independent and must be frozen before candidate metrics
++are inspected.
++
++A `NestedCheckpointEvaluationPlan` (name provisional until implementation) shall bind:
++
++- the complete target and replay monitor identities;
++- the ordered frame/configuration identities in each domain;
++- round fractions and realized counts;
++- stratification and temporal-spacing policy;
++- checkpoint survivor fraction and minimum finalist count;
++- checkpoint metric/admissibility policy identities;
++- numerical prediction contract, dtype, device, and acceleration identities required
++  by the existing OPT-EVAL2/3 caches.
++
++### Incremental prediction reuse
++
++Nested rounds must be computationally incremental. If round 2 contains round 1, a
++surviving checkpoint evaluates only the newly added configurations
++`T_2 - T_1` and `R_2 - R_1`; round-1 predictions are reused exactly. The same rule
++holds for every later round. Candidate prediction manifests therefore need an
++append/extension contract keyed by complete-monitor identity, checkpoint/model SHA,
++ordered configuration identity, and numerical inference contract.
++
++Foundation-model predictions remain checkpoint-independent and reuse existing DATA6
++or OPT-EVAL2 artifacts whenever their identities match. A larger round shall never
++recompute a previously authenticated foundation or candidate prediction merely because
++its evaluation fidelity increased.
++
++### Screening versus scientific acceptance
++
++Partial-round metrics are explicitly **screening evidence**. They may determine which
++checkpoints receive more evaluation budget, but they may not:
++
++- create a final `CheckpointAdmissibilityDecision`;
++- satisfy a hard scientific threshold as final evidence;
++- authorize model export or protocol freeze; or
++- be represented as full-monitor metrics.
++
++Only a checkpoint evaluated against the complete target monitor and, when required,
++the complete true-label replay monitor may receive final admissibility and participate
++in the authoritative `CheckpointSelectionRecord`.
++
++The evaluator must retain at least a declared minimum number of full-fidelity finalists
++(default target: four) unless fewer saved checkpoints exist. Final selection continues
++to use the frozen DATA9B checkpoint policy; multi-fidelity evaluation changes **which
++predictions are purchased**, not the scientific definition of the winning checkpoint.
++
++### Restart and failure behavior
++
++Every round shall commit:
++
++- authenticated partial-prediction coverage;
++- partial metric records tagged with round/fidelity identity;
++- the survivor set and deterministic ranking inputs;
++- reason codes for elimination or retention; and
++- the exact unfinished delta for restart.
++
++A crash after a partial round resumes from durable prediction coverage and must not
++restart completed inference. Corrupt/missing partial artifacts are recomputed from the
++last authenticated boundary. An unevaluated or partially evaluated checkpoint is never
++silently treated as scientifically rejected.
++
++### EVAL-MF1 acceptance gate
++
++EVAL-MF1 is complete only when focused tests demonstrate:
++
++1. deterministic, nested, stratified target and replay subsets under the same nominal
++   fractions;
++2. no monitor-label leakage into subset construction;
++3. exact incremental prediction reuse between rounds;
++4. restart/corruption recovery without duplicate inference of authenticated subsets;
++5. all saved epochs entering round 1;
++6. full target **and** full replay evaluation for every finalist in the final round;
++7. no final admissibility/selection from partial metrics; and
++8. numerical identity between a finalist's accumulated multi-round predictions and a
++   direct one-shot full-monitor evaluation.
++
++Detailed implementation requirements are recorded in
++`docs/specs/training_data/mlff_eval_mf_successive_halving_spec.md`.
++
++## EVAL-MF2 - conservative survivor control, diagnostics, and default migration - planned
++
++EVAL-MF2 hardens EVAL-MF1 before it becomes the default production policy.
++A rigid `keep exactly one third` rule is not sufficient when several checkpoints are
++statistically indistinguishable on a small correlated monitor subset.
++
++The survivor controller therefore shall:
++
++- treat one third as the **nominal** survival fraction rather than a hard cap;
++- retain a configured minimum finalist count;
++- use paired comparisons because checkpoints are evaluated on the same configurations;
++- estimate ambiguity at the source/trajectory or decorrelated-block level rather than
++  bootstrap individual correlated MD frames as iid observations;
++- retain candidates in a deterministic guard band around a cutoff when the available
++  evidence does not clearly separate them; and
++- expand a later round rather than forcing an unsafe elimination when a boundary audit
++  reveals ranking instability.
++
++The exact uncertainty method and guard criterion must be frozen in an execution-policy
++record and validated on synthetic ranking inversions plus representative MACE histories.
++The policy is not allowed to claim a mathematical global-minimum guarantee unless every
++saved checkpoint receives full-monitor evaluation. Its claim is instead a conservative,
++resource-adaptive screen followed by exact full-fidelity selection among retained
++finalists.
++
++EVAL-MF2 also owns the comprehensive epoch report requested for campaign diagnosis.
++For every saved epoch it shall expose available training-history metrics plus each
++independent evaluation round, including target energy error, target force RMSE,
++focus-group metrics, replay error/degradation where applicable, round fidelity,
++survival/elimination reason, and final selection status. Machine-readable JSON/CSV and
++human-readable/plot-friendly summaries should be generated without making plotting a
++scientific dependency.
++
++After benchmark qualification against exhaustive 30-checkpoint evaluation on
++representative completed runs, the multi-fidelity strategy may become the generated
++production default. The old fixed `max_checkpoints_per_run = 4` behavior remains an
++explicit fast/exploratory compatibility mode, and exhaustive full evaluation remains
++an explicit audit mode.
++
++## STOR1 - campaign storage accounting and ownership boundary - planned
++
++Storage optimization begins with accounting and deletion authority, not deletion.
++STOR1 shall inventory campaign artifacts by ownership, scientific/restart role,
++reconstructability, and physical storage cost.
++
++### Hard user-data boundary
++
++**No campaign cleanup operation may delete, truncate, rewrite, rename, or move
++user-supplied training/replay/true-label/source material from external directories.**
++Those paths are read-only inputs even when referenced by campaign state.
++
++A destructive operation is authorized only for an artifact that:
++
++1. resides inside the resolved campaign-owned workspace or an explicitly created
++   campaign-owned content store;
++2. carries campaign ownership/provenance sufficient to explain why mdstats created it;
++3. passes real-path containment checks without following a symlink escape; and
++4. is not classified as a protected production/diagnostic artifact.
++
++A path merely appearing in SQLite or a TOML file is not deletion authority.
++
++### Storage report
++
++A new storage-report surface shall summarize at least:
++
++- logical bytes;
++- allocated physical bytes where the platform exposes them;
++- unique-inode bytes so hardlinks are not double-counted;
++- artifact family and ownership class;
++- automatic versus manual reclamation eligibility;
++- restart/re-evaluation capability retained or lost by deletion; and
++- the largest individual files/directories.
++
++STOR1 is read-only. Its acceptance gate includes symlink/path-traversal tests and
++fixtures proving that external user directories cannot become cleanup targets.
++
++## STOR2 - lossless completed-checkpoint compaction - planned
++
++Optimizer-bearing MACE checkpoints are expected to dominate live campaign storage.
++For an incomplete run they remain restart-critical and are untouched. Once a training
++run is durably complete, however, intermediate epochs no longer require optimizer,
++scheduler, or other continuation state merely to participate in checkpoint evaluation.
++
++STOR2 shall therefore qualify a compact **evaluation state capsule** (provisional name)
++containing the exact model state and minimum architecture/provenance information needed
++by the OPT-EVAL1 direct-restoration path. Conversion is allowed only after byte/digest
++lineage is recorded and numerical E/F/stress predictions are proven equivalent to the
++original full checkpoint.
++
++The intended completed-run hierarchy is:
++
++```text
++active/interrupted training:
++    retain full restart-capable checkpoint state
++
++training complete, evaluation unfinished:
++    retain at least one full restart checkpoint as policy requires;
++    compact non-resume epochs to authenticated evaluation-state capsules when qualified
++
++evaluation/selection complete:
++    retain the selected production checkpoint and production model by default;
++    nonselected capsules become lower-retention storage classes
++```
++
++STOR2 must not delete a raw checkpoint until the replacement capsule, its source hash,
++and its round/evaluation usability have been atomically committed and independently
++reloaded. Unsupported MACE/checkpoint layouts fail closed to ordinary retention.
++
++## STOR3 - automatic lifecycle-safe reclamation - planned
++
++STOR3 extends the current conservative cleanup only where the dependency graph proves
++that no user-visible scientific/restart capability is lost.
++
++Automatic cleanup may reclaim campaign-owned garbage, superseded staging generations,
++orphaned payloads, successful-preflight temporaries, reconstructable graph/view caches,
++and other artifacts whose authoritative parents remain available. It may compact or
++remove nonselected checkpoint state only under the completed-selection/capsule rules
++qualified by STOR2.
++
++The following are protected by default and are **not** automatic cleanup targets:
++
++- all external user-supplied source/training/replay/true-label material;
++- every final selected production model;
++- the selected production raw checkpoint unless an explicit later archival policy says
++  otherwise;
++- campaign configuration and immutable protocol/selection/verification records;
++- diagnostic text records, logs, training histories, and compact JSON/CSV summaries;
++- any artifact still required to restart an incomplete stage; and
++- any sole surviving evidence required to reconstruct current authoritative metrics.
++
++Disk-pressure handling shall run safe reclamation before interrupting active children,
++but it may never cross the protected classes merely to satisfy a free-space threshold.
++Every automatic cleanup emits an append-only cleanup manifest containing paths, prior
++identities, reasons, bytes reclaimed, and retained capabilities.
++
++## STOR4 - manual tiered reclamation with capability-loss reporting - planned
++
++Some large artifacts are valuable but not essential to the final production model.
++STOR4 introduces explicit user-selected retention tiers rather than treating all such
++artifacts as either permanent or disposable.
++
++The planned hierarchy is:
++
++| Tier | Typical artifacts | Default consequence |
++|---|---|---|
++| `safe` | garbage, stale staging, superseded runtime payloads | no scientific/restart capability loss |
++| `cache` | graph/view/frame/hash caches | recomputation becomes slower |
++| `recompute` | expensive DATA6/evaluation prediction caches when reconstructable | later reselection/re-evaluation may require expensive inference |
++| `compact` | nonproduction checkpoints/models and cold materializations after freeze | exact continuation or cheap alternative-model recovery may be lost |
++| `archive` | explicitly selected cold reproducibility material | retained only in a verified archival representation |
++
++Names may be refined at implementation, but increasing tiers must never silently
++include protected production models or external user data. Diagnostic text/log records
++remain retained by default at every tier because their storage cost is small and their
++provenance value is high.
++
++Before applying a manual tier, mdstats shall show a dry-run capability report such as:
++restartability, exact checkpoint re-evaluation, metric-only recomputation, DATA7
++reselection, DATA8 rematerialization, current production inference, and verification
++replay. The user chooses the capability loss, not merely a byte count.
++
++## STOR5 - immutable deduplication and optional cold archival - planned
++
++After ownership/accounting and lifecycle cleanup are qualified, immutable campaign
++artifacts may be deduplicated by content. Same-filesystem hardlinks or copy-on-write
++reflinks are preferred where supported; fallback remains ordinary atomic copy.
++Logical and physical storage accounting must distinguish these cases.
++
++Cold artifacts that are no longer latency-sensitive may optionally be converted from
++mmap-friendly hot representations to compressed archives with authenticated manifests.
++Archival conversion is reversible: a restore command reconstructs the required hot
++layout and verifies all content identities before the campaign consumes it. Archive
++failure never deletes the original until the new representation is fully authenticated.
++
++STOR5 is an optional optimization. It may not delay EVAL-MF1/2 or the ownership and
++safe-cleanup work in STOR1--STOR4.
++
++## New-roadmap completion rule
++
++Each gate is specified, implemented, and tested independently. In addition to the
++existing optimization completion rules, this roadmap requires:
++
++1. **evaluation fidelity is explicit** - partial metrics can never masquerade as full
++   acceptance evidence;
++2. **target/replay fidelity is symmetric** - the same round fraction is applied to
++   both when replay exists;
++3. **nested work is reused** - later evaluation rounds extend rather than redo earlier
++   authenticated inference;
++4. **cleanup is ownership-scoped** - external user files are structurally outside the
++   deletion authority;
++5. **the production result is protected** - final selected models and default
++   diagnostics/logs survive ordinary cleanup; and
++6. **capability loss is explicit** - any manual higher-tier reclamation states exactly
++   what can no longer be restarted, recomputed, or re-evaluated cheaply.
++
++`EVAL-MF1` is the next implementation gate. Storage implementation does not begin until
++EVAL-MF1 establishes the checkpoint/prediction lifetimes that storage policy must
++respect.
++
+ ## Deferred or intentionally unchanged work
+ 
+ The current DATA6/DATA7 production architecture is not scheduled for another broad
+@@ -3994,7 +4365,8 @@
+ 5. representative timing evidence demonstrates the intended improvement; and
+ 6. the legacy fallback, when retained, remains fail-closed and clearly reported.
+ 
+-The staged optimization roadmap **OPT-EVAL1 through OPT-CTRL1 is complete**. Future
+-optimization work should begin from new profiling evidence rather than extending this
+-closed sequence by default.
++The staged optimization roadmap **OPT-EVAL1 through OPT-CTRL1 is complete**. The
++post-0.20.105 multi-fidelity-evaluation/storage roadmap above is a separate cycle opened
++by new production-scale profiling and storage evidence. Its first implementation gate
++is `EVAL-MF1`.
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' mdstats-0.20.105a0-complete-source-package/docs/arch_manuals/mlff_training_data_dependency_graph.json mdstats-0.20.105a0-architecture-rev23-plan/docs/arch_manuals/mlff_training_data_dependency_graph.json
+--- mdstats-0.20.105a0-complete-source-package/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-08 09:00:58.000000000 +0000
++++ mdstats-0.20.105a0-architecture-rev23-plan/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-08 11:00:58.349971442 +0000
+@@ -1,9 +1,9 @@
+ {
+   "schema_version": 26,
+-  "architecture_revision": 22,
++  "architecture_revision": 23,
+   "branch": "MLFF-DATA",
+   "documentation_gate": "MLFF-DATA0",
+-  "description": "MLFF training-data dependency graph through DATA2A automatic review-manifest inference, DATA9B3A frozen e3nn/cuEquivariance campaigns, and MLFF-PERF2 resource-aware process/GPU execution; revision 21 binds CPU/RAM/VRAM plans to campaign execution without changing scientific policy.",
++  "description": "MLFF training-data dependency graph through DATA2A automatic review-manifest inference, DATA9B3A frozen e3nn/cuEquivariance campaigns, MLFF-PERF2 resource-aware process/GPU execution, and revision 23 planned nested multi-fidelity checkpoint evaluation plus ownership-scoped storage management; scientific DATA9 identity remains unchanged.",
+   "edge_type_definitions": {
+     "source_identity_requires": "Exact source or checkpoint identity is required.",
+     "execution_requires": "The upstream product must exist before execution.",
+@@ -50,6 +50,12 @@
+       "id": "CALIBRATION_TRANSFER_DECISION"
+     },
+     {
++      "id": "CAMPAIGN_ARTIFACT_OWNERSHIP_CATALOG"
++    },
++    {
++      "id": "CAMPAIGN_CLEANUP_MANIFEST"
++    },
++    {
+       "id": "CAMPAIGN_CLI_CONFIGURATION"
+     },
+     {
+@@ -71,6 +77,9 @@
+       "id": "CAMPAIGN_STATUS_VIEW"
+     },
+     {
++      "id": "CAMPAIGN_STORAGE_REPORT"
++    },
++    {
+       "id": "CANDIDATE_ADMISSIBILITY"
+     },
+     {
+@@ -86,6 +95,12 @@
+       "id": "CHECKPOINT_ADMISSIBILITY_DECISION"
+     },
+     {
++      "id": "CHECKPOINT_EPOCH_REPORT"
++    },
++    {
++      "id": "CHECKPOINT_EVALUATION_CAPSULE"
++    },
++    {
+       "id": "CHECKPOINT_EVALUATION_POLICY"
+     },
+     {
+@@ -98,12 +113,21 @@
+       "id": "CHECKPOINT_METRIC_RECORD"
+     },
+     {
++      "id": "CHECKPOINT_SCREENING_ROUND_RECORD"
++    },
++    {
+       "id": "CHECKPOINT_SELECTION_DECISION"
+     },
+     {
+       "id": "CHECKPOINT_SELECTION_RECORD"
+     },
+     {
++      "id": "CHECKPOINT_SURVIVOR_RECORD"
++    },
++    {
++      "id": "COLD_ARCHIVE_MANIFEST"
++    },
++    {
+       "id": "COMMITTEE_EXPORT_POLICY"
+     },
+     {
+@@ -260,6 +284,9 @@
+       "id": "FRAME_FACTS"
+     },
+     {
++      "id": "FULL_FIDELITY_FINALIST_EVALUATION"
++    },
++    {
+       "id": "GENERIC_IMPORT_ISOLATION_EVIDENCE"
+     },
+     {
+@@ -398,6 +425,9 @@
+       "id": "NATIVE_MACE_GRAPH_BATCH"
+     },
+     {
++      "id": "NESTED_CHECKPOINT_EVALUATION_PLAN"
++    },
++    {
+       "id": "NEW_DATASET_GENERATION"
+     },
+     {
+@@ -458,6 +488,9 @@
+       "id": "PARALLEL_NVE_VERIFICATION"
+     },
+     {
++      "id": "PARTIAL_CHECKPOINT_PREDICTION_COVERAGE"
++    },
++    {
+       "id": "PARTITION_CRITICAL_PROFILE_FEATURES"
+     },
+     {
+@@ -623,6 +656,9 @@
+       "id": "THERMOMECHANICAL_VALIDATION_RECIPES"
+     },
+     {
++      "id": "TIERED_STORAGE_RECLAMATION_PLAN"
++    },
++    {
+       "id": "TRAINED_COMMITTEE"
+     },
+     {
+@@ -793,6 +829,21 @@
+       "type": "execution_requires"
+     },
+     {
++      "from": "CAMPAIGN_ARTIFACT_OWNERSHIP_CATALOG",
++      "to": "CAMPAIGN_CLEANUP_MANIFEST",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "CAMPAIGN_ARTIFACT_OWNERSHIP_CATALOG",
++      "to": "CAMPAIGN_STORAGE_REPORT",
++      "type": "execution_requires"
++    },
++    {
++      "from": "CAMPAIGN_ARTIFACT_OWNERSHIP_CATALOG",
++      "to": "TIERED_STORAGE_RECLAMATION_PLAN",
++      "type": "execution_requires"
++    },
++    {
+       "from": "CAMPAIGN_CLI_CONFIGURATION",
+       "to": "CAMPAIGN_MANIFEST_APPROVAL",
+       "type": "source_identity_requires"
+@@ -834,10 +885,20 @@
+     },
+     {
+       "from": "CAMPAIGN_STATE_DATABASE",
++      "to": "CAMPAIGN_ARTIFACT_OWNERSHIP_CATALOG",
++      "type": "execution_requires"
++    },
++    {
++      "from": "CAMPAIGN_STATE_DATABASE",
+       "to": "CAMPAIGN_STATUS_VIEW",
+       "type": "execution_requires"
+     },
+     {
++      "from": "CAMPAIGN_STORAGE_REPORT",
++      "to": "TIERED_STORAGE_RECLAMATION_PLAN",
++      "type": "execution_requires"
++    },
++    {
+       "from": "CANDIDATE_ADMISSIBILITY",
+       "to": "ACQUISITION_DECISIONS",
+       "type": "execution_requires"
+@@ -858,6 +919,11 @@
+       "type": "source_identity_requires"
+     },
+     {
++      "from": "CANDIDATE_CHECKPOINT_CATALOG",
++      "to": "NESTED_CHECKPOINT_EVALUATION_PLAN",
++      "type": "source_identity_requires"
++    },
++    {
+       "from": "CANDIDATE_TRAJECTORIES",
+       "to": "CANDIDATE_CATALOG",
+       "type": "execution_requires"
+@@ -868,17 +934,37 @@
+       "type": "execution_requires"
+     },
+     {
++      "from": "CHECKPOINT_EVALUATION_CAPSULE",
++      "to": "CAMPAIGN_STORAGE_REPORT",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "CHECKPOINT_EVALUATION_CAPSULE",
++      "to": "PARTIAL_CHECKPOINT_PREDICTION_COVERAGE",
++      "type": "optional_enrichment"
++    },
++    {
+       "from": "CHECKPOINT_EVALUATION_POLICY",
+       "to": "CHECKPOINT_EVALUATION_RECORD",
+       "type": "execution_requires"
+     },
+     {
++      "from": "CHECKPOINT_EVALUATION_POLICY",
++      "to": "NESTED_CHECKPOINT_EVALUATION_PLAN",
++      "type": "execution_requires"
++    },
++    {
+       "from": "CHECKPOINT_EVALUATION_RECORD",
+       "to": "CAMPAIGN_STATE_DATABASE",
+       "type": "source_identity_requires"
+     },
+     {
+       "from": "CHECKPOINT_EVALUATION_RECORD",
++      "to": "CHECKPOINT_EPOCH_REPORT",
++      "type": "produces"
++    },
++    {
++      "from": "CHECKPOINT_EVALUATION_RECORD",
+       "to": "CHECKPOINT_METRIC_RECORD",
+       "type": "promotion_requires"
+     },
+@@ -889,11 +975,21 @@
+     },
+     {
+       "from": "CHECKPOINT_METRIC_POLICY",
++      "to": "CHECKPOINT_SCREENING_ROUND_RECORD",
++      "type": "execution_requires"
++    },
++    {
++      "from": "CHECKPOINT_METRIC_POLICY",
+       "to": "CHECKPOINT_SELECTION_DECISION",
+       "type": "execution_requires"
+     },
+     {
+       "from": "CHECKPOINT_METRIC_POLICY",
++      "to": "NESTED_CHECKPOINT_EVALUATION_PLAN",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "CHECKPOINT_METRIC_POLICY",
+       "to": "PRODUCTION_MATERIALIZATION_PLAN",
+       "type": "source_identity_requires"
+     },
+@@ -908,6 +1004,16 @@
+       "type": "execution_requires"
+     },
+     {
++      "from": "CHECKPOINT_SCREENING_ROUND_RECORD",
++      "to": "CHECKPOINT_EPOCH_REPORT",
++      "type": "produces"
++    },
++    {
++      "from": "CHECKPOINT_SCREENING_ROUND_RECORD",
++      "to": "CHECKPOINT_SURVIVOR_RECORD",
++      "type": "execution_requires"
++    },
++    {
+       "from": "CHECKPOINT_SELECTION_DECISION",
+       "to": "PROTOCOL_FREEZE_RECORD",
+       "type": "execution_requires"
+@@ -933,6 +1039,16 @@
+       "type": "execution_requires"
+     },
+     {
++      "from": "CHECKPOINT_SELECTION_RECORD",
++      "to": "TIERED_STORAGE_RECLAMATION_PLAN",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "CHECKPOINT_SURVIVOR_RECORD",
++      "to": "FULL_FIDELITY_FINALIST_EVALUATION",
++      "type": "execution_requires"
++    },
++    {
+       "from": "COMMITTEE_EXPORT_POLICY",
+       "to": "COMMITTEE_MEMBER_RECORD",
+       "type": "execution_requires"
+@@ -1297,6 +1413,16 @@
+       "type": "execution_requires"
+     },
+     {
++      "from": "FOLD_CHECKPOINT_MONITORS",
++      "to": "FULL_FIDELITY_FINALIST_EVALUATION",
++      "type": "execution_requires"
++    },
++    {
++      "from": "FOLD_CHECKPOINT_MONITORS",
++      "to": "NESTED_CHECKPOINT_EVALUATION_PLAN",
++      "type": "execution_requires"
++    },
++    {
+       "from": "FOLD_DEFINITIONS",
+       "to": "FOLD_CHECKPOINT_MONITORS",
+       "type": "execution_requires"
+@@ -1508,6 +1634,11 @@
+       "type": "execution_requires"
+     },
+     {
++      "from": "FULL_FIDELITY_FINALIST_EVALUATION",
++      "to": "CHECKPOINT_EVALUATION_RECORD",
++      "type": "produces"
++    },
++    {
+       "from": "GENERIC_IMPORT_ISOLATION_EVIDENCE",
+       "to": "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
+       "type": "execution_requires"
+@@ -1952,6 +2083,16 @@
+       "type": "execution_requires"
+     },
+     {
++      "from": "NESTED_CHECKPOINT_EVALUATION_PLAN",
++      "to": "CHECKPOINT_SURVIVOR_RECORD",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "NESTED_CHECKPOINT_EVALUATION_PLAN",
++      "to": "PARTIAL_CHECKPOINT_PREDICTION_COVERAGE",
++      "type": "execution_requires"
++    },
++    {
+       "from": "NUMERICAL_QUALITY_PROFILE",
+       "to": "LABEL_DOMAIN",
+       "type": "execution_requires"
+@@ -2159,6 +2300,11 @@
+       "type": "produces"
+     },
+     {
++      "from": "PARTIAL_CHECKPOINT_PREDICTION_COVERAGE",
++      "to": "CHECKPOINT_SCREENING_ROUND_RECORD",
++      "type": "execution_requires"
++    },
++    {
+       "from": "PARTITION_CRITICAL_PROFILE_FEATURES",
+       "to": "EVENT_CATALOG",
+       "type": "execution_requires"
+@@ -2440,6 +2586,11 @@
+     },
+     {
+       "from": "PROTOCOL_FREEZE_RECORD",
++      "to": "COLD_ARCHIVE_MANIFEST",
++      "type": "promotion_requires"
++    },
++    {
++      "from": "PROTOCOL_FREEZE_RECORD",
+       "to": "EVALUATION_ACTIVATION_DECISION",
+       "type": "promotion_requires",
+       "predicate": "protocol_and_committee_frozen"
+@@ -2522,6 +2673,16 @@
+     },
+     {
+       "from": "REPLAY_MONITOR",
++      "to": "FULL_FIDELITY_FINALIST_EVALUATION",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "REPLAY_MONITOR",
++      "to": "NESTED_CHECKPOINT_EVALUATION_PLAN",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "REPLAY_MONITOR",
+       "to": "TRAINING_PROTOCOL_IDENTITY",
+       "type": "execution_requires"
+     },
+@@ -2767,6 +2928,16 @@
+       "type": "optional_enrichment"
+     },
+     {
++      "from": "TIERED_STORAGE_RECLAMATION_PLAN",
++      "to": "CAMPAIGN_CLEANUP_MANIFEST",
++      "type": "produces"
++    },
++    {
++      "from": "TIERED_STORAGE_RECLAMATION_PLAN",
++      "to": "COLD_ARCHIVE_MANIFEST",
++      "type": "execution_requires"
++    },
++    {
+       "from": "TRAINED_COMMITTEE",
+       "to": "CALIBRATION_APPLICABILITY_DOMAIN",
+       "type": "source_identity_requires"
+@@ -2818,11 +2989,21 @@
+     },
+     {
+       "from": "TRAINING_CHECKPOINTS",
++      "to": "CAMPAIGN_STORAGE_REPORT",
++      "type": "optional_enrichment"
++    },
++    {
++      "from": "TRAINING_CHECKPOINTS",
+       "to": "CANDIDATE_CHECKPOINT_CATALOG",
+       "type": "source_identity_requires"
+     },
+     {
+       "from": "TRAINING_CHECKPOINTS",
++      "to": "CHECKPOINT_EVALUATION_CAPSULE",
++      "type": "source_identity_requires"
++    },
++    {
++      "from": "TRAINING_CHECKPOINTS",
+       "to": "CHECKPOINT_SELECTION_DECISION",
+       "type": "execution_requires"
+     },
+@@ -2837,6 +3018,11 @@
+       "type": "execution_requires"
+     },
+     {
++      "from": "TRAINING_CHECKPOINTS",
++      "to": "PARTIAL_CHECKPOINT_PREDICTION_COVERAGE",
++      "type": "execution_requires"
++    },
++    {
+       "from": "TRAINING_EXECUTION_POLICY",
+       "to": "TRAINING_RUN_EXECUTION_RECORD",
+       "type": "execution_requires"
+@@ -3140,6 +3326,29 @@
+       "from": "REPLAY_GEOMETRY_ONLY_IDENTITY",
+       "to": "PRODUCTION_DATA8_ARTIFACT",
+       "reason": "Replay semantic identity must include numerical label payloads."
++    },
++    {
++      "from": [
++        "CAMPAIGN_CLEANUP_MANIFEST",
++        "TIERED_STORAGE_RECLAMATION_PLAN"
++      ],
++      "to": [
++        "SOURCE_BYTES",
++        "REPLAY_SOURCE"
++      ],
++      "reason": "Campaign cleanup may reference external user inputs for provenance but shall never acquire deletion authority over user-supplied source or replay material."
++    },
++    {
++      "from": [
++        "CHECKPOINT_SCREENING_ROUND_RECORD",
++        "PARTIAL_CHECKPOINT_PREDICTION_COVERAGE"
++      ],
++      "to": [
++        "CHECKPOINT_ADMISSIBILITY_DECISION",
++        "CHECKPOINT_SELECTION_RECORD",
++        "PROTOCOL_FREEZE_RECORD"
++      ],
++      "reason": "Partial multi-fidelity screening evidence cannot authorize final scientific admissibility, checkpoint selection, or protocol freeze."
+     }
+   ]
+ }
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' mdstats-0.20.105a0-complete-source-package/docs/specs/training_data/mlff_data9b1_campaign_checkpoint_control_spec.md mdstats-0.20.105a0-architecture-rev23-plan/docs/specs/training_data/mlff_data9b1_campaign_checkpoint_control_spec.md
+--- mdstats-0.20.105a0-complete-source-package/docs/specs/training_data/mlff_data9b1_campaign_checkpoint_control_spec.md	2026-08-06 02:45:42.000000000 +0000
++++ mdstats-0.20.105a0-architecture-rev23-plan/docs/specs/training_data/mlff_data9b1_campaign_checkpoint_control_spec.md	2026-08-08 11:00:34.545342021 +0000
+@@ -151,3 +151,13 @@
+ - construct the final committee;
+ - emit `ProtocolFreezeRecord`;
+ - activate the locked test.
++
++## Planned multi-fidelity successor
++
++The current DATA9B1 selection contract remains authoritative: final admissibility and
++selection consume complete monitor-bound checkpoint metrics. The planned EVAL-MF1/MF2
++roadmap changes how candidate evaluation budget is allocated before those final records
++exist; it does not weaken DATA9B1's final metric/admissibility requirements.
++Partial-round metrics will be explicitly typed as screening evidence and shall not be
++serialized as ordinary full-fidelity `CheckpointMetricRecord` objects. See
++`mlff_eval_mf_successive_halving_spec.md`.
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' mdstats-0.20.105a0-complete-source-package/docs/specs/training_data/mlff_data9b4_storage_restart_spec.md mdstats-0.20.105a0-architecture-rev23-plan/docs/specs/training_data/mlff_data9b4_storage_restart_spec.md
+--- mdstats-0.20.105a0-complete-source-package/docs/specs/training_data/mlff_data9b4_storage_restart_spec.md	2026-08-06 07:19:54.000000000 +0000
++++ mdstats-0.20.105a0-architecture-rev23-plan/docs/specs/training_data/mlff_data9b4_storage_restart_spec.md	2026-08-08 11:00:34.545342021 +0000
+@@ -70,3 +70,16 @@
+ into success by assumption.  SQLite vacuuming is skipped while live children
+ exist.  Low-disk training returns the stage to `WAITING` after durable child
+ interruption rather than classifying the scientific run as failed.
++
++## Planned successor roadmap after 0.20.105a0
++
++The lifecycle classes above describe the currently implemented conservative cleanup
++behavior. They remain binding until the planned EVAL-MF/STOR gates are implemented.
++
++The successor roadmap is defined in
++`mlff_eval_mf_successive_halving_spec.md` and
++`mlff_storage_management_spec.md`. In particular, future partial-round evaluation
++records are screening evidence rather than complete checkpoint evaluations, and
++checkpoint deletion authority will be revised only after STOR2/STOR3 qualify compact
++evaluation-state capsules and lifecycle-safe reclamation. No current implementation
++may infer those future deletion permissions merely from this planning note.
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' mdstats-0.20.105a0-complete-source-package/docs/specs/training_data/mlff_eval_mf_successive_halving_spec.md mdstats-0.20.105a0-architecture-rev23-plan/docs/specs/training_data/mlff_eval_mf_successive_halving_spec.md
+--- mdstats-0.20.105a0-complete-source-package/docs/specs/training_data/mlff_eval_mf_successive_halving_spec.md	1970-01-01 00:00:00.000000000 +0000
++++ mdstats-0.20.105a0-architecture-rev23-plan/docs/specs/training_data/mlff_eval_mf_successive_halving_spec.md	2026-08-08 11:00:27.891047892 +0000
+@@ -0,0 +1,147 @@
++# MLFF EVAL-MF1/MF2 multi-fidelity checkpoint-evaluation specification
++
++Status: planned after mdstats 0.20.105a0.
++
++## Purpose
++
++This specification defines the planned replacement for the current production
++four-checkpoint screening default. The evaluator spends a small, equal fraction
++of target and replay monitor labels on every saved epoch, progressively increases
++fidelity for survivors, and performs final scientific selection only on complete
++authoritative monitor data.
++
++The implementation is split into two gates:
++
++1. **EVAL-MF1** - deterministic nested monitor ladders, incremental prediction
++   reuse, multi-round execution, full-fidelity finalist evaluation, and durable
++   restart records.
++2. **EVAL-MF2** - conservative statistical guard bands, ambiguity-driven expansion,
++   comprehensive epoch reporting, exhaustive-comparison qualification, and
++   migration to the production default.
++
++## Binding invariants
++
++1. Every saved candidate checkpoint enters round 1 unless it is already invalid
++   by immutable checkpoint/catalog evidence (for example corrupt bytes).
++2. A round fraction `f` applies to the same nominal fraction of the complete
++   target monitor and the complete true-label replay monitor. Neither domain is
++   intentionally assigned a higher evaluation fidelity.
++3. Target and replay metrics remain separate; the implementation shall not pool
++   them into a single RMSE merely for screening.
++4. Subsets are deterministic, label-independent, stratified, and nested.
++5. Later rounds infer only the delta not already authenticated in earlier rounds.
++6. Partial-round metrics are screening evidence only.
++7. Final checkpoint admissibility and selection require complete target data and,
++   for replay-backed protocols, complete true-label replay data.
++8. The existing frozen checkpoint metric/admissibility/selection policy remains
++   authoritative in the full-fidelity round.
++9. An incomplete or partially evaluated checkpoint is never represented as a
++   scientifically rejected checkpoint.
++10. Evaluation artifacts are campaign-owned; source monitor files remain read-only.
++
++## Default ladder
++
++The initial policy to qualify is:
++
++| Round | Target fraction | Replay fraction | Nominal survivor action |
++|---|---:|---:|---|
++| 1 | 0.10 | 0.10 | retain about the best one third plus guard-band candidates |
++| 2 | 0.33 | 0.33 | retain at least four finalists plus guard-band candidates |
++| 3 | 1.00 | 1.00 | full admissibility and deterministic selection |
++
++Fractions and survivor controls are configurable execution policy. Integer and
++stratum-minimum rounding may produce slightly different realized counts while
++preserving the same nominal fraction on both monitor domains.
++
++## Nested subset construction
++
++For each monitor domain, build one immutable ordered configuration catalog before
++candidate results are inspected. The order shall balance all frozen monitor strata
++available to the evaluator, including condition axes and source/trajectory grouping.
++Within a trajectory/source, temporally nearby frames shall not be treated as iid
++samples when a decorrelated or block-aware ordering can be constructed from existing
++partition evidence.
++
++Round subsets are prefixes of the immutable order. Their identities bind the complete
++monitor digest, ordered configuration identities, stratum policy, round fractions,
++and realized sizes.
++
++## Prediction persistence
++
++Candidate prediction storage shall support authenticated incremental coverage. A
++surviving checkpoint evaluated on round `r+1` predicts only configurations absent
++from round `r`. Metric reduction reads the union of authenticated prediction shards.
++A direct one-shot evaluation on the same complete subset must be numerically identical
++within the existing precision tolerance.
++
++Existing OPT-EVAL2 foundation prediction reuse and OPT-EVAL3 monitor graph/view caches
++remain authoritative when identities match.
++
++## Survivor ranking
++
++EVAL-MF1 may use deterministic provisional ranking derived from the existing frozen
++checkpoint policy, but partial threshold outcomes are not final admissibility records.
++A nominal one-third survivor fraction is a resource target, not a hard scientific cap.
++
++EVAL-MF2 adds paired, block-aware ambiguity handling. Because checkpoints are evaluated
++on the same configurations, comparisons should use paired loss/error differences where
++possible. Uncertainty estimation shall operate on trajectory/source or decorrelated
++blocks rather than treating individual adjacent MD frames as independent samples.
++Candidates statistically indistinguishable from a cutoff are retained. A detected
++boundary-ranking inversion triggers deterministic expansion rather than forced pruning.
++
++The production policy shall not claim a global-minimum guarantee over all saved epochs
++unless all epochs receive full-monitor evaluation. It guarantees exact application of
++the frozen selection policy among the full-fidelity finalists retained by the declared
++screening policy.
++
++## Restart records
++
++Every round persists:
++
++- round plan and subset identities;
++- per-checkpoint authenticated prediction coverage;
++- partial metrics with explicit fidelity tags;
++- survivor/elimination ranking inputs and reasons;
++- remaining inference deltas;
++- final full-fidelity metric/admissibility records for finalists.
++
++Restart shall reuse every valid prediction shard and recompute only missing/corrupt
++deltas.
++
++## Comprehensive epoch report
++
++EVAL-MF2 shall produce a machine-readable and human-readable summary for every epoch,
++including when available:
++
++- MACE training-history target/replay metrics;
++- independent target energy and force errors by round;
++- focus-group and worst-condition metrics;
++- replay candidate/baseline metrics and degradation;
++- round fraction and realized monitor counts;
++- survivor/elimination reason;
++- final admissibility reason; and
++- selected/nonselected status.
++
++JSON is normative. CSV and plotting-ready outputs are convenience derivatives.
++
++## Qualification
++
++Before the new strategy becomes the generated production default, tests and bounded
++real-MACE qualification must demonstrate:
++
++1. deterministic nested equal-fraction target/replay subsets;
++2. label-independent subset construction;
++3. all saved epochs in round 1;
++4. exact incremental prediction reuse;
++5. restart/corruption recovery;
++6. no final scientific decision from partial metrics;
++7. full target/replay evaluation of every finalist;
++8. numerical identity against one-shot full evaluation of the same finalist;
++9. conservative behavior under synthetic ranking inversions/noisy early subsets; and
++10. representative comparison with exhaustive 30-checkpoint evaluation, recording both
++    winner agreement and inference-cost reduction.
++
++The current fixed `max_checkpoints_per_run` mode remains available as an explicit fast
++or compatibility strategy. Exhaustive full-monitor evaluation remains available as an
++audit/reference strategy.
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' mdstats-0.20.105a0-complete-source-package/docs/specs/training_data/mlff_storage_management_spec.md mdstats-0.20.105a0-architecture-rev23-plan/docs/specs/training_data/mlff_storage_management_spec.md
+--- mdstats-0.20.105a0-complete-source-package/docs/specs/training_data/mlff_storage_management_spec.md	1970-01-01 00:00:00.000000000 +0000
++++ mdstats-0.20.105a0-architecture-rev23-plan/docs/specs/training_data/mlff_storage_management_spec.md	2026-08-08 11:00:27.891734095 +0000
+@@ -0,0 +1,110 @@
++# MLFF STOR1-STOR5 campaign storage-management specification
++
++Status: planned after EVAL-MF1/MF2.
++
++## Purpose
++
++This specification defines storage accounting, checkpoint compaction, automatic safe
++reclamation, manual tiered cleanup, and optional immutable deduplication/cold archival
++for MLFF campaigns. Storage policy is subordinate to scientific provenance,
++restartability, and user-data ownership.
++
++## Non-negotiable protections
++
++1. User-supplied source/training/replay/true-label material located in external
++   directories is read-only. Cleanup shall never delete, truncate, rewrite, rename,
++   or move it.
++2. A path reference in TOML, SQLite, JSON, a symlink, or an artifact record does not
++   itself confer deletion authority.
++3. Destructive operations are limited to campaign-owned artifacts whose resolved
++   locations pass containment/ownership checks.
++4. Final selected production models are retained by default.
++5. The selected production checkpoint is retained by default.
++6. Diagnostic text records, logs, training histories, and compact JSON/CSV evidence are
++   retained by default because they are inexpensive and valuable for provenance.
++7. Any artifact required to restart an incomplete stage is protected.
++8. Cleanup must be fail-closed under ambiguous ownership or dependency state.
++
++## STOR1 - accounting and ownership
++
++STOR1 is read-only. It introduces artifact ownership/retention classification and a
++storage report with logical bytes, allocated physical bytes when available, unique-inode
++bytes, largest artifacts, restart/re-evaluation value, and reclamation eligibility.
++
++Deletion eligibility requires campaign ownership, real-path containment, no symlink
++escape, and a declared retention class. Tests must include malicious/accidental external
++path references and symlink traversal.
++
++## STOR2 - completed-checkpoint compaction
++
++Full optimizer checkpoints remain untouched for active/interrupted training. After a
++run is durably complete, non-resume epochs may be converted to authenticated
++model-state-only evaluation capsules when exact MACE reconstruction has been qualified.
++The capsule must preserve the state needed by OPT-EVAL1 for energy/force/stress
++prediction and target-head export but need not preserve optimizer continuation state.
++
++A raw checkpoint may be replaced only after:
++
++- its SHA-256 and lineage are persisted;
++- the compact capsule is atomically written and authenticated;
++- reconstruction succeeds;
++- representative E/F/stress outputs match the original under the precision contract;
++- required multi-head/head-removal semantics match; and
++- the capsule is registered as satisfying all pending evaluation dependencies.
++
++Unsupported checkpoint layouts fail closed to retention. At least the selected
++production checkpoint remains full/restart-capable by default.
++
++## STOR3 - automatic lifecycle-safe reclamation
++
++Automatic cleanup is restricted to artifact classes whose removal causes no loss of
++current scientific result or required restart capability. Examples include garbage,
++stale staging, obsolete runtime archives after compact diagnostics, orphan payloads,
++successful-preflight temporaries, and qualified reconstructable graph/view caches.
++
++Checkpoint/capsule removal is permitted only after EVAL-MF lifetimes and final selection
++are satisfied and a stronger surviving artifact or prediction record preserves the
++required capability. Automatic low-disk recovery runs this safe policy before
++interrupting active jobs and never broadens deletion authority merely to meet a free
++space threshold.
++
++Every automatic cleanup writes an append-only manifest of removed paths, prior
++identities, reasons, reclaimed bytes, and preserved capabilities.
++
++## STOR4 - manual tiered reclamation
++
++Manual cleanup exposes increasingly consequential tiers. The exact CLI names may change,
++but the semantics are ordered:
++
++- `safe`: no scientific/restart capability loss;
++- `cache`: only reconstructable acceleration caches; future execution may be slower;
++- `recompute`: expensive but reproducible prediction/DATA6-style artifacts; future
++  reselection/re-evaluation may require substantial inference;
++- `compact`: nonproduction checkpoints/models and cold materializations after protocol
++  freeze; exact continuation or cheap alternative-model recovery may be lost;
++- `archive`: explicitly selected cold reproducibility material converted to verified
++  archival representation.
++
++A dry run must state capabilities lost, including training restart, exact checkpoint
++re-evaluation, metric-only recomputation, DATA7 reselection, DATA8 rematerialization,
++current production inference, and verification replay. Higher tiers never silently
++include external inputs, selected production models, selected production checkpoints,
++or default diagnostics/logs.
++
++## STOR5 - deduplication and cold archival
++
++Immutable identical campaign-owned artifacts may use content-addressed storage with
++hardlinks/reflinks where safe and supported. Storage reporting distinguishes logical
++from physical usage.
++
++Cold mmap-oriented artifacts may optionally be compressed after protocol freeze. The
++archive has an authenticated manifest and a reversible restore path. Original hot
++artifacts are removed only after archive verification succeeds. Archive corruption or
++restore mismatch fails closed.
++
++## Ordering
++
++Storage implementation begins only after EVAL-MF1 defines checkpoint/prediction
++lifetimes. The required order is STOR1 -> STOR2 -> STOR3 -> STOR4 -> STOR5. STOR5 is
++optional and may not block the higher-priority accounting, checkpoint-compaction, and
++safe-cleanup work.
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' mdstats-0.20.105a0-complete-source-package/release/ARCHITECTURE_PATCH_MLFF_REV22_TO_REV23.patch mdstats-0.20.105a0-architecture-rev23-plan/release/ARCHITECTURE_PATCH_MLFF_REV22_TO_REV23.patch
+--- mdstats-0.20.105a0-complete-source-package/release/ARCHITECTURE_PATCH_MLFF_REV22_TO_REV23.patch	1970-01-01 00:00:00.000000000 +0000
++++ mdstats-0.20.105a0-architecture-rev23-plan/release/ARCHITECTURE_PATCH_MLFF_REV22_TO_REV23.patch	2026-08-08 11:04:41.877336658 +0000
+@@ -0,0 +1,1226 @@
++diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' mdstats-0.20.105a0-complete-source-package/ARCHITECTURE_NOTES_MLFF_REV23.md mdstats-0.20.105a0-architecture-rev23-plan/ARCHITECTURE_NOTES_MLFF_REV23.md
++--- mdstats-0.20.105a0-complete-source-package/ARCHITECTURE_NOTES_MLFF_REV23.md	1970-01-01 00:00:00.000000000 +0000
+++++ mdstats-0.20.105a0-architecture-rev23-plan/ARCHITECTURE_NOTES_MLFF_REV23.md	2026-08-08 11:02:43.770732144 +0000
++@@ -0,0 +1,13 @@
+++# MLFF architecture revision 23 planning notes
+++
+++This source-tree planning update records the next implementation sequence after mdstats 0.20.105a0. It does **not** claim runtime implementation.
+++
+++1. EVAL-MF1 - nested multi-fidelity checkpoint evaluation core.
+++2. EVAL-MF2 - conservative survivor control, comprehensive epoch reporting, and production-default qualification.
+++3. STOR1 - storage accounting and campaign/user ownership boundary.
+++4. STOR2 - lossless completed-checkpoint evaluation-state compaction.
+++5. STOR3 - automatic lifecycle-safe reclamation.
+++6. STOR4 - manual tiered reclamation with capability-loss reporting.
+++7. STOR5 - immutable deduplication and optional cold archival.
+++
+++The canonical details are in `docs/arch_manuals/mlff_training_data_architecture.md`, `docs/specs/training_data/mlff_eval_mf_successive_halving_spec.md`, and `docs/specs/training_data/mlff_storage_management_spec.md`.
++diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' mdstats-0.20.105a0-complete-source-package/CHANGELOG.md mdstats-0.20.105a0-architecture-rev23-plan/CHANGELOG.md
++--- mdstats-0.20.105a0-complete-source-package/CHANGELOG.md	2026-08-08 09:32:42.000000000 +0000
+++++ mdstats-0.20.105a0-architecture-rev23-plan/CHANGELOG.md	2026-08-08 11:02:43.770527360 +0000
++@@ -1,3 +1,10 @@
+++## Architecture revision 23 - planned after 0.20.105a0
+++
+++- Record `EVAL-MF1`/`EVAL-MF2` as the next MLFF implementation gates: deterministic nested multi-fidelity checkpoint evaluation using the same nominal target/replay monitor fraction at each round, incremental prediction reuse, conservative survivor control, full-fidelity finalist selection, and comprehensive per-epoch reporting.
+++- Record `STOR1`--`STOR5` after evaluation: ownership-scoped storage accounting, lossless completed-checkpoint evaluation capsules, automatic lifecycle-safe cleanup, manual tiered reclamation with explicit capability loss, and optional immutable deduplication/cold archival.
+++- Freeze the deletion safety boundary: external user-supplied source/training/replay/true-label data are never cleanup targets; final selected production models/checkpoints and inexpensive diagnostic text/log records are retained by default.
+++- This is an architecture/specification revision only. It does not implement the new evaluator or storage policy and does not change the 0.20.105a0 runtime/scientific compatibility identity.
+++
++ ## 0.20.105a0
++ 
++ - Fix MLFF DATA6 progress timing so batched/sharded completion callbacks are not mistaken for numerical throughput. DATA6 now coalesces progress notification after each persistence drain, samples recent throughput only over real wall-clock windows, and derives ETA from cumulative post-restart work rate.
++diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' mdstats-0.20.105a0-complete-source-package/MANIFEST.in mdstats-0.20.105a0-architecture-rev23-plan/MANIFEST.in
++--- mdstats-0.20.105a0-complete-source-package/MANIFEST.in	2026-08-08 09:05:37.000000000 +0000
+++++ mdstats-0.20.105a0-architecture-rev23-plan/MANIFEST.in	2026-08-08 11:03:02.011908084 +0000
++@@ -1,5 +1,6 @@
++ include README.md
++ include CHANGELOG.md
+++include ARCHITECTURE_NOTES_*.md
++ include campaign.toml.example
++ include PATCH_NOTES_*.md
++ recursive-include docs *.md *.pdf *.png *.json
++diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' mdstats-0.20.105a0-complete-source-package/docs/README.md mdstats-0.20.105a0-architecture-rev23-plan/docs/README.md
++--- mdstats-0.20.105a0-complete-source-package/docs/README.md	2026-08-08 09:03:46.000000000 +0000
+++++ mdstats-0.20.105a0-architecture-rev23-plan/docs/README.md	2026-08-08 11:04:24.097591463 +0000
++@@ -18,7 +18,7 @@
++   selectable and critical precision, production qualification, campaign
++   freezing, checkpoint inventory, and constrained selection.
++ - `arch_manuals/mlff_training_data_dependency_graph.json` is schema 26,
++-  architecture revision 22. LTA/ring/site features remain optional enrichment
+++  architecture revision 23. LTA/ring/site features remain optional enrichment
++   rather than generic-core assumptions.
++ - `specs/training_data/mlff_data_stage_plan_spec.{md,pdf}` defines the gated
++   implementation order. DATA9A9a-c and DATA9B1-B3A are implemented; the real production corpus
++@@ -30,6 +30,13 @@
++ - `specs/training_data/mlff_data2a_manifest_inference_gate_spec.{md,pdf}` defines
++   XML-backed ensemble/temperature/fixed-cell inference, filename strain candidates,
++   exact LTA geometry verification, conservative rejection, and manifest approval.
+++- `specs/training_data/mlff_eval_mf_successive_halving_spec.{md,pdf}` defines the planned
+++  EVAL-MF1/MF2 nested multi-fidelity checkpoint evaluator: equal-fraction target/replay
+++  monitor ladders, incremental prediction reuse, conservative survivor control, full
+++  finalist evaluation, and comprehensive epoch reporting.
+++- `specs/training_data/mlff_storage_management_spec.{md,pdf}` defines the planned STOR1-STOR5
+++  ownership-scoped storage roadmap: accounting, checkpoint compaction, automatic safe
+++  reclamation, manual tiered cleanup, and optional deduplication/cold archival.
++ - `specs/training_data/mlff_data9b1_campaign_checkpoint_control_spec.{md,pdf}`
++   defines the passed-gate campaign matrix, checkpoint byte catalog, metric
++   admissibility, and deterministic fail-closed selection contracts.
++diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' mdstats-0.20.105a0-complete-source-package/docs/arch_manuals/README.md mdstats-0.20.105a0-architecture-rev23-plan/docs/arch_manuals/README.md
++--- mdstats-0.20.105a0-complete-source-package/docs/arch_manuals/README.md	2026-08-08 09:32:42.000000000 +0000
+++++ mdstats-0.20.105a0-architecture-rev23-plan/docs/arch_manuals/README.md	2026-08-08 11:04:24.097462402 +0000
++@@ -46,14 +46,16 @@
++ 
++ - `mlff_training_data_architecture.{md,pdf}`: canonical MLFF-DATA architecture
++   through the frozen 0.20.99a0 scientific campaign identity, the 0.20.103a0
++-  execution-optimization line, and the 0.20.104a0 source-tool/package-integrity repair, and the 0.20.105a0
++-  progress-timing correctness repair, including the recorded post-first-campaign staged
++-  optimization roadmap (`OPT-EVAL1` through `OPT-CTRL1`). The generic core owns provenance, eligibility,
+++  execution-optimization line, the 0.20.104a0 source-tool/package-integrity repair,
+++  and the 0.20.105a0 progress-timing correctness repair. It records the completed
+++  post-first-campaign roadmap (`OPT-EVAL1` through `OPT-CTRL1`) and the planned
+++  post-0.20.105 `EVAL-MF1/MF2` plus `STOR1`--`STOR5` evaluation/storage roadmap.
+++  The generic core owns provenance, eligibility,
++   partitioning, leakage control, selection orchestration, replay, precision,
++   training-backend calls, deployment, and validation policy. Physical
++   observables remain analysis-owned. LTA/ring/site semantics are an optional
++   profile extensions. DATA9A7a declarative contracts, DATA9A7b universal structural providers, DATA9A7c phase/geometry profiles, DATA9A7d optional-extension/LTA migration, and DATA9A7e cross-system qualification, DATA9A8 observable comparison, and DATA9A9a restartable production model sweeps are implemented.
++ - `mlff_training_data_dependency_graph.json`: machine-readable schema-26,
++-  architecture-revision-22 dependency graph. It separates generic material
+++  architecture-revision-23 dependency graph. It separates generic material
++   profiles and observable validation from optional LTA enrichment and freezes
++-  holdout/protocol-exclusion dependencies. Revision 20 adds DATA2A automatic review-manifest inference and verified strain promotion.
+++  holdout/protocol-exclusion dependencies. Revision 23 adds planned nested multi-fidelity checkpoint evaluation and ownership-scoped storage-management dependencies; earlier DATA2A and scientific identities remain unchanged.
++diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' mdstats-0.20.105a0-complete-source-package/docs/arch_manuals/mlff_training_data_architecture.md mdstats-0.20.105a0-architecture-rev23-plan/docs/arch_manuals/mlff_training_data_architecture.md
++--- mdstats-0.20.105a0-complete-source-package/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-08 01:30:43.000000000 +0000
+++++ mdstats-0.20.105a0-architecture-rev23-plan/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-08 10:59:52.131782462 +0000
++@@ -2,7 +2,7 @@
++ title: "mdstats MLFF Training-Data Architecture"
++ subtitle: "Canonical architecture and staged implementation"
++ author: "mdstats project"
++-date: "2026-08-07 (revision: post-first-campaign optimization roadmap)"
+++date: "2026-08-08 (revision: multi-fidelity evaluation and storage-management roadmap)"
++ geometry: margin=0.78in
++ toc: true
++ toc-depth: 3
++@@ -3970,6 +3970,377 @@
++ failure, compatibility, and qualification requirements are recorded in
++ `docs/specs/training_data/mlff_opt_ctrl1_control_plane_telemetry_spec.md`.
++ 
+++
+++# Post-0.20.105 campaign evaluation and storage-management roadmap
+++
+++## Motivation and sequencing decision
+++
+++The first production-scale FP32 campaign exposed a new pair of practical limits after
+++`OPT-EVAL1` through `OPT-CTRL1` had removed the dominant reconstruction,
+++preparation, and control-plane overheads:
+++
+++1. evaluating only four shortlisted epochs is inexpensive but provides weak coverage
+++   of a 30-epoch training history; and
+++2. retaining optimizer-bearing checkpoints and other campaign-owned intermediate
+++   artifacts can consume tens of gigabytes before a campaign is fully evaluated.
+++
+++This is new profiling and operational evidence, so it opens a **new** staged roadmap;
+++it does not reopen or invalidate the completed `OPT-EVAL1`--`OPT-CTRL1` roadmap.
+++The evaluation policy is implemented first because storage reclamation must not delete
+++an artifact that the new evaluator may still need.
+++
+++The binding implementation order is:
+++
+++1. `EVAL-MF1` - nested multi-fidelity checkpoint evaluation core;
+++2. `EVAL-MF2` - conservative survivor control, reporting, and production-default
+++   qualification;
+++3. `STOR1` - campaign storage accounting and ownership boundary;
+++4. `STOR2` - lossless completed-checkpoint compaction;
+++5. `STOR3` - automatic lifecycle-safe reclamation;
+++6. `STOR4` - manual tiered reclamation with explicit capability-loss reporting;
+++7. `STOR5` - immutable deduplication and optional cold archival.
+++
+++No storage stage may weaken the source-ownership boundary, final-model retention, or
+++scientific lineage merely to reclaim disk space.
+++
+++## EVAL-MF1 - nested multi-fidelity checkpoint evaluation core - planned next
+++
+++### Goal
+++
+++Replace the current production dependence on a small fixed checkpoint shortlist with a
+++multi-round evaluator that examines **every saved epoch at low fidelity**, progressively
+++allocates more monitor labels to the most promising epochs, and performs the final
+++scientific decision only on full authoritative monitor data.
+++
+++For a typical 30-epoch campaign the initial planned ladder is approximately:
+++
+++```text
+++round 1: 30 checkpoints x 10% target monitor + 10% replay monitor
+++                         -> retain about one third
+++round 2: ~10 checkpoints x 33% target monitor + 33% replay monitor
+++                         -> retain a conservative finalist set
+++round 3: ~4-6 checkpoints x 100% target monitor + 100% replay monitor
+++                         -> authoritative admissibility and selection
+++```
+++
+++The fractions, survivor fraction, and minimum finalist count are execution-policy
+++parameters and shall be configurable. The default ladder is a starting production
+++policy, not a scientific constant.
+++
+++### Equal-fidelity target/replay invariant
+++
+++At every partial round a fraction `f` means the same nominal fraction of **each**
+++authorized monitor domain:
+++
+++$$
+++|T_r| \approx f_r |T|, \qquad |R_r| \approx f_r |R|.
+++$$
+++
+++Target and replay data remain distinct scientific domains and retain their existing
+++metric meanings and checkpoint-policy roles; they are not pooled into one artificial
+++RMSE. However, the evaluator shall not allocate a systematically higher fidelity to
+++one domain than the other. Integer rounding and mandatory stratum minima may make the
+++realized counts differ slightly, but both domains use the same declared round fraction
+++and subset-construction rules.
+++
+++For naive fine-tuning, where no replay monitor is part of the frozen protocol, the same
+++ladder applies to the target monitor alone.
+++
+++### Deterministic nested monitor subsets
+++
+++Each complete target/replay monitor obtains one immutable deterministic evaluation
+++order before any checkpoint result is visible. Round subsets are prefixes of that
+++order:
+++
+++$$
+++T_1 \subset T_2 \subset \cdots \subset T_K=T,
+++\qquad
+++R_1 \subset R_2 \subset \cdots \subset R_K=R.
+++$$
+++
+++The ordering shall preserve the monitor's declared condition/source structure rather
+++than sample correlated MD frames as iid observations. At minimum, construction must be
+++balanced over available condition axes, source/trajectory groups, and other frozen
+++monitor strata, with deterministic temporal spacing inside a source where applicable.
+++Subset construction is label-independent and must be frozen before candidate metrics
+++are inspected.
+++
+++A `NestedCheckpointEvaluationPlan` (name provisional until implementation) shall bind:
+++
+++- the complete target and replay monitor identities;
+++- the ordered frame/configuration identities in each domain;
+++- round fractions and realized counts;
+++- stratification and temporal-spacing policy;
+++- checkpoint survivor fraction and minimum finalist count;
+++- checkpoint metric/admissibility policy identities;
+++- numerical prediction contract, dtype, device, and acceleration identities required
+++  by the existing OPT-EVAL2/3 caches.
+++
+++### Incremental prediction reuse
+++
+++Nested rounds must be computationally incremental. If round 2 contains round 1, a
+++surviving checkpoint evaluates only the newly added configurations
+++`T_2 - T_1` and `R_2 - R_1`; round-1 predictions are reused exactly. The same rule
+++holds for every later round. Candidate prediction manifests therefore need an
+++append/extension contract keyed by complete-monitor identity, checkpoint/model SHA,
+++ordered configuration identity, and numerical inference contract.
+++
+++Foundation-model predictions remain checkpoint-independent and reuse existing DATA6
+++or OPT-EVAL2 artifacts whenever their identities match. A larger round shall never
+++recompute a previously authenticated foundation or candidate prediction merely because
+++its evaluation fidelity increased.
+++
+++### Screening versus scientific acceptance
+++
+++Partial-round metrics are explicitly **screening evidence**. They may determine which
+++checkpoints receive more evaluation budget, but they may not:
+++
+++- create a final `CheckpointAdmissibilityDecision`;
+++- satisfy a hard scientific threshold as final evidence;
+++- authorize model export or protocol freeze; or
+++- be represented as full-monitor metrics.
+++
+++Only a checkpoint evaluated against the complete target monitor and, when required,
+++the complete true-label replay monitor may receive final admissibility and participate
+++in the authoritative `CheckpointSelectionRecord`.
+++
+++The evaluator must retain at least a declared minimum number of full-fidelity finalists
+++(default target: four) unless fewer saved checkpoints exist. Final selection continues
+++to use the frozen DATA9B checkpoint policy; multi-fidelity evaluation changes **which
+++predictions are purchased**, not the scientific definition of the winning checkpoint.
+++
+++### Restart and failure behavior
+++
+++Every round shall commit:
+++
+++- authenticated partial-prediction coverage;
+++- partial metric records tagged with round/fidelity identity;
+++- the survivor set and deterministic ranking inputs;
+++- reason codes for elimination or retention; and
+++- the exact unfinished delta for restart.
+++
+++A crash after a partial round resumes from durable prediction coverage and must not
+++restart completed inference. Corrupt/missing partial artifacts are recomputed from the
+++last authenticated boundary. An unevaluated or partially evaluated checkpoint is never
+++silently treated as scientifically rejected.
+++
+++### EVAL-MF1 acceptance gate
+++
+++EVAL-MF1 is complete only when focused tests demonstrate:
+++
+++1. deterministic, nested, stratified target and replay subsets under the same nominal
+++   fractions;
+++2. no monitor-label leakage into subset construction;
+++3. exact incremental prediction reuse between rounds;
+++4. restart/corruption recovery without duplicate inference of authenticated subsets;
+++5. all saved epochs entering round 1;
+++6. full target **and** full replay evaluation for every finalist in the final round;
+++7. no final admissibility/selection from partial metrics; and
+++8. numerical identity between a finalist's accumulated multi-round predictions and a
+++   direct one-shot full-monitor evaluation.
+++
+++Detailed implementation requirements are recorded in
+++`docs/specs/training_data/mlff_eval_mf_successive_halving_spec.md`.
+++
+++## EVAL-MF2 - conservative survivor control, diagnostics, and default migration - planned
+++
+++EVAL-MF2 hardens EVAL-MF1 before it becomes the default production policy.
+++A rigid `keep exactly one third` rule is not sufficient when several checkpoints are
+++statistically indistinguishable on a small correlated monitor subset.
+++
+++The survivor controller therefore shall:
+++
+++- treat one third as the **nominal** survival fraction rather than a hard cap;
+++- retain a configured minimum finalist count;
+++- use paired comparisons because checkpoints are evaluated on the same configurations;
+++- estimate ambiguity at the source/trajectory or decorrelated-block level rather than
+++  bootstrap individual correlated MD frames as iid observations;
+++- retain candidates in a deterministic guard band around a cutoff when the available
+++  evidence does not clearly separate them; and
+++- expand a later round rather than forcing an unsafe elimination when a boundary audit
+++  reveals ranking instability.
+++
+++The exact uncertainty method and guard criterion must be frozen in an execution-policy
+++record and validated on synthetic ranking inversions plus representative MACE histories.
+++The policy is not allowed to claim a mathematical global-minimum guarantee unless every
+++saved checkpoint receives full-monitor evaluation. Its claim is instead a conservative,
+++resource-adaptive screen followed by exact full-fidelity selection among retained
+++finalists.
+++
+++EVAL-MF2 also owns the comprehensive epoch report requested for campaign diagnosis.
+++For every saved epoch it shall expose available training-history metrics plus each
+++independent evaluation round, including target energy error, target force RMSE,
+++focus-group metrics, replay error/degradation where applicable, round fidelity,
+++survival/elimination reason, and final selection status. Machine-readable JSON/CSV and
+++human-readable/plot-friendly summaries should be generated without making plotting a
+++scientific dependency.
+++
+++After benchmark qualification against exhaustive 30-checkpoint evaluation on
+++representative completed runs, the multi-fidelity strategy may become the generated
+++production default. The old fixed `max_checkpoints_per_run = 4` behavior remains an
+++explicit fast/exploratory compatibility mode, and exhaustive full evaluation remains
+++an explicit audit mode.
+++
+++## STOR1 - campaign storage accounting and ownership boundary - planned
+++
+++Storage optimization begins with accounting and deletion authority, not deletion.
+++STOR1 shall inventory campaign artifacts by ownership, scientific/restart role,
+++reconstructability, and physical storage cost.
+++
+++### Hard user-data boundary
+++
+++**No campaign cleanup operation may delete, truncate, rewrite, rename, or move
+++user-supplied training/replay/true-label/source material from external directories.**
+++Those paths are read-only inputs even when referenced by campaign state.
+++
+++A destructive operation is authorized only for an artifact that:
+++
+++1. resides inside the resolved campaign-owned workspace or an explicitly created
+++   campaign-owned content store;
+++2. carries campaign ownership/provenance sufficient to explain why mdstats created it;
+++3. passes real-path containment checks without following a symlink escape; and
+++4. is not classified as a protected production/diagnostic artifact.
+++
+++A path merely appearing in SQLite or a TOML file is not deletion authority.
+++
+++### Storage report
+++
+++A new storage-report surface shall summarize at least:
+++
+++- logical bytes;
+++- allocated physical bytes where the platform exposes them;
+++- unique-inode bytes so hardlinks are not double-counted;
+++- artifact family and ownership class;
+++- automatic versus manual reclamation eligibility;
+++- restart/re-evaluation capability retained or lost by deletion; and
+++- the largest individual files/directories.
+++
+++STOR1 is read-only. Its acceptance gate includes symlink/path-traversal tests and
+++fixtures proving that external user directories cannot become cleanup targets.
+++
+++## STOR2 - lossless completed-checkpoint compaction - planned
+++
+++Optimizer-bearing MACE checkpoints are expected to dominate live campaign storage.
+++For an incomplete run they remain restart-critical and are untouched. Once a training
+++run is durably complete, however, intermediate epochs no longer require optimizer,
+++scheduler, or other continuation state merely to participate in checkpoint evaluation.
+++
+++STOR2 shall therefore qualify a compact **evaluation state capsule** (provisional name)
+++containing the exact model state and minimum architecture/provenance information needed
+++by the OPT-EVAL1 direct-restoration path. Conversion is allowed only after byte/digest
+++lineage is recorded and numerical E/F/stress predictions are proven equivalent to the
+++original full checkpoint.
+++
+++The intended completed-run hierarchy is:
+++
+++```text
+++active/interrupted training:
+++    retain full restart-capable checkpoint state
+++
+++training complete, evaluation unfinished:
+++    retain at least one full restart checkpoint as policy requires;
+++    compact non-resume epochs to authenticated evaluation-state capsules when qualified
+++
+++evaluation/selection complete:
+++    retain the selected production checkpoint and production model by default;
+++    nonselected capsules become lower-retention storage classes
+++```
+++
+++STOR2 must not delete a raw checkpoint until the replacement capsule, its source hash,
+++and its round/evaluation usability have been atomically committed and independently
+++reloaded. Unsupported MACE/checkpoint layouts fail closed to ordinary retention.
+++
+++## STOR3 - automatic lifecycle-safe reclamation - planned
+++
+++STOR3 extends the current conservative cleanup only where the dependency graph proves
+++that no user-visible scientific/restart capability is lost.
+++
+++Automatic cleanup may reclaim campaign-owned garbage, superseded staging generations,
+++orphaned payloads, successful-preflight temporaries, reconstructable graph/view caches,
+++and other artifacts whose authoritative parents remain available. It may compact or
+++remove nonselected checkpoint state only under the completed-selection/capsule rules
+++qualified by STOR2.
+++
+++The following are protected by default and are **not** automatic cleanup targets:
+++
+++- all external user-supplied source/training/replay/true-label material;
+++- every final selected production model;
+++- the selected production raw checkpoint unless an explicit later archival policy says
+++  otherwise;
+++- campaign configuration and immutable protocol/selection/verification records;
+++- diagnostic text records, logs, training histories, and compact JSON/CSV summaries;
+++- any artifact still required to restart an incomplete stage; and
+++- any sole surviving evidence required to reconstruct current authoritative metrics.
+++
+++Disk-pressure handling shall run safe reclamation before interrupting active children,
+++but it may never cross the protected classes merely to satisfy a free-space threshold.
+++Every automatic cleanup emits an append-only cleanup manifest containing paths, prior
+++identities, reasons, bytes reclaimed, and retained capabilities.
+++
+++## STOR4 - manual tiered reclamation with capability-loss reporting - planned
+++
+++Some large artifacts are valuable but not essential to the final production model.
+++STOR4 introduces explicit user-selected retention tiers rather than treating all such
+++artifacts as either permanent or disposable.
+++
+++The planned hierarchy is:
+++
+++| Tier | Typical artifacts | Default consequence |
+++|---|---|---|
+++| `safe` | garbage, stale staging, superseded runtime payloads | no scientific/restart capability loss |
+++| `cache` | graph/view/frame/hash caches | recomputation becomes slower |
+++| `recompute` | expensive DATA6/evaluation prediction caches when reconstructable | later reselection/re-evaluation may require expensive inference |
+++| `compact` | nonproduction checkpoints/models and cold materializations after freeze | exact continuation or cheap alternative-model recovery may be lost |
+++| `archive` | explicitly selected cold reproducibility material | retained only in a verified archival representation |
+++
+++Names may be refined at implementation, but increasing tiers must never silently
+++include protected production models or external user data. Diagnostic text/log records
+++remain retained by default at every tier because their storage cost is small and their
+++provenance value is high.
+++
+++Before applying a manual tier, mdstats shall show a dry-run capability report such as:
+++restartability, exact checkpoint re-evaluation, metric-only recomputation, DATA7
+++reselection, DATA8 rematerialization, current production inference, and verification
+++replay. The user chooses the capability loss, not merely a byte count.
+++
+++## STOR5 - immutable deduplication and optional cold archival - planned
+++
+++After ownership/accounting and lifecycle cleanup are qualified, immutable campaign
+++artifacts may be deduplicated by content. Same-filesystem hardlinks or copy-on-write
+++reflinks are preferred where supported; fallback remains ordinary atomic copy.
+++Logical and physical storage accounting must distinguish these cases.
+++
+++Cold artifacts that are no longer latency-sensitive may optionally be converted from
+++mmap-friendly hot representations to compressed archives with authenticated manifests.
+++Archival conversion is reversible: a restore command reconstructs the required hot
+++layout and verifies all content identities before the campaign consumes it. Archive
+++failure never deletes the original until the new representation is fully authenticated.
+++
+++STOR5 is an optional optimization. It may not delay EVAL-MF1/2 or the ownership and
+++safe-cleanup work in STOR1--STOR4.
+++
+++## New-roadmap completion rule
+++
+++Each gate is specified, implemented, and tested independently. In addition to the
+++existing optimization completion rules, this roadmap requires:
+++
+++1. **evaluation fidelity is explicit** - partial metrics can never masquerade as full
+++   acceptance evidence;
+++2. **target/replay fidelity is symmetric** - the same round fraction is applied to
+++   both when replay exists;
+++3. **nested work is reused** - later evaluation rounds extend rather than redo earlier
+++   authenticated inference;
+++4. **cleanup is ownership-scoped** - external user files are structurally outside the
+++   deletion authority;
+++5. **the production result is protected** - final selected models and default
+++   diagnostics/logs survive ordinary cleanup; and
+++6. **capability loss is explicit** - any manual higher-tier reclamation states exactly
+++   what can no longer be restarted, recomputed, or re-evaluated cheaply.
+++
+++`EVAL-MF1` is the next implementation gate. Storage implementation does not begin until
+++EVAL-MF1 establishes the checkpoint/prediction lifetimes that storage policy must
+++respect.
+++
++ ## Deferred or intentionally unchanged work
++ 
++ The current DATA6/DATA7 production architecture is not scheduled for another broad
++@@ -3994,7 +4365,8 @@
++ 5. representative timing evidence demonstrates the intended improvement; and
++ 6. the legacy fallback, when retained, remains fail-closed and clearly reported.
++ 
++-The staged optimization roadmap **OPT-EVAL1 through OPT-CTRL1 is complete**. Future
++-optimization work should begin from new profiling evidence rather than extending this
++-closed sequence by default.
+++The staged optimization roadmap **OPT-EVAL1 through OPT-CTRL1 is complete**. The
+++post-0.20.105 multi-fidelity-evaluation/storage roadmap above is a separate cycle opened
+++by new production-scale profiling and storage evidence. Its first implementation gate
+++is `EVAL-MF1`.
++ 
++diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' mdstats-0.20.105a0-complete-source-package/docs/arch_manuals/mlff_training_data_dependency_graph.json mdstats-0.20.105a0-architecture-rev23-plan/docs/arch_manuals/mlff_training_data_dependency_graph.json
++--- mdstats-0.20.105a0-complete-source-package/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-08 09:00:58.000000000 +0000
+++++ mdstats-0.20.105a0-architecture-rev23-plan/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-08 11:00:58.349971442 +0000
++@@ -1,9 +1,9 @@
++ {
++   "schema_version": 26,
++-  "architecture_revision": 22,
+++  "architecture_revision": 23,
++   "branch": "MLFF-DATA",
++   "documentation_gate": "MLFF-DATA0",
++-  "description": "MLFF training-data dependency graph through DATA2A automatic review-manifest inference, DATA9B3A frozen e3nn/cuEquivariance campaigns, and MLFF-PERF2 resource-aware process/GPU execution; revision 21 binds CPU/RAM/VRAM plans to campaign execution without changing scientific policy.",
+++  "description": "MLFF training-data dependency graph through DATA2A automatic review-manifest inference, DATA9B3A frozen e3nn/cuEquivariance campaigns, MLFF-PERF2 resource-aware process/GPU execution, and revision 23 planned nested multi-fidelity checkpoint evaluation plus ownership-scoped storage management; scientific DATA9 identity remains unchanged.",
++   "edge_type_definitions": {
++     "source_identity_requires": "Exact source or checkpoint identity is required.",
++     "execution_requires": "The upstream product must exist before execution.",
++@@ -50,6 +50,12 @@
++       "id": "CALIBRATION_TRANSFER_DECISION"
++     },
++     {
+++      "id": "CAMPAIGN_ARTIFACT_OWNERSHIP_CATALOG"
+++    },
+++    {
+++      "id": "CAMPAIGN_CLEANUP_MANIFEST"
+++    },
+++    {
++       "id": "CAMPAIGN_CLI_CONFIGURATION"
++     },
++     {
++@@ -71,6 +77,9 @@
++       "id": "CAMPAIGN_STATUS_VIEW"
++     },
++     {
+++      "id": "CAMPAIGN_STORAGE_REPORT"
+++    },
+++    {
++       "id": "CANDIDATE_ADMISSIBILITY"
++     },
++     {
++@@ -86,6 +95,12 @@
++       "id": "CHECKPOINT_ADMISSIBILITY_DECISION"
++     },
++     {
+++      "id": "CHECKPOINT_EPOCH_REPORT"
+++    },
+++    {
+++      "id": "CHECKPOINT_EVALUATION_CAPSULE"
+++    },
+++    {
++       "id": "CHECKPOINT_EVALUATION_POLICY"
++     },
++     {
++@@ -98,12 +113,21 @@
++       "id": "CHECKPOINT_METRIC_RECORD"
++     },
++     {
+++      "id": "CHECKPOINT_SCREENING_ROUND_RECORD"
+++    },
+++    {
++       "id": "CHECKPOINT_SELECTION_DECISION"
++     },
++     {
++       "id": "CHECKPOINT_SELECTION_RECORD"
++     },
++     {
+++      "id": "CHECKPOINT_SURVIVOR_RECORD"
+++    },
+++    {
+++      "id": "COLD_ARCHIVE_MANIFEST"
+++    },
+++    {
++       "id": "COMMITTEE_EXPORT_POLICY"
++     },
++     {
++@@ -260,6 +284,9 @@
++       "id": "FRAME_FACTS"
++     },
++     {
+++      "id": "FULL_FIDELITY_FINALIST_EVALUATION"
+++    },
+++    {
++       "id": "GENERIC_IMPORT_ISOLATION_EVIDENCE"
++     },
++     {
++@@ -398,6 +425,9 @@
++       "id": "NATIVE_MACE_GRAPH_BATCH"
++     },
++     {
+++      "id": "NESTED_CHECKPOINT_EVALUATION_PLAN"
+++    },
+++    {
++       "id": "NEW_DATASET_GENERATION"
++     },
++     {
++@@ -458,6 +488,9 @@
++       "id": "PARALLEL_NVE_VERIFICATION"
++     },
++     {
+++      "id": "PARTIAL_CHECKPOINT_PREDICTION_COVERAGE"
+++    },
+++    {
++       "id": "PARTITION_CRITICAL_PROFILE_FEATURES"
++     },
++     {
++@@ -623,6 +656,9 @@
++       "id": "THERMOMECHANICAL_VALIDATION_RECIPES"
++     },
++     {
+++      "id": "TIERED_STORAGE_RECLAMATION_PLAN"
+++    },
+++    {
++       "id": "TRAINED_COMMITTEE"
++     },
++     {
++@@ -793,6 +829,21 @@
++       "type": "execution_requires"
++     },
++     {
+++      "from": "CAMPAIGN_ARTIFACT_OWNERSHIP_CATALOG",
+++      "to": "CAMPAIGN_CLEANUP_MANIFEST",
+++      "type": "source_identity_requires"
+++    },
+++    {
+++      "from": "CAMPAIGN_ARTIFACT_OWNERSHIP_CATALOG",
+++      "to": "CAMPAIGN_STORAGE_REPORT",
+++      "type": "execution_requires"
+++    },
+++    {
+++      "from": "CAMPAIGN_ARTIFACT_OWNERSHIP_CATALOG",
+++      "to": "TIERED_STORAGE_RECLAMATION_PLAN",
+++      "type": "execution_requires"
+++    },
+++    {
++       "from": "CAMPAIGN_CLI_CONFIGURATION",
++       "to": "CAMPAIGN_MANIFEST_APPROVAL",
++       "type": "source_identity_requires"
++@@ -834,10 +885,20 @@
++     },
++     {
++       "from": "CAMPAIGN_STATE_DATABASE",
+++      "to": "CAMPAIGN_ARTIFACT_OWNERSHIP_CATALOG",
+++      "type": "execution_requires"
+++    },
+++    {
+++      "from": "CAMPAIGN_STATE_DATABASE",
++       "to": "CAMPAIGN_STATUS_VIEW",
++       "type": "execution_requires"
++     },
++     {
+++      "from": "CAMPAIGN_STORAGE_REPORT",
+++      "to": "TIERED_STORAGE_RECLAMATION_PLAN",
+++      "type": "execution_requires"
+++    },
+++    {
++       "from": "CANDIDATE_ADMISSIBILITY",
++       "to": "ACQUISITION_DECISIONS",
++       "type": "execution_requires"
++@@ -858,6 +919,11 @@
++       "type": "source_identity_requires"
++     },
++     {
+++      "from": "CANDIDATE_CHECKPOINT_CATALOG",
+++      "to": "NESTED_CHECKPOINT_EVALUATION_PLAN",
+++      "type": "source_identity_requires"
+++    },
+++    {
++       "from": "CANDIDATE_TRAJECTORIES",
++       "to": "CANDIDATE_CATALOG",
++       "type": "execution_requires"
++@@ -868,17 +934,37 @@
++       "type": "execution_requires"
++     },
++     {
+++      "from": "CHECKPOINT_EVALUATION_CAPSULE",
+++      "to": "CAMPAIGN_STORAGE_REPORT",
+++      "type": "optional_enrichment"
+++    },
+++    {
+++      "from": "CHECKPOINT_EVALUATION_CAPSULE",
+++      "to": "PARTIAL_CHECKPOINT_PREDICTION_COVERAGE",
+++      "type": "optional_enrichment"
+++    },
+++    {
++       "from": "CHECKPOINT_EVALUATION_POLICY",
++       "to": "CHECKPOINT_EVALUATION_RECORD",
++       "type": "execution_requires"
++     },
++     {
+++      "from": "CHECKPOINT_EVALUATION_POLICY",
+++      "to": "NESTED_CHECKPOINT_EVALUATION_PLAN",
+++      "type": "execution_requires"
+++    },
+++    {
++       "from": "CHECKPOINT_EVALUATION_RECORD",
++       "to": "CAMPAIGN_STATE_DATABASE",
++       "type": "source_identity_requires"
++     },
++     {
++       "from": "CHECKPOINT_EVALUATION_RECORD",
+++      "to": "CHECKPOINT_EPOCH_REPORT",
+++      "type": "produces"
+++    },
+++    {
+++      "from": "CHECKPOINT_EVALUATION_RECORD",
++       "to": "CHECKPOINT_METRIC_RECORD",
++       "type": "promotion_requires"
++     },
++@@ -889,11 +975,21 @@
++     },
++     {
++       "from": "CHECKPOINT_METRIC_POLICY",
+++      "to": "CHECKPOINT_SCREENING_ROUND_RECORD",
+++      "type": "execution_requires"
+++    },
+++    {
+++      "from": "CHECKPOINT_METRIC_POLICY",
++       "to": "CHECKPOINT_SELECTION_DECISION",
++       "type": "execution_requires"
++     },
++     {
++       "from": "CHECKPOINT_METRIC_POLICY",
+++      "to": "NESTED_CHECKPOINT_EVALUATION_PLAN",
+++      "type": "source_identity_requires"
+++    },
+++    {
+++      "from": "CHECKPOINT_METRIC_POLICY",
++       "to": "PRODUCTION_MATERIALIZATION_PLAN",
++       "type": "source_identity_requires"
++     },
++@@ -908,6 +1004,16 @@
++       "type": "execution_requires"
++     },
++     {
+++      "from": "CHECKPOINT_SCREENING_ROUND_RECORD",
+++      "to": "CHECKPOINT_EPOCH_REPORT",
+++      "type": "produces"
+++    },
+++    {
+++      "from": "CHECKPOINT_SCREENING_ROUND_RECORD",
+++      "to": "CHECKPOINT_SURVIVOR_RECORD",
+++      "type": "execution_requires"
+++    },
+++    {
++       "from": "CHECKPOINT_SELECTION_DECISION",
++       "to": "PROTOCOL_FREEZE_RECORD",
++       "type": "execution_requires"
++@@ -933,6 +1039,16 @@
++       "type": "execution_requires"
++     },
++     {
+++      "from": "CHECKPOINT_SELECTION_RECORD",
+++      "to": "TIERED_STORAGE_RECLAMATION_PLAN",
+++      "type": "optional_enrichment"
+++    },
+++    {
+++      "from": "CHECKPOINT_SURVIVOR_RECORD",
+++      "to": "FULL_FIDELITY_FINALIST_EVALUATION",
+++      "type": "execution_requires"
+++    },
+++    {
++       "from": "COMMITTEE_EXPORT_POLICY",
++       "to": "COMMITTEE_MEMBER_RECORD",
++       "type": "execution_requires"
++@@ -1297,6 +1413,16 @@
++       "type": "execution_requires"
++     },
++     {
+++      "from": "FOLD_CHECKPOINT_MONITORS",
+++      "to": "FULL_FIDELITY_FINALIST_EVALUATION",
+++      "type": "execution_requires"
+++    },
+++    {
+++      "from": "FOLD_CHECKPOINT_MONITORS",
+++      "to": "NESTED_CHECKPOINT_EVALUATION_PLAN",
+++      "type": "execution_requires"
+++    },
+++    {
++       "from": "FOLD_DEFINITIONS",
++       "to": "FOLD_CHECKPOINT_MONITORS",
++       "type": "execution_requires"
++@@ -1508,6 +1634,11 @@
++       "type": "execution_requires"
++     },
++     {
+++      "from": "FULL_FIDELITY_FINALIST_EVALUATION",
+++      "to": "CHECKPOINT_EVALUATION_RECORD",
+++      "type": "produces"
+++    },
+++    {
++       "from": "GENERIC_IMPORT_ISOLATION_EVIDENCE",
++       "to": "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
++       "type": "execution_requires"
++@@ -1952,6 +2083,16 @@
++       "type": "execution_requires"
++     },
++     {
+++      "from": "NESTED_CHECKPOINT_EVALUATION_PLAN",
+++      "to": "CHECKPOINT_SURVIVOR_RECORD",
+++      "type": "source_identity_requires"
+++    },
+++    {
+++      "from": "NESTED_CHECKPOINT_EVALUATION_PLAN",
+++      "to": "PARTIAL_CHECKPOINT_PREDICTION_COVERAGE",
+++      "type": "execution_requires"
+++    },
+++    {
++       "from": "NUMERICAL_QUALITY_PROFILE",
++       "to": "LABEL_DOMAIN",
++       "type": "execution_requires"
++@@ -2159,6 +2300,11 @@
++       "type": "produces"
++     },
++     {
+++      "from": "PARTIAL_CHECKPOINT_PREDICTION_COVERAGE",
+++      "to": "CHECKPOINT_SCREENING_ROUND_RECORD",
+++      "type": "execution_requires"
+++    },
+++    {
++       "from": "PARTITION_CRITICAL_PROFILE_FEATURES",
++       "to": "EVENT_CATALOG",
++       "type": "execution_requires"
++@@ -2440,6 +2586,11 @@
++     },
++     {
++       "from": "PROTOCOL_FREEZE_RECORD",
+++      "to": "COLD_ARCHIVE_MANIFEST",
+++      "type": "promotion_requires"
+++    },
+++    {
+++      "from": "PROTOCOL_FREEZE_RECORD",
++       "to": "EVALUATION_ACTIVATION_DECISION",
++       "type": "promotion_requires",
++       "predicate": "protocol_and_committee_frozen"
++@@ -2522,6 +2673,16 @@
++     },
++     {
++       "from": "REPLAY_MONITOR",
+++      "to": "FULL_FIDELITY_FINALIST_EVALUATION",
+++      "type": "optional_enrichment"
+++    },
+++    {
+++      "from": "REPLAY_MONITOR",
+++      "to": "NESTED_CHECKPOINT_EVALUATION_PLAN",
+++      "type": "optional_enrichment"
+++    },
+++    {
+++      "from": "REPLAY_MONITOR",
++       "to": "TRAINING_PROTOCOL_IDENTITY",
++       "type": "execution_requires"
++     },
++@@ -2767,6 +2928,16 @@
++       "type": "optional_enrichment"
++     },
++     {
+++      "from": "TIERED_STORAGE_RECLAMATION_PLAN",
+++      "to": "CAMPAIGN_CLEANUP_MANIFEST",
+++      "type": "produces"
+++    },
+++    {
+++      "from": "TIERED_STORAGE_RECLAMATION_PLAN",
+++      "to": "COLD_ARCHIVE_MANIFEST",
+++      "type": "execution_requires"
+++    },
+++    {
++       "from": "TRAINED_COMMITTEE",
++       "to": "CALIBRATION_APPLICABILITY_DOMAIN",
++       "type": "source_identity_requires"
++@@ -2818,11 +2989,21 @@
++     },
++     {
++       "from": "TRAINING_CHECKPOINTS",
+++      "to": "CAMPAIGN_STORAGE_REPORT",
+++      "type": "optional_enrichment"
+++    },
+++    {
+++      "from": "TRAINING_CHECKPOINTS",
++       "to": "CANDIDATE_CHECKPOINT_CATALOG",
++       "type": "source_identity_requires"
++     },
++     {
++       "from": "TRAINING_CHECKPOINTS",
+++      "to": "CHECKPOINT_EVALUATION_CAPSULE",
+++      "type": "source_identity_requires"
+++    },
+++    {
+++      "from": "TRAINING_CHECKPOINTS",
++       "to": "CHECKPOINT_SELECTION_DECISION",
++       "type": "execution_requires"
++     },
++@@ -2837,6 +3018,11 @@
++       "type": "execution_requires"
++     },
++     {
+++      "from": "TRAINING_CHECKPOINTS",
+++      "to": "PARTIAL_CHECKPOINT_PREDICTION_COVERAGE",
+++      "type": "execution_requires"
+++    },
+++    {
++       "from": "TRAINING_EXECUTION_POLICY",
++       "to": "TRAINING_RUN_EXECUTION_RECORD",
++       "type": "execution_requires"
++@@ -3140,6 +3326,29 @@
++       "from": "REPLAY_GEOMETRY_ONLY_IDENTITY",
++       "to": "PRODUCTION_DATA8_ARTIFACT",
++       "reason": "Replay semantic identity must include numerical label payloads."
+++    },
+++    {
+++      "from": [
+++        "CAMPAIGN_CLEANUP_MANIFEST",
+++        "TIERED_STORAGE_RECLAMATION_PLAN"
+++      ],
+++      "to": [
+++        "SOURCE_BYTES",
+++        "REPLAY_SOURCE"
+++      ],
+++      "reason": "Campaign cleanup may reference external user inputs for provenance but shall never acquire deletion authority over user-supplied source or replay material."
+++    },
+++    {
+++      "from": [
+++        "CHECKPOINT_SCREENING_ROUND_RECORD",
+++        "PARTIAL_CHECKPOINT_PREDICTION_COVERAGE"
+++      ],
+++      "to": [
+++        "CHECKPOINT_ADMISSIBILITY_DECISION",
+++        "CHECKPOINT_SELECTION_RECORD",
+++        "PROTOCOL_FREEZE_RECORD"
+++      ],
+++      "reason": "Partial multi-fidelity screening evidence cannot authorize final scientific admissibility, checkpoint selection, or protocol freeze."
++     }
++   ]
++ }
++diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' mdstats-0.20.105a0-complete-source-package/docs/specs/training_data/mlff_data9b1_campaign_checkpoint_control_spec.md mdstats-0.20.105a0-architecture-rev23-plan/docs/specs/training_data/mlff_data9b1_campaign_checkpoint_control_spec.md
++--- mdstats-0.20.105a0-complete-source-package/docs/specs/training_data/mlff_data9b1_campaign_checkpoint_control_spec.md	2026-08-06 02:45:42.000000000 +0000
+++++ mdstats-0.20.105a0-architecture-rev23-plan/docs/specs/training_data/mlff_data9b1_campaign_checkpoint_control_spec.md	2026-08-08 11:00:34.545342021 +0000
++@@ -151,3 +151,13 @@
++ - construct the final committee;
++ - emit `ProtocolFreezeRecord`;
++ - activate the locked test.
+++
+++## Planned multi-fidelity successor
+++
+++The current DATA9B1 selection contract remains authoritative: final admissibility and
+++selection consume complete monitor-bound checkpoint metrics. The planned EVAL-MF1/MF2
+++roadmap changes how candidate evaluation budget is allocated before those final records
+++exist; it does not weaken DATA9B1's final metric/admissibility requirements.
+++Partial-round metrics will be explicitly typed as screening evidence and shall not be
+++serialized as ordinary full-fidelity `CheckpointMetricRecord` objects. See
+++`mlff_eval_mf_successive_halving_spec.md`.
++diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' mdstats-0.20.105a0-complete-source-package/docs/specs/training_data/mlff_data9b4_storage_restart_spec.md mdstats-0.20.105a0-architecture-rev23-plan/docs/specs/training_data/mlff_data9b4_storage_restart_spec.md
++--- mdstats-0.20.105a0-complete-source-package/docs/specs/training_data/mlff_data9b4_storage_restart_spec.md	2026-08-06 07:19:54.000000000 +0000
+++++ mdstats-0.20.105a0-architecture-rev23-plan/docs/specs/training_data/mlff_data9b4_storage_restart_spec.md	2026-08-08 11:00:34.545342021 +0000
++@@ -70,3 +70,16 @@
++ into success by assumption.  SQLite vacuuming is skipped while live children
++ exist.  Low-disk training returns the stage to `WAITING` after durable child
++ interruption rather than classifying the scientific run as failed.
+++
+++## Planned successor roadmap after 0.20.105a0
+++
+++The lifecycle classes above describe the currently implemented conservative cleanup
+++behavior. They remain binding until the planned EVAL-MF/STOR gates are implemented.
+++
+++The successor roadmap is defined in
+++`mlff_eval_mf_successive_halving_spec.md` and
+++`mlff_storage_management_spec.md`. In particular, future partial-round evaluation
+++records are screening evidence rather than complete checkpoint evaluations, and
+++checkpoint deletion authority will be revised only after STOR2/STOR3 qualify compact
+++evaluation-state capsules and lifecycle-safe reclamation. No current implementation
+++may infer those future deletion permissions merely from this planning note.
++diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' mdstats-0.20.105a0-complete-source-package/docs/specs/training_data/mlff_eval_mf_successive_halving_spec.md mdstats-0.20.105a0-architecture-rev23-plan/docs/specs/training_data/mlff_eval_mf_successive_halving_spec.md
++--- mdstats-0.20.105a0-complete-source-package/docs/specs/training_data/mlff_eval_mf_successive_halving_spec.md	1970-01-01 00:00:00.000000000 +0000
+++++ mdstats-0.20.105a0-architecture-rev23-plan/docs/specs/training_data/mlff_eval_mf_successive_halving_spec.md	2026-08-08 11:00:27.891047892 +0000
++@@ -0,0 +1,147 @@
+++# MLFF EVAL-MF1/MF2 multi-fidelity checkpoint-evaluation specification
+++
+++Status: planned after mdstats 0.20.105a0.
+++
+++## Purpose
+++
+++This specification defines the planned replacement for the current production
+++four-checkpoint screening default. The evaluator spends a small, equal fraction
+++of target and replay monitor labels on every saved epoch, progressively increases
+++fidelity for survivors, and performs final scientific selection only on complete
+++authoritative monitor data.
+++
+++The implementation is split into two gates:
+++
+++1. **EVAL-MF1** - deterministic nested monitor ladders, incremental prediction
+++   reuse, multi-round execution, full-fidelity finalist evaluation, and durable
+++   restart records.
+++2. **EVAL-MF2** - conservative statistical guard bands, ambiguity-driven expansion,
+++   comprehensive epoch reporting, exhaustive-comparison qualification, and
+++   migration to the production default.
+++
+++## Binding invariants
+++
+++1. Every saved candidate checkpoint enters round 1 unless it is already invalid
+++   by immutable checkpoint/catalog evidence (for example corrupt bytes).
+++2. A round fraction `f` applies to the same nominal fraction of the complete
+++   target monitor and the complete true-label replay monitor. Neither domain is
+++   intentionally assigned a higher evaluation fidelity.
+++3. Target and replay metrics remain separate; the implementation shall not pool
+++   them into a single RMSE merely for screening.
+++4. Subsets are deterministic, label-independent, stratified, and nested.
+++5. Later rounds infer only the delta not already authenticated in earlier rounds.
+++6. Partial-round metrics are screening evidence only.
+++7. Final checkpoint admissibility and selection require complete target data and,
+++   for replay-backed protocols, complete true-label replay data.
+++8. The existing frozen checkpoint metric/admissibility/selection policy remains
+++   authoritative in the full-fidelity round.
+++9. An incomplete or partially evaluated checkpoint is never represented as a
+++   scientifically rejected checkpoint.
+++10. Evaluation artifacts are campaign-owned; source monitor files remain read-only.
+++
+++## Default ladder
+++
+++The initial policy to qualify is:
+++
+++| Round | Target fraction | Replay fraction | Nominal survivor action |
+++|---|---:|---:|---|
+++| 1 | 0.10 | 0.10 | retain about the best one third plus guard-band candidates |
+++| 2 | 0.33 | 0.33 | retain at least four finalists plus guard-band candidates |
+++| 3 | 1.00 | 1.00 | full admissibility and deterministic selection |
+++
+++Fractions and survivor controls are configurable execution policy. Integer and
+++stratum-minimum rounding may produce slightly different realized counts while
+++preserving the same nominal fraction on both monitor domains.
+++
+++## Nested subset construction
+++
+++For each monitor domain, build one immutable ordered configuration catalog before
+++candidate results are inspected. The order shall balance all frozen monitor strata
+++available to the evaluator, including condition axes and source/trajectory grouping.
+++Within a trajectory/source, temporally nearby frames shall not be treated as iid
+++samples when a decorrelated or block-aware ordering can be constructed from existing
+++partition evidence.
+++
+++Round subsets are prefixes of the immutable order. Their identities bind the complete
+++monitor digest, ordered configuration identities, stratum policy, round fractions,
+++and realized sizes.
+++
+++## Prediction persistence
+++
+++Candidate prediction storage shall support authenticated incremental coverage. A
+++surviving checkpoint evaluated on round `r+1` predicts only configurations absent
+++from round `r`. Metric reduction reads the union of authenticated prediction shards.
+++A direct one-shot evaluation on the same complete subset must be numerically identical
+++within the existing precision tolerance.
+++
+++Existing OPT-EVAL2 foundation prediction reuse and OPT-EVAL3 monitor graph/view caches
+++remain authoritative when identities match.
+++
+++## Survivor ranking
+++
+++EVAL-MF1 may use deterministic provisional ranking derived from the existing frozen
+++checkpoint policy, but partial threshold outcomes are not final admissibility records.
+++A nominal one-third survivor fraction is a resource target, not a hard scientific cap.
+++
+++EVAL-MF2 adds paired, block-aware ambiguity handling. Because checkpoints are evaluated
+++on the same configurations, comparisons should use paired loss/error differences where
+++possible. Uncertainty estimation shall operate on trajectory/source or decorrelated
+++blocks rather than treating individual adjacent MD frames as independent samples.
+++Candidates statistically indistinguishable from a cutoff are retained. A detected
+++boundary-ranking inversion triggers deterministic expansion rather than forced pruning.
+++
+++The production policy shall not claim a global-minimum guarantee over all saved epochs
+++unless all epochs receive full-monitor evaluation. It guarantees exact application of
+++the frozen selection policy among the full-fidelity finalists retained by the declared
+++screening policy.
+++
+++## Restart records
+++
+++Every round persists:
+++
+++- round plan and subset identities;
+++- per-checkpoint authenticated prediction coverage;
+++- partial metrics with explicit fidelity tags;
+++- survivor/elimination ranking inputs and reasons;
+++- remaining inference deltas;
+++- final full-fidelity metric/admissibility records for finalists.
+++
+++Restart shall reuse every valid prediction shard and recompute only missing/corrupt
+++deltas.
+++
+++## Comprehensive epoch report
+++
+++EVAL-MF2 shall produce a machine-readable and human-readable summary for every epoch,
+++including when available:
+++
+++- MACE training-history target/replay metrics;
+++- independent target energy and force errors by round;
+++- focus-group and worst-condition metrics;
+++- replay candidate/baseline metrics and degradation;
+++- round fraction and realized monitor counts;
+++- survivor/elimination reason;
+++- final admissibility reason; and
+++- selected/nonselected status.
+++
+++JSON is normative. CSV and plotting-ready outputs are convenience derivatives.
+++
+++## Qualification
+++
+++Before the new strategy becomes the generated production default, tests and bounded
+++real-MACE qualification must demonstrate:
+++
+++1. deterministic nested equal-fraction target/replay subsets;
+++2. label-independent subset construction;
+++3. all saved epochs in round 1;
+++4. exact incremental prediction reuse;
+++5. restart/corruption recovery;
+++6. no final scientific decision from partial metrics;
+++7. full target/replay evaluation of every finalist;
+++8. numerical identity against one-shot full evaluation of the same finalist;
+++9. conservative behavior under synthetic ranking inversions/noisy early subsets; and
+++10. representative comparison with exhaustive 30-checkpoint evaluation, recording both
+++    winner agreement and inference-cost reduction.
+++
+++The current fixed `max_checkpoints_per_run` mode remains available as an explicit fast
+++or compatibility strategy. Exhaustive full-monitor evaluation remains available as an
+++audit/reference strategy.
++diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' mdstats-0.20.105a0-complete-source-package/docs/specs/training_data/mlff_storage_management_spec.md mdstats-0.20.105a0-architecture-rev23-plan/docs/specs/training_data/mlff_storage_management_spec.md
++--- mdstats-0.20.105a0-complete-source-package/docs/specs/training_data/mlff_storage_management_spec.md	1970-01-01 00:00:00.000000000 +0000
+++++ mdstats-0.20.105a0-architecture-rev23-plan/docs/specs/training_data/mlff_storage_management_spec.md	2026-08-08 11:00:27.891734095 +0000
++@@ -0,0 +1,110 @@
+++# MLFF STOR1-STOR5 campaign storage-management specification
+++
+++Status: planned after EVAL-MF1/MF2.
+++
+++## Purpose
+++
+++This specification defines storage accounting, checkpoint compaction, automatic safe
+++reclamation, manual tiered cleanup, and optional immutable deduplication/cold archival
+++for MLFF campaigns. Storage policy is subordinate to scientific provenance,
+++restartability, and user-data ownership.
+++
+++## Non-negotiable protections
+++
+++1. User-supplied source/training/replay/true-label material located in external
+++   directories is read-only. Cleanup shall never delete, truncate, rewrite, rename,
+++   or move it.
+++2. A path reference in TOML, SQLite, JSON, a symlink, or an artifact record does not
+++   itself confer deletion authority.
+++3. Destructive operations are limited to campaign-owned artifacts whose resolved
+++   locations pass containment/ownership checks.
+++4. Final selected production models are retained by default.
+++5. The selected production checkpoint is retained by default.
+++6. Diagnostic text records, logs, training histories, and compact JSON/CSV evidence are
+++   retained by default because they are inexpensive and valuable for provenance.
+++7. Any artifact required to restart an incomplete stage is protected.
+++8. Cleanup must be fail-closed under ambiguous ownership or dependency state.
+++
+++## STOR1 - accounting and ownership
+++
+++STOR1 is read-only. It introduces artifact ownership/retention classification and a
+++storage report with logical bytes, allocated physical bytes when available, unique-inode
+++bytes, largest artifacts, restart/re-evaluation value, and reclamation eligibility.
+++
+++Deletion eligibility requires campaign ownership, real-path containment, no symlink
+++escape, and a declared retention class. Tests must include malicious/accidental external
+++path references and symlink traversal.
+++
+++## STOR2 - completed-checkpoint compaction
+++
+++Full optimizer checkpoints remain untouched for active/interrupted training. After a
+++run is durably complete, non-resume epochs may be converted to authenticated
+++model-state-only evaluation capsules when exact MACE reconstruction has been qualified.
+++The capsule must preserve the state needed by OPT-EVAL1 for energy/force/stress
+++prediction and target-head export but need not preserve optimizer continuation state.
+++
+++A raw checkpoint may be replaced only after:
+++
+++- its SHA-256 and lineage are persisted;
+++- the compact capsule is atomically written and authenticated;
+++- reconstruction succeeds;
+++- representative E/F/stress outputs match the original under the precision contract;
+++- required multi-head/head-removal semantics match; and
+++- the capsule is registered as satisfying all pending evaluation dependencies.
+++
+++Unsupported checkpoint layouts fail closed to retention. At least the selected
+++production checkpoint remains full/restart-capable by default.
+++
+++## STOR3 - automatic lifecycle-safe reclamation
+++
+++Automatic cleanup is restricted to artifact classes whose removal causes no loss of
+++current scientific result or required restart capability. Examples include garbage,
+++stale staging, obsolete runtime archives after compact diagnostics, orphan payloads,
+++successful-preflight temporaries, and qualified reconstructable graph/view caches.
+++
+++Checkpoint/capsule removal is permitted only after EVAL-MF lifetimes and final selection
+++are satisfied and a stronger surviving artifact or prediction record preserves the
+++required capability. Automatic low-disk recovery runs this safe policy before
+++interrupting active jobs and never broadens deletion authority merely to meet a free
+++space threshold.
+++
+++Every automatic cleanup writes an append-only manifest of removed paths, prior
+++identities, reasons, reclaimed bytes, and preserved capabilities.
+++
+++## STOR4 - manual tiered reclamation
+++
+++Manual cleanup exposes increasingly consequential tiers. The exact CLI names may change,
+++but the semantics are ordered:
+++
+++- `safe`: no scientific/restart capability loss;
+++- `cache`: only reconstructable acceleration caches; future execution may be slower;
+++- `recompute`: expensive but reproducible prediction/DATA6-style artifacts; future
+++  reselection/re-evaluation may require substantial inference;
+++- `compact`: nonproduction checkpoints/models and cold materializations after protocol
+++  freeze; exact continuation or cheap alternative-model recovery may be lost;
+++- `archive`: explicitly selected cold reproducibility material converted to verified
+++  archival representation.
+++
+++A dry run must state capabilities lost, including training restart, exact checkpoint
+++re-evaluation, metric-only recomputation, DATA7 reselection, DATA8 rematerialization,
+++current production inference, and verification replay. Higher tiers never silently
+++include external inputs, selected production models, selected production checkpoints,
+++or default diagnostics/logs.
+++
+++## STOR5 - deduplication and cold archival
+++
+++Immutable identical campaign-owned artifacts may use content-addressed storage with
+++hardlinks/reflinks where safe and supported. Storage reporting distinguishes logical
+++from physical usage.
+++
+++Cold mmap-oriented artifacts may optionally be compressed after protocol freeze. The
+++archive has an authenticated manifest and a reversible restore path. Original hot
+++artifacts are removed only after archive verification succeeds. Archive corruption or
+++restore mismatch fails closed.
+++
+++## Ordering
+++
+++Storage implementation begins only after EVAL-MF1 defines checkpoint/prediction
+++lifetimes. The required order is STOR1 -> STOR2 -> STOR3 -> STOR4 -> STOR5. STOR5 is
+++optional and may not block the higher-priority accounting, checkpoint-compaction, and
+++safe-cleanup work.
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' mdstats-0.20.105a0-complete-source-package/tests/test_mlff_data0_architecture_specification.py mdstats-0.20.105a0-architecture-rev23-plan/tests/test_mlff_data0_architecture_specification.py
+--- mdstats-0.20.105a0-complete-source-package/tests/test_mlff_data0_architecture_specification.py	2026-08-08 09:32:42.000000000 +0000
++++ mdstats-0.20.105a0-architecture-rev23-plan/tests/test_mlff_data0_architecture_specification.py	2026-08-08 11:01:14.521411020 +0000
+@@ -78,7 +78,7 @@
+ def test_mlff_data0_dependency_graph_is_acyclic_and_has_forbidden_edges() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["branch"] == "MLFF-DATA"
+-    assert graph["architecture_revision"] == 22
++    assert graph["architecture_revision"] == 23
+     assert graph["documentation_gate"] == "MLFF-DATA0"
+     assert graph["schema_version"] == 26
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' mdstats-0.20.105a0-complete-source-package/tests/test_mlff_data2a_manifest_inference_specification.py mdstats-0.20.105a0-architecture-rev23-plan/tests/test_mlff_data2a_manifest_inference_specification.py
+--- mdstats-0.20.105a0-complete-source-package/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-08 09:32:42.000000000 +0000
++++ mdstats-0.20.105a0-architecture-rev23-plan/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-08 11:01:14.518606787 +0000
+@@ -39,7 +39,7 @@
+ def test_data2a_dependency_graph_requires_verified_promotion_before_approval() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 22
++    assert graph["architecture_revision"] == 23
+     nodes = {node["id"] for node in graph["nodes"]}
+     assert {
+         "FILENAME_STRAIN_CANDIDATE",
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' mdstats-0.20.105a0-complete-source-package/tests/test_mlff_data9a6b_architecture_consistency_specification.py mdstats-0.20.105a0-architecture-rev23-plan/tests/test_mlff_data9a6b_architecture_consistency_specification.py
+--- mdstats-0.20.105a0-complete-source-package/tests/test_mlff_data9a6b_architecture_consistency_specification.py	2026-08-08 09:03:26.000000000 +0000
++++ mdstats-0.20.105a0-architecture-rev23-plan/tests/test_mlff_data9a6b_architecture_consistency_specification.py	2026-08-08 11:01:14.519719228 +0000
+@@ -61,7 +61,7 @@
+ def test_dependency_graph_treats_lta_as_optional() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 22
++    assert graph["architecture_revision"] == 23
+     nodes = {node["id"] for node in graph["nodes"]}
+     assert "MATERIAL_PROFILE_IDENTITY" in nodes
+     assert "LTA_PROFILE_EXTENSION" in nodes
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' mdstats-0.20.105a0-complete-source-package/tests/test_mlff_data9a6c_observable_evidence_specification.py mdstats-0.20.105a0-architecture-rev23-plan/tests/test_mlff_data9a6c_observable_evidence_specification.py
+--- mdstats-0.20.105a0-complete-source-package/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-08 09:32:42.000000000 +0000
++++ mdstats-0.20.105a0-architecture-rev23-plan/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-08 11:01:14.520882736 +0000
+@@ -38,7 +38,7 @@
+ def test_dependency_graph_places_policy_before_evidence_and_forbids_reverse_edge() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 22
++    assert graph["architecture_revision"] == 23
+     edges = {(e["from"], e["to"]) for e in graph["edges"]}
+     assert ("OBSERVABLE_COMPARISON_POLICY", "OBSERVABLE_VALIDATION_ACTIVATION_RECORD") in edges
+     assert ("OBSERVABLE_VALIDATION_ACTIVATION_RECORD", "OBSERVABLE_VALIDATION_EVIDENCE") in edges
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' mdstats-0.20.105a0-complete-source-package/tests/test_mlff_data9a7a_material_profile_specification.py mdstats-0.20.105a0-architecture-rev23-plan/tests/test_mlff_data9a7a_material_profile_specification.py
+--- mdstats-0.20.105a0-complete-source-package/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-08 09:32:42.000000000 +0000
++++ mdstats-0.20.105a0-architecture-rev23-plan/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-08 11:01:14.521373354 +0000
+@@ -41,7 +41,7 @@
+ def test_data9a7a_dependency_graph_contains_contract_chain() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 22
++    assert graph["architecture_revision"] == 23
+     nodes = {item["id"] for item in graph["nodes"]}
+     required = {
+         "MATERIAL_PROFILE_PROVIDER_IDENTITY",
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' mdstats-0.20.105a0-complete-source-package/tests/test_mlff_data9a7b_specification.py mdstats-0.20.105a0-architecture-rev23-plan/tests/test_mlff_data9a7b_specification.py
+--- mdstats-0.20.105a0-complete-source-package/tests/test_mlff_data9a7b_specification.py	2026-08-08 09:32:42.000000000 +0000
++++ mdstats-0.20.105a0-architecture-rev23-plan/tests/test_mlff_data9a7b_specification.py	2026-08-08 11:01:14.519791926 +0000
+@@ -44,7 +44,7 @@
+ def test_data9a7b_dependency_graph_has_analysis_to_selection_chain() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 22
++    assert graph["architecture_revision"] == 23
+     nodes = {item["id"] for item in graph["nodes"]}
+     assert {
+         "ANALYSIS_LOCAL_STRUCTURE_FEATURES",
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' mdstats-0.20.105a0-complete-source-package/tests/test_mlff_data9a7c_specification.py mdstats-0.20.105a0-architecture-rev23-plan/tests/test_mlff_data9a7c_specification.py
+--- mdstats-0.20.105a0-complete-source-package/tests/test_mlff_data9a7c_specification.py	2026-08-08 09:32:42.000000000 +0000
++++ mdstats-0.20.105a0-architecture-rev23-plan/tests/test_mlff_data9a7c_specification.py	2026-08-08 11:01:14.527681680 +0000
+@@ -34,7 +34,7 @@
+ def test_dependency_graph_contains_phase_geometry_contracts() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 22
++    assert graph["architecture_revision"] == 23
+     nodes = {node["id"] for node in graph["nodes"]}
+     assert {
+         "PHASE_GEOMETRY_SELECTION_PLAN",
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' mdstats-0.20.105a0-complete-source-package/tests/test_mlff_data9a7d_specification.py mdstats-0.20.105a0-architecture-rev23-plan/tests/test_mlff_data9a7d_specification.py
+--- mdstats-0.20.105a0-complete-source-package/tests/test_mlff_data9a7d_specification.py	2026-08-08 09:32:42.000000000 +0000
++++ mdstats-0.20.105a0-architecture-rev23-plan/tests/test_mlff_data9a7d_specification.py	2026-08-08 11:01:14.519405282 +0000
+@@ -21,7 +21,7 @@
+ def test_data9a7d_dependency_graph_contract() -> None:
+     graph = json.loads((ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json").read_text())
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 22
++    assert graph["architecture_revision"] == 23
+     nodes = {item["id"] for item in graph["nodes"]}
+     assert {
+         "OPTIONAL_PROFILE_EXTENSION_PROVIDER",
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' mdstats-0.20.105a0-complete-source-package/tests/test_mlff_data9a7e_specification.py mdstats-0.20.105a0-architecture-rev23-plan/tests/test_mlff_data9a7e_specification.py
+--- mdstats-0.20.105a0-complete-source-package/tests/test_mlff_data9a7e_specification.py	2026-08-08 09:32:42.000000000 +0000
++++ mdstats-0.20.105a0-architecture-rev23-plan/tests/test_mlff_data9a7e_specification.py	2026-08-08 11:01:14.518577704 +0000
+@@ -31,7 +31,7 @@
+ def test_data9a7e_dependency_graph_and_public_api() -> None:
+     graph = json.loads((ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json").read_text())
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 22
++    assert graph["architecture_revision"] == 23
+     nodes = {item["id"] for item in graph["nodes"]}
+     assert {
+         "CROSS_SYSTEM_QUALIFICATION_POLICY",
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' mdstats-0.20.105a0-complete-source-package/tests/test_mlff_data9a8_specification.py mdstats-0.20.105a0-architecture-rev23-plan/tests/test_mlff_data9a8_specification.py
+--- mdstats-0.20.105a0-complete-source-package/tests/test_mlff_data9a8_specification.py	2026-08-08 09:32:42.000000000 +0000
++++ mdstats-0.20.105a0-architecture-rev23-plan/tests/test_mlff_data9a8_specification.py	2026-08-08 11:01:14.520375683 +0000
+@@ -44,7 +44,7 @@
+ def test_dependency_graph_places_policy_upstream_and_forbids_posthoc_thresholds() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 22
++    assert graph["architecture_revision"] == 23
+     nodes = {node["id"] for node in graph["nodes"]}
+     for node in (
+         "OBSERVABLE_COMPARISON_RULES",
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' mdstats-0.20.105a0-complete-source-package/tests/test_mlff_data9a9a_specification.py mdstats-0.20.105a0-architecture-rev23-plan/tests/test_mlff_data9a9a_specification.py
+--- mdstats-0.20.105a0-complete-source-package/tests/test_mlff_data9a9a_specification.py	2026-08-08 09:32:42.000000000 +0000
++++ mdstats-0.20.105a0-architecture-rev23-plan/tests/test_mlff_data9a9a_specification.py	2026-08-08 11:01:14.521510268 +0000
+@@ -47,7 +47,7 @@
+ def test_dependency_graph_contains_restartable_model_sweep_chain() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 22
++    assert graph["architecture_revision"] == 23
+     nodes = {node["id"] for node in graph["nodes"]}
+     required = {
+         "DATA6_MODEL_SWEEP_EXECUTION_POLICY",
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' mdstats-0.20.105a0-complete-source-package/tests/test_mlff_data9a9b_specification.py mdstats-0.20.105a0-architecture-rev23-plan/tests/test_mlff_data9a9b_specification.py
+--- mdstats-0.20.105a0-complete-source-package/tests/test_mlff_data9a9b_specification.py	2026-08-08 09:32:42.000000000 +0000
++++ mdstats-0.20.105a0-architecture-rev23-plan/tests/test_mlff_data9a9b_specification.py	2026-08-08 11:01:14.519639330 +0000
+@@ -40,7 +40,7 @@
+ def test_dependency_graph_contains_data9a9b_chain() -> None:
+     graph = json.loads((ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json").read_text())
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 22
++    assert graph["architecture_revision"] == 23
+     nodes = {item["id"] for item in graph["nodes"]}
+     required = {
+         "PRODUCTION_MATERIALIZATION_PLAN",
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' mdstats-0.20.105a0-complete-source-package/tests/test_mlff_data9a9c_specification.py mdstats-0.20.105a0-architecture-rev23-plan/tests/test_mlff_data9a9c_specification.py
+--- mdstats-0.20.105a0-complete-source-package/tests/test_mlff_data9a9c_specification.py	2026-08-08 09:32:42.000000000 +0000
++++ mdstats-0.20.105a0-architecture-rev23-plan/tests/test_mlff_data9a9c_specification.py	2026-08-08 11:01:14.520158541 +0000
+@@ -38,7 +38,7 @@
+ def test_dependency_graph_contains_integrity_gate_chain() -> None:
+     graph = json.loads((ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json").read_text())
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 22
++    assert graph["architecture_revision"] == 23
+     nodes = {item["id"] for item in graph["nodes"]}
+     assert {"PRODUCTION_CORPUS_PLAN", "REPLAY_LABEL_PAYLOAD_IDENTITY",
+             "DATA8_ATOMIC_PROMOTION", "PRODUCTION_GATE_INTEGRITY_EVIDENCE"} <= nodes
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' mdstats-0.20.105a0-complete-source-package/tests/test_mlff_data9b1_specification.py mdstats-0.20.105a0-architecture-rev23-plan/tests/test_mlff_data9b1_specification.py
+--- mdstats-0.20.105a0-complete-source-package/tests/test_mlff_data9b1_specification.py	2026-08-08 09:32:42.000000000 +0000
++++ mdstats-0.20.105a0-architecture-rev23-plan/tests/test_mlff_data9b1_specification.py	2026-08-08 11:01:14.521599770 +0000
+@@ -33,7 +33,7 @@
+ 
+ def test_data9b1_dependency_graph_nodes_and_gates() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+-    assert graph["architecture_revision"] == 22
++    assert graph["architecture_revision"] == 23
+     nodes = {item["id"] for item in graph["nodes"]}
+     for node in (
+         "TRAINING_CAMPAIGN_POLICY",
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' mdstats-0.20.105a0-complete-source-package/tests/test_mlff_data9b2_specification.py mdstats-0.20.105a0-architecture-rev23-plan/tests/test_mlff_data9b2_specification.py
+--- mdstats-0.20.105a0-complete-source-package/tests/test_mlff_data9b2_specification.py	2026-08-08 09:32:42.000000000 +0000
++++ mdstats-0.20.105a0-architecture-rev23-plan/tests/test_mlff_data9b2_specification.py	2026-08-08 11:01:14.519487605 +0000
+@@ -37,7 +37,7 @@
+ 
+ def test_data9b2_dependency_graph_records_and_edges() -> None:
+     graph = json.loads(GRAPH.read_text(encoding='utf-8'))
+-    assert graph['architecture_revision'] == 22
++    assert graph['architecture_revision'] == 23
+     assert graph['schema_version'] == 26
+     nodes = {v['id'] for v in graph['nodes']}
+     for node in (
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' mdstats-0.20.105a0-complete-source-package/tests/test_mlff_data9b3_campaign_cli_specification.py mdstats-0.20.105a0-architecture-rev23-plan/tests/test_mlff_data9b3_campaign_cli_specification.py
+--- mdstats-0.20.105a0-complete-source-package/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-08 09:32:42.000000000 +0000
++++ mdstats-0.20.105a0-architecture-rev23-plan/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-08 11:01:14.519188571 +0000
+@@ -55,7 +55,7 @@
+ def test_data9b3_dependency_graph_contract() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 22
++    assert graph["architecture_revision"] == 23
+     nodes = {node["id"] for node in graph["nodes"]}
+     required = {
+         "CAMPAIGN_CLI_CONFIGURATION",
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' mdstats-0.20.105a0-complete-source-package/tests/test_mlff_data9b3a_cueq_specification.py mdstats-0.20.105a0-architecture-rev23-plan/tests/test_mlff_data9b3a_cueq_specification.py
+--- mdstats-0.20.105a0-complete-source-package/tests/test_mlff_data9b3a_cueq_specification.py	2026-08-08 09:03:26.000000000 +0000
++++ mdstats-0.20.105a0-architecture-rev23-plan/tests/test_mlff_data9b3a_cueq_specification.py	2026-08-08 11:01:14.520402833 +0000
+@@ -42,7 +42,7 @@
+ def test_data9b3a_dependency_graph_contract() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 22
++    assert graph["architecture_revision"] == 23
+     nodes = {node["id"] for node in graph["nodes"]}
+     assert {"MACE_ACCELERATION_POLICY", "MACE_ACCELERATION_PROBE"} <= nodes
+     edges = {(edge["from"], edge["to"], edge["type"]) for edge in graph["edges"]}
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' mdstats-0.20.105a0-complete-source-package/tests/test_mlff_eval_storage_roadmap_specification.py mdstats-0.20.105a0-architecture-rev23-plan/tests/test_mlff_eval_storage_roadmap_specification.py
+--- mdstats-0.20.105a0-complete-source-package/tests/test_mlff_eval_storage_roadmap_specification.py	1970-01-01 00:00:00.000000000 +0000
++++ mdstats-0.20.105a0-architecture-rev23-plan/tests/test_mlff_eval_storage_roadmap_specification.py	2026-08-08 11:02:02.654060499 +0000
+@@ -0,0 +1,70 @@
++from __future__ import annotations
++
++import json
++from pathlib import Path
++
++ROOT = Path(__file__).resolve().parents[1]
++MANUAL = ROOT / "docs" / "arch_manuals" / "mlff_training_data_architecture.md"
++GRAPH = ROOT / "docs" / "arch_manuals" / "mlff_training_data_dependency_graph.json"
++EVAL_SPEC = ROOT / "docs" / "specs" / "training_data" / "mlff_eval_mf_successive_halving_spec.md"
++STOR_SPEC = ROOT / "docs" / "specs" / "training_data" / "mlff_storage_management_spec.md"
++
++
++def test_eval_storage_roadmap_is_recorded_with_eval_first() -> None:
++    text = MANUAL.read_text(encoding="utf-8")
++    positions = [text.index(token) for token in (
++        "EVAL-MF1",
++        "EVAL-MF2",
++        "STOR1",
++        "STOR2",
++        "STOR3",
++        "STOR4",
++        "STOR5",
++    )]
++    assert positions == sorted(positions)
++    assert "EVAL-MF1` is the next implementation gate" in text
++
++
++def test_multifidelity_plan_preserves_equal_target_replay_fidelity_and_full_final() -> None:
++    text = EVAL_SPEC.read_text(encoding="utf-8")
++    for token in (
++        "same nominal fraction",
++        "Subsets are deterministic, label-independent, stratified, and nested",
++        "Later rounds infer only the delta",
++        "Partial-round metrics are screening evidence only",
++        "complete target data",
++        "complete true-label replay data",
++        "all saved epochs in round 1",
++    ):
++        assert token in text
++
++
++def test_storage_plan_protects_external_inputs_production_and_diagnostics() -> None:
++    text = STOR_SPEC.read_text(encoding="utf-8")
++    for token in (
++        "external\n   directories is read-only",
++        "Final selected production models are retained by default",
++        "selected production checkpoint is retained by default",
++        "Diagnostic text records, logs, training histories",
++        "fail-closed under ambiguous ownership",
++        "evaluation capsules",
++    ):
++        assert token in text
++
++
++def test_dependency_graph_revision_23_contains_planned_eval_storage_nodes() -> None:
++    graph = json.loads(GRAPH.read_text(encoding="utf-8"))
++    assert graph["schema_version"] == 26
++    assert graph["architecture_revision"] == 23
++    nodes = {node["id"] for node in graph["nodes"]}
++    for node in (
++        "NESTED_CHECKPOINT_EVALUATION_PLAN",
++        "PARTIAL_CHECKPOINT_PREDICTION_COVERAGE",
++        "FULL_FIDELITY_FINALIST_EVALUATION",
++        "CAMPAIGN_ARTIFACT_OWNERSHIP_CATALOG",
++        "CAMPAIGN_STORAGE_REPORT",
++        "CHECKPOINT_EVALUATION_CAPSULE",
++        "TIERED_STORAGE_RECLAMATION_PLAN",
++        "CAMPAIGN_CLEANUP_MANIFEST",
++    ):
++        assert node in nodes
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' mdstats-0.20.105a0-complete-source-package/tests/test_mlff_perf2_parallel_acceleration_specification.py mdstats-0.20.105a0-architecture-rev23-plan/tests/test_mlff_perf2_parallel_acceleration_specification.py
+--- mdstats-0.20.105a0-complete-source-package/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-08 09:32:42.000000000 +0000
++++ mdstats-0.20.105a0-architecture-rev23-plan/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-08 11:01:14.520488701 +0000
+@@ -43,7 +43,7 @@
+         .read_text(encoding="utf-8")
+     )
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 22
++    assert graph["architecture_revision"] == 23
+     nodes = {item["id"] for item in graph["nodes"]}
+     assert {
+         "SYSTEM_RESOURCE_SNAPSHOT",

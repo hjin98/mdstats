@@ -1,0 +1,44 @@
+{
+  "date": "2026-08-15",
+  "gate": "CUEQ-DEP1",
+  "gpu_qualification": "not_executed_deferred_to_FINAL-GPU1",
+  "release": "0.20.188a0",
+  "schema": "mdstats.mlff-cueq-dep1-distribution-qualification.v1",
+  "sdist": {
+    "cueq_capture_exit_code": 3,
+    "cueq_capture_expected_negative": true,
+    "path": "mdstats-0.20.188a0.tar.gz",
+    "sha256": "eb58303242aeb4604b067552415473d24831c3f1c05f24c9474fc4335e86de21",
+    "smoke": {
+      "failed": 0,
+      "passed": 13,
+      "warnings": 2
+    }
+  },
+  "sdist_contains": [
+    "mlff_training_data_architecture.md",
+    "mlff_training_data_architecture.pdf",
+    "docs/specs/training_data/mlff_cueq_dep1_runtime_freeze_spec.md",
+    "docs/specs/training_data/mlff_cueq_dep1_runtime_freeze_spec.pdf",
+    "docs/specs/training_data/mlff_final_gpu1_deferred_qualification_spec.md",
+    "docs/specs/training_data/mlff_final_gpu1_deferred_qualification_spec.pdf",
+    "release/MLFF_CUEQ_DEP1_QUALIFICATION_0.20.188a0.json",
+    "release/MLFF_CUEQ_DEP1_PDF_QA_0.20.188a0.json",
+    "tools/capture_mlff_cueq_dep1_runtime.py",
+    "tools/run_mlff_final_gpu_qualification.py"
+  ],
+  "wheel": {
+    "blocking_reasons": [
+      "cueq-core_import",
+      "cueq-torch_import",
+      "cueq-ops_import",
+      "torch_cuda_available",
+      "cuda_device_inventory"
+    ],
+    "cueq_runtime_schema": "mdstats.cueq-dep1-runtime.v1",
+    "import_version": "0.20.188a0",
+    "negative_host_record_passed": false,
+    "path": "mdstats-0.20.188a0-py3-none-any.whl",
+    "sha256": "6d640f90b3400cb8c0b36387c34fb13dc574f36b5494f1553721b5ab2bc24e1b"
+  }
+}

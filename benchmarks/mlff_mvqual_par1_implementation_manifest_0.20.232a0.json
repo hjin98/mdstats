@@ -1,0 +1,39 @@
+{
+  "architecture_revision": 99,
+  "contracts": {
+    "automatic_worker_ceiling": 4,
+    "campaign_blas_threads": 1,
+    "canonical_reduction": "historical domain/size comparison order",
+    "direct_api_native_environment_preserved_without_explicit_scope": true,
+    "explicit_higher_worker_override_allowed": true,
+    "global_job_granularity": "domain_selector_target_size_score",
+    "native_tree_threads_per_parallel_job": 1,
+    "next_gate": "AUDIT-EVAL-PERF1",
+    "scientific_authority_change": false
+  },
+  "files": {
+    "docs/specs/training_data/mlff_mvqual_par1_global_scoring_queue_spec.md": {
+      "bytes": 2779,
+      "sha256": "2ed6a83f3517bde777a6c28db6a7bd750fd166fdf678a85f6e6e7a037374bd31"
+    },
+    "mdstats/training_data/campaign_cli.py": {
+      "bytes": 1168197,
+      "sha256": "6b6d3e23b2e297cec029a141806b9df6e606ee44389563e62b87844f6758f9d7"
+    },
+    "mdstats/training_data/target_multi_view_qualification.py": {
+      "bytes": 69359,
+      "sha256": "cd725383d643905547dec4b8bcfe493acfaab6ace70416b375b5cfaa7d5dc2a9"
+    },
+    "tests/test_mlff_mvqual_par1.py": {
+      "bytes": 5441,
+      "sha256": "b03c0671c4e1c38a1dcaa3a288b8083b80ac83817e9332009811563806b34461"
+    },
+    "tests/test_mlff_mvqual_par1_specification.py": {
+      "bytes": 4529,
+      "sha256": "3d21978159d79ddb5f86e873878bebc1384aae3cf13ffc13cc204cfe098c287c"
+    }
+  },
+  "gate": "MVQUAL-PAR1",
+  "release": "0.20.232a0",
+  "schema": "mdstats.mlff-mvqual-par1-implementation.v1"
+}

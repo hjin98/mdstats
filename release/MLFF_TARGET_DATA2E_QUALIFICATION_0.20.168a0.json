@@ -1,0 +1,78 @@
+{
+  "adversarial_checks": [
+    "waiting Stage-B/Stage-C states cannot create TARGET-DATA2E",
+    "premature TARGET-DATA2E record is deleted when funnel returns to waiting",
+    "failed/nonconverged funnel cannot claim a production target corpus",
+    "stale TARGET-DATA2D digest invalidates a stored production-corpus authority",
+    "selected membership and embedded coverage report must match exactly",
+    "serialized decision round-trips with identical content digest",
+    "live authority validator rebuilds and requires exact identity"
+  ],
+  "date": "2026-08-13",
+  "gate": "TARGET-DATA2E",
+  "qualification": {
+    "documentation_audit": {
+      "historical_data0_failed": 1,
+      "historical_data0_passed": 7,
+      "known_failure": "historical test hard-codes pyproject version 0.20.140a0",
+      "target_data2e_spec_passed": 6
+    },
+    "expected_skip": "tests/test_mlff_campaign_cli.py:337 real LTA training root not supplied",
+    "focused_and_regression_pytest": {
+      "failed": 0,
+      "passed": 161,
+      "skipped": 1,
+      "warnings": 49
+    },
+    "pdf": {
+      "pages_after": 126,
+      "pages_before": 125,
+      "render_compare_changed_pages": 17,
+      "result": "passed",
+      "visually_inspected_pages": [
+        116,
+        117
+      ]
+    },
+    "python_compileall": "passed"
+  },
+  "schema": "mdstats.mlff-target-data2e-qualification.v1",
+  "scientific_contract": {
+    "bounded_ladder_convergence_required": true,
+    "practical_equivalence_mev_per_a": 1.0,
+    "prepare_receipt_dependency": false,
+    "provisional_winner_allowed": false,
+    "replay_positive_ranking_credit": false,
+    "selected_membership_must_be_exact_target_data2c_rung": true
+  },
+  "scope": {
+    "implemented": [
+      "immutable production target-corpus decision/provenance authority materialized only from an authenticated TARGET-DATA2D selected outcome",
+      "exact per-label-domain winning frame membership and selected-rung coverage report",
+      "full TARGET-DATA2A role/partition, FOUNDATION-AUDIT1, TARGET-DATA2B family/stratum/policy, TARGET-DATA2C ladder/rung, and TARGET-DATA2D Stage-A/B/C lineage binding",
+      "explicit 1 meV/A practical-equivalence comparison audit records",
+      "restart-safe campaign materialization/reuse with stale-record rebuild and waiting/failed/nonconverged fail-closed behavior"
+    ],
+    "intentionally_deferred": [
+      "actual Stage-B/Stage-C training evidence generation by TRAIN2/EVAL2",
+      "PES/relaxation/dynamics physical qualification generation by later VERIFY gates",
+      "launch of the fixed-size two-seed production CV campaign until TARGET-DATA2E can be materialized from real Stage-C evidence"
+    ]
+  },
+  "sha256": {
+    "CHANGELOG.md": "d986d1485fdb18b7f4350f3514141a65fa29e6c4fc0a19d415d0f896782bd02f",
+    "PKG-INFO": "ff86eb1580326246d6458c249cf6956d834db43f37c4dc7403096158452f2b17",
+    "docs/arch_manuals/mlff_training_data_architecture.md": "748d7fa42115a839e86291a9a72672d0117ddebe9560558bfcf7d7be513fdeb9",
+    "docs/arch_manuals/mlff_training_data_architecture.pdf": "761628af5c6781741519958f361ac3837748f70f2bfdd2ced62e29e566bbbdd8",
+    "mdstats/__init__.py": "979a71bcdcd78f44cdbc682c0e98e14bb8bf358e229c4b36f09835742c0e14e3",
+    "mdstats/_version.py": "21b04010d01f5c53f46f57fc816fd0e4c4a5919a6357e9765cd63943f59ea613",
+    "mdstats/training_data/__init__.py": "397af52dd4c2f465e75c776c4093e64c1d5292433ab3eb1fa9dafdb64b781f3e",
+    "mdstats/training_data/campaign_cli.py": "35bff4995f282ab4623bf76a04224bc89e9ff058be4f7dbd68d99f354c8943a0",
+    "mdstats/training_data/target_production_corpus.py": "1db6c3868bb39172ab6b04147ebaf38e489f89637a9f5f369a44c96889c31275",
+    "pyproject.toml": "1f53c5622bde250ecadbbe6afdb8982702613c4b8aaa3706344b896267fb9b55",
+    "release/PATCH_NOTES_0.20.168a0.md": "6d5796193bfadb6d832e5e66846d65410ca21a8e1270f20e7f1316be09c22cfb",
+    "tests/test_mlff_target_data2e_production_corpus.py": "2c129bd2dce151ec5e5d61e7a33ee30116b7ce3e2f4ae3dbc73aafc0884bc821",
+    "tests/test_mlff_target_data2e_specification.py": "4ed1d43f176ac9c8356ffc9960a6b19fd0f4d7f99b85dcdcb0ecb67af455022e"
+  },
+  "version": "0.20.168a0"
+}

@@ -1,0 +1,54 @@
+{
+  "schema": "mdstats.par-dens0-na-lta-qualification.v1",
+  "package_version": "0.20.120a0",
+  "qualified_on": "2026-08-08",
+  "input": {
+    "basename": "dump.prod.Na_lta_300K.old.lammpstrj",
+    "sha256": "81c86cc40f5a11031f80817213eb558c02348494d1c6cad9b4775a5bc3c9f9cd",
+    "bytes": 183385600,
+    "frames": 10001,
+    "atoms_per_frame": 168,
+    "na_atoms": 24,
+    "type_map": {"1": "Si", "2": "Al", "3": "O", "4": "Na"},
+    "timestep_ps": 0.001
+  },
+  "registration": "framework_translation",
+  "reference_quantile": 0.10,
+  "results_angstrom": {
+    "global_all_reference": 0.07466881461664253,
+    "basin_aware_all_reference": 0.07466881461664253,
+    "production_512_reference": 0.07468598798979899,
+    "production_relative_error": 0.000229994802138834,
+    "two_basin_na_global": 0.1958590101491643,
+    "two_basin_na_full_within_basin": 0.07960089886380832,
+    "two_basin_na_production_within_basin": 0.07878657624907114
+  },
+  "two_basin_na": {
+    "na_selection_index": 17,
+    "atom_index_zero_based": 137,
+    "qualified_basin_count": 2,
+    "excluded_transition_boundary_frames": 156,
+    "full_basin_spreads_angstrom": [0.08985792820189469, 0.06820587517289656],
+    "full_basin_source_frame_counts": [4845, 5000]
+  },
+  "production_convergence": {
+    "sample_size_per_random_replicate": 128,
+    "requested_random_replicates": 4,
+    "maximum_random_replicates": 8,
+    "effective_anchor_samples": 512,
+    "progressive_reference_standard_deviations_angstrom": [0.07429682685468678, 0.07468598798979899],
+    "relative_anchor_change": 0.005210631144966118,
+    "converged_at_relative_tolerance": 0.01,
+    "random_replicate_reference_standard_deviations_angstrom": [0.07237689946999794, 0.07281497801371803, 0.07614512250840047, 0.07221314352979685],
+    "reference_standard_error_angstrom": 0.0009279318342786089,
+    "confidence_level": 0.95,
+    "confidence_interval_angstrom": [0.0717328947522439, 0.07763908122735408],
+    "relative_confidence_half_width": 0.039540124152316794,
+    "escalation_occurred": false
+  },
+  "environment": {
+    "python": "3.13.5",
+    "numpy": "2.3.5",
+    "scipy": "1.17.0"
+  }
+}

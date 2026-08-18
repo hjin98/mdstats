@@ -1,0 +1,806 @@
+diff -ruN a/CHANGELOG.md b/CHANGELOG.md
+--- a/CHANGELOG.md	2026-08-07 21:18:49.000000000 +0000
++++ b/CHANGELOG.md	2026-08-07 23:55:42.197631372 +0000
+@@ -1,5 +1,13 @@
+ # Changelog
+ 
++## 0.20.100a0
++
++- Remove density wall-time estimates and measured elapsed time as hard plotting admission criteria; wall-time targets are advisory diagnostics only.
++- Remove wall-time-derived default operation caps for density kernel pairs and field counts while preserving memory, structural, browser, correctness, and explicit expert caps.
++- Stop deriving isolated density-mesh worker timeouts from the complete-scene wall target; no implicit timeout is used, while an explicitly requested worker timeout remains an opt-in kill switch.
++- Keep `max_wall_time_seconds`, `MDSTATS_MAX_WALL_TIME_SECONDS`, and `--max-wall-time` as backwards-compatible advisory metadata; add `--wall-time-target` as the clearer example CLI alias.
++- Preserve the MLFF campaign compatibility token at 0.20.99a0 because this release changes plotting policy only.
++
+ ## 0.20.99a0
+ 
+ - Implement OPT-EVAL3 stable monitor graph caching: model-independent graph identities, 1 GiB byte-bounded CPU memory reuse, SHA-256-authenticated persistent graph shards, corruption rebuild, and single-flight concurrent misses.
+diff -ruN a/PATCH_NOTES_0.20.100a0.md b/PATCH_NOTES_0.20.100a0.md
+--- a/PATCH_NOTES_0.20.100a0.md	1970-01-01 00:00:00.000000000 +0000
++++ b/PATCH_NOTES_0.20.100a0.md	2026-08-07 23:55:42.197848819 +0000
+@@ -0,0 +1,20 @@
++# mdstats 0.20.100a0 patch notes
++
++This plotting-policy hotfix removes wall time as a hard density-scene bound.
++
++## Changed
++
++- Phase-C density planning no longer rejects a scene because its estimated preparation wall time exceeds `max_density_wall_time_seconds`.
++- Hybrid direct/FFT planning no longer rejects because its estimated realization time exceeds `max_wall_time_seconds`.
++- Partitioned preparation, full scene preparation, mesh rendering, and final scene assembly no longer raise solely because measured/estimated wall time exceeds the configured target.
++- Default `max_density_kernel_pairs` and `max_density_fields` are no longer derived from wall time.
++- Isolated mesh workers no longer inherit an implicit scene-derived timeout. An explicitly supplied `worker_timeout_seconds` remains opt-in.
++- Wall-time estimates and exceedance booleans remain in metadata for diagnostics and backend cost selection.
++
++## Unchanged hard bounds
++
++Memory, threads, address-space-safe structural counts, browser mesh/output budgets, explicit expert operation caps, and scientific correctness checks remain enforced.
++
++## Compatibility
++
++`max_wall_time_seconds`, `MDSTATS_MAX_WALL_TIME_SECONDS`, and `--max-wall-time` remain accepted. The LTA density example also accepts `--wall-time-target`. The MLFF campaign compatibility token remains 0.20.99a0.
+diff -ruN a/docs/specs/plotting/density_wall_time_advisory_020100_spec.md b/docs/specs/plotting/density_wall_time_advisory_020100_spec.md
+--- a/docs/specs/plotting/density_wall_time_advisory_020100_spec.md	1970-01-01 00:00:00.000000000 +0000
++++ b/docs/specs/plotting/density_wall_time_advisory_020100_spec.md	2026-08-07 23:55:12.656711670 +0000
+@@ -0,0 +1,45 @@
++# Density wall-time policy amendment — 0.20.100a0
++
++## Status
++
++Implemented in mdstats 0.20.100a0. This amendment supersedes earlier plotting
++specification language that treated scene wall time as a feasibility/admission
++constraint.
++
++## Policy
++
++Density preparation and rendering are bounded by correctness, memory, structural
++size, explicit expert operation caps, and browser/output geometry limits. Runtime
++wall-time estimates are **advisory only**. A density scene must not be rejected,
++truncated, or automatically timed out solely because an estimated or measured
++wall time exceeds `max_wall_time_seconds`.
++
++`max_wall_time_seconds` and `MDSTATS_MAX_WALL_TIME_SECONDS` remain accepted for
++backwards compatibility and diagnostics. They record a target against which the
++planner can report `wall_time_budget_exceeded`, but they do not control admission.
++The cost model remains useful for choosing among otherwise feasible backends.
++
++## Required implementation behavior
++
++1. Phase-C global density planning records estimated preparation time but never
++   rejects a backend combination for exceeding the target.
++2. Hybrid direct/FFT realization records its estimated wall time but never rejects
++   for exceeding the target.
++3. Default operation-only limits such as `max_density_kernel_pairs` and
++   `max_density_fields` are not derived from wall time. Memory-derived defaults
++   and explicit caller caps remain authoritative.
++4. Measured partitioned preparation, scene preparation, mesh preparation, and final
++   rendering times are recorded but do not raise `GraphComplexityError`.
++5. Isolated mesh workers receive no implicit timeout from the scene wall-time
++   target. `worker_timeout_seconds`, when explicitly supplied by an expert caller,
++   remains a separate opt-in process kill switch and is not clamped to the scene
++   target.
++6. CPU/thread, memory, browser geometry, mesh-face, address-space, and scientific
++   correctness checks are unchanged.
++
++## Compatibility
++
++The existing `max_wall_time_seconds` fields and `--max-wall-time` example option
++remain readable. The examples also expose the clearer `--wall-time-target` alias.
++Serialized resource records continue to carry the historical field so old campaign
++and plotting metadata remain parseable.
+diff -ruN a/examples/plot_lta_mixed_alkali_density.py b/examples/plot_lta_mixed_alkali_density.py
+--- a/examples/plot_lta_mixed_alkali_density.py	2026-08-07 20:51:32.000000000 +0000
++++ b/examples/plot_lta_mixed_alkali_density.py	2026-08-07 23:55:12.656315273 +0000
+@@ -465,10 +465,12 @@
+         help='Maximum worker/native threads. Default: floor(90%% of detected CPU allocation).',
+     )
+     parser.add_argument(
++        '--wall-time-target',
+         '--max-wall-time',
++        dest='max_wall_time',
+         type=float,
+         default=None,
+-        help='Complete-scene wall-time budget in seconds. Default: 1200.',
++        help='Advisory complete-scene wall-time target in seconds; never a hard stop. --max-wall-time is retained as a compatibility alias. Default: 1200.',
+     )
+     parser.add_argument(
+         '--browser-profile',
+@@ -720,7 +722,7 @@
+         'resolved '
+         f'memory={resources.max_memory_bytes / 1024**3:.2f} GiB, '
+         f'threads={resources.max_threads}, '
+-        f'wall_time={resources.max_wall_time_seconds:.0f} s'
++        f'wall_time_target={resources.max_wall_time_seconds:.0f} s (advisory)'
+     )
+     progress.started("scene_preparation", "starting framework registration, trajectories, mean graph, and density fields")
+     scene = prepare_framework_dynamics_scene(
+diff -ruN a/examples/plot_na_lta_300k_all_species_density.py b/examples/plot_na_lta_300k_all_species_density.py
+--- a/examples/plot_na_lta_300k_all_species_density.py	2026-08-07 03:25:16.000000000 +0000
++++ b/examples/plot_na_lta_300k_all_species_density.py	2026-08-07 23:55:12.656558806 +0000
+@@ -396,10 +396,12 @@
+         help='Maximum worker/native threads. Default: floor(90%% of detected CPU allocation).',
+     )
+     parser.add_argument(
++        '--wall-time-target',
+         '--max-wall-time',
++        dest='max_wall_time',
+         type=float,
+         default=None,
+-        help='Complete-scene wall-time budget in seconds. Default: 1200.',
++        help='Advisory complete-scene wall-time target in seconds; never a hard stop. --max-wall-time is retained as a compatibility alias. Default: 1200.',
+     )
+     parser.add_argument(
+         '--browser-profile',
+@@ -556,7 +558,7 @@
+         'resolved '
+         f'memory={resources.max_memory_bytes / 1024**3:.2f} GiB, '
+         f'threads={resources.max_threads}, '
+-        f'wall_time={resources.max_wall_time_seconds:.0f} s'
++        f'wall_time_target={resources.max_wall_time_seconds:.0f} s (advisory)'
+     )
+     progress.started("scene_preparation", "starting framework registration, trajectories, mean graph, and density fields")
+     scene = prepare_framework_dynamics_scene(
+diff -ruN a/mdstats/_version.py b/mdstats/_version.py
+--- a/mdstats/_version.py	2026-08-07 21:18:11.000000000 +0000
++++ b/mdstats/_version.py	2026-08-07 23:55:42.187070504 +0000
+@@ -1,3 +1,3 @@
+ """Package version."""
+ 
+-__version__ = "0.20.99a0"
++__version__ = "0.20.100a0"
+diff -ruN a/mdstats/data/observable_owner_manuals.json b/mdstats/data/observable_owner_manuals.json
+--- a/mdstats/data/observable_owner_manuals.json	2026-08-07 21:18:11.000000000 +0000
++++ b/mdstats/data/observable_owner_manuals.json	2026-08-07 23:55:42.187152011 +0000
+@@ -1,6 +1,6 @@
+ {
+   "schema": "mdstats.observable-owner-manual-index.v1",
+-  "package_version": "0.20.99a0",
++  "package_version": "0.20.100a0",
+   "manuals": {
+     "structural-observables-architecture": {
+       "source_path": "docs/arch_manuals/structural_observables_architecture.md",
+diff -ruN a/mdstats/plotting/density_block_direct.py b/mdstats/plotting/density_block_direct.py
+--- a/mdstats/plotting/density_block_direct.py	2026-08-05 18:20:00.000000000 +0000
++++ b/mdstats/plotting/density_block_direct.py	2026-08-07 23:58:07.988895081 +0000
+@@ -95,9 +95,10 @@
+ class DensityDirectRealizationLimits:
+     """Runtime-derived transactional limits for one direct realization.
+ 
+-    Omitted values are resolved from the active host/job memory, CPU, and
+-    wall-time budget.  The legacy ``DEFAULT_*`` constants remain importable for
+-    compatibility but no longer define public default admission behavior.
++    Omitted values are resolved from the active host/job memory and CPU budget.
++    Wall-time metadata is advisory only.  The legacy ``DEFAULT_*`` constants
++    remain importable for compatibility but no longer define public default
++    admission behavior.
+     """
+ 
+     max_target_blocks: int | None = None
+diff -ruN a/mdstats/plotting/density_mesh_execution.py b/mdstats/plotting/density_mesh_execution.py
+--- a/mdstats/plotting/density_mesh_execution.py	2026-08-05 18:20:00.000000000 +0000
++++ b/mdstats/plotting/density_mesh_execution.py	2026-08-07 23:47:41.267544856 +0000
+@@ -1,10 +1,9 @@
+ """Bounded execution policy for browser-density shell preparation.
+ 
+-Execution limits are resolved against the complete-scene runtime budget.  The
+-module never chooses a worker count from a benchmark system: by default it uses
+-as many one-native-thread shell workers as fit within the scene's already
+-resolved thread ceiling, while the complete-scene wall-time objective supplies
+-the worker timeout.
++Execution limits are resolved against the complete-scene CPU and memory budget.
++The module never chooses a worker count from a benchmark system.  Wall-time
++estimates are advisory only; workers have no implicit scene-derived timeout.
++An explicit ``worker_timeout_seconds`` remains available as an opt-in kill switch.
+ """
+ from __future__ import annotations
+ 
+@@ -101,18 +100,27 @@
+         self,
+         *,
+         max_threads: int,
+-        remaining_wall_time_seconds: float,
++        remaining_wall_time_seconds: float | None = None,
+         max_memory_bytes: int,
+         parent_retained_bytes: int,
+         final_output_reserve_bytes: int,
+         largest_worker_peak_bytes: int,
+         isolated_shell_count: int,
+     ) -> "DensityMeshExecutionOptions":
+-        """Resolve worker count against scene-wide CPU, memory, and time."""
++        """Resolve worker count against scene-wide CPU and memory ceilings.
++
++        ``remaining_wall_time_seconds`` is accepted for backwards compatibility
++        and recorded only as advisory metadata.  It does not clamp worker count
++        or worker lifetime.
++        """
+ 
+         thread_limit = _positive_int(max_threads, name="max_threads")
+-        remaining = _positive_float(
+-            remaining_wall_time_seconds, name="remaining_wall_time_seconds"
++        remaining = (
++            None
++            if remaining_wall_time_seconds is None
++            else _positive_float(
++                remaining_wall_time_seconds, name="remaining_wall_time_seconds"
++            )
+         )
+         memory_limit = _positive_int(max_memory_bytes, name="max_memory_bytes")
+         parent = _positive_int(
+@@ -158,10 +166,8 @@
+             memory_worker_cap,
+             shell_worker_cap,
+         )
+-        requested_timeout = (
+-            remaining if self.worker_timeout_seconds is None else self.worker_timeout_seconds
+-        )
+-        resolved_timeout = min(requested_timeout, remaining)
++        requested_timeout = self.worker_timeout_seconds
++        resolved_timeout = requested_timeout
+         resolved_worker_memory = (
+             memory_limit
+             if shell_count == 0
+@@ -196,10 +202,14 @@
+                 "largest_worker_peak_bytes": worker_peak,
+                 "isolated_shell_count": shell_count,
+                 "remaining_wall_time_seconds": remaining,
++                "wall_time_admission_enforced": False,
+                 "worker_count_clamped_by_threads": requested_workers > thread_worker_cap,
+                 "worker_count_clamped_by_memory": requested_workers > memory_worker_cap,
+                 "worker_count_clamped_by_shell_count": requested_workers > shell_worker_cap,
+-                "worker_timeout_clamped": requested_timeout > remaining,
++                "worker_timeout_clamped": False,
++                "worker_timeout_source": (
++                    "explicit" if requested_timeout is not None else "none"
++                ),
+             },
+         )
+ 
+diff -ruN a/mdstats/plotting/density_planning.py b/mdstats/plotting/density_planning.py
+--- a/mdstats/plotting/density_planning.py	2026-08-05 18:20:00.000000000 +0000
++++ b/mdstats/plotting/density_planning.py	2026-08-07 23:58:07.989728907 +0000
+@@ -114,10 +114,10 @@
+             "max_density_render_points",
+             "max_density_total_peak_bytes",
+         )
+-        # The primary memory/thread/wall controls are authoritative.  Legacy
+-        # low-level values may tighten the derived guardrails but cannot relax
+-        # them or bypass current runtime constraints, including after
+-        # deserialization on a smaller host/job allocation.
++        # Primary memory/thread controls are authoritative. Wall time is
++        # advisory metadata only. Legacy low-level values may tighten the
++        # memory/structural guardrails but cannot relax them or bypass current
++        # runtime constraints after deserialization on a smaller allocation.
+         budget = resolve_runtime_resource_budget(
+             max_memory_bytes=self.max_density_total_peak_bytes,
+             max_threads=self.max_density_threads,
+@@ -733,20 +733,6 @@
+     estimated_preparation_seconds = limits.time_model.safety_multiplier * (
+         common_raw_seconds + execution_raw_seconds
+     )
+-    if estimated_preparation_seconds > limits.max_density_wall_time_seconds:
+-        raise GraphComplexityError(
+-            "Phase C density planning estimates "
+-            f"{estimated_preparation_seconds:.3f} seconds of field preparation, "
+-            "exceeding max_density_wall_time_seconds="
+-            f"{limits.max_density_wall_time_seconds:.3f}. "
+-            f"Hybrid raw execution estimate={hybrid_estimated_wall_seconds_raw:.3f} s, "
+-            f"actual direct/legacy pairs={total_kernel_pairs}, "
+-            f"nominal exact contributions={total_exact_contributions}, "
+-            f"FFT padded nodes={total_fft_padded_nodes}. Increase the wall-time "
+-            "budget explicitly, reduce the requested resolution, or select fewer "
+-            "fields; numeric operation caps are not benchmark-specific escape hatches."
+-        )
+-
+     operators = tuple(
+         sorted({str(field.metadata.get("operator", "unspecified")) for field in phase_b})
+     )
+@@ -790,6 +776,10 @@
+             "total_render_points_upper": total_render_points,
+             "estimated_preparation_wall_seconds": estimated_preparation_seconds,
+             "max_density_wall_time_seconds": limits.max_density_wall_time_seconds,
++            "wall_time_admission_enforced": False,
++            "wall_time_budget_exceeded": bool(
++                estimated_preparation_seconds > limits.max_density_wall_time_seconds
++            ),
+             "max_density_threads": limits.max_density_threads,
+             "density_time_model": limits.time_model.to_json_dict(),
+             **({} if metadata is None else dict(metadata)),
+diff -ruN a/mdstats/plotting/density_tiled_fft.py b/mdstats/plotting/density_tiled_fft.py
+--- a/mdstats/plotting/density_tiled_fft.py	2026-08-05 18:20:00.000000000 +0000
++++ b/mdstats/plotting/density_tiled_fft.py	2026-08-07 23:58:07.989468859 +0000
+@@ -144,9 +144,9 @@
+             if self.fft_workers is None
+             else min(_positive_int(self.fft_workers, name="fft_workers"), budget.max_threads)
+         )
+-        # The selector costs are derived from the runtime calibration rather
+-        # than retained benchmark constants.  They choose an executor; the
+-        # realization plan separately enforces the complete wall-time bound.
++        # The selector costs are derived from runtime calibration rather than
++        # retained benchmark constants.  They choose the cheaper executor only;
++        # wall-time estimates are never realization admission bounds.
+         calibrated_direct_pair_seconds = 1.0 / model.kernel_pairs_per_second
+         requested_direct_pair_seconds = self.direct_pair_seconds
+         direct_pair_seconds = (
+@@ -822,12 +822,6 @@
+         else tile.fft_cost_estimate_seconds
+         for tile in tile_plans
+     ))
+-    if estimated_wall_seconds > resolved_limits.max_wall_time_seconds:
+-        raise GraphComplexityError(
+-            "Hybrid realization exceeds max_wall_time_seconds: "
+-            f"{estimated_wall_seconds:.3f} > {resolved_limits.max_wall_time_seconds:.3f}."
+-        )
+-
+     return DensityHybridRealizationPlan(
+         source_field_identity=source_field.content_identity,
+         routing_identity=routing.cache_identity,
+@@ -858,6 +852,10 @@
+             "source_coordinate_bytes": source_coordinate_bytes,
+             "estimated_wall_seconds": estimated_wall_seconds,
+             "max_wall_time_seconds": resolved_limits.max_wall_time_seconds,
++            "wall_time_admission_enforced": False,
++            "wall_time_budget_exceeded": bool(
++                estimated_wall_seconds > resolved_limits.max_wall_time_seconds
++            ),
+             "scipy_version": scipy_version,
+         },
+     )
+diff -ruN a/mdstats/plotting/framework_dynamics.py b/mdstats/plotting/framework_dynamics.py
+--- a/mdstats/plotting/framework_dynamics.py	2026-08-07 03:25:16.000000000 +0000
++++ b/mdstats/plotting/framework_dynamics.py	2026-08-07 23:50:39.718731684 +0000
+@@ -211,10 +211,6 @@
+     )
+     if not isinstance(policy, DensityMeshExecutionOptions):
+         raise TypeError("execution_options must be DensityMeshExecutionOptions or None.")
+-    if policy.worker_timeout_seconds is None:
+-        raise GraphAdapterError(
+-            "execution_options must be resolved against a runtime wall-time budget."
+-        )
+     try:
+         import cloudpickle
+     except ImportError as error:  # pragma: no cover - optional dependency guard
+@@ -258,9 +254,10 @@
+         environment["MDSTATS_MAX_THREADS"] = str(policy.worker_native_threads)
+         if policy.worker_memory_bytes is not None:
+             environment["MDSTATS_MAX_MEMORY_BYTES"] = str(policy.worker_memory_bytes)
+-        environment["MDSTATS_MAX_WALL_TIME_SECONDS"] = str(
+-            policy.worker_timeout_seconds
+-        )
++        if policy.worker_timeout_seconds is not None:
++            environment["MDSTATS_MAX_WALL_TIME_SECONDS"] = str(
++                policy.worker_timeout_seconds
++            )
+         try:
+             completed = subprocess.run(
+                 [
+@@ -509,15 +506,15 @@
+ class FrameworkDynamicsResources:
+     """Runtime-derived compute policy for one complete density scene.
+ 
+-    The three primary user controls are ``max_memory_bytes``, ``max_threads``,
+-    and ``max_wall_time_seconds``.  When omitted, memory and CPU availability
+-    are detected from process affinity, scheduler variables, Linux cgroups, and
+-    process limits.  Defaults use 90% of the detected CPU allocation and 80% of
+-    currently available memory, with a 20-minute wall-time objective.
+-
+-    Legacy low-level limits remain optional expert overrides.  Their defaults
+-    are derived from the resolved memory and time budgets rather than from any
+-    benchmark structure or trajectory.
++    The hard user controls are ``max_memory_bytes`` and ``max_threads``.  When
++    omitted, memory and CPU availability are detected from process affinity,
++    scheduler variables, Linux cgroups, and process limits.  Defaults use 90%
++    of the detected CPU allocation and 80% of currently available memory.
++
++    ``max_wall_time_seconds`` is retained as an advisory estimate target for
++    backwards compatibility and diagnostics only.  It does not reject, truncate,
++    or time out a density scene.  Legacy low-level limits remain optional expert
++    overrides; default operation counts are no longer derived from wall time.
+     """
+ 
+     max_memory_bytes: int | str | None = None
+@@ -2998,12 +2995,6 @@
+     layers.sort(key=lambda item: (-item.probability, item.topology_id))
+     dominant_layer = next(item for item in layers if item.topology_id == dominant_id)
+     partitioned_wall_seconds = time.perf_counter() - partitioned_started
+-    if partitioned_wall_seconds > float(resources.max_wall_time_seconds):
+-        raise GraphComplexityError(
+-            "Partitioned framework-scene preparation exceeded the runtime wall-time "
+-            f"budget: elapsed={partitioned_wall_seconds:.3f} s, "
+-            f"budget={float(resources.max_wall_time_seconds):.3f} s."
+-        )
+     return replace(
+         base_scene,
+         mean_framework=dominant_layer.mean_framework,
+@@ -3018,6 +3009,11 @@
+             "topology_category_count": len(layers),
+             "dominant_topology_id": dominant_id,
+             "topology_category_policy": "partitioned_global_density_category_graphs_v1",
++            "partitioned_wall_seconds": float(partitioned_wall_seconds),
++            "wall_time_admission_enforced": False,
++            "partitioned_wall_time_budget_exceeded": bool(
++                partitioned_wall_seconds > float(resources.max_wall_time_seconds)
++            ),
+             "preparation_wall_seconds": float(partitioned_wall_seconds),
+             "partitioned_category_preparation_wall_seconds": float(partitioned_wall_seconds),
+         },
+@@ -3658,13 +3654,6 @@
+         f"completed in {preparation_wall_seconds:.3f} s",
+         metadata={"wall_seconds": float(preparation_wall_seconds)},
+     )
+-    if preparation_wall_seconds > float(resources.max_wall_time_seconds):
+-        raise GraphComplexityError(
+-            "Framework-dynamics preparation exceeded max_wall_time_seconds="
+-            f"{float(resources.max_wall_time_seconds):.3f}; measured "
+-            f"{preparation_wall_seconds:.3f} seconds."
+-        )
+-
+     return FrameworkDynamicsScene(
+         mean_framework=mean_view,
+         trajectory_paths=paths,
+@@ -4226,15 +4215,9 @@
+     preparation_wall_seconds = float(
+         scene.metadata.get("preparation_wall_seconds", 0.0)
+     )
+-    remaining_scene_wall_seconds = (
+-        float(scene.resources.max_wall_time_seconds) - preparation_wall_seconds
+-    )
+-    if remaining_scene_wall_seconds <= 0.0:
+-        raise GraphComplexityError(
+-            "No complete-scene wall-time budget remains after density preparation: "
+-            f"preparation={preparation_wall_seconds:.3f} s, budget="
+-            f"{float(scene.resources.max_wall_time_seconds):.3f} s."
+-        )
++    # Wall time is advisory only.  Keep the configured target for diagnostics,
++    # but never turn elapsed preparation time into a rendering admission gate.
++    remaining_scene_wall_seconds: float | None = None
+     atomic_mean_graph_options = (
+         atomic_mean_graph_options or AtomicMeanGraph3DRenderOptions()
+     )
+@@ -4882,14 +4865,6 @@
+                 f"estimated_render_peak_bytes={estimated_render_peak_bytes}, "
+                 f"max_memory_bytes={int(scene.resources.max_memory_bytes)}."
+             )
+-        if estimated_mesh_wall_seconds > remaining_scene_wall_seconds:
+-            raise GraphComplexityError(
+-                "Density rendering is estimated to require "
+-                f"{estimated_mesh_wall_seconds:.3f} seconds, exceeding the remaining "
+-                f"complete-scene wall-time budget of {remaining_scene_wall_seconds:.3f} "
+-                "seconds. Increase max_wall_time_seconds explicitly or reduce the "
+-                "requested shells/resolution."
+-            )
+         projected_points = 0
+         projected_traces = 0
+         projected_mesh_faces = 0
+@@ -5787,13 +5762,6 @@
+     reporter.completed("scene_assembly", "completed Plotly scene assembly")
+     render_wall_seconds = time.perf_counter() - render_started
+     complete_scene_wall_seconds = preparation_wall_seconds + render_wall_seconds
+-    if complete_scene_wall_seconds > float(scene.resources.max_wall_time_seconds):
+-        raise GraphComplexityError(
+-            "Complete density scene exceeded max_wall_time_seconds="
+-            f"{float(scene.resources.max_wall_time_seconds):.3f}; measured "
+-            f"{complete_scene_wall_seconds:.3f} seconds."
+-        )
+-
+     return FrameworkDynamicsRenderResult(
+         figure=figure,
+         scene=scene,
+@@ -5850,6 +5818,11 @@
+             "browser_budget_report_pre_html": browser_budget_report_pre_html.to_json_dict(),
+             "runtime_resource_budget": scene.resources.runtime_budget.to_json_dict(),
+             "estimated_mesh_wall_seconds": estimated_mesh_wall_seconds,
++            "wall_time_admission_enforced": False,
++            "wall_time_target_seconds": float(scene.resources.max_wall_time_seconds),
++            "wall_time_target_exceeded": bool(
++                complete_scene_wall_seconds > float(scene.resources.max_wall_time_seconds)
++            ),
+             "estimated_render_peak_bytes": estimated_render_peak_bytes,
+             "parent_scene_retained_bytes": parent_scene_retained_bytes,
+             "final_output_reserve_bytes": final_output_reserve_bytes,
+diff -ruN a/mdstats/plotting/runtime_resources.py b/mdstats/plotting/runtime_resources.py
+--- a/mdstats/plotting/runtime_resources.py	2026-08-07 03:30:18.000000000 +0000
++++ b/mdstats/plotting/runtime_resources.py	2026-08-07 23:56:17.664780648 +0000
+@@ -2,9 +2,9 @@
+ 
+ The resource policy deliberately separates host/job discovery from user intent.
+ Detected CPU and memory availability are hard runtime ceilings.  The default
+-policy uses configurable fractions of those ceilings and a finite wall-time
+-objective; explicit user values may tighten or relax the policy but are never
+-allowed to exceed the detected runtime allocation.
++policy uses configurable fractions of those ceilings.  A wall-time target is
++retained only for backwards-compatible metadata and cost diagnostics; it never
++rejects, truncates, or times out an otherwise feasible density scene.
+ 
+ Linux cgroup v2 ``memory.max``, ``memory.current``, and ``cpu.max`` semantics
+ follow the Linux kernel control-group documentation.  Scheduler environment
+@@ -549,9 +549,9 @@
+     """Make one resolved scene budget authoritative for nested density calls.
+ 
+     The scope is context-local, so concurrent threads/tasks do not overwrite one
+-    another.  Nested low-level APIs inherit the exact scene memory, thread, and
+-    wall-time controls instead of re-probing and accidentally applying another
+-    resource fraction.
++    another.  Nested low-level APIs inherit the exact scene memory/thread controls
++    and the advisory wall-time metadata instead of re-probing and accidentally
++    applying another resource fraction.
+     """
+ 
+     if not isinstance(budget, RuntimeResourceBudget):
+@@ -729,8 +729,10 @@
+ 
+ @dataclass(frozen=True, slots=True)
+ class DensityTimeModel:
+-    """Conservative runtime model for scene wall-time admission.
++    """Conservative runtime model for density cost estimation and backend choice.
+ 
++    Wall-time estimates are advisory diagnostics only; they are not feasibility
++    constraints and never terminate an otherwise memory-feasible density run.
+     Preparation rates are measured while native numerical libraries are limited
+     to ``calibration_threads``.  Mesh rates are one-worker rates because each
+     isolated shell worker defaults to one native thread.  The model is based on
+@@ -1022,18 +1024,19 @@
+ def derive_count_limit(
+     *, memory_bytes: int, bytes_per_item: int, time_seconds: float, items_per_second: float
+ ) -> int:
+-    """Return the largest positive count satisfying memory and time ceilings."""
++    """Return the largest positive count satisfying the memory ceiling.
++
++    ``time_seconds`` and ``items_per_second`` are retained in the public signature
++    for backwards compatibility.  They are validated as advisory inputs but do
++    not constrain the returned count; density execution is not wall-time bounded.
++    """
+ 
+     memory_limit = _positive_int(memory_bytes, name="memory_bytes") // _positive_int(
+         bytes_per_item, name="bytes_per_item"
+     )
+-    time_limit = int(
+-        math.floor(
+-            _positive_float(time_seconds, name="time_seconds")
+-            * _positive_float(items_per_second, name="items_per_second")
+-        )
+-    )
+-    return max(1, min(max(1, memory_limit), max(1, time_limit)))
++    _positive_float(time_seconds, name="time_seconds")
++    _positive_float(items_per_second, name="items_per_second")
++    return max(1, memory_limit)
+ 
+ 
+ def derive_density_numeric_limits(
+@@ -1041,9 +1044,11 @@
+ ) -> dict[str, int]:
+     """Derive broad numeric guardrails from host budgets, never an input scene.
+ 
+-    Retained-array limits are memory-derived.  Operation-only limits are
+-    time-derived.  The authoritative admission decisions remain the global
+-    peak-memory and summed wall-time estimates in :mod:`density_planning`.
++    Density feasibility is memory/structure bounded, not wall-time bounded.
++    ``max_wall_time_seconds`` remains part of the runtime budget for backwards
++    compatible metadata and advisory cost reporting, but it does not derive
++    operation-count caps.  Explicit expert operation caps supplied by callers
++    continue to be honored by the low-level APIs.
+     """
+ 
+     if not isinstance(budget, RuntimeResourceBudget):
+@@ -1051,7 +1056,10 @@
+     if not isinstance(time_model, DensityTimeModel):
+         raise TypeError("time_model must be DensityTimeModel.")
+     memory = budget.max_memory_bytes
+-    seconds = budget.max_wall_time_seconds / time_model.safety_multiplier
++    # Operation-only defaults must not impose an implicit wall-time ceiling.
++    # Use the largest signed 64-bit count as the package default; callers can
++    # still request stricter explicit caps where desired.
++    unbounded_operation_count = int(np.iinfo(np.int64).max)
+ 
+     def memory_count(bytes_per_item: int) -> int:
+         return max(1, memory // _positive_int(bytes_per_item, name="bytes_per_item"))
+@@ -1068,16 +1076,8 @@
+         "max_density_mesh_cells": memory_count(64),
+         "max_density_mesh_faces": memory_count(96),
+         "max_density_render_points": memory_count(32),
+-        "max_density_kernel_pairs": max(
+-            1, int(seconds * time_model.kernel_pairs_per_second)
+-        ),
+-        "max_density_fields": max(
+-            1,
+-            min(
+-                memory_count(32 * 1024**2),
+-                int(max(1.0, seconds / max(time_model.fixed_seconds_per_field, 1.0e-9))),
+-            ),
+-        ),
++        "max_density_kernel_pairs": unbounded_operation_count,
++        "max_density_fields": memory_count(32 * 1024**2),
+         "max_trajectory_traces": max(64, 16 * budget.max_threads),
+         "max_density_traces": max(64, 16 * budget.max_threads),
+         "max_density_sample_bytes": memory,
+@@ -1100,8 +1100,8 @@
+ 
+     Low-level public density APIs use this helper only when callers omit their
+     expert limits.  The returned counts are therefore derived from the active
+-    host/job allocation and the requested wall-time objective, never from an
+-    example trajectory, cell, or prior benchmark scene.
++    host/job allocation, never from an example trajectory, cell, prior benchmark
++    scene, or wall-time admission objective.  Wall time is advisory metadata only.
+     """
+ 
+     budget = resolve_runtime_resource_budget(
+diff -ruN a/mdstats/training_data/campaign_cli.py b/mdstats/training_data/campaign_cli.py
+--- a/mdstats/training_data/campaign_cli.py	2026-08-07 21:18:11.000000000 +0000
++++ b/mdstats/training_data/campaign_cli.py	2026-08-07 23:55:42.195932930 +0000
+@@ -56,6 +56,8 @@
+     report_inference_worker_phase,
+ )
+ 
++# 0.20.100a0 is a plotting-only wall-time-policy release; keep the MLFF
++# campaign compatibility token unchanged so existing campaign state is reusable.
+ MLFF_DATA9B3_VERSION = "0.20.99a0"
+ # Parallel scheduling does not change the scientific NVE case identity. Keep
+ # the 0.20.85a0 runtime token so completed verification caches remain reusable.
+diff -ruN a/pyproject.toml b/pyproject.toml
+--- a/pyproject.toml	2026-08-07 21:18:11.000000000 +0000
++++ b/pyproject.toml	2026-08-07 23:55:42.186882549 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.99a0"
++version = "0.20.100a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN a/tests/test_density_planning.py b/tests/test_density_planning.py
+--- a/tests/test_density_planning.py	2026-08-06 01:11:20.000000000 +0000
++++ b/tests/test_density_planning.py	2026-08-07 23:49:12.960477385 +0000
+@@ -470,7 +470,7 @@
+     assert plan.metadata["hybrid_field_count"] == 1
+ 
+ 
+-def test_phase_c_rejects_hybrid_fft_wall_time_even_with_zero_direct_pairs() -> None:
++def test_phase_c_records_hybrid_fft_wall_time_without_rejecting() -> None:
+     upper = phase_a(
+         stencil_value_count_upper=1,
+         kernel_pair_count_upper=0,
+@@ -503,20 +503,23 @@
+             "hybrid_estimated_wall_seconds": 10.0,
+         },
+     )
+-    with pytest.raises(GraphComplexityError, match="max_density_wall_time_seconds"):
+-        plan_density_scene(
+-            phase_a_fields=(upper,),
+-            phase_b_fields=(exact,),
+-            limits=permissive_limits(
+-                max_density_fields=1,
+-                max_density_kernel_pairs=100,
+-                max_density_stencil_values=100,
+-                max_density_nonzero_nodes=100,
+-                max_density_stored_block_values=100,
+-                max_density_component_values=100,
+-                max_density_mesh_cells=100,
+-                max_density_mesh_faces=100,
+-                max_density_total_peak_bytes=1_000_000,
+-                max_density_wall_time_seconds=1.0,
+-            ),
+-        )
++    plan = plan_density_scene(
++        phase_a_fields=(upper,),
++        phase_b_fields=(exact,),
++        limits=permissive_limits(
++            max_density_fields=1,
++            max_density_kernel_pairs=100,
++            max_density_stencil_values=100,
++            max_density_nonzero_nodes=100,
++            max_density_stored_block_values=100,
++            max_density_component_values=100,
++            max_density_mesh_cells=100,
++            max_density_mesh_faces=100,
++            max_density_total_peak_bytes=1_000_000,
++            max_density_wall_time_seconds=1.0,
++        ),
++    )
++    assert plan.phase_c_approved is True
++    assert plan.metadata["estimated_preparation_wall_seconds"] > 1.0
++    assert plan.metadata["wall_time_admission_enforced"] is False
++    assert plan.metadata["wall_time_budget_exceeded"] is True
+diff -ruN a/tests/test_density_tiled_fft.py b/tests/test_density_tiled_fft.py
+--- a/tests/test_density_tiled_fft.py	2026-08-06 01:11:20.000000000 +0000
++++ b/tests/test_density_tiled_fft.py	2026-08-07 23:50:39.722183083 +0000
+@@ -250,3 +250,24 @@
+     tile = plan.tile_plans[0]
+     assert tile.direct_pair_count < options.pair_chunk_size
+     assert tile.transient_bytes_estimate == 96 * tile.direct_pair_count
++
++
++def test_hybrid_wall_time_target_is_advisory_only() -> None:
++    case = _case((16, 16, 16), np.asarray([(1, 1, 1), (8, 8, 8)], dtype=np.int64))
++    stencil, source, routing, atlas = case
++    options = DensityHybridExecutorOptions(
++        executor_mode="direct",
++        compute_tile_shape=(16, 16, 16),
++        direct_pair_seconds=1.0,
++    )
++    plan = plan_hybrid_tiled_realization(
++        source,
++        stencil,
++        routing,
++        atlas,
++        options=options,
++        limits=DensityHybridRealizationLimits(max_wall_time_seconds=1.0e-6),
++    )
++    assert plan.metadata["estimated_wall_seconds"] > plan.metadata["max_wall_time_seconds"]
++    assert plan.metadata["wall_time_admission_enforced"] is False
++    assert plan.metadata["wall_time_budget_exceeded"] is True
+diff -ruN a/tests/test_runtime_resources_ld10.py b/tests/test_runtime_resources_ld10.py
+--- a/tests/test_runtime_resources_ld10.py	2026-08-07 03:32:54.000000000 +0000
++++ b/tests/test_runtime_resources_ld10.py	2026-08-07 23:56:17.665061800 +0000
+@@ -7,6 +7,7 @@
+ import types
+ from pathlib import Path
+ 
++import numpy as np
+ import pytest
+ 
+ # The source distribution declares ASE as a dependency, but the constrained
+@@ -155,7 +156,17 @@
+     ) <= 8
+ 
+ 
+-def test_wall_time_guard_scales_with_requested_time() -> None:
++def test_legacy_count_limit_ignores_time_ceiling() -> None:
++    short = runtime_resources.derive_count_limit(
++        memory_bytes=1024, bytes_per_item=8, time_seconds=1.0e-9, items_per_second=1.0
++    )
++    long = runtime_resources.derive_count_limit(
++        memory_bytes=1024, bytes_per_item=8, time_seconds=1.0e9, items_per_second=1.0e12
++    )
++    assert short == long == 128
++
++
++def test_wall_time_target_does_not_scale_operation_caps() -> None:
+     detected = snapshot(cpus=16, memory=8 * 1024**3)
+     short = resolve_runtime_resource_budget(
+         max_wall_time_seconds=300, snapshot=detected, environment={}
+@@ -166,7 +177,9 @@
+     model = static_model(threads=short.max_threads)
+     short_limits = derive_density_numeric_limits(budget=short, time_model=model)
+     long_limits = derive_density_numeric_limits(budget=long, time_model=model)
+-    assert long_limits["max_density_kernel_pairs"] == 4 * short_limits["max_density_kernel_pairs"]
++    assert long_limits["max_density_kernel_pairs"] == short_limits["max_density_kernel_pairs"]
++    assert long_limits["max_density_fields"] == short_limits["max_density_fields"]
++    assert short_limits["max_density_kernel_pairs"] == np.iinfo(np.int64).max
+ 
+ 
+ def test_coherent_resolver_uses_one_injected_snapshot() -> None:
+@@ -218,7 +231,8 @@
+     assert limits.max_density_total_peak_bytes == 512 * 1024**2
+     assert limits.max_density_threads == 8
+     assert limits.max_density_voxels < 10**18
+-    assert limits.max_density_kernel_pairs < 10**18
++    # Operation-only expert caps are no longer tightened from wall time.
++    assert limits.max_density_kernel_pairs == 10**18
+ 
+ 
+ def test_worker_count_is_limited_by_memory_as_well_as_cpu() -> None:
+@@ -235,7 +249,24 @@
+     assert options.worker_memory_bytes == 1 * 1024**3
+     assert options.metadata["memory_worker_cap"] == 5
+     assert options.metadata["worker_count_clamped_by_memory"] is True
++    assert options.worker_timeout_seconds is None
++    assert options.metadata["wall_time_admission_enforced"] is False
++
++
+ 
++def test_explicit_worker_timeout_is_not_clamped_by_scene_wall_target() -> None:
++    options = DensityMeshExecutionOptions(worker_timeout_seconds=3600.0).resolve(
++        max_threads=4,
++        remaining_wall_time_seconds=1.0,
++        max_memory_bytes=2 * 1024**3,
++        parent_retained_bytes=256 * 1024**2,
++        final_output_reserve_bytes=256 * 1024**2,
++        largest_worker_peak_bytes=256 * 1024**2,
++        isolated_shell_count=2,
++    )
++    assert options.worker_timeout_seconds == 3600.0
++    assert options.metadata["worker_timeout_clamped"] is False
++    assert options.metadata["wall_time_admission_enforced"] is False
+ 
+ 
+ def test_worker_native_threads_cannot_exceed_scene_thread_budget() -> None:

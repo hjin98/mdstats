@@ -1,0 +1,122 @@
+{
+  "admission_contract": {
+    "blocked_states": [
+      "blocked_mvqual_nonregression",
+      "blocked_insufficient_hard_coverage"
+    ],
+    "coverage_failing_or_unavailable_candidates_may_train": false,
+    "independent_hard_coverage_precedes_training": true,
+    "minimum_hard_qualified_count": 4,
+    "mvqual_n95_non_regression_required": true,
+    "mvqual_same_n_non_regression_required": true
+  },
+  "architecture_revision": 73,
+  "authority_boundary": {
+    "data8_membership_changed": false,
+    "generated_defaults_changed": false,
+    "positive_gpu_execution_performed": false,
+    "positive_gpu_qualification_status": "deferred_final_gpu_qualification",
+    "production_authority_changed": false,
+    "production_target_data2c": "revision-64 TARGET-DATA2C v4",
+    "production_target_data2d": "TARGET-DATA2D v2"
+  },
+  "date": "2026-08-16",
+  "dependency_graph_schema": 55,
+  "fixed_candidate_sizes": [
+    128,
+    256,
+    512,
+    1024,
+    2048,
+    4096,
+    8192,
+    16384
+  ],
+  "fixture_evidence": {
+    "coverage_failing_extra_epoch3_evidence_rejected": true,
+    "fixed_ceiling_nonconvergence_tested": true,
+    "production_campaign_positive_result_claimed": false,
+    "q4_exact_geometry_tested": "4 -> 4 -> 2 -> 1",
+    "q_admission_widths_tested": [
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "training_run_identity_and_schedule_progress_enforced": true,
+    "wrong_continuation_parent_rejected": true
+  },
+  "gate": "SIZE-HALVE2",
+  "next_gate": "SIZE-FIDELITY2",
+  "package_checks": {
+    "compileall": "pass",
+    "graph_mirrors_identical": true,
+    "manual_mirrors_identical": true,
+    "pdf_preflight_and_visual_qa": "pass",
+    "version_metadata_consistent": true
+  },
+  "ranking_contract": {
+    "early_boundary_protection": "largest hard-qualified fixed size protected only within its practical-equivalence band at epochs 3 and 10",
+    "final_tie_preference": "smaller admissible size within practical equivalence",
+    "fixed_ceiling": 16384,
+    "materially_superior_largest_finalist_outcome": "nonconverged_at_fixed_ceiling"
+  },
+  "release": "0.20.206a0",
+  "schema": "mdstats.size-halve2-qualification.v1",
+  "status": "pass_pre_migration_control_plane",
+  "successive_fidelity_contract": {
+    "checkpoint_optimizer_rng_parent_authentication": true,
+    "completed_epochs_repaid": false,
+    "epoch10": "4 -> 2",
+    "epoch3": "q -> min(q,4)",
+    "epoch30": "2 -> 1",
+    "foundation_evaluation_train2_training_run_schedule_identity_continuity": true,
+    "historical_perf_p2r_parameter_grid_rewritten": false,
+    "nominal_schedule_epochs": 30,
+    "normalized_schedule_progress": {
+      "epoch10": "10/30",
+      "epoch3": "3/30"
+    },
+    "optimizer_update_and_structure_exposure_strictly_increase": true,
+    "perf_p2r_stage_plan_geometry_reused": true,
+    "q8_realization": "8 -> 4 -> 2 -> 1",
+    "stage_boundaries": [
+      [
+        0,
+        3
+      ],
+      [
+        3,
+        10
+      ],
+      [
+        10,
+        30
+      ]
+    ]
+  },
+  "tests": {
+    "current_release_specifications": {
+      "failed": 0,
+      "passed": 64,
+      "skipped": 0
+    },
+    "functional_current_and_adjacent": {
+      "failed": 0,
+      "passed": 158,
+      "skip_reason": "real LTA training root not supplied",
+      "skipped": 1
+    },
+    "post_document_layout_focused_plus_live_specs": {
+      "failed": 0,
+      "passed": 79,
+      "skipped": 0
+    },
+    "unique_completed_primary_checks_total": {
+      "failed": 0,
+      "passed": 222,
+      "skipped": 1
+    }
+  }
+}

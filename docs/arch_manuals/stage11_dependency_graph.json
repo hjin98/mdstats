@@ -1,0 +1,4191 @@
+{
+  "architecture_revision": 60,
+  "branch": "MLFF-DATA",
+  "description": "MLFF training-data dependency graph through architecture revision 59. FINAL-GPU1 release-handoff v1 is implemented in 0.20.192a0 with preflight v6, release-archive binding, matrix evidence registration, and fail-closed reduction; positive CUDA/CuEq execution remains pending on the final workstation package.",
+  "documentation_gate": "CUEQ_DEFAULT1_TRAINING_DEFAULT_POLICY",
+  "edge_type_definitions": {
+    "execution_requires": "The upstream product must exist before execution.",
+    "fit_domain_requires": "The fitted object may inspect only the declared training domain.",
+    "implementation_requires": "The upstream interface/implementation must exist, but its deferred runtime qualification need not yet have passed.",
+    "optional_enrichment": "The upstream product enriches but is not required for the base path.",
+    "promotion_requires": "The upstream product must pass a declared predicate.",
+    "release_qualification_requires": "The upstream item must pass before the final production release, but does not block intermediate implementation development.",
+    "replay_triggers": "The upstream event creates a new immutable generation.",
+    "source_identity_requires": "Exact source or checkpoint identity is required.",
+    "supersedes": "The downstream/current authority intentionally replaces the scientific meaning of the upstream historical authority; historical evidence remains archival."
+  },
+  "edges": [
+    {
+      "from": "ACQUISITION_DECISIONS",
+      "to": "DFT_QUERY_MANIFEST",
+      "type": "execution_requires"
+    },
+    {
+      "from": "ADAPTIVE_INFERENCE_CONCURRENCY_PLAN",
+      "to": "PARALLEL_CHECKPOINT_EVALUATION",
+      "type": "execution_requires"
+    },
+    {
+      "from": "ADAPTIVE_INFERENCE_CONCURRENCY_PLAN",
+      "to": "PARALLEL_NVE_VERIFICATION",
+      "type": "execution_requires"
+    },
+    {
+      "from": "ANALYSIS_LOCAL_STRUCTURE_FEATURES",
+      "to": "PROFILE_BOUND_UNIVERSAL_STRUCTURAL_POLICY",
+      "type": "execution_requires"
+    },
+    {
+      "from": "ANALYSIS_LOCAL_STRUCTURE_FEATURES",
+      "to": "UNIVERSAL_STRUCTURAL_FEATURE_CATALOG",
+      "type": "execution_requires"
+    },
+    {
+      "from": "ASE_MD_STATE_PRECISION_AUDIT",
+      "to": "PYTHON_ASE_MACE_EXECUTION",
+      "type": "execution_requires"
+    },
+    {
+      "from": "ATOMIC_MODEL_PREDICTION_MANIFEST",
+      "to": "BLINDED_EVALUATION_PREDICTIONS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "ATOMIC_MODEL_PREDICTION_MANIFEST",
+      "to": "FINAL_TRAINING_DIFFICULTY_FEATURES",
+      "type": "execution_requires"
+    },
+    {
+      "from": "ATOMIC_MODEL_PREDICTION_MANIFEST",
+      "to": "FOLD_TRAINING_DIFFICULTY_FEATURES",
+      "type": "execution_requires"
+    },
+    {
+      "from": "ATOMIC_MODEL_PREDICTION_MANIFEST",
+      "to": "FOUNDATION_RESIDUAL_E0_FIT",
+      "type": "execution_requires"
+    },
+    {
+      "from": "ATOM_GROUP_CATALOG",
+      "to": "FOCUS_ATOM_GROUP_POLICY",
+      "type": "execution_requires"
+    },
+    {
+      "from": "ATOM_GROUP_CATALOG",
+      "to": "MATERIAL_PROFILE_CONTRACTS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "ATOM_GROUP_CATALOG",
+      "predicate": "group_scoped_rules_only",
+      "to": "OBSERVABLE_SCOPE_AGGREGATION",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "ATOM_GROUP_CATALOG",
+      "to": "PARTITION_CRITICAL_PROFILE_FEATURES",
+      "type": "execution_requires"
+    },
+    {
+      "from": "ATOM_GROUP_CATALOG",
+      "to": "SELECTION_FEATURE_CATALOGS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "ATOM_GROUP_CATALOG",
+      "to": "UNIVERSAL_STRUCTURAL_FEATURE_CATALOG",
+      "type": "execution_requires"
+    },
+    {
+      "from": "BOUNDED_DEPLOYMENT_VERIFICATION",
+      "to": "CAMPAIGN_RESULT_SUMMARY",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CALIBRATION_APPLICABILITY_DOMAIN",
+      "to": "CALIBRATION_TRANSFER_DECISION",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CALIBRATION_DOMAIN",
+      "to": "BLINDED_EVALUATION_PREDICTIONS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CALIBRATION_DOMAIN",
+      "to": "CALIBRATION_APPLICABILITY_DOMAIN",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CALIBRATION_DOMAIN",
+      "to": "FINAL_COMMITTEE_CALIBRATION_PREDICTIONS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CALIBRATION_TRANSFER_DECISION",
+      "to": "ACQUISITION_DECISIONS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CAMPAIGN_ARTIFACT_OWNERSHIP_CATALOG",
+      "to": "CAMPAIGN_CLEANUP_MANIFEST",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "CAMPAIGN_ARTIFACT_OWNERSHIP_CATALOG",
+      "to": "CAMPAIGN_STORAGE_REPORT",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CAMPAIGN_ARTIFACT_OWNERSHIP_CATALOG",
+      "to": "TIERED_STORAGE_RECLAMATION_PLAN",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CAMPAIGN_CLI_CONFIGURATION",
+      "to": "CAMPAIGN_MANIFEST_APPROVAL",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "CAMPAIGN_CLI_CONFIGURATION",
+      "to": "CAMPAIGN_PREPARATION_GATE",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "CAMPAIGN_CLI_CONFIGURATION",
+      "to": "MACE_ACCELERATION_POLICY",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "CAMPAIGN_CLI_CONFIGURATION",
+      "to": "MANIFEST_INFERENCE_POLICY",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "CAMPAIGN_CLI_CONFIGURATION",
+      "to": "MLFF_CAMPAIGN_CLI_TOOL",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CAMPAIGN_MANIFEST_APPROVAL",
+      "to": "SOURCE_CATALOG",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CAMPAIGN_PRECISION_PROFILE",
+      "to": "STAGED_TRAINING_PRECISION_POLICY",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "CAMPAIGN_PREFLIGHT_RECORD",
+      "to": "TRAINING_RUN_EXECUTION_RECORD",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "CAMPAIGN_PREPARATION_GATE",
+      "to": "TRAINING_CAMPAIGN_PLAN",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "CAMPAIGN_STATE_DATABASE",
+      "to": "CAMPAIGN_ARTIFACT_OWNERSHIP_CATALOG",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CAMPAIGN_STATE_DATABASE",
+      "to": "CAMPAIGN_STATUS_VIEW",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CAMPAIGN_STORAGE_REPORT",
+      "to": "TIERED_STORAGE_RECLAMATION_PLAN",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CANDIDATE_ADMISSIBILITY",
+      "to": "ACQUISITION_DECISIONS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CANDIDATE_CATALOG",
+      "to": "CANDIDATE_ADMISSIBILITY",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CANDIDATE_CHECKPOINT_CATALOG",
+      "to": "CHECKPOINT_ADMISSIBILITY_DECISION",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CANDIDATE_CHECKPOINT_CATALOG",
+      "to": "CHECKPOINT_EVALUATION_RECORD",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "CANDIDATE_CHECKPOINT_CATALOG",
+      "to": "NESTED_CHECKPOINT_EVALUATION_PLAN",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "CANDIDATE_TRAJECTORIES",
+      "to": "CANDIDATE_CATALOG",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CHECKPOINT_ADMISSIBILITY_DECISION",
+      "to": "CHECKPOINT_SELECTION_RECORD",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CHECKPOINT_EVALUATION_CAPSULE",
+      "to": "CAMPAIGN_STORAGE_REPORT",
+      "type": "optional_enrichment"
+    },
+    {
+      "from": "CHECKPOINT_EVALUATION_CAPSULE",
+      "to": "PARTIAL_CHECKPOINT_PREDICTION_COVERAGE",
+      "type": "optional_enrichment"
+    },
+    {
+      "from": "CHECKPOINT_EVALUATION_POLICY",
+      "to": "CHECKPOINT_EVALUATION_RECORD",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CHECKPOINT_EVALUATION_POLICY",
+      "to": "NESTED_CHECKPOINT_EVALUATION_PLAN",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CHECKPOINT_EVALUATION_RECORD",
+      "to": "CAMPAIGN_STATE_DATABASE",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "CHECKPOINT_EVALUATION_RECORD",
+      "to": "CHECKPOINT_EPOCH_REPORT",
+      "type": "produces"
+    },
+    {
+      "from": "CHECKPOINT_EVALUATION_RECORD",
+      "to": "CHECKPOINT_METRIC_RECORD",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "CHECKPOINT_METRIC_POLICY",
+      "to": "CHECKPOINT_ADMISSIBILITY_DECISION",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CHECKPOINT_METRIC_POLICY",
+      "to": "CHECKPOINT_SCREENING_ROUND_RECORD",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CHECKPOINT_METRIC_POLICY",
+      "to": "CHECKPOINT_SELECTION_DECISION",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CHECKPOINT_METRIC_POLICY",
+      "to": "NESTED_CHECKPOINT_EVALUATION_PLAN",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "CHECKPOINT_METRIC_POLICY",
+      "to": "PRODUCTION_MATERIALIZATION_PLAN",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "CHECKPOINT_METRIC_POLICY",
+      "to": "TRAINING_PROTOCOL_IDENTITY",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CHECKPOINT_METRIC_RECORD",
+      "to": "CHECKPOINT_ADMISSIBILITY_DECISION",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CHECKPOINT_SCREENING_ROUND_RECORD",
+      "to": "CHECKPOINT_EPOCH_REPORT",
+      "type": "produces"
+    },
+    {
+      "from": "CHECKPOINT_SCREENING_ROUND_RECORD",
+      "to": "CHECKPOINT_SURVIVOR_RECORD",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CHECKPOINT_SELECTION_DECISION",
+      "to": "PROTOCOL_FREEZE_RECORD",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CHECKPOINT_SELECTION_DECISION",
+      "to": "TRAINED_COMMITTEE",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CHECKPOINT_SELECTION_RECORD",
+      "to": "CHECKPOINT_SELECTION_DECISION",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CHECKPOINT_SELECTION_RECORD",
+      "to": "COMMITTEE_MEMBER_RECORD",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CHECKPOINT_SELECTION_RECORD",
+      "to": "PROTOCOL_VARIANT_AGGREGATE",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CHECKPOINT_SELECTION_RECORD",
+      "to": "TIERED_STORAGE_RECLAMATION_PLAN",
+      "type": "optional_enrichment"
+    },
+    {
+      "from": "CHECKPOINT_SURVIVOR_RECORD",
+      "to": "FULL_FIDELITY_FINALIST_EVALUATION",
+      "type": "execution_requires"
+    },
+    {
+      "from": "COMMITTEE_EXPORT_POLICY",
+      "to": "COMMITTEE_MEMBER_RECORD",
+      "type": "execution_requires"
+    },
+    {
+      "from": "COMMITTEE_IDENTITY",
+      "to": "BOUNDED_DEPLOYMENT_VERIFICATION",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "COMMITTEE_IDENTITY",
+      "to": "PROTOCOL_FREEZE_RECORD",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "COMMITTEE_IDENTITY",
+      "to": "TRAINED_COMMITTEE",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "COMMITTEE_MEMBER_RECORD",
+      "to": "COMMITTEE_IDENTITY",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CONDITION_AXIS_CATALOG",
+      "to": "MATERIAL_PROFILE_CONTRACTS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CONDITION_AXIS_CATALOG",
+      "predicate": "condition_scoped_rules_only",
+      "to": "OBSERVABLE_SCOPE_AGGREGATION",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "CONDITION_AXIS_CATALOG",
+      "to": "OUTER_PARTITION",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CONFIGURATION_WEIGHT_POLICY",
+      "to": "TRAINING_PROTOCOL_IDENTITY",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CPU_INFERENCE_TELEMETRY",
+      "to": "ADAPTIVE_INFERENCE_CONCURRENCY_PLAN",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CPU_RAM_PARALLEL_EXECUTION_PLAN",
+      "to": "ISOLATED_TRAJECTORY_WORKER",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
+      "to": "CROSS_SYSTEM_QUALIFICATION_SUITE",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CROSS_SYSTEM_QUALIFICATION_POLICY",
+      "to": "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CROSS_SYSTEM_QUALIFICATION_POLICY",
+      "to": "GENERIC_IMPORT_ISOLATION_EVIDENCE",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CROSS_VALIDATION_JOB_FAMILY",
+      "to": "OUT_OF_FOLD_PREDICTIONS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CROSS_VALIDATION_PLAN",
+      "to": "FOLD_CHECKPOINT_MONITORS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CROSS_VALIDATION_PLAN",
+      "to": "FOLD_EVALUATION_DOMAINS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CROSS_VALIDATION_PLAN",
+      "to": "LEAKAGE_AUDIT_REPORT",
+      "type": "execution_requires"
+    },
+    {
+      "from": "DATA6_MODEL_SWEEP_CHECKPOINT",
+      "predicate": "checkpoint_complete_and_verified",
+      "to": "ATOMIC_MODEL_PREDICTION_MANIFEST",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "DATA6_MODEL_SWEEP_CHECKPOINT",
+      "predicate": "checkpoint_complete_and_verified",
+      "to": "DATA9A_GATE",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "DATA6_MODEL_SWEEP_CHECKPOINT",
+      "predicate": "checkpoint_complete_and_verified",
+      "to": "MACE_RAW_DESCRIPTORS",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "DATA6_MODEL_SWEEP_CHECKPOINT",
+      "predicate": "checkpoint_complete_and_verified",
+      "to": "PRODUCTION_MATERIALIZATION_PLAN",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "DATA6_MODEL_SWEEP_EXECUTION_POLICY",
+      "to": "DATA6_MODEL_SWEEP_CHECKPOINT",
+      "type": "execution_requires"
+    },
+    {
+      "from": "DATA6_MODEL_SWEEP_PLAN",
+      "to": "ATOMIC_MODEL_PREDICTION_MANIFEST",
+      "type": "execution_requires"
+    },
+    {
+      "from": "DATA6_MODEL_SWEEP_PLAN",
+      "to": "DATA6_MODEL_SWEEP_CHECKPOINT",
+      "type": "execution_requires"
+    },
+    {
+      "from": "DATA6_MODEL_SWEEP_PLAN",
+      "to": "MACE_RAW_DESCRIPTORS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "DATA8_ATOMIC_PROMOTION",
+      "predicate": "atomic_pointer_targets_verified_generation",
+      "to": "PRODUCTION_MATERIALIZATION_RECORD",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "DATA9A_GATE",
+      "to": "CAMPAIGN_PREPARATION_GATE",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "DATA9A_GATE",
+      "to": "DATA9B_EXECUTION",
+      "type": "gates"
+    },
+    {
+      "from": "DATA9A_GATE",
+      "predicate": "full_production_gate_passed",
+      "to": "TRAINING_CAMPAIGN_PLAN",
+      "type": "gates"
+    },
+    {
+      "from": "DERIVATIVE_CONVENTION",
+      "to": "LABEL_DOMAIN",
+      "type": "execution_requires"
+    },
+    {
+      "from": "DEVELOPMENT_MACE_BUNDLE",
+      "to": "TRAINING_CHECKPOINTS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "DEVELOPMENT_POOL",
+      "to": "FINAL_TARGET_TRAINING_DOMAIN",
+      "type": "execution_requires"
+    },
+    {
+      "from": "DEVELOPMENT_POOL",
+      "to": "FOLD_DEFINITIONS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "DFT_QUERY_MANIFEST",
+      "to": "LABELED_ACTIVE_ROUND",
+      "type": "execution_requires"
+    },
+    {
+      "from": "ENERGY_REFERENCE_IDENTITY",
+      "to": "LABEL_DOMAIN",
+      "type": "execution_requires"
+    },
+    {
+      "from": "ENSEMBLE_CERTIFICATE",
+      "to": "SOURCE_CATALOG",
+      "type": "execution_requires"
+    },
+    {
+      "from": "ENSEMBLE_CERTIFICATE",
+      "to": "TRAJECTORY_QUALITY",
+      "type": "execution_requires"
+    },
+    {
+      "from": "EVALUATION_ACTIVATION_DECISION",
+      "predicate": "evaluation_activated",
+      "to": "EVALUATION_RESULT_CATALOG",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "EVALUATION_ACTIVATION_DECISION",
+      "to": "LOCKED_TEST_OBSERVABLE_EVIDENCE",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "EVALUATION_ACTIVATION_DECISION",
+      "predicate": "locked_test_only",
+      "to": "OBSERVABLE_VALIDATION_ACTIVATION_RECORD",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "EVENT_CATALOG",
+      "to": "FINAL_SELECTION_MASTER_ORDER",
+      "type": "execution_requires"
+    },
+    {
+      "from": "EVENT_CATALOG",
+      "to": "FOLD_LOCAL_SELECTIONS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "EVENT_CATALOG",
+      "to": "LEAKAGE_AUDIT_REPORT",
+      "type": "execution_requires"
+    },
+    {
+      "from": "EVENT_CATALOG",
+      "to": "PARTITION_UNIT_CATALOG",
+      "type": "execution_requires"
+    },
+    {
+      "from": "EVENT_CATALOG",
+      "to": "TEMPORAL_BLOCKS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "EXPOSURE_BACKEND_POLICY",
+      "to": "TRAINING_PROTOCOL_IDENTITY",
+      "type": "execution_requires"
+    },
+    {
+      "from": "FEATURE_METRIC_POLICY_TEMPLATE",
+      "to": "FINAL_FEATURE_METRIC_FIT",
+      "type": "execution_requires"
+    },
+    {
+      "from": "FEATURE_METRIC_POLICY_TEMPLATE",
+      "to": "FINAL_FEATURE_TRANSFORM",
+      "type": "execution_requires"
+    },
+    {
+      "from": "FEATURE_METRIC_POLICY_TEMPLATE",
+      "to": "FOLD_FEATURE_METRIC_FITS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "FEATURE_METRIC_POLICY_TEMPLATE",
+      "to": "FOLD_LOCAL_TRANSFORMS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "FEATURE_METRIC_POLICY_TEMPLATE",
+      "to": "PRODUCTION_MATERIALIZATION_PLAN",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "FILENAME_STRAIN_CANDIDATE",
+      "to": "VERIFIED_STRAIN_RELATIONSHIP",
+      "type": "execution_requires"
+    },
+    {
+      "from": "FINAL_ATOMIC_REFERENCE_FIT",
+      "to": "DEVELOPMENT_MACE_BUNDLE",
+      "type": "execution_requires"
+    },
+    {
+      "from": "FINAL_COMMITTEE_CALIBRATION_PREDICTIONS",
+      "to": "UNCERTAINTY_CALIBRATION",
+      "type": "execution_requires"
+    },
+    {
+      "from": "FINAL_FEATURE_METRIC_FIT",
+      "to": "FINAL_SELECTION_MASTER_ORDER",
+      "type": "execution_requires"
+    },
+    {
+      "from": "FINAL_FEATURE_METRIC_FIT",
+      "to": "FOUNDATION_RESIDUAL_E0_FIT",
+      "type": "requires"
+    },
+    {
+      "from": "FINAL_FEATURE_TRANSFORM",
+      "to": "FINAL_FEATURE_METRIC_FIT",
+      "type": "execution_requires"
+    },
+    {
+      "from": "FINAL_SELECTION_MASTER_ORDER",
+      "to": "ACQUISITION_DECISIONS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "FINAL_SELECTION_MASTER_ORDER",
+      "to": "TRAINING_SELECTION_LADDER",
+      "type": "execution_requires"
+    },
+    {
+      "from": "FINAL_TARGET_TRAINING_DOMAIN",
+      "to": "FINAL_ATOMIC_REFERENCE_FIT",
+      "type": "fit_domain_requires"
+    },
+    {
+      "from": "FINAL_TARGET_TRAINING_DOMAIN",
+      "to": "FINAL_FEATURE_METRIC_FIT",
+      "type": "fit_domain_requires"
+    },
+    {
+      "from": "FINAL_TARGET_TRAINING_DOMAIN",
+      "to": "FINAL_FEATURE_TRANSFORM",
+      "type": "fit_domain_requires"
+    },
+    {
+      "from": "FINAL_TARGET_TRAINING_DOMAIN",
+      "to": "FINAL_SELECTION_MASTER_ORDER",
+      "type": "fit_domain_requires"
+    },
+    {
+      "from": "FINAL_TARGET_TRAINING_DOMAIN",
+      "to": "FINAL_TRAINING_DIFFICULTY_FEATURES",
+      "type": "fit_domain_requires"
+    },
+    {
+      "from": "FINAL_TRAINING_DIFFICULTY_FEATURES",
+      "to": "FINAL_SELECTION_MASTER_ORDER",
+      "type": "execution_requires"
+    },
+    {
+      "from": "FOCUS_ATOM_GROUP_POLICY",
+      "to": "CHECKPOINT_METRIC_POLICY",
+      "type": "optional_enrichment"
+    },
+    {
+      "from": "FOCUS_ATOM_GROUP_POLICY",
+      "to": "TRAINING_OBJECTIVE_POLICY",
+      "type": "optional_enrichment"
+    },
+    {
+      "from": "FOLD_ATOMIC_REFERENCE_FITS",
+      "to": "CROSS_VALIDATION_JOB_FAMILY",
+      "type": "execution_requires"
+    },
+    {
+      "from": "FOLD_CHECKPOINT_MONITORS",
+      "to": "BLINDED_EVALUATION_PREDICTIONS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "FOLD_CHECKPOINT_MONITORS",
+      "to": "CROSS_VALIDATION_JOB_FAMILY",
+      "type": "execution_requires"
+    },
+    {
+      "from": "FOLD_CHECKPOINT_MONITORS",
+      "to": "FULL_FIDELITY_FINALIST_EVALUATION",
+      "type": "execution_requires"
+    },
+    {
+      "from": "FOLD_CHECKPOINT_MONITORS",
+      "to": "NESTED_CHECKPOINT_EVALUATION_PLAN",
+      "type": "execution_requires"
+    },
+    {
+      "from": "FOLD_DEFINITIONS",
+      "to": "FOLD_CHECKPOINT_MONITORS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "FOLD_DEFINITIONS",
+      "to": "FOLD_EVALUATION_DOMAINS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "FOLD_DEFINITIONS",
+      "to": "FOLD_TRAIN_DOMAINS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "FOLD_EVALUATION_DOMAINS",
+      "to": "BLINDED_EVALUATION_PREDICTIONS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "FOLD_EVALUATION_DOMAINS",
+      "to": "CROSS_VALIDATION_JOB_FAMILY",
+      "type": "execution_requires"
+    },
+    {
+      "from": "FOLD_FEATURE_METRIC_FITS",
+      "to": "FOLD_LOCAL_SELECTIONS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "FOLD_LOCAL_SELECTIONS",
+      "to": "CROSS_VALIDATION_JOB_FAMILY",
+      "type": "execution_requires"
+    },
+    {
+      "from": "FOLD_LOCAL_TRANSFORMS",
+      "to": "FOLD_FEATURE_METRIC_FITS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "FOLD_TRAINING_DIFFICULTY_FEATURES",
+      "to": "FOLD_LOCAL_SELECTIONS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "FOLD_TRAIN_DOMAINS",
+      "to": "FOLD_ATOMIC_REFERENCE_FITS",
+      "type": "fit_domain_requires"
+    },
+    {
+      "from": "FOLD_TRAIN_DOMAINS",
+      "to": "FOLD_FEATURE_METRIC_FITS",
+      "type": "fit_domain_requires"
+    },
+    {
+      "from": "FOLD_TRAIN_DOMAINS",
+      "to": "FOLD_LOCAL_SELECTIONS",
+      "type": "fit_domain_requires"
+    },
+    {
+      "from": "FOLD_TRAIN_DOMAINS",
+      "to": "FOLD_LOCAL_TRANSFORMS",
+      "type": "fit_domain_requires"
+    },
+    {
+      "from": "FOLD_TRAIN_DOMAINS",
+      "to": "FOLD_TRAINING_DIFFICULTY_FEATURES",
+      "type": "fit_domain_requires"
+    },
+    {
+      "from": "FOUNDATION_CHECKPOINT",
+      "to": "DATA6_MODEL_SWEEP_CHECKPOINT",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "FOUNDATION_CHECKPOINT",
+      "to": "DATA6_MODEL_SWEEP_PLAN",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "FOUNDATION_CHECKPOINT",
+      "to": "FINAL_ATOMIC_REFERENCE_FIT",
+      "type": "execution_requires"
+    },
+    {
+      "from": "FOUNDATION_CHECKPOINT",
+      "to": "FINAL_TRAINING_DIFFICULTY_FEATURES",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "FOUNDATION_CHECKPOINT",
+      "to": "FOLD_ATOMIC_REFERENCE_FITS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "FOUNDATION_CHECKPOINT",
+      "to": "FOLD_TRAINING_DIFFICULTY_FEATURES",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "FOUNDATION_CHECKPOINT",
+      "to": "FOUNDATION_RESIDUAL_E0_FIT",
+      "type": "requires"
+    },
+    {
+      "from": "FOUNDATION_CHECKPOINT",
+      "to": "MACE_ACCELERATION_PROBE",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "FOUNDATION_CHECKPOINT",
+      "to": "MACE_MODEL_PRECISION_RECORD",
+      "type": "execution_requires"
+    },
+    {
+      "from": "FOUNDATION_CHECKPOINT",
+      "to": "MACE_RAW_DESCRIPTORS",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "FOUNDATION_CHECKPOINT",
+      "to": "PRODUCTION_DATA8_ARTIFACT",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "FOUNDATION_CHECKPOINT",
+      "to": "PRODUCTION_MATERIALIZATION_PLAN",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "FOUNDATION_CHECKPOINT",
+      "to": "REPLAY_PLAN",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "FOUNDATION_CHECKPOINT",
+      "to": "TRAINING_PROTOCOL_IDENTITY",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "FOUNDATION_RESIDUAL_E0_FIT",
+      "to": "PORTABLE_MACE_BUNDLE",
+      "type": "requires"
+    },
+    {
+      "from": "FOUNDATION_RESIDUAL_E0_FIT",
+      "predicate": "required_by_frozen_plan",
+      "to": "PRODUCTION_GATE_INTEGRITY_EVIDENCE",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "FRAME_CATALOG",
+      "to": "PRODUCTION_CORPUS_PLAN",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "FRAME_ELIGIBILITY",
+      "to": "ANALYSIS_LOCAL_STRUCTURE_FEATURES",
+      "type": "execution_requires"
+    },
+    {
+      "from": "FRAME_ELIGIBILITY",
+      "to": "DATA6_MODEL_SWEEP_PLAN",
+      "type": "execution_requires"
+    },
+    {
+      "from": "FRAME_ELIGIBILITY",
+      "to": "EVENT_CATALOG",
+      "type": "execution_requires"
+    },
+    {
+      "from": "FRAME_ELIGIBILITY",
+      "to": "MACE_RAW_DESCRIPTORS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "FRAME_ELIGIBILITY",
+      "to": "PARTITION_CRITICAL_PROFILE_FEATURES",
+      "type": "execution_requires"
+    },
+    {
+      "from": "FRAME_ELIGIBILITY",
+      "to": "PARTITION_UNIT_CATALOG",
+      "type": "execution_requires"
+    },
+    {
+      "from": "FRAME_ELIGIBILITY",
+      "to": "RAW_GENERIC_FEATURES",
+      "type": "execution_requires"
+    },
+    {
+      "from": "FRAME_ELIGIBILITY",
+      "to": "SELECTION_FEATURE_CATALOGS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "FRAME_FACTS",
+      "to": "FRAME_ELIGIBILITY",
+      "type": "execution_requires"
+    },
+    {
+      "from": "FRAME_FACTS",
+      "to": "GEOMETRY_FINGERPRINT",
+      "type": "execution_requires"
+    },
+    {
+      "from": "FRAME_FACTS",
+      "to": "LABEL_PAYLOAD_DIGEST",
+      "type": "execution_requires"
+    },
+    {
+      "from": "FULL_FIDELITY_FINALIST_EVALUATION",
+      "to": "CHECKPOINT_EVALUATION_RECORD",
+      "type": "produces"
+    },
+    {
+      "from": "GENERIC_IMPORT_ISOLATION_EVIDENCE",
+      "to": "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
+      "type": "execution_requires"
+    },
+    {
+      "from": "GENERIC_STRUCTURAL_EVENT_CATALOG",
+      "to": "FINAL_SELECTION_MASTER_ORDER",
+      "type": "optional_enrichment"
+    },
+    {
+      "from": "GENERIC_STRUCTURAL_EVENT_CATALOG",
+      "to": "FOLD_LOCAL_SELECTIONS",
+      "type": "optional_enrichment"
+    },
+    {
+      "from": "GEOMETRY_FINGERPRINT",
+      "to": "LABELED_CONFIGURATION_FINGERPRINT",
+      "type": "execution_requires"
+    },
+    {
+      "from": "GEOMETRY_FINGERPRINT",
+      "to": "LEAKAGE_AUDIT_REPORT",
+      "type": "execution_requires"
+    },
+    {
+      "from": "GEOMETRY_FINGERPRINT",
+      "to": "OUTER_PARTITION",
+      "type": "execution_requires"
+    },
+    {
+      "from": "GPU_INFERENCE_TELEMETRY",
+      "to": "ADAPTIVE_INFERENCE_CONCURRENCY_PLAN",
+      "type": "execution_requires"
+    },
+    {
+      "from": "GPU_VRAM_BATCH_EXECUTION_PLAN",
+      "to": "NATIVE_MACE_GRAPH_BATCH",
+      "type": "execution_requires"
+    },
+    {
+      "from": "INDEPENDENCE_AXIS_CATALOG",
+      "to": "MATERIAL_PROFILE_CONTRACTS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "INDEPENDENCE_AXIS_CATALOG",
+      "to": "PARTITION_UNIT_CATALOG",
+      "type": "execution_requires"
+    },
+    {
+      "from": "INSTALLED_MACE_QUALIFICATION",
+      "to": "CAMPAIGN_PREFLIGHT_RECORD",
+      "type": "execution_requires"
+    },
+    {
+      "from": "INSTALLED_MACE_QUALIFICATION",
+      "to": "DATA9A_GATE",
+      "type": "requires"
+    },
+    {
+      "from": "ISOLATED_TRAJECTORY_WORKER",
+      "to": "FRAME_CATALOG",
+      "type": "execution_requires"
+    },
+    {
+      "from": "ISOLATED_TRAJECTORY_WORKER",
+      "to": "PARTITION_CRITICAL_PROFILE_FEATURES",
+      "type": "execution_requires"
+    },
+    {
+      "from": "ISOLATED_TRAJECTORY_WORKER",
+      "to": "RAW_GENERIC_FEATURES",
+      "type": "execution_requires"
+    },
+    {
+      "from": "ISOLATED_TRAJECTORY_WORKER",
+      "to": "SOURCE_CATALOG",
+      "type": "execution_requires"
+    },
+    {
+      "from": "LABELED_ACTIVE_ROUND",
+      "to": "LABELED_FRAME_ELIGIBILITY",
+      "type": "execution_requires"
+    },
+    {
+      "from": "LABELED_CONFIGURATION_FINGERPRINT",
+      "to": "LEAKAGE_AUDIT_REPORT",
+      "type": "execution_requires"
+    },
+    {
+      "from": "LABELED_FRAME_ELIGIBILITY",
+      "to": "NEW_DATASET_GENERATION",
+      "type": "execution_requires"
+    },
+    {
+      "from": "LABEL_DOMAIN",
+      "to": "FRAME_ELIGIBILITY",
+      "type": "execution_requires"
+    },
+    {
+      "from": "LABEL_DOMAIN",
+      "to": "LABEL_PAYLOAD_DIGEST",
+      "type": "execution_requires"
+    },
+    {
+      "from": "LABEL_PAYLOAD_DIGEST",
+      "to": "LABELED_CONFIGURATION_FINGERPRINT",
+      "type": "execution_requires"
+    },
+    {
+      "from": "LEAKAGE_AUDIT_REPORT",
+      "predicate": "no_error_findings",
+      "to": "DEVELOPMENT_POOL",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "LOCKED_CHALLENGE_TESTS",
+      "to": "BLINDED_EVALUATION_PREDICTIONS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "LOCKED_CHALLENGE_TESTS",
+      "predicate": "challenge_test_role",
+      "to": "LOCKED_TEST_OBSERVABLE_EVIDENCE",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "LOCKED_CHALLENGE_TESTS",
+      "to": "SEALED_EVALUATION_BUNDLE",
+      "type": "execution_requires"
+    },
+    {
+      "from": "LOCKED_INTERPOLATION_TEST",
+      "to": "BLINDED_EVALUATION_PREDICTIONS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "LOCKED_INTERPOLATION_TEST",
+      "predicate": "interpolation_test_role",
+      "to": "LOCKED_TEST_OBSERVABLE_EVIDENCE",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "LOCKED_INTERPOLATION_TEST",
+      "to": "SEALED_EVALUATION_BUNDLE",
+      "type": "execution_requires"
+    },
+    {
+      "from": "LTA_PROFILE_EXTENSION",
+      "to": "OPTIONAL_PROFILE_EXTENSION_PROVIDER",
+      "type": "optional_enrichment"
+    },
+    {
+      "from": "MACE_ACCELERATION_POLICY",
+      "to": "BOUNDED_DEPLOYMENT_VERIFICATION",
+      "type": "execution_requires"
+    },
+    {
+      "from": "MACE_ACCELERATION_POLICY",
+      "to": "DATA6_MODEL_SWEEP_PLAN",
+      "type": "execution_requires"
+    },
+    {
+      "from": "MACE_ACCELERATION_POLICY",
+      "to": "MACE_ACCELERATION_PROBE",
+      "type": "execution_requires"
+    },
+    {
+      "from": "MACE_ACCELERATION_POLICY",
+      "to": "PRODUCTION_DATA8_ARTIFACT",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "MACE_ACCELERATION_POLICY",
+      "to": "PYTHON_ASE_MACE_EXECUTION",
+      "type": "execution_requires"
+    },
+    {
+      "from": "MACE_ACCELERATION_POLICY",
+      "to": "TRAINING_PROTOCOL_IDENTITY",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "MACE_ACCELERATION_PROBE",
+      "to": "CAMPAIGN_PREFLIGHT_RECORD",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "MACE_ACCELERATION_PROBE",
+      "to": "TRAINING_CAMPAIGN_PLAN",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "MACE_ADAPTER_LOCK",
+      "to": "DEVELOPMENT_MACE_BUNDLE",
+      "type": "execution_requires"
+    },
+    {
+      "from": "MACE_ADAPTER_LOCK",
+      "to": "INSTALLED_MACE_QUALIFICATION",
+      "type": "requires"
+    },
+    {
+      "from": "MACE_ADAPTER_LOCK",
+      "to": "MACE_DEPENDENCY_MANIFEST",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "MACE_ADAPTER_LOCK",
+      "to": "PRODUCTION_MATERIALIZATION_PLAN",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "MACE_ADAPTER_LOCK",
+      "to": "TRAINING_PROTOCOL_IDENTITY",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "MACE_CHECKPOINT_CONTROL_POLICY",
+      "to": "CHECKPOINT_SELECTION_DECISION",
+      "type": "execution_requires"
+    },
+    {
+      "from": "MACE_CHECKPOINT_CONTROL_POLICY",
+      "to": "PRODUCTION_MATERIALIZATION_PLAN",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "MACE_CHECKPOINT_CONTROL_POLICY",
+      "to": "TRAINING_PROTOCOL_IDENTITY",
+      "type": "execution_requires"
+    },
+    {
+      "from": "MACE_CLI_SMOKE_RECORD",
+      "to": "DATA9A_GATE",
+      "type": "requires"
+    },
+    {
+      "from": "MACE_CONFIG_REALIZATION_RECORD",
+      "to": "MACE_JOB_EXECUTION_SMOKE_RECORD",
+      "type": "execution_requires"
+    },
+    {
+      "from": "MACE_CRITICAL_PRECISION_AUDIT",
+      "to": "DATA9A_GATE",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "MACE_CRITICAL_PRECISION_AUDIT",
+      "to": "MACE_JOB_EXECUTION_SMOKE_RECORD",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "MACE_CRITICAL_PRECISION_POLICY",
+      "to": "TRAINING_PROTOCOL_IDENTITY",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "MACE_DATALOADER_WORKER_PLAN",
+      "to": "MACE_CONFIG_REALIZATION_RECORD",
+      "type": "execution_requires"
+    },
+    {
+      "from": "MACE_DEPENDENCY_MANIFEST",
+      "to": "MACE_RUNTIME_ENVIRONMENT_RECORD",
+      "type": "requires"
+    },
+    {
+      "from": "MACE_DEPLOYMENT_EXPORT_POLICY",
+      "to": "MACE_DEPLOYMENT_ARTIFACT",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "MACE_EXPOSURE_REALIZATION_RECORD",
+      "to": "CHECKPOINT_SELECTION_DECISION",
+      "type": "execution_requires"
+    },
+    {
+      "from": "MACE_INFERENCE_COMPARISON",
+      "to": "MACE_DEPLOYMENT_ARTIFACT",
+      "type": "execution_requires"
+    },
+    {
+      "from": "MACE_JOB_EXECUTION_SMOKE_RECORD",
+      "to": "DATA9A_GATE",
+      "type": "requires"
+    },
+    {
+      "from": "MACE_JOB_EXECUTION_SMOKE_RECORD",
+      "to": "MACE_MODEL_PRECISION_RECORD",
+      "type": "execution_requires"
+    },
+    {
+      "from": "MACE_MODEL_PRECISION_RECORD",
+      "to": "MACE_DEPLOYMENT_ARTIFACT",
+      "type": "execution_requires"
+    },
+    {
+      "from": "MACE_MODEL_PRECISION_RECORD",
+      "to": "MACE_PRECISION_TRANSITION_RECORD",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "MACE_MODEL_PRECISION_RECORD",
+      "to": "PRECISION_STAGE_TRANSITION_RECORD",
+      "type": "optional_enrichment"
+    },
+    {
+      "from": "MACE_PRECISION_POLICY",
+      "to": "DATA6_MODEL_SWEEP_EXECUTION_POLICY",
+      "type": "execution_requires"
+    },
+    {
+      "from": "MACE_PRECISION_POLICY",
+      "to": "TRAINING_PROTOCOL_IDENTITY",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "MACE_PRECISION_TRANSITION_RECORD",
+      "to": "DATA9A_GATE",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "MACE_PRECISION_TRANSITION_RECORD",
+      "to": "MACE_DEPLOYMENT_ARTIFACT",
+      "type": "execution_requires"
+    },
+    {
+      "from": "MACE_PRECISION_TRANSITION_RECORD",
+      "to": "STAGED_PRECISION_QUALIFICATION_RECORD",
+      "type": "execution_requires"
+    },
+    {
+      "from": "MACE_RAW_DESCRIPTORS",
+      "to": "FINAL_FEATURE_TRANSFORM",
+      "type": "execution_requires"
+    },
+    {
+      "from": "MACE_RAW_DESCRIPTORS",
+      "to": "FOLD_LOCAL_TRANSFORMS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "MACE_RUNTIME_ENVIRONMENT_RECORD",
+      "to": "INSTALLED_MACE_QUALIFICATION",
+      "type": "requires"
+    },
+    {
+      "from": "MACE_RUNTIME_ENVIRONMENT_RECORD",
+      "to": "MACE_CLI_SMOKE_RECORD",
+      "type": "execution_requires"
+    },
+    {
+      "from": "MACE_RUNTIME_ENVIRONMENT_RECORD",
+      "to": "MACE_CONFIG_REALIZATION_RECORD",
+      "type": "execution_requires"
+    },
+    {
+      "from": "MACE_RUNTIME_ENVIRONMENT_RECORD",
+      "to": "MACE_JOB_EXECUTION_SMOKE_RECORD",
+      "type": "execution_requires"
+    },
+    {
+      "from": "MANIFEST_INFERENCE_POLICY",
+      "to": "REVIEW_MANIFEST_INFERENCE_RESULT",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "MANIFEST_INFERENCE_POLICY",
+      "to": "VERIFIED_STRAIN_RELATIONSHIP",
+      "type": "execution_requires"
+    },
+    {
+      "from": "MATERIAL_PROFILE_CONTRACTS",
+      "to": "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
+      "type": "execution_requires"
+    },
+    {
+      "from": "MATERIAL_PROFILE_CONTRACTS",
+      "predicate": "profile_bound_policies_only",
+      "to": "OBSERVABLE_COMPARISON_POLICY",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "MATERIAL_PROFILE_CONTRACTS",
+      "to": "OPTIONAL_PROFILE_EXTENSION_PROVIDER",
+      "type": "execution_requires"
+    },
+    {
+      "from": "MATERIAL_PROFILE_CONTRACTS",
+      "to": "PARTITION_CRITICAL_PROFILE_FEATURES",
+      "type": "execution_requires"
+    },
+    {
+      "from": "MATERIAL_PROFILE_CONTRACTS",
+      "to": "PHASE_GEOMETRY_SELECTION_PLAN",
+      "type": "execution_requires"
+    },
+    {
+      "from": "MATERIAL_PROFILE_CONTRACTS",
+      "to": "SELECTION_FEATURE_CATALOGS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "MATERIAL_PROFILE_CONTRACTS",
+      "to": "UNIVERSAL_STRUCTURAL_FEATURE_CATALOG",
+      "type": "execution_requires"
+    },
+    {
+      "from": "MATERIAL_PROFILE_IDENTITY",
+      "to": "ATOM_GROUP_CATALOG",
+      "type": "execution_requires"
+    },
+    {
+      "from": "MATERIAL_PROFILE_IDENTITY",
+      "to": "CONDITION_AXIS_CATALOG",
+      "type": "execution_requires"
+    },
+    {
+      "from": "MATERIAL_PROFILE_IDENTITY",
+      "to": "INDEPENDENCE_AXIS_CATALOG",
+      "type": "execution_requires"
+    },
+    {
+      "from": "MATERIAL_PROFILE_IDENTITY",
+      "to": "MATERIAL_PROFILE_CONTRACTS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "MATERIAL_PROFILE_IDENTITY",
+      "to": "PARTITION_CRITICAL_PROFILE_FEATURES",
+      "type": "execution_requires"
+    },
+    {
+      "from": "MATERIAL_PROFILE_IDENTITY",
+      "to": "SELECTION_FEATURE_CATALOGS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "MATERIAL_PROFILE_PROVIDER_IDENTITY",
+      "to": "MATERIAL_PROFILE_IDENTITY",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "MLFF_CAMPAIGN_USER_GUIDE",
+      "to": "MLFF_CAMPAIGN_CLI_TOOL",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "NATIVE_MACE_GRAPH_BATCH",
+      "to": "MACE_RAW_DESCRIPTORS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "NESTED_CHECKPOINT_EVALUATION_PLAN",
+      "to": "CHECKPOINT_SURVIVOR_RECORD",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "NESTED_CHECKPOINT_EVALUATION_PLAN",
+      "to": "PARTIAL_CHECKPOINT_PREDICTION_COVERAGE",
+      "type": "execution_requires"
+    },
+    {
+      "from": "NUMERICAL_QUALITY_PROFILE",
+      "to": "LABEL_DOMAIN",
+      "type": "execution_requires"
+    },
+    {
+      "from": "OBSERVABLE_ANALYSIS_RECIPE",
+      "to": "OBSERVABLE_COMPARISON_RULES",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "OBSERVABLE_ANALYSIS_RECIPE",
+      "to": "OBSERVABLE_RESULT_IDENTITIES",
+      "type": "execution_requires"
+    },
+    {
+      "from": "OBSERVABLE_ANALYSIS_RECIPE",
+      "to": "OBSERVABLE_VALIDATION_EVIDENCE",
+      "type": "execution_requires"
+    },
+    {
+      "from": "OBSERVABLE_COLLECTION_IDENTITIES",
+      "to": "OBSERVABLE_RESULT_IDENTITIES",
+      "type": "execution_requires"
+    },
+    {
+      "from": "OBSERVABLE_COLLECTION_IDENTITIES",
+      "to": "OBSERVABLE_VALIDATION_EVIDENCE",
+      "type": "execution_requires"
+    },
+    {
+      "from": "OBSERVABLE_COLLECTION_IDENTITIES",
+      "to": "TRAJECTORY_GENERATION_IDENTITIES",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "OBSERVABLE_COMPARISON_POLICY",
+      "to": "OBSERVABLE_COMPARISON_RESULT",
+      "type": "execution_requires"
+    },
+    {
+      "from": "OBSERVABLE_COMPARISON_POLICY",
+      "to": "OBSERVABLE_VALIDATION_ACTIVATION_RECORD",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "OBSERVABLE_COMPARISON_RESULT",
+      "to": "OBSERVABLE_ACCEPTANCE_DECISION",
+      "type": "execution_requires"
+    },
+    {
+      "from": "OBSERVABLE_COMPARISON_RULES",
+      "to": "OBSERVABLE_COMPARISON_POLICY",
+      "type": "execution_requires"
+    },
+    {
+      "from": "OBSERVABLE_COMPARISON_RULES",
+      "to": "OBSERVABLE_COMPARISON_RESULT",
+      "type": "execution_requires"
+    },
+    {
+      "from": "OBSERVABLE_RESULT_IDENTITIES",
+      "to": "OBSERVABLE_VALIDATION_EVIDENCE",
+      "type": "execution_requires"
+    },
+    {
+      "from": "OBSERVABLE_SCOPE_AGGREGATION",
+      "to": "OBSERVABLE_COMPARISON_RESULT",
+      "type": "execution_requires"
+    },
+    {
+      "from": "OBSERVABLE_SCORE_UNCERTAINTY",
+      "to": "OBSERVABLE_COMPARISON_POLICY",
+      "type": "optional_enrichment"
+    },
+    {
+      "from": "OBSERVABLE_VALIDATION_ACTIVATION_RECORD",
+      "to": "OBSERVABLE_VALIDATION_EVIDENCE",
+      "type": "execution_requires"
+    },
+    {
+      "from": "OBSERVABLE_VALIDATION_EVIDENCE",
+      "predicate": "evidence_role_is_locked_test",
+      "to": "LOCKED_TEST_OBSERVABLE_EVIDENCE",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "OBSERVABLE_VALIDATION_EVIDENCE",
+      "to": "OBSERVABLE_COMPARISON_RESULT",
+      "type": "execution_requires"
+    },
+    {
+      "from": "OFFLINE_MACE_WHEELHOUSE",
+      "to": "MACE_RUNTIME_ENVIRONMENT_RECORD",
+      "type": "requires"
+    },
+    {
+      "from": "OPTIONAL_PROFILE_EXTENSION_PROVIDER",
+      "to": "PROFILE_PARTITION_FEATURE_CATALOGS",
+      "type": "optional_enrichment"
+    },
+    {
+      "from": "OPTIONAL_PROFILE_EXTENSION_PROVIDER",
+      "to": "PROFILE_SELECTION_FEATURE_CATALOGS",
+      "type": "optional_enrichment"
+    },
+    {
+      "from": "OUTER_MONITOR_VALIDATION",
+      "to": "BLINDED_EVALUATION_PREDICTIONS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "OUTER_MONITOR_VALIDATION",
+      "to": "CHECKPOINT_EVALUATION_RECORD",
+      "type": "execution_requires"
+    },
+    {
+      "from": "OUTER_MONITOR_VALIDATION",
+      "to": "CHECKPOINT_METRIC_RECORD",
+      "type": "execution_requires"
+    },
+    {
+      "from": "OUTER_MONITOR_VALIDATION",
+      "to": "CHECKPOINT_SELECTION_DECISION",
+      "type": "execution_requires"
+    },
+    {
+      "from": "OUTER_MONITOR_VALIDATION",
+      "to": "DEVELOPMENT_MACE_BUNDLE",
+      "type": "execution_requires"
+    },
+    {
+      "from": "OUTER_PARTITION",
+      "to": "BLINDING_BOUNDARY_CATALOG",
+      "type": "execution_requires"
+    },
+    {
+      "from": "OUTER_PARTITION",
+      "to": "CALIBRATION_DOMAIN",
+      "type": "execution_requires"
+    },
+    {
+      "from": "OUTER_PARTITION",
+      "to": "CROSS_VALIDATION_PLAN",
+      "type": "execution_requires"
+    },
+    {
+      "from": "OUTER_PARTITION",
+      "to": "DATA6_MODEL_SWEEP_PLAN",
+      "type": "execution_requires"
+    },
+    {
+      "from": "OUTER_PARTITION",
+      "to": "DEVELOPMENT_POOL",
+      "type": "execution_requires"
+    },
+    {
+      "from": "OUTER_PARTITION",
+      "to": "LEAKAGE_AUDIT_REPORT",
+      "type": "execution_requires"
+    },
+    {
+      "from": "OUTER_PARTITION",
+      "to": "LOCKED_CHALLENGE_TESTS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "OUTER_PARTITION",
+      "to": "LOCKED_INTERPOLATION_TEST",
+      "type": "execution_requires"
+    },
+    {
+      "from": "OUTER_PARTITION",
+      "predicate": "partitioned_validation_roles_only",
+      "to": "OBSERVABLE_VALIDATION_ACTIVATION_RECORD",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "OUTER_PARTITION",
+      "to": "OUTER_MONITOR_VALIDATION",
+      "type": "execution_requires"
+    },
+    {
+      "from": "OUTER_PARTITION",
+      "to": "PARTITION_INDEPENDENCE_REPORT",
+      "type": "execution_requires"
+    },
+    {
+      "from": "OUTER_PARTITION",
+      "to": "ROLE_INHERITANCE_POLICY",
+      "type": "execution_requires"
+    },
+    {
+      "from": "OUT_OF_FOLD_PREDICTIONS",
+      "to": "UNCERTAINTY_SIGNAL_DIAGNOSTIC",
+      "type": "execution_requires"
+    },
+    {
+      "from": "PARALLEL_CHECKPOINT_EVALUATION",
+      "to": "CHECKPOINT_EVALUATION_RECORD",
+      "type": "produces"
+    },
+    {
+      "from": "PARALLEL_NVE_VERIFICATION",
+      "to": "BOUNDED_DEPLOYMENT_VERIFICATION",
+      "type": "produces"
+    },
+    {
+      "from": "PARTIAL_CHECKPOINT_PREDICTION_COVERAGE",
+      "to": "CHECKPOINT_SCREENING_ROUND_RECORD",
+      "type": "execution_requires"
+    },
+    {
+      "from": "PARTITION_CRITICAL_PROFILE_FEATURES",
+      "to": "EVENT_CATALOG",
+      "type": "execution_requires"
+    },
+    {
+      "from": "PARTITION_CRITICAL_PROFILE_FEATURES",
+      "to": "OUTER_PARTITION",
+      "type": "execution_requires"
+    },
+    {
+      "from": "PARTITION_CRITICAL_PROFILE_FEATURES",
+      "to": "PARTITION_UNIT_CATALOG",
+      "type": "execution_requires"
+    },
+    {
+      "from": "PARTITION_CRITICAL_PROFILE_FEATURES",
+      "to": "PROFILE_EVENT_CATALOGS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "PARTITION_FEASIBILITY_REPORT",
+      "predicate": "cross_validation_roles_feasible",
+      "to": "CROSS_VALIDATION_PLAN",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "PARTITION_FEASIBILITY_REPORT",
+      "predicate": "partition_roles_feasible",
+      "to": "OUTER_PARTITION",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "PARTITION_ROLE_BUDGET_POLICY",
+      "predicate": "partitioned_validation_roles_only",
+      "to": "OBSERVABLE_VALIDATION_ACTIVATION_RECORD",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "PARTITION_ROLE_BUDGET_POLICY",
+      "to": "PARTITION_FEASIBILITY_REPORT",
+      "type": "execution_requires"
+    },
+    {
+      "from": "PARTITION_ROLE_BUDGET_POLICY",
+      "to": "PARTITION_UNIT_CATALOG",
+      "type": "execution_requires"
+    },
+    {
+      "from": "PARTITION_UNIT_CATALOG",
+      "to": "OUTER_PARTITION",
+      "type": "execution_requires"
+    },
+    {
+      "from": "PARTITION_UNIT_CATALOG",
+      "to": "PARTITION_FEASIBILITY_REPORT",
+      "type": "execution_requires"
+    },
+    {
+      "from": "PHASE_COMPONENT_IDENTITIES",
+      "to": "MATERIAL_PROFILE_IDENTITY",
+      "type": "execution_requires"
+    },
+    {
+      "from": "PHASE_GEOMETRY_SELECTION_PLAN",
+      "to": "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
+      "type": "execution_requires"
+    },
+    {
+      "from": "PHASE_GEOMETRY_SELECTION_PLAN",
+      "to": "PROFILE_BOUND_UNIVERSAL_STRUCTURAL_POLICY",
+      "type": "execution_requires"
+    },
+    {
+      "from": "PHASE_GEOMETRY_SELECTION_PLAN",
+      "to": "PROFILE_OBSERVABLE_RECOMMENDATIONS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "PHASE_GEOMETRY_SELECTION_PLAN",
+      "to": "SELECTION_FEATURE_CATALOGS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "PHASE_GEOMETRY_SELECTION_PLAN",
+      "to": "UNIVERSAL_STRUCTURAL_FEATURE_CATALOG",
+      "type": "execution_requires"
+    },
+    {
+      "from": "PORTABLE_MACE_BUNDLE",
+      "to": "DATA9A_GATE",
+      "type": "requires"
+    },
+    {
+      "from": "PORTABLE_MACE_BUNDLE",
+      "to": "MACE_CONFIG_REALIZATION_RECORD",
+      "type": "execution_requires"
+    },
+    {
+      "from": "PRECISION_STAGE_EXECUTION_PLAN",
+      "to": "PRECISION_STAGE_TRANSITION_RECORD",
+      "type": "produces"
+    },
+    {
+      "from": "PRECISION_STAGE_EXECUTION_PLAN",
+      "to": "TRAINING_CHECKPOINTS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "PRECISION_STAGE_TRANSITION_RECORD",
+      "to": "CHECKPOINT_EVALUATION_CAPSULE",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "PRECISION_STAGE_TRANSITION_RECORD",
+      "to": "STAGED_PRECISION_QUALIFICATION_RECORD",
+      "type": "execution_requires"
+    },
+    {
+      "from": "PRECISION_STAGE_TRANSITION_RECORD",
+      "to": "TRAINING_RUN_EXECUTION_RECORD",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "PREDECLARED_OBSERVABLE_THRESHOLDS",
+      "to": "OBSERVABLE_COMPARISON_POLICY",
+      "type": "execution_requires"
+    },
+    {
+      "from": "PRODUCTION_CORPUS_PLAN",
+      "to": "PRODUCTION_GATE_INTEGRITY_EVIDENCE",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "PRODUCTION_DATA7_ARTIFACTS",
+      "predicate": "all_final_and_fold_domains_verified",
+      "to": "PRODUCTION_DATA8_ARTIFACT",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "PRODUCTION_DATA7_ARTIFACTS",
+      "predicate": "all_domains_verified",
+      "to": "PRODUCTION_MATERIALIZATION_RECORD",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "PRODUCTION_DATA8_ARTIFACT",
+      "to": "CAMPAIGN_PREFLIGHT_RECORD",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "PRODUCTION_DATA8_ARTIFACT",
+      "predicate": "tree_verified_before_pointer_switch",
+      "to": "DATA8_ATOMIC_PROMOTION",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "PRODUCTION_DATA8_ARTIFACT",
+      "predicate": "tree_and_bundle_verified",
+      "to": "PRODUCTION_MATERIALIZATION_RECORD",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "PRODUCTION_DATA8_ARTIFACT",
+      "to": "TRAINING_CAMPAIGN_PLAN",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "PRODUCTION_GATE_INTEGRITY_EVIDENCE",
+      "predicate": "all_frozen_plan_requirements_satisfied",
+      "to": "DATA9A_GATE",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "PRODUCTION_MATERIALIZATION_CHECKPOINT",
+      "predicate": "all_data7_records_complete",
+      "to": "PRODUCTION_DATA8_ARTIFACT",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "PRODUCTION_MATERIALIZATION_PLAN",
+      "to": "PRODUCTION_DATA7_ARTIFACTS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "PRODUCTION_MATERIALIZATION_PLAN",
+      "to": "PRODUCTION_MATERIALIZATION_CHECKPOINT",
+      "type": "execution_requires"
+    },
+    {
+      "from": "PRODUCTION_MATERIALIZATION_RECORD",
+      "predicate": "record_complete_and_self_verified",
+      "to": "PRODUCTION_GATE_INTEGRITY_EVIDENCE",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "PRODUCTION_PREPARATION_BENCHMARK",
+      "to": "DATA9A_GATE",
+      "type": "requires"
+    },
+    {
+      "from": "PRODUCTION_REGIMES",
+      "to": "PRODUCTION_CORPUS_PLAN",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "PRODUCTION_REGIMES",
+      "to": "SOURCE_CATALOG",
+      "type": "execution_requires"
+    },
+    {
+      "from": "PROFILE_BOUND_UNIVERSAL_STRUCTURAL_POLICY",
+      "to": "UNIVERSAL_STRUCTURAL_FEATURE_CATALOG",
+      "type": "execution_requires"
+    },
+    {
+      "from": "PROFILE_ENVIRONMENT_COVERAGE",
+      "to": "SELECTION_COVERAGE_REPORT",
+      "type": "optional_enrichment"
+    },
+    {
+      "from": "PROFILE_EVENT_CATALOGS",
+      "to": "EVENT_CATALOG",
+      "type": "execution_requires"
+    },
+    {
+      "from": "PROFILE_EXTENSION_COVERAGE_EVIDENCE",
+      "to": "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
+      "type": "optional_enrichment"
+    },
+    {
+      "from": "PROFILE_EXTENSION_COVERAGE_EVIDENCE",
+      "to": "PRODUCTION_CORPUS_PLAN",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "PROFILE_OBSERVABLE_RECOMMENDATIONS",
+      "to": "OBSERVABLE_ANALYSIS_RECIPE",
+      "type": "execution_requires"
+    },
+    {
+      "from": "PROFILE_OBSERVABLE_RECOMMENDATIONS",
+      "to": "OBSERVABLE_COMPARISON_RULES",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "PROFILE_PARTITION_FEATURE_CATALOGS",
+      "to": "PARTITION_CRITICAL_PROFILE_FEATURES",
+      "type": "optional_enrichment"
+    },
+    {
+      "from": "PROFILE_PARTITION_FEATURE_CATALOGS",
+      "to": "PROFILE_EXTENSION_COVERAGE_EVIDENCE",
+      "type": "optional_enrichment"
+    },
+    {
+      "from": "PROFILE_SELECTION_FEATURE_CATALOGS",
+      "to": "PROFILE_ENVIRONMENT_COVERAGE",
+      "type": "optional_enrichment"
+    },
+    {
+      "from": "PROFILE_SELECTION_FEATURE_CATALOGS",
+      "to": "SELECTION_FEATURE_CATALOGS",
+      "type": "optional_enrichment"
+    },
+    {
+      "from": "PROPERTY_WEIGHT_POLICY",
+      "to": "TRAINING_PROTOCOL_IDENTITY",
+      "type": "execution_requires"
+    },
+    {
+      "from": "PROTOCOL_COMPARISON_RECORD",
+      "to": "COMMITTEE_IDENTITY",
+      "type": "execution_requires"
+    },
+    {
+      "from": "PROTOCOL_COMPARISON_RECORD",
+      "to": "PROTOCOL_FREEZE_RECORD",
+      "type": "execution_requires"
+    },
+    {
+      "from": "PROTOCOL_FAMILY_AGGREGATE",
+      "to": "LEARNING_CURVE_RECORD",
+      "type": "execution_requires"
+    },
+    {
+      "from": "PROTOCOL_FAMILY_AGGREGATE",
+      "to": "PROTOCOL_COMPARISON_RECORD",
+      "type": "execution_requires"
+    },
+    {
+      "from": "PROTOCOL_FREEZE_RECORD",
+      "to": "BOUNDED_DEPLOYMENT_VERIFICATION",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "PROTOCOL_FREEZE_RECORD",
+      "to": "CAMPAIGN_RESULT_SUMMARY",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "PROTOCOL_FREEZE_RECORD",
+      "to": "CAMPAIGN_STATE_DATABASE",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "PROTOCOL_FREEZE_RECORD",
+      "to": "COLD_ARCHIVE_MANIFEST",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "PROTOCOL_FREEZE_RECORD",
+      "predicate": "protocol_and_committee_frozen",
+      "to": "EVALUATION_ACTIVATION_DECISION",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "PROTOCOL_FREEZE_RECORD",
+      "to": "LOCKED_TEST_OBSERVABLE_EVIDENCE",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "PROTOCOL_FREEZE_RECORD",
+      "predicate": "locked_test_only",
+      "to": "OBSERVABLE_VALIDATION_ACTIVATION_RECORD",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "PROTOCOL_VARIANT_AGGREGATE",
+      "to": "PROTOCOL_FAMILY_AGGREGATE",
+      "type": "execution_requires"
+    },
+    {
+      "from": "PYTHON_ASE_MACE_EXECUTION",
+      "to": "MACE_CRITICAL_PRECISION_AUDIT",
+      "type": "execution_requires"
+    },
+    {
+      "from": "RAW_GENERIC_FEATURES",
+      "to": "FINAL_FEATURE_TRANSFORM",
+      "type": "execution_requires"
+    },
+    {
+      "from": "RAW_GENERIC_FEATURES",
+      "to": "FOLD_LOCAL_TRANSFORMS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "RAW_GENERIC_FEATURES",
+      "to": "PARTITION_CRITICAL_PROFILE_FEATURES",
+      "type": "optional_enrichment"
+    },
+    {
+      "from": "RAW_GENERIC_FEATURES",
+      "to": "PARTITION_UNIT_CATALOG",
+      "type": "execution_requires"
+    },
+    {
+      "from": "RAW_GENERIC_FEATURES",
+      "to": "SELECTION_FEATURE_CATALOGS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "RAW_GENERIC_FEATURES",
+      "to": "TEMPORAL_BLOCKS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "REFERENCE_CELL",
+      "to": "RAW_GENERIC_FEATURES",
+      "type": "execution_requires"
+    },
+    {
+      "from": "REPLAY_LABEL_PAYLOAD_IDENTITY",
+      "to": "REPLAY_PLAN",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "REPLAY_MONITOR",
+      "to": "CHECKPOINT_EVALUATION_RECORD",
+      "type": "optional_enrichment"
+    },
+    {
+      "from": "REPLAY_MONITOR",
+      "to": "CHECKPOINT_METRIC_RECORD",
+      "type": "optional_enrichment"
+    },
+    {
+      "from": "REPLAY_MONITOR",
+      "to": "CHECKPOINT_SELECTION_DECISION",
+      "type": "optional_enrichment"
+    },
+    {
+      "from": "REPLAY_MONITOR",
+      "to": "FULL_FIDELITY_FINALIST_EVALUATION",
+      "type": "optional_enrichment"
+    },
+    {
+      "from": "REPLAY_MONITOR",
+      "to": "NESTED_CHECKPOINT_EVALUATION_PLAN",
+      "type": "optional_enrichment"
+    },
+    {
+      "from": "REPLAY_MONITOR",
+      "to": "TRAINING_PROTOCOL_IDENTITY",
+      "type": "execution_requires"
+    },
+    {
+      "from": "REPLAY_PLAN",
+      "to": "PRODUCTION_DATA8_ARTIFACT",
+      "type": "execution_requires"
+    },
+    {
+      "from": "REPLAY_PLAN",
+      "predicate": "numerical_label_payload_verified",
+      "to": "PRODUCTION_GATE_INTEGRITY_EVIDENCE",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "REPLAY_PLAN",
+      "to": "PRODUCTION_MATERIALIZATION_PLAN",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "REPLAY_PLAN",
+      "to": "REPLAY_MONITOR",
+      "type": "execution_requires"
+    },
+    {
+      "from": "REPLAY_PLAN",
+      "to": "REPLAY_RETENTION_POLICY",
+      "type": "execution_requires"
+    },
+    {
+      "from": "REPLAY_PLAN",
+      "to": "TRAINING_PROTOCOL_IDENTITY",
+      "type": "execution_requires"
+    },
+    {
+      "from": "REPLAY_RETENTION_POLICY",
+      "to": "CHECKPOINT_SELECTION_DECISION",
+      "type": "optional_enrichment"
+    },
+    {
+      "from": "REPLAY_RETENTION_POLICY",
+      "to": "TRAINING_PROTOCOL_IDENTITY",
+      "type": "execution_requires"
+    },
+    {
+      "from": "REPLAY_SOURCE",
+      "to": "REPLAY_LABEL_PAYLOAD_IDENTITY",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "REPLAY_SOURCE",
+      "to": "REPLAY_PLAN",
+      "type": "execution_requires"
+    },
+    {
+      "from": "REVIEW_MANIFEST_INFERENCE_RESULT",
+      "to": "CAMPAIGN_MANIFEST_APPROVAL",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "ROLE_INHERITANCE_POLICY",
+      "to": "NEW_DATASET_GENERATION",
+      "type": "execution_requires"
+    },
+    {
+      "from": "SEALED_EVALUATION_BUNDLE",
+      "to": "EVALUATION_ACTIVATION_DECISION",
+      "type": "execution_requires"
+    },
+    {
+      "from": "SELECTION_BUDGET_POLICY",
+      "to": "FINAL_SELECTION_MASTER_ORDER",
+      "type": "execution_requires"
+    },
+    {
+      "from": "SELECTION_BUDGET_POLICY",
+      "to": "FOLD_LOCAL_SELECTIONS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "SELECTION_BUDGET_POLICY",
+      "to": "PRODUCTION_MATERIALIZATION_PLAN",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "SELECTION_COVERAGE_REPORT",
+      "to": "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
+      "type": "execution_requires"
+    },
+    {
+      "from": "SELECTION_FEATURE_CATALOGS",
+      "to": "FINAL_FEATURE_TRANSFORM",
+      "type": "execution_requires"
+    },
+    {
+      "from": "SELECTION_FEATURE_CATALOGS",
+      "to": "FOLD_LOCAL_TRANSFORMS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "SELECTION_LEVEL_IDENTITY",
+      "to": "PORTABLE_MACE_BUNDLE",
+      "type": "requires"
+    },
+    {
+      "from": "SOFTWARE_PROVENANCE",
+      "to": "LABEL_DOMAIN",
+      "type": "execution_requires"
+    },
+    {
+      "from": "SOURCE_BYTES",
+      "to": "CAMPAIGN_MANIFEST_APPROVAL",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "SOURCE_BYTES",
+      "to": "FILENAME_STRAIN_CANDIDATE",
+      "type": "execution_requires"
+    },
+    {
+      "from": "SOURCE_BYTES",
+      "to": "SOURCE_OCCURRENCE_IDENTITY",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "SOURCE_CATALOG",
+      "to": "FRAME_FACTS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "SOURCE_CATALOG",
+      "to": "NEW_DATASET_GENERATION",
+      "type": "replay_triggers"
+    },
+    {
+      "from": "SOURCE_CATALOG",
+      "to": "PRODUCTION_CORPUS_PLAN",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "SOURCE_CATALOG",
+      "to": "REFERENCE_CELL",
+      "type": "execution_requires"
+    },
+    {
+      "from": "SOURCE_CATALOG",
+      "to": "STRUCTURAL_ATOMIC_REFERENCE_AUDIT",
+      "type": "execution_requires"
+    },
+    {
+      "from": "SOURCE_OCCURRENCE_IDENTITY",
+      "to": "REVIEW_MANIFEST_INFERENCE_RESULT",
+      "type": "execution_requires"
+    },
+    {
+      "from": "SOURCE_OCCURRENCE_IDENTITY",
+      "to": "SOFTWARE_PROVENANCE",
+      "type": "execution_requires"
+    },
+    {
+      "from": "SOURCE_OCCURRENCE_IDENTITY",
+      "to": "SOURCE_CATALOG",
+      "type": "execution_requires"
+    },
+    {
+      "from": "SOURCE_OCCURRENCE_IDENTITY",
+      "to": "TRAJECTORY_COLLECTION",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "SOURCE_OCCURRENCE_IDENTITY",
+      "to": "VASP_CONTROLS",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "STAGED_PRECISION_QUALIFICATION_RECORD",
+      "to": "CAMPAIGN_ARTIFACT_OWNERSHIP_CATALOG",
+      "type": "optional_enrichment"
+    },
+    {
+      "from": "STAGED_TRAINING_PRECISION_POLICY",
+      "to": "PRECISION_STAGE_EXECUTION_PLAN",
+      "type": "execution_requires"
+    },
+    {
+      "from": "STAGED_TRAINING_PRECISION_POLICY",
+      "to": "TRAINING_PROTOCOL_IDENTITY",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "STRUCTURAL_ATOMIC_REFERENCE_AUDIT",
+      "to": "FINAL_ATOMIC_REFERENCE_FIT",
+      "type": "execution_requires"
+    },
+    {
+      "from": "STRUCTURAL_ATOMIC_REFERENCE_AUDIT",
+      "to": "FOLD_ATOMIC_REFERENCE_FITS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "STRUCTURAL_ATOMIC_REFERENCE_FIT_POLICY",
+      "to": "FINAL_ATOMIC_REFERENCE_FIT",
+      "type": "execution_requires"
+    },
+    {
+      "from": "STRUCTURAL_ATOMIC_REFERENCE_FIT_POLICY",
+      "to": "FOLD_ATOMIC_REFERENCE_FITS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "STRUCTURAL_ATOMIC_REFERENCE_FIT_POLICY",
+      "to": "PRODUCTION_MATERIALIZATION_PLAN",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "SYSTEM_RESOURCE_SNAPSHOT",
+      "to": "ADAPTIVE_INFERENCE_CONCURRENCY_PLAN",
+      "type": "execution_requires"
+    },
+    {
+      "from": "SYSTEM_RESOURCE_SNAPSHOT",
+      "to": "CPU_RAM_PARALLEL_EXECUTION_PLAN",
+      "type": "execution_requires"
+    },
+    {
+      "from": "SYSTEM_RESOURCE_SNAPSHOT",
+      "to": "GPU_VRAM_BATCH_EXECUTION_PLAN",
+      "type": "execution_requires"
+    },
+    {
+      "from": "SYSTEM_RESOURCE_SNAPSHOT",
+      "to": "MACE_DATALOADER_WORKER_PLAN",
+      "type": "execution_requires"
+    },
+    {
+      "from": "TEMPORAL_BLOCKS",
+      "to": "OUTER_PARTITION",
+      "type": "execution_requires"
+    },
+    {
+      "from": "TEMPORAL_BLOCKS",
+      "to": "PARTITION_FEASIBILITY_REPORT",
+      "type": "execution_requires"
+    },
+    {
+      "from": "TEMPORAL_BLOCKS",
+      "to": "PARTITION_UNIT_CATALOG",
+      "type": "execution_requires"
+    },
+    {
+      "from": "THEORY_IDENTITY",
+      "to": "LABEL_DOMAIN",
+      "type": "execution_requires"
+    },
+    {
+      "from": "THERMOMECHANICAL_VALIDATION_RECIPES",
+      "to": "OBSERVABLE_ANALYSIS_RECIPE",
+      "type": "optional_enrichment"
+    },
+    {
+      "from": "TIERED_STORAGE_RECLAMATION_PLAN",
+      "to": "CAMPAIGN_CLEANUP_MANIFEST",
+      "type": "produces"
+    },
+    {
+      "from": "TIERED_STORAGE_RECLAMATION_PLAN",
+      "to": "COLD_ARCHIVE_MANIFEST",
+      "type": "execution_requires"
+    },
+    {
+      "from": "TRAINED_COMMITTEE",
+      "to": "CALIBRATION_APPLICABILITY_DOMAIN",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "TRAINED_COMMITTEE",
+      "to": "CANDIDATE_TRAJECTORIES",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "TRAINED_COMMITTEE",
+      "to": "FINAL_COMMITTEE_CALIBRATION_PREDICTIONS",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "TRAINED_COMMITTEE",
+      "to": "PROTOCOL_FREEZE_RECORD",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "TRAINED_COMMITTEE",
+      "to": "UNCERTAINTY_CALIBRATION",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "TRAINING_CAMPAIGN_PLAN",
+      "to": "PROTOCOL_VARIANT_AGGREGATE",
+      "type": "execution_requires"
+    },
+    {
+      "from": "TRAINING_CAMPAIGN_PLAN",
+      "to": "TRAINING_CAMPAIGN_RUN_PLAN",
+      "type": "execution_requires"
+    },
+    {
+      "from": "TRAINING_CAMPAIGN_POLICY",
+      "to": "TRAINING_CAMPAIGN_PLAN",
+      "type": "execution_requires"
+    },
+    {
+      "from": "TRAINING_CAMPAIGN_RUN_PLAN",
+      "to": "PRECISION_STAGE_EXECUTION_PLAN",
+      "type": "execution_requires"
+    },
+    {
+      "from": "TRAINING_CAMPAIGN_RUN_PLAN",
+      "to": "TRAINING_CHECKPOINTS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "TRAINING_CAMPAIGN_RUN_PLAN",
+      "to": "TRAINING_RUN_EXECUTION_RECORD",
+      "type": "execution_requires"
+    },
+    {
+      "from": "TRAINING_CHECKPOINTS",
+      "to": "CAMPAIGN_STORAGE_REPORT",
+      "type": "optional_enrichment"
+    },
+    {
+      "from": "TRAINING_CHECKPOINTS",
+      "to": "CANDIDATE_CHECKPOINT_CATALOG",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "TRAINING_CHECKPOINTS",
+      "to": "CHECKPOINT_EVALUATION_CAPSULE",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "TRAINING_CHECKPOINTS",
+      "to": "CHECKPOINT_SELECTION_DECISION",
+      "type": "execution_requires"
+    },
+    {
+      "from": "TRAINING_CHECKPOINTS",
+      "to": "MACE_DEPLOYMENT_ARTIFACT",
+      "type": "execution_requires"
+    },
+    {
+      "from": "TRAINING_CHECKPOINTS",
+      "to": "MACE_EXPOSURE_REALIZATION_RECORD",
+      "type": "execution_requires"
+    },
+    {
+      "from": "TRAINING_CHECKPOINTS",
+      "to": "PARTIAL_CHECKPOINT_PREDICTION_COVERAGE",
+      "type": "execution_requires"
+    },
+    {
+      "from": "TRAINING_EXECUTION_POLICY",
+      "to": "TRAINING_RUN_EXECUTION_RECORD",
+      "type": "execution_requires"
+    },
+    {
+      "from": "TRAINING_OBJECTIVE_POLICY",
+      "to": "PRODUCTION_MATERIALIZATION_PLAN",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "TRAINING_OBJECTIVE_POLICY",
+      "to": "TRAINING_PROTOCOL_IDENTITY",
+      "type": "execution_requires"
+    },
+    {
+      "from": "TRAINING_PROTOCOL_IDENTITY",
+      "to": "CANDIDATE_TRAJECTORIES",
+      "type": "execution_requires"
+    },
+    {
+      "from": "TRAINING_PROTOCOL_IDENTITY",
+      "to": "CROSS_VALIDATION_JOB_FAMILY",
+      "type": "execution_requires"
+    },
+    {
+      "from": "TRAINING_PROTOCOL_IDENTITY",
+      "to": "DEVELOPMENT_MACE_BUNDLE",
+      "type": "execution_requires"
+    },
+    {
+      "from": "TRAINING_PROTOCOL_IDENTITY",
+      "to": "MACE_CONFIG_REALIZATION_RECORD",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "TRAINING_PROTOCOL_IDENTITY",
+      "to": "MACE_EXPOSURE_REALIZATION_RECORD",
+      "type": "execution_requires"
+    },
+    {
+      "from": "TRAINING_PROTOCOL_IDENTITY",
+      "to": "PROTOCOL_FREEZE_RECORD",
+      "type": "execution_requires"
+    },
+    {
+      "from": "TRAINING_PROTOCOL_IDENTITY",
+      "to": "PYTHON_ASE_MACE_EXECUTION",
+      "type": "execution_requires"
+    },
+    {
+      "from": "TRAINING_RUN_EXECUTION_RECORD",
+      "to": "CAMPAIGN_STATE_DATABASE",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "TRAINING_RUN_EXECUTION_RECORD",
+      "to": "CANDIDATE_CHECKPOINT_CATALOG",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "TRAINING_RUN_EXECUTION_RECORD",
+      "to": "TRAINING_RUN_ATTEMPT_RECORD",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "TRAINING_SELECTION_LADDER",
+      "to": "DEVELOPMENT_MACE_BUNDLE",
+      "type": "execution_requires"
+    },
+    {
+      "from": "TRAINING_SELECTION_LADDER",
+      "to": "SELECTION_LEVEL_IDENTITY",
+      "type": "requires"
+    },
+    {
+      "from": "TRAJECTORY_COLLECTION",
+      "to": "FRAME_FACTS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "TRAJECTORY_COLLECTION",
+      "to": "TRAJECTORY_QUALITY",
+      "type": "execution_requires"
+    },
+    {
+      "from": "TRAJECTORY_GENERATION_IDENTITIES",
+      "to": "OBSERVABLE_VALIDATION_EVIDENCE",
+      "type": "execution_requires"
+    },
+    {
+      "from": "TRAJECTORY_QUALITY",
+      "to": "FRAME_ELIGIBILITY",
+      "type": "execution_requires"
+    },
+    {
+      "from": "TRAJECTORY_QUALITY",
+      "predicate": "trajectory_quality != unqualified",
+      "to": "PRODUCTION_REGIMES",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "TRAJECTORY_QUALITY",
+      "to": "SOURCE_CATALOG",
+      "type": "execution_requires"
+    },
+    {
+      "from": "UNCERTAINTY_CALIBRATION",
+      "to": "CALIBRATION_APPLICABILITY_DOMAIN",
+      "type": "execution_requires"
+    },
+    {
+      "from": "UNCERTAINTY_SIGNAL_DIAGNOSTIC",
+      "to": "ACQUISITION_DECISIONS",
+      "type": "optional_enrichment"
+    },
+    {
+      "from": "UNIVERSAL_STRUCTURAL_FEATURE_CATALOG",
+      "to": "GENERIC_STRUCTURAL_EVENT_CATALOG",
+      "type": "execution_requires"
+    },
+    {
+      "from": "UNIVERSAL_STRUCTURAL_FEATURE_CATALOG",
+      "to": "SELECTION_FEATURE_CATALOGS",
+      "type": "execution_requires"
+    },
+    {
+      "from": "VASP_CONTROLS",
+      "to": "DERIVATIVE_CONVENTION",
+      "type": "execution_requires"
+    },
+    {
+      "from": "VASP_CONTROLS",
+      "to": "ENERGY_REFERENCE_IDENTITY",
+      "type": "execution_requires"
+    },
+    {
+      "from": "VASP_CONTROLS",
+      "to": "ENSEMBLE_CERTIFICATE",
+      "type": "execution_requires"
+    },
+    {
+      "from": "VASP_CONTROLS",
+      "to": "NUMERICAL_QUALITY_PROFILE",
+      "type": "execution_requires"
+    },
+    {
+      "from": "VASP_CONTROLS",
+      "to": "REVIEW_MANIFEST_INFERENCE_RESULT",
+      "type": "execution_requires"
+    },
+    {
+      "from": "VASP_CONTROLS",
+      "to": "THEORY_IDENTITY",
+      "type": "execution_requires"
+    },
+    {
+      "from": "VASP_CONTROLS",
+      "to": "VERIFIED_STRAIN_RELATIONSHIP",
+      "type": "execution_requires"
+    },
+    {
+      "from": "VERIFIED_STRAIN_RELATIONSHIP",
+      "to": "REFERENCE_CELL",
+      "type": "execution_requires"
+    },
+    {
+      "from": "VERIFIED_STRAIN_RELATIONSHIP",
+      "to": "REVIEW_MANIFEST_INFERENCE_RESULT",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "CHECKPOINT_SCREENING_ROUND_RECORD",
+      "to": "CHECKPOINT_SURVIVOR_GUARD_EVIDENCE",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CHECKPOINT_SURVIVOR_GUARD_EVIDENCE",
+      "to": "CHECKPOINT_SURVIVOR_RECORD",
+      "type": "execution_requires"
+    },
+    {
+      "from": "NESTED_CHECKPOINT_EVALUATION_PLAN",
+      "to": "CHECKPOINT_SURVIVOR_GUARD_EVIDENCE",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "PRECISION_STAGE_EXECUTION_PLAN",
+      "to": "PRECISION_RUNTIME_COMPANION",
+      "type": "produces"
+    },
+    {
+      "from": "PRECISION_RUNTIME_COMPANION",
+      "to": "PRECISION_STAGE_TRANSITION_RECORD",
+      "type": "execution_requires"
+    },
+    {
+      "from": "PRECISION_RUNTIME_COMPANION",
+      "to": "TRAINING_CHECKPOINTS",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "CAMPAIGN_ARTIFACT_OWNERSHIP_CATALOG",
+      "to": "LIFECYCLE_SAFE_RECLAMATION_POLICY",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CAMPAIGN_STORAGE_REPORT",
+      "to": "LIFECYCLE_SAFE_RECLAMATION_POLICY",
+      "type": "optional_enrichment"
+    },
+    {
+      "from": "LIFECYCLE_SAFE_RECLAMATION_POLICY",
+      "to": "CAMPAIGN_CLEANUP_MANIFEST",
+      "type": "produces"
+    },
+    {
+      "from": "LIFECYCLE_SAFE_RECLAMATION_POLICY",
+      "to": "TIERED_STORAGE_RECLAMATION_PLAN",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CAMPAIGN_ARTIFACT_OWNERSHIP_CATALOG",
+      "to": "IMMUTABLE_CONTENT_STORE",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CAMPAIGN_STORAGE_REPORT",
+      "to": "IMMUTABLE_CONTENT_STORE",
+      "type": "optional_enrichment"
+    },
+    {
+      "from": "COLD_ARCHIVE_MANIFEST",
+      "to": "COLD_ARCHIVE_RESTORE_RECEIPT",
+      "type": "produces"
+    },
+    {
+      "from": "COLD_ARCHIVE_MANIFEST",
+      "to": "CAMPAIGN_CLEANUP_MANIFEST",
+      "type": "optional_enrichment"
+    },
+    {
+      "from": "FRAME_CATALOG",
+      "to": "TARGET_DATA2B_COVERAGE_REFERENCE_V2",
+      "type": "execution_requires"
+    },
+    {
+      "from": "TARGET_DATA2B_COVERAGE_REFERENCE_V2",
+      "to": "TARGET_DATA2B_NATIVE_ARRAY_STORE",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "TARGET_DATA2B_NATIVE_ARRAY_STORE",
+      "to": "TARGET_DATA2B_V1_V2_MIGRATION_REPORT",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "PERF_BASE0_NUMERICAL_ORACLE",
+      "to": "PERF_P0_QUALIFICATION_EVIDENCE",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "TARGET_DATA2B_NATIVE_ARRAY_STORE",
+      "to": "PERF_P0_QUALIFICATION_EVIDENCE",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "PERF_P0_QUALIFICATION_EVIDENCE",
+      "to": "PERF_P1_EXACT_SELECTION_WORKSPACE",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "PERF_P1_EXACT_SELECTION_WORKSPACE",
+      "to": "TRAINING_SELECTION_LADDER",
+      "type": "execution_requires"
+    },
+    {
+      "from": "PERF_P1_EXACT_SELECTION_WORKSPACE",
+      "to": "PERF_P1_PROGRESSIVE_COVERAGE_STATE",
+      "type": "execution_requires"
+    },
+    {
+      "from": "PERF_P1_EXACT_SELECTION_WORKSPACE",
+      "to": "PERF_P1_DATA7_LINEAR_NEIGHBOR_STATE",
+      "type": "execution_requires"
+    },
+    {
+      "from": "PERF_P1_EXACT_SELECTION_WORKSPACE",
+      "to": "PERF_P1_QUALIFICATION_EVIDENCE",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "PERF_P1_PROGRESSIVE_COVERAGE_STATE",
+      "to": "PERF_P1_QUALIFICATION_EVIDENCE",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "PERF_P1_DATA7_LINEAR_NEIGHBOR_STATE",
+      "to": "PERF_P1_QUALIFICATION_EVIDENCE",
+      "type": "source_identity_requires"
+    },
+    {
+      "from": "PERF_P1_QUALIFICATION_EVIDENCE",
+      "to": "PERF_P2_LAZY_TARGET_LADDER_V2",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "PERF_P2_LAZY_TARGET_LADDER_V2",
+      "to": "PERF_P2_QUALIFICATION_EVIDENCE",
+      "type": "qualification_requires"
+    },
+    {
+      "from": "PERF_P1_QUALIFICATION_EVIDENCE",
+      "to": "SIZE_HALVE1_TARGET_SIZE_CORRECTION",
+      "type": "promotion_requires"
+    },
+    {
+      "from": "SIZE_HALVE1_TARGET_SIZE_CORRECTION",
+      "to": "PERF_P2_LAZY_TARGET_LADDER_V2",
+      "type": "supersedes"
+    },
+    {
+      "from": "PERF_P2R_SUCCESSIVE_FIDELITY_EXECUTION",
+      "to": "PERF_P3_CPU_STRUCTURAL_REDUCTION",
+      "type": "implementation_requires"
+    },
+    {
+      "from": "SIZE_HALVE1_TARGET_SIZE_CORRECTION",
+      "to": "SIZE_FIDELITY1_COARSE_SCREEN_CALIBRATION",
+      "type": "qualification_requires"
+    },
+    {
+      "from": "SIZE_FIDELITY1_COARSE_SCREEN_CALIBRATION",
+      "to": "PERF_P2R_SUCCESSIVE_FIDELITY_EXECUTION",
+      "type": "implementation_requires"
+    },
+    {
+      "from": "SIZE_FIDELITY1_COARSE_SCREEN_CALIBRATION",
+      "to": "FINAL_GPU1_DEFERRED_RELEASE_QUALIFICATION",
+      "type": "release_qualification_requires"
+    },
+    {
+      "from": "PERF_P2R_SUCCESSIVE_FIDELITY_EXECUTION",
+      "to": "FINAL_GPU1_DEFERRED_RELEASE_QUALIFICATION",
+      "type": "release_qualification_requires"
+    },
+    {
+      "from": "PERF_P5_TRAIN_EVAL_PERSISTENCE_REUSE",
+      "to": "FINAL_GPU1_DEFERRED_RELEASE_QUALIFICATION",
+      "type": "release_qualification_requires"
+    },
+    {
+      "from": "PERF_P5_TRAIN_EVAL_PERSISTENCE_REUSE",
+      "to": "CUEQ_DEP1_RUNTIME_FREEZE",
+      "type": "implementation_requires"
+    },
+    {
+      "from": "CUEQ_DEP1_RUNTIME_FREEZE",
+      "to": "FINAL_GPU1_DEFERRED_RELEASE_QUALIFICATION",
+      "type": "release_qualification_requires"
+    },
+    {
+      "from": "CUEQ_DEP1_RUNTIME_FREEZE",
+      "to": "CUEQ_PHASE1_TRAINING_ONLY_QUALIFICATION",
+      "type": "execution_requires"
+    },
+    {
+      "from": "CUEQ_PHASE1_TRAINING_ONLY_QUALIFICATION",
+      "to": "PERF_CERT1_END_TO_END_CERTIFICATION",
+      "type": "release_qualification_requires"
+    },
+    {
+      "from": "CUEQ_PHASE1_TRAINING_ONLY_QUALIFICATION",
+      "to": "CUEQ_PHASE2_SELECTED_HEAD_SOURCE_EXECUTION_OPTIONAL",
+      "type": "optional_enrichment"
+    },
+    {
+      "from": "CUEQ_PHASE2_SELECTED_HEAD_SOURCE_EXECUTION_OPTIONAL",
+      "to": "PERF_CERT1_END_TO_END_CERTIFICATION",
+      "type": "optional_enrichment"
+    },
+    {
+      "from": "SIZE_FIDELITY1_COARSE_SCREEN_CALIBRATION",
+      "to": "PERF_CERT1_END_TO_END_CERTIFICATION",
+      "type": "release_qualification_requires"
+    },
+    {
+      "from": "PERF_P2R_SUCCESSIVE_FIDELITY_EXECUTION",
+      "to": "PERF_CERT1_END_TO_END_CERTIFICATION",
+      "type": "release_qualification_requires"
+    },
+    {
+      "from": "VRAM1_PERF_P4_MEMORY_PIPELINE",
+      "to": "PERF_CERT1_END_TO_END_CERTIFICATION",
+      "type": "release_qualification_requires"
+    },
+    {
+      "from": "PERF_P5_TRAIN_EVAL_PERSISTENCE_REUSE",
+      "to": "PERF_CERT1_END_TO_END_CERTIFICATION",
+      "type": "release_qualification_requires"
+    },
+    {
+      "from": "VRAM1_PERF_P4_MEMORY_PIPELINE",
+      "to": "FINAL_GPU1_DEFERRED_RELEASE_QUALIFICATION",
+      "type": "release_qualification_requires"
+    },
+    {
+      "from": "CUEQ_PHASE1_TRAINING_ONLY_QUALIFICATION",
+      "to": "FINAL_GPU1_DEFERRED_RELEASE_QUALIFICATION",
+      "type": "release_qualification_requires"
+    },
+    {
+      "from": "CUEQ_PHASE2_SELECTED_HEAD_SOURCE_EXECUTION_OPTIONAL",
+      "to": "FINAL_GPU1_DEFERRED_RELEASE_QUALIFICATION",
+      "type": "release_qualification_requires"
+    },
+    {
+      "from": "PERF_CERT1_END_TO_END_CERTIFICATION",
+      "to": "FINAL_GPU1_DEFERRED_RELEASE_QUALIFICATION",
+      "type": "release_qualification_requires"
+    },
+    {
+      "from": "E3NN_BASELINE_COMPLETE_CAMPAIGN",
+      "to": "FINAL_GPU1_DEFERRED_RELEASE_QUALIFICATION",
+      "type": "release_qualification_requires"
+    },
+    {
+      "from": "CUEQ_PHASE1_TRAINING_ONLY_QUALIFICATION",
+      "to": "CUEQ_DEFAULT1_TRAINING_DEFAULT_POLICY",
+      "type": "implementation_requires"
+    },
+    {
+      "from": "CUEQ_DEFAULT1_TRAINING_DEFAULT_POLICY",
+      "to": "TRAINING_PROTOCOL_IDENTITY",
+      "type": "source_identity_requires"
+    }
+  ],
+  "forbidden_dependencies": [
+    {
+      "from": [
+        "LOCKED_INTERPOLATION_TEST",
+        "LOCKED_CHALLENGE_TESTS"
+      ],
+      "to": [
+        "FOLD_LOCAL_TRANSFORMS",
+        "FOLD_FEATURE_METRIC_FITS",
+        "FOLD_ATOMIC_REFERENCE_FITS",
+        "FOLD_TRAINING_DIFFICULTY_FEATURES",
+        "FOLD_LOCAL_SELECTIONS",
+        "FINAL_FEATURE_TRANSFORM",
+        "FINAL_FEATURE_METRIC_FIT",
+        "FINAL_ATOMIC_REFERENCE_FIT",
+        "FINAL_TRAINING_DIFFICULTY_FEATURES",
+        "FINAL_SELECTION_MASTER_ORDER",
+        "TRAINING_PROTOCOL_IDENTITY",
+        "CHECKPOINT_SELECTION_DECISION",
+        "UNCERTAINTY_CALIBRATION",
+        "ACQUISITION_DECISIONS"
+      ]
+    },
+    {
+      "from": [
+        "FOLD_EVALUATION_DOMAINS",
+        "FOLD_CHECKPOINT_MONITORS"
+      ],
+      "to": [
+        "FOLD_LOCAL_TRANSFORMS",
+        "FOLD_FEATURE_METRIC_FITS",
+        "FOLD_ATOMIC_REFERENCE_FITS",
+        "FOLD_TRAINING_DIFFICULTY_FEATURES",
+        "FOLD_LOCAL_SELECTIONS"
+      ]
+    },
+    {
+      "from": [
+        "CALIBRATION_DOMAIN"
+      ],
+      "to": [
+        "FINAL_FEATURE_TRANSFORM",
+        "FINAL_FEATURE_METRIC_FIT",
+        "FINAL_ATOMIC_REFERENCE_FIT",
+        "FINAL_TRAINING_DIFFICULTY_FEATURES",
+        "FINAL_SELECTION_MASTER_ORDER",
+        "CHECKPOINT_SELECTION_DECISION",
+        "TRAINING_PROTOCOL_IDENTITY"
+      ]
+    },
+    {
+      "from": [
+        "BLINDED_EVALUATION_PREDICTIONS"
+      ],
+      "to": [
+        "FOLD_LOCAL_SELECTIONS",
+        "FINAL_SELECTION_MASTER_ORDER",
+        "TRAINING_PROTOCOL_IDENTITY"
+      ]
+    },
+    {
+      "from": [
+        "LOCKED_INTERPOLATION_TEST",
+        "LOCKED_CHALLENGE_TESTS",
+        "LOCKED_TEST_OBSERVABLE_EVIDENCE"
+      ],
+      "reason": "Locked-test physical-observable evidence shall not tune comparison policies, training, data selection, or checkpoint decisions.",
+      "to": [
+        "OBSERVABLE_COMPARISON_POLICY",
+        "TRAINING_PROTOCOL_IDENTITY",
+        "CHECKPOINT_SELECTION_DECISION",
+        "FOLD_FEATURE_METRIC_FITS",
+        "FINAL_FEATURE_METRIC_FIT"
+      ]
+    },
+    {
+      "from": [
+        "OBSERVABLE_COMPARISON_RESULT",
+        "OBSERVABLE_ACCEPTANCE_DECISION"
+      ],
+      "reason": "Post-training physical validation shall not retroactively alter data selection or the frozen training protocol.",
+      "to": [
+        "FOLD_LOCAL_SELECTIONS",
+        "FINAL_SELECTION_MASTER_ORDER",
+        "TRAINING_PROTOCOL_IDENTITY"
+      ]
+    },
+    {
+      "from": [
+        "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
+        "CROSS_SYSTEM_QUALIFICATION_SUITE"
+      ],
+      "reason": "Cross-system software qualification is a release gate and shall not tune scientific features, selections, protocols, or checkpoints.",
+      "to": [
+        "FOLD_LOCAL_TRANSFORMS",
+        "FOLD_FEATURE_METRIC_FITS",
+        "FOLD_LOCAL_SELECTIONS",
+        "FINAL_FEATURE_TRANSFORM",
+        "FINAL_FEATURE_METRIC_FIT",
+        "FINAL_SELECTION_MASTER_ORDER",
+        "TRAINING_PROTOCOL_IDENTITY",
+        "CHECKPOINT_SELECTION_DECISION"
+      ]
+    },
+    {
+      "from": [
+        "OBSERVABLE_VALIDATION_EVIDENCE",
+        "OBSERVABLE_COMPARISON_RESULT",
+        "OBSERVABLE_ACCEPTANCE_DECISION",
+        "LOCKED_TEST_OBSERVABLE_EVIDENCE"
+      ],
+      "to": [
+        "OBSERVABLE_COMPARISON_RULES",
+        "PREDECLARED_OBSERVABLE_THRESHOLDS",
+        "OBSERVABLE_SCORE_UNCERTAINTY",
+        "OBSERVABLE_COMPARISON_POLICY"
+      ]
+    },
+    {
+      "from": "CALLER_ASSERTED_FOUNDATION_STATUS",
+      "reason": "Foundation features and residual E0 must be derived from verified DATA6/DATA7 artifacts.",
+      "to": "DATA9A_GATE"
+    },
+    {
+      "from": "UNFROZEN_CORPUS_COUNTS",
+      "reason": "Qualification must bind the immutable ProductionCorpusPlan.",
+      "to": "DATA9A_GATE"
+    },
+    {
+      "from": "REPLAY_GEOMETRY_ONLY_IDENTITY",
+      "reason": "Replay semantic identity must include numerical label payloads.",
+      "to": "PRODUCTION_DATA8_ARTIFACT"
+    },
+    {
+      "from": [
+        "CAMPAIGN_CLEANUP_MANIFEST",
+        "TIERED_STORAGE_RECLAMATION_PLAN"
+      ],
+      "reason": "Campaign cleanup may reference external user inputs for provenance but shall never acquire deletion authority over user-supplied source or replay material.",
+      "to": [
+        "SOURCE_BYTES",
+        "REPLAY_SOURCE"
+      ]
+    },
+    {
+      "from": [
+        "CHECKPOINT_SCREENING_ROUND_RECORD",
+        "PARTIAL_CHECKPOINT_PREDICTION_COVERAGE"
+      ],
+      "reason": "Partial multi-fidelity screening evidence cannot authorize final scientific admissibility, checkpoint selection, or protocol freeze.",
+      "to": [
+        "CHECKPOINT_ADMISSIBILITY_DECISION",
+        "CHECKPOINT_SELECTION_RECORD",
+        "PROTOCOL_FREEZE_RECORD"
+      ]
+    },
+    {
+      "from": [
+        "CHECKPOINT_SCREENING_ROUND_RECORD",
+        "PARTIAL_CHECKPOINT_PREDICTION_COVERAGE"
+      ],
+      "reason": "Partial or full checkpoint-evaluation evidence shall not tune or rewrite a frozen training precision schedule or stage transition.",
+      "to": [
+        "STAGED_TRAINING_PRECISION_POLICY",
+        "PRECISION_STAGE_EXECUTION_PLAN",
+        "PRECISION_STAGE_TRANSITION_RECORD"
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "id": "ACQUISITION_DECISIONS"
+    },
+    {
+      "id": "ADAPTIVE_INFERENCE_CONCURRENCY_PLAN"
+    },
+    {
+      "id": "ANALYSIS_LOCAL_STRUCTURE_FEATURES"
+    },
+    {
+      "id": "ASE_MD_STATE_PRECISION_AUDIT"
+    },
+    {
+      "id": "ATOMIC_MODEL_PREDICTION_MANIFEST"
+    },
+    {
+      "id": "ATOM_GROUP_CATALOG"
+    },
+    {
+      "id": "BLINDED_EVALUATION_PREDICTIONS"
+    },
+    {
+      "id": "BLINDING_BOUNDARY_CATALOG"
+    },
+    {
+      "id": "BOUNDED_DEPLOYMENT_VERIFICATION"
+    },
+    {
+      "id": "CALIBRATION_APPLICABILITY_DOMAIN"
+    },
+    {
+      "id": "CALIBRATION_DOMAIN"
+    },
+    {
+      "id": "CALIBRATION_TRANSFER_DECISION"
+    },
+    {
+      "id": "CAMPAIGN_ARTIFACT_OWNERSHIP_CATALOG"
+    },
+    {
+      "id": "CAMPAIGN_CLEANUP_MANIFEST"
+    },
+    {
+      "id": "CAMPAIGN_CLI_CONFIGURATION"
+    },
+    {
+      "id": "CAMPAIGN_MANIFEST_APPROVAL"
+    },
+    {
+      "id": "CAMPAIGN_PRECISION_PROFILE"
+    },
+    {
+      "id": "CAMPAIGN_PREFLIGHT_RECORD"
+    },
+    {
+      "id": "CAMPAIGN_PREPARATION_GATE"
+    },
+    {
+      "id": "CAMPAIGN_RESULT_SUMMARY"
+    },
+    {
+      "id": "CAMPAIGN_STATE_DATABASE"
+    },
+    {
+      "id": "CAMPAIGN_STATUS_VIEW"
+    },
+    {
+      "id": "CAMPAIGN_STORAGE_REPORT"
+    },
+    {
+      "id": "CANDIDATE_ADMISSIBILITY"
+    },
+    {
+      "id": "CANDIDATE_CATALOG"
+    },
+    {
+      "id": "CANDIDATE_CHECKPOINT_CATALOG"
+    },
+    {
+      "id": "CANDIDATE_TRAJECTORIES"
+    },
+    {
+      "id": "CHECKPOINT_ADMISSIBILITY_DECISION"
+    },
+    {
+      "id": "CHECKPOINT_EPOCH_REPORT"
+    },
+    {
+      "id": "CHECKPOINT_EVALUATION_CAPSULE"
+    },
+    {
+      "id": "CHECKPOINT_EVALUATION_POLICY"
+    },
+    {
+      "id": "CHECKPOINT_EVALUATION_RECORD"
+    },
+    {
+      "id": "CHECKPOINT_METRIC_POLICY"
+    },
+    {
+      "id": "CHECKPOINT_METRIC_RECORD"
+    },
+    {
+      "id": "CHECKPOINT_SCREENING_ROUND_RECORD"
+    },
+    {
+      "id": "CHECKPOINT_SELECTION_DECISION"
+    },
+    {
+      "id": "CHECKPOINT_SELECTION_RECORD"
+    },
+    {
+      "id": "CHECKPOINT_SURVIVOR_GUARD_EVIDENCE"
+    },
+    {
+      "id": "CHECKPOINT_SURVIVOR_RECORD"
+    },
+    {
+      "authenticated": true,
+      "id": "COLD_ARCHIVE_MANIFEST",
+      "implementation_status": "implemented",
+      "implemented_version": "0.20.116a0",
+      "representation": "tar+gzip",
+      "reversible_restore": true
+    },
+    {
+      "id": "COMMITTEE_EXPORT_POLICY"
+    },
+    {
+      "id": "COMMITTEE_IDENTITY"
+    },
+    {
+      "id": "COMMITTEE_MEMBER_RECORD"
+    },
+    {
+      "id": "CONDITION_AXIS_CATALOG"
+    },
+    {
+      "id": "CONFIGURATION_WEIGHT_POLICY"
+    },
+    {
+      "id": "CPU_INFERENCE_TELEMETRY"
+    },
+    {
+      "id": "CPU_RAM_PARALLEL_EXECUTION_PLAN"
+    },
+    {
+      "id": "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE"
+    },
+    {
+      "id": "CROSS_SYSTEM_QUALIFICATION_POLICY"
+    },
+    {
+      "id": "CROSS_SYSTEM_QUALIFICATION_SUITE"
+    },
+    {
+      "id": "CROSS_VALIDATION_JOB_FAMILY"
+    },
+    {
+      "id": "CROSS_VALIDATION_PLAN"
+    },
+    {
+      "id": "DATA6_MODEL_SWEEP_CHECKPOINT"
+    },
+    {
+      "id": "DATA6_MODEL_SWEEP_EXECUTION_POLICY"
+    },
+    {
+      "id": "DATA6_MODEL_SWEEP_PLAN"
+    },
+    {
+      "id": "DATA8_ATOMIC_PROMOTION"
+    },
+    {
+      "id": "DATA9A_GATE"
+    },
+    {
+      "id": "DATA9B_EXECUTION"
+    },
+    {
+      "id": "DERIVATIVE_CONVENTION"
+    },
+    {
+      "id": "DEVELOPMENT_MACE_BUNDLE"
+    },
+    {
+      "id": "DEVELOPMENT_POOL"
+    },
+    {
+      "id": "DFT_QUERY_MANIFEST"
+    },
+    {
+      "id": "ENERGY_REFERENCE_IDENTITY"
+    },
+    {
+      "id": "ENSEMBLE_CERTIFICATE"
+    },
+    {
+      "id": "EVALUATION_ACTIVATION_DECISION"
+    },
+    {
+      "id": "EVALUATION_RESULT_CATALOG"
+    },
+    {
+      "id": "EVENT_CATALOG"
+    },
+    {
+      "id": "EXPOSURE_BACKEND_POLICY"
+    },
+    {
+      "id": "FEATURE_METRIC_POLICY_TEMPLATE"
+    },
+    {
+      "id": "FILENAME_STRAIN_CANDIDATE"
+    },
+    {
+      "id": "FINAL_ATOMIC_REFERENCE_FIT"
+    },
+    {
+      "id": "FINAL_COMMITTEE_CALIBRATION_PREDICTIONS"
+    },
+    {
+      "id": "FINAL_FEATURE_METRIC_FIT"
+    },
+    {
+      "id": "FINAL_FEATURE_TRANSFORM"
+    },
+    {
+      "id": "FINAL_SELECTION_MASTER_ORDER"
+    },
+    {
+      "id": "FINAL_TARGET_TRAINING_DOMAIN"
+    },
+    {
+      "id": "FINAL_TRAINING_DIFFICULTY_FEATURES"
+    },
+    {
+      "id": "FOCUS_ATOM_GROUP_POLICY"
+    },
+    {
+      "id": "FOLD_ATOMIC_REFERENCE_FITS"
+    },
+    {
+      "id": "FOLD_CHECKPOINT_MONITORS"
+    },
+    {
+      "id": "FOLD_DEFINITIONS"
+    },
+    {
+      "id": "FOLD_EVALUATION_DOMAINS"
+    },
+    {
+      "id": "FOLD_FEATURE_METRIC_FITS"
+    },
+    {
+      "id": "FOLD_LOCAL_SELECTIONS"
+    },
+    {
+      "id": "FOLD_LOCAL_TRANSFORMS"
+    },
+    {
+      "id": "FOLD_TRAINING_DIFFICULTY_FEATURES"
+    },
+    {
+      "id": "FOLD_TRAIN_DOMAINS"
+    },
+    {
+      "id": "FOUNDATION_CHECKPOINT"
+    },
+    {
+      "id": "FOUNDATION_RESIDUAL_E0_FIT"
+    },
+    {
+      "id": "FRAME_CATALOG"
+    },
+    {
+      "id": "FRAME_ELIGIBILITY"
+    },
+    {
+      "id": "FRAME_FACTS"
+    },
+    {
+      "id": "FULL_FIDELITY_FINALIST_EVALUATION"
+    },
+    {
+      "id": "GENERIC_IMPORT_ISOLATION_EVIDENCE"
+    },
+    {
+      "id": "GENERIC_STRUCTURAL_EVENT_CATALOG"
+    },
+    {
+      "id": "GEOMETRY_FINGERPRINT"
+    },
+    {
+      "id": "GPU_INFERENCE_TELEMETRY"
+    },
+    {
+      "authority_class": "S+E",
+      "gate_name": "VRAM1 + PERF-P4",
+      "gpu_qualification_schedule": "FINAL_GPU1",
+      "id": "GPU_VRAM_BATCH_EXECUTION_PLAN",
+      "implementation_status": "implemented_cpu_control_plane_qualified"
+    },
+    {
+      "id": "INDEPENDENCE_AXIS_CATALOG"
+    },
+    {
+      "id": "INSTALLED_MACE_QUALIFICATION"
+    },
+    {
+      "id": "ISOLATED_TRAJECTORY_WORKER"
+    },
+    {
+      "id": "LABELED_ACTIVE_ROUND"
+    },
+    {
+      "id": "LABELED_CONFIGURATION_FINGERPRINT"
+    },
+    {
+      "id": "LABELED_FRAME_ELIGIBILITY"
+    },
+    {
+      "id": "LABEL_DOMAIN"
+    },
+    {
+      "id": "LABEL_PAYLOAD_DIGEST"
+    },
+    {
+      "id": "LEAKAGE_AUDIT_REPORT"
+    },
+    {
+      "id": "LEARNING_CURVE_RECORD"
+    },
+    {
+      "id": "LOCKED_CHALLENGE_TESTS"
+    },
+    {
+      "id": "LOCKED_INTERPOLATION_TEST"
+    },
+    {
+      "id": "LOCKED_TEST_OBSERVABLE_EVIDENCE"
+    },
+    {
+      "id": "LTA_PROFILE_EXTENSION"
+    },
+    {
+      "id": "MACE_ACCELERATION_POLICY"
+    },
+    {
+      "id": "MACE_ACCELERATION_PROBE"
+    },
+    {
+      "id": "MACE_ADAPTER_LOCK"
+    },
+    {
+      "id": "MACE_CHECKPOINT_CONTROL_POLICY"
+    },
+    {
+      "id": "MACE_CLI_SMOKE_RECORD"
+    },
+    {
+      "id": "MACE_CONFIG_REALIZATION_RECORD"
+    },
+    {
+      "id": "MACE_CRITICAL_PRECISION_AUDIT"
+    },
+    {
+      "id": "MACE_CRITICAL_PRECISION_POLICY"
+    },
+    {
+      "id": "MACE_DATALOADER_WORKER_PLAN"
+    },
+    {
+      "id": "MACE_DEPENDENCY_MANIFEST"
+    },
+    {
+      "id": "MACE_DEPLOYMENT_ARTIFACT"
+    },
+    {
+      "id": "MACE_DEPLOYMENT_EXPORT_POLICY"
+    },
+    {
+      "id": "MACE_EXPOSURE_REALIZATION_RECORD"
+    },
+    {
+      "id": "MACE_INFERENCE_COMPARISON"
+    },
+    {
+      "id": "MACE_JOB_EXECUTION_SMOKE_RECORD"
+    },
+    {
+      "id": "MACE_MODEL_PRECISION_RECORD"
+    },
+    {
+      "id": "MACE_PRECISION_POLICY"
+    },
+    {
+      "id": "MACE_PRECISION_TRANSITION_RECORD"
+    },
+    {
+      "id": "MACE_RAW_DESCRIPTORS"
+    },
+    {
+      "id": "MACE_RUNTIME_ENVIRONMENT_RECORD"
+    },
+    {
+      "id": "MANIFEST_INFERENCE_POLICY"
+    },
+    {
+      "id": "MATERIAL_PROFILE_CONTRACTS"
+    },
+    {
+      "id": "MATERIAL_PROFILE_IDENTITY"
+    },
+    {
+      "id": "MATERIAL_PROFILE_PROVIDER_IDENTITY"
+    },
+    {
+      "id": "MLFF_CAMPAIGN_CLI_TOOL"
+    },
+    {
+      "id": "MLFF_CAMPAIGN_USER_GUIDE"
+    },
+    {
+      "id": "NATIVE_MACE_GRAPH_BATCH"
+    },
+    {
+      "id": "NESTED_CHECKPOINT_EVALUATION_PLAN"
+    },
+    {
+      "id": "NEW_DATASET_GENERATION"
+    },
+    {
+      "id": "NUMERICAL_QUALITY_PROFILE"
+    },
+    {
+      "id": "OBSERVABLE_ACCEPTANCE_DECISION"
+    },
+    {
+      "id": "OBSERVABLE_ANALYSIS_RECIPE"
+    },
+    {
+      "id": "OBSERVABLE_COLLECTION_IDENTITIES"
+    },
+    {
+      "id": "OBSERVABLE_COMPARISON_POLICY"
+    },
+    {
+      "id": "OBSERVABLE_COMPARISON_RESULT"
+    },
+    {
+      "id": "OBSERVABLE_COMPARISON_RULES"
+    },
+    {
+      "id": "OBSERVABLE_RESULT_IDENTITIES"
+    },
+    {
+      "id": "OBSERVABLE_SCOPE_AGGREGATION"
+    },
+    {
+      "id": "OBSERVABLE_SCORE_UNCERTAINTY"
+    },
+    {
+      "id": "OBSERVABLE_VALIDATION_ACTIVATION_RECORD"
+    },
+    {
+      "id": "OBSERVABLE_VALIDATION_EVIDENCE"
+    },
+    {
+      "id": "OFFLINE_MACE_WHEELHOUSE"
+    },
+    {
+      "id": "OPTIONAL_PROFILE_EXTENSION_PROVIDER"
+    },
+    {
+      "id": "OUTER_MONITOR_VALIDATION"
+    },
+    {
+      "id": "OUTER_PARTITION"
+    },
+    {
+      "id": "OUT_OF_FOLD_PREDICTIONS"
+    },
+    {
+      "id": "PARALLEL_CHECKPOINT_EVALUATION"
+    },
+    {
+      "id": "PARALLEL_NVE_VERIFICATION"
+    },
+    {
+      "id": "PARTIAL_CHECKPOINT_PREDICTION_COVERAGE"
+    },
+    {
+      "id": "PARTITION_CRITICAL_PROFILE_FEATURES"
+    },
+    {
+      "id": "PARTITION_FEASIBILITY_REPORT"
+    },
+    {
+      "id": "PARTITION_INDEPENDENCE_REPORT"
+    },
+    {
+      "id": "PARTITION_ROLE_BUDGET_POLICY"
+    },
+    {
+      "id": "PARTITION_UNIT_CATALOG"
+    },
+    {
+      "id": "PHASE_COMPONENT_IDENTITIES"
+    },
+    {
+      "id": "PHASE_GEOMETRY_SELECTION_PLAN"
+    },
+    {
+      "id": "PORTABLE_MACE_BUNDLE"
+    },
+    {
+      "id": "PRECISION_STAGE_EXECUTION_PLAN"
+    },
+    {
+      "id": "PRECISION_STAGE_TRANSITION_RECORD"
+    },
+    {
+      "id": "PREDECLARED_OBSERVABLE_THRESHOLDS"
+    },
+    {
+      "id": "PRODUCTION_CORPUS_PLAN"
+    },
+    {
+      "id": "PRODUCTION_DATA7_ARTIFACTS"
+    },
+    {
+      "id": "PRODUCTION_DATA8_ARTIFACT"
+    },
+    {
+      "id": "PRODUCTION_GATE_INTEGRITY_EVIDENCE"
+    },
+    {
+      "id": "PRODUCTION_MATERIALIZATION_CHECKPOINT"
+    },
+    {
+      "id": "PRODUCTION_MATERIALIZATION_PLAN"
+    },
+    {
+      "id": "PRODUCTION_MATERIALIZATION_RECORD"
+    },
+    {
+      "id": "PRODUCTION_PREPARATION_BENCHMARK"
+    },
+    {
+      "id": "PRODUCTION_REGIMES"
+    },
+    {
+      "id": "PROFILE_BOUND_UNIVERSAL_STRUCTURAL_POLICY"
+    },
+    {
+      "id": "PROFILE_ENVIRONMENT_COVERAGE"
+    },
+    {
+      "id": "PROFILE_EVENT_CATALOGS"
+    },
+    {
+      "id": "PROFILE_EXTENSION_COVERAGE_EVIDENCE"
+    },
+    {
+      "id": "PROFILE_OBSERVABLE_RECOMMENDATIONS"
+    },
+    {
+      "id": "PROFILE_PARTITION_FEATURE_CATALOGS"
+    },
+    {
+      "id": "PROFILE_SELECTION_FEATURE_CATALOGS"
+    },
+    {
+      "id": "PROPERTY_WEIGHT_POLICY"
+    },
+    {
+      "id": "PROTOCOL_COMPARISON_RECORD"
+    },
+    {
+      "id": "PROTOCOL_FAMILY_AGGREGATE"
+    },
+    {
+      "id": "PROTOCOL_FREEZE_RECORD"
+    },
+    {
+      "id": "PROTOCOL_VARIANT_AGGREGATE"
+    },
+    {
+      "id": "PYTHON_ASE_MACE_EXECUTION"
+    },
+    {
+      "id": "RAW_GENERIC_FEATURES"
+    },
+    {
+      "id": "REFERENCE_CELL"
+    },
+    {
+      "id": "REPLAY_LABEL_PAYLOAD_IDENTITY"
+    },
+    {
+      "id": "REPLAY_MONITOR"
+    },
+    {
+      "id": "REPLAY_PLAN"
+    },
+    {
+      "id": "REPLAY_RETENTION_POLICY"
+    },
+    {
+      "id": "REPLAY_SOURCE"
+    },
+    {
+      "id": "REVIEW_MANIFEST_INFERENCE_RESULT"
+    },
+    {
+      "id": "ROLE_INHERITANCE_POLICY"
+    },
+    {
+      "id": "SEALED_EVALUATION_BUNDLE"
+    },
+    {
+      "id": "SELECTION_BUDGET_POLICY"
+    },
+    {
+      "id": "SELECTION_COVERAGE_REPORT"
+    },
+    {
+      "id": "SELECTION_FEATURE_CATALOGS"
+    },
+    {
+      "id": "SELECTION_LEVEL_IDENTITY"
+    },
+    {
+      "id": "SOFTWARE_PROVENANCE"
+    },
+    {
+      "id": "SOURCE_BYTES"
+    },
+    {
+      "id": "SOURCE_CATALOG"
+    },
+    {
+      "id": "SOURCE_OCCURRENCE_IDENTITY"
+    },
+    {
+      "id": "STAGED_PRECISION_QUALIFICATION_RECORD"
+    },
+    {
+      "id": "STAGED_TRAINING_PRECISION_POLICY"
+    },
+    {
+      "id": "STRUCTURAL_ATOMIC_REFERENCE_AUDIT"
+    },
+    {
+      "id": "STRUCTURAL_ATOMIC_REFERENCE_FIT_POLICY"
+    },
+    {
+      "id": "SYSTEM_RESOURCE_SNAPSHOT"
+    },
+    {
+      "id": "TEMPORAL_BLOCKS"
+    },
+    {
+      "id": "THEORY_IDENTITY"
+    },
+    {
+      "id": "THERMOMECHANICAL_VALIDATION_RECIPES"
+    },
+    {
+      "archive_apply_requires": "verified COLD_ARCHIVE_MANIFEST",
+      "id": "TIERED_STORAGE_RECLAMATION_PLAN",
+      "implementation_status": "implemented",
+      "implemented_version": "0.20.115a0",
+      "tiers": [
+        "safe",
+        "cache",
+        "recompute",
+        "compact",
+        "archive"
+      ]
+    },
+    {
+      "id": "TRAINED_COMMITTEE"
+    },
+    {
+      "id": "TRAINING_CAMPAIGN_PLAN"
+    },
+    {
+      "id": "TRAINING_CAMPAIGN_POLICY"
+    },
+    {
+      "id": "TRAINING_CAMPAIGN_RUN_PLAN"
+    },
+    {
+      "id": "TRAINING_CHECKPOINTS"
+    },
+    {
+      "id": "TRAINING_EXECUTION_POLICY"
+    },
+    {
+      "id": "TRAINING_OBJECTIVE_POLICY"
+    },
+    {
+      "id": "TRAINING_PROTOCOL_IDENTITY"
+    },
+    {
+      "id": "TRAINING_RUN_ATTEMPT_RECORD"
+    },
+    {
+      "id": "TRAINING_RUN_EXECUTION_RECORD"
+    },
+    {
+      "id": "TRAINING_SELECTION_LADDER"
+    },
+    {
+      "id": "TRAJECTORY_COLLECTION"
+    },
+    {
+      "id": "TRAJECTORY_GENERATION_IDENTITIES"
+    },
+    {
+      "id": "TRAJECTORY_QUALITY"
+    },
+    {
+      "id": "UNCERTAINTY_CALIBRATION"
+    },
+    {
+      "id": "UNCERTAINTY_SIGNAL_DIAGNOSTIC"
+    },
+    {
+      "id": "UNIVERSAL_STRUCTURAL_FEATURE_CATALOG"
+    },
+    {
+      "id": "VASP_CONTROLS"
+    },
+    {
+      "id": "VERIFIED_STRAIN_RELATIONSHIP"
+    },
+    {
+      "id": "PRECISION_RUNTIME_COMPANION"
+    },
+    {
+      "id": "LIFECYCLE_SAFE_RECLAMATION_POLICY"
+    },
+    {
+      "id": "IMMUTABLE_CONTENT_STORE",
+      "identity": "sha256",
+      "implementation_status": "implemented",
+      "implemented_version": "0.20.116a0",
+      "physical_representation": "same_filesystem_hardlink"
+    },
+    {
+      "id": "COLD_ARCHIVE_RESTORE_RECEIPT",
+      "implementation_status": "implemented",
+      "implemented_version": "0.20.116a0"
+    },
+    {
+      "id": "PERF_BASE0_NUMERICAL_ORACLE",
+      "implementation_status": "implemented",
+      "implemented_version": "0.20.178a0"
+    },
+    {
+      "id": "TARGET_DATA2B_COVERAGE_REFERENCE_V2",
+      "implementation_status": "implemented",
+      "implemented_version": "0.20.179a0",
+      "scientific_version": "mdstats.target-data2b.coverage.2026-08.v1"
+    },
+    {
+      "id": "TARGET_DATA2B_NATIVE_ARRAY_STORE",
+      "implementation_status": "implemented",
+      "implemented_version": "0.20.179a0",
+      "persistence_version": "mdstats.target-data2b.native-persistence.2026-08.v2"
+    },
+    {
+      "id": "TARGET_DATA2B_V1_V2_MIGRATION_REPORT",
+      "implementation_status": "implemented",
+      "implemented_version": "0.20.179a0"
+    },
+    {
+      "id": "PERF_P0_QUALIFICATION_EVIDENCE",
+      "implementation_status": "implemented",
+      "implemented_version": "0.20.179a0"
+    },
+    {
+      "authority_class": "E",
+      "id": "PERF_P1_EXACT_SELECTION_WORKSPACE",
+      "implementation_status": "implemented",
+      "implemented_version": "0.20.180a0"
+    },
+    {
+      "authority_class": "E",
+      "id": "PERF_P1_PROGRESSIVE_COVERAGE_STATE",
+      "implementation_status": "implemented",
+      "implemented_version": "0.20.180a0"
+    },
+    {
+      "authority_class": "E",
+      "id": "PERF_P1_DATA7_LINEAR_NEIGHBOR_STATE",
+      "implementation_status": "implemented",
+      "implemented_version": "0.20.180a0"
+    },
+    {
+      "id": "PERF_P1_QUALIFICATION_EVIDENCE",
+      "implementation_status": "implemented",
+      "implemented_version": "0.20.180a0"
+    },
+    {
+      "authority_class": "A",
+      "authority_version": "mdstats.target-data2c.ladder.2026-08.v2",
+      "current_status": "historical_superseded",
+      "id": "PERF_P2_LAZY_TARGET_LADDER_V2",
+      "implementation_status": "implemented",
+      "implemented_version": "0.20.181a0",
+      "superseded_by": "SIZE_HALVE1_TARGET_SIZE_CORRECTION"
+    },
+    {
+      "authority_class": "A",
+      "current_status": "historical_superseded_for_generated_campaigns",
+      "id": "PERF_P2_QUALIFICATION_EVIDENCE",
+      "implementation_status": "implemented",
+      "implemented_version": "0.20.181a0",
+      "superseded_by": "SIZE_HALVE1_TARGET_SIZE_CORRECTION"
+    },
+    {
+      "authority_class": "E",
+      "cpu_benchmark": "benchmarks/mlff_perf_p3_cloud_cpu_2026-08-15.json",
+      "features": [
+        "direct_local_structure_array_kernel",
+        "immutable_topology_workspace",
+        "bounded_coordinate_scratch",
+        "foundation_audit_exact_preallocation_and_mmap",
+        "stage_resource_scope"
+      ],
+      "gpu_qualification_schedule": "FINAL_GPU1",
+      "id": "PERF_P3_CPU_STRUCTURAL_REDUCTION",
+      "implementation_status": "implemented_cpu_qualified",
+      "implemented_version": "0.20.185a0"
+    },
+    {
+      "authority_class": {
+        "perf_p4_execution": "E",
+        "vram1_capacity_evidence": "S"
+      },
+      "authority_versions": {
+        "capacity_calibration": "mdstats.mace-batch-capacity-calibration.v2",
+        "capacity_probe": "mdstats.mace-batch-capacity-probe.v1",
+        "data6_execution_policy": "mdstats.data6-model-sweep-execution-policy.v4",
+        "runtime_batch_cap": "mdstats.data6-runtime-batch-cap.v1"
+      },
+      "cpu_benchmark": "benchmarks/mlff_vram1_perf_p4_cloud_cpu_2026-08-15.json",
+      "cpu_control_plane_features": [
+        "combined_workload_capacity_evidence",
+        "deterministic_stress_calibration_frames",
+        "allocator_and_driver_memory_telemetry",
+        "post_cleanup_live_vram_reclamp",
+        "identity_bound_durable_oom_cap",
+        "native_cpu_graph_prefetch",
+        "bounded_async_shard_persistence",
+        "host_queue_residency_admission",
+        "synchronous_exact_fallback"
+      ],
+      "gpu_qualification_schedule": "FINAL_GPU1",
+      "id": "VRAM1_PERF_P4_MEMORY_PIPELINE",
+      "implementation_status": "implemented_cpu_control_plane_deferred_final_gpu_qualification",
+      "implemented_version": "0.20.186a0",
+      "next_implementation_gate": "PERF_P5"
+    },
+    {
+      "authority_class": "C",
+      "authority_versions": {
+        "target_data2c": "mdstats.target-data2c.ladder.2026-08.v3",
+        "target_data2d": "mdstats.target-data2d.size-convergence.2026-08.v2",
+        "target_data2e": "mdstats.target-data2e.production-corpus.2026-08.v2",
+        "training_evidence": "mdstats.target-size-training-evidence.v3"
+      },
+      "id": "SIZE_HALVE1_TARGET_SIZE_CORRECTION",
+      "implementation_status": "implemented",
+      "implemented_version": "0.20.182a0"
+    },
+    {
+      "authority_version": "mdstats.size-fidelity1.coarse-screen-calibration.2026-08.v1",
+      "calibrates": [
+        "coarse_training_epochs",
+        "coarse_target_monitor_configurations",
+        "coarse_practical_equivalence_mev_per_a"
+      ],
+      "diagnostics": [
+        "spearman_rank_correlation",
+        "seed_survivor_set_stability"
+      ],
+      "foundation_inputs_available": true,
+      "hard_requirements": [
+        "coarse_monitor_vs_full_promotion_set_equivalence",
+        "coarse_recall_of_both_30_epoch_target_finalists_equals_1",
+        "epoch10_recall_of_both_30_epoch_target_finalists_equals_1",
+        "winner_recall_equals_1",
+        "zero_boundary_finalist_misses",
+        "uninterrupted_seed_size_trajectory_identity"
+      ],
+      "id": "SIZE_FIDELITY1_COARSE_SCREEN_CALIBRATION",
+      "implementation_status": "implemented_deferred_final_gpu_qualification",
+      "implemented_version": "0.20.183a0",
+      "inference_reuse": "derive all monitor-size metrics from one authenticated full-development prediction authority per checkpoint",
+      "qualification_kind": "scientific_low_fidelity_calibration",
+      "qualification_schedule": "FINAL_GPU1",
+      "requires_authorizing_runtime": "CUDA/CuEquivariance final-release qualification runtime"
+    },
+    {
+      "authority_class": "E",
+      "cpu_benchmark": "benchmarks/mlff_perf_p2r_cloud_cpu_2026-08-15.json",
+      "cpu_control_plane_features": [
+        "parameterized_stage_plan",
+        "exact_incremental_exposure_authority",
+        "authenticated_data8_fixed_file_cache",
+        "shared_frame_array_index",
+        "stage_scoped_evidence_permissions"
+      ],
+      "gpu_qualification_schedule": "FINAL_GPU1",
+      "id": "PERF_P2R_SUCCESSIVE_FIDELITY_EXECUTION",
+      "implementation_status": "implemented_cpu_control_plane_deferred_final_gpu_qualification",
+      "implemented_version": "0.20.184a0",
+      "qualification_schedule": "FINAL_GPU1",
+      "required_parameter_grid": {
+        "coarse_epochs": [
+          3,
+          4,
+          5
+        ],
+        "coarse_equivalence_mev_per_a": [
+          1,
+          2,
+          4
+        ],
+        "coverage_qualifier_count": [
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "monitor_configurations": [
+          128,
+          256,
+          512,
+          1024
+        ]
+      }
+    },
+    {
+      "authority_class": "qualification_schedule",
+      "deferred_gpu_gates": [
+        "PREC3_REAL_CUEQ_ACTIVATION",
+        "MH1_ACCEL1_CUEQ_NUMERICAL_PARITY",
+        "MH1_DATA6_1_CUEQ_DESCRIPTOR_SELECTION_PARITY",
+        "MH1_TRAIN1_CUEQ_TRAINING_REALIZATION",
+        "MH1_CERT1_GENERATED_DEFAULT_CUEQ_MATRIX",
+        "SIZE_FIDELITY1_EXHAUSTIVE_CALIBRATION",
+        "PERF_P2R_WHOLE_FUNNEL_GPU_PERFORMANCE",
+        "VRAM1_PERF_P4_ACCELERATOR_MEMORY_THROUGHPUT",
+        "E3NN_BASELINE_COMPLETE_CAMPAIGN",
+        "PERF_P5_ACCELERATOR_PERSISTENCE_REUSE",
+        "CUEQ_DEP1_RUNTIME_FREEZE",
+        "CUEQ_PHASE1_TRAINING_ONLY_QUALIFICATION",
+        "CUEQ_PHASE2_SELECTED_HEAD_SOURCE_EXECUTION_OPTIONAL",
+        "PERF_CERT1_END_TO_END_CERTIFICATION"
+      ],
+      "id": "FINAL_GPU1_DEFERRED_RELEASE_QUALIFICATION",
+      "implementation_status": "release_handoff_v1_implemented_positive_gpu_execution_pending",
+      "implemented_version": "0.20.192a0",
+      "locked_foundation_sha256": {
+        "mace_mh_1": "ec00a2705854622fbbd898ccfb7701072fcd674709102d009fb919c1b8cc5dde",
+        "mace_mpa_0": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638"
+      },
+      "preflight_schema": "mdstats.mlff-final-gpu1.preflight.2026-08.v6",
+      "cueq_dep1_runtime_schema": "mdstats.cueq-dep1-runtime.v1",
+      "cueq_phase1_qualification_schema": "mdstats.cueq-phase1-qualification.v1",
+      "cueq_phase2_qualification_schema": "mdstats.cueq-phase2-qualification.v1",
+      "perf_cert1_qualification_schema": "mdstats.perf-cert1-qualification.v1",
+      "final_gpu1_policy_schema": "mdstats.final-gpu1-policy.v1",
+      "final_gpu1_evidence_schema": "mdstats.final-gpu1-evidence.v1",
+      "final_gpu1_qualification_schema": "mdstats.final-gpu1-qualification.v1",
+      "required_pass_gates": [
+        "CUEQ_DEP1_RUNTIME_FREEZE",
+        "E3NN_BASELINE_COMPLETE_CAMPAIGN",
+        "SIZE_FIDELITY1_EXHAUSTIVE_CALIBRATION",
+        "PERF_P2R_WHOLE_FUNNEL_GPU_PERFORMANCE",
+        "VRAM1_PERF_P4_ACCELERATOR_MEMORY_THROUGHPUT",
+        "CUEQ_PHASE1_TRAINING_ONLY_QUALIFICATION",
+        "PERF_CERT1_END_TO_END_CERTIFICATION"
+      ],
+      "measure_only_gates": [
+        "PREC3_REAL_CUEQ_ACTIVATION",
+        "MH1_ACCEL1_CUEQ_NUMERICAL_PARITY",
+        "MH1_DATA6_1_CUEQ_DESCRIPTOR_SELECTION_PARITY",
+        "MH1_TRAIN1_CUEQ_TRAINING_REALIZATION",
+        "MH1_CERT1_GENERATED_DEFAULT_CUEQ_MATRIX",
+        "PERF_P5_ACCELERATOR_PERSISTENCE_REUSE"
+      ],
+      "optional_gates": [
+        "CUEQ_PHASE2_SELECTED_HEAD_SOURCE_EXECUTION_OPTIONAL",
+        "MH1_DEPLOY1_MLIAP_EXPORT_AND_LAMMPS_RUN0"
+      ],
+      "generated_default_change_authorized": false,
+      "workstation_runbook": "docs/guides/mlff_final_gpu1_workstation_runbook.md",
+      "source_tree_handoff_cli": "tools/run_mlff_final_gpu_qualification.py",
+      "source_tree_phase1_cli": "tools/qualify_mlff_cueq_phase1.py",
+      "positive_gpu_execution": "pending_final_workstation",
+      "runtime_bound_gates": [
+        "CUEQ_DEP1_RUNTIME_FREEZE",
+        "PREC3_REAL_CUEQ_ACTIVATION",
+        "MH1_ACCEL1_CUEQ_NUMERICAL_PARITY",
+        "MH1_DATA6_1_CUEQ_DESCRIPTOR_SELECTION_PARITY",
+        "MH1_TRAIN1_CUEQ_TRAINING_REALIZATION",
+        "MH1_CERT1_GENERATED_DEFAULT_CUEQ_MATRIX",
+        "CUEQ_PHASE1_TRAINING_ONLY_QUALIFICATION",
+        "CUEQ_PHASE2_SELECTED_HEAD_SOURCE_EXECUTION_OPTIONAL",
+        "PERF_CERT1_END_TO_END_CERTIFICATION"
+      ],
+      "handoff_integrity_schema": "mdstats.mlff-final-gpu1.handoff-integrity.2026-08.v1",
+      "immutable_gate_registration": true,
+      "pre_reduction_rehash": [
+        "release_archive",
+        "foundation_models",
+        "evidence_records",
+        "evidence_artifacts"
+      ],
+      "handoff_commands": [
+        "preflight",
+        "init",
+        "record",
+        "status",
+        "verify",
+        "reduce"
+      ],
+      "locked_foundation_identity_required_at_init": true,
+      "canonical_policy_digest_required": true,
+      "exact_ordered_matrix_binding": true,
+      "matrix_integrity_fields": [
+        "gate_id",
+        "acceptance",
+        "record",
+        "state"
+      ]
+    },
+    {
+      "architecture_revision": 54,
+      "authority_class": "E",
+      "cpu_benchmark": "benchmarks/mlff_perf_p5_cloud_cpu_2026-08-15.json",
+      "features": [
+        "chunked_zero_copy_tensor_hash_transport",
+        "train2_execution_only_persistence_telemetry",
+        "optional_fail_closed_eval2_model_state_reload",
+        "dataset_format_graph_cache_boundary"
+      ],
+      "gate_name": "PERF-P5",
+      "gpu_qualification_schedule": "FINAL_GPU1",
+      "id": "PERF_P5_TRAIN_EVAL_PERSISTENCE_REUSE",
+      "implementation_status": "implemented_cpu_control_plane_qualified_deferred_final_gpu_performance",
+      "implemented_version": "0.20.187a0"
+    },
+    {
+      "id": "CUEQ_DEP1_RUNTIME_FREEZE",
+      "gate_name": "CUEQ-DEP1",
+      "authority_class": "runtime_dependency_provenance",
+      "architecture_revision": 55,
+      "implementation_status": "implemented_control_plane_deferred_final_gpu_runtime_capture",
+      "implemented_version": "0.20.188a0",
+      "policy_schema": "mdstats.cueq-dep1-policy.v1",
+      "runtime_schema": "mdstats.cueq-dep1-runtime.v1",
+      "required_components": [
+        "torch",
+        "mace",
+        "e3nn",
+        "cueq-core",
+        "cueq-torch",
+        "cueq-ops"
+      ],
+      "optional_phase1_components": [
+        "oeq"
+      ],
+      "ops_distribution_candidates": [
+        "cuequivariance-ops-torch-cu13",
+        "cuequivariance-ops-torch-cu12",
+        "cuequivariance-ops-torch-cu11",
+        "cuequivariance-ops-torch"
+      ],
+      "source_inference_kernel_mode": "e3nn",
+      "training_kernel_mode": "cueq_pure",
+      "qualification_schedule": "FINAL_GPU1",
+      "positive_runtime_evidence": "pending"
+    },
+    {
+      "id": "CUEQ_PHASE1_TRAINING_ONLY_QUALIFICATION",
+      "gate_name": "CUEQ-PHASE1",
+      "authority_class": "accelerator_scientific_qualification",
+      "implementation_status": "implemented_control_plane_deferred_final_gpu_paired_training",
+      "qualification_schedule": "FINAL_GPU1",
+      "source_inference_kernel_mode": "e3nn",
+      "training_kernel_mode": "cueq_pure",
+      "architecture_revision": 56,
+      "implemented_version": "0.20.189a0",
+      "policy_schema": "mdstats.cueq-phase1-policy.v1",
+      "trajectory_schema": "mdstats.cueq-phase1-trajectory.v1",
+      "paired_assessment_schema": "mdstats.cueq-phase1-paired-assessment.v1",
+      "qualification_schema": "mdstats.cueq-phase1-qualification.v1",
+      "prerequisite": "CUEQ_DEP1_RUNTIME_FREEZE",
+      "short_epoch_range": [
+        5,
+        10
+      ],
+      "default_short_epochs": 8,
+      "minimum_representative_full_pairs": 1,
+      "source_cueq_execution_authorized": false,
+      "generated_default_change_authorized": false
+    },
+    {
+      "id": "CUEQ_PHASE2_SELECTED_HEAD_SOURCE_EXECUTION_OPTIONAL",
+      "gate_name": "CUEQ-PHASE2",
+      "authority_class": "optional_accelerator_execution_qualification",
+      "implementation_status": "implemented_control_plane_deferred_final_gpu_selected_head_source_data6",
+      "qualification_schedule": "FINAL_GPU1",
+      "architecture_revision": 57,
+      "implemented_version": "0.20.190a0",
+      "policy_schema": "mdstats.cueq-phase2-policy.v1",
+      "development_corpus_schema": "mdstats.cueq-phase2-development-corpus.v1",
+      "data6_parity_schema": "mdstats.cueq-phase2-data6-parity.v1",
+      "path_assessment_schema": "mdstats.cueq-phase2-path-assessment.v1",
+      "qualification_schema": "mdstats.cueq-phase2-qualification.v1",
+      "runtime_prerequisite": "CUEQ_DEP1_RUNTIME_FREEZE",
+      "scientific_source": "original_mace_mh_1_six_head_omat_pbe",
+      "reference_source_kernel_mode": "e3nn",
+      "candidate_executable_artifact": "EXTRACT1_selected_head_omat_pbe",
+      "candidate_source_kernel_mode": "cueq_pure",
+      "locked_source_checkpoint_sha256": "ec00a2705854622fbbd898ccfb7701072fcd674709102d009fb919c1b8cc5dde",
+      "locked_selected_head_checkpoint_sha256": "7b6f3cce6d2086164082f1cb5739098de2db990d6a49f0d60e66a3a0f1ae545e",
+      "locked_selected_head_qualification_digest": "0f49db0ff9da291fbb4d70430c71189552a531d0239d92c06d0ca4024b05e365",
+      "minimum_development_assessments": 1,
+      "requires_locked_test_not_used_for_tuning": true,
+      "requires_existing_acceleration_parity_authority": true,
+      "requires_frozen_transform_pca_fps_parity": true,
+      "requires_data6_data7_selection_identity": true,
+      "pseudolabel_authorization_requires_explicit_lineage": true,
+      "original_six_head_cueq_execution_authorized": false,
+      "generated_default_change_authorized": false,
+      "positive_accelerator_evidence": "pending_FINAL_GPU1"
+    },
+    {
+      "id": "PERF_CERT1_END_TO_END_CERTIFICATION",
+      "gate_name": "PERF-CERT1",
+      "authority_class": "end_to_end_release_certification",
+      "implementation_status": "implemented_control_plane_deferred_final_gpu_end_to_end_profiles",
+      "qualification_schedule": "FINAL_GPU1",
+      "architecture_revision": 58,
+      "implemented_version": "0.20.191a0",
+      "policy_schema": "mdstats.perf-cert1-policy.v1",
+      "telemetry_schema": "mdstats.perf-cert1-telemetry.v1",
+      "profile_schema": "mdstats.perf-cert1-profile.v1",
+      "upstream_authority_schema": "mdstats.perf-cert1-upstream-authority.v1",
+      "profile_assessment_schema": "mdstats.perf-cert1-profile-assessment.v1",
+      "qualification_schema": "mdstats.perf-cert1-qualification.v1",
+      "authoritative_baseline": "optimized_mace_mh_1_omat_pbe_e3nn",
+      "phase1_profile": "e3nn_source_cueq_training",
+      "phase2_profile": "selected_head_cueq_source_cueq_training_optional",
+      "minimum_total_speedup": 1.0,
+      "strict_positive_speedup_required": true,
+      "requires_exact_hard_decision_identity": true,
+      "requires_exact_target_data6_data7_selection_identity": true,
+      "requires_locked_test_not_used_for_tuning": true,
+      "cueq_phase2_optional": true,
+      "generated_default_change_authorized": false,
+      "positive_accelerator_evidence": "pending_FINAL_GPU1"
+    },
+    {
+      "id": "E3NN_BASELINE_COMPLETE_CAMPAIGN",
+      "authority_class": "final_gpu_reference_execution",
+      "implementation_status": "final_workstation_execution_pending",
+      "implemented_version": "0.20.192a0",
+      "scientific_source": "original_mace_mh1_omat_pbe_e3nn",
+      "purpose": "Authoritative complete production-representative baseline profile for FINAL-GPU1/PERF-CERT1."
+    },
+    {
+      "id": "CUEQ_DEFAULT1_TRAINING_DEFAULT_POLICY",
+      "gate_name": "CUEQ-DEFAULT1",
+      "authority_class": "generated_policy_revision",
+      "architecture_revision": 60,
+      "implementation_status": "implemented",
+      "implemented_version": "0.20.193a0",
+      "source_backend_default": "e3nn",
+      "training_backend_default": "cueq",
+      "only_cueq_default": false,
+      "require_available_default": true,
+      "legacy_configs_without_training_backend": "preserve_unified_backend_semantics",
+      "training_realization_schema": "mdstats.training-acceleration-realization-record.v1",
+      "source_cueq_execution_authorized_by_default": false,
+      "silent_fallback_allowed": false,
+      "positive_gpu_performance_claimed": false,
+      "policy_revision_basis": "explicit_project_owner_request"
+    }
+  ],
+  "schema_version": 42
+}

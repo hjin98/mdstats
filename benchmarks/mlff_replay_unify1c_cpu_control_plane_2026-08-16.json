@@ -1,0 +1,61 @@
+{
+  "schema": "mdstats.replay-unify1c-cpu-control-plane-qualification.v1",
+  "release": "0.20.212a0",
+  "architecture_revision": 79,
+  "gate": "REPLAY-UNIFY1C",
+  "qualification_scope": "cpu_control_plane_with_deterministic_non_mace_provider",
+  "gpu_mace_execution_status": "deferred_to_regenerated_FINAL_GPU1_after_REPLAY_UNIFY1E",
+  "source": {
+    "logical_name": "LTA_replay/mp_replay_selected.extxyz",
+    "sha256": "671aa55f740e9ce890a740f47bda8ab1d02ca7458994005441682d5276d95ddc",
+    "configuration_count": 12000,
+    "geometry_set_digest": "13975290b0851948e54536f4dee9375ef0675ed1398a342eea4462a7ddb45532"
+  },
+  "control_plane_fixture": {
+    "provider": "deterministic finite synthetic prediction provider",
+    "purpose": "exercise real 12k ExtXYZ parsing, batching, sharding, audit cache, qualification, split, and materialization without claiming MACE/CUDA execution",
+    "provider_batch_size": 64,
+    "prediction_shard_size": 256,
+    "provider_batch_count": 188,
+    "prediction_shard_count": 47
+  },
+  "counts": {
+    "eligible": 12000,
+    "rejected": 0,
+    "train": 10000,
+    "monitor": 2000
+  },
+  "timings_seconds": {
+    "source_inspection": 5.5554,
+    "prediction_cache_build_control_plane": 6.4108,
+    "default_qualification_from_compact_audit_sidecar": 0.1169,
+    "dual_role_pseudolabel_materialization": 9.341,
+    "authenticated_dual_role_view_cache_hit": 0.2159,
+    "prediction_cache_hit_existing_shards": 0.2233,
+    "threshold_only_reclassification": 0.1052
+  },
+  "peak_rss_kb": 286508,
+  "digests": {
+    "prediction_cache": "1c4f51efa76cb53a3c8a6a3e3f7343f0e24cdb897d19dd7b1cb8c115d968e9d2",
+    "qualification": "dbbcb8b88b9cd5a0c579f8c9f40f0c530d22fdf6459040ccb434b9ec6e995f6e",
+    "train_transport_sha256": "6c0bbcf70d9d2d35f824d6cfb844213dfa365271c011aa2a376ed006aa2f7a50",
+    "monitor_transport_sha256": "9572520d14e0ed25d7ad13062a1b0a6cbd0c8358157a7058198897dd85fa0ced"
+  },
+  "verified_invariants": [
+    "prediction batch_size and shard_size are excluded from scientific prediction-cache identity",
+    "source true labels are stripped from geometry copies before foundation prediction",
+    "prediction cache logical identity is source-order independent",
+    "threshold-only reclassification performs zero provider/model calls and reads only one compact audit sidecar",
+    "default 12000 qualified geometries split exactly 10000 train / 2000 monitor",
+    "pseudo-label materialization is lazy and qualification/split bound",
+    "authenticated materialized-view cache hit performs zero source parsing and zero model calls",
+    "deleted materialized views reconstruct from prediction shards without reinference",
+    "audit-sidecar and prediction-shard tampering fail closed at their respective use boundaries",
+    "CuEq/e3nn provider construction binds frozen foundation model SHA, resolved head, dtype, device, and kernel mode"
+  ],
+  "observations": [
+    "All timing values are development-host control-plane measurements and are not MACE throughput claims.",
+    "No positive CUDA, CuEq numerical-parity, or real foundation-model replay prediction evidence is asserted in this gate.",
+    "The final one-shot GPU bundle remains intentionally deferred until REPLAY-UNIFY1E closes."
+  ]
+}

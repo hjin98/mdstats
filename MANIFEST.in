@@ -1,0 +1,13 @@
+include README.md
+include CHANGELOG.md
+include campaign.toml.example
+recursive-include docs *.md *.pdf *.png *.json *.svg
+recursive-include audits *.md *.pdf *.json
+recursive-include benchmarks *.py *.json *.md *.pdf *.csv
+recursive-include examples *.py *.md *.png *.svg *.html *.pdf *.csv *.json *.sh
+recursive-include release *.md *.pdf *.txt *.json *.patch *.sha256
+recursive-include tools *
+recursive-include tests *.py
+recursive-include tests/data *
+recursive-include tests/fixtures *
+global-exclude *.py[cod]

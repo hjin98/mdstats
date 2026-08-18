@@ -1,0 +1,47 @@
+{
+  "analysis_seconds": 22.18405407499995,
+  "atom_count": 168,
+  "blockers": [
+    "force_density_agreement",
+    "transition_paths"
+  ],
+  "final_segmentation_executed": false,
+  "force_certificate_signature": "8138dad14938028210942571463e2b628c02f861ebd95f2205d820acf48566ae",
+  "force_shape": [
+    1500,
+    168,
+    3
+  ],
+  "force_status": "pmf_provenance_rejected",
+  "frame_count": 1500,
+  "global_pmf_reconstructed": false,
+  "joint_force_sample_count": 1440,
+  "missing_required_evidence": [],
+  "overall_status": "scientifically_partial",
+  "package_version": "0.20.14a0",
+  "parse_seconds": 3.300855726000009,
+  "path_preparation_signature": "2fcc9a80a64ab80684d6bd72b6d57d428c487d014a406d35a6c5c95e44918ce0",
+  "path_status": "spatial_hypothesis_unresolved",
+  "pmf_force_sample_count": 0,
+  "provisional_jump_count": 0,
+  "provisional_outcome_counts": {
+    "return_excursion": 5,
+    "right_censored_exit": 3
+  },
+  "provisional_passage_count": 8,
+  "rates_inferred": false,
+  "refinement_status_counts": {
+    "pmf_provenance_rejected": 24
+  },
+  "report_signature": "58919241cd00c1c1b1e8f9a44f5612c8368db0a9a3abd5203b78e27a43530a21",
+  "represented_duration_ps": 1.499,
+  "s2_grid_refinement_status": "unstable",
+  "s2_scale_status": "scale_ambiguous",
+  "s4_wall_seconds": 22.172602529999494,
+  "stage": "11E8a-S4",
+  "trajectory_bytes": 37529184,
+  "trajectory_path": "/mnt/data/vasprun(1).xml",
+  "trajectory_sha256": "ad54b98c5d927d722ac1cb8a4a3b1fe472a50603a6e8ece5497b06e55a8679eb",
+  "transition_path_reconstruction_executed": false,
+  "velocity_source": "finite_difference_reconstruction"
+}

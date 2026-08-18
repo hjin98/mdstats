@@ -1,0 +1,38 @@
+{
+  "contracts": [
+    "TargetDataRoleFreeze authenticates only DATA5 DEVELOPMENT units/frames for N_target evidence",
+    "protected outer roles are excluded from target-size authority",
+    "CV held-out authority is frozen per fold",
+    "exact and authenticated correlation families fail closed across independent evidence roles",
+    "broad active-learning lineage metadata is provenance, not an automatically indivisible family",
+    "restart migration derives the compact authority from DATA2/DATA3/DATA5 without DATA4",
+    "prepare restart receipt binds TARGET_DATA_ROLE_FREEZE_VERSION and role-freeze digest"
+  ],
+  "gate": "TARGET-DATA2A",
+  "schema": "mdstats.mlff-target-data2a-qualification.v1",
+  "sha256": {
+    "PATCH_NOTES_0.20.163a0.md": "5b5ab6df2f6ec62566a1713448fcbc3991ab136a00ded25937f82d302c0f439b",
+    "docs/arch_manuals/mlff_training_data_architecture.md": "4ffd48322b9fc64709d4e010f53e2f06e4881922d0566a56cc0b9914bba1d240",
+    "docs/arch_manuals/mlff_training_data_architecture.pdf": "6bff4ebf924ee7f363096ee10830e817201439615429cf7ee5f8a93cce09991f",
+    "mdstats/__init__.py": "012514093c27043e97d8c774bf3ea0978acbf0f2b68e0c3548c534ed8ad2855f",
+    "mdstats/_version.py": "1d2dcd4f327fd0e6f694bcb082e942599701f85e39d28279406d95dde9d35c32",
+    "mdstats/training_data/__init__.py": "46ea0386040dd40d75b63eab80780861987f4a79fe938a7ce1e922c390cf02d4",
+    "mdstats/training_data/campaign_cli.py": "2da3d63dbfe98119440cc8e49c4695b423447aa0da885fc4bfad6b2bfb2210e4",
+    "mdstats/training_data/target_data_roles.py": "fa87dd0ad364a0b93271d329b472cb79ca382b5879d2662c7676596d2314f6c6",
+    "pyproject.toml": "514fa120a861383c027f9d529b930c0ecc9233de2cfa0dbac29fe904b07bdedb",
+    "tests/test_mlff_target_data2a_role_freeze.py": "c23cc4095d7b2098c135f0df1d92b28858d2e8f0ffcdc24d098e0aef86e4bf10",
+    "tests/test_mlff_target_data2a_specification.py": "f595f2579a508ed7a4deeba487e1d3936a2e3b4f154da944ca8e36c5d501808d"
+  },
+  "status": "passed",
+  "summary": {
+    "deselected": "pre-existing historical specification hard-coded to mdstats 0.20.140a0",
+    "focused_regression": "85 passed, 1 skipped, 1 deselected",
+    "pdf_changed_pages_visually_checked": [
+      107,
+      108
+    ],
+    "pdf_pages": 124,
+    "skipped": "real LTA training root not supplied to synthetic campaign CLI suite"
+  },
+  "version": "0.20.163a0"
+}

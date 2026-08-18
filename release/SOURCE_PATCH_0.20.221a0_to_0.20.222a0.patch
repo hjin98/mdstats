@@ -1,0 +1,1235 @@
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' /mnt/data/mdstats_base221/mdstats-0.20.221a0/ARCHITECTURE_NOTES_MLFF_REV89.md /mnt/data/mdstats_feas2/mdstats-0.20.221a0/ARCHITECTURE_NOTES_MLFF_REV89.md
+--- /mnt/data/mdstats_base221/mdstats-0.20.221a0/ARCHITECTURE_NOTES_MLFF_REV89.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats_feas2/mdstats-0.20.221a0/ARCHITECTURE_NOTES_MLFF_REV89.md	2026-08-17 09:22:32.296893787 +0000
+@@ -0,0 +1,12 @@
++# MLFF Architecture Notes - Revision 89
++
++Release: `mdstats 0.20.222a0`
++Gate: `TARGET-DATA2B-FEAS1-PERF2`
++
++Revision 89 replaces PERF1 family-level scheduling with exact shared-tree witness-block concurrency for FEAS1. The scientific neighborhood relation and all FEAS1/TARGET-DATA2C digests remain unchanged.
++
++Automatic FEAS1 execution now factors the `StageResourceScope` CPU budget across bounded block workers and native cKDTree workers. Blocks share one read-only scaled descriptor matrix/tree, avoiding the copy/IPC overhead measured for a rejected process-pool prototype. Completed blocks are reduced in canonical witness order so historical FP64 candidate-gain addition order is preserved exactly.
++
++FEAS1 now provides interval heartbeats and block/witness elapsed-rate-ETA progress. MVIDX1 now provides block/witness elapsed-rate-ETA-edge progress within each family. These are execution-only observability changes.
++
++No GPU exact-neighborhood authority is introduced. FINAL-GPU1 remains deferred as previously frozen.
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' /mnt/data/mdstats_base221/mdstats-0.20.221a0/CHANGELOG.md /mnt/data/mdstats_feas2/mdstats-0.20.221a0/CHANGELOG.md
+--- /mnt/data/mdstats_base221/mdstats-0.20.221a0/CHANGELOG.md	2026-08-17 07:06:11.000000000 +0000
++++ /mnt/data/mdstats_feas2/mdstats-0.20.221a0/CHANGELOG.md	2026-08-17 09:22:53.929198262 +0000
+@@ -1,3 +1,13 @@
++## 0.20.222a0 - 2026-08-17
++
++- Implement TARGET-DATA2B-FEAS1-PERF2 after workstation evidence still showed only about 200-500% CPU utilization during long FEAS1 execution.
++- Replace PERF1 family-level scheduling with bounded shared-cKDTree witness-block threading so query and NumPy neighborhood-compression phases overlap even for a single expensive family.
++- Factor `StageResourceScope` across `target_coverage_feasibility_block_workers * target_coverage_workers`, with automatic block/tree balancing and exact witness-order parent reduction.
++- Reject the evaluated fork/process block backend as the default because ragged-neighborhood IPC was substantially slower on qualification hardware.
++- Add FEAS1 interval heartbeats plus block/witness elapsed-rate-ETA reporting; add matching block-level elapsed-rate-ETA-edge progress to MVIDX1.
++- Preserve exact FEAS1/MVIDX1 scientific schemas, FP64 accumulation order, coverage neighborhoods, 16,384 ceiling, downstream selector behavior, and GPU authority unchanged.
++- Advance MLFF architecture to revision 89 and dependency-graph schema 71.
++
+ ## 0.20.221a0 - 2026-08-17
+ 
+ - Implement TARGET-DATA2B-FEAS1-PERF1 exact-equivalence CPU hardening after low-utilization workstation evidence.
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' /mnt/data/mdstats_base221/mdstats-0.20.221a0/PATCH_NOTES_0.20.222a0.md /mnt/data/mdstats_feas2/mdstats-0.20.221a0/PATCH_NOTES_0.20.222a0.md
+--- /mnt/data/mdstats_base221/mdstats-0.20.221a0/PATCH_NOTES_0.20.222a0.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats_feas2/mdstats-0.20.221a0/PATCH_NOTES_0.20.222a0.md	2026-08-17 09:22:54.072893054 +0000
+@@ -0,0 +1,24 @@
++# mdstats 0.20.222a0 patch notes
++
++## TARGET-DATA2B-FEAS1-PERF2
++
++This release addresses continued low CPU utilization in `TARGET-DATA2B-FEAS1` and missing long-wall progress reporting.
++
++### Execution changes
++
++- FEAS1 now schedules independent witness query blocks concurrently with a shared read-only cKDTree.
++- Automatic CPU scheduling balances block workers and native cKDTree workers inside the existing `StageResourceScope` budget.
++- New execution-only setting: `[performance].target_coverage_feasibility_block_workers`.
++- The 0.20.221a0 `target_coverage_feasibility_family_workers` setting remains a compatibility alias.
++- Completed query blocks are reduced strictly in witness order, preserving exact historical FP64 candidate-gain accumulation.
++- A process-pool prototype was measured and rejected because IPC of ragged compressed neighborhoods was slower than shared-memory threading.
++
++### Progress changes
++
++- FEAS1 prints family start, block/witness progress, elapsed time, average witness rate, ETA, and periodic heartbeats.
++- MVIDX1 now prints per-family block/witness progress, elapsed time, rate, ETA, and accumulated edge count.
++- `[performance].progress_interval_seconds` controls the long-wall heartbeat cadence.
++
++### Scientific authority
++
++No scientific schema, coverage metric, radius, candidate ceiling, FEAS1 digest semantics, sparse-index semantics, TARGET-DATA2C selector behavior, or GPU authority changes.
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' /mnt/data/mdstats_base221/mdstats-0.20.221a0/campaign.toml.example /mnt/data/mdstats_feas2/mdstats-0.20.221a0/campaign.toml.example
+--- /mnt/data/mdstats_base221/mdstats-0.20.221a0/campaign.toml.example	2026-08-17 07:06:36.000000000 +0000
++++ /mnt/data/mdstats_feas2/mdstats-0.20.221a0/campaign.toml.example	2026-08-17 09:21:07.921844164 +0000
+@@ -223,13 +223,15 @@
+ # still clipped by available CPU threads and the RAM budget.
+ source_workers = 0
+ feature_workers = 0
+-# Exact TARGET-DATA2B/MVIDX1 cKDTree queries use native threads rather than
+-# process workers. 0 selects the stage-specific automatic CPU-budgeted count;
+-# an explicit positive value may request more. FEAS1 additionally partitions
+-# the CPU budget across independent feature families. Execution only.
++# Exact TARGET-DATA2B/MVIDX1 cKDTree queries use native threads. For FEAS1 this
++# is the native tree-thread count *inside each query-block process*. 0 selects
++# the stage-specific automatic CPU-budgeted factorization. Execution only.
+ target_coverage_workers = 0
+-# 0 lets FEAS1 choose bounded family-level parallelism from the CPU budget.
+-# Positive values explicitly cap concurrent coverage families. Execution only.
++# 0 lets FEAS1 choose bounded concurrent witness-block threads sharing one
++# read-only cKDTree. Positive values explicitly cap block workers. Execution only.
++target_coverage_feasibility_block_workers = 0
++# Compatibility alias retained from 0.20.221a0. Leave at 0 for new campaigns;
++# if positive it is interpreted as the FEAS1 block-worker request.
+ target_coverage_feasibility_family_workers = 0
+ # Bounded cKDTree witness-query block. Scientific results are block invariant.
+ target_coverage_feasibility_block_size = 512
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' /mnt/data/mdstats_base221/mdstats-0.20.221a0/docs/arch_manuals/mlff_training_data_architecture.md /mnt/data/mdstats_feas2/mdstats-0.20.221a0/docs/arch_manuals/mlff_training_data_architecture.md
+--- /mnt/data/mdstats_base221/mdstats-0.20.221a0/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-17 07:05:42.000000000 +0000
++++ /mnt/data/mdstats_feas2/mdstats-0.20.221a0/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-17 09:25:57.084886889 +0000
+@@ -2,7 +2,7 @@
+ title: "mdstats MLFF Training-Data Architecture"
+ subtitle: "Canonical architecture and staged implementation"
+ author: "mdstats project"
+-date: "2026-08-17 (revision 88: TARGET-DATA2B-FEAS1-PERF1 exact CPU hardening)"
++date: "2026-08-17 (revision 89: TARGET-DATA2B-FEAS1-PERF2 block parallelism and progress)"
+ geometry: margin=0.78in
+ toc: true
+ toc-depth: 3
+@@ -19,7 +19,40 @@
+     \usepackage{xurl}
+ ---
+ 
+-# Revision 88 current gate: TARGET-DATA2B-FEAS1-PERF1 exact CPU hardening
++# Revision 89 current gate: TARGET-DATA2B-FEAS1-PERF2 block parallelism and long-wall progress
++
++`mdstats 0.20.222a0` revises the PERF1 execution schedule after direct workstation observation still showed only about 200-500% aggregate CPU during a long FEAS1 run. The PERF1 vectorized exact neighborhood kernel remains authoritative; this revision changes only how independent witness blocks are scheduled and how long-wall progress is reported.
++
++The remaining utilization loss came from one Python driver issuing one 512-witness `cKDTree.query_ball_point` at a time. Native cKDTree workers are active only inside that query, while the compiled ragged-neighborhood compression that follows is a separate phase. Family-level concurrency therefore provides little help when a domain has only one or a few expensive families.
++
++PERF2 schedules independent witness blocks concurrently with a bounded `ThreadPoolExecutor` sharing one read-only scaled descriptor matrix and one cKDTree. Each block may itself use a small number of native cKDTree workers. `StageResourceScope` continues to enforce `block_workers * tree_workers <= cpu_threads_budget`. Automatic mode uses at most eight block workers, normally at most four tree workers per block, and searches bounded factorizations for high lane occupancy. On a 32-thread host with the default 90% CPU budget, a representative automatic factorization is 7 block workers x 4 tree workers = 28 bounded lanes. A single-block family may still use up to sixteen tree workers.
++
++A fork/process block backend was prototyped and rejected as the automatic path. Although it creates multiple visible Python processes, exact deterministic reduction requires sending compressed ragged neighborhood arrays back to the parent. On the eight-thread qualification host that IPC path was substantially slower than shared-memory block threading. Process count is therefore not treated as a utilization target; sustained CPU occupancy and wall time are the performance criteria.
++
++Block futures may finish out of order, but scientific reduction is performed only in contiguous witness order. PERF1's canonical row-major/candidate-major pair ordering is preserved inside every block, so candidate-gain FP64 addition order, support-degree arrays, support-mass accumulation, coverage lower bounds, and report digests are unchanged.
++
++FEAS1 now emits family start plus block/witness progress with elapsed wall time, average witness rate, and ETA. The parent wait loop uses `[performance].progress_interval_seconds` as a heartbeat timeout, so a slow in-flight query cannot leave the terminal silent indefinitely. TARGET-DATA2C-MVIDX1 receives matching block-level progress with accumulated edge counts because one sparse-index family may also run for a long wall time. Progress is execution-only.
++
++## Frozen revision-89 execution contract
++
++| Item | Value |
++|---|---|
++| FEAS1 scientific schema/digest | unchanged |
++| Query topology | concurrent witness blocks sharing one read-only cKDTree |
++| Automatic block workers | bounded, up to 8 |
++| Automatic tree workers per block | normally up to 4; single-block path up to 16 |
++| CPU budget | `block_workers * tree_workers <= StageResourceScope budget` |
++| New execution override | `target_coverage_feasibility_block_workers` |
++| PERF1 family-worker setting | retained as compatibility alias |
++| Deterministic reduction | completed blocks buffered and reduced in witness order |
++| FEAS1 progress | block/witness count, elapsed, rate, ETA + heartbeat |
++| MVIDX1 progress | block/witness count, elapsed, rate, ETA, edge count |
++| GPU neighborhood authority | unchanged; not authorized |
++| TARGET-DATA2C scientific selection | unchanged |
++
++On the eight-thread qualification host (seven-thread 90% CPU budget), an 8,192-witness three-dimensional synthetic exact-neighborhood family improved from about 0.30 s with one Python driver and seven native cKDTree workers to about 0.19 s with three concurrent blocks and two tree workers per block (about 1.6x), with exact family-report dictionary equivalence. Allowing all eight lanes as four blocks x two tree workers reached about 0.16 s (about 1.9x). The evaluated process-block prototype took about 1.27 s and was rejected. These timings are execution evidence only, not scientific tuning data.
++
++# Revision 88 historical gate: TARGET-DATA2B-FEAS1-PERF1 exact CPU hardening
+ 
+ `mdstats 0.20.221a0` hardens the execution path of TARGET-DATA2B-FEAS1 after workstation observation showed long wall time with low average CPU utilization and an idle GPU. The scientific FEAS1 authority, fixed 16,384 ceiling, exact cKDTree neighborhoods, FP64 accumulation order, and all downstream selector identities remain unchanged. This revision is execution-only.
+ 
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' /mnt/data/mdstats_base221/mdstats-0.20.221a0/docs/arch_manuals/mlff_training_data_dependency_graph.json /mnt/data/mdstats_feas2/mdstats-0.20.221a0/docs/arch_manuals/mlff_training_data_dependency_graph.json
+--- /mnt/data/mdstats_base221/mdstats-0.20.221a0/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-17 07:05:52.000000000 +0000
++++ /mnt/data/mdstats_feas2/mdstats-0.20.221a0/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-17 09:22:44.237964120 +0000
+@@ -1,8 +1,8 @@
+ {
+-  "architecture_revision": 88,
++  "architecture_revision": 89,
+   "branch": "MLFF-DATA",
+-  "description": "MLFF training-data dependency graph through architecture revision 88. TARGET-DATA2B-FEAS1-PERF1 removes serialized witness reduction and adds bounded family-level CPU parallelism while preserving exact FEAS1/MVIDX1 scientific authority.",
+-  "documentation_gate": "TARGET_DATA2B_FEAS1_PERF1_EXACT_HARDENING",
++  "description": "MLFF training-data dependency graph through architecture revision 89. TARGET-DATA2B-FEAS1-PERF2 adds shared-tree witness-block CPU parallelism and long-wall progress while preserving exact FEAS1/MVIDX1 scientific authority.",
++  "documentation_gate": "TARGET_DATA2B_FEAS1_PERF2_BLOCK_PARALLEL_PROGRESS",
+   "edge_type_definitions": {
+     "execution_requires": "The upstream product must exist before execution.",
+     "fit_domain_requires": "The fitted object may inspect only the declared training domain.",
+@@ -2963,6 +2963,11 @@
+     },
+     {
+       "from": "TARGET_DATA2B_FEAS1_PERF1_EXACT_HARDENING",
++      "to": "TARGET_DATA2B_FEAS1_PERF2_BLOCK_PARALLEL_PROGRESS",
++      "type": "implementation_requires"
++    },
++    {
++      "from": "TARGET_DATA2B_FEAS1_PERF2_BLOCK_PARALLEL_PROGRESS",
+       "to": "TARGET_DATA2C_MVIDX1_COVERAGE_INDEX",
+       "type": "implementation_requires"
+     }
+@@ -5173,7 +5178,30 @@
+       "gpu_neighborhood_backend_authorized": false,
+       "final_gpu1_qualification_deferred": true,
+       "runtime_selector_changed": false
++    },
++    {
++      "id": "TARGET_DATA2B_FEAS1_PERF2_BLOCK_PARALLEL_PROGRESS",
++      "gate_name": "TARGET-DATA2B-FEAS1-PERF2",
++      "architecture_revision": 89,
++      "authority_class": "performance_exact_equivalence",
++      "implementation_status": "implemented_block_parallel_progress_hardening",
++      "implemented_release": "0.20.222a0",
++      "scientific_schema_changed": false,
++      "scientific_digest_changed": false,
++      "coverage_metric_changed": false,
++      "candidate_ceiling_changed": false,
++      "shared_tree_block_parallelism": true,
++      "deterministic_witness_order_reduction": true,
++      "automatic_block_worker_cap": 8,
++      "automatic_tree_worker_cap_per_block": 4,
++      "single_block_tree_worker_cap": 16,
++      "process_pool_prototype_rejected_due_to_ipc_overhead": true,
++      "feas1_interval_heartbeat_progress": true,
++      "mvidx1_block_progress": true,
++      "gpu_neighborhood_backend_authorized": false,
++      "final_gpu1_qualification_deferred": true,
++      "runtime_selector_changed": false
+     }
+   ],
+-  "schema_version": 70
++  "schema_version": 71
+ }
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' /mnt/data/mdstats_base221/mdstats-0.20.221a0/docs/specs/training_data/mlff_target_data2b_feas1_perf2_spec.md /mnt/data/mdstats_feas2/mdstats-0.20.221a0/docs/specs/training_data/mlff_target_data2b_feas1_perf2_spec.md
+--- /mnt/data/mdstats_base221/mdstats-0.20.221a0/docs/specs/training_data/mlff_target_data2b_feas1_perf2_spec.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats_feas2/mdstats-0.20.221a0/docs/specs/training_data/mlff_target_data2b_feas1_perf2_spec.md	2026-08-17 09:25:27.985179764 +0000
+@@ -0,0 +1,38 @@
++# TARGET-DATA2B-FEAS1-PERF2 shared-tree block parallelism and progress
++
++## Scope
++
++TARGET-DATA2B-FEAS1 remains an exact CPU diagnostic authority. This gate changes execution and observability only: scientific schemas, exact cKDTree neighborhoods, FP64 candidate-gain accumulation order, support-mass order, the fixed 16,384 candidate ceiling, and TARGET-DATA2C selection semantics are unchanged.
++
++## Problem
++
++PERF1 removed the serialized Python witness loop and added family-level concurrency, but workstation observation still showed only about 200-500% aggregate CPU during a long FEAS1 run. The remaining bottleneck is that one expensive family is driven by one Python thread issuing 512-witness cKDTree queries. Native `cKDTree(workers=N)` utilization is bursty for these object-returning radius queries, while NumPy neighborhood compression between queries is effectively a separate single-threaded phase. Family-level concurrency cannot solve this when a domain has one or only a few expensive families.
++
++A fork/process block implementation was evaluated and rejected as the automatic backend. It creates visible Python worker processes but must serialize ragged compressed neighborhood arrays back to the deterministic parent reducer. On the eight-thread qualification host that IPC cost made the exact FEAS1 family kernel substantially slower than the native-thread baseline. Process count is therefore not used as a performance proxy.
++
++## Execution contract
++
++FEAS1 executes independent witness query blocks concurrently in a bounded `ThreadPoolExecutor` while all block workers share the same read-only scaled descriptor matrix and cKDTree. Each block may itself use a bounded number of native cKDTree workers. `StageResourceScope` requires `block_workers * tree_workers <= cpu_threads_budget`.
++
++Automatic scheduling uses at most eight block workers and normally at most four native tree workers per block. When at least two blocks and at least four CPU-budget threads are available, automatic mode requires at least two tree lanes and searches bounded factorizations for the highest occupied lane count, preferring about four block workers when products tie. A single-block family may use up to sixteen native tree workers.
++
++The new execution-only setting is `[performance].target_coverage_feasibility_block_workers`. The 0.20.221a0 setting `target_coverage_feasibility_family_workers` is retained as a compatibility alias and must agree if both are positive. `[performance].target_coverage_workers` remains the native tree-worker override.
++
++## Determinism
++
++Query/compression futures may complete out of order. Results are held by witness-block start index and reduced only when the next contiguous block is available. The scheduler counts both running futures and completed-but-not-yet-reducible results against one bounded in-flight window, preventing a slow early block from accumulating an unbounded ragged-neighborhood backlog. Within each block the PERF1 canonical `(witness,candidate)` order is retained. Candidate gain therefore uses the same FP64 `np.add.at` order as the historical exact authority. Degree arrays and support-mass accumulation remain in witness order. Worker/block schedules cannot change the scientific digest.
++
++## Progress and long-wall observability
++
++FEAS1 must emit, at minimum, family start plus block/witness progress containing elapsed wall time, average witness rate, and ETA. The parent wait loop uses the configured `[performance].progress_interval_seconds` as a heartbeat timeout, so a slow in-flight block cannot leave the terminal silent indefinitely. Progress reporting is execution-only and must never change scientific records.
++
++TARGET-DATA2C-MVIDX1 receives matching block-level progress (block count, witness count, elapsed, rate, ETA, and accumulated edge count) because a single sparse-index family can also be a long wall-time operation. Its scientific sparse arrays and digests remain unchanged.
++
++## Qualification requirements
++
++1. Serial and block-parallel FEAS1 reports must be dictionary- and digest-identical across query worker and block-size schedules.
++2. Progress callbacks must report block/witness counts, rate, and ETA.
++3. MVIDX1 must report block-level progress without changing sparse-index digests.
++4. `block_workers * tree_workers` must remain inside `StageResourceScope` CPU budget.
++5. No GPU neighborhood backend is authorized; FINAL-GPU1 remains deferred.
++6. Performance evidence must compare against a one-driver native-thread cKDTree configuration, not only against the historical scalar Python implementation.
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' /mnt/data/mdstats_base221/mdstats-0.20.221a0/mdstats/_version.py /mnt/data/mdstats_feas2/mdstats-0.20.221a0/mdstats/_version.py
+--- /mnt/data/mdstats_base221/mdstats-0.20.221a0/mdstats/_version.py	2026-08-17 07:05:19.000000000 +0000
++++ /mnt/data/mdstats_feas2/mdstats-0.20.221a0/mdstats/_version.py	2026-08-17 09:17:19.880904311 +0000
+@@ -1 +1 @@
+-__version__ = "0.20.221a0"
++__version__ = "0.20.222a0"
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' /mnt/data/mdstats_base221/mdstats-0.20.221a0/mdstats/training_data/campaign_cli.py /mnt/data/mdstats_feas2/mdstats-0.20.221a0/mdstats/training_data/campaign_cli.py
+--- /mnt/data/mdstats_base221/mdstats-0.20.221a0/mdstats/training_data/campaign_cli.py	2026-08-17 07:06:36.000000000 +0000
++++ /mnt/data/mdstats_feas2/mdstats-0.20.221a0/mdstats/training_data/campaign_cli.py	2026-08-17 09:21:07.944896629 +0000
+@@ -3888,14 +3888,20 @@
+ def _target_coverage_feasibility_parallelism(
+     cfg: Mapping[str, Any],
+     coverage_reference: Any,
++    *,
++    query_block_size: int,
+ ) -> tuple[int, int, Any]:
+-    """Resolve bounded FEAS1 family/native-tree parallelism.
++    """Resolve bounded FEAS1 block-thread/native-tree parallelism.
+ 
+-    FEAS1 has two independent execution layers: feature families can run in
+-    parallel, and each family can use native cKDTree workers.  Automatic mode
+-    partitions the configured CPU-thread budget between these layers instead
+-    of leaving the post-query family work serialized behind one eight-thread
+-    tree.  Both counts are execution-only.
++    FEAS1 query blocks share one read-only cKDTree and descriptor matrix.
++    Automatic mode therefore factors the configured CPU budget across a small
++    pool of concurrent witness-block threads and the native cKDTree workers
++    used inside each block. This avoids both the serialized single-block driver
++    and the IPC/copy overhead of process workers.
++
++    ``target_coverage_feasibility_family_workers`` is retained as a backwards-
++    compatible alias for the new block-worker control because it is execution-
++    only and was introduced in the immediately preceding release.
+     """
+ 
+     resources = detect_system_resources(
+@@ -3905,53 +3911,83 @@
+         device="cpu",
+     )
+     requested_tree = int(_cfg(cfg, "performance", "target_coverage_workers", 0))
+-    requested_family = int(
++    requested_block = int(
++        _cfg(cfg, "performance", "target_coverage_feasibility_block_workers", 0)
++    )
++    compatibility_family = int(
+         _cfg(cfg, "performance", "target_coverage_feasibility_family_workers", 0)
+     )
+     if requested_tree < 0:
+         raise CampaignCliError(
+             "[performance].target_coverage_workers must be zero (automatic) or a positive integer."
+         )
+-    if requested_family < 0:
++    if requested_block < 0 or compatibility_family < 0:
+         raise CampaignCliError(
+-            "[performance].target_coverage_feasibility_family_workers must be zero (automatic) or a positive integer."
++            "TARGET-DATA2B-FEAS1 block/family worker controls must be zero (automatic) or positive integers."
+         )
++    if requested_block > 0 and compatibility_family > 0 and requested_block != compatibility_family:
++        raise CampaignCliError(
++            "[performance].target_coverage_feasibility_block_workers and the compatibility "
++            "target_coverage_feasibility_family_workers alias disagree."
++        )
++    if requested_block == 0:
++        requested_block = compatibility_family
+ 
+-    max_families = max(
+-        (len(domain.families) for domain in coverage_reference.domains),
++    block = max(1, int(query_block_size))
++    max_blocks = max(
++        (math.ceil(len(family.values) / block)
++         for domain in coverage_reference.domains
++         for family in domain.families),
+         default=1,
+     )
+     budget = max(1, int(resources.cpu_threads_budget))
+     available = max(1, int(resources.cpu_threads_available))
+ 
+-    if requested_family > 0:
+-        family_workers = min(max_families, requested_family, available)
++    if requested_block > 0:
++        block_workers = min(requested_block, max_blocks, budget, available)
++        if requested_tree > 0:
++            tree_workers = min(requested_tree, available, max(1, budget // block_workers))
++        else:
++            tree_cap = 16 if block_workers == 1 else 4
++            tree_workers = min(tree_cap, max(1, budget // block_workers))
+     elif requested_tree > 0:
+-        resolved_tree = min(requested_tree, available)
+-        family_workers = min(max_families, max(1, budget // max(1, resolved_tree)))
+-    else:
+-        # Keep at least roughly four native tree lanes per concurrent family
+-        # when enough independent family work exists.  This exposes the serial
+-        # per-family phases to parallel execution while staying inside budget.
+-        family_workers = min(max_families, max(1, budget // 4))
+-
+-    if requested_tree > 0:
+-        tree_workers = min(requested_tree, available)
++        tree_workers = min(requested_tree, available, budget)
++        block_workers = min(8, max_blocks, max(1, budget // max(1, tree_workers)))
++    elif max_blocks <= 1 or budget < 4:
++        block_workers = min(max_blocks, budget)
++        tree_workers = min(16, max(1, budget // max(1, block_workers)))
+     else:
+-        tree_workers = min(16, max(1, budget // max(1, family_workers)))
+-
+-    if family_workers * tree_workers > budget:
+-        if requested_family > 0 and requested_tree > 0:
+-            raise CampaignCliError(
+-                "Explicit TARGET-DATA2B-FEAS1 family/tree workers exceed the configured CPU budget: "
+-                f"{family_workers}x{tree_workers} > {budget}."
+-            )
+-        if requested_tree > 0:
+-            family_workers = max(1, min(family_workers, budget // max(1, tree_workers)))
++        # cKDTree scaling becomes less reliable at high native-thread counts for
++        # small object-returning query blocks. Require at least two native tree
++        # lanes and search a bounded block-thread factorization instead. Among
++        # equal lane products, prefer about four block workers, which balances
++        # query and NumPy compression concurrency on workstation CPUs.
++        maximum_blocks = min(8, max_blocks, max(2, budget // 2))
++        best: tuple[int, int] | None = None
++        best_score: tuple[int, int] | None = None
++        for candidate_blocks in range(2, maximum_blocks + 1):
++            candidate_tree = min(4, max(1, budget // candidate_blocks))
++            if candidate_tree < 2:
++                continue
++            score = (
++                candidate_blocks * candidate_tree,
++                -abs(candidate_blocks - 4),
++            )
++            if best_score is None or score > best_score:
++                best = (candidate_blocks, candidate_tree)
++                best_score = score
++        if best is None:
++            block_workers = 1
++            tree_workers = min(16, budget)
+         else:
+-            tree_workers = max(1, budget // max(1, family_workers))
++            block_workers, tree_workers = best
+ 
+-    return int(tree_workers), int(family_workers), resources
++    if block_workers * tree_workers > budget:
++        raise CampaignCliError(
++            "TARGET-DATA2B-FEAS1 worker factorization exceeds the configured CPU budget: "
++            f"{block_workers}x{tree_workers} > {budget}."
++        )
++    return int(tree_workers), int(block_workers), resources
+ 
+ 
+ def _target_coverage_policy(cfg: Mapping[str, Any]) -> Any:
+@@ -4148,18 +4184,22 @@
+             return existing
+ 
+     _print_header("TARGET-DATA2B-FEAS1 support fragility and capacity lower bounds")
+-    coverage_workers, family_workers, coverage_resources = _target_coverage_feasibility_parallelism(
+-        cfg, coverage_reference
+-    )
+     block_size = int(_cfg(cfg, "performance", "target_coverage_feasibility_block_size", 512))
+     if block_size < 1:
+         raise CampaignCliError(
+             "[performance].target_coverage_feasibility_block_size must be positive."
+         )
++    coverage_workers, block_workers, coverage_resources = _target_coverage_feasibility_parallelism(
++        cfg, coverage_reference, query_block_size=block_size
++    )
++    progress_interval = float(_cfg(cfg, "performance", "progress_interval_seconds", 30.0))
++    if progress_interval <= 0.0:
++        raise CampaignCliError("[performance].progress_interval_seconds must be positive.")
+     print(
+-        f"[TARGET-DATA2B-FEAS1] exact neighborhood family-workers={family_workers}; "
+-        f"tree-workers/family={coverage_workers}; query block={block_size}; "
+-        f"cpu lanes<={family_workers * coverage_workers}/{coverage_resources.cpu_threads_budget}; "
++        f"[TARGET-DATA2B-FEAS1] exact neighborhood block-workers={block_workers}; "
++        f"tree-workers/block={coverage_workers}; query block={block_size}; "
++        f"cpu lanes<={block_workers * coverage_workers}/{coverage_resources.cpu_threads_budget}; "
++        f"progress={progress_interval:g}s; "
+         f"hard ceiling={policy.maximum_candidate_size}",
+         flush=True,
+     )
+@@ -4167,7 +4207,7 @@
+     scope = build_stage_resource_scope(
+         coverage_resources,
+         stage_name="TARGET-DATA2B-FEAS1",
+-        python_workers=family_workers,
++        python_workers=block_workers,
+         tree_workers=coverage_workers,
+         blas_threads=1,
+     )
+@@ -4178,7 +4218,11 @@
+             policy=policy,
+             query_workers=coverage_workers,
+             query_block_size=block_size,
+-            family_workers=family_workers,
++            block_workers=block_workers,
++            progress_interval_seconds=progress_interval,
++            progress_callback=lambda message: print(
++                f"[TARGET-DATA2B-FEAS1] {message}", flush=True
++            ),
+         )
+     store.put_record("target_coverage_feasibility", report)
+     for domain in report.domains:
+@@ -4545,6 +4589,9 @@
+         "layout=uint32 indices/uint64 offsets; selector behavior remains TARGET-DATA2C v4 unchanged",
+         flush=True,
+     )
++    progress_interval = float(_cfg(cfg, "performance", "progress_interval_seconds", 30.0))
++    if progress_interval <= 0.0:
++        raise CampaignCliError("[performance].progress_interval_seconds must be positive.")
+     started = time.monotonic()
+     scope = build_stage_resource_scope(
+         coverage_resources,
+@@ -4560,6 +4607,7 @@
+             policy=policy,
+             query_workers=coverage_workers,
+             query_block_size=block_size,
++            progress_interval_seconds=progress_interval,
+             progress_callback=lambda message: print(f"[TARGET-DATA2C-MVIDX1] {message}", flush=True),
+         )
+     store.put_record("target_coverage_sparse_index", index)
+@@ -24584,13 +24632,15 @@
+ # still clipped by available CPU threads and the RAM budget.
+ source_workers = 0
+ feature_workers = 0
+-# Exact TARGET-DATA2B/MVIDX1 cKDTree queries use native threads rather than
+-# process workers. 0 selects the stage-specific automatic CPU-budgeted count;
+-# an explicit positive value may request more. FEAS1 additionally partitions
+-# the CPU budget across independent feature families. Execution only.
++# Exact TARGET-DATA2B/MVIDX1 cKDTree queries use native threads. For FEAS1 this
++# is the native tree-thread count *inside each query-block process*. 0 selects
++# the stage-specific automatic CPU-budgeted factorization. Execution only.
+ target_coverage_workers = 0
+-# 0 lets FEAS1 choose bounded family-level parallelism from the CPU budget.
+-# Positive values explicitly cap concurrent coverage families. Execution only.
++# 0 lets FEAS1 choose bounded concurrent witness-block threads sharing one
++# read-only cKDTree. Positive values explicitly cap block workers. Execution only.
++target_coverage_feasibility_block_workers = 0
++# Compatibility alias retained from 0.20.221a0. Leave at 0 for new campaigns;
++# if positive it is interpreted as the FEAS1 block-worker request.
+ target_coverage_feasibility_family_workers = 0
+ # Bounded cKDTree witness-query block. Scientific results are block invariant.
+ target_coverage_feasibility_block_size = 512
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' /mnt/data/mdstats_base221/mdstats-0.20.221a0/mdstats/training_data/target_coverage_feasibility.py /mnt/data/mdstats_feas2/mdstats-0.20.221a0/mdstats/training_data/target_coverage_feasibility.py
+--- /mnt/data/mdstats_base221/mdstats-0.20.221a0/mdstats/training_data/target_coverage_feasibility.py	2026-08-17 07:01:10.000000000 +0000
++++ /mnt/data/mdstats_feas2/mdstats-0.20.221a0/mdstats/training_data/target_coverage_feasibility.py	2026-08-17 09:24:49.941937923 +0000
+@@ -19,10 +19,11 @@
+ 
+ from __future__ import annotations
+ 
+-from concurrent.futures import ThreadPoolExecutor
++from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+ from dataclasses import dataclass
+ import math
+-from typing import Any, Mapping, Sequence
++import time
++from typing import Any, Callable, Mapping, Sequence
+ 
+ import numpy as np
+ from scipy.spatial import cKDTree
+@@ -50,6 +51,92 @@
+ }
+ 
+ 
++class _FamilyProgress:
++    """Rate-limited FEAS1 family progress/heartbeat formatter."""
++
++    __slots__ = (
++        "callback", "completed_blocks", "completed_witnesses", "family_id",
++        "interval", "last_emit", "started", "total_blocks", "total_witnesses",
++    )
++
++    def __init__(
++        self,
++        family_id: str,
++        *,
++        total_blocks: int,
++        total_witnesses: int,
++        interval_seconds: float,
++        callback: Callable[[str], None] | None,
++    ) -> None:
++        self.callback = callback
++        self.completed_blocks = 0
++        self.completed_witnesses = 0
++        self.family_id = str(family_id)
++        self.interval = max(0.1, float(interval_seconds))
++        self.started = time.monotonic()
++        self.last_emit = self.started
++        self.total_blocks = max(1, int(total_blocks))
++        self.total_witnesses = max(1, int(total_witnesses))
++
++    @staticmethod
++    def _duration(seconds: float) -> str:
++        value = max(0, int(round(seconds)))
++        hours, remainder = divmod(value, 3600)
++        minutes, secs = divmod(remainder, 60)
++        if hours:
++            return f"{hours:d}h{minutes:02d}m{secs:02d}s"
++        if minutes:
++            return f"{minutes:d}m{secs:02d}s"
++        return f"{secs:d}s"
++
++    def _message(self, *, heartbeat: bool) -> str:
++        now = time.monotonic()
++        elapsed = max(0.0, now - self.started)
++        rate = self.completed_witnesses / elapsed if elapsed > 0.0 else 0.0
++        remaining = max(0, self.total_witnesses - self.completed_witnesses)
++        eta = remaining / rate if rate > 0.0 else None
++        percent = 100.0 * self.completed_witnesses / self.total_witnesses
++        eta_text = "estimating" if eta is None else self._duration(eta)
++        kind = "heartbeat" if heartbeat else "progress"
++        return (
++            f"family {self.family_id}: {kind} "
++            f"blocks={self.completed_blocks}/{self.total_blocks}; "
++            f"witnesses={self.completed_witnesses}/{self.total_witnesses} "
++            f"({percent:.1f}%); elapsed={self._duration(elapsed)}; "
++            f"rate={rate:.1f} witness/s; eta={eta_text}"
++        )
++
++    def start(self, *, block_workers: int, tree_workers: int, backend: str) -> None:
++        if self.callback is not None:
++            self.callback(
++                f"family {self.family_id}: start; witnesses={self.total_witnesses}; "
++                f"blocks={self.total_blocks}; backend={backend}; "
++                f"block-workers={block_workers}; tree-workers/block={tree_workers}"
++            )
++
++    def block_done(self, witness_count: int) -> None:
++        self.completed_blocks += 1
++        self.completed_witnesses += int(witness_count)
++        now = time.monotonic()
++        milestone = (
++            self.completed_blocks == self.total_blocks
++            or self.completed_blocks == 1
++            or self.completed_blocks * 20 // self.total_blocks
++            > (self.completed_blocks - 1) * 20 // self.total_blocks
++        )
++        if self.callback is not None and (milestone or now - self.last_emit >= self.interval):
++            self.callback(self._message(heartbeat=False))
++            self.last_emit = now
++
++    def heartbeat_due(self) -> bool:
++        return time.monotonic() - self.last_emit >= self.interval
++
++    def heartbeat(self) -> None:
++        if self.callback is not None:
++            self.callback(self._message(heartbeat=True))
++            self.last_emit = time.monotonic()
++
++
+ def _validate_state_tuple(values: Sequence[str]) -> tuple[str, ...]:
+     states = tuple(str(v) for v in values)
+     if not states or len(states) != len(set(states)) or any(v not in _ALLOWED_STATES for v in states):
+@@ -554,6 +641,9 @@
+     policy: TargetCoverageFeasibilityPolicy,
+     query_workers: int,
+     query_block_size: int,
++    block_workers: int,
++    progress_interval_seconds: float,
++    progress_callback: Callable[[str], None] | None,
+ ) -> tuple[TargetCoverageFamilyFeasibilityReport, list[tuple[np.ndarray, int]]]:
+     values = np.asarray(family.values, dtype=np.float64)
+     scales = np.asarray(family.scales, dtype=np.float64)
+@@ -572,9 +662,23 @@
+     tolerance = 1.0e-12
+     block_size = max(1, int(query_block_size))
+     context = f"TARGET-DATA2B-FEAS1 family {family.family_id!r}"
++    blocks = tuple(
++        (start, min(len(scaled), start + block_size))
++        for start in range(0, len(scaled), block_size)
++    )
++    requested_blocks = max(1, min(int(block_workers), len(blocks)))
++    progress = _FamilyProgress(
++        family.family_id,
++        total_blocks=len(blocks),
++        total_witnesses=len(scaled),
++        interval_seconds=progress_interval_seconds,
++        callback=progress_callback,
++    )
+ 
+-    for start in range(0, len(scaled), block_size):
+-        stop = min(len(scaled), start + block_size)
++    def query_block(
++        task: tuple[int, int]
++    ) -> tuple[int, int, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
++        start, stop = task
+         raw = tree.query_ball_point(
+             scaled[start:stop],
+             r=(radii[start:stop] + tolerance * np.maximum(1.0, radii[start:stop])) * radius_scale,
+@@ -588,21 +692,101 @@
+             candidate_count=domain_candidate_count,
+             context=context,
+         )
+-        edge_count += int(candidate_frames.size)
+-
+-        # unique pairs are ordered by witness row and then candidate frame, the
+-        # same arithmetic order as the historical scalar witness loop.
+-        np.add.at(candidate_gain, candidate_frames, weights[start + local_rows])
+-        self_degree_by_witness[start:stop] = unique_counts - 1
++        self_degrees = unique_counts - 1
+         if policy.exclude_own_correlation_unit:
+             own_frames = frame_indices[start:stop]
+             own_units = unit_code_by_frame_index[own_frames]
+             cross_unit = unit_code_by_frame_index[candidate_frames] != own_units[local_rows]
+-            correlation_degree_by_witness[start:stop] = np.bincount(
++            correlation_degrees = np.bincount(
+                 local_rows[cross_unit], minlength=stop - start
+-            )
++            ).astype(np.int64, copy=False)
+         else:
+-            correlation_degree_by_witness[start:stop] = unique_counts - 1
++            correlation_degrees = self_degrees.copy()
++        return start, stop, local_rows, candidate_frames, self_degrees, correlation_degrees
++
++    def reduce_block(
++        result: tuple[int, int, np.ndarray, np.ndarray, np.ndarray, np.ndarray]
++    ) -> None:
++        nonlocal edge_count
++        start, stop, local_rows, candidate_frames, self_degrees, correlation_degrees = result
++        edge_count += int(candidate_frames.size)
++        # Query/compression may complete out of order, but reduction remains in
++        # witness-block order. Within each block unique pairs are row-major /
++        # candidate-major, exactly preserving the historical FP64 scatter order.
++        np.add.at(candidate_gain, candidate_frames, weights[start + local_rows])
++        self_degree_by_witness[start:stop] = self_degrees
++        correlation_degree_by_witness[start:stop] = correlation_degrees
++
++    if requested_blocks > 1:
++        progress.start(
++            block_workers=requested_blocks,
++            tree_workers=int(query_workers),
++            backend="shared-tree-thread-blocks",
++        )
++        executor = ThreadPoolExecutor(max_workers=requested_blocks)
++        try:
++            tasks = iter(blocks)
++            pending: dict[Any, tuple[int, int]] = {}
++            max_inflight = 2 * requested_blocks
++            ready: dict[int, tuple[int, int, np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = {}
++            next_start = 0
++
++            def submit_until_full() -> None:
++                # Count completed-but-not-yet-reducible blocks against the
++                # same window as running futures.  This prevents one slow early
++                # block from allowing all later ragged neighborhoods to pile up
++                # in RAM while deterministic witness-order reduction waits.
++                while len(pending) + len(ready) < max_inflight:
++                    try:
++                        task = next(tasks)
++                    except StopIteration:
++                        return
++                    pending[executor.submit(query_block, task)] = task
++
++            submit_until_full()
++            while pending:
++                timeout = max(0.05, progress.interval - (time.monotonic() - progress.last_emit))
++                done, _ = wait(tuple(pending), timeout=timeout, return_when=FIRST_COMPLETED)
++                if not done:
++                    progress.heartbeat()
++                    continue
++                for future in done:
++                    start, stop = pending.pop(future)
++                    result = future.result()
++                    ready[start] = result
++                    progress.block_done(stop - start)
++
++                while next_start in ready:
++                    result = ready.pop(next_start)
++                    reduce_block(result)
++                    next_start = int(result[1])
++                submit_until_full()
++
++            if ready:
++                for start in sorted(ready):
++                    result = ready[start]
++                    if start != next_start:
++                        raise TrainingDataInputError(
++                            f"{context} threaded reduction lost witness-block ordering."
++                        )
++                    reduce_block(result)
++                    next_start = int(result[1])
++            if next_start != len(scaled):
++                raise TrainingDataInputError(
++                    f"{context} threaded reduction did not cover every witness."
++                )
++        finally:
++            executor.shutdown(wait=True, cancel_futures=True)
++    else:
++        progress.start(
++            block_workers=1,
++            tree_workers=int(query_workers),
++            backend="serial-blocks/native-tree",
++        )
++        for task in blocks:
++            result = query_block(task)
++            reduce_block(result)
++            progress.block_done(int(result[1]) - int(result[0]))
+ 
+     self_support = _SupportAccumulator(policy.support_degree_bins)
+     correlation_support = _SupportAccumulator(policy.support_degree_bins)
+@@ -728,20 +912,28 @@
+     query_workers: int = 1,
+     query_block_size: int = 512,
+     family_workers: int = 1,
++    block_workers: int | None = None,
++    progress_interval_seconds: float = 30.0,
++    progress_callback: Callable[[str], None] | None = None,
+ ) -> TargetCoverageFeasibilityReport:
+     """Build the exact TARGET-DATA2B-FEAS1 diagnostic authority.
+ 
+-    ``query_workers``, ``query_block_size``, and ``family_workers`` are
+-    execution-only.  They are not serialized and cannot change the scientific
+-    digest.
++    ``query_workers``, ``query_block_size``, ``family_workers`` /
++    ``block_workers``, and progress settings are execution-only.  They are not
++    serialized and cannot change the scientific digest. ``family_workers`` is
++    retained as a compatibility alias for block-level parallelism; new callers
++    should pass ``block_workers``.
+     """
+ 
+     active = TargetCoverageFeasibilityPolicy() if policy is None else policy
+     workers = int(query_workers)
+     block = int(query_block_size)
+-    family_parallelism = int(family_workers)
+-    if workers < 1 or block < 1 or family_parallelism < 1:
+-        raise TrainingDataInputError("TARGET-DATA2B-FEAS1 query_workers/query_block_size/family_workers must be positive.")
++    block_parallelism = int(family_workers if block_workers is None else block_workers)
++    interval = float(progress_interval_seconds)
++    if workers < 1 or block < 1 or block_parallelism < 1 or interval <= 0.0:
++        raise TrainingDataInputError(
++            "TARGET-DATA2B-FEAS1 query_workers/query_block_size/block_workers/progress_interval_seconds must be positive."
++        )
+     if target_coverage_reference.dataset_id != target_data_role_freeze.dataset_id:
+         raise TrainingDataInputError("TARGET-DATA2B-FEAS1 dataset identity mismatch.")
+     if target_coverage_reference.target_data_role_freeze_digest != target_data_role_freeze.content_digest:
+@@ -756,6 +948,11 @@
+         ordered_families = sorted(domain.families, key=lambda item: item.family_id)
+ 
+         def evaluate_family(family: Any) -> tuple[TargetCoverageFamilyFeasibilityReport, list[tuple[np.ndarray, int]]]:
++            callback = None
++            if progress_callback is not None:
++                callback = lambda message: progress_callback(
++                    f"{domain.label_domain_id}: {message}"
++                )
+             return _family_feasibility(
+                 family,
+                 domain_candidate_count=len(domain.frame_uids),
+@@ -764,13 +961,16 @@
+                 policy=active,
+                 query_workers=workers,
+                 query_block_size=block,
++                block_workers=block_parallelism,
++                progress_interval_seconds=interval,
++                progress_callback=callback,
+             )
+ 
+-        if family_parallelism > 1 and len(ordered_families) > 1:
+-            with ThreadPoolExecutor(max_workers=min(family_parallelism, len(ordered_families))) as executor:
+-                family_results = list(executor.map(evaluate_family, ordered_families))
+-        else:
+-            family_results = [evaluate_family(family) for family in ordered_families]
++        # Families are intentionally visited in deterministic order while each
++        # expensive family fans out over witness blocks sharing one cKDTree.
++        # This avoids both serialized per-family work and inter-process copies
++        # of ragged neighborhood arrays.
++        family_results = [evaluate_family(family) for family in ordered_families]
+ 
+         family_reports: list[TargetCoverageFamilyFeasibilityReport] = []
+         extent_obligations: list[tuple[np.ndarray, int]] = []
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' /mnt/data/mdstats_base221/mdstats-0.20.221a0/mdstats/training_data/target_coverage_sparse_index.py /mnt/data/mdstats_feas2/mdstats-0.20.221a0/mdstats/training_data/target_coverage_sparse_index.py
+--- /mnt/data/mdstats_base221/mdstats-0.20.221a0/mdstats/training_data/target_coverage_sparse_index.py	2026-08-17 07:01:11.000000000 +0000
++++ /mnt/data/mdstats_feas2/mdstats-0.20.221a0/mdstats/training_data/target_coverage_sparse_index.py	2026-08-17 09:17:09.786246678 +0000
+@@ -20,6 +20,7 @@
+ from dataclasses import dataclass, field
+ import math
+ import tempfile
++import time
+ from typing import Any, Callable, Mapping, Sequence
+ 
+ import numpy as np
+@@ -636,6 +637,8 @@
+     candidate_count: int,
+     query_workers: int,
+     query_block_size: int,
++    progress_interval_seconds: float = 30.0,
++    progress_callback: Callable[[str], None] | None = None,
+ ) -> TargetCoverageSparseFamilyIndex:
+     values = np.asarray(family.values, dtype=np.float64)
+     scales = np.asarray(family.scales, dtype=np.float64)
+@@ -651,6 +654,38 @@
+     witness_counts = np.zeros(len(scaled), dtype=np.uint64)
+     block_size = max(1, int(query_block_size))
+     tolerance = _TOLERANCE
++    total_blocks = max(1, math.ceil(len(scaled) / block_size))
++    started = time.monotonic()
++    last_progress = started
++    completed_blocks = 0
++
++    def report_progress(*, force: bool = False) -> None:
++        nonlocal last_progress
++        if progress_callback is None:
++            return
++        now = time.monotonic()
++        milestone = (
++            completed_blocks == total_blocks
++            or completed_blocks == 1
++            or completed_blocks * 20 // total_blocks
++            > max(0, completed_blocks - 1) * 20 // total_blocks
++        )
++        if not force and not milestone and now - last_progress < progress_interval_seconds:
++            return
++        completed_witnesses = min(len(scaled), completed_blocks * block_size)
++        elapsed = max(0.0, now - started)
++        rate = completed_witnesses / elapsed if elapsed > 0.0 else 0.0
++        remaining = max(0, len(scaled) - completed_witnesses)
++        eta = remaining / rate if rate > 0.0 else None
++        eta_text = "estimating" if eta is None else f"{eta:.1f}s"
++        progress_callback(
++            f"family {family.family_id}: blocks={completed_blocks}/{total_blocks}; "
++            f"witnesses={completed_witnesses}/{len(scaled)} "
++            f"({100.0 * completed_witnesses / max(1, len(scaled)):.1f}%); "
++            f"elapsed={elapsed:.1f}s; rate={rate:.1f} witness/s; eta={eta_text}; "
++            f"edges={edge_count}"
++        )
++        last_progress = now
+ 
+     with tempfile.TemporaryFile(mode="w+b") as edge_handle:
+         edge_count = 0
+@@ -674,6 +709,8 @@
+             edge_handle.write(memoryview(encoded).cast("B"))
+             witness_counts[start:stop] = unique_counts.astype(np.uint64, copy=False)
+             edge_count += int(encoded.size)
++            completed_blocks += 1
++            report_progress()
+         witness_offsets = np.empty(len(scaled) + 1, dtype="<u8")
+         witness_offsets[0] = 0
+         np.cumsum(witness_counts, dtype=np.uint64, out=witness_offsets[1:])
+@@ -838,6 +875,7 @@
+     policy: TargetCoverageSparseIndexPolicy | None = None,
+     query_workers: int = 1,
+     query_block_size: int = 512,
++    progress_interval_seconds: float = 30.0,
+     progress_callback: Callable[[str], None] | None = None,
+ ) -> TargetCoverageSparseIndex:
+     """Build exact TARGET-DATA2C-MVIDX1 sparse scientific evidence."""
+@@ -845,8 +883,11 @@
+     active = TargetCoverageSparseIndexPolicy() if policy is None else policy
+     workers = int(query_workers)
+     block = int(query_block_size)
+-    if workers < 1 or block < 1:
+-        raise TrainingDataInputError("TARGET-DATA2C-MVIDX1 query_workers/query_block_size must be positive.")
++    interval = float(progress_interval_seconds)
++    if workers < 1 or block < 1 or interval <= 0.0:
++        raise TrainingDataInputError(
++            "TARGET-DATA2C-MVIDX1 query_workers/query_block_size/progress_interval_seconds must be positive."
++        )
+     validate_target_coverage_feasibility_authority(
+         target_coverage_feasibility,
+         target_coverage_reference=target_coverage_reference,
+@@ -877,6 +918,14 @@
+                     candidate_count=len(domain.frame_uids),
+                     query_workers=workers,
+                     query_block_size=block,
++                    progress_interval_seconds=interval,
++                    progress_callback=(
++                        None
++                        if progress_callback is None
++                        else lambda message, domain_id=domain.label_domain_id: progress_callback(
++                            f"{domain_id}: {message}"
++                        )
++                    ),
+                 )
+             )
+         (
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' /mnt/data/mdstats_base221/mdstats-0.20.221a0/mlff_target_data2b_feas1_perf2_spec.md /mnt/data/mdstats_feas2/mdstats-0.20.221a0/mlff_target_data2b_feas1_perf2_spec.md
+--- /mnt/data/mdstats_base221/mdstats-0.20.221a0/mlff_target_data2b_feas1_perf2_spec.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats_feas2/mdstats-0.20.221a0/mlff_target_data2b_feas1_perf2_spec.md	2026-08-17 09:25:27.985017167 +0000
+@@ -0,0 +1,38 @@
++# TARGET-DATA2B-FEAS1-PERF2 shared-tree block parallelism and progress
++
++## Scope
++
++TARGET-DATA2B-FEAS1 remains an exact CPU diagnostic authority. This gate changes execution and observability only: scientific schemas, exact cKDTree neighborhoods, FP64 candidate-gain accumulation order, support-mass order, the fixed 16,384 candidate ceiling, and TARGET-DATA2C selection semantics are unchanged.
++
++## Problem
++
++PERF1 removed the serialized Python witness loop and added family-level concurrency, but workstation observation still showed only about 200-500% aggregate CPU during a long FEAS1 run. The remaining bottleneck is that one expensive family is driven by one Python thread issuing 512-witness cKDTree queries. Native `cKDTree(workers=N)` utilization is bursty for these object-returning radius queries, while NumPy neighborhood compression between queries is effectively a separate single-threaded phase. Family-level concurrency cannot solve this when a domain has one or only a few expensive families.
++
++A fork/process block implementation was evaluated and rejected as the automatic backend. It creates visible Python worker processes but must serialize ragged compressed neighborhood arrays back to the deterministic parent reducer. On the eight-thread qualification host that IPC cost made the exact FEAS1 family kernel substantially slower than the native-thread baseline. Process count is therefore not used as a performance proxy.
++
++## Execution contract
++
++FEAS1 executes independent witness query blocks concurrently in a bounded `ThreadPoolExecutor` while all block workers share the same read-only scaled descriptor matrix and cKDTree. Each block may itself use a bounded number of native cKDTree workers. `StageResourceScope` requires `block_workers * tree_workers <= cpu_threads_budget`.
++
++Automatic scheduling uses at most eight block workers and normally at most four native tree workers per block. When at least two blocks and at least four CPU-budget threads are available, automatic mode requires at least two tree lanes and searches bounded factorizations for the highest occupied lane count, preferring about four block workers when products tie. A single-block family may use up to sixteen native tree workers.
++
++The new execution-only setting is `[performance].target_coverage_feasibility_block_workers`. The 0.20.221a0 setting `target_coverage_feasibility_family_workers` is retained as a compatibility alias and must agree if both are positive. `[performance].target_coverage_workers` remains the native tree-worker override.
++
++## Determinism
++
++Query/compression futures may complete out of order. Results are held by witness-block start index and reduced only when the next contiguous block is available. The scheduler counts both running futures and completed-but-not-yet-reducible results against one bounded in-flight window, preventing a slow early block from accumulating an unbounded ragged-neighborhood backlog. Within each block the PERF1 canonical `(witness,candidate)` order is retained. Candidate gain therefore uses the same FP64 `np.add.at` order as the historical exact authority. Degree arrays and support-mass accumulation remain in witness order. Worker/block schedules cannot change the scientific digest.
++
++## Progress and long-wall observability
++
++FEAS1 must emit, at minimum, family start plus block/witness progress containing elapsed wall time, average witness rate, and ETA. The parent wait loop uses the configured `[performance].progress_interval_seconds` as a heartbeat timeout, so a slow in-flight block cannot leave the terminal silent indefinitely. Progress reporting is execution-only and must never change scientific records.
++
++TARGET-DATA2C-MVIDX1 receives matching block-level progress (block count, witness count, elapsed, rate, ETA, and accumulated edge count) because a single sparse-index family can also be a long wall-time operation. Its scientific sparse arrays and digests remain unchanged.
++
++## Qualification requirements
++
++1. Serial and block-parallel FEAS1 reports must be dictionary- and digest-identical across query worker and block-size schedules.
++2. Progress callbacks must report block/witness counts, rate, and ETA.
++3. MVIDX1 must report block-level progress without changing sparse-index digests.
++4. `block_workers * tree_workers` must remain inside `StageResourceScope` CPU budget.
++5. No GPU neighborhood backend is authorized; FINAL-GPU1 remains deferred.
++6. Performance evidence must compare against a one-driver native-thread cKDTree configuration, not only against the historical scalar Python implementation.
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' /mnt/data/mdstats_base221/mdstats-0.20.221a0/mlff_training_data_architecture.md /mnt/data/mdstats_feas2/mdstats-0.20.221a0/mlff_training_data_architecture.md
+--- /mnt/data/mdstats_base221/mdstats-0.20.221a0/mlff_training_data_architecture.md	2026-08-17 07:05:42.000000000 +0000
++++ /mnt/data/mdstats_feas2/mdstats-0.20.221a0/mlff_training_data_architecture.md	2026-08-17 09:25:57.077136603 +0000
+@@ -2,7 +2,7 @@
+ title: "mdstats MLFF Training-Data Architecture"
+ subtitle: "Canonical architecture and staged implementation"
+ author: "mdstats project"
+-date: "2026-08-17 (revision 88: TARGET-DATA2B-FEAS1-PERF1 exact CPU hardening)"
++date: "2026-08-17 (revision 89: TARGET-DATA2B-FEAS1-PERF2 block parallelism and progress)"
+ geometry: margin=0.78in
+ toc: true
+ toc-depth: 3
+@@ -19,7 +19,40 @@
+     \usepackage{xurl}
+ ---
+ 
+-# Revision 88 current gate: TARGET-DATA2B-FEAS1-PERF1 exact CPU hardening
++# Revision 89 current gate: TARGET-DATA2B-FEAS1-PERF2 block parallelism and long-wall progress
++
++`mdstats 0.20.222a0` revises the PERF1 execution schedule after direct workstation observation still showed only about 200-500% aggregate CPU during a long FEAS1 run. The PERF1 vectorized exact neighborhood kernel remains authoritative; this revision changes only how independent witness blocks are scheduled and how long-wall progress is reported.
++
++The remaining utilization loss came from one Python driver issuing one 512-witness `cKDTree.query_ball_point` at a time. Native cKDTree workers are active only inside that query, while the compiled ragged-neighborhood compression that follows is a separate phase. Family-level concurrency therefore provides little help when a domain has only one or a few expensive families.
++
++PERF2 schedules independent witness blocks concurrently with a bounded `ThreadPoolExecutor` sharing one read-only scaled descriptor matrix and one cKDTree. Each block may itself use a small number of native cKDTree workers. `StageResourceScope` continues to enforce `block_workers * tree_workers <= cpu_threads_budget`. Automatic mode uses at most eight block workers, normally at most four tree workers per block, and searches bounded factorizations for high lane occupancy. On a 32-thread host with the default 90% CPU budget, a representative automatic factorization is 7 block workers x 4 tree workers = 28 bounded lanes. A single-block family may still use up to sixteen tree workers.
++
++A fork/process block backend was prototyped and rejected as the automatic path. Although it creates multiple visible Python processes, exact deterministic reduction requires sending compressed ragged neighborhood arrays back to the parent. On the eight-thread qualification host that IPC path was substantially slower than shared-memory block threading. Process count is therefore not treated as a utilization target; sustained CPU occupancy and wall time are the performance criteria.
++
++Block futures may finish out of order, but scientific reduction is performed only in contiguous witness order. PERF1's canonical row-major/candidate-major pair ordering is preserved inside every block, so candidate-gain FP64 addition order, support-degree arrays, support-mass accumulation, coverage lower bounds, and report digests are unchanged.
++
++FEAS1 now emits family start plus block/witness progress with elapsed wall time, average witness rate, and ETA. The parent wait loop uses `[performance].progress_interval_seconds` as a heartbeat timeout, so a slow in-flight query cannot leave the terminal silent indefinitely. TARGET-DATA2C-MVIDX1 receives matching block-level progress with accumulated edge counts because one sparse-index family may also run for a long wall time. Progress is execution-only.
++
++## Frozen revision-89 execution contract
++
++| Item | Value |
++|---|---|
++| FEAS1 scientific schema/digest | unchanged |
++| Query topology | concurrent witness blocks sharing one read-only cKDTree |
++| Automatic block workers | bounded, up to 8 |
++| Automatic tree workers per block | normally up to 4; single-block path up to 16 |
++| CPU budget | `block_workers * tree_workers <= StageResourceScope budget` |
++| New execution override | `target_coverage_feasibility_block_workers` |
++| PERF1 family-worker setting | retained as compatibility alias |
++| Deterministic reduction | completed blocks buffered and reduced in witness order |
++| FEAS1 progress | block/witness count, elapsed, rate, ETA + heartbeat |
++| MVIDX1 progress | block/witness count, elapsed, rate, ETA, edge count |
++| GPU neighborhood authority | unchanged; not authorized |
++| TARGET-DATA2C scientific selection | unchanged |
++
++On the eight-thread qualification host (seven-thread 90% CPU budget), an 8,192-witness three-dimensional synthetic exact-neighborhood family improved from about 0.30 s with one Python driver and seven native cKDTree workers to about 0.19 s with three concurrent blocks and two tree workers per block (about 1.6x), with exact family-report dictionary equivalence. Allowing all eight lanes as four blocks x two tree workers reached about 0.16 s (about 1.9x). The evaluated process-block prototype took about 1.27 s and was rejected. These timings are execution evidence only, not scientific tuning data.
++
++# Revision 88 historical gate: TARGET-DATA2B-FEAS1-PERF1 exact CPU hardening
+ 
+ `mdstats 0.20.221a0` hardens the execution path of TARGET-DATA2B-FEAS1 after workstation observation showed long wall time with low average CPU utilization and an idle GPU. The scientific FEAS1 authority, fixed 16,384 ceiling, exact cKDTree neighborhoods, FP64 accumulation order, and all downstream selector identities remain unchanged. This revision is execution-only.
+ 
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' /mnt/data/mdstats_base221/mdstats-0.20.221a0/mlff_training_data_dependency_graph.json /mnt/data/mdstats_feas2/mdstats-0.20.221a0/mlff_training_data_dependency_graph.json
+--- /mnt/data/mdstats_base221/mdstats-0.20.221a0/mlff_training_data_dependency_graph.json	2026-08-17 07:05:52.000000000 +0000
++++ /mnt/data/mdstats_feas2/mdstats-0.20.221a0/mlff_training_data_dependency_graph.json	2026-08-17 09:22:44.240934674 +0000
+@@ -1,8 +1,8 @@
+ {
+-  "architecture_revision": 88,
++  "architecture_revision": 89,
+   "branch": "MLFF-DATA",
+-  "description": "MLFF training-data dependency graph through architecture revision 88. TARGET-DATA2B-FEAS1-PERF1 removes serialized witness reduction and adds bounded family-level CPU parallelism while preserving exact FEAS1/MVIDX1 scientific authority.",
+-  "documentation_gate": "TARGET_DATA2B_FEAS1_PERF1_EXACT_HARDENING",
++  "description": "MLFF training-data dependency graph through architecture revision 89. TARGET-DATA2B-FEAS1-PERF2 adds shared-tree witness-block CPU parallelism and long-wall progress while preserving exact FEAS1/MVIDX1 scientific authority.",
++  "documentation_gate": "TARGET_DATA2B_FEAS1_PERF2_BLOCK_PARALLEL_PROGRESS",
+   "edge_type_definitions": {
+     "execution_requires": "The upstream product must exist before execution.",
+     "fit_domain_requires": "The fitted object may inspect only the declared training domain.",
+@@ -2963,6 +2963,11 @@
+     },
+     {
+       "from": "TARGET_DATA2B_FEAS1_PERF1_EXACT_HARDENING",
++      "to": "TARGET_DATA2B_FEAS1_PERF2_BLOCK_PARALLEL_PROGRESS",
++      "type": "implementation_requires"
++    },
++    {
++      "from": "TARGET_DATA2B_FEAS1_PERF2_BLOCK_PARALLEL_PROGRESS",
+       "to": "TARGET_DATA2C_MVIDX1_COVERAGE_INDEX",
+       "type": "implementation_requires"
+     }
+@@ -5173,7 +5178,30 @@
+       "gpu_neighborhood_backend_authorized": false,
+       "final_gpu1_qualification_deferred": true,
+       "runtime_selector_changed": false
++    },
++    {
++      "id": "TARGET_DATA2B_FEAS1_PERF2_BLOCK_PARALLEL_PROGRESS",
++      "gate_name": "TARGET-DATA2B-FEAS1-PERF2",
++      "architecture_revision": 89,
++      "authority_class": "performance_exact_equivalence",
++      "implementation_status": "implemented_block_parallel_progress_hardening",
++      "implemented_release": "0.20.222a0",
++      "scientific_schema_changed": false,
++      "scientific_digest_changed": false,
++      "coverage_metric_changed": false,
++      "candidate_ceiling_changed": false,
++      "shared_tree_block_parallelism": true,
++      "deterministic_witness_order_reduction": true,
++      "automatic_block_worker_cap": 8,
++      "automatic_tree_worker_cap_per_block": 4,
++      "single_block_tree_worker_cap": 16,
++      "process_pool_prototype_rejected_due_to_ipc_overhead": true,
++      "feas1_interval_heartbeat_progress": true,
++      "mvidx1_block_progress": true,
++      "gpu_neighborhood_backend_authorized": false,
++      "final_gpu1_qualification_deferred": true,
++      "runtime_selector_changed": false
+     }
+   ],
+-  "schema_version": 70
++  "schema_version": 71
+ }
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' /mnt/data/mdstats_base221/mdstats-0.20.221a0/pyproject.toml /mnt/data/mdstats_feas2/mdstats-0.20.221a0/pyproject.toml
+--- /mnt/data/mdstats_base221/mdstats-0.20.221a0/pyproject.toml	2026-08-17 07:05:19.000000000 +0000
++++ /mnt/data/mdstats_feas2/mdstats-0.20.221a0/pyproject.toml	2026-08-17 09:17:19.882677803 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.221a0"
++version = "0.20.222a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' /mnt/data/mdstats_base221/mdstats-0.20.221a0/release/qualification_logs/feas1_perf2_campaign_and_spec.log /mnt/data/mdstats_feas2/mdstats-0.20.221a0/release/qualification_logs/feas1_perf2_campaign_and_spec.log
+--- /mnt/data/mdstats_base221/mdstats-0.20.221a0/release/qualification_logs/feas1_perf2_campaign_and_spec.log	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats_feas2/mdstats-0.20.221a0/release/qualification_logs/feas1_perf2_campaign_and_spec.log	2026-08-17 09:26:37.416885530 +0000
+@@ -0,0 +1,4 @@
++.................s...........................                            [100%]
++=========================== short test summary info ============================
++SKIPPED [1] tests/test_mlff_campaign_cli.py:346: real LTA training root not supplied
++44 passed, 1 skipped in 5.64s
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' /mnt/data/mdstats_base221/mdstats-0.20.221a0/release/qualification_logs/feas1_perf2_compile.log /mnt/data/mdstats_feas2/mdstats-0.20.221a0/release/qualification_logs/feas1_perf2_compile.log
+--- /mnt/data/mdstats_base221/mdstats-0.20.221a0/release/qualification_logs/feas1_perf2_compile.log	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats_feas2/mdstats-0.20.221a0/release/qualification_logs/feas1_perf2_compile.log	2026-08-17 09:26:39.820885449 +0000
+@@ -0,0 +1 @@
++compileall: PASS
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' /mnt/data/mdstats_base221/mdstats-0.20.221a0/release/qualification_logs/feas1_perf2_target_data_functional.log /mnt/data/mdstats_feas2/mdstats-0.20.221a0/release/qualification_logs/feas1_perf2_target_data_functional.log
+--- /mnt/data/mdstats_base221/mdstats-0.20.221a0/release/qualification_logs/feas1_perf2_target_data_functional.log	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats_feas2/mdstats-0.20.221a0/release/qualification_logs/feas1_perf2_target_data_functional.log	2026-08-17 09:26:24.968885949 +0000
+@@ -0,0 +1,18 @@
++........................................................................ [ 66%]
++.....................................                                    [100%]
++=============================== warnings summary ===============================
++tests/test_mlff_target_data2a_role_freeze.py: 6 warnings
++tests/test_mlff_target_data2b_coverage.py: 5 warnings
++tests/test_mlff_target_data2b_feas1.py: 1 warning
++tests/test_mlff_target_data2c_ladder.py: 3 warnings
++tests/test_mlff_target_data2c_mvidx1.py: 1 warning
++tests/test_mlff_target_data2c_repair1.py: 1 warning
++  /mnt/data/mdstats_feas2/mdstats-0.20.221a0/mdstats/io/vasp.py:406: VelocityReconstructionWarning: Velocities were reconstructed from unwrapped Cartesian positions. High-frequency velocity spectra may be distorted.
++    collection = normalize_raw_frame_collection(
++
++tests/test_mlff_target_data2b_coverage.py::test_target_data2b_consumes_profile_features_and_environment_classes_through_generic_adapter
++  /mnt/data/mdstats_feas2/mdstats-0.20.221a0/mdstats/preprocess/normalize.py:151: VelocityReconstructionWarning: Only two frames are available; assigning the same first-order finite-difference velocity to both frames.
++    velocities = reconstruct_velocities(cartesian, raw.times)
++
++-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
++109 passed, 18 warnings in 20.15s
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' /mnt/data/mdstats_base221/mdstats-0.20.221a0/tests/test_mlff_target_data2b_feas1.py /mnt/data/mdstats_feas2/mdstats-0.20.221a0/tests/test_mlff_target_data2b_feas1.py
+--- /mnt/data/mdstats_base221/mdstats-0.20.221a0/tests/test_mlff_target_data2b_feas1.py	2026-08-17 07:03:53.000000000 +0000
++++ /mnt/data/mdstats_feas2/mdstats-0.20.221a0/tests/test_mlff_target_data2b_feas1.py	2026-08-17 09:21:13.990503756 +0000
+@@ -243,3 +243,53 @@
+         assert domain.k_min_lower_bound >= domain.correlation_interval_count
+         assert domain.k_min_lower_bound >= domain.coverage_cardinality_lower_bound
+         assert all(item.neighborhood_edge_count >= item.witness_count for item in domain.family_reports)
++
++
++def test_feas1_block_parallelism_is_bit_exact_and_reports_progress() -> None:
++    reference, role = _reference_and_role(split_units=True)
++    baseline = mdstats.build_target_coverage_feasibility_report(
++        reference,
++        role,
++        query_workers=1,
++        query_block_size=2,
++        block_workers=1,
++        progress_interval_seconds=0.01,
++    )
++    messages: list[str] = []
++    parallel = mdstats.build_target_coverage_feasibility_report(
++        reference,
++        role,
++        query_workers=1,
++        query_block_size=2,
++        block_workers=3,
++        progress_interval_seconds=0.01,
++        progress_callback=messages.append,
++    )
++    assert parallel.to_dict() == baseline.to_dict()
++    assert parallel.content_digest == baseline.content_digest
++    assert any("block-workers=3" in message for message in messages)
++    assert any("blocks=" in message and "witnesses=" in message for message in messages)
++    assert any("eta=" in message and "rate=" in message for message in messages)
++
++
++def test_feas1_cli_parallelism_uses_block_workers_when_budget_allows() -> None:
++    from mdstats.training_data import campaign_cli
++
++    reference, _ = _reference_and_role(split_units=True)
++    tree_workers, block_workers, resources = campaign_cli._target_coverage_feasibility_parallelism(
++        {
++            "performance": {
++                "cpu_fraction": 0.90,
++                "ram_fraction": 0.80,
++                "gpu_memory_fraction": 0.90,
++                "target_coverage_workers": 0,
++                "target_coverage_feasibility_block_workers": 0,
++                "target_coverage_feasibility_family_workers": 0,
++            }
++        },
++        reference,
++        query_block_size=2,
++    )
++    assert block_workers * tree_workers <= resources.cpu_threads_budget
++    if resources.cpu_threads_budget >= 2:
++        assert block_workers >= 2
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' /mnt/data/mdstats_base221/mdstats-0.20.221a0/tests/test_mlff_target_data2b_feas1_perf2_specification.py /mnt/data/mdstats_feas2/mdstats-0.20.221a0/tests/test_mlff_target_data2b_feas1_perf2_specification.py
+--- /mnt/data/mdstats_base221/mdstats-0.20.221a0/tests/test_mlff_target_data2b_feas1_perf2_specification.py	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats_feas2/mdstats-0.20.221a0/tests/test_mlff_target_data2b_feas1_perf2_specification.py	2026-08-17 09:23:00.800892827 +0000
+@@ -0,0 +1,33 @@
++from __future__ import annotations
++
++import json
++from pathlib import Path
++
++import mdstats
++
++ROOT = Path(__file__).resolve().parents[1]
++
++
++def test_rev89_feas1_perf2_release_manual_graph_and_spec_are_synchronized() -> None:
++    assert mdstats.__version__ == "0.20.222a0"
++    manual = (ROOT / "docs/arch_manuals/mlff_training_data_architecture.md").read_text()
++    note = (ROOT / "ARCHITECTURE_NOTES_MLFF_REV89.md").read_text()
++    spec = (ROOT / "docs/specs/training_data/mlff_target_data2b_feas1_perf2_spec.md").read_text()
++    assert "Revision 89 current gate: TARGET-DATA2B-FEAS1-PERF2" in manual
++    assert "0.20.222a0" in note
++    assert "target_coverage_feasibility_block_workers" in spec
++    assert "Process count is therefore not used as a performance proxy" in spec
++    assert "No GPU neighborhood backend is authorized" in spec
++
++    graph = json.loads((ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json").read_text())
++    assert graph["architecture_revision"] == 89
++    assert graph["schema_version"] == 71
++    assert graph["documentation_gate"] == "TARGET_DATA2B_FEAS1_PERF2_BLOCK_PARALLEL_PROGRESS"
++    nodes = {node["id"]: node for node in graph["nodes"]}
++    gate = nodes["TARGET_DATA2B_FEAS1_PERF2_BLOCK_PARALLEL_PROGRESS"]
++    assert gate["scientific_digest_changed"] is False
++    assert gate["shared_tree_block_parallelism"] is True
++    assert gate["deterministic_witness_order_reduction"] is True
++    assert gate["feas1_interval_heartbeat_progress"] is True
++    assert gate["mvidx1_block_progress"] is True
++    assert gate["gpu_neighborhood_backend_authorized"] is False
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' /mnt/data/mdstats_base221/mdstats-0.20.221a0/tests/test_mlff_target_data2c_mvidx1.py /mnt/data/mdstats_feas2/mdstats-0.20.221a0/tests/test_mlff_target_data2c_mvidx1.py
+--- /mnt/data/mdstats_base221/mdstats-0.20.221a0/tests/test_mlff_target_data2c_mvidx1.py	2026-08-16 22:26:29.000000000 +0000
++++ /mnt/data/mdstats_feas2/mdstats-0.20.221a0/tests/test_mlff_target_data2c_mvidx1.py	2026-08-17 09:18:25.275133474 +0000
+@@ -154,6 +154,23 @@
+         assert hasattr(mdstats, name)
+ 
+ 
++def test_mvidx1_reports_block_level_progress() -> None:
++    reference, role = _reference_and_role(split_units=True)
++    feasibility = mdstats.build_target_coverage_feasibility_report(reference, role)
++    messages: list[str] = []
++    mdstats.build_target_coverage_sparse_index(
++        reference,
++        role,
++        feasibility,
++        query_workers=1,
++        query_block_size=2,
++        progress_interval_seconds=0.01,
++        progress_callback=messages.append,
++    )
++    assert any("family" in message and "blocks=" in message for message in messages)
++    assert any("rate=" in message and "eta=" in message and "edges=" in message for message in messages)
++
++
+ def test_mvidx1_accepts_production_style_target_data2b_reference(tmp_path: Path) -> None:
+     from tests.test_mlff_target_data2b_coverage import _build_coverage_inputs
+ 

@@ -1,0 +1,54 @@
+{
+  "architecture_revision": 55,
+  "documents": {
+    "ARCHITECTURE_NOTES_MLFF_REV55.pdf": {
+      "pages": 1,
+      "preflight": "pass",
+      "render_dpi": 160,
+      "visual_review": "pass"
+    },
+    "PATCH_NOTES_0.20.188a0.pdf": {
+      "pages": 1,
+      "preflight": "pass",
+      "render_dpi": 160,
+      "visual_review": "pass"
+    },
+    "mlff_cueq_dep1_development_host_2026-08-15.pdf": {
+      "pages": 2,
+      "preflight": "pass",
+      "render_dpi": 160,
+      "visual_review": "pass"
+    },
+    "mlff_cueq_dep1_runtime_freeze_spec.pdf": {
+      "pages": 3,
+      "preflight": "pass",
+      "render_dpi": 160,
+      "visual_review": "pass"
+    },
+    "mlff_final_gpu1_deferred_qualification_spec.pdf": {
+      "pages": 3,
+      "preflight": "pass",
+      "render_dpi": 160,
+      "visual_review": "pass"
+    }
+  },
+  "issues_corrected": [
+    "inline_math_delimiters_normalized_for_xelatex",
+    "long_manual_capture_tool_paths_reflowed"
+  ],
+  "manual": {
+    "blank_like_pages": 0,
+    "fonts_embedded": true,
+    "pages": 196,
+    "preflight": "pass",
+    "targeted_high_resolution_pages": [
+      192,
+      193
+    ],
+    "visual_review": "pass",
+    "whole_document_render_dpi": 50
+  },
+  "release": "0.20.188a0",
+  "remaining_gate_local_layout_issues": [],
+  "schema": "mdstats.mlff-cueq-dep1-pdf-qa.v1"
+}

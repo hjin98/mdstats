@@ -1,0 +1,68 @@
+{
+  "active_foundation_model_for_campaign_testing": "MACE-MPA-0 medium",
+  "architecture_revision": 103,
+  "artifacts": {
+    "architecture_pdf_sha256": "a51fc5c9e652b7a9454f7975cad0adffd9c3c2aa445bd0174af895b34af76995",
+    "backpressure_spec_sha256": "599584174775cd65c7d05a7bafdfd1ed005195519f4e865577773c1aedcab63d",
+    "mvidx_source_sha256": "eb0e9a8a18e23acbe023fbfd6c51e03a7d6da3c681a8994bc770fd7078e0e69c",
+    "work_queue_source_sha256": "0a40548a8fc6491abb511f3b2936b9fbed14edf0c5941240a4e0431650c6ffde"
+  },
+  "clean_room": {
+    "campaign_cli_help_import": "PASS",
+    "package_version": "0.20.240a0",
+    "queue_bound_formula": "2 * inverse workers; 56 ready slots at 28 workers",
+    "recorded_source_hashes_verified": 2552
+  },
+  "content_digest": "28727b449ccc1bd8d9291a5eee07782c2b3b76009d005127fd7627f706051fea",
+  "dependency_graph_schema": 83,
+  "incident": {
+    "exception": "DeterministicWorkQueueError: PARCORE1 ready queue is full (56 tasks)",
+    "inverse_workers": 28,
+    "ready_queue_capacity": 56,
+    "required_families": 165,
+    "total_exact_edges": 9505021522
+  },
+  "mh1_compatibility": "unchanged; execution-only MVIDX/PARCORE1 hardening is foundation-model independent",
+  "next_gate": "FINAL_GPU1_DEFERRED_RELEASE_QUALIFICATION",
+  "release": "mdstats 0.20.240a0",
+  "resolution": {
+    "canonical_completion_reduction_changed": false,
+    "out_of_core_inverse_changed": false,
+    "queue_bound_increased": false,
+    "ram_guard_relaxed": false,
+    "strategy": "deterministic producer-side submit/drain/refill backpressure"
+  },
+  "scientific_authority_change": false,
+  "status": "PASS_EXACT_EXECUTION_BACKPRESSURE_HARDENING",
+  "tests": {
+    "affected_clean_room_surface": {
+      "failed": 0,
+      "passed": 27,
+      "warnings": 3
+    },
+    "affected_mvidx_parcore_ooc": {
+      "failed": 0,
+      "passed": 24,
+      "warnings": 3
+    },
+    "campaign_cli_help_import": "PASS",
+    "incident_specific_spec_and_forced_refill": {
+      "failed": 0,
+      "passed": 4,
+      "warnings": 1
+    },
+    "python311_grammar_files_parsed": 933,
+    "target_data2_original_authority": {
+      "failed": 0,
+      "passed": 111,
+      "warnings": 18
+    },
+    "target_data2_plus_ooc_and_backpressure": {
+      "failed": 0,
+      "passed": 116,
+      "warnings": 19
+    },
+    "wheel_version": "0.20.240a0",
+    "whole_tree_compileall": "PASS"
+  }
+}

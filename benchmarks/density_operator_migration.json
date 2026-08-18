@@ -1,0 +1,92 @@
+[
+  {
+    "canonical_periodic_image_contribution_count": 8409,
+    "canonical_stencil_offset_count": 8409,
+    "cell": "orthogonal",
+    "gaussian_bandwidth": 0.3125,
+    "grid_shape": [
+      64,
+      64,
+      64
+    ],
+    "longest_grid_interval": 0.15625,
+    "relative_l1_difference": 2.443023205369908e-08,
+    "relative_linf_difference": 1.2290972348273316e-08,
+    "sigma_to_longest_grid_interval": 2.0
+  },
+  {
+    "canonical_periodic_image_contribution_count": 1045,
+    "canonical_stencil_offset_count": 1045,
+    "cell": "orthogonal",
+    "gaussian_bandwidth": 0.15625,
+    "grid_shape": [
+      64,
+      64,
+      64
+    ],
+    "longest_grid_interval": 0.15625,
+    "relative_l1_difference": 0.005735037255072765,
+    "relative_linf_difference": 0.003403506053560544,
+    "sigma_to_longest_grid_interval": 1.0
+  },
+  {
+    "canonical_periodic_image_contribution_count": 147,
+    "canonical_stencil_offset_count": 147,
+    "cell": "orthogonal",
+    "gaussian_bandwidth": 0.078125,
+    "grid_shape": [
+      64,
+      64,
+      64
+    ],
+    "longest_grid_interval": 0.15625,
+    "relative_l1_difference": 0.26171984750763294,
+    "relative_linf_difference": 0.28435627338009456,
+    "sigma_to_longest_grid_interval": 0.5
+  },
+  {
+    "canonical_periodic_image_contribution_count": 12017,
+    "canonical_stencil_offset_count": 12017,
+    "cell": "lta_primitive",
+    "gaussian_bandwidth": 0.3125,
+    "grid_shape": [
+      64,
+      64,
+      64
+    ],
+    "longest_grid_interval": 0.15625,
+    "relative_l1_difference": 2.0675438415697554e-08,
+    "relative_linf_difference": 1.0420492229294758e-08,
+    "sigma_to_longest_grid_interval": 2.0
+  },
+  {
+    "canonical_periodic_image_contribution_count": 1505,
+    "canonical_stencil_offset_count": 1505,
+    "cell": "lta_primitive",
+    "gaussian_bandwidth": 0.15625,
+    "grid_shape": [
+      64,
+      64,
+      64
+    ],
+    "longest_grid_interval": 0.15625,
+    "relative_l1_difference": 0.003822507007404445,
+    "relative_linf_difference": 0.0021841772507510127,
+    "sigma_to_longest_grid_interval": 1.0
+  },
+  {
+    "canonical_periodic_image_contribution_count": 201,
+    "canonical_stencil_offset_count": 201,
+    "cell": "lta_primitive",
+    "gaussian_bandwidth": 0.078125,
+    "grid_shape": [
+      64,
+      64,
+      64
+    ],
+    "longest_grid_interval": 0.15625,
+    "relative_l1_difference": 0.24501917582731353,
+    "relative_linf_difference": 0.2695992176842454,
+    "sigma_to_longest_grid_interval": 0.5
+  }
+]

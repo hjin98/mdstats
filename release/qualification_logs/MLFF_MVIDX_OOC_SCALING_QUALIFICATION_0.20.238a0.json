@@ -1,0 +1,65 @@
+{
+  "active_foundation": {
+    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
+    "family": "MACE-MPA-0 medium",
+    "mh1_compatible": true
+  },
+  "architecture_revision": 103,
+  "content_digest": "8017c9eeb72984af9479d1d498563a8522af4680544b6a0a74ee0d5805ed447e",
+  "dependency_graph_schema": 83,
+  "documentation": {
+    "architecture_revision_unchanged": true,
+    "manual_pages": 53,
+    "pdf_preflight": "PASS",
+    "pdf_render": "PASS"
+  },
+  "gpu_authority_change": false,
+  "incident": {
+    "domain": "label-domain-5aa1ee5d50cd0b23",
+    "failing_task_id": "family-000020-profile:lta:2fe54e6e3a8eb90c",
+    "in_memory_estimate_bytes": 6884623396,
+    "inferred_failing_family_edges": 382446714,
+    "inverse_workers": 28,
+    "required_families": 165,
+    "stage_ram_budget_bytes": 5463923097,
+    "total_exact_edges": 9505021522
+  },
+  "next_gate": "FINAL_GPU1_DEFERRED_RELEASE_QUALIFICATION",
+  "release": "0.20.238a0",
+  "resolution": {
+    "disk_safety_rule": "max(1 GiB, 5% of exact inverse payload)",
+    "example_ooc_task_admission_bytes_at_reported_budget": 684155475,
+    "example_ooc_task_admission_gib_at_reported_budget": 0.6371694384142756,
+    "maximum_simultaneous_tasks_by_admission_only": 7,
+    "out_of_core_threshold_bytes": 8388608,
+    "persistence": "whole NPY memmaps hard-linked when source/destination share a filesystem",
+    "total_inverse_uint32_payload_bytes": 38020086088,
+    "total_inverse_uint32_payload_gib": 35.4089644625783
+  },
+  "schema": "mdstats.mlff-mvidx-ooc-scaling-qualification.2026-08.v1",
+  "scientific_authority_change": false,
+  "status": "PASS_EXACT_EQUIVALENCE_SCALING_HARDENING",
+  "tests": {
+    "affected_current_surface": {
+      "failed": 0,
+      "passed": 34,
+      "warnings": 1
+    },
+    "compileall": "PASS",
+    "new_mvidx_ooc_regressions": {
+      "failed": 0,
+      "passed": 4
+    },
+    "target_data2_original_authority": {
+      "failed": 0,
+      "passed": 111,
+      "warnings": 18
+    },
+    "target_data2_with_new_regressions": {
+      "failed": 0,
+      "passed": 115,
+      "warnings": 18
+    },
+    "wheel_version": "0.20.238a0"
+  }
+}

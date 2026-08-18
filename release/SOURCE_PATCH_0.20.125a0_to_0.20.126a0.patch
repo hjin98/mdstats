@@ -1,0 +1,2900 @@
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/ARCHITECTURE_NOTES_MLFF_REV24.md b/ARCHITECTURE_NOTES_MLFF_REV24.md
+--- a/ARCHITECTURE_NOTES_MLFF_REV24.md	2026-08-09 21:36:37.242141585 +0000
++++ b/ARCHITECTURE_NOTES_MLFF_REV24.md	2026-08-09 22:11:26.237880118 +0000
+@@ -1,6 +1,6 @@
+ # MLFF architecture revision 24 planning notes
+ 
+-This source-tree note records the adaptive-training and evaluation-simplification revision opened after mdstats 0.20.120a0. The original seven-gate plan is preserved below; implementation has now closed ADAPT-PREC1 (0.20.122a0), ADAPT-MON1 (0.20.123a0), ADAPT-STOP1 (0.20.124a0), and ADAPT-RANK1 (0.20.125a0). ADAPT-EVAL1 through ADAPT-MIGRATE1 remain pending.
++This source-tree note records the adaptive-training and evaluation-simplification revision opened after mdstats 0.20.120a0. The original seven-gate plan is preserved below; implementation has now closed ADAPT-PREC1 (0.20.122a0), ADAPT-MON1 (0.20.123a0), ADAPT-STOP1 (0.20.124a0), ADAPT-RANK1 (0.20.125a0), and ADAPT-EVAL1 (0.20.126a0). ADAPT-VERIFY1 and ADAPT-MIGRATE1 remain pending.
+ 
+ Ordered gates:
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/ARCHITECTURE_NOTES_MLFF_REV29.md b/ARCHITECTURE_NOTES_MLFF_REV29.md
+--- a/ARCHITECTURE_NOTES_MLFF_REV29.md	1970-01-01 00:00:00.000000000 +0000
++++ b/ARCHITECTURE_NOTES_MLFF_REV29.md	2026-08-09 22:16:05.563409037 +0000
+@@ -0,0 +1,28 @@
++# MLFF architecture revision 29 - ADAPT-EVAL1 implementation
++
++This release implements `ADAPT-EVAL1` on top of the binary model-precision, common-monitor,
++adaptive-stop, and run-local champion evidence established by ADAPT-PREC1 through ADAPT-RANK1.
++
++Implemented contract:
++
++- newly generated campaigns use `adaptive_topk`, with at most five initial full finalists and
++  deterministic next-five rescue;
++- no 10%/33% EVAL-MF partial rounds are purchased in the new production path;
++- DATA8 materializes the complete common DATA5 outer-monitor target domain separately from the
++  256-frame online target monitor;
++- authoritative replay evaluation uses the complete configured independent TRUE_DFT replay monitor domain rather than
++  the 512-frame online replay subset;
++- naive runs obtain validation-only true-replay metrics through their target head, without replay
++  gradients or an added trainable head, so STOP1/RANK1 scores are comparable to multi-head replay;
++- each finalist is inferred in its own binary learned-model dtype while mdstats-owned reductions and
++  scoring remain FP64;
++- target/replay hard RMSE ceilings and retained energy/focus/stress/worst-condition gates execute
++  before weighted full-score ranking;
++- foundation-relative replay degradation remains a diagnostic rather than the default hard selector;
++- full prediction/evaluation records are content-addressed and restartable;
++- historical EVAL-MF strategies remain readable/selectable for pre-adaptive evidence;
++- final deployment verification/fallback/export remains ADAPT-VERIFY1.
++
++The canonical contract is documented in
++`docs/specs/training_data/mlff_adaptive_full_evaluation_spec.{md,pdf}` and the MLFF architecture
++manual.
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/CHANGELOG.md b/CHANGELOG.md
+--- a/CHANGELOG.md	2026-08-09 21:36:37.241952624 +0000
++++ b/CHANGELOG.md	2026-08-09 22:21:21.760488881 +0000
+@@ -1,3 +1,12 @@
++## 0.20.126a0 - 2026-08-09
++
++- Implement ADAPT-EVAL1 top-K authoritative full evaluation and make `adaptive_topk` the generated production checkpoint strategy; historical EVAL-MF strategies remain readable/selectable for compatible old campaigns.
++- Materialize the complete common DATA5 outer-monitor target domain separately from the 256-frame online monitor and evaluate finalists on that full target domain plus the complete configured independent TRUE_DFT replay validation/monitor domain.
++- Make naive and multi-head replay lightweight scores comparable by evaluating the fixed 512-frame true-replay monitor through the naive target head as validation-only evidence, without replay gradients or an added trainable head.
++- Fully evaluate at most five run champions initially, enforce target/replay plus retained safety gates before weighted scoring, and purchase deterministic next-five rescue batches only while no admissible candidate exists.
++- Preserve each candidate's binary learned-model inference dtype while retaining FP64 mdstats reductions/statistics; keep foundation-relative replay degradation as a diagnostic rather than the default hard selector.
++- ADAPT-VERIFY1 remains the next gate for final verification, fallback, and export.
++
+ ## 0.20.125a0 - 2026-08-09
+ 
+ - Implemented ADAPT-RANK1 zero-new-inference lightweight ranking from persisted ADAPT-STOP1 epoch metrics and the frozen checkpoint catalog.
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/PATCH_NOTES_0.20.126a0.md b/PATCH_NOTES_0.20.126a0.md
+--- a/PATCH_NOTES_0.20.126a0.md	1970-01-01 00:00:00.000000000 +0000
++++ b/PATCH_NOTES_0.20.126a0.md	2026-08-09 22:19:25.455206950 +0000
+@@ -0,0 +1,48 @@
++# mdstats 0.20.126a0 patch notes
++
++## ADAPT-EVAL1 — top-K authoritative full evaluation
++
++This release implements the fifth gate of the post-0.20.120 adaptive MLFF revision and retires
++EVAL-MF successive halving from newly generated production campaigns.
++
++### Zero-partial-round finalist screening
++
++New configs use `checkpoint_strategy = "adaptive_topk"`, `finalist_count = 5`, and
++`finalist_rescue_batch_size = 5`. ADAPT-EVAL1 consumes one immutable ADAPT-RANK1 champion per run,
++orders those champions by their already-paid lightweight target/true-replay score, and initially
++purchases authoritative full evaluation for at most five models. No 10% or 33% EVAL-MF inference
++is launched.
++
++### Separate lightweight and full domains
++
++DATA8 now materializes the complete DATA5 outer-monitor domain as
++`shared/target/full_target_evaluation.xyz`; the 256-frame online target monitor remains only a
++training/screening subset. Full replay evaluation uses the complete configured independent TRUE_DFT replay monitor domain
++resolved from `[paths].replay_true_labels`, rather than the 512-frame online replay subset. It does
++not silently expand to the replay-training corpus. Every adaptive run therefore receives the same
++common full target and replay domains.
++
++### Comparable naive and replay-trained scores
++
++Naive fine-tuning remains a one-head model and receives no replay gradients. For adaptive training,
++mdstats injects the fixed TRUE_DFT replay monitor as an auxiliary validation-only loader evaluated
++through the target head. It is inserted before the ordinary target loader so MACE's historical
++last-loader checkpoint/patience scalar remains target-driven. Multi-head replay continues to obtain
++its replay metric from `pt_head`. STOP1/RANK1 target+replay scores are therefore comparable across
++methods before campaign-wide finalist ordering.
++
++### Full acceptance and rescue
++
++Each finalist is evaluated in its own learned-model dtype (`single` FP32 or `double` FP64). mdstats
++uses FP64 reductions/statistics after inference. Target and weight-derived replay RMSE ceilings plus
++retained energy/focus/stress/worst-condition safety gates are applied before weighted ranking. The
++historical foundation-relative replay degradation is retained as a diagnostic, not the default hard
++selector. If the first batch contains no admissible model, the next five champions are evaluated;
++rescue stops once an admissible candidate appears or the pool is exhausted.
++
++### Gate boundary
++
++ADAPT-EVAL1 freezes the ordered fully admissible candidate set but does not yet perform deployment
++verification, verification-failure fallback, or final export. Those responsibilities remain
++ADAPT-VERIFY1. Historical `bounded`, `exhaustive`, and `multi_fidelity` evaluator behavior remains
++available for compatible old campaigns.
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/README.md b/README.md
+--- a/README.md	2026-08-09 19:55:00.000000000 +0000
++++ b/README.md	2026-08-09 22:21:21.759634388 +0000
+@@ -4,7 +4,36 @@
+ 
+ Checkpoint accuracy is judged against independent DFT labels. Foundation-generated replay pseudolabels remain the default replay training targets and an absolute behavioral-drift diagnostic. Set `[paths].replay_true_labels` to the original true-label replay directory so mdstats can evaluate both the foundation and fine-tuned checkpoint on the same target and replay geometries without changing training inputs.
+ 
+-Current development release: **0.20.123a0** (ADAPT-MON1 fixed common online validation monitors on top of ADAPT-PREC1 binary learned-model precision).
++Current development release: **0.20.126a0** (ADAPT-EVAL1 adaptive top-K full evaluation on top of binary learned-model precision, fixed common online monitors, adaptive stopping, and one-champion-per-run lightweight ranking).
++
++## Adaptive top-K full evaluation in 0.20.126a0
++
++New generated campaigns use `checkpoint_strategy = "adaptive_topk"`. Training already pays for the
++common 256-target / 512-true-replay online monitor metrics; ADAPT-RANK1 freezes exactly one champion
++per independent run from those metrics. ADAPT-EVAL1 orders those champions by their frozen
++lightweight score, purchases authoritative full evaluation for at most five initially, and evaluates
++the next five only when no already-purchased candidate is fully admissible. Production adaptive
++evaluation launches no 10%/33% EVAL-MF rounds.
++
++Authoritative target evaluation uses the complete common DATA5 outer-monitor domain, separately
++materialized from the 256-frame online subset. Authoritative replay evaluation uses the complete
++configured independent TRUE_DFT replay validation/monitor domain resolved from
++`[paths].replay_true_labels`, not the 512-frame online subset and not the replay-training corpus.
++Target/replay hard ceilings and retained safety gates are applied before weighted scoring. Naive
++fine-tuning remains target-only for gradients but receives the same fixed true-replay online monitor
++as validation-only evidence through its target head, making lightweight scores comparable with
++multi-head replay runs. Historical `bounded`, `exhaustive`, and `multi_fidelity` evaluators remain
++available for compatible old campaigns. ADAPT-VERIFY1 remains the next gate for final verification,
++fallback, and export.
++
++## Adaptive stopping and run-local ranking in 0.20.124a0-0.20.125a0
++
++ADAPT-STOP1 terminates a run when its common target monitor reaches 80% of the configured target
++ceiling, its common true-replay monitor exceeds 120% of the weight-derived replay ceiling, or the
++hard epoch limit is reached. With the default 30 meV/A target ceiling and 1:1 score weights this is a
++24 meV/A target-success stop and a 36 meV/A replay-exhaustion stop. ADAPT-RANK1 then uses only the
++already-persisted epoch metrics to freeze one admissible weighted-score champion per run with zero
++new model inference.
+ 
+ ## Read-only campaign storage accounting in 0.20.111a0
+ 
+@@ -30,9 +59,9 @@
+ 
+ The earlier PREC1-PREC3 staged-precision implementation remains documented as historical compatibility evidence; ADAPT-PREC1 supersedes its production precision semantics for newly initialized campaigns.
+ 
+-## Guarded multi-fidelity checkpoint evaluation in 0.20.107a0
++## Historical guarded multi-fidelity checkpoint evaluation in 0.20.107a0
+ 
+-The generated production evaluator now screens every saved epoch on deterministic nested target and true-replay subsets (10% -> 33% -> 100%), reuses prediction coverage between rounds, retains statistically ambiguous/replay-plausible candidates, and publishes only full-fidelity finalist records into checkpoint selection. A representative 30-checkpoint qualification matched exhaustive selection while purchasing about 10.9 full-checkpoint equivalents. Historical bounded and exhaustive strategies remain available explicitly.
++Release 0.20.107a0 introduced deterministic nested target/true-replay screening (10% -> 33% -> 100%), prediction-coverage reuse, statistical guard bands, and replay-plausible rescue. A representative 30-checkpoint qualification matched exhaustive selection while purchasing about 10.9 full-checkpoint equivalents. ADAPT-EVAL1 in 0.20.126a0 supersedes this as the generated production strategy; `multi_fidelity` remains available only for compatible historical campaigns alongside `bounded` and `exhaustive`.
+ 
+ ## Adaptive parallel evaluation and verification in 0.20.86a0
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/campaign.toml.example b/campaign.toml.example
+--- a/campaign.toml.example	2026-08-09 21:25:09.455812822 +0000
++++ b/campaign.toml.example	2026-08-09 22:16:28.350390002 +0000
+@@ -317,40 +317,21 @@
+ # ADAPT-STOP1 derives replay_max = (target_score_weight/replay_score_weight) * target_max.
+ target_score_weight = 1.0
+ replay_score_weight = 1.0
+-# EVAL-MF2 qualified production default. Allowed values: "bounded", "exhaustive",
+-# or "multi_fidelity". Legacy configs that omit this field retain bounded behavior.
+-checkpoint_strategy = "multi_fidelity"
+-# Nested multi-fidelity defaults: every saved epoch sees 10% of both target and
+-# replay labels, survivors see a nested 33%, and finalists receive 100% of both.
+-multi_fidelity_round_fractions = [0.10, 0.33, 1.0]
+-multi_fidelity_survival_fraction = 0.3333333333333333
+-multi_fidelity_minimum_finalists = 4
+-# EVAL-MF2 conservative cutoff guard. The paired comparison operates on
+-# source/trajectory-aware temporal blocks, not individual correlated MD frames.
+-multi_fidelity_guard_band_enabled = true
+-multi_fidelity_guard_standard_error_multiplier = 2.0
+-multi_fidelity_guard_relative_margin = 0.02
+-multi_fidelity_guard_minimum_blocks = 4
+-# If surviving checkpoint ranks are unstable between successive rounds, retain a
+-# larger fraction for the next round rather than forcing an unsafe elimination.
+-multi_fidelity_instability_inversion_fraction = 0.25
+-multi_fidelity_instability_survival_fraction = 0.50
++# ADAPT-EVAL1 production strategy: rank already-frozen run champions by their
++# lightweight monitor score, fully evaluate only the top five, and purchase the
++# next five only if no candidate in the current purchased set is admissible.
++# Historical configs may still request bounded, exhaustive, or multi_fidelity.
++checkpoint_strategy = "adaptive_topk"
++finalist_count = 5
++finalist_rescue_batch_size = 5
+ # Permit checkpoint evaluation after any run completes. Incomplete campaigns are
+ # labeled interim and cannot create a production protocol freeze.
+ allow_partial_campaign = true
+ # Native MACE graph batch. CUDA OOM automatically bisects the active batch.
+ batch_size = 8
+-# Use MACE's already-computed per-epoch validation history to shortlist a small
+-# number of checkpoints for authoritative mdstats target/replay monitor inference.
+-# Set 0 to evaluate every saved epoch checkpoint.
+-max_checkpoints_per_run = 4
+ # Immutable monitor and foundation-baseline results are reused across checkpoints.
+ cache_monitor_datasets = true
+ cache_replay_baseline = true
+-# Evaluate both the foundation and every candidate on the DFT target monitor.
+-# Legacy campaign files that omit this key preserve their prior target-only behavior
+-# unless [paths].replay_true_labels is added.
+-evaluate_foundation_on_target = true
+ # Leave blank for a single-head foundation checkpoint; set an explicit head only when needed.
+ replay_baseline_head = ""
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/docs/README.md b/docs/README.md
+--- a/docs/README.md	2026-08-09 19:57:24.000000000 +0000
++++ b/docs/README.md	2026-08-09 22:09:32.436295509 +0000
+@@ -43,6 +43,15 @@
+   implemented in 0.20.123a0: one common 256-configuration target monitor and one fixed
+   512-configuration TRUE_DFT replay monitor are frozen during preparation and reused by all
+   competing runs.
++- `specs/training_data/mlff_adaptive_training_stop_spec.{md,pdf}` defines ADAPT-STOP1,
++  implemented in 0.20.124a0: target/replay threshold-coupled early stopping and restart-safe
++  epoch metric evidence.
++- `specs/training_data/mlff_lightweight_ranking_spec.{md,pdf}` defines ADAPT-RANK1,
++  implemented in 0.20.125a0: zero-new-inference weighted ranking and exactly one champion per run.
++- `specs/training_data/mlff_adaptive_full_evaluation_spec.{md,pdf}` defines ADAPT-EVAL1,
++  implemented in 0.20.126a0: generated `adaptive_topk` screening, at-most-five initial full
++  finalists, common full target/TRUE_DFT replay evaluation, hard acceptance before weighted
++  scoring, and deterministic next-five rescue.
+ - `specs/training_data/mlff_staged_precision_profiles_spec.{md,pdf}` is retained as the
+   historical PREC1-PREC3 staged-precision compatibility specification for campaigns
+   created before ADAPT-PREC1; staged `refine` is no longer a new-production profile.
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/docs/arch_manuals/README.md b/docs/arch_manuals/README.md
+--- a/docs/arch_manuals/README.md	2026-08-08 22:07:02.000000000 +0000
++++ b/docs/arch_manuals/README.md	2026-08-09 22:09:32.436434446 +0000
+@@ -49,7 +49,7 @@
+   execution-optimization line, the 0.20.104a0 source-tool/package-integrity repair,
+   and the 0.20.105a0 progress-timing correctness repair. It records the completed
+   post-first-campaign roadmap (`OPT-EVAL1` through `OPT-CTRL1`) and the planned
+-  post-0.20.105 evaluation/precision/storage roadmap. `EVAL-MF1` is implemented in 0.20.106a0, `EVAL-MF2` in 0.20.107a0, `PREC1`--`PREC3` in 0.20.108a0--0.20.110a0, and `STOR1` in 0.20.111a0; `STOR2`--`STOR5` remain staged future gates.
++  post-0.20.105 evaluation/precision/storage roadmap and the post-0.20.120 adaptive revision. `EVAL-MF1/MF2` remain historical compatibility architecture; `ADAPT-PREC1` through `ADAPT-EVAL1` are implemented in 0.20.122a0--0.20.126a0, while ADAPT-VERIFY1/ADAPT-MIGRATE1 remain pending.
+   The generic core owns provenance, eligibility,
+   partitioning, leakage control, selection orchestration, replay, precision,
+   training-backend calls, deployment, and validation policy. Physical
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/docs/arch_manuals/mlff_training_data_architecture.md b/docs/arch_manuals/mlff_training_data_architecture.md
+--- a/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-09 21:34:45.693860041 +0000
++++ b/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-09 22:19:25.454970207 +0000
+@@ -34,7 +34,7 @@
+ STAT1 and SAMP0 workflows consume those primitives without changing their
+ serialized evidence. MLFF-DATA2 is implemented in `0.20.30a0`: deterministic source manifests, VASP source catalogs, named energy selection, decomposed label domains, and per-label-domain structural atomic-reference identifiability are public runtime contracts. MLFF-DATA3 is implemented in `0.20.31a0`: manifest-bound frame occurrences, geometry and label identities, duplicate/restart detection, post-DFT eligibility, temperature conditions, reference-cell resolution, and rotation-separated finite strain are public runtime contracts. MLFF-DATA4 is implemented in `0.20.32a0` and generalized through DATA9A7d: partition-independent raw physical features, optional profile-extension states, protected event bursts, deterministic feature caches, and partition-role budget requests are public runtime contracts. MLFF-DATA5 is implemented in `0.20.33a0`: autocorrelation-aware partition units, role feasibility, deterministic outer evidence roles, independence grades, nested cross-validation monitors, blinding boundaries, and fail-closed leakage audits are public runtime contracts. MLFF-DATA6 is implemented in `0.20.34a0` and generalized through DATA9A7d: profile-aware universal and optional extension descriptors, optional checkpoint-bound MACE atomic descriptor sidecars, training-domain-only foundation residuals, blinded non-training predictions, and sealed locked-test prediction records are public runtime contracts. MLFF-DATA7 is implemented in `0.20.35a0`: canonical final/fold training domains, fold-local fitted metrics, domain-local atomic-reference fits, explicit objective and checkpoint policies, deterministic quota-interleaved selection ladders, and coverage reports are public runtime contracts. MLFF-DATA8 is implemented in `0.20.36a0`: verified MACE-readable extended-XYZ artifacts, explicit E0 mappings, replay train/monitor plans, a v0.3.16 source compatibility lock, complete training-protocol identities, loader dry-run exposure records, independent final/fold job bundles, and sealed locked-test metadata are public runtime contracts. MLFF-DATA9A hardening began in `0.20.37a0`, its offline runtime bootstrap is implemented in `0.20.38a0`, and DATA9A2 real-MACE realization is implemented in `0.20.39a0`: checkpoint-residual E0 fits, relocatable bundles, strict replay/XYZ audits, source-declared dependency manifests, isolated local-artifact installation, installed-environment qualification, v0.3.16 scalar-literal serialization, fixed-file target/replay weight realization, genuine parser/loader dry runs, bounded training, checkpoint/head inventory, target-head extraction, and finite evaluation round trips are public contracts. The supplied dependency bundle and MPA-0 checkpoint pass executable qualification. DATA9A3 in 0.20.40a0 qualifies the complete 27-source, 37,632-frame bulk-LTA target corpus through DATA5 with a passing leakage audit. DATA9A production execution remains open for checkpoint-bound production DATA6/DATA7 evidence, DATA8 job materialization, exact replay-corpus identity, and later protocol-matched training and freeze. DATA9A4 in 0.20.41a0 adds a protocol-bound selectable precision contract: the float64 MPA-0 checkpoint may initialize either a float32 or float64 fine-tuned model, and actual serialized parameter/buffer dtypes are immutable execution evidence rather than inferred from CLI text. DATA9A5a/9A5b in 0.20.42a0-0.20.43a0 close Python/ASE critical precision and deployment-artifact semantics. DATA9A6 in 0.20.44a0 introduces the analysis-owned observable-call bridge. DATA9A6b in 0.20.45a0 closes recipe dependency safety, collection and model lineage, runtime-duration/warning evidence, capability requirement schemas, documentation conflicts, and the thermomechanical/energetic analysis ownership plan. DATA9A6c in 0.20.46a0 verifies supplied identities against the actual collections, requires symmetric reference/candidate generation lineage for production evidence, binds analysis-owned result digests, freezes observable evidence roles and comparison-policy identity before locked evaluation, and corrects runtime/package identity and dependency ordering. DATA9A7a in 0.20.47a0 introduces user-declared compositional material profiles, phase components, atom-group catalogs, condition axes, independence axes, a declarative provider protocol, and DATA4 schema-v2 profile threading without changing existing feature or selection behavior. DATA9A7b in 0.20.48a0 adds an analysis-owned universal local-structure kernel, profile/atom-group-aware DATA6 structural catalogs, generic structural events, a DATA7 universal feature block, and generic per-species environment coverage without importing LTA. DATA9A7c in 0.20.49a0 derives immutable phase/geometry selection plans, profile-specific feature/event activation, geometry-aware atom-group priorities, DATA6-v3 plan lineage, and compositional observable-call recommendations. DATA9A7d in 0.20.50a0 migrates LTA behind generic optional profile-extension catalogs, advances DATA4/DATA6 canonical schemas, and replaces generic-core cation/site assumptions with focus groups, structural realizations, and extension coverage. DATA9A7e in 0.20.51a0 qualifies bounded crystal, amorphous, liquid, interface, and LTA DATA4-DATA7 paths, adds immutable qualification evidence, and makes MLFF LTA implementation imports lazy so generic workflows neither import nor serialize LTA-specific evidence. DATA9A8 in 0.20.52a0 adds frozen profile-aware observable comparison and acceptance policies. DATA9A9a in 0.20.53a0 adds the exact DATA5-authorized checkpoint-bound descriptor/prediction plan, per-frame restart sidecars, atomic checkpoints, corruption recovery, and DATA6 reuse without repeated foundation-model inference. DATA9A9b in 0.20.54a0 adds restartable final/fold DATA7 materialization, exact replay binding, complete DATA8 job-tree evidence, corruption-driven downstream invalidation, and a relocatable production materialization record. DATA9A9c in 0.20.55a0 adds the immutable production-corpus plan, evidence-derived foundation and residual-E0 qualification, numerical replay-label identity, content-addressed DATA8 generation promotion, self-verifying loaders, and generic optional-extension gate requirements. DATA9B1 in 0.20.56a0 adds passed-gate campaign-matrix freezing, protocol-family and seed-variant identities, content-addressed checkpoint catalogs, external metric records, deterministic hard-constraint admissibility, and fail-closed checkpoint selection. DATA9B2 in 0.20.57a0 adds supervised/restartable MACE execution, automatic target/replay checkpoint evaluation, fold/seed aggregation, learning curves, deterministic protocol comparison, target-head committee export, protocol freeze, and sealed-evaluation activation. DATA9B3 in 0.20.58a0 adds the unified source-checkout campaign CLI, one-database orchestration state, manifest approval, production preparation/training/evaluation commands, source-local precision-wrapper shims, and bounded NVE deployment verification. DATA9B3A in 0.20.59a0 makes the MACE acceleration backend a frozen campaign policy, auto-selects cuEquivariance at initialization when qualified, and propagates it through DATA6, DATA8, preflight, production training, checkpoint evaluation, and bounded verification without silent fallback. DATA2A in 0.20.60a0 adds XML-backed review-manifest metadata, percentage-aware filename strain candidates, exact LTA fixed-cell geometry verification, and fail-safe promotion before manual manifest approval. DATA2 interrupted-stream hardening in 0.20.61a0 adds EOF-qualified interrupted `vasprun.xml` recovery across ENS0, DATA2 source audit, and normalized trajectory loading while preserving strict rejection of ambiguous or mid-file corruption.
+ The post-0.20.105 evaluation/storage cycle implements EVAL-MF1 in 0.20.106a0 and EVAL-MF2 in 0.20.107a0: deterministic nested equal-fraction target/replay checkpoint screening, delta-only prediction reuse, conservative source/block-aware survivor guards, comprehensive epoch reporting, and full-fidelity finalist publication are now the generated production evaluation strategy.
+-The post-0.20.120 adaptive-training revision was recorded as architecture-only planning in 0.20.121a0. **ADAPT-PREC1 is implemented in 0.20.122a0**, **ADAPT-MON1 in 0.20.123a0**, **ADAPT-STOP1 in 0.20.124a0**, and **ADAPT-RANK1 in 0.20.125a0**: new campaigns use binary `single|double` learned-model precision, fixed common target/true-replay online monitors, criterion-driven epoch termination, and zero-new-inference one-champion-per-run screening. The simplified finalist evaluator remains pending; EVAL-MF remains runtime-authoritative until ADAPT-EVAL1 closes.
++The post-0.20.120 adaptive-training revision was recorded as architecture-only planning in 0.20.121a0. **ADAPT-PREC1 is implemented in 0.20.122a0**, **ADAPT-MON1 in 0.20.123a0**, **ADAPT-STOP1 in 0.20.124a0**, **ADAPT-RANK1 in 0.20.125a0**, and **ADAPT-EVAL1 in 0.20.126a0**: new campaigns use binary `single|double` learned-model precision, fixed common target/true-replay online monitors, criterion-driven epoch termination, zero-new-inference one-champion-per-run screening, and top-K authoritative full evaluation. EVAL-MF remains readable as historical behavior but is no longer the generated production evaluator.
+ 
+ The central architectural rule is:
+ 
+@@ -4806,11 +4806,12 @@
+ 
+ **Status:** architecture recorded in `mdstats 0.20.121a0`; `ADAPT-PREC1` is implemented
+ in `mdstats 0.20.122a0`, `ADAPT-MON1` in `mdstats 0.20.123a0`, `ADAPT-STOP1` in
+-`mdstats 0.20.124a0`, and `ADAPT-RANK1` in `mdstats 0.20.125a0`. `ADAPT-EVAL1` through
+-`ADAPT-MIGRATE1` remain `not_started`.
+-Binary learned-model precision, fixed common online monitors, and criterion-driven
+-training termination now supersede the corresponding legacy production semantics for
+-new campaigns. EVAL-MF remains runtime-authoritative until ADAPT-EVAL1 closes.
++`mdstats 0.20.124a0`, `ADAPT-RANK1` in `mdstats 0.20.125a0`, and `ADAPT-EVAL1` in
++`mdstats 0.20.126a0`. `ADAPT-VERIFY1` and `ADAPT-MIGRATE1` remain `not_started`.
++Binary learned-model precision, fixed common online monitors, criterion-driven training
++termination, and top-K full evaluation now supersede the corresponding legacy production
++semantics for new campaigns. EVAL-MF remains readable and explicitly selectable only for
++historical/pre-adaptive configurations.
+ Historical EVAL-MF/PREC records remain valid evidence for the campaigns that created
+ them and are not rewritten retrospectively.
+ 
+@@ -5318,13 +5319,13 @@
+ same artifact from persisted JSON/catalog evidence without reopening checkpoint models. Existing
+ ranking evidence must match the re-derived content digest exactly or the campaign fails closed.
+ 
+-ADAPT-RANK1 still does not choose campaign finalists. EVAL-MF remains the production evaluator in
+-0.20.125a0 until ADAPT-EVAL1 replaces it with campaign-wide top-K champion screening and
+-full-fidelity evaluation.
++ADAPT-RANK1 still does not itself choose campaign finalists. ADAPT-EVAL1 in 0.20.126a0 now
++consumes these one-per-run champions for campaign-wide top-K full-fidelity evaluation; historical
++EVAL-MF remains readable but is no longer the generated production strategy.
+ 
+ ## ADAPT-EVAL1 - top-K authoritative full evaluation and retirement of EVAL-MF screening
+ 
+-**Status:** `not_started`.
++**Status:** implemented in `mdstats 0.20.126a0`.
+ 
+ ### Retire successive halving from the production path
+ 
+@@ -5406,6 +5407,45 @@
+ 8. interrupted full evaluation reuses authenticated completed predictions without
+    changing candidate ordering or scientific identity.
+ 
++### ADAPT-EVAL1 implementation record (`0.20.126a0`)
++
++New generated campaigns use `checkpoint_strategy = "adaptive_topk"` with
++`finalist_count = 5` and `finalist_rescue_batch_size = 5`. The production evaluator consumes
++only immutable ADAPT-RANK1 champions, orders them by their already-paid lightweight score, and
++purchases no EVAL-MF 10%/33% inference. Historical `bounded`, `exhaustive`, and
++`multi_fidelity` strategies remain routed through their legacy evaluator for old campaign
++evidence.
++
++ADAPT-MON1's 256-frame target monitor remains a training/screening artifact. DATA8 now also
++materializes the complete DATA5 outer-monitor domain once as
++`shared/target/full_target_evaluation.xyz`; every adaptive bundle must expose the identical
++content-addressed artifact. Full replay evaluation uses the complete configured independent TRUE_DFT replay monitor
++domain resolved from `[paths].replay_true_labels` and the frozen replay-monitor lineage. Thus neither
++lightweight monitor is silently relabeled as authoritative full evidence.
++
++The initial purchased batch contains at most five one-per-run champions. Each candidate is
++evaluated on the complete common target and true-replay domains in its own learned-model dtype
++(`single` -> FP32 inference, `double` -> FP64 inference). mdstats converts model outputs to FP64
++for reductions, retained safety gates, replay-degradation diagnostics, and the weighted full score.
++Target and replay absolute RMSE ceilings are enforced before scoring; the historical fractional
++replay-degradation threshold is retained only as a reported diagnostic. If no candidate in the
++current purchased set is admissible, the next five champions are evaluated. Rescue stops as soon
++as at least one fully admissible candidate exists or the champion pool is exhausted.
++
++Naive fine-tuning and multi-head replay now share the same lightweight score geometry. A naive
++model still has only its target head and receives no replay gradients, but the fixed 512-frame
++TRUE_DFT replay monitor is injected as an auxiliary validation-only loader evaluated through that
++target head. It is ordered before the ordinary target loader so MACE 0.3.16's historical
++last-validation-loader checkpoint/patience scalar remains target-driven. Multi-head replay keeps its
++ordinary `pt_head` monitor. Consequently ADAPT-STOP1/RANK1 scores are comparable across training
++methods before EVAL1 performs campaign-wide top-K screening.
++
++Full-evaluation predictions and decisions are content-addressed and restartable. Completed
++predictions are reused only when checkpoint identity, policy, common target/replay artifacts, and
++model dtype match exactly. ADAPT-EVAL1 records the ordered admissible full candidates but does not
++yet perform deployment verification or final fallback/export; that responsibility remains
++ADAPT-VERIFY1.
++
+ ## ADAPT-VERIFY1 - final selection, verification, and precision propagation
+ 
+ **Status:** `not_started`.
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/docs/guides/mlff_campaign_cli_user_guide.md b/docs/guides/mlff_campaign_cli_user_guide.md
+--- a/docs/guides/mlff_campaign_cli_user_guide.md	2026-08-09 21:34:53.153557989 +0000
++++ b/docs/guides/mlff_campaign_cli_user_guide.md	2026-08-09 22:16:05.563313605 +0000
+@@ -322,38 +322,36 @@
+ the admissible rectangle records an explicit no-champion outcome rather than falling back to its
+ last epoch.
+ 
+-## 6. Evaluate completed models and freeze the full result when ready
++## 6. Fully evaluate the campaign finalists
+ 
+ ```bash
+ python tools/mdstats-mlff-campaign.py --config campaign.toml evaluate
+ ```
+ 
+-By default, every saved epoch enters the nested multi-fidelity evaluator. Round 1
+-evaluates the same nominal 10% fraction of the DFT target monitor and, when present,
+-the independent true-label replay monitor; conservative survivors expand to a nested
+-33% fraction, and only full-fidelity finalists receive complete target/replay
+-evaluation and final scientific admissibility. Partial-round records are screening
+-evidence only. The legacy `bounded` strategy and exhaustive full-monitor evaluation
+-remain explicit configuration choices.
+-
+-**0.20.125a0 behavior:** ADAPT-MON1 supplies the common training-time monitor artifacts,
+-ADAPT-STOP1 consumes their force RMSE after each durable epoch checkpoint, and ADAPT-RANK1 derives
+-one run-local lightweight champion using zero additional inference. `adaptive_training_stop.json`
+-remains the immutable training trajectory; `lightweight_run_champion.json` is a separate derived
+-ranking artifact bound to the stop-state digest, checkpoint catalog, score weights, and common
+-monitor identities. ADAPT-EVAL1 is still pending, so the current multi-fidelity evaluator remains
+-runtime-authoritative in this release. The next gate will use only these run champions for
+-campaign-wide finalist screening before authoritative full evaluation.
+-
+-With `replay_true_labels` configured, both the frozen foundation and the fine-tuned
+-candidate are evaluated on both the target monitor and the independent true-label
+-replay monitor. This produces the complete foundation/candidate × target/replay
+-comparison while keeping pseudo-label replay available for training. Only
+-checkpoints passing the configured energy, mobile-ion force, stress,
+-worst-condition, and genuine replay-retention limits are admissible. When the
+-entire configured campaign is complete, `mdstats` compares folds, seeds, and
+-methods, chooses the protocol, exports one target head per final seed, and freezes
+-the production committee.
++Beginning in 0.20.126a0, new adaptive campaigns use `checkpoint_strategy = "adaptive_topk"`.
++Evaluation performs no 10%/33% partial rounds. It sorts the one-per-run ADAPT-RANK1 champions by
++the already-paid lightweight target/true-replay score, fully evaluates at most the best five on
++the common complete target outer-monitor domain plus the complete independent TRUE_DFT replay
++domain, and applies hard target/replay and retained safety gates before weighted scoring. If the
++first five contain no admissible model, mdstats purchases the next five and repeats only until an
++admissible candidate appears or the champion pool is exhausted. Historical `bounded`,
++`exhaustive`, and `multi_fidelity` strategies remain available for compatible old campaigns.
++
++The 256-frame target and 512-frame replay monitors remain lightweight training evidence; they are
++not relabeled as full evaluation. Naive fine-tuning still receives no replay gradients, but during
++training the fixed true-replay monitor is evaluated through its target head as a validation-only
++loader, making its STOP1/RANK1 score directly comparable to multi-head replay.
++
++With `replay_true_labels` configured, each purchased finalist and the frozen foundation
++are evaluated on the independent true-label replay domain. This preserves pseudo-label replay
++for gradient training while making final replay accuracy authoritative. A finalist must pass the
++absolute target/replay force-RMSE ceilings plus the retained energy, mobile-ion force, stress, and
++worst-condition safety gates before its weighted full score can be ranked. Foundation-relative
++replay degradation is reported as a diagnostic rather than the default hard selector.
++
++ADAPT-EVAL1 freezes the ordered fully admissible candidate evidence but does **not** yet perform
++deployment verification, verification-failure fallback, or final model/committee export. Those
++actions remain the next `ADAPT-VERIFY1` gate.
+ 
+ Evaluation records are bound to the monitor artifact digests, model hashes, and
+ evaluation-policy digest. Adding or changing `replay_true_labels` therefore
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/docs/specs/training_data/mlff_adaptive_full_evaluation_spec.md b/docs/specs/training_data/mlff_adaptive_full_evaluation_spec.md
+--- a/docs/specs/training_data/mlff_adaptive_full_evaluation_spec.md	1970-01-01 00:00:00.000000000 +0000
++++ b/docs/specs/training_data/mlff_adaptive_full_evaluation_spec.md	2026-08-09 22:19:25.455153260 +0000
+@@ -0,0 +1,212 @@
++# MLFF ADAPT-EVAL1 adaptive top-K full-evaluation specification
++
++Status: implemented in mdstats 0.20.126a0.
++
++## Purpose
++
++ADAPT-EVAL1 replaces the generated production EVAL-MF successive-halving workflow after
++ADAPT-MON1/STOP1/RANK1 have already paid for fixed epoch-wise target/replay monitor metrics.
++Production evaluation performs no 10% or 33% checkpoint rounds. It consumes exactly one
++immutable lightweight champion from each independent run, purchases authoritative full
++inference for a small campaign-wide finalist set, rejects hard failures before weighted
++ranking, and expands the purchased set only when the current batch contains no admissible
++model.
++
++Historical `bounded`, `exhaustive`, and `multi_fidelity` evaluation strategies remain readable
++and executable for pre-adaptive campaign evidence. New generated campaigns use
++`checkpoint_strategy = "adaptive_topk"`.
++
++## Inputs and immutable lineage
++
++ADAPT-EVAL1 requires:
++
++- a completed training-campaign plan;
++- terminal ADAPT-STOP1 state for every considered run;
++- reconciled ADAPT-RANK1 `lightweight_run_champion.json` evidence;
++- the frozen checkpoint catalog for each champion;
++- one identical common full target artifact across all adaptive DATA8 bundles;
++- one independent full TRUE_DFT replay artifact;
++- the binary learned-model precision identity (`single` or `double`); and
++- the retained full-evaluation safety policy.
++
++The finalist queue is content-addressed to the campaign, the run-local champion evidence, and
++the scoring policy. Full candidate decisions are content-addressed to the corresponding
++checkpoint evaluation record.
++
++## Common full target domain
++
++The 256-frame ADAPT-MON1 target monitor is a lightweight training/screening domain and must
++not be relabeled as full evidence. DATA8 v3 therefore materializes the complete DATA5
++`outer_monitor` domain once as:
++
++```text
++shared/target/full_target_evaluation.xyz
++```
++
++with role `common_full_target_evaluation`. The 256-frame online monitor must be a subset of
++this domain. All adaptive bundles competing in one campaign must expose identical full-target
++membership and content identity.
++
++## Common full replay domain
++
++Authoritative replay evaluation uses the complete configured independent TRUE_DFT replay monitor
++domain resolved from `[paths].replay_true_labels` and the frozen replay-monitor lineage. The
++512-frame online replay monitor remains a lightweight fixed trend monitor; it is not substituted for
++full replay evidence. This domain is the authoritative true-label replay validation/monitor split, not
++the replay-training corpus.
++
++Both naive fine-tuning and multi-head replay candidates are evaluated on the same true-replay
++domain. A multi-head model uses its replay head. A naive model has no replay head, so its target
++head is evaluated on the replay structures. This gives one physically comparable replay force
++RMSE across training methods.
++
++## Lightweight cross-method comparability
++
++The campaign finalist queue is meaningful only if ADAPT-RANK1 scores have the same target/replay
++semantics for every training method. Multi-head replay obtains its replay validation row from the
++normal `pt_head` loader. Naive fine-tuning receives the same fixed 512-frame TRUE_DFT replay
++monitor as an auxiliary validation-only loader evaluated through its target head.
++
++The auxiliary loader:
++
++- contributes no gradients;
++- does not add a trainable head;
++- is inserted before the ordinary target loader, preserving MACE 0.3.16's historical
++  last-validation-loader checkpoint/patience scalar as target-driven; and
++- supplies the replay metric consumed by ADAPT-STOP1 and ADAPT-RANK1.
++
++Thus all new adaptive runs rank by the same weighted target/true-replay force objective.
++
++## Finalist queue
++
++For one champion per independent run, order candidates by the frozen lightweight score and its
++existing deterministic tie-breakers. Initially purchase full evaluation for at most:
++
++```toml
++[evaluation]
++finalist_count = 5
++```
++
++If fewer than five champions exist, evaluate all of them.
++
++The queue is fixed before authoritative inference begins; full-evaluation results do not reorder
++or mutate the queue.
++
++## Authoritative full score
++
++For target force RMSE `T_full` and true-replay force RMSE `R_full`, define:
++
++$$
++S_{\rm full}
++=
++\frac{w_T T_{\rm full}+w_R R_{\rm full}}{w_T+w_R}.
++$$
++
++The default score weights are 1:1.
++
++The replay hard ceiling remains coupled to the target threshold and score weights:
++
++$$
++R_{\max}=\frac{w_T}{w_R}T_{\max}.
++$$
++
++With the default `T_max = 0.030 eV/A` and 1:1 weights, both target and replay hard ceilings are
++30 meV/A.
++
++## Hard acceptance before ranking
++
++A candidate is fully admissible only after it satisfies:
++
++1. `T_full <= T_max`;
++2. `R_full <= R_max`;
++3. retained target energy-MAE safety limits;
++4. retained focus/mobile-ion force-RMSE safety limits;
++5. retained stress-RMSE safety limits;
++6. retained worst-condition force-RMSE safety limits; and
++7. required finite/complete metric evidence.
++
++The weighted score is never allowed to compensate for a hard failure.
++
++The historical foundation-relative replay degradation remains recorded as:
++
++- foundation true-replay force RMSE;
++- candidate minus foundation absolute degradation; and
++- fractional degradation when the foundation baseline is positive.
++
++It is diagnostic under the new default selector and is not the hard replay acceptance gate.
++
++## Rescue batching
++
++If no candidate in the first purchased batch is admissible, purchase the next unevaluated
++champions in deterministic batches of:
++
++```toml
++[evaluation]
++finalist_rescue_batch_size = 5
++```
++
++Continue only until:
++
++- at least one purchased candidate is fully admissible; or
++- the champion pool is exhausted.
++
++Once a purchased batch produces an admissible candidate, production full evaluation stops. An
++exhaustive historical/reference evaluator may still be used explicitly for research, but it is
++not the generated adaptive production strategy.
++
++## Precision contract
++
++The learned-model dtype is never normalized across finalists:
++
++```text
++single -> FP32 model inference
++double -> FP64 model inference
++```
++
++An FP32 checkpoint is not promoted to FP64 for evaluation, reconstruction, or export. mdstats
++converts model outputs to FP64 for SSE/RMSE accumulation, retained safety metrics, replay
++diagnostics, and weighted score calculation.
++
++## Restart and cache semantics
++
++Full predictions are reusable only when all relevant identities match, including:
++
++- run and checkpoint identity;
++- evaluation policy identity;
++- binary model dtype;
++- common full target artifact identity and SHA-256;
++- common full replay artifact identity and SHA-256; and
++- reconstructed model/checkpoint lineage.
++
++Interrupted evaluation resumes from authenticated completed predictions. It never repeats a
++completed finalist merely to rebuild aggregate evidence, and it never changes the frozen queue.
++
++## Outputs
++
++ADAPT-EVAL1 persists:
++
++- `CampaignFinalistQueueRecord`;
++- one authoritative `CheckpointEvaluationRecord` per purchased finalist;
++- one `FullEvaluationCandidateRecord` per purchased finalist;
++- one aggregate `AdaptiveFullEvaluationRecord`; and
++- `results/adaptive-full-evaluation.json` for a complete campaign.
++
++The aggregate result orders the fully admissible candidates by full score, but ADAPT-EVAL1 does
++not perform deployment verification, fallback after verification failure, or final export. Those
++responsibilities remain ADAPT-VERIFY1.
++
++## Acceptance tests
++
++ADAPT-EVAL1 is complete only when tests prove:
++
++1. generated campaigns default to `adaptive_topk` and purchase no EVAL-MF partial rounds;
++2. the initial queue contains at most five one-per-run champions;
++3. rescue proceeds in batches of five only when no purchased candidate is admissible;
++4. the 256-frame target online monitor is a subset of a separately materialized common full target domain;
++5. the full true-replay domain is independent of the 512-frame online replay monitor;
++6. naive and replay-trained runs expose comparable target+true-replay lightweight scores;
++7. hard target/replay and retained safety gates execute before full-score ranking;
++8. the old foundation-relative replay degradation is diagnostic rather than the default hard selector;
++9. `single` and `double` preserve their own model inference dtype with FP64 scientific reductions;
++10. interruption/restart reuses authenticated completed predictions; and
++11. historical EVAL-MF policies remain readable and directly testable without remaining the generated default.
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/docs/specs/training_data/mlff_adaptive_training_stop_spec.md b/docs/specs/training_data/mlff_adaptive_training_stop_spec.md
+--- a/docs/specs/training_data/mlff_adaptive_training_stop_spec.md	2026-08-09 21:36:37.242212020 +0000
++++ b/docs/specs/training_data/mlff_adaptive_training_stop_spec.md	2026-08-09 22:11:26.238029981 +0000
+@@ -121,7 +121,7 @@
+ 
+ ADAPT-STOP1 deliberately does not select among admissible epochs. ADAPT-RANK1 will later compute
+ the weight-coupled lightweight score and freeze exactly one champion per independent run.
+-EVAL-MF remains the production evaluator in 0.20.125a0 until ADAPT-EVAL1 is implemented. ADAPT-RANK1 now derives the run-local champion from this state without changing STOP1 evidence.
++ADAPT-RANK1 derives the run-local champion from this state without changing STOP1 evidence. Beginning in 0.20.126a0, ADAPT-EVAL1 consumes those champions for generated production top-K full evaluation; historical EVAL-MF remains available for compatible old campaigns.
+ 
+ ## Generated configuration
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/docs/specs/training_data/mlff_lightweight_ranking_spec.md b/docs/specs/training_data/mlff_lightweight_ranking_spec.md
+--- a/docs/specs/training_data/mlff_lightweight_ranking_spec.md	2026-08-09 21:51:44.279252644 +0000
++++ b/docs/specs/training_data/mlff_lightweight_ranking_spec.md	2026-08-09 22:10:02.514259162 +0000
+@@ -49,7 +49,7 @@
+ S_{\rm light}=\frac{w_TT_{\rm mon}+w_RR_{\rm mon}}{w_T+w_R}.
+ $$
+ 
+-For target-only training, `S_light = T_mon`. The default 1:1 replay policy is therefore the simple
++The low-level historical policy can still represent a target-only record with `S_light = T_mon`. New adaptive production campaigns, including naive fine-tuning, supply the fixed TRUE_DFT replay monitor so cross-run screening uses the target+replay score. The default 1:1 replay policy is therefore the simple
+ arithmetic mean of target and replay force RMSE.
+ 
+ All score arithmetic uses ordinary Python/NumPy double-precision scalar semantics after MACE
+@@ -119,5 +119,5 @@
+ - select the final verified production model.
+ 
+ Those responsibilities remain ADAPT-EVAL1 and ADAPT-VERIFY1. In mdstats 0.20.125a0, the current
+-EVAL-MF evaluator remains runtime-authoritative even though each new completed adaptive run now has
++ADAPT-EVAL1 is runtime-authoritative for new generated adaptive campaigns as of 0.20.126a0; historical EVAL-MF remains readable/selectable. Each completed adaptive run has
+ one frozen lightweight champion.
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/mdstats/__init__.py b/mdstats/__init__.py
+--- a/mdstats/__init__.py	2026-08-09 21:31:42.541472993 +0000
++++ b/mdstats/__init__.py	2026-08-09 21:56:10.014145487 +0000
+@@ -4793,6 +4793,17 @@
+     LightweightCheckpointScore,
+     LightweightRunChampionRecord,
+     rank_lightweight_run_champion,
++    ADAPTIVE_FULL_EVALUATION_POLICY_SCHEMA,
++    CAMPAIGN_FINALIST_QUEUE_SCHEMA,
++    FULL_EVALUATION_CANDIDATE_SCHEMA,
++    ADAPTIVE_FULL_EVALUATION_RECORD_SCHEMA,
++    AdaptiveFullEvaluationPolicy,
++    CampaignFinalistCandidate,
++    CampaignFinalistQueueRecord,
++    FullEvaluationCandidateRecord,
++    AdaptiveFullEvaluationRecord,
++    build_campaign_finalist_queue,
++    assess_full_evaluation_candidate,
+ )
+ __all__ += [
+     "ADAPTIVE_STOP_POLICY_SCHEMA",
+@@ -4811,4 +4822,15 @@
+     "LightweightCheckpointScore",
+     "LightweightRunChampionRecord",
+     "rank_lightweight_run_champion",
++    "ADAPTIVE_FULL_EVALUATION_POLICY_SCHEMA",
++    "CAMPAIGN_FINALIST_QUEUE_SCHEMA",
++    "FULL_EVALUATION_CANDIDATE_SCHEMA",
++    "ADAPTIVE_FULL_EVALUATION_RECORD_SCHEMA",
++    "AdaptiveFullEvaluationPolicy",
++    "CampaignFinalistCandidate",
++    "CampaignFinalistQueueRecord",
++    "FullEvaluationCandidateRecord",
++    "AdaptiveFullEvaluationRecord",
++    "build_campaign_finalist_queue",
++    "assess_full_evaluation_candidate",
+ ]
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/mdstats/_version.py b/mdstats/_version.py
+--- a/mdstats/_version.py	2026-08-09 21:30:38.927637036 +0000
++++ b/mdstats/_version.py	2026-08-09 21:54:29.494901467 +0000
+@@ -1,3 +1,3 @@
+ """Package version."""
+ 
+-__version__ = "0.20.125a0"
++__version__ = "0.20.126a0"
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/mdstats/data/observable_owner_manuals.json b/mdstats/data/observable_owner_manuals.json
+--- a/mdstats/data/observable_owner_manuals.json	2026-08-09 21:30:38.927682754 +0000
++++ b/mdstats/data/observable_owner_manuals.json	2026-08-09 22:10:38.026308387 +0000
+@@ -17,6 +17,6 @@
+       "uri": "mdstats-doc://vacf-dynamics-architecture/0.20.53a0"
+     }
+   },
+-  "package_version": "0.20.125a0",
++  "package_version": "0.20.126a0",
+   "schema": "mdstats.observable-owner-manual-index.v1"
+ }
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/mdstats/training_data/__init__.py b/mdstats/training_data/__init__.py
+--- a/mdstats/training_data/__init__.py	2026-08-09 21:31:42.541116692 +0000
++++ b/mdstats/training_data/__init__.py	2026-08-09 21:56:09.551262237 +0000
+@@ -1109,3 +1109,19 @@
+ )
+ 
+ __all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
++
++from .adaptive_full_evaluation import (
++    ADAPTIVE_FULL_EVALUATION_POLICY_SCHEMA,
++    CAMPAIGN_FINALIST_QUEUE_SCHEMA,
++    FULL_EVALUATION_CANDIDATE_SCHEMA,
++    ADAPTIVE_FULL_EVALUATION_RECORD_SCHEMA,
++    AdaptiveFullEvaluationPolicy,
++    CampaignFinalistCandidate,
++    CampaignFinalistQueueRecord,
++    FullEvaluationCandidateRecord,
++    AdaptiveFullEvaluationRecord,
++    build_campaign_finalist_queue,
++    assess_full_evaluation_candidate,
++)
++
++__all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/mdstats/training_data/adaptive_full_evaluation.py b/mdstats/training_data/adaptive_full_evaluation.py
+--- a/mdstats/training_data/adaptive_full_evaluation.py	1970-01-01 00:00:00.000000000 +0000
++++ b/mdstats/training_data/adaptive_full_evaluation.py	2026-08-09 22:06:47.704804992 +0000
+@@ -0,0 +1,390 @@
++"""ADAPT-EVAL1 campaign-wide top-K authoritative full evaluation evidence."""
++from __future__ import annotations
++
++from dataclasses import dataclass
++import math
++from typing import Any, Mapping, Sequence
++
++from ._common import TrainingDataInputError, TrainingDataSerializationError, digest, validate_digest
++from .lightweight_rank import LightweightRunChampionRecord
++from .campaign_execution import CheckpointEvaluationRecord
++from .objectives import CheckpointMetricPolicy
++
++ADAPTIVE_FULL_EVALUATION_POLICY_SCHEMA = "mdstats.adaptive-full-evaluation-policy.v1"
++CAMPAIGN_FINALIST_QUEUE_SCHEMA = "mdstats.campaign-finalist-queue.v1"
++FULL_EVALUATION_CANDIDATE_SCHEMA = "mdstats.full-evaluation-candidate.v1"
++ADAPTIVE_FULL_EVALUATION_RECORD_SCHEMA = "mdstats.adaptive-full-evaluation-record.v1"
++
++
++@dataclass(frozen=True, slots=True)
++class AdaptiveFullEvaluationPolicy:
++    finalist_count: int = 5
++    finalist_rescue_batch_size: int = 5
++    target_score_weight: float = 1.0
++    replay_score_weight: float = 1.0
++    maximum_target_force_rmse_ev_per_angstrom: float = 0.030
++    maximum_replay_force_rmse_ev_per_angstrom: float = 0.030
++    retained_checkpoint_metric_policy_digest: str | None = None
++
++    def __post_init__(self) -> None:
++        if int(self.finalist_count) <= 0 or int(self.finalist_rescue_batch_size) <= 0:
++            raise TrainingDataInputError("Adaptive full-evaluation finalist batch sizes must be positive.")
++        object.__setattr__(self, "finalist_count", int(self.finalist_count))
++        object.__setattr__(self, "finalist_rescue_batch_size", int(self.finalist_rescue_batch_size))
++        for name in ("target_score_weight", "replay_score_weight"):
++            value = float(getattr(self, name))
++            if not math.isfinite(value) or value <= 0.0:
++                raise TrainingDataInputError(f"{name} must be finite and positive.")
++            object.__setattr__(self, name, value)
++        for name in (
++            "maximum_target_force_rmse_ev_per_angstrom",
++            "maximum_replay_force_rmse_ev_per_angstrom",
++        ):
++            value = float(getattr(self, name))
++            if not math.isfinite(value) or value <= 0.0:
++                raise TrainingDataInputError(f"{name} must be finite and positive.")
++            object.__setattr__(self, name, value)
++        if self.retained_checkpoint_metric_policy_digest is not None:
++            object.__setattr__(
++                self,
++                "retained_checkpoint_metric_policy_digest",
++                validate_digest(
++                    self.retained_checkpoint_metric_policy_digest,
++                    name="retained_checkpoint_metric_policy_digest",
++                ),
++            )
++
++    def _payload(self) -> dict[str, Any]:
++        return {
++            "schema": ADAPTIVE_FULL_EVALUATION_POLICY_SCHEMA,
++            "finalist_count": self.finalist_count,
++            "finalist_rescue_batch_size": self.finalist_rescue_batch_size,
++            "target_score_weight": self.target_score_weight,
++            "replay_score_weight": self.replay_score_weight,
++            "maximum_target_force_rmse_ev_per_angstrom": self.maximum_target_force_rmse_ev_per_angstrom,
++            "maximum_replay_force_rmse_ev_per_angstrom": self.maximum_replay_force_rmse_ev_per_angstrom,
++            "retained_checkpoint_metric_policy_digest": self.retained_checkpoint_metric_policy_digest,
++        }
++
++    @property
++    def policy_digest(self) -> str:
++        return digest(self._payload())
++
++    def to_dict(self) -> dict[str, Any]:
++        return {**self._payload(), "policy_digest": self.policy_digest}
++
++    @classmethod
++    def from_dict(cls, payload: Mapping[str, Any]) -> "AdaptiveFullEvaluationPolicy":
++        if payload.get("schema") != ADAPTIVE_FULL_EVALUATION_POLICY_SCHEMA:
++            raise TrainingDataSerializationError("Unsupported adaptive-full-evaluation policy schema.")
++        result = cls(
++            finalist_count=int(payload["finalist_count"]),
++            finalist_rescue_batch_size=int(payload["finalist_rescue_batch_size"]),
++            target_score_weight=float(payload["target_score_weight"]),
++            replay_score_weight=float(payload["replay_score_weight"]),
++            maximum_target_force_rmse_ev_per_angstrom=float(payload["maximum_target_force_rmse_ev_per_angstrom"]),
++            maximum_replay_force_rmse_ev_per_angstrom=float(payload["maximum_replay_force_rmse_ev_per_angstrom"]),
++            retained_checkpoint_metric_policy_digest=(
++                None if payload.get("retained_checkpoint_metric_policy_digest") is None
++                else str(payload["retained_checkpoint_metric_policy_digest"])
++            ),
++        )
++        if payload.get("policy_digest") not in (None, result.policy_digest):
++            raise TrainingDataSerializationError("Adaptive-full-evaluation policy digest mismatch.")
++        return result
++
++
++@dataclass(frozen=True, slots=True)
++class CampaignFinalistCandidate:
++    rank: int
++    batch_index: int
++    run_plan_digest: str
++    run_id: str
++    champion_record_digest: str
++    checkpoint_sha256: str
++    checkpoint_epoch: int
++    lightweight_score_ev_per_angstrom: float
++
++    def __post_init__(self) -> None:
++        if self.rank <= 0 or self.batch_index <= 0 or self.checkpoint_epoch < 0:
++            raise TrainingDataInputError("Invalid finalist rank/batch/epoch.")
++        for name in ("run_plan_digest", "champion_record_digest", "checkpoint_sha256"):
++            object.__setattr__(self, name, validate_digest(getattr(self, name), name=name))
++        if not str(self.run_id).strip():
++            raise TrainingDataInputError("Finalist run_id must be non-empty.")
++        if not math.isfinite(float(self.lightweight_score_ev_per_angstrom)) or float(self.lightweight_score_ev_per_angstrom) < 0.0:
++            raise TrainingDataInputError("Finalist lightweight score is invalid.")
++
++    def _payload(self) -> dict[str, Any]:
++        return {
++            "rank": self.rank,
++            "batch_index": self.batch_index,
++            "run_plan_digest": self.run_plan_digest,
++            "run_id": self.run_id,
++            "champion_record_digest": self.champion_record_digest,
++            "checkpoint_sha256": self.checkpoint_sha256,
++            "checkpoint_epoch": self.checkpoint_epoch,
++            "lightweight_score_ev_per_angstrom": float(self.lightweight_score_ev_per_angstrom),
++        }
++
++    def to_dict(self) -> dict[str, Any]:
++        return self._payload()
++
++    @classmethod
++    def from_dict(cls, payload: Mapping[str, Any]) -> "CampaignFinalistCandidate":
++        return cls(
++            rank=int(payload["rank"]), batch_index=int(payload["batch_index"]),
++            run_plan_digest=str(payload["run_plan_digest"]), run_id=str(payload["run_id"]),
++            champion_record_digest=str(payload["champion_record_digest"]),
++            checkpoint_sha256=str(payload["checkpoint_sha256"]), checkpoint_epoch=int(payload["checkpoint_epoch"]),
++            lightweight_score_ev_per_angstrom=float(payload["lightweight_score_ev_per_angstrom"]),
++        )
++
++
++@dataclass(frozen=True, slots=True)
++class CampaignFinalistQueueRecord:
++    campaign_plan_digest: str
++    policy_digest: str
++    candidates: tuple[CampaignFinalistCandidate, ...]
++
++    def __post_init__(self) -> None:
++        object.__setattr__(self, "campaign_plan_digest", validate_digest(self.campaign_plan_digest, name="campaign_plan_digest"))
++        object.__setattr__(self, "policy_digest", validate_digest(self.policy_digest, name="policy_digest"))
++        candidates = tuple(self.candidates)
++        if any(item.rank != i for i, item in enumerate(candidates, start=1)):
++            raise TrainingDataInputError("Finalist queue ranks must be contiguous from one.")
++        if len({item.run_plan_digest for item in candidates}) != len(candidates):
++            raise TrainingDataInputError("Finalist queue contains duplicate runs.")
++        object.__setattr__(self, "candidates", candidates)
++
++    def _payload(self) -> dict[str, Any]:
++        return {
++            "schema": CAMPAIGN_FINALIST_QUEUE_SCHEMA,
++            "campaign_plan_digest": self.campaign_plan_digest,
++            "policy_digest": self.policy_digest,
++            "candidates": [item.to_dict() for item in self.candidates],
++        }
++
++    @property
++    def content_digest(self) -> str:
++        return digest(self._payload())
++
++    def to_dict(self) -> dict[str, Any]:
++        return {**self._payload(), "content_digest": self.content_digest}
++
++    @classmethod
++    def from_dict(cls, payload: Mapping[str, Any]) -> "CampaignFinalistQueueRecord":
++        if payload.get("schema") != CAMPAIGN_FINALIST_QUEUE_SCHEMA:
++            raise TrainingDataSerializationError("Unsupported campaign-finalist-queue schema.")
++        result = cls(
++            campaign_plan_digest=str(payload["campaign_plan_digest"]),
++            policy_digest=str(payload["policy_digest"]),
++            candidates=tuple(CampaignFinalistCandidate.from_dict(item) for item in payload.get("candidates", ())),
++        )
++        if payload.get("content_digest") not in (None, result.content_digest):
++            raise TrainingDataSerializationError("Campaign-finalist-queue digest mismatch.")
++        return result
++
++
++def build_campaign_finalist_queue(
++    campaign: Any,
++    champion_records: Mapping[str, LightweightRunChampionRecord],
++    policy: AdaptiveFullEvaluationPolicy,
++) -> CampaignFinalistQueueRecord:
++    rows: list[tuple[float, float, float, int, str, Any, LightweightRunChampionRecord]] = []
++    runs = {run.content_digest: run for run in campaign.runs}
++    for run_digest, record in champion_records.items():
++        if run_digest not in runs:
++            raise TrainingDataInputError("Lightweight champion belongs to a run outside this campaign.")
++        if record.run_plan_digest != run_digest:
++            raise TrainingDataInputError("Lightweight champion run lineage mismatch.")
++        if record.outcome != "champion_selected":
++            continue
++        assert record.selected_checkpoint_sha256 is not None
++        assert record.selected_checkpoint_epoch is not None
++        assert record.selected_score_ev_per_angstrom is not None
++        selected = record.eligible_candidates[0]
++        replay = 0.0 if selected.replay_force_rmse_ev_per_angstrom is None else selected.replay_force_rmse_ev_per_angstrom
++        rows.append((
++            round(float(record.selected_score_ev_per_angstrom), 15),
++            float(selected.target_force_rmse_ev_per_angstrom), float(replay),
++            int(record.selected_checkpoint_epoch), record.selected_checkpoint_sha256,
++            runs[run_digest], record,
++        ))
++    rows.sort(key=lambda row: row[:5])
++    candidates = []
++    for rank, row in enumerate(rows, start=1):
++        run, record = row[5], row[6]
++        batch_index = 1 if rank <= policy.finalist_count else 2 + (rank - policy.finalist_count - 1) // policy.finalist_rescue_batch_size
++        candidates.append(CampaignFinalistCandidate(
++            rank=rank, batch_index=batch_index, run_plan_digest=run.content_digest,
++            run_id=run.run_id, champion_record_digest=record.content_digest,
++            checkpoint_sha256=str(record.selected_checkpoint_sha256),
++            checkpoint_epoch=int(record.selected_checkpoint_epoch),
++            lightweight_score_ev_per_angstrom=float(record.selected_score_ev_per_angstrom),
++        ))
++    return CampaignFinalistQueueRecord(
++        campaign_plan_digest=campaign.content_digest,
++        policy_digest=policy.policy_digest,
++        candidates=tuple(candidates),
++    )
++
++
++@dataclass(frozen=True, slots=True)
++class FullEvaluationCandidateRecord:
++    finalist_rank: int
++    finalist_batch_index: int
++    run_plan_digest: str
++    run_id: str
++    checkpoint_sha256: str
++    checkpoint_epoch: int
++    evaluation_record_digest: str
++    target_force_rmse_ev_per_angstrom: float
++    replay_force_rmse_ev_per_angstrom: float
++    full_score_ev_per_angstrom: float
++    admissible: bool
++    rejection_reasons: tuple[str, ...] = ()
++    replay_foundation_force_rmse_ev_per_angstrom: float | None = None
++    replay_absolute_degradation_ev_per_angstrom: float | None = None
++    replay_fractional_degradation: float | None = None
++
++    def __post_init__(self) -> None:
++        for name in ("run_plan_digest", "checkpoint_sha256", "evaluation_record_digest"):
++            object.__setattr__(self, name, validate_digest(getattr(self, name), name=name))
++        for name in ("target_force_rmse_ev_per_angstrom", "replay_force_rmse_ev_per_angstrom", "full_score_ev_per_angstrom"):
++            value=float(getattr(self,name))
++            if not math.isfinite(value) or value < 0.0:
++                raise TrainingDataInputError(f"{name} must be finite and nonnegative.")
++            object.__setattr__(self,name,value)
++        reasons=tuple(sorted(set(str(v) for v in self.rejection_reasons)))
++        if self.admissible and reasons:
++            raise TrainingDataInputError("Admissible full-evaluation candidate cannot carry rejection reasons.")
++        if not self.admissible and not reasons:
++            raise TrainingDataInputError("Rejected full-evaluation candidate requires rejection reasons.")
++        object.__setattr__(self,"rejection_reasons",reasons)
++
++    def _payload(self) -> dict[str, Any]:
++        return {
++            "schema": FULL_EVALUATION_CANDIDATE_SCHEMA,
++            "finalist_rank": self.finalist_rank,
++            "finalist_batch_index": self.finalist_batch_index,
++            "run_plan_digest": self.run_plan_digest,
++            "run_id": self.run_id,
++            "checkpoint_sha256": self.checkpoint_sha256,
++            "checkpoint_epoch": self.checkpoint_epoch,
++            "evaluation_record_digest": self.evaluation_record_digest,
++            "target_force_rmse_ev_per_angstrom": self.target_force_rmse_ev_per_angstrom,
++            "replay_force_rmse_ev_per_angstrom": self.replay_force_rmse_ev_per_angstrom,
++            "full_score_ev_per_angstrom": self.full_score_ev_per_angstrom,
++            "admissible": bool(self.admissible),
++            "rejection_reasons": list(self.rejection_reasons),
++            "replay_foundation_force_rmse_ev_per_angstrom": self.replay_foundation_force_rmse_ev_per_angstrom,
++            "replay_absolute_degradation_ev_per_angstrom": self.replay_absolute_degradation_ev_per_angstrom,
++            "replay_fractional_degradation": self.replay_fractional_degradation,
++        }
++    @property
++    def content_digest(self) -> str: return digest(self._payload())
++    def to_dict(self) -> dict[str, Any]: return {**self._payload(), "content_digest": self.content_digest}
++    @classmethod
++    def from_dict(cls,payload:Mapping[str,Any])->"FullEvaluationCandidateRecord":
++        if payload.get("schema")!=FULL_EVALUATION_CANDIDATE_SCHEMA: raise TrainingDataSerializationError("Unsupported full-evaluation-candidate schema.")
++        result=cls(
++            finalist_rank=int(payload["finalist_rank"]), finalist_batch_index=int(payload["finalist_batch_index"]),
++            run_plan_digest=str(payload["run_plan_digest"]), run_id=str(payload["run_id"]), checkpoint_sha256=str(payload["checkpoint_sha256"]), checkpoint_epoch=int(payload["checkpoint_epoch"]),
++            evaluation_record_digest=str(payload["evaluation_record_digest"]), target_force_rmse_ev_per_angstrom=float(payload["target_force_rmse_ev_per_angstrom"]), replay_force_rmse_ev_per_angstrom=float(payload["replay_force_rmse_ev_per_angstrom"]), full_score_ev_per_angstrom=float(payload["full_score_ev_per_angstrom"]), admissible=bool(payload["admissible"]), rejection_reasons=tuple(str(v) for v in payload.get("rejection_reasons",())),
++            replay_foundation_force_rmse_ev_per_angstrom=None if payload.get("replay_foundation_force_rmse_ev_per_angstrom") is None else float(payload["replay_foundation_force_rmse_ev_per_angstrom"]), replay_absolute_degradation_ev_per_angstrom=None if payload.get("replay_absolute_degradation_ev_per_angstrom") is None else float(payload["replay_absolute_degradation_ev_per_angstrom"]), replay_fractional_degradation=None if payload.get("replay_fractional_degradation") is None else float(payload["replay_fractional_degradation"]),
++        )
++        if payload.get("content_digest") not in (None,result.content_digest): raise TrainingDataSerializationError("Full-evaluation-candidate digest mismatch.")
++        return result
++
++
++def assess_full_evaluation_candidate(
++    finalist: CampaignFinalistCandidate,
++    evaluation: CheckpointEvaluationRecord,
++    policy: AdaptiveFullEvaluationPolicy,
++    retained_policy: CheckpointMetricPolicy,
++) -> FullEvaluationCandidateRecord:
++    if evaluation.run_plan_digest != finalist.run_plan_digest or evaluation.checkpoint_sha256 != finalist.checkpoint_sha256:
++        raise TrainingDataInputError("Full evaluation candidate lineage mismatch.")
++    expected_metric_digest = policy.retained_checkpoint_metric_policy_digest
++    if expected_metric_digest is not None and retained_policy.policy_digest != expected_metric_digest:
++        raise TrainingDataInputError(
++            "ADAPT-EVAL1 retained checkpoint-metric policy differs from the policy frozen into the full-evaluation plan."
++        )
++    target = evaluation.target_candidate_metrics
++    replay = evaluation.replay_candidate_metrics
++    if target is None or replay is None:
++        raise TrainingDataInputError("ADAPT-EVAL1 requires complete target and true-replay candidate metrics.")
++    t=float(target.force_component_rmse_ev_per_angstrom); r=float(replay.force_component_rmse_ev_per_angstrom)
++    reasons=[]
++    if t > policy.maximum_target_force_rmse_ev_per_angstrom: reasons.append("target_force_rmse_threshold_exceeded")
++    if r > policy.maximum_replay_force_rmse_ev_per_angstrom: reasons.append("replay_force_rmse_threshold_exceeded")
++    # Retain all legacy non-replay, non-primary hard safety gates.
++    if retained_policy.maximum_energy_mae_ev_per_atom is not None and target.energy_mae_ev_per_atom > retained_policy.maximum_energy_mae_ev_per_atom: reasons.append("energy_mae_threshold_exceeded")
++    if retained_policy.maximum_focus_force_rmse_ev_per_angstrom is not None:
++        focus=max((v for _,v in target.focus_force_rmse_ev_per_angstrom), default=None)
++        if focus is None: reasons.append("missing_focus_force_rmse")
++        elif focus > retained_policy.maximum_focus_force_rmse_ev_per_angstrom: reasons.append("focus_force_rmse_threshold_exceeded")
++    if retained_policy.maximum_stress_rmse_ev_per_angstrom3 is not None:
++        if target.stress_rmse_ev_per_angstrom3 is None: reasons.append("missing_stress_rmse")
++        elif target.stress_rmse_ev_per_angstrom3 > retained_policy.maximum_stress_rmse_ev_per_angstrom3: reasons.append("stress_rmse_threshold_exceeded")
++    if retained_policy.maximum_worst_condition_force_rmse_ev_per_angstrom is not None and target.worst_condition_force_rmse_ev_per_angstrom > retained_policy.maximum_worst_condition_force_rmse_ev_per_angstrom: reasons.append("worst_condition_force_rmse_threshold_exceeded")
++    score=(policy.target_score_weight*t+policy.replay_score_weight*r)/(policy.target_score_weight+policy.replay_score_weight)
++    baseline=None if evaluation.replay_foundation_metrics is None else float(evaluation.replay_foundation_metrics.force_component_rmse_ev_per_angstrom)
++    absolute=None if baseline is None else r-baseline
++    fraction=None if baseline is None or baseline <= 0 else absolute/baseline
++    return FullEvaluationCandidateRecord(
++        finalist_rank=finalist.rank, finalist_batch_index=finalist.batch_index,
++        run_plan_digest=finalist.run_plan_digest, run_id=finalist.run_id,
++        checkpoint_sha256=finalist.checkpoint_sha256, checkpoint_epoch=finalist.checkpoint_epoch,
++        evaluation_record_digest=evaluation.content_digest,
++        target_force_rmse_ev_per_angstrom=t, replay_force_rmse_ev_per_angstrom=r,
++        full_score_ev_per_angstrom=float(score), admissible=not reasons,
++        rejection_reasons=tuple(reasons), replay_foundation_force_rmse_ev_per_angstrom=baseline,
++        replay_absolute_degradation_ev_per_angstrom=absolute,
++        replay_fractional_degradation=fraction,
++    )
++
++
++@dataclass(frozen=True, slots=True)
++class AdaptiveFullEvaluationRecord:
++    campaign_plan_digest: str
++    policy_digest: str
++    finalist_queue_digest: str
++    full_target_artifact_digest: str
++    full_replay_artifact_digest: str
++    evaluated_candidates: tuple[FullEvaluationCandidateRecord, ...]
++    completed_batch_count: int
++    outcome: str
++
++    def __post_init__(self) -> None:
++        for name in ("campaign_plan_digest","policy_digest","finalist_queue_digest","full_target_artifact_digest","full_replay_artifact_digest"):
++            object.__setattr__(self,name,validate_digest(getattr(self,name),name=name))
++        allowed={"admissible_candidates_available","no_admissible_candidate"}
++        if self.outcome not in allowed: raise TrainingDataInputError("Unsupported adaptive full-evaluation outcome.")
++        if int(self.completed_batch_count) < 0:
++            raise TrainingDataInputError("Adaptive full-evaluation completed_batch_count must be nonnegative.")
++        object.__setattr__(self,"completed_batch_count",int(self.completed_batch_count))
++        candidates = tuple(self.evaluated_candidates)
++        if len({(item.run_plan_digest, item.checkpoint_sha256) for item in candidates}) != len(candidates):
++            raise TrainingDataInputError("Adaptive full evaluation contains duplicate candidate identities.")
++        has_admissible = any(item.admissible for item in candidates)
++        if self.outcome == "admissible_candidates_available" and not has_admissible:
++            raise TrainingDataInputError("Adaptive full-evaluation outcome claims an admissible model but none is recorded.")
++        if self.outcome == "no_admissible_candidate" and has_admissible:
++            raise TrainingDataInputError("Adaptive full-evaluation outcome rejects the pool despite an admissible model.")
++        object.__setattr__(self,"evaluated_candidates",candidates)
++    @property
++    def admissible_candidates(self)->tuple[FullEvaluationCandidateRecord,...]:
++        return tuple(sorted((x for x in self.evaluated_candidates if x.admissible), key=lambda x:(round(x.full_score_ev_per_angstrom,15),x.target_force_rmse_ev_per_angstrom,x.replay_force_rmse_ev_per_angstrom,x.finalist_rank,x.checkpoint_sha256)))
++    def _payload(self)->dict[str,Any]:
++        return {"schema":ADAPTIVE_FULL_EVALUATION_RECORD_SCHEMA,"campaign_plan_digest":self.campaign_plan_digest,"policy_digest":self.policy_digest,"finalist_queue_digest":self.finalist_queue_digest,"full_target_artifact_digest":self.full_target_artifact_digest,"full_replay_artifact_digest":self.full_replay_artifact_digest,"evaluated_candidates":[x.to_dict() for x in self.evaluated_candidates],"completed_batch_count":self.completed_batch_count,"outcome":self.outcome}
++    @property
++    def content_digest(self)->str:return digest(self._payload())
++    def to_dict(self)->dict[str,Any]:return {**self._payload(),"content_digest":self.content_digest}
++    @classmethod
++    def from_dict(cls,payload:Mapping[str,Any])->"AdaptiveFullEvaluationRecord":
++        if payload.get("schema")!=ADAPTIVE_FULL_EVALUATION_RECORD_SCHEMA: raise TrainingDataSerializationError("Unsupported adaptive-full-evaluation-record schema.")
++        result=cls(campaign_plan_digest=str(payload["campaign_plan_digest"]),policy_digest=str(payload["policy_digest"]),finalist_queue_digest=str(payload["finalist_queue_digest"]),full_target_artifact_digest=str(payload["full_target_artifact_digest"]),full_replay_artifact_digest=str(payload["full_replay_artifact_digest"]),evaluated_candidates=tuple(FullEvaluationCandidateRecord.from_dict(x) for x in payload.get("evaluated_candidates",())),completed_batch_count=int(payload["completed_batch_count"]),outcome=str(payload["outcome"]))
++        if payload.get("content_digest") not in (None,result.content_digest):raise TrainingDataSerializationError("Adaptive-full-evaluation-record digest mismatch.")
++        return result
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/mdstats/training_data/adaptive_stop.py b/mdstats/training_data/adaptive_stop.py
+--- a/mdstats/training_data/adaptive_stop.py	2026-08-09 21:18:19.238922449 +0000
++++ b/mdstats/training_data/adaptive_stop.py	2026-08-09 22:05:52.711688338 +0000
+@@ -21,6 +21,7 @@
+ ADAPTIVE_STOP_STATE_SCHEMA = "mdstats.adaptive-training-stop-state.v1"
+ ADAPTIVE_STOP_POLICY_ENVIRONMENT_VARIABLE = "MDSTATS_ADAPTIVE_STOP_POLICY"
+ ADAPTIVE_STOP_STATE_PATH_ENVIRONMENT_VARIABLE = "MDSTATS_ADAPTIVE_STOP_STATE_PATH"
++ADAPTIVE_STOP_AUXILIARY_REPLAY_PATH_ENVIRONMENT_VARIABLE = "MDSTATS_ADAPTIVE_STOP_AUXILIARY_REPLAY_PATH"
+ 
+ 
+ @dataclass(frozen=True, slots=True)
+@@ -369,6 +370,88 @@
+     return target, replay
+ 
+ 
++
++def prepare_auxiliary_replay_validation_loader(model: Any, valid_loaders: Mapping[str, Any]) -> dict[str, Any]:
++    """Inject the fixed true-label replay monitor for one-head/naive training.
++
++    Multi-head replay already exposes its independent ``pt_head`` validation
++    loader through MACE.  A naive fine-tuning model has only the target head,
++    but ADAPT-STOP1/RANK1 still require the same target+replay objective.  When
++    the campaign supplies the immutable ADAPT-MON1 replay path, build one
++    additional validation loader that evaluates those configurations through
++    the target head.  It is inserted *before* MACE's ordinary target loader so
++    MACE's historical "last validation head" checkpoint/patience behavior
++    remains target-driven.
++    """
++
++    policy = adaptive_stop_policy_from_environment()
++    replay_path = os.environ.get(ADAPTIVE_STOP_AUXILIARY_REPLAY_PATH_ENVIRONMENT_VARIABLE)
++    if policy is None or not policy.replay_enabled or not replay_path:
++        return dict(valid_loaders)
++    if policy.replay_head_name in valid_loaders:
++        return dict(valid_loaders)
++    path = Path(replay_path).expanduser().resolve()
++    if not path.is_file():
++        raise RuntimeError(f"ADAPT-STOP1 auxiliary true-replay monitor is missing: {path}")
++    if not valid_loaders:
++        raise RuntimeError("ADAPT-STOP1 cannot infer validation batching without the target loader.")
++
++    try:
++        from mace import data as mace_data
++        from mace.data import KeySpecification
++        from mace.tools import AtomicNumberTable, torch_geometric
++    except Exception as exc:  # pragma: no cover - production dependency guard
++        raise RuntimeError("ADAPT-STOP1 could not import MACE data utilities for auxiliary replay validation.") from exc
++
++    keys = KeySpecification.from_defaults()
++    keys.update(
++        info_keys={"energy": "REF_energy", "stress": "REF_stress"},
++        arrays_keys={"forces": "REF_forces"},
++    )
++    target_head = policy.target_head_name
++    heads = list(getattr(model, "heads", [target_head]))
++    if target_head not in heads:
++        if len(heads) != 1:
++            raise RuntimeError(
++                f"ADAPT-STOP1 target head {target_head!r} is absent from model heads {heads!r}."
++            )
++        target_head = str(heads[0])
++    _, configurations = mace_data.load_from_xyz(
++        str(path),
++        key_specification=keys,
++        head_name=target_head,
++        keep_isolated_atoms=True,
++        no_data_ok=False,
++    )
++    atomic_numbers = getattr(model, "atomic_numbers", None)
++    if atomic_numbers is None:
++        raise RuntimeError("ADAPT-STOP1 model does not expose atomic_numbers for replay validation.")
++    if hasattr(atomic_numbers, "detach"):
++        atomic_numbers = atomic_numbers.detach().cpu().tolist()
++    z_table = AtomicNumberTable([int(value) for value in atomic_numbers])
++    cutoff = float(getattr(model, "r_max"))
++    dataset = [
++        mace_data.AtomicData.from_config(
++            config, z_table=z_table, cutoff=cutoff, heads=heads
++        )
++        for config in configurations
++    ]
++    if not dataset:
++        raise RuntimeError("ADAPT-STOP1 auxiliary true-replay monitor is empty.")
++    reference_loader = next(iter(valid_loaders.values()))
++    batch_size = int(getattr(reference_loader, "batch_size", 1) or 1)
++    replay_loader = torch_geometric.dataloader.DataLoader(
++        dataset=dataset,
++        batch_size=batch_size,
++        shuffle=False,
++        drop_last=False,
++        pin_memory=bool(getattr(reference_loader, "pin_memory", False)),
++        num_workers=int(getattr(reference_loader, "num_workers", 0) or 0),
++    )
++    # Replay first, target last: preserve MACE's native target-driven
++    # checkpoint/patience scalar while logging both independent RMSE rows.
++    return {policy.replay_head_name: replay_loader, **dict(valid_loaders)}
++
+ def validate_adaptive_stop_foundation_baseline(logger_path: str | Path) -> None:
+     """Validate the true-label replay threshold after MACE's initial eval, before epoch 0."""
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/mdstats/training_data/campaign_cli.py b/mdstats/training_data/campaign_cli.py
+--- a/mdstats/training_data/campaign_cli.py	2026-08-09 21:36:22.820224639 +0000
++++ b/mdstats/training_data/campaign_cli.py	2026-08-09 22:16:28.352516929 +0000
+@@ -1128,7 +1128,7 @@
+ def _adaptive_training_stop_policy(
+     cfg: Mapping[str, Any],
+     *,
+-    replay_enabled: bool,
++    replay_head_name: str = "pt_head",
+ ) -> Any:
+     """Build the ADAPT-STOP1 protocol-frozen force-RMSE stopping policy."""
+ 
+@@ -1144,7 +1144,8 @@
+         target_stop_fraction=float(_cfg(cfg, "training", "target_stop_fraction", 0.80)),
+         replay_stop_multiplier=float(_cfg(cfg, "training", "replay_stop_multiplier", 1.20)),
+         max_num_epochs=int(_cfg(cfg, "training", "max_num_epochs", 30)),
+-        replay_enabled=bool(replay_enabled),
++        replay_enabled=True,
++        replay_head_name=str(replay_head_name),
+         allow_replay_threshold_below_foundation_baseline=bool(
+             _cfg(
+                 cfg,
+@@ -4823,7 +4824,7 @@
+             online_monitor_policy=online_monitor_policy,
+             true_replay_monitor_artifact=true_replay_resolution.monitor_artifact,
+             adaptive_stop_policy=_adaptive_training_stop_policy(
+-                cfg, replay_enabled=require_replay
++                cfg, replay_head_name=("pt_head" if require_replay else "replay_monitor")
+             ),
+             feature_metric_policy=mdstats.FeatureMetricPolicyTemplate(
+                 randomized_projection_seed=int(
+@@ -6397,6 +6398,7 @@
+     job: Any
+     data8_root: Path
+     run_root: Path
++    auxiliary_replay_monitor_path: Path | None
+     state_key: str
+     prior_record: Any | None
+     expected_updates: int
+@@ -8105,8 +8107,23 @@
+     completed_progress = 0
+ 
+     for display_index, run in enumerate(selected_runs, start=1):
+-        _, job, data8_root = lookup[run.mace_job_artifact_digest]
++        data8_bundle, job, data8_root = lookup[run.mace_job_artifact_digest]
+         data8_root = Path(data8_root).resolve()
++        auxiliary_replay_monitor_path = None
++        if job.protocol.replay_plan_digest is None:
++            replay_artifact = getattr(data8_bundle, "online_replay_monitor_artifact", None)
++            if replay_artifact is None:
++                raise CampaignCliError(
++                    f"Naive adaptive run {run.run_id} is missing the ADAPT-MON1 true-replay monitor artifact."
++                )
++            auxiliary_replay_monitor_path = _resolve_data8_runtime_member(
++                data8_bundle, data8_root, replay_artifact.path
++            )
++            if not auxiliary_replay_monitor_path.is_file():
++                raise CampaignCliError(
++                    f"Naive adaptive run {run.run_id} cannot resolve its true-replay online monitor: "
++                    f"{auxiliary_replay_monitor_path}"
++                )
+         run_root = (paths.runs / run.run_id).resolve()
+         run_root.mkdir(parents=True, exist_ok=True)
+         live_pid = _live_training_process(run_root)
+@@ -8248,6 +8265,7 @@
+                 job=job,
+                 data8_root=data8_root,
+                 run_root=run_root,
++                auxiliary_replay_monitor_path=auxiliary_replay_monitor_path,
+                 state_key=key,
+                 prior_record=previous,
+                 expected_updates=expected_training_updates,
+@@ -8388,6 +8406,11 @@
+                 flush=True,
+             )
+ 
++        task_environment = dict(worker_environment)
++        if task.auxiliary_replay_monitor_path is not None:
++            task_environment["MDSTATS_ADAPTIVE_STOP_AUXILIARY_REPLAY_PATH"] = str(
++                task.auxiliary_replay_monitor_path.resolve()
++            )
+         record = mdstats.execute_training_run(
+             task.run,
+             task.job,
+@@ -8395,7 +8418,7 @@
+             execution_root=task.run_root,
+             checkpoint_directory=task.run_root / "checkpoints",
+             policy=execution_policy,
+-            environment=worker_environment,
++            environment=task_environment,
+             wrapper_path=wrapper_path,
+             prior_record=task.prior_record,
+             progress_callback=_training_heartbeat,
+@@ -10647,6 +10670,374 @@
+     return (min(ranked, key=lambda item: (item[0], item[1]))[2],) if ranked else ()
+ 
+ @mace_runtime_warning_handled("campaign checkpoint evaluation")
++
++def _adaptive_full_evaluation_policy(
++    cfg: Mapping[str, Any], stop_policy: Any, metric_policy: Any
++) -> Any:
++    """Freeze ADAPT-EVAL1 batching/scoring around the training-time score geometry."""
++    import mdstats
++
++    replay_max = (
++        float(stop_policy.target_score_weight)
++        / float(stop_policy.replay_score_weight)
++        * float(stop_policy.maximum_target_force_rmse_ev_per_angstrom)
++    )
++    return mdstats.AdaptiveFullEvaluationPolicy(
++        finalist_count=int(_cfg(cfg, "evaluation", "finalist_count", 5)),
++        finalist_rescue_batch_size=int(
++            _cfg(cfg, "evaluation", "finalist_rescue_batch_size", 5)
++        ),
++        target_score_weight=float(stop_policy.target_score_weight),
++        replay_score_weight=float(stop_policy.replay_score_weight),
++        maximum_target_force_rmse_ev_per_angstrom=float(
++            stop_policy.maximum_target_force_rmse_ev_per_angstrom
++        ),
++        maximum_replay_force_rmse_ev_per_angstrom=replay_max,
++        retained_checkpoint_metric_policy_digest=metric_policy.policy_digest,
++    )
++
++
++def _command_evaluate_adaptive_topk(
++    args: argparse.Namespace,
++    *,
++    cfg: Mapping[str, Any],
++    paths: CampaignPaths,
++    store: CampaignStore,
++    campaign: Any,
++    jobs: Mapping[str, tuple[Any, Any, Path]],
++    execution_records: Mapping[str, Any],
++    runs_to_evaluate: Sequence[Any],
++    full_evaluation: bool,
++    model_dtype: str,
++    precision_profile: Mapping[str, Any],
++) -> int:
++    """ADAPT-EVAL1: zero-partial-round top-K full evaluation of run champions."""
++    import mdstats
++
++    if not runs_to_evaluate:
++        raise CampaignCliError("ADAPT-EVAL1 has no completed runs to evaluate.")
++    metric_policy = _checkpoint_metric_policy(cfg)
++    champion_records: dict[str, Any] = {}
++    stop_policies: list[Any] = []
++    for run in runs_to_evaluate:
++        execution = execution_records[run.content_digest]
++        bundle, job, _root = jobs[run.mace_job_artifact_digest]
++        run_root = paths.runs / run.run_id
++        state = _load_adaptive_stop_state(run_root, job, require_terminal=True)
++        champion = _reconcile_lightweight_run_champion(
++            run, job, run_root, state, execution.checkpoint_catalog
++        )
++        if champion is not None:
++            champion_records[run.content_digest] = champion
++        if job.protocol.adaptive_stop_policy is not None:
++            stop_policies.append(job.protocol.adaptive_stop_policy)
++    if not stop_policies:
++        raise CampaignCliError(
++            "ADAPT-EVAL1 requires ADAPT-STOP1/RANK1 evidence; use a historical "
++            "checkpoint_strategy for pre-adaptive campaigns."
++        )
++    reference_stop = stop_policies[0]
++    geometry = (
++        float(reference_stop.maximum_target_force_rmse_ev_per_angstrom),
++        float(reference_stop.target_score_weight),
++        float(reference_stop.replay_score_weight),
++    )
++    for policy in stop_policies[1:]:
++        observed = (
++            float(policy.maximum_target_force_rmse_ev_per_angstrom),
++            float(policy.target_score_weight),
++            float(policy.replay_score_weight),
++        )
++        if observed != geometry:
++            raise CampaignCliError(
++                "ADAPT-EVAL1 cannot compare run champions with different target/replay "
++                "score geometry."
++            )
++    full_policy = _adaptive_full_evaluation_policy(cfg, reference_stop, metric_policy)
++    queue = mdstats.build_campaign_finalist_queue(campaign, champion_records, full_policy)
++    if not queue.candidates:
++        raise CampaignCliError(
++            "No completed run has a lightweight-admissible champion; full evaluation has nothing to purchase."
++        )
++    queue_key = "campaign_finalist_queue" if full_evaluation else "interim_campaign_finalist_queue"
++    existing_queue = store.get_record_optional(queue_key, mdstats.CampaignFinalistQueueRecord)
++    if existing_queue is not None and existing_queue.content_digest != queue.content_digest:
++        if full_evaluation:
++            raise CampaignCliError(
++                "Existing campaign finalist queue disagrees with current immutable RANK1 evidence."
++            )
++        store.delete_record(queue_key)
++    store.put_record(queue_key, queue)
++
++    # Every adaptive DATA8 bundle must expose the same full outer-monitor target domain.
++    full_target_artifacts = []
++    for run in runs_to_evaluate:
++        bundle, _job, root = jobs[run.mace_job_artifact_digest]
++        artifact = getattr(bundle, "full_target_evaluation_artifact", None)
++        if artifact is None:
++            raise CampaignCliError(
++                f"{run.run_id}: DATA8 bundle predates ADAPT-EVAL1 full-target materialization. "
++                "Re-run prepare for a new adaptive campaign or use a historical evaluator for old evidence."
++            )
++        full_target_artifacts.append((artifact, root))
++    full_target_artifact, full_target_root = full_target_artifacts[0]
++    for artifact, _root in full_target_artifacts[1:]:
++        if (
++            artifact.content_digest != full_target_artifact.content_digest
++            or artifact.sha256 != full_target_artifact.sha256
++            or artifact.frame_uids != full_target_artifact.frame_uids
++        ):
++            raise CampaignCliError(
++                "ADAPT-EVAL1 requires one identical common full target domain across all finalists."
++            )
++    full_target_path = _resolve_data8_runtime_member(
++        jobs[runs_to_evaluate[0].mace_job_artifact_digest][0],
++        full_target_root,
++        full_target_artifact.relative_path,
++    )
++    if not full_target_path.is_file() or _sha256(full_target_path) != full_target_artifact.sha256:
++        raise CampaignCliError("Common full target evaluation artifact is missing or stale.")
++
++    true_replay = _resolve_true_label_replay_inputs(cfg, paths, require_train=False)
++    if true_replay is None:
++        raise CampaignCliError(
++            "ADAPT-EVAL1 requires [paths].replay_true_labels for common full true-replay evaluation."
++        )
++    full_replay_artifact = true_replay.monitor_artifact
++    full_replay_path = Path(true_replay.monitor_path)
++    if not full_replay_path.is_file() or _sha256(full_replay_path) != full_replay_artifact.sha256:
++        raise CampaignCliError("Common full true-replay artifact is missing or stale.")
++
++    baseline_model = _path_cfg(cfg, paths, "foundation_model")
++    assert baseline_model is not None
++    prediction_cache_directory = paths.internal / "evaluation-predictions"
++    graph_cache_directory = paths.internal / "evaluation-graphs"
++    local_wrappers = _ensure_local_wrappers(paths)
++    acceleration = _acceleration_policy(cfg)
++    critical_precision = _critical_precision_policy(cfg)
++    evaluated: list[Any] = []
++    completed_batches = 0
++
++    # Purchase only one deterministic batch at a time. Prediction artifacts are
++    # persistent, so interruption between candidates or batches is restart-safe.
++    max_batch = max(item.batch_index for item in queue.candidates)
++    for batch_index in range(1, max_batch + 1):
++        batch = tuple(item for item in queue.candidates if item.batch_index == batch_index)
++        if not batch:
++            continue
++        completed_batches = batch_index
++        _print_header(
++            f"ADAPT-EVAL1 full finalist batch {batch_index} ({len(batch)} candidate(s))"
++        )
++        for finalist in batch:
++            run = next(v for v in campaign.runs if v.content_digest == finalist.run_plan_digest)
++            execution = execution_records[run.content_digest]
++            bundle, job, root = jobs[run.mace_job_artifact_digest]
++            catalog = _evaluation_checkpoint_catalog(store, run.run_id, execution)
++            checkpoint = next(
++                (
++                    value
++                    for value in catalog.checkpoints
++                    if value.sha256 == finalist.checkpoint_sha256
++                    and value.epoch == finalist.checkpoint_epoch
++                ),
++                None,
++            )
++            if checkpoint is None:
++                raise CampaignCliError(
++                    f"{run.run_id}: RANK1 champion checkpoint is absent from the frozen catalog."
++                )
++            candidate_head = (
++                job.protocol.adaptive_stop_policy.replay_head_name
++                if run.training_mode is mdstats.TrainingMode.MULTIHEAD_REPLAY
++                else job.protocol.adaptive_stop_policy.target_head_name
++            )
++            eval_policy = mdstats.CheckpointEvaluationPolicy(
++                target_head_name=job.protocol.adaptive_stop_policy.target_head_name,
++                replay_head_name=candidate_head,
++                replay_baseline_head_name=(
++                    None
++                    if _cfg(cfg, "evaluation", "replay_baseline_head", "") in (None, "")
++                    else str(_cfg(cfg, "evaluation", "replay_baseline_head"))
++                ),
++                focus_atomic_numbers=tuple(
++                    int(v) for v in _cfg(cfg, "profile", "mobile_atomic_numbers", (3, 11, 19))
++                ),
++                device=str(_cfg(cfg, "evaluation", "device", _cfg(cfg, "training", "device", "cuda"))),
++                default_dtype=model_dtype,
++                batch_size=int(_cfg(cfg, "evaluation", "batch_size", 8)),
++                cache_monitor_datasets=bool(_cfg(cfg, "evaluation", "cache_monitor_datasets", True)),
++                cache_replay_baseline=bool(_cfg(cfg, "evaluation", "cache_replay_baseline", True)),
++                evaluate_foundation_on_target=False,
++                acceleration_policy=acceleration,
++                critical_precision_policy=critical_precision,
++            )
++            record_key = f"adaptive_full_evaluation:{run.run_id}:{checkpoint.sha256}"
++            evaluation = store.get_record_optional(record_key, mdstats.CheckpointEvaluationRecord)
++            reusable = bool(
++                evaluation is not None
++                and evaluation.run_plan_digest == run.content_digest
++                and evaluation.checkpoint_sha256 == checkpoint.sha256
++                and evaluation.evaluation_policy_digest == eval_policy.policy_digest
++                and evaluation.target_monitor_artifact_digest == full_target_artifact.content_digest
++                and evaluation.target_monitor_sha256 == full_target_artifact.sha256
++                and evaluation.replay_monitor_artifact_digest == full_replay_artifact.content_digest
++                and evaluation.replay_monitor_sha256 == full_replay_artifact.sha256
++                and evaluation.target_candidate_metrics is not None
++                and evaluation.replay_candidate_metrics is not None
++                and evaluation.replay_foundation_metrics is not None
++            )
++            if not reusable:
++                if evaluation is not None:
++                    store.delete_record(record_key)
++                source, capsule = _checkpoint_source_for_evaluation(
++                    paths, store, run.run_id, checkpoint, execution.checkpoint_catalog
++                )
++                job_root = (root / job.relative_directory).resolve()
++                config_path = (root / job.config_relative_path).resolve()
++                checkpoint_model_cache = paths.runs / run.run_id / "checkpoint-model-cache"
++                # For replay-trained runs preserve the old pseudo-monitor lineage
++                # solely so foundation pseudolabel reuse remains possible; the
++                # authoritative evaluation labels are always the full TRUE_DFT set.
++                training_replay_artifact = bundle.replay_plan.monitor_artifact
++                training_replay_path = (
++                    None
++                    if training_replay_artifact is None
++                    else _resolve_data8_runtime_member(bundle, root, training_replay_artifact.path)
++                )
++                prepared = mdstats.prepare_mace_checkpoint_evaluation(
++                    run,
++                    checkpoint,
++                    candidate_model_path=source,
++                    evaluation_state_capsule=capsule,
++                    target_monitor_path=full_target_path,
++                    target_monitor_artifact=full_target_artifact,
++                    policy=eval_policy,
++                    replay_monitor_path=full_replay_path,
++                    replay_monitor_artifact=full_replay_artifact,
++                    training_replay_monitor_artifact=(
++                        training_replay_artifact
++                        if run.replay_monitor_artifact_digest is not None
++                        else None
++                    ),
++                    training_replay_monitor_path=(
++                        training_replay_path
++                        if run.replay_monitor_artifact_digest is not None
++                        else None
++                    ),
++                    replay_baseline_model_path=baseline_model,
++                    prediction_cache_directory=prediction_cache_directory,
++                    graph_cache_directory=graph_cache_directory,
++                    allow_target_monitor_override=True,
++                    allow_replay_without_training_lineage=(
++                        run.replay_monitor_artifact_digest is None
++                    ),
++                )
++                calculator_model = None
++                try:
++                    if prepared.requires_candidate_inference:
++                        calculator_model = mdstats.materialize_mace_checkpoint_model(
++                            checkpoint,
++                            source,
++                            mace_config_path=config_path,
++                            job_working_directory=job_root,
++                            cache_directory=checkpoint_model_cache,
++                            wrapper_path=local_wrappers["mdstats-mace-train"],
++                            allow_checkpoint_dtype_template_cast=False,
++                            evaluation_state_capsule=capsule,
++                        )
++                    predictions = mdstats.run_prepared_mace_checkpoint_inference(
++                        prepared, calculator_model_path=calculator_model
++                    )
++                    evaluation = mdstats.finalize_prepared_mace_checkpoint_evaluation(
++                        prepared, predictions
++                    )
++                finally:
++                    # Materialized caches remain persistent only when they are the
++                    # exact checkpoint source; temporary reconstructions are safe
++                    # to remove because predictions are now authenticated/cacheable.
++                    if calculator_model is not None and Path(calculator_model).resolve() != Path(source).resolve():
++                        mdstats.remove_materialized_mace_checkpoint_model(calculator_model)
++                store.put_record(record_key, evaluation)
++                _ok(
++                    f"{run.run_id} epoch {checkpoint.epoch}: full target="
++                    f"{evaluation.target_candidate_metrics.force_component_rmse_ev_per_angstrom*1000:.2f} meV/A; "
++                    f"true replay={evaluation.replay_candidate_metrics.force_component_rmse_ev_per_angstrom*1000:.2f} meV/A"
++                )
++            else:
++                _ok(f"{run.run_id} epoch {checkpoint.epoch}: reused authenticated full evaluation")
++            candidate_record = mdstats.assess_full_evaluation_candidate(
++                finalist, evaluation, full_policy, metric_policy
++            )
++            store.put_record(
++                f"adaptive_full_candidate:{run.run_id}:{checkpoint.sha256}",
++                candidate_record,
++            )
++            evaluated.append(candidate_record)
++        # Rescue is authorized only if all purchased candidates remain rejected.
++        if any(item.admissible for item in evaluated):
++            break
++
++    outcome = (
++        "admissible_candidates_available"
++        if any(item.admissible for item in evaluated)
++        else "no_admissible_candidate"
++    )
++    result = mdstats.AdaptiveFullEvaluationRecord(
++        campaign_plan_digest=campaign.content_digest,
++        policy_digest=full_policy.policy_digest,
++        finalist_queue_digest=queue.content_digest,
++        full_target_artifact_digest=full_target_artifact.content_digest,
++        full_replay_artifact_digest=full_replay_artifact.content_digest,
++        evaluated_candidates=tuple(evaluated),
++        completed_batch_count=completed_batches,
++        outcome=outcome,
++    )
++    result_key = "adaptive_full_evaluation" if full_evaluation else "interim_adaptive_full_evaluation"
++    existing_result = store.get_record_optional(result_key, mdstats.AdaptiveFullEvaluationRecord)
++    if existing_result is not None and existing_result.content_digest != result.content_digest:
++        # Completed predictions are reusable, but the aggregate evidence must be
++        # regenerated exactly from the current immutable queue/policy.
++        store.delete_record(result_key)
++    store.put_record(result_key, result)
++    summary = result.to_dict()
++    summary["finalist_queue"] = queue.to_dict()
++    summary["model_inference_dtype"] = model_dtype
++    summary["scientific_analysis_dtype"] = "float64"
++    summary["production_freeze_created"] = False
++    output_name = (
++        "adaptive-full-evaluation.json"
++        if full_evaluation
++        else "interim-adaptive-full-evaluation.json"
++    )
++    _atomic_json(paths.results / output_name, summary)
++    if outcome == "no_admissible_candidate":
++        _mark_stage(
++            store, paths, "evaluate", StageState.WAITING,
++            "ADAPT-EVAL1 exhausted the run-champion queue without an admissible full-evaluation candidate",
++        )
++        raise CampaignCliError(
++            "ADAPT-EVAL1 completed all authorized full evaluations, but no candidate "
++            "satisfies the full target/replay and retained safety gates."
++        )
++    best = result.admissible_candidates[0]
++    _ok(
++        f"ADAPT-EVAL1 best fully admissible candidate so far: {best.run_id} epoch "
++        f"{best.checkpoint_epoch}; score={best.full_score_ev_per_angstrom*1000:.2f} meV/A"
++    )
++    if full_evaluation:
++        _mark_stage(
++            store, paths, "evaluate", StageState.COMPLETE,
++            f"ADAPT-EVAL1 completed {len(evaluated)} full evaluation(s) through batch {completed_batches}; ADAPT-VERIFY1 pending",
++        )
++    else:
++        _mark_stage(
++            store, paths, "evaluate", StageState.WAITING,
++            f"interim ADAPT-EVAL1 completed {len(evaluated)} full evaluation(s); campaign training incomplete",
++        )
++    return 0
++
++
+ def command_evaluate(args: argparse.Namespace) -> int:
+     import mdstats
+ 
+@@ -10714,15 +11105,19 @@
+         and not filters_active
+         and len(execution_records) == len(campaign.runs)
+     )
++    requested_checkpoint_strategy = str(
++        _cfg(cfg, "evaluation", "checkpoint_strategy", "bounded")
++    ).strip().lower()
+     if full_evaluation:
+         runs_to_evaluate = tuple(campaign.runs)
+-        requested_checkpoint_strategy = str(
+-            _cfg(cfg, "evaluation", "checkpoint_strategy", "bounded")
+-        ).strip().lower()
+         stage_message = (
+-            "running nested multi-fidelity checkpoint evaluation and freezing protocol"
+-            if requested_checkpoint_strategy == "multi_fidelity"
+-            else "shortlisting checkpoints, evaluating candidates, and freezing protocol"
++            "running ADAPT-EVAL1 top-K authoritative full evaluation"
++            if requested_checkpoint_strategy == "adaptive_topk"
++            else (
++                "running nested multi-fidelity checkpoint evaluation and freezing protocol"
++                if requested_checkpoint_strategy == "multi_fidelity"
++                else "shortlisting checkpoints, evaluating candidates, and freezing protocol"
++            )
+         )
+     else:
+         included = {
+@@ -10734,7 +11129,8 @@
+             run for run in campaign.runs if run.content_digest in included
+         )
+         stage_message = (
+-            f"interim evaluation of {len(runs_to_evaluate)}/{len(campaign.runs)} completed runs"
++            f"interim {'ADAPT-EVAL1 ' if requested_checkpoint_strategy == 'adaptive_topk' else ''}evaluation "
++            f"of {len(runs_to_evaluate)}/{len(campaign.runs)} completed runs"
+         )
+     _mark_stage(store, paths, "evaluate", StageState.RUNNING, stage_message)
+     _print_header(
+@@ -10744,6 +11140,21 @@
+     )
+     precision_profile = _print_precision_profile(cfg)
+ 
++    if requested_checkpoint_strategy == "adaptive_topk":
++        return _command_evaluate_adaptive_topk(
++            args,
++            cfg=cfg,
++            paths=paths,
++            store=store,
++            campaign=campaign,
++            jobs=jobs,
++            execution_records=execution_records,
++            runs_to_evaluate=runs_to_evaluate,
++            full_evaluation=full_evaluation,
++            model_dtype=model_dtype,
++            precision_profile=precision_profile,
++        )
++
+     true_replay_resolution = _resolve_true_label_replay_inputs(
+         cfg, paths, require_train=False
+     )
+@@ -10840,7 +11251,7 @@
+     ).strip().lower()
+     if checkpoint_strategy not in {"bounded", "exhaustive", "multi_fidelity"}:
+         raise CampaignCliError(
+-            "[evaluation].checkpoint_strategy must be one of bounded, exhaustive, or multi_fidelity."
++            "[evaluation].checkpoint_strategy must be one of bounded, exhaustive, or multi_fidelity for historical evaluation paths."
+         )
+     maximum_checkpoint_evaluations = int(
+         _cfg(cfg, "evaluation", "max_checkpoints_per_run", 4)
+@@ -13969,40 +14380,21 @@
+ replay_score_weight = 1.0
+ device = "{default_device}"
+ dtype = "{precision['evaluation_dtype']}"
+-# EVAL-MF2 qualified production default. Allowed values: "bounded", "exhaustive",
+-# or "multi_fidelity". Legacy configs that omit this field retain bounded behavior.
+-checkpoint_strategy = "multi_fidelity"
+-# Nested multi-fidelity defaults: every saved epoch sees 10% of both target and
+-# replay labels, survivors see a nested 33%, and finalists receive 100% of both.
+-multi_fidelity_round_fractions = [0.10, 0.33, 1.0]
+-multi_fidelity_survival_fraction = 0.3333333333333333
+-multi_fidelity_minimum_finalists = 4
+-# EVAL-MF2 conservative cutoff guard. The paired comparison operates on
+-# source/trajectory-aware temporal blocks, not individual correlated MD frames.
+-multi_fidelity_guard_band_enabled = true
+-multi_fidelity_guard_standard_error_multiplier = 2.0
+-multi_fidelity_guard_relative_margin = 0.02
+-multi_fidelity_guard_minimum_blocks = 4
+-# If surviving checkpoint ranks are unstable between successive rounds, retain a
+-# larger fraction for the next round rather than forcing an unsafe elimination.
+-multi_fidelity_instability_inversion_fraction = 0.25
+-multi_fidelity_instability_survival_fraction = 0.50
++# ADAPT-EVAL1 production strategy: rank already-frozen run champions by their
++# lightweight monitor score, fully evaluate only the top five, and purchase the
++# next five only if no candidate in the current purchased set is admissible.
++# Historical configs may still request bounded, exhaustive, or multi_fidelity.
++checkpoint_strategy = "adaptive_topk"
++finalist_count = 5
++finalist_rescue_batch_size = 5
+ # Permit checkpoint evaluation after any run completes. Incomplete campaigns are
+ # labeled interim and cannot create a production protocol freeze.
+ allow_partial_campaign = true
+ # Native MACE graph batch. CUDA OOM automatically bisects the active batch.
+ batch_size = 8
+-# Use MACE's already-computed per-epoch validation history to shortlist a small
+-# number of checkpoints for authoritative mdstats target/replay monitor inference.
+-# Set 0 to evaluate every saved epoch checkpoint.
+-max_checkpoints_per_run = 4
+ # Immutable monitor and foundation-baseline results are reused across checkpoints.
+ cache_monitor_datasets = true
+ cache_replay_baseline = true
+-# Evaluate both the foundation and every candidate on the DFT target monitor.
+-# Legacy campaign files that omit this key preserve their prior target-only behavior
+-# unless [paths].replay_true_labels is added.
+-evaluate_foundation_on_target = true
+ # Leave blank for a single-head foundation checkpoint; set an explicit head only when needed.
+ replay_baseline_head = ""
+ 
+@@ -14103,22 +14495,19 @@
+ runs complete, at which point rerun `evaluate`. Use `evaluate --require-complete` or
+ `verify --require-frozen` for strict all-or-nothing behavior.
+ 
+-Evaluation uses guarded multi-fidelity screening by default. Every saved epoch enters a
+-deterministic 10% target + 10% true-replay round, survivors expand to nested 33% subsets,
+-and guarded finalists receive complete target + complete replay evaluation. Prediction
+-coverage is reused between rounds, and only full-fidelity records can authorize final
+-selection. `checkpoint_strategy = "bounded"` retains the historical shortlist mode and
+-`checkpoint_strategy = "exhaustive"` evaluates every saved checkpoint in full.
+-
+-ADAPT-MON1 is already active in preparation/training: every competing run receives the same
+-256-configuration target validation membership, and multi-head replay validation uses the same
+-fixed 512-configuration TRUE_DFT replay monitor while replay gradient labels remain independent.
+-ADAPT-STOP1 is active in 0.20.124a0: the common per-epoch force-RMSE monitor metrics now
+-terminate training at the target-success margin, replay-exhaustion margin, or max_num_epochs.
+-ADAPT-RANK1 is active in 0.20.125a0: every completed adaptive run derives one immutable
+-zero-new-inference lightweight champion from its admissible epoch history, or records an explicit
+-no-champion outcome when no epoch satisfied both monitor boundaries. EVAL-MF remains the production
+-evaluator until ADAPT-EVAL1.
++ADAPT-EVAL1 is active in 0.20.126a0 and is the generated production evaluator. It sorts the
++one-per-run ADAPT-RANK1 champions by their already-paid lightweight target/true-replay score,
++fully evaluates at most five initially on the common complete target outer-monitor domain plus the
++complete independent TRUE_DFT replay domain, and purchases deterministic next-five rescue batches
++only while no fully admissible candidate exists. No 10%/33% EVAL-MF partial rounds are purchased.
++Historical `bounded`, `exhaustive`, and `multi_fidelity` strategies remain available for compatible
++old campaigns.
++
++ADAPT-MON1 supplies one common 256-configuration target monitor and fixed 512-configuration
++TRUE_DFT replay monitor. ADAPT-STOP1 terminates training at the target-success, replay-exhaustion,
++or epoch ceiling, and ADAPT-RANK1 derives one immutable champion per run. Naive training remains
++target-only for gradients but receives the fixed true-replay monitor as validation-only evidence
++through the target head, so campaign-wide lightweight scores are comparable across methods.
+ 
+ Precision is explicit at initialization. Plain `init` generates `single` (FP32 learned-model
+ training/inference); use `init --precision double` for FP64 learned-model training/inference.
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/mdstats/training_data/campaign_execution.py b/mdstats/training_data/campaign_execution.py
+--- a/mdstats/training_data/campaign_execution.py	2026-08-09 21:18:27.224652194 +0000
++++ b/mdstats/training_data/campaign_execution.py	2026-08-09 21:56:30.750713562 +0000
+@@ -2807,6 +2807,8 @@
+     foundation_prediction_root: str | Path | None = None,
+     target_configuration_indices: Sequence[int] | None = None,
+     replay_configuration_indices: Sequence[int] | None = None,
++    allow_target_monitor_override: bool = False,
++    allow_replay_without_training_lineage: bool = False,
+ ) -> PreparedCheckpointEvaluation:
+     """Authenticate/load monitor inputs without constructing accelerator models.
+ 
+@@ -2839,7 +2841,10 @@
+                 raise TrainingDataInputError(
+                     "Candidate evaluation-state capsule does not match checkpoint inventory."
+                 )
+-    if target_monitor_artifact.content_digest != run_plan.target_monitor_artifact_digest:
++    if (
++        target_monitor_artifact.content_digest != run_plan.target_monitor_artifact_digest
++        and not allow_target_monitor_override
++    ):
+         raise TrainingDataInputError("Target monitor artifact lineage does not match campaign run.")
+     if not target.is_file() or _sha256_file(target) != target_monitor_artifact.sha256:
+         raise TrainingDataInputError("Target monitor bytes do not match the frozen artifact.")
+@@ -2978,26 +2983,37 @@
+     replay_foundation_predictions = None
+     replay_foundation_cache_hit = False
+ 
+-    if run_plan.replay_monitor_artifact_digest is not None:
++    if run_plan.replay_monitor_artifact_digest is not None or replay_monitor_artifact is not None:
+         if replay_monitor_path is None or replay_monitor_artifact is None or baseline is None or baseline_sha is None:
+             raise TrainingDataInputError(
+-                "Replay campaign evaluation requires an evaluation monitor and foundation baseline model."
++                "Replay evaluation requires an evaluation monitor and foundation baseline model."
+             )
+-        lineage_artifact = training_replay_monitor_artifact or replay_monitor_artifact
+-        if lineage_artifact.content_digest != run_plan.replay_monitor_artifact_digest:
+-            raise TrainingDataInputError("Training replay monitor artifact lineage does not match campaign run.")
+-        if replay_monitor_artifact.content_digest != lineage_artifact.content_digest:
+-            if replay_monitor_artifact.label_mode is not ReplayLabelMode.TRUE_DFT:
++        if run_plan.replay_monitor_artifact_digest is None:
++            if not allow_replay_without_training_lineage:
+                 raise TrainingDataInputError(
+-                    "An evaluation-only replay override must carry independent true DFT labels."
++                    "This run has no training replay lineage; explicit full-replay evaluation authorization is required."
+                 )
+-            if (
+-                replay_monitor_artifact.configuration_count != lineage_artifact.configuration_count
+-                or replay_monitor_artifact.geometry_identities != lineage_artifact.geometry_identities
+-            ):
++            if replay_monitor_artifact.label_mode is not ReplayLabelMode.TRUE_DFT:
+                 raise TrainingDataInputError(
+-                    "Evaluation true-label replay monitor must preserve training replay geometry and order."
++                    "Replay evaluation without training lineage requires independent true DFT labels."
+                 )
++            lineage_artifact = replay_monitor_artifact
++        else:
++            lineage_artifact = training_replay_monitor_artifact or replay_monitor_artifact
++            if lineage_artifact.content_digest != run_plan.replay_monitor_artifact_digest:
++                raise TrainingDataInputError("Training replay monitor artifact lineage does not match campaign run.")
++            if replay_monitor_artifact.content_digest != lineage_artifact.content_digest:
++                if replay_monitor_artifact.label_mode is not ReplayLabelMode.TRUE_DFT:
++                    raise TrainingDataInputError(
++                        "An evaluation-only replay override must carry independent true DFT labels."
++                    )
++                if (
++                    replay_monitor_artifact.configuration_count != lineage_artifact.configuration_count
++                    or replay_monitor_artifact.geometry_identities != lineage_artifact.geometry_identities
++                ):
++                    raise TrainingDataInputError(
++                        "Evaluation true-label replay monitor must preserve training replay geometry and order."
++                    )
+         replay = Path(replay_monitor_path).resolve()
+         if not replay.is_file() or _sha256_file(replay) != replay_monitor_artifact.sha256:
+             raise TrainingDataInputError("Replay monitor bytes do not match the evaluation artifact.")
+@@ -3434,7 +3450,7 @@
+     metric_record = CheckpointMetricRecord(
+         run_plan_digest=prepared.run_plan.content_digest,
+         checkpoint_sha256=prepared.checkpoint.sha256,
+-        target_monitor_artifact_digest=prepared.run_plan.target_monitor_artifact_digest,
++        target_monitor_artifact_digest=prepared.target_monitor_artifact.content_digest,
+         energy_mae_ev_per_atom=target_metrics["energy_mae_ev_per_atom"],
+         force_component_rmse_ev_per_angstrom=target_metrics["force_component_rmse_ev_per_angstrom"],
+         focus_force_rmse_ev_per_angstrom=target_metrics["focus_force_rmse_ev_per_angstrom"],
+@@ -3481,7 +3497,7 @@
+         run_plan_digest=prepared.run_plan.content_digest,
+         checkpoint_sha256=prepared.checkpoint.sha256,
+         evaluation_policy_digest=policy.policy_digest,
+-        target_monitor_artifact_digest=prepared.run_plan.target_monitor_artifact_digest,
++        target_monitor_artifact_digest=prepared.target_monitor_artifact.content_digest,
+         target_monitor_sha256=prepared.target_monitor_artifact.sha256,
+         replay_monitor_artifact_digest=replay_evaluation_digest,
+         replay_monitor_sha256=replay_sha,
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/mdstats/training_data/critical_precision_cli.py b/mdstats/training_data/critical_precision_cli.py
+--- a/mdstats/training_data/critical_precision_cli.py	2026-08-09 21:18:19.239203006 +0000
++++ b/mdstats/training_data/critical_precision_cli.py	2026-08-09 22:06:01.575062976 +0000
+@@ -180,6 +180,10 @@
+     baseline_marker = (
+         "    valid_loss = valid_loss_head  # consider only the last head for the checkpoint\n"
+     )
++    validation_start_marker = (
++        "    # log validation loss before _any_ training\n"
++        "    for valid_loader_name, valid_loader in valid_loaders.items():\n"
++    )
+     epoch_increment_marker = "        epoch += 1\n"
+     exit_now_marker = "    exit_now = torch.zeros(1, device=device) if distributed else None\n"
+     if source.count(epoch_line) != 1 or source.count(scheduler_line) != 2:
+@@ -194,6 +198,7 @@
+         )
+     if adaptive_stop and (
+         source.count(baseline_marker) != 1
++        or source.count(validation_start_marker) != 1
+         or source.count(exit_now_marker) != 1
+         or source.count(epoch_increment_marker) != 1
+     ):
+@@ -244,6 +249,16 @@
+ 
+     if adaptive_stop:
+         source = source.replace(
++            validation_start_marker,
++            "    # mdstats ADAPT-STOP1: one-head/naive runs receive the fixed true-replay monitor\n"
++            "    # as an auxiliary validation loader. Replay is inserted before target so MACE's\n"
++            "    # historical last-loader checkpoint/patience scalar remains target-driven.\n"
++            "    from mdstats.training_data.adaptive_stop import prepare_auxiliary_replay_validation_loader\n"
++            "    valid_loaders = prepare_auxiliary_replay_validation_loader(model, valid_loaders)\n"
++            + validation_start_marker,
++            1,
++        )
++        source = source.replace(
+             baseline_marker,
+             baseline_marker
+             + "    from mdstats.training_data.adaptive_stop import validate_adaptive_stop_foundation_baseline\n"
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/mdstats/training_data/data8_bundle.py b/mdstats/training_data/data8_bundle.py
+--- a/mdstats/training_data/data8_bundle.py	2026-08-09 21:10:37.650878738 +0000
++++ b/mdstats/training_data/data8_bundle.py	2026-08-09 21:55:19.005912915 +0000
+@@ -49,9 +49,11 @@
+ )
+ from .partition import OuterRole
+ 
+-DATA8_PREPARATION_BUNDLE_SCHEMA = "mdstats.data8-preparation-bundle.v2"
++DATA8_PREPARATION_BUNDLE_SCHEMA = "mdstats.data8-preparation-bundle.v3"
++DATA8_PREPARATION_BUNDLE_V2_SCHEMA = "mdstats.data8-preparation-bundle.v2"
+ DATA8_PREPARATION_BUNDLE_V1_SCHEMA = "mdstats.data8-preparation-bundle.v1"
+-MLFF_DATA8_PARSER_VERSION = "0.20.124a0"
++MLFF_DATA8_PARSER_VERSION = "0.20.126a0"
++MLFF_DATA8_PRE_ADAPT_EVAL1_PARSER_VERSION = "0.20.124a0"
+ MLFF_DATA8_PRE_ADAPT_STOP1_PARSER_VERSION = "0.20.123a0"
+ MLFF_DATA8_PRE_ADAPT_MON1_PARSER_VERSION = "0.20.66a0"
+ MLFF_DATA8_LEGACY_PARSER_VERSION = "0.20.39a0"
+@@ -333,6 +335,7 @@
+     target_online_monitor: OnlineMonitorRecord | None = None
+     replay_online_monitor: OnlineMonitorRecord | None = None
+     online_replay_monitor_artifact: ReplayFileArtifact | None = None
++    full_target_evaluation_artifact: MaceExtxyzArtifact | None = None
+     notes: tuple[str, ...] = ()
+     _serialization_parser_version: str = field(
+         default=MLFF_DATA8_PARSER_VERSION, init=False, repr=False, compare=False
+@@ -378,6 +381,12 @@
+                 )
+                 if observed_protocol != expected_protocol:
+                     raise TrainingDataInputError("DATA8 job/online-monitor lineage mismatch.")
++            if self.full_target_evaluation_artifact is not None:
++                full_members = set(self.full_target_evaluation_artifact.frame_uids)
++                if self.full_target_evaluation_artifact.role != "common_full_target_evaluation":
++                    raise TrainingDataInputError("DATA8 full target evaluation artifact has the wrong role.")
++                if not set(self.target_online_monitor.selected_identities).issubset(full_members):
++                    raise TrainingDataInputError("Online target monitor is not a subset of the full target evaluation domain.")
+         object.__setattr__(self, "jobs", jobs)
+         object.__setattr__(self, "target_artifacts", tuple(self.target_artifacts))
+         object.__setattr__(self, "fold_evaluation_artifacts", tuple(self.fold_evaluation_artifacts))
+@@ -404,6 +413,7 @@
+             "target_online_monitor": None if self.target_online_monitor is None else self.target_online_monitor.to_dict(),
+             "replay_online_monitor": None if self.replay_online_monitor is None else self.replay_online_monitor.to_dict(),
+             "online_replay_monitor_artifact": None if self.online_replay_monitor_artifact is None else self.online_replay_monitor_artifact.to_dict(),
++            "full_target_evaluation_artifact": None if self.full_target_evaluation_artifact is None else self.full_target_evaluation_artifact.to_dict(),
+             "notes": list(self.notes),
+         }
+ 
+@@ -423,11 +433,12 @@
+ 
+     @classmethod
+     def from_dict(cls, payload: Mapping[str, Any]) -> "Data8PreparationBundle":
+-        if payload.get("schema") not in {DATA8_PREPARATION_BUNDLE_SCHEMA, DATA8_PREPARATION_BUNDLE_V1_SCHEMA}:
++        if payload.get("schema") not in {DATA8_PREPARATION_BUNDLE_SCHEMA, DATA8_PREPARATION_BUNDLE_V2_SCHEMA, DATA8_PREPARATION_BUNDLE_V1_SCHEMA}:
+             raise TrainingDataSerializationError("Unsupported DATA8 bundle schema.")
+         if payload.get("parser_version") not in (
+             None,
+             MLFF_DATA8_PARSER_VERSION,
++            MLFF_DATA8_PRE_ADAPT_EVAL1_PARSER_VERSION,
+             MLFF_DATA8_PRE_ADAPT_STOP1_PARSER_VERSION,
+             MLFF_DATA8_PRE_ADAPT_MON1_PARSER_VERSION,
+             MLFF_DATA8_LEGACY_PARSER_VERSION,
+@@ -450,6 +461,7 @@
+             target_online_monitor=None if payload.get("target_online_monitor") is None else OnlineMonitorRecord.from_dict(payload["target_online_monitor"]),
+             replay_online_monitor=None if payload.get("replay_online_monitor") is None else OnlineMonitorRecord.from_dict(payload["replay_online_monitor"]),
+             online_replay_monitor_artifact=None if payload.get("online_replay_monitor_artifact") is None else ReplayFileArtifact.from_dict(payload["online_replay_monitor_artifact"]),
++            full_target_evaluation_artifact=None if payload.get("full_target_evaluation_artifact") is None else MaceExtxyzArtifact.from_dict(payload["full_target_evaluation_artifact"]),
+             notes=tuple(str(v) for v in payload.get("notes", ())),
+         )
+         if payload.get("parser_version") is not None:
+@@ -584,8 +596,25 @@
+     jobs: list[MaceJobArtifact] = []
+ 
+     outer = data5_bundle.outer_partition_for_domain(label_domain_id)
++    full_outer_monitor_frames = _frames_for_units(
++        data5_bundle, outer.units_for(OuterRole.OUTER_MONITOR)
++    )
++    full_target_evaluation_artifact = None
++    if online_monitor_policy is not None:
++        (root / "shared" / "target").mkdir(parents=True, exist_ok=True)
++        full_target_evaluation_artifact = write_mace_extxyz_artifact(
++            root,
++            dataset_id=frame_catalog.dataset_id,
++            role="common_full_target_evaluation",
++            filename="shared/target/full_target_evaluation.xyz",
++            frame_uids=full_outer_monitor_frames,
++            frame_catalog=frame_catalog,
++            frame_data_by_run=frame_data_by_run,
++            data7_bundle=None,
++            policy=active_extxyz,
++        )
+     outer_monitor_frames = (
+-        _frames_for_units(data5_bundle, outer.units_for(OuterRole.OUTER_MONITOR))
++        full_outer_monitor_frames
+         if target_online_record is None
+         else target_online_record.selected_identities
+     )
+@@ -794,6 +823,7 @@
+         target_online_monitor=target_online_record,
+         replay_online_monitor=replay_online_record,
+         online_replay_monitor_artifact=online_replay_artifact,
++        full_target_evaluation_artifact=full_target_evaluation_artifact,
+         notes=(
+             "DATA8 emits fixed-file MACE artifacts only; it does not execute training or activate locked tests.",
+             "Cross-validation evaluation XYZ files are excluded from every MACE training configuration.",
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/pyproject.toml b/pyproject.toml
+--- a/pyproject.toml	2026-08-09 21:30:38.927511889 +0000
++++ b/pyproject.toml	2026-08-09 21:54:29.494753356 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.125a0"
++version = "0.20.126a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/release/mlff_adapt_eval1_full_evaluation_qualification.json b/release/mlff_adapt_eval1_full_evaluation_qualification.json
+--- a/release/mlff_adapt_eval1_full_evaluation_qualification.json	1970-01-01 00:00:00.000000000 +0000
++++ b/release/mlff_adapt_eval1_full_evaluation_qualification.json	2026-08-09 22:21:34.863773078 +0000
+@@ -0,0 +1,63 @@
++{
++  "schema": "mdstats.mlff-adapt-eval1-qualification.v1",
++  "package_version": "0.20.126a0",
++  "gate": "ADAPT-EVAL1",
++  "date": "2026-08-09",
++  "status": "qualified",
++  "behavior": {
++    "generated_checkpoint_strategy": "adaptive_topk",
++    "eval_mf_partial_rounds_in_new_production_path": false,
++    "initial_finalist_count": 5,
++    "rescue_batch_size": 5,
++    "one_champion_per_run_input": true,
++    "common_full_target_domain_separate_from_256_online_monitor": true,
++    "full_true_replay_domain_separate_from_512_online_monitor": true,
++    "naive_true_replay_monitor_validation_only": true,
++    "naive_replay_gradients_added": false,
++    "naive_auxiliary_loader_order": [
++      "replay_monitor",
++      "target_head"
++    ],
++    "hard_target_replay_gates_precede_weighted_full_score": true,
++    "foundation_relative_replay_degradation": "diagnostic",
++    "binary_model_inference_dtype_preserved": true,
++    "mdstats_scientific_reductions_dtype": "float64",
++    "authenticated_prediction_reuse": true,
++    "historical_eval_mf_readable": true,
++    "final_verification_and_export": "pending ADAPT-VERIFY1"
++  },
++  "tests": [
++    {
++      "scope": "adaptive chain + historical EVAL-MF + installed real-MACE patch",
++      "result": "69 passed",
++      "note": "includes ADAPT-PREC1/MON1/STOP1/RANK1/EVAL1 and historical EVAL-MF regressions"
++    },
++    {
++      "scope": "campaign/evaluation runtime",
++      "result": "59 passed, 2 skipped",
++      "note": "skips require external real LTA root and supplied standalone MACE smoke package"
++    },
++    {
++      "scope": "MLFF specification/schema",
++      "result": "140 passed, 1 known pre-existing failure",
++      "note": "only failure is the inherited missing release/mlff_data9a9a_real_mpa0_restart_smoke.json fixture"
++    },
++    {
++      "scope": "ADAPT-EVAL1 focused including naive auxiliary replay validation",
++      "result": "5 passed"
++    },
++    {
++      "scope": "final focused EVAL1/MON1/historical-EVAL-MF regression after documentation freeze",
++      "result": "18 passed",
++      "note": "covers top-K/full-score policy, generated strategy/specification, full-target materialization, and historical EVAL-MF compatibility"
++    }
++  ],
++  "evaluation_policy": {
++    "target_force_rmse_threshold_ev_per_angstrom": 0.03,
++    "default_target_score_weight": 1.0,
++    "default_replay_score_weight": 1.0,
++    "default_replay_force_rmse_threshold_ev_per_angstrom": 0.03,
++    "score_expression": "(w_target * target_force_rmse + w_replay * replay_force_rmse) / (w_target + w_replay)",
++    "rescue_condition": "purchase next batch only when no already-purchased candidate is fully admissible"
++  }
++}
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/tests/test_mlff_adapt_eval1_specification.py b/tests/test_mlff_adapt_eval1_specification.py
+--- a/tests/test_mlff_adapt_eval1_specification.py	1970-01-01 00:00:00.000000000 +0000
++++ b/tests/test_mlff_adapt_eval1_specification.py	2026-08-09 22:10:38.230820800 +0000
+@@ -0,0 +1,44 @@
++from __future__ import annotations
++
++from pathlib import Path
++
++import mdstats
++from mdstats.training_data import campaign_cli
++
++ROOT = Path(__file__).resolve().parents[1]
++SPEC = ROOT / "docs" / "specs" / "training_data" / "mlff_adaptive_full_evaluation_spec.md"
++ARCH = ROOT / "docs" / "arch_manuals" / "mlff_training_data_architecture.md"
++
++
++def test_adapt_eval1_release_identity_and_specification() -> None:
++    assert mdstats.__version__ == "0.20.126a0"
++    text = SPEC.read_text(encoding="utf-8")
++    assert "Status: implemented in mdstats 0.20.126a0" in text
++    assert 'checkpoint_strategy = "adaptive_topk"' in text
++    assert "finalist_count = 5" in text
++    assert "finalist_rescue_batch_size = 5" in text
++    assert "full_target_evaluation.xyz" in text
++    assert "TRUE_DFT" in text
++    assert "Naive fine-tuning" in text
++    assert "validation-only" in text
++
++
++def test_adapt_eval1_is_generated_default_and_historical_mf_remains_available() -> None:
++    source = Path(campaign_cli.__file__).read_text(encoding="utf-8")
++    example = (ROOT / "campaign.toml.example").read_text(encoding="utf-8")
++    assert 'checkpoint_strategy = "adaptive_topk"' in source
++    assert 'checkpoint_strategy = "adaptive_topk"' in example
++    assert "finalist_count = 5" in source
++    assert "finalist_rescue_batch_size = 5" in source
++    # The legacy evaluator remains public/readable rather than being deleted.
++    assert mdstats.MultiFidelityEvaluationPolicy().minimum_finalists >= 1
++
++
++def test_architecture_marks_adapt_eval1_implemented_and_verify_pending() -> None:
++    text = ARCH.read_text(encoding="utf-8")
++    start = text.index("## ADAPT-EVAL1")
++    section = text[start : start + 7000]
++    assert "**Status:** implemented in `mdstats 0.20.126a0`." in section
++    assert "### ADAPT-EVAL1 implementation record (`0.20.126a0`)" in section
++    verify = text[text.index("## ADAPT-VERIFY1") : text.index("## ADAPT-MIGRATE1")]
++    assert "**Status:** `not_started`." in verify
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/tests/test_mlff_adapt_eval1_topk_full_evaluation.py b/tests/test_mlff_adapt_eval1_topk_full_evaluation.py
+--- a/tests/test_mlff_adapt_eval1_topk_full_evaluation.py	1970-01-01 00:00:00.000000000 +0000
++++ b/tests/test_mlff_adapt_eval1_topk_full_evaluation.py	2026-08-09 22:15:29.354360562 +0000
+@@ -0,0 +1,206 @@
++from __future__ import annotations
++
++from types import SimpleNamespace
++from pathlib import Path
++import hashlib
++import json
++import pytest
++
++import mdstats
++
++
++def _sha(text: str) -> str:
++    return hashlib.sha256(text.encode()).hexdigest()
++
++
++def _champ(run_digest: str, epoch: int, target: float, replay: float, score: float):
++    item = mdstats.LightweightCheckpointScore(
++        epoch=epoch,
++        checkpoint_sha256=_sha(f"checkpoint-{run_digest}-{epoch}"),
++        target_force_rmse_ev_per_angstrom=target,
++        replay_force_rmse_ev_per_angstrom=replay,
++        weighted_score_ev_per_angstrom=score,
++    )
++    return mdstats.LightweightRunChampionRecord(
++        run_plan_digest=run_digest,
++        training_protocol_digest=_sha(f"protocol-{run_digest}"),
++        adaptive_stop_policy_digest=_sha(f"stop-policy-{run_digest}"),
++        adaptive_stop_state_digest=_sha(f"stop-state-{run_digest}"),
++        checkpoint_catalog_digest=_sha(f"catalog-{run_digest}"),
++        online_monitor_policy_digest=_sha("online-policy"),
++        target_online_monitor_record_digest=_sha("target-monitor"),
++        replay_online_monitor_record_digest=_sha("replay-monitor"),
++        outcome="champion_selected",
++        eligible_candidates=(item,),
++        selected_checkpoint_sha256=item.checkpoint_sha256,
++        selected_checkpoint_epoch=epoch,
++        selected_score_ev_per_angstrom=score,
++    )
++
++
++def test_finalist_queue_is_global_top_five_then_next_five_rescue_batches():
++    runs=[]; champions={}
++    for i, score in enumerate((.030,.021,.029,.024,.025,.023,.026,.022,.028,.027,.031,.032)):
++        digest=_sha(f"run-{i}")
++        run=SimpleNamespace(content_digest=digest, run_id=f"run-{i}")
++        runs.append(run)
++        champions[digest]=_champ(digest, i, score, score, score)
++    campaign=SimpleNamespace(content_digest=_sha("campaign"), runs=tuple(runs))
++    policy=mdstats.AdaptiveFullEvaluationPolicy(finalist_count=5, finalist_rescue_batch_size=5)
++    queue=mdstats.build_campaign_finalist_queue(campaign, champions, policy)
++    assert [round(x.lightweight_score_ev_per_angstrom,3) for x in queue.candidates[:5]] == [.021,.022,.023,.024,.025]
++    assert [x.batch_index for x in queue.candidates] == [1]*5+[2]*5+[3]*2
++    restored=mdstats.CampaignFinalistQueueRecord.from_dict(queue.to_dict())
++    assert restored == queue
++
++
++def _metric(count: int, force: float, *, energy=.001, stress=.001, focus=.02, worst=.04):
++    return mdstats.ModelDatasetMetricRecord(
++        configuration_count=count,
++        energy_mae_ev_per_atom=energy,
++        force_component_rmse_ev_per_angstrom=force,
++        focus_force_rmse_ev_per_angstrom=(("mobile", focus),),
++        stress_rmse_ev_per_angstrom3=stress,
++        worst_condition_force_rmse_ev_per_angstrom=worst,
++        condition_force_rmse_ev_per_angstrom=(("all", force),),
++        combined_loss=force,
++    )
++
++
++def _evaluation(finalist, target_force: float, replay_force: float):
++    target=_metric(1400,target_force)
++    replay=_metric(1987,replay_force)
++    baseline=_metric(1987,.020)
++    metric=mdstats.CheckpointMetricRecord(
++        run_plan_digest=finalist.run_plan_digest,
++        checkpoint_sha256=finalist.checkpoint_sha256,
++        target_monitor_artifact_digest=_sha("full-target"),
++        energy_mae_ev_per_atom=target.energy_mae_ev_per_atom,
++        force_component_rmse_ev_per_angstrom=target.force_component_rmse_ev_per_angstrom,
++        focus_force_rmse_ev_per_angstrom=target.focus_force_rmse_ev_per_angstrom,
++        stress_rmse_ev_per_angstrom3=target.stress_rmse_ev_per_angstrom3,
++        worst_condition_force_rmse_ev_per_angstrom=target.worst_condition_force_rmse_ev_per_angstrom,
++        target_combined_loss=target.combined_loss,
++        replay_monitor_artifact_digest=_sha("replay-lineage"),
++        replay_baseline_metric=.020,
++        replay_candidate_metric=replay_force,
++        replay_degradation_fraction=max(0,replay_force-.020)/.020,
++        replay_label_mode=mdstats.ReplayLabelMode.TRUE_DFT,
++    )
++    return mdstats.CheckpointEvaluationRecord(
++        run_plan_digest=finalist.run_plan_digest,
++        checkpoint_sha256=finalist.checkpoint_sha256,
++        evaluation_policy_digest=_sha("eval-policy"),
++        target_monitor_artifact_digest=_sha("full-target"),
++        target_monitor_sha256=_sha("full-target-bytes"),
++        replay_monitor_artifact_digest=_sha("full-replay"),
++        replay_monitor_sha256=_sha("full-replay-bytes"),
++        candidate_model_path="candidate.pt",
++        candidate_model_sha256=finalist.checkpoint_sha256,
++        replay_baseline_model_path="foundation.pt",
++        replay_baseline_model_sha256=_sha("foundation"),
++        target_configuration_count=1400,
++        replay_configuration_count=1987,
++        condition_force_rmse_ev_per_angstrom=(("all",target_force),),
++        metric_record=metric,
++        target_candidate_metrics=target,
++        replay_candidate_metrics=replay,
++        replay_foundation_metrics=baseline,
++    )
++
++
++def test_full_score_applies_target_and_replay_boundaries_before_ranking():
++    finalist=mdstats.CampaignFinalistCandidate(
++        rank=1,batch_index=1,run_plan_digest=_sha("run"),run_id="run",
++        champion_record_digest=_sha("champ"),checkpoint_sha256=_sha("checkpoint"),
++        checkpoint_epoch=5,lightweight_score_ev_per_angstrom=.025,
++    )
++    retained=mdstats.CheckpointMetricPolicy(
++        focus_atomic_numbers=(3,11,19),
++        maximum_energy_mae_ev_per_atom=.005,
++        maximum_focus_force_rmse_ev_per_angstrom=.10,
++        maximum_stress_rmse_ev_per_angstrom3=.02,
++        maximum_worst_condition_force_rmse_ev_per_angstrom=.15,
++    )
++    policy=mdstats.AdaptiveFullEvaluationPolicy(
++        target_score_weight=1,replay_score_weight=1,
++        maximum_target_force_rmse_ev_per_angstrom=.030,
++        maximum_replay_force_rmse_ev_per_angstrom=.030,
++        retained_checkpoint_metric_policy_digest=retained.policy_digest,
++    )
++    accepted=mdstats.assess_full_evaluation_candidate(finalist,_evaluation(finalist,.028,.029),policy,retained)
++    assert accepted.admissible
++    assert accepted.full_score_ev_per_angstrom == pytest.approx(.0285)
++    assert accepted.replay_absolute_degradation_ev_per_angstrom == pytest.approx(.009)
++    rejected=mdstats.assess_full_evaluation_candidate(finalist,_evaluation(finalist,.020,.031),policy,retained)
++    assert not rejected.admissible
++    assert "replay_force_rmse_threshold_exceeded" in rejected.rejection_reasons
++
++
++def test_two_to_one_target_weight_derives_sixty_mev_replay_limit_contract():
++    stop=mdstats.AdaptiveTrainingStopPolicy(target_score_weight=2,replay_score_weight=1)
++    assert stop.maximum_replay_force_rmse_ev_per_angstrom == pytest.approx(.060)
++    policy=mdstats.AdaptiveFullEvaluationPolicy(
++        target_score_weight=2,replay_score_weight=1,
++        maximum_target_force_rmse_ev_per_angstrom=.030,
++        maximum_replay_force_rmse_ev_per_angstrom=.060,
++    )
++    assert policy.maximum_replay_force_rmse_ev_per_angstrom == pytest.approx(.060)
++
++
++def test_naive_production_stop_policy_uses_true_replay_score_geometry() -> None:
++    from mdstats.training_data import campaign_cli
++
++    policy = campaign_cli._adaptive_training_stop_policy(
++        {
++            "acceptance": {"maximum_target_force_rmse_ev_per_angstrom": 0.030},
++            "evaluation": {"target_score_weight": 1.0, "replay_score_weight": 1.0},
++            "training": {"max_num_epochs": 30},
++        },
++        replay_head_name="replay_monitor",
++    )
++    assert policy.replay_enabled
++    assert policy.replay_head_name == "replay_monitor"
++    assert policy.maximum_replay_force_rmse_ev_per_angstrom == pytest.approx(0.030)
++
++
++def test_naive_auxiliary_true_replay_loader_is_inserted_before_target(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
++    pytest.importorskip("mace")
++    torch = pytest.importorskip("torch")
++    np = pytest.importorskip("numpy")
++    ase = pytest.importorskip("ase")
++    from ase.io import write
++    from torch.utils.data import DataLoader
++    from mdstats.training_data import adaptive_stop
++
++    replay_path = tmp_path / "true-replay.xyz"
++    atoms = ase.Atoms("H", positions=[[0.0, 0.0, 0.0]], cell=[5.0, 5.0, 5.0], pbc=True)
++    atoms.info["REF_energy"] = 0.1
++    atoms.info["REF_stress"] = np.zeros(6)
++    atoms.arrays["REF_forces"] = np.zeros((1, 3))
++    write(replay_path, [atoms], format="extxyz")
++
++    policy = mdstats.AdaptiveTrainingStopPolicy(
++        target_head_name="target_head", replay_head_name="replay_monitor"
++    )
++    monkeypatch.setenv(
++        adaptive_stop.ADAPTIVE_STOP_POLICY_ENVIRONMENT_VARIABLE,
++        json.dumps(policy.to_dict()),
++    )
++    monkeypatch.setenv(
++        adaptive_stop.ADAPTIVE_STOP_AUXILIARY_REPLAY_PATH_ENVIRONMENT_VARIABLE,
++        str(replay_path),
++    )
++
++    class Model:
++        heads = ["target_head"]
++        atomic_numbers = torch.tensor([1])
++        r_max = torch.tensor(3.0)
++
++    base_loader = DataLoader([1], batch_size=1)
++    loaders = adaptive_stop.prepare_auxiliary_replay_validation_loader(
++        Model(), {"target_head": base_loader}
++    )
++    assert list(loaders) == ["replay_monitor", "target_head"]
++    assert len(loaders["replay_monitor"].dataset) == 1
++    assert int(loaders["replay_monitor"].dataset[0].head.item()) == 0
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/tests/test_mlff_adapt_mon1_online_monitors.py b/tests/test_mlff_adapt_mon1_online_monitors.py
+--- a/tests/test_mlff_adapt_mon1_online_monitors.py	2026-08-09 21:35:38.270221739 +0000
++++ b/tests/test_mlff_adapt_mon1_online_monitors.py	2026-08-09 22:10:38.025852287 +0000
+@@ -96,6 +96,13 @@
+     assert result.online_replay_monitor_artifact is not None
+     assert result.online_replay_monitor_artifact.label_mode is mdstats.ReplayLabelMode.TRUE_DFT
+     assert result.online_replay_monitor_artifact.configuration_count == 5
++    assert result.full_target_evaluation_artifact is not None
++    assert result.full_target_evaluation_artifact.role == "common_full_target_evaluation"
++    assert set(result.target_online_monitor.selected_identities).issubset(
++        set(result.full_target_evaluation_artifact.frame_uids)
++    )
++    assert result.full_target_evaluation_artifact.configuration_count >= result.target_online_monitor.realized_size
++    assert (output / result.full_target_evaluation_artifact.relative_path).is_file()
+ 
+     target_valid = [a for a in result.target_artifacts if a.role == "target_checkpoint_monitor"]
+     assert len(target_valid) == len(result.jobs)
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/tests/test_mlff_adapt_mon1_specification.py b/tests/test_mlff_adapt_mon1_specification.py
+--- a/tests/test_mlff_adapt_mon1_specification.py	2026-08-09 21:35:38.268447186 +0000
++++ b/tests/test_mlff_adapt_mon1_specification.py	2026-08-09 22:10:38.024727042 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_adapt_mon1_release_and_normative_defaults():
+-    assert mdstats.__version__ == "0.20.125a0"
++    assert mdstats.__version__ == "0.20.126a0"
+     text = SPEC.read_text(encoding="utf-8")
+     assert "Status: implemented in mdstats 0.20.123a0" in text
+     assert "256 configurations" in text
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/tests/test_mlff_adapt_prec1_specification.py b/tests/test_mlff_adapt_prec1_specification.py
+--- a/tests/test_mlff_adapt_prec1_specification.py	2026-08-09 21:35:38.271197932 +0000
++++ b/tests/test_mlff_adapt_prec1_specification.py	2026-08-09 22:11:50.600488305 +0000
+@@ -8,7 +8,7 @@
+ 
+ 
+ def test_adapt_prec1_release_and_spec_contract():
+-    assert mdstats.__version__ == "0.20.125a0"
++    assert mdstats.__version__ == "0.20.126a0"
+     text = SPEC.read_text(encoding="utf-8")
+     assert "Status: implemented in mdstats 0.20.122a0" in text
+     assert "`single`: learned-model" in text
+@@ -28,10 +28,8 @@
+     assert "**Status:** implemented in `mdstats 0.20.124a0`." in text[stop_start : stop_start + 1000]
+     rank_start = text.index("## ADAPT-RANK1")
+     assert "**Status:** implemented in `mdstats 0.20.125a0`." in text[rank_start : rank_start + 1000]
+-    for heading in [
+-        "## ADAPT-EVAL1",
+-        "## ADAPT-VERIFY1",
+-        "## ADAPT-MIGRATE1",
+-    ]:
++    eval_start = text.index("## ADAPT-EVAL1")
++    assert "**Status:** implemented in `mdstats 0.20.126a0`." in text[eval_start : eval_start + 1000]
++    for heading in ["## ADAPT-VERIFY1", "## ADAPT-MIGRATE1"]:
+         start = text.index(heading)
+         assert "**Status:** `not_started`." in text[start : start + 1000]
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/tests/test_mlff_adapt_rank1_specification.py b/tests/test_mlff_adapt_rank1_specification.py
+--- a/tests/test_mlff_adapt_rank1_specification.py	2026-08-09 21:35:38.387071398 +0000
++++ b/tests/test_mlff_adapt_rank1_specification.py	2026-08-09 22:12:33.577193071 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_adapt_rank1_release_and_spec_contract() -> None:
+-    assert mdstats.__version__ == "0.20.125a0"
++    assert mdstats.__version__ == "0.20.126a0"
+     text = SPEC.read_text(encoding="utf-8")
+     assert "Status: implemented in mdstats 0.20.125a0" in text
+     assert "zero" in text.lower() and "inference" in text.lower()
+@@ -20,19 +20,20 @@
+     assert "no_lightweight_admissible_checkpoint" in text
+ 
+ 
+-def test_adapt_rank1_manual_closed_and_eval_still_open() -> None:
++def test_adapt_rank1_manual_closed_and_eval_now_implemented() -> None:
+     text = MANUAL.read_text(encoding="utf-8")
+     rank = text.split("## ADAPT-RANK1", 1)[1].split("## ADAPT-EVAL1", 1)[0]
+     evaluation = text.split("## ADAPT-EVAL1", 1)[1].split("## ADAPT-VERIFY1", 1)[0]
+     assert "**Status:** implemented in `mdstats 0.20.125a0`." in rank
+     assert "lightweight_run_champion.json" in rank
+     assert "performs no inference" in rank
+-    assert "**Status:** `not_started`." in evaluation
++    assert "**Status:** implemented in `mdstats 0.20.126a0`." in evaluation
+ 
+ 
+ def test_user_guide_states_current_rank1_boundary() -> None:
+     text = GUIDE.read_text(encoding="utf-8")
+     assert "0.20.125a0" in text
+     assert "lightweight_run_champion.json" in text
+-    assert "ADAPT-EVAL1 is still pending" in text
+-    assert "multi-fidelity evaluator remains" in text
++    assert "Beginning in 0.20.126a0" in text
++    assert "adaptive_topk" in text
++    assert "`multi_fidelity` strategies remain available for compatible old campaigns" in text
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/tests/test_mlff_adapt_stop1_specification.py b/tests/test_mlff_adapt_stop1_specification.py
+--- a/tests/test_mlff_adapt_stop1_specification.py	2026-08-09 21:35:38.271140387 +0000
++++ b/tests/test_mlff_adapt_stop1_specification.py	2026-08-09 22:11:50.600665339 +0000
+@@ -49,9 +49,9 @@
+     assert "foundation replay baseline" in spec
+ 
+ 
+-def test_rank_closed_and_eval_gate_remains_pending() -> None:
++def test_rank_and_eval_gates_are_closed() -> None:
+     architecture = (ROOT / "docs/arch_manuals/mlff_training_data_architecture.md").read_text()
+     rank = architecture.split("## ADAPT-RANK1", 1)[1].split("## ADAPT-EVAL1", 1)[0]
+     evaluation = architecture.split("## ADAPT-EVAL1", 1)[1].split("## ADAPT-VERIFY1", 1)[0]
+     assert "**Status:** implemented in `mdstats 0.20.125a0`." in rank
+-    assert "**Status:** `not_started`." in evaluation
++    assert "**Status:** implemented in `mdstats 0.20.126a0`." in evaluation
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/tests/test_mlff_adaptive_training_revision_plan.py b/tests/test_mlff_adaptive_training_revision_plan.py
+--- a/tests/test_mlff_adaptive_training_revision_plan.py	2026-08-09 21:35:38.262733938 +0000
++++ b/tests/test_mlff_adaptive_training_revision_plan.py	2026-08-09 22:10:38.021359797 +0000
+@@ -6,7 +6,7 @@
+ 
+ def test_adaptive_revision_gate_order_and_defaults():
+     version_text = (ROOT / "mdstats" / "_version.py").read_text(encoding="utf-8")
+-    assert '__version__ = "0.20.125a0"' in version_text
++    assert '__version__ = "0.20.126a0"' in version_text
+     text = MANUAL.read_text(encoding="utf-8")
+     headings = [
+         "## ADAPT-PREC1",
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/tests/test_mlff_data0_architecture_specification.py b/tests/test_mlff_data0_architecture_specification.py
+--- a/tests/test_mlff_data0_architecture_specification.py	2026-08-09 21:35:38.270009052 +0000
++++ b/tests/test_mlff_data0_architecture_specification.py	2026-08-09 22:10:38.025645059 +0000
+@@ -263,4 +263,4 @@
+ def test_mlff_data0_pdf_and_version_artifacts_exist() -> None:
+     assert MANUAL_PDF.stat().st_size > 10_000
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.125a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.126a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/tests/test_mlff_data1_specification.py b/tests/test_mlff_data1_specification.py
+--- a/tests/test_mlff_data1_specification.py	2026-08-09 21:35:38.261384619 +0000
++++ b/tests/test_mlff_data1_specification.py	2026-08-09 22:10:38.020346168 +0000
+@@ -49,4 +49,4 @@
+     assert callable(mdstats.assign_balanced_round_robin)
+     assert callable(mdstats.build_complete_frame_block_plan)
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.125a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.126a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/tests/test_mlff_data2a_manifest_inference_specification.py b/tests/test_mlff_data2a_manifest_inference_specification.py
+--- a/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-09 21:35:38.269167369 +0000
++++ b/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-09 22:10:38.025023173 +0000
+@@ -15,7 +15,7 @@
+ 
+ 
+ def test_data2a_version_public_api_and_documented_contract() -> None:
+-    assert mdstats.__version__ == "0.20.125a0"
++    assert mdstats.__version__ == "0.20.126a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert callable(mdstats.infer_training_manifest_metadata)
+     policy = mdstats.ManifestInferencePolicy()
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/tests/test_mlff_data9a2_specification.py b/tests/test_mlff_data9a2_specification.py
+--- a/tests/test_mlff_data9a2_specification.py	2026-08-09 21:35:38.261251971 +0000
++++ b/tests/test_mlff_data9a2_specification.py	2026-08-09 22:10:38.020277936 +0000
+@@ -23,7 +23,7 @@
+         "finite energy, force, and stress",
+     ):
+         assert required in text
+-    assert 'version = "0.20.125a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.126a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "DATA9A2 real-MACE realization is implemented in `0.20.39a0`" in ARCH.read_text()
+ 
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/tests/test_mlff_data9a3_specification.py b/tests/test_mlff_data9a3_specification.py
+--- a/tests/test_mlff_data9a3_specification.py	2026-08-09 21:35:38.266272618 +0000
++++ b/tests/test_mlff_data9a3_specification.py	2026-08-09 22:10:38.023621065 +0000
+@@ -9,5 +9,5 @@
+     assert "37,632" in text
+     assert "supported_with_temporal_blocks_only" in text
+     assert "production_replay_corpus_not_bound" in text
+-    assert 'version = "0.20.125a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.126a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "MLFF-DATA9A3 production qualification" in ARCH.read_text()
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/tests/test_mlff_data9a4_precision_specification.py b/tests/test_mlff_data9a4_precision_specification.py
+--- a/tests/test_mlff_data9a4_precision_specification.py	2026-08-09 21:35:59.122026326 +0000
++++ b/tests/test_mlff_data9a4_precision_specification.py	2026-08-09 22:10:38.024234358 +0000
+@@ -9,7 +9,7 @@
+     assert "float32" in text and "float64" in text
+     assert "MaceModelPrecisionRecord" in text
+     assert "MacePrecisionTransitionRecord" in text
+-    assert "version = \"0.20.125a0\"" in (ROOT / "pyproject.toml").read_text()
++    assert "version = \"0.20.126a0\"" in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_bind_precision_to_protocol() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/tests/test_mlff_data9a5_critical_fp64_specification.py b/tests/test_mlff_data9a5_critical_fp64_specification.py
+--- a/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-09 21:35:38.266516791 +0000
++++ b/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-09 22:10:38.023803256 +0000
+@@ -14,7 +14,7 @@
+     assert 'version: "0.20.42a0"' in text
+     assert "training_force_jacobian_dtype = model" in text
+     assert "Python/ASE" in text
+-    assert 'version = "0.20.125a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.126a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_data9a5_architecture_declares_scope_and_limits() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/tests/test_mlff_data9a5_deployment_specification.py b/tests/test_mlff_data9a5_deployment_specification.py
+--- a/tests/test_mlff_data9a5_deployment_specification.py	2026-08-09 21:35:38.270883855 +0000
++++ b/tests/test_mlff_data9a5_deployment_specification.py	2026-08-09 22:10:38.026201137 +0000
+@@ -13,7 +13,7 @@
+     assert 'version: "0.20.43a0"' in text
+     assert "downstream runtime owns" in text
+     assert "float32-to-float64 promotion does not restore" in text
+-    assert 'version = "0.20.125a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.126a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_keep_lammps_outside_mdstats_scope() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/tests/test_mlff_data9a6c_observable_evidence_specification.py b/tests/test_mlff_data9a6c_observable_evidence_specification.py
+--- a/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-09 21:35:38.269456619 +0000
++++ b/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-09 22:10:38.029599888 +0000
+@@ -74,5 +74,5 @@
+ 
+ def test_packaged_owner_manual_index_is_valid() -> None:
+     payload = json.loads(MANUAL_INDEX.read_text(encoding="utf-8"))
+-    assert payload["package_version"] == "0.20.125a0"
++    assert payload["package_version"] == "0.20.126a0"
+     assert "structural-observables-architecture" in payload["manuals"]
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/tests/test_mlff_data9a7a_material_profile_specification.py b/tests/test_mlff_data9a7a_material_profile_specification.py
+--- a/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-09 21:35:38.269773231 +0000
++++ b/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-09 22:10:38.025491049 +0000
+@@ -64,4 +64,4 @@
+ 
+ 
+ def test_release_version_is_data9a7a() -> None:
+-    assert 'version = "0.20.125a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert 'version = "0.20.126a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/tests/test_mlff_data9a7b_specification.py b/tests/test_mlff_data9a7b_specification.py
+--- a/tests/test_mlff_data9a7b_specification.py	2026-08-09 21:35:38.270065937 +0000
++++ b/tests/test_mlff_data9a7b_specification.py	2026-08-09 22:10:38.025681363 +0000
+@@ -69,7 +69,7 @@
+ 
+ 
+ def test_data9a7b_public_exports_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.125a0"
++    assert mdstats.__version__ == "0.20.126a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert callable(mdstats.compute_local_structure_features)
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/tests/test_mlff_data9a7c_specification.py b/tests/test_mlff_data9a7c_specification.py
+--- a/tests/test_mlff_data9a7c_specification.py	2026-08-09 21:35:38.269508547 +0000
++++ b/tests/test_mlff_data9a7c_specification.py	2026-08-09 22:10:38.025158865 +0000
+@@ -47,7 +47,7 @@
+ 
+ 
+ def test_public_api_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.125a0"
++    assert mdstats.__version__ == "0.20.126a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert mdstats.MLFF_DATA9A7C_PARSER_VERSION == "0.20.49a0"
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/tests/test_mlff_data9a7d_specification.py b/tests/test_mlff_data9a7d_specification.py
+--- a/tests/test_mlff_data9a7d_specification.py	2026-08-09 21:35:38.266113140 +0000
++++ b/tests/test_mlff_data9a7d_specification.py	2026-08-09 22:10:38.023503900 +0000
+@@ -39,6 +39,6 @@
+ 
+ 
+ def test_data9a7d_runtime_versions() -> None:
+-    assert mdstats.__version__ == "0.20.125a0"
++    assert mdstats.__version__ == "0.20.126a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7D_PARSER_VERSION == "0.20.50a0"
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/tests/test_mlff_data9a7e_specification.py b/tests/test_mlff_data9a7e_specification.py
+--- a/tests/test_mlff_data9a7e_specification.py	2026-08-09 21:35:38.268044076 +0000
++++ b/tests/test_mlff_data9a7e_specification.py	2026-08-09 22:10:38.024481085 +0000
+@@ -39,7 +39,7 @@
+         "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
+         "CROSS_SYSTEM_QUALIFICATION_SUITE",
+     } <= nodes
+-    assert mdstats.__version__ == "0.20.125a0"
++    assert mdstats.__version__ == "0.20.126a0"
+     assert mdstats.MLFF_DATA9A7E_PARSER_VERSION == "0.20.51a0"
+     assert callable(mdstats.qualify_cross_system_case)
+     assert callable(mdstats.build_cross_system_qualification_suite)
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/tests/test_mlff_data9a8_specification.py b/tests/test_mlff_data9a8_specification.py
+--- a/tests/test_mlff_data9a8_specification.py	2026-08-09 21:35:38.257365884 +0000
++++ b/tests/test_mlff_data9a8_specification.py	2026-08-09 22:10:38.018536603 +0000
+@@ -66,7 +66,7 @@
+ 
+ 
+ def test_public_runtime_exposes_data9a8_without_removed_aliases() -> None:
+-    assert mdstats.__version__ == "0.20.125a0"
++    assert mdstats.__version__ == "0.20.126a0"
+     assert mdstats.MLFF_DATA9A8_PARSER_VERSION == "0.20.52a0"
+     assert mdstats.ObservableComparisonPolicy
+     assert mdstats.compare_mlff_observable_validation
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/tests/test_mlff_data9a9a_specification.py b/tests/test_mlff_data9a9a_specification.py
+--- a/tests/test_mlff_data9a9a_specification.py	2026-08-09 21:35:38.265890238 +0000
++++ b/tests/test_mlff_data9a9a_specification.py	2026-08-09 22:10:38.023284333 +0000
+@@ -65,7 +65,7 @@
+ 
+ 
+ def test_public_runtime_exports_data9a9a_contracts() -> None:
+-    assert mdstats.__version__ == "0.20.125a0"
++    assert mdstats.__version__ == "0.20.126a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A9A_VERSION
+     assert mdstats.Data6ModelSweepPlan
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/tests/test_mlff_data9a9b_specification.py b/tests/test_mlff_data9a9b_specification.py
+--- a/tests/test_mlff_data9a9b_specification.py	2026-08-09 21:35:38.259032296 +0000
++++ b/tests/test_mlff_data9a9b_specification.py	2026-08-09 22:10:38.018934476 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9b_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.125a0"
++    assert mdstats.__version__ == "0.20.126a0"
+     for name in (
+         "ProductionMaterializationPlan",
+         "ProductionMaterializationCheckpoint",
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/tests/test_mlff_data9a9c_specification.py b/tests/test_mlff_data9a9c_specification.py
+--- a/tests/test_mlff_data9a9c_specification.py	2026-08-09 21:35:38.267888344 +0000
++++ b/tests/test_mlff_data9a9c_specification.py	2026-08-09 22:10:38.024397831 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9c_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.125a0"
++    assert mdstats.__version__ == "0.20.126a0"
+     for name in (
+         "ProductionCorpusPlan", "ProductionExpectedRun",
+         "ProfileExtensionEvidenceRequirement", "ProductionCorpusQualificationRecord",
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/tests/test_mlff_data9a_specification.py b/tests/test_mlff_data9a_specification.py
+--- a/tests/test_mlff_data9a_specification.py	2026-08-09 21:35:38.267060872 +0000
++++ b/tests/test_mlff_data9a_specification.py	2026-08-09 22:10:38.024127769 +0000
+@@ -14,7 +14,7 @@
+ 
+ 
+ def test_data9a_runtime_specification_is_canonical() -> None:
+-    assert 'version = "0.20.125a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.126a0"' in (ROOT / "pyproject.toml").read_text()
+     architecture = ARCH.read_text()
+     stage = STAGE.read_text()
+     specification = SPEC.read_text()
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/tests/test_mlff_data9b1_specification.py b/tests/test_mlff_data9b1_specification.py
+--- a/tests/test_mlff_data9b1_specification.py	2026-08-09 21:35:38.266165769 +0000
++++ b/tests/test_mlff_data9b1_specification.py	2026-08-09 22:10:38.023573384 +0000
+@@ -18,8 +18,8 @@
+     assert "TrainingCampaignPlan" in text
+     assert "CheckpointSelectionRecord" in text
+     assert "mdstats-mace-train" in text
+-    assert mdstats.__version__ == "0.20.125a0"
+-    assert 'version = "0.20.125a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert mdstats.__version__ == "0.20.126a0"
++    assert 'version = "0.20.126a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+ 
+ 
+ def test_data9b1_is_integrated_into_manual_and_stage_plan() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/tests/test_mlff_data9b2_specification.py b/tests/test_mlff_data9b2_specification.py
+--- a/tests/test_mlff_data9b2_specification.py	2026-08-09 21:35:38.266325456 +0000
++++ b/tests/test_mlff_data9b2_specification.py	2026-08-09 22:10:38.023686372 +0000
+@@ -23,7 +23,7 @@
+         'mdstats-mace-select-head',
+     ):
+         assert token in text
+-    assert mdstats.__version__ == '0.20.125a0'
++    assert mdstats.__version__ == '0.20.126a0'
+     assert mdstats.MLFF_DATA9B2_VERSION == '0.20.57a0'
+ 
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/tests/test_mlff_data9b3_campaign_cli_specification.py b/tests/test_mlff_data9b3_campaign_cli_specification.py
+--- a/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-09 21:35:38.262467682 +0000
++++ b/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-09 22:10:38.021143535 +0000
+@@ -16,7 +16,7 @@
+ 
+ 
+ def test_data9b3_version_and_user_surface() -> None:
+-    assert mdstats.__version__ == "0.20.125a0"
++    assert mdstats.__version__ == "0.20.126a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert TOOL.is_file()
+     assert TOOL.stat().st_mode & 0o111
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/tests/test_mlff_eval_mf2_guard_reporting.py b/tests/test_mlff_eval_mf2_guard_reporting.py
+--- a/tests/test_mlff_eval_mf2_guard_reporting.py	2026-08-09 21:35:38.263891101 +0000
++++ b/tests/test_mlff_eval_mf2_guard_reporting.py	2026-08-09 22:10:38.022073530 +0000
+@@ -132,14 +132,18 @@
+     assert decision.retained_checkpoint_sha256s == shas[:4]
+ 
+ 
+-def test_mf2_generated_config_uses_multi_fidelity_default_and_guard_controls(tmp_path: Path) -> None:
++def test_mf2_remains_historical_while_new_configs_default_to_adaptive_topk(tmp_path: Path) -> None:
++    del tmp_path
+     text = Path(campaign_cli.__file__).read_text(encoding="utf-8")
+-    assert 'checkpoint_strategy = "multi_fidelity"' in text
+-    assert "multi_fidelity_guard_band_enabled = true" in text
+-    assert "multi_fidelity_guard_standard_error_multiplier = 2.0" in text
+-    assert "multi_fidelity_instability_survival_fraction = 0.50" in text
++    assert 'checkpoint_strategy = "adaptive_topk"' in text
++    assert "finalist_count = 5" in text
++    assert "finalist_rescue_batch_size = 5" in text
++    # Historical EVAL-MF behavior remains directly qualified by the tests above
++    # and by the public MultiFidelityEvaluationPolicy API; it is no longer the
++    # generated production default after ADAPT-EVAL1.
++    assert mdstats.MultiFidelityEvaluationPolicy().minimum_finalists >= 1
+     example = (Path(campaign_cli.__file__).parents[2] / "campaign.toml.example").read_text(encoding="utf-8")
+-    assert 'checkpoint_strategy = "multi_fidelity"' in example
++    assert 'checkpoint_strategy = "adaptive_topk"' in example
+ 
+ 
+ def test_mf2_report_writes_all_epochs_and_round_metrics(tmp_path: Path) -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/tests/test_mlff_opt_ctrl1_specification.py b/tests/test_mlff_opt_ctrl1_specification.py
+--- a/tests/test_mlff_opt_ctrl1_specification.py	2026-08-09 21:35:38.269923925 +0000
++++ b/tests/test_mlff_opt_ctrl1_specification.py	2026-08-09 22:10:38.025598419 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_ctrl1_release_identity_preserves_scientific_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.125a0"
++    assert mdstats.__version__ == "0.20.126a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.125a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.126a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_ctrl1_architecture_and_spec_close_roadmap() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/tests/test_mlff_opt_eval4_specification.py b/tests/test_mlff_opt_eval4_specification.py
+--- a/tests/test_mlff_opt_eval4_specification.py	2026-08-09 21:35:38.264741808 +0000
++++ b/tests/test_mlff_opt_eval4_specification.py	2026-08-09 22:10:38.022658311 +0000
+@@ -11,9 +11,9 @@
+ 
+ 
+ def test_opt_eval4_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.125a0"
++    assert mdstats.__version__ == "0.20.126a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+-    assert 'version = "0.20.125a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.126a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_eval4_architecture_and_spec_record_pipeline_contract() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/tests/test_mlff_opt_verify1_specification.py b/tests/test_mlff_opt_verify1_specification.py
+--- a/tests/test_mlff_opt_verify1_specification.py	2026-08-09 21:35:38.269635786 +0000
++++ b/tests/test_mlff_opt_verify1_specification.py	2026-08-09 22:10:38.025187427 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_verify1_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.125a0"
++    assert mdstats.__version__ == "0.20.126a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.125a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.126a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_verify1_architecture_and_spec_record_contract() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/tests/test_mlff_perf2_parallel_acceleration_specification.py b/tests/test_mlff_perf2_parallel_acceleration_specification.py
+--- a/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-09 21:35:38.266469321 +0000
++++ b/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-09 22:10:38.023736056 +0000
+@@ -10,7 +10,7 @@
+ 
+ 
+ def test_perf2_release_and_configuration_contract() -> None:
+-    assert mdstats.__version__ == "0.20.125a0"
++    assert mdstats.__version__ == "0.20.126a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     template = campaign_cli._config_template(
+         workspace="workspace",
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/tests/test_mlff_prec1_specification.py b/tests/test_mlff_prec1_specification.py
+--- a/tests/test_mlff_prec1_specification.py	2026-08-09 21:35:38.257515186 +0000
++++ b/tests/test_mlff_prec1_specification.py	2026-08-09 22:10:38.018627719 +0000
+@@ -12,7 +12,7 @@
+ 
+ 
+ def test_prec1_release_and_architecture_status() -> None:
+-    assert mdstats.__version__ == "0.20.125a0"
++    assert mdstats.__version__ == "0.20.126a0"
+     manual = MANUAL.read_text(encoding="utf-8")
+     spec = SPEC.read_text(encoding="utf-8")
+     assert "PREC1 - precision profiles, explicit staged schedule, and init realization - implemented in 0.20.108a0" in manual
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.125a0_to_0.20.126a0.patch' a/tests/test_mlff_prec3_specification.py b/tests/test_mlff_prec3_specification.py
+--- a/tests/test_mlff_prec3_specification.py	2026-08-09 21:35:38.269684849 +0000
++++ b/tests/test_mlff_prec3_specification.py	2026-08-09 22:10:38.025227507 +0000
+@@ -16,7 +16,7 @@
+     manual = MANUAL.read_text(encoding="utf-8")
+     spec = SPEC.read_text(encoding="utf-8")
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+-    assert mdstats.__version__ == "0.20.125a0"
++    assert mdstats.__version__ == "0.20.126a0"
+     assert "PREC3 - campaign integration, qualification, and profile activation - implemented in 0.20.110a0" in manual
+     assert "PREC3 implementation closure (0.20.110a0)" in manual
+     assert "PREC3 implemented in mdstats 0.20.110a0" in spec

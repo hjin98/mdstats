@@ -1,0 +1,104 @@
+{
+  "cases": [
+    {
+      "canonical_s2_seconds": 0.6610679469995375,
+      "case": "fragmented",
+      "direct_tile_count": 24,
+      "fft_tile_count": 0,
+      "hybrid_seconds": 0.23559318399929907,
+      "integral": 1.0,
+      "nonpositive_repairs": 0,
+      "planning_seconds": 0.007156223997299094,
+      "relative_l1": 2.897212022170641e-18,
+      "relative_linf": 2.104168586134165e-16,
+      "source_node_count": 64,
+      "speedup_over_s2": 2.805972294179378,
+      "stencil_offset_count": 8409,
+      "target_node_count": 398664,
+      "tile_count": 24
+    },
+    {
+      "canonical_s2_seconds": 1.1344760339998174,
+      "case": "compact",
+      "direct_tile_count": 0,
+      "fft_tile_count": 1,
+      "hybrid_seconds": 0.02805607600021176,
+      "integral": 0.9999999999999999,
+      "nonpositive_repairs": 0,
+      "planning_seconds": 0.0014876120003464166,
+      "relative_l1": 5.318131843711278e-16,
+      "relative_linf": 5.280278613345763e-16,
+      "source_node_count": 512,
+      "speedup_over_s2": 40.43601942022308,
+      "stencil_offset_count": 8409,
+      "target_node_count": 23032,
+      "tile_count": 1
+    },
+    {
+      "canonical_s2_seconds": 0.710082790999877,
+      "case": "boundary_crossing",
+      "direct_tile_count": 18,
+      "fft_tile_count": 0,
+      "hybrid_seconds": 0.15773989199806238,
+      "integral": 0.9999999999999999,
+      "nonpositive_repairs": 0,
+      "planning_seconds": 0.003946383996662917,
+      "relative_l1": 4.315682886694311e-17,
+      "relative_linf": 2.7465868035112115e-16,
+      "source_node_count": 128,
+      "speedup_over_s2": 4.501605662368524,
+      "stencil_offset_count": 8409,
+      "target_node_count": 217285,
+      "tile_count": 18
+    },
+    {
+      "canonical_s2_seconds": 8.917760721000377,
+      "case": "oxygen_heavy",
+      "direct_tile_count": 0,
+      "fft_tile_count": 27,
+      "hybrid_seconds": 0.6473852540002554,
+      "integral": 0.9999999999999999,
+      "nonpositive_repairs": 0,
+      "planning_seconds": 0.01193069100190769,
+      "relative_l1": 5.09529757252482e-16,
+      "relative_linf": 4.660294812546723e-16,
+      "source_node_count": 2047,
+      "speedup_over_s2": 13.77504455947472,
+      "stencil_offset_count": 8409,
+      "target_node_count": 884736,
+      "tile_count": 27
+    }
+  ],
+  "display_cell": [
+    [
+      9.600000000000001,
+      0.0,
+      0.0
+    ],
+    [
+      0.0,
+      9.600000000000001,
+      0.0
+    ],
+    [
+      0.0,
+      0.0,
+      9.600000000000001
+    ]
+  ],
+  "gaussian_bandwidth": 0.2,
+  "grid_shape": [
+    96,
+    96,
+    96
+  ],
+  "host": {
+    "numpy": "2.3.5",
+    "platform": "Linux-4.4.0-x86_64-with-glibc2.41",
+    "python": "3.13.5"
+  },
+  "kernel_tail_tolerance": 1e-08,
+  "schema": "mdstats.density-ld8-s3-hybrid-microbenchmark.v1",
+  "stencil_offset_count": 8409,
+  "total_seconds": 23.43312629600041
+}

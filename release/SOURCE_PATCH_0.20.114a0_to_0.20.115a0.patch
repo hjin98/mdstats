@@ -1,0 +1,1819 @@
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/CHANGELOG.md /mnt/data/mdstats-0.20.115a0-complete-source-package/CHANGELOG.md
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/CHANGELOG.md	2026-08-08 22:49:37.158404880 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/CHANGELOG.md	2026-08-08 23:07:11.567195343 +0000
+@@ -1,3 +1,11 @@
++## 0.20.115a0 - 2026-08-08
++
++- Implement STOR4 manual tiered MLFF reclamation (`safe`, `cache`, `recompute`, `compact`, `archive`) with mandatory capability planning and explicit apply authorization for consequential tiers.
++- Preserve external inputs, production models, selected production raw checkpoints, protocol/selection/verification records, and diagnostic logs at every STOR4 tier.
++- Add cumulative capability reporting for restartability, checkpoint re-evaluation, metric-only recomputation, DATA7 reselection, DATA8 rematerialization, production inference, and verification replay.
++- Keep `archive` plan-only until STOR5 provides authenticated reversible archive/restore semantics.
++- Advance the MLFF architecture dependency graph to revision 33; STOR5 is the next gate.
++
+ ## 0.20.114a0 - 2026-08-08
+ 
+ - Implement MLFF STOR3 lifecycle-safe automatic reclamation under the STOR1 ownership boundary, without deleting external inputs, selected production artifacts, active restart state, scientific prediction caches, or authoritative diagnostic/protocol records.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/PATCH_NOTES_0.20.115a0.md /mnt/data/mdstats-0.20.115a0-complete-source-package/PATCH_NOTES_0.20.115a0.md
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/PATCH_NOTES_0.20.115a0.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/PATCH_NOTES_0.20.115a0.md	2026-08-08 23:07:11.567318115 +0000
+@@ -0,0 +1,9 @@
++# mdstats 0.20.115a0 patch notes
++
++- Implement MLFF STOR4 manual retention tiers: `safe`, `cache`, `recompute`, `compact`, and `archive`.
++- Every manual cleanup invocation first emits/writes a dry-run capability plan. `recompute` and `compact` require explicit `--apply`; `archive --apply` fails closed until STOR5 exists.
++- `recompute` may remove authenticated scientific prediction/DATA6 caches only after authoritative evaluation and only while configured reconstruction inputs remain available.
++- `compact` requires full verification, a protocol freeze, and a protected production model; it may remove nonselected evaluation capsules, per-run model copies, and hot DATA7/DATA8 materializations while retaining selected raw checkpoints, production models, logs, and provenance.
++- Extend cleanup audit events to carry intentional manual capability loss while STOR3 automatic events remain zero-loss.
++- Storage accounting now names the qualified STOR4 manual tier for cache/scientific-cache/capsule/materialization families.
++- STOR5 immutable deduplication/cold archival is the next gate.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/campaign.toml.example /mnt/data/mdstats-0.20.115a0-complete-source-package/campaign.toml.example
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/campaign.toml.example	2026-08-08 22:45:47.523753080 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/campaign.toml.example	2026-08-08 23:10:44.803172517 +0000
+@@ -260,6 +260,9 @@
+ 
+ [cleanup]
+ # Conservative lifecycle cleanup runs automatically at train/evaluate/verify boundaries.
++# Manual retention is CLI-selected: cleanup --tier safe|cache|recompute|compact|archive.
++# Every tier emits a capability plan first; recompute/compact require --apply; archive
++# remains plan-only until STOR5 provides authenticated archive/restore support.
+ enabled = true
+ # Young temporary trees are retained to avoid racing a recently interrupted process.
+ stale_age_hours = 6.0
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/docs/arch_manuals/mlff_training_data_architecture.md /mnt/data/mdstats-0.20.115a0-complete-source-package/docs/arch_manuals/mlff_training_data_architecture.md
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-08 22:49:14.402244970 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-08 23:08:20.074613419 +0000
+@@ -4694,13 +4694,13 @@
+ 
+ The implemented policy additionally reclaims the reconstructable OPT-EVAL3 graph/view cache only after authoritative evaluation is complete; it does not automatically remove DATA6/model-sweep predictions, evaluation-prediction shards, or true-label replay artifacts. Under low-disk pressure, training invokes this STOR3 safe policy before interrupting children. Active run roots are excluded; interruption occurs only if safe reclamation cannot restore the configured free-space reserve.
+ 
+-## STOR4 - manual tiered reclamation with capability-loss reporting - planned
++## STOR4 - manual tiered reclamation with capability-loss reporting - implemented in 0.20.115a0
+ 
+ Some large artifacts are valuable but not essential to the final production model.
+ STOR4 introduces explicit user-selected retention tiers rather than treating all such
+ artifacts as either permanent or disposable.
+ 
+-The planned hierarchy is:
++The implemented hierarchy is:
+ 
+ | Tier | Typical artifacts | Default consequence |
+ |---|---|---|
+@@ -4710,15 +4710,11 @@
+ | `compact` | nonproduction checkpoints/models and cold materializations after freeze | exact continuation or cheap alternative-model recovery may be lost |
+ | `archive` | explicitly selected cold reproducibility material | retained only in a verified archival representation |
+ 
+-Names may be refined at implementation, but increasing tiers must never silently
+-include protected production models or external user data. Diagnostic text/log records
+-remain retained by default at every tier because their storage cost is small and their
+-provenance value is high.
+-
+-Before applying a manual tier, mdstats shall show a dry-run capability report such as:
+-restartability, exact checkpoint re-evaluation, metric-only recomputation, DATA7
+-reselection, DATA8 rematerialization, current production inference, and verification
+-replay. The user chooses the capability loss, not merely a byte count.
++The implementation keeps these tiers cumulative and explicit. `cleanup --tier safe` uses only lifecycle-safe reclamation; `cache` additionally removes reconstructable acceleration caches. `recompute` may remove DATA6/model-sweep, evaluation-prediction, and verified true-label replay materializations after the required downstream stages complete and only while configured reconstruction inputs still exist. `compact` requires full verification, a protocol freeze, and a protected exported production model before it may remove nonselected evaluation capsules, nonproduction per-run model copies, or hot DATA7/DATA8 materializations.
++
++Every invocation first emits and writes `results/manual-reclamation-plan-<tier>.json`. `recompute` and `compact` do not apply unless `--apply` is explicit. `archive` is plan-only and `archive --apply` fails closed until STOR5 supplies authenticated reversible archive/restore semantics. Diagnostic text/log records remain retained at every tier. External inputs, workspace production models, selected production raw checkpoints, and campaign protocol/selection/verification records are never STOR4 deletion candidates.
++
++The capability report covers training restart, exact checkpoint re-evaluation, metric-only recomputation, DATA7 reselection, DATA8 rematerialization, current production inference, and verification replay. It distinguishes fully preserved capability from capability that remains possible only after reinference/rematerialization. Intentional higher-tier capability losses are appended to `results/cleanup-manifest.jsonl`; STOR3 automatic events retain the stricter empty-loss contract.
+ 
+ ## STOR5 - immutable deduplication and optional cold archival - planned
+ 
+@@ -4758,8 +4754,7 @@
+ 8. **capability loss is explicit** - any manual higher-tier reclamation states exactly
+    what can no longer be restarted, recomputed, or re-evaluated cheaply.
+ 
+-`EVAL-MF1` is implemented in 0.20.106a0, `EVAL-MF2` in 0.20.107a0, `PREC1` in 0.20.108a0, `PREC2` in 0.20.109a0, `PREC3` in 0.20.110a0, `STOR1` in 0.20.111a0, `STOR2` in 0.20.113a0, and `STOR3` in 0.20.114a0. The next implementation gate is `STOR4`. The remaining required implementation sequence is
+-`STOR4 -> STOR5`.
++`EVAL-MF1` is implemented in 0.20.106a0, `EVAL-MF2` in 0.20.107a0, `PREC1` in 0.20.108a0, `PREC2` in 0.20.109a0, `PREC3` in 0.20.110a0, `STOR1` in 0.20.111a0, `STOR2` in 0.20.113a0, `STOR3` in 0.20.114a0, and `STOR4` in 0.20.115a0. The next implementation gate is `STOR5`. The remaining required implementation sequence is `STOR5`.
+ Storage implementation does not begin until EVAL-MF and staged-precision work establish
+ the checkpoint, prediction, optimizer-state, and dtype lifetimes that storage policy
+ must respect.
+@@ -4791,5 +4786,5 @@
+ The staged optimization roadmap **OPT-EVAL1 through OPT-CTRL1 is complete**. The
+ post-0.20.105 multi-fidelity-evaluation/staged-precision/storage roadmap above is a
+ separate cycle opened by new production-scale profiling, FP64-training, and storage
+-evidence. `EVAL-MF1`, `EVAL-MF2`, `PREC1`, `PREC2`, `PREC3`, `STOR1`, `STOR2`, and `STOR3` are implemented through 0.20.114a0; the next implementation gate is `STOR4`.
++evidence. `EVAL-MF1`, `EVAL-MF2`, `PREC1`, `PREC2`, `PREC3`, `STOR1`, `STOR2`, `STOR3`, and `STOR4` are implemented through 0.20.115a0; the next implementation gate is `STOR5`.
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/docs/arch_manuals/mlff_training_data_dependency_graph.json /mnt/data/mdstats-0.20.115a0-complete-source-package/docs/arch_manuals/mlff_training_data_dependency_graph.json
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-08 22:49:15.019915744 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-08 23:07:12.121285095 +0000
+@@ -1,7 +1,7 @@
+ {
+-  "architecture_revision": 32,
++  "architecture_revision": 33,
+   "branch": "MLFF-DATA",
+-  "description": "MLFF training-data dependency graph through DATA2A automatic review-manifest inference,  DATA9B3A frozen e3nn/cuEquivariance campaigns, MLFF-PERF2 resource-aware process/GPU execution,  EVAL-MF1/MF2 multi-fidelity checkpoint evaluation, and PREC1-PREC3 explicit precision profiles,  staged runtime transitions, cross-stage evaluation, and deployment activation. STOR1 ownership/storage accounting, STOR2 authenticated completed-checkpoint compaction, and STOR3 lifecycle-safe automatic reclamation are implemented; STOR4-STOR5 remain planned. Scientific DATA9 identity remains unchanged.",
++  "description": "MLFF training-data dependency graph through DATA2A automatic review-manifest inference,  DATA9B3A frozen e3nn/cuEquivariance campaigns, MLFF-PERF2 resource-aware process/GPU execution,  EVAL-MF1/MF2 multi-fidelity checkpoint evaluation, and PREC1-PREC3 explicit precision profiles,  staged runtime transitions, cross-stage evaluation, and deployment activation. STOR1 ownership/storage accounting, STOR2 authenticated completed-checkpoint compaction, STOR3 lifecycle-safe automatic reclamation, and STOR4 manual capability-aware tiered reclamation are implemented; STOR5 remains planned. Scientific DATA9 identity remains unchanged.",
+   "documentation_gate": "MLFF-DATA0",
+   "edge_type_definitions": {
+     "execution_requires": "The upstream product must exist before execution.",
+@@ -3430,7 +3430,17 @@
+       "id": "THERMOMECHANICAL_VALIDATION_RECIPES"
+     },
+     {
+-      "id": "TIERED_STORAGE_RECLAMATION_PLAN"
++      "id": "TIERED_STORAGE_RECLAMATION_PLAN",
++      "implementation_status": "implemented",
++      "implemented_version": "0.20.115a0",
++      "tiers": [
++        "safe",
++        "cache",
++        "recompute",
++        "compact",
++        "archive"
++      ],
++      "archive_apply_requires": "STOR5"
+     },
+     {
+       "id": "TRAINED_COMMITTEE"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/docs/guides/mlff_campaign_cli_user_guide.md /mnt/data/mdstats-0.20.115a0-complete-source-package/docs/guides/mlff_campaign_cli_user_guide.md
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/docs/guides/mlff_campaign_cli_user_guide.md	2026-08-08 12:30:04.000000000 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/docs/guides/mlff_campaign_cli_user_guide.md	2026-08-08 23:10:44.803017407 +0000
+@@ -11,6 +11,27 @@
+ python tools/mdstats-mlff-campaign.py --config campaign.toml <command>
+ ```
+ 
++
++Storage retention
++-----------------
++
++Use `storage` for a read-only ownership and byte inventory. STOR4 manual cleanup is
++explicitly tiered:
++
++```bash
++python tools/mdstats-mlff-campaign.py --config campaign.toml cleanup --tier safe --dry-run
++python tools/mdstats-mlff-campaign.py --config campaign.toml cleanup --tier cache
++python tools/mdstats-mlff-campaign.py --config campaign.toml cleanup --tier recompute --apply
++python tools/mdstats-mlff-campaign.py --config campaign.toml cleanup --tier compact --apply
++python tools/mdstats-mlff-campaign.py --config campaign.toml cleanup --tier archive --dry-run
++```
++
++Every cleanup invocation prints and writes a capability plan first. `recompute` and
++`compact` require explicit `--apply`. `archive` remains plan-only until STOR5 provides
++a verified reversible archive/restore implementation. External inputs, workspace
++production models, selected production raw checkpoints, protocol/selection/verification
++records, and diagnostic logs are never STOR4 deletion candidates.
++
+ The visible campaign workspace stays compact:
+ 
+ ```text
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/docs/specs/training_data/mlff_staged_precision_profiles_spec.md /mnt/data/mdstats-0.20.115a0-complete-source-package/docs/specs/training_data/mlff_staged_precision_profiles_spec.md
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/docs/specs/training_data/mlff_staged_precision_profiles_spec.md	2026-08-08 22:49:14.401316682 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/docs/specs/training_data/mlff_staged_precision_profiles_spec.md	2026-08-08 23:07:33.501395228 +0000
+@@ -1,6 +1,6 @@
+ # MLFF PREC1-PREC3 staged-precision profile specification
+ 
+-Status: PREC1 implemented in mdstats 0.20.108a0; PREC2 implemented in mdstats 0.20.109a0; PREC3 implemented in mdstats 0.20.110a0. STOR1 is implemented in mdstats 0.20.111a0, STOR2 in mdstats 0.20.113a0, and STOR3 in mdstats 0.20.114a0; STOR4-STOR5 remain planned.
++Status: PREC1 implemented in mdstats 0.20.108a0; PREC2 implemented in mdstats 0.20.109a0; PREC3 implemented in mdstats 0.20.110a0. STOR1 is implemented in mdstats 0.20.111a0, STOR2 in mdstats 0.20.113a0, and STOR3 in mdstats 0.20.114a0 and STOR4 in mdstats 0.20.115a0; STOR5 remains planned.
+ 
+ ## Purpose
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/docs/specs/training_data/mlff_storage_management_spec.md /mnt/data/mdstats-0.20.115a0-complete-source-package/docs/specs/training_data/mlff_storage_management_spec.md
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/docs/specs/training_data/mlff_storage_management_spec.md	2026-08-08 22:49:14.401157876 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/docs/specs/training_data/mlff_storage_management_spec.md	2026-08-08 23:07:33.500202627 +0000
+@@ -1,6 +1,6 @@
+ # MLFF STOR1-STOR5 campaign storage-management specification
+ 
+-Status: STOR1 implemented in 0.20.111a0; STOR2 implemented in 0.20.113a0; STOR3 implemented in 0.20.114a0; STOR4-STOR5 planned.
++Status: STOR1 implemented in 0.20.111a0; STOR2 implemented in 0.20.113a0; STOR3 implemented in 0.20.114a0; STOR4 implemented in 0.20.115a0; STOR5 planned.
+ 
+ ## Purpose
+ 
+@@ -105,10 +105,9 @@
+ 
+ STOR3 also changes low-disk training behavior: the scheduler runs this safe policy before requesting interruption. Active run roots are excluded; only if free space remains below the configured reserve are active children stopped at durable checkpoints. Evaluation graph/view caches become automatically reclaimable only after authoritative evaluation is complete. Prediction caches (`evaluation-predictions`, DATA6/model-sweep, true-label replay) remain outside STOR3 authority because they preserve expensive metric-only/reanalysis capability.
+ 
+-## STOR4 - manual tiered reclamation
++## STOR4 - manual tiered reclamation - implemented in 0.20.115a0
+ 
+-Manual cleanup exposes increasingly consequential tiers. The exact CLI names may change,
+-but the semantics are ordered:
++Manual cleanup exposes increasingly consequential cumulative tiers through `cleanup --tier`. Every invocation first computes and prints/writes a dry-run capability plan. The implemented semantics are ordered:
+ 
+ - `safe`: no scientific/restart capability loss;
+ - `cache`: only reconstructable acceleration caches; future execution may be slower;
+@@ -119,11 +118,11 @@
+ - `archive`: explicitly selected cold reproducibility material converted to verified
+   archival representation.
+ 
+-A dry run must state capabilities lost, including training restart, exact checkpoint
+-re-evaluation, metric-only recomputation, DATA7 reselection, DATA8 rematerialization,
+-current production inference, and verification replay. Higher tiers never silently
+-include external inputs, selected production models, selected production checkpoints,
+-or default diagnostics/logs.
++The implementation distinguishes planning from authorization. `safe` and `cache` retain the pre-STOR4 low-consequence behavior; `recompute` and `compact` are plan-only unless `--apply` is supplied. `archive` is intentionally plan-only in STOR4 and `archive --apply` fails closed until STOR5 can create and verify a reversible archival representation.
++
++The capability plan states the status of training restart, exact checkpoint re-evaluation, metric-only recomputation, DATA7 reselection, DATA8 rematerialization, current production inference, and verification replay. `recompute` requires authoritative evaluation plus the continued availability of configured reconstruction inputs before scientific prediction/DATA6 caches can be removed. `compact` additionally requires full verification, an authoritative protocol freeze, and a protected production model; it may then remove nonselected evaluation capsules, nonproduction per-run model copies, and hot DATA7/DATA8 materializations. Selected production raw checkpoints, workspace production models, protocol/selection/verification records, and default diagnostics/logs are never STOR4 deletion candidates.
++
++Every consequential manual deletion is recorded in the append-only cleanup manifest with its intentional capability-loss set. STOR3 automatic cleanup continues to require an empty capability-loss set.
+ 
+ ## STOR5 - deduplication and cold archival
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/mdstats/_version.py /mnt/data/mdstats-0.20.115a0-complete-source-package/mdstats/_version.py
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/mdstats/_version.py	2026-08-08 22:45:48.115804222 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/mdstats/_version.py	2026-08-08 23:07:11.546824709 +0000
+@@ -1,3 +1,3 @@
+ """Package version."""
+ 
+-__version__ = "0.20.114a0"
++__version__ = "0.20.115a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/mdstats/data/observable_owner_manuals.json /mnt/data/mdstats-0.20.115a0-complete-source-package/mdstats/data/observable_owner_manuals.json
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/mdstats/data/observable_owner_manuals.json	2026-08-08 22:45:48.115852925 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/mdstats/data/observable_owner_manuals.json	2026-08-08 23:07:11.547062662 +0000
+@@ -17,6 +17,6 @@
+       "uri": "mdstats-doc://vacf-dynamics-architecture/0.20.53a0"
+     }
+   },
+-  "package_version": "0.20.114a0",
++  "package_version": "0.20.115a0",
+   "schema": "mdstats.observable-owner-manual-index.v1"
+ }
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/mdstats/training_data/campaign_cli.py /mnt/data/mdstats-0.20.115a0-complete-source-package/mdstats/training_data/campaign_cli.py
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/mdstats/training_data/campaign_cli.py	2026-08-08 22:47:51.704035745 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/mdstats/training_data/campaign_cli.py	2026-08-08 23:10:44.805007351 +0000
+@@ -82,7 +82,8 @@
+ # 0.20.111a0 implements STOR1 read-only storage accounting/ownership boundaries, and
+ # 0.20.112a0 is a warning-condensation hotfix for MACE/PyTorch evaluation/runtime noise, and
+ # 0.20.113a0 implements STOR2 authenticated nonselected-checkpoint compaction, and
+-# 0.20.114a0 implements STOR3 lifecycle-safe automatic reclamation/audit manifests.
++# 0.20.114a0 implements STOR3 lifecycle-safe automatic reclamation/audit manifests, and
++# 0.20.115a0 implements STOR4 manual tiered reclamation/capability plans.
+ # None changes the frozen MLFF scientific/materialization identity, so existing
+ # 0.20.99a0 campaign state and prediction caches remain reusable.
+ MLFF_DATA9B3_VERSION = "0.20.99a0"
+@@ -1395,6 +1396,7 @@
+         cleanup_class: str = "lifecycle_safe",
+         prior_identity: Mapping[str, Any] | None = None,
+         preserved_capabilities: Sequence[str] = (),
++        capability_loss: Sequence[str] = (),
+     ) -> None:
+         self.actions.append(
+             {
+@@ -1403,7 +1405,7 @@
+                 "size_bytes": int(size_bytes),
+                 "cleanup_class": str(cleanup_class),
+                 "prior_identity": None if prior_identity is None else dict(prior_identity),
+-                "capability_loss": [],
++                "capability_loss": list(capability_loss),
+                 "preserved_capabilities": list(preserved_capabilities),
+             }
+         )
+@@ -1428,6 +1430,7 @@
+     diagnostic_path: Path | None = None,
+     cleanup_class: str = "lifecycle_safe",
+     preserved_capabilities: Sequence[str] = (),
++    capability_loss: Sequence[str] = (),
+ ) -> None:
+     if not path.exists() and not path.is_symlink():
+         return
+@@ -1466,6 +1469,7 @@
+         cleanup_class=cleanup_class,
+         prior_identity=prior_identity,
+         preserved_capabilities=preserved_capabilities,
++        capability_loss=capability_loss,
+     )
+ 
+ 
+@@ -1819,7 +1823,11 @@
+             "active_training_restart",
+             "authoritative_scientific_metrics",
+         ],
+-        "capability_loss": [],
++        "capability_loss": sorted({
++            str(capability)
++            for action in report.actions
++            for capability in action.get("capability_loss", [])
++        }),
+     }
+     try:
+         append_cleanup_manifest(destination, payload)
+@@ -8431,6 +8439,21 @@
+             # Preserve restart compatibility with those already-compacted campaigns;
+             # STOR2 cannot reconstruct lost optimizer/model bytes retroactively.
+             continue
++        compact_payload = store.get_payload_optional("manual_reclamation:compact")
++        compacted_runs = (
++            set(str(value) for value in compact_payload.get("compacted_run_ids", ()))
++            if isinstance(compact_payload, Mapping)
++            else set()
++        )
++        if (
++            selected_sha is not None
++            and checkpoint.sha256 != selected_sha
++            and run_id in compacted_runs
++        ):
++            # STOR4 compact deliberately permits loss of nonselected checkpoint
++            # representations for this run only after protocol freeze.  The selected
++            # production raw checkpoint remains restart-capable and is validated below.
++            continue
+         return False, f"missing checkpoint representation at epoch {checkpoint.epoch}"
+ 
+     if selected_sha is not None:
+@@ -12373,8 +12396,371 @@
+     return 0
+ 
+ 
++
++_MANUAL_RECLAMATION_TIERS = ("safe", "cache", "recompute", "compact", "archive")
++_MANUAL_RECLAMATION_RANK = {name: index for index, name in enumerate(_MANUAL_RECLAMATION_TIERS)}
++_MANUAL_CAPABILITIES = (
++    "training_restart",
++    "exact_checkpoint_reevaluation",
++    "metric_only_recomputation",
++    "data7_reselection",
++    "data8_rematerialization",
++    "current_production_inference",
++    "verification_replay",
++)
++
++
++def _manual_reclamation_capability_report(
++    tier: str,
++    actions: Sequence[Mapping[str, Any]],
++) -> dict[str, Any]:
++    losses = {
++        str(value)
++        for action in actions
++        for value in action.get("capability_loss", ())
++    }
++    status: dict[str, dict[str, str]] = {
++        name: {"status": "preserved", "detail": "retained by the requested tier"}
++        for name in _MANUAL_CAPABILITIES
++    }
++    if "metric_only_recomputation" in losses:
++        status["metric_only_recomputation"] = {
++            "status": "lost",
++            "detail": "candidate prediction arrays are removed; later metric changes require model inference",
++        }
++    if "data7_reselection_without_reinference" in losses:
++        status["data7_reselection"] = {
++            "status": "preserved_with_recomputation",
++            "detail": "DATA7 can be rebuilt from protected inputs, but DATA6/foundation inference must be repeated",
++        }
++    if "data8_hot_materialization" in losses:
++        status["data8_rematerialization"] = {
++            "status": "preserved_with_recomputation",
++            "detail": "current DATA8 bytes are removed; rerun prepare from protected inputs/protocol records",
++        }
++        status["training_restart"] = {
++            "status": "preserved_with_rematerialization",
++            "detail": "selected raw checkpoint is retained, but DATA8 training inputs must be rematerialized before continuation",
++        }
++    if "nonselected_checkpoint_reevaluation" in losses:
++        status["exact_checkpoint_reevaluation"] = {
++            "status": "selected_checkpoint_only",
++            "detail": "selected production checkpoint remains exact; nonselected evaluation capsules are removed",
++        }
++    if "verification_replay_without_reconstruction" in losses:
++        status["verification_replay"] = {
++            "status": "preserved_with_recomputation",
++            "detail": "true-label replay materialization is removed; protected true-label inputs must be rematerialized",
++        }
++    status["current_production_inference"] = {
++        "status": "preserved",
++        "detail": "workspace production models are never STOR4 deletion candidates",
++    }
++    return {
++        "requested_tier": tier,
++        "capabilities": status,
++        "declared_capability_losses": sorted(losses),
++    }
++
++
++def _manual_reclamation_add_candidate(
++    report: _CampaignCleanupReport,
++    path: Path,
++    *,
++    reason: str,
++    cleanup_class: str,
++    preserved_capabilities: Sequence[str] = (),
++    capability_loss: Sequence[str] = (),
++) -> None:
++    if not path.exists() and not path.is_symlink():
++        return
++    _cleanup_remove(
++        report,
++        path,
++        reason=reason,
++        cleanup_class=cleanup_class,
++        preserved_capabilities=preserved_capabilities,
++        capability_loss=capability_loss,
++    )
++
++
++def _manual_reclamation_add_cache_tier(
++    report: _CampaignCleanupReport,
++    paths: CampaignPaths,
++) -> None:
++    for candidate, reason in (
++        (paths.internal / "frame-cache", "manual cache tier: reconstructable normalized-frame acceleration cache"),
++        (paths.internal / "data7-cache", "manual cache tier: reconstructable DATA7 acceleration cache"),
++        (paths.internal / "evaluation-graphs", "manual cache tier: reconstructable evaluation graph/view cache"),
++    ):
++        _manual_reclamation_add_candidate(
++            report,
++            candidate,
++            reason=reason,
++            cleanup_class="manual_cache",
++            preserved_capabilities=_MANUAL_CAPABILITIES,
++            capability_loss=("faster_recomputation",),
++        )
++    if not paths.runs.is_dir() or report.ownership_boundary is None:
++        return
++    authorized, detail = report.ownership_boundary.traversal_authorization(paths.runs)
++    if not authorized:
++        report.skipped.append(f"manual cache tier skipped run caches: {detail}: {paths.runs}")
++        return
++    for run_root in sorted(paths.runs.iterdir()):
++        if not run_root.is_dir() or run_root.is_symlink():
++            continue
++        _manual_reclamation_add_candidate(
++            report,
++            run_root / "checkpoint-model-cache",
++            reason="manual cache tier: reconstructable checkpoint-to-model cache",
++            cleanup_class="manual_cache",
++            preserved_capabilities=_MANUAL_CAPABILITIES,
++            capability_loss=("faster_checkpoint_reevaluation",),
++        )
++
++
++def _manual_reclamation_missing_configured_inputs(
++    report: _CampaignCleanupReport,
++    *,
++    keys: Sequence[str],
++) -> tuple[str, ...]:
++    boundary = report.ownership_boundary
++    if boundary is None:
++        return tuple(keys)
++    wanted = set(keys)
++    by_key = {item.key: item for item in boundary.protected_inputs}
++    missing: list[str] = []
++    for key in keys:
++        item = by_key.get(key)
++        # Optional inputs not configured are not reconstruction requirements.
++        if item is not None and not item.exists:
++            missing.append(key)
++    return tuple(missing)
++
++
++def _manual_reclamation_add_recompute_tier(
++    report: _CampaignCleanupReport,
++    paths: CampaignPaths,
++    store: CampaignStore,
++) -> None:
++    evaluate_state, _ = _effective_stage(store, paths, "evaluate")
++    if evaluate_state is not StageState.COMPLETE:
++        report.skipped.append("recompute tier retained prediction/DATA6 caches until authoritative evaluation is complete")
++        return
++    missing = _manual_reclamation_missing_configured_inputs(
++        report,
++        keys=("training_root", "foundation_model", "replay_train", "replay_monitor", "replay_true_labels"),
++    )
++    if missing:
++        report.skipped.append(
++            "recompute tier retained scientific caches because configured reconstruction input(s) are missing: "
++            + ", ".join(missing)
++        )
++        return
++    _manual_reclamation_add_candidate(
++        report,
++        paths.internal / "evaluation-predictions",
++        reason="manual recompute tier: remove candidate prediction arrays; later metric changes require inference",
++        cleanup_class="manual_recompute",
++        preserved_capabilities=("current_production_inference", "training_restart", "scientific_provenance"),
++        capability_loss=("metric_only_recomputation",),
++    )
++    _manual_reclamation_add_candidate(
++        report,
++        paths.internal / "model-sweep",
++        reason="manual recompute tier: remove DATA6 descriptors/predictions; later DATA7 reselection repeats foundation inference",
++        cleanup_class="manual_recompute",
++        preserved_capabilities=("current_production_inference", "training_restart", "scientific_provenance"),
++        capability_loss=("data7_reselection_without_reinference",),
++    )
++    verify_state, _ = _effective_stage(store, paths, "verify")
++    if verify_state is StageState.COMPLETE:
++        _manual_reclamation_add_candidate(
++            report,
++            paths.internal / "true-label-replay",
++            reason="manual recompute tier: remove true-label replay materialization after verification",
++            cleanup_class="manual_recompute",
++            preserved_capabilities=("protected_true_label_inputs", "current_production_inference", "scientific_provenance"),
++            capability_loss=("verification_replay_without_reconstruction",),
++        )
++    else:
++        report.skipped.append("recompute tier retained true-label replay materialization until verification is complete")
++
++
++def _production_models_present(paths: CampaignPaths) -> bool:
++    if not paths.models.is_dir():
++        return False
++    return any(path.is_file() and path.suffix == ".model" for path in paths.models.rglob("*.model"))
++
++
++def _manual_reclamation_add_compact_tier(
++    report: _CampaignCleanupReport,
++    paths: CampaignPaths,
++    store: CampaignStore,
++) -> None:
++    verify_state, _ = _effective_stage(store, paths, "verify")
++    if verify_state is not StageState.COMPLETE or not store.has_record("protocol_freeze"):
++        report.skipped.append("compact tier requires full verification plus an authoritative protocol freeze")
++        return
++    if not _production_models_present(paths):
++        report.skipped.append("compact tier refused because no protected production .model artifact is present")
++        return
++    if paths.runs.is_dir() and report.ownership_boundary is not None:
++        authorized, detail = report.ownership_boundary.traversal_authorization(paths.runs)
++        if authorized:
++            for run_root in sorted(paths.runs.iterdir()):
++                if not run_root.is_dir() or run_root.is_symlink():
++                    continue
++                _manual_reclamation_add_candidate(
++                    report,
++                    run_root / "evaluation-capsules",
++                    reason="manual compact tier: discard nonselected checkpoint evaluation capsules after protocol freeze",
++                    cleanup_class="manual_compact",
++                    preserved_capabilities=("selected_production_checkpoint", "current_production_inference", "scientific_provenance"),
++                    capability_loss=("nonselected_checkpoint_reevaluation",),
++                )
++                _manual_reclamation_add_candidate(
++                    report,
++                    run_root / "models",
++                    reason="manual compact tier: discard nonproduction per-run model copies after protected production export",
++                    cleanup_class="manual_compact",
++                    preserved_capabilities=("selected_production_checkpoint", "current_production_inference", "scientific_provenance"),
++                    capability_loss=("cheap_alternative_model_recovery",),
++                )
++        else:
++            report.skipped.append(f"compact tier skipped run artifacts: {detail}: {paths.runs}")
++    missing = _manual_reclamation_missing_configured_inputs(
++        report,
++        keys=("training_root", "foundation_model", "replay_train", "replay_monitor", "replay_true_labels"),
++    )
++    if missing:
++        report.skipped.append(
++            "compact tier retained DATA7/DATA8 materializations because configured rematerialization input(s) are missing: "
++            + ", ".join(missing)
++        )
++    else:
++        _manual_reclamation_add_candidate(
++            report,
++            paths.data,
++            reason="manual compact tier: discard hot DATA7/DATA8 materializations after protocol freeze and verification",
++            cleanup_class="manual_compact",
++            preserved_capabilities=("protected_source_inputs", "immutable_protocol_records", "current_production_inference"),
++            capability_loss=("data8_hot_materialization",),
++        )
++
++
++def _manual_reclamation_plan_payload(
++    *,
++    tier: str,
++    reports: Sequence[_CampaignCleanupReport],
++    apply_requested: bool,
++    archive_pending: bool,
++) -> dict[str, Any]:
++    action_by_path: dict[str, dict[str, Any]] = {}
++    for report in reports:
++        for action in report.actions:
++            # Later/more-consequential tier records override the same path from
++            # the safe plan so potential bytes are never double-counted.
++            action_by_path[str(action.get("path", ""))] = dict(action)
++    actions = list(action_by_path.values())
++    skipped = [value for report in reports for value in report.skipped]
++    capability = _manual_reclamation_capability_report(tier, actions)
++    return {
++        "schema": "mdstats.mlff-manual-reclamation-plan.v1",
++        "created_utc": _utc_now(),
++        "requested_tier": tier,
++        "cumulative_tiers": list(_MANUAL_RECLAMATION_TIERS[: _MANUAL_RECLAMATION_RANK[tier] + 1]),
++        "apply_requested": bool(apply_requested),
++        "archive_representation_required": bool(archive_pending),
++        "planned_reclaimed_bytes": sum(int(action.get("size_bytes", 0)) for action in actions),
++        "action_count": len(actions),
++        "actions": actions,
++        "skipped": skipped,
++        "capability_report": capability,
++        "protected_by_all_tiers": [
++            "external_user_inputs",
++            "workspace_production_models",
++            "selected_production_raw_checkpoints",
++            "campaign_protocol_selection_verification_records",
++            "diagnostic_text_logs_histories",
++        ],
++    }
++
++
++def _print_manual_reclamation_plan(payload: Mapping[str, Any]) -> None:
++    print(f"STOR4 manual reclamation plan: tier={payload['requested_tier']}", flush=True)
++    print(
++        f"  candidates={int(payload['action_count'])}; potential reclaim="
++        f"{_format_storage_bytes(int(payload['planned_reclaimed_bytes']))}",
++        flush=True,
++    )
++    capabilities = payload["capability_report"]["capabilities"]
++    for name in _MANUAL_CAPABILITIES:
++        item = capabilities[name]
++        print(f"  {name}: {item['status']} - {item['detail']}", flush=True)
++    if payload.get("archive_representation_required"):
++        _warn("archive tier is plan-only until STOR5 provides authenticated archive/restore support")
++
++
++def _build_manual_tier_report(
++    tier: str,
++    cfg: Mapping[str, Any],
++    paths: CampaignPaths,
++    store: CampaignStore,
++    *,
++    dry_run: bool,
++) -> _CampaignCleanupReport:
++    protected_inputs = configured_protected_inputs(
++        cfg, config_dir=paths.config_dir, config_path=paths.config
++    )
++    report = _CampaignCleanupReport(
++        phase=f"manual-{tier}",
++        dry_run=dry_run,
++        ownership_boundary=CampaignOwnershipBoundary(paths.workspace, protected_inputs=protected_inputs),
++    )
++    if _MANUAL_RECLAMATION_RANK[tier] >= _MANUAL_RECLAMATION_RANK["cache"]:
++        _manual_reclamation_add_cache_tier(report, paths)
++    if _MANUAL_RECLAMATION_RANK[tier] >= _MANUAL_RECLAMATION_RANK["recompute"]:
++        _manual_reclamation_add_recompute_tier(report, paths, store)
++    if _MANUAL_RECLAMATION_RANK[tier] >= _MANUAL_RECLAMATION_RANK["compact"]:
++        _manual_reclamation_add_compact_tier(report, paths, store)
++    return report
++
++
++def _record_manual_compact_state(store: CampaignStore, report: _CampaignCleanupReport) -> None:
++    removed_capsules = [
++        str(action["path"])
++        for action in report.actions
++        if "nonselected_checkpoint_reevaluation" in action.get("capability_loss", ())
++    ]
++    removed_data = [
++        str(action["path"])
++        for action in report.actions
++        if "data8_hot_materialization" in action.get("capability_loss", ())
++    ]
++    if not removed_capsules and not removed_data:
++        return
++    compacted_run_ids = sorted({
++        Path(value).parent.name
++        for value in removed_capsules
++        if Path(value).name == "evaluation-capsules"
++    })
++    store.put_record(
++        "manual_reclamation:compact",
++        {
++            "schema": "mdstats.mlff-manual-compact-retention.v1",
++            "created_utc": _utc_now(),
++            "compacted_run_ids": compacted_run_ids,
++            "removed_evaluation_capsule_roots": removed_capsules,
++            "removed_data8_materialization_roots": removed_data,
++            "selected_production_checkpoint_retained": True,
++            "production_models_retained": True,
++        },
++    )
++
+ def command_cleanup(args: argparse.Namespace) -> int:
+-    """Run the same conservative lifecycle cleanup used automatically."""
++    """STOR4 manual tiered reclamation with a mandatory capability plan."""
+ 
+     import mdstats
+ 
+@@ -12392,32 +12778,150 @@
+             f"campaign ownership boundary: {state_detail}: {paths.state_db}"
+         )
+     store = CampaignStore(paths.state_db)
+-    include_preparation_caches = not bool(args.keep_preparation_caches)
+-    report = _campaign_cleanup(
++
++    explicit_tier = getattr(args, "tier", None)
++    if explicit_tier is None:
++        # Backward compatibility with the pre-STOR4 manual cleanup surface: the
++        # old command removed preparation caches unless --keep-preparation-caches
++        # was supplied.  Explicit --tier uses the new exact tier semantics.
++        tier = "safe" if bool(args.keep_preparation_caches) else "cache"
++    else:
++        tier = str(explicit_tier)
++    if tier not in _MANUAL_RECLAMATION_RANK:
++        raise CampaignCliError(f"Unknown cleanup tier {tier!r}.")
++    if bool(getattr(args, "apply", False)) and bool(args.dry_run):
++        raise CampaignCliError("Choose either --dry-run or --apply, not both.")
++    if tier == "archive" and bool(getattr(args, "apply", False)):
++        raise CampaignCliError(
++            "STOR4 archive is plan-only. STOR5 must create and verify an authenticated "
++            "archive representation before any hot artifact can be removed."
++        )
++
++    # A manual reclamation invocation may never race an executing stage.  Safe
++    # automatic cleanup already has its own active-run exclusions, but higher
++    # manual tiers operate on whole cache/materialization families.
++    running_stages = [
++        name for name, _ in PIPELINE if store.stage(name)[0] is StageState.RUNNING
++    ]
++    if running_stages and _MANUAL_RECLAMATION_RANK[tier] >= _MANUAL_RECLAMATION_RANK["recompute"]:
++        raise CampaignCliError(
++            "Refusing consequential manual reclamation while campaign stages are running: "
++            + ", ".join(running_stages)
++        )
++
++    # Mandatory plan phase.  This is always dry-run, including an invocation that
++    # will subsequently apply the requested tier.
++    plan_reports: list[_CampaignCleanupReport] = []
++    safe_plan = _campaign_cleanup(
+         cfg,
+         paths,
+         store,
+-        phase="manual",
+-        dry_run=bool(args.dry_run),
+-        include_preparation_caches=include_preparation_caches,
++        phase="manual-plan-safe",
++        dry_run=True,
++        include_preparation_caches=False,
+     )
+-    _print_cleanup_report(report)
++    plan_reports.append(safe_plan)
++
+     evaluate_state, _ = _effective_stage(store, paths, "evaluate")
++    campaign = None
+     if (
+         evaluate_state is StageState.COMPLETE
+         and not bool(args.keep_unselected_checkpoints)
++        and store.has_record("training_campaign")
+     ):
+-        campaign = store.get_record(
+-            "training_campaign", mdstats.TrainingCampaignPlan
++        campaign = store.get_record("training_campaign", mdstats.TrainingCampaignPlan)
++        plan_reports.append(
++            _compact_evaluated_checkpoints(
++                cfg, paths, store, campaign, dry_run=True
++            )
++        )
++
++    if _MANUAL_RECLAMATION_RANK[tier] >= _MANUAL_RECLAMATION_RANK["cache"]:
++        manual_plan = _build_manual_tier_report(
++            tier, cfg, paths, store, dry_run=True
++        )
++        plan_reports.append(manual_plan)
++
++    apply_requested = bool(getattr(args, "apply", False))
++    archive_pending = tier == "archive"
++    plan_payload = _manual_reclamation_plan_payload(
++        tier=tier,
++        reports=plan_reports,
++        apply_requested=apply_requested,
++        archive_pending=archive_pending,
++    )
++    _print_manual_reclamation_plan(plan_payload)
++    plan_path = paths.results / f"manual-reclamation-plan-{tier}.json"
++    plan_authorized, plan_detail = boundary.destructive_authorization(plan_path)
++    if plan_authorized:
++        try:
++            _atomic_json(plan_path, plan_payload)
++            _ok(f"manual reclamation plan written: {plan_path}")
++        except OSError as exc:
++            _warn(f"manual reclamation plan write failed: {exc}")
++    else:
++        _warn(f"manual reclamation plan write denied by ownership boundary: {plan_detail}")
++
++    if bool(args.dry_run) or archive_pending:
++        if archive_pending:
++            _warn("No archive conversion or deletion was performed; STOR5 is required to apply this tier.")
++        return 0
++
++    consequential = _MANUAL_RECLAMATION_RANK[tier] >= _MANUAL_RECLAMATION_RANK["recompute"]
++    if consequential and not apply_requested:
++        _warn(
++            f"Tier `{tier}` changes future reanalysis/recompute capability. "
++            f"Plan only; rerun with `cleanup --tier {tier} --apply` to authorize it."
+         )
++        return 0
++
++    # Apply phase.  The plan has already been printed/written above.
++    safe_report = _campaign_cleanup(
++        cfg,
++        paths,
++        store,
++        phase="manual-safe",
++        dry_run=False,
++        include_preparation_caches=False,
++    )
++    _print_cleanup_report(safe_report)
++
++    if campaign is not None:
+         checkpoint_report = _compact_evaluated_checkpoints(
+             cfg,
+             paths,
+             store,
+             campaign,
+-            dry_run=bool(args.dry_run),
++            dry_run=False,
+         )
+         _print_cleanup_report(checkpoint_report)
++
++    if _MANUAL_RECLAMATION_RANK[tier] >= _MANUAL_RECLAMATION_RANK["cache"]:
++        manual_report = _build_manual_tier_report(
++            tier, cfg, paths, store, dry_run=False
++        )
++        if tier == "compact":
++            _record_manual_compact_state(store, manual_report)
++        # For recompute/compact actions the audit intentionally carries non-empty
++        # capability_loss.  STOR3 automatic events remain empty by construction.
++        _append_cleanup_audit_manifest(
++            manual_report,
++            paths,
++            trigger=f"manual_tier:{tier}",
++        )
++        output = paths.results / f"cleanup-manual-{tier}.json"
++        output_authorized, output_detail = boundary.destructive_authorization(output)
++        if output_authorized:
++            try:
++                _atomic_json(output, manual_report.to_dict())
++            except OSError as exc:
++                manual_report.skipped.append(f"manual tier report write failed: {exc}")
++        else:
++            manual_report.skipped.append(
++                f"manual tier report write denied by ownership boundary: {output_detail}"
++            )
++        _print_cleanup_report(manual_report)
++
+     disk = shutil.disk_usage(paths.workspace)
+     print(
+         f"Workspace: {paths.workspace}\n"
+@@ -12771,6 +13275,9 @@
+ 
+ [cleanup]
+ # Conservative lifecycle cleanup runs automatically at train/evaluate/verify boundaries.
++# Manual retention is CLI-selected: cleanup --tier safe|cache|recompute|compact|archive.
++# Every tier emits a capability plan first; recompute/compact require --apply; archive
++# remains plan-only until STOR5 provides authenticated archive/restore support.
+ enabled = true
+ # Young temporary trees are retained to avoid racing a recently interrupted process.
+ stale_age_hours = 6.0
+@@ -12913,6 +13420,9 @@
+ Use `status` at any time. It reports the next command and never advances a failed gate.
+ Use `storage` at any time for the STOR1 read-only ownership/storage inventory; it
+ performs no reclamation and will not follow workspace symlinks into external data.
++Use `cleanup --tier safe|cache|recompute|compact|archive` for STOR4 manual retention.
++Every tier prints a capability plan first; `recompute`/`compact` require `--apply`, and
++`archive` remains plan-only until STOR5 supplies verified archive/restore support.
+ 
+ Seeds and folds
+ ---------------
+@@ -13084,8 +13594,19 @@
+     )
+     p.set_defaults(func=command_storage)
+ 
+-    p = sub.add_parser("cleanup", help="reclaim stale/cache artifacts without deleting restartable training state")
+-    p.add_argument("--dry-run", action="store_true", help="report reclaimable bytes without deleting anything")
++    p = sub.add_parser("cleanup", help="STOR4 manual tiered reclamation with capability-loss reporting")
++    p.add_argument(
++        "--tier", choices=_MANUAL_RECLAMATION_TIERS,
++        help=(
++            "manual retention tier: safe, cache, recompute, compact, or archive; "
++            "omitting it preserves the legacy cleanup/cache behavior"
++        ),
++    )
++    p.add_argument("--dry-run", action="store_true", help="print/write the mandatory capability plan without deleting anything")
++    p.add_argument(
++        "--apply", action="store_true",
++        help="authorize consequential recompute/compact reclamation after the plan is shown; archive remains STOR5-only",
++    )
+     p.add_argument(
+         "--keep-preparation-caches", action="store_true",
+         help="retain normalized frame, shared DATA7, and preflight-heavy caches",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/mdstats/training_data/storage_accounting.py /mnt/data/mdstats-0.20.115a0-complete-source-package/mdstats/training_data/storage_accounting.py
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/mdstats/training_data/storage_accounting.py	2026-08-08 22:45:47.525925586 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/mdstats/training_data/storage_accounting.py	2026-08-08 23:01:42.958364270 +0000
+@@ -349,34 +349,34 @@
+     if parts[0] == "models":
+         return ("production_models", ArtifactRetentionClass.PROTECTED_PRODUCTION, "prohibited", "prohibited", ("production_inference",))
+     if parts[0] == "data":
+-        return ("data7_data8_materializations", ArtifactRetentionClass.INTERMEDIATE, "not_yet_qualified", "candidate_after_stor4", ("data8_rematerialization", "training_input_materialization"))
++        return ("data7_data8_materializations", ArtifactRetentionClass.INTERMEDIATE, "prohibited", "compact_after_protocol_freeze", ("data8_hot_materialization", "training_input_materialization"))
+     if parts[0] == "runs":
+         if "evaluation-capsules" in parts or name.endswith(".eval-state.pt"):
+-            return ("evaluation_state_capsules", ArtifactRetentionClass.EVALUATION_CAPSULE, "prohibited", "candidate_after_stor3", ("exact_checkpoint_reevaluation", "target_head_reexport"))
++            return ("evaluation_state_capsules", ArtifactRetentionClass.EVALUATION_CAPSULE, "prohibited", "compact_nonselected_after_protocol_freeze", ("nonselected_checkpoint_reevaluation", "target_head_reexport"))
+         if "checkpoints" in parts or name.endswith(".pt"):
+-            return ("training_checkpoints", ArtifactRetentionClass.RESTART_CRITICAL, "prohibited", "candidate_after_stor2", ("training_restart", "exact_checkpoint_reevaluation"))
++            return ("training_checkpoints", ArtifactRetentionClass.RESTART_CRITICAL, "prohibited", "stor2_nonselected_only_selected_prohibited", ("training_restart", "exact_checkpoint_reevaluation"))
+         if "checkpoint-model-cache" in parts:
+-            return ("checkpoint_model_cache", ArtifactRetentionClass.RECONSTRUCTABLE_CACHE, "stor3_automatic_safe", "candidate_after_stor4", ("faster_checkpoint_reevaluation",))
++            return ("checkpoint_model_cache", ArtifactRetentionClass.RECONSTRUCTABLE_CACHE, "stor3_automatic_safe", "cache", ("faster_checkpoint_reevaluation",))
+         if "logs" in parts or name.endswith(".log") or name.endswith("stdout") or name.endswith("stderr"):
+             return ("training_logs", ArtifactRetentionClass.PROTECTED_DIAGNOSTIC, "prohibited", "prohibited", ("training_diagnostics",))
+         if "models" in parts or name.endswith(".model"):
+-            return ("run_models", ArtifactRetentionClass.INTERMEDIATE, "not_yet_qualified", "candidate_after_stor4", ("alternative_model_recovery",))
+-        return ("training_run_runtime", ArtifactRetentionClass.INTERMEDIATE, "not_yet_qualified", "candidate_after_stor4", ("training_restart_or_diagnostics",))
++            return ("run_models", ArtifactRetentionClass.INTERMEDIATE, "prohibited", "compact_after_production_export", ("cheap_alternative_model_recovery",))
++        return ("training_run_runtime", ArtifactRetentionClass.INTERMEDIATE, "not_yet_qualified", "manual_review_only", ("training_restart_or_diagnostics",))
+     if parts[0] == ".mdstats":
+         if len(parts) >= 2 and parts[1] in {"campaign.sqlite3", "records", "hash-receipts.sqlite3"}:
+             return ("campaign_state_and_provenance", ArtifactRetentionClass.PROTECTED_DIAGNOSTIC, "prohibited", "prohibited", ("campaign_state", "scientific_provenance"))
+         if len(parts) >= 2 and parts[1] in {"frame-cache", "data7-cache", "evaluation-graphs"}:
+-            return (parts[1], ArtifactRetentionClass.RECONSTRUCTABLE_CACHE, "stor3_automatic_safe", "candidate_after_stor4", ("faster_recomputation",))
++            return (parts[1], ArtifactRetentionClass.RECONSTRUCTABLE_CACHE, "stor3_automatic_safe", "cache", ("faster_recomputation",))
+         if len(parts) >= 2 and parts[1] in {"model-sweep", "evaluation-predictions", "true-label-replay"}:
+-            return (parts[1], ArtifactRetentionClass.SCIENTIFIC_CACHE, "not_yet_qualified", "candidate_after_stor4", ("metric_only_or_reanalysis_without_inference",))
++            return (parts[1], ArtifactRetentionClass.SCIENTIFIC_CACHE, "prohibited", "recompute", ("metric_only_or_reanalysis_without_inference",))
+         if len(parts) >= 2 and parts[1] == "preflight-smoke":
+-            return ("preflight_artifacts", ArtifactRetentionClass.INTERMEDIATE, "stor3_automatic_safe_after_success", "candidate_after_stor4", ("preflight_reexecution",))
+-        return ("internal_campaign_artifacts", ArtifactRetentionClass.INTERMEDIATE, "not_yet_qualified", "candidate_after_stor4", ("campaign_reanalysis",))
++            return ("preflight_artifacts", ArtifactRetentionClass.INTERMEDIATE, "stor3_automatic_safe_after_success", "cache", ("preflight_reexecution",))
++        return ("internal_campaign_artifacts", ArtifactRetentionClass.INTERMEDIATE, "not_yet_qualified", "manual_review_only", ("campaign_reanalysis",))
+     if name.endswith(".json") or name.endswith(".csv") or name.endswith(".log"):
+         return ("workspace_diagnostics", ArtifactRetentionClass.PROTECTED_DIAGNOSTIC, "prohibited", "prohibited", ("scientific_provenance",))
+     if name.endswith(".toml") or "manifest" in name:
+         return ("workspace_configuration", ArtifactRetentionClass.PROTECTED_DIAGNOSTIC, "prohibited", "prohibited", ("campaign_reproducibility",))
+-    return ("other_campaign_owned", ArtifactRetentionClass.UNKNOWN, "not_yet_qualified", "candidate_after_stor4", ("unknown_campaign_capability",))
++    return ("other_campaign_owned", ArtifactRetentionClass.UNKNOWN, "not_yet_qualified", "manual_review_only", ("unknown_campaign_capability",))
+ 
+ 
+ @dataclass
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/pyproject.toml /mnt/data/mdstats-0.20.115a0-complete-source-package/pyproject.toml
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/pyproject.toml	2026-08-08 22:45:48.115672927 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/pyproject.toml	2026-08-08 23:07:11.546956755 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.114a0"
++version = "0.20.115a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/release/mlff_stor4_manual_reclamation_qualification.json /mnt/data/mdstats-0.20.115a0-complete-source-package/release/mlff_stor4_manual_reclamation_qualification.json
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/release/mlff_stor4_manual_reclamation_qualification.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/release/mlff_stor4_manual_reclamation_qualification.json	2026-08-08 23:08:19.648026515 +0000
+@@ -0,0 +1,23 @@
++{
++  "schema": "mdstats.mlff-stor4-qualification.v1",
++  "runtime_version": "0.20.115a0",
++  "architecture_revision": 33,
++  "qualified_utc_date": "2026-08-08",
++  "tiers": ["safe", "cache", "recompute", "compact", "archive"],
++  "mandatory_plan_before_apply": true,
++  "consequential_tiers_require_apply": true,
++  "archive_apply_blocked_until_stor5": true,
++  "recompute_requires_authoritative_evaluation": true,
++  "recompute_requires_available_configured_reconstruction_inputs": true,
++  "compact_requires_verification_and_protocol_freeze": true,
++  "compact_requires_protected_production_model": true,
++  "external_inputs_touched": false,
++  "production_models_touched": false,
++  "selected_production_checkpoint_touched": false,
++  "diagnostic_logs_touched": false,
++  "manual_manifest_records_capability_loss": true,
++  "stor3_automatic_capability_loss_remains_empty": true,
++  "symlink_escape_target_touched": false,
++  "archive_conversion_executed": false,
++  "archive_conversion_deferred_to": "STOR5"
++}
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data0_architecture_specification.py /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data0_architecture_specification.py
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data0_architecture_specification.py	2026-08-08 22:49:36.609700179 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data0_architecture_specification.py	2026-08-08 23:07:11.554903153 +0000
+@@ -78,7 +78,7 @@
+ def test_mlff_data0_dependency_graph_is_acyclic_and_has_forbidden_edges() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["branch"] == "MLFF-DATA"
+-    assert graph["architecture_revision"] == 32
++    assert graph["architecture_revision"] == 33
+     assert graph["documentation_gate"] == "MLFF-DATA0"
+     assert graph["schema_version"] == 26
+ 
+@@ -263,4 +263,4 @@
+ def test_mlff_data0_pdf_and_version_artifacts_exist() -> None:
+     assert MANUAL_PDF.stat().st_size > 10_000
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.114a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.115a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data1_specification.py /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data1_specification.py
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data1_specification.py	2026-08-08 22:49:36.610754935 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data1_specification.py	2026-08-08 23:07:11.561450073 +0000
+@@ -49,4 +49,4 @@
+     assert callable(mdstats.assign_balanced_round_robin)
+     assert callable(mdstats.build_complete_frame_block_plan)
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.114a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.115a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data2a_manifest_inference_specification.py /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data2a_manifest_inference_specification.py
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-08 22:49:36.610912358 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-08 23:07:11.563127463 +0000
+@@ -15,7 +15,7 @@
+ 
+ 
+ def test_data2a_version_public_api_and_documented_contract() -> None:
+-    assert mdstats.__version__ == "0.20.114a0"
++    assert mdstats.__version__ == "0.20.115a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert callable(mdstats.infer_training_manifest_metadata)
+     policy = mdstats.ManifestInferencePolicy()
+@@ -39,7 +39,7 @@
+ def test_data2a_dependency_graph_requires_verified_promotion_before_approval() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 32
++    assert graph["architecture_revision"] == 33
+     nodes = {node["id"] for node in graph["nodes"]}
+     assert {
+         "FILENAME_STRAIN_CANDIDATE",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data9a2_specification.py /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a2_specification.py
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data9a2_specification.py	2026-08-08 22:49:36.609818384 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a2_specification.py	2026-08-08 23:07:11.556258014 +0000
+@@ -23,7 +23,7 @@
+         "finite energy, force, and stress",
+     ):
+         assert required in text
+-    assert 'version = "0.20.114a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.115a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "DATA9A2 real-MACE realization is implemented in `0.20.39a0`" in ARCH.read_text()
+ 
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data9a3_specification.py /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a3_specification.py
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data9a3_specification.py	2026-08-08 22:49:36.611248668 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a3_specification.py	2026-08-08 23:07:11.565980740 +0000
+@@ -9,5 +9,5 @@
+     assert "37,632" in text
+     assert "supported_with_temporal_blocks_only" in text
+     assert "production_replay_corpus_not_bound" in text
+-    assert 'version = "0.20.114a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.115a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "MLFF-DATA9A3 production qualification" in ARCH.read_text()
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data9a4_precision_specification.py /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a4_precision_specification.py
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data9a4_precision_specification.py	2026-08-08 22:49:36.610032773 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a4_precision_specification.py	2026-08-08 23:07:11.558065588 +0000
+@@ -9,7 +9,7 @@
+     assert "float32" in text and "float64" in text
+     assert "MaceModelPrecisionRecord" in text
+     assert "MacePrecisionTransitionRecord" in text
+-    assert "version = \"0.20.114a0\"" in (ROOT / "pyproject.toml").read_text()
++    assert "version = \"0.20.115a0\"" in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_bind_precision_to_protocol() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data9a5_critical_fp64_specification.py /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a5_critical_fp64_specification.py
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-08 22:49:36.609488394 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-08 23:07:11.553095729 +0000
+@@ -14,7 +14,7 @@
+     assert 'version: "0.20.42a0"' in text
+     assert "training_force_jacobian_dtype = model" in text
+     assert "Python/ASE" in text
+-    assert 'version = "0.20.114a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.115a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_data9a5_architecture_declares_scope_and_limits() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data9a5_deployment_specification.py /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a5_deployment_specification.py
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data9a5_deployment_specification.py	2026-08-08 22:49:36.609991191 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a5_deployment_specification.py	2026-08-08 23:07:11.557706595 +0000
+@@ -13,7 +13,7 @@
+     assert 'version: "0.20.43a0"' in text
+     assert "downstream runtime owns" in text
+     assert "float32-to-float64 promotion does not restore" in text
+-    assert 'version = "0.20.114a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.115a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_keep_lammps_outside_mdstats_scope() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data9a6b_architecture_consistency_specification.py /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a6b_architecture_consistency_specification.py
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data9a6b_architecture_consistency_specification.py	2026-08-08 22:49:36.610674876 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a6b_architecture_consistency_specification.py	2026-08-08 23:07:11.561206361 +0000
+@@ -61,7 +61,7 @@
+ def test_dependency_graph_treats_lta_as_optional() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 32
++    assert graph["architecture_revision"] == 33
+     nodes = {node["id"] for node in graph["nodes"]}
+     assert "MATERIAL_PROFILE_IDENTITY" in nodes
+     assert "LTA_PROFILE_EXTENSION" in nodes
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data9a6c_observable_evidence_specification.py /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a6c_observable_evidence_specification.py
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-08 22:49:36.611308797 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-08 23:07:11.566335276 +0000
+@@ -38,7 +38,7 @@
+ def test_dependency_graph_places_policy_before_evidence_and_forbids_reverse_edge() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 32
++    assert graph["architecture_revision"] == 33
+     edges = {(e["from"], e["to"]) for e in graph["edges"]}
+     assert ("OBSERVABLE_COMPARISON_POLICY", "OBSERVABLE_VALIDATION_ACTIVATION_RECORD") in edges
+     assert ("OBSERVABLE_VALIDATION_ACTIVATION_RECORD", "OBSERVABLE_VALIDATION_EVIDENCE") in edges
+@@ -74,5 +74,5 @@
+ 
+ def test_packaged_owner_manual_index_is_valid() -> None:
+     payload = json.loads(MANUAL_INDEX.read_text(encoding="utf-8"))
+-    assert payload["package_version"] == "0.20.114a0"
++    assert payload["package_version"] == "0.20.115a0"
+     assert "structural-observables-architecture" in payload["manuals"]
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data9a7a_material_profile_specification.py /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a7a_material_profile_specification.py
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-08 22:49:36.609572229 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-08 23:07:11.553347924 +0000
+@@ -41,7 +41,7 @@
+ def test_data9a7a_dependency_graph_contains_contract_chain() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 32
++    assert graph["architecture_revision"] == 33
+     nodes = {item["id"] for item in graph["nodes"]}
+     required = {
+         "MATERIAL_PROFILE_PROVIDER_IDENTITY",
+@@ -64,4 +64,4 @@
+ 
+ 
+ def test_release_version_is_data9a7a() -> None:
+-    assert 'version = "0.20.114a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert 'version = "0.20.115a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data9a7b_specification.py /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a7b_specification.py
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data9a7b_specification.py	2026-08-08 22:49:36.611279694 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a7b_specification.py	2026-08-08 23:07:11.566211282 +0000
+@@ -44,7 +44,7 @@
+ def test_data9a7b_dependency_graph_has_analysis_to_selection_chain() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 32
++    assert graph["architecture_revision"] == 33
+     nodes = {item["id"] for item in graph["nodes"]}
+     assert {
+         "ANALYSIS_LOCAL_STRUCTURE_FEATURES",
+@@ -69,7 +69,7 @@
+ 
+ 
+ def test_data9a7b_public_exports_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.114a0"
++    assert mdstats.__version__ == "0.20.115a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert callable(mdstats.compute_local_structure_features)
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data9a7c_specification.py /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a7c_specification.py
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data9a7c_specification.py	2026-08-08 22:49:36.610365306 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a7c_specification.py	2026-08-08 23:07:11.559458246 +0000
+@@ -34,7 +34,7 @@
+ def test_dependency_graph_contains_phase_geometry_contracts() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 32
++    assert graph["architecture_revision"] == 33
+     nodes = {node["id"] for node in graph["nodes"]}
+     assert {
+         "PHASE_GEOMETRY_SELECTION_PLAN",
+@@ -47,7 +47,7 @@
+ 
+ 
+ def test_public_api_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.114a0"
++    assert mdstats.__version__ == "0.20.115a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert mdstats.MLFF_DATA9A7C_PARSER_VERSION == "0.20.49a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data9a7d_specification.py /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a7d_specification.py
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data9a7d_specification.py	2026-08-08 22:49:36.610258978 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a7d_specification.py	2026-08-08 23:07:11.559042469 +0000
+@@ -21,7 +21,7 @@
+ def test_data9a7d_dependency_graph_contract() -> None:
+     graph = json.loads((ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json").read_text())
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 32
++    assert graph["architecture_revision"] == 33
+     nodes = {item["id"] for item in graph["nodes"]}
+     assert {
+         "OPTIONAL_PROFILE_EXTENSION_PROVIDER",
+@@ -39,6 +39,6 @@
+ 
+ 
+ def test_data9a7d_runtime_versions() -> None:
+-    assert mdstats.__version__ == "0.20.114a0"
++    assert mdstats.__version__ == "0.20.115a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7D_PARSER_VERSION == "0.20.50a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data9a7e_specification.py /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a7e_specification.py
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data9a7e_specification.py	2026-08-08 22:49:36.609346353 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a7e_specification.py	2026-08-08 23:07:11.551872463 +0000
+@@ -31,7 +31,7 @@
+ def test_data9a7e_dependency_graph_and_public_api() -> None:
+     graph = json.loads((ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json").read_text())
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 32
++    assert graph["architecture_revision"] == 33
+     nodes = {item["id"] for item in graph["nodes"]}
+     assert {
+         "CROSS_SYSTEM_QUALIFICATION_POLICY",
+@@ -39,7 +39,7 @@
+         "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
+         "CROSS_SYSTEM_QUALIFICATION_SUITE",
+     } <= nodes
+-    assert mdstats.__version__ == "0.20.114a0"
++    assert mdstats.__version__ == "0.20.115a0"
+     assert mdstats.MLFF_DATA9A7E_PARSER_VERSION == "0.20.51a0"
+     assert callable(mdstats.qualify_cross_system_case)
+     assert callable(mdstats.build_cross_system_qualification_suite)
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data9a8_specification.py /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a8_specification.py
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data9a8_specification.py	2026-08-08 22:49:36.610481218 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a8_specification.py	2026-08-08 23:07:11.560163142 +0000
+@@ -44,7 +44,7 @@
+ def test_dependency_graph_places_policy_upstream_and_forbids_posthoc_thresholds() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 32
++    assert graph["architecture_revision"] == 33
+     nodes = {node["id"] for node in graph["nodes"]}
+     for node in (
+         "OBSERVABLE_COMPARISON_RULES",
+@@ -66,7 +66,7 @@
+ 
+ 
+ def test_public_runtime_exposes_data9a8_without_removed_aliases() -> None:
+-    assert mdstats.__version__ == "0.20.114a0"
++    assert mdstats.__version__ == "0.20.115a0"
+     assert mdstats.MLFF_DATA9A8_PARSER_VERSION == "0.20.52a0"
+     assert mdstats.ObservableComparisonPolicy
+     assert mdstats.compare_mlff_observable_validation
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data9a9a_specification.py /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a9a_specification.py
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data9a9a_specification.py	2026-08-08 22:49:36.609881107 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a9a_specification.py	2026-08-08 23:07:11.556858796 +0000
+@@ -47,7 +47,7 @@
+ def test_dependency_graph_contains_restartable_model_sweep_chain() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 32
++    assert graph["architecture_revision"] == 33
+     nodes = {node["id"] for node in graph["nodes"]}
+     required = {
+         "DATA6_MODEL_SWEEP_EXECUTION_POLICY",
+@@ -65,7 +65,7 @@
+ 
+ 
+ def test_public_runtime_exports_data9a9a_contracts() -> None:
+-    assert mdstats.__version__ == "0.20.114a0"
++    assert mdstats.__version__ == "0.20.115a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A9A_VERSION
+     assert mdstats.Data6ModelSweepPlan
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data9a9b_specification.py /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a9b_specification.py
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data9a9b_specification.py	2026-08-08 22:49:36.610953179 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a9b_specification.py	2026-08-08 23:07:11.563379608 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9b_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.114a0"
++    assert mdstats.__version__ == "0.20.115a0"
+     for name in (
+         "ProductionMaterializationPlan",
+         "ProductionMaterializationCheckpoint",
+@@ -40,7 +40,7 @@
+ def test_dependency_graph_contains_data9a9b_chain() -> None:
+     graph = json.loads((ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json").read_text())
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 32
++    assert graph["architecture_revision"] == 33
+     nodes = {item["id"] for item in graph["nodes"]}
+     required = {
+         "PRODUCTION_MATERIALIZATION_PLAN",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data9a9c_specification.py /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a9c_specification.py
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data9a9c_specification.py	2026-08-08 22:49:36.611077674 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a9c_specification.py	2026-08-08 23:07:11.564113668 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9c_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.114a0"
++    assert mdstats.__version__ == "0.20.115a0"
+     for name in (
+         "ProductionCorpusPlan", "ProductionExpectedRun",
+         "ProfileExtensionEvidenceRequirement", "ProductionCorpusQualificationRecord",
+@@ -38,7 +38,7 @@
+ def test_dependency_graph_contains_integrity_gate_chain() -> None:
+     graph = json.loads((ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json").read_text())
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 32
++    assert graph["architecture_revision"] == 33
+     nodes = {item["id"] for item in graph["nodes"]}
+     assert {"PRODUCTION_CORPUS_PLAN", "REPLAY_LABEL_PAYLOAD_IDENTITY",
+             "DATA8_ATOMIC_PROMOTION", "PRODUCTION_GATE_INTEGRITY_EVIDENCE"} <= nodes
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data9a_specification.py /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a_specification.py
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data9a_specification.py	2026-08-08 22:49:36.611221528 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9a_specification.py	2026-08-08 23:07:11.565812560 +0000
+@@ -14,7 +14,7 @@
+ 
+ 
+ def test_data9a_runtime_specification_is_canonical() -> None:
+-    assert 'version = "0.20.114a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.115a0"' in (ROOT / "pyproject.toml").read_text()
+     architecture = ARCH.read_text()
+     stage = STAGE.read_text()
+     specification = SPEC.read_text()
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data9b1_specification.py /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9b1_specification.py
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data9b1_specification.py	2026-08-08 22:49:36.610311807 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9b1_specification.py	2026-08-08 23:07:11.559257728 +0000
+@@ -18,8 +18,8 @@
+     assert "TrainingCampaignPlan" in text
+     assert "CheckpointSelectionRecord" in text
+     assert "mdstats-mace-train" in text
+-    assert mdstats.__version__ == "0.20.114a0"
+-    assert 'version = "0.20.114a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert mdstats.__version__ == "0.20.115a0"
++    assert 'version = "0.20.115a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+ 
+ 
+ def test_data9b1_is_integrated_into_manual_and_stage_plan() -> None:
+@@ -33,7 +33,7 @@
+ 
+ def test_data9b1_dependency_graph_nodes_and_gates() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+-    assert graph["architecture_revision"] == 32
++    assert graph["architecture_revision"] == 33
+     nodes = {item["id"] for item in graph["nodes"]}
+     for node in (
+         "TRAINING_CAMPAIGN_POLICY",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data9b2_specification.py /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9b2_specification.py
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data9b2_specification.py	2026-08-08 22:49:36.610862925 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9b2_specification.py	2026-08-08 23:07:11.562515044 +0000
+@@ -23,7 +23,7 @@
+         'mdstats-mace-select-head',
+     ):
+         assert token in text
+-    assert mdstats.__version__ == '0.20.114a0'
++    assert mdstats.__version__ == '0.20.115a0'
+     assert mdstats.MLFF_DATA9B2_VERSION == '0.20.57a0'
+ 
+ 
+@@ -37,7 +37,7 @@
+ 
+ def test_data9b2_dependency_graph_records_and_edges() -> None:
+     graph = json.loads(GRAPH.read_text(encoding='utf-8'))
+-    assert graph['architecture_revision'] == 32
++    assert graph['architecture_revision'] == 33
+     assert graph['schema_version'] == 26
+     nodes = {v['id'] for v in graph['nodes']}
+     for node in (
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data9b3_campaign_cli_specification.py /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9b3_campaign_cli_specification.py
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-08 22:49:36.610807062 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-08 23:07:11.561745241 +0000
+@@ -16,7 +16,7 @@
+ 
+ 
+ def test_data9b3_version_and_user_surface() -> None:
+-    assert mdstats.__version__ == "0.20.114a0"
++    assert mdstats.__version__ == "0.20.115a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert TOOL.is_file()
+     assert TOOL.stat().st_mode & 0o111
+@@ -55,7 +55,7 @@
+ def test_data9b3_dependency_graph_contract() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 32
++    assert graph["architecture_revision"] == 33
+     nodes = {node["id"] for node in graph["nodes"]}
+     required = {
+         "CAMPAIGN_CLI_CONFIGURATION",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data9b3a_cueq_specification.py /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9b3a_cueq_specification.py
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_data9b3a_cueq_specification.py	2026-08-08 22:49:36.609537227 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_data9b3a_cueq_specification.py	2026-08-08 23:07:11.553289337 +0000
+@@ -42,7 +42,7 @@
+ def test_data9b3a_dependency_graph_contract() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 32
++    assert graph["architecture_revision"] == 33
+     nodes = {node["id"] for node in graph["nodes"]}
+     assert {"MACE_ACCELERATION_POLICY", "MACE_ACCELERATION_PROBE"} <= nodes
+     edges = {(edge["from"], edge["to"], edge["type"]) for edge in graph["edges"]}
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_eval_storage_roadmap_specification.py /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_eval_storage_roadmap_specification.py
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_eval_storage_roadmap_specification.py	2026-08-08 22:50:05.455797964 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_eval_storage_roadmap_specification.py	2026-08-08 23:08:19.510118664 +0000
+@@ -11,6 +11,7 @@
+ STOR_SPEC = ROOT / "docs" / "specs" / "training_data" / "mlff_storage_management_spec.md"
+ STOR2_EVIDENCE = ROOT / "release" / "mlff_stor2_checkpoint_compaction_qualification.json"
+ STOR3_EVIDENCE = ROOT / "release" / "mlff_stor3_safe_reclamation_qualification.json"
++STOR4_EVIDENCE = ROOT / "release" / "mlff_stor4_manual_reclamation_qualification.json"
+ 
+ 
+ def test_eval_precision_storage_roadmap_is_recorded_in_binding_order() -> None:
+@@ -31,8 +32,9 @@
+     assert positions == sorted(positions)
+     assert "EVAL-MF2 - conservative survivor control, diagnostics, and default migration - implemented in 0.20.107a0" in text
+     assert "`PREC1` in 0.20.108a0" in text
+-    assert "The next implementation gate is `STOR4`" in text
++    assert "The next implementation gate is `STOR5`" in text
+     assert "STOR3 - automatic lifecycle-safe reclamation - implemented in 0.20.114a0" in text
++    assert "STOR4 - manual tiered reclamation with capability-loss reporting - implemented in 0.20.115a0" in text
+     assert "STOR1 - campaign storage accounting and ownership boundary - implemented in 0.20.111a0" in text
+     assert "STOR2 - lossless completed-checkpoint compaction - implemented in 0.20.113a0" in text
+ 
+@@ -80,10 +82,10 @@
+         assert token in text
+ 
+ 
+-def test_dependency_graph_revision_32_contains_eval_precision_storage_nodes() -> None:
++def test_dependency_graph_revision_33_contains_eval_precision_storage_nodes() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 32
++    assert graph["architecture_revision"] == 33
+     nodes = {node["id"] for node in graph["nodes"]}
+     for node in (
+         "NESTED_CHECKPOINT_EVALUATION_PLAN",
+@@ -102,6 +104,10 @@
+         "LIFECYCLE_SAFE_RECLAMATION_POLICY",
+     ):
+         assert node in nodes
++    stor4 = next(node for node in graph["nodes"] if node["id"] == "TIERED_STORAGE_RECLAMATION_PLAN")
++    assert stor4["implementation_status"] == "implemented"
++    assert stor4["implemented_version"] == "0.20.115a0"
++    assert stor4["archive_apply_requires"] == "STOR5"
+ 
+ 
+ def test_stor2_real_mace_qualification_records_exact_equivalence_and_savings() -> None:
+@@ -130,3 +136,18 @@
+     assert payload["selected_production_checkpoint_touched"] is False
+     assert payload["low_disk_safe_reclamation_precedes_training_interruption"] is True
+     assert payload["cleanup_manifest_append_only"] is True
++
++
++def test_stor4_qualification_records_manual_tiers_and_protections() -> None:
++    payload = json.loads(STOR4_EVIDENCE.read_text(encoding="utf-8"))
++    assert payload["schema"] == "mdstats.mlff-stor4-qualification.v1"
++    assert payload["runtime_version"] == "0.20.115a0"
++    assert payload["architecture_revision"] == 33
++    assert payload["tiers"] == ["safe", "cache", "recompute", "compact", "archive"]
++    assert payload["consequential_tiers_require_apply"] is True
++    assert payload["archive_apply_blocked_until_stor5"] is True
++    assert payload["external_inputs_touched"] is False
++    assert payload["production_models_touched"] is False
++    assert payload["selected_production_checkpoint_touched"] is False
++    assert payload["diagnostic_logs_touched"] is False
++    assert payload["manual_manifest_records_capability_loss"] is True
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_opt_ctrl1_specification.py /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_opt_ctrl1_specification.py
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_opt_ctrl1_specification.py	2026-08-08 22:49:36.611135430 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_opt_ctrl1_specification.py	2026-08-08 23:07:11.565204517 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_ctrl1_release_identity_preserves_scientific_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.114a0"
++    assert mdstats.__version__ == "0.20.115a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.114a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.115a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_ctrl1_architecture_and_spec_close_roadmap() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_opt_eval4_specification.py /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_opt_eval4_specification.py
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_opt_eval4_specification.py	2026-08-08 22:49:36.611165925 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_opt_eval4_specification.py	2026-08-08 23:07:11.565233681 +0000
+@@ -11,9 +11,9 @@
+ 
+ 
+ def test_opt_eval4_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.114a0"
++    assert mdstats.__version__ == "0.20.115a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+-    assert 'version = "0.20.114a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.115a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_eval4_architecture_and_spec_record_pipeline_contract() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_opt_verify1_specification.py /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_opt_verify1_specification.py
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_opt_verify1_specification.py	2026-08-08 22:49:36.609176021 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_opt_verify1_specification.py	2026-08-08 23:07:11.550224206 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_verify1_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.114a0"
++    assert mdstats.__version__ == "0.20.115a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.114a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.115a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_verify1_architecture_and_spec_record_contract() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_perf2_parallel_acceleration_specification.py /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_perf2_parallel_acceleration_specification.py
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-08 22:49:36.610578202 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-08 23:07:11.560718938 +0000
+@@ -10,7 +10,7 @@
+ 
+ 
+ def test_perf2_release_and_configuration_contract() -> None:
+-    assert mdstats.__version__ == "0.20.114a0"
++    assert mdstats.__version__ == "0.20.115a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     template = campaign_cli._config_template(
+         workspace="workspace",
+@@ -43,7 +43,7 @@
+         .read_text(encoding="utf-8")
+     )
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 32
++    assert graph["architecture_revision"] == 33
+     nodes = {item["id"] for item in graph["nodes"]}
+     assert {
+         "SYSTEM_RESOURCE_SNAPSHOT",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_prec1_specification.py /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_prec1_specification.py
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_prec1_specification.py	2026-08-08 22:49:51.531467717 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_prec1_specification.py	2026-08-08 23:09:39.476513066 +0000
+@@ -12,15 +12,15 @@
+ 
+ 
+ def test_prec1_release_and_architecture_status() -> None:
+-    assert mdstats.__version__ == "0.20.114a0"
++    assert mdstats.__version__ == "0.20.115a0"
+     manual = MANUAL.read_text(encoding="utf-8")
+     spec = SPEC.read_text(encoding="utf-8")
+     assert "PREC1 - precision profiles, explicit staged schedule, and init realization - implemented in 0.20.108a0" in manual
+     assert "PREC1 implemented in mdstats 0.20.108a0" in spec
+-    assert "the next implementation gate is `STOR4`" in manual
++    assert "the next implementation gate is `STOR5`" in manual
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 32
++    assert graph["architecture_revision"] == 33
+ 
+ 
+ def test_prec1_public_contract_is_exported() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_prec2_specification.py /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_prec2_specification.py
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_prec2_specification.py	2026-08-08 22:49:51.531593423 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_prec2_specification.py	2026-08-08 23:09:39.476667586 +0000
+@@ -14,8 +14,8 @@
+     assert "latest-only authenticated companion" in manual
+     assert "real MACE 0.3.16" in manual
+     assert "no fabricated real-CuEq execution evidence is claimed" in manual
+-    assert "the next implementation gate is `STOR4`" in manual
++    assert "the next implementation gate is `STOR5`" in manual
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 32
++    assert graph["architecture_revision"] == 33
+     node_ids = {node["id"] for node in graph["nodes"]}
+     assert "PRECISION_RUNTIME_COMPANION" in node_ids
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_prec3_specification.py /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_prec3_specification.py
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_prec3_specification.py	2026-08-08 22:49:51.531640884 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_prec3_specification.py	2026-08-08 23:09:39.476718131 +0000
+@@ -16,13 +16,13 @@
+     manual = MANUAL.read_text(encoding="utf-8")
+     spec = SPEC.read_text(encoding="utf-8")
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+-    assert mdstats.__version__ == "0.20.114a0"
++    assert mdstats.__version__ == "0.20.115a0"
+     assert "PREC3 - campaign integration, qualification, and profile activation - implemented in 0.20.110a0" in manual
+     assert "PREC3 implementation closure (0.20.110a0)" in manual
+     assert "PREC3 implemented in mdstats 0.20.110a0" in spec
+-    assert "The next implementation gate is `STOR4`" in manual
++    assert "The next implementation gate is `STOR5`" in manual
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 32
++    assert graph["architecture_revision"] == 33
+ 
+ 
+ def test_prec3_qualification_evidence_is_transparent_about_cueq() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.114a0_to_0.20.115a0.patch' /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_stor4_manual_reclamation.py /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_stor4_manual_reclamation.py
+--- /mnt/data/mdstats-0.20.114a0-complete-source-package/tests/test_mlff_stor4_manual_reclamation.py	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-0.20.115a0-complete-source-package/tests/test_mlff_stor4_manual_reclamation.py	2026-08-08 23:07:11.558598259 +0000
+@@ -0,0 +1,239 @@
++from __future__ import annotations
++
++import json
++from pathlib import Path
++from types import SimpleNamespace
++
++import pytest
++
++from mdstats.training_data import campaign_cli
++from mdstats.training_data.storage_accounting import (
++    build_campaign_storage_report,
++    configured_protected_inputs,
++)
++
++
++def _config(tmp_path: Path) -> Path:
++    (tmp_path / "training").mkdir()
++    (tmp_path / "foundation.model").write_bytes(b"foundation")
++    (tmp_path / "replay-train.xyz").write_text("", encoding="utf-8")
++    (tmp_path / "replay-monitor.xyz").write_text("", encoding="utf-8")
++    (tmp_path / "true-labels").mkdir()
++    path = tmp_path / "campaign.toml"
++    path.write_text(
++        campaign_cli._config_template(
++            workspace="work",
++            training_root="training",
++            foundation_model="foundation.model",
++            replay_train="replay-train.xyz",
++            replay_monitor="replay-monitor.xyz",
++            replay_true_labels="true-labels",
++        ),
++        encoding="utf-8",
++    )
++    return path
++
++
++def _args(config: Path, *, tier: str, apply: bool = False, dry_run: bool = False):
++    return SimpleNamespace(
++        config=str(config),
++        tier=tier,
++        apply=apply,
++        dry_run=dry_run,
++        keep_preparation_caches=False,
++        keep_unselected_checkpoints=True,
++    )
++
++
++def _complete(store: campaign_cli.CampaignStore, paths: campaign_cli.CampaignPaths, stage: str) -> None:
++    campaign_cli._mark_stage(store, paths, stage, campaign_cli.StageState.COMPLETE, "complete")
++
++
++def test_recompute_tier_defaults_to_plan_only_and_reports_capability_loss(tmp_path: Path) -> None:
++    config = _config(tmp_path)
++    _cfg, paths = campaign_cli._load_config(config)
++    store = campaign_cli.CampaignStore(paths.state_db)
++    _complete(store, paths, "evaluate")
++    predictions = paths.internal / "evaluation-predictions"
++    sweep = paths.internal / "model-sweep"
++    predictions.mkdir(); sweep.mkdir()
++    (predictions / "p.bin").write_bytes(b"p" * 1024)
++    (sweep / "s.bin").write_bytes(b"s" * 2048)
++
++    assert campaign_cli.command_cleanup(_args(config, tier="recompute")) == 0
++    assert predictions.is_dir()
++    assert sweep.is_dir()
++    payload = json.loads((paths.results / "manual-reclamation-plan-recompute.json").read_text())
++    assert payload["requested_tier"] == "recompute"
++    assert payload["capability_report"]["capabilities"]["metric_only_recomputation"]["status"] == "lost"
++    assert payload["capability_report"]["capabilities"]["data7_reselection"]["status"] == "preserved_with_recomputation"
++    assert payload["planned_reclaimed_bytes"] >= 3072
++
++
++def test_recompute_apply_removes_scientific_caches_but_keeps_production_and_logs(tmp_path: Path) -> None:
++    config = _config(tmp_path)
++    _cfg, paths = campaign_cli._load_config(config)
++    store = campaign_cli.CampaignStore(paths.state_db)
++    _complete(store, paths, "evaluate")
++    _complete(store, paths, "verify")
++    for name in ("evaluation-predictions", "model-sweep", "true-label-replay"):
++        root = paths.internal / name
++        root.mkdir()
++        (root / "cache.bin").write_bytes(name.encode() * 64)
++    production = paths.models / "production.model"
++    production.write_bytes(b"production")
++    log = paths.results / "keep.log"
++    log.write_text("diagnostic", encoding="utf-8")
++
++    assert campaign_cli.command_cleanup(_args(config, tier="recompute", apply=True)) == 0
++    for name in ("evaluation-predictions", "model-sweep", "true-label-replay"):
++        assert not (paths.internal / name).exists()
++    assert production.read_bytes() == b"production"
++    assert log.read_text(encoding="utf-8") == "diagnostic"
++    events = [json.loads(line) for line in (paths.results / "cleanup-manifest.jsonl").read_text().splitlines()]
++    event = next(item for item in reversed(events) if item.get("trigger") == "manual_tier:recompute")
++    assert "metric_only_recomputation" in event["capability_loss"]
++    assert "data7_reselection_without_reinference" in event["capability_loss"]
++
++
++def test_compact_requires_apply_and_preserves_production_artifacts(tmp_path: Path) -> None:
++    config = _config(tmp_path)
++    _cfg, paths = campaign_cli._load_config(config)
++    store = campaign_cli.CampaignStore(paths.state_db)
++    _complete(store, paths, "evaluate")
++    _complete(store, paths, "verify")
++    store.put_record("protocol_freeze", {"schema": "test.freeze.v1", "content_digest": "freeze"})
++
++    production = paths.models / "final-target.model"
++    production.write_bytes(b"production-model")
++    selected_raw = paths.runs / "run-a" / "checkpoints" / "selected.pt"
++    selected_raw.parent.mkdir(parents=True)
++    selected_raw.write_bytes(b"selected-raw")
++    capsule = paths.runs / "run-a" / "evaluation-capsules" / "epoch-0001.eval-state.pt"
++    capsule.parent.mkdir(parents=True)
++    capsule.write_bytes(b"capsule")
++    run_model = paths.runs / "run-a" / "models" / "epoch.model"
++    run_model.parent.mkdir(parents=True)
++    run_model.write_bytes(b"run-model")
++    log = paths.runs / "run-a" / "logs" / "train.log"
++    log.parent.mkdir(parents=True)
++    log.write_text("keep", encoding="utf-8")
++    materialized = paths.data / "variant" / "data8" / "train.xyz"
++    materialized.parent.mkdir(parents=True)
++    materialized.write_bytes(b"data8")
++
++    # Consequential tiers are plan-only unless --apply is explicit.
++    assert campaign_cli.command_cleanup(_args(config, tier="compact")) == 0
++    assert capsule.is_file() and run_model.is_file() and materialized.is_file()
++
++    assert campaign_cli.command_cleanup(_args(config, tier="compact", apply=True)) == 0
++    assert not capsule.exists()
++    assert not run_model.exists()
++    assert not paths.data.exists()
++    assert production.read_bytes() == b"production-model"
++    assert selected_raw.read_bytes() == b"selected-raw"
++    assert log.read_text(encoding="utf-8") == "keep"
++    compact = store.get_payload("manual_reclamation:compact")
++    assert compact["selected_production_checkpoint_retained"] is True
++    assert compact["production_models_retained"] is True
++
++
++def test_archive_tier_is_plan_only_until_stor5(tmp_path: Path) -> None:
++    config = _config(tmp_path)
++    _cfg, paths = campaign_cli._load_config(config)
++    victim = paths.internal / "evaluation-predictions"
++    victim.mkdir(); (victim / "p.bin").write_bytes(b"keep")
++
++    assert campaign_cli.command_cleanup(_args(config, tier="archive", dry_run=True)) == 0
++    payload = json.loads((paths.results / "manual-reclamation-plan-archive.json").read_text())
++    assert payload["archive_representation_required"] is True
++    assert (victim / "p.bin").read_bytes() == b"keep"
++
++    with pytest.raises(campaign_cli.CampaignCliError, match="STOR5"):
++        campaign_cli.command_cleanup(_args(config, tier="archive", apply=True))
++    assert (victim / "p.bin").read_bytes() == b"keep"
++
++
++def test_recompute_symlink_escape_unlinks_only_campaign_link(tmp_path: Path) -> None:
++    config = _config(tmp_path)
++    _cfg, paths = campaign_cli._load_config(config)
++    store = campaign_cli.CampaignStore(paths.state_db)
++    _complete(store, paths, "evaluate")
++    external = tmp_path / "external-predictions"
++    external.mkdir()
++    important = external / "user.bin"
++    important.write_bytes(b"never-delete")
++    link = paths.internal / "evaluation-predictions"
++    link.symlink_to(external, target_is_directory=True)
++
++    assert campaign_cli.command_cleanup(_args(config, tier="recompute", apply=True)) == 0
++    assert not link.is_symlink()
++    assert important.read_bytes() == b"never-delete"
++
++
++def test_storage_report_exposes_stor4_manual_tiers(tmp_path: Path) -> None:
++    config = _config(tmp_path)
++    cfg, paths = campaign_cli._load_config(config)
++    (paths.internal / "evaluation-predictions").mkdir()
++    (paths.internal / "evaluation-predictions" / "p.bin").write_bytes(b"p")
++    (paths.runs / "run-a" / "evaluation-capsules").mkdir(parents=True)
++    (paths.runs / "run-a" / "evaluation-capsules" / "c.eval-state.pt").write_bytes(b"c")
++    (paths.data / "variant").mkdir(parents=True)
++    (paths.data / "variant" / "data.bin").write_bytes(b"d")
++    report = build_campaign_storage_report(
++        paths.workspace,
++        protected_inputs=configured_protected_inputs(
++            cfg, config_dir=paths.config_dir, config_path=paths.config
++        ),
++    ).to_dict()
++    families = {item["family"]: item for item in report["families"]}
++    assert families["evaluation-predictions"]["manual_reclamation_eligibility"] == "recompute"
++    assert families["evaluation_state_capsules"]["manual_reclamation_eligibility"].startswith("compact")
++    assert families["data7_data8_materializations"]["manual_reclamation_eligibility"].startswith("compact")
++
++
++def test_completed_checkpoint_catalog_accepts_intentional_stor4_nonselected_loss(tmp_path: Path) -> None:
++    config = _config(tmp_path)
++    _cfg, paths = campaign_cli._load_config(config)
++    store = campaign_cli.CampaignStore(paths.state_db)
++    root = paths.runs / "run-a" / "checkpoints"
++    root.mkdir(parents=True)
++    selected = root / "selected.pt"
++    selected.write_bytes(b"selected")
++    selected_sha = campaign_cli._sha256(selected)
++
++    class Checkpoint:
++        def __init__(self, epoch, relative_path, sha):
++            self.epoch = epoch
++            self.relative_path = relative_path
++            self.sha256 = sha
++            self.run_plan_digest = "run"
++
++    class Catalog:
++        root_directory = str(root)
++        checkpoints = (
++            Checkpoint(1, "missing.pt", "a" * 64),
++            Checkpoint(2, "selected.pt", selected_sha),
++        )
++
++    store.put_record(
++        "checkpoint_retention:run-a",
++        {
++            "schema": "mdstats.mlff-checkpoint-retention.v2",
++            "selected_checkpoint_sha256": selected_sha,
++        },
++    )
++    ok, _ = campaign_cli._completed_checkpoint_storage_matches(paths, store, "run-a", Catalog())
++    assert ok is False
++
++    store.put_record(
++        "manual_reclamation:compact",
++        {
++            "schema": "mdstats.mlff-manual-compact-retention.v1",
++            "compacted_run_ids": ["run-a"],
++            "selected_production_checkpoint_retained": True,
++        },
++    )
++    ok, detail = campaign_cli._completed_checkpoint_storage_matches(paths, store, "run-a", Catalog())
++    assert ok is True
++    assert "verified" in detail

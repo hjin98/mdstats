@@ -1,0 +1,23 @@
+{
+  "schema": "mdstats.mlff-stor4-qualification.v1",
+  "runtime_version": "0.20.115a0",
+  "architecture_revision": 33,
+  "qualified_utc_date": "2026-08-08",
+  "tiers": ["safe", "cache", "recompute", "compact", "archive"],
+  "mandatory_plan_before_apply": true,
+  "consequential_tiers_require_apply": true,
+  "archive_apply_blocked_until_stor5": true,
+  "recompute_requires_authoritative_evaluation": true,
+  "recompute_requires_available_configured_reconstruction_inputs": true,
+  "compact_requires_verification_and_protocol_freeze": true,
+  "compact_requires_protected_production_model": true,
+  "external_inputs_touched": false,
+  "production_models_touched": false,
+  "selected_production_checkpoint_touched": false,
+  "diagnostic_logs_touched": false,
+  "manual_manifest_records_capability_loss": true,
+  "stor3_automatic_capability_loss_remains_empty": true,
+  "symlink_escape_target_touched": false,
+  "archive_conversion_executed": false,
+  "archive_conversion_deferred_to": "STOR5"
+}

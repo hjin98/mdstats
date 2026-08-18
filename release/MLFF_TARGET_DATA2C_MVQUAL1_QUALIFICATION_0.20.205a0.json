@@ -1,0 +1,107 @@
+{
+  "architecture_revision": 72,
+  "authority_boundary": {
+    "data8_membership_changed": false,
+    "generated_default_changed": false,
+    "learning_control_status": "deferred_final_gpu_qualification",
+    "positive_gpu_execution_performed": false,
+    "production_selector": "revision-64 TARGET-DATA2C v4",
+    "runtime_selector_changed": false,
+    "target_data2d_survivor_policy_changed": false,
+    "train2_backend_changed": false
+  },
+  "date": "2026-08-16",
+  "dependency_graph_schema": 54,
+  "fixture_evidence": {
+    "controlled_negative_fixture": "deliberately coverage-inefficient MV nested order is rejected by same-N non-regression authority",
+    "controlled_positive_fixture": {
+      "common_sizes": [
+        4,
+        8,
+        16,
+        32
+      ],
+      "independent_mv_qualified_sizes": [
+        32
+      ],
+      "learning_control_sizes": [
+        32
+      ],
+      "legacy_common_n95": 32,
+      "mv_common_n95": 32,
+      "outcome": "scientific_coverage_qualified_learning_controls_deferred"
+    },
+    "production_campaign_positive_result_claimed": false
+  },
+  "gate": "TARGET-DATA2C-MVQUAL1",
+  "learning_controls": {
+    "execution_status": "deferred_final_gpu_qualification",
+    "maximum_common_sizes": 2,
+    "selection_rule": "smallest common independently hard-qualified size, then next larger common qualified control"
+  },
+  "next_gate": "SIZE-HALVE2",
+  "package_checks": {
+    "compileall": "pass",
+    "graph_mirrors_identical": true,
+    "manual_mirrors_identical": true,
+    "pdf_preflight_and_visual_qa": "pass",
+    "version_metadata_consistent": true
+  },
+  "release": "0.20.205a0",
+  "schema": "mdstats.target-data2c-mvqual1-qualification.v1",
+  "scientific_contract": {
+    "all_mv_rungs_independently_rescored_for_capacity": true,
+    "capacity_ceiling": 16384,
+    "common_n95_non_regression": true,
+    "correlation_interval_obligations_included": true,
+    "dmax_tolerance": 1e-12,
+    "expansion_above_ceiling_authorized": false,
+    "hard_obligation_authority": "TARGET-DATA2A+MVIDX1",
+    "locked_test_tuning_forbidden": true,
+    "same_n_hard_non_regression": true,
+    "same_n_membership_rescore_authority": "TARGET-DATA2B direct scorer",
+    "same_n_worst_deficit_non_regression": true,
+    "selector_cached_coverage_may_satisfy_gate": false
+  },
+  "status": "pass_pre_migration_independent_same_n_qualification",
+  "telemetry": [
+    "required-family coverage and extent state",
+    "protected-stratum state",
+    "hard-obligation state",
+    "D_max",
+    "D_sum",
+    "uncovered witness count/mass",
+    "unique-reference-mass fraction",
+    "zero-unique-selected-candidate fraction",
+    "correlation-unit count/max share",
+    "development run/condition diversity"
+  ],
+  "tests": {
+    "campaign_restart_foundation_adjacency": {
+      "failed": 0,
+      "passed": 69,
+      "skip_reason": "real LTA training root not supplied",
+      "skipped": 1
+    },
+    "current_release_specifications": {
+      "failed": 0,
+      "passed": 60,
+      "skipped": 0
+    },
+    "final_mvqual_plus_live_specs_rerun": {
+      "failed": 0,
+      "passed": 67,
+      "skipped": 0
+    },
+    "scientific_and_adjacent_core": {
+      "failed": 0,
+      "passed": 71,
+      "skipped": 0
+    },
+    "unique_completed_checks_total": {
+      "failed": 0,
+      "passed": 200,
+      "skipped": 1
+    }
+  }
+}

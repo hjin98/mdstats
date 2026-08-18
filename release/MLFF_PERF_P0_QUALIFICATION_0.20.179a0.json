@@ -1,0 +1,314 @@
+{
+  "authority": {
+    "benchmark_content_digest": "cd9240e5c4936e1ac22409df8d56b06f487debd78f150bc3a45f7423d0917db0",
+    "benchmark_execution_digest": "4265881375205beb954222ac8d0b1372221c4779dcbc5567e9ff3a64d82681a1",
+    "benchmark_scientific_digest": "ab5e57750a06a3895d6349846238073a7bdca40a1c5270409999bfd6507a1d05",
+    "coverage_families": 8,
+    "family_elements": 263398,
+    "numerical_array_identities_compared": 48,
+    "reference_content_digest": "4f46dfaa6c366ede1cd4d19cf5fb8be65cfe49067b5aff85d668e0078915f9b8",
+    "scope": "supplied-data TARGET-DATA2B exact coverage construction and persistence",
+    "target_atoms": 6322344,
+    "target_frames": 37633,
+    "target_source_units": 27
+  },
+  "changed_file_sha256": {
+    "ARCHITECTURE_NOTES_MLFF_REV45.md": "6168d7b745b91b8c8160bb07dd55ebb601ff9c7bf428b247051b8ee69dc0e030",
+    "ARCHITECTURE_NOTES_MLFF_REV45.pdf": "ccd8925f81cc02eafb0fd20460b8421d82a8190a62f299b02ec8dc0ee96f5e69",
+    "CHANGELOG.md": "eae02455719f74f2b5173aa899e66fa45d8a96cff62e4c5420bae865507e48a9",
+    "MANIFEST.in": "26f3a16657c0ec103e624cc42c97dae8399ed00ee94c6661629ad77fb9aa826b",
+    "PKG-INFO": "b2ba8a0bd21b690d61aa4be2a904840b77ce21ae82dcaf736f88e3ac346fffc1",
+    "README.md": "5153c9122a4d3090a7ae24cf497ee708c97a2a78277946c0b7cbd9859365b4d0",
+    "audits/analysis/mlff_perf_p0_lta_cloud_cpu_2026-08-15.json": "d1fd63539e104d23f606c4a9d00a950fa5ed94e0189cf93465ba84222a0741a4",
+    "audits/analysis/mlff_perf_p0_lta_cloud_cpu_2026-08-15.md": "f77d0050bf88722243feb42bbe827134dac8bdc0ff2f326dcc604d09e4a64f3b",
+    "audits/analysis/mlff_perf_p0_lta_cloud_cpu_2026-08-15.pdf": "d70f5e76cec2e92ed7697acf9deb3abdec672a7bb10ce8d3d173b4658cb4f324",
+    "benchmarks/benchmark_mlff_perf_p0.py": "98d3f3972891923b72fd4e63f8c0ad5e350cbe650f51e392c0f1ba6e83788d7a",
+    "docs/arch_manuals/README.md": "37c2e6f5f3480b9bc0f36864cf0dcf64b3b21cc3ac9cd8de580e33cf2be6afe6",
+    "docs/arch_manuals/mlff_training_data_architecture.md": "7df20ff48f2a7d587847b8eb465d9f0a0e5d119c2bcd7861b75c5ca0e2d1402f",
+    "docs/arch_manuals/mlff_training_data_architecture.pdf": "444d162997beaf1fb42d4584b69c4dff73e91ade8f3c4f039e01804d873edf07",
+    "docs/arch_manuals/mlff_training_data_dependency_graph.json": "46f10151a7c0edc2a0a782f5e1f50406aca5e1328014fe5e5c7552e6f88a0245",
+    "docs/specs/training_data/README.md": "5a68975e1fea1d69c59ffa173cdd0fcbcb7e1f476f1f42afc310d8935b3f7f2a",
+    "docs/specs/training_data/mlff_perf_p0_native_target_coverage_spec.md": "00fde6527458feb41199e17d5933b0200c17e7e74047986c0b0e6f3150fc5ca8",
+    "docs/specs/training_data/mlff_perf_p0_native_target_coverage_spec.pdf": "b72da72e0b327d50a76a5810345e7d4eab020e97cd17f2728a8a5f7fea4c0b0e",
+    "mdstats/__init__.py": "d0d754dd5d9ee078540a3dd9ddd2b1e53df0c4682aff76ddefdedb89afc895f3",
+    "mdstats/_version.py": "106a11709a3eea833078c12831c2dd72393f9f863af0d3cb18c5ea1628f58e58",
+    "mdstats/training_data/__init__.py": "3704af7f11249a3d913eb91b8ded1f2a5517cf89cce4e0364f8c80601390bf97",
+    "mdstats/training_data/campaign_cli.py": "52bf9a08f3f45fd9044c3597d424f867cde0a79b69c1d814d212d7984e399203",
+    "mdstats/training_data/target_coverage.py": "fd5e84d1470a645cb4f6113179392cd2d378b530a249571d77b9f12135c95b9e",
+    "mdstats/training_data/target_coverage_store.py": "109d3a13740a1b306a375249cf40772ee1286d7aa2b63c8821af6ae2b75673d7",
+    "pyproject.toml": "531b156f63aefeb8ca989d3bea0186005a3cea1da068f3c9fc76d84761fb21df",
+    "release/MLFF_PERF_P0_PDF_QA_0.20.179a0.json": "02f0a9b13d90ad49b9e3015ade71ca00912dccaa950d906d87357c181719da67",
+    "release/PATCH_NOTES_0.20.179a0.md": "cd8906f01e2b7584e04beedc2f0ea94ea3da64e28b4e7209df6048355cfe0d55",
+    "release/PATCH_NOTES_0.20.179a0.pdf": "834f121fd2d144ef1f6c528b31c0a02896719e587419e74c63ab048034d998b4",
+    "tests/test_mlff_data9a9b_specification.py": "529acbfbbb498c280fc77a7bc56ddb340067dd8dd0659de314537e4420d6461d",
+    "tests/test_mlff_deploy_verify1_specification.py": "401b2d3cf87db38abd55a7c98c3537749fdfafc30a9eb2275cb973bc4f3d8857",
+    "tests/test_mlff_dyn_verify2_specification.py": "0f80fb8b371f913b76a701d01ae49d895882523193411b92c0c418ff4d4011a6",
+    "tests/test_mlff_eval2_specification.py": "1ec334b28b0e77ba3b9ca3811563476560562d6f92993f3ae23f512d1677f8de",
+    "tests/test_mlff_locked_test2_specification.py": "2195cb40feaaa7730728803437c6c0046dde324f2e9ef45e70c13d8324c98742",
+    "tests/test_mlff_perf2_parallel_acceleration_specification.py": "129366528c7410b3ae69f8122a52fb94fbcfa9cec79157a84573833475873f75",
+    "tests/test_mlff_perf_base0_specification.py": "379d0b69fded47b015240ae186bd2a05c48d7b6f0c5e75dda2c1986840cdbee7",
+    "tests/test_mlff_perf_p0.py": "2075b90a901f39213cbc18d5150adcabcf1828df683f5cd35d0cdea0c02a05b7",
+    "tests/test_mlff_perf_p0_specification.py": "a6425a27ccbb128688ae61c5e89cd7043574fa24b405d6694ca154172d6df35b",
+    "tests/test_mlff_pes_verify1_specification.py": "2a19a1931b9cd6993ab350e98e248be500f672b908bde468ec62a913c2eded6d",
+    "tests/test_mlff_relax_verify1_specification.py": "1bc442bad77d5c9772c565946e34d12103d40b0b55a538ada44ecc08a8f2f0ae",
+    "tests/test_mlff_select2_specification.py": "a708f96beb4626923aaeb9ce93c5bcb0ab1ca5810878ef813ceede223a4441ab"
+  },
+  "cpu_performance": {
+    "cgroup_cpu_quota_cores": 8.0,
+    "cgroup_memory_max_bytes": 4294967296,
+    "declared_workers": 8,
+    "host_cpu_model": "INTEL(R) XEON(R) PLATINUM 8573C",
+    "interpretation": "Repeated matched medians are authoritative; the observed min/max range is retained because host scheduling was not forcibly controlled.",
+    "legacy": {
+      "process_cpu_seconds": {
+        "maximum": 31.164642380999997,
+        "median": 27.091107298,
+        "minimum": 25.923550419999998
+      },
+      "rss_increment_mib": {
+        "maximum": 57.65234375,
+        "median": 57.63671875,
+        "minimum": 57.56640625
+      },
+      "rss_peak_mib": {
+        "maximum": 329.66015625,
+        "median": 329.46875,
+        "minimum": 329.203125
+      },
+      "wall_seconds": {
+        "maximum": 9.925919209999847,
+        "median": 7.5406899110003,
+        "minimum": 6.826444558999356
+      }
+    },
+    "matched_wall_improvement_percent": 17.29576198455614,
+    "p0": {
+      "process_cpu_seconds": {
+        "maximum": 27.223454185,
+        "median": 26.042539049,
+        "minimum": 25.469264104
+      },
+      "rss_increment_mib": {
+        "maximum": 56.60546875,
+        "median": 56.453125,
+        "minimum": 56.35546875
+      },
+      "rss_peak_mib": {
+        "maximum": 328.765625,
+        "median": 328.49609375,
+        "minimum": 328.12109375
+      },
+      "wall_seconds": {
+        "maximum": 8.253179859000738,
+        "median": 6.23647013200025,
+        "minimum": 5.817834384999514
+      }
+    },
+    "repetitions_per_path": 5,
+    "visible_logical_cpus": 9
+  },
+  "documentation": {
+    "architecture_manual_markdown": "docs/arch_manuals/mlff_training_data_architecture.md",
+    "architecture_manual_pdf_pages": 187,
+    "architecture_revision": 45,
+    "benchmark_report_markdown": "audits/analysis/mlff_perf_p0_lta_cloud_cpu_2026-08-15.md",
+    "benchmark_report_pdf_pages": 3,
+    "citations": "Normative and architecture documents cite NumPy NPY/load documentation, NIST FIPS 180-4, Hyndman-Fan quantiles, Bentley kd-trees, and SciPy cKDTree where those external methods are used.",
+    "normative_specification_markdown": "docs/specs/training_data/mlff_perf_p0_native_target_coverage_spec.md",
+    "normative_specification_pdf_pages": 8,
+    "patch_notes_markdown": "release/PATCH_NOTES_0.20.179a0.md",
+    "patch_notes_pdf_pages": 3,
+    "pdf_qa_record": "release/MLFF_PERF_P0_PDF_QA_0.20.179a0.json",
+    "pdf_qa_result": "no gate-local clipping, overlap, blank pages, replacement glyphs, or unembedded fonts; all small-document pages and representative manual pages were visually inspected",
+    "revision_note_markdown": "ARCHITECTURE_NOTES_MLFF_REV45.md",
+    "revision_note_pdf_pages": 3
+  },
+  "exactness": {
+    "legacy_p0_exact": true,
+    "legacy_scientific_digest": "2f04aba96b876a10e62b7b0c22f26b544836005d11bc893177d4b29cbe4a3f82",
+    "migration_difference_paths": [],
+    "migration_exact": true,
+    "migration_report_digest": "bbe21f1c20beaefb7c837ec20330365853727366f07e4b8a795745aa048bfd88",
+    "p0_scientific_digest": "2f04aba96b876a10e62b7b0c22f26b544836005d11bc893177d4b29cbe4a3f82",
+    "perf_base0_array_exact": true
+  },
+  "gate": "PERF-P0",
+  "implementation": {
+    "coverage_version_changed": false,
+    "features": [
+      "canonical little-endian C-contiguous NumPy family arrays",
+      "streamed native-byte array identities",
+      "one-stable-sort weighted column statistics",
+      "exact uniform-weight fixed-reference-mass rank path with weighted oracle retention",
+      "shared valid-frame and balanced-weight profiles",
+      "bulk family extraction",
+      "content-addressed authenticated NPY shards",
+      "threshold-controlled read-only mmap restoration",
+      "fail-closed v1-to-v2 semantic migration"
+    ],
+    "persistence_version": "mdstats.target-data2b.native-persistence.2026-08.v2",
+    "primary_modules": [
+      "mdstats/training_data/target_coverage.py",
+      "mdstats/training_data/target_coverage_store.py",
+      "mdstats/training_data/campaign_cli.py"
+    ],
+    "scientific_policy_changed": false
+  },
+  "limitations": [
+    "This gate covers exact supplied-data TARGET-DATA2B-style label/cell/species families; production DATA6 model-derived families remain unavailable without the authorizing checkpoint and complete campaign bundle.",
+    "The process-level benchmark isolates family construction from XML ingestion so pre-P0 and P0 paths receive identical in-memory arrays.",
+    "Operating-system scheduling and page-cache state are observed, not forcibly controlled; repeated matched runs bound execution noise.",
+    "No authorizing MACE-MH-1 checkpoint or GPU runtime was supplied; DATA6 model-derived families, TRAIN2/EVAL2 timing, GPU memory/utilization, OOM, and backoff evidence are outside this gate.",
+    "PERF-P0 does not authorize approximate neighbors, reduced precision, changed quantile conventions, changed coverage policy, or altered TARGET-DATA2C selection semantics.",
+    "The complete historical package test suite was collected but not executed to completion within the bounded cloud window; no full-suite pass is claimed.",
+    "Historical non-gate manual pages retain a small number of pre-existing long-token edge conditions; changed PERF-P0 pages introduced no new clipping."
+  ],
+  "next_gate": "PERF-P1",
+  "packaging": {
+    "final_distribution_authentication": "external SHA-256 sidecar generated after final wheel, sdist, and complete-source archive are frozen",
+    "manifest_updates": [
+      "top-level architecture revision PDFs included",
+      "audits Markdown/PDF/JSON included",
+      "release Markdown/PDF/text/JSON included"
+    ],
+    "staging_build": "setuptools build_meta produced wheel and sdist successfully before qualification-record insertion"
+  },
+  "persistence_performance": {
+    "comparison": {
+      "read_rss_increment_reduction_percent": 85.20207125616322,
+      "read_speedup_x": 79.70034575266456,
+      "size_reduction_percent": 58.09870933290816,
+      "write_speedup_x": 56.22445027390211
+    },
+    "legacy_v1": {
+      "read": {
+        "process_cpu_seconds": 13.989243712999999,
+        "rss_end_mib": 329.10546875,
+        "rss_increment_mib": 189.34765625,
+        "rss_peak_mib": 438.5859375,
+        "rss_start_mib": 249.23828125,
+        "wall_seconds": 14.382073959999616
+      },
+      "restored_digest": "4f46dfaa6c366ede1cd4d19cf5fb8be65cfe49067b5aff85d668e0078915f9b8",
+      "size_bytes": 42749676,
+      "write": {
+        "process_cpu_seconds": 10.398872432000001,
+        "rss_end_mib": 333.23046875,
+        "rss_increment_mib": 167.765625,
+        "rss_peak_mib": 444.859375,
+        "rss_start_mib": 277.09375,
+        "wall_seconds": 10.365733908000038
+      }
+    },
+    "measurement_mode": "isolated-stages",
+    "native_v2": {
+      "pointer": {
+        "content_digest": "4f46dfaa6c366ede1cd4d19cf5fb8be65cfe49067b5aff85d668e0078915f9b8",
+        "persistence_version": "mdstats.target-data2b.native-persistence.2026-08.v2",
+        "pointer_digest": "8ff50431ea8f38243b795f0717c1af3527ac083e03fdbbafb449492c00d2608c",
+        "record_key": "target_coverage_reference",
+        "relative_path": "native-records/target-coverage-4f46dfaa6c366ede1cd4d19cf5fb8be65cfe49067b5aff85d668e0078915f9b8/manifest.json",
+        "schema": "mdstats.mlff-campaign-target-coverage-native-pointer.v2",
+        "sha256": "475d961eaa631af437cfca0ef0c859c1fc60d7ecff4883cc4a46590546580076"
+      },
+      "read": {
+        "process_cpu_seconds": 0.17098426999999994,
+        "rss_end_mib": 277.4140625,
+        "rss_increment_mib": 28.01953125,
+        "rss_peak_mib": 277.4140625,
+        "rss_start_mib": 249.39453125,
+        "wall_seconds": 0.180451838999943
+      },
+      "restored_digest": "4f46dfaa6c366ede1cd4d19cf5fb8be65cfe49067b5aff85d668e0078915f9b8",
+      "size_bytes": 17912666,
+      "write": {
+        "process_cpu_seconds": 0.09250221799999991,
+        "rss_end_mib": 277.3046875,
+        "rss_increment_mib": 0.1171875,
+        "rss_peak_mib": 277.3046875,
+        "rss_start_mib": 277.1875,
+        "wall_seconds": 0.18436345500049356
+      }
+    }
+  },
+  "qualification_log_sha256": {
+    "release/qualification_logs/perf_p0_campaign_performance_pytest.txt": "945a6bfc2e381ac162b472b46ad529b3a9171a8f0aa23cfcb91d7aaf4e0d89e2",
+    "release/qualification_logs/perf_p0_compileall.txt": "f8ebc65bcf3d22d004eddde09612fcff2d08ea954cb441132209d74adf4b6451",
+    "release/qualification_logs/perf_p0_data9a9b_materialization_pytest.txt": "e44334e8f5665584a268045de13e7362310a96cf1adb8279a9f0d5d46bad05a1",
+    "release/qualification_logs/perf_p0_data9a9b_specification_pytest.txt": "ed00aca99f985e448950c17aec8c3fda67ef560e6fdb6b2e658fd729b35cb2fd",
+    "release/qualification_logs/perf_p0_focused_pytest.txt": "01b77bb035feae4465f9288d04d28f4f27694582e3aa34de99e169510e77cbb6",
+    "release/qualification_logs/perf_p0_full_collection.txt": "4a2fadc6858538c09886ff5040b0e59286fb4fb1fe198be8ec9f9c0c590b6089",
+    "release/qualification_logs/perf_p0_known_eval2_spec_debt.txt": "70f59d3302f0d281c6eb66baa0d1bb55356f2db6390d820b4b518f9dc4f750db",
+    "release/qualification_logs/perf_p0_release_specs_pytest.txt": "561cb109c287355073511bde044821eef700f768ec56637be09230a456db9ce2",
+    "release/qualification_logs/perf_p0_target_data2abc_pytest.txt": "91fa45463f4e0ec9214b5519134fd46b0dc9eeaeb1a0d3855e195c46c166c582",
+    "release/qualification_logs/perf_p0_target_data2de_pytest.txt": "b5a26f51a54cbc73430d135afbfbe7b5e7defd7dd48975edd5843a7d3b2d68e7"
+  },
+  "qualified_at_utc": "2026-08-15T12:56:42Z",
+  "release_version": "0.20.179a0",
+  "schema": "mdstats.mlff-perf-p0-qualification.v1",
+  "status": "qualified_bounded",
+  "tests": {
+    "campaign_performance_and_production_anchor": {
+      "elapsed_seconds": 3.0,
+      "log": "release/qualification_logs/perf_p0_campaign_performance_pytest.txt",
+      "result": "14 passed, 4 warnings"
+    },
+    "compileall": {
+      "log": "release/qualification_logs/perf_p0_compileall.txt",
+      "result": "passed",
+      "scope": [
+        "mdstats",
+        "benchmarks",
+        "tests"
+      ]
+    },
+    "data9a9b_production_materialization": {
+      "elapsed_seconds": 13.84,
+      "log": "release/qualification_logs/perf_p0_data9a9b_materialization_pytest.txt",
+      "result": "15 passed, 14 warnings"
+    },
+    "data9a9b_specification_sync": {
+      "elapsed_seconds": 2.63,
+      "log": "release/qualification_logs/perf_p0_data9a9b_specification_pytest.txt",
+      "result": "3 passed"
+    },
+    "focused_gate_and_cross_gate": {
+      "elapsed_seconds": 9.88,
+      "log": "release/qualification_logs/perf_p0_focused_pytest.txt",
+      "result": "81 passed, 1 skipped, 6 warnings"
+    },
+    "full_collection": {
+      "elapsed_seconds": 10.36,
+      "log": "release/qualification_logs/perf_p0_full_collection.txt",
+      "result": "2964 tests collected; 1 optional interactive skip"
+    },
+    "full_execution": {
+      "qualification_effect": "not used as a pass claim; gate qualification rests on the focused and cross-gate suites above",
+      "result": "not completed within the bounded cloud execution window"
+    },
+    "known_external_gate_test_debt": [
+      {
+        "log": "release/qualification_logs/perf_p0_known_eval2_spec_debt.txt",
+        "reason": "historical source-string assertion expects foundation_checkpoint.sha256 inside _eval2_stage_b_evidence; the generalized MH1 implementation records foundation_identity_digest instead",
+        "result": "2 passed, 1 failed in file",
+        "runtime_change_made": false,
+        "test": "tests/test_mlff_eval2_specification.py::test_train2_evaluate_dispatches_to_eval2_and_verify_dispatches_to_deploy_verify1"
+      }
+    ],
+    "release_specification_sync": {
+      "elapsed_seconds": 3.49,
+      "log": "release/qualification_logs/perf_p0_release_specs_pytest.txt",
+      "result": "37 passed"
+    },
+    "target_data2abc": {
+      "elapsed_seconds": 8.82,
+      "log": "release/qualification_logs/perf_p0_target_data2abc_pytest.txt",
+      "result": "37 passed, 14 warnings"
+    },
+    "target_data2de": {
+      "elapsed_seconds": 2.69,
+      "log": "release/qualification_logs/perf_p0_target_data2de_pytest.txt",
+      "result": "30 passed"
+    }
+  }
+}

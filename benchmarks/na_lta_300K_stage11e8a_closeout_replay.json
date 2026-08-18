@@ -1,0 +1,25 @@
+{
+  "blockers": [
+    "force_density_agreement",
+    "transition_paths"
+  ],
+  "final_segmentation_executed": false,
+  "force_density_status": "pmf_provenance_rejected",
+  "joint_force_sample_count": 1440,
+  "missing_required_evidence": [],
+  "overall_status": "scientifically_partial",
+  "path_preparation_status": "spatial_hypothesis_unresolved",
+  "pmf_force_sample_count": 0,
+  "provisional_jump_count": 0,
+  "provisional_outcome_counts": {
+    "return_excursion": 5,
+    "right_censored_exit": 3
+  },
+  "provisional_passage_count": 8,
+  "refinement_status_counts": {
+    "pmf_provenance_rejected": 24
+  },
+  "stage": "11E8a-S4",
+  "transition_paths_executed": false,
+  "wall_seconds": 23.300135002999923
+}

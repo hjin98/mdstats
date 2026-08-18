@@ -1,0 +1,88 @@
+{
+  "schema": "mdstats.gfx3d-harden4-qualification.v1",
+  "version": "0.20.159a0",
+  "date": "2026-08-12",
+  "status": "pass",
+  "focused_tests": {
+    "passed": 233,
+    "skipped": 2,
+    "skip_reason": "CUDA runtime unavailable on packaging host",
+    "warnings": 97,
+    "elapsed_seconds": 19.04,
+    "coverage_scope": [
+      "LD8-S3 hybrid tiled density realization",
+      "PAR-DENS2 scheduler and progress",
+      "PAR-DENS3 parallel realization and qualification",
+      "PAR-DENS4 preprocessing",
+      "PAR-DENS5 CPU/no-CUDA fallback",
+      "PAR-DENS6 frozen execution plans/autotune",
+      "density planning and sparse mesh compatibility",
+      "atomic/framework density and framework dynamics",
+      "GFX3D CLI/contracts/layers/HARDEN1/HARDEN3 compatibility"
+    ]
+  },
+  "root_cause": {
+    "scheduler_deadlock": false,
+    "finding": "The direct LD8-S3 sparse tile executor did not consume the live PAR-DENS cooperative worker lease; admitted direct fields therefore used approximately one CPU core each while the scheduler waited correctly for completion.",
+    "gpu_semantics": "Direct sparse tiles are CPU execution. GPU execution is optional and only applies to approved FFT tiles."
+  },
+  "scientific_and_resource_invariants": {
+    "phase_b_tile_partition_unchanged": true,
+    "pair_chunk_bound_unchanged": true,
+    "canonical_pair_order_unchanged": true,
+    "stable_grouped_reduction_order_unchanged": true,
+    "worker_count_affects_scientific_identity": false,
+    "parallel_vs_serial_packed_values_bitwise_equal": true,
+    "direct_transient_bytes_per_pair_old": 96,
+    "direct_transient_bytes_per_pair_new": 112,
+    "parallelism_policy": "canonical_pair_chunk_row_slices_v1"
+  },
+  "synthetic_forced_direct": {
+    "direct_pairs": 8421376,
+    "serial_seconds": 0.6749624979984219,
+    "four_worker_seconds": 0.4947655060004762,
+    "speedup": 1.3642068612555462,
+    "maximum_direct_workers_used": 4,
+    "parallel_direct_chunks": 40,
+    "packed_values_array_equal": true
+  },
+  "real_trajectory_stride_500": {
+    "source": "dump.prod.Na_lta_300K.old(2).lammpstrj",
+    "source_frames": 10001,
+    "retained_frames": 21,
+    "atoms_per_frame": 168,
+    "likely_type_map": "1=Al,2=Na,3=O,4=Si",
+    "runtime_scheduler_cpu_tokens": 3,
+    "na_only_density_realization": {
+      "version_0_20_158a0_seconds_approx": 4.8,
+      "version_0_20_159a0_seconds_approx": 3.8,
+      "speedup_approx": 1.2632,
+      "resolved_grid": [
+        643,
+        627,
+        622
+      ],
+      "sigma_angstrom": 0.0594209,
+      "output_html_mib": 22.1,
+      "exit_status": 0
+    },
+    "four_density_preset_realization": {
+      "version_0_20_158a0_seconds_approx": 20.4,
+      "version_0_20_159a0_seconds_approx": 16.8,
+      "speedup_approx": 1.2143,
+      "all_four_fields_completed": true,
+      "o_field_max_workers": 3,
+      "o_field_sparse_kernel_seconds_approx": 10.2,
+      "note": "The smoke was intentionally stopped during the subsequent sparse-mesh rendering hotspot after density realization had completed."
+    }
+  },
+  "full_10001_frame_four_density_note": {
+    "qualification_host_limit": "The 4 GiB packaging cgroup rejects the full four-field Phase-B plan on memory authority, so no full four-density wall-time factor is claimed here.",
+    "applicability": "The corrected direct kernel uses the same approved pair-chunk contract independent of frame count; full-trajectory one-field stack capture reproduced the former one-core direct executor before this fix."
+  },
+  "remaining_downstream_hotspot": {
+    "stage": "sparse density isosurface rendering",
+    "observed_stack": "density_sparse_mesh.label_periodic_cell_components",
+    "note": "Separate renderer optimization gate; not part of density scientific realization HARDEN4."
+  }
+}

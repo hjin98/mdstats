@@ -1,0 +1,2895 @@
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/CHANGELOG.md new/CHANGELOG.md
+--- old/CHANGELOG.md	2026-08-07 20:08:56.467707185 +0000
++++ new/CHANGELOG.md	2026-08-07 21:18:49.385104235 +0000
+@@ -1,5 +1,13 @@
+ # Changelog
+ 
++## 0.20.99a0
++
++- Implement OPT-EVAL3 stable monitor graph caching: model-independent graph identities, 1 GiB byte-bounded CPU memory reuse, SHA-256-authenticated persistent graph shards, corruption rebuild, and single-flight concurrent misses.
++- Pre-index immutable target/replay evaluation views so repeated checkpoints reuse reference arrays, force offsets, focus-species indices, condition IDs, and stress masks instead of walking ASE metadata repeatedly.
++- Remove the graph-build device round-trip used only for caching and avoid a redundant device-batch clone for single-model MACE inference, while preserving ensemble isolation, OOM backoff, prediction/cache schemas, and scientific metrics.
++- Include the previously requested multi-format trajectory input update for `examples/plot_lta_mixed_alkali_density.py`.
++
++
+ ## 0.20.98a0
+ 
+ - Implement OPT-EVAL2 label-independent persistent evaluation predictions, allowing metric/reference-label changes to reuse candidate target/replay inference and survive raw-checkpoint cleanup.
+@@ -1676,6 +1684,14 @@
+ 
+ # Changelog
+ 
++## 0.20.99a0
++
++- Implement OPT-EVAL3 stable monitor graph caching: model-independent graph identities, 1 GiB byte-bounded CPU memory reuse, SHA-256-authenticated persistent graph shards, corruption rebuild, and single-flight concurrent misses.
++- Pre-index immutable target/replay evaluation views so repeated checkpoints reuse reference arrays, force offsets, focus-species indices, condition IDs, and stress masks instead of walking ASE metadata repeatedly.
++- Remove the graph-build device round-trip used only for caching and avoid a redundant device-batch clone for single-model MACE inference, while preserving ensemble isolation, OOM backoff, prediction/cache schemas, and scientific metrics.
++- Include the previously requested multi-format trajectory input update for `examples/plot_lta_mixed_alkali_density.py`.
++
++
+ 
+ ## 0.20.83a0
+ 
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/PATCH_NOTES_0.20.99a0.md new/PATCH_NOTES_0.20.99a0.md
+--- old/PATCH_NOTES_0.20.99a0.md	1970-01-01 00:00:00.000000000 +0000
++++ new/PATCH_NOTES_0.20.99a0.md	2026-08-07 21:18:48.529104264 +0000
+@@ -0,0 +1,34 @@
++# mdstats 0.20.99a0 patch notes
++
++## OPT-EVAL3: monitor graph and immutable evaluation-view caching
++
++0.20.99a0 implements the third recorded MLFF evaluation optimization stage.
++
++Checkpoint evaluation now supplies stable ordered monitor geometry identities to the
++MACE native batching path. Prepared CPU graph shards are model-weight-independent and
++are reused across epoch/fold calculators when cutoff, species/head/key policy, dtype,
++and dependency identity match. Small graph sets remain in a byte-bounded in-memory
++cache; persistent SHA-256-authenticated graph shards are stored under the campaign
++internal `evaluation-graphs/` directory for restart/large-monitor reuse. Corrupt or
++incompatible graph cache entries are misses and rebuild from the frozen source monitor.
++Parallel workers single-flight a shared graph miss.
++
++Graph ownership is cheaper: graph batches are constructed and cached on CPU rather than
++moved to the accelerator and cloned back to CPU solely for caching. Single-model MACE
++prediction also avoids a redundant device-batch clone; ensemble isolation is retained.
++
++Metric reduction now uses an immutable, read-only evaluation view that pre-extracts
++reference energy/force/stress arrays, force offsets, atomic numbers, focus-species
++indices, condition IDs, and stress-valid masks once per authenticated monitor/policy.
++This removes repeated ASE dictionary/species-mask/condition extraction across
++checkpoints without changing metric definitions.
++
++No new TOML setting is required and no evaluation/prediction/checkpoint record schema is
++changed. Existing 0.20.98a0 campaigns resume in place. The previously requested
++`plot_lta_mixed_alkali_density.py` multi-format trajectory-reader update is included in
++this release source tree as well.
++
++Focused qualification covers real MACE graph persistence and exact output reuse,
++corruption recovery, geometry-key invalidation, concurrent single-flight construction,
++metric-definition equivalence, and the existing OPT-EVAL1/2, true-label replay,
++checkpoint, CuEq, and native batching contracts.
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/docs/arch_manuals/README.md new/docs/arch_manuals/README.md
+--- old/docs/arch_manuals/README.md	2026-08-07 20:15:09.899679116 +0000
++++ new/docs/arch_manuals/README.md	2026-08-07 21:18:11.486461143 +0000
+@@ -45,7 +45,7 @@
+ ## MLFF architecture
+ 
+ - `mlff_training_data_architecture.{md,pdf}`: canonical MLFF-DATA architecture
+-  through the current 0.20.98a0 campaign line, including the recorded
++  through the current 0.20.99a0 campaign line, including the recorded
+   post-first-campaign staged optimization roadmap (`OPT-EVAL1` through `OPT-CTRL1`). The generic core owns provenance, eligibility,
+   partitioning, leakage control, selection orchestration, replay, precision,
+   training-backend calls, deployment, and validation policy. Physical
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/docs/arch_manuals/mlff_training_data_architecture.md new/docs/arch_manuals/mlff_training_data_architecture.md
+--- old/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-07 20:46:35.957116786 +0000
++++ new/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-07 21:22:10.406948554 +0000
+@@ -3786,23 +3786,60 @@
+ Detailed runtime/cache requirements are specified in the OPT-EVAL2 training-data
+ specification under `docs/specs/training_data/`.
+ 
+-## OPT-EVAL3 - monitor-level graph and immutable evaluation-view caching
++## OPT-EVAL3 - monitor-level graph and immutable evaluation-view caching - implemented in 0.20.99a0
+ 
+-The current per-batch graph LRU can thrash under repeated sequential scans when a
+-monitor is larger than the cache.  Replace or supplement it with monitor-level
+-preparation:
+-
+-- pin complete graph representations for small monitors;
+-- persist authenticated graph shards for larger monitors;
+-- bind graph identity to geometry/order, species table, cutoff, MACE graph policy,
+-  and dependency identity;
+-- precompute immutable frame offsets, atomic-number/species indices, condition
+-  indices, stress-valid masks, and other metric-reduction metadata once;
+-- remove redundant graph cloning and host/device copies where ownership permits;
+-- use pinned host memory/nonblocking transfer only when measurements show benefit.
++OPT-EVAL3 is implemented in 0.20.99a0. Evaluation no longer treats MACE graph
++construction as an ephemeral per-calculator/per-batch side effect when the monitor
++geometry is already frozen. Candidate/foundation checkpoint workers provide ordered
++monitor geometry identities to the qualified native MACE batching path. A stable graph
++key binds those identities to cutoff, species table, active head, calculator key maps,
++dtype, graph-policy version, and the relevant MACE/PyTorch/ASE/e3nn/matscipy/NumPy/
++torch-geometric dependency identity while deliberately excluding model weights. Epochs
++and folds with the same graph policy can therefore share the same prepared geometry.
++
++Two graph-cache tiers are used:
++
++- a byte-bounded CPU memory cache (`MDSTATS_MACE_MONITOR_GRAPH_CACHE_BYTES`, default
++  1 GiB), which keeps complete small-monitor shard sets resident when they fit; and
++- SHA-256-authenticated persistent CPU graph shards under campaign-internal
++  `evaluation-graphs/`, which avoid repeated `AtomicData.from_config` construction
++  after eviction/restart for larger scans.
++
++Corrupt, malformed, dependency-mismatched, or geometry-mismatched shards are cache
++misses and are rebuilt from the authenticated source monitor. Parallel workers
++single-flight the same stable shard miss. The graph cache remains reconstructable
++execution evidence and never replaces source monitor SHA/lineage validation.
++
++Graph ownership is also cheaper. Graphs are constructed on CPU and cached before one
++host-to-device transfer, rather than building/moving a device batch and cloning it back
++to CPU merely to populate the cache. Single-model MACE inference uses the freshly
++materialized device batch directly; ensemble calculators retain per-model clone
++isolation. Pinned-memory/nonblocking transfers remain intentionally disabled until
++measurements justify them.
++
++Repeated metric reduction now consumes a cached immutable evaluation view instead of
++walking `Atoms.info`, `Atoms.arrays`, and atomic-number masks for every checkpoint. The
++view precomputes configuration/atom counts, force offsets, reference energies/forces,
++atomic numbers, focus-species local indices, condition IDs/labels, reference stresses,
++and stress-valid masks. The byte budget is controlled by
++`MDSTATS_MLFF_EVALUATION_VIEW_CACHE_BYTES` (default 512 MiB). Metric definitions and
++combined-loss weights are unchanged.
++
++The existing object-identity graph LRU remains available to DATA6 and other callers
++without stable monitor identities. Evaluation batch sizing and recursive OOM backoff are
++unchanged; geometry identities are split with the same batch so backoff shards remain
++correctly bound. Single-frame remainder batches use the stable graph path as well.
++
++Representative release-host timing isolated graph preparation on a real MACE 0.3.16
++CPU fixture with 64 H2O frames: first graph construction was about 0.054 s and an
++authenticated persistent-shard reload after memory-cache clear was about 0.0081 s
++(~6.7x faster for graph preparation). A synthetic 2000-frame/96-atom monitor required
++about 0.067 s to extract its immutable evaluation view, while a repeated in-memory view
++lookup was about 15 microseconds. These are preparation measurements, not claims about
++end-to-end GPU inference speedup.
+ 
+-A graph cache is reconstructable execution evidence and may not replace the source
+-geometry or scientific monitor identity.
++Detailed identity, corruption, ownership, and compatibility requirements are specified
++in the OPT-EVAL3 training-data specification under `docs/specs/training_data/`.
+ 
+ ## OPT-EVAL4 - staged evaluation pipeline
+ 
+@@ -3885,5 +3922,5 @@
+ 5. representative timing evidence demonstrates the intended improvement; and
+ 6. the legacy fallback, when retained, remains fail-closed and clearly reported.
+ 
+-The next implementation follow-up from this roadmap is **`OPT-EVAL3`**.
++The next implementation follow-up from this roadmap is **`OPT-EVAL4`**.
+ 
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/docs/specs/training_data/mlff_opt_eval3_monitor_graph_view_cache_spec.md new/docs/specs/training_data/mlff_opt_eval3_monitor_graph_view_cache_spec.md
+--- old/docs/specs/training_data/mlff_opt_eval3_monitor_graph_view_cache_spec.md	1970-01-01 00:00:00.000000000 +0000
++++ new/docs/specs/training_data/mlff_opt_eval3_monitor_graph_view_cache_spec.md	2026-08-07 21:18:48.521104265 +0000
+@@ -0,0 +1,171 @@
++# OPT-EVAL3: monitor graph and immutable evaluation-view cache specification
++
++Status: implemented in mdstats 0.20.99a0.
++
++## Purpose
++
++OPT-EVAL3 removes repeated CPU-side monitor preparation from checkpoint evaluation.
++It does not change training data, reference labels, prediction identity, checkpoint
++selection thresholds, or scientific acceptance semantics.
++
++The stage has two independent caches:
++
++1. a MACE graph cache for model inference; and
++2. an immutable pre-indexed evaluation view for metric reduction.
++
++Both are reconstructable execution evidence. The frozen target/replay monitor files
++remain the scientific source of truth.
++
++## MACE monitor graph identity
++
++A prepared graph shard is reusable across candidate checkpoints only when all graph
++construction inputs match. The content-addressed key binds:
++
++- ordered monitor geometry identities for the shard;
++- calculator class;
++- MACE cutoff (`r_max`);
++- calculator/default dtype;
++- active head;
++- atomic-number/species table;
++- available head table;
++- MACE info/array key mappings, including charge mapping;
++- MACE graph-cache policy version; and
++- runtime dependency identity for MACE, PyTorch, ASE, e3nn, matscipy, NumPy, and
++  torch-geometric.
++
++The key deliberately excludes checkpoint/model weights. Graph topology and graph input
++construction are model-independent when the graph policy above is identical, allowing
++fold/epoch models to share the same prepared monitor graph.
++
++## Graph cache tiers
++
++### In-memory tier
++
++Stable monitor shards are cached as CPU graph batches under a byte budget controlled by
++`MDSTATS_MACE_MONITOR_GRAPH_CACHE_BYTES` (default 1 GiB). Small monitor graph sets that
++fit within this envelope remain resident across checkpoint providers. Cache hits clone
++the CPU graph and perform one transfer to the calculator device.
++
++The older object-identity batch LRU remains available for DATA6/other callers that do
++not provide stable monitor geometry identities.
++
++### Persistent tier
++
++Campaign evaluation passes `<internal>/evaluation-graphs` as the persistent cache root.
++Each stable shard is serialized as a CPU PyTorch-geometric batch plus atom counts, with
++a JSON metadata record and SHA-256-authenticated `.pt` bytes.
++
++On restart or after in-memory eviction:
++
++- metadata/key mismatch -> cache miss;
++- dependency/policy mismatch -> distinct key/cache miss;
++- SHA mismatch/corrupt bytes -> cache miss;
++- malformed graph/count payload -> cache miss;
++- valid shard -> load on CPU, repopulate memory cache, transfer to active device.
++
++A cache miss rebuilds from the authenticated source geometry and atomically replaces the
++persistent shard. The graph cache may never substitute for source monitor identity or
++bypass target/replay artifact SHA validation.
++
++Parallel workers single-flight the same stable shard miss. Different graph keys may be
++prepared independently.
++
++## Host/device ownership
++
++Graph construction now occurs on CPU. The pre-OPT-EVAL3 path built a device batch and
++then cloned it back to CPU solely for caching. OPT-EVAL3 instead stores the original CPU
++batch and performs one CPU-to-device transfer for the inference call.
++
++For a single-model MACE calculator, prediction no longer clones the just-materialized
++device batch before forward evaluation. Ensemble calculators retain per-model clone
++isolation.
++
++Pinned-memory/nonblocking transfers are intentionally not enabled by default. They are
++reserved for a later measured optimization if profiling demonstrates a benefit.
++
++## Immutable evaluation dataset view
++
++Repeated checkpoint metrics no longer re-extract labels and grouping metadata from ASE
++objects. One authenticated monitor/policy view precomputes:
++
++- configuration and atom counts;
++- flat force offsets;
++- reference energies and forces;
++- atomic numbers;
++- per-focus-species local atom indices;
++- condition IDs and sorted condition labels;
++- reference stress values and stress-valid masks.
++
++The view is read-only and cached by authenticated monitor file identity plus the label,
++focus-species, and condition-key policy. Its byte budget is controlled by
++`MDSTATS_MLFF_EVALUATION_VIEW_CACHE_BYTES` (default 512 MiB).
++
++Metric formulas are unchanged from the pre-OPT-EVAL3 implementation:
++
++- energy MAE per atom averaged over configurations;
++- force-component RMSE;
++- focus-species force-component RMSE;
++- optional stress-component RMSE;
++- condition-group RMSE or worst-configuration RMSE; and
++- the same configured combined-loss weights.
++
++## OOM backoff and batch boundaries
++
++Evaluation retains the existing batch-size policy and recursive OOM backoff. Stable
++geometry identities are split in exactly the same way as atom batches, so a smaller
++backoff batch gets its own correctly bound graph shard.
++
++Single-frame remainder batches also use the stable graph path when geometry identities
++are supplied.
++
++## Backward compatibility
++
++- No TOML keys are required.
++- Existing 0.20.98a0 campaign databases, prediction artifacts, checkpoint caches, and
++  replay artifacts remain valid.
++- Prediction-artifact schema remains unchanged.
++- Checkpoint-evaluation record schema remains unchanged.
++- Callers that do not provide `graph_cache_directory` retain non-persistent behavior.
++- Third-party/test prediction providers exposing the older `predict_batch(atoms)`
++  surface remain supported.
++
++## Qualification gates
++
++Focused tests require:
++
++1. metric output equivalence to the pre-OPT-EVAL3 definitions;
++2. immutable evaluation-view cache hits reuse the same extracted arrays;
++3. real MACE graph persistence survives an in-memory cache clear with zero new
++   `AtomicData.from_config` calls;
++4. cached and rebuilt real-MACE predictions agree exactly for energy and forces on the
++   fixture;
++5. corrupt persistent graph bytes are rejected and rebuilt from source geometry;
++6. changed geometry identities create a distinct graph shard;
++7. concurrent graph misses are single-flight;
++8. OPT-EVAL1/OPT-EVAL2, true-label replay, CuEq guard, checkpoint control, and native
++   MACE batching regressions remain green.
++
++## Representative local timing evidence
++
++On the release test host using a real MACE 0.3.16 CPU fixture and a 64-frame H2O
++monitor, graph preparation for one stable shard measured approximately:
++
++- first `AtomicData.from_config` build: 0.054 s;
++- authenticated persistent-shard load after clearing the memory cache: 0.0081 s;
++- graph-preparation speedup: about 6.7x.
++
++This timing isolates graph preparation rather than MACE forward inference and is not a
++claim about end-to-end GPU speedup on production LTA systems.
++
++For a synthetic 2000-frame/96-atom labelled monitor, construction of the immutable
++metric view measured about 0.067 s while a repeated in-memory view lookup measured
++about 15 microseconds. The purpose of this cache is to eliminate repeated ASE label,
++species-mask, and condition extraction; individual metric reduction remains bounded by
++processing the prediction values themselves.
++
++## Next stage
++
++The next recorded optimization stage is OPT-EVAL4: split heterogeneous evaluation jobs
++into a bounded CPU preparation -> serialized accelerator conversion -> GPU inference ->
++CPU reduction/persistence pipeline while retaining the fixed post-calibration resource
++model and hard memory guards.
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/examples/README.md new/examples/README.md
+--- old/examples/README.md	2026-08-05 18:20:00.000000000 +0000
++++ new/examples/README.md	2026-08-07 20:52:11.919827537 +0000
+@@ -23,6 +23,37 @@
+ python plot_lta_mixed_alkali_density.py /path/to/TRAJECTORY
+ ```
+ 
++The same example accepts every time-ordered trajectory source currently exposed
++by mdstats: VASP `vasprun.xml`, VASP `XDATCAR`, watcher-generated concatenated
++CONTCAR `TRAJECTORY` files, and native LAMMPS custom dumps. Common filenames are
++auto-detected. Examples:
++
++```bash
++# VASP XML; POTIM is read from vasprun.xml.
++python plot_lta_mixed_alkali_density.py /path/to/vasprun.xml
++
++# XDATCAR needs the saved-frame spacing because XDATCAR does not contain POTIM.
++python plot_lta_mixed_alkali_density.py /path/to/XDATCAR --timestep-fs 1.0
++
++# LAMMPS dump containing an `element` column and embedded TIME/UNITS records.
++python plot_lta_mixed_alkali_density.py /path/to/run.lammpstrj
++
++# Numeric LAMMPS types, with units/timestep and thermo metadata supplied by the log.
++python plot_lta_mixed_alkali_density.py /path/to/dump.production \
++  --lammps-log /path/to/log.lammps \
++  --lammps-type-map '1=Si,2=Al,3=O,4=Li,5=Na,6=K'
++
++# Ambiguous filename: override format explicitly.
++python plot_lta_mixed_alkali_density.py /path/to/frames.dat \
++  --format lammps-dump --lammps-units metal --lammps-timestep 0.001 \
++  --lammps-type-map '1=Si,2=Al,3=O,4=Na'
++```
++
++`--stride` is applied by the selected mdstats trajectory reader, so the plotting
++pipeline receives only the requested frames. For a LAMMPS dump, `--lammps-log`
++is optional but recommended when the dump itself does not contain `ITEM: TIME`
++and `ITEM: UNITS`, or when thermo quantities should be attached to the frames.
++
+ When the script is located inside the source checkout, it automatically places
+ the adjacent repository root at the front of `sys.path` and imports that exact
+ `mdstats` source tree. This avoids accidentally using an older separately
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/examples/plot_lta_mixed_alkali_density.py new/examples/plot_lta_mixed_alkali_density.py
+--- old/examples/plot_lta_mixed_alkali_density.py	2026-08-07 03:25:16.000000000 +0000
++++ new/examples/plot_lta_mixed_alkali_density.py	2026-08-07 20:51:32.062095460 +0000
+@@ -66,6 +66,7 @@
+     compute_atomic_connectivity,
+     plot_framework_dynamics_3d,
+     prepare_framework_dynamics_scene,
++    read_lammps_frames,
+     read_vasp_frames,
+ )
+ 
+@@ -323,7 +324,75 @@
+             'Render an LTA trajectory with the averaged framework, occupancy-filtered '            'atomic mean net, three-shell atomic densities, and trajectories. '            'The script detects Li/Na/K automatically and includes the alkali '            'species that are present.'
+         )
+     )
+-    parser.add_argument('trajectory', type=Path, help='Watcher-generated TRAJECTORY file.')
++    parser.add_argument(
++        'trajectory',
++        type=Path,
++        help=(
++            'Input trajectory. Supported mdstats trajectory sources are VASP '
++            'vasprun.xml, XDATCAR, watcher-generated concatenated CONTCAR '
++            'TRAJECTORY files, and native LAMMPS custom dumps.'
++        ),
++    )
++    parser.add_argument(
++        '--format',
++        choices=(
++            'auto',
++            'vasp-xml',
++            'vasp-xdatcar',
++            'vasp-contcar-trajectory',
++            'lammps-dump',
++        ),
++        default='auto',
++        help=(
++            'Trajectory format. Default: auto-detect from filename and common '
++            'LAMMPS dump naming. Use an explicit value for ambiguous filenames.'
++        ),
++    )
++    parser.add_argument(
++        '--timestep-fs',
++        type=float,
++        default=None,
++        help=(
++            'Saved-frame spacing in fs for VASP XDATCAR or custom TRAJECTORY '
++            'input. For backward compatibility, an auto-detected/custom '
++            'TRAJECTORY defaults to 1.0 fs when this option is omitted.'
++        ),
++    )
++    parser.add_argument(
++        '--lammps-log',
++        type=Path,
++        default=None,
++        help=(
++            'Optional LAMMPS log file. It can provide units, timestep, '
++            'temperature, energies, pressure, and stress for matching dump steps.'
++        ),
++    )
++    parser.add_argument(
++        '--lammps-units',
++        choices=('metal', 'real', 'si'),
++        default=None,
++        help=(
++            'LAMMPS unit style when it is not embedded in the dump or available '
++            'from --lammps-log.'
++        ),
++    )
++    parser.add_argument(
++        '--lammps-timestep',
++        type=float,
++        default=None,
++        help=(
++            'LAMMPS integration timestep in the selected LAMMPS unit style. '
++            'Needed only when neither dump TIME records nor --lammps-log provide time.'
++        ),
++    )
++    parser.add_argument(
++        '--lammps-type-map',
++        default=None,
++        help=(
++            'Numeric LAMMPS type mapping, e.g. "1=Si,2=Al,3=O,4=Li,5=Na,6=K". '
++            'Not needed when the dump contains an element column.'
++        ),
++    )
+     parser.add_argument(
+         '--topology',
+         type=Path,
+@@ -421,6 +490,102 @@
+     return parser.parse_args()
+ 
+ 
++
++def _strip_compression_suffix(name: str) -> str:
++    lowered = name.lower()
++    for suffix in ('.gz', '.bz2', '.xz', '.lzma'):
++        if lowered.endswith(suffix):
++            return name[: -len(suffix)]
++    return name
++
++
++def infer_trajectory_format(path: Path, explicit_format: str = 'auto') -> str:
++    """Resolve one of the time-ordered trajectory readers exposed by mdstats."""
++    if explicit_format != 'auto':
++        return explicit_format
++
++    base_name = _strip_compression_suffix(path.name)
++    upper_name = base_name.upper()
++    lower_name = base_name.lower()
++    suffix = Path(base_name).suffix.lower()
++
++    if suffix == '.xml':
++        return 'vasp-xml'
++    if upper_name.endswith('XDATCAR'):
++        return 'vasp-xdatcar'
++    if upper_name == 'TRAJECTORY' or upper_name.endswith('.TRAJECTORY'):
++        return 'vasp-contcar-trajectory'
++    if (
++        suffix in {'.lammpstrj', '.dump', '.lammpsdump'}
++        or lower_name.startswith('dump.')
++        or lower_name == 'dump'
++    ):
++        return 'lammps-dump'
++
++    raise ValueError(
++        f'Cannot infer trajectory format from {path!s}. Use --format with one of '
++        'vasp-xml, vasp-xdatcar, vasp-contcar-trajectory, or lammps-dump.'
++    )
++
++
++def parse_lammps_type_map(value: str | None) -> dict[int, str] | None:
++    if value is None:
++        return None
++    mapping: dict[int, str] = {}
++    for entry in value.split(','):
++        entry = entry.strip()
++        if not entry:
++            continue
++        if '=' not in entry:
++            raise ValueError(
++                '--lammps-type-map entries must use TYPE=ELEMENT syntax; '
++                f'observed {entry!r}.'
++            )
++        raw_type, raw_symbol = entry.split('=', 1)
++        try:
++            atom_type = int(raw_type.strip())
++        except ValueError as exc:
++            raise ValueError(
++                f'LAMMPS atom type {raw_type!r} is not an integer.'
++            ) from exc
++        symbol = raw_symbol.strip()
++        if atom_type < 1 or not symbol:
++            raise ValueError(
++                f'Invalid LAMMPS type mapping entry {entry!r}; expected e.g. 1=Si.'
++            )
++        if atom_type in mapping:
++            raise ValueError(f'LAMMPS atom type {atom_type} is mapped more than once.')
++        mapping[atom_type] = symbol
++    if not mapping:
++        raise ValueError('--lammps-type-map did not contain any mappings.')
++    return mapping
++
++
++def read_input_trajectory(args: argparse.Namespace):
++    """Read the example input through the matching public mdstats reader."""
++    source_format = infer_trajectory_format(args.trajectory, args.format)
++    if source_format == 'lammps-dump':
++        trajectory = read_lammps_frames(
++            str(args.trajectory),
++            log_file=None if args.lammps_log is None else str(args.lammps_log),
++            units=args.lammps_units,
++            timestep=args.lammps_timestep,
++            type_map=parse_lammps_type_map(args.lammps_type_map),
++            stride=args.stride,
++        )
++        return trajectory, source_format
++
++    timestep_fs = args.timestep_fs
++    if source_format == 'vasp-contcar-trajectory' and timestep_fs is None:
++        timestep_fs = 1.0
++    trajectory = read_vasp_frames(
++        str(args.trajectory),
++        format=source_format,
++        stride=args.stride,
++        timestep_fs=timestep_fs,
++    )
++    return trajectory, source_format
++
+ def resolve_framework_topology(
+     trajectory,
+     args: argparse.Namespace,
+@@ -491,17 +656,16 @@
+         progress.update("import_mode", "using installed mdstats package")
+     else:
+         progress.update("import_mode", f"using source checkout at {SOURCE_TREE_ROOT}")
+-    progress.started("trajectory_input", f"reading {args.trajectory} with stride={args.stride}")
+-    parse_started = time.perf_counter()
+-    trajectory = read_vasp_frames(
+-        args.trajectory,
+-        format='vasp-contcar-trajectory',
+-        stride=args.stride,
+-        timestep_fs=1.0,
++    progress.started(
++        "trajectory_input",
++        f"reading {args.trajectory} with format={args.format}, stride={args.stride}",
+     )
+-    progress.completed("trajectory_input", 
++    parse_started = time.perf_counter()
++    trajectory, source_format = read_input_trajectory(args)
++    progress.completed(
++        "trajectory_input",
+         f'loaded {trajectory.n_frames} frames and {trajectory.n_atoms} atoms '
+-        f'in {time.perf_counter() - parse_started:.1f} s'
++        f'as {source_format} in {time.perf_counter() - parse_started:.1f} s'
+     )
+     present_species = detect_present_species(trajectory)
+     mobile_species = detect_mobile_species(trajectory)
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/mdstats/_version.py new/mdstats/_version.py
+--- old/mdstats/_version.py	2026-08-07 20:08:56.461375986 +0000
++++ new/mdstats/_version.py	2026-08-07 21:18:11.472066671 +0000
+@@ -1,3 +1,3 @@
+ """Package version."""
+ 
+-__version__ = "0.20.98a0"
++__version__ = "0.20.99a0"
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/mdstats/data/observable_owner_manuals.json new/mdstats/data/observable_owner_manuals.json
+--- old/mdstats/data/observable_owner_manuals.json	2026-08-07 20:08:56.467017102 +0000
++++ new/mdstats/data/observable_owner_manuals.json	2026-08-07 21:18:11.478197448 +0000
+@@ -1,6 +1,6 @@
+ {
+   "schema": "mdstats.observable-owner-manual-index.v1",
+-  "package_version": "0.20.98a0",
++  "package_version": "0.20.99a0",
+   "manuals": {
+     "structural-observables-architecture": {
+       "source_path": "docs/arch_manuals/structural_observables_architecture.md",
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/mdstats/training_data/__init__.py new/mdstats/training_data/__init__.py
+--- old/mdstats/training_data/__init__.py	2026-08-07 20:15:43.840668081 +0000
++++ new/mdstats/training_data/__init__.py	2026-08-07 21:11:31.386624072 +0000
+@@ -310,6 +310,8 @@
+ 
+ from .model_features import (
+     MACE_ADAPTER_VERSION,
++    MACE_MONITOR_GRAPH_CACHE_SCHEMA,
++    MACE_MONITOR_GRAPH_POLICY_VERSION,
+     MACE_DESCRIPTOR_FILE_RECORD_SCHEMA,
+     MACE_DESCRIPTOR_MANIFEST_SCHEMA,
+     MACE_DESCRIPTOR_POLICY_SCHEMA,
+@@ -328,6 +330,8 @@
+     build_mace_descriptor_manifest,
+     read_mace_descriptor_array,
+     summarize_prediction,
++    clear_mace_graph_batch_cache,
++    clear_mace_monitor_graph_cache,
+ )
+ from .difficulty import (
+     BLINDED_PREDICTION_CATALOG_SCHEMA,
+@@ -969,3 +973,15 @@
+ )
+ 
+ __all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
++
++from .evaluation_views import (
++    EVALUATION_DATASET_VIEW_SCHEMA,
++    EVALUATION_DATASET_VIEW_POLICY_VERSION,
++    EvaluationDatasetView,
++    build_evaluation_dataset_view,
++    metrics_from_prediction_view,
++    cached_evaluation_dataset_view,
++    clear_evaluation_dataset_view_cache,
++)
++
++__all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/mdstats/training_data/campaign_cli.py new/mdstats/training_data/campaign_cli.py
+--- old/mdstats/training_data/campaign_cli.py	2026-08-07 20:08:56.466761364 +0000
++++ new/mdstats/training_data/campaign_cli.py	2026-08-07 21:18:11.477738246 +0000
+@@ -56,7 +56,7 @@
+     report_inference_worker_phase,
+ )
+ 
+-MLFF_DATA9B3_VERSION = "0.20.98a0"
++MLFF_DATA9B3_VERSION = "0.20.99a0"
+ # Parallel scheduling does not change the scientific NVE case identity. Keep
+ # the 0.20.85a0 runtime token so completed verification caches remain reusable.
+ VERIFICATION_RUNTIME_COMPATIBILITY_VERSION = "0.20.85a0"
+@@ -8029,6 +8029,7 @@
+     baseline_model = _path_cfg(cfg, paths, "foundation_model")
+     baseline_sha256 = None if baseline_model is None else _sha256(baseline_model)
+     prediction_cache_directory = paths.internal / "evaluation-predictions"
++    graph_cache_directory = paths.internal / "evaluation-graphs"
+     foundation_prediction_manifest = None
+     foundation_prediction_root = None
+     model_sweep_root = paths.internal / "model-sweep"
+@@ -8570,6 +8571,7 @@
+                     training_replay_monitor_path=active_training_replay_path,
+                     replay_baseline_model_path=active_baseline_model,
+                     prediction_cache_directory=prediction_cache_directory,
++                    graph_cache_directory=graph_cache_directory,
+                     foundation_prediction_manifest=foundation_prediction_manifest,
+                     foundation_prediction_root=foundation_prediction_root,
+                 )
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/mdstats/training_data/campaign_execution.py new/mdstats/training_data/campaign_execution.py
+--- old/mdstats/training_data/campaign_execution.py	2026-08-07 20:08:57.476251581 +0000
++++ new/mdstats/training_data/campaign_execution.py	2026-08-07 21:17:46.058560262 +0000
+@@ -1584,19 +1584,51 @@
+         return
+ 
+ 
+-def _predict_batch_with_backoff(provider: Any, atoms_batch: Sequence[Any]) -> tuple[Any, ...]:
++def _predict_batch_with_backoff(
++    provider: Any,
++    atoms_batch: Sequence[Any],
++    *,
++    geometry_identities: Sequence[str] | None = None,
++    graph_cache_directory: str | Path | None = None,
++) -> tuple[Any, ...]:
+     if not atoms_batch:
+         return ()
++    if geometry_identities is not None and len(geometry_identities) != len(atoms_batch):
++        raise TrainingDataInputError("Graph-cache geometry identity count mismatch.")
+     try:
++        return tuple(
++            provider.predict_batch(
++                atoms_batch,
++                geometry_identities=geometry_identities,
++                graph_cache_directory=graph_cache_directory,
++            )
++        )
++    except TypeError as exc:
++        # Third-party/test providers predating OPT-EVAL3 retain the original
++        # surface. Only fall back when the keyword extension itself is rejected.
++        if "unexpected keyword" not in str(exc) and "geometry_identities" not in str(exc):
++            raise
+         return tuple(provider.predict_batch(atoms_batch))
+     except RuntimeError as exc:
+         if len(atoms_batch) <= 1 or not _is_memory_exhaustion(exc):
+             raise
+         _release_cuda_cache()
+         middle = len(atoms_batch) // 2
++        left_ids = None if geometry_identities is None else geometry_identities[:middle]
++        right_ids = None if geometry_identities is None else geometry_identities[middle:]
+         return (
+-            *_predict_batch_with_backoff(provider, atoms_batch[:middle]),
+-            *_predict_batch_with_backoff(provider, atoms_batch[middle:]),
++            *_predict_batch_with_backoff(
++                provider,
++                atoms_batch[:middle],
++                geometry_identities=left_ids,
++                graph_cache_directory=graph_cache_directory,
++            ),
++            *_predict_batch_with_backoff(
++                provider,
++                atoms_batch[middle:],
++                geometry_identities=right_ids,
++                graph_cache_directory=graph_cache_directory,
++            ),
+         )
+ 
+ 
+@@ -1608,6 +1640,8 @@
+     head: str | None,
+     policy: CheckpointEvaluationPolicy,
+     provider: Any | None = None,
++    geometry_identities: Sequence[str] | None = None,
++    graph_cache_directory: str | Path | None = None,
+ ) -> tuple[Any, ...]:
+     """Run only model inference; reference labels and metric policy are irrelevant."""
+ 
+@@ -1630,139 +1664,97 @@
+         )
+     else:
+         provider.set_head(head)
++    if geometry_identities is not None and len(geometry_identities) != len(atoms_list):
++        raise TrainingDataInputError("Evaluation geometry identity count mismatch.")
+     batch_size = max(1, min(int(policy.batch_size), len(atoms_list)))
+     result: list[Any] = []
+     for start in range(0, len(atoms_list), batch_size):
+         batch = atoms_list[start : start + batch_size]
+-        predictions = _predict_batch_with_backoff(provider, batch)
++        batch_geometry = (
++            None
++            if geometry_identities is None
++            else geometry_identities[start : start + len(batch)]
++        )
++        predictions = _predict_batch_with_backoff(
++            provider,
++            batch,
++            geometry_identities=batch_geometry,
++            graph_cache_directory=graph_cache_directory,
++        )
+         if len(predictions) != len(batch):
+             raise TrainingDataInputError("MACE evaluation returned the wrong prediction count.")
+         result.extend(predictions)
+     return tuple(result)
+ 
+ 
++def _predict_model_on_monitor(
++    model_path: Path,
++    atoms_list: Sequence[Any],
++    *,
++    head: str | None,
++    policy: CheckpointEvaluationPolicy,
++    provider: Any | None = None,
++    geometry_identities: Sequence[str] = (),
++    graph_cache_directory: str | Path | None,
++) -> tuple[Any, ...]:
++    """Invoke the OPT-EVAL3 prediction surface with legacy test/provider tolerance."""
++
++    try:
++        return _predict_model_on_atoms(
++            model_path,
++            atoms_list,
++            head=head,
++            policy=policy,
++            provider=provider,
++            geometry_identities=geometry_identities,
++            graph_cache_directory=graph_cache_directory,
++        )
++    except TypeError as exc:
++        message = str(exc)
++        if "unexpected keyword" not in message and "geometry_identities" not in message:
++            raise
++        return _predict_model_on_atoms(
++            model_path, atoms_list, head=head, policy=policy, provider=provider
++        )
++
++
+ def _metrics_from_predictions(
+     atoms_list: Sequence[Any],
+     predictions: Sequence[Any],
+     *,
+     policy: CheckpointEvaluationPolicy,
++    view: Any | None = None,
+ ) -> dict[str, Any]:
+-    """Reduce immutable predictions against the current reference labels/policy."""
++    """Reduce immutable predictions through the OPT-EVAL3 vectorized view.
+ 
+-    from ase.data import chemical_symbols
+-    from ase.stress import full_3x3_to_voigt_6_stress
++    Callers that do not have an authenticated monitor identity may omit ``view``;
++    the same immutable representation is then built ephemerally. Campaign
++    evaluation supplies a cached view so repeated checkpoints never re-extract
++    labels/conditions from ASE objects.
++    """
+ 
+-    if not atoms_list:
+-        raise TrainingDataInputError("Evaluation dataset is empty.")
+-    if len(predictions) != len(atoms_list):
+-        raise TrainingDataInputError("Prediction count does not match the evaluation dataset.")
+-    energy_abs_sum = 0.0
+-    force_squared_sum = 0.0
+-    force_component_count = 0
+-    stress_squared_sum = 0.0
+-    stress_component_count = 0
+-    focus: dict[int, list[float | int]] = {
+-        z: [0.0, 0] for z in policy.focus_atomic_numbers
+-    }
+-    condition_force: dict[tuple[str, ...], list[float | int]] = {}
+-    worst_configuration_force_rmse = 0.0
+-
+-    for atoms, prediction in zip(atoms_list, predictions, strict=True):
+-        if policy.energy_key not in atoms.info or policy.forces_key not in atoms.arrays:
+-            raise TrainingDataInputError("Evaluation dataset is missing required energy or force labels.")
+-        reference_energy = float(atoms.info[policy.energy_key])
+-        reference_forces = np.asarray(atoms.arrays[policy.forces_key], dtype=float)
+-        predicted_energy = float(prediction.energy_ev)
+-        predicted_forces = np.asarray(prediction.forces_ev_per_angstrom, dtype=float)
+-        if predicted_forces.shape != reference_forces.shape:
+-            raise TrainingDataInputError("Predicted and reference force shapes differ.")
+-        energy_abs_sum += abs(predicted_energy - reference_energy) / len(atoms)
+-        error = predicted_forces - reference_forces
+-        force_squared_sum += float(np.sum(error * error, dtype=np.float64))
+-        force_component_count += int(error.size)
+-        numbers = np.asarray(atoms.numbers, dtype=int)
+-        for z in policy.focus_atomic_numbers:
+-            mask = numbers == z
+-            if np.any(mask):
+-                selected = error[mask]
+-                accumulator = focus[z]
+-                accumulator[0] = float(accumulator[0]) + float(
+-                    np.sum(selected * selected, dtype=np.float64)
+-                )
+-                accumulator[1] = int(accumulator[1]) + int(selected.size)
+-        error_squared_sum = float(np.sum(error * error, dtype=np.float64))
+-        if policy.condition_keys:
+-            key_values = tuple(
+-                str(atoms.info.get(key, f"missing:{key}"))
+-                for key in policy.condition_keys
+-            )
+-            accumulator = condition_force.setdefault(key_values, [0.0, 0])
+-            accumulator[0] = float(accumulator[0]) + error_squared_sum
+-            accumulator[1] = int(accumulator[1]) + int(error.size)
+-        else:
+-            worst_configuration_force_rmse = max(
+-                worst_configuration_force_rmse,
+-                float(math.sqrt(error_squared_sum / int(error.size))),
+-            )
+-        if policy.stress_key in atoms.info:
+-            reference_stress = np.asarray(
+-                atoms.info[policy.stress_key], dtype=float
+-            ).reshape(-1)
+-            if prediction.stress_ev_per_angstrom3 is None:
+-                raise TrainingDataInputError(
+-                    "Evaluation labels include stress but the model did not return stress."
+-                )
+-            predicted_stress = full_3x3_to_voigt_6_stress(
+-                np.asarray(prediction.stress_ev_per_angstrom3, dtype=float)
+-            ).reshape(-1)
+-            if reference_stress.shape != predicted_stress.shape:
+-                raise TrainingDataInputError("Predicted and reference stress shapes differ.")
+-            stress_error = predicted_stress - reference_stress
+-            stress_squared_sum += float(
+-                np.sum(stress_error * stress_error, dtype=np.float64)
+-            )
+-            stress_component_count += int(stress_error.size)
+-    if force_component_count == 0:
+-        raise TrainingDataInputError("Evaluation dataset contains no force components.")
+-    force_rmse = float(math.sqrt(force_squared_sum / force_component_count))
+-    stress_rmse = (
+-        None
+-        if stress_component_count == 0
+-        else float(math.sqrt(stress_squared_sum / stress_component_count))
+-    )
+-    focus_metrics = tuple(
+-        (chemical_symbols[z], float(math.sqrt(float(values[0]) / int(values[1]))))
+-        for z, values in focus.items()
+-        if int(values[1]) > 0
++    from .evaluation_views import (
++        build_evaluation_dataset_view,
++        metrics_from_prediction_view,
+     )
+-    condition_metrics = tuple(
+-        (
+-            "|".join(condition),
+-            float(math.sqrt(float(values[0]) / int(values[1]))),
++
++    active_view = view
++    if active_view is None:
++        active_view = build_evaluation_dataset_view(
++            atoms_list,
++            energy_key=policy.energy_key,
++            forces_key=policy.forces_key,
++            stress_key=policy.stress_key,
++            focus_atomic_numbers=policy.focus_atomic_numbers,
++            condition_keys=policy.condition_keys,
+         )
+-        for condition, values in sorted(condition_force.items())
+-        if int(values[1]) > 0
+-    )
+-    energy_mae = float(energy_abs_sum / len(atoms_list))
+-    combined = (
+-        policy.combined_energy_weight * energy_mae
+-        + policy.combined_force_weight * force_rmse
+-        + policy.combined_stress_weight * (0.0 if stress_rmse is None else stress_rmse)
++    return metrics_from_prediction_view(
++        active_view,
++        predictions,
++        combined_energy_weight=policy.combined_energy_weight,
++        combined_force_weight=policy.combined_force_weight,
++        combined_stress_weight=policy.combined_stress_weight,
+     )
+-    return {
+-        "configuration_count": len(atoms_list),
+-        "energy_mae_ev_per_atom": energy_mae,
+-        "force_component_rmse_ev_per_angstrom": force_rmse,
+-        "focus_force_rmse_ev_per_angstrom": focus_metrics,
+-        "stress_rmse_ev_per_angstrom3": stress_rmse,
+-        "worst_condition_force_rmse_ev_per_angstrom": (
+-            max(v for _, v in condition_metrics)
+-            if condition_metrics
+-            else worst_configuration_force_rmse
+-        ),
+-        "condition_force_rmse_ev_per_angstrom": condition_metrics,
+-        "combined_loss": combined,
+-    }
+ 
+ 
+ @mace_runtime_warning_handled("checkpoint evaluation")
+@@ -2346,6 +2338,7 @@
+     training_replay_monitor_path: str | Path | None = None,
+     replay_baseline_model_path: str | Path | None = None,
+     prediction_cache_directory: str | Path | None = None,
++    graph_cache_directory: str | Path | None = None,
+     foundation_prediction_manifest: Any | None = None,
+     foundation_prediction_root: str | Path | None = None,
+ ) -> CheckpointEvaluationRecord:
+@@ -2387,6 +2380,17 @@
+     )
+     if len(target_atoms) != target_monitor_artifact.configuration_count:
+         raise TrainingDataInputError("Target monitor configuration count changed after materialization.")
++    from .evaluation_views import cached_evaluation_dataset_view
++
++    target_view = cached_evaluation_dataset_view(
++        _path_cache_identity(target, target_monitor_artifact.sha256),
++        target_atoms,
++        energy_key=policy.energy_key,
++        forces_key=policy.forces_key,
++        stress_key=policy.stress_key,
++        focus_atomic_numbers=policy.focus_atomic_numbers,
++        condition_keys=policy.condition_keys,
++    )
+ 
+     candidate_provider: Any | None = None
+ 
+@@ -2421,12 +2425,14 @@
+     target_candidate_cache_hit = target_candidate_predictions is not None
+     if target_candidate_predictions is None:
+         report_inference_worker_phase("evaluating candidate on LTA target monitor")
+-        target_candidate_predictions = _predict_model_on_atoms(
++        target_candidate_predictions = _predict_model_on_monitor(
+             calculator_model,
+             target_atoms,
+             head=policy.target_head_name,
+             policy=policy,
+             provider=require_candidate_provider(),
++            geometry_identities=target_monitor_artifact.frame_uids,
++            graph_cache_directory=graph_cache_directory,
+         )
+         target_candidate_artifact = _persist_evaluation_predictions(
+             prediction_cache_directory,
+@@ -2440,7 +2446,7 @@
+     else:
+         report_inference_worker_phase("reusing persisted candidate target predictions")
+     target_metrics = _metrics_from_predictions(
+-        target_atoms, target_candidate_predictions, policy=policy
++        target_atoms, target_candidate_predictions, policy=policy, view=target_view
+     )
+ 
+     baseline = None if replay_baseline_model_path is None else Path(replay_baseline_model_path).resolve()
+@@ -2506,11 +2512,13 @@
+                         )
+                     else:
+                         report_inference_worker_phase("evaluating foundation on LTA target monitor")
+-                        target_foundation_predictions = _predict_model_on_atoms(
++                        target_foundation_predictions = _predict_model_on_monitor(
+                             baseline,
+                             target_atoms,
+                             head=policy.replay_baseline_head_name,
+                             policy=policy,
++                            geometry_identities=target_monitor_artifact.frame_uids,
++                            graph_cache_directory=graph_cache_directory,
+                         )
+                         target_foundation_artifact = _persist_evaluation_predictions(
+                             prediction_cache_directory,
+@@ -2524,7 +2532,7 @@
+         else:
+             report_inference_worker_phase("reusing persisted foundation target predictions")
+         target_foundation_metrics_raw = _metrics_from_predictions(
+-            target_atoms, target_foundation_predictions, policy=policy
++            target_atoms, target_foundation_predictions, policy=policy, view=target_view
+         )
+ 
+     # Keep two distinct replay identities:
+@@ -2576,6 +2584,15 @@
+         )
+         if len(replay_atoms) != replay_monitor_artifact.configuration_count:
+             raise TrainingDataInputError("Replay monitor configuration count changed after materialization.")
++        replay_view = cached_evaluation_dataset_view(
++            _path_cache_identity(replay, replay_monitor_artifact.sha256),
++            replay_atoms,
++            energy_key=policy.energy_key,
++            forces_key=policy.forces_key,
++            stress_key=policy.stress_key,
++            focus_atomic_numbers=policy.focus_atomic_numbers,
++            condition_keys=policy.condition_keys,
++        )
+ 
+         replay_candidate_artifact, replay_candidate_predictions = _cached_evaluation_predictions(
+             prediction_cache_directory,
+@@ -2587,12 +2604,14 @@
+         replay_candidate_cache_hit = replay_candidate_predictions is not None
+         if replay_candidate_predictions is None:
+             report_inference_worker_phase("evaluating candidate on replay monitor")
+-            replay_candidate_predictions = _predict_model_on_atoms(
++            replay_candidate_predictions = _predict_model_on_monitor(
+                 calculator_model,
+                 replay_atoms,
+                 head=policy.replay_head_name,
+                 policy=policy,
+                 provider=require_candidate_provider(),
++                geometry_identities=replay_monitor_artifact.geometry_identities,
++                graph_cache_directory=graph_cache_directory,
+             )
+             replay_candidate_artifact = _persist_evaluation_predictions(
+                 prediction_cache_directory,
+@@ -2606,7 +2625,7 @@
+         else:
+             report_inference_worker_phase("reusing persisted candidate replay predictions")
+         candidate_replay_metrics_raw = _metrics_from_predictions(
+-            replay_atoms, replay_candidate_predictions, policy=policy
++            replay_atoms, replay_candidate_predictions, policy=policy, view=replay_view
+         )
+ 
+         replay_foundation_artifact, replay_foundation_predictions = _cached_evaluation_predictions(
+@@ -2654,11 +2673,13 @@
+                         )
+                     else:
+                         report_inference_worker_phase("evaluating foundation on replay monitor")
+-                        replay_foundation_predictions = _predict_model_on_atoms(
++                        replay_foundation_predictions = _predict_model_on_monitor(
+                             baseline,
+                             replay_atoms,
+                             head=policy.replay_baseline_head_name,
+                             policy=policy,
++                            geometry_identities=replay_monitor_artifact.geometry_identities,
++                            graph_cache_directory=graph_cache_directory,
+                         )
+                         replay_foundation_artifact = _persist_evaluation_predictions(
+                             prediction_cache_directory,
+@@ -2672,7 +2693,7 @@
+         else:
+             report_inference_worker_phase("reusing persisted foundation replay predictions")
+         baseline_replay_metrics_raw = _metrics_from_predictions(
+-            replay_atoms, replay_foundation_predictions, policy=policy
++            replay_atoms, replay_foundation_predictions, policy=policy, view=replay_view
+         )
+ 
+         baseline_metric = _replay_scalar(baseline_replay_metrics_raw, policy)
+@@ -2707,6 +2728,8 @@
+         evaluation_notes=(
+             f"evaluation_policy:{policy.policy_digest}",
+             "prediction_metrics:label_independent_cache_v1",
++            "evaluation_view:immutable_preindexed_v1",
++            *(("monitor_graph_cache:stable_shards_v1",) if graph_cache_directory is not None else ()),
+             f"target_candidate_prediction_cache:{'hit' if target_candidate_cache_hit else 'miss'}",
+             *((f"target_foundation_prediction_cache:{'hit' if target_foundation_cache_hit else 'miss'}",) if target_foundation_metrics_raw is not None else ()),
+             *((f"replay_candidate_prediction_cache:{'hit' if replay_candidate_cache_hit else 'miss'}",) if candidate_replay_metrics_raw is not None else ()),
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/mdstats/training_data/evaluation_views.py new/mdstats/training_data/evaluation_views.py
+--- old/mdstats/training_data/evaluation_views.py	1970-01-01 00:00:00.000000000 +0000
++++ new/mdstats/training_data/evaluation_views.py	2026-08-07 21:17:46.058826897 +0000
+@@ -0,0 +1,423 @@
++"""Immutable, pre-indexed evaluation dataset views for MLFF checkpoint metrics.
++
++OPT-EVAL3 separates Python/ASE label extraction from repeated metric reduction.  A
++view is reconstructable execution evidence: it is keyed by the authenticated
++monitor bytes plus the label/condition policy, and never replaces the source
++monitor artifact.
++"""
++
++from __future__ import annotations
++
++from collections import OrderedDict
++from dataclasses import dataclass
++from threading import RLock
++from typing import Any, Sequence
++import os
++
++import numpy as np
++from ase.data import chemical_symbols
++from ase.stress import full_3x3_to_voigt_6_stress
++
++from ._common import TrainingDataInputError, digest
++
++EVALUATION_DATASET_VIEW_SCHEMA = "mdstats.evaluation-dataset-view.v1"
++EVALUATION_DATASET_VIEW_POLICY_VERSION = "mdstats.mlff-opt-eval3.view.2026-08.v1"
++
++
++@dataclass(frozen=True)
++class EvaluationDatasetView:
++    configuration_count: int
++    atom_counts: np.ndarray
++    force_offsets: np.ndarray
++    reference_energies: np.ndarray
++    reference_forces: np.ndarray
++    atomic_numbers: np.ndarray
++    focus_atomic_numbers: tuple[int, ...]
++    focus_local_indices: tuple[tuple[np.ndarray, ...], ...]
++    condition_labels: tuple[str, ...]
++    condition_ids: np.ndarray
++    reference_stresses: np.ndarray
++    stress_present: np.ndarray
++
++    def __post_init__(self) -> None:
++        count = int(self.configuration_count)
++        if count <= 0:
++            raise TrainingDataInputError("Evaluation dataset is empty.")
++        if self.atom_counts.shape != (count,) or np.any(self.atom_counts <= 0):
++            raise TrainingDataInputError("Invalid evaluation atom-count array.")
++        if self.force_offsets.shape != (count + 1,):
++            raise TrainingDataInputError("Invalid evaluation force-offset array.")
++        if int(self.force_offsets[0]) != 0 or np.any(np.diff(self.force_offsets) <= 0):
++            raise TrainingDataInputError("Evaluation force offsets must be strictly increasing.")
++        total_atoms = int(self.force_offsets[-1])
++        if self.reference_forces.shape != (total_atoms, 3):
++            raise TrainingDataInputError("Invalid evaluation reference-force array.")
++        if self.atomic_numbers.shape != (total_atoms,):
++            raise TrainingDataInputError("Invalid evaluation atomic-number array.")
++        if self.reference_energies.shape != (count,):
++            raise TrainingDataInputError("Invalid evaluation energy array.")
++        if self.condition_ids.shape != (count,):
++            raise TrainingDataInputError("Invalid evaluation condition-id array.")
++        if self.reference_stresses.shape != (count, 6) or self.stress_present.shape != (count,):
++            raise TrainingDataInputError("Invalid evaluation stress arrays.")
++        if np.any(~np.isfinite(self.reference_energies)) or np.any(~np.isfinite(self.reference_forces)):
++            raise TrainingDataInputError("Evaluation reference labels must be finite.")
++        if np.any(~np.isfinite(self.reference_stresses[self.stress_present])):
++            raise TrainingDataInputError("Evaluation reference stresses must be finite.")
++        if len(self.focus_local_indices) != len(self.focus_atomic_numbers):
++            raise TrainingDataInputError("Evaluation focus-index metadata is inconsistent.")
++        if any(len(per_frame) != count for per_frame in self.focus_local_indices):
++            raise TrainingDataInputError("Evaluation focus-index frame count is inconsistent.")
++
++    @property
++    def total_atom_count(self) -> int:
++        return int(self.force_offsets[-1])
++
++    @property
++    def content_digest(self) -> str:
++        # Array bytes are already bound to the authenticated source monitor used to
++        # build/cache this view.  This digest documents only the immutable shape and
++        # reduction policy identity, not a second scientific artifact identity.
++        return digest(
++            {
++                "schema": EVALUATION_DATASET_VIEW_SCHEMA,
++                "configuration_count": self.configuration_count,
++                "total_atom_count": self.total_atom_count,
++                "focus_atomic_numbers": list(self.focus_atomic_numbers),
++                "condition_labels": list(self.condition_labels),
++            }
++        )
++
++
++def build_evaluation_dataset_view(
++    atoms_list: Sequence[Any],
++    *,
++    energy_key: str,
++    forces_key: str,
++    stress_key: str,
++    focus_atomic_numbers: Sequence[int],
++    condition_keys: Sequence[str],
++) -> EvaluationDatasetView:
++    """Extract labels and reduction metadata from ASE objects exactly once."""
++
++    if not atoms_list:
++        raise TrainingDataInputError("Evaluation dataset is empty.")
++    count = len(atoms_list)
++    atom_counts = np.asarray([len(atoms) for atoms in atoms_list], dtype=np.int64)
++    if np.any(atom_counts <= 0):
++        raise TrainingDataInputError("Evaluation configurations must contain atoms.")
++    offsets = np.zeros(count + 1, dtype=np.int64)
++    offsets[1:] = np.cumsum(atom_counts, dtype=np.int64)
++    total_atoms = int(offsets[-1])
++    energies = np.empty(count, dtype=np.float64)
++    forces = np.empty((total_atoms, 3), dtype=np.float64)
++    numbers = np.empty(total_atoms, dtype=np.int32)
++    stresses = np.zeros((count, 6), dtype=np.float64)
++    stress_present = np.zeros(count, dtype=np.bool_)
++    condition_tuples: list[tuple[str, ...]] = []
++
++    for index, atoms in enumerate(atoms_list):
++        if energy_key not in atoms.info or forces_key not in atoms.arrays:
++            raise TrainingDataInputError(
++                "Evaluation dataset is missing required energy or force labels."
++            )
++        start = int(offsets[index])
++        stop = int(offsets[index + 1])
++        energies[index] = float(atoms.info[energy_key])
++        reference_forces = np.asarray(atoms.arrays[forces_key], dtype=np.float64)
++        if reference_forces.shape != (len(atoms), 3):
++            raise TrainingDataInputError("Reference force labels must have shape (n_atoms, 3).")
++        forces[start:stop] = reference_forces
++        atomic_numbers = np.asarray(atoms.numbers, dtype=np.int32)
++        if atomic_numbers.shape != (len(atoms),):
++            raise TrainingDataInputError("Invalid evaluation atomic-number labels.")
++        numbers[start:stop] = atomic_numbers
++        if stress_key in atoms.info:
++            reference_stress = np.asarray(atoms.info[stress_key], dtype=np.float64).reshape(-1)
++            if reference_stress.shape != (6,):
++                raise TrainingDataInputError("Reference stress labels must contain six Voigt components.")
++            if np.any(~np.isfinite(reference_stress)):
++                raise TrainingDataInputError("Reference stress labels must be finite.")
++            stresses[index] = reference_stress
++            stress_present[index] = True
++        if condition_keys:
++            condition_tuples.append(
++                tuple(str(atoms.info.get(key, f"missing:{key}")) for key in condition_keys)
++            )
++
++    if np.any(~np.isfinite(energies)) or np.any(~np.isfinite(forces)):
++        raise TrainingDataInputError("Evaluation reference energy/force labels must be finite.")
++
++    if condition_keys:
++        unique_conditions = tuple(sorted(set(condition_tuples)))
++        condition_index = {value: index for index, value in enumerate(unique_conditions)}
++        condition_ids = np.asarray([condition_index[value] for value in condition_tuples], dtype=np.int32)
++        condition_labels = tuple("|".join(value) for value in unique_conditions)
++    else:
++        condition_ids = np.full(count, -1, dtype=np.int32)
++        condition_labels = ()
++
++    focus_local_indices: list[tuple[np.ndarray, ...]] = []
++    for atomic_number in focus_atomic_numbers:
++        per_frame: list[np.ndarray] = []
++        for index in range(count):
++            start = int(offsets[index])
++            stop = int(offsets[index + 1])
++            local = np.flatnonzero(numbers[start:stop] == int(atomic_number)).astype(np.int32)
++            local.setflags(write=False)
++            per_frame.append(local)
++        focus_local_indices.append(tuple(per_frame))
++
++    # Make the cached contract genuinely immutable.  Consumers create prediction
++    # arrays separately and never mutate these source/reference buffers.
++    arrays = (atom_counts, offsets, energies, forces, numbers, condition_ids, stresses, stress_present)
++    for array in arrays:
++        array.setflags(write=False)
++
++    return EvaluationDatasetView(
++        configuration_count=count,
++        atom_counts=atom_counts,
++        force_offsets=offsets,
++        reference_energies=energies,
++        reference_forces=forces,
++        atomic_numbers=numbers,
++        focus_atomic_numbers=tuple(int(value) for value in focus_atomic_numbers),
++        focus_local_indices=tuple(focus_local_indices),
++        condition_labels=condition_labels,
++        condition_ids=condition_ids,
++        reference_stresses=stresses,
++        stress_present=stress_present,
++    )
++
++
++def metrics_from_prediction_view(
++    view: EvaluationDatasetView,
++    predictions: Sequence[Any],
++    *,
++    combined_energy_weight: float,
++    combined_force_weight: float,
++    combined_stress_weight: float,
++) -> dict[str, Any]:
++    """Pre-indexed metric reduction preserving the pre-OPT-EVAL3 definitions."""
++
++    if len(predictions) != view.configuration_count:
++        raise TrainingDataInputError("Prediction count does not match the evaluation dataset.")
++    energy_abs_sum = 0.0
++    force_squared_sum = 0.0
++    force_component_count = 0
++    stress_squared_sum = 0.0
++    stress_component_count = 0
++    focus_sse = np.zeros(len(view.focus_atomic_numbers), dtype=np.float64)
++    focus_components = np.zeros(len(view.focus_atomic_numbers), dtype=np.int64)
++    condition_sse = np.zeros(len(view.condition_labels), dtype=np.float64)
++    condition_components = np.zeros(len(view.condition_labels), dtype=np.int64)
++    worst_configuration_force_rmse = 0.0
++
++    for index, prediction in enumerate(predictions):
++        atom_count = int(view.atom_counts[index])
++        start = int(view.force_offsets[index])
++        stop = int(view.force_offsets[index + 1])
++        predicted_energy = float(prediction.energy_ev)
++        if not np.isfinite(predicted_energy):
++            raise TrainingDataInputError("Predicted energies must be finite.")
++        energy_abs_sum += abs(predicted_energy - float(view.reference_energies[index])) / atom_count
++
++        predicted_force = np.asarray(prediction.forces_ev_per_angstrom, dtype=np.float64)
++        if predicted_force.shape != (atom_count, 3):
++            raise TrainingDataInputError("Predicted and reference force shapes differ.")
++        if np.any(~np.isfinite(predicted_force)):
++            raise TrainingDataInputError("Predicted forces must be finite.")
++        error = predicted_force - view.reference_forces[start:stop]
++        error_squared_sum = float(np.sum(error * error, dtype=np.float64))
++        force_squared_sum += error_squared_sum
++        force_component_count += int(error.size)
++
++        for focus_index, per_frame_indices in enumerate(view.focus_local_indices):
++            selected_indices = per_frame_indices[index]
++            if selected_indices.size:
++                selected = error[selected_indices]
++                focus_sse[focus_index] += float(np.sum(selected * selected, dtype=np.float64))
++                focus_components[focus_index] += int(selected.size)
++
++        if view.condition_labels:
++            condition_id = int(view.condition_ids[index])
++            condition_sse[condition_id] += error_squared_sum
++            condition_components[condition_id] += int(error.size)
++        else:
++            worst_configuration_force_rmse = max(
++                worst_configuration_force_rmse,
++                float(np.sqrt(error_squared_sum / int(error.size))),
++            )
++
++        if bool(view.stress_present[index]):
++            if prediction.stress_ev_per_angstrom3 is None:
++                raise TrainingDataInputError(
++                    "Evaluation labels include stress but the model did not return stress."
++                )
++            predicted_stress = full_3x3_to_voigt_6_stress(
++                np.asarray(prediction.stress_ev_per_angstrom3, dtype=np.float64)
++            ).reshape(-1)
++            if predicted_stress.shape != (6,) or np.any(~np.isfinite(predicted_stress)):
++                raise TrainingDataInputError("Predicted and reference stress shapes differ.")
++            stress_error = predicted_stress - view.reference_stresses[index]
++            stress_squared_sum += float(np.sum(stress_error * stress_error, dtype=np.float64))
++            stress_component_count += int(stress_error.size)
++
++    if force_component_count == 0:
++        raise TrainingDataInputError("Evaluation dataset contains no force components.")
++    energy_mae = float(energy_abs_sum / view.configuration_count)
++    force_rmse = float(np.sqrt(force_squared_sum / force_component_count))
++    stress_rmse = (
++        None
++        if stress_component_count == 0
++        else float(np.sqrt(stress_squared_sum / stress_component_count))
++    )
++    focus_metrics = tuple(
++        (
++            chemical_symbols[atomic_number],
++            float(np.sqrt(focus_sse[index] / focus_components[index])),
++        )
++        for index, atomic_number in enumerate(view.focus_atomic_numbers)
++        if int(focus_components[index]) > 0
++    )
++    condition_metrics = tuple(
++        (
++            label,
++            float(np.sqrt(condition_sse[index] / condition_components[index])),
++        )
++        for index, label in enumerate(view.condition_labels)
++        if int(condition_components[index]) > 0
++    )
++    worst_force_rmse = (
++        max(value for _, value in condition_metrics)
++        if condition_metrics
++        else worst_configuration_force_rmse
++    )
++
++    combined = (
++        float(combined_energy_weight) * energy_mae
++        + float(combined_force_weight) * force_rmse
++        + float(combined_stress_weight) * (0.0 if stress_rmse is None else stress_rmse)
++    )
++    return {
++        "configuration_count": view.configuration_count,
++        "energy_mae_ev_per_atom": energy_mae,
++        "force_component_rmse_ev_per_angstrom": force_rmse,
++        "focus_force_rmse_ev_per_angstrom": tuple(focus_metrics),
++        "stress_rmse_ev_per_angstrom3": stress_rmse,
++        "worst_condition_force_rmse_ev_per_angstrom": worst_force_rmse,
++        "condition_force_rmse_ev_per_angstrom": condition_metrics,
++        "combined_loss": combined,
++    }
++
++
++_VIEW_CACHE: "OrderedDict[tuple[Any, ...], tuple[EvaluationDatasetView, int]]" = OrderedDict()
++_VIEW_CACHE_LOCK = RLock()
++_VIEW_CACHE_BYTES = 0
++_VIEW_CACHE_MAX_BYTES = max(
++    0, int(os.environ.get("MDSTATS_MLFF_EVALUATION_VIEW_CACHE_BYTES", str(512 * 1024**2)))
++)
++
++
++def _view_resident_bytes(view: EvaluationDatasetView) -> int:
++    return max(
++        1,
++        sum(
++            int(array.nbytes)
++            for array in (
++                view.atom_counts,
++                view.force_offsets,
++                view.reference_energies,
++                view.reference_forces,
++                view.atomic_numbers,
++                view.condition_ids,
++                view.reference_stresses,
++                view.stress_present,
++            )
++        )
++        + sum(len(value) for value in view.condition_labels)
++        + sum(int(indices.nbytes) for per_frame in view.focus_local_indices for indices in per_frame),
++    )
++
++
++def evaluation_view_cache_key(
++    source_identity: Any,
++    *,
++    energy_key: str,
++    forces_key: str,
++    stress_key: str,
++    focus_atomic_numbers: Sequence[int],
++    condition_keys: Sequence[str],
++) -> tuple[Any, ...]:
++    return (
++        EVALUATION_DATASET_VIEW_POLICY_VERSION,
++        source_identity,
++        str(energy_key),
++        str(forces_key),
++        str(stress_key),
++        tuple(int(value) for value in focus_atomic_numbers),
++        tuple(str(value) for value in condition_keys),
++    )
++
++
++def cached_evaluation_dataset_view(
++    source_identity: Any,
++    atoms_list: Sequence[Any],
++    *,
++    energy_key: str,
++    forces_key: str,
++    stress_key: str,
++    focus_atomic_numbers: Sequence[int],
++    condition_keys: Sequence[str],
++) -> EvaluationDatasetView:
++    """Return one immutable label/reduction view per authenticated monitor/policy."""
++
++    global _VIEW_CACHE_BYTES
++    key = evaluation_view_cache_key(
++        source_identity,
++        energy_key=energy_key,
++        forces_key=forces_key,
++        stress_key=stress_key,
++        focus_atomic_numbers=focus_atomic_numbers,
++        condition_keys=condition_keys,
++    )
++    with _VIEW_CACHE_LOCK:
++        cached = _VIEW_CACHE.get(key)
++        if cached is not None:
++            _VIEW_CACHE.move_to_end(key)
++            return cached[0]
++        view = build_evaluation_dataset_view(
++            atoms_list,
++            energy_key=energy_key,
++            forces_key=forces_key,
++            stress_key=stress_key,
++            focus_atomic_numbers=focus_atomic_numbers,
++            condition_keys=condition_keys,
++        )
++        resident_bytes = _view_resident_bytes(view)
++        if _VIEW_CACHE_MAX_BYTES <= 0 or resident_bytes > _VIEW_CACHE_MAX_BYTES:
++            return view
++        _VIEW_CACHE[key] = (view, resident_bytes)
++        _VIEW_CACHE_BYTES += resident_bytes
++        while _VIEW_CACHE and _VIEW_CACHE_BYTES > _VIEW_CACHE_MAX_BYTES:
++            _, (_, removed_bytes) = _VIEW_CACHE.popitem(last=False)
++            _VIEW_CACHE_BYTES -= removed_bytes
++        return view
++
++
++def clear_evaluation_dataset_view_cache() -> None:
++    global _VIEW_CACHE_BYTES
++    with _VIEW_CACHE_LOCK:
++        _VIEW_CACHE.clear()
++        _VIEW_CACHE_BYTES = 0
++
++
++__all__ = [
++    "EVALUATION_DATASET_VIEW_SCHEMA",
++    "EVALUATION_DATASET_VIEW_POLICY_VERSION",
++    "EvaluationDatasetView",
++    "build_evaluation_dataset_view",
++    "metrics_from_prediction_view",
++    "cached_evaluation_dataset_view",
++    "clear_evaluation_dataset_view_cache",
++]
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/mdstats/training_data/model_features.py new/mdstats/training_data/model_features.py
+--- old/mdstats/training_data/model_features.py	2026-08-07 07:39:34.000000000 +0000
++++ new/mdstats/training_data/model_features.py	2026-08-07 21:12:50.788851919 +0000
+@@ -9,12 +9,15 @@
+ 
+ from dataclasses import dataclass, field
+ from functools import lru_cache
++from importlib import metadata as importlib_metadata
+ from collections import OrderedDict
+ from threading import RLock
+ import weakref
+ import hashlib
+ import io
++import json
+ import os
++import tempfile
+ from pathlib import Path
+ from typing import Any, Mapping, Protocol, Sequence
+ 
+@@ -45,6 +48,8 @@
+ MODEL_PREDICTION_SUMMARY_SCHEMA = "mdstats.model-prediction-summary.v1"
+ MACE_DESCRIPTOR_POLICY_VERSION = "mdstats.mlff-data6.mace-descriptor.2026-07.v1"
+ MACE_ADAPTER_VERSION = "mdstats.mlff-data6.mace-calculator.2026-07.v1"
++MACE_MONITOR_GRAPH_CACHE_SCHEMA = "mdstats.mace-monitor-graph-cache.v1"
++MACE_MONITOR_GRAPH_POLICY_VERSION = "mdstats.mlff-opt-eval3.graph.2026-08.v1"
+ 
+ 
+ def _sha256_file(path: Path) -> str:
+@@ -191,6 +196,224 @@
+     with _MACE_GRAPH_BATCH_CACHE_LOCK:
+         _MACE_GRAPH_BATCH_CACHE.clear()
+         _MACE_GRAPH_BATCH_CACHE_BYTES = 0
++    clear_mace_monitor_graph_cache()
++
++
++_MACE_MONITOR_GRAPH_CACHE: "OrderedDict[str, tuple[Any, np.ndarray, int]]" = OrderedDict()
++_MACE_MONITOR_GRAPH_CACHE_BYTES = 0
++_MACE_MONITOR_GRAPH_CACHE_LOCK = RLock()
++_MACE_MONITOR_GRAPH_CACHE_MAX_BYTES = max(
++    0, int(os.environ.get("MDSTATS_MACE_MONITOR_GRAPH_CACHE_BYTES", str(1024 * 1024**2)))
++)
++_MACE_MONITOR_GRAPH_KEY_LOCKS: dict[str, RLock] = {}
++
++
++@lru_cache(maxsize=None)
++def _dependency_version(distribution: str) -> str:
++    try:
++        return str(importlib_metadata.version(distribution))
++    except importlib_metadata.PackageNotFoundError:
++        return "unavailable"
++
++
++def _mace_monitor_graph_policy_payload(calc: Any) -> dict[str, Any]:
++    """Return model-independent graph-construction identity for one calculator."""
++
++    try:
++        import mace
++    except Exception:  # pragma: no cover - only reachable without optional dependency
++        mace_version = "unavailable"
++    else:
++        mace_version = str(getattr(mace, "__version__", "unknown"))
++    try:
++        import torch
++    except Exception:  # pragma: no cover
++        torch_version = "unavailable"
++    else:
++        torch_version = str(getattr(torch, "__version__", "unknown"))
++    z_values = tuple(int(value) for value in getattr(getattr(calc, "z_table", None), "zs", ()))
++    return {
++        "schema": MACE_MONITOR_GRAPH_CACHE_SCHEMA,
++        "policy_version": MACE_MONITOR_GRAPH_POLICY_VERSION,
++        "calculator_class": f"{type(calc).__module__}.{type(calc).__qualname__}",
++        "r_max": float(calc.r_max),
++        "default_dtype": str(calc.default_dtype),
++        "head": str(calc.head),
++        "z_table": list(z_values),
++        "available_heads": [str(value) for value in getattr(calc, "available_heads", ())],
++        "info_keys": sorted((str(key), str(value)) for key, value in getattr(calc, "info_keys", {}).items()),
++        "arrays_keys": sorted((str(key), str(value)) for key, value in getattr(calc, "arrays_keys", {}).items()),
++        "mace_version": mace_version,
++        "torch_version": torch_version,
++        "dependency_versions": {
++            "ase": _dependency_version("ase"),
++            "e3nn": _dependency_version("e3nn"),
++            "matscipy": _dependency_version("matscipy"),
++            "numpy": _dependency_version("numpy"),
++            "torch_geometric": _dependency_version("torch-geometric"),
++        },
++    }
++
++
++def _mace_monitor_graph_token(calc: Any, geometry_identities: Sequence[str]) -> tuple[str, str]:
++    geometry_values = tuple(str(value) for value in geometry_identities)
++    if not geometry_values:
++        raise TrainingDataInputError("Monitor graph shard requires geometry identities.")
++    policy_digest = digest(_mace_monitor_graph_policy_payload(calc))
++    token = digest(
++        {
++            "schema": MACE_MONITOR_GRAPH_CACHE_SCHEMA,
++            "policy_digest": policy_digest,
++            "geometry_identities": list(geometry_values),
++        }
++    )
++    return token, policy_digest
++
++
++def _mace_monitor_graph_paths(root_directory: str | Path, token: str) -> tuple[Path, Path]:
++    root = Path(root_directory).resolve()
++    directory = root / token[:2]
++    return directory / f"{token}.json", directory / f"{token}.pt"
++
++
++def _monitor_graph_memory_get(token: str, calc: Any) -> tuple[Any, np.ndarray] | None:
++    with _MACE_MONITOR_GRAPH_CACHE_LOCK:
++        cached = _MACE_MONITOR_GRAPH_CACHE.get(token)
++        if cached is None:
++            return None
++        batch, counts, _ = cached
++        _MACE_MONITOR_GRAPH_CACHE.move_to_end(token)
++        try:
++            return batch.clone().to(calc.device), counts.copy()
++        except Exception:
++            return None
++
++
++def _monitor_graph_memory_store(token: str, batch: Any, counts: np.ndarray) -> None:
++    global _MACE_MONITOR_GRAPH_CACHE_BYTES
++    if _MACE_MONITOR_GRAPH_CACHE_MAX_BYTES <= 0:
++        return
++    try:
++        cpu_batch = batch.clone().cpu()
++    except Exception:
++        return
++    resident = _graph_tensor_bytes(cpu_batch) + int(counts.nbytes)
++    if resident > _MACE_MONITOR_GRAPH_CACHE_MAX_BYTES:
++        return
++    with _MACE_MONITOR_GRAPH_CACHE_LOCK:
++        previous = _MACE_MONITOR_GRAPH_CACHE.pop(token, None)
++        if previous is not None:
++            _MACE_MONITOR_GRAPH_CACHE_BYTES -= previous[2]
++        _MACE_MONITOR_GRAPH_CACHE[token] = (cpu_batch, counts.copy(), resident)
++        _MACE_MONITOR_GRAPH_CACHE_BYTES += resident
++        while (
++            _MACE_MONITOR_GRAPH_CACHE
++            and _MACE_MONITOR_GRAPH_CACHE_BYTES > _MACE_MONITOR_GRAPH_CACHE_MAX_BYTES
++        ):
++            _, (_, _, removed) = _MACE_MONITOR_GRAPH_CACHE.popitem(last=False)
++            _MACE_MONITOR_GRAPH_CACHE_BYTES -= removed
++
++
++def _monitor_graph_key_lock(token: str) -> RLock:
++    with _MACE_MONITOR_GRAPH_CACHE_LOCK:
++        return _MACE_MONITOR_GRAPH_KEY_LOCKS.setdefault(token, RLock())
++
++
++def _load_persistent_monitor_graph(
++    root_directory: str | Path | None,
++    *,
++    token: str,
++    policy_digest: str,
++    geometry_identities: Sequence[str],
++    calc: Any,
++) -> tuple[Any, np.ndarray] | None:
++    if root_directory is None:
++        return None
++    metadata_path, data_path = _mace_monitor_graph_paths(root_directory, token)
++    if not metadata_path.is_file() or not data_path.is_file():
++        return None
++    try:
++        payload = json.loads(metadata_path.read_text(encoding="utf-8"))
++        if (
++            payload.get("schema") != MACE_MONITOR_GRAPH_CACHE_SCHEMA
++            or payload.get("token") != token
++            or payload.get("policy_digest") != policy_digest
++            or tuple(str(value) for value in payload.get("geometry_identities", ()))
++            != tuple(str(value) for value in geometry_identities)
++            or sha256_file_cached(data_path) != payload.get("file_sha256")
++        ):
++            return None
++        import torch
++
++        loaded = torch.load(data_path, map_location="cpu", weights_only=False)
++        batch = loaded["batch"]
++        counts = np.asarray(loaded["counts"], dtype=np.int64)
++        if counts.shape != (len(geometry_identities),) or np.any(counts <= 0):
++            return None
++        if int(getattr(batch, "num_graphs", len(counts))) != len(counts):
++            return None
++        _monitor_graph_memory_store(token, batch, counts)
++        return batch.clone().to(calc.device), counts.copy()
++    except Exception:
++        return None
++
++
++def _write_persistent_monitor_graph(
++    root_directory: str | Path | None,
++    *,
++    token: str,
++    policy_digest: str,
++    geometry_identities: Sequence[str],
++    batch: Any,
++    counts: np.ndarray,
++) -> None:
++    if root_directory is None:
++        return
++    metadata_path, data_path = _mace_monitor_graph_paths(root_directory, token)
++    metadata_path.parent.mkdir(parents=True, exist_ok=True)
++    import torch
++
++    fd, temporary_name = tempfile.mkstemp(
++        prefix=f".{data_path.name}.", suffix=".tmp", dir=data_path.parent
++    )
++    os.close(fd)
++    temporary = Path(temporary_name)
++    try:
++        torch.save({"batch": batch.clone().cpu(), "counts": np.asarray(counts, dtype=np.int64)}, temporary)
++        file_sha = sha256_file_cached(temporary)
++        os.replace(temporary, data_path)
++        metadata = {
++            "schema": MACE_MONITOR_GRAPH_CACHE_SCHEMA,
++            "token": token,
++            "policy_digest": policy_digest,
++            "geometry_identities": [str(value) for value in geometry_identities],
++            "file_sha256": file_sha,
++            "configuration_count": len(geometry_identities),
++        }
++        fd, metadata_name = tempfile.mkstemp(
++            prefix=f".{metadata_path.name}.", suffix=".tmp", dir=metadata_path.parent
++        )
++        os.close(fd)
++        metadata_temporary = Path(metadata_name)
++        try:
++            metadata_temporary.write_text(
++                json.dumps(metadata, sort_keys=True, indent=2) + "\n", encoding="utf-8"
++            )
++            os.replace(metadata_temporary, metadata_path)
++        finally:
++            metadata_temporary.unlink(missing_ok=True)
++    finally:
++        temporary.unlink(missing_ok=True)
++
++
++def clear_mace_monitor_graph_cache() -> None:
++    """Release in-memory monitor graph shards; persistent cache remains reconstructable."""
++
++    global _MACE_MONITOR_GRAPH_CACHE_BYTES
++    with _MACE_MONITOR_GRAPH_CACHE_LOCK:
++        _MACE_MONITOR_GRAPH_CACHE.clear()
++        _MACE_MONITOR_GRAPH_KEY_LOCKS.clear()
++        _MACE_MONITOR_GRAPH_CACHE_BYTES = 0
+ 
+ 
+ def _file_identity(path: Path) -> tuple[str, int, int, int, int, int]:
+@@ -595,9 +818,17 @@
+             and int(getattr(calc, "pad_num_edges", 0)) == 0
+         )
+ 
+-    def _native_batch(self, atoms_batch: Sequence[Any]) -> tuple[Any, np.ndarray]:
++    def _native_batch(
++        self,
++        atoms_batch: Sequence[Any],
++        *,
++        geometry_identities: Sequence[str] | None = None,
++        graph_cache_directory: str | Path | None = None,
++    ) -> tuple[Any, np.ndarray]:
+         if not atoms_batch:
+             raise TrainingDataInputError("MACE batch must contain at least one structure.")
++        if geometry_identities is not None and len(geometry_identities) != len(atoms_batch):
++            raise TrainingDataInputError("Monitor graph identity count mismatch.")
+         if not self._native_batch_supported():
+             raise TrainingDataInputError("This MACE calculator cannot use the qualified native batch path.")
+         try:
+@@ -607,31 +838,87 @@
+             raise TrainingDataInputError("MACE native batching requires mace-torch.") from exc
+         calc = self._calculator
+         calc.arrays_keys.update({calc.charges_key: "charges"})
+-        cached = _cached_graph_batch(calc, atoms_batch)
+-        if cached is not None:
+-            return cached
+-        keyspec = mace_data.KeySpecification(
+-            info_keys=calc.info_keys, arrays_keys=calc.arrays_keys
+-        )
+-        graphs = []
+-        counts = []
+-        with torch_tools.default_dtype(calc.default_dtype):
+-            for atoms in atoms_batch:
+-                config = mace_data.config_from_atoms(
+-                    atoms, key_specification=keyspec, head_name=calc.head
+-                )
+-                graph = mace_data.AtomicData.from_config(
+-                    config,
+-                    z_table=calc.z_table,
+-                    cutoff=calc.r_max,
+-                    heads=calc.available_heads,
++
++        stable_token = None
++        stable_policy_digest = None
++        if geometry_identities is not None:
++            stable_token, stable_policy_digest = _mace_monitor_graph_token(
++                calc, geometry_identities
++            )
++            cached = _monitor_graph_memory_get(stable_token, calc)
++            if cached is not None:
++                return cached
++            cached = _load_persistent_monitor_graph(
++                graph_cache_directory,
++                token=stable_token,
++                policy_digest=stable_policy_digest,
++                geometry_identities=geometry_identities,
++                calc=calc,
++            )
++            if cached is not None:
++                return cached
++        else:
++            cached = _cached_graph_batch(calc, atoms_batch)
++            if cached is not None:
++                return cached
++
++        # Single-flight graph construction for one stable monitor shard.  Parallel
++        # checkpoint workers may share geometry but never share mutable calculators.
++        lock = (
++            _monitor_graph_key_lock(stable_token)
++            if stable_token is not None
++            else _MACE_GRAPH_BATCH_CACHE_LOCK
++        )
++        with lock:
++            if stable_token is not None:
++                cached = _monitor_graph_memory_get(stable_token, calc)
++                if cached is None:
++                    cached = _load_persistent_monitor_graph(
++                        graph_cache_directory,
++                        token=stable_token,
++                        policy_digest=stable_policy_digest,
++                        geometry_identities=geometry_identities or (),
++                        calc=calc,
++                    )
++                if cached is not None:
++                    return cached
++
++            keyspec = mace_data.KeySpecification(
++                info_keys=calc.info_keys, arrays_keys=calc.arrays_keys
++            )
++            graphs = []
++            counts = []
++            with torch_tools.default_dtype(calc.default_dtype):
++                for atoms in atoms_batch:
++                    config = mace_data.config_from_atoms(
++                        atoms, key_specification=keyspec, head_name=calc.head
++                    )
++                    graph = mace_data.AtomicData.from_config(
++                        config,
++                        z_table=calc.z_table,
++                        cutoff=calc.r_max,
++                        heads=calc.available_heads,
++                    )
++                    graphs.append(graph)
++                    counts.append(len(atoms))
++            # Construct/cache on CPU and perform exactly one host->device transfer per
++            # inference call.  The old path moved to device and then cloned back to
++            # CPU solely for caching.
++            cpu_batch = torch_geometric.Batch.from_data_list(graphs)
++            count_array = np.asarray(counts, dtype=np.int64)
++            if stable_token is not None:
++                _monitor_graph_memory_store(stable_token, cpu_batch, count_array)
++                _write_persistent_monitor_graph(
++                    graph_cache_directory,
++                    token=stable_token,
++                    policy_digest=stable_policy_digest or "",
++                    geometry_identities=geometry_identities or (),
++                    batch=cpu_batch,
++                    counts=count_array,
+                 )
+-                graphs.append(graph)
+-                counts.append(len(atoms))
+-        batch = torch_geometric.Batch.from_data_list(graphs).to(calc.device)
+-        count_array = np.asarray(counts, dtype=np.int64)
+-        _store_graph_batch(calc, atoms_batch, batch, count_array)
+-        return batch, count_array
++            else:
++                _store_graph_batch(calc, atoms_batch, cpu_batch, count_array)
++            return cpu_batch.to(calc.device), count_array
+ 
+     def get_descriptors_batch(
+         self, atoms_batch: Sequence[Any], policy: MaceDescriptorPolicy
+@@ -818,21 +1105,37 @@
+             )
+         return tuple(descriptors), tuple(predictions)
+ 
+-    def predict_batch(self, atoms_batch: Sequence[Any]) -> tuple[AtomicModelPrediction, ...]:
+-        """Evaluate a homogeneous list of structures in one MACE graph batch."""
++    def predict_batch(
++        self,
++        atoms_batch: Sequence[Any],
++        *,
++        geometry_identities: Sequence[str] | None = None,
++        graph_cache_directory: str | Path | None = None,
++    ) -> tuple[AtomicModelPrediction, ...]:
++        """Evaluate structures using stable monitor graph shards when identified."""
+ 
+-        if len(atoms_batch) <= 1 or not self._native_batch_supported():
++        if not self._native_batch_supported() or (
++            len(atoms_batch) <= 1 and geometry_identities is None
++        ):
+             return tuple(self.predict(atoms) for atoms in atoms_batch)
+         try:
+             import torch
+         except ModuleNotFoundError as exc:  # pragma: no cover
+             raise TrainingDataInputError("MACE prediction batching requires torch.") from exc
+         calc = self._calculator
+-        batch, counts = self._native_batch(atoms_batch)
++        batch, counts = self._native_batch(
++            atoms_batch,
++            geometry_identities=geometry_identities,
++            graph_cache_directory=graph_cache_directory,
++        )
+         outputs = []
++        model_count = len(calc.models)
+         with torch.enable_grad():
+-            for model in calc.models:
+-                local = batch.clone()
++            for model_index, model in enumerate(calc.models):
++                # A single-model calculator owns this freshly materialized device
++                # batch, so cloning it only doubles device traffic and allocation.
++                # Ensembles retain isolation between model passes.
++                local = batch if model_count == 1 else batch.clone()
+                 model_dtype = next(model.parameters()).dtype
+                 for key in local.keys:
+                     value = local[key]
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/pyproject.toml new/pyproject.toml
+--- old/pyproject.toml	2026-08-07 20:08:56.461218951 +0000
++++ new/pyproject.toml	2026-08-07 21:18:11.471930031 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.98a0"
++version = "0.20.99a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/tests/test_lta_example_trajectory_input.py new/tests/test_lta_example_trajectory_input.py
+--- old/tests/test_lta_example_trajectory_input.py	1970-01-01 00:00:00.000000000 +0000
++++ new/tests/test_lta_example_trajectory_input.py	2026-08-07 20:52:10.969158080 +0000
+@@ -0,0 +1,216 @@
++from __future__ import annotations
++
++import argparse
++import importlib.util
++from pathlib import Path
++
++import numpy as np
++import pytest
++
++
++def _load_example_module():
++    path = Path(__file__).parents[1] / "examples" / "plot_lta_mixed_alkali_density.py"
++    spec = importlib.util.spec_from_file_location("mdstats_lta_example_input", path)
++    assert spec is not None and spec.loader is not None
++    module = importlib.util.module_from_spec(spec)
++    spec.loader.exec_module(module)
++    return module
++
++
++def _args(path: Path, **overrides) -> argparse.Namespace:
++    values = {
++        "trajectory": path,
++        "format": "auto",
++        "stride": 1,
++        "timestep_fs": None,
++        "lammps_log": None,
++        "lammps_units": None,
++        "lammps_timestep": None,
++        "lammps_type_map": None,
++    }
++    values.update(overrides)
++    return argparse.Namespace(**values)
++
++
++@pytest.mark.parametrize(
++    ("name", "expected"),
++    [
++        ("vasprun.xml", "vasp-xml"),
++        ("run.XDATCAR", "vasp-xdatcar"),
++        ("TRAJECTORY", "vasp-contcar-trajectory"),
++        ("backup.TRAJECTORY.gz", "vasp-contcar-trajectory"),
++        ("trajectory.lammpstrj", "lammps-dump"),
++        ("traj.dump", "lammps-dump"),
++        ("dump.production", "lammps-dump"),
++        ("dump.lammpstrj.gz", "lammps-dump"),
++    ],
++)
++def test_infer_supported_trajectory_formats(name: str, expected: str) -> None:
++    module = _load_example_module()
++    assert module.infer_trajectory_format(Path(name)) == expected
++
++
++def test_explicit_format_handles_ambiguous_filename() -> None:
++    module = _load_example_module()
++    assert (
++        module.infer_trajectory_format(Path("frames.dat"), "lammps-dump")
++        == "lammps-dump"
++    )
++    with pytest.raises(ValueError, match="Cannot infer trajectory format"):
++        module.infer_trajectory_format(Path("frames.dat"))
++
++
++def test_lammps_type_map_parser() -> None:
++    module = _load_example_module()
++    assert module.parse_lammps_type_map("1=Si, 2=Al,3=O,4=Na") == {
++        1: "Si",
++        2: "Al",
++        3: "O",
++        4: "Na",
++    }
++    with pytest.raises(ValueError, match="TYPE=ELEMENT"):
++        module.parse_lammps_type_map("1:Si")
++    with pytest.raises(ValueError, match="mapped more than once"):
++        module.parse_lammps_type_map("1=Si,1=Al")
++
++
++def test_lammps_dump_with_element_column_is_read_directly(tmp_path: Path) -> None:
++    module = _load_example_module()
++    dump = tmp_path / "production.lammpstrj"
++    dump.write_text(
++        """ITEM: TIMESTEP
++0
++ITEM: TIME
++0.0
++ITEM: UNITS
++metal
++ITEM: NUMBER OF ATOMS
++2
++ITEM: BOX BOUNDS pp pp pp
++0 10
++0 10
++0 10
++ITEM: ATOMS id element xsu ysu zsu vx vy vz
++1 Na 0.10 0.20 0.30 0 0 0
++2 O  0.40 0.50 0.60 0 0 0
++ITEM: TIMESTEP
++10
++ITEM: TIME
++0.01
++ITEM: UNITS
++metal
++ITEM: NUMBER OF ATOMS
++2
++ITEM: BOX BOUNDS pp pp pp
++0 10
++0 10
++0 10
++ITEM: ATOMS id element xsu ysu zsu vx vy vz
++1 Na 0.20 0.20 0.30 0 0 0
++2 O  0.40 0.50 0.60 0 0 0
++""",
++        encoding="utf-8",
++    )
++
++    trajectory, source_format = module.read_input_trajectory(_args(dump))
++
++    assert source_format == "lammps-dump"
++    assert trajectory.n_frames == 2
++    assert trajectory.n_atoms == 2
++    assert trajectory.atomic_numbers.tolist() == [11, 8]
++    np.testing.assert_allclose(trajectory.times, [0.0, 0.01])
++
++
++def test_lammps_numeric_types_accept_cli_mapping_and_log(tmp_path: Path) -> None:
++    module = _load_example_module()
++    dump = tmp_path / "dump.production"
++    log = tmp_path / "log.lammps"
++    dump.write_text(
++        """ITEM: TIMESTEP
++0
++ITEM: NUMBER OF ATOMS
++2
++ITEM: BOX BOUNDS pp pp pp
++0 10
++0 10
++0 10
++ITEM: ATOMS id type xsu ysu zsu vx vy vz
++1 1 0.10 0.20 0.30 0 0 0
++2 2 0.40 0.50 0.60 0 0 0
++ITEM: TIMESTEP
++10
++ITEM: NUMBER OF ATOMS
++2
++ITEM: BOX BOUNDS pp pp pp
++0 10
++0 10
++0 10
++ITEM: ATOMS id type xsu ysu zsu vx vy vz
++1 1 0.20 0.20 0.30 0 0 0
++2 2 0.40 0.50 0.60 0 0 0
++""",
++        encoding="utf-8",
++    )
++    log.write_text(
++        """units metal
++timestep 0.001
++Step Time Temp PotEng
++0 0.000 300 -10
++10 0.010 310 -9
++Loop time of 1 on 1 procs
++""",
++        encoding="utf-8",
++    )
++
++    trajectory, source_format = module.read_input_trajectory(
++        _args(
++            dump,
++            lammps_log=log,
++            lammps_type_map="1=Na,2=O",
++        )
++    )
++
++    assert source_format == "lammps-dump"
++    assert trajectory.atomic_numbers.tolist() == [11, 8]
++    np.testing.assert_allclose(trajectory.temperatures, [300.0, 310.0])
++    np.testing.assert_allclose(trajectory.potential_energies, [-10.0, -9.0])
++
++
++def test_custom_trajectory_keeps_legacy_one_fs_default(monkeypatch, tmp_path: Path) -> None:
++    module = _load_example_module()
++    seen: dict[str, object] = {}
++    sentinel = object()
++
++    def fake_read_vasp_frames(filename, **kwargs):
++        seen["filename"] = filename
++        seen.update(kwargs)
++        return sentinel
++
++    monkeypatch.setattr(module, "read_vasp_frames", fake_read_vasp_frames)
++    path = tmp_path / "TRAJECTORY"
++    trajectory, source_format = module.read_input_trajectory(_args(path, stride=3))
++
++    assert trajectory is sentinel
++    assert source_format == "vasp-contcar-trajectory"
++    assert seen["format"] == "vasp-contcar-trajectory"
++    assert seen["stride"] == 3
++    assert seen["timestep_fs"] == 1.0
++
++
++def test_vasprun_does_not_override_embedded_timestep(monkeypatch, tmp_path: Path) -> None:
++    module = _load_example_module()
++    seen: dict[str, object] = {}
++    sentinel = object()
++
++    def fake_read_vasp_frames(filename, **kwargs):
++        seen.update(kwargs)
++        return sentinel
++
++    monkeypatch.setattr(module, "read_vasp_frames", fake_read_vasp_frames)
++    trajectory, source_format = module.read_input_trajectory(
++        _args(tmp_path / "vasprun.xml")
++    )
++
++    assert trajectory is sentinel
++    assert source_format == "vasp-xml"
++    assert seen["timestep_fs"] is None
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/tests/test_mlff_data0_architecture_specification.py new/tests/test_mlff_data0_architecture_specification.py
+--- old/tests/test_mlff_data0_architecture_specification.py	2026-08-07 20:13:25.447846362 +0000
++++ new/tests/test_mlff_data0_architecture_specification.py	2026-08-07 21:18:11.484803216 +0000
+@@ -263,4 +263,4 @@
+ def test_mlff_data0_pdf_and_version_artifacts_exist() -> None:
+     assert MANUAL_PDF.stat().st_size > 10_000
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.98a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.99a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/tests/test_mlff_data1_specification.py new/tests/test_mlff_data1_specification.py
+--- old/tests/test_mlff_data1_specification.py	2026-08-07 20:13:25.448084949 +0000
++++ new/tests/test_mlff_data1_specification.py	2026-08-07 21:18:11.485041902 +0000
+@@ -49,4 +49,4 @@
+     assert callable(mdstats.assign_balanced_round_robin)
+     assert callable(mdstats.build_complete_frame_block_plan)
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.98a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.99a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/tests/test_mlff_data2a_manifest_inference_specification.py new/tests/test_mlff_data2a_manifest_inference_specification.py
+--- old/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-07 20:13:25.449084314 +0000
++++ new/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-07 21:18:11.486077528 +0000
+@@ -15,8 +15,8 @@
+ 
+ 
+ def test_data2a_version_public_api_and_documented_contract() -> None:
+-    assert mdstats.__version__ == "0.20.98a0"
+-    assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.98a0"
++    assert mdstats.__version__ == "0.20.99a0"
++    assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert callable(mdstats.infer_training_manifest_metadata)
+     policy = mdstats.ManifestInferencePolicy()
+     assert policy.filename_values_at_or_above_one_are_percent is True
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/tests/test_mlff_data9a2_specification.py new/tests/test_mlff_data9a2_specification.py
+--- old/tests/test_mlff_data9a2_specification.py	2026-08-07 20:13:25.445257686 +0000
++++ new/tests/test_mlff_data9a2_specification.py	2026-08-07 21:18:11.482239343 +0000
+@@ -23,7 +23,7 @@
+         "finite energy, force, and stress",
+     ):
+         assert required in text
+-    assert 'version = "0.20.98a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.99a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "DATA9A2 real-MACE realization is implemented in `0.20.39a0`" in ARCH.read_text()
+ 
+ 
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/tests/test_mlff_data9a3_specification.py new/tests/test_mlff_data9a3_specification.py
+--- old/tests/test_mlff_data9a3_specification.py	2026-08-07 20:13:25.441903228 +0000
++++ new/tests/test_mlff_data9a3_specification.py	2026-08-07 21:18:11.479143929 +0000
+@@ -9,5 +9,5 @@
+     assert "37,632" in text
+     assert "supported_with_temporal_blocks_only" in text
+     assert "production_replay_corpus_not_bound" in text
+-    assert 'version = "0.20.98a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.99a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "MLFF-DATA9A3 production qualification" in ARCH.read_text()
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/tests/test_mlff_data9a4_precision_specification.py new/tests/test_mlff_data9a4_precision_specification.py
+--- old/tests/test_mlff_data9a4_precision_specification.py	2026-08-07 20:13:25.442536560 +0000
++++ new/tests/test_mlff_data9a4_precision_specification.py	2026-08-07 21:18:11.479410195 +0000
+@@ -9,7 +9,7 @@
+     assert "float32" in text and "float64" in text
+     assert "MaceModelPrecisionRecord" in text
+     assert "MacePrecisionTransitionRecord" in text
+-    assert "version = \"0.20.98a0\"" in (ROOT / "pyproject.toml").read_text()
++    assert "version = \"0.20.99a0\"" in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_bind_precision_to_protocol() -> None:
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/tests/test_mlff_data9a5_critical_fp64_specification.py new/tests/test_mlff_data9a5_critical_fp64_specification.py
+--- old/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-07 20:13:25.446119886 +0000
++++ new/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-07 21:18:11.483103693 +0000
+@@ -14,7 +14,7 @@
+     assert 'version: "0.20.42a0"' in text
+     assert "training_force_jacobian_dtype = model" in text
+     assert "Python/ASE" in text
+-    assert 'version = "0.20.98a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.99a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_data9a5_architecture_declares_scope_and_limits() -> None:
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/tests/test_mlff_data9a5_deployment_specification.py new/tests/test_mlff_data9a5_deployment_specification.py
+--- old/tests/test_mlff_data9a5_deployment_specification.py	2026-08-07 20:13:25.441610693 +0000
++++ new/tests/test_mlff_data9a5_deployment_specification.py	2026-08-07 21:18:11.478927348 +0000
+@@ -13,7 +13,7 @@
+     assert 'version: "0.20.43a0"' in text
+     assert "downstream runtime owns" in text
+     assert "float32-to-float64 promotion does not restore" in text
+-    assert 'version = "0.20.98a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.99a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_keep_lammps_outside_mdstats_scope() -> None:
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/tests/test_mlff_data9a6c_observable_evidence_specification.py new/tests/test_mlff_data9a6c_observable_evidence_specification.py
+--- old/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-07 20:13:25.442828213 +0000
++++ new/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-07 21:18:11.479719458 +0000
+@@ -74,5 +74,5 @@
+ 
+ def test_packaged_owner_manual_index_is_valid() -> None:
+     payload = json.loads(MANUAL_INDEX.read_text(encoding="utf-8"))
+-    assert payload["package_version"] == "0.20.98a0"
++    assert payload["package_version"] == "0.20.99a0"
+     assert "structural-observables-architecture" in payload["manuals"]
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/tests/test_mlff_data9a7a_material_profile_specification.py new/tests/test_mlff_data9a7a_material_profile_specification.py
+--- old/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-07 20:13:25.444218597 +0000
++++ new/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-07 21:18:11.481105512 +0000
+@@ -64,4 +64,4 @@
+ 
+ 
+ def test_release_version_is_data9a7a() -> None:
+-    assert 'version = "0.20.98a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert 'version = "0.20.99a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/tests/test_mlff_data9a7b_specification.py new/tests/test_mlff_data9a7b_specification.py
+--- old/tests/test_mlff_data9a7b_specification.py	2026-08-07 20:13:25.444431144 +0000
++++ new/tests/test_mlff_data9a7b_specification.py	2026-08-07 21:18:11.481425422 +0000
+@@ -69,7 +69,7 @@
+ 
+ 
+ def test_data9a7b_public_exports_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.98a0"
++    assert mdstats.__version__ == "0.20.99a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert callable(mdstats.compute_local_structure_features)
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/tests/test_mlff_data9a7c_specification.py new/tests/test_mlff_data9a7c_specification.py
+--- old/tests/test_mlff_data9a7c_specification.py	2026-08-07 20:13:25.443382294 +0000
++++ new/tests/test_mlff_data9a7c_specification.py	2026-08-07 21:18:11.480257407 +0000
+@@ -47,7 +47,7 @@
+ 
+ 
+ def test_public_api_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.98a0"
++    assert mdstats.__version__ == "0.20.99a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert mdstats.MLFF_DATA9A7C_PARSER_VERSION == "0.20.49a0"
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/tests/test_mlff_data9a7d_specification.py new/tests/test_mlff_data9a7d_specification.py
+--- old/tests/test_mlff_data9a7d_specification.py	2026-08-07 20:13:25.444878580 +0000
++++ new/tests/test_mlff_data9a7d_specification.py	2026-08-07 21:18:11.481917884 +0000
+@@ -39,6 +39,6 @@
+ 
+ 
+ def test_data9a7d_runtime_versions() -> None:
+-    assert mdstats.__version__ == "0.20.98a0"
++    assert mdstats.__version__ == "0.20.99a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7D_PARSER_VERSION == "0.20.50a0"
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/tests/test_mlff_data9a7e_specification.py new/tests/test_mlff_data9a7e_specification.py
+--- old/tests/test_mlff_data9a7e_specification.py	2026-08-07 20:13:25.443245349 +0000
++++ new/tests/test_mlff_data9a7e_specification.py	2026-08-07 21:18:11.480144596 +0000
+@@ -39,7 +39,7 @@
+         "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
+         "CROSS_SYSTEM_QUALIFICATION_SUITE",
+     } <= nodes
+-    assert mdstats.__version__ == "0.20.98a0"
++    assert mdstats.__version__ == "0.20.99a0"
+     assert mdstats.MLFF_DATA9A7E_PARSER_VERSION == "0.20.51a0"
+     assert callable(mdstats.qualify_cross_system_case)
+     assert callable(mdstats.build_cross_system_qualification_suite)
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/tests/test_mlff_data9a8_specification.py new/tests/test_mlff_data9a8_specification.py
+--- old/tests/test_mlff_data9a8_specification.py	2026-08-07 20:13:25.447640215 +0000
++++ new/tests/test_mlff_data9a8_specification.py	2026-08-07 21:18:11.484591514 +0000
+@@ -66,7 +66,7 @@
+ 
+ 
+ def test_public_runtime_exposes_data9a8_without_removed_aliases() -> None:
+-    assert mdstats.__version__ == "0.20.98a0"
++    assert mdstats.__version__ == "0.20.99a0"
+     assert mdstats.MLFF_DATA9A8_PARSER_VERSION == "0.20.52a0"
+     assert mdstats.ObservableComparisonPolicy
+     assert mdstats.compare_mlff_observable_validation
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/tests/test_mlff_data9a9a_specification.py new/tests/test_mlff_data9a9a_specification.py
+--- old/tests/test_mlff_data9a9a_specification.py	2026-08-07 20:13:25.448615383 +0000
++++ new/tests/test_mlff_data9a9a_specification.py	2026-08-07 21:18:11.485592280 +0000
+@@ -65,7 +65,7 @@
+ 
+ 
+ def test_public_runtime_exports_data9a9a_contracts() -> None:
+-    assert mdstats.__version__ == "0.20.98a0"
++    assert mdstats.__version__ == "0.20.99a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A9A_VERSION
+     assert mdstats.Data6ModelSweepPlan
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/tests/test_mlff_data9a9b_specification.py new/tests/test_mlff_data9a9b_specification.py
+--- old/tests/test_mlff_data9a9b_specification.py	2026-08-07 20:13:25.448879346 +0000
++++ new/tests/test_mlff_data9a9b_specification.py	2026-08-07 21:18:11.485868688 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9b_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.98a0"
++    assert mdstats.__version__ == "0.20.99a0"
+     for name in (
+         "ProductionMaterializationPlan",
+         "ProductionMaterializationCheckpoint",
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/tests/test_mlff_data9a9c_specification.py new/tests/test_mlff_data9a9c_specification.py
+--- old/tests/test_mlff_data9a9c_specification.py	2026-08-07 20:13:25.445018505 +0000
++++ new/tests/test_mlff_data9a9c_specification.py	2026-08-07 21:18:11.482066834 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9c_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.98a0"
++    assert mdstats.__version__ == "0.20.99a0"
+     for name in (
+         "ProductionCorpusPlan", "ProductionExpectedRun",
+         "ProfileExtensionEvidenceRequirement", "ProductionCorpusQualificationRecord",
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/tests/test_mlff_data9a_specification.py new/tests/test_mlff_data9a_specification.py
+--- old/tests/test_mlff_data9a_specification.py	2026-08-07 20:13:25.444612099 +0000
++++ new/tests/test_mlff_data9a_specification.py	2026-08-07 21:18:11.481639937 +0000
+@@ -14,7 +14,7 @@
+ 
+ 
+ def test_data9a_runtime_specification_is_canonical() -> None:
+-    assert 'version = "0.20.98a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.99a0"' in (ROOT / "pyproject.toml").read_text()
+     architecture = ARCH.read_text()
+     stage = STAGE.read_text()
+     specification = SPEC.read_text()
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/tests/test_mlff_data9b1_specification.py new/tests/test_mlff_data9b1_specification.py
+--- old/tests/test_mlff_data9b1_specification.py	2026-08-07 20:13:25.445845778 +0000
++++ new/tests/test_mlff_data9b1_specification.py	2026-08-07 21:18:11.482838666 +0000
+@@ -18,8 +18,8 @@
+     assert "TrainingCampaignPlan" in text
+     assert "CheckpointSelectionRecord" in text
+     assert "mdstats-mace-train" in text
+-    assert mdstats.__version__ == "0.20.98a0"
+-    assert 'version = "0.20.98a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert mdstats.__version__ == "0.20.99a0"
++    assert 'version = "0.20.99a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+ 
+ 
+ def test_data9b1_is_integrated_into_manual_and_stage_plan() -> None:
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/tests/test_mlff_data9b2_specification.py new/tests/test_mlff_data9b2_specification.py
+--- old/tests/test_mlff_data9b2_specification.py	2026-08-07 20:13:25.446975278 +0000
++++ new/tests/test_mlff_data9b2_specification.py	2026-08-07 21:18:11.483931727 +0000
+@@ -23,7 +23,7 @@
+         'mdstats-mace-select-head',
+     ):
+         assert token in text
+-    assert mdstats.__version__ == '0.20.98a0'
++    assert mdstats.__version__ == '0.20.99a0'
+     assert mdstats.MLFF_DATA9B2_VERSION == '0.20.57a0'
+ 
+ 
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/tests/test_mlff_data9b3_campaign_cli_specification.py new/tests/test_mlff_data9b3_campaign_cli_specification.py
+--- old/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-07 20:13:25.443617168 +0000
++++ new/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-07 21:18:11.480479025 +0000
+@@ -16,8 +16,8 @@
+ 
+ 
+ def test_data9b3_version_and_user_surface() -> None:
+-    assert mdstats.__version__ == "0.20.98a0"
+-    assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.98a0"
++    assert mdstats.__version__ == "0.20.99a0"
++    assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert TOOL.is_file()
+     assert TOOL.stat().st_mode & 0o111
+     spec = SPEC.read_text(encoding="utf-8")
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/tests/test_mlff_data9b3a_cueq_specification.py new/tests/test_mlff_data9b3a_cueq_specification.py
+--- old/tests/test_mlff_data9b3a_cueq_specification.py	2026-08-07 20:13:25.446722456 +0000
++++ new/tests/test_mlff_data9b3a_cueq_specification.py	2026-08-07 21:18:11.483670886 +0000
+@@ -16,8 +16,8 @@
+ 
+ 
+ def test_data9b3a_version_and_documented_surface() -> None:
+-    assert mdstats.__version__ == "0.20.98a0"
+-    assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.98a0"
++    assert mdstats.__version__ == "0.20.99a0"
++    assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     text = "\n".join(
+         path.read_text(encoding="utf-8")
+         for path in (SPEC, GUIDE, MANUAL, STAGE, EXAMPLE)
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/tests/test_mlff_observable_validation_bridge.py new/tests/test_mlff_observable_validation_bridge.py
+--- old/tests/test_mlff_observable_validation_bridge.py	2026-08-07 20:13:25.446261746 +0000
++++ new/tests/test_mlff_observable_validation_bridge.py	2026-08-07 21:18:11.483238900 +0000
+@@ -128,7 +128,7 @@
+     assert payload["candidate_generation"]["generator_artifact_digest"] == D0
+     assert payload["reference_collection"]["geometry_digest"] != payload["candidate_collection"]["geometry_digest"]
+     assert payload["reference_runtime_identity"]["observable_api_version"].endswith("v2")
+-    assert payload["reference_runtime_identity"]["mdstats_executing_version"] == "0.20.98a0"
++    assert payload["reference_runtime_identity"]["mdstats_executing_version"] == "0.20.99a0"
+     assert set(payload["warnings_by_call"]) == {"rdf", "msd"}
+     assert set(payload["duration_seconds_by_call"]) == {"rdf", "msd"}
+     assert set(payload["result_identities"]) == {"rdf", "msd"}
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/tests/test_mlff_opt_eval3_monitor_graph_view_cache.py new/tests/test_mlff_opt_eval3_monitor_graph_view_cache.py
+--- old/tests/test_mlff_opt_eval3_monitor_graph_view_cache.py	1970-01-01 00:00:00.000000000 +0000
++++ new/tests/test_mlff_opt_eval3_monitor_graph_view_cache.py	2026-08-07 21:17:52.761106143 +0000
+@@ -0,0 +1,343 @@
++from __future__ import annotations
++
++from concurrent.futures import ThreadPoolExecutor
++from pathlib import Path
++import time
++import warnings
++
++import numpy as np
++import pytest
++from ase import Atoms
++from ase.stress import full_3x3_to_voigt_6_stress
++
++from mdstats.training_data.evaluation_views import (
++    build_evaluation_dataset_view,
++    cached_evaluation_dataset_view,
++    clear_evaluation_dataset_view_cache,
++    metrics_from_prediction_view,
++)
++from mdstats.training_data.model_features import (
++    AtomicModelPrediction,
++    clear_mace_monitor_graph_cache,
++)
++
++
++def _labelled_frames() -> tuple[Atoms, ...]:
++    frames = []
++    for index, distance in enumerate((1.6, 1.8, 2.0)):
++        atoms = Atoms(
++            numbers=[3, 8, 8],
++            positions=[[0.0, 0.0, 0.0], [distance, 0.0, 0.0], [0.0, distance, 0.0]],
++            cell=np.eye(3) * 7.0,
++            pbc=True,
++        )
++        atoms.info["REF_energy"] = -3.0 + 0.2 * index
++        atoms.arrays["REF_forces"] = np.full((3, 3), 0.01 * index)
++        if index != 1:
++            atoms.info["REF_stress"] = np.arange(6, dtype=float) * (index + 1) * 1.0e-3
++        atoms.info["temperature"] = 300 if index < 2 else 700
++        frames.append(atoms)
++    return tuple(frames)
++
++
++def _predictions(frames: tuple[Atoms, ...]) -> tuple[AtomicModelPrediction, ...]:
++    values = []
++    for index, atoms in enumerate(frames):
++        stress = np.eye(3) * (index + 1) * 2.0e-3
++        values.append(
++            AtomicModelPrediction(
++                energy_ev=float(atoms.info["REF_energy"]) + 0.15 * (index + 1),
++                forces_ev_per_angstrom=np.asarray(atoms.arrays["REF_forces"]) + 0.02 * (index + 1),
++                stress_ev_per_angstrom3=stress,
++            )
++        )
++    return tuple(values)
++
++
++def _manual_metrics(frames, predictions):
++    energy_abs_sum = 0.0
++    force_sse = 0.0
++    force_n = 0
++    focus_sse = 0.0
++    focus_n = 0
++    condition = {}
++    stress_sse = 0.0
++    stress_n = 0
++    for atoms, prediction in zip(frames, predictions, strict=True):
++        energy_abs_sum += abs(prediction.energy_ev - atoms.info["REF_energy"]) / len(atoms)
++        error = np.asarray(prediction.forces_ev_per_angstrom) - np.asarray(atoms.arrays["REF_forces"])
++        sq = float(np.sum(error * error, dtype=np.float64))
++        force_sse += sq
++        force_n += error.size
++        mask = np.asarray(atoms.numbers) == 3
++        selected = error[mask]
++        focus_sse += float(np.sum(selected * selected, dtype=np.float64))
++        focus_n += selected.size
++        key = str(atoms.info["temperature"])
++        acc = condition.setdefault(key, [0.0, 0])
++        acc[0] += sq
++        acc[1] += error.size
++        if "REF_stress" in atoms.info:
++            pred = full_3x3_to_voigt_6_stress(np.asarray(prediction.stress_ev_per_angstrom3)).reshape(-1)
++            err = pred - np.asarray(atoms.info["REF_stress"]).reshape(-1)
++            stress_sse += float(np.sum(err * err, dtype=np.float64))
++            stress_n += err.size
++    return {
++        "energy": energy_abs_sum / len(frames),
++        "force": np.sqrt(force_sse / force_n),
++        "focus": np.sqrt(focus_sse / focus_n),
++        "stress": np.sqrt(stress_sse / stress_n),
++        "conditions": tuple((key, np.sqrt(v[0] / v[1])) for key, v in sorted(condition.items())),
++    }
++
++
++def test_vectorized_evaluation_view_matches_pre_opt_eval3_metric_definitions() -> None:
++    frames = _labelled_frames()
++    predictions = _predictions(frames)
++    view = build_evaluation_dataset_view(
++        frames,
++        energy_key="REF_energy",
++        forces_key="REF_forces",
++        stress_key="REF_stress",
++        focus_atomic_numbers=(3,),
++        condition_keys=("temperature",),
++    )
++    observed = metrics_from_prediction_view(
++        view,
++        predictions,
++        combined_energy_weight=1.0,
++        combined_force_weight=2.0,
++        combined_stress_weight=3.0,
++    )
++    expected = _manual_metrics(frames, predictions)
++    assert observed["energy_mae_ev_per_atom"] == pytest.approx(expected["energy"], abs=1e-15)
++    assert observed["force_component_rmse_ev_per_angstrom"] == pytest.approx(expected["force"], abs=1e-15)
++    assert observed["focus_force_rmse_ev_per_angstrom"][0][0] == "Li"
++    assert observed["focus_force_rmse_ev_per_angstrom"][0][1] == pytest.approx(expected["focus"], abs=1e-15)
++    assert observed["stress_rmse_ev_per_angstrom3"] == pytest.approx(expected["stress"], abs=1e-15)
++    assert tuple(label for label, _ in observed["condition_force_rmse_ev_per_angstrom"]) == tuple(label for label, _ in expected["conditions"])
++    for (_, observed_value), (_, expected_value) in zip(
++        observed["condition_force_rmse_ev_per_angstrom"], expected["conditions"], strict=True
++    ):
++        assert observed_value == pytest.approx(expected_value, abs=1e-15)
++    assert observed["worst_condition_force_rmse_ev_per_angstrom"] == pytest.approx(
++        max(value for _, value in expected["conditions"])
++    )
++
++
++def test_evaluation_view_cache_reuses_one_immutable_extraction() -> None:
++    clear_evaluation_dataset_view_cache()
++    frames = _labelled_frames()
++    kwargs = dict(
++        energy_key="REF_energy",
++        forces_key="REF_forces",
++        stress_key="REF_stress",
++        focus_atomic_numbers=(3,),
++        condition_keys=("temperature",),
++    )
++    first = cached_evaluation_dataset_view(("monitor", "sha"), frames, **kwargs)
++    # A repeated checkpoint sees exactly the same immutable arrays rather than
++    # traversing ASE dictionaries again.
++    second = cached_evaluation_dataset_view(("monitor", "sha"), frames, **kwargs)
++    assert second is first
++    assert not first.reference_forces.flags.writeable
++    clear_evaluation_dataset_view_cache()
++
++
++def _real_mace_provider():
++    torch = pytest.importorskip("torch")
++    pytest.importorskip("e3nn")
++    pytest.importorskip("mace")
++    from e3nn import o3
++    from mace import modules
++    from mace.calculators import MACECalculator
++    from mdstats.training_data.model_features import MaceCalculatorProvider, ModelCheckpointIdentity
++
++    model = modules.MACE(
++        r_max=4.0,
++        num_bessel=4,
++        num_polynomial_cutoff=5,
++        max_ell=1,
++        interaction_cls=modules.interaction_classes["RealAgnosticResidualInteractionBlock"],
++        interaction_cls_first=modules.interaction_classes["RealAgnosticResidualInteractionBlock"],
++        num_interactions=2,
++        num_elements=2,
++        hidden_irreps=o3.Irreps("4x0e + 4x1o"),
++        MLP_irreps=o3.Irreps("4x0e"),
++        gate=torch.nn.functional.silu,
++        atomic_energies=np.asarray([0.0, 0.0], dtype=np.float64),
++        avg_num_neighbors=2.0,
++        atomic_numbers=[1, 8],
++        correlation=2,
++        radial_type="bessel",
++    )
++    calculator = MACECalculator(models=model, device="cpu", default_dtype="float64")
++    identity = ModelCheckpointIdentity(
++        model_family="MACE",
++        checkpoint_locator="opt-eval3-real-mace",
++        checkpoint_sha256="1" * 64,
++        calculator_class="mace.calculators.mace.MACECalculator",
++        model_version="0.3.16",
++        supported_atomic_numbers=(1, 8),
++        device="cpu",
++        default_dtype="float64",
++    )
++    return MaceCalculatorProvider.from_calculator(calculator, checkpoint_identity=identity)
++
++
++def _graph_frames() -> tuple[Atoms, ...]:
++    return (
++        Atoms("H2O", positions=((0, 0, 0), (0.8, 0, 0), (0, 0.8, 0)), cell=(8, 8, 8), pbc=True),
++        Atoms("H2O", positions=((0, 0, 0), (0.9, 0, 0), (0, 0.9, 0)), cell=(8, 8, 8), pbc=True),
++    )
++
++
++def test_persistent_monitor_graph_shard_survives_memory_cache_clear(tmp_path: Path, monkeypatch) -> None:
++    torch = pytest.importorskip("torch")
++    from mace import data as mace_data
++
++    previous_dtype = torch.get_default_dtype()
++    torch.set_default_dtype(torch.float64)
++    clear_mace_monitor_graph_cache()
++    try:
++        provider = _real_mace_provider()
++        frames = _graph_frames()
++        identities = ("frame-a", "frame-b")
++        calls = 0
++        original = mace_data.AtomicData.from_config
++
++        def counted(*args, **kwargs):
++            nonlocal calls
++            calls += 1
++            return original(*args, **kwargs)
++
++        monkeypatch.setattr(mace_data.AtomicData, "from_config", counted)
++        with warnings.catch_warnings():
++            warnings.simplefilter("ignore")
++            first = provider.predict_batch(
++                frames, geometry_identities=identities, graph_cache_directory=tmp_path
++            )
++        assert calls == len(frames)
++        assert list(tmp_path.rglob("*.pt"))
++
++        clear_mace_monitor_graph_cache()
++        with warnings.catch_warnings():
++            warnings.simplefilter("ignore")
++            second = provider.predict_batch(
++                frames, geometry_identities=identities, graph_cache_directory=tmp_path
++            )
++        assert calls == len(frames), "persistent graph load must avoid AtomicData reconstruction"
++        for a, b in zip(first, second, strict=True):
++            assert a.energy_ev == pytest.approx(b.energy_ev, rel=0, abs=0)
++            np.testing.assert_allclose(a.forces_ev_per_angstrom, b.forces_ev_per_angstrom, rtol=0, atol=0)
++    finally:
++        clear_mace_monitor_graph_cache()
++        torch.set_default_dtype(previous_dtype)
++
++
++def test_corrupt_persistent_graph_is_rebuilt_from_source_geometry(tmp_path: Path, monkeypatch) -> None:
++    torch = pytest.importorskip("torch")
++    from mace import data as mace_data
++
++    previous_dtype = torch.get_default_dtype()
++    torch.set_default_dtype(torch.float64)
++    clear_mace_monitor_graph_cache()
++    try:
++        provider = _real_mace_provider()
++        frames = _graph_frames()
++        identities = ("frame-c", "frame-d")
++        calls = 0
++        original = mace_data.AtomicData.from_config
++
++        def counted(*args, **kwargs):
++            nonlocal calls
++            calls += 1
++            return original(*args, **kwargs)
++
++        monkeypatch.setattr(mace_data.AtomicData, "from_config", counted)
++        provider.predict_batch(frames, geometry_identities=identities, graph_cache_directory=tmp_path)
++        assert calls == len(frames)
++        graph_file = next(tmp_path.rglob("*.pt"))
++        graph_file.write_bytes(b"corrupt")
++        clear_mace_monitor_graph_cache()
++        provider.predict_batch(frames, geometry_identities=identities, graph_cache_directory=tmp_path)
++        assert calls == 2 * len(frames)
++    finally:
++        clear_mace_monitor_graph_cache()
++        torch.set_default_dtype(previous_dtype)
++
++
++def test_parallel_monitor_graph_miss_is_single_flight(tmp_path: Path, monkeypatch) -> None:
++    torch = pytest.importorskip("torch")
++    from mace import data as mace_data
++
++    previous_dtype = torch.get_default_dtype()
++    torch.set_default_dtype(torch.float64)
++    clear_mace_monitor_graph_cache()
++    try:
++        first_provider = _real_mace_provider()
++        second_provider = _real_mace_provider()
++        frames = _graph_frames()
++        identities = ("frame-e", "frame-f")
++        calls = 0
++        original = mace_data.AtomicData.from_config
++
++        def counted(*args, **kwargs):
++            nonlocal calls
++            calls += 1
++            time.sleep(0.01)
++            return original(*args, **kwargs)
++
++        monkeypatch.setattr(mace_data.AtomicData, "from_config", counted)
++        with ThreadPoolExecutor(max_workers=2) as executor:
++            futures = [
++                executor.submit(
++                    provider.predict_batch,
++                    frames,
++                    geometry_identities=identities,
++                    graph_cache_directory=tmp_path,
++                )
++                for provider in (first_provider, second_provider)
++            ]
++            [future.result() for future in futures]
++        assert calls == len(frames)
++    finally:
++        clear_mace_monitor_graph_cache()
++        torch.set_default_dtype(previous_dtype)
++
++
++def test_monitor_graph_identity_change_forces_new_shard(tmp_path: Path, monkeypatch) -> None:
++    torch = pytest.importorskip("torch")
++    from mace import data as mace_data
++
++    previous_dtype = torch.get_default_dtype()
++    torch.set_default_dtype(torch.float64)
++    clear_mace_monitor_graph_cache()
++    try:
++        provider = _real_mace_provider()
++        frames = _graph_frames()
++        calls = 0
++        original = mace_data.AtomicData.from_config
++
++        def counted(*args, **kwargs):
++            nonlocal calls
++            calls += 1
++            return original(*args, **kwargs)
++
++        monkeypatch.setattr(mace_data.AtomicData, "from_config", counted)
++        provider.predict_batch(
++            frames,
++            geometry_identities=("same-a", "same-b"),
++            graph_cache_directory=tmp_path,
++        )
++        clear_mace_monitor_graph_cache()
++        provider.predict_batch(
++            frames,
++            geometry_identities=("changed-a", "changed-b"),
++            graph_cache_directory=tmp_path,
++        )
++        assert calls == 2 * len(frames)
++        assert len(list(tmp_path.rglob("*.pt"))) == 2
++    finally:
++        clear_mace_monitor_graph_cache()
++        torch.set_default_dtype(previous_dtype)
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/tests/test_mlff_opt_eval3_specification.py new/tests/test_mlff_opt_eval3_specification.py
+--- old/tests/test_mlff_opt_eval3_specification.py	1970-01-01 00:00:00.000000000 +0000
++++ new/tests/test_mlff_opt_eval3_specification.py	2026-08-07 21:20:16.427792288 +0000
+@@ -0,0 +1,38 @@
++from pathlib import Path
++
++import mdstats
++from mdstats.training_data import campaign_cli
++from mdstats.training_data import model_features
++from mdstats.training_data import evaluation_views
++
++ROOT = Path(__file__).resolve().parents[1]
++
++
++def test_opt_eval3_release_identity_and_documentation() -> None:
++    assert mdstats.__version__ == "0.20.99a0"
++    assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
++    assert 'version = "0.20.99a0"' in (ROOT / "pyproject.toml").read_text()
++    assert model_features.MACE_MONITOR_GRAPH_CACHE_SCHEMA == "mdstats.mace-monitor-graph-cache.v1"
++    assert evaluation_views.EVALUATION_DATASET_VIEW_SCHEMA == "mdstats.evaluation-dataset-view.v1"
++    spec = ROOT / "docs/specs/training_data/mlff_opt_eval3_monitor_graph_view_cache_spec.md"
++    manual = ROOT / "docs/arch_manuals/mlff_training_data_architecture.md"
++    assert spec.is_file()
++    spec_text = spec.read_text()
++    manual_text = manual.read_text()
++    for required in (
++        "persistent cache root",
++        "single-flight",
++        "immutable",
++        "0.20.99a0",
++        "OPT-EVAL4",
++    ):
++        assert required in spec_text
++    assert "OPT-EVAL3 - monitor-level graph and immutable evaluation-view caching - implemented in 0.20.99a0" in manual_text
++    assert "next implementation follow-up from this roadmap is **`OPT-EVAL4`**" in manual_text
++
++
++def test_lta_density_example_multiformat_update_is_in_release_tree() -> None:
++    example = (ROOT / "examples/plot_lta_mixed_alkali_density.py").read_text()
++    assert "--lammps-type-map" in example
++    assert "lammps-dump" in example
++    assert "read_lammps_frames" in example
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/tests/test_mlff_perf2_parallel_acceleration_specification.py new/tests/test_mlff_perf2_parallel_acceleration_specification.py
+--- old/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-07 20:13:25.444069032 +0000
++++ new/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-07 21:18:11.481003053 +0000
+@@ -10,8 +10,8 @@
+ 
+ 
+ def test_perf2_release_and_configuration_contract() -> None:
+-    assert mdstats.__version__ == "0.20.98a0"
+-    assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.98a0"
++    assert mdstats.__version__ == "0.20.99a0"
++    assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     template = campaign_cli._config_template(
+         workspace="workspace",
+         training_root="training",
+diff -ruN '--exclude=.pytest_cache' '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=build' '--exclude=*.egg-info' '--exclude=dist' '--exclude=*.pdf' '--exclude=SOURCE_PATCH_*' old/tests/test_observable_validation_api.py new/tests/test_observable_validation_api.py
+--- old/tests/test_observable_validation_api.py	2026-08-07 20:13:25.443852917 +0000
++++ new/tests/test_observable_validation_api.py	2026-08-07 21:18:11.480776026 +0000
+@@ -223,7 +223,7 @@
+     assert result.results["oxygen_vdos"].total.shape == result.results["oxygen_spectrum"].scalar_spectrum.shape
+     assert set(result.warnings_by_call) == {call.call_id for call in make_recipe().calls}
+     assert result.runtime_identity["observable_api_version"].endswith("v2")
+-    assert result.runtime_identity["mdstats_executing_version"] == "0.20.98a0"
++    assert result.runtime_identity["mdstats_executing_version"] == "0.20.99a0"
+     assert len(result.runtime_identity["executing_module_sha256"]) == 64
+     assert all(len(value) == 64 for value in result.capability_digests.values())
+     assert set(result.result_identities) == {call.call_id for call in make_recipe().calls}

@@ -1,0 +1,16 @@
+{
+  "architecture_revision": 103,
+  "changed_runtime_files": [
+    "mdstats/training_data/target_coverage_sparse_index.py",
+    "mdstats/training_data/target_coverage_sparse_index_store.py",
+    "mdstats/training_data/campaign_cli.py"
+  ],
+  "content_digest": "476f616742b93731f0c0e0151cbace48a327a80728241f829b061b6156d547a7",
+  "dependency_graph_schema": 83,
+  "next_gate": "FINAL_GPU1_DEFERRED_RELEASE_QUALIFICATION",
+  "qualification_record": "release/qualification_logs/MLFF_MVIDX_OOC_SCALING_QUALIFICATION_0.20.238a0.json",
+  "release": "0.20.238a0",
+  "schema": "mdstats.mlff-mvidx-ooc-scaling-implementation-manifest.2026-08.v1",
+  "scientific_authority_change": false,
+  "spec": "docs/specs/training_data/mlff_mvidx_out_of_core_scaling_spec.md"
+}

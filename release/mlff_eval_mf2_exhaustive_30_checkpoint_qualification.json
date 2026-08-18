@@ -1,0 +1,53 @@
+{
+  "schema": "mdstats.mlff-eval-mf2-exhaustive-qualification.v1",
+  "runtime_version": "0.20.107a0",
+  "architecture_revision": 26,
+  "evidence_class": "synthetic_representative_exhaustive_comparison",
+  "policy": {
+    "schema": "mdstats.mlff-multi-fidelity-evaluation-policy.v2",
+    "round_fractions": [
+      0.1,
+      0.33,
+      1.0
+    ],
+    "survival_fraction": 0.3333333333333333,
+    "minimum_finalists": 4,
+    "guard_band_enabled": true,
+    "guard_standard_error_multiplier": 2.0,
+    "guard_relative_margin": 0.02,
+    "guard_minimum_blocks": 4,
+    "instability_inversion_fraction": 0.25,
+    "instability_survival_fraction": 0.5,
+    "policy_digest": "6e47f887678969be94bd191a01eb02fc33df0d587c2196b36daba9a4f9307272"
+  },
+  "saved_checkpoint_count": 30,
+  "round_fractions": [
+    0.1,
+    0.33,
+    1.0
+  ],
+  "round_candidate_counts": [
+    30,
+    11,
+    8
+  ],
+  "target_and_replay_use_same_fraction": true,
+  "exhaustive_selected_epoch": 16,
+  "multi_fidelity_selected_epoch": 16,
+  "winner_agreement": true,
+  "candidate_inference_full_checkpoint_equivalents": 10.89,
+  "exhaustive_full_checkpoint_equivalents": 30.0,
+  "candidate_inference_fraction_of_exhaustive": 0.363,
+  "candidate_inference_reduction_fraction": 0.637,
+  "real_mace_qualification": {
+    "mace_version": "0.3.16",
+    "scope": "direct checkpoint restoration plus persistent monitor graph/cache regression substrate",
+    "test_files": [
+      "tests/test_mlff_checkpoint_model_materialization.py",
+      "tests/test_mlff_opt_eval3_monitor_graph_view_cache.py"
+    ],
+    "result": "passed",
+    "note": "This real-MACE evidence qualifies the inference/cache substrate; the 30-checkpoint exhaustive-comparison case is explicitly synthetic representative evidence."
+  },
+  "scientific_claim": "Exact frozen checkpoint selection is applied only among full-fidelity finalists retained by the declared conservative screening policy; no global-minimum guarantee is claimed over eliminated epochs."
+}

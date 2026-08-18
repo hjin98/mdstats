@@ -1,0 +1,1188 @@
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' mdstats-0.20.146a0-complete-source-package/CHANGELOG.md mdstats-0.20.147a0-complete-source-package/CHANGELOG.md
+--- mdstats-0.20.146a0-complete-source-package/CHANGELOG.md	2026-08-11 08:21:19.352224985 +0000
++++ mdstats-0.20.147a0-complete-source-package/CHANGELOG.md	2026-08-11 08:41:56.012030856 +0000
+@@ -1,3 +1,10 @@
++## 0.20.147a0 - 2026-08-11
++
++- Complete GFX3D-2 with independent registered framework-topology, atomic-connectivity, atomic-trajectory, and density layer adapters over current qualified scientific products.
++- Add shared-context layer preparation with one deduplicated prepared-scene dependency, scientific trajectory/connectivity filtering, and fail-closed density field selection.
++- Add a common layer-keyed Plotly composer supporting arbitrary combinations and multiple instances per layer type while retaining the existing legacy renderer as the backend compatibility engine.
++- Qualify all 15 non-empty initial layer combinations plus duplicate instances; focused GFX3D/framework/graph qualification: 62 passed.
++
+ ## 0.20.146a0 - 2026-08-11
+ 
+ - Added GFX3D-1 universal renderer-independent 3-D scene/layer contracts under `mdstats.graphics3d`.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' mdstats-0.20.146a0-complete-source-package/PATCH_NOTES_0.20.147a0.md mdstats-0.20.147a0-complete-source-package/PATCH_NOTES_0.20.147a0.md
+--- mdstats-0.20.146a0-complete-source-package/PATCH_NOTES_0.20.147a0.md	1970-01-01 00:00:00.000000000 +0000
++++ mdstats-0.20.147a0-complete-source-package/PATCH_NOTES_0.20.147a0.md	2026-08-11 08:41:56.010914520 +0000
+@@ -0,0 +1,42 @@
++# mdstats 0.20.147a0 patch notes
++
++## GFX3D-2 - independent graphical layers
++
++This revision completes the second universal 3-D graphics gate without changing the scientific definitions of the existing framework, connectivity, trajectory, or density products.
++
++### Added
++
++- registered `FrameworkTopologyLayer`, `AtomicConnectivityLayer`, `AtomicTrajectoryLayer`, and `AtomicDensityLayer` adapters under `mdstats.graphics3d`;
++- `prepare_graphics3d_scene()` for deterministic preparation of enabled independent layer instances from one shared `GraphicsSceneContext`;
++- one shared prepared `FrameworkDynamicsScene` dependency for the GFX3D-2 migration path, resolved once through the scene cache;
++- scientific filtering for prepared trajectory selections and averaged atomic-connectivity species/atom/pair selections;
++- fail-closed prepared density-field selection using exact field/provenance/atom evidence;
++- `render_graphics3d_plotly()` as the common layer-keyed Plotly composition path;
++- generic layer trace ownership through `Graphics3DRenderResult` / `GraphicsLayerRenderResult`;
++- support for multiple instances of the same graphical layer type with independent render identity.
++
++### Compatibility
++
++- `FrameworkDynamicsScene` remains the current qualified scientific preparation product;
++- the GFX3D-2 adapters do not recompute framework topology, connectivity, trajectory paths, or scalar density fields;
++- the common Plotly composer reuses the existing qualified legacy rendering routines as a backend compatibility engine;
++- the existing `plot_framework_dynamics_3d()` path remains unchanged and tested.
++
++### Focused qualification
++
++The focused suite covers:
++
++- all 15 non-empty combinations of framework/connectivity/trajectory/density;
++- duplicate trajectory and density instances;
++- pair-filtered atomic connectivity;
++- fail-closed absent density selection;
++- GFX3D-1 contracts and legacy scene/result adapters;
++- existing framework-dynamics and canonical 3-D graph rendering.
++
++Result: **62 passed, 0 failed, 0 skipped**.
++
++The observed warnings are the existing equal-aspect/orientation diagnostics from the legacy Plotly renderer.
++
++## Next gate
++
++GFX3D-3 - universal CLI and declarative configuration.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' mdstats-0.20.146a0-complete-source-package/docs/arch_manuals/mdstats_3d_graphics_architecture.md mdstats-0.20.147a0-complete-source-package/docs/arch_manuals/mdstats_3d_graphics_architecture.md
+--- mdstats-0.20.146a0-complete-source-package/docs/arch_manuals/mdstats_3d_graphics_architecture.md	2026-08-11 08:28:11.744216362 +0000
++++ mdstats-0.20.147a0-complete-source-package/docs/arch_manuals/mdstats_3d_graphics_architecture.md	2026-08-11 08:41:56.012217032 +0000
+@@ -64,7 +64,7 @@
+ The architecture distinguishes three statuses:
+ 
+ `current baseline`
+-: behavior implemented in `mdstats 0.20.145a0` and available for migration;
++: behavior implemented through `mdstats 0.20.147a0` and available for migration;
+ 
+ `normative target`
+ : behavior required by this standard but not yet implemented;
+@@ -72,7 +72,7 @@
+ `deferred`
+ : behavior intentionally left to a later approved layer or renderer specification.
+ 
+-As of `mdstats 0.20.146a0`, **GFX3D-1 is implemented**. The universal immutable request, selection, dependency, context, identity, registry, manifest, renderer-neutral primitive, generic render-result, and legacy compatibility contracts live under `mdstats.graphics3d`. The existing `FrameworkDynamicsScene`, `FrameworkDynamicsRenderResult`, `plot_framework_dynamics_3d`, `graph_3d`, and hybrid LTA example remain the active scientific/rendering implementation while GFX3D-2 decomposes their fixed graphical products into independent layer adapters.
++As of `mdstats 0.20.147a0`, **GFX3D-1 and GFX3D-2 are implemented**. The universal immutable request, selection, dependency, context, identity, registry, manifest, renderer-neutral primitive, generic render-result, and legacy compatibility contracts live under `mdstats.graphics3d`. GFX3D-2 adds registered independent `FrameworkTopologyLayer`, `AtomicConnectivityLayer`, `AtomicTrajectoryLayer`, and `AtomicDensityLayer` adapters over the already-qualified `FrameworkDynamicsScene` scientific products, plus a common layer-keyed Plotly composer. The legacy `FrameworkDynamicsScene`, `FrameworkDynamicsRenderResult`, `plot_framework_dynamics_3d`, and hybrid LTA example remain compatibility/scientific authorities while GFX3D-3 promotes the universal declarative CLI.
+ 
+ The central design rule is:
+ 
+@@ -1795,6 +1795,12 @@
+ 
+ All 15 non-empty initial layer combinations pass, plus duplicate-instance tests.
+ 
++### Implementation status - `mdstats 0.20.147a0`
++
++GFX3D-2 is implemented. The default registry now carries the four initial production adapters. `prepare_graphics3d_scene()` resolves their shared prepared-scene dependency once through `GraphicsSceneContext`, and `render_graphics3d_plotly()` composes arbitrary prepared layer instances into a generic `Graphics3DRenderResult` with non-overlapping layer-owned trace indices. Current trajectory and connectivity selections are filtered from already-prepared products; density field selection is fail-closed and is proven from prepared provenance/atom identities rather than guessed from labels. The common Plotly backend reuses the qualified legacy rendering routines without recomputing framework, connectivity, trajectory, or density science.
++
++Focused qualification covers all 15 non-empty combinations of framework/connectivity/trajectory/density, duplicate trajectory and density instances, pair-filtered connectivity, absent-density fail-closed behavior, GFX3D-1 contracts, and the legacy framework/graph renderer surface. The focused result is 62 passed.
++
+ ## GFX3D-3 - universal CLI and declarative configuration
+ 
+ ### Scope
+@@ -2057,14 +2063,17 @@
+ 
+ # Recommended next implementation
+ 
+-GFX3D-1 is complete in `mdstats 0.20.146a0`. The next implementation gate is **GFX3D-2 - decompose current graphical products**.
++GFX3D-1 and GFX3D-2 are complete through `mdstats 0.20.147a0`. The next implementation gate is **GFX3D-3 - universal CLI and declarative configuration**.
+ 
+-GFX3D-2 should implement the initial independent adapters for framework topology, atomic connectivity, atomic trajectory, and atomic density on top of the contracts now frozen in `mdstats.graphics3d`. Each layer must work alone, arbitrary compatible combinations must work, multiple instances per type must work, and shared dependencies must remain reusable.
+-
+-The universal CLI is still intentionally deferred to GFX3D-3. Moving `plot_lta_mixed_alkali_density.py` to `tools/` before GFX3D-2 proves compositional layer behavior would still risk promoting monolithic application logic into the production command surface.
++The initial independent framework topology, atomic connectivity, atomic trajectory, and atomic density adapters are now implemented and composition-qualified. The universal CLI remains intentionally deferred to GFX3D-3, where the prototype workflow can now be promoted without carrying its fixed all-on composition into the production command surface.
+ 
+ # Revision record
+ 
++## 2026-08-11 - GFX3D-2 implementation (`0.20.147a0`)
++
++Implemented the four initial independent registered layer adapters: `FrameworkTopologyLayer`, `AtomicConnectivityLayer`, `AtomicTrajectoryLayer`, and `AtomicDensityLayer`. Added `prepare_graphics3d_scene()` over a shared `GraphicsSceneContext` dependency and a common `render_graphics3d_plotly()` composer with generic layer-owned trace results. The migration path consumes already-prepared `FrameworkDynamicsScene` products and does not recompute or redefine current framework, connectivity, trajectory, or density science.
++
++Focused qualification covers all 15 non-empty initial layer combinations, duplicate trajectory/density instances, pair-filtered connectivity, fail-closed absent-density selection, GFX3D-1 contract regressions, and the existing framework/Plotly path. Result: 62 passed. GFX3D-3 is the next gate.
+ 
+ ## 2026-08-11 - GFX3D-1 implementation (`0.20.146a0`)
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' mdstats-0.20.146a0-complete-source-package/docs/specifications/mdstats_gfx3d_cli_spec.md mdstats-0.20.147a0-complete-source-package/docs/specifications/mdstats_gfx3d_cli_spec.md
+--- mdstats-0.20.146a0-complete-source-package/docs/specifications/mdstats_gfx3d_cli_spec.md	2026-08-11 08:28:11.656216364 +0000
++++ mdstats-0.20.147a0-complete-source-package/docs/specifications/mdstats_gfx3d_cli_spec.md	2026-08-11 08:39:35.325989817 +0000
+@@ -1,14 +1,15 @@
+ # mdstats GFX3D CLI Specification
+ 
+-**Status:** GFX3D-1 skeleton; command surface not yet frozen  
++**Status:** GFX3D-2 layer foundation complete; GFX3D-3 command surface not yet frozen  
+ **Architecture authority:** `docs/arch_manuals/mdstats_3d_graphics_architecture.md`
+ 
+ ## Purpose
+ 
+ This document will become the normative command/configuration contract for the
+-universal configurable 3-D graphics CLI. GFX3D-1 intentionally freezes only the
+-ownership boundary and the configuration-to-scene compilation rule; the final
+-command surface is a GFX3D-3 deliverable.
++universal configurable 3-D graphics CLI. GFX3D-1 froze the ownership and
++configuration-to-scene contracts, and GFX3D-2 qualified the four independent
++built-in layer families plus common Plotly composition. The final command surface
++remains a GFX3D-3 deliverable.
+ 
+ ## Authority boundaries
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' mdstats-0.20.146a0-complete-source-package/mdstats/__init__.py mdstats-0.20.147a0-complete-source-package/mdstats/__init__.py
+--- mdstats-0.20.146a0-complete-source-package/mdstats/__init__.py	2026-08-11 08:19:49.627501408 +0000
++++ mdstats-0.20.147a0-complete-source-package/mdstats/__init__.py	2026-08-11 08:36:59.088907069 +0000
+@@ -5133,7 +5133,7 @@
+     "build_mlcv_lifecycle_authority", "mlcv_replay_semantics_stale_boundary", "protocol_freeze_authority_from_mlcv",
+ ]
+ 
+-# GFX3D-1 universal renderer-independent 3-D scene contracts (0.20.146a0).
++# GFX3D-2 independent composable 3-D scene layers (0.20.147a0).
+ from .graphics3d import (
+     GRAPHICS_DEPENDENCY_KEY_SCHEMA,
+     GRAPHICS_LAYER_REQUEST_SCHEMA,
+@@ -5180,6 +5180,13 @@
+     deduplicate_dependency_requests,
+     identity_digest,
+     plan_graphics_scene_dependencies,
++    GFX3D2_LAYER_SCHEMA,
++    FrameworkTopologyLayer,
++    AtomicConnectivityLayer,
++    AtomicTrajectoryLayer,
++    AtomicDensityLayer,
++    prepare_graphics3d_scene,
++    render_graphics3d_plotly,
+ )
+ 
+ __all__ += [
+@@ -5228,4 +5235,11 @@
+     "deduplicate_dependency_requests",
+     "identity_digest",
+     "plan_graphics_scene_dependencies",
++    "GFX3D2_LAYER_SCHEMA",
++    "FrameworkTopologyLayer",
++    "AtomicConnectivityLayer",
++    "AtomicTrajectoryLayer",
++    "AtomicDensityLayer",
++    "prepare_graphics3d_scene",
++    "render_graphics3d_plotly",
+ ]
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' mdstats-0.20.146a0-complete-source-package/mdstats/_version.py mdstats-0.20.147a0-complete-source-package/mdstats/_version.py
+--- mdstats-0.20.146a0-complete-source-package/mdstats/_version.py	2026-08-11 08:21:19.350704539 +0000
++++ mdstats-0.20.147a0-complete-source-package/mdstats/_version.py	2026-08-11 08:36:59.089112924 +0000
+@@ -1,3 +1,3 @@
+ """Package version."""
+ 
+-__version__ = "0.20.146a0"
++__version__ = "0.20.147a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' mdstats-0.20.146a0-complete-source-package/mdstats/graphics3d/__init__.py mdstats-0.20.147a0-complete-source-package/mdstats/graphics3d/__init__.py
+--- mdstats-0.20.146a0-complete-source-package/mdstats/graphics3d/__init__.py	2026-08-11 08:19:49.627064750 +0000
++++ mdstats-0.20.147a0-complete-source-package/mdstats/graphics3d/__init__.py	2026-08-11 08:32:14.045107731 +0000
+@@ -48,6 +48,19 @@
+     GraphicsLayerRegistry,
+ )
+ from .render_result import Graphics3DRenderResult, GraphicsLayerRenderResult
++
++from .layers import (
++    GFX3D2_LAYER_SCHEMA,
++    AtomicConnectivityLayer,
++    AtomicDensityLayer,
++    AtomicTrajectoryLayer,
++    FrameworkTopologyLayer,
++    register_builtin_graphics3d_layers,
++)
++from .prepare import prepare_graphics3d_scene
++from .plotly_renderer import render_graphics3d_plotly
++
++register_builtin_graphics3d_layers(DEFAULT_GRAPHICS_LAYER_REGISTRY)
+ from .scene import build_graphics_scene_manifest, plan_graphics_scene_dependencies
+ 
+ __all__ = [name for name in globals() if not name.startswith("_")]
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' mdstats-0.20.146a0-complete-source-package/mdstats/graphics3d/layers.py mdstats-0.20.147a0-complete-source-package/mdstats/graphics3d/layers.py
+--- mdstats-0.20.146a0-complete-source-package/mdstats/graphics3d/layers.py	1970-01-01 00:00:00.000000000 +0000
++++ mdstats-0.20.147a0-complete-source-package/mdstats/graphics3d/layers.py	2026-08-11 08:41:15.200098838 +0000
+@@ -0,0 +1,403 @@
++"""GFX3D-2 built-in layer adapters for current prepared scientific products.
++
++The initial adapters deliberately consume the already-qualified
++:class:`~mdstats.plotting.framework_dynamics.FrameworkDynamicsScene`.  They do
++not recompute framework topology, connectivity, trajectories, or densities.
++This is the migration bridge that proves independent composability before the
++GFX3D-4 dependency DAG takes ownership of raw scientific preparation.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++from typing import Any
++
++import numpy as np
++from ase.data import atomic_numbers
++
++from .contracts import (
++    GraphicsDependencyKey,
++    GraphicsDependencyRequest,
++    GraphicsLayer3DRequest,
++    GraphicsSelection,
++    PreparedGraphicsLayer3D,
++)
++from .context import GraphicsSceneContext
++from .errors import Graphics3DDependencyError, Graphics3DValidationError
++from .identity import identity_digest
++from .registry import GraphicsLayerRegistration, GraphicsLayerRegistry
++
++GFX3D2_LAYER_SCHEMA = "mdstats.graphics3d.layer-adapter.v2"
++LEGACY_SCENE_PROVIDER = "framework_dynamics_scene"
++
++
++def _legacy_scene_key(context: GraphicsSceneContext) -> GraphicsDependencyKey:
++    return GraphicsDependencyKey(
++        LEGACY_SCENE_PROVIDER,
++        {"source_identity": context.source_identity or "in-memory-framework-dynamics-scene"},
++    )
++
++
++def resolve_builtin_dependency(key: GraphicsDependencyKey, context: GraphicsSceneContext) -> Any:
++    """Resolve one GFX3D-2 built-in provider from the shared scene context."""
++
++    if key.provider_type != LEGACY_SCENE_PROVIDER:
++        raise Graphics3DDependencyError(
++            f"GFX3D-2 has no built-in resolver for provider {key.provider_type!r}."
++        )
++    from mdstats.plotting.framework_dynamics import FrameworkDynamicsScene
++
++    source = context.source
++    if not isinstance(source, FrameworkDynamicsScene):
++        raise Graphics3DDependencyError(
++            "The GFX3D-2 built-in layers currently require context.source to be a "
++            "prepared FrameworkDynamicsScene. Raw-source preparation is deferred to GFX3D-4."
++        )
++    return source
++
++
++
++
++def _validate_prepared_analysis_options(
++    request: GraphicsLayer3DRequest, *, allowed: frozenset[str] = frozenset()
++) -> None:
++    unknown = set(request.analysis_options) - set(allowed)
++    if unknown:
++        raise Graphics3DValidationError(
++            f"GFX3D-2 layer {request.name!r} cannot apply scientific analysis options "
++            f"to an already-prepared product: {', '.join(sorted(unknown))}. "
++            "Raw scientific preparation is deferred to the owning provider/GFX3D-4."
++        )
++
++def _scene_from_dependencies(resolved_dependencies: dict[str, Any]) -> Any:
++    try:
++        return resolved_dependencies[LEGACY_SCENE_PROVIDER]
++    except KeyError as error:
++        raise Graphics3DDependencyError(
++            f"Missing required {LEGACY_SCENE_PROVIDER!r} dependency."
++        ) from error
++
++
++def _selection_mask(
++    atom_indices: tuple[int, ...], atomic_numbers_array: np.ndarray, selection: GraphicsSelection
++) -> np.ndarray:
++    mask = np.ones(len(atom_indices), dtype=bool)
++    any_node_selector = False
++    if selection.atom_indices:
++        any_node_selector = True
++        allowed = set(int(v) for v in selection.atom_indices)
++        mask &= np.asarray([int(v) in allowed for v in atom_indices], dtype=bool)
++    if selection.species:
++        any_node_selector = True
++        allowed_numbers = {int(atomic_numbers[s]) for s in selection.species}
++        mask &= np.asarray([int(v) in allowed_numbers for v in atomic_numbers_array], dtype=bool)
++    if not any_node_selector:
++        mask[:] = True
++    return mask
++
++
++def _filter_trajectory(paths: Any, selection: GraphicsSelection) -> Any:
++    if not selection.atom_indices and not selection.species:
++        return paths
++    from mdstats.plotting.framework_dynamics import TrajectoryPathSet
++
++    mask = _selection_mask(paths.atom_indices, np.asarray(paths.atomic_numbers), selection)
++    selected = np.flatnonzero(mask)
++    if selected.size == 0:
++        raise Graphics3DValidationError("Trajectory layer selection resolved to no prepared atoms.")
++    return TrajectoryPathSet(
++        atom_indices=tuple(int(paths.atom_indices[i]) for i in selected),
++        atomic_numbers=np.asarray(paths.atomic_numbers)[selected],
++        frame_indices=paths.frame_indices,
++        frame_ids=paths.frame_ids,
++        times=paths.times,
++        continuous_positions=np.asarray(paths.continuous_positions)[selected],
++        display_positions=np.asarray(paths.display_positions)[selected],
++        lattice_images=np.asarray(paths.lattice_images)[selected],
++        segment_breaks=np.asarray(paths.segment_breaks)[selected],
++        display_mode=paths.display_mode,
++        selection_label=selection.species and "/".join(selection.species) or paths.selection_label,
++    )
++
++
++def _filter_connectivity(graph: Any, selection: GraphicsSelection) -> Any:
++    if not selection.active_fields():
++        return graph
++    unsupported = selection.active_fields() - {"species", "atom_indices", "pairs"}
++    if unsupported:
++        raise Graphics3DValidationError(
++            "Atomic connectivity GFX3D-2 adapter cannot apply selection fields: "
++            + ", ".join(sorted(unsupported))
++        )
++    from mdstats.plotting.framework_dynamics import AtomicMeanGraph
++
++    atoms = tuple(int(v) for v in graph.atom_indices)
++    numbers = np.asarray(graph.atomic_numbers, dtype=np.int64)
++    node_mask = _selection_mask(atoms, numbers, selection)
++    endpoints = np.asarray(graph.edge_endpoints, dtype=np.int64)
++    edge_mask = np.ones(endpoints.shape[0], dtype=bool)
++    if selection.pairs:
++        allowed_pairs = {
++            tuple(sorted((int(atomic_numbers[a]), int(atomic_numbers[b]))))
++            for a, b in selection.pairs
++        }
++        pair_values = [
++            tuple(sorted((int(numbers[i]), int(numbers[j])))) for i, j in endpoints
++        ]
++        edge_mask &= np.asarray([pair in allowed_pairs for pair in pair_values], dtype=bool)
++        if not selection.atom_indices and not selection.species:
++            node_mask[:] = False
++            if np.any(edge_mask):
++                node_mask[np.unique(endpoints[edge_mask])] = True
++    edge_mask &= node_mask[endpoints[:, 0]] & node_mask[endpoints[:, 1]]
++    selected_nodes = np.flatnonzero(node_mask)
++    if selected_nodes.size == 0:
++        raise Graphics3DValidationError("Connectivity layer selection resolved to no prepared atoms.")
++    old_to_new = np.full(len(atoms), -1, dtype=np.int64)
++    old_to_new[selected_nodes] = np.arange(selected_nodes.size, dtype=np.int64)
++    selected_edges = endpoints[edge_mask]
++    if selected_edges.size:
++        selected_edges = old_to_new[selected_edges]
++    else:
++        selected_edges = np.empty((0, 2), dtype=np.int64)
++    return AtomicMeanGraph(
++        atom_indices=tuple(atoms[i] for i in selected_nodes),
++        atomic_numbers=numbers[selected_nodes],
++        display_positions=np.asarray(graph.display_positions)[selected_nodes],
++        edge_endpoints=selected_edges,
++        edge_image_shifts=np.asarray(graph.edge_image_shifts)[edge_mask],
++        edge_occupancies=np.asarray(graph.edge_occupancies)[edge_mask],
++        display_cell=graph.display_cell,
++        pbc=graph.pbc,
++        mode=graph.mode,
++        metadata={**dict(graph.metadata), "gfx3d_selection_filtered": True},
++    )
++
++
++def _density_candidates(scene: Any) -> list[tuple[Any, str]]:
++    candidates: list[tuple[Any, str]] = [(field, "atomic") for field in scene.atomic_density_fields]
++    if scene.framework_density_fields is not None:
++        for field in scene.framework_density_fields.fields:
++            candidates.append((field, str(field.source_provenance.source_kind)))
++    return candidates
++
++
++def _select_density(scene: Any, request: GraphicsLayer3DRequest) -> tuple[Any, str]:
++    candidates = _density_candidates(scene)
++    if not candidates:
++        raise Graphics3DValidationError("Density layer requested but the prepared source scene has no density fields.")
++    field_key = request.analysis_options.get("field_key") or request.metadata.get("field_key")
++    source_kind = request.analysis_options.get("source_kind") or request.metadata.get("source_kind")
++    if field_key is not None:
++        candidates = [(f, k) for f, k in candidates if str(f.field_key) == str(field_key)]
++    if source_kind is not None:
++        candidates = [
++            (f, k)
++            for f, k in candidates
++            if str(k) == str(source_kind) or str(f.source_provenance.source_kind) == str(source_kind)
++        ]
++    selection = request.selection
++    if selection.atom_indices:
++        wanted = tuple(sorted(int(v) for v in selection.atom_indices))
++        candidates = [
++            (f, k)
++            for f, k in candidates
++            if tuple(sorted(int(v) for v in f.source_provenance.atom_indices)) == wanted
++        ]
++    if selection.species:
++        # Existing density provenance is atom-index authoritative. Recover species
++        # only from already-prepared scene products; never guess from a field name.
++        wanted_numbers = {int(atomic_numbers[s]) for s in selection.species}
++        number_by_atom: dict[int, int] = {}
++        if scene.atomic_mean_graph is not None:
++            number_by_atom.update(
++                {int(i): int(z) for i, z in zip(scene.atomic_mean_graph.atom_indices, scene.atomic_mean_graph.atomic_numbers)}
++            )
++        if scene.trajectory_paths is not None:
++            number_by_atom.update(
++                {int(i): int(z) for i, z in zip(scene.trajectory_paths.atom_indices, scene.trajectory_paths.atomic_numbers)}
++            )
++        proven: list[tuple[Any, str]] = []
++        for field, kind in candidates:
++            atoms = tuple(int(v) for v in field.source_provenance.atom_indices)
++            if atoms and all(index in number_by_atom for index in atoms):
++                field_numbers = {number_by_atom[index] for index in atoms}
++                if field_numbers == wanted_numbers:
++                    proven.append((field, kind))
++                    continue
++            metadata = dict(field.source_provenance.metadata)
++            labels = metadata.get("species") or metadata.get("species_symbols")
++            if isinstance(labels, str):
++                labels = [labels]
++            if labels is not None and {int(atomic_numbers[str(v)]) for v in labels} == wanted_numbers:
++                proven.append((field, kind))
++        candidates = proven
++    if len(candidates) != 1:
++        keys = tuple(str(f.field_key) for f, _ in candidates)
++        if not candidates:
++            raise Graphics3DValidationError(
++                f"Density layer {request.name!r} did not match any prepared density field."
++            )
++        raise Graphics3DValidationError(
++            f"Density layer {request.name!r} is ambiguous across prepared fields {keys}; "
++            "specify analysis_options.field_key/source_kind or an exact atom-index selection."
++        )
++    return candidates[0]
++
++
++@dataclass(frozen=True, slots=True)
++class FrameworkTopologyLayer:
++    """Independent framework-topology layer adapter."""
++
++    def dependencies(self, request: GraphicsLayer3DRequest, context: GraphicsSceneContext):
++        return (GraphicsDependencyRequest(_legacy_scene_key(context)),)
++
++    def prepare(self, request, resolved_dependencies, context):
++        _validate_prepared_analysis_options(request)
++        scene = _scene_from_dependencies(resolved_dependencies)
++        identity = identity_digest(
++            GFX3D2_LAYER_SCHEMA + ".framework",
++            {"request": request.scientific_identity, "source": scene.metadata.get("source_framework_topology_digest")},
++        )
++        return PreparedGraphicsLayer3D(
++            request=request,
++            scientific_identity=identity,
++            product_refs={"mean_framework": scene.mean_framework, "source_scene": scene},
++            provenance={"adapter_schema": GFX3D2_LAYER_SCHEMA, "source_scene_schema": scene.metadata.get("schema_version")},
++        )
++
++    def render_primitives(self, prepared, context):
++        return prepared.primitives
++
++
++@dataclass(frozen=True, slots=True)
++class AtomicConnectivityLayer:
++    """Independent averaged atomic-connectivity layer adapter."""
++
++    def dependencies(self, request: GraphicsLayer3DRequest, context: GraphicsSceneContext):
++        return (GraphicsDependencyRequest(_legacy_scene_key(context)),)
++
++    def prepare(self, request, resolved_dependencies, context):
++        _validate_prepared_analysis_options(request)
++        scene = _scene_from_dependencies(resolved_dependencies)
++        if scene.atomic_mean_graph is None:
++            raise Graphics3DValidationError(
++                "Atomic connectivity layer requested but the prepared source scene has no atomic_mean_graph."
++            )
++        graph = _filter_connectivity(scene.atomic_mean_graph, request.selection)
++        identity = identity_digest(
++            GFX3D2_LAYER_SCHEMA + ".connectivity",
++            {"request": request.scientific_identity, "source_mode": graph.mode, "atoms": graph.atom_indices},
++        )
++        return PreparedGraphicsLayer3D(
++            request=request,
++            scientific_identity=identity,
++            product_refs={"atomic_mean_graph": graph, "source_scene": scene},
++            provenance={"adapter_schema": GFX3D2_LAYER_SCHEMA},
++        )
++
++    def render_primitives(self, prepared, context):
++        return prepared.primitives
++
++
++@dataclass(frozen=True, slots=True)
++class AtomicTrajectoryLayer:
++    """Independent prepared atomic-trajectory layer adapter."""
++
++    def dependencies(self, request: GraphicsLayer3DRequest, context: GraphicsSceneContext):
++        return (GraphicsDependencyRequest(_legacy_scene_key(context)),)
++
++    def prepare(self, request, resolved_dependencies, context):
++        _validate_prepared_analysis_options(request)
++        scene = _scene_from_dependencies(resolved_dependencies)
++        if scene.trajectory_paths is None:
++            raise Graphics3DValidationError(
++                "Atomic trajectory layer requested but the prepared source scene has no trajectory_paths."
++            )
++        paths = _filter_trajectory(scene.trajectory_paths, request.selection)
++        identity = identity_digest(
++            GFX3D2_LAYER_SCHEMA + ".trajectory",
++            {"request": request.scientific_identity, "atoms": paths.atom_indices, "mode": str(paths.display_mode)},
++        )
++        return PreparedGraphicsLayer3D(
++            request=request,
++            scientific_identity=identity,
++            product_refs={"trajectory_paths": paths, "source_scene": scene},
++            provenance={"adapter_schema": GFX3D2_LAYER_SCHEMA},
++        )
++
++    def render_primitives(self, prepared, context):
++        return prepared.primitives
++
++
++@dataclass(frozen=True, slots=True)
++class AtomicDensityLayer:
++    """Independent current atomic/framework density field layer adapter.
++
++    The public layer type remains ``density``. ``source_kind`` in analysis
++    options identifies framework density channels when needed.
++    """
++
++    def dependencies(self, request: GraphicsLayer3DRequest, context: GraphicsSceneContext):
++        return (GraphicsDependencyRequest(_legacy_scene_key(context)),)
++
++    def prepare(self, request, resolved_dependencies, context):
++        _validate_prepared_analysis_options(request, allowed=frozenset({"field_key", "source_kind"}))
++        scene = _scene_from_dependencies(resolved_dependencies)
++        field, source_kind = _select_density(scene, request)
++        identity = identity_digest(
++            GFX3D2_LAYER_SCHEMA + ".density",
++            {
++                "request": request.scientific_identity,
++                "field_key": field.field_key,
++                "source_kind": field.source_provenance.source_kind,
++                "field_schema": field.schema_version,
++            },
++        )
++        return PreparedGraphicsLayer3D(
++            request=request,
++            scientific_identity=identity,
++            product_refs={"density_field": field, "density_source_kind": source_kind, "source_scene": scene},
++            provenance={"adapter_schema": GFX3D2_LAYER_SCHEMA, "field_key": str(field.field_key), "source_kind": source_kind},
++        )
++
++    def render_primitives(self, prepared, context):
++        return prepared.primitives
++
++
++def register_builtin_graphics3d_layers(registry: GraphicsLayerRegistry) -> None:
++    """Register the four GFX3D-2 built-in layer families exactly once."""
++
++    registrations = (
++        GraphicsLayerRegistration(
++            layer_type="framework",
++            schema_version=GFX3D2_LAYER_SCHEMA + ".framework",
++            adapter_factory=FrameworkTopologyLayer,
++            supported_selection_fields=frozenset(),
++            required_dependency_providers=(LEGACY_SCENE_PROVIDER,),
++        ),
++        GraphicsLayerRegistration(
++            layer_type="connectivity",
++            schema_version=GFX3D2_LAYER_SCHEMA + ".connectivity",
++            adapter_factory=AtomicConnectivityLayer,
++            supported_selection_fields=frozenset({"species", "atom_indices", "pairs"}),
++            required_dependency_providers=(LEGACY_SCENE_PROVIDER,),
++        ),
++        GraphicsLayerRegistration(
++            layer_type="trajectory",
++            schema_version=GFX3D2_LAYER_SCHEMA + ".trajectory",
++            adapter_factory=AtomicTrajectoryLayer,
++            supported_selection_fields=frozenset({"species", "atom_indices"}),
++            required_dependency_providers=(LEGACY_SCENE_PROVIDER,),
++        ),
++        GraphicsLayerRegistration(
++            layer_type="density",
++            schema_version=GFX3D2_LAYER_SCHEMA + ".density",
++            adapter_factory=AtomicDensityLayer,
++            supported_selection_fields=frozenset({"species", "atom_indices"}),
++            required_dependency_providers=(LEGACY_SCENE_PROVIDER,),
++        ),
++    )
++    for registration in registrations:
++        if registration.layer_type not in registry:
++            registry.register(registration)
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' mdstats-0.20.146a0-complete-source-package/mdstats/graphics3d/plotly_renderer.py mdstats-0.20.147a0-complete-source-package/mdstats/graphics3d/plotly_renderer.py
+--- mdstats-0.20.146a0-complete-source-package/mdstats/graphics3d/plotly_renderer.py	1970-01-01 00:00:00.000000000 +0000
++++ mdstats-0.20.147a0-complete-source-package/mdstats/graphics3d/plotly_renderer.py	2026-08-11 08:32:13.614917294 +0000
+@@ -0,0 +1,183 @@
++"""GFX3D-2 common Plotly renderer for independent prepared layers.
++
++This renderer intentionally reuses the qualified legacy Plotly rendering
++functions one layer at a time.  Scientific products are never recomputed.  The
++fixed composite renderer therefore acts as a backend compatibility engine while
++GFX3D owns layer composition and trace ownership.
++"""
++
++from __future__ import annotations
++
++from dataclasses import replace
++from typing import Any
++
++from .contracts import PreparedGraphicsLayer3D, PreparedGraphicsScene3D
++from .errors import Graphics3DValidationError
++from .render_result import Graphics3DRenderResult, GraphicsLayerRenderResult
++
++
++def _render_options(layer: PreparedGraphicsLayer3D) -> dict[str, Any]:
++    from mdstats.plotting.atomic_density import AtomicDensity3DRenderOptions
++    from mdstats.plotting.framework_density import FrameworkDensity3DRenderOptions
++    from mdstats.plotting.framework_dynamics import (
++        AtomicMeanGraph3DRenderOptions,
++        Trajectory3DRenderOptions,
++    )
++
++    values = dict(layer.request.render_options)
++    if layer.request.layer_type == "trajectory":
++        return {"trajectory_options": Trajectory3DRenderOptions(**values)}
++    if layer.request.layer_type == "connectivity":
++        return {"atomic_mean_graph_options": AtomicMeanGraph3DRenderOptions(**values)}
++    if layer.request.layer_type == "density":
++        source_kind = str(layer.product_refs.get("density_source_kind", "atomic"))
++        if source_kind == "atomic":
++            return {"density_options": AtomicDensity3DRenderOptions(**values)}
++        return {"framework_density_options": FrameworkDensity3DRenderOptions(**values)}
++    if values:
++        # Framework style belongs to GraphStyle/Graph3DRenderOptions in the legacy
++        # backend and is intentionally deferred to GFX3D-5's universal style model.
++        raise Graphics3DValidationError(
++            "GFX3D-2 framework render_options are not yet mapped to the legacy GraphStyle; "
++            "leave them empty until GFX3D-5 universal styling."
++        )
++    return {}
++
++
++def _single_layer_legacy_scene(layer: PreparedGraphicsLayer3D):
++    from mdstats.plotting.framework_density import FrameworkDensityFields
++
++    source = layer.product_refs.get("source_scene")
++    if source is None:
++        raise Graphics3DValidationError(
++            f"Prepared layer {layer.request.name!r} has no source_scene compatibility reference."
++        )
++    kwargs: dict[str, Any] = {
++        "trajectory_paths": None,
++        "atomic_mean_graph": None,
++        "atomic_density_fields": (),
++        "framework_density_fields": None,
++        "topology_categories": (),
++        "topology_catalog": None,
++    }
++    kind = layer.request.layer_type
++    if kind == "trajectory":
++        kwargs["trajectory_paths"] = layer.product_refs["trajectory_paths"]
++    elif kind == "connectivity":
++        kwargs["atomic_mean_graph"] = layer.product_refs["atomic_mean_graph"]
++    elif kind == "density":
++        field = layer.product_refs["density_field"]
++        source_kind = str(layer.product_refs.get("density_source_kind", "atomic"))
++        if source_kind == "atomic":
++            kwargs["atomic_density_fields"] = (field,)
++        else:
++            is_vertex = "vertex" in source_kind
++            kwargs["framework_density_fields"] = FrameworkDensityFields(
++                vertex_density=field if is_vertex else None,
++                edge_length_density=None if is_vertex else field,
++                edge_source=(
++                    source.framework_density_fields.edge_source
++                    if source.framework_density_fields is not None
++                    else "projected"
++                ),
++                metadata={"gfx3d2_single_layer": True},
++            )
++    elif kind != "framework":
++        raise Graphics3DValidationError(f"Unsupported GFX3D-2 layer type {kind!r}.")
++    return replace(source, **kwargs)
++
++
++def _owned_trace_indices(layer: PreparedGraphicsLayer3D, result: Any) -> tuple[int, ...]:
++    if layer.request.layer_type == "framework":
++        values = set(int(v) for v in result.base_result.cell_trace_indices)
++        for mapping in (
++            result.base_result.node_trace_indices,
++            result.base_result.edge_trace_indices,
++            result.base_result.hover_trace_indices,
++        ):
++            for indices in mapping.values():
++                values.update(int(v) for v in indices)
++        return tuple(sorted(values))
++    if layer.request.layer_type == "connectivity":
++        values = set()
++        for indices in result.atomic_mean_graph_trace_indices.values():
++            values.update(int(v) for v in indices)
++        return tuple(sorted(values))
++    if layer.request.layer_type == "trajectory":
++        values = set(int(v) for v in result.endpoint_trace_indices)
++        for indices in result.trajectory_trace_indices.values():
++            values.update(int(v) for v in indices)
++        return tuple(sorted(values))
++    field = layer.product_refs["density_field"]
++    source_kind = str(layer.product_refs.get("density_source_kind", "atomic"))
++    mapping = result.density_trace_indices if source_kind == "atomic" else result.framework_density_trace_indices
++    return tuple(int(v) for v in mapping.get(str(field.field_key), ()))
++
++
++def render_graphics3d_plotly(
++    scene: PreparedGraphicsScene3D,
++    *,
++    periodic: Any = None,
++    browser_profile: str = "interactive_browser",
++    mesh_profile: Any = None,
++) -> Graphics3DRenderResult:
++    """Render arbitrary prepared layer combinations into one Plotly figure."""
++
++    if not isinstance(scene, PreparedGraphicsScene3D):
++        raise Graphics3DValidationError("scene must be PreparedGraphicsScene3D.")
++    if not scene.layers:
++        raise Graphics3DValidationError("Prepared GFX3D scene has no enabled layers.")
++
++    import plotly.graph_objects as go
++    from mdstats.plotting.framework_dynamics import plot_framework_dynamics_3d
++
++    output = go.Figure()
++    layer_results: dict[str, GraphicsLayerRenderResult] = {}
++    warnings: list[str] = []
++    base_layout_copied = False
++
++    for layer in scene.layers:
++        legacy_scene = _single_layer_legacy_scene(layer)
++        result = plot_framework_dynamics_3d(
++            legacy_scene,
++            periodic=periodic,
++            browser_profile=browser_profile,
++            mesh_profile=mesh_profile,
++            **_render_options(layer),
++        )
++        if not base_layout_copied:
++            output.update_layout(result.figure.layout)
++            base_layout_copied = True
++        owned = _owned_trace_indices(layer, result)
++        added: list[int] = []
++        for old_index in owned:
++            trace = result.figure.data[old_index]
++            trace.visible = True if layer.request.initially_visible else "legendonly"
++            output.add_trace(trace)
++            added.append(len(output.data) - 1)
++        layer_results[layer.request.name] = GraphicsLayerRenderResult(
++            layer_name=layer.request.name,
++            backend_object_indices=tuple(added),
++            legend_group=layer.request.name,
++            scientific_identity=layer.scientific_identity,
++            render_identity=layer.render_identity,
++            metadata={
++                "renderer": "plotly",
++                "gfx3d_gate": "GFX3D-2",
++                "legacy_backend_trace_count": len(result.figure.data),
++                "owned_trace_count": len(added),
++            },
++        )
++        warnings.extend(str(v) for v in result.base_result.warnings)
++
++    return Graphics3DRenderResult(
++        artifact=output,
++        scene=scene,
++        layer_results=layer_results,
++        render_metadata={
++            "renderer": "plotly",
++            "schema_version": "mdstats.graphics3d.plotly-render-result.gfx3d2.v1",
++            "layer_count": len(scene.layers),
++        },
++        warnings=tuple(dict.fromkeys(warnings)),
++    )
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' mdstats-0.20.146a0-complete-source-package/mdstats/graphics3d/prepare.py mdstats-0.20.147a0-complete-source-package/mdstats/graphics3d/prepare.py
+--- mdstats-0.20.146a0-complete-source-package/mdstats/graphics3d/prepare.py	1970-01-01 00:00:00.000000000 +0000
++++ mdstats-0.20.147a0-complete-source-package/mdstats/graphics3d/prepare.py	2026-08-11 08:32:13.614260696 +0000
+@@ -0,0 +1,77 @@
++"""GFX3D-2 scene preparation over registered independent layer adapters."""
++
++from __future__ import annotations
++
++from typing import Any
++
++from .contracts import PreparedGraphicsScene3D, GraphicsScene3DRequest
++from .context import GraphicsSceneContext
++from .errors import Graphics3DRegistryError
++from .layers import resolve_builtin_dependency
++from .manifest import GraphicsSceneManifest
++from .registry import DEFAULT_GRAPHICS_LAYER_REGISTRY, GraphicsLayer3DAdapter, GraphicsLayerRegistry
++from .scene import plan_graphics_scene_dependencies
++
++
++def prepare_graphics3d_scene(
++    request: GraphicsScene3DRequest,
++    *,
++    context: GraphicsSceneContext,
++    registry: GraphicsLayerRegistry = DEFAULT_GRAPHICS_LAYER_REGISTRY,
++) -> PreparedGraphicsScene3D:
++    """Prepare enabled GFX3D layers from one shared scientific context.
++
++    GFX3D-2 resolves the current prepared ``FrameworkDynamicsScene`` once and
++    exposes its existing scientific products through independent layer adapters.
++    """
++
++    plan = plan_graphics_scene_dependencies(request, context=context, registry=registry)
++    resolved_by_provider: dict[str, Any] = {}
++    for entry in plan:
++        value = context.resolve_dependency(
++            entry.key,
++            lambda key=entry.key: resolve_builtin_dependency(key, context),
++        )
++        resolved_by_provider[entry.key.provider_type] = value
++
++    prepared = []
++    for layer_request in request.enabled_layers:
++        registration = registry.get(layer_request.layer_type)
++        adapter = registration.adapter_factory()
++        if not isinstance(adapter, GraphicsLayer3DAdapter):
++            raise Graphics3DRegistryError(
++                f"Adapter factory for {layer_request.layer_type!r} did not satisfy GraphicsLayer3DAdapter."
++            )
++        prepared.append(adapter.prepare(layer_request, resolved_by_provider, context))
++
++    source = context.source
++    display_cell = getattr(source, "display_cell", None)
++    manifest = GraphicsSceneManifest(
++        request=request,
++        dependency_plan=plan,
++        frame_selection={
++            "frame_indices": tuple(int(v) for v in getattr(source, "frame_indices", ()))
++        },
++        coordinate_policy={
++            "registration_mode": getattr(source, "metadata", {}).get("registration_mode")
++            if source is not None
++            else None
++        },
++        display_cell_policy={
++            "policy": getattr(source, "metadata", {}).get("display_cell_policy")
++            if source is not None
++            else None
++        },
++    )
++    return PreparedGraphicsScene3D(
++        layers=tuple(prepared),
++        manifest=manifest,
++        display_gauge={} if display_cell is None else {"cell": display_cell},
++        metadata={
++            "schema_version": "mdstats.graphics3d.prepared-scene.gfx3d2.v1",
++            "source_scene_schema": getattr(source, "metadata", {}).get("schema_version")
++            if source is not None
++            else None,
++            "dependency_cache_report": dict(context.cache_report()),
++        },
++    )
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' mdstats-0.20.146a0-complete-source-package/pyproject.toml mdstats-0.20.147a0-complete-source-package/pyproject.toml
+--- mdstats-0.20.146a0-complete-source-package/pyproject.toml	2026-08-11 08:21:19.350834261 +0000
++++ mdstats-0.20.147a0-complete-source-package/pyproject.toml	2026-08-11 08:36:59.089063641 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.146a0"
++version = "0.20.147a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' mdstats-0.20.146a0-complete-source-package/release/gfx3d2_focused_test_record.json mdstats-0.20.147a0-complete-source-package/release/gfx3d2_focused_test_record.json
+--- mdstats-0.20.146a0-complete-source-package/release/gfx3d2_focused_test_record.json	1970-01-01 00:00:00.000000000 +0000
++++ mdstats-0.20.147a0-complete-source-package/release/gfx3d2_focused_test_record.json	2026-08-11 08:42:13.326215164 +0000
+@@ -0,0 +1,32 @@
++{
++  "schema_version": "mdstats.gfx3d2-focused-qualification.v1",
++  "package_version": "0.20.147a0",
++  "gate": "GFX3D-2",
++  "date": "2026-08-11",
++  "command": "pytest -q tests/test_graphics3d_contracts.py tests/test_graphics3d_layers.py tests/test_framework_dynamics.py tests/test_graph_3d.py",
++  "environment": {
++    "ase_source": "supplied dependency bundle, ase-3.29.0",
++    "base_interpreter_note": "base host lacked ASE; supplied local source dependency was added to PYTHONPATH"
++  },
++  "result": {
++    "passed": 62,
++    "failed": 0,
++    "skipped": 0,
++    "warnings": 29
++  },
++  "acceptance": {
++    "all_15_nonempty_initial_layer_combinations": true,
++    "duplicate_trajectory_instances": true,
++    "duplicate_density_instances": true,
++    "shared_prepared_scene_dependency_deduplicated": true,
++    "connectivity_pair_selection_filtered": true,
++    "absent_density_selection_fails_closed": true,
++    "unapplied_scientific_options_fail_closed": true,
++    "legacy_framework_dynamics_path_unchanged": true,
++    "legacy_graph3d_path_unchanged": true
++  },
++  "notes": [
++    "Warnings are existing equal-aspect/orientation diagnostics from the legacy Plotly renderer.",
++    "GFX3D-2 consumes already-prepared FrameworkDynamicsScene scientific products and does not recompute framework, connectivity, trajectory, or density science."
++  ]
++}
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' mdstats-0.20.146a0-complete-source-package/tests/test_graphics3d_layers.py mdstats-0.20.147a0-complete-source-package/tests/test_graphics3d_layers.py
+--- mdstats-0.20.146a0-complete-source-package/tests/test_graphics3d_layers.py	1970-01-01 00:00:00.000000000 +0000
++++ mdstats-0.20.147a0-complete-source-package/tests/test_graphics3d_layers.py	2026-08-11 08:41:15.892196743 +0000
+@@ -0,0 +1,253 @@
++"""Focused GFX3D-2 independent-layer composition qualification."""
++
++from __future__ import annotations
++
++import itertools
++
++import pytest
++
++from mdstats import (
++    DistanceConnectivity,
++    PairCutoffRegistry,
++    compute_atomic_connectivity,
++    prepare_framework_dynamics_scene,
++)
++from mdstats.graphics3d import (
++    DEFAULT_GRAPHICS_LAYER_REGISTRY,
++    AtomicConnectivityLayer,
++    AtomicDensityLayer,
++    AtomicTrajectoryLayer,
++    FrameworkTopologyLayer,
++    GraphicsLayer3DRequest,
++    GraphicsScene3DRequest,
++    GraphicsSceneContext,
++    GraphicsSelection,
++    prepare_graphics3d_scene,
++    render_graphics3d_plotly,
++)
++from mdstats.plotting.atomic_density import AtomicDensityOptions, AtomicDensitySelection
++from mdstats.plotting.framework_dynamics import (
++    AtomicMeanGraphOptions,
++    FrameworkDynamicsResources,
++    TrajectoryAtomSelection,
++)
++
++from tests.test_graphics3d_contracts import _small_collection, _small_topology
++
++
++@pytest.fixture(scope="module")
++def full_legacy_scene():
++    collection = _small_collection()
++    topology = _small_topology(collection)
++    connectivity = compute_atomic_connectivity(
++        collection,
++        DistanceConnectivity(
++            cutoffs=PairCutoffRegistry.from_mapping(
++                {("Si", "O"): 2.1, ("Al", "O"): 2.1, ("Na", "O"): 4.5}
++            )
++        ),
++    )
++    return prepare_framework_dynamics_scene(
++        collection,
++        topology,
++        trajectory_selection=TrajectoryAtomSelection(species=("Na",)),
++        atomic_connectivity=connectivity,
++        atomic_mean_graph_options=AtomicMeanGraphOptions(
++            mode="occupancy", occupancy_threshold=0.0
++        ),
++        atomic_density_selections=(
++            AtomicDensitySelection(species=("Na",), label="Na"),
++        ),
++        atomic_density_options=AtomicDensityOptions(
++            grid_shape=(8, 8, 8),
++            gaussian_bandwidth=2.0,
++            adaptive_smearing=False,
++            store_sample_positions=False,
++        ),
++        resources=FrameworkDynamicsResources(
++            max_threads=1,
++            max_memory_bytes=256 * 1024 * 1024,
++        ),
++    )
++
++
++def _request(layer_types: tuple[str, ...]) -> GraphicsScene3DRequest:
++    layers = []
++    for layer_type in layer_types:
++        if layer_type == "framework":
++            layers.append(GraphicsLayer3DRequest(name="framework", layer_type="framework"))
++        elif layer_type == "connectivity":
++            layers.append(
++                GraphicsLayer3DRequest(name="connectivity", layer_type="connectivity")
++            )
++        elif layer_type == "trajectory":
++            layers.append(
++                GraphicsLayer3DRequest(
++                    name="trajectory",
++                    layer_type="trajectory",
++                    selection=GraphicsSelection(species=("Na",)),
++                )
++            )
++        elif layer_type == "density":
++            layers.append(
++                GraphicsLayer3DRequest(
++                    name="density",
++                    layer_type="density",
++                    selection=GraphicsSelection(species=("Na",)),
++                )
++            )
++        else:  # pragma: no cover
++            raise AssertionError(layer_type)
++    return GraphicsScene3DRequest(layers=tuple(layers))
++
++
++def test_builtin_layer_types_are_registered_with_production_adapters() -> None:
++    assert set(DEFAULT_GRAPHICS_LAYER_REGISTRY.layer_types()) >= {
++        "framework",
++        "connectivity",
++        "trajectory",
++        "density",
++    }
++    assert isinstance(
++        DEFAULT_GRAPHICS_LAYER_REGISTRY.get("framework").adapter_factory(),
++        FrameworkTopologyLayer,
++    )
++    assert isinstance(
++        DEFAULT_GRAPHICS_LAYER_REGISTRY.get("connectivity").adapter_factory(),
++        AtomicConnectivityLayer,
++    )
++    assert isinstance(
++        DEFAULT_GRAPHICS_LAYER_REGISTRY.get("trajectory").adapter_factory(),
++        AtomicTrajectoryLayer,
++    )
++    assert isinstance(
++        DEFAULT_GRAPHICS_LAYER_REGISTRY.get("density").adapter_factory(),
++        AtomicDensityLayer,
++    )
++
++
++@pytest.mark.parametrize(
++    "layer_types",
++    [
++        combo
++        for size in range(1, 5)
++        for combo in itertools.combinations(
++            ("framework", "connectivity", "trajectory", "density"), size
++        )
++    ],
++    ids=lambda value: "+".join(value),
++)
++def test_all_15_nonempty_layer_combinations_prepare_and_render(
++    full_legacy_scene, layer_types
++) -> None:
++    context = GraphicsSceneContext(source=full_legacy_scene, source_identity="gfx3d2-small")
++    prepared = prepare_graphics3d_scene(_request(layer_types), context=context)
++    assert tuple(layer.request.layer_type for layer in prepared.layers) == layer_types
++    # All four built-in adapters consume the same already-prepared scientific scene.
++    assert dict(context.cache_report()) == {"entries": 1, "hits": 0, "misses": 1}
++
++    rendered = render_graphics3d_plotly(prepared)
++    assert tuple(rendered.layer_results) == tuple(layer.request.name for layer in prepared.layers)
++    claimed: set[int] = set()
++    for layer in prepared.layers:
++        result = rendered.layer_results[layer.request.name]
++        assert result.backend_object_indices
++        assert not (claimed & set(result.backend_object_indices))
++        claimed.update(result.backend_object_indices)
++        assert result.scientific_identity == layer.scientific_identity
++        assert result.render_identity == layer.render_identity
++    assert claimed == set(range(len(rendered.artifact.data)))
++
++
++def test_duplicate_instances_of_same_type_are_independent(full_legacy_scene) -> None:
++    request = GraphicsScene3DRequest(
++        layers=(
++            GraphicsLayer3DRequest(
++                name="Na path A",
++                layer_type="trajectory",
++                selection=GraphicsSelection(species=("Na",)),
++                render_options={"opacity": 0.25},
++            ),
++            GraphicsLayer3DRequest(
++                name="Na path B",
++                layer_type="trajectory",
++                selection=GraphicsSelection(species=("Na",)),
++                render_options={"opacity": 0.85},
++            ),
++            GraphicsLayer3DRequest(
++                name="Na density soft",
++                layer_type="density",
++                selection=GraphicsSelection(species=("Na",)),
++                render_options={"inner_opacity": 0.15, "outer_opacity": 0.05},
++            ),
++            GraphicsLayer3DRequest(
++                name="Na density strong",
++                layer_type="density",
++                selection=GraphicsSelection(species=("Na",)),
++                render_options={"inner_opacity": 0.55, "outer_opacity": 0.20},
++            ),
++        )
++    )
++    context = GraphicsSceneContext(source=full_legacy_scene, source_identity="gfx3d2-duplicates")
++    prepared = prepare_graphics3d_scene(request, context=context)
++    assert prepared.layers[0].scientific_identity == prepared.layers[1].scientific_identity
++    assert prepared.layers[0].render_identity != prepared.layers[1].render_identity
++    assert prepared.layers[2].scientific_identity == prepared.layers[3].scientific_identity
++    assert prepared.layers[2].render_identity != prepared.layers[3].render_identity
++    rendered = render_graphics3d_plotly(prepared)
++    assert len(rendered.layer_results) == 4
++    assert all(result.backend_object_indices for result in rendered.layer_results.values())
++
++
++def test_connectivity_pair_selection_is_scientific_and_filtered(full_legacy_scene) -> None:
++    request = GraphicsScene3DRequest(
++        layers=(
++            GraphicsLayer3DRequest(
++                name="Si-O",
++                layer_type="connectivity",
++                selection=GraphicsSelection(pairs=(("Si", "O"),)),
++            ),
++        )
++    )
++    prepared = prepare_graphics3d_scene(
++        request,
++        context=GraphicsSceneContext(source=full_legacy_scene, source_identity="gfx3d2-pair"),
++    )
++    graph = prepared.layers[0].product_refs["atomic_mean_graph"]
++    assert set(graph.atomic_numbers.tolist()) == {8, 14}
++    assert graph.edge_endpoints.shape[0] >= 1
++
++
++def test_density_selection_fails_closed_when_not_present(full_legacy_scene) -> None:
++    request = GraphicsScene3DRequest(
++        layers=(
++            GraphicsLayer3DRequest(
++                name="K density",
++                layer_type="density",
++                selection=GraphicsSelection(species=("K",)),
++            ),
++        )
++    )
++    with pytest.raises(Exception, match="did not match any prepared density field"):
++        prepare_graphics3d_scene(
++            request,
++            context=GraphicsSceneContext(source=full_legacy_scene, source_identity="gfx3d2-k"),
++        )
++
++
++def test_prepared_layer_does_not_silently_ignore_scientific_options(full_legacy_scene) -> None:
++    request = GraphicsScene3DRequest(
++        layers=(
++            GraphicsLayer3DRequest(
++                name="trajectory",
++                layer_type="trajectory",
++                selection=GraphicsSelection(species=("Na",)),
++                analysis_options={"path_mode": "folded"},
++            ),
++        )
++    )
++    with pytest.raises(Exception, match="cannot apply scientific analysis options"):
++        prepare_graphics3d_scene(
++            request,
++            context=GraphicsSceneContext(source=full_legacy_scene, source_identity="gfx3d2-options"),
++        )

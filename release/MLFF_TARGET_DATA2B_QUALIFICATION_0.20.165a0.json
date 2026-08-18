@@ -1,0 +1,49 @@
+{
+  "date": "2026-08-13",
+  "gate": "TARGET-DATA2B",
+  "qualification": {
+    "adversarial_coverage_cases": [
+      "two extrema do not game coverage",
+      "center-clustered subset fails local coverage and Q01/Q99 extent",
+      "full reference covers exactly",
+      "correlation-unit weighting is balanced independent of frame count",
+      "nested coverage is non-decreasing",
+      "selected-set report identity is order-independent"
+    ],
+    "pdf_compare": "124-page before/after render diff completed at 72 dpi; 20 pages changed from expected TOC/section reflow",
+    "pdf_pages": 124,
+    "pdf_render_inspection": "pages 108-112 rendered at 160 dpi and visually inspected; no clipping, overlap, or broken equations observed",
+    "profile_adapter": "compact LTA fixture produced generic profile-scalar coverage families and Li/Na/K environment-class support strata without LTA imports in target_coverage.py",
+    "pytest_result": "101 passed, 1 skipped",
+    "python_compile": "passed",
+    "skip": "tests/test_mlff_campaign_cli.py: real LTA training root not supplied",
+    "weighted_radius_bruteforce_equivalence": "passed"
+  },
+  "schema": "mdstats.mlff-target-data2b-qualification.v1",
+  "scope": "immutable reference-side empirical-mass coverage authority; TARGET-DATA2C ladder intentionally not implemented",
+  "sha256": {
+    "PATCH_NOTES_0.20.165a0.md": "1f8264d243cb280af39bc1df7d7af6a554e420086edd88718f332098dbf0c47d",
+    "PKG-INFO": "660d467228a46553fb8b0be5ac584c6caba9cf67345f5baafb2ac16eb9c073c6",
+    "docs/arch_manuals/mlff_training_data_architecture.md": "a2eb7bba2483fc8a3dc238495b3bf1fe91790f84ef9ddd3d89e6d6c160f6f697",
+    "docs/arch_manuals/mlff_training_data_architecture.pdf": "d944605c054faed0e09ae54ebd801b9f0508fc13cd2a698b09d07eeef3b94868",
+    "mdstats/_version.py": "06a5124eb700372bbc70f0d50b0ae674425a4da2844b462c63f1fa375e98b206",
+    "mdstats/training_data/campaign_cli.py": "3b3173b296f7e7088513ea03b1992d3a11ac156ef3fe87393b6980fb3eb6865e",
+    "mdstats/training_data/target_coverage.py": "9499972e88e0018de74a9f72f9c248b1544245088d33a743a776f8cc6677388f",
+    "pyproject.toml": "3d26edf8b3fa859af70b9426990b2f96b77d53433acf6353dbbdec3319aa0dc0",
+    "tests/test_mlff_target_data2b_coverage.py": "62ec12eadb5195176342010e62555682b845a6d38eda321d57f5e22770557085",
+    "tests/test_mlff_target_data2b_specification.py": "94cbc79cf2fda8e75311afa558bd45859d0bdca22f88b786628e940956b3ab03"
+  },
+  "status": "passed",
+  "test_files": [
+    "tests/test_mlff_target_data2b_coverage.py",
+    "tests/test_mlff_target_data2b_specification.py",
+    "tests/test_mlff_foundation_audit1.py",
+    "tests/test_mlff_target_data2a_role_freeze.py",
+    "tests/test_mlff_data5_partition_roles.py",
+    "tests/test_mlff_data6_selection_descriptors.py",
+    "tests/test_mlff_data6_specification.py",
+    "tests/test_mlff_data9a9a_production_model_sweep.py",
+    "tests/test_mlff_campaign_cli.py"
+  ],
+  "version": "0.20.165a0"
+}

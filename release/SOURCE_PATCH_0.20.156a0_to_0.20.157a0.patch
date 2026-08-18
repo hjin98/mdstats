@@ -1,0 +1,1245 @@
+diff -ruN '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' a/CHANGELOG.md b/CHANGELOG.md
+--- a/CHANGELOG.md	2026-08-12 01:54:09.000000000 +0000
++++ b/CHANGELOG.md	2026-08-12 09:37:09.029916756 +0000
+@@ -1,3 +1,13 @@
++## 0.20.157a0 - 2026-08-12
++
++- Harden the GFX3D raw LTA dependency source as a true single-flight preparation owner: one failing science preparation is latched and shared across product requests, and CLI diagnostics now preserve the complete causal exception chain instead of reporting only the first product wrapper.
++- Repair renderer-neutral sparse atomic-density output by dispatching packed sparse fields through the existing sparse-mesh/node-cloud machinery and enforcing the aggregate GFX3D browser budget rather than assuming a dense `.values` array.
++- Stream positive LAMMPS `start`/`stop`/`stride` selection while scanning dump files instead of materializing every discarded atom table. On the supplied 10,001-frame / ~183 MiB Na-LTA dump, `stride=500` retained the same 21 frames and source-frame count while reducing isolated read time from about 9.17 s to 3.03 s and peak RSS from about 1.63 GiB to 253 MiB.
++- Reuse exact atomic-connectivity pair geometry between framework-topology preparation and the subsequently requested full atomic-connectivity layer; preserve the existing hysteretic scientific definitions.
++- Carry the compact Phase-B adaptive density numerical plan into density realization so registration/numerical policy is not resolved twice; coordinate samples are intentionally not duplicated in the retained plan.
++- Add staged GFX3D preparation progress plus fail-fast diagnostics for implausible framework T-O calibration and highly fragmented topology catalogs, making incorrect LAMMPS type maps or damaged frameworks visible before they masquerade as a generic dependency failure.
++- Preserve the historical `lta-mixed-alkali-density` preset contract (one density field per present supported species); use explicit `--layer density:Na`/Li/K for substantially cheaper mobile-ion-only views. Focused qualification: 187 tests passed across GFX3D, LAMMPS, framework/topology, sparse density, and density preprocessing.
++
+ ## 0.20.156a0 - 2026-08-11
+ 
+ - Complete GFX3D-HARDEN1 for existing framework/connectivity/trajectory/density plotting: authenticated automatic topology-cache reuse, renderer-neutral source products, scene-owned cell display, strict camera/periodic validation, trajectory hover parity, and browser-budget preflight before periodic materialization.
+diff -ruN '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' a/PATCH_NOTES_0.20.157a0.md b/PATCH_NOTES_0.20.157a0.md
+--- a/PATCH_NOTES_0.20.157a0.md	1970-01-01 00:00:00.000000000 +0000
++++ b/PATCH_NOTES_0.20.157a0.md	2026-08-12 09:40:25.030259886 +0000
+@@ -0,0 +1,45 @@
++# mdstats 0.20.157a0 — GFX3D HARDEN2
++
++This revision hardens and accelerates the existing universal 3-D framework / connectivity / trajectory / density path without changing the scientific definitions of those layers or the historical `lta-mixed-alkali-density` preset.
++
++## Gate 1 — failure-path and sparse-render correctness
++
++- The raw LTA source is now single-flight for both success and failure. A failed preparation is latched and reused by all product requests instead of being retried by each waiting dependency future.
++- CLI errors preserve the causal exception chain, so the underlying preparation failure is visible rather than being reduced to `Failed to resolve GFX3D dependency ...`.
++- Packed sparse atomic-density fields are rendered through the existing sparse mesh/node-cloud pipeline rather than a dense `.values` path.
++- Sparse-shell face limits are treated as visual targets under the scene-level browser budget, avoiding an unnecessary expensive simplifier while retaining the aggregate browser safety gate.
++
++## Gate 2 — input and connectivity scaling
++
++- Positive LAMMPS `start` / `stop` / `stride` selection is applied during streaming file scan. Discarded atom tables are not tokenized/materialized, while the exact source frame count is retained.
++- The framework-only and full atomic-connectivity passes share one exact `AtomicConnectivityGeometryCache`, eliminating repeated Si/Al–O pair-geometry construction without changing hysteresis or connectivity states.
++- GFX3D now reports framework calibration, framework connectivity, topology construction, full atomic connectivity, and registered scene/density stages during preparation.
++
++## Gate 3 — density planning and topology diagnostics
++
++- Phase-B adaptive density numerics are retained in a compact immutable `AtomicDensityResolvedPlan` and consumed by realization rather than being resolved a second time.
++- The plan intentionally does not retain duplicate coordinate samples, preserving the existing memory-planning model.
++- The LTA source warns when mapped framework species show implausible tetrahedral-neighbor calibration or when the topology catalog is pathologically fragmented. These warnings are diagnostic: mdstats does not guess or rewrite a user-supplied type map.
++
++## Qualification
++
++Focused tests: **187 passed** across LAMMPS I/O, GFX3D dependency execution/CLI/rendering, framework dynamics/topology/visualization, sparse meshes, atomic density, and density preprocessing.
++
++On the supplied 10,001-frame (~183 MiB) Na-LTA dump with `stride=500`:
++
++- 0.20.156a0 isolated LAMMPS read: ~9.17 s, ~1.63 GiB peak RSS.
++- 0.20.157a0 isolated LAMMPS read: ~3.03 s, ~253 MiB peak RSS.
++- Both return the same 21 selected frames with `source_frame_count=10001`.
++- A four-layer `framework + connectivity + trajectory:Na + density:Na` smoke completed successfully and wrote a ~22.1 MiB self-contained HTML file; the Na density used the packed sparse backend and rendered without the former `.values` failure.
++
++The historical all-species density preset remains intentionally expensive for nearly static Si/Al/O populations because adaptive smearing can demand very fine logical sparse grids. For routine transport visualization, prefer explicit mobile-ion density layers such as `--layer density:Na`.
++
++## Supplied trajectory type-map diagnostic
++
++Geometry of the supplied `dump.prod.Na_lta_300K.old(2).lammpstrj` strongly indicates `type 2 = Na`, `type 3 = O`, `type 4 = Si-like tetrahedral sites`, and `type 1 = Al-like tetrahedral sites`, i.e. the likely map is:
++
++```text
++1=Al,2=Na,3=O,4=Si
++```
++
++The trajectory still triggers an Al tetrahedral-neighbor / topology-fragmentation warning under that mapping, so its framework integrity/cutoff history should be treated as a separate scientific diagnostic rather than hidden as a plotting performance problem.
+diff -ruN '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' a/docs/arch_manuals/mdstats_3d_graphics_architecture.md b/docs/arch_manuals/mdstats_3d_graphics_architecture.md
+--- a/docs/arch_manuals/mdstats_3d_graphics_architecture.md	2026-08-12 02:06:53.000000000 +0000
++++ b/docs/arch_manuals/mdstats_3d_graphics_architecture.md	2026-08-12 09:40:24.887614242 +0000
+@@ -64,7 +64,7 @@
+ The architecture distinguishes three statuses:
+ 
+ `current baseline`
+-: behavior implemented through `mdstats 0.20.150a0`, hardened in `0.20.156a0`, and available for migration;
++: behavior implemented through `mdstats 0.20.150a0`, hardened in `0.20.156a0` and `0.20.157a0`, and available for migration;
+ 
+ `normative target`
+ : behavior required by this standard but not yet implemented;
+@@ -72,7 +72,7 @@
+ `deferred`
+ : behavior intentionally left to a later approved layer or renderer specification.
+ 
+-As of `mdstats 0.20.156a0`, **GFX3D-1 through GFX3D-5 are implemented and GFX3D-HARDEN1 is complete**. The universal immutable request, selection, dependency, context, identity, registry, manifest, renderer-neutral primitive, generic render-result, and legacy compatibility contracts live under `mdstats.graphics3d`. GFX3D-2 adds registered independent `FrameworkTopologyLayer`, `AtomicConnectivityLayer`, `AtomicTrajectoryLayer`, and `AtomicDensityLayer` adapters. GFX3D-3 adds the packaged `mdstats-3d` command, strict TOML compilation, layer shorthand, the source-aware `lta-mixed-alkali-density` compatibility preset, canonical manifest-only mode, deterministic precedence/overwrite behavior, and the historical example compatibility shim. GFX3D-4 replaces the raw CLI's monolithic layer dependency with product-level framework/connectivity/trajectory/density keys plus single-flight shared cache authority. GFX3D-5 removes the remaining renderer coupling: layer adapters emit renderer-neutral primitives, the common Plotly backend dispatches only on primitive classes, and view state, periodic replication, visibility, render priority, generic legend grouping, and browser-payload accounting are universal render semantics rather than scientific-layer special cases.
++As of `mdstats 0.20.157a0`, **GFX3D-1 through GFX3D-5 are implemented and GFX3D-HARDEN1/HARDEN2 are complete**. The universal immutable request, selection, dependency, context, identity, registry, manifest, renderer-neutral primitive, generic render-result, and legacy compatibility contracts live under `mdstats.graphics3d`. GFX3D-2 adds registered independent `FrameworkTopologyLayer`, `AtomicConnectivityLayer`, `AtomicTrajectoryLayer`, and `AtomicDensityLayer` adapters. GFX3D-3 adds the packaged `mdstats-3d` command, strict TOML compilation, layer shorthand, the source-aware `lta-mixed-alkali-density` compatibility preset, canonical manifest-only mode, deterministic precedence/overwrite behavior, and the historical example compatibility shim. GFX3D-4 replaces the raw CLI's monolithic layer dependency with product-level framework/connectivity/trajectory/density keys plus single-flight shared cache authority. GFX3D-5 removes the remaining renderer coupling: layer adapters emit renderer-neutral primitives, the common Plotly backend dispatches only on primitive classes, and view state, periodic replication, visibility, render priority, generic legend grouping, and browser-payload accounting are universal render semantics rather than scientific-layer special cases.
+ 
+ The central design rule is:
+ 
+@@ -2152,3 +2152,59 @@
+ 
+ This hardening gate does not change density normalization, HDR semantics, framework mapping, connectivity cutoffs, trajectory registration semantics, layer scientific identities, or the renderer-neutral primitive vocabulary. GFX3D-RING1 remains the next scientific-extension gate.
+ 
++
++## 2026-08-12 - GFX3D-HARDEN2 implementation (`0.20.157a0`)
++
++A preparation-performance and failure-path audit after HARDEN1 found that the
++product-level dependency DAG still converged on one qualified LTA science owner,
++but the owner cached only successful preparation. Concurrent product requests
++could therefore serialize behind the same lock and, after a failure, retry the
++entire expensive preparation one after another. HARDEN2 makes the source owner
++single-flight for both success and failure: the first attempt is authoritative,
++a failure is latched with its original exception, and every dependent product
++receives the same causal failure. The CLI now renders the complete exception
++chain so a density/topology/science error is not hidden by whichever product key
++first triggered source preparation.
++
++The LAMMPS custom-dump adapter now applies positive `start`/`stop`/`stride`
++selection during streaming scan. Unselected atom tables are consumed but not
++tokenized/materialized, while every source frame is still counted for exact
++provenance. Negative slice bounds deliberately retain full materialization to
++preserve Python negative-index semantics. On the supplied 10,001-frame, roughly
++183 MiB Na-LTA dump, isolated `stride=500` input retained exactly 21 frames and
++`source_frame_count=10001`; measured read time fell from about 9.17 s to 3.03 s
++and peak RSS from about 1.63 GiB to 253 MiB in the qualification environment.
++
++The LTA source now shares one `AtomicConnectivityGeometryCache` between the
++framework-only hysteretic connectivity pass used by topology construction and
++the later full atomic-connectivity pass. This reuses identical pair geometry
++without changing pair definitions, hysteresis, state construction, or topology
++identity. Preparation also exposes explicit calibration/connectivity/topology/
++scene progress stages and warns on implausible T-O calibration or pathological
++topology fragmentation, which makes a wrong numeric type map or damaged
++framework visible rather than presenting only as unexplained preparation cost.
++
++Atomic-density Phase B now retains an immutable compact
++`AtomicDensityResolvedPlan` containing the selected atom identity, registration
++signature, options, and resolved numerical policy. Realization consumes that
++approved policy instead of resolving adaptive grid/bandwidth numerics a second
++time. Coordinate samples are intentionally not retained in the plan so this
++optimization does not create a second trajectory-sized memory resident set or
++bypass the established resource planner.
++
++The universal density renderer now recognizes packed sparse scalar fields and
++uses the qualified sparse mesh/node-cloud machinery. Per-shell face counts are
++visual targets under the scene-level browser controller rather than an
++independent hard cap that would force expensive simplification before the
++aggregate GFX3D browser budget is evaluated. This repairs the previous
++`PeriodicPackedBlockScalarField3D` `.values` failure without redefining density
++normalization, HDR thresholds, or sparse scientific values.
++
++The historical `lta-mixed-alkali-density` preset remains unchanged: all present
++supported species still receive density layers. This can be intrinsically
++expensive for nearly static framework atoms because adaptive smearing may demand
++very fine logical grids. Mobile-ion-only scenes should explicitly request, for
++example, `density:Na`; changing the compatibility preset silently would be a
++semantic regression. A proposed one-pass `dominant_only` framework shortcut was
++also rejected because it changed qualified coordinates at approximately
++`1e-16`; the exact legacy-equivalence contract remains authoritative.
+diff -ruN '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' a/docs/guides/mdstats_3d_graphics_user_guide.md b/docs/guides/mdstats_3d_graphics_user_guide.md
+--- a/docs/guides/mdstats_3d_graphics_user_guide.md	2026-08-12 02:06:53.000000000 +0000
++++ b/docs/guides/mdstats_3d_graphics_user_guide.md	2026-08-12 09:40:24.887375247 +0000
+@@ -21,7 +21,7 @@
+ 
+ # What `mdstats-3d` does
+ 
+-`mdstats-3d` is the universal configurable 3-D scene command introduced in `mdstats 0.20.148a0`; `0.20.149a0` adds the shared scientific dependency DAG, `0.20.150a0` completes renderer-neutral composition/view semantics, and `0.20.156a0` hardens topology reuse, long-trajectory framework preparation, validation, hover, scene-owned cell display, and browser-memory preflight.
++`mdstats-3d` is the universal configurable 3-D scene command introduced in `mdstats 0.20.148a0`; `0.20.149a0` adds the shared scientific dependency DAG, `0.20.150a0` completes renderer-neutral composition/view semantics, `0.20.156a0` hardens topology reuse and long-trajectory framework preparation, and `0.20.157a0` hardens failure handling, sparse-density rendering, streaming LAMMPS selection, shared connectivity geometry, and density-plan reuse.
+ 
+ The first four independent graphical layer types are:
+ 
+@@ -313,3 +313,59 @@
+ 
+ For long fixed-cell framework trajectories, `0.20.156a0` adds a vectorized projected-geometry path while preserving the established frame-local algorithm as the fallback for variable-cell and periodic-multiedge cases. This is execution-only: changing worker count or taking the fast path does not change the framework scientific identity.
+ 
++
++## Faster and more diagnosable preparation in 0.20.157a0
++
++`0.20.157a0` hardens the preparation path without changing layer science or the
++historical compatibility preset.
++
++For LAMMPS dumps, positive `start`/`stop`/`stride` selection is now applied while
++the file is scanned. Discarded frames still have their headers counted so
++`source_frame_count` remains exact, but their atom tables are not tokenized and
++materialized. Thus a command such as
++
++```text
++--stride 500
++```
++
++now reduces input memory and parsing work as well as the number of frames sent
++to GFX3D. Negative Python-style `start`/`stop` indices retain the full-reader
++fallback because their selection cannot be known until the source frame count
++is established.
++
++GFX3D also emits preparation sub-stages for framework calibration, framework
++connectivity, topology construction, full atomic connectivity, and composite
++scene/density preparation. If preparation fails, the CLI reports the nested
++root cause rather than only a message such as `Failed to resolve GFX3D
++dependency 'framework_topology_product'`. The raw LTA provider latches a failed
++preparation, so concurrent product requests cannot retry the same expensive
++failed calculation several times.
++
++Numeric LAMMPS type maps are **file-specific**. The examples in this guide are
++illustrative; do not copy a map unless it matches the dump that produced the
++trajectory. The LTA provider now warns when the mapped Si/Al framework species
++have implausible T-O calibration statistics or when nearly every sampled frame
++becomes a distinct framework topology. Those diagnostics commonly indicate a
++wrong type map, an actually damaged framework, or a cutoff policy that deserves
++inspection.
++
++The compatibility preset intentionally remains comprehensive: it creates one
++density field for every present supported species. Framework Si/Al/O atoms can
++have very small positional spreads, causing adaptive density resolution to
++become much finer than the mobile-ion density. For routine ion-transport views,
++request only the density you need, for example:
++
++```bash
++mdstats-3d dump.lammpstrj \
++  --lammps-units metal \
++  --lammps-timestep 0.001 \
++  --lammps-type-map "...file-specific mapping..." \
++  --layer framework \
++  --layer connectivity \
++  --layer trajectory:Na \
++  --layer density:Na
++```
++
++The sparse density produced by the preferred large-grid backend is now rendered
++directly through the sparse mesh/node-cloud path; it is no longer incorrectly
++sent through a dense-field `.values` interface.
+diff -ruN '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' a/mdstats/_version.py b/mdstats/_version.py
+--- a/mdstats/_version.py	2026-08-12 01:53:27.000000000 +0000
++++ b/mdstats/_version.py	2026-08-12 09:37:09.028747131 +0000
+@@ -1,3 +1,3 @@
+ """Package version."""
+ 
+-__version__ = "0.20.156a0"
++__version__ = "0.20.157a0"
+diff -ruN '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' a/mdstats/graphics3d/cli.py b/mdstats/graphics3d/cli.py
+--- a/mdstats/graphics3d/cli.py	2026-08-11 10:38:07.000000000 +0000
++++ b/mdstats/graphics3d/cli.py	2026-08-12 09:10:54.688724986 +0000
+@@ -13,6 +13,7 @@
+ from mdstats._version import __version__
+ from mdstats.exceptions import FrameCollectionError
+ from mdstats.plotting.graph_errors import GraphVisualizationError
++from mdstats.progress import TextProgressPort
+ 
+ from .config import (
+     BUILTIN_PRESETS,
+@@ -44,6 +45,21 @@
+     return digest.hexdigest()
+ 
+ 
++
++def _exception_chain_message(error: BaseException) -> str:
++    """Return a compact causal chain without requiring a debug traceback."""
++    parts: list[str] = []
++    seen: set[int] = set()
++    current: BaseException | None = error
++    while current is not None and id(current) not in seen:
++        seen.add(id(current))
++        text = str(current).strip()
++        part = f"{type(current).__name__}: {text}" if text else type(current).__name__
++        if not parts or part != parts[-1]:
++            parts.append(part)
++        current = current.__cause__ if current.__cause__ is not None else current.__context__
++    return " <- ".join(parts)
++
+ def _parser() -> argparse.ArgumentParser:
+     parser = argparse.ArgumentParser(
+         prog="mdstats-3d",
+@@ -332,13 +348,18 @@
+         max_browser_faces = request.output.get("max_browser_faces")
+ 
+         source_sha = _sha256(args.trajectory)
++        science_progress = TextProgressPort(
++            label="GFX3D PREPARE",
++            enabled=enabled_progress,
++            show_source=False,
++        )
+         scientific_source = LTAGraphics3DDependencySource(
+             trajectory=trajectory,
+             request=request,
+             input_options=input_options,
+             output_path=output_path,
+             source_identity=source_sha,
+-            progress=None,
++            progress=science_progress,
+         )
+         manifest = _manifest_for_source(
+             request,
+@@ -388,7 +409,7 @@
+         print(output_path)
+         return 0
+     except (Graphics3DError, FrameCollectionError, GraphVisualizationError, ValueError, OSError, json.JSONDecodeError) as error:
+-        print(f"mdstats-3d: {error}", file=sys.stderr)
++        print(f"mdstats-3d: {_exception_chain_message(error)}", file=sys.stderr)
+         return 2
+ 
+ 
+diff -ruN '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' a/mdstats/graphics3d/layers.py b/mdstats/graphics3d/layers.py
+--- a/mdstats/graphics3d/layers.py	2026-08-12 01:09:53.000000000 +0000
++++ b/mdstats/graphics3d/layers.py	2026-08-12 09:20:48.347474144 +0000
+@@ -243,7 +243,17 @@
+ 
+ 
+ def _density_render_primitives(prepared: PreparedGraphicsLayer3D, context: GraphicsSceneContext) -> tuple[Any, ...]:
+-    from mdstats.plotting.atomic_density import AtomicDensity3DRenderOptions, density_mesh_arrays, density_voxel_cloud_arrays
++    from mdstats.plotting.atomic_density import (
++        AtomicDensity3DRenderOptions,
++        density_mesh_arrays,
++        density_voxel_cloud_arrays,
++    )
++    from mdstats.plotting.density_contracts import LOCAL_SPARSE_BACKEND
++    from mdstats.plotting.density_mesh_contracts import DensityMeshFaceContract
++    from mdstats.plotting.density_sparse_mesh import prepare_sparse_density_mesh
++    from mdstats.plotting.density_node_cloud import prepare_density_node_cloud
++    from mdstats.plotting.graph_errors import GraphComplexityError
++
+     field = prepared.product_refs["density_field"]
+     opts = AtomicDensity3DRenderOptions(**dict(prepared.request.render_options))
+     number = None
+@@ -262,12 +272,87 @@
+                 maximum = min(maximum, int(getattr(budget, "max_final_density_faces", maximum)))
+         n = max(1, len(fractions) - 1)
+         for position, fraction in enumerate(fractions):
+-            vertices, faces, threshold = density_mesh_arrays(field, fraction, max_faces=maximum)
+             alpha = opts.inner_opacity + (opts.outer_opacity - opts.inner_opacity) * (position / n)
++            if getattr(field, "storage_backend", None) == LOCAL_SPARSE_BACKEND:
++                try:
++                    # GFX3D owns a *scene* browser budget, so a per-shell face
++                    # count is a visual target rather than the legacy standalone
++                    # renderer's hard final limit.  Let the generic browser
++                    # preflight enforce the authoritative aggregate scene cap.
++                    face_contract = DensityMeshFaceContract.scene_controller(
++                        raw_extraction_face_limit=max(maximum, 8 * maximum),
++                        visual_target_faces=maximum,
++                        metadata={"owner": "mdstats.graphics3d"},
++                    )
++                    surface = prepare_sparse_density_mesh(
++                        field,
++                        fraction,
++                        face_contract=face_contract,
++                        allow_cloud_fallback=True,
++                        cloud_max_points=opts.cloud_max_points,
++                    )
++                except GraphComplexityError as error:
++                    # A valid scientific sparse field must not make the universal
++                    # viewer fail merely because its explicit contour marginally
++                    # exceeds the browser face contract.  Fall back to the same
++                    # deterministic HDR node cloud used by the legacy renderer.
++                    if "max_mesh_faces" not in str(error):
++                        raise
++                    cloud = prepare_density_node_cloud(
++                        field, fraction, max_points=opts.cloud_max_points
++                    )
++                    from mdstats.plotting.density_sparse_mesh import PreparedSparseDensitySurface
++                    surface = PreparedSparseDensitySurface(
++                        render_kind="node_cloud",
++                        mesh=None,
++                        cloud=cloud,
++                        fallback_mode="node_cloud",
++                    )
++                if surface.render_kind == "node_cloud":
++                    assert surface.cloud is not None
++                    cloud = surface.cloud
++                    primitives.append(PointSet3D(
++                        owner_layer=prepared.request.name,
++                        primitive_id=f"density-shell-cloud-{position}",
++                        positions=cloud.cartesian_positions,
++                        scientific_refs=(prepared.scientific_identity, str(field.field_key)),
++                        render_attributes={
++                            "name": str(field.label),
++                            "size": opts.cloud_point_size,
++                            "color": color,
++                            "opacity": float(opts.cloud_opacity),
++                            "showlegend": bool(opts.show_legend and position == len(fractions) - 1),
++                            "intensities": cloud.relative_intensities.tolist(),
++                            "hdr_threshold": float(cloud.hdr_details.threshold),
++                            "sparse_fallback_mode": surface.fallback_mode,
++                        },
++                    ))
++                    continue
++                assert surface.mesh is not None
++                mesh = surface.mesh
++                vertices = mesh.vertices_cartesian
++                faces = mesh.faces
++                threshold = mesh.scientific_hdr_threshold
++                sparse_metadata = {
++                    "render_level": float(mesh.render_level),
++                    "achieved_mass_fraction": float(mesh.achieved_mass_fraction),
++                    "sparse_fallback_mode": surface.fallback_mode,
++                }
++            else:
++                vertices, faces, threshold = density_mesh_arrays(field, fraction, max_faces=maximum)
++                sparse_metadata = {}
+             primitives.append(TriangleMesh3D(
+                 owner_layer=prepared.request.name, primitive_id=f"density-shell-{position}", vertices=vertices, faces=faces,
+                 scientific_refs=(prepared.scientific_identity, str(field.field_key)),
+-                render_attributes={"name": str(field.label), "color": color, "opacity": float(alpha), "showlegend": bool(opts.show_legend and position == len(fractions)-1), "mass_fraction": fraction, "hdr_threshold": float(threshold)},
++                render_attributes={
++                    "name": str(field.label),
++                    "color": color,
++                    "opacity": float(alpha),
++                    "showlegend": bool(opts.show_legend and position == len(fractions)-1),
++                    "mass_fraction": fraction,
++                    "hdr_threshold": float(threshold),
++                    **sparse_metadata,
++                },
+             ))
+     else:
+         points, intensities, threshold = density_voxel_cloud_arrays(field, fractions[-1], max_points=opts.cloud_max_points)
+diff -ruN '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' a/mdstats/graphics3d/lta_preset.py b/mdstats/graphics3d/lta_preset.py
+--- a/mdstats/graphics3d/lta_preset.py	2026-08-12 01:50:47.000000000 +0000
++++ b/mdstats/graphics3d/lta_preset.py	2026-08-12 09:28:31.835459796 +0000
+@@ -10,6 +10,7 @@
+ import json
+ import time
+ import threading
++import warnings
+ from dataclasses import dataclass, field, replace
+ from pathlib import Path
+ from types import MappingProxyType, SimpleNamespace
+@@ -33,6 +34,7 @@
+ )
+ 
+ from mdstats import (
++    AtomicConnectivityGeometryCache,
+     AtomicDensityOptions,
+     AtomicDensitySelection,
+     AtomicMeanGraphOptions,
+@@ -54,6 +56,8 @@
+     read_vasp_frames,
+ )
+ 
++from mdstats.progress import ProgressEmitter, resolve_progress_port
++
+ FRAMEWORK_SPECIES_ORDER = ("Si", "Al", "O")
+ MOBILE_SPECIES_ORDER = ("Li", "Na", "K")
+ MOBILE_OXYGEN_CUTOFFS = {"Li": 2.6, "Na": 2.9, "K": 3.3}
+@@ -453,7 +457,9 @@
+     _scene: Any = field(default=None, init=False, repr=False)
+     _topology_metadata: Mapping[str, Any] = field(default_factory=dict, init=False, repr=False)
+     _lock: threading.RLock = field(default_factory=threading.RLock, init=False, repr=False)
++    _failure: Exception | None = field(default=None, init=False, repr=False)
+     _preparation_count: int = field(default=0, init=False, repr=False)
++    _preparation_attempt_count: int = field(default=0, init=False, repr=False)
+     _preparation_wall_seconds: float = field(default=0.0, init=False, repr=False)
+ 
+     def __post_init__(self) -> None:
+@@ -483,30 +489,54 @@
+         )
+ 
+     def _prepare_once(self) -> Any:
++        """Prepare the legacy owner exactly once, including failure single-flight.
++
++        Product dependencies have distinct GFX3D keys, so scene-context single-flight
++        alone cannot prevent a failed monolithic owner preparation from being retried
++        by the next product key.  Latch the first source-level failure here and replay
++        it to every dependent product.
++        """
+         with self._lock:
+             if self._scene is not None:
+                 return self._scene
++            if self._failure is not None:
++                error = self._failure
++                raise Graphics3DDependencyError(
++                    "LTA GFX3D source preparation previously failed: "
++                    f"{type(error).__name__}: {error}"
++                ) from error
++
+             started = time.perf_counter()
+-            scene, topology_metadata = prepare_legacy_source_scene(
+-                self.trajectory,
+-                self.request,
+-                input_options=self.input_options,
+-                output_path=self.output_path,
+-                progress=self.progress,
+-            )
+-            scene = replace(
+-                scene,
+-                metadata={
+-                    **dict(scene.metadata),
+-                    "gfx3d_atomic_number_by_atom": {
+-                        str(index): int(z)
+-                        for index, z in enumerate(self.trajectory.atomic_numbers)
++            self._preparation_attempt_count += 1
++            try:
++                scene, topology_metadata = prepare_legacy_source_scene(
++                    self.trajectory,
++                    self.request,
++                    input_options=self.input_options,
++                    output_path=self.output_path,
++                    progress=self.progress,
++                )
++                scene = replace(
++                    scene,
++                    metadata={
++                        **dict(scene.metadata),
++                        "gfx3d_atomic_number_by_atom": {
++                            str(index): int(z)
++                            for index, z in enumerate(self.trajectory.atomic_numbers)
++                        },
++                        "gfx3d_provider_gate": "GFX3D-4",
++                        "gfx3d_dependency_source_identity": self.scientific_identity,
++                        "gfx3d_topology_resolution": dict(topology_metadata),
+                     },
+-                    "gfx3d_provider_gate": "GFX3D-4",
+-                    "gfx3d_dependency_source_identity": self.scientific_identity,
+-                    "gfx3d_topology_resolution": dict(topology_metadata),
+-                },
+-            )
++                )
++            except Exception as error:
++                self._failure = error
++                self._preparation_wall_seconds += float(time.perf_counter() - started)
++                raise Graphics3DDependencyError(
++                    "LTA GFX3D source preparation failed: "
++                    f"{type(error).__name__}: {error}"
++                ) from error
++
+             self._scene = scene
+             self._topology_metadata = MappingProxyType(dict(topology_metadata))
+             self._preparation_count += 1
+@@ -580,8 +610,11 @@
+                 {
+                     "schema_version": "mdstats.graphics3d.lta-provider-report.gfx3d4.v1",
+                     "preparation_count": int(self._preparation_count),
++                    "preparation_attempt_count": int(self._preparation_attempt_count),
+                     "preparation_wall_seconds": float(self._preparation_wall_seconds),
+                     "prepared": self._scene is not None,
++                    "failed": self._failure is not None,
++                    "failure_type": None if self._failure is None else type(self._failure).__name__,
+                     "scientific_identity": self.scientific_identity,
+                     "cache_policy": "scene_context_in_memory_single_flight",
+                     "durable_product_cache": False,
+@@ -597,12 +630,46 @@
+     progress=None,
+ ):
+     """Prepare the GFX3D-3 compatibility ``FrameworkDynamicsScene`` once."""
++    progress_port = resolve_progress_port(progress)
++    reporter = ProgressEmitter(progress_port, source="graphics3d.lta")
+     present_species = detect_present_species(trajectory)
++    reporter.started(
++        "framework_calibration",
++        "calibrating Si/Al-O hysteretic framework cutoffs",
++        metadata={"frame_count": int(trajectory.n_frames), "species": ",".join(present_species)},
++    )
+     framework_definition, hysteresis_audit = framework_connectivity_definition(
+         trajectory,
+         formation_override=input_options.get("framework_formation_cutoff"),
+         breaking_override=input_options.get("framework_breaking_cutoff"),
+     )
++    reporter.completed(
++        "framework_calibration",
++        "resolved framework hysteresis calibration",
++        metadata={"audit": json.dumps(hysteresis_audit, sort_keys=True)},
++    )
++    suspicious_framework_species: list[str] = []
++    for symbol, audit in hysteresis_audit.items():
++        q995 = float(audit.get("sample_q995_angstrom", float("nan")))
++        breaking = float(audit.get("breaking_cutoff_angstrom", float("nan")))
++        if np.isfinite(q995) and np.isfinite(breaking) and q995 > breaking + 0.20:
++            suspicious_framework_species.append(str(symbol))
++    if suspicious_framework_species:
++        message = (
++            "tetrahedral-neighbor distances for "
++            + ", ".join(suspicious_framework_species)
++            + " extend well beyond the allowed Si/Al-O hysteresis range; check "
++              "--lammps-type-map and/or framework integrity before interpreting "
++              "topology partitions"
++        )
++        reporter.warning(
++            "framework_calibration",
++            message,
++            metadata={"species": ",".join(suspicious_framework_species)},
++        )
++        if progress is None:
++            warnings.warn(message, RuntimeWarning, stacklevel=2)
++    connectivity_geometry_cache = AtomicConnectivityGeometryCache()
+     topology_path = input_options.get("topology")
+     framework_connectivity = None
+     if topology_path:
+@@ -640,8 +707,51 @@
+             else:
+                 topology_metadata["cache_reuse_rejected"] = rejection
+         if topology is None:
+-            framework_connectivity = compute_atomic_connectivity(trajectory, framework_definition)
++            reporter.started(
++                "framework_connectivity",
++                "computing hysteretic framework connectivity",
++                metadata={"frame_count": int(trajectory.n_frames)},
++            )
++            framework_connectivity = compute_atomic_connectivity(
++                trajectory,
++                framework_definition,
++                geometry_cache=connectivity_geometry_cache,
++            )
++            reporter.completed(
++                "framework_connectivity",
++                f"resolved {framework_connectivity.n_states} framework connectivity states",
++                metadata={"geometry_cache": json.dumps(connectivity_geometry_cache.to_dict(), sort_keys=True)},
++            )
++            reporter.started(
++                "framework_topology",
++                f"building topology catalog from {framework_connectivity.n_states} connectivity states",
++            )
+             topology = build_topology_catalog(trajectory, framework_connectivity, framework_mapping())
++            reporter.completed(
++                "framework_topology",
++                f"resolved {len(topology.topologies)} framework topologies",
++                metadata={"catalog_consistency": topology.consistency.value},
++            )
++            topology_fraction = float(len(topology.topologies)) / float(max(1, trajectory.n_frames))
++            topology_metadata["topology_count_per_frame"] = topology_fraction
++            if len(topology.topologies) >= 8 and topology_fraction >= 0.25:
++                message = (
++                    f"framework topology is highly fragmented: {len(topology.topologies)} "
++                    f"distinct topologies across {trajectory.n_frames} selected frames. "
++                    "This often indicates an incorrect atom-type map, cutoff saturation, "
++                    "or a physically damaged framework."
++                )
++                reporter.warning(
++                    "framework_topology",
++                    message,
++                    metadata={
++                        "n_topologies": int(len(topology.topologies)),
++                        "frame_count": int(trajectory.n_frames),
++                        "topology_fraction": topology_fraction,
++                    },
++                )
++                if progress is None:
++                    warnings.warn(message, RuntimeWarning, stacklevel=2)
+             topology_metadata.update(
+                 {
+                     "source": "inferred_hysteretic_catalog",
+@@ -666,7 +776,21 @@
+         if framework_connectivity is not None and full_definition.to_dict() == framework_definition.to_dict():
+             connectivity = framework_connectivity
+         else:
+-            connectivity = compute_atomic_connectivity(trajectory, full_definition)
++            reporter.started(
++                "atomic_connectivity",
++                "computing full atomic connectivity with shared framework geometry cache",
++                metadata={"frame_count": int(trajectory.n_frames)},
++            )
++            connectivity = compute_atomic_connectivity(
++                trajectory,
++                full_definition,
++                geometry_cache=connectivity_geometry_cache,
++            )
++            reporter.completed(
++                "atomic_connectivity",
++                f"resolved {connectivity.n_states} atomic connectivity states",
++                metadata={"geometry_cache": json.dumps(connectivity_geometry_cache.to_dict(), sort_keys=True)},
++            )
+ 
+     trajectory_species = _trajectory_species_from_request(request, present_species)
+     density_species = _density_species_from_request(request, present_species)
+@@ -680,6 +804,14 @@
+         max_threads=request.resources.get("max_threads"),
+         max_wall_time_seconds=request.resources.get("wall_time_target"),
+     )
++    reporter.started(
++        "scene_preparation",
++        "preparing registered framework/trajectory/density products",
++        metadata={
++            "trajectory_species": ",".join(trajectory_species),
++            "density_species": ",".join(density_species),
++        },
++    )
+     source_scene = prepare_framework_dynamics_scene(
+         trajectory,
+         topology,
+@@ -720,4 +852,9 @@
+         progress=progress,
+         _topology_category_mode="dominant_only",
+     )
++    reporter.completed(
++        "scene_preparation",
++        "completed registered source-scene preparation",
++    )
++    topology_metadata["connectivity_geometry_cache"] = connectivity_geometry_cache.to_dict()
+     return source_scene, topology_metadata
+diff -ruN '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' a/mdstats/io/lammps.py b/mdstats/io/lammps.py
+--- a/mdstats/io/lammps.py	2026-08-05 18:20:00.000000000 +0000
++++ b/mdstats/io/lammps.py	2026-08-12 09:06:08.800597776 +0000
+@@ -125,8 +125,28 @@
+     return cell, lower, pbc, "orthogonal"
+ 
+ 
+-def _read_dump_frames(filename: str | Path) -> list[_DumpFrame]:
++def _read_dump_frames(
++    filename: str | Path,
++    *,
++    start: int | None = None,
++    stop: int | None = None,
++    stride: int = 1,
++) -> tuple[list[_DumpFrame], int]:
++    """Stream selected LAMMPS dump frames without materializing discarded tables.
++
++    Positive ``start``/``stop`` and ``stride`` are applied while scanning the
++    file.  Negative slice endpoints retain Python slice semantics by falling
++    back to post-selection after reading all frames.  Even in streaming mode
++    frame headers are scanned to preserve the exact source frame count.
++    """
++    if stride <= 0:
++        raise ValueError("stride must be a positive integer.")
++    post_select = (start is not None and int(start) < 0) or (stop is not None and int(stop) < 0)
++    first = 0 if start is None else int(start)
++    last = None if stop is None else int(stop)
++
+     frames: list[_DumpFrame] = []
++    source_frame_count = 0
+     with open_text_auto(filename) as handle:
+         iterator = iter(handle)
+         while True:
+@@ -138,6 +158,13 @@
+                 raise CoordinateFormatError(
+                     f"Expected 'ITEM: TIMESTEP', found {header!r}."
+                 )
++            frame_index = source_frame_count
++            source_frame_count += 1
++            selected = post_select or (
++                frame_index >= first
++                and (last is None or frame_index < last)
++                and (frame_index - first) % stride == 0
++            )
+             try:
+                 step = int(_next_nonempty(iterator).strip())
+                 header = _next_nonempty(iterator)
+@@ -178,7 +205,11 @@
+                     f"Expected BOX BOUNDS at step {step}, found {box_header!r}."
+                 )
+             box_rows = [_next_nonempty(iterator) for _ in range(3)]
+-            cell, origin, pbc, box_kind = _parse_box(box_header, box_rows)
++            if selected:
++                cell, origin, pbc, box_kind = _parse_box(box_header, box_rows)
++            else:
++                cell = origin = pbc = None
++                box_kind = "discarded"
+ 
+             atom_header = _next_nonempty(iterator)
+             if not atom_header.startswith("ITEM: ATOMS "):
+@@ -190,39 +221,50 @@
+                 raise CoordinateFormatError(
+                     f"Duplicate atom-table column at step {step}."
+                 )
+-            values = {column: [] for column in columns}
++            values = {column: [] for column in columns} if selected else None
+             for atom_row in range(n_atoms):
+                 try:
+-                    fields = _next_nonempty(iterator).split()
++                    line = _next_nonempty(iterator)
+                 except EOFError as exc:
+                     raise CoordinateFormatError(
+                         f"Unexpected end of file in atom table at step {step}."
+                     ) from exc
++                if not selected:
++                    continue
++                fields = line.split()
+                 if len(fields) != len(columns):
+                     raise CoordinateFormatError(
+                         f"Atom row {atom_row} at step {step} contains "
+                         f"{len(fields)} fields; expected {len(columns)}."
+                     )
++                assert values is not None
+                 for column, value in zip(columns, fields, strict=True):
+                     values[column].append(value)
+ 
+-            frames.append(
+-                _DumpFrame(
+-                    step=step,
+-                    time=time,
+-                    units=frame_units,
+-                    cell=cell,
+-                    origin=origin,
+-                    pbc=pbc,
+-                    columns=columns,
+-                    values=values,
+-                    box_kind=box_kind,
++            if selected:
++                assert values is not None
++                assert cell is not None and origin is not None and pbc is not None
++                frames.append(
++                    _DumpFrame(
++                        step=step,
++                        time=time,
++                        units=frame_units,
++                        cell=cell,
++                        origin=origin,
++                        pbc=pbc,
++                        columns=columns,
++                        values=values,
++                        box_kind=box_kind,
++                    )
+                 )
+-            )
+ 
++    if post_select:
++        frames = frames[slice(start, stop, stride)]
+     if not frames:
+-        raise MissingPositionError(f"No LAMMPS frames found in {filename!s}.")
+-    return frames
++        if source_frame_count == 0:
++            raise MissingPositionError(f"No LAMMPS frames found in {filename!s}.")
++        raise MissingPositionError("Frame selection produced an empty trajectory.")
++    return frames, source_frame_count
+ 
+ 
+ def _parse_lammps_log(filename: str | Path | None) -> _LogData:
+@@ -539,11 +581,9 @@
+         raise ValueError("stride must be a positive integer.")
+     semantics = coerce_frame_semantics(frame_semantics)
+ 
+-    all_frames = _read_dump_frames(dump_file)
+-    selection = slice(start, stop, stride)
+-    frames = all_frames[selection]
+-    if not frames:
+-        raise MissingPositionError("Frame selection produced an empty trajectory.")
++    frames, source_frame_count = _read_dump_frames(
++        dump_file, start=start, stop=stop, stride=stride
++    )
+ 
+     log = _parse_lammps_log(log_file)
+     dump_units = {frame.units for frame in frames if frame.units is not None}
+@@ -792,7 +832,7 @@
+         metadata={
+             "time_source": time_source,
+             "lammps_unit_style": style,
+-            "source_frame_count": len(all_frames),
++            "source_frame_count": int(source_frame_count),
+             "selected_frame_count": len(frames),
+             "box_kinds": tuple(frame.box_kind for frame in frames),
+         },
+diff -ruN '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' a/mdstats/plotting/atomic_density.py b/mdstats/plotting/atomic_density.py
+--- a/mdstats/plotting/atomic_density.py	2026-08-11 04:35:46.000000000 +0000
++++ b/mdstats/plotting/atomic_density.py	2026-08-12 09:28:32.523116682 +0000
+@@ -702,6 +702,25 @@
+         return float(max(self.realized_intervals))
+ 
+ 
++@dataclass(frozen=True, slots=True)
++class AtomicDensityResolvedPlan:
++    """Reusable numerical result from Phase-B atomic-density planning.
++
++    The scene planner already resolves the expensive adaptive grid/bandwidth
++    policy before backend selection.  Realization may consume this compact
++    record instead of re-running the same spread diagnostics for the same
++    field.  Coordinate samples are deliberately *not* retained here so the
++    optimization does not increase the scene's peak sample-memory footprint.
++    """
++
++    field_key: str
++    atom_indices: tuple[int, ...]
++    label: str
++    numerics: ResolvedDensityNumerics
++    registration_signature: str
++    options: AtomicDensityOptions
++
++
+ def _periodic_frechet_mean(
+     fractional_samples: FloatArray,
+     *,
+@@ -2110,6 +2129,7 @@
+     max_total_voxels: int,
+     max_samples: int,
+     planning_metadata_by_field: Mapping[str, Mapping[str, Any]] | None = None,
++    resolved_plans_by_field: Mapping[str, AtomicDensityResolvedPlan] | None = None,
+     approved_hybrid_plans_by_field: Mapping[str, DensityHybridRealizationPlan] | None = None,
+     max_nonzero_nodes: int | None = None,
+     max_stored_block_values: int | None = None,
+@@ -2233,7 +2253,33 @@
+         )
+         field_key = f"atomic-density-{field_index}"
+         field_stage_started = time.perf_counter()
++        resolved_plan = (
++            None
++            if resolved_plans_by_field is None
++            else resolved_plans_by_field.get(field_key)
++        )
+         atoms = selection.resolve(collection)
++        if resolved_plan is not None:
++            if tuple(atoms) != tuple(resolved_plan.atom_indices):
++                raise GraphAdapterError(
++                    f"Cached density plan for {field_key!r} disagrees with the "
++                    "resolved atom selection."
++                )
++            if registration_view is None:
++                raise GraphAdapterError(
++                    f"Cached density plan for {field_key!r} requires the plotting "
++                    "registration view used during Phase-B planning."
++                )
++            if str(registration_view.signature) != str(resolved_plan.registration_signature):
++                raise GraphAdapterError(
++                    f"Cached density plan for {field_key!r} has a stale registration "
++                    "signature."
++                )
++            if resolved_plan.options != options:
++                raise GraphAdapterError(
++                    f"Cached density plan for {field_key!r} was resolved under "
++                    "different density options."
++                )
+         sample_count = len(frames) * len(atoms)
+         if sample_count > max_samples:
+             raise GraphComplexityError(
+@@ -2260,7 +2306,9 @@
+             else:
+                 display_fractional = fractional
+ 
+-        label = selection.label
++        label = None if resolved_plan is None else resolved_plan.label
++        if label is None:
++            label = selection.label
+         if label is None:
+             if len(atoms) == 1:
+                 label = f"atom {atoms[0]} density"
+@@ -2289,15 +2337,18 @@
+             if requested_backend in {LOCAL_SPARSE_BACKEND, AUTO_BACKEND}
+             else per_field_voxel_budget
+         )
+-        numerics = resolve_density_numerics(
+-            cell,
+-            options=options,
+-            fractional_by_frame=display_fractional,
+-            frame_weights=weights,
+-            pbc=np.asarray(collection.pbc, dtype=bool),
+-            max_voxels=resolution_budget,
+-            field_label=label,
+-        )
++        if resolved_plan is None:
++            numerics = resolve_density_numerics(
++                cell,
++                options=options,
++                fractional_by_frame=display_fractional,
++                frame_weights=weights,
++                pbc=np.asarray(collection.pbc, dtype=bool),
++                max_voxels=resolution_budget,
++                field_label=label,
++            )
++        else:
++            numerics = resolved_plan.numerics
+         visual_adaptation = prepare_density_visual_grid_adaptation(
+             cell,
+             options=options,
+diff -ruN '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' a/mdstats/plotting/framework_dynamics.py b/mdstats/plotting/framework_dynamics.py
+--- a/mdstats/plotting/framework_dynamics.py	2026-08-12 01:51:51.000000000 +0000
++++ b/mdstats/plotting/framework_dynamics.py	2026-08-12 09:28:33.160420323 +0000
+@@ -44,6 +44,7 @@
+ )
+ from ..progress import ProgressEmitter, ProgressPortLike, resolve_progress_port
+ from .atomic_density import (
++    AtomicDensityResolvedPlan,
+     AtomicDensity3DRenderOptions,
+     AtomicDensityOptions,
+     AtomicDensitySelection,
+@@ -2479,6 +2480,7 @@
+     options: AtomicDensityOptions,
+     limits: DensityPlanningLimits,
+     hybrid_runtime_plans: dict[str, DensityHybridRealizationPlan] | None = None,
++    resolved_plans: dict[str, AtomicDensityResolvedPlan] | None = None,
+ ) -> list[DensityBackendCandidateSet]:
+     """Build forced or automatic exact Phase-B candidate sets for atomic fields."""
+ 
+@@ -2512,6 +2514,15 @@
+                 ),
+                 field_label=label,
+             )
++        if resolved_plans is not None:
++            resolved_plans[field_key] = AtomicDensityResolvedPlan(
++                field_key=field_key,
++                atom_indices=tuple(atoms),
++                label=label,
++                numerics=numerics,
++                registration_signature=str(registration_view.signature),
++                options=options,
++            )
+         folded = display_fractional - np.floor(display_fractional)
+         flat_fractional = folded.reshape((-1, 3))
+         sample_count = len(frames) * len(atoms)
+@@ -4267,6 +4278,7 @@
+             limits=limits,
+         )
+         hybrid_runtime_plans: dict[str, DensityHybridRealizationPlan] = {}
++        atomic_resolved_plans: dict[str, AtomicDensityResolvedPlan] = {}
+         atomic_candidates = _plan_atomic_phase_b(
+             collection,
+             frames=frames,
+@@ -4277,6 +4289,7 @@
+             options=atomic_options,
+             limits=limits,
+             hybrid_runtime_plans=hybrid_runtime_plans,
++            resolved_plans=atomic_resolved_plans,
+         )
+         provisional_atomic = [
+             candidate.plan_for(candidate.preferred_backend)
+@@ -4416,6 +4429,7 @@
+                             max_total_voxels=atomic_per_field_voxel_budget,
+                             max_samples=resources.max_density_samples,
+                             planning_metadata_by_field=planning_metadata_by_field,
++                            resolved_plans_by_field=atomic_resolved_plans,
+                             approved_hybrid_plans_by_field=hybrid_runtime_plans,
+                             max_nonzero_nodes=limits.max_density_nonzero_nodes,
+                             max_stored_block_values=limits.max_density_stored_block_values,
+diff -ruN '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' a/pyproject.toml b/pyproject.toml
+--- a/pyproject.toml	2026-08-12 01:53:27.000000000 +0000
++++ b/pyproject.toml	2026-08-12 09:37:09.028617508 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.156a0"
++version = "0.20.157a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' a/release/GFX3D_HARDEN2_QUALIFICATION_0.20.157a0.json b/release/GFX3D_HARDEN2_QUALIFICATION_0.20.157a0.json
+--- a/release/GFX3D_HARDEN2_QUALIFICATION_0.20.157a0.json	1970-01-01 00:00:00.000000000 +0000
++++ b/release/GFX3D_HARDEN2_QUALIFICATION_0.20.157a0.json	2026-08-12 09:42:00.123903512 +0000
+@@ -0,0 +1,57 @@
++{
++  "schema_version": "mdstats.gfx3d-harden2-qualification.v1",
++  "version": "0.20.157a0",
++  "date": "2026-08-12",
++  "focused_tests": {
++    "passed": 187,
++    "suites": [
++      "tests/test_lammps.py",
++      "tests/test_graphics3d_cli.py",
++      "tests/test_graphics3d_gfx4_dependencies.py",
++      "tests/test_graphics3d_harden1.py",
++      "tests/test_graphics3d_layers.py",
++      "tests/test_graphics3d_gfx5_rendering.py",
++      "tests/test_density_sparse_mesh.py",
++      "tests/test_atomic_density.py",
++      "tests/test_density_par_dens4_preprocessing.py",
++      "tests/test_framework_dynamics.py",
++      "tests/test_framework_topology.py",
++      "tests/test_framework_topology_visualization.py",
++      "tests/test_framework_density.py",
++      "tests/test_framework_semantics.py"
++    ]
++  },
++  "supplied_dump": {
++    "path_basename": "dump.prod.Na_lta_300K.old(2).lammpstrj",
++    "source_frames": 10001,
++    "file_size_mib_approx": 183,
++    "qualification_stride": 500,
++    "selected_frames": 21,
++    "likely_type_map_from_geometry": "1=Al,2=Na,3=O,4=Si",
++    "type_map_is_diagnostic_not_inferred_by_code": true,
++    "framework_warning_present": true
++  },
++  "lammps_stride_benchmark": {
++    "old_version": "0.20.156a0",
++    "old_elapsed_seconds": 9.17,
++    "old_peak_rss_kib": 1626836,
++    "new_version": "0.20.157a0",
++    "new_elapsed_seconds": 3.03,
++    "new_peak_rss_kib": 253336,
++    "same_selected_frame_count": true,
++    "same_source_frame_count": true
++  },
++  "four_layer_smoke": {
++    "layers": ["framework", "connectivity", "trajectory:Na", "density:Na"],
++    "source_preparation_seconds_approx": 10.0,
++    "process_elapsed_seconds": 24.13,
++    "process_peak_rss_kib": 828948,
++    "html_size_mib_approx": 22.1,
++    "sparse_density_rendered": true
++  },
++  "compatibility_preset": {
++    "semantic_contract_changed": false,
++    "all_present_supported_species_density_layers_retained": true,
++    "note": "Framework-species adaptive densities can remain intrinsically expensive; explicit mobile-ion density layers are recommended for routine transport views."
++  }
++}
+diff -ruN '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' a/tests/test_graphics3d_gfx4_dependencies.py b/tests/test_graphics3d_gfx4_dependencies.py
+--- a/tests/test_graphics3d_gfx4_dependencies.py	2026-08-11 09:55:31.000000000 +0000
++++ b/tests/test_graphics3d_gfx4_dependencies.py	2026-08-12 09:22:34.313558568 +0000
+@@ -6,6 +6,7 @@
+ from dataclasses import dataclass, field
+ import threading
+ import time
++import pytest
+ 
+ from mdstats.graphics3d import (
+     GraphicsDependencyKey,
+@@ -147,3 +148,60 @@
+     assert tr.value == "trajectory-product"
+     assert calls == [1]
+     assert dict(source.preparation_report())["preparation_count"] == 1
++
++
++def test_lta_source_latches_one_failed_preparation_across_product_keys(
++    monkeypatch, tmp_path: Path
++) -> None:
++    import mdstats.graphics3d.lta_preset as lta
++
++    request = _request(
++        GraphicsLayer3DRequest("framework", "framework"),
++        GraphicsLayer3DRequest(
++            "trajectory", "trajectory", selection=GraphicsSelection(species=("Na",))
++        ),
++    )
++    trajectory = SimpleNamespace(
++        n_frames=3,
++        n_atoms=4,
++        atomic_numbers=[14, 13, 8, 11],
++    )
++    lock = threading.Lock()
++    calls = 0
++
++    def failing_prepare(*args, **kwargs):
++        nonlocal calls
++        with lock:
++            calls += 1
++        time.sleep(0.03)
++        raise RuntimeError("root science failure")
++
++    monkeypatch.setattr(lta, "prepare_legacy_source_scene", failing_prepare)
++    source = LTAGraphics3DDependencySource(
++        trajectory=trajectory,
++        request=request,
++        input_options={"stride": 1},
++        output_path=tmp_path / "scene.html",
++        source_identity="trajectory-sha",
++    )
++    context = GraphicsSceneContext(source=source, source_identity="trajectory-sha")
++    keys = (
++        source.dependency_key(FRAMEWORK_PRODUCT_PROVIDER),
++        source.dependency_key(TRAJECTORY_PRODUCT_PROVIDER),
++    )
++
++    def resolve(key):
++        with pytest.raises(Exception) as exc_info:
++            source.resolve_graphics3d_dependency(key, context)
++        return exc_info.value
++
++    with ThreadPoolExecutor(max_workers=2) as pool:
++        failures = tuple(pool.map(resolve, keys))
++
++    assert calls == 1
++    assert all("root science failure" in str(error) for error in failures)
++    report = dict(source.preparation_report())
++    assert report["preparation_attempt_count"] == 1
++    assert report["preparation_count"] == 0
++    assert report["failed"] is True
++    assert report["failure_type"] == "RuntimeError"
+diff -ruN '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' a/tests/test_graphics3d_layers.py b/tests/test_graphics3d_layers.py
+--- a/tests/test_graphics3d_layers.py	2026-08-12 01:15:10.000000000 +0000
++++ b/tests/test_graphics3d_layers.py	2026-08-12 09:24:01.945666436 +0000
+@@ -253,3 +253,60 @@
+             request,
+             context=GraphicsSceneContext(source=full_legacy_scene, source_identity="gfx3d2-options"),
+         )
++
++
++def test_gfx3d_density_renderer_accepts_packed_sparse_field() -> None:
++    import numpy as np
++
++    from mdstats.graphics3d.contracts import PreparedGraphicsLayer3D
++    from mdstats.graphics3d.layers import _density_render_primitives
++    from mdstats.graphics3d.primitives import PointSet3D, TriangleMesh3D
++    from mdstats.plotting.density_contracts import (
++        DensitySourceProvenance,
++        PeriodicWeightedSamples3D,
++    )
++    from mdstats.plotting.density_packed_field import pack_sparse_reference_field
++    from mdstats.plotting.density_sparse_reference import (
++        prepare_sparse_canonical_density_reference,
++    )
++
++    positions = np.asarray([[0.46, 0.51, 0.54]], dtype=np.float64)
++    batch = PeriodicWeightedSamples3D(
++        fractional_positions=positions,
++        weights=np.ones(1, dtype=np.float64),
++        source_provenance=DensitySourceProvenance(
++            source_kind="atomic_occupancy", atom_indices=(0,)
++        ),
++        total_measure=1.0,
++        measure_kind="occupancy",
++        measure_units="count",
++    )
++    reference = prepare_sparse_canonical_density_reference(
++        batch,
++        grid_shape=(20, 20, 20),
++        display_cell=np.eye(3, dtype=np.float64) * 6.0,
++        gaussian_bandwidth=0.35,
++        field_key="atomic-density-0",
++        label="Na density",
++        physical_units="angstrom^-3",
++        broadening_metric="gaussian_sigma_v1",
++        max_workspace_bytes=128 * 1024 * 1024,
++    )
++    packed = pack_sparse_reference_field(reference, storage_block_shape=(8, 8, 8))
++    request = GraphicsLayer3DRequest(
++        name="Na density",
++        layer_type="density",
++        selection=GraphicsSelection(species=("Na",)),
++        render_options={"mass_fractions": (0.5, 0.8)},
++    )
++    prepared = PreparedGraphicsLayer3D(
++        request=request,
++        scientific_identity="packed-sparse-density",
++        product_refs={"density_field": packed},
++    )
++    primitives = _density_render_primitives(
++        prepared,
++        GraphicsSceneContext(source_identity="packed-sparse-density"),
++    )
++    assert primitives
++    assert all(isinstance(value, (TriangleMesh3D, PointSet3D)) for value in primitives)
+diff -ruN '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' a/tests/test_lammps.py b/tests/test_lammps.py
+--- a/tests/test_lammps.py	2026-08-10 06:03:27.000000000 +0000
++++ b/tests/test_lammps.py	2026-08-12 09:34:19.237561711 +0000
+@@ -292,3 +292,39 @@
+     )
+     np.testing.assert_allclose(trajectory.stresses[0], expected, atol=1e-15)
+     assert "rotated" in trajectory.provenance.stress_source
++
++
++def test_lammps_stride_streaming_preserves_source_frame_count(tmp_path: Path) -> None:
++    dump = tmp_path / "stride.dump"
++    frames = []
++    for frame_id in range(5):
++        frames.append(
++            f"""
++ITEM: TIMESTEP
++{frame_id * 10}
++ITEM: NUMBER OF ATOMS
++1
++ITEM: BOX BOUNDS pp pp pp
++0 10
++0 10
++0 10
++ITEM: ATOMS id element xsu ysu zsu vx vy vz
++1 Na {0.1 * frame_id:.1f} 0 0 0 0 0
++""".strip()
++        )
++    _write(dump, "\n".join(frames))
++
++    trajectory = read_lammps_frames(
++        str(dump),
++        units="metal",
++        timestep=0.001,
++        stride=2,
++    )
++
++    assert trajectory.n_frames == 3
++    assert trajectory.metadata["source_frame_count"] == 5
++    np.testing.assert_allclose(trajectory.times, [0.0, 0.02, 0.04])
++    np.testing.assert_allclose(
++        trajectory.fractional_positions[:, 0, 0],
++        [0.0, 0.2, 0.4],
++    )

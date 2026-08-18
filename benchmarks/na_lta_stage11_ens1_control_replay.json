@@ -1,0 +1,144 @@
+{
+  "atom_count": 168,
+  "barostat": {
+    "active": false,
+    "evidence": [],
+    "kind": "none",
+    "notes": [],
+    "parameters": {},
+    "schema": "mdstats.simulation-control-component.v1",
+    "status": "not_applicable"
+  },
+  "bias": {
+    "active": null,
+    "evidence": [
+      "no affirmative bias companion evidence"
+    ],
+    "kind": "unknown",
+    "notes": [
+      "Missing companion evidence is not treated as affirmative absence."
+    ],
+    "parameters": {},
+    "schema": "mdstats.simulation-control-component.v1",
+    "status": "unresolved"
+  },
+  "cell_control": {
+    "active": false,
+    "evidence": [
+      "ISIF=2"
+    ],
+    "kind": "fixed_cell",
+    "notes": [],
+    "parameters": {
+      "ISIF": 2
+    },
+    "schema": "mdstats.simulation-control-component.v1",
+    "status": "resolved"
+  },
+  "certificate_seconds": 1.5755393149993324,
+  "certificate_signature": "36dc5f6f51e0d3ee2d4fa1ea6d210e7f1536cca1085cb0049b251a9e8bcbb919",
+  "constraints": {
+    "active": null,
+    "evidence": [
+      "no parsed ICONST content"
+    ],
+    "kind": "unknown",
+    "notes": [
+      "Constraint nonuse cannot be asserted from a missing companion file."
+    ],
+    "parameters": {},
+    "schema": "mdstats.simulation-control-component.v1",
+    "status": "unresolved"
+  },
+  "continuation_provenance": {
+    "active": null,
+    "evidence": [
+      "initial kinetic and velocity provenance"
+    ],
+    "kind": "continuation_or_external_initialization_possible",
+    "notes": [
+      "Continuation lineage requires a bound parent source or restart record."
+    ],
+    "parameters": {
+      "TEBEG": 0.0001,
+      "TEEND": 0.0001,
+      "first_kinetic_energy_eV": 6.01526812,
+      "native_velocity_frame_count": 0
+    },
+    "schema": "mdstats.simulation-control-component.v1",
+    "status": "unresolved"
+  },
+  "dynamics_mode": "molecular_dynamics",
+  "ensemble": "NVE",
+  "ensemble_status": "resolved",
+  "force_provenance": {
+    "active": true,
+    "evidence": [
+      "VASP effective force-provider controls",
+      "vasprun.xml force arrays"
+    ],
+    "kind": "vasp_dft_hellmann_feynman",
+    "notes": [
+      "Complete force arrays do not prove absence of constraint or bias contributions."
+    ],
+    "parameters": {
+      "ML_LMLFF": null,
+      "ML_MODE": null,
+      "bias_status": "unresolved",
+      "constraint_status": "unresolved",
+      "force_array_complete": true
+    },
+    "schema": "mdstats.simulation-control-component.v1",
+    "status": "unresolved"
+  },
+  "frame_count": 1500,
+  "full_reader_seconds": 6.1149283640006615,
+  "initial_velocity_provenance": {
+    "active": true,
+    "evidence": [
+      "first-frame kinetic energy is positive"
+    ],
+    "kind": "nonzero_initial_kinetic_energy_source_unknown",
+    "notes": [
+      "The XML does not identify whether velocities came from a restart or initialization."
+    ],
+    "parameters": {
+      "first_kinetic_energy_eV": 6.01526812
+    },
+    "schema": "mdstats.simulation-control-component.v1",
+    "status": "unresolved"
+  },
+  "policy_version": "mdstats.ensemble-inference-policy.v1+vasp-wiki-2026-06",
+  "propagator": {
+    "active": true,
+    "evidence": [
+      "effective MDALGO=2",
+      "effective SMASS=-3.0"
+    ],
+    "kind": "nose_hoover_family",
+    "notes": [],
+    "parameters": {
+      "MDALGO": 2,
+      "SMASS": -3.0
+    },
+    "schema": "mdstats.simulation-control-component.v1",
+    "status": "resolved"
+  },
+  "source": "vasprun(1).xml",
+  "thermostat": {
+    "active": false,
+    "evidence": [
+      "SMASS=-3"
+    ],
+    "kind": "none",
+    "notes": [],
+    "parameters": {
+      "SMASS": -3.0,
+      "friction": "not_applicable"
+    },
+    "schema": "mdstats.simulation-control-component.v1",
+    "status": "resolved"
+  },
+  "unresolved_reasons": [],
+  "warnings": []
+}

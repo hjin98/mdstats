@@ -1,0 +1,64 @@
+{
+  "acceptance": {
+    "camera_orbit_fps": 27.69763416041546,
+    "first_complete_frame_seconds": 13.39214830100002,
+    "functional_passed": true,
+    "functional_violations": [],
+    "js_heap_used_bytes": 199000000,
+    "metadata": {
+      "navigation_mode": "set-content-fallback",
+      "policy": {
+        "max_first_complete_frame_seconds": 15.0,
+        "max_js_heap_used_bytes": 536870912,
+        "max_trace_toggle_seconds": 1.0,
+        "metadata": {},
+        "min_camera_orbit_fps": 20.0,
+        "require_no_context_loss": true,
+        "require_physical_webgl_for_production": true,
+        "schema_version": "mdstats.browser-acceptance-policy.v1"
+      },
+      "validation_schema": "mdstats.density-browser-validation.v1"
+    },
+    "production_default_authorized": false,
+    "production_violations": [
+      "physical_webgl_required:unavailable"
+    ],
+    "renderer_kind": "unavailable",
+    "schema_version": "mdstats.browser-acceptance-report.v1",
+    "trace_toggle_seconds": 0.11920000000006985,
+    "webgl_context_lost": false,
+    "webgl_renderer": null,
+    "webgl_vendor": null
+  },
+  "artifact_url_scheme": "http-loopback",
+  "browser": {
+    "device_memory_gib": null,
+    "hardware_concurrency": 56,
+    "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/144.0.0.0 Safari/537.36",
+    "version": "144.0.7559.96",
+    "webgl_renderer": null,
+    "webgl_vendor": null
+  },
+  "host": {
+    "platform": "Linux-4.4.0-x86_64-with-glibc2.41",
+    "python": "3.13.5"
+  },
+  "input_html": "/mnt/data/mdstats_0_19_61a0_ld9_v3_browser_scene_self_contained.html",
+  "input_html_bytes": 26233233,
+  "loopback_navigation_error": "Error: Page.goto: net::ERR_BLOCKED_BY_ADMINISTRATOR at http://127.0.0.1:41487/mdstats_0_19_61a0_ld9_v3_browser_scene_self_contained.html\nCall log:\n  - navigating to \"http://127.0.0.1:41487/mdstats_0_19_61a0_ld9_v3_browser_scene_self_contained.html\", waiting until \"load\"\n",
+  "metrics": {
+    "camera_orbit_fps": 27.69763416041546,
+    "camera_orbit_seconds": 0.8665,
+    "first_complete_frame_seconds": 13.39214830100002,
+    "js_heap_total_bytes": 212000000,
+    "js_heap_used_bytes": 199000000,
+    "mesh_trace_count": 12,
+    "scatter3d_trace_count": 16,
+    "trace_count": 28,
+    "trace_toggle_seconds": 0.11920000000006985,
+    "webgl_context_lost": false
+  },
+  "navigation_mode": "set-content-fallback",
+  "schema": "mdstats.density-browser-validation.v1",
+  "status": "passed"
+}

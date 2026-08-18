@@ -1,0 +1,104 @@
+{
+  "acceptance": {
+    "exact_digest_preserved": true,
+    "geometry_recomputed_on_cache_hit": false,
+    "next_gate": "COVREF-PAR1",
+    "status": "PASS",
+    "three_lane_speedup": 6.790009507639671,
+    "vectorized_validator_exact_predicate": true,
+    "worker_count_digest_invariant": true
+  },
+  "active_foundation": {
+    "checkpoint": "mace-mpa-0-medium(4).model",
+    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
+    "family": "mace-mpa-0",
+    "foundation_specific_logic_in_gate": false,
+    "mh1_supported_by_same_contract": true
+  },
+  "architecture_revision": 95,
+  "control_0_20_227a0": {
+    "digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
+    "maxrss_kib": 329620,
+    "release": "0.20.227a0",
+    "results": {
+      "1": {
+        "digest_count": 1,
+        "median_cpu_seconds": 0.5898240875000003,
+        "median_wall_seconds": 0.590266875999987,
+        "wall_seconds": [
+          0.6542696980000073,
+          0.634971002000043,
+          0.5746901500000376,
+          0.5929818880000539,
+          0.5571911380000074,
+          0.58755186399992
+        ]
+      }
+    }
+  },
+  "date": "2026-08-17",
+  "mvidx_reuse1_0_20_228a0": {
+    "digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
+    "maxrss_kib": 342944,
+    "release": "0.20.228a0",
+    "results": {
+      "1": {
+        "digest_count": 1,
+        "median_cpu_seconds": 0.1559803259999999,
+        "median_wall_seconds": 0.1562867385000004,
+        "wall_seconds": [
+          0.21666074999996,
+          0.1538215499999751,
+          0.16667836400006308,
+          0.15875192700002572,
+          0.1320256239999935,
+          0.14978740399999424
+        ]
+      },
+      "2": {
+        "digest_count": 1,
+        "median_cpu_seconds": 0.21631941000000054,
+        "median_wall_seconds": 0.1176901005000559,
+        "wall_seconds": [
+          0.1508505619999596,
+          0.11091565500009892,
+          0.14538606999997228,
+          0.09770137700002124,
+          0.12446454600001289,
+          0.10656783000001724
+        ]
+      },
+      "3": {
+        "digest_count": 1,
+        "median_cpu_seconds": 0.1772775805000002,
+        "median_wall_seconds": 0.08693167149999681,
+        "wall_seconds": [
+          0.08600062599998637,
+          0.0894707740000058,
+          0.08786271700000725,
+          0.06073274599998513,
+          0.09871143999998822,
+          0.08444936499995492
+        ]
+      }
+    }
+  },
+  "release": "0.20.228a0",
+  "schema": "mdstats.mlff-mvidx-reuse1-benchmark.v1",
+  "scientific_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
+  "summary": {
+    "control_serial_median_seconds": 0.590266875999987,
+    "current_serial_median_seconds": 0.1562867385000004,
+    "current_three_lane_median_seconds": 0.08693167149999681,
+    "current_two_lane_median_seconds": 0.1176901005000559,
+    "serial_speedup": 3.7768199763154273,
+    "three_lane_speedup": 6.790009507639671
+  },
+  "workload": {
+    "edge_count": 3194880,
+    "family_count": 6,
+    "query_block_size": 512,
+    "source": "PERFBASE1 deterministic synthetic TARGET-DATA2B authority via NEIGHBOR1 cache",
+    "witness_count": 49152
+  }
+}

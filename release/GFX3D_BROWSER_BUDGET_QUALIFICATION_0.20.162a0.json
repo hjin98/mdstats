@@ -1,0 +1,26 @@
+{
+  "release": "0.20.162a0",
+  "date": "2026-08-12",
+  "scope": "GFX3D multi-density browser-budget hotfix",
+  "focused_tests": {"passed": 97, "failed": 0},
+  "new_regressions": [
+    "scene-wide allocation shared across duplicate density layers",
+    "sparse density adapter consumes allocated shell target",
+    "aggregate overspend invokes closed-loop scene fitter",
+    "custom density face budget propagates to universal browser cap",
+    "CLI face override scales companion vertex/HTML budgets"
+  ],
+  "scientific_invariants": [
+    "density field values unchanged",
+    "HDR mass fractions and thresholds unchanged",
+    "grid and Gaussian bandwidth unchanged",
+    "fallback changes browser representation only"
+  ],
+  "known_environment_limit": "The packaging container has a 4 GiB cgroup; the supplied four-density Na-LTA snapshot is rejected by the pre-existing Phase-B memory authority before rendering, so full real-data rendering could not be rerun here.",
+  "deferred": [
+    "parallel Phase-B planning",
+    "support-atlas FFT caching",
+    "framework registration optimization",
+    "sparse connected-component rendering optimization"
+  ]
+}

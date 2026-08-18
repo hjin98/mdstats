@@ -1,0 +1,83 @@
+{
+  "changed_files": [
+    "mdstats/training_data/campaign_cli.py",
+    "campaign.toml.example",
+    "tests/test_mlff_mh1_config1_campaign_defaults.py",
+    "tests/test_mlff_mh1_base0_mpa0_regression.py",
+    "tests/test_mlff_data9a9b_production_materialization.py"
+  ],
+  "content_digest": "45f8e3b4248c0a6ba6cc36bd7a0cdb62e7cb181f9030ada6f51a89a8bab46ecd",
+  "contract_separation": {
+    "mh1_omat_pbe_cueq": "769979ea00fa7be89a62fc845fcca73a1a276329a6b6e993279e4eaab2273f22",
+    "mh1_omat_pbe_e3nn": "fb8e8df9bcc69fe04e9fa8e96941518ed81be6f31162e7004d9901615da36f2c",
+    "mh1_omol_cueq": "e28563a65d6b7a09324751cecc20efbb12a9b0459f90fe6f877cc78a9365ce8c",
+    "mpa0_default_e3nn": "d48cbfc4536b3ff146124e93245f0f8e507eed967f73684cece9701714796184"
+  },
+  "created_utc": "2026-08-14T13:15:20+00:00",
+  "deferred": [
+    "MACECalculator head binding and named-head E0 access remain MH1-INF1.",
+    "DATA6 ModelCheckpointIdentity remains unchanged until MH1-INF1.",
+    "CuEq/OEQ numerical realization remains MH1-ACCEL1.",
+    "Replay/PES downstream authority migration remains MH1-LINEAGE1/MH1-EVAL1."
+  ],
+  "explicit_legacy_mpa0": {
+    "acceleration_backend": "e3nn",
+    "campaign_id": "lta-mpa0-finetune",
+    "configuration_contract": {
+      "backend": "e3nn",
+      "content_digest": "d48cbfc4536b3ff146124e93245f0f8e507eed967f73684cece9701714796184",
+      "family": "mace_mpa_0",
+      "head": "default",
+      "only_cueq": false,
+      "require_available": true,
+      "schema": "mdstats.mlff-foundation-config-contract.v1"
+    },
+    "foundation": {
+      "family": "mace_mpa_0",
+      "head": "default",
+      "label": "MPA-0-medium"
+    },
+    "model_foundation_name": "MPA-0-medium",
+    "pes_foundation_head": "",
+    "replay_baseline_head": ""
+  },
+  "gate": "MH1-CONFIG1",
+  "new_default": {
+    "acceleration": {
+      "backend": "cueq",
+      "only_cueq": false,
+      "require_available": true
+    },
+    "campaign_id": "lta-mh1-omat-pbe-finetune",
+    "configuration_contract": {
+      "backend": "cueq",
+      "content_digest": "769979ea00fa7be89a62fc845fcca73a1a276329a6b6e993279e4eaab2273f22",
+      "family": "mace_mh_1",
+      "head": "omat_pbe",
+      "only_cueq": false,
+      "require_available": true,
+      "schema": "mdstats.mlff-foundation-config-contract.v1"
+    },
+    "foundation": {
+      "family": "mace_mh_1",
+      "head": "omat_pbe",
+      "label": "MACE-MH-1"
+    },
+    "foundation_model": "/models/foundation.model",
+    "pes_foundation_head_emitted": false,
+    "replay_baseline_head_emitted": false
+  },
+  "package_version": "0.20.177a0",
+  "schema": "mdstats.mlff-mh1-config1-evidence.v1",
+  "source_sha256": {
+    "campaign.toml.example": "a53d6d2533c61ef4afcf3585d8cd854b4a97fc5dba270c6bc0a7ec1767b3db25",
+    "campaign_cli.py": "e91d2f3746cdc6846ee9d3ec4e850ede5f60b0da8a766f1320a8c1f6e7eab046",
+    "config1_tests": "81429c38912961f88bae3af06b74f884a817bb999c6ec803f8ad2d6a1739940d"
+  },
+  "status": "passed",
+  "tests": {
+    "focused_config1": "11 passed",
+    "focused_plus_base0_template": "12 passed, 3 deselected",
+    "surrounding_campaign_regression": "162 passed, 1 environment-dependent skip"
+  }
+}

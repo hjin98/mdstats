@@ -1,0 +1,85 @@
+{
+  "capsule_digest_equal": true,
+  "eval2_shell": {
+    "fresh_median": 0.09886048699991079,
+    "fresh_seconds": [
+      0.09795965700141096,
+      0.09886048699991079,
+      0.10936641599982977
+    ],
+    "hot_swap_cpu_change_fraction": 0.06489918465607736,
+    "hot_swap_median": 0.10527645200090774,
+    "hot_swap_seconds": [
+      0.10244930100088823,
+      0.10814951599968481,
+      0.10527645200090774
+    ],
+    "prediction_exact_all": true
+  },
+  "hashing": {
+    "legacy_capsule": {
+      "digest": "bd118d11da1689dd6b8f0c9a865b85a83cbf188686f9a54ee028430f1af716ad",
+      "digest_invariant": true,
+      "median_peak_rss_increment_mib": 244.9375,
+      "median_wall_seconds": 0.24819157600086328,
+      "peak_rss_increment_mib": [
+        244.875,
+        245.0
+      ],
+      "repetitions": 2,
+      "wall_seconds": [
+        0.2532972310000332,
+        0.24308592100169335
+      ]
+    },
+    "legacy_train2": {
+      "digest": "c5e22dcc6fd8646fee9c6bdce424d59029abd5dbb286b0e353fceea3ec5568ca",
+      "digest_invariant": true,
+      "median_peak_rss_increment_mib": 245.0,
+      "median_wall_seconds": 0.265015438500086,
+      "peak_rss_increment_mib": [
+        245.0,
+        245.0
+      ],
+      "repetitions": 2,
+      "wall_seconds": [
+        0.27988837900011276,
+        0.2501424980000593
+      ]
+    },
+    "stream_capsule": {
+      "digest": "bd118d11da1689dd6b8f0c9a865b85a83cbf188686f9a54ee028430f1af716ad",
+      "digest_invariant": true,
+      "median_peak_rss_increment_mib": 0.8125,
+      "median_wall_seconds": 0.14687077900089207,
+      "peak_rss_increment_mib": [
+        0.75,
+        0.875
+      ],
+      "repetitions": 2,
+      "wall_seconds": [
+        0.15128393400118512,
+        0.14245762400059903
+      ]
+    },
+    "stream_train2": {
+      "digest": "c5e22dcc6fd8646fee9c6bdce424d59029abd5dbb286b0e353fceea3ec5568ca",
+      "digest_invariant": true,
+      "median_peak_rss_increment_mib": 0.75,
+      "median_wall_seconds": 0.14297313099905296,
+      "peak_rss_increment_mib": [
+        0.75,
+        0.75
+      ],
+      "repetitions": 2,
+      "wall_seconds": [
+        0.14235071499933838,
+        0.14359554699876753
+      ]
+    }
+  },
+  "schema": "mdstats.perf-p5-cpu-benchmark.v1",
+  "tensor_bytes": 256000000,
+  "tensor_elements": 64000000,
+  "train2_digest_equal": true
+}

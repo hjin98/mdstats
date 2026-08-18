@@ -1,0 +1,28 @@
+{
+  "active_foundation": {
+    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
+    "family": "MACE-MPA-0 medium",
+    "mh1_compatible": true
+  },
+  "architecture_revision": 102,
+  "decision": {
+    "next_gate": "MVSTATE-REUSE1",
+    "reason": "REPAIR reconstructs MVSEL sparse terminal state by replaying selected-order updates; integrated profiling shows this duplicated exact state work dominates the residual target-data chain.",
+    "status": "PASS_FOLLOWUP_REQUIRED"
+  },
+  "evidence": "benchmarks/mlff_campaign_perf_qual1_cloud_cpu_mpa0_2026-08-17.json",
+  "gate": "CAMPAIGN-PERF-QUAL1",
+  "gpu_authority_change": false,
+  "qualified_branches": [
+    "target-data integrated chain",
+    "TARGET-DATA2B supplied-family radius authority",
+    "replay indexed restart",
+    "EVAL2 reduction/bootstrap",
+    "Foundation Audit CPU reduction"
+  ],
+  "release": "0.20.235a0",
+  "report": "benchmarks/mlff_campaign_perf_qual1_cloud_cpu_mpa0_2026-08-17.md",
+  "runtime_code_change": false,
+  "schema": "mdstats.mlff-campaign-perf-qual1-implementation-manifest.v1",
+  "scientific_authority_change": false
+}

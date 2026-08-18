@@ -1,0 +1,142 @@
+{
+  "acceptance": {
+    "exact_persisted_records": true,
+    "next_gate": "REPLAY-PERF1",
+    "no_additional_model_inference": true,
+    "status": "PASS"
+  },
+  "active_foundation": {
+    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
+    "family": "MACE-MPA-0 medium",
+    "mh1_compatible": true,
+    "note": "No model inference is benchmarked or changed by AUDIT-EVAL-PERF1; the CPU reducer contract is model-family independent."
+  },
+  "architecture_revision": 100,
+  "date": "2026-08-17",
+  "execution": {
+    "eval2_target_reduction": {
+      "control_median_seconds": 0.8620806569997512,
+      "control_release": "0.20.232a0",
+      "control_trials_seconds": [
+        0.8805155099998956,
+        0.8620806569997512,
+        0.8436900140004582,
+        0.8451415589988756,
+        0.8803862600016146
+      ],
+      "current_median_seconds": 0.4492151720005495,
+      "current_release": "0.20.233a0",
+      "current_trials_seconds": [
+        0.4483586890000879,
+        0.42524889200103644,
+        0.4711016430010204,
+        0.4492151720005495,
+        0.45711893100087764
+      ],
+      "fixture": {
+        "atoms_per_configuration": 72,
+        "condition_labels": 4,
+        "configurations": 4096,
+        "correlation_blocks": 1024,
+        "species": 7,
+        "total_atoms": 294912
+      },
+      "speedup": 1.9190817913841447
+    },
+    "foundation_audit": {
+      "control_median_seconds": 0.05802883449996443,
+      "control_release": "0.20.232a0",
+      "control_trials_seconds": [
+        0.05625449000035587,
+        0.05786490600075922,
+        0.06055170899890072,
+        0.058192762999169645,
+        0.05716437999944901,
+        0.06886131899955217,
+        0.055295766000199364,
+        0.055960374000278534,
+        0.06001738899976772,
+        0.07102104799923836,
+        0.055224420999365975,
+        0.05867118300011498
+      ],
+      "current_median_seconds": 0.054530274500393716,
+      "current_release": "0.20.233a0",
+      "current_trials_seconds": [
+        0.05879009499949461,
+        0.0595901380002033,
+        0.05691509300049802,
+        0.062403240001003724,
+        0.08098496200000227,
+        0.05421437699988019,
+        0.05261046800114855,
+        0.052358159999130294,
+        0.05283807900013926,
+        0.05354960399927222,
+        0.05374002899952757,
+        0.054846172000907245
+      ],
+      "fixture": "existing FOUNDATION-AUDIT1 no-inference production-model-sweep test fixture",
+      "interpretation": "The small fixture is already dominated by authenticated prediction-sidecar and structural-conditioning work; the measured gain is intentionally reported as modest.",
+      "speedup": 1.064158121917128
+    },
+    "paired_bootstrap": {
+      "control_median_seconds": 0.051166544000807335,
+      "control_trials_seconds": [
+        0.05037951099984639,
+        0.05053229399891279,
+        0.051166544000807335,
+        0.06685078400005295,
+        0.051615476000733906
+      ],
+      "current_median_seconds": 0.015222844000163605,
+      "current_trials_seconds": [
+        0.015046501999677275,
+        0.015030470000056084,
+        0.01602976300091541,
+        0.015222844000163605,
+        0.015565231000437052
+      ],
+      "fixture": {
+        "bootstrap_replicates": 2000,
+        "independent_blocks": 768,
+        "temporary_target_mib": 32
+      },
+      "speedup": 3.3611685175422825
+    }
+  },
+  "implementation": {
+    "eval2_bootstrap_memory_bounded_batching": true,
+    "eval2_force_tail_preallocation": true,
+    "eval2_static_metadata_cache": true,
+    "foundation_batched_tail_quantiles": true,
+    "foundation_reuses_delta_squared": true,
+    "foundation_shared_frame_index": true,
+    "foundation_shared_species_membership": true
+  },
+  "inputs": {
+    "dependency_archive_sha256": "888d545a512396697c8583d69bc9ed33110914675f466a4cbcafc3e1e1407171",
+    "replay_source_sha256": "187eed42fb2d6cf5e7e745ffed0ce34541e92c6a35ec9e654520cd3c7198403c",
+    "target_archive_sha256": "bc1b7e25ba338507ae38b260bcd283356de887b6c6cf762a2c146733f1c3c958"
+  },
+  "release": "0.20.233a0",
+  "schema": "mdstats.mlff-audit-eval-perf1-benchmark.v1",
+  "scientific": {
+    "additional_model_inference": false,
+    "bootstrap_comparison_digest": "9664354fd2d871e67113ff5b9ef28118c9414a59f29a5fd4114acb729590397e",
+    "bootstrap_control_exact": true,
+    "eval2_metric_control_exact": true,
+    "eval2_metric_digest": "d9dd9db2c2d47e2d6f034e0b58f094c04c516d5a0dc4f0089d3f15762d434658",
+    "foundation_audit_digest": "39b8b207c741798f5a8555b41ceb0c746948935612d84d45961ba87b0e8c94e5",
+    "foundation_control_exact": true,
+    "foundation_model_provider_calls_control": [
+      44,
+      44
+    ],
+    "foundation_model_provider_calls_current": [
+      44,
+      44
+    ],
+    "gpu_authority_change": false
+  }
+}

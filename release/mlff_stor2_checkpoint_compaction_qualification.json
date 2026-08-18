@@ -1,0 +1,28 @@
+{
+  "schema": "mdstats.mlff-stor2-qualification.v1",
+  "runtime_version": "0.20.113a0",
+  "architecture_revision": 31,
+  "mace_version": "0.3.16",
+  "torch_version": "2.10.0+cpu",
+  "backend": "e3nn",
+  "checkpoint_epoch": 7,
+  "source_checkpoint_sha256": "9ac9b64338e4c8cebe895911750517e8d9c418c91e717b0b148223591ec35c1b",
+  "source_checkpoint_size_bytes": 4116076,
+  "capsule_sha256": "ae64d2541ba0c3105515ab5bfc471b24bf1380fb00b73862f02acfdc6ca65e1e",
+  "capsule_size_bytes": 114140,
+  "saved_bytes": 4001936,
+  "fraction_saved": 0.9722697054184617,
+  "model_state_sha256": "a63adb3ce2571403d092e49601e8518c0d0703ac24af61bc3a75a5f475e69b38",
+  "verified_exact_model_state": true,
+  "energy_force_stress_max_abs_difference": {
+    "energy": 0.0,
+    "forces": 0.0,
+    "stress": 0.0
+  },
+  "energy_force_stress_exact_equal": true,
+  "selected_raw_checkpoint_retained_by_policy": true,
+  "raw_deletion_order": "capsule atomic write/authentication -> exact reconstruction -> campaign record commit/readback -> re-authentication -> STOR1-authorized raw deletion",
+  "unsupported_or_corrupt_capsule_behavior": "fail closed to raw checkpoint retention",
+  "cueq_runtime_qualified_in_this_gate": false,
+  "cueq_note": "CuEq runtime was not available in the qualification environment; STOR2 uses the existing direct-restoration contract and retains unsupported layouts fail-closed."
+}

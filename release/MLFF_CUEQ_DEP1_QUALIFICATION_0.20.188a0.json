@@ -1,0 +1,101 @@
+{
+  "acceptance": {
+    "control_plane": "pass",
+    "negative_host_evidence": "pass_fail_closed",
+    "positive_accelerator_runtime_record": "pending_FINAL-GPU1"
+  },
+  "architecture_revision": 55,
+  "authority_class": "accelerator_runtime_provenance",
+  "date": "2026-08-15",
+  "dependency_graph_schema": 37,
+  "development_host_runtime": {
+    "blocking_reasons": [
+      "cueq-core_import",
+      "cueq-torch_import",
+      "cueq-ops_import",
+      "torch_cuda_available",
+      "cuda_device_inventory"
+    ],
+    "content_digest": "41c1e2890bc34c3d7908762efd3f9d55259fbced4e0b0c7d468e20e9cd79ff70",
+    "device_count": 0,
+    "passed": false,
+    "qualification_deferred_to_final_gpu": true,
+    "schema": "mdstats.cueq-dep1-runtime.v1",
+    "torch_cuda_available": false
+  },
+  "execution_split": {
+    "source_inference": "e3nn",
+    "training": "cueq_pure"
+  },
+  "final_gpu_preflight": {
+    "blocking_requirements": [
+      "torch_cuda_available",
+      "cueq_dep1_runtime_freeze"
+    ],
+    "qualification_state": "deferred_not_executed",
+    "schema": "mdstats.mlff-final-gpu1.preflight.2026-08.v2"
+  },
+  "focused_adjacent_suite": {
+    "failed": 0,
+    "foundation_models_explicit": true,
+    "passed": 68,
+    "skipped": 1,
+    "warnings": 39
+  },
+  "foundation_models": {
+    "mace_mh_1": {
+      "head": "omat_pbe",
+      "sha256": "ec00a2705854622fbbd898ccfb7701072fcd674709102d009fb919c1b8cc5dde"
+    },
+    "mace_mpa_0_medium": {
+      "head": "default",
+      "sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638"
+    }
+  },
+  "gate": "CUEQ-DEP1",
+  "gpu_qualification": "deferred_to_FINAL-GPU1",
+  "implementation_status": "control_plane_complete_positive_accelerator_record_deferred_to_FINAL-GPU1",
+  "next_implementation_gate": "CUEQ-PHASE1",
+  "optional_phase1_components": [
+    "OpenEquivariance"
+  ],
+  "package_collection": {
+    "compileall": "pass",
+    "tests_collected": 3061
+  },
+  "reference_stack": {
+    "e3nn": {
+      "content_addressed": true,
+      "content_digest": "b466c68c4a392b7e1d3a71bd966821a44ebeba004bae57e1de169de49d12eac0",
+      "distribution_name": "e3nn",
+      "import_passed": true,
+      "version": "0.4.4"
+    },
+    "mace": {
+      "content_addressed": true,
+      "content_digest": "94b182f91126877bc12e8e301552275e86a8cbc5fe8e56b7c2f88b5c0d27080c",
+      "distribution_name": "mace-torch",
+      "import_passed": true,
+      "version": "0.3.16"
+    },
+    "torch": {
+      "content_addressed": true,
+      "content_digest": "fc11aa5d41b9376b9b2ceb98ee29ffa101987ac108efed7d2ae217b3752d59cb",
+      "distribution_name": "torch",
+      "import_passed": true,
+      "version": "2.10.0+cpu"
+    }
+  },
+  "release": "0.20.188a0",
+  "required_phase1_stack": [
+    "torch",
+    "mace",
+    "e3nn",
+    "cuequivariance",
+    "cuequivariance_torch",
+    "cuequivariance_ops_torch"
+  ],
+  "schema": "mdstats.mlff-cueq-dep1-qualification.v1",
+  "scientific_model_change": false,
+  "supplied_dependency_archive_sha256": "888d545a512396697c8583d69bc9ed33110914675f466a4cbcafc3e1e1407171"
+}

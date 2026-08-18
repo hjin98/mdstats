@@ -1,0 +1,280 @@
+{
+  "schema": "mdstats.dense-neighbor-baseline.v1",
+  "seed": 20260713,
+  "environment": {
+    "python": "3.13.5",
+    "platform": "Linux-4.4.0-x86_64-with-glibc2.41",
+    "cpu": "x86_64",
+    "numpy": "2.3.5",
+    "scipy": "1.17.0",
+    "ase": "3.26.0",
+    "networkx": "3.6.1",
+    "backend": "dense"
+  },
+  "records": [
+    {
+      "geometry": "orthogonal",
+      "selection": "all_unordered",
+      "n_atoms": 64,
+      "species_counts": {
+        "O": 32,
+        "Si": 32
+      },
+      "cutoff_registry": {
+        "all-all": 3.0
+      },
+      "n_centers": 64,
+      "n_candidates": 64,
+      "dense_pair_evaluations": 4096,
+      "accepted_pair_count": 125,
+      "block_size": 256,
+      "repeat": 3,
+      "median_seconds": 0.12136526199992659,
+      "minimum_seconds": 0.1182778289999078,
+      "maximum_seconds": 0.2185621949997767,
+      "peak_tracemalloc_bytes": 7682351
+    },
+    {
+      "geometry": "orthogonal",
+      "selection": "all_unordered",
+      "n_atoms": 128,
+      "species_counts": {
+        "O": 64,
+        "Si": 64
+      },
+      "cutoff_registry": {
+        "all-all": 3.0
+      },
+      "n_centers": 128,
+      "n_candidates": 128,
+      "dense_pair_evaluations": 16384,
+      "accepted_pair_count": 238,
+      "block_size": 256,
+      "repeat": 3,
+      "median_seconds": 0.30744516699996893,
+      "minimum_seconds": 0.21437242000001788,
+      "maximum_seconds": 0.32146887000044444,
+      "peak_tracemalloc_bytes": 30689911
+    },
+    {
+      "geometry": "orthogonal",
+      "selection": "all_unordered",
+      "n_atoms": 256,
+      "species_counts": {
+        "O": 128,
+        "Si": 128
+      },
+      "cutoff_registry": {
+        "all-all": 3.0
+      },
+      "n_centers": 256,
+      "n_candidates": 256,
+      "dense_pair_evaluations": 65536,
+      "accepted_pair_count": 514,
+      "block_size": 256,
+      "repeat": 3,
+      "median_seconds": 0.514761930000077,
+      "minimum_seconds": 0.39182290000007924,
+      "maximum_seconds": 0.5322607359998983,
+      "peak_tracemalloc_bytes": 122711577
+    },
+    {
+      "geometry": "orthogonal",
+      "selection": "oxygen_silicon_directed",
+      "n_atoms": 64,
+      "species_counts": {
+        "O": 32,
+        "Si": 32
+      },
+      "cutoff_registry": {
+        "Si-O": 2.4
+      },
+      "n_centers": 32,
+      "n_candidates": 32,
+      "dense_pair_evaluations": 1024,
+      "accepted_pair_count": 48,
+      "block_size": 256,
+      "repeat": 3,
+      "median_seconds": 0.0024618419997750607,
+      "minimum_seconds": 0.0024404599998888443,
+      "maximum_seconds": 0.0025086420000661747,
+      "peak_tracemalloc_bytes": 1929800
+    },
+    {
+      "geometry": "orthogonal",
+      "selection": "oxygen_silicon_directed",
+      "n_atoms": 128,
+      "species_counts": {
+        "O": 64,
+        "Si": 64
+      },
+      "cutoff_registry": {
+        "Si-O": 2.4
+      },
+      "n_centers": 64,
+      "n_candidates": 64,
+      "dense_pair_evaluations": 4096,
+      "accepted_pair_count": 67,
+      "block_size": 256,
+      "repeat": 3,
+      "median_seconds": 0.1393365389999417,
+      "minimum_seconds": 0.12400489999981801,
+      "maximum_seconds": 0.24178656799995224,
+      "peak_tracemalloc_bytes": 7683656
+    },
+    {
+      "geometry": "orthogonal",
+      "selection": "oxygen_silicon_directed",
+      "n_atoms": 256,
+      "species_counts": {
+        "O": 128,
+        "Si": 128
+      },
+      "cutoff_registry": {
+        "Si-O": 2.4
+      },
+      "n_centers": 128,
+      "n_candidates": 128,
+      "dense_pair_evaluations": 16384,
+      "accepted_pair_count": 143,
+      "block_size": 256,
+      "repeat": 3,
+      "median_seconds": 0.324623664000228,
+      "minimum_seconds": 0.30424011400009476,
+      "maximum_seconds": 0.32748431499976505,
+      "peak_tracemalloc_bytes": 30692889
+    },
+    {
+      "geometry": "triclinic",
+      "selection": "all_unordered",
+      "n_atoms": 64,
+      "species_counts": {
+        "O": 32,
+        "Si": 32
+      },
+      "cutoff_registry": {
+        "all-all": 3.0
+      },
+      "n_centers": 64,
+      "n_candidates": 64,
+      "dense_pair_evaluations": 4096,
+      "accepted_pair_count": 110,
+      "block_size": 256,
+      "repeat": 3,
+      "median_seconds": 0.13636385499967218,
+      "minimum_seconds": 0.12097551099986958,
+      "maximum_seconds": 0.20725199199978306,
+      "peak_tracemalloc_bytes": 7683443
+    },
+    {
+      "geometry": "triclinic",
+      "selection": "all_unordered",
+      "n_atoms": 128,
+      "species_counts": {
+        "O": 64,
+        "Si": 64
+      },
+      "cutoff_registry": {
+        "all-all": 3.0
+      },
+      "n_centers": 128,
+      "n_candidates": 128,
+      "dense_pair_evaluations": 16384,
+      "accepted_pair_count": 241,
+      "block_size": 256,
+      "repeat": 3,
+      "median_seconds": 0.2274502170002961,
+      "minimum_seconds": 0.22391283400020257,
+      "maximum_seconds": 0.3150803049998103,
+      "peak_tracemalloc_bytes": 30691047
+    },
+    {
+      "geometry": "triclinic",
+      "selection": "all_unordered",
+      "n_atoms": 256,
+      "species_counts": {
+        "O": 128,
+        "Si": 128
+      },
+      "cutoff_registry": {
+        "all-all": 3.0
+      },
+      "n_centers": 256,
+      "n_candidates": 256,
+      "dense_pair_evaluations": 65536,
+      "accepted_pair_count": 554,
+      "block_size": 256,
+      "repeat": 3,
+      "median_seconds": 0.48551429500002996,
+      "minimum_seconds": 0.43355595100001665,
+      "maximum_seconds": 0.49675724500002616,
+      "peak_tracemalloc_bytes": 122712760
+    },
+    {
+      "geometry": "triclinic",
+      "selection": "oxygen_silicon_directed",
+      "n_atoms": 64,
+      "species_counts": {
+        "O": 32,
+        "Si": 32
+      },
+      "cutoff_registry": {
+        "Si-O": 2.4
+      },
+      "n_centers": 32,
+      "n_candidates": 32,
+      "dense_pair_evaluations": 1024,
+      "accepted_pair_count": 33,
+      "block_size": 256,
+      "repeat": 3,
+      "median_seconds": 0.0027014070001314394,
+      "minimum_seconds": 0.0026012650000666326,
+      "maximum_seconds": 0.0027860650002367038,
+      "peak_tracemalloc_bytes": 1930983
+    },
+    {
+      "geometry": "triclinic",
+      "selection": "oxygen_silicon_directed",
+      "n_atoms": 128,
+      "species_counts": {
+        "O": 64,
+        "Si": 64
+      },
+      "cutoff_registry": {
+        "Si-O": 2.4
+      },
+      "n_centers": 64,
+      "n_candidates": 64,
+      "dense_pair_evaluations": 4096,
+      "accepted_pair_count": 68,
+      "block_size": 256,
+      "repeat": 3,
+      "median_seconds": 0.11982848000025115,
+      "minimum_seconds": 0.024418048999905295,
+      "maximum_seconds": 0.12828178799964007,
+      "peak_tracemalloc_bytes": 7684839
+    },
+    {
+      "geometry": "triclinic",
+      "selection": "oxygen_silicon_directed",
+      "n_atoms": 256,
+      "species_counts": {
+        "O": 128,
+        "Si": 128
+      },
+      "cutoff_registry": {
+        "Si-O": 2.4
+      },
+      "n_centers": 128,
+      "n_candidates": 128,
+      "dense_pair_evaluations": 16384,
+      "accepted_pair_count": 125,
+      "block_size": 256,
+      "repeat": 3,
+      "median_seconds": 0.42076904799978365,
+      "minimum_seconds": 0.21874091499967108,
+      "maximum_seconds": 0.4248212269999385,
+      "peak_tracemalloc_bytes": 30694119
+    }
+  ]
+}

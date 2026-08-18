@@ -1,0 +1,58 @@
+{
+  "aggregate_atlas_seconds": 14.34542625299946,
+  "aggregate_hybrid_realization_seconds": 2.145830292000028,
+  "compute_tile_shape": [
+    32,
+    32,
+    32
+  ],
+  "executor_mode": "auto",
+  "fft_workers": 1,
+  "fields": [
+    {
+      "atlas_seconds": 14.34542625299946,
+      "cic_seconds": 0.03201056000034441,
+      "compute_tile_count": 119,
+      "direct_tile_count": 12,
+      "fft_kernel_transform_count": 1,
+      "fft_tile_count": 107,
+      "field_total_seconds": 22.07082227099818,
+      "grid_shape": [
+        1037,
+        1037,
+        1037
+      ],
+      "hybrid_planning_seconds": 0.05384485000104178,
+      "hybrid_realization_seconds": 2.145830292000028,
+      "integral": 24.0,
+      "label": "Al density",
+      "ld7_scientific_seconds": 56.02196929300044,
+      "nonpositive_node_repairs": 0,
+      "predicted_peak_bytes": 76682368,
+      "process_peak_rss_bytes": 1051324416,
+      "realization_speedup_over_ld7": 26.10736249826401,
+      "resolution_seconds": 5.333449584002665,
+      "routing_seconds": 0.05853314599880832,
+      "source_node_count": 57471,
+      "source_packing_seconds": 0.07966609600043739,
+      "stencil_offset_count": 12017,
+      "stencil_seconds": 0.010460690002219053,
+      "target_support_node_count": 1952525
+    }
+  ],
+  "host": {
+    "numpy": "2.3.5",
+    "platform": "Linux-4.4.0-x86_64-with-glibc2.41",
+    "python": "3.13.5"
+  },
+  "kernel_tail_tolerance": 1e-08,
+  "min_fft_source_nodes": 16,
+  "scene_pickle": "/mnt/data/mdstats_0_19_53a0_TRAJECTORY4_scene.pkl",
+  "schema": "mdstats.density-ld8-s3-hybrid-benchmark.v1",
+  "storage_block_shape": [
+    16,
+    16,
+    16
+  ],
+  "total_seconds": 22.247829152998747
+}

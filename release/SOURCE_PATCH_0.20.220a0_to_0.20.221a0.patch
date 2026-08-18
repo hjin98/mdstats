@@ -1,0 +1,2396 @@
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/ARCHITECTURE_NOTES_MLFF_REV88.md /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/ARCHITECTURE_NOTES_MLFF_REV88.md
+--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/ARCHITECTURE_NOTES_MLFF_REV88.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/ARCHITECTURE_NOTES_MLFF_REV88.md	2026-08-17 07:05:42.775599104 +0000
+@@ -0,0 +1,25 @@
++---
++title: "MLFF Architecture Revision 88"
++author: "mdstats development"
++date: "2026-08-17"
++geometry: margin=0.8in
++fontsize: 10pt
++---
++
++# Revision 88
++
++**Release:** `mdstats 0.20.221a0`  
++**Gate:** `TARGET-DATA2B-FEAS1-PERF1`  
++**Dependency-graph schema:** `70`
++
++Revision 88 is exact-equivalence CPU execution hardening for TARGET-DATA2B-FEAS1 and the immediately downstream MVIDX1 sparse-row build. It changes no coverage metric, radius, threshold, hard obligation, candidate ceiling, selector policy, persisted scientific schema, or target-frame identity.
++
++The historical FEAS1 path alternated a multi-threaded cKDTree query with a serialized Python witness loop. Each witness separately mapped neighbor rows to candidate frames, called `np.unique`, updated candidate gains, and accumulated support-degree bins. That structure explains the observed low average CPU utilization. CUDA was never part of this stage and remains intentionally unused.
++
++The new exact kernel compresses each bounded query block in compiled NumPy operations. `(witness row, candidate frame)` pairs are packed and uniqued into canonical row-major/candidate-major order; candidate gains use unbuffered `np.add.at` in the same historical arithmetic order; support degrees use vectorized bincounts and one witness-order FP64 accumulation per family. MVIDX1 writes the same canonical candidate stream directly from this kernel.
++
++FEAS1 additionally schedules independent feature families concurrently. Automatic mode partitions the existing CPU-thread budget across family workers and native cKDTree workers, while explicit execution-only overrides remain available. `StageResourceScope` validates the nested CPU-lane product.
++
++Focused qualification requires exact report/graph equivalence across block sizes, tree-worker counts, and family-worker counts, plus regression-clean MVSEL1/REPAIR1/MVPERF1 behavior. A four-family 8,192-candidate synthetic development benchmark on the eight-thread qualification host measured approximately 1.65x wall-time improvement with exact family-report identity.
++
++GPU qualification remains deferred to the final consolidated FINAL-GPU1 handoff. Revision 88 does not introduce or authorize a GPU neighborhood backend.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/CHANGELOG.md /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/CHANGELOG.md
+--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/CHANGELOG.md	2026-08-17 06:31:08.000000000 +0000
++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/CHANGELOG.md	2026-08-17 07:06:11.793727135 +0000
+@@ -1,3 +1,12 @@
++## 0.20.221a0 - 2026-08-17
++
++- Implement TARGET-DATA2B-FEAS1-PERF1 exact-equivalence CPU hardening after low-utilization workstation evidence.
++- Replace the serialized FEAS1 per-witness neighborhood reduction with canonical vectorized `(witness,candidate)` compression, vectorized support-degree evaluation, and historical-order FP64 accumulation.
++- Add bounded concurrent feature-family execution that partitions the existing CPU budget between family workers and cKDTree workers; expose `target_coverage_feasibility_family_workers` as an execution-only override.
++- Reuse the same canonical row-compression kernel in TARGET-DATA2C-MVIDX1 so sparse row construction no longer loops in Python over every witness.
++- Preserve FEAS1/MVIDX1 scientific schemas, coverage neighborhoods, candidate ceiling, report/graph digests, TARGET-DATA2C selector semantics, and all GPU/FINAL-GPU1 authority unchanged.
++- Advance MLFF architecture to revision 88 and dependency-graph schema 70.
++
+ ## 0.20.220a0 - 2026-08-17
+ 
+ - Implement WARN-DOMAIN1: one campaign-wide MACE/PyTorch warning domain at the MLFF CLI boundary.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/PATCH_NOTES_0.20.221a0.md /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/PATCH_NOTES_0.20.221a0.md
+--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/PATCH_NOTES_0.20.221a0.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/PATCH_NOTES_0.20.221a0.md	2026-08-17 07:06:11.793933722 +0000
+@@ -0,0 +1,14 @@
++# mdstats 0.20.221a0 - TARGET-DATA2B-FEAS1-PERF1
++
++This patch addresses the observed long TARGET-DATA2B-FEAS1 wall time with low average CPU utilization.
++
++- FEAS1 now reduces each exact cKDTree neighborhood block with compiled NumPy operations instead of a Python loop over witnesses.
++- Candidate-frame deduplication is canonical and preserves the historical row-major/candidate-major FP64 accumulation order.
++- Support-degree masses are accumulated once per family in original witness order, preserving block-size-invariant scientific output.
++- Independent coverage families execute concurrently within `StageResourceScope`; automatic scheduling divides the CPU budget between family workers and native cKDTree workers.
++- New execution-only override: `[performance].target_coverage_feasibility_family_workers`.
++- MVIDX1 uses the same vectorized exact row-compression kernel to avoid immediately repeating the per-witness bottleneck.
++- GPU utilization remains intentionally low/zero in FEAS1/MVIDX1 because exact SciPy cKDTree CPU neighborhoods remain the scientific authority; no unqualified CUDA distance backend was introduced.
++- Focused FEAS1/MVIDX1/MVSEL1/REPAIR1/MVPERF1 regression tests pass with exact worker/block/family-parallel invariance.
++
++On the 8-thread development host, a four-family 8,192-candidate synthetic exact-equivalence benchmark improved from about 1.63 s to about 0.99 s (1.65x) with identical family reports. Real gains depend on family count, neighborhood density, and the host CPU budget.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/campaign.toml.example /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/campaign.toml.example
+--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/campaign.toml.example	2026-08-17 01:13:15.000000000 +0000
++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/campaign.toml.example	2026-08-17 07:06:36.596022397 +0000
+@@ -223,10 +223,16 @@
+ # still clipped by available CPU threads and the RAM budget.
+ source_workers = 0
+ feature_workers = 0
+-# Exact TARGET-DATA2B cKDTree queries use native threads rather than process
+-# workers. 0 selects an automatic CPU-budgeted count capped at 8; an explicit
+-# positive value may request more. This changes execution only, not coverage.
++# Exact TARGET-DATA2B/MVIDX1 cKDTree queries use native threads rather than
++# process workers. 0 selects the stage-specific automatic CPU-budgeted count;
++# an explicit positive value may request more. FEAS1 additionally partitions
++# the CPU budget across independent feature families. Execution only.
+ target_coverage_workers = 0
++# 0 lets FEAS1 choose bounded family-level parallelism from the CPU budget.
++# Positive values explicitly cap concurrent coverage families. Execution only.
++target_coverage_feasibility_family_workers = 0
++# Bounded cKDTree witness-query block. Scientific results are block invariant.
++target_coverage_feasibility_block_size = 512
+ # LTA workers return compact NumPy columns; the automatic count is bounded by
+ # CPU threads plus RAM reserved for the final immutable catalog.
+ lta_workers = 0
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/docs/arch_manuals/ARCHITECTURE_NOTES_MLFF_REV88.md /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/docs/arch_manuals/ARCHITECTURE_NOTES_MLFF_REV88.md
+--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/docs/arch_manuals/ARCHITECTURE_NOTES_MLFF_REV88.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/docs/arch_manuals/ARCHITECTURE_NOTES_MLFF_REV88.md	2026-08-17 07:05:42.775654927 +0000
+@@ -0,0 +1,25 @@
++---
++title: "MLFF Architecture Revision 88"
++author: "mdstats development"
++date: "2026-08-17"
++geometry: margin=0.8in
++fontsize: 10pt
++---
++
++# Revision 88
++
++**Release:** `mdstats 0.20.221a0`  
++**Gate:** `TARGET-DATA2B-FEAS1-PERF1`  
++**Dependency-graph schema:** `70`
++
++Revision 88 is exact-equivalence CPU execution hardening for TARGET-DATA2B-FEAS1 and the immediately downstream MVIDX1 sparse-row build. It changes no coverage metric, radius, threshold, hard obligation, candidate ceiling, selector policy, persisted scientific schema, or target-frame identity.
++
++The historical FEAS1 path alternated a multi-threaded cKDTree query with a serialized Python witness loop. Each witness separately mapped neighbor rows to candidate frames, called `np.unique`, updated candidate gains, and accumulated support-degree bins. That structure explains the observed low average CPU utilization. CUDA was never part of this stage and remains intentionally unused.
++
++The new exact kernel compresses each bounded query block in compiled NumPy operations. `(witness row, candidate frame)` pairs are packed and uniqued into canonical row-major/candidate-major order; candidate gains use unbuffered `np.add.at` in the same historical arithmetic order; support degrees use vectorized bincounts and one witness-order FP64 accumulation per family. MVIDX1 writes the same canonical candidate stream directly from this kernel.
++
++FEAS1 additionally schedules independent feature families concurrently. Automatic mode partitions the existing CPU-thread budget across family workers and native cKDTree workers, while explicit execution-only overrides remain available. `StageResourceScope` validates the nested CPU-lane product.
++
++Focused qualification requires exact report/graph equivalence across block sizes, tree-worker counts, and family-worker counts, plus regression-clean MVSEL1/REPAIR1/MVPERF1 behavior. A four-family 8,192-candidate synthetic development benchmark on the eight-thread qualification host measured approximately 1.65x wall-time improvement with exact family-report identity.
++
++GPU qualification remains deferred to the final consolidated FINAL-GPU1 handoff. Revision 88 does not introduce or authorize a GPU neighborhood backend.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/docs/arch_manuals/mlff_training_data_architecture.md /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/docs/arch_manuals/mlff_training_data_architecture.md
+--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-17 06:31:08.000000000 +0000
++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-17 07:05:42.774455186 +0000
+@@ -2,7 +2,7 @@
+ title: "mdstats MLFF Training-Data Architecture"
+ subtitle: "Canonical architecture and staged implementation"
+ author: "mdstats project"
+-date: "2026-08-17 (revision 87: WARN-DOMAIN1 campaign-wide warning capture)"
++date: "2026-08-17 (revision 88: TARGET-DATA2B-FEAS1-PERF1 exact CPU hardening)"
+ geometry: margin=0.78in
+ toc: true
+ toc-depth: 3
+@@ -19,7 +19,39 @@
+     \usepackage{xurl}
+ ---
+ 
+-# Revision 87 current gate: WARN-DOMAIN1 campaign-wide warning capture
++# Revision 88 current gate: TARGET-DATA2B-FEAS1-PERF1 exact CPU hardening
++
++`mdstats 0.20.221a0` hardens the execution path of TARGET-DATA2B-FEAS1 after workstation observation showed long wall time with low average CPU utilization and an idle GPU. The scientific FEAS1 authority, fixed 16,384 ceiling, exact cKDTree neighborhoods, FP64 accumulation order, and all downstream selector identities remain unchanged. This revision is execution-only.
++
++The observed utilization pattern followed directly from the revision-67 implementation. Native cKDTree workers were active only during each 512-witness `query_ball_point` call. Every returned ragged neighborhood was then reduced by a Python loop over individual witnesses using `np.unique`, scalar support-degree bookkeeping, and one candidate-gain update at a time. Automatic execution also capped the tree at eight native workers. Thus the query phase could use several cores while the reduction phase repeatedly collapsed to one Python execution lane; CUDA was never part of this exact CPU authority.
++
++Revision 88 replaces the per-witness reduction with a bounded vectorized exact kernel. For one query block, geometric neighbor rows are mapped to owning candidate frames, packed as `(local_witness_row, candidate_frame)` int64 keys, reduced with compiled `np.unique`, and returned in canonical row-major/candidate-major order. Candidate gain uses `np.add.at` in that same historical order. Self-excluded and correlation-unit-excluded degrees are computed from vectorized bincounts, retained for the whole family, then accumulated once in original witness order with `np.add.accumulate`. This preserves the scalar FP64 addition sequence and makes the scientific report invariant to query-block partitioning.
++
++Independent feature families now execute concurrently under the existing `StageResourceScope`. Automatic FEAS1 scheduling divides the configured CPU budget between family workers and cKDTree workers rather than dedicating the whole stage to one eight-thread tree. When enough families exist, automatic mode targets roughly four native tree lanes per concurrent family; a single family may use up to sixteen tree workers. The new optional `[performance].target_coverage_feasibility_family_workers` setting overrides only the execution schedule. Existing `[performance].target_coverage_workers` remains the native tree-worker override. The CLI prints family workers, tree workers per family, query block, and the resulting bounded CPU-lane product.
++
++The same canonical vectorized row-compression kernel is used by TARGET-DATA2C-MVIDX1. MVIDX1 therefore no longer loops in Python over every witness solely to deduplicate candidate-frame ownership before writing the canonical sparse row stream. Persisted uint32/uint64 graph arrays, edge ordering, hashes, and downstream MVSEL1/REPAIR1 scientific plans remain unchanged.
++
++GPU execution is deliberately not introduced. FEAS1/MVIDX1 neighborhood authority is exact SciPy cKDTree CPU work; moving it to CUDA would create a new distance/threshold realization that would require separate equivalence qualification. Consequently low GPU utilization during these stages is expected and is not a defect. GPU qualification remains deferred to FINAL-GPU1 as previously frozen.
++
++## Frozen revision-88 execution contract
++
++| Item | Value |
++|---|---|
++| FEAS1 scientific schema/digest | unchanged |
++| Coverage metric/radii | unchanged exact TARGET-DATA2B cKDTree relation |
++| Candidate-frame deduplication | vectorized packed `(row,candidate)` unique reduction |
++| FP64 candidate-gain order | historical row-major/candidate-major order |
++| Support-mass order | historical witness order |
++| Family scheduling | bounded concurrent ThreadPool execution |
++| Automatic native tree workers | CPU-budget partition; up to 16 for single-family execution |
++| New execution override | `target_coverage_feasibility_family_workers` |
++| MVIDX1 sparse row construction | same vectorized canonical kernel |
++| GPU authority | unchanged; not used |
++| TARGET-DATA2C scientific selection | unchanged |
++
++The focused FEAS1/MVIDX1 and downstream MVSEL1/REPAIR1/MVPERF1 suites require exact dictionary/digest equivalence across worker, block, and family-parallel schedules. On the eight-thread development host, a four-family 8,192-candidate synthetic exact-equivalence benchmark improved from about 1.63 s for the historical scalar reduction to about 0.99 s for the optimized bounded schedule (approximately 1.65x) with identical family reports. The benchmark is execution evidence only, not scientific tuning data.
++
++# Revision 87 historical gate: WARN-DOMAIN1 campaign-wide warning capture
+ 
+ `mdstats 0.20.220a0` replaces the accumulated operation-by-operation warning suppression patches with one command-wide warning domain at the MLFF campaign CLI boundary. The scientific training/data/parity contracts are unchanged from revision 86; this gate changes only runtime warning transport, grouping, and presentation.
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/docs/arch_manuals/mlff_training_data_dependency_graph.json /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/docs/arch_manuals/mlff_training_data_dependency_graph.json
+--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-17 06:31:33.000000000 +0000
++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-17 07:05:52.223692863 +0000
+@@ -1,8 +1,8 @@
+ {
+-  "architecture_revision": 87,
++  "architecture_revision": 88,
+   "branch": "MLFF-DATA",
+-  "description": "MLFF training-data dependency graph through architecture revision 87. WARN-DOMAIN1 makes MACE/PyTorch warning capture command-wide and thread-aware without changing revision-86 scientific parity authority.",
+-  "documentation_gate": "CAMPAIGN_WARNING_DOMAIN",
++  "description": "MLFF training-data dependency graph through architecture revision 88. TARGET-DATA2B-FEAS1-PERF1 removes serialized witness reduction and adds bounded family-level CPU parallelism while preserving exact FEAS1/MVIDX1 scientific authority.",
++  "documentation_gate": "TARGET_DATA2B_FEAS1_PERF1_EXACT_HARDENING",
+   "edge_type_definitions": {
+     "execution_requires": "The upstream product must exist before execution.",
+     "fit_domain_requires": "The fitted object may inspect only the declared training domain.",
+@@ -2832,11 +2832,6 @@
+       "type": "implementation_requires"
+     },
+     {
+-      "from": "TARGET_DATA2B_FEAS1_FULL_POOL_FEASIBILITY",
+-      "to": "TARGET_DATA2C_MVIDX1_COVERAGE_INDEX",
+-      "type": "implementation_requires"
+-    },
+-    {
+       "from": "TARGET_DATA2C_MVIDX1_COVERAGE_INDEX",
+       "to": "TARGET_DATA2C_MVSEL1_PROGRESSIVE_SELECTOR",
+       "type": "implementation_requires"
+@@ -2960,6 +2955,16 @@
+       "from": "CUEQ_TRAIN2_NOISE_NORMALIZED_PARITY",
+       "to": "FINAL_GPU1_DEFERRED_RELEASE_QUALIFICATION",
+       "type": "release_qualification_requires"
++    },
++    {
++      "from": "TARGET_DATA2B_FEAS1_FULL_POOL_FEASIBILITY",
++      "to": "TARGET_DATA2B_FEAS1_PERF1_EXACT_HARDENING",
++      "type": "implementation_requires"
++    },
++    {
++      "from": "TARGET_DATA2B_FEAS1_PERF1_EXACT_HARDENING",
++      "to": "TARGET_DATA2C_MVIDX1_COVERAGE_INDEX",
++      "type": "implementation_requires"
+     }
+   ],
+   "forbidden_dependencies": [
+@@ -4488,7 +4493,12 @@
+         "cross_support_fragile",
+         "optimization_required",
+         "provably_capacity_infeasible"
+-      ]
++      ],
++      "execution_hardening_release": "0.20.221a0",
++      "execution_hardening_gate": "TARGET-DATA2B-FEAS1-PERF1",
++      "vectorized_candidate_row_compression": true,
++      "bounded_family_parallelism": true,
++      "gpu_backend_used": false
+     },
+     {
+       "architecture_revision": 68,
+@@ -5143,7 +5153,27 @@
+       "scientific_authority_changed": false,
+       "superseded_scientific_gate": null,
+       "retained_parity_gate": "CUEQ-REPEAT1-PARITY1"
++    },
++    {
++      "id": "TARGET_DATA2B_FEAS1_PERF1_EXACT_HARDENING",
++      "gate_name": "TARGET-DATA2B-FEAS1-PERF1",
++      "architecture_revision": 88,
++      "authority_class": "performance_exact_equivalence",
++      "implementation_status": "implemented_exact_performance_hardening",
++      "implemented_release": "0.20.221a0",
++      "scientific_schema_changed": false,
++      "scientific_digest_changed": false,
++      "coverage_metric_changed": false,
++      "candidate_ceiling_changed": false,
++      "vectorized_row_candidate_deduplication": true,
++      "historical_fp64_accumulation_order_preserved": true,
++      "family_level_parallelism": "bounded_stage_resource_scope",
++      "automatic_tree_worker_cap_single_family": 16,
++      "mvidx1_uses_shared_vectorized_row_kernel": true,
++      "gpu_neighborhood_backend_authorized": false,
++      "final_gpu1_qualification_deferred": true,
++      "runtime_selector_changed": false
+     }
+   ],
+-  "schema_version": 69
++  "schema_version": 70
+ }
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/docs/specs/training_data/FINAL_GPU1_WORKSTATION_RUNBOOK.md /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/docs/specs/training_data/FINAL_GPU1_WORKSTATION_RUNBOOK.md
+--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/docs/specs/training_data/FINAL_GPU1_WORKSTATION_RUNBOOK.md	2026-08-17 06:31:40.000000000 +0000
++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/docs/specs/training_data/FINAL_GPU1_WORKSTATION_RUNBOOK.md	2026-08-17 07:06:23.136402040 +0000
+@@ -8,11 +8,11 @@
+ 
+ # CURRENT RELEASE HANDOFF - FINAL-GPU1 v3
+ 
+-This revision-87 runbook is the current one-shot FINAL-GPU1 v3/v10 handoff for `mdstats 0.20.220a0`. Earlier revision-86 and pre-warning-domain source bundles are archival and must not be used to authorize this release.
++This revision-88 runbook is the current one-shot FINAL-GPU1 v3/v10 handoff for `mdstats 0.20.221a0`. Earlier revision-86 and pre-warning-domain source bundles are archival and must not be used to authorize this release.
+ 
+ # Purpose
+ 
+-This runbook executes the **single consolidated FINAL-GPU1 handoff** for `mdstats 0.20.220a0` / architecture revision 87. The development package does **not** contain a positive GPU result. FINAL-GPU1 becomes positive only after the supplied workstation produces release-matched CUDA/CuEquivariance evidence and the fail-closed reducer passes.
++This runbook executes the **single consolidated FINAL-GPU1 handoff** for `mdstats 0.20.221a0` / architecture revision 88. The development package does **not** contain a positive GPU result. FINAL-GPU1 becomes positive only after the supplied workstation produces release-matched CUDA/CuEquivariance evidence and the fail-closed reducer passes.
+ 
+ The final authority preserves the scientific baseline and phase separation established by earlier gates:
+ 
+@@ -25,7 +25,7 @@
+ 
+ The workstation bundle contains:
+ 
+-- the exact `mdstats-0.20.220a0-complete-source-package-warning-domain1.zip` release archive;
++- the exact `mdstats-0.20.221a0-complete-source-package-feas1-perf1.zip` release archive;
+ - locked MACE-MH-1 and MACE-MPA-0-medium foundation models;
+ - the LTA target-training corpus and TRUE_DFT replay corpus;
+ - the offline dependency/source archive supplied for the project;
+@@ -47,8 +47,8 @@
+ ```bash
+ sha256sum -c VERIFY_BUNDLE_SHA256.txt
+ mkdir -p work/source
+-unzip -q mdstats-0.20.220a0-complete-source-package-warning-domain1.zip -d work/source
+-cd work/source/mdstats-0.20.220a0
++unzip -q mdstats-0.20.221a0-complete-source-package-feas1-perf1.zip -d work/source
++cd work/source/mdstats-0.20.221a0
+ ```
+ 
+ The release archive itself remains unchanged after extraction because its SHA-256 is part of every FINAL-GPU1 evidence registration.
+@@ -59,7 +59,7 @@
+ python tools/run_mlff_final_gpu_qualification.py preflight \
+   --mh1-model ../../../inputs/mace-mh-1.model \
+   --mpa0-model ../../../inputs/mace-mpa-0-medium.model \
+-  --release-archive ../../../mdstats-0.20.220a0-complete-source-package-warning-domain1.zip \
++  --release-archive ../../../mdstats-0.20.221a0-complete-source-package-feas1-perf1.zip \
+   --output ../../../final-gpu1/preflight.json
+ ```
+ 
+@@ -79,7 +79,7 @@
+   --root ../../../final-gpu1/run-001 \
+   --mh1-model ../../../inputs/mace-mh-1.model \
+   --mpa0-model ../../../inputs/mace-mpa-0-medium.model \
+-  --release-archive ../../../mdstats-0.20.220a0-complete-source-package-warning-domain1.zip
++  --release-archive ../../../mdstats-0.20.221a0-complete-source-package-feas1-perf1.zip
+ ```
+ 
+ This creates the 18-item matrix in `final_gpu1_handoff.json`. The run root is immutable at the registration level: do not re-run `init` on a populated root and do not replace an already registered gate result. Use the `record` command so the evidence file hash, release identity, schema, content digest, and CUEQ runtime digest (where required) are captured consistently. Replacement evidence belongs in a new run root.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/docs/specs/training_data/mlff_final_gpu1_deferred_qualification_spec.md /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/docs/specs/training_data/mlff_final_gpu1_deferred_qualification_spec.md
+--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/docs/specs/training_data/mlff_final_gpu1_deferred_qualification_spec.md	2026-08-17 06:31:40.000000000 +0000
++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/docs/specs/training_data/mlff_final_gpu1_deferred_qualification_spec.md	2026-08-17 07:06:23.136745730 +0000
+@@ -217,3 +217,7 @@
+ ## Revision 87 warning-domain-only regeneration
+ 
+ `mdstats 0.20.220a0` does not alter the FINAL-GPU1 v3/18-item matrix or v10 scientific parity-policy bindings. WARN-DOMAIN1 changes only campaign warning transport. The workstation handoff is nevertheless regenerated because FINAL-GPU1 binds the exact release-archive SHA-256; revision-86/0.20.219a0 archives therefore cannot authorize the revision-87 source tree.
++
++### Revision 88 / `mdstats 0.20.221a0` execution-only FEAS1 hardening
++
++TARGET-DATA2B-FEAS1-PERF1 changes only CPU neighborhood reduction/scheduling and MVIDX1 row construction. It does not alter FINAL-GPU1 v3/v10 scientific parity bindings or introduce a GPU neighborhood authority. The final workstation handoff must nevertheless use the exact `0.20.221a0` release archive because archive identity is release-bound. Positive GPU qualification remains deferred until the consolidated final release test.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/docs/specs/training_data/mlff_target_data2b_feas1_perf1_spec.md /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/docs/specs/training_data/mlff_target_data2b_feas1_perf1_spec.md
+--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/docs/specs/training_data/mlff_target_data2b_feas1_perf1_spec.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/docs/specs/training_data/mlff_target_data2b_feas1_perf1_spec.md	2026-08-17 07:06:11.793978128 +0000
+@@ -0,0 +1,29 @@
++# TARGET-DATA2B-FEAS1-PERF1 exact CPU execution hardening
++
++**Release:** `mdstats 0.20.221a0`  
++**Architecture revision:** `88`  
++**Dependency graph schema:** `70`
++
++## Scope
++
++This gate changes execution only. TARGET-DATA2B coverage geometry, FEAS1 scientific report schemas and digests, the fixed `16384` candidate ceiling, MVIDX1 sparse graph semantics, and downstream target-selection policy are unchanged.
++
++## Exact vectorized neighborhood reduction
++
++For every bounded cKDTree query block, geometric neighbor rows are mapped to candidate-frame ownership and packed as int64 `(local witness row, candidate frame)` keys. `np.unique` establishes the canonical witness-major/candidate-major unique relation. Candidate gains use unbuffered `np.add.at` in that canonical order, matching the historical scalar per-witness update order. Self-excluded and correlation-unit-excluded candidate degrees are computed by vectorized counts.
++
++Support masses are accumulated once after the complete family degree arrays are known. `np.add.accumulate` consumes weights in original witness order for each support class, so query block partitioning cannot regroup scientific FP64 sums.
++
++## Bounded parallelism
++
++FEAS1 may execute independent feature families concurrently. `StageResourceScope` must bound `family_workers * tree_workers` to the configured CPU budget. Automatic scheduling prefers several independent family lanes when available and assigns the remaining budget to cKDTree workers. The execution-only setting `target_coverage_feasibility_family_workers` may override family concurrency.
++
++No GPU neighborhood backend is authorized. CUDA execution would constitute a new numerical distance/threshold realization and requires separate equivalence qualification.
++
++## MVIDX1 reuse
++
++MVIDX1 consumes the same canonical vectorized block compressor and writes the returned candidate stream directly to its sparse witness-row payload. Persisted edge order, uint32/uint64 arrays, hashes, and inverse adjacency are unchanged.
++
++## Qualification
++
++Acceptance requires exact FEAS1 dictionary/content-digest identity across tree-worker, query-block, and family-worker schedules; exact MVIDX1 graph identity across worker/block schedules; regression-clean MVSEL1, REPAIR1, and MVPERF1; and compile/import integrity. Performance evidence is non-scientific.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/mdstats/_version.py /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/mdstats/_version.py
+--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/mdstats/_version.py	2026-08-17 06:31:08.000000000 +0000
++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/mdstats/_version.py	2026-08-17 07:05:19.685014311 +0000
+@@ -1 +1 @@
+-__version__ = "0.20.220a0"
++__version__ = "0.20.221a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/mdstats/training_data/_target_coverage_neighborhood.py /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/mdstats/training_data/_target_coverage_neighborhood.py
+--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/mdstats/training_data/_target_coverage_neighborhood.py	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/mdstats/training_data/_target_coverage_neighborhood.py	2026-08-17 07:01:10.144854344 +0000
+@@ -0,0 +1,84 @@
++"""Execution-only exact neighborhood row compression for TARGET-DATA2B/C.
++
++The scientific coverage relation is witness-row -> unique candidate frame.  A
++cKDTree query returns geometric neighbor *rows*, and several rows can belong to
++the same candidate frame.  This helper converts one bounded query block into a
++canonical row-major unique candidate representation without a Python loop over
++witnesses.
++"""
++
++from __future__ import annotations
++
++from typing import Any, Sequence
++
++import numpy as np
++
++from ._common import TrainingDataInputError
++
++
++def compress_unique_candidate_block(
++    raw_neighbors: Sequence[Any],
++    *,
++    frame_indices: np.ndarray,
++    row_start: int,
++    candidate_count: int,
++    context: str,
++) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
++    """Return canonical local-row/candidate pairs and per-row unique counts.
++
++    Pairs are sorted first by local witness row and then by candidate frame.
++    This is exactly the order produced by the historical per-row ``np.unique``
++    reduction, so downstream FP64 ``np.add.at`` accumulation preserves the
++    historical row/candidate arithmetic order while eliminating the Python
++    witness loop.
++    """
++
++    block_rows = len(raw_neighbors)
++    if block_rows == 0:
++        empty = np.empty(0, dtype=np.int64)
++        return empty, empty, empty
++    if candidate_count <= 0:
++        raise TrainingDataInputError(f"{context} candidate_count must be positive.")
++
++    raw_counts = np.fromiter(
++        (len(neighbors) for neighbors in raw_neighbors),
++        dtype=np.int64,
++        count=block_rows,
++    )
++    total_raw = int(np.sum(raw_counts, dtype=np.int64))
++    if total_raw <= 0:
++        raise TrainingDataInputError(f"{context} neighborhood block contains an unsupported witness.")
++
++    flat_neighbor_rows = np.concatenate(raw_neighbors).astype(np.int64, copy=False)
++    if flat_neighbor_rows.size != total_raw:
++        raise TrainingDataInputError(f"{context} neighborhood block cardinality is inconsistent.")
++    if np.any(flat_neighbor_rows < 0) or np.any(flat_neighbor_rows >= len(frame_indices)):
++        raise TrainingDataInputError(f"{context} neighborhood query returned an out-of-domain row.")
++
++    local_rows = np.repeat(np.arange(block_rows, dtype=np.int64), raw_counts)
++    candidate_frames = frame_indices[flat_neighbor_rows]
++
++    # Packing (local_row, candidate_frame) into one int64 key makes NumPy's
++    # compiled unique reduction both deduplicate frame ownership and establish
++    # the required row-major/candidate-major canonical order.
++    max_key = (block_rows - 1) * int(candidate_count) + (int(candidate_count) - 1)
++    if max_key > int(np.iinfo(np.int64).max):
++        raise TrainingDataInputError(f"{context} neighborhood key range exceeds int64 capacity.")
++    keys = local_rows * np.int64(candidate_count) + candidate_frames
++    unique_keys = np.unique(keys)
++    unique_rows = unique_keys // np.int64(candidate_count)
++    unique_candidates = unique_keys % np.int64(candidate_count)
++    unique_counts = np.bincount(unique_rows, minlength=block_rows).astype(np.int64, copy=False)
++
++    own_frames = frame_indices[row_start : row_start + block_rows]
++    own_keys = np.arange(block_rows, dtype=np.int64) * np.int64(candidate_count) + own_frames
++    positions = np.searchsorted(unique_keys, own_keys)
++    valid_positions = positions < unique_keys.size
++    if not np.all(valid_positions):
++        bad = int(np.flatnonzero(~valid_positions)[0])
++        raise TrainingDataInputError(f"{context} self-consistency failed for witness {row_start + bad}.")
++    if not np.all(unique_keys[positions] == own_keys):
++        bad = int(np.flatnonzero(unique_keys[positions] != own_keys)[0])
++        raise TrainingDataInputError(f"{context} self-consistency failed for witness {row_start + bad}.")
++
++    return unique_rows, unique_candidates, unique_counts
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/mdstats/training_data/campaign_cli.py /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/mdstats/training_data/campaign_cli.py
+--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/mdstats/training_data/campaign_cli.py	2026-08-17 06:27:38.000000000 +0000
++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/mdstats/training_data/campaign_cli.py	2026-08-17 07:06:36.599149800 +0000
+@@ -3885,6 +3885,75 @@
+     return workers, resources
+ 
+ 
++def _target_coverage_feasibility_parallelism(
++    cfg: Mapping[str, Any],
++    coverage_reference: Any,
++) -> tuple[int, int, Any]:
++    """Resolve bounded FEAS1 family/native-tree parallelism.
++
++    FEAS1 has two independent execution layers: feature families can run in
++    parallel, and each family can use native cKDTree workers.  Automatic mode
++    partitions the configured CPU-thread budget between these layers instead
++    of leaving the post-query family work serialized behind one eight-thread
++    tree.  Both counts are execution-only.
++    """
++
++    resources = detect_system_resources(
++        cpu_fraction=float(_cfg(cfg, "performance", "cpu_fraction", 0.90)),
++        ram_fraction=float(_cfg(cfg, "performance", "ram_fraction", 0.80)),
++        gpu_memory_fraction=float(_cfg(cfg, "performance", "gpu_memory_fraction", 0.90)),
++        device="cpu",
++    )
++    requested_tree = int(_cfg(cfg, "performance", "target_coverage_workers", 0))
++    requested_family = int(
++        _cfg(cfg, "performance", "target_coverage_feasibility_family_workers", 0)
++    )
++    if requested_tree < 0:
++        raise CampaignCliError(
++            "[performance].target_coverage_workers must be zero (automatic) or a positive integer."
++        )
++    if requested_family < 0:
++        raise CampaignCliError(
++            "[performance].target_coverage_feasibility_family_workers must be zero (automatic) or a positive integer."
++        )
++
++    max_families = max(
++        (len(domain.families) for domain in coverage_reference.domains),
++        default=1,
++    )
++    budget = max(1, int(resources.cpu_threads_budget))
++    available = max(1, int(resources.cpu_threads_available))
++
++    if requested_family > 0:
++        family_workers = min(max_families, requested_family, available)
++    elif requested_tree > 0:
++        resolved_tree = min(requested_tree, available)
++        family_workers = min(max_families, max(1, budget // max(1, resolved_tree)))
++    else:
++        # Keep at least roughly four native tree lanes per concurrent family
++        # when enough independent family work exists.  This exposes the serial
++        # per-family phases to parallel execution while staying inside budget.
++        family_workers = min(max_families, max(1, budget // 4))
++
++    if requested_tree > 0:
++        tree_workers = min(requested_tree, available)
++    else:
++        tree_workers = min(16, max(1, budget // max(1, family_workers)))
++
++    if family_workers * tree_workers > budget:
++        if requested_family > 0 and requested_tree > 0:
++            raise CampaignCliError(
++                "Explicit TARGET-DATA2B-FEAS1 family/tree workers exceed the configured CPU budget: "
++                f"{family_workers}x{tree_workers} > {budget}."
++            )
++        if requested_tree > 0:
++            family_workers = max(1, min(family_workers, budget // max(1, tree_workers)))
++        else:
++            tree_workers = max(1, budget // max(1, family_workers))
++
++    return int(tree_workers), int(family_workers), resources
++
++
+ def _target_coverage_policy(cfg: Mapping[str, Any]) -> Any:
+     """Resolve TARGET-DATA2B coverage semantics from the shared size-convergence table."""
+ 
+@@ -4079,21 +4148,26 @@
+             return existing
+ 
+     _print_header("TARGET-DATA2B-FEAS1 support fragility and capacity lower bounds")
+-    coverage_workers, coverage_resources = _target_coverage_query_workers(cfg)
++    coverage_workers, family_workers, coverage_resources = _target_coverage_feasibility_parallelism(
++        cfg, coverage_reference
++    )
+     block_size = int(_cfg(cfg, "performance", "target_coverage_feasibility_block_size", 512))
+     if block_size < 1:
+         raise CampaignCliError(
+             "[performance].target_coverage_feasibility_block_size must be positive."
+         )
+     print(
+-        f"[TARGET-DATA2B-FEAS1] exact neighborhood workers={coverage_workers}; "
+-        f"query block={block_size}; hard ceiling={policy.maximum_candidate_size}",
++        f"[TARGET-DATA2B-FEAS1] exact neighborhood family-workers={family_workers}; "
++        f"tree-workers/family={coverage_workers}; query block={block_size}; "
++        f"cpu lanes<={family_workers * coverage_workers}/{coverage_resources.cpu_threads_budget}; "
++        f"hard ceiling={policy.maximum_candidate_size}",
+         flush=True,
+     )
+     started = time.monotonic()
+     scope = build_stage_resource_scope(
+         coverage_resources,
+         stage_name="TARGET-DATA2B-FEAS1",
++        python_workers=family_workers,
+         tree_workers=coverage_workers,
+         blas_threads=1,
+     )
+@@ -4104,6 +4178,7 @@
+             policy=policy,
+             query_workers=coverage_workers,
+             query_block_size=block_size,
++            family_workers=family_workers,
+         )
+     store.put_record("target_coverage_feasibility", report)
+     for domain in report.domains:
+@@ -24509,10 +24584,16 @@
+ # still clipped by available CPU threads and the RAM budget.
+ source_workers = 0
+ feature_workers = 0
+-# Exact TARGET-DATA2B cKDTree queries use native threads rather than process
+-# workers. 0 selects an automatic CPU-budgeted count capped at 8; an explicit
+-# positive value may request more. This changes execution only, not coverage.
++# Exact TARGET-DATA2B/MVIDX1 cKDTree queries use native threads rather than
++# process workers. 0 selects the stage-specific automatic CPU-budgeted count;
++# an explicit positive value may request more. FEAS1 additionally partitions
++# the CPU budget across independent feature families. Execution only.
+ target_coverage_workers = 0
++# 0 lets FEAS1 choose bounded family-level parallelism from the CPU budget.
++# Positive values explicitly cap concurrent coverage families. Execution only.
++target_coverage_feasibility_family_workers = 0
++# Bounded cKDTree witness-query block. Scientific results are block invariant.
++target_coverage_feasibility_block_size = 512
+ # Maximum in-memory force-tail temporary allocation for FOUNDATION-AUDIT1.
+ # Larger exact buffers spill to a temporary mmap. Execution-only.
+ foundation_audit_temporary_ram_mib = 512
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/mdstats/training_data/target_coverage_feasibility.py /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/mdstats/training_data/target_coverage_feasibility.py
+--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/mdstats/training_data/target_coverage_feasibility.py	2026-08-16 15:46:16.000000000 +0000
++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/mdstats/training_data/target_coverage_feasibility.py	2026-08-17 07:01:10.585057815 +0000
+@@ -19,6 +19,7 @@
+ 
+ from __future__ import annotations
+ 
++from concurrent.futures import ThreadPoolExecutor
+ from dataclasses import dataclass
+ import math
+ from typing import Any, Mapping, Sequence
+@@ -27,6 +28,7 @@
+ from scipy.spatial import cKDTree
+ 
+ from ._common import TrainingDataInputError, TrainingDataSerializationError, digest, validate_digest
++from ._target_coverage_neighborhood import compress_unique_candidate_block
+ 
+ 
+ TARGET_COVERAGE_FEASIBILITY_POLICY_SCHEMA = "mdstats.target-coverage-feas1-policy.v1"
+@@ -472,6 +474,40 @@
+             if value <= upper:
+                 self.cumulative[i] += mass
+ 
++    def add_many(self, degrees: np.ndarray, weights: np.ndarray) -> None:
++        """Accumulate one complete family in historical witness order.
++
++        ``np.add.accumulate`` preserves the scalar FP64 addition order for each
++        support class while moving the degree/bin classification out of Python.
++        Calling this once per family also makes the result independent of query
++        block partitioning.
++        """
++
++        values = np.asarray(degrees, dtype=np.int64)
++        masses = np.asarray(weights, dtype=np.float64)
++        if values.ndim != 1 or masses.ndim != 1 or values.shape != masses.shape:
++            raise TrainingDataInputError("TARGET-DATA2B-FEAS1 support batch shape mismatch.")
++        if np.any(values < 0):
++            raise TrainingDataInputError("TARGET-DATA2B-FEAS1 support degree cannot be negative.")
++        if values.size == 0:
++            return
++        self.count += int(values.size)
++        local_minimum = int(np.min(values))
++        local_maximum = int(np.max(values))
++        self.minimum = local_minimum if self.minimum is None else min(self.minimum, local_minimum)
++        self.maximum = max(self.maximum, local_maximum)
++
++        def ordered_sum(mask: np.ndarray) -> np.float64:
++            selected = masses[mask]
++            if selected.size == 0:
++                return np.float64(0.0)
++            return np.add.accumulate(selected, dtype=np.float64)[-1]
++
++        self.zero += ordered_sum(values == 0)
++        self.one += ordered_sum(values == 1)
++        for i, upper in enumerate(self.bins):
++            self.cumulative[i] += ordered_sum(values <= upper)
++
+     def freeze(self) -> TargetCoverageSupportDegreeReport:
+         return TargetCoverageSupportDegreeReport(
+             witness_count=self.count,
+@@ -530,37 +566,48 @@
+     tree = cKDTree(scaled)
+     radius_scale = math.sqrt(float(scaled.shape[1]))
+     candidate_gain = np.zeros(domain_candidate_count, dtype=np.float64)
+-    self_support = _SupportAccumulator(policy.support_degree_bins)
+-    correlation_support = _SupportAccumulator(policy.support_degree_bins)
++    self_degree_by_witness = np.empty(len(scaled), dtype=np.int64)
++    correlation_degree_by_witness = np.empty(len(scaled), dtype=np.int64)
+     edge_count = 0
+     tolerance = 1.0e-12
++    block_size = max(1, int(query_block_size))
++    context = f"TARGET-DATA2B-FEAS1 family {family.family_id!r}"
+ 
+-    for start in range(0, len(scaled), max(1, int(query_block_size))):
+-        stop = min(len(scaled), start + max(1, int(query_block_size)))
++    for start in range(0, len(scaled), block_size):
++        stop = min(len(scaled), start + block_size)
+         raw = tree.query_ball_point(
+             scaled[start:stop],
+             r=(radii[start:stop] + tolerance * np.maximum(1.0, radii[start:stop])) * radius_scale,
+             workers=int(query_workers),
+             return_sorted=True,
+         )
+-        for offset, neighbor_rows in enumerate(raw):
+-            row = start + offset
+-            candidate_frames = np.unique(frame_indices[np.asarray(neighbor_rows, dtype=np.int64)])
+-            own_frame = int(frame_indices[row])
+-            if candidate_frames.size == 0 or not np.any(candidate_frames == own_frame):
+-                raise TrainingDataInputError(
+-                    f"TARGET-DATA2B-FEAS1 self-consistency failed for family {family.family_id!r} row {row}."
+-                )
+-            edge_count += int(candidate_frames.size)
+-            candidate_gain[candidate_frames] += np.float64(weights[row])
+-            self_degree = int(np.count_nonzero(candidate_frames != own_frame))
+-            self_support.add(self_degree, float(weights[row]))
+-            if policy.exclude_own_correlation_unit:
+-                own_unit = unit_code_by_frame_index[own_frame]
+-                correlation_degree = int(np.count_nonzero(unit_code_by_frame_index[candidate_frames] != own_unit))
+-            else:
+-                correlation_degree = self_degree
+-            correlation_support.add(correlation_degree, float(weights[row]))
++        local_rows, candidate_frames, unique_counts = compress_unique_candidate_block(
++            raw,
++            frame_indices=frame_indices,
++            row_start=start,
++            candidate_count=domain_candidate_count,
++            context=context,
++        )
++        edge_count += int(candidate_frames.size)
++
++        # unique pairs are ordered by witness row and then candidate frame, the
++        # same arithmetic order as the historical scalar witness loop.
++        np.add.at(candidate_gain, candidate_frames, weights[start + local_rows])
++        self_degree_by_witness[start:stop] = unique_counts - 1
++        if policy.exclude_own_correlation_unit:
++            own_frames = frame_indices[start:stop]
++            own_units = unit_code_by_frame_index[own_frames]
++            cross_unit = unit_code_by_frame_index[candidate_frames] != own_units[local_rows]
++            correlation_degree_by_witness[start:stop] = np.bincount(
++                local_rows[cross_unit], minlength=stop - start
++            )
++        else:
++            correlation_degree_by_witness[start:stop] = unique_counts - 1
++
++    self_support = _SupportAccumulator(policy.support_degree_bins)
++    correlation_support = _SupportAccumulator(policy.support_degree_bins)
++    self_support.add_many(self_degree_by_witness, weights)
++    correlation_support.add_many(correlation_degree_by_witness, weights)
+ 
+     coverage_lb = _coverage_cardinality_lower_bound(candidate_gain, threshold)
+     if coverage_lb == int(np.iinfo(np.int32).max):
+@@ -680,18 +727,21 @@
+     policy: TargetCoverageFeasibilityPolicy | None = None,
+     query_workers: int = 1,
+     query_block_size: int = 512,
++    family_workers: int = 1,
+ ) -> TargetCoverageFeasibilityReport:
+     """Build the exact TARGET-DATA2B-FEAS1 diagnostic authority.
+ 
+-    ``query_workers`` and ``query_block_size`` are execution-only.  They are not
+-    serialized and cannot change the scientific digest.
++    ``query_workers``, ``query_block_size``, and ``family_workers`` are
++    execution-only.  They are not serialized and cannot change the scientific
++    digest.
+     """
+ 
+     active = TargetCoverageFeasibilityPolicy() if policy is None else policy
+     workers = int(query_workers)
+     block = int(query_block_size)
+-    if workers < 1 or block < 1:
+-        raise TrainingDataInputError("TARGET-DATA2B-FEAS1 query_workers/query_block_size must be positive.")
++    family_parallelism = int(family_workers)
++    if workers < 1 or block < 1 or family_parallelism < 1:
++        raise TrainingDataInputError("TARGET-DATA2B-FEAS1 query_workers/query_block_size/family_workers must be positive.")
+     if target_coverage_reference.dataset_id != target_data_role_freeze.dataset_id:
+         raise TrainingDataInputError("TARGET-DATA2B-FEAS1 dataset identity mismatch.")
+     if target_coverage_reference.target_data_role_freeze_digest != target_data_role_freeze.content_digest:
+@@ -703,10 +753,10 @@
+         if set(domain.frame_uids) != set(role_domain.size_development_frame_uids):
+             raise TrainingDataInputError("TARGET-DATA2B-FEAS1 coverage/role frame-domain mismatch.")
+         unit_codes = _role_domain_frame_units(role_domain, domain.frame_uids)
+-        family_reports: list[TargetCoverageFamilyFeasibilityReport] = []
+-        extent_obligations: list[tuple[np.ndarray, int]] = []
+-        for family in sorted(domain.families, key=lambda item: item.family_id):
+-            family_report, family_extents = _family_feasibility(
++        ordered_families = sorted(domain.families, key=lambda item: item.family_id)
++
++        def evaluate_family(family: Any) -> tuple[TargetCoverageFamilyFeasibilityReport, list[tuple[np.ndarray, int]]]:
++            return _family_feasibility(
+                 family,
+                 domain_candidate_count=len(domain.frame_uids),
+                 unit_code_by_frame_index=unit_codes,
+@@ -715,6 +765,16 @@
+                 query_workers=workers,
+                 query_block_size=block,
+             )
++
++        if family_parallelism > 1 and len(ordered_families) > 1:
++            with ThreadPoolExecutor(max_workers=min(family_parallelism, len(ordered_families))) as executor:
++                family_results = list(executor.map(evaluate_family, ordered_families))
++        else:
++            family_results = [evaluate_family(family) for family in ordered_families]
++
++        family_reports: list[TargetCoverageFamilyFeasibilityReport] = []
++        extent_obligations: list[tuple[np.ndarray, int]] = []
++        for family, (family_report, family_extents) in zip(ordered_families, family_results, strict=True):
+             family_reports.append(family_report)
+             if family.required:
+                 extent_obligations.extend(family_extents)
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/mdstats/training_data/target_coverage_sparse_index.py /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/mdstats/training_data/target_coverage_sparse_index.py
+--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/mdstats/training_data/target_coverage_sparse_index.py	2026-08-16 16:12:28.000000000 +0000
++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/mdstats/training_data/target_coverage_sparse_index.py	2026-08-17 07:01:11.128183814 +0000
+@@ -27,6 +27,7 @@
+ from scipy.sparse import csr_matrix
+ 
+ from ._common import TrainingDataInputError, TrainingDataSerializationError, digest, validate_digest
++from ._target_coverage_neighborhood import compress_unique_candidate_block
+ from .target_coverage import _coverage_array_reference, _validate_array_reference
+ from .target_coverage_feasibility import validate_target_coverage_feasibility_authority
+ 
+@@ -661,18 +662,18 @@
+                 workers=int(query_workers),
+                 return_sorted=True,
+             )
+-            for offset, neighbor_rows in enumerate(raw):
+-                row = start + offset
+-                candidate_frames = np.unique(frame_indices[np.asarray(neighbor_rows, dtype=np.int64)])
+-                own_frame = int(frame_indices[row])
+-                if candidate_frames.size == 0 or not np.any(candidate_frames == own_frame):
+-                    raise TrainingDataInputError(
+-                        f"TARGET-DATA2C-MVIDX1 self-consistency failed for family {family.family_id!r} witness {row}."
+-                    )
+-                encoded = np.asarray(candidate_frames, dtype="<u4")
+-                edge_handle.write(memoryview(encoded).cast("B"))
+-                witness_counts[row] = encoded.size
+-                edge_count += int(encoded.size)
++            local_rows, candidate_frames, unique_counts = compress_unique_candidate_block(
++                raw,
++                frame_indices=frame_indices,
++                row_start=start,
++                candidate_count=candidate_count,
++                context=f"TARGET-DATA2C-MVIDX1 family {family.family_id!r}",
++            )
++            del local_rows  # row-major order is already encoded in candidate_frames
++            encoded = np.asarray(candidate_frames, dtype="<u4")
++            edge_handle.write(memoryview(encoded).cast("B"))
++            witness_counts[start:stop] = unique_counts.astype(np.uint64, copy=False)
++            edge_count += int(encoded.size)
+         witness_offsets = np.empty(len(scaled) + 1, dtype="<u8")
+         witness_offsets[0] = 0
+         np.cumsum(witness_counts, dtype=np.uint64, out=witness_offsets[1:])
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/mlff_target_data2b_feas1_perf1_spec.md /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/mlff_target_data2b_feas1_perf1_spec.md
+--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/mlff_target_data2b_feas1_perf1_spec.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/mlff_target_data2b_feas1_perf1_spec.md	2026-08-17 07:06:11.794003866 +0000
+@@ -0,0 +1,29 @@
++# TARGET-DATA2B-FEAS1-PERF1 exact CPU execution hardening
++
++**Release:** `mdstats 0.20.221a0`  
++**Architecture revision:** `88`  
++**Dependency graph schema:** `70`
++
++## Scope
++
++This gate changes execution only. TARGET-DATA2B coverage geometry, FEAS1 scientific report schemas and digests, the fixed `16384` candidate ceiling, MVIDX1 sparse graph semantics, and downstream target-selection policy are unchanged.
++
++## Exact vectorized neighborhood reduction
++
++For every bounded cKDTree query block, geometric neighbor rows are mapped to candidate-frame ownership and packed as int64 `(local witness row, candidate frame)` keys. `np.unique` establishes the canonical witness-major/candidate-major unique relation. Candidate gains use unbuffered `np.add.at` in that canonical order, matching the historical scalar per-witness update order. Self-excluded and correlation-unit-excluded candidate degrees are computed by vectorized counts.
++
++Support masses are accumulated once after the complete family degree arrays are known. `np.add.accumulate` consumes weights in original witness order for each support class, so query block partitioning cannot regroup scientific FP64 sums.
++
++## Bounded parallelism
++
++FEAS1 may execute independent feature families concurrently. `StageResourceScope` must bound `family_workers * tree_workers` to the configured CPU budget. Automatic scheduling prefers several independent family lanes when available and assigns the remaining budget to cKDTree workers. The execution-only setting `target_coverage_feasibility_family_workers` may override family concurrency.
++
++No GPU neighborhood backend is authorized. CUDA execution would constitute a new numerical distance/threshold realization and requires separate equivalence qualification.
++
++## MVIDX1 reuse
++
++MVIDX1 consumes the same canonical vectorized block compressor and writes the returned candidate stream directly to its sparse witness-row payload. Persisted edge order, uint32/uint64 arrays, hashes, and inverse adjacency are unchanged.
++
++## Qualification
++
++Acceptance requires exact FEAS1 dictionary/content-digest identity across tree-worker, query-block, and family-worker schedules; exact MVIDX1 graph identity across worker/block schedules; regression-clean MVSEL1, REPAIR1, and MVPERF1; and compile/import integrity. Performance evidence is non-scientific.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/mlff_training_data_architecture.md /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/mlff_training_data_architecture.md
+--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/mlff_training_data_architecture.md	2026-08-17 04:35:35.000000000 +0000
++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/mlff_training_data_architecture.md	2026-08-17 07:05:42.775315714 +0000
+@@ -2,7 +2,7 @@
+ title: "mdstats MLFF Training-Data Architecture"
+ subtitle: "Canonical architecture and staged implementation"
+ author: "mdstats project"
+-date: "2026-08-16 (revision 85: CUEQ-REPEAT1-DIAG3 warm-up + all-pairs diagnostic)"
++date: "2026-08-17 (revision 88: TARGET-DATA2B-FEAS1-PERF1 exact CPU hardening)"
+ geometry: margin=0.78in
+ toc: true
+ toc-depth: 3
+@@ -19,7 +19,94 @@
+     \usepackage{xurl}
+ ---
+ 
+-# Revision 85 current gate: CUEQ-REPEAT1-DIAG3 warm-up + all-pairs repeatability diagnostic
++# Revision 88 current gate: TARGET-DATA2B-FEAS1-PERF1 exact CPU hardening
++
++`mdstats 0.20.221a0` hardens the execution path of TARGET-DATA2B-FEAS1 after workstation observation showed long wall time with low average CPU utilization and an idle GPU. The scientific FEAS1 authority, fixed 16,384 ceiling, exact cKDTree neighborhoods, FP64 accumulation order, and all downstream selector identities remain unchanged. This revision is execution-only.
++
++The observed utilization pattern followed directly from the revision-67 implementation. Native cKDTree workers were active only during each 512-witness `query_ball_point` call. Every returned ragged neighborhood was then reduced by a Python loop over individual witnesses using `np.unique`, scalar support-degree bookkeeping, and one candidate-gain update at a time. Automatic execution also capped the tree at eight native workers. Thus the query phase could use several cores while the reduction phase repeatedly collapsed to one Python execution lane; CUDA was never part of this exact CPU authority.
++
++Revision 88 replaces the per-witness reduction with a bounded vectorized exact kernel. For one query block, geometric neighbor rows are mapped to owning candidate frames, packed as `(local_witness_row, candidate_frame)` int64 keys, reduced with compiled `np.unique`, and returned in canonical row-major/candidate-major order. Candidate gain uses `np.add.at` in that same historical order. Self-excluded and correlation-unit-excluded degrees are computed from vectorized bincounts, retained for the whole family, then accumulated once in original witness order with `np.add.accumulate`. This preserves the scalar FP64 addition sequence and makes the scientific report invariant to query-block partitioning.
++
++Independent feature families now execute concurrently under the existing `StageResourceScope`. Automatic FEAS1 scheduling divides the configured CPU budget between family workers and cKDTree workers rather than dedicating the whole stage to one eight-thread tree. When enough families exist, automatic mode targets roughly four native tree lanes per concurrent family; a single family may use up to sixteen tree workers. The new optional `[performance].target_coverage_feasibility_family_workers` setting overrides only the execution schedule. Existing `[performance].target_coverage_workers` remains the native tree-worker override. The CLI prints family workers, tree workers per family, query block, and the resulting bounded CPU-lane product.
++
++The same canonical vectorized row-compression kernel is used by TARGET-DATA2C-MVIDX1. MVIDX1 therefore no longer loops in Python over every witness solely to deduplicate candidate-frame ownership before writing the canonical sparse row stream. Persisted uint32/uint64 graph arrays, edge ordering, hashes, and downstream MVSEL1/REPAIR1 scientific plans remain unchanged.
++
++GPU execution is deliberately not introduced. FEAS1/MVIDX1 neighborhood authority is exact SciPy cKDTree CPU work; moving it to CUDA would create a new distance/threshold realization that would require separate equivalence qualification. Consequently low GPU utilization during these stages is expected and is not a defect. GPU qualification remains deferred to FINAL-GPU1 as previously frozen.
++
++## Frozen revision-88 execution contract
++
++| Item | Value |
++|---|---|
++| FEAS1 scientific schema/digest | unchanged |
++| Coverage metric/radii | unchanged exact TARGET-DATA2B cKDTree relation |
++| Candidate-frame deduplication | vectorized packed `(row,candidate)` unique reduction |
++| FP64 candidate-gain order | historical row-major/candidate-major order |
++| Support-mass order | historical witness order |
++| Family scheduling | bounded concurrent ThreadPool execution |
++| Automatic native tree workers | CPU-budget partition; up to 16 for single-family execution |
++| New execution override | `target_coverage_feasibility_family_workers` |
++| MVIDX1 sparse row construction | same vectorized canonical kernel |
++| GPU authority | unchanged; not used |
++| TARGET-DATA2C scientific selection | unchanged |
++
++The focused FEAS1/MVIDX1 and downstream MVSEL1/REPAIR1/MVPERF1 suites require exact dictionary/digest equivalence across worker, block, and family-parallel schedules. On the eight-thread development host, a four-family 8,192-candidate synthetic exact-equivalence benchmark improved from about 1.63 s for the historical scalar reduction to about 0.99 s for the optimized bounded schedule (approximately 1.65x) with identical family reports. The benchmark is execution evidence only, not scientific tuning data.
++
++# Revision 87 historical gate: WARN-DOMAIN1 campaign-wide warning capture
++
++`mdstats 0.20.220a0` replaces the accumulated operation-by-operation warning suppression patches with one command-wide warning domain at the MLFF campaign CLI boundary. The scientific training/data/parity contracts are unchanged from revision 86; this gate changes only runtime warning transport, grouping, and presentation.
++
++The campaign command now owns the outermost `mace_runtime_warning_scope` from argument dispatch until the command returns or fails. Existing operation-local decorators remain in place, but under campaign execution they only register their operation name into the outer domain. This closes setup/recovery gaps in which MACE/PyTorch warnings could be emitted immediately before or after a locally decorated provider call.
++
++Python warning capture and Python logging are treated as separate ingress mechanisms into the same authority. All MACE/PyTorch warnings that reach Python's `warnings` machinery are grouped by origin/category/source/message. MACE/PyTorch `logging.WARNING` or higher records are identified from the emitting source pathname or package logger name, captured through a temporary campaign logging interceptor, and prevented from reaching raw handlers. This includes MACE 0.3.16 root-logger messages such as the `Default dtype float32 does not match model dtype float64` conversion warning.
++
++The outer campaign domain is process-wide for the lifetime of one CLI command in addition to using the existing `ContextVar`. This is required because worker threads do not necessarily inherit the main-thread context. A local MACE warning scope entered in a worker therefore binds to the same campaign record rather than creating and emitting a second warning summary. Operation-name merging is thread-safe.
++
++At command exit mdstats emits at most one normalized `[WARN]` line containing the total raw count and unique grouped MACE/PyTorch warning signatures. Raw TorchScript `DeprecationWarning` lines and `WARNING:root:` MACE messages must not appear. Unrelated Python warnings and unrelated logging remain outside this compatibility policy and retain their existing behavior rather than being silently discarded. Standalone library/API calls outside `mdstats-mlff-campaign` retain the historical operation-local consolidated `MaceRuntimeCompatibilityWarning` behavior.
++
++## Frozen revision-87 warning-domain contract
++
++| Item | Value |
++|---|---|
++| Campaign owner | one outer warning domain per CLI command |
++| Python warning coverage | entire command lifetime |
++| Logging coverage | MACE/PyTorch `WARNING+`, including root logger |
++| Worker-thread local scopes | merge into campaign owner |
++| Nested operation scopes | merge operation names; no independent emission |
++| Campaign presentation | one normalized `[WARN]` summary |
++| Raw MACE/PyTorch warning/log leak | forbidden |
++| Unrelated warning/logging behavior | preserved |
++| Standalone API behavior | historical local scope retained |
++| Scientific DATA/TRAIN2/parity identity | unchanged from revision 86 |
++
++# Revision 86 historical gate: CUEQ-REPEAT1-PARITY1 permanent TRAIN2 FP32 noise-normalized parity
++
++`mdstats 0.20.219a0` replaces the stochastic one-shot TRAIN2 FP32 force `allclose` gate with an authorizing warm-up/all-pairs criterion derived from the MPA-0 DIAG3 workstation evidence. The source/DATA6 and stable TRAIN2 energy/stress/descriptor policy is again `rtol=1e-5, atol=1e-6`; only TRAIN2 FP32 force equivalence uses the new self-noise normalization.
++
++The ordinary production path discards one warm-up evaluation per backend and retains ten post-warm-up outputs from e3nn and pure CuEq. The resulting `45 + 45 + 100` self/cross pairs are the authorization evidence. For force RMSE, p99, and p99.9, mdstats compares the p99 cross statistic against the larger p99 self-backend envelope and requires a ratio no greater than `1.25`. Cross `Fmax` is no longer the primary gate; it is a catastrophic guard bounded by `min(1.5 x self Fmax envelope, 1e-4 eV/A)`.
++
++The frozen MPA-0 DIAG3 ordinary evidence gives approximate p99 ratios `1.08` (`Frmse`), `1.02` (`Fp99`), and `0.90` (`Fp99.9`), while the maximum cross `Fmax=2.261e-5` remains below the same-backend envelope `2.337e-5`. Selection is identical in all 100 cross pairs. The deterministic-control evidence shows post-warm-up e3nn self pairs collapse to exact zero but CuEq remains stochastic, demonstrating that the relevant force tail is intrinsic FP32 CuEq execution noise rather than a systematic cross-backend model shift.
++
++All self/cross selections must remain identical; all values must remain finite. No ratio or Fmax limit adapts after seeing a failed run. The deterministic-control subprocess remains available for investigation but is not executed during routine authorization. FINAL-GPU1 preflight v10 binds both the stable-channel and noise-normalized policy digests.
++
++## Frozen revision-86 policy
++
++| Item | Value |
++|---|---|
++| Warm-up | `1` discarded complete evaluation/backend |
++| Post-warm-up samples | `10` e3nn + `10` pure CuEq |
++| Pair populations | `45` e3nn-self, `45` CuEq-self, `100` cross |
++| Stable E/S/D ceiling | `1e-6` maximum absolute cross-pair error |
++| Force distribution statistic | p99 across pair metrics |
++| Force metrics | `Frmse`, `Fp99`, `Fp99.9` |
++| Cross/self ratio ceiling | `1.25` |
++| Fmax self-envelope factor | `1.5` |
++| Fmax absolute catastrophic ceiling | `1e-4 eV/A` |
++| Selection identity | mandatory for every self/cross pair |
++| Repeatability evidence | repeatability diagnostic v2 |
++| Authorizing parity record | noise-normalized parity record v1 |
++| Routine deterministic-control probe | disabled; optional diagnostic only |
++
++# Revision 85 historical gate: CUEQ-REPEAT1-DIAG3 warm-up + all-pairs repeatability diagnostic
+ 
+ `mdstats 0.20.218a0` performs the final measurement refinement before the TRAIN2 FP32 backend-equivalence policy is redesigned. Revision-84 MPA-0/default evidence confirmed that ordinary and deterministic-control force variability is comparable within e3nn-self, CuEq-self, and e3nn/CuEq comparisons. Ordinary `Fmax` maxima were `1.962e-5` (e3nn-self), `1.836e-5` (CuEq-self), and `2.270e-5` (cross). Under the isolated deterministic controls they were `1.061e-5`, `2.709e-5`, and `1.550e-5`, respectively. Selection remained identical throughout.
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/mlff_training_data_dependency_graph.json /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/mlff_training_data_dependency_graph.json
+--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/mlff_training_data_dependency_graph.json	2026-08-17 05:01:02.000000000 +0000
++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/mlff_training_data_dependency_graph.json	2026-08-17 07:05:52.223927682 +0000
+@@ -1,8 +1,8 @@
+ {
+-  "architecture_revision": 86,
++  "architecture_revision": 88,
+   "branch": "MLFF-DATA",
+-  "description": "MLFF training-data dependency graph through architecture revision 86. CUEQ-REPEAT1-PARITY1 authorizes TRAIN2 FP32 CuEq with warm-up/all-pairs self-noise-normalized force statistics while restoring tight stable-channel authority.",
+-  "documentation_gate": "CUEQ_TRAIN2_NOISE_NORMALIZED_PARITY",
++  "description": "MLFF training-data dependency graph through architecture revision 88. TARGET-DATA2B-FEAS1-PERF1 removes serialized witness reduction and adds bounded family-level CPU parallelism while preserving exact FEAS1/MVIDX1 scientific authority.",
++  "documentation_gate": "TARGET_DATA2B_FEAS1_PERF1_EXACT_HARDENING",
+   "edge_type_definitions": {
+     "execution_requires": "The upstream product must exist before execution.",
+     "fit_domain_requires": "The fitted object may inspect only the declared training domain.",
+@@ -2832,11 +2832,6 @@
+       "type": "implementation_requires"
+     },
+     {
+-      "from": "TARGET_DATA2B_FEAS1_FULL_POOL_FEASIBILITY",
+-      "to": "TARGET_DATA2C_MVIDX1_COVERAGE_INDEX",
+-      "type": "implementation_requires"
+-    },
+-    {
+       "from": "TARGET_DATA2C_MVIDX1_COVERAGE_INDEX",
+       "to": "TARGET_DATA2C_MVSEL1_PROGRESSIVE_SELECTOR",
+       "type": "implementation_requires"
+@@ -2960,6 +2955,16 @@
+       "from": "CUEQ_TRAIN2_NOISE_NORMALIZED_PARITY",
+       "to": "FINAL_GPU1_DEFERRED_RELEASE_QUALIFICATION",
+       "type": "release_qualification_requires"
++    },
++    {
++      "from": "TARGET_DATA2B_FEAS1_FULL_POOL_FEASIBILITY",
++      "to": "TARGET_DATA2B_FEAS1_PERF1_EXACT_HARDENING",
++      "type": "implementation_requires"
++    },
++    {
++      "from": "TARGET_DATA2B_FEAS1_PERF1_EXACT_HARDENING",
++      "to": "TARGET_DATA2C_MVIDX1_COVERAGE_INDEX",
++      "type": "implementation_requires"
+     }
+   ],
+   "forbidden_dependencies": [
+@@ -4488,7 +4493,12 @@
+         "cross_support_fragile",
+         "optimization_required",
+         "provably_capacity_infeasible"
+-      ]
++      ],
++      "execution_hardening_release": "0.20.221a0",
++      "execution_hardening_gate": "TARGET-DATA2B-FEAS1-PERF1",
++      "vectorized_candidate_row_compression": true,
++      "bounded_family_parallelism": true,
++      "gpu_backend_used": false
+     },
+     {
+       "architecture_revision": 68,
+@@ -5125,7 +5135,45 @@
+       "silent_fallback_allowed": false,
+       "deterministic_control_role": "optional_diagnostic_only",
+       "final_gpu1_preflight_schema": "mdstats.mlff-final-gpu1.preflight.2026-08.v10"
++    },
++    {
++      "id": "CAMPAIGN_WARNING_DOMAIN",
++      "gate_name": "WARN-DOMAIN1",
++      "architecture_revision": 87,
++      "authority_class": "campaign_runtime_observability_control",
++      "implementation_status": "implemented",
++      "implemented_release": "0.20.220a0",
++      "python_warning_domain": "entire_campaign_command",
++      "logging_warning_domain": "MACE_PyTorch_WARNING_plus",
++      "root_logger_mace_capture": true,
++      "worker_thread_scope_merge": true,
++      "normalized_campaign_summary": "single_[WARN]_line",
++      "raw_upstream_warning_leak_allowed": false,
++      "unrelated_warning_behavior": "preserved",
++      "scientific_authority_changed": false,
++      "superseded_scientific_gate": null,
++      "retained_parity_gate": "CUEQ-REPEAT1-PARITY1"
++    },
++    {
++      "id": "TARGET_DATA2B_FEAS1_PERF1_EXACT_HARDENING",
++      "gate_name": "TARGET-DATA2B-FEAS1-PERF1",
++      "architecture_revision": 88,
++      "authority_class": "performance_exact_equivalence",
++      "implementation_status": "implemented_exact_performance_hardening",
++      "implemented_release": "0.20.221a0",
++      "scientific_schema_changed": false,
++      "scientific_digest_changed": false,
++      "coverage_metric_changed": false,
++      "candidate_ceiling_changed": false,
++      "vectorized_row_candidate_deduplication": true,
++      "historical_fp64_accumulation_order_preserved": true,
++      "family_level_parallelism": "bounded_stage_resource_scope",
++      "automatic_tree_worker_cap_single_family": 16,
++      "mvidx1_uses_shared_vectorized_row_kernel": true,
++      "gpu_neighborhood_backend_authorized": false,
++      "final_gpu1_qualification_deferred": true,
++      "runtime_selector_changed": false
+     }
+   ],
+-  "schema_version": 68
++  "schema_version": 70
+ }
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/pyproject.toml /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/pyproject.toml
+--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/pyproject.toml	2026-08-17 06:31:08.000000000 +0000
++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/pyproject.toml	2026-08-17 07:05:19.685275178 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.220a0"
++version = "0.20.221a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/release/MLFF_TARGET_DATA2B_FEAS1_PERF1_QUALIFICATION_0.20.221a0.json /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/release/MLFF_TARGET_DATA2B_FEAS1_PERF1_QUALIFICATION_0.20.221a0.json
+--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/release/MLFF_TARGET_DATA2B_FEAS1_PERF1_QUALIFICATION_0.20.221a0.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/release/MLFF_TARGET_DATA2B_FEAS1_PERF1_QUALIFICATION_0.20.221a0.json	2026-08-17 07:08:58.588393394 +0000
+@@ -0,0 +1,50 @@
++{
++  "schema": "mdstats.mlff.target-data2b-feas1-perf1.release-qualification.v1",
++  "release": "0.20.221a0",
++  "date": "2026-08-17",
++  "gate": "TARGET-DATA2B-FEAS1-PERF1",
++  "architecture_revision": 88,
++  "dependency_graph_schema": 70,
++  "status": "PASS",
++  "scientific_authority_changed": false,
++  "gpu_neighborhood_backend_authorized": false,
++  "implementation": {
++    "feas1_row_reduction": "vectorized packed row/candidate canonical unique",
++    "candidate_gain_accumulation": "historical row-major/candidate-major FP64 np.add.at",
++    "support_mass_accumulation": "historical witness-order FP64 np.add.accumulate",
++    "family_parallelism": "bounded ThreadPoolExecutor under StageResourceScope",
++    "mvidx1_row_build": "shared vectorized canonical compressor",
++    "new_execution_setting": "performance.target_coverage_feasibility_family_workers"
++  },
++  "validation": {
++    "focused_feas1_mvidx1_downstream": {
++      "passed": 40,
++      "failed": 0
++    },
++    "target_data2_functional_non_specification": {
++      "passed": 106,
++      "failed": 0
++    },
++    "campaign_cli_and_current_specs": {
++      "passed": 46,
++      "skipped": 1,
++      "failed": 0
++    },
++    "compileall": "PASS",
++    "historical_version_pinned_specification_sweep": "excluded_from_current_release_metric",
++    "pdf_render_preflight": "PASS"
++  },
++  "performance_evidence": {
++    "host_visible_cpu_threads": 8,
++    "candidate_frames": 8192,
++    "families": 4,
++    "witnesses_per_family": 16384,
++    "query_block_size": 512,
++    "historical_scalar_seconds": 1.631591477,
++    "optimized_bounded_seconds": 0.985971677,
++    "speedup": 1.654805625,
++    "exact_family_report_identity": true,
++    "role": "execution_only_synthetic_evidence"
++  },
++  "final_gpu1": "deferred_unchanged"
++}
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/release/SOURCE_PATCH_0.20.220a0_to_0.20.221a0.patch /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/release/SOURCE_PATCH_0.20.220a0_to_0.20.221a0.patch
+--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/release/SOURCE_PATCH_0.20.220a0_to_0.20.221a0.patch	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/release/SOURCE_PATCH_0.20.220a0_to_0.20.221a0.patch	2026-08-17 07:08:59.308393378 +0000
+@@ -0,0 +1,1128 @@
++diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/ARCHITECTURE_NOTES_MLFF_REV88.md /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/ARCHITECTURE_NOTES_MLFF_REV88.md
++--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/ARCHITECTURE_NOTES_MLFF_REV88.md	1970-01-01 00:00:00.000000000 +0000
+++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/ARCHITECTURE_NOTES_MLFF_REV88.md	2026-08-17 07:05:42.775599104 +0000
++@@ -0,0 +1,25 @@
+++---
+++title: "MLFF Architecture Revision 88"
+++author: "mdstats development"
+++date: "2026-08-17"
+++geometry: margin=0.8in
+++fontsize: 10pt
+++---
+++
+++# Revision 88
+++
+++**Release:** `mdstats 0.20.221a0`  
+++**Gate:** `TARGET-DATA2B-FEAS1-PERF1`  
+++**Dependency-graph schema:** `70`
+++
+++Revision 88 is exact-equivalence CPU execution hardening for TARGET-DATA2B-FEAS1 and the immediately downstream MVIDX1 sparse-row build. It changes no coverage metric, radius, threshold, hard obligation, candidate ceiling, selector policy, persisted scientific schema, or target-frame identity.
+++
+++The historical FEAS1 path alternated a multi-threaded cKDTree query with a serialized Python witness loop. Each witness separately mapped neighbor rows to candidate frames, called `np.unique`, updated candidate gains, and accumulated support-degree bins. That structure explains the observed low average CPU utilization. CUDA was never part of this stage and remains intentionally unused.
+++
+++The new exact kernel compresses each bounded query block in compiled NumPy operations. `(witness row, candidate frame)` pairs are packed and uniqued into canonical row-major/candidate-major order; candidate gains use unbuffered `np.add.at` in the same historical arithmetic order; support degrees use vectorized bincounts and one witness-order FP64 accumulation per family. MVIDX1 writes the same canonical candidate stream directly from this kernel.
+++
+++FEAS1 additionally schedules independent feature families concurrently. Automatic mode partitions the existing CPU-thread budget across family workers and native cKDTree workers, while explicit execution-only overrides remain available. `StageResourceScope` validates the nested CPU-lane product.
+++
+++Focused qualification requires exact report/graph equivalence across block sizes, tree-worker counts, and family-worker counts, plus regression-clean MVSEL1/REPAIR1/MVPERF1 behavior. A four-family 8,192-candidate synthetic development benchmark on the eight-thread qualification host measured approximately 1.65x wall-time improvement with exact family-report identity.
+++
+++GPU qualification remains deferred to the final consolidated FINAL-GPU1 handoff. Revision 88 does not introduce or authorize a GPU neighborhood backend.
++diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/CHANGELOG.md /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/CHANGELOG.md
++--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/CHANGELOG.md	2026-08-17 06:31:08.000000000 +0000
+++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/CHANGELOG.md	2026-08-17 07:06:11.793727135 +0000
++@@ -1,3 +1,12 @@
+++## 0.20.221a0 - 2026-08-17
+++
+++- Implement TARGET-DATA2B-FEAS1-PERF1 exact-equivalence CPU hardening after low-utilization workstation evidence.
+++- Replace the serialized FEAS1 per-witness neighborhood reduction with canonical vectorized `(witness,candidate)` compression, vectorized support-degree evaluation, and historical-order FP64 accumulation.
+++- Add bounded concurrent feature-family execution that partitions the existing CPU budget between family workers and cKDTree workers; expose `target_coverage_feasibility_family_workers` as an execution-only override.
+++- Reuse the same canonical row-compression kernel in TARGET-DATA2C-MVIDX1 so sparse row construction no longer loops in Python over every witness.
+++- Preserve FEAS1/MVIDX1 scientific schemas, coverage neighborhoods, candidate ceiling, report/graph digests, TARGET-DATA2C selector semantics, and all GPU/FINAL-GPU1 authority unchanged.
+++- Advance MLFF architecture to revision 88 and dependency-graph schema 70.
+++
++ ## 0.20.220a0 - 2026-08-17
++ 
++ - Implement WARN-DOMAIN1: one campaign-wide MACE/PyTorch warning domain at the MLFF CLI boundary.
++diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/PATCH_NOTES_0.20.221a0.md /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/PATCH_NOTES_0.20.221a0.md
++--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/PATCH_NOTES_0.20.221a0.md	1970-01-01 00:00:00.000000000 +0000
+++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/PATCH_NOTES_0.20.221a0.md	2026-08-17 07:06:11.793933722 +0000
++@@ -0,0 +1,14 @@
+++# mdstats 0.20.221a0 - TARGET-DATA2B-FEAS1-PERF1
+++
+++This patch addresses the observed long TARGET-DATA2B-FEAS1 wall time with low average CPU utilization.
+++
+++- FEAS1 now reduces each exact cKDTree neighborhood block with compiled NumPy operations instead of a Python loop over witnesses.
+++- Candidate-frame deduplication is canonical and preserves the historical row-major/candidate-major FP64 accumulation order.
+++- Support-degree masses are accumulated once per family in original witness order, preserving block-size-invariant scientific output.
+++- Independent coverage families execute concurrently within `StageResourceScope`; automatic scheduling divides the CPU budget between family workers and native cKDTree workers.
+++- New execution-only override: `[performance].target_coverage_feasibility_family_workers`.
+++- MVIDX1 uses the same vectorized exact row-compression kernel to avoid immediately repeating the per-witness bottleneck.
+++- GPU utilization remains intentionally low/zero in FEAS1/MVIDX1 because exact SciPy cKDTree CPU neighborhoods remain the scientific authority; no unqualified CUDA distance backend was introduced.
+++- Focused FEAS1/MVIDX1/MVSEL1/REPAIR1/MVPERF1 regression tests pass with exact worker/block/family-parallel invariance.
+++
+++On the 8-thread development host, a four-family 8,192-candidate synthetic exact-equivalence benchmark improved from about 1.63 s to about 0.99 s (1.65x) with identical family reports. Real gains depend on family count, neighborhood density, and the host CPU budget.
++diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/campaign.toml.example /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/campaign.toml.example
++--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/campaign.toml.example	2026-08-17 01:13:15.000000000 +0000
+++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/campaign.toml.example	2026-08-17 07:06:36.596022397 +0000
++@@ -223,10 +223,16 @@
++ # still clipped by available CPU threads and the RAM budget.
++ source_workers = 0
++ feature_workers = 0
++-# Exact TARGET-DATA2B cKDTree queries use native threads rather than process
++-# workers. 0 selects an automatic CPU-budgeted count capped at 8; an explicit
++-# positive value may request more. This changes execution only, not coverage.
+++# Exact TARGET-DATA2B/MVIDX1 cKDTree queries use native threads rather than
+++# process workers. 0 selects the stage-specific automatic CPU-budgeted count;
+++# an explicit positive value may request more. FEAS1 additionally partitions
+++# the CPU budget across independent feature families. Execution only.
++ target_coverage_workers = 0
+++# 0 lets FEAS1 choose bounded family-level parallelism from the CPU budget.
+++# Positive values explicitly cap concurrent coverage families. Execution only.
+++target_coverage_feasibility_family_workers = 0
+++# Bounded cKDTree witness-query block. Scientific results are block invariant.
+++target_coverage_feasibility_block_size = 512
++ # LTA workers return compact NumPy columns; the automatic count is bounded by
++ # CPU threads plus RAM reserved for the final immutable catalog.
++ lta_workers = 0
++diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/docs/arch_manuals/ARCHITECTURE_NOTES_MLFF_REV88.md /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/docs/arch_manuals/ARCHITECTURE_NOTES_MLFF_REV88.md
++--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/docs/arch_manuals/ARCHITECTURE_NOTES_MLFF_REV88.md	1970-01-01 00:00:00.000000000 +0000
+++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/docs/arch_manuals/ARCHITECTURE_NOTES_MLFF_REV88.md	2026-08-17 07:05:42.775654927 +0000
++@@ -0,0 +1,25 @@
+++---
+++title: "MLFF Architecture Revision 88"
+++author: "mdstats development"
+++date: "2026-08-17"
+++geometry: margin=0.8in
+++fontsize: 10pt
+++---
+++
+++# Revision 88
+++
+++**Release:** `mdstats 0.20.221a0`  
+++**Gate:** `TARGET-DATA2B-FEAS1-PERF1`  
+++**Dependency-graph schema:** `70`
+++
+++Revision 88 is exact-equivalence CPU execution hardening for TARGET-DATA2B-FEAS1 and the immediately downstream MVIDX1 sparse-row build. It changes no coverage metric, radius, threshold, hard obligation, candidate ceiling, selector policy, persisted scientific schema, or target-frame identity.
+++
+++The historical FEAS1 path alternated a multi-threaded cKDTree query with a serialized Python witness loop. Each witness separately mapped neighbor rows to candidate frames, called `np.unique`, updated candidate gains, and accumulated support-degree bins. That structure explains the observed low average CPU utilization. CUDA was never part of this stage and remains intentionally unused.
+++
+++The new exact kernel compresses each bounded query block in compiled NumPy operations. `(witness row, candidate frame)` pairs are packed and uniqued into canonical row-major/candidate-major order; candidate gains use unbuffered `np.add.at` in the same historical arithmetic order; support degrees use vectorized bincounts and one witness-order FP64 accumulation per family. MVIDX1 writes the same canonical candidate stream directly from this kernel.
+++
+++FEAS1 additionally schedules independent feature families concurrently. Automatic mode partitions the existing CPU-thread budget across family workers and native cKDTree workers, while explicit execution-only overrides remain available. `StageResourceScope` validates the nested CPU-lane product.
+++
+++Focused qualification requires exact report/graph equivalence across block sizes, tree-worker counts, and family-worker counts, plus regression-clean MVSEL1/REPAIR1/MVPERF1 behavior. A four-family 8,192-candidate synthetic development benchmark on the eight-thread qualification host measured approximately 1.65x wall-time improvement with exact family-report identity.
+++
+++GPU qualification remains deferred to the final consolidated FINAL-GPU1 handoff. Revision 88 does not introduce or authorize a GPU neighborhood backend.
++diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/docs/arch_manuals/mlff_training_data_architecture.md /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/docs/arch_manuals/mlff_training_data_architecture.md
++--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-17 06:31:08.000000000 +0000
+++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-17 07:05:42.774455186 +0000
++@@ -2,7 +2,7 @@
++ title: "mdstats MLFF Training-Data Architecture"
++ subtitle: "Canonical architecture and staged implementation"
++ author: "mdstats project"
++-date: "2026-08-17 (revision 87: WARN-DOMAIN1 campaign-wide warning capture)"
+++date: "2026-08-17 (revision 88: TARGET-DATA2B-FEAS1-PERF1 exact CPU hardening)"
++ geometry: margin=0.78in
++ toc: true
++ toc-depth: 3
++@@ -19,7 +19,39 @@
++     \usepackage{xurl}
++ ---
++ 
++-# Revision 87 current gate: WARN-DOMAIN1 campaign-wide warning capture
+++# Revision 88 current gate: TARGET-DATA2B-FEAS1-PERF1 exact CPU hardening
+++
+++`mdstats 0.20.221a0` hardens the execution path of TARGET-DATA2B-FEAS1 after workstation observation showed long wall time with low average CPU utilization and an idle GPU. The scientific FEAS1 authority, fixed 16,384 ceiling, exact cKDTree neighborhoods, FP64 accumulation order, and all downstream selector identities remain unchanged. This revision is execution-only.
+++
+++The observed utilization pattern followed directly from the revision-67 implementation. Native cKDTree workers were active only during each 512-witness `query_ball_point` call. Every returned ragged neighborhood was then reduced by a Python loop over individual witnesses using `np.unique`, scalar support-degree bookkeeping, and one candidate-gain update at a time. Automatic execution also capped the tree at eight native workers. Thus the query phase could use several cores while the reduction phase repeatedly collapsed to one Python execution lane; CUDA was never part of this exact CPU authority.
+++
+++Revision 88 replaces the per-witness reduction with a bounded vectorized exact kernel. For one query block, geometric neighbor rows are mapped to owning candidate frames, packed as `(local_witness_row, candidate_frame)` int64 keys, reduced with compiled `np.unique`, and returned in canonical row-major/candidate-major order. Candidate gain uses `np.add.at` in that same historical order. Self-excluded and correlation-unit-excluded degrees are computed from vectorized bincounts, retained for the whole family, then accumulated once in original witness order with `np.add.accumulate`. This preserves the scalar FP64 addition sequence and makes the scientific report invariant to query-block partitioning.
+++
+++Independent feature families now execute concurrently under the existing `StageResourceScope`. Automatic FEAS1 scheduling divides the configured CPU budget between family workers and cKDTree workers rather than dedicating the whole stage to one eight-thread tree. When enough families exist, automatic mode targets roughly four native tree lanes per concurrent family; a single family may use up to sixteen tree workers. The new optional `[performance].target_coverage_feasibility_family_workers` setting overrides only the execution schedule. Existing `[performance].target_coverage_workers` remains the native tree-worker override. The CLI prints family workers, tree workers per family, query block, and the resulting bounded CPU-lane product.
+++
+++The same canonical vectorized row-compression kernel is used by TARGET-DATA2C-MVIDX1. MVIDX1 therefore no longer loops in Python over every witness solely to deduplicate candidate-frame ownership before writing the canonical sparse row stream. Persisted uint32/uint64 graph arrays, edge ordering, hashes, and downstream MVSEL1/REPAIR1 scientific plans remain unchanged.
+++
+++GPU execution is deliberately not introduced. FEAS1/MVIDX1 neighborhood authority is exact SciPy cKDTree CPU work; moving it to CUDA would create a new distance/threshold realization that would require separate equivalence qualification. Consequently low GPU utilization during these stages is expected and is not a defect. GPU qualification remains deferred to FINAL-GPU1 as previously frozen.
+++
+++## Frozen revision-88 execution contract
+++
+++| Item | Value |
+++|---|---|
+++| FEAS1 scientific schema/digest | unchanged |
+++| Coverage metric/radii | unchanged exact TARGET-DATA2B cKDTree relation |
+++| Candidate-frame deduplication | vectorized packed `(row,candidate)` unique reduction |
+++| FP64 candidate-gain order | historical row-major/candidate-major order |
+++| Support-mass order | historical witness order |
+++| Family scheduling | bounded concurrent ThreadPool execution |
+++| Automatic native tree workers | CPU-budget partition; up to 16 for single-family execution |
+++| New execution override | `target_coverage_feasibility_family_workers` |
+++| MVIDX1 sparse row construction | same vectorized canonical kernel |
+++| GPU authority | unchanged; not used |
+++| TARGET-DATA2C scientific selection | unchanged |
+++
+++The focused FEAS1/MVIDX1 and downstream MVSEL1/REPAIR1/MVPERF1 suites require exact dictionary/digest equivalence across worker, block, and family-parallel schedules. On the eight-thread development host, a four-family 8,192-candidate synthetic exact-equivalence benchmark improved from about 1.63 s for the historical scalar reduction to about 0.99 s for the optimized bounded schedule (approximately 1.65x) with identical family reports. The benchmark is execution evidence only, not scientific tuning data.
+++
+++# Revision 87 historical gate: WARN-DOMAIN1 campaign-wide warning capture
++ 
++ `mdstats 0.20.220a0` replaces the accumulated operation-by-operation warning suppression patches with one command-wide warning domain at the MLFF campaign CLI boundary. The scientific training/data/parity contracts are unchanged from revision 86; this gate changes only runtime warning transport, grouping, and presentation.
++ 
++diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/docs/arch_manuals/mlff_training_data_dependency_graph.json /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/docs/arch_manuals/mlff_training_data_dependency_graph.json
++--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-17 06:31:33.000000000 +0000
+++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-17 07:05:52.223692863 +0000
++@@ -1,8 +1,8 @@
++ {
++-  "architecture_revision": 87,
+++  "architecture_revision": 88,
++   "branch": "MLFF-DATA",
++-  "description": "MLFF training-data dependency graph through architecture revision 87. WARN-DOMAIN1 makes MACE/PyTorch warning capture command-wide and thread-aware without changing revision-86 scientific parity authority.",
++-  "documentation_gate": "CAMPAIGN_WARNING_DOMAIN",
+++  "description": "MLFF training-data dependency graph through architecture revision 88. TARGET-DATA2B-FEAS1-PERF1 removes serialized witness reduction and adds bounded family-level CPU parallelism while preserving exact FEAS1/MVIDX1 scientific authority.",
+++  "documentation_gate": "TARGET_DATA2B_FEAS1_PERF1_EXACT_HARDENING",
++   "edge_type_definitions": {
++     "execution_requires": "The upstream product must exist before execution.",
++     "fit_domain_requires": "The fitted object may inspect only the declared training domain.",
++@@ -2832,11 +2832,6 @@
++       "type": "implementation_requires"
++     },
++     {
++-      "from": "TARGET_DATA2B_FEAS1_FULL_POOL_FEASIBILITY",
++-      "to": "TARGET_DATA2C_MVIDX1_COVERAGE_INDEX",
++-      "type": "implementation_requires"
++-    },
++-    {
++       "from": "TARGET_DATA2C_MVIDX1_COVERAGE_INDEX",
++       "to": "TARGET_DATA2C_MVSEL1_PROGRESSIVE_SELECTOR",
++       "type": "implementation_requires"
++@@ -2960,6 +2955,16 @@
++       "from": "CUEQ_TRAIN2_NOISE_NORMALIZED_PARITY",
++       "to": "FINAL_GPU1_DEFERRED_RELEASE_QUALIFICATION",
++       "type": "release_qualification_requires"
+++    },
+++    {
+++      "from": "TARGET_DATA2B_FEAS1_FULL_POOL_FEASIBILITY",
+++      "to": "TARGET_DATA2B_FEAS1_PERF1_EXACT_HARDENING",
+++      "type": "implementation_requires"
+++    },
+++    {
+++      "from": "TARGET_DATA2B_FEAS1_PERF1_EXACT_HARDENING",
+++      "to": "TARGET_DATA2C_MVIDX1_COVERAGE_INDEX",
+++      "type": "implementation_requires"
++     }
++   ],
++   "forbidden_dependencies": [
++@@ -4488,7 +4493,12 @@
++         "cross_support_fragile",
++         "optimization_required",
++         "provably_capacity_infeasible"
++-      ]
+++      ],
+++      "execution_hardening_release": "0.20.221a0",
+++      "execution_hardening_gate": "TARGET-DATA2B-FEAS1-PERF1",
+++      "vectorized_candidate_row_compression": true,
+++      "bounded_family_parallelism": true,
+++      "gpu_backend_used": false
++     },
++     {
++       "architecture_revision": 68,
++@@ -5143,7 +5153,27 @@
++       "scientific_authority_changed": false,
++       "superseded_scientific_gate": null,
++       "retained_parity_gate": "CUEQ-REPEAT1-PARITY1"
+++    },
+++    {
+++      "id": "TARGET_DATA2B_FEAS1_PERF1_EXACT_HARDENING",
+++      "gate_name": "TARGET-DATA2B-FEAS1-PERF1",
+++      "architecture_revision": 88,
+++      "authority_class": "performance_exact_equivalence",
+++      "implementation_status": "implemented_exact_performance_hardening",
+++      "implemented_release": "0.20.221a0",
+++      "scientific_schema_changed": false,
+++      "scientific_digest_changed": false,
+++      "coverage_metric_changed": false,
+++      "candidate_ceiling_changed": false,
+++      "vectorized_row_candidate_deduplication": true,
+++      "historical_fp64_accumulation_order_preserved": true,
+++      "family_level_parallelism": "bounded_stage_resource_scope",
+++      "automatic_tree_worker_cap_single_family": 16,
+++      "mvidx1_uses_shared_vectorized_row_kernel": true,
+++      "gpu_neighborhood_backend_authorized": false,
+++      "final_gpu1_qualification_deferred": true,
+++      "runtime_selector_changed": false
++     }
++   ],
++-  "schema_version": 69
+++  "schema_version": 70
++ }
++diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/docs/specs/training_data/FINAL_GPU1_WORKSTATION_RUNBOOK.md /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/docs/specs/training_data/FINAL_GPU1_WORKSTATION_RUNBOOK.md
++--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/docs/specs/training_data/FINAL_GPU1_WORKSTATION_RUNBOOK.md	2026-08-17 06:31:40.000000000 +0000
+++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/docs/specs/training_data/FINAL_GPU1_WORKSTATION_RUNBOOK.md	2026-08-17 07:06:23.136402040 +0000
++@@ -8,11 +8,11 @@
++ 
++ # CURRENT RELEASE HANDOFF - FINAL-GPU1 v3
++ 
++-This revision-87 runbook is the current one-shot FINAL-GPU1 v3/v10 handoff for `mdstats 0.20.220a0`. Earlier revision-86 and pre-warning-domain source bundles are archival and must not be used to authorize this release.
+++This revision-88 runbook is the current one-shot FINAL-GPU1 v3/v10 handoff for `mdstats 0.20.221a0`. Earlier revision-86 and pre-warning-domain source bundles are archival and must not be used to authorize this release.
++ 
++ # Purpose
++ 
++-This runbook executes the **single consolidated FINAL-GPU1 handoff** for `mdstats 0.20.220a0` / architecture revision 87. The development package does **not** contain a positive GPU result. FINAL-GPU1 becomes positive only after the supplied workstation produces release-matched CUDA/CuEquivariance evidence and the fail-closed reducer passes.
+++This runbook executes the **single consolidated FINAL-GPU1 handoff** for `mdstats 0.20.221a0` / architecture revision 88. The development package does **not** contain a positive GPU result. FINAL-GPU1 becomes positive only after the supplied workstation produces release-matched CUDA/CuEquivariance evidence and the fail-closed reducer passes.
++ 
++ The final authority preserves the scientific baseline and phase separation established by earlier gates:
++ 
++@@ -25,7 +25,7 @@
++ 
++ The workstation bundle contains:
++ 
++-- the exact `mdstats-0.20.220a0-complete-source-package-warning-domain1.zip` release archive;
+++- the exact `mdstats-0.20.221a0-complete-source-package-feas1-perf1.zip` release archive;
++ - locked MACE-MH-1 and MACE-MPA-0-medium foundation models;
++ - the LTA target-training corpus and TRUE_DFT replay corpus;
++ - the offline dependency/source archive supplied for the project;
++@@ -47,8 +47,8 @@
++ ```bash
++ sha256sum -c VERIFY_BUNDLE_SHA256.txt
++ mkdir -p work/source
++-unzip -q mdstats-0.20.220a0-complete-source-package-warning-domain1.zip -d work/source
++-cd work/source/mdstats-0.20.220a0
+++unzip -q mdstats-0.20.221a0-complete-source-package-feas1-perf1.zip -d work/source
+++cd work/source/mdstats-0.20.221a0
++ ```
++ 
++ The release archive itself remains unchanged after extraction because its SHA-256 is part of every FINAL-GPU1 evidence registration.
++@@ -59,7 +59,7 @@
++ python tools/run_mlff_final_gpu_qualification.py preflight \
++   --mh1-model ../../../inputs/mace-mh-1.model \
++   --mpa0-model ../../../inputs/mace-mpa-0-medium.model \
++-  --release-archive ../../../mdstats-0.20.220a0-complete-source-package-warning-domain1.zip \
+++  --release-archive ../../../mdstats-0.20.221a0-complete-source-package-feas1-perf1.zip \
++   --output ../../../final-gpu1/preflight.json
++ ```
++ 
++@@ -79,7 +79,7 @@
++   --root ../../../final-gpu1/run-001 \
++   --mh1-model ../../../inputs/mace-mh-1.model \
++   --mpa0-model ../../../inputs/mace-mpa-0-medium.model \
++-  --release-archive ../../../mdstats-0.20.220a0-complete-source-package-warning-domain1.zip
+++  --release-archive ../../../mdstats-0.20.221a0-complete-source-package-feas1-perf1.zip
++ ```
++ 
++ This creates the 18-item matrix in `final_gpu1_handoff.json`. The run root is immutable at the registration level: do not re-run `init` on a populated root and do not replace an already registered gate result. Use the `record` command so the evidence file hash, release identity, schema, content digest, and CUEQ runtime digest (where required) are captured consistently. Replacement evidence belongs in a new run root.
++diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/docs/specs/training_data/mlff_final_gpu1_deferred_qualification_spec.md /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/docs/specs/training_data/mlff_final_gpu1_deferred_qualification_spec.md
++--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/docs/specs/training_data/mlff_final_gpu1_deferred_qualification_spec.md	2026-08-17 06:31:40.000000000 +0000
+++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/docs/specs/training_data/mlff_final_gpu1_deferred_qualification_spec.md	2026-08-17 07:06:23.136745730 +0000
++@@ -217,3 +217,7 @@
++ ## Revision 87 warning-domain-only regeneration
++ 
++ `mdstats 0.20.220a0` does not alter the FINAL-GPU1 v3/18-item matrix or v10 scientific parity-policy bindings. WARN-DOMAIN1 changes only campaign warning transport. The workstation handoff is nevertheless regenerated because FINAL-GPU1 binds the exact release-archive SHA-256; revision-86/0.20.219a0 archives therefore cannot authorize the revision-87 source tree.
+++
+++### Revision 88 / `mdstats 0.20.221a0` execution-only FEAS1 hardening
+++
+++TARGET-DATA2B-FEAS1-PERF1 changes only CPU neighborhood reduction/scheduling and MVIDX1 row construction. It does not alter FINAL-GPU1 v3/v10 scientific parity bindings or introduce a GPU neighborhood authority. The final workstation handoff must nevertheless use the exact `0.20.221a0` release archive because archive identity is release-bound. Positive GPU qualification remains deferred until the consolidated final release test.
++diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/docs/specs/training_data/mlff_target_data2b_feas1_perf1_spec.md /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/docs/specs/training_data/mlff_target_data2b_feas1_perf1_spec.md
++--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/docs/specs/training_data/mlff_target_data2b_feas1_perf1_spec.md	1970-01-01 00:00:00.000000000 +0000
+++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/docs/specs/training_data/mlff_target_data2b_feas1_perf1_spec.md	2026-08-17 07:06:11.793978128 +0000
++@@ -0,0 +1,29 @@
+++# TARGET-DATA2B-FEAS1-PERF1 exact CPU execution hardening
+++
+++**Release:** `mdstats 0.20.221a0`  
+++**Architecture revision:** `88`  
+++**Dependency graph schema:** `70`
+++
+++## Scope
+++
+++This gate changes execution only. TARGET-DATA2B coverage geometry, FEAS1 scientific report schemas and digests, the fixed `16384` candidate ceiling, MVIDX1 sparse graph semantics, and downstream target-selection policy are unchanged.
+++
+++## Exact vectorized neighborhood reduction
+++
+++For every bounded cKDTree query block, geometric neighbor rows are mapped to candidate-frame ownership and packed as int64 `(local witness row, candidate frame)` keys. `np.unique` establishes the canonical witness-major/candidate-major unique relation. Candidate gains use unbuffered `np.add.at` in that canonical order, matching the historical scalar per-witness update order. Self-excluded and correlation-unit-excluded candidate degrees are computed by vectorized counts.
+++
+++Support masses are accumulated once after the complete family degree arrays are known. `np.add.accumulate` consumes weights in original witness order for each support class, so query block partitioning cannot regroup scientific FP64 sums.
+++
+++## Bounded parallelism
+++
+++FEAS1 may execute independent feature families concurrently. `StageResourceScope` must bound `family_workers * tree_workers` to the configured CPU budget. Automatic scheduling prefers several independent family lanes when available and assigns the remaining budget to cKDTree workers. The execution-only setting `target_coverage_feasibility_family_workers` may override family concurrency.
+++
+++No GPU neighborhood backend is authorized. CUDA execution would constitute a new numerical distance/threshold realization and requires separate equivalence qualification.
+++
+++## MVIDX1 reuse
+++
+++MVIDX1 consumes the same canonical vectorized block compressor and writes the returned candidate stream directly to its sparse witness-row payload. Persisted edge order, uint32/uint64 arrays, hashes, and inverse adjacency are unchanged.
+++
+++## Qualification
+++
+++Acceptance requires exact FEAS1 dictionary/content-digest identity across tree-worker, query-block, and family-worker schedules; exact MVIDX1 graph identity across worker/block schedules; regression-clean MVSEL1, REPAIR1, and MVPERF1; and compile/import integrity. Performance evidence is non-scientific.
++diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/mdstats/_version.py /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/mdstats/_version.py
++--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/mdstats/_version.py	2026-08-17 06:31:08.000000000 +0000
+++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/mdstats/_version.py	2026-08-17 07:05:19.685014311 +0000
++@@ -1 +1 @@
++-__version__ = "0.20.220a0"
+++__version__ = "0.20.221a0"
++diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/mdstats/training_data/_target_coverage_neighborhood.py /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/mdstats/training_data/_target_coverage_neighborhood.py
++--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/mdstats/training_data/_target_coverage_neighborhood.py	1970-01-01 00:00:00.000000000 +0000
+++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/mdstats/training_data/_target_coverage_neighborhood.py	2026-08-17 07:01:10.144854344 +0000
++@@ -0,0 +1,84 @@
+++"""Execution-only exact neighborhood row compression for TARGET-DATA2B/C.
+++
+++The scientific coverage relation is witness-row -> unique candidate frame.  A
+++cKDTree query returns geometric neighbor *rows*, and several rows can belong to
+++the same candidate frame.  This helper converts one bounded query block into a
+++canonical row-major unique candidate representation without a Python loop over
+++witnesses.
+++"""
+++
+++from __future__ import annotations
+++
+++from typing import Any, Sequence
+++
+++import numpy as np
+++
+++from ._common import TrainingDataInputError
+++
+++
+++def compress_unique_candidate_block(
+++    raw_neighbors: Sequence[Any],
+++    *,
+++    frame_indices: np.ndarray,
+++    row_start: int,
+++    candidate_count: int,
+++    context: str,
+++) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+++    """Return canonical local-row/candidate pairs and per-row unique counts.
+++
+++    Pairs are sorted first by local witness row and then by candidate frame.
+++    This is exactly the order produced by the historical per-row ``np.unique``
+++    reduction, so downstream FP64 ``np.add.at`` accumulation preserves the
+++    historical row/candidate arithmetic order while eliminating the Python
+++    witness loop.
+++    """
+++
+++    block_rows = len(raw_neighbors)
+++    if block_rows == 0:
+++        empty = np.empty(0, dtype=np.int64)
+++        return empty, empty, empty
+++    if candidate_count <= 0:
+++        raise TrainingDataInputError(f"{context} candidate_count must be positive.")
+++
+++    raw_counts = np.fromiter(
+++        (len(neighbors) for neighbors in raw_neighbors),
+++        dtype=np.int64,
+++        count=block_rows,
+++    )
+++    total_raw = int(np.sum(raw_counts, dtype=np.int64))
+++    if total_raw <= 0:
+++        raise TrainingDataInputError(f"{context} neighborhood block contains an unsupported witness.")
+++
+++    flat_neighbor_rows = np.concatenate(raw_neighbors).astype(np.int64, copy=False)
+++    if flat_neighbor_rows.size != total_raw:
+++        raise TrainingDataInputError(f"{context} neighborhood block cardinality is inconsistent.")
+++    if np.any(flat_neighbor_rows < 0) or np.any(flat_neighbor_rows >= len(frame_indices)):
+++        raise TrainingDataInputError(f"{context} neighborhood query returned an out-of-domain row.")
+++
+++    local_rows = np.repeat(np.arange(block_rows, dtype=np.int64), raw_counts)
+++    candidate_frames = frame_indices[flat_neighbor_rows]
+++
+++    # Packing (local_row, candidate_frame) into one int64 key makes NumPy's
+++    # compiled unique reduction both deduplicate frame ownership and establish
+++    # the required row-major/candidate-major canonical order.
+++    max_key = (block_rows - 1) * int(candidate_count) + (int(candidate_count) - 1)
+++    if max_key > int(np.iinfo(np.int64).max):
+++        raise TrainingDataInputError(f"{context} neighborhood key range exceeds int64 capacity.")
+++    keys = local_rows * np.int64(candidate_count) + candidate_frames
+++    unique_keys = np.unique(keys)
+++    unique_rows = unique_keys // np.int64(candidate_count)
+++    unique_candidates = unique_keys % np.int64(candidate_count)
+++    unique_counts = np.bincount(unique_rows, minlength=block_rows).astype(np.int64, copy=False)
+++
+++    own_frames = frame_indices[row_start : row_start + block_rows]
+++    own_keys = np.arange(block_rows, dtype=np.int64) * np.int64(candidate_count) + own_frames
+++    positions = np.searchsorted(unique_keys, own_keys)
+++    valid_positions = positions < unique_keys.size
+++    if not np.all(valid_positions):
+++        bad = int(np.flatnonzero(~valid_positions)[0])
+++        raise TrainingDataInputError(f"{context} self-consistency failed for witness {row_start + bad}.")
+++    if not np.all(unique_keys[positions] == own_keys):
+++        bad = int(np.flatnonzero(unique_keys[positions] != own_keys)[0])
+++        raise TrainingDataInputError(f"{context} self-consistency failed for witness {row_start + bad}.")
+++
+++    return unique_rows, unique_candidates, unique_counts
++diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/mdstats/training_data/campaign_cli.py /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/mdstats/training_data/campaign_cli.py
++--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/mdstats/training_data/campaign_cli.py	2026-08-17 06:27:38.000000000 +0000
+++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/mdstats/training_data/campaign_cli.py	2026-08-17 07:06:36.599149800 +0000
++@@ -3885,6 +3885,75 @@
++     return workers, resources
++ 
++ 
+++def _target_coverage_feasibility_parallelism(
+++    cfg: Mapping[str, Any],
+++    coverage_reference: Any,
+++) -> tuple[int, int, Any]:
+++    """Resolve bounded FEAS1 family/native-tree parallelism.
+++
+++    FEAS1 has two independent execution layers: feature families can run in
+++    parallel, and each family can use native cKDTree workers.  Automatic mode
+++    partitions the configured CPU-thread budget between these layers instead
+++    of leaving the post-query family work serialized behind one eight-thread
+++    tree.  Both counts are execution-only.
+++    """
+++
+++    resources = detect_system_resources(
+++        cpu_fraction=float(_cfg(cfg, "performance", "cpu_fraction", 0.90)),
+++        ram_fraction=float(_cfg(cfg, "performance", "ram_fraction", 0.80)),
+++        gpu_memory_fraction=float(_cfg(cfg, "performance", "gpu_memory_fraction", 0.90)),
+++        device="cpu",
+++    )
+++    requested_tree = int(_cfg(cfg, "performance", "target_coverage_workers", 0))
+++    requested_family = int(
+++        _cfg(cfg, "performance", "target_coverage_feasibility_family_workers", 0)
+++    )
+++    if requested_tree < 0:
+++        raise CampaignCliError(
+++            "[performance].target_coverage_workers must be zero (automatic) or a positive integer."
+++        )
+++    if requested_family < 0:
+++        raise CampaignCliError(
+++            "[performance].target_coverage_feasibility_family_workers must be zero (automatic) or a positive integer."
+++        )
+++
+++    max_families = max(
+++        (len(domain.families) for domain in coverage_reference.domains),
+++        default=1,
+++    )
+++    budget = max(1, int(resources.cpu_threads_budget))
+++    available = max(1, int(resources.cpu_threads_available))
+++
+++    if requested_family > 0:
+++        family_workers = min(max_families, requested_family, available)
+++    elif requested_tree > 0:
+++        resolved_tree = min(requested_tree, available)
+++        family_workers = min(max_families, max(1, budget // max(1, resolved_tree)))
+++    else:
+++        # Keep at least roughly four native tree lanes per concurrent family
+++        # when enough independent family work exists.  This exposes the serial
+++        # per-family phases to parallel execution while staying inside budget.
+++        family_workers = min(max_families, max(1, budget // 4))
+++
+++    if requested_tree > 0:
+++        tree_workers = min(requested_tree, available)
+++    else:
+++        tree_workers = min(16, max(1, budget // max(1, family_workers)))
+++
+++    if family_workers * tree_workers > budget:
+++        if requested_family > 0 and requested_tree > 0:
+++            raise CampaignCliError(
+++                "Explicit TARGET-DATA2B-FEAS1 family/tree workers exceed the configured CPU budget: "
+++                f"{family_workers}x{tree_workers} > {budget}."
+++            )
+++        if requested_tree > 0:
+++            family_workers = max(1, min(family_workers, budget // max(1, tree_workers)))
+++        else:
+++            tree_workers = max(1, budget // max(1, family_workers))
+++
+++    return int(tree_workers), int(family_workers), resources
+++
+++
++ def _target_coverage_policy(cfg: Mapping[str, Any]) -> Any:
++     """Resolve TARGET-DATA2B coverage semantics from the shared size-convergence table."""
++ 
++@@ -4079,21 +4148,26 @@
++             return existing
++ 
++     _print_header("TARGET-DATA2B-FEAS1 support fragility and capacity lower bounds")
++-    coverage_workers, coverage_resources = _target_coverage_query_workers(cfg)
+++    coverage_workers, family_workers, coverage_resources = _target_coverage_feasibility_parallelism(
+++        cfg, coverage_reference
+++    )
++     block_size = int(_cfg(cfg, "performance", "target_coverage_feasibility_block_size", 512))
++     if block_size < 1:
++         raise CampaignCliError(
++             "[performance].target_coverage_feasibility_block_size must be positive."
++         )
++     print(
++-        f"[TARGET-DATA2B-FEAS1] exact neighborhood workers={coverage_workers}; "
++-        f"query block={block_size}; hard ceiling={policy.maximum_candidate_size}",
+++        f"[TARGET-DATA2B-FEAS1] exact neighborhood family-workers={family_workers}; "
+++        f"tree-workers/family={coverage_workers}; query block={block_size}; "
+++        f"cpu lanes<={family_workers * coverage_workers}/{coverage_resources.cpu_threads_budget}; "
+++        f"hard ceiling={policy.maximum_candidate_size}",
++         flush=True,
++     )
++     started = time.monotonic()
++     scope = build_stage_resource_scope(
++         coverage_resources,
++         stage_name="TARGET-DATA2B-FEAS1",
+++        python_workers=family_workers,
++         tree_workers=coverage_workers,
++         blas_threads=1,
++     )
++@@ -4104,6 +4178,7 @@
++             policy=policy,
++             query_workers=coverage_workers,
++             query_block_size=block_size,
+++            family_workers=family_workers,
++         )
++     store.put_record("target_coverage_feasibility", report)
++     for domain in report.domains:
++@@ -24509,10 +24584,16 @@
++ # still clipped by available CPU threads and the RAM budget.
++ source_workers = 0
++ feature_workers = 0
++-# Exact TARGET-DATA2B cKDTree queries use native threads rather than process
++-# workers. 0 selects an automatic CPU-budgeted count capped at 8; an explicit
++-# positive value may request more. This changes execution only, not coverage.
+++# Exact TARGET-DATA2B/MVIDX1 cKDTree queries use native threads rather than
+++# process workers. 0 selects the stage-specific automatic CPU-budgeted count;
+++# an explicit positive value may request more. FEAS1 additionally partitions
+++# the CPU budget across independent feature families. Execution only.
++ target_coverage_workers = 0
+++# 0 lets FEAS1 choose bounded family-level parallelism from the CPU budget.
+++# Positive values explicitly cap concurrent coverage families. Execution only.
+++target_coverage_feasibility_family_workers = 0
+++# Bounded cKDTree witness-query block. Scientific results are block invariant.
+++target_coverage_feasibility_block_size = 512
++ # Maximum in-memory force-tail temporary allocation for FOUNDATION-AUDIT1.
++ # Larger exact buffers spill to a temporary mmap. Execution-only.
++ foundation_audit_temporary_ram_mib = 512
++diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/mdstats/training_data/target_coverage_feasibility.py /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/mdstats/training_data/target_coverage_feasibility.py
++--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/mdstats/training_data/target_coverage_feasibility.py	2026-08-16 15:46:16.000000000 +0000
+++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/mdstats/training_data/target_coverage_feasibility.py	2026-08-17 07:01:10.585057815 +0000
++@@ -19,6 +19,7 @@
++ 
++ from __future__ import annotations
++ 
+++from concurrent.futures import ThreadPoolExecutor
++ from dataclasses import dataclass
++ import math
++ from typing import Any, Mapping, Sequence
++@@ -27,6 +28,7 @@
++ from scipy.spatial import cKDTree
++ 
++ from ._common import TrainingDataInputError, TrainingDataSerializationError, digest, validate_digest
+++from ._target_coverage_neighborhood import compress_unique_candidate_block
++ 
++ 
++ TARGET_COVERAGE_FEASIBILITY_POLICY_SCHEMA = "mdstats.target-coverage-feas1-policy.v1"
++@@ -472,6 +474,40 @@
++             if value <= upper:
++                 self.cumulative[i] += mass
++ 
+++    def add_many(self, degrees: np.ndarray, weights: np.ndarray) -> None:
+++        """Accumulate one complete family in historical witness order.
+++
+++        ``np.add.accumulate`` preserves the scalar FP64 addition order for each
+++        support class while moving the degree/bin classification out of Python.
+++        Calling this once per family also makes the result independent of query
+++        block partitioning.
+++        """
+++
+++        values = np.asarray(degrees, dtype=np.int64)
+++        masses = np.asarray(weights, dtype=np.float64)
+++        if values.ndim != 1 or masses.ndim != 1 or values.shape != masses.shape:
+++            raise TrainingDataInputError("TARGET-DATA2B-FEAS1 support batch shape mismatch.")
+++        if np.any(values < 0):
+++            raise TrainingDataInputError("TARGET-DATA2B-FEAS1 support degree cannot be negative.")
+++        if values.size == 0:
+++            return
+++        self.count += int(values.size)
+++        local_minimum = int(np.min(values))
+++        local_maximum = int(np.max(values))
+++        self.minimum = local_minimum if self.minimum is None else min(self.minimum, local_minimum)
+++        self.maximum = max(self.maximum, local_maximum)
+++
+++        def ordered_sum(mask: np.ndarray) -> np.float64:
+++            selected = masses[mask]
+++            if selected.size == 0:
+++                return np.float64(0.0)
+++            return np.add.accumulate(selected, dtype=np.float64)[-1]
+++
+++        self.zero += ordered_sum(values == 0)
+++        self.one += ordered_sum(values == 1)
+++        for i, upper in enumerate(self.bins):
+++            self.cumulative[i] += ordered_sum(values <= upper)
+++
++     def freeze(self) -> TargetCoverageSupportDegreeReport:
++         return TargetCoverageSupportDegreeReport(
++             witness_count=self.count,
++@@ -530,37 +566,48 @@
++     tree = cKDTree(scaled)
++     radius_scale = math.sqrt(float(scaled.shape[1]))
++     candidate_gain = np.zeros(domain_candidate_count, dtype=np.float64)
++-    self_support = _SupportAccumulator(policy.support_degree_bins)
++-    correlation_support = _SupportAccumulator(policy.support_degree_bins)
+++    self_degree_by_witness = np.empty(len(scaled), dtype=np.int64)
+++    correlation_degree_by_witness = np.empty(len(scaled), dtype=np.int64)
++     edge_count = 0
++     tolerance = 1.0e-12
+++    block_size = max(1, int(query_block_size))
+++    context = f"TARGET-DATA2B-FEAS1 family {family.family_id!r}"
++ 
++-    for start in range(0, len(scaled), max(1, int(query_block_size))):
++-        stop = min(len(scaled), start + max(1, int(query_block_size)))
+++    for start in range(0, len(scaled), block_size):
+++        stop = min(len(scaled), start + block_size)
++         raw = tree.query_ball_point(
++             scaled[start:stop],
++             r=(radii[start:stop] + tolerance * np.maximum(1.0, radii[start:stop])) * radius_scale,
++             workers=int(query_workers),
++             return_sorted=True,
++         )
++-        for offset, neighbor_rows in enumerate(raw):
++-            row = start + offset
++-            candidate_frames = np.unique(frame_indices[np.asarray(neighbor_rows, dtype=np.int64)])
++-            own_frame = int(frame_indices[row])
++-            if candidate_frames.size == 0 or not np.any(candidate_frames == own_frame):
++-                raise TrainingDataInputError(
++-                    f"TARGET-DATA2B-FEAS1 self-consistency failed for family {family.family_id!r} row {row}."
++-                )
++-            edge_count += int(candidate_frames.size)
++-            candidate_gain[candidate_frames] += np.float64(weights[row])
++-            self_degree = int(np.count_nonzero(candidate_frames != own_frame))
++-            self_support.add(self_degree, float(weights[row]))
++-            if policy.exclude_own_correlation_unit:
++-                own_unit = unit_code_by_frame_index[own_frame]
++-                correlation_degree = int(np.count_nonzero(unit_code_by_frame_index[candidate_frames] != own_unit))
++-            else:
++-                correlation_degree = self_degree
++-            correlation_support.add(correlation_degree, float(weights[row]))
+++        local_rows, candidate_frames, unique_counts = compress_unique_candidate_block(
+++            raw,
+++            frame_indices=frame_indices,
+++            row_start=start,
+++            candidate_count=domain_candidate_count,
+++            context=context,
+++        )
+++        edge_count += int(candidate_frames.size)
+++
+++        # unique pairs are ordered by witness row and then candidate frame, the
+++        # same arithmetic order as the historical scalar witness loop.
+++        np.add.at(candidate_gain, candidate_frames, weights[start + local_rows])
+++        self_degree_by_witness[start:stop] = unique_counts - 1
+++        if policy.exclude_own_correlation_unit:
+++            own_frames = frame_indices[start:stop]
+++            own_units = unit_code_by_frame_index[own_frames]
+++            cross_unit = unit_code_by_frame_index[candidate_frames] != own_units[local_rows]
+++            correlation_degree_by_witness[start:stop] = np.bincount(
+++                local_rows[cross_unit], minlength=stop - start
+++            )
+++        else:
+++            correlation_degree_by_witness[start:stop] = unique_counts - 1
+++
+++    self_support = _SupportAccumulator(policy.support_degree_bins)
+++    correlation_support = _SupportAccumulator(policy.support_degree_bins)
+++    self_support.add_many(self_degree_by_witness, weights)
+++    correlation_support.add_many(correlation_degree_by_witness, weights)
++ 
++     coverage_lb = _coverage_cardinality_lower_bound(candidate_gain, threshold)
++     if coverage_lb == int(np.iinfo(np.int32).max):
++@@ -680,18 +727,21 @@
++     policy: TargetCoverageFeasibilityPolicy | None = None,
++     query_workers: int = 1,
++     query_block_size: int = 512,
+++    family_workers: int = 1,
++ ) -> TargetCoverageFeasibilityReport:
++     """Build the exact TARGET-DATA2B-FEAS1 diagnostic authority.
++ 
++-    ``query_workers`` and ``query_block_size`` are execution-only.  They are not
++-    serialized and cannot change the scientific digest.
+++    ``query_workers``, ``query_block_size``, and ``family_workers`` are
+++    execution-only.  They are not serialized and cannot change the scientific
+++    digest.
++     """
++ 
++     active = TargetCoverageFeasibilityPolicy() if policy is None else policy
++     workers = int(query_workers)
++     block = int(query_block_size)
++-    if workers < 1 or block < 1:
++-        raise TrainingDataInputError("TARGET-DATA2B-FEAS1 query_workers/query_block_size must be positive.")
+++    family_parallelism = int(family_workers)
+++    if workers < 1 or block < 1 or family_parallelism < 1:
+++        raise TrainingDataInputError("TARGET-DATA2B-FEAS1 query_workers/query_block_size/family_workers must be positive.")
++     if target_coverage_reference.dataset_id != target_data_role_freeze.dataset_id:
++         raise TrainingDataInputError("TARGET-DATA2B-FEAS1 dataset identity mismatch.")
++     if target_coverage_reference.target_data_role_freeze_digest != target_data_role_freeze.content_digest:
++@@ -703,10 +753,10 @@
++         if set(domain.frame_uids) != set(role_domain.size_development_frame_uids):
++             raise TrainingDataInputError("TARGET-DATA2B-FEAS1 coverage/role frame-domain mismatch.")
++         unit_codes = _role_domain_frame_units(role_domain, domain.frame_uids)
++-        family_reports: list[TargetCoverageFamilyFeasibilityReport] = []
++-        extent_obligations: list[tuple[np.ndarray, int]] = []
++-        for family in sorted(domain.families, key=lambda item: item.family_id):
++-            family_report, family_extents = _family_feasibility(
+++        ordered_families = sorted(domain.families, key=lambda item: item.family_id)
+++
+++        def evaluate_family(family: Any) -> tuple[TargetCoverageFamilyFeasibilityReport, list[tuple[np.ndarray, int]]]:
+++            return _family_feasibility(
++                 family,
++                 domain_candidate_count=len(domain.frame_uids),
++                 unit_code_by_frame_index=unit_codes,
++@@ -715,6 +765,16 @@
++                 query_workers=workers,
++                 query_block_size=block,
++             )
+++
+++        if family_parallelism > 1 and len(ordered_families) > 1:
+++            with ThreadPoolExecutor(max_workers=min(family_parallelism, len(ordered_families))) as executor:
+++                family_results = list(executor.map(evaluate_family, ordered_families))
+++        else:
+++            family_results = [evaluate_family(family) for family in ordered_families]
+++
+++        family_reports: list[TargetCoverageFamilyFeasibilityReport] = []
+++        extent_obligations: list[tuple[np.ndarray, int]] = []
+++        for family, (family_report, family_extents) in zip(ordered_families, family_results, strict=True):
++             family_reports.append(family_report)
++             if family.required:
++                 extent_obligations.extend(family_extents)
++diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/mdstats/training_data/target_coverage_sparse_index.py /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/mdstats/training_data/target_coverage_sparse_index.py
++--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/mdstats/training_data/target_coverage_sparse_index.py	2026-08-16 16:12:28.000000000 +0000
+++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/mdstats/training_data/target_coverage_sparse_index.py	2026-08-17 07:01:11.128183814 +0000
++@@ -27,6 +27,7 @@
++ from scipy.sparse import csr_matrix
++ 
++ from ._common import TrainingDataInputError, TrainingDataSerializationError, digest, validate_digest
+++from ._target_coverage_neighborhood import compress_unique_candidate_block
++ from .target_coverage import _coverage_array_reference, _validate_array_reference
++ from .target_coverage_feasibility import validate_target_coverage_feasibility_authority
++ 
++@@ -661,18 +662,18 @@
++                 workers=int(query_workers),
++                 return_sorted=True,
++             )
++-            for offset, neighbor_rows in enumerate(raw):
++-                row = start + offset
++-                candidate_frames = np.unique(frame_indices[np.asarray(neighbor_rows, dtype=np.int64)])
++-                own_frame = int(frame_indices[row])
++-                if candidate_frames.size == 0 or not np.any(candidate_frames == own_frame):
++-                    raise TrainingDataInputError(
++-                        f"TARGET-DATA2C-MVIDX1 self-consistency failed for family {family.family_id!r} witness {row}."
++-                    )
++-                encoded = np.asarray(candidate_frames, dtype="<u4")
++-                edge_handle.write(memoryview(encoded).cast("B"))
++-                witness_counts[row] = encoded.size
++-                edge_count += int(encoded.size)
+++            local_rows, candidate_frames, unique_counts = compress_unique_candidate_block(
+++                raw,
+++                frame_indices=frame_indices,
+++                row_start=start,
+++                candidate_count=candidate_count,
+++                context=f"TARGET-DATA2C-MVIDX1 family {family.family_id!r}",
+++            )
+++            del local_rows  # row-major order is already encoded in candidate_frames
+++            encoded = np.asarray(candidate_frames, dtype="<u4")
+++            edge_handle.write(memoryview(encoded).cast("B"))
+++            witness_counts[start:stop] = unique_counts.astype(np.uint64, copy=False)
+++            edge_count += int(encoded.size)
++         witness_offsets = np.empty(len(scaled) + 1, dtype="<u8")
++         witness_offsets[0] = 0
++         np.cumsum(witness_counts, dtype=np.uint64, out=witness_offsets[1:])
++diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/mlff_target_data2b_feas1_perf1_spec.md /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/mlff_target_data2b_feas1_perf1_spec.md
++--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/mlff_target_data2b_feas1_perf1_spec.md	1970-01-01 00:00:00.000000000 +0000
+++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/mlff_target_data2b_feas1_perf1_spec.md	2026-08-17 07:06:11.794003866 +0000
++@@ -0,0 +1,29 @@
+++# TARGET-DATA2B-FEAS1-PERF1 exact CPU execution hardening
+++
+++**Release:** `mdstats 0.20.221a0`  
+++**Architecture revision:** `88`  
+++**Dependency graph schema:** `70`
+++
+++## Scope
+++
+++This gate changes execution only. TARGET-DATA2B coverage geometry, FEAS1 scientific report schemas and digests, the fixed `16384` candidate ceiling, MVIDX1 sparse graph semantics, and downstream target-selection policy are unchanged.
+++
+++## Exact vectorized neighborhood reduction
+++
+++For every bounded cKDTree query block, geometric neighbor rows are mapped to candidate-frame ownership and packed as int64 `(local witness row, candidate frame)` keys. `np.unique` establishes the canonical witness-major/candidate-major unique relation. Candidate gains use unbuffered `np.add.at` in that canonical order, matching the historical scalar per-witness update order. Self-excluded and correlation-unit-excluded candidate degrees are computed by vectorized counts.
+++
+++Support masses are accumulated once after the complete family degree arrays are known. `np.add.accumulate` consumes weights in original witness order for each support class, so query block partitioning cannot regroup scientific FP64 sums.
+++
+++## Bounded parallelism
+++
+++FEAS1 may execute independent feature families concurrently. `StageResourceScope` must bound `family_workers * tree_workers` to the configured CPU budget. Automatic scheduling prefers several independent family lanes when available and assigns the remaining budget to cKDTree workers. The execution-only setting `target_coverage_feasibility_family_workers` may override family concurrency.
+++
+++No GPU neighborhood backend is authorized. CUDA execution would constitute a new numerical distance/threshold realization and requires separate equivalence qualification.
+++
+++## MVIDX1 reuse
+++
+++MVIDX1 consumes the same canonical vectorized block compressor and writes the returned candidate stream directly to its sparse witness-row payload. Persisted edge order, uint32/uint64 arrays, hashes, and inverse adjacency are unchanged.
+++
+++## Qualification
+++
+++Acceptance requires exact FEAS1 dictionary/content-digest identity across tree-worker, query-block, and family-worker schedules; exact MVIDX1 graph identity across worker/block schedules; regression-clean MVSEL1, REPAIR1, and MVPERF1; and compile/import integrity. Performance evidence is non-scientific.
++diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/mlff_training_data_architecture.md /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/mlff_training_data_architecture.md
++--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/mlff_training_data_architecture.md	2026-08-17 04:35:35.000000000 +0000
+++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/mlff_training_data_architecture.md	2026-08-17 07:05:42.775315714 +0000
++@@ -2,7 +2,7 @@
++ title: "mdstats MLFF Training-Data Architecture"
++ subtitle: "Canonical architecture and staged implementation"
++ author: "mdstats project"
++-date: "2026-08-16 (revision 85: CUEQ-REPEAT1-DIAG3 warm-up + all-pairs diagnostic)"
+++date: "2026-08-17 (revision 88: TARGET-DATA2B-FEAS1-PERF1 exact CPU hardening)"
++ geometry: margin=0.78in
++ toc: true
++ toc-depth: 3
++@@ -19,7 +19,94 @@
++     \usepackage{xurl}
++ ---
++ 
++-# Revision 85 current gate: CUEQ-REPEAT1-DIAG3 warm-up + all-pairs repeatability diagnostic
+++# Revision 88 current gate: TARGET-DATA2B-FEAS1-PERF1 exact CPU hardening
+++
+++`mdstats 0.20.221a0` hardens the execution path of TARGET-DATA2B-FEAS1 after workstation observation showed long wall time with low average CPU utilization and an idle GPU. The scientific FEAS1 authority, fixed 16,384 ceiling, exact cKDTree neighborhoods, FP64 accumulation order, and all downstream selector identities remain unchanged. This revision is execution-only.
+++
+++The observed utilization pattern followed directly from the revision-67 implementation. Native cKDTree workers were active only during each 512-witness `query_ball_point` call. Every returned ragged neighborhood was then reduced by a Python loop over individual witnesses using `np.unique`, scalar support-degree bookkeeping, and one candidate-gain update at a time. Automatic execution also capped the tree at eight native workers. Thus the query phase could use several cores while the reduction phase repeatedly collapsed to one Python execution lane; CUDA was never part of this exact CPU authority.
+++
+++Revision 88 replaces the per-witness reduction with a bounded vectorized exact kernel. For one query block, geometric neighbor rows are mapped to owning candidate frames, packed as `(local_witness_row, candidate_frame)` int64 keys, reduced with compiled `np.unique`, and returned in canonical row-major/candidate-major order. Candidate gain uses `np.add.at` in that same historical order. Self-excluded and correlation-unit-excluded degrees are computed from vectorized bincounts, retained for the whole family, then accumulated once in original witness order with `np.add.accumulate`. This preserves the scalar FP64 addition sequence and makes the scientific report invariant to query-block partitioning.
+++
+++Independent feature families now execute concurrently under the existing `StageResourceScope`. Automatic FEAS1 scheduling divides the configured CPU budget between family workers and cKDTree workers rather than dedicating the whole stage to one eight-thread tree. When enough families exist, automatic mode targets roughly four native tree lanes per concurrent family; a single family may use up to sixteen tree workers. The new optional `[performance].target_coverage_feasibility_family_workers` setting overrides only the execution schedule. Existing `[performance].target_coverage_workers` remains the native tree-worker override. The CLI prints family workers, tree workers per family, query block, and the resulting bounded CPU-lane product.
+++
+++The same canonical vectorized row-compression kernel is used by TARGET-DATA2C-MVIDX1. MVIDX1 therefore no longer loops in Python over every witness solely to deduplicate candidate-frame ownership before writing the canonical sparse row stream. Persisted uint32/uint64 graph arrays, edge ordering, hashes, and downstream MVSEL1/REPAIR1 scientific plans remain unchanged.
+++
+++GPU execution is deliberately not introduced. FEAS1/MVIDX1 neighborhood authority is exact SciPy cKDTree CPU work; moving it to CUDA would create a new distance/threshold realization that would require separate equivalence qualification. Consequently low GPU utilization during these stages is expected and is not a defect. GPU qualification remains deferred to FINAL-GPU1 as previously frozen.
+++
+++## Frozen revision-88 execution contract
+++
+++| Item | Value |
+++|---|---|
+++| FEAS1 scientific schema/digest | unchanged |
+++| Coverage metric/radii | unchanged exact TARGET-DATA2B cKDTree relation |
+++| Candidate-frame deduplication | vectorized packed `(row,candidate)` unique reduction |
+++| FP64 candidate-gain order | historical row-major/candidate-major order |
+++| Support-mass order | historical witness order |
+++| Family scheduling | bounded concurrent ThreadPool execution |
+++| Automatic native tree workers | CPU-budget partition; up to 16 for single-family execution |
+++| New execution override | `target_coverage_feasibility_family_workers` |
+++| MVIDX1 sparse row construction | same vectorized canonical kernel |
+++| GPU authority | unchanged; not used |
+++| TARGET-DATA2C scientific selection | unchanged |
+++
+++The focused FEAS1/MVIDX1 and downstream MVSEL1/REPAIR1/MVPERF1 suites require exact dictionary/digest equivalence across worker, block, and family-parallel schedules. On the eight-thread development host, a four-family 8,192-candidate synthetic exact-equivalence benchmark improved from about 1.63 s for the historical scalar reduction to about 0.99 s for the optimized bounded schedule (approximately 1.65x) with identical family reports. The benchmark is execution evidence only, not scientific tuning data.
+++
+++# Revision 87 historical gate: WARN-DOMAIN1 campaign-wide warning capture
+++
+++`mdstats 0.20.220a0` replaces the accumulated operation-by-operation warning suppression patches with one command-wide warning domain at the MLFF campaign CLI boundary. The scientific training/data/parity contracts are unchanged from revision 86; this gate changes only runtime warning transport, grouping, and presentation.
+++
+++The campaign command now owns the outermost `mace_runtime_warning_scope` from argument dispatch until the command returns or fails. Existing operation-local decorators remain in place, but under campaign execution they only register their operation name into the outer domain. This closes setup/recovery gaps in which MACE/PyTorch warnings could be emitted immediately before or after a locally decorated provider call.
+++
+++Python warning capture and Python logging are treated as separate ingress mechanisms into the same authority. All MACE/PyTorch warnings that reach Python's `warnings` machinery are grouped by origin/category/source/message. MACE/PyTorch `logging.WARNING` or higher records are identified from the emitting source pathname or package logger name, captured through a temporary campaign logging interceptor, and prevented from reaching raw handlers. This includes MACE 0.3.16 root-logger messages such as the `Default dtype float32 does not match model dtype float64` conversion warning.
+++
+++The outer campaign domain is process-wide for the lifetime of one CLI command in addition to using the existing `ContextVar`. This is required because worker threads do not necessarily inherit the main-thread context. A local MACE warning scope entered in a worker therefore binds to the same campaign record rather than creating and emitting a second warning summary. Operation-name merging is thread-safe.
+++
+++At command exit mdstats emits at most one normalized `[WARN]` line containing the total raw count and unique grouped MACE/PyTorch warning signatures. Raw TorchScript `DeprecationWarning` lines and `WARNING:root:` MACE messages must not appear. Unrelated Python warnings and unrelated logging remain outside this compatibility policy and retain their existing behavior rather than being silently discarded. Standalone library/API calls outside `mdstats-mlff-campaign` retain the historical operation-local consolidated `MaceRuntimeCompatibilityWarning` behavior.
+++
+++## Frozen revision-87 warning-domain contract
+++
+++| Item | Value |
+++|---|---|
+++| Campaign owner | one outer warning domain per CLI command |
+++| Python warning coverage | entire command lifetime |
+++| Logging coverage | MACE/PyTorch `WARNING+`, including root logger |
+++| Worker-thread local scopes | merge into campaign owner |
+++| Nested operation scopes | merge operation names; no independent emission |
+++| Campaign presentation | one normalized `[WARN]` summary |
+++| Raw MACE/PyTorch warning/log leak | forbidden |
+++| Unrelated warning/logging behavior | preserved |
+++| Standalone API behavior | historical local scope retained |
+++| Scientific DATA/TRAIN2/parity identity | unchanged from revision 86 |
+++
+++# Revision 86 historical gate: CUEQ-REPEAT1-PARITY1 permanent TRAIN2 FP32 noise-normalized parity
+++
+++`mdstats 0.20.219a0` replaces the stochastic one-shot TRAIN2 FP32 force `allclose` gate with an authorizing warm-up/all-pairs criterion derived from the MPA-0 DIAG3 workstation evidence. The source/DATA6 and stable TRAIN2 energy/stress/descriptor policy is again `rtol=1e-5, atol=1e-6`; only TRAIN2 FP32 force equivalence uses the new self-noise normalization.
+++
+++The ordinary production path discards one warm-up evaluation per backend and retains ten post-warm-up outputs from e3nn and pure CuEq. The resulting `45 + 45 + 100` self/cross pairs are the authorization evidence. For force RMSE, p99, and p99.9, mdstats compares the p99 cross statistic against the larger p99 self-backend envelope and requires a ratio no greater than `1.25`. Cross `Fmax` is no longer the primary gate; it is a catastrophic guard bounded by `min(1.5 x self Fmax envelope, 1e-4 eV/A)`.
+++
+++The frozen MPA-0 DIAG3 ordinary evidence gives approximate p99 ratios `1.08` (`Frmse`), `1.02` (`Fp99`), and `0.90` (`Fp99.9`), while the maximum cross `Fmax=2.261e-5` remains below the same-backend envelope `2.337e-5`. Selection is identical in all 100 cross pairs. The deterministic-control evidence shows post-warm-up e3nn self pairs collapse to exact zero but CuEq remains stochastic, demonstrating that the relevant force tail is intrinsic FP32 CuEq execution noise rather than a systematic cross-backend model shift.
+++
+++All self/cross selections must remain identical; all values must remain finite. No ratio or Fmax limit adapts after seeing a failed run. The deterministic-control subprocess remains available for investigation but is not executed during routine authorization. FINAL-GPU1 preflight v10 binds both the stable-channel and noise-normalized policy digests.
+++
+++## Frozen revision-86 policy
+++
+++| Item | Value |
+++|---|---|
+++| Warm-up | `1` discarded complete evaluation/backend |
+++| Post-warm-up samples | `10` e3nn + `10` pure CuEq |
+++| Pair populations | `45` e3nn-self, `45` CuEq-self, `100` cross |
+++| Stable E/S/D ceiling | `1e-6` maximum absolute cross-pair error |
+++| Force distribution statistic | p99 across pair metrics |
+++| Force metrics | `Frmse`, `Fp99`, `Fp99.9` |
+++| Cross/self ratio ceiling | `1.25` |
+++| Fmax self-envelope factor | `1.5` |
+++| Fmax absolute catastrophic ceiling | `1e-4 eV/A` |
+++| Selection identity | mandatory for every self/cross pair |
+++| Repeatability evidence | repeatability diagnostic v2 |
+++| Authorizing parity record | noise-normalized parity record v1 |
+++| Routine deterministic-control probe | disabled; optional diagnostic only |
+++
+++# Revision 85 historical gate: CUEQ-REPEAT1-DIAG3 warm-up + all-pairs repeatability diagnostic
++ 
++ `mdstats 0.20.218a0` performs the final measurement refinement before the TRAIN2 FP32 backend-equivalence policy is redesigned. Revision-84 MPA-0/default evidence confirmed that ordinary and deterministic-control force variability is comparable within e3nn-self, CuEq-self, and e3nn/CuEq comparisons. Ordinary `Fmax` maxima were `1.962e-5` (e3nn-self), `1.836e-5` (CuEq-self), and `2.270e-5` (cross). Under the isolated deterministic controls they were `1.061e-5`, `2.709e-5`, and `1.550e-5`, respectively. Selection remained identical throughout.
++ 
++diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/mlff_training_data_dependency_graph.json /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/mlff_training_data_dependency_graph.json
++--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/mlff_training_data_dependency_graph.json	2026-08-17 05:01:02.000000000 +0000
+++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/mlff_training_data_dependency_graph.json	2026-08-17 07:05:52.223927682 +0000
++@@ -1,8 +1,8 @@
++ {
++-  "architecture_revision": 86,
+++  "architecture_revision": 88,
++   "branch": "MLFF-DATA",
++-  "description": "MLFF training-data dependency graph through architecture revision 86. CUEQ-REPEAT1-PARITY1 authorizes TRAIN2 FP32 CuEq with warm-up/all-pairs self-noise-normalized force statistics while restoring tight stable-channel authority.",
++-  "documentation_gate": "CUEQ_TRAIN2_NOISE_NORMALIZED_PARITY",
+++  "description": "MLFF training-data dependency graph through architecture revision 88. TARGET-DATA2B-FEAS1-PERF1 removes serialized witness reduction and adds bounded family-level CPU parallelism while preserving exact FEAS1/MVIDX1 scientific authority.",
+++  "documentation_gate": "TARGET_DATA2B_FEAS1_PERF1_EXACT_HARDENING",
++   "edge_type_definitions": {
++     "execution_requires": "The upstream product must exist before execution.",
++     "fit_domain_requires": "The fitted object may inspect only the declared training domain.",
++@@ -2832,11 +2832,6 @@
++       "type": "implementation_requires"
++     },
++     {
++-      "from": "TARGET_DATA2B_FEAS1_FULL_POOL_FEASIBILITY",
++-      "to": "TARGET_DATA2C_MVIDX1_COVERAGE_INDEX",
++-      "type": "implementation_requires"
++-    },
++-    {
++       "from": "TARGET_DATA2C_MVIDX1_COVERAGE_INDEX",
++       "to": "TARGET_DATA2C_MVSEL1_PROGRESSIVE_SELECTOR",
++       "type": "implementation_requires"
++@@ -2960,6 +2955,16 @@
++       "from": "CUEQ_TRAIN2_NOISE_NORMALIZED_PARITY",
++       "to": "FINAL_GPU1_DEFERRED_RELEASE_QUALIFICATION",
++       "type": "release_qualification_requires"
+++    },
+++    {
+++      "from": "TARGET_DATA2B_FEAS1_FULL_POOL_FEASIBILITY",
+++      "to": "TARGET_DATA2B_FEAS1_PERF1_EXACT_HARDENING",
+++      "type": "implementation_requires"
+++    },
+++    {
+++      "from": "TARGET_DATA2B_FEAS1_PERF1_EXACT_HARDENING",
+++      "to": "TARGET_DATA2C_MVIDX1_COVERAGE_INDEX",
+++      "type": "implementation_requires"
++     }
++   ],
++   "forbidden_dependencies": [
++@@ -4488,7 +4493,12 @@
++         "cross_support_fragile",
++         "optimization_required",
++         "provably_capacity_infeasible"
++-      ]
+++      ],
+++      "execution_hardening_release": "0.20.221a0",
+++      "execution_hardening_gate": "TARGET-DATA2B-FEAS1-PERF1",
+++      "vectorized_candidate_row_compression": true,
+++      "bounded_family_parallelism": true,
+++      "gpu_backend_used": false
++     },
++     {
++       "architecture_revision": 68,
++@@ -5125,7 +5135,45 @@
++       "silent_fallback_allowed": false,
++       "deterministic_control_role": "optional_diagnostic_only",
++       "final_gpu1_preflight_schema": "mdstats.mlff-final-gpu1.preflight.2026-08.v10"
+++    },
+++    {
+++      "id": "CAMPAIGN_WARNING_DOMAIN",
+++      "gate_name": "WARN-DOMAIN1",
+++      "architecture_revision": 87,
+++      "authority_class": "campaign_runtime_observability_control",
+++      "implementation_status": "implemented",
+++      "implemented_release": "0.20.220a0",
+++      "python_warning_domain": "entire_campaign_command",
+++      "logging_warning_domain": "MACE_PyTorch_WARNING_plus",
+++      "root_logger_mace_capture": true,
+++      "worker_thread_scope_merge": true,
+++      "normalized_campaign_summary": "single_[WARN]_line",
+++      "raw_upstream_warning_leak_allowed": false,
+++      "unrelated_warning_behavior": "preserved",
+++      "scientific_authority_changed": false,
+++      "superseded_scientific_gate": null,
+++      "retained_parity_gate": "CUEQ-REPEAT1-PARITY1"
+++    },
+++    {
+++      "id": "TARGET_DATA2B_FEAS1_PERF1_EXACT_HARDENING",
+++      "gate_name": "TARGET-DATA2B-FEAS1-PERF1",
+++      "architecture_revision": 88,
+++      "authority_class": "performance_exact_equivalence",
+++      "implementation_status": "implemented_exact_performance_hardening",
+++      "implemented_release": "0.20.221a0",
+++      "scientific_schema_changed": false,
+++      "scientific_digest_changed": false,
+++      "coverage_metric_changed": false,
+++      "candidate_ceiling_changed": false,
+++      "vectorized_row_candidate_deduplication": true,
+++      "historical_fp64_accumulation_order_preserved": true,
+++      "family_level_parallelism": "bounded_stage_resource_scope",
+++      "automatic_tree_worker_cap_single_family": 16,
+++      "mvidx1_uses_shared_vectorized_row_kernel": true,
+++      "gpu_neighborhood_backend_authorized": false,
+++      "final_gpu1_qualification_deferred": true,
+++      "runtime_selector_changed": false
++     }
++   ],
++-  "schema_version": 68
+++  "schema_version": 70
++ }
++diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/pyproject.toml /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/pyproject.toml
++--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/pyproject.toml	2026-08-17 06:31:08.000000000 +0000
+++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/pyproject.toml	2026-08-17 07:05:19.685275178 +0000
++@@ -4,7 +4,7 @@
++ 
++ [project]
++ name = "mdstats"
++-version = "0.20.220a0"
+++version = "0.20.221a0"
++ description = "Transparent atomistic frame collections and structural/dynamical statistics"
++ requires-python = ">=3.10"
++ dependencies = [
++diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/release/MLFF_TARGET_DATA2B_FEAS1_PERF1_QUALIFICATION_0.20.221a0.json /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/release/MLFF_TARGET_DATA2B_FEAS1_PERF1_QUALIFICATION_0.20.221a0.json
++--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/release/MLFF_TARGET_DATA2B_FEAS1_PERF1_QUALIFICATION_0.20.221a0.json	1970-01-01 00:00:00.000000000 +0000
+++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/release/MLFF_TARGET_DATA2B_FEAS1_PERF1_QUALIFICATION_0.20.221a0.json	2026-08-17 07:08:58.588393394 +0000
++@@ -0,0 +1,50 @@
+++{
+++  "schema": "mdstats.mlff.target-data2b-feas1-perf1.release-qualification.v1",
+++  "release": "0.20.221a0",
+++  "date": "2026-08-17",
+++  "gate": "TARGET-DATA2B-FEAS1-PERF1",
+++  "architecture_revision": 88,
+++  "dependency_graph_schema": 70,
+++  "status": "PASS",
+++  "scientific_authority_changed": false,
+++  "gpu_neighborhood_backend_authorized": false,
+++  "implementation": {
+++    "feas1_row_reduction": "vectorized packed row/candidate canonical unique",
+++    "candidate_gain_accumulation": "historical row-major/candidate-major FP64 np.add.at",
+++    "support_mass_accumulation": "historical witness-order FP64 np.add.accumulate",
+++    "family_parallelism": "bounded ThreadPoolExecutor under StageResourceScope",
+++    "mvidx1_row_build": "shared vectorized canonical compressor",
+++    "new_execution_setting": "performance.target_coverage_feasibility_family_workers"
+++  },
+++  "validation": {
+++    "focused_feas1_mvidx1_downstream": {
+++      "passed": 40,
+++      "failed": 0
+++    },
+++    "target_data2_functional_non_specification": {
+++      "passed": 106,
+++      "failed": 0
+++    },
+++    "campaign_cli_and_current_specs": {
+++      "passed": 46,
+++      "skipped": 1,
+++      "failed": 0
+++    },
+++    "compileall": "PASS",
+++    "historical_version_pinned_specification_sweep": "excluded_from_current_release_metric",
+++    "pdf_render_preflight": "PASS"
+++  },
+++  "performance_evidence": {
+++    "host_visible_cpu_threads": 8,
+++    "candidate_frames": 8192,
+++    "families": 4,
+++    "witnesses_per_family": 16384,
+++    "query_block_size": 512,
+++    "historical_scalar_seconds": 1.631591477,
+++    "optimized_bounded_seconds": 0.985971677,
+++    "speedup": 1.654805625,
+++    "exact_family_report_identity": true,
+++    "role": "execution_only_synthetic_evidence"
+++  },
+++  "final_gpu1": "deferred_unchanged"
+++}
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/tests/test_mlff_campaign_warning_domain_specification.py /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/tests/test_mlff_campaign_warning_domain_specification.py
+--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/tests/test_mlff_campaign_warning_domain_specification.py	2026-08-17 06:31:19.000000000 +0000
++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/tests/test_mlff_campaign_warning_domain_specification.py	2026-08-17 07:05:19.685632339 +0000
+@@ -8,19 +8,19 @@
+ ROOT = Path(__file__).resolve().parents[1]
+ 
+ 
+-def test_rev87_warning_domain_release_manual_graph_and_spec_are_synchronized() -> None:
+-    assert mdstats.__version__ == "0.20.220a0"
++def test_rev87_warning_domain_is_retained_under_current_release() -> None:
++    assert mdstats.__version__ == "0.20.221a0"
+     manual = (ROOT / "docs/arch_manuals/mlff_training_data_architecture.md").read_text()
+     note = (ROOT / "ARCHITECTURE_NOTES_MLFF_REV87.md").read_text()
+     spec = (ROOT / "docs/specs/training_data/mlff_campaign_warning_domain_spec.md").read_text()
+-    assert "Revision 87 current gate: WARN-DOMAIN1" in manual
++    assert "Revision 87 historical gate: WARN-DOMAIN1" in manual
+     assert "0.20.220a0" in note
+     assert "WARNING:root:" in spec
+     assert "worker thread" in spec
+     graph = json.loads((ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json").read_text())
+-    assert graph["architecture_revision"] == 87
+-    assert graph["schema_version"] == 69
+-    assert graph["documentation_gate"] == "CAMPAIGN_WARNING_DOMAIN"
++    assert graph["architecture_revision"] >= 88
++    assert graph["schema_version"] >= 70
++    assert graph["documentation_gate"] == "TARGET_DATA2B_FEAS1_PERF1_EXACT_HARDENING"
+     nodes = {node["id"]: node for node in graph["nodes"]}
+     gate = nodes["CAMPAIGN_WARNING_DOMAIN"]
+     assert gate["root_logger_mace_capture"] is True
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/tests/test_mlff_cueq_train_noise_normalized_parity_specification.py /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/tests/test_mlff_cueq_train_noise_normalized_parity_specification.py
+--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/tests/test_mlff_cueq_train_noise_normalized_parity_specification.py	2026-08-17 06:31:19.000000000 +0000
++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/tests/test_mlff_cueq_train_noise_normalized_parity_specification.py	2026-08-17 07:05:19.685753849 +0000
+@@ -9,7 +9,7 @@
+ ROOT=Path(__file__).resolve().parents[1]
+ 
+ def test_rev86_permanent_parity_release_manual_graph_and_policies_are_synchronized():
+-    assert mdstats.__version__ == "0.20.220a0"
++    assert mdstats.__version__ == "0.20.221a0"
+     assert campaign_cli._training_acceleration_parity_policy().tolerance("float32") == (1.0e-5, 1.0e-6)
+     policy=campaign_cli._training_acceleration_noise_normalized_policy()
+     assert policy.repeat_count == 10 and policy.warmup_count == 1
+@@ -26,9 +26,9 @@
+     assert "0.20.219a0" in note
+     assert "ratio(m)" in spec and "1.25" in spec
+     graph=json.loads((ROOT/"docs/arch_manuals/mlff_training_data_dependency_graph.json").read_text())
+-    assert graph["architecture_revision"] >= 87
+-    assert graph["schema_version"] >= 69
+-    assert graph["documentation_gate"] == "CAMPAIGN_WARNING_DOMAIN"
++    assert graph["architecture_revision"] >= 88
++    assert graph["schema_version"] >= 70
++    assert graph["documentation_gate"] == "TARGET_DATA2B_FEAS1_PERF1_EXACT_HARDENING"
+     nodes={n["id"]:n for n in graph["nodes"]}
+     gate=nodes["CUEQ_TRAIN2_NOISE_NORMALIZED_PARITY"]
+     assert gate["cross_pair_count"] == 100
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/tests/test_mlff_target_data2b_feas1.py /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/tests/test_mlff_target_data2b_feas1.py
+--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/tests/test_mlff_target_data2b_feas1.py	2026-08-16 22:26:29.000000000 +0000
++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/tests/test_mlff_target_data2b_feas1.py	2026-08-17 07:03:53.176034639 +0000
+@@ -1,6 +1,6 @@
+ from __future__ import annotations
+ 
+-from dataclasses import dataclass
++from dataclasses import dataclass, replace
+ 
+ import numpy as np
+ import pytest
+@@ -181,6 +181,36 @@
+     )
+ 
+ 
++
++def test_feas1_vectorized_support_accumulation_is_bit_exact_to_scalar_order() -> None:
++    rng = np.random.default_rng(20260817)
++    degrees = rng.integers(0, 48, size=20_000, dtype=np.int64)
++    weights = rng.random(20_000, dtype=np.float64)
++    weights /= np.sum(weights, dtype=np.float64)
++    scalar = feas._SupportAccumulator((2, 4, 8, 16, 32))
++    for degree, weight in zip(degrees, weights, strict=True):
++        scalar.add(int(degree), float(weight))
++    vectorized = feas._SupportAccumulator((2, 4, 8, 16, 32))
++    vectorized.add_many(degrees, weights)
++    assert vectorized.freeze().to_dict() == scalar.freeze().to_dict()
++
++
++def test_feas1_family_parallelism_is_scientifically_invariant() -> None:
++    reference, role = _reference_and_role(split_units=True)
++    first_family = reference.domains[0].families[0]
++    second_family = replace(first_family, family_id="target_label:paired-secondary")
++    domain = replace(reference.domains[0], families=(first_family, second_family))
++    multifamily = replace(reference, domains=(domain,))
++
++    serial = mdstats.build_target_coverage_feasibility_report(
++        multifamily, role, query_workers=1, query_block_size=3, family_workers=1
++    )
++    parallel = mdstats.build_target_coverage_feasibility_report(
++        multifamily, role, query_workers=2, query_block_size=7, family_workers=2
++    )
++    assert parallel.to_dict() == serial.to_dict()
++    assert parallel.content_digest == serial.content_digest
++
+ def test_feas1_public_api_is_exported() -> None:
+     for name in (
+         "TargetCoverageFeasibilityPolicy",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/tests/test_mlff_target_data2b_feas1_perf1_specification.py /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/tests/test_mlff_target_data2b_feas1_perf1_specification.py
+--- /mnt/data/mdstats_perf_pristine/mdstats-0.20.220a0/tests/test_mlff_target_data2b_feas1_perf1_specification.py	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats_perf_inspect/mdstats-0.20.220a0/tests/test_mlff_target_data2b_feas1_perf1_specification.py	2026-08-17 07:06:22.723979726 +0000
+@@ -0,0 +1,30 @@
++from __future__ import annotations
++
++import json
++from pathlib import Path
++
++import mdstats
++
++ROOT = Path(__file__).resolve().parents[1]
++
++
++def test_rev88_feas1_perf1_release_manual_graph_and_spec_are_synchronized() -> None:
++    assert mdstats.__version__ == "0.20.221a0"
++    manual = (ROOT / "docs/arch_manuals/mlff_training_data_architecture.md").read_text()
++    note = (ROOT / "ARCHITECTURE_NOTES_MLFF_REV88.md").read_text()
++    spec = (ROOT / "docs/specs/training_data/mlff_target_data2b_feas1_perf1_spec.md").read_text()
++    assert "Revision 88 current gate: TARGET-DATA2B-FEAS1-PERF1" in manual
++    assert "0.20.221a0" in note
++    assert "target_coverage_feasibility_family_workers" in spec
++    assert "No GPU neighborhood backend is authorized" in spec
++
++    graph = json.loads((ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json").read_text())
++    assert graph["architecture_revision"] == 88
++    assert graph["schema_version"] == 70
++    assert graph["documentation_gate"] == "TARGET_DATA2B_FEAS1_PERF1_EXACT_HARDENING"
++    nodes = {node["id"]: node for node in graph["nodes"]}
++    gate = nodes["TARGET_DATA2B_FEAS1_PERF1_EXACT_HARDENING"]
++    assert gate["scientific_digest_changed"] is False
++    assert gate["vectorized_row_candidate_deduplication"] is True
++    assert gate["historical_fp64_accumulation_order_preserved"] is True
++    assert gate["gpu_neighborhood_backend_authorized"] is False

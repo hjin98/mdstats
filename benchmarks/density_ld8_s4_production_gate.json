@@ -1,0 +1,676 @@
+{
+  "aggregate_scientific_seconds": 80.51516542699756,
+  "aggregate_speedup_over_ld7": 4.218907061775716,
+  "baseline_ld7_scientific_seconds": 339.686,
+  "fields": [
+    {
+      "active_block_count": 1322,
+      "contour_support": [
+        {
+          "block_grid_shape": [
+            34,
+            34,
+            34
+          ],
+          "component_count": 24,
+          "crossing_block_count": 246,
+          "field_key": "atomic-density-0",
+          "halo_block_count": 2042,
+          "hdr_details": {
+            "achieved_mass_fraction": 0.5000003314218285,
+            "requested_mass_fraction": 0.5,
+            "schema_version": "mdstats.sparse-hdr-details.v1",
+            "selected_measure": 12.000007954123884,
+            "selected_node_count": 52739,
+            "threshold": 5.850224958183806,
+            "threshold_tie_count": 1,
+            "total_measure": 24.0
+          },
+          "metadata": {
+            "node_level_contouring_deferred_to_ld9": true,
+            "scientific_field_modified": false,
+            "support_kind": "conservative_block_extrema_with_periodic_boundary_detection"
+          },
+          "schema_version": "mdstats.density-contour-support.v1",
+          "selected_block_count": 246
+        },
+        {
+          "block_grid_shape": [
+            34,
+            34,
+            34
+          ],
+          "component_count": 24,
+          "crossing_block_count": 350,
+          "field_key": "atomic-density-0",
+          "halo_block_count": 2432,
+          "hdr_details": {
+            "achieved_mass_fraction": 0.8000021891917896,
+            "requested_mass_fraction": 0.8,
+            "schema_version": "mdstats.sparse-hdr-details.v1",
+            "selected_measure": 19.20005254060295,
+            "selected_node_count": 131644,
+            "threshold": 2.473590317726735,
+            "threshold_tie_count": 1,
+            "total_measure": 24.0
+          },
+          "metadata": {
+            "node_level_contouring_deferred_to_ld9": true,
+            "scientific_field_modified": false,
+            "support_kind": "conservative_block_extrema_with_periodic_boundary_detection"
+          },
+          "schema_version": "mdstats.density-contour-support.v1",
+          "selected_block_count": 350
+        },
+        {
+          "block_grid_shape": [
+            34,
+            34,
+            34
+          ],
+          "component_count": 24,
+          "crossing_block_count": 443,
+          "field_key": "atomic-density-0",
+          "halo_block_count": 2749,
+          "hdr_details": {
+            "achieved_mass_fraction": 0.9500004361688873,
+            "requested_mass_fraction": 0.95,
+            "schema_version": "mdstats.sparse-hdr-details.v1",
+            "selected_measure": 22.800010468053294,
+            "selected_node_count": 239693,
+            "threshold": 0.6837489562451188,
+            "threshold_tie_count": 1,
+            "total_measure": 24.0
+          },
+          "metadata": {
+            "node_level_contouring_deferred_to_ld9": true,
+            "scientific_field_modified": false,
+            "support_kind": "conservative_block_extrema_with_periodic_boundary_detection"
+          },
+          "schema_version": "mdstats.density-contour-support.v1",
+          "selected_block_count": 443
+        }
+      ],
+      "contour_support_seconds": 0.13422621300196624,
+      "direct_tile_count": 16,
+      "fallback_used": false,
+      "fft_nonpositive_node_repairs": 8,
+      "fft_tile_count": 99,
+      "field_key": "atomic-density-0",
+      "gaussian_bandwidth": 0.06430743339006272,
+      "grid_shape": [
+        540,
+        540,
+        540
+      ],
+      "hdr": {
+        "algorithm": "single_sort_chunked_multi_hdr_v1",
+        "details": [
+          {
+            "achieved_mass_fraction": 0.5000003314218285,
+            "requested_mass_fraction": 0.5,
+            "schema_version": "mdstats.sparse-hdr-details.v1",
+            "selected_measure": 12.000007954123884,
+            "selected_node_count": 52739,
+            "threshold": 5.850224958183806,
+            "threshold_tie_count": 1,
+            "total_measure": 24.0
+          },
+          {
+            "achieved_mass_fraction": 0.8000021891917896,
+            "requested_mass_fraction": 0.8,
+            "schema_version": "mdstats.sparse-hdr-details.v1",
+            "selected_measure": 19.20005254060295,
+            "selected_node_count": 131644,
+            "threshold": 2.473590317726735,
+            "threshold_tie_count": 1,
+            "total_measure": 24.0
+          },
+          {
+            "achieved_mass_fraction": 0.9500004361688873,
+            "requested_mass_fraction": 0.95,
+            "schema_version": "mdstats.sparse-hdr-details.v1",
+            "selected_measure": 22.800010468053294,
+            "selected_node_count": 239693,
+            "threshold": 0.6837489562451188,
+            "threshold_tie_count": 1,
+            "total_measure": 24.0
+          }
+        ],
+        "field_key": "atomic-density-0",
+        "fractions": [
+          0.5,
+          0.8,
+          0.95
+        ],
+        "metadata": {
+          "chunk_size": 1048576,
+          "full_length_cumulative_array_allocated": false,
+          "one_full_length_sort_copy": true,
+          "voxel_volume": 2.3505989866980605e-05
+        },
+        "peak_cumulative_chunk_bytes": 8388608,
+        "schema_version": "mdstats.density-hdr-batch.v1",
+        "sort_workspace_bytes": 13829648,
+        "value_count": 1728706
+      },
+      "integral": 24.0,
+      "label": "Na density",
+      "multi_hdr_seconds": 0.10142077899945434,
+      "nonzero_node_count": 1728706,
+      "peak_rss_bytes": 1045172224,
+      "production_backend": true,
+      "resolution_seconds": 6.639423342003283,
+      "retained_array_bytes": 14554112,
+      "scientific_seconds": 11.188892333000695,
+      "total_measure": 24.0
+    },
+    {
+      "active_block_count": 1381,
+      "contour_support": [
+        {
+          "block_grid_shape": [
+            65,
+            65,
+            65
+          ],
+          "component_count": 24,
+          "crossing_block_count": 187,
+          "field_key": "atomic-density-1",
+          "halo_block_count": 1703,
+          "hdr_details": {
+            "achieved_mass_fraction": 0.5000054199746964,
+            "requested_mass_fraction": 0.5,
+            "schema_version": "mdstats.sparse-hdr-details.v1",
+            "selected_measure": 12.000130079392713,
+            "selected_node_count": 51351,
+            "threshold": 43.425692340906224,
+            "threshold_tie_count": 1,
+            "total_measure": 24.0
+          },
+          "metadata": {
+            "node_level_contouring_deferred_to_ld9": true,
+            "scientific_field_modified": false,
+            "support_kind": "conservative_block_extrema_with_periodic_boundary_detection"
+          },
+          "schema_version": "mdstats.density-contour-support.v1",
+          "selected_block_count": 187
+        },
+        {
+          "block_grid_shape": [
+            65,
+            65,
+            65
+          ],
+          "component_count": 24,
+          "crossing_block_count": 308,
+          "field_key": "atomic-density-1",
+          "halo_block_count": 2195,
+          "hdr_details": {
+            "achieved_mass_fraction": 0.8000014940401904,
+            "requested_mass_fraction": 0.8,
+            "schema_version": "mdstats.sparse-hdr-details.v1",
+            "selected_measure": 19.20003585696457,
+            "selected_node_count": 129742,
+            "threshold": 17.043058797086843,
+            "threshold_tie_count": 1,
+            "total_measure": 24.0
+          },
+          "metadata": {
+            "node_level_contouring_deferred_to_ld9": true,
+            "scientific_field_modified": false,
+            "support_kind": "conservative_block_extrema_with_periodic_boundary_detection"
+          },
+          "schema_version": "mdstats.density-contour-support.v1",
+          "selected_block_count": 308
+        },
+        {
+          "block_grid_shape": [
+            65,
+            65,
+            65
+          ],
+          "component_count": 24,
+          "crossing_block_count": 419,
+          "field_key": "atomic-density-1",
+          "halo_block_count": 2613,
+          "hdr_details": {
+            "achieved_mass_fraction": 0.9500004879183587,
+            "requested_mass_fraction": 0.95,
+            "schema_version": "mdstats.sparse-hdr-details.v1",
+            "selected_measure": 22.800011710040607,
+            "selected_node_count": 242936,
+            "threshold": 4.6148128322870745,
+            "threshold_tie_count": 1,
+            "total_measure": 24.0
+          },
+          "metadata": {
+            "node_level_contouring_deferred_to_ld9": true,
+            "scientific_field_modified": false,
+            "support_kind": "conservative_block_extrema_with_periodic_boundary_detection"
+          },
+          "schema_version": "mdstats.density-contour-support.v1",
+          "selected_block_count": 419
+        }
+      ],
+      "contour_support_seconds": 0.14146045300003607,
+      "direct_tile_count": 18,
+      "fallback_used": false,
+      "fft_nonpositive_node_repairs": 1,
+      "fft_tile_count": 90,
+      "field_key": "atomic-density-1",
+      "gaussian_bandwidth": 0.033454734133558636,
+      "grid_shape": [
+        1038,
+        1038,
+        1038
+      ],
+      "hdr": {
+        "algorithm": "single_sort_chunked_multi_hdr_v1",
+        "details": [
+          {
+            "achieved_mass_fraction": 0.5000054199746964,
+            "requested_mass_fraction": 0.5,
+            "schema_version": "mdstats.sparse-hdr-details.v1",
+            "selected_measure": 12.000130079392713,
+            "selected_node_count": 51351,
+            "threshold": 43.425692340906224,
+            "threshold_tie_count": 1,
+            "total_measure": 24.0
+          },
+          {
+            "achieved_mass_fraction": 0.8000014940401904,
+            "requested_mass_fraction": 0.8,
+            "schema_version": "mdstats.sparse-hdr-details.v1",
+            "selected_measure": 19.20003585696457,
+            "selected_node_count": 129742,
+            "threshold": 17.043058797086843,
+            "threshold_tie_count": 1,
+            "total_measure": 24.0
+          },
+          {
+            "achieved_mass_fraction": 0.9500004879183587,
+            "requested_mass_fraction": 0.95,
+            "schema_version": "mdstats.sparse-hdr-details.v1",
+            "selected_measure": 22.800011710040607,
+            "selected_node_count": 242936,
+            "threshold": 4.6148128322870745,
+            "threshold_tie_count": 1,
+            "total_measure": 24.0
+          }
+        ],
+        "field_key": "atomic-density-1",
+        "fractions": [
+          0.5,
+          0.8,
+          0.95
+        ],
+        "metadata": {
+          "chunk_size": 1048576,
+          "full_length_cumulative_array_allocated": false,
+          "one_full_length_sort_copy": true,
+          "voxel_volume": 3.3095409836089654e-06
+        },
+        "peak_cumulative_chunk_bytes": 8388608,
+        "schema_version": "mdstats.density-hdr-batch.v1",
+        "sort_workspace_bytes": 14668728,
+        "value_count": 1833591
+      },
+      "integral": 24.0,
+      "label": "Si density",
+      "multi_hdr_seconds": 0.11410043399882852,
+      "nonzero_node_count": 1833591,
+      "peak_rss_bytes": 1040482304,
+      "production_backend": true,
+      "resolution_seconds": 5.130295481998473,
+      "retained_array_bytes": 15425524,
+      "scientific_seconds": 11.17176757299967,
+      "total_measure": 24.0
+    },
+    {
+      "active_block_count": 1432,
+      "contour_support": [
+        {
+          "block_grid_shape": [
+            65,
+            65,
+            65
+          ],
+          "component_count": 24,
+          "crossing_block_count": 203,
+          "field_key": "atomic-density-2",
+          "halo_block_count": 1757,
+          "hdr_details": {
+            "achieved_mass_fraction": 0.5000033144467281,
+            "requested_mass_fraction": 0.5,
+            "schema_version": "mdstats.sparse-hdr-details.v1",
+            "selected_measure": 12.000079546721475,
+            "selected_node_count": 56484,
+            "threshold": 38.81644974183642,
+            "threshold_tie_count": 1,
+            "total_measure": 24.0
+          },
+          "metadata": {
+            "node_level_contouring_deferred_to_ld9": true,
+            "scientific_field_modified": false,
+            "support_kind": "conservative_block_extrema_with_periodic_boundary_detection"
+          },
+          "schema_version": "mdstats.density-contour-support.v1",
+          "selected_block_count": 203
+        },
+        {
+          "block_grid_shape": [
+            65,
+            65,
+            65
+          ],
+          "component_count": 24,
+          "crossing_block_count": 343,
+          "field_key": "atomic-density-2",
+          "halo_block_count": 2367,
+          "hdr_details": {
+            "achieved_mass_fraction": 0.8000015935002122,
+            "requested_mass_fraction": 0.8,
+            "schema_version": "mdstats.sparse-hdr-details.v1",
+            "selected_measure": 19.200038244005093,
+            "selected_node_count": 144004,
+            "threshold": 15.343117099148827,
+            "threshold_tie_count": 1,
+            "total_measure": 24.0
+          },
+          "metadata": {
+            "node_level_contouring_deferred_to_ld9": true,
+            "scientific_field_modified": false,
+            "support_kind": "conservative_block_extrema_with_periodic_boundary_detection"
+          },
+          "schema_version": "mdstats.density-contour-support.v1",
+          "selected_block_count": 343
+        },
+        {
+          "block_grid_shape": [
+            65,
+            65,
+            65
+          ],
+          "component_count": 24,
+          "crossing_block_count": 455,
+          "field_key": "atomic-density-2",
+          "halo_block_count": 2737,
+          "hdr_details": {
+            "achieved_mass_fraction": 0.9500002393158452,
+            "requested_mass_fraction": 0.95,
+            "schema_version": "mdstats.sparse-hdr-details.v1",
+            "selected_measure": 22.800005743580286,
+            "selected_node_count": 268010,
+            "threshold": 4.219502048034277,
+            "threshold_tie_count": 1,
+            "total_measure": 24.0
+          },
+          "metadata": {
+            "node_level_contouring_deferred_to_ld9": true,
+            "scientific_field_modified": false,
+            "support_kind": "conservative_block_extrema_with_periodic_boundary_detection"
+          },
+          "schema_version": "mdstats.density-contour-support.v1",
+          "selected_block_count": 455
+        }
+      ],
+      "contour_support_seconds": 0.15012049100187141,
+      "direct_tile_count": 19,
+      "fallback_used": false,
+      "fft_nonpositive_node_repairs": 0,
+      "fft_tile_count": 100,
+      "field_key": "atomic-density-2",
+      "gaussian_bandwidth": 0.03348699520794008,
+      "grid_shape": [
+        1037,
+        1037,
+        1037
+      ],
+      "hdr": {
+        "algorithm": "single_sort_chunked_multi_hdr_v1",
+        "details": [
+          {
+            "achieved_mass_fraction": 0.5000033144467281,
+            "requested_mass_fraction": 0.5,
+            "schema_version": "mdstats.sparse-hdr-details.v1",
+            "selected_measure": 12.000079546721475,
+            "selected_node_count": 56484,
+            "threshold": 38.81644974183642,
+            "threshold_tie_count": 1,
+            "total_measure": 24.0
+          },
+          {
+            "achieved_mass_fraction": 0.8000015935002122,
+            "requested_mass_fraction": 0.8,
+            "schema_version": "mdstats.sparse-hdr-details.v1",
+            "selected_measure": 19.200038244005093,
+            "selected_node_count": 144004,
+            "threshold": 15.343117099148827,
+            "threshold_tie_count": 1,
+            "total_measure": 24.0
+          },
+          {
+            "achieved_mass_fraction": 0.9500002393158452,
+            "requested_mass_fraction": 0.95,
+            "schema_version": "mdstats.sparse-hdr-details.v1",
+            "selected_measure": 22.800005743580286,
+            "selected_node_count": 268010,
+            "threshold": 4.219502048034277,
+            "threshold_tie_count": 1,
+            "total_measure": 24.0
+          }
+        ],
+        "field_key": "atomic-density-2",
+        "fractions": [
+          0.5,
+          0.8,
+          0.95
+        ],
+        "metadata": {
+          "chunk_size": 1048576,
+          "full_length_cumulative_array_allocated": false,
+          "one_full_length_sort_copy": true,
+          "voxel_volume": 3.319124590551713e-06
+        },
+        "peak_cumulative_chunk_bytes": 8388608,
+        "schema_version": "mdstats.density-hdr-batch.v1",
+        "sort_workspace_bytes": 15620200,
+        "value_count": 1952525
+      },
+      "integral": 24.0,
+      "label": "Al density",
+      "multi_hdr_seconds": 0.11969363000025623,
+      "nonzero_node_count": 1952525,
+      "peak_rss_bytes": 1060270080,
+      "production_backend": true,
+      "resolution_seconds": 5.821898424997926,
+      "retained_array_bytes": 16404944,
+      "scientific_seconds": 12.658393978999811,
+      "total_measure": 24.0
+    },
+    {
+      "active_block_count": 5625,
+      "contour_support": [
+        {
+          "block_grid_shape": [
+            41,
+            41,
+            41
+          ],
+          "component_count": 99,
+          "crossing_block_count": 836,
+          "field_key": "atomic-density-3",
+          "halo_block_count": 7196,
+          "hdr_details": {
+            "achieved_mass_fraction": 0.5000005143556601,
+            "requested_mass_fraction": 0.5,
+            "schema_version": "mdstats.sparse-hdr-details.v1",
+            "selected_measure": 48.000049378143366,
+            "selected_node_count": 193003,
+            "threshold": 10.668421127943414,
+            "threshold_tie_count": 1,
+            "total_measure": 96.0
+          },
+          "metadata": {
+            "node_level_contouring_deferred_to_ld9": true,
+            "scientific_field_modified": false,
+            "support_kind": "conservative_block_extrema_with_periodic_boundary_detection"
+          },
+          "schema_version": "mdstats.density-contour-support.v1",
+          "selected_block_count": 836
+        },
+        {
+          "block_grid_shape": [
+            41,
+            41,
+            41
+          ],
+          "component_count": 96,
+          "crossing_block_count": 1344,
+          "field_key": "atomic-density-3",
+          "halo_block_count": 9435,
+          "hdr_details": {
+            "achieved_mass_fraction": 0.800000025345378,
+            "requested_mass_fraction": 0.8,
+            "schema_version": "mdstats.sparse-hdr-details.v1",
+            "selected_measure": 76.80000243315628,
+            "selected_node_count": 502164,
+            "threshold": 4.183519347499955,
+            "threshold_tie_count": 1,
+            "total_measure": 96.0
+          },
+          "metadata": {
+            "node_level_contouring_deferred_to_ld9": true,
+            "scientific_field_modified": false,
+            "support_kind": "conservative_block_extrema_with_periodic_boundary_detection"
+          },
+          "schema_version": "mdstats.density-contour-support.v1",
+          "selected_block_count": 1344
+        },
+        {
+          "block_grid_shape": [
+            41,
+            41,
+            41
+          ],
+          "component_count": 96,
+          "crossing_block_count": 1748,
+          "field_key": "atomic-density-3",
+          "halo_block_count": 10750,
+          "hdr_details": {
+            "achieved_mass_fraction": 0.950000024181726,
+            "requested_mass_fraction": 0.95,
+            "schema_version": "mdstats.sparse-hdr-details.v1",
+            "selected_measure": 91.2000023214457,
+            "selected_node_count": 946791,
+            "threshold": 1.1280092999507065,
+            "threshold_tie_count": 1,
+            "total_measure": 96.0
+          },
+          "metadata": {
+            "node_level_contouring_deferred_to_ld9": true,
+            "scientific_field_modified": false,
+            "support_kind": "conservative_block_extrema_with_periodic_boundary_detection"
+          },
+          "schema_version": "mdstats.density-contour-support.v1",
+          "selected_block_count": 1748
+        }
+      ],
+      "contour_support_seconds": 0.7014900129979651,
+      "direct_tile_count": 99,
+      "fallback_used": false,
+      "fft_nonpositive_node_repairs": 54,
+      "fft_tile_count": 402,
+      "field_key": "atomic-density-3",
+      "gaussian_bandwidth": 0.053755439675903814,
+      "grid_shape": [
+        646,
+        646,
+        646
+      ],
+      "hdr": {
+        "algorithm": "single_sort_chunked_multi_hdr_v1",
+        "details": [
+          {
+            "achieved_mass_fraction": 0.5000005143556601,
+            "requested_mass_fraction": 0.5,
+            "schema_version": "mdstats.sparse-hdr-details.v1",
+            "selected_measure": 48.000049378143366,
+            "selected_node_count": 193003,
+            "threshold": 10.668421127943414,
+            "threshold_tie_count": 1,
+            "total_measure": 96.0
+          },
+          {
+            "achieved_mass_fraction": 0.800000025345378,
+            "requested_mass_fraction": 0.8,
+            "schema_version": "mdstats.sparse-hdr-details.v1",
+            "selected_measure": 76.80000243315628,
+            "selected_node_count": 502164,
+            "threshold": 4.183519347499955,
+            "threshold_tie_count": 1,
+            "total_measure": 96.0
+          },
+          {
+            "achieved_mass_fraction": 0.950000024181726,
+            "requested_mass_fraction": 0.95,
+            "schema_version": "mdstats.sparse-hdr-details.v1",
+            "selected_measure": 91.2000023214457,
+            "selected_node_count": 946791,
+            "threshold": 1.1280092999507065,
+            "threshold_tie_count": 1,
+            "total_measure": 96.0
+          }
+        ],
+        "field_key": "atomic-density-3",
+        "fractions": [
+          0.5,
+          0.8,
+          0.95
+        ],
+        "metadata": {
+          "chunk_size": 1048576,
+          "full_length_cumulative_array_allocated": false,
+          "one_full_length_sort_copy": true,
+          "voxel_volume": 1.37297386406185e-05
+        },
+        "peak_cumulative_chunk_bytes": 8388608,
+        "schema_version": "mdstats.density-hdr-batch.v1",
+        "sort_workspace_bytes": 58193520,
+        "value_count": 7274190
+      },
+      "integral": 96.0,
+      "label": "O density",
+      "multi_hdr_seconds": 0.5560816159995738,
+      "nonzero_node_count": 7274190,
+      "peak_rss_bytes": 1307914240,
+      "production_backend": true,
+      "resolution_seconds": 23.853863164997165,
+      "retained_array_bytes": 61276028,
+      "scientific_seconds": 45.49611154199738,
+      "total_measure": 96.0
+    }
+  ],
+  "gate_checks": {
+    "aggregate_scientific_seconds_le_120": true,
+    "aggregate_speedup_ge_3": true,
+    "all_channel_peak_rss_le_1_5_gib": true,
+    "all_four_species_present": true,
+    "all_integrals_exact": true,
+    "all_production_backend": true,
+    "no_fallback": true,
+    "three_hdr_levels_each": true
+  },
+  "gate_passed": true,
+  "host": {
+    "logical_cpu_count": 56,
+    "numpy": "2.3.5",
+    "platform": "Linux-4.4.0-x86_64-with-glibc2.41",
+    "python": "3.13.5"
+  },
+  "kernel_tail_tolerance": 1e-08,
+  "scene": "/mnt/data/mdstats_0_19_53a0_TRAJECTORY4_scene.pkl",
+  "schema": "mdstats.density-ld8-s4-production-gate.v1",
+  "total_wall_seconds": 124.70814027199958
+}

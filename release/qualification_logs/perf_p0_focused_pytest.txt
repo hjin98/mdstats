@@ -1,0 +1,19 @@
+.......................................................s................ [ 87%]
+..........                                                               [100%]
+=============================== warnings summary ===============================
+tests/test_mlff_target_data2b_coverage.py::test_target_data2b_builds_only_on_frozen_development_domain_and_full_selection_passes
+tests/test_mlff_target_data2b_coverage.py::test_target_data2b_authority_fails_closed_if_data6_changes
+tests/test_mlff_target_data2b_coverage.py::test_target_data2b_campaign_authority_persists_and_reuses_without_rebuild
+tests/test_mlff_target_data2b_coverage.py::test_target_data2b_consumes_profile_features_and_environment_classes_through_generic_adapter
+tests/test_mlff_target_data2b_coverage.py::test_target_data2b_reference_digest_is_worker_count_invariant
+  /mnt/data/mdstats_perf_p0/work/mdstats-0.20.179a0-complete-source-package-perf-p0/mdstats/io/vasp.py:406: VelocityReconstructionWarning: Velocities were reconstructed from unwrapped Cartesian positions. High-frequency velocity spectra may be distorted.
+    collection = normalize_raw_frame_collection(
+
+tests/test_mlff_target_data2b_coverage.py::test_target_data2b_consumes_profile_features_and_environment_classes_through_generic_adapter
+  /mnt/data/mdstats_perf_p0/work/mdstats-0.20.179a0-complete-source-package-perf-p0/mdstats/preprocess/normalize.py:151: VelocityReconstructionWarning: Only two frames are available; assigning the same first-order finite-difference velocity to both frames.
+    velocities = reconstruct_velocities(cartesian, raw.times)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+SKIPPED [1] tests/test_mlff_campaign_cli.py:346: real LTA training root not supplied
+81 passed, 1 skipped, 6 warnings in 9.88s

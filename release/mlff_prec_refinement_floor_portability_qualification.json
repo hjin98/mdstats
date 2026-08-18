@@ -1,0 +1,19 @@
+{
+  "schema": "mdstats.mlff-precision-floor-portability-qualification.v1",
+  "package_version": "0.20.118a0",
+  "date": "2026-08-08",
+  "qualified_behaviors": [
+    "canonical_refine_n512_small_exposure_preserves_24_6_schedule",
+    "canonical_refine_replay_sized_exposure_enforces_15000_update_reference_floor",
+    "hard_three_epoch_floor_remains_enforced",
+    "custom_infeasible_update_floor_fails_closed",
+    "require_update_floor_false_disables_update_enforcement",
+    "data8_binds_achievable_effective_floor_into_resolved_protocol"
+  ],
+  "focused_test_result": {
+    "passed": 42,
+    "skipped": 1,
+    "skip_reason": "torch_ema not installed in qualification sandbox; runtime continuation test dependency only"
+  },
+  "scientific_contract_note": "The exact canonical 15,000-update value is treated as a replay-calibrated reference floor only when it is mathematically impossible within the entire staged budget and the nominal canonical FP64 tail already satisfies the hard three-epoch floor. Custom schedules remain strict."
+}

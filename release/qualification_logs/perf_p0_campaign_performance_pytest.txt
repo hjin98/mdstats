@@ -1,0 +1,14 @@
+..............                                                           [100%]
+=============================== warnings summary ===============================
+tests/test_mlff_campaign_performance.py::test_campaign_store_shards_data4_without_full_payload_materialization
+tests/test_mlff_campaign_performance.py::test_campaign_store_rewrites_corrupt_existing_data4_shards
+  /mnt/data/mdstats_perf_p0/work/mdstats-0.20.179a0-complete-source-package-perf-p0/mdstats/preprocess/normalize.py:151: VelocityReconstructionWarning: Only two frames are available; assigning the same first-order finite-difference velocity to both frames.
+    velocities = reconstruct_velocities(cartesian, raw.times)
+
+tests/test_mlff_campaign_performance.py::test_campaign_store_shards_data4_without_full_payload_materialization
+tests/test_mlff_campaign_performance.py::test_campaign_store_rewrites_corrupt_existing_data4_shards
+  /mnt/data/mdstats_perf_p0/work/mdstats-0.20.179a0-complete-source-package-perf-p0/mdstats/io/vasp.py:406: VelocityReconstructionWarning: Velocities were reconstructed from unwrapped Cartesian positions. High-frequency velocity spectra may be distorted.
+    collection = normalize_raw_frame_collection(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+14 passed, 4 warnings in 3.00s

@@ -1,0 +1,2752 @@
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/CHANGELOG.md mdstats-0.20.120a0-complete-source-package/CHANGELOG.md
+--- mdstats-0.20.119a0-complete-source-package/CHANGELOG.md	2026-08-09 04:25:44.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/CHANGELOG.md	2026-08-09 05:00:44.349832152 +0000
+@@ -1,3 +1,11 @@
++## 0.20.120a0 - 2026-08-08
++
++- Implement PAR-DENS0 basin-aware adaptive spread estimation for atomic-density planning. Production density resolution now excludes transition/passage material through authoritative site/Stage-11 adapters when supplied, or a conservative density-independent provisional residence prepass otherwise.
++- Add per-basin spread and convergence diagnostics, including accepted/excluded samples, represented residence weights, independent stratified-replicate uncertainty, deterministic represented-time convergence anchors, and bounded escalation.
++- Replace the normal compact-basin quadratic weighted-medoid initialization with an O(N)-per-iteration circular/Karcher fast path while retaining the historical multi-start medoid solver as a fail-safe for uncertified noncompact basins.
++- Qualify the new defaults on the supplied 10,001-frame 300 K Na-LTA trajectory: 512-effective-frame Na reference 0.0746859880 A versus 0.0746688146 A full-trajectory reference (+0.023%); the two-basin Na ion changes from 0.195859 A global-mixture spread to 0.078787 A production within-basin spread, with 156 passage-boundary samples excluded.
++- Preserve low-level one-replicate/global behavior for callers that do not opt in, while atomic-density production defaults use basin_mode=auto, four 128-stratum uncertainty replicates, a 1% deterministic convergence test, and bounded escalation to eight replicate-equivalent coverage levels. PAR-DENS1 is the next gate.
++
+ ## 0.20.119a0 - 2026-08-08
+ 
+ - Add the normative PAR-DENS0--PAR-DENS6 architecture sequence for long-trajectory atomic/framework density work. The sequence orders basin-aware vibrational-spread correctness before execution cost calibration, CPU/RAM scheduling, parallel density kernels, preprocessing parallelism, optional GPU acceleration, and end-to-end qualification.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/PATCH_NOTES_0.20.120a0.md mdstats-0.20.120a0-complete-source-package/PATCH_NOTES_0.20.120a0.md
+--- mdstats-0.20.119a0-complete-source-package/PATCH_NOTES_0.20.120a0.md	1970-01-01 00:00:00.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/PATCH_NOTES_0.20.120a0.md	2026-08-09 05:00:44.350015283 +0000
+@@ -0,0 +1,15 @@
++# mdstats 0.20.120a0 patch notes
++
++## PAR-DENS0 - basin-aware spread qualification
++
++This release implements the first long-trajectory density gate. Adaptive positional spread is now defined as a pooled **within-basin** second moment rather than a single-global-mean mixture variance. Transition/passages, unknown/unresolved membership, conflicts, and retained excursions are excluded from the vibrational-width estimator.
++
++Production density resolution uses a conservative hierarchy: authoritative Stage-11E6 or geometry-based site labels may be translated into spread labels; otherwise `basin_mode=auto` runs a density-independent provisional residence prepass so density resolution does not depend circularly on the high-resolution density it is planning.
++
++The default convergence protocol separates two jobs that were previously conflated. Four independent 128-stratum random replicates estimate sampling uncertainty, while deterministic represented-time midpoint anchors at 256 and 512 effective samples establish the production point estimate and convergence. Coverage escalates in bounded groups, up to eight replicate-equivalent levels by default, when the anchor has not converged to 1%.
++
++Compact periodic basins now use an O(N)-per-iteration circular/Karcher fast path and only fall back to the historical quadratic weighted-medoid multi-start path when compactness cannot be certified. This makes full-trajectory validation practical for localized ions.
++
++On the supplied 10,001-frame 300 K Na-LTA trajectory, the full reference is 0.0746688146 A and the 512-effective-frame production anchor is 0.0746859880 A (+0.023%). The identified two-basin Na ion is 0.195859 A under the old global-mixture definition, 0.079601 A under the full within-basin definition, and 0.078787 A under the production estimator; 156 passage-boundary samples are excluded. The random-replicate 95% relative confidence half-width is 3.95% and is reported separately from the 0.52% 256-to-512 deterministic convergence change.
++
++PAR-DENS1 (execution-faithful direct/FFT calibration) is next. No density parallel scheduler or GPU backend is enabled by this release.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/PKG-INFO mdstats-0.20.120a0-complete-source-package/PKG-INFO
+--- mdstats-0.20.119a0-complete-source-package/PKG-INFO	2026-08-09 04:25:44.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/PKG-INFO	2026-08-09 05:00:29.573898576 +0000
+@@ -1,6 +1,6 @@
+ Metadata-Version: 2.4
+ Name: mdstats
+-Version: 0.20.119a0
++Version: 0.20.120a0
+ Summary: Transparent atomistic frame collections and structural/dynamical statistics
+ Requires-Python: >=3.10
+ Requires-Dist: numpy>=1.26
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/docs/arch_manuals/mdstats_dynamical_framework_density_architecture_standard.md mdstats-0.20.120a0-complete-source-package/docs/arch_manuals/mdstats_dynamical_framework_density_architecture_standard.md
+--- mdstats-0.20.119a0-complete-source-package/docs/arch_manuals/mdstats_dynamical_framework_density_architecture_standard.md	2026-08-09 04:25:22.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/docs/arch_manuals/mdstats_dynamical_framework_density_architecture_standard.md	2026-08-09 05:03:36.843103049 +0000
+@@ -4586,9 +4586,9 @@
+ 
+ # PAR-DENS long-trajectory density refinement and parallel-execution plan
+ 
+-**Status:** `not_started` as a runtime implementation in `mdstats 0.20.119a0`.
+-This section freezes the next ordered implementation sequence. It does not claim that
+-any PAR-DENS gate is already active in production.
++**Status:** PAR-DENS0 is `completed` in `mdstats 0.20.120a0`; PAR-DENS1 is the next
++implementation gate. The remaining gates stay ordered and inactive until their
++predecessors qualify.
+ 
+ The trigger for this plan is the long-trajectory LTA density workflow. The current
+ plotting stack already owns a scheduler/cgroup-aware runtime budget through LD10 and
+@@ -4725,7 +4725,7 @@
+ 
+ ## PAR-DENS0 - basin-aware, convergence-qualified spread estimation
+ 
+-**Status:** `not_started`.
++**Status:** `completed` in `mdstats 0.20.120a0`.
+ 
+ PAR-DENS0 is the scientific-correctness gate and must be completed before any
+ performance gate changes automatic density planning.
+@@ -4742,9 +4742,10 @@
+   estimators and/or replicated small stratified solves; a deterministic fallback to
+   the existing periodic Frechet/Karcher diagnostic remains required when compactness
+   cannot be certified;
+-- use replicated stratified coverage as the initial production strategy. The first
+-  candidate is four independent 128-stratum replicates (effective coverage about 512
+-  frames) combined by the law of total second moments rather than concatenated into
++- use replicated stratified coverage as the initial production strategy. Four
++  independent 128-stratum random replicates estimate sampling uncertainty, while
++  deterministic represented-time midpoint anchors at approximately 256 and 512
++  effective samples establish the production point estimate and convergence without
+   one quadratic medoid solve;
+ - expose replicate dispersion and convergence diagnostics. Automatic escalation may
+   increase effective coverage when the reference changes materially between levels or
+@@ -4766,6 +4767,71 @@
+ - increasing sample coverage cannot reintroduce the current quadratic runtime growth
+   as the normal compact-basin path.
+ 
++### PAR-DENS0 implementation record (0.20.120a0)
++
++The completed implementation refines the planning candidate in one important way.
++Four independent 128-stratum random solves are retained for **sampling-uncertainty
++estimation**, but they are not averaged into the production point estimate. Regression
++on the Na-LTA trajectory showed that a four-replicate random pooled estimate can still
++move slightly beyond the 1% point-estimate target for an unlucky seed. The compact
++periodic-mean fast path removes the reason to accept that seed sensitivity. Production
++therefore uses a deterministic represented-time midpoint convergence anchor:
++
++1. four independent 128-stratum random replicates estimate sampling dispersion;
++2. deterministic 256- and 512-stratum midpoint anchors establish the point estimate
++   and the first convergence comparison;
++3. if the relative 256-to-512 change exceeds the configured tolerance, coverage
++   escalates in bounded groups up to the configured maximum replicate-equivalent
++   coverage;
++4. random-replicate Student-t uncertainty is centered on the final deterministic
++   anchor, so deterministic convergence is not confused with finite-trajectory
++   statistical certainty.
++
++The implementation adds `BasinSpreadDiagnostic`, `SpreadConvergenceDiagnostic`, and
++version-3 `PeriodicSpreadDiagnostics`. Authoritative labels may be supplied directly,
++or translated from geometry-based site assignment or from Stage-11E6 final
++hysteretic segmentation. The Stage-11E6 adapter requires both residence lineage and
++final `CORE`/`BASIN` membership; retained excursions, passages, conflicts, and
++unknown/unresolved samples remain excluded even when they occur inside the span of a
++residence. When authoritative labels are unavailable, `basin_mode=auto` invokes the
++conservative density-independent provisional residence prepass specified above.
++
++Compact basins now use a circular/Karcher initialization and an `O(N)`-per-iteration
++periodic mean path. The historical weighted-medoid multi-start path remains only as a
++certification fallback for noncompact/ambiguous basins. Consequently, using all
++10,001 frames no longer forces the normal `O(N_sample^2)` medoid cost. Low-level
++direct callers preserve the historical one-replicate/global defaults unless they opt
++into basin-aware replicated behavior, while production atomic-density resolution
++defaults to `basin_mode=auto`, four 128-stratum uncertainty replicates, a maximum of
++eight replicate-equivalent coverage levels, and a 1% convergence threshold.
++
++The supplied 10,001-frame 300 K Na-LTA regression qualified as follows after framework
++translation registration:
++
++| Quantity | Qualified result |
++|---|---:|
++| full-trajectory global Na reference | 0.0746688146 Angstrom |
++| full-trajectory basin-aware Na reference | 0.0746688146 Angstrom |
++| 512-effective-frame production anchor | 0.0746859880 Angstrom |
++| production-anchor error vs full reference | +0.023% |
++| 256-to-512 anchor relative change | 0.521% |
++| random-replicate 95% relative half-width | 3.95% |
++| two-basin Na global mixture spread | 0.195859 Angstrom |
++| two-basin Na full within-basin spread | 0.079601 Angstrom |
++| two-basin Na production within-basin spread | 0.078787 Angstrom |
++| transition-boundary samples excluded for that Na | 156 |
++
++The full species reference is unchanged here because only one of 24 Na ions is
++transition-contaminated and the approved species reference remains the validity-filtered
++10th percentile. That numerical coincidence is not used as the transition-removal
++mechanism: the per-ion two-basin regression demonstrates that between-basin motion is
++actually removed. The remaining ~3.95% random-replicate confidence half-width is
++reported rather than hidden and is distinct from the <1% deterministic convergence
++criterion.
++
++PAR-DENS0 is therefore closed. PAR-DENS1 may change planner calibration and backend
++ranking, but may not alter these spread semantics.
++
+ ## PAR-DENS1 - execution-faithful direct/FFT cost calibration
+ 
+ **Status:** `not_started`; depends on PAR-DENS0.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/mdstats/__init__.py mdstats-0.20.120a0-complete-source-package/mdstats/__init__.py
+--- mdstats-0.20.119a0-complete-source-package/mdstats/__init__.py	2026-08-08 22:02:02.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/mdstats/__init__.py	2026-08-09 04:50:37.710547330 +0000
+@@ -1027,14 +1027,18 @@
+     CELL_EQUIVALENCE_ABSOLUTE_TOLERANCE,
+     CELL_EQUIVALENCE_RELATIVE_TOLERANCE,
+     SPREAD_QUANTILE_METHOD,
++    BasinSpreadDiagnostic,
+     CellEquivalenceReport,
+     PeriodicMeanDiagnostic,
+     PeriodicMeanPolicy,
+     PeriodicSpreadDiagnostics,
++    SpreadConvergenceDiagnostic,
+     ReciprocalResolutionDiagnostic,
+     evaluate_cell_equivalence,
+     periodic_frechet_mean_diagnostic,
+     periodic_item_spread_diagnostics,
++    spread_basin_labels_from_final_segmentation,
++    spread_basin_labels_from_site_assignment,
+     reciprocal_resolution_diagnostic,
+     require_equivalent_laboratory_density_cells,
+     AtomicDensity3DRenderOptions,
+@@ -2057,14 +2061,18 @@
+     "CELL_EQUIVALENCE_ABSOLUTE_TOLERANCE",
+     "CELL_EQUIVALENCE_RELATIVE_TOLERANCE",
+     "SPREAD_QUANTILE_METHOD",
++    "BasinSpreadDiagnostic",
+     "CellEquivalenceReport",
+     "PeriodicMeanDiagnostic",
+     "PeriodicMeanPolicy",
+     "PeriodicSpreadDiagnostics",
++    "SpreadConvergenceDiagnostic",
+     "ReciprocalResolutionDiagnostic",
+     "evaluate_cell_equivalence",
+     "periodic_frechet_mean_diagnostic",
+     "periodic_item_spread_diagnostics",
++    "spread_basin_labels_from_final_segmentation",
++    "spread_basin_labels_from_site_assignment",
+     "reciprocal_resolution_diagnostic",
+     "require_equivalent_laboratory_density_cells",
+     "AtomicDensity3DRenderOptions",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/mdstats/_version.py mdstats-0.20.120a0-complete-source-package/mdstats/_version.py
+--- mdstats-0.20.119a0-complete-source-package/mdstats/_version.py	2026-08-09 04:25:44.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/mdstats/_version.py	2026-08-09 05:00:29.572976926 +0000
+@@ -1,3 +1,3 @@
+ """Package version."""
+ 
+-__version__ = "0.20.119a0"
++__version__ = "0.20.120a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/mdstats/analysis/density/__init__.py mdstats-0.20.120a0-complete-source-package/mdstats/analysis/density/__init__.py
+--- mdstats-0.20.119a0-complete-source-package/mdstats/analysis/density/__init__.py	2026-08-05 18:20:00.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/mdstats/analysis/density/__init__.py	2026-08-09 04:50:37.710130052 +0000
+@@ -872,14 +872,18 @@
+     CELL_EQUIVALENCE_ABSOLUTE_TOLERANCE,
+     CELL_EQUIVALENCE_RELATIVE_TOLERANCE,
+     SPREAD_QUANTILE_METHOD,
++    BasinSpreadDiagnostic,
+     CellEquivalenceReport,
+     PeriodicMeanDiagnostic,
+     PeriodicMeanPolicy,
+     PeriodicSpreadDiagnostics,
++    SpreadConvergenceDiagnostic,
+     ReciprocalResolutionDiagnostic,
+     evaluate_cell_equivalence,
+     periodic_frechet_mean_diagnostic,
+     periodic_item_spread_diagnostics,
++    spread_basin_labels_from_final_segmentation,
++    spread_basin_labels_from_site_assignment,
+     reciprocal_resolution_diagnostic,
+     require_equivalent_laboratory_density_cells,
+ )
+@@ -911,14 +915,18 @@
+     "CELL_EQUIVALENCE_ABSOLUTE_TOLERANCE",
+     "CELL_EQUIVALENCE_RELATIVE_TOLERANCE",
+     "SPREAD_QUANTILE_METHOD",
++    "BasinSpreadDiagnostic",
+     "CellEquivalenceReport",
+     "PeriodicMeanDiagnostic",
+     "PeriodicMeanPolicy",
+     "PeriodicSpreadDiagnostics",
++    "SpreadConvergenceDiagnostic",
+     "ReciprocalResolutionDiagnostic",
+     "evaluate_cell_equivalence",
+     "periodic_frechet_mean_diagnostic",
+     "periodic_item_spread_diagnostics",
++    "spread_basin_labels_from_final_segmentation",
++    "spread_basin_labels_from_site_assignment",
+     "reciprocal_resolution_diagnostic",
+     "require_equivalent_laboratory_density_cells",
+     "DENSITY_STENCIL_MOMENTS_SCHEMA",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/mdstats/analysis/density/diagnostics.py mdstats-0.20.120a0-complete-source-package/mdstats/analysis/density/diagnostics.py
+--- mdstats-0.20.119a0-complete-source-package/mdstats/analysis/density/diagnostics.py	2026-08-05 18:20:00.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/mdstats/analysis/density/diagnostics.py	2026-08-09 04:59:19.263699959 +0000
+@@ -30,7 +30,9 @@
+ CELL_EQUIVALENCE_RELATIVE_TOLERANCE = 1.0e-10
+ SPREAD_QUANTILE_METHOD = "linear"
+ PERIODIC_MEAN_DIAGNOSTIC_SCHEMA = "mdstats.periodic-mean-diagnostic.v1"
+-PERIODIC_SPREAD_DIAGNOSTIC_SCHEMA = "mdstats.periodic-spread-diagnostic.v2"
++PERIODIC_SPREAD_DIAGNOSTIC_SCHEMA = "mdstats.periodic-spread-diagnostic.v3"
++BASIN_SPREAD_DIAGNOSTIC_SCHEMA = "mdstats.basin-spread-diagnostic.v1"
++SPREAD_CONVERGENCE_DIAGNOSTIC_SCHEMA = "mdstats.spread-convergence-diagnostic.v1"
+ RECIPROCAL_RESOLUTION_SCHEMA = "mdstats.reciprocal-resolution.v1"
+ CELL_EQUIVALENCE_SCHEMA = "mdstats.cell-equivalence.v1"
+ 
+@@ -649,8 +651,155 @@
+ 
+ 
+ @dataclass(frozen=True, slots=True)
++class BasinSpreadDiagnostic:
++    """One qualified basin contribution to a basin-aware item spread."""
++
++    item_index: int
++    basin_id: int
++    mean_cartesian: FloatArray
++    standard_deviation: float
++    mean_square_radius: float
++    represented_weight: float
++    source_sample_count: int
++    sampled_count: int
++    replicate_count: int
++    compact_fast_path_count: int
++    fallback_mean_count: int
++    schema_version: str = BASIN_SPREAD_DIAGNOSTIC_SCHEMA
++
++    def __post_init__(self) -> None:
++        mean = _readonly(self.mean_cartesian, np.float64, ndim=1, name="mean_cartesian")
++        if mean.shape != (3,):
++            raise DensityNumericalInputError("Basin mean_cartesian must have shape (3,).")
++        for name in ("item_index", "basin_id", "source_sample_count", "sampled_count",
++                     "replicate_count", "compact_fast_path_count", "fallback_mean_count"):
++            value = getattr(self, name)
++            if isinstance(value, bool) or int(value) < 0:
++                raise DensityNumericalInputError(f"{name} must be a nonnegative integer.")
++            object.__setattr__(self, name, int(value))
++        for name in ("standard_deviation", "mean_square_radius", "represented_weight"):
++            value = float(getattr(self, name))
++            if not np.isfinite(value) or value < 0.0:
++                raise DensityNumericalInputError(f"{name} must be finite and nonnegative.")
++            object.__setattr__(self, name, value)
++        object.__setattr__(self, "mean_cartesian", mean)
++
++    def metadata_dict(self) -> dict[str, Any]:
++        return {
++            "schema": self.schema_version,
++            "item_index": self.item_index,
++            "basin_id": self.basin_id,
++            "mean_cartesian": tuple(float(v) for v in self.mean_cartesian),
++            "standard_deviation": self.standard_deviation,
++            "mean_square_radius": self.mean_square_radius,
++            "represented_weight": self.represented_weight,
++            "source_sample_count": self.source_sample_count,
++            "sampled_count": self.sampled_count,
++            "replicate_count": self.replicate_count,
++            "compact_fast_path_count": self.compact_fast_path_count,
++            "fallback_mean_count": self.fallback_mean_count,
++        }
++
++
++@dataclass(frozen=True, slots=True)
++class SpreadConvergenceDiagnostic:
++    """Replicate dispersion and progressive convergence for one spread reference."""
++
++    replicate_reference_standard_deviations: FloatArray
++    progressive_reference_standard_deviations: FloatArray
++    reference_standard_error: float | None
++    confidence_level: float
++    confidence_interval_low: float | None
++    confidence_interval_high: float | None
++    relative_confidence_half_width: float | None
++    requested_replicate_count: int
++    realized_replicate_count: int
++    max_replicate_count: int
++    effective_sample_count: int
++    escalation_occurred: bool
++    convergence_relative_change: float | None
++    converged: bool
++    schema_version: str = SPREAD_CONVERGENCE_DIAGNOSTIC_SCHEMA
++
++    def __post_init__(self) -> None:
++        replicate = np.array(
++            self.replicate_reference_standard_deviations, dtype=np.float64, copy=True
++        )
++        progressive = np.array(
++            self.progressive_reference_standard_deviations, dtype=np.float64, copy=True
++        )
++        if replicate.ndim != 1 or progressive.ndim != 1:
++            raise DensityNumericalInputError(
++                "Spread convergence reference arrays must be one-dimensional."
++            )
++        if np.any(np.isinf(replicate)) or np.any(np.isinf(progressive)):
++            raise DensityNumericalInputError(
++                "Spread convergence reference arrays cannot contain infinities."
++            )
++        replicate.setflags(write=False); progressive.setflags(write=False)
++        # Random-replicate uncertainty samples and deterministic progressive
++        # convergence anchors intentionally have different cardinalities.  The
++        # former estimate sampling dispersion; the latter establish the point
++        # estimate at increasing represented-time coverage.
++        for name in ("requested_replicate_count", "realized_replicate_count",
++                     "max_replicate_count", "effective_sample_count"):
++            value = getattr(self, name)
++            if isinstance(value, bool) or int(value) < 0:
++                raise DensityNumericalInputError(f"{name} must be a nonnegative integer.")
++            object.__setattr__(self, name, int(value))
++        if self.realized_replicate_count != replicate.size:
++            raise DensityNumericalInputError(
++                "realized_replicate_count must match replicate diagnostics."
++            )
++        level = float(self.confidence_level)
++        if not np.isfinite(level) or not 0.0 < level < 1.0:
++            raise DensityNumericalInputError("confidence_level must lie in (0, 1).")
++        object.__setattr__(self, "confidence_level", level)
++        for name in (
++            "reference_standard_error", "confidence_interval_low",
++            "confidence_interval_high", "relative_confidence_half_width",
++            "convergence_relative_change",
++        ):
++            value = getattr(self, name)
++            if value is not None:
++                number = float(value)
++                if not np.isfinite(number) or number < 0.0:
++                    raise DensityNumericalInputError(
++                        f"{name} must be finite and nonnegative or None."
++                    )
++                object.__setattr__(self, name, number)
++        object.__setattr__(self, "replicate_reference_standard_deviations", replicate)
++        object.__setattr__(self, "progressive_reference_standard_deviations", progressive)
++        object.__setattr__(self, "escalation_occurred", bool(self.escalation_occurred))
++        object.__setattr__(self, "converged", bool(self.converged))
++
++    def metadata_dict(self) -> dict[str, Any]:
++        return {
++            "schema": self.schema_version,
++            "replicate_reference_standard_deviations": tuple(
++                float(v) for v in self.replicate_reference_standard_deviations
++            ),
++            "progressive_reference_standard_deviations": tuple(
++                float(v) for v in self.progressive_reference_standard_deviations
++            ),
++            "reference_standard_error": self.reference_standard_error,
++            "confidence_level": self.confidence_level,
++            "confidence_interval_low": self.confidence_interval_low,
++            "confidence_interval_high": self.confidence_interval_high,
++            "relative_confidence_half_width": self.relative_confidence_half_width,
++            "requested_replicate_count": self.requested_replicate_count,
++            "realized_replicate_count": self.realized_replicate_count,
++            "max_replicate_count": self.max_replicate_count,
++            "effective_sample_count": self.effective_sample_count,
++            "escalation_occurred": self.escalation_occurred,
++            "convergence_relative_change": self.convergence_relative_change,
++            "converged": self.converged,
++        }
++
++
++@dataclass(frozen=True, slots=True)
+ class PeriodicSpreadDiagnostics:
+-    """Per-item periodic spread and automatic-reference diagnostics."""
++    """Per-item basin-aware periodic spread and automatic-reference diagnostics."""
+ 
+     standard_deviations: FloatArray
+     valid_reference_mask: BoolArray
+@@ -666,44 +815,82 @@
+     sampled_frame_indices: IntArray
+     sampling_strategy: str
+     sampling_seed: int
++    basin_source: str = "global"
++    basin_counts_by_item: IntArray | None = None
++    accepted_source_sample_counts_by_item: IntArray | None = None
++    excluded_source_sample_counts_by_item: IntArray | None = None
++    basin_diagnostics: tuple[BasinSpreadDiagnostic, ...] = ()
++    convergence: SpreadConvergenceDiagnostic | None = None
++    item_mean_semantics: str = "single_periodic_mean"
+     schema_version: str = PERIODIC_SPREAD_DIAGNOSTIC_SCHEMA
+ 
+     def __post_init__(self) -> None:
+         deviations = _readonly(
+-            self.standard_deviations,
+-            np.float64,
+-            ndim=1,
+-            name="standard_deviations",
++            self.standard_deviations, np.float64, ndim=1, name="standard_deviations"
+         )
+         mask = _readonly(
+-            self.valid_reference_mask,
+-            np.bool_,
+-            ndim=1,
+-            name="valid_reference_mask",
+-        )
+-        means = _readonly(
+-            self.means_cartesian,
+-            np.float64,
+-            ndim=2,
+-            name="means_cartesian",
++            self.valid_reference_mask, np.bool_, ndim=1, name="valid_reference_mask"
+         )
++        means = _readonly(self.means_cartesian, np.float64, ndim=2, name="means_cartesian")
+         if mask.shape != deviations.shape or means.shape != (deviations.size, 3):
+             raise DensityNumericalInputError("Periodic spread diagnostics are misaligned.")
+         if len(self.mean_diagnostics) != deviations.size:
+             raise DensityNumericalInputError("mean_diagnostics must align with items.")
+         sampled = _readonly(
+-            self.sampled_frame_indices,
+-            np.int64,
+-            ndim=1,
+-            name="sampled_frame_indices",
++            self.sampled_frame_indices, np.int64, ndim=1, name="sampled_frame_indices"
+         )
+         source_count = int(self.source_frame_count)
+         if source_count < 1:
+             raise DensityNumericalInputError("source_frame_count must be positive.")
+         if sampled.size < 1 or np.any(sampled < 0) or np.any(sampled >= source_count):
+-            raise DensityNumericalInputError("sampled_frame_indices are outside the source frames.")
++            raise DensityNumericalInputError(
++                "sampled_frame_indices are outside the source frames."
++            )
+         if np.any(np.diff(sampled) <= 0):
+-            raise DensityNumericalInputError("sampled_frame_indices must be strictly increasing.")
++            raise DensityNumericalInputError(
++                "sampled_frame_indices must be strictly increasing."
++            )
++        n_items = deviations.size
++        basin_counts = (
++            np.ones(n_items, dtype=np.int64)
++            if self.basin_counts_by_item is None
++            else _readonly(self.basin_counts_by_item, np.int64, ndim=1, name="basin_counts_by_item")
++        )
++        accepted = (
++            np.full(n_items, source_count, dtype=np.int64)
++            if self.accepted_source_sample_counts_by_item is None
++            else _readonly(
++                self.accepted_source_sample_counts_by_item,
++                np.int64,
++                ndim=1,
++                name="accepted_source_sample_counts_by_item",
++            )
++        )
++        excluded = (
++            np.zeros(n_items, dtype=np.int64)
++            if self.excluded_source_sample_counts_by_item is None
++            else _readonly(
++                self.excluded_source_sample_counts_by_item,
++                np.int64,
++                ndim=1,
++                name="excluded_source_sample_counts_by_item",
++            )
++        )
++        if basin_counts.shape != (n_items,) or accepted.shape != (n_items,) or excluded.shape != (n_items,):
++            raise DensityNumericalInputError("Basin-aware spread count arrays must align with items.")
++        if np.any(basin_counts < 0) or np.any(accepted < 0) or np.any(excluded < 0):
++            raise DensityNumericalInputError("Basin-aware spread counts must be nonnegative.")
++        if np.any(accepted + excluded != source_count):
++            raise DensityNumericalInputError(
++                "Accepted and excluded source counts must partition every item trajectory."
++            )
++        basin_rows = tuple(self.basin_diagnostics)
++        if any(not isinstance(row, BasinSpreadDiagnostic) for row in basin_rows):
++            raise TypeError("basin_diagnostics must contain BasinSpreadDiagnostic values.")
++        if self.convergence is not None and not isinstance(
++            self.convergence, SpreadConvergenceDiagnostic
++        ):
++            raise TypeError("convergence must be SpreadConvergenceDiagnostic or None.")
+         object.__setattr__(self, "standard_deviations", deviations)
+         object.__setattr__(self, "valid_reference_mask", mask)
+         object.__setattr__(self, "means_cartesian", means)
+@@ -713,6 +900,12 @@
+         object.__setattr__(self, "sampled_frame_indices", sampled)
+         object.__setattr__(self, "sampling_strategy", str(self.sampling_strategy))
+         object.__setattr__(self, "sampling_seed", int(self.sampling_seed))
++        object.__setattr__(self, "basin_source", str(self.basin_source))
++        object.__setattr__(self, "basin_counts_by_item", basin_counts)
++        object.__setattr__(self, "accepted_source_sample_counts_by_item", accepted)
++        object.__setattr__(self, "excluded_source_sample_counts_by_item", excluded)
++        object.__setattr__(self, "basin_diagnostics", basin_rows)
++        object.__setattr__(self, "item_mean_semantics", str(self.item_mean_semantics))
+ 
+     @property
+     def total_item_count(self) -> int:
+@@ -725,12 +918,10 @@
+     def metadata_dict(self) -> dict[str, Any]:
+         deviations = self.standard_deviations
+         converged = tuple(bool(value.mean_converged) for value in self.mean_diagnostics)
+-        ambiguous = tuple(
+-            bool(value.mean_ambiguity_detected) for value in self.mean_diagnostics
+-        )
+-        return {
++        ambiguous = tuple(bool(value.mean_ambiguity_detected) for value in self.mean_diagnostics)
++        payload = {
+             "periodic_spread_schema": self.schema_version,
+-            "sample_sd_definition": "sqrt(trace(periodic_covariance)/3)",
++            "sample_sd_definition": "sqrt(pooled_within_basin_trace(periodic_covariance)/3)",
+             "sample_sd_quantile": self.quantile,
+             "sample_sd_quantile_method": self.quantile_method,
+             "sample_sd_reference": self.reference_standard_deviation,
+@@ -740,38 +931,419 @@
+             "sample_standard_deviations": tuple(float(value) for value in deviations),
+             "periodic_mean_converged": converged,
+             "periodic_mean_ambiguous": ambiguous,
+-            "periodic_mean_iteration_counts": tuple(
+-                int(value.iteration_count) for value in self.mean_diagnostics
+-            ),
+-            "periodic_mean_final_update_norms": tuple(
+-                float(value.final_update_norm) for value in self.mean_diagnostics
+-            ),
+-            "periodic_mean_objective_values": tuple(
+-                float(value.objective_value) for value in self.mean_diagnostics
+-            ),
+-            "periodic_mean_candidate_solution_counts": tuple(
+-                int(value.candidate_solution_count) for value in self.mean_diagnostics
+-            ),
++            "periodic_mean_iteration_counts": tuple(int(value.iteration_count) for value in self.mean_diagnostics),
++            "periodic_mean_final_update_norms": tuple(float(value.final_update_norm) for value in self.mean_diagnostics),
++            "periodic_mean_objective_values": tuple(float(value.objective_value) for value in self.mean_diagnostics),
++            "periodic_mean_candidate_solution_counts": tuple(int(value.candidate_solution_count) for value in self.mean_diagnostics),
+             "valid_reference_mask": tuple(bool(value) for value in self.valid_reference_mask),
+             "valid_reference_count": self.valid_reference_count,
+             "required_reference_count": self.required_reference_count,
+             "adaptive_target_defined": self.adaptive_target_defined,
+             "spread_source_frame_count": self.source_frame_count,
+             "spread_sampled_frame_count": int(self.sampled_frame_indices.size),
+-            "spread_sample_fraction": (
+-                float(self.sampled_frame_indices.size) / float(self.source_frame_count)
+-            ),
+-            "spread_sampled_frame_indices": tuple(
+-                int(value) for value in self.sampled_frame_indices
+-            ),
++            "spread_sample_fraction": float(self.sampled_frame_indices.size) / float(self.source_frame_count),
++            "spread_sampled_frame_indices": tuple(int(value) for value in self.sampled_frame_indices),
+             "spread_sampling_strategy": self.sampling_strategy,
+             "spread_sampling_seed": self.sampling_seed,
++            "spread_basin_source": self.basin_source,
++            "spread_item_mean_semantics": self.item_mean_semantics,
++            "spread_basin_counts_by_item": tuple(int(v) for v in self.basin_counts_by_item),
++            "spread_accepted_source_sample_counts_by_item": tuple(
++                int(v) for v in self.accepted_source_sample_counts_by_item
++            ),
++            "spread_excluded_source_sample_counts_by_item": tuple(
++                int(v) for v in self.excluded_source_sample_counts_by_item
++            ),
++            "spread_basin_diagnostics": tuple(row.metadata_dict() for row in self.basin_diagnostics),
+         }
++        if self.convergence is not None:
++            payload["spread_convergence"] = self.convergence.metadata_dict()
++        return payload
++
++
++@dataclass(frozen=True, slots=True)
++class _BasinMoment:
++    item_index: int
++    basin_id: int
++    mean_diagnostic: PeriodicMeanDiagnostic
++    mean_square_radius: float
++    represented_weight: float
++    source_sample_count: int
++    sampled_count: int
++    compact_fast_path: bool
++
++
++@dataclass(frozen=True, slots=True)
++class _ReplicateEstimate:
++    basin_moments: tuple[_BasinMoment, ...]
++    sampled_indices: IntArray
++    item_standard_deviations: FloatArray
++    valid_item_mask: BoolArray
++    reference_standard_deviation: float | None
++
++
++def _compact_periodic_mean_diagnostic(
++    fractional_samples: FloatArray,
++    weights: FloatArray,
++    *,
++    cell: FloatArray,
++    pbc: BoolArray,
++    policy: PeriodicMeanPolicy,
++) -> tuple[PeriodicMeanDiagnostic, bool]:
++    """Use an O(N) compact-basin mean when a conservative uniqueness test passes."""
++
++    folded = _fold_fractional(fractional_samples, pbc)
++    sample_cartesian = folded @ cell
++    if not np.any(pbc):
++        mean = np.sum(weights[:, None] * sample_cartesian, axis=0)
++        fractional = mean @ np.linalg.inv(cell)
++        vectors = sample_cartesian - mean
++        objective = float(np.sum(weights * np.einsum("ij,ij->i", vectors, vectors, optimize=True)))
++        return (
++            PeriodicMeanDiagnostic(
++                mean_cartesian=mean,
++                mean_fractional=fractional,
++                mean_converged=True,
++                iteration_count=1,
++                final_update_norm=0.0,
++                objective_value=objective,
++                mean_ambiguity_detected=False,
++                candidate_solution_count=1,
++                start_count=1,
++            ),
++            True,
++        )
++
++    length = _reference_length(cell)
++    result = _iterate_mean(
++        _circular_start(folded, weights, pbc),
++        sample_cartesian,
++        weights,
++        cell=cell,
++        pbc=pbc,
++        update_tolerance=policy.update_tolerance_scale * length,
++        max_iterations=policy.max_iterations,
++        start_index=0,
++    )
++    _vectors, distances, _shifts = minimum_image_geometry(
++        sample_cartesian - result.cartesian,
++        cell=cell,
++        pbc=pbc,
++    )
++    # sigma_min(cell) is a rigorous lower bound on every nonzero lattice
++    # translation length.  A radius below one quarter of that bound is a
++    # conservative strongly-localized certificate for this flat-torus use.
++    singular_min = float(np.min(np.linalg.svd(cell, compute_uv=False)))
++    compact_radius = 0.25 * singular_min
++    if result.converged and float(np.max(distances)) < compact_radius:
++        return (
++            PeriodicMeanDiagnostic(
++                mean_cartesian=result.cartesian,
++                mean_fractional=result.fractional,
++                mean_converged=True,
++                iteration_count=result.iterations,
++                final_update_norm=result.final_update_norm,
++                objective_value=result.objective,
++                mean_ambiguity_detected=False,
++                candidate_solution_count=1,
++                start_count=1,
++            ),
++            True,
++        )
++    return (
++        periodic_frechet_mean_diagnostic(
++            folded, weights=weights, cell=cell, pbc=pbc, policy=policy
++        ),
++        False,
++    )
++
++
++def _weighted_running_mean(values: FloatArray, window: int) -> FloatArray:
++    """Centered unweighted running mean used only by the provisional prepass."""
++
++    n = values.shape[0]
++    if n < 3:
++        return np.array(values, copy=True)
++    width = min(int(window), n if n % 2 else n - 1)
++    width = max(3, width)
++    if width % 2 == 0:
++        width -= 1
++    pad = width // 2
++    padded = np.pad(values, ((pad, pad), (0, 0)), mode="edge")
++    kernel = np.ones(width, dtype=np.float64) / float(width)
++    return np.column_stack(
++        [np.convolve(padded[:, axis], kernel, mode="valid") for axis in range(3)]
++    )
++
++
++def _provisional_basin_labels(
++    samples: FloatArray,
++    normalized_weights: FloatArray,
++    *,
++    cell: FloatArray,
++    pbc: BoolArray,
++) -> tuple[IntArray, str]:
++    """Return conservative density-independent persistent-basin labels.
++
++    This prepass is intentionally conservative: it uses complete-linkage
++    clustering of coarse temporal block centers, then merges population
++    centroids that are not separated by more than a vibration-informed
++    threshold.  Only persistent clusters are retained, and blocks adjacent to
++    a persistent state change are excluded as transition material.  If the
++    evidence is too fragmented, the estimator falls back to one global basin
++    rather than artificially shrinking the spread by over-segmentation.
++    """
++
++    n_frames, n_items, _ = samples.shape
++    labels = np.zeros((n_frames, n_items), dtype=np.int64)
++    if n_frames < 32 or n_items == 0:
++        labels.setflags(write=False)
++        return labels, "provisional_compact_residence_v1"
++
++    folded = _fold_fractional(samples, pbc)
++    cartesian = folded @ cell
++    raw_steps = cartesian[1:] - cartesian[:-1]
++    mic_steps, _distances, _shifts = minimum_image_geometry(
++        raw_steps, cell=cell, pbc=pbc
++    )
++    unwrapped = np.empty_like(cartesian)
++    unwrapped[0] = cartesian[0]
++    unwrapped[1:] = cartesian[0][None, :, :] + np.cumsum(mic_steps, axis=0)
++
++    block_count = min(128, max(16, n_frames // 64))
++    edges = np.linspace(0, n_frames, block_count + 1, dtype=np.int64)
++    typical_block = max(1, n_frames // block_count)
++    smooth_window = min(21, max(5, 2 * max(2, typical_block // 8) + 1))
++    reference_length = _reference_length(cell)
++    geometric_floor = min(0.50, 0.025 * reference_length)
++
++    try:
++        from scipy.cluster.hierarchy import fcluster, linkage
++    except Exception as exc:  # pragma: no cover - scipy is a core dependency
++        raise DensityNumericalResourceError(
++            "Provisional basin detection requires scipy.cluster.hierarchy."
++        ) from exc
+ 
++    for item in range(n_items):
++        trajectory = unwrapped[:, item, :]
++        smooth = _weighted_running_mean(trajectory, smooth_window)
++        pad = smooth_window // 2
++        core = slice(pad, n_frames - pad if n_frames - pad > pad else n_frames)
++        residual = trajectory[core] - smooth[core]
++        coordinate_r2 = np.sum(residual * residual, axis=1) / 3.0
++        if coordinate_r2.size:
++            q90 = float(np.quantile(coordinate_r2, 0.90, method="linear"))
++            trimmed = coordinate_r2[coordinate_r2 <= q90]
++            local_sigma = float(np.sqrt(np.mean(trimmed if trimmed.size else coordinate_r2)))
++        else:
++            local_sigma = 0.0
++        separation = max(5.0 * local_sigma, geometric_floor)
++
++        centers = np.empty((block_count, 3), dtype=np.float64)
++        block_weights = np.empty(block_count, dtype=np.float64)
++        for block in range(block_count):
++            start = int(edges[block]); stop = int(edges[block + 1])
++            local_weights = normalized_weights[start:stop]
++            total = float(np.sum(local_weights, dtype=np.float64))
++            block_weights[block] = total
++            if total > 0.0:
++                centers[block] = np.sum(
++                    local_weights[:, None] * trajectory[start:stop], axis=0
++                ) / total
++            else:
++                centers[block] = np.mean(trajectory[start:stop], axis=0)
++
++        if block_count <= 1 or np.allclose(centers, centers[0], rtol=0.0, atol=1.0e-14):
++            continue
++        raw_labels = fcluster(
++            linkage(centers, method="complete", metric="euclidean"),
++            t=separation,
++            criterion="distance",
++        ).astype(np.int64) - 1
++
++        unique = [int(v) for v in np.unique(raw_labels)]
++        parent = {value: value for value in unique}
++
++        def find(value: int) -> int:
++            while parent[value] != value:
++                parent[value] = parent[parent[value]]
++                value = parent[value]
++            return value
++
++        def union(left: int, right: int) -> None:
++            a, b = find(left), find(right)
++            if a != b:
++                parent[max(a, b)] = min(a, b)
++
++        population_centers = {
++            value: np.average(
++                centers[raw_labels == value],
++                axis=0,
++                weights=np.maximum(block_weights[raw_labels == value], 1.0e-300),
++            )
++            for value in unique
++        }
++        for position, left in enumerate(unique):
++            for right in unique[position + 1 :]:
++                if float(np.linalg.norm(population_centers[left] - population_centers[right])) < separation:
++                    union(left, right)
++        roots = sorted({find(value) for value in unique})
++        remap = {root: position for position, root in enumerate(roots)}
++        merged = np.asarray([remap[find(int(v))] for v in raw_labels], dtype=np.int64)
++
++        qualified: list[int] = []
++        minimum_blocks = max(2, int(np.ceil(0.03 * block_count)))
++        for basin in np.unique(merged):
++            block_ids = np.flatnonzero(merged == basin)
++            runs = np.split(block_ids, np.flatnonzero(np.diff(block_ids) > 1) + 1)
++            longest = max(len(run) for run in runs)
++            represented = float(np.sum(block_weights[block_ids], dtype=np.float64))
++            if len(block_ids) >= minimum_blocks and longest >= 2 and represented >= 0.03:
++                qualified.append(int(basin))
++
++        # A strongly fragmented path is not a trustworthy residence decomposition.
++        # Preserve the global spread rather than manufacture small pseudo-basins.
++        if len(qualified) <= 1:
++            if len(qualified) == 1:
++                keep = qualified[0]
++                labels[:, item] = -1
++                for block in np.flatnonzero(merged == keep):
++                    start = int(edges[block]); stop = int(edges[block + 1])
++                    labels[start:stop, item] = 0
++            continue
++        if len(qualified) > 8:
++            labels[:, item] = 0
++            continue
++
++        labels[:, item] = -1
++        qualified_remap = {basin: position for position, basin in enumerate(sorted(qualified))}
++        transition_blocks: set[int] = set()
++        for block in range(block_count - 1):
++            left = int(merged[block]); right = int(merged[block + 1])
++            if left != right and left in qualified_remap and right in qualified_remap:
++                transition_blocks.update((block, block + 1))
++        for block in range(block_count):
++            basin = int(merged[block])
++            if basin not in qualified_remap or block in transition_blocks:
++                continue
++            start = int(edges[block]); stop = int(edges[block + 1])
++            labels[start:stop, item] = qualified_remap[basin]
++
++        accepted = labels[:, item] >= 0
++        if np.count_nonzero(accepted) < max(4, int(0.10 * n_frames)):
++            labels[:, item] = 0
++
++    labels[normalized_weights <= 0.0, :] = -1
++    labels.setflags(write=False)
++    return labels, "provisional_compact_residence_v1"
+ 
+-# Reference for the sampling principle: W. G. Cochran, *Sampling
+-# Techniques*, 3rd ed., Wiley, 1977.  The weighted temporal strata and
+-# deterministic seed/weight-transfer policy below are mdstats-specific.
++
++def spread_basin_labels_from_site_assignment(
++    assignment_result: Any,
++    *,
++    source_frame_indices: Any | None = None,
++    atom_indices: Any | None = None,
++) -> IntArray:
++    """Translate geometry-based site assignment into basin labels for spread use.
++
++    Accepted ``ASSIGNED``/``ANNULAR_ASSIGNED`` samples carry their physical
++    state index. Transition-region, ambiguous, unassigned, and unresolved
++    samples are emitted as ``-1`` and therefore cannot contribute vibrational
++    variance.
++    """
++
++    from ..site_assignment import SiteAssignmentResult
++
++    if not isinstance(assignment_result, SiteAssignmentResult):
++        raise TypeError("assignment_result must be SiteAssignmentResult.")
++    frames = np.asarray(
++        assignment_result.axis.collection_frame_indices
++        if source_frame_indices is None else source_frame_indices,
++        dtype=np.int64,
++    )
++    atoms = np.asarray(
++        assignment_result.atom_indices if atom_indices is None else atom_indices,
++        dtype=np.int64,
++    )
++    if frames.ndim != 1 or atoms.ndim != 1 or frames.size == 0 or atoms.size == 0:
++        raise DensityNumericalInputError("source_frame_indices and atom_indices must be nonempty 1-D arrays.")
++    frame_position = {int(frame): i for i, frame in enumerate(frames)}
++    source_atom_position = {
++        int(atom): i for i, atom in enumerate(np.asarray(assignment_result.atom_indices, dtype=np.int64))
++    }
++    labels = np.full((frames.size, atoms.size), -1, dtype=np.int64)
++    for output_item, atom in enumerate(atoms):
++        source_item = source_atom_position.get(int(atom))
++        if source_item is None:
++            raise DensityNumericalInputError(f"Atom {int(atom)} is absent from site assignment.")
++        for assignment in assignment_result.assignments[source_item]:
++            output_frame = frame_position.get(int(assignment.collection_frame_index))
++            if output_frame is not None and assignment.accepted:
++                assert assignment.state_index is not None
++                labels[output_frame, output_item] = int(assignment.state_index)
++    labels.setflags(write=False)
++    return labels
++
++
++def spread_basin_labels_from_final_segmentation(
++    sample_catalog: Any,
++    final_segmentation: Any,
++    *,
++    source_frame_indices: Any | None = None,
++    atom_indices: Any | None = None,
++) -> IntArray:
++    """Translate Stage-11E6 final membership/residence lineage into spread labels."""
++
++    from ..site_samples import FrameworkAlignedIonSampleCatalog
++    from .final_segmentation import (
++        FinalHystereticSegmentationCatalog,
++        FinalMembershipClass,
++    )
++
++    if not isinstance(sample_catalog, FrameworkAlignedIonSampleCatalog):
++        raise TypeError("sample_catalog must be FrameworkAlignedIonSampleCatalog.")
++    if not isinstance(final_segmentation, FinalHystereticSegmentationCatalog):
++        raise TypeError(
++            "final_segmentation must be FinalHystereticSegmentationCatalog."
++        )
++    if final_segmentation.membership.n_samples != sample_catalog.frame_indices.size:
++        raise DensityNumericalInputError("Final segmentation and sample catalog do not align.")
++    frames = np.asarray(
++        sample_catalog.temporal_weighting.frame_indices
++        if source_frame_indices is None else source_frame_indices,
++        dtype=np.int64,
++    )
++    atoms = np.asarray(
++        sample_catalog.selected_atom_indices if atom_indices is None else atom_indices,
++        dtype=np.int64,
++    )
++    frame_position = {int(frame): i for i, frame in enumerate(frames)}
++    atom_position = {int(atom): i for i, atom in enumerate(atoms)}
++    labels = np.full((frames.size, atoms.size), -1, dtype=np.int64)
++    residence_member = np.zeros(sample_catalog.frame_indices.size, dtype=bool)
++    for residence in final_segmentation.residences:
++        residence_member[np.asarray(residence.sample_indices, dtype=np.int64)] = True
++    membership = final_segmentation.membership
++    accepted_codes = {int(FinalMembershipClass.CORE), int(FinalMembershipClass.BASIN)}
++    for sample in range(sample_catalog.frame_indices.size):
++        if not residence_member[sample] or bool(membership.conflict_mask[sample]):
++            continue
++        if int(membership.membership_class[sample]) not in accepted_codes:
++            continue
++        state = int(membership.state_ids[sample])
++        if state < 0:
++            continue
++        frame = frame_position.get(int(sample_catalog.frame_indices[sample]))
++        item = atom_position.get(int(sample_catalog.atom_indices[sample]))
++        if frame is not None and item is not None:
++            labels[frame, item] = state
++    labels.setflags(write=False)
++    return labels
++
++
++# Reference for the sampling principle: W. G. Cochran, *Sampling Techniques*,
++# 3rd ed., Wiley, 1977. Weighted temporal strata and deterministic seed/weight
++# transfer are mdstats-specific.
+ def _spread_frame_subsample(
+     samples: FloatArray,
+     normalized_weights: FloatArray,
+@@ -780,24 +1352,14 @@
+     sample_seed: int,
+     sampling_strategy: Literal["all", "stratified_random"],
+ ) -> tuple[FloatArray, FloatArray, IntArray, str]:
+-    """Select a deterministic random temporal subsample for spread estimation.
+-
+-    ``stratified_random`` partitions the complete ordered frame collection into
+-    equal-count temporal strata, draws one frame from every stratum with local
+-    probability proportional to frame weight, and assigns the selected frame
+-    the complete weight of its stratum.  The estimator therefore sees the full
+-    time span while its expensive periodic-mean work is bounded by
+-    ``sample_size``.
+-    """
++    """Backward-compatible whole-frame stratified sampler."""
+ 
+     n_frames = int(samples.shape[0])
+     if sampling_strategy == "all" or n_frames <= sample_size:
+         indices = np.arange(n_frames, dtype=np.int64)
+         return samples, normalized_weights, indices, "all"
+     if sampling_strategy != "stratified_random":
+-        raise DensityNumericalInputError(
+-            "sampling_strategy must be all or stratified_random."
+-        )
++        raise DensityNumericalInputError("sampling_strategy must be all or stratified_random.")
+     if sample_size < 2:
+         raise DensityNumericalInputError("sample_size must be at least 2.")
+     rng = np.random.default_rng(int(sample_seed))
+@@ -805,25 +1367,363 @@
+     indices = np.empty(sample_size, dtype=np.int64)
+     sampled_weights = np.empty(sample_size, dtype=np.float64)
+     for stratum in range(sample_size):
+-        start = int(edges[stratum])
+-        stop = int(edges[stratum + 1])
++        start = int(edges[stratum]); stop = int(edges[stratum + 1])
+         if stop <= start:
+             stop = min(n_frames, start + 1)
+         local = normalized_weights[start:stop]
+         stratum_weight = float(np.sum(local, dtype=np.float64))
+         if stratum_weight > 0.0:
+-            relative = local / stratum_weight
+-            offset = int(rng.choice(stop - start, p=relative))
++            offset = int(rng.choice(stop - start, p=local / stratum_weight))
+         else:
+             offset = int(rng.integers(0, stop - start))
+         indices[stratum] = start + offset
+         sampled_weights[stratum] = stratum_weight
+     sampled_weights /= float(np.sum(sampled_weights, dtype=np.float64))
+-    indices.setflags(write=False)
+-    sampled_weights.setflags(write=False)
++    indices.setflags(write=False); sampled_weights.setflags(write=False)
+     return samples[indices], sampled_weights, indices, "stratified_random"
+ 
+ 
++def _coalesce_samples(indices: IntArray, weights: FloatArray) -> tuple[IntArray, FloatArray]:
++    order = np.argsort(indices, kind="stable")
++    sorted_indices = np.asarray(indices[order], dtype=np.int64)
++    sorted_weights = np.asarray(weights[order], dtype=np.float64)
++    unique, starts = np.unique(sorted_indices, return_index=True)
++    summed = np.add.reduceat(sorted_weights, starts)
++    unique = np.asarray(unique, dtype=np.int64); summed = np.asarray(summed, dtype=np.float64)
++    unique.setflags(write=False); summed.setflags(write=False)
++    return unique, summed
++
++
++def _weighted_temporal_sample(
++    frame_indices: IntArray,
++    source_weights: FloatArray,
++    *,
++    sample_size: int,
++    sample_seed: int,
++    sampling_strategy: Literal["all", "stratified_random", "stratified_midpoint"],
++    replicate_index: int = 0,
++    replicate_count: int = 1,
++) -> tuple[IntArray, FloatArray]:
++    """Sample ordered qualified frames using equal represented-weight strata."""
++
++    frames = np.asarray(frame_indices, dtype=np.int64)
++    weights = np.asarray(source_weights, dtype=np.float64)
++    positive = weights > 0.0
++    frames = frames[positive]; weights = weights[positive]
++    if frames.size == 0:
++        return np.empty(0, dtype=np.int64), np.empty(0, dtype=np.float64)
++    total = float(np.sum(weights, dtype=np.float64))
++    if sampling_strategy == "all" or frames.size <= sample_size:
++        return _coalesce_samples(frames, weights)
++    if sampling_strategy not in {"stratified_random", "stratified_midpoint"}:
++        raise DensityNumericalInputError(
++            "sampling_strategy must be all, stratified_random, or stratified_midpoint."
++        )
++    count = max(1, int(sample_size))
++    replicate_index = int(replicate_index); replicate_count = int(replicate_count)
++    if replicate_count < 1 or replicate_index < 0 or replicate_index >= replicate_count:
++        raise DensityNumericalInputError("Invalid replicated stratified-sampling index/count.")
++    rng = np.random.default_rng(int(sample_seed) + 15485863 * replicate_index)
++    # Preserve the historical disjoint temporal-stratum sampler exactly for
++    # uniformly weighted contiguous trajectories. Besides backward compatibility,
++    # this guarantees one distinct frame per stratum in the common MD case.
++    if (
++        frames.size >= count
++        and np.all(np.diff(frames) == 1)
++        and np.allclose(weights, weights[0], rtol=1.0e-13, atol=0.0)
++    ):
++        edges_i = np.linspace(0, frames.size, count + 1, dtype=np.int64)
++        selected_i = np.empty(count, dtype=np.int64)
++        represented_i = np.empty(count, dtype=np.float64)
++        for stratum in range(count):
++            left_i = int(edges_i[stratum]); right_i = int(edges_i[stratum + 1])
++            if right_i <= left_i:
++                right_i = min(frames.size, left_i + 1)
++            if sampling_strategy == "stratified_midpoint":
++                offset = (left_i + right_i - 1) // 2
++            else:
++                draw_left, draw_right = left_i, right_i
++                if replicate_count > 1 and right_i - left_i >= replicate_count:
++                    sub_edges = np.linspace(left_i, right_i, replicate_count + 1, dtype=np.int64)
++                    perm_rng = np.random.default_rng(int(sample_seed) + 104729 * stratum)
++                    slot = int(perm_rng.permutation(replicate_count)[replicate_index])
++                    draw_left = int(sub_edges[slot]); draw_right = int(sub_edges[slot + 1])
++                    if draw_right <= draw_left:
++                        draw_right = min(right_i, draw_left + 1)
++                offset = int(rng.integers(draw_left, draw_right))
++            selected_i[stratum] = frames[offset]
++            # One sampled point represents the complete original stratum, not
++            # only its Latinized sub-stratum. Each replicate is therefore a
++            # complete estimator while the replicate ensemble has better coverage.
++            represented_i[stratum] = float(np.sum(weights[left_i:right_i], dtype=np.float64))
++        return _coalesce_samples(selected_i, represented_i)
++    cumulative = np.concatenate(([0.0], np.cumsum(weights, dtype=np.float64)))
++    edges = np.linspace(0.0, total, count + 1)
++    selected = np.empty(count, dtype=np.int64)
++    represented = np.empty(count, dtype=np.float64)
++    for stratum in range(count):
++        lower = float(edges[stratum]); upper = float(edges[stratum + 1])
++        if sampling_strategy == "stratified_midpoint":
++            target = 0.5 * (lower + upper)
++            chosen = min(
++                frames.size - 1,
++                max(0, int(np.searchsorted(cumulative, target, side="right") - 1)),
++            )
++        else:
++            draw_lower, draw_upper = lower, upper
++            if replicate_count > 1:
++                sub_edges = np.linspace(lower, upper, replicate_count + 1)
++                perm_rng = np.random.default_rng(int(sample_seed) + 104729 * stratum)
++                slot = int(perm_rng.permutation(replicate_count)[replicate_index])
++                draw_lower = float(sub_edges[slot]); draw_upper = float(sub_edges[slot + 1])
++            left = max(0, int(np.searchsorted(cumulative, draw_lower, side="right") - 1))
++            right = min(frames.size, int(np.searchsorted(cumulative, draw_upper, side="left") + 1))
++            candidates = np.arange(left, max(left + 1, right), dtype=np.int64)
++            overlaps = np.minimum(cumulative[candidates + 1], draw_upper) - np.maximum(cumulative[candidates], draw_lower)
++            overlaps = np.maximum(overlaps, 0.0)
++            overlap_total = float(np.sum(overlaps, dtype=np.float64))
++            if overlap_total <= 0.0:
++                chosen = min(frames.size - 1, left)
++            else:
++                chosen = int(rng.choice(candidates, p=overlaps / overlap_total))
++        selected[stratum] = frames[chosen]
++        represented[stratum] = upper - lower
++    return _coalesce_samples(selected, represented)
++
++
++def _allocate_basin_sample_counts(
++    labels: IntArray,
++    weights: FloatArray,
++    sample_size: int,
++) -> dict[int, int]:
++    basins = [int(v) for v in np.unique(labels[labels >= 0])]
++    if not basins:
++        return {}
++    basin_weights = np.asarray(
++        [float(np.sum(weights[labels == basin], dtype=np.float64)) for basin in basins],
++        dtype=np.float64,
++    )
++    total = float(np.sum(basin_weights))
++    target = max(int(sample_size), sum(2 if np.count_nonzero(labels == basin) >= 2 else 1 for basin in basins))
++    ideal = target * basin_weights / total
++    counts = np.floor(ideal).astype(np.int64)
++    minimum = np.asarray([2 if np.count_nonzero(labels == basin) >= 2 else 1 for basin in basins], dtype=np.int64)
++    counts = np.maximum(counts, minimum)
++    while int(np.sum(counts)) < target:
++        remainder = ideal - counts
++        counts[int(np.argmax(remainder))] += 1
++    while int(np.sum(counts)) > target:
++        removable = np.flatnonzero(counts > minimum)
++        if removable.size == 0:
++            break
++        excess = counts[removable] - ideal[removable]
++        counts[int(removable[int(np.argmax(excess))])] -= 1
++    return {basin: int(count) for basin, count in zip(basins, counts, strict=True)}
++
++
++def _one_replicate(
++    samples: FloatArray,
++    normalized_weights: FloatArray,
++    basin_labels: IntArray,
++    *,
++    cell: FloatArray,
++    pbc: BoolArray,
++    quantile: float,
++    policy: PeriodicMeanPolicy,
++    sample_size: int,
++    sample_seed: int,
++    sampling_strategy: Literal["all", "stratified_random"],
++    replicate_index: int = 0,
++    replicate_count: int = 1,
++) -> _ReplicateEstimate:
++    n_frames, n_items, _ = samples.shape
++    moments: list[_BasinMoment] = []
++    sampled_all: list[IntArray] = []
++    item_sds = np.full(n_items, np.nan, dtype=np.float64)
++    valid = np.zeros(n_items, dtype=bool)
++    zero_tolerance = 1.0e-12 * _reference_length(cell)
++    for item in range(n_items):
++        item_labels = basin_labels[:, item]
++        allocations = _allocate_basin_sample_counts(item_labels, normalized_weights, sample_size)
++        if not allocations:
++            continue
++        item_msr = 0.0; item_weight = 0.0; item_valid = True
++        for basin, count in allocations.items():
++            eligible = np.flatnonzero(item_labels == basin).astype(np.int64)
++            source_weight = float(np.sum(normalized_weights[eligible], dtype=np.float64))
++            if source_weight <= 0.0:
++                item_valid = False; continue
++            indices, represented = _weighted_temporal_sample(
++                eligible,
++                normalized_weights[eligible],
++                sample_size=count,
++                sample_seed=(int(sample_seed) + 1009 * basin) & 0x7FFFFFFF,
++                sampling_strategy=sampling_strategy,
++                replicate_index=replicate_index,
++                replicate_count=replicate_count,
++            )
++            if indices.size == 0:
++                item_valid = False; continue
++            sampled_all.append(indices)
++            basin_weights = np.asarray(represented / np.sum(represented), dtype=np.float64)
++            diagnostic, compact = _compact_periodic_mean_diagnostic(
++                samples[indices, item, :],
++                basin_weights,
++                cell=cell,
++                pbc=pbc,
++                policy=policy,
++            )
++            if not diagnostic.valid_for_reference:
++                item_valid = False
++            sample_cartesian = _fold_fractional(samples[indices, item, :], pbc) @ cell
++            vectors, _distances, _shifts = minimum_image_geometry(
++                sample_cartesian - diagnostic.mean_cartesian,
++                cell=cell,
++                pbc=pbc,
++            )
++            msr = float(np.sum(basin_weights * np.einsum("ij,ij->i", vectors, vectors, optimize=True)))
++            moments.append(
++                _BasinMoment(
++                    item_index=item,
++                    basin_id=basin,
++                    mean_diagnostic=diagnostic,
++                    mean_square_radius=msr,
++                    represented_weight=source_weight,
++                    source_sample_count=int(eligible.size),
++                    sampled_count=int(indices.size),
++                    compact_fast_path=compact,
++                )
++            )
++            item_msr += source_weight * msr
++            item_weight += source_weight
++        if item_valid and item_weight > 0.0:
++            deviation = float(np.sqrt(max(0.0, item_msr / item_weight / 3.0)))
++            item_sds[item] = 0.0 if deviation <= zero_tolerance else deviation
++            valid[item] = True
++    required = max(
++        policy.minimum_valid_reference_count,
++        int(np.ceil(policy.minimum_valid_reference_fraction * n_items)),
++    )
++    reference = None
++    if int(np.count_nonzero(valid)) >= required:
++        reference = float(np.quantile(item_sds[valid], quantile, method=SPREAD_QUANTILE_METHOD))
++    sampled = (
++        np.unique(np.concatenate(sampled_all)).astype(np.int64)
++        if sampled_all else np.asarray([0], dtype=np.int64)
++    )
++    sampled.setflags(write=False); item_sds.setflags(write=False); valid.setflags(write=False)
++    return _ReplicateEstimate(tuple(moments), sampled, item_sds, valid, reference)
++
++
++def _combine_replicates(
++    replicates: list[_ReplicateEstimate],
++    *,
++    n_items: int,
++    cell: FloatArray,
++    pbc: BoolArray,
++    quantile: float,
++    policy: PeriodicMeanPolicy,
++    basin_labels: IntArray,
++    normalized_weights: FloatArray,
++) -> tuple[FloatArray, BoolArray, FloatArray, tuple[PeriodicMeanDiagnostic, ...], tuple[BasinSpreadDiagnostic, ...], float | None]:
++    by_key: dict[tuple[int, int], list[_BasinMoment]] = {}
++    for replicate in replicates:
++        for moment in replicate.basin_moments:
++            by_key.setdefault((moment.item_index, moment.basin_id), []).append(moment)
++
++    basin_rows: list[BasinSpreadDiagnostic] = []
++    combined_by_item: dict[int, list[tuple[float, float, PeriodicMeanDiagnostic, bool]]] = {}
++    for (item, basin), moments in sorted(by_key.items()):
++        if len(moments) != len(replicates):
++            continue
++        means_fractional = np.asarray(
++            [m.mean_diagnostic.mean_fractional for m in moments], dtype=np.float64
++        )
++        mean_weights = np.full(len(moments), 1.0 / len(moments), dtype=np.float64)
++        if len(moments) == 1:
++            combined_mean = moments[0].mean_diagnostic
++        else:
++            combined_mean, _compact = _compact_periodic_mean_diagnostic(
++                means_fractional, mean_weights, cell=cell, pbc=pbc, policy=policy
++            )
++        rep_means_cart = np.asarray([m.mean_diagnostic.mean_cartesian for m in moments], dtype=np.float64)
++        between_vectors, _distances, _shifts = minimum_image_geometry(
++            rep_means_cart - combined_mean.mean_cartesian,
++            cell=cell,
++            pbc=pbc,
++        )
++        pooled_msr = float(np.mean([
++            m.mean_square_radius + float(np.dot(vec, vec))
++            for m, vec in zip(moments, between_vectors, strict=True)
++        ]))
++        represented = float(moments[0].represented_weight)
++        source_count = int(np.count_nonzero(basin_labels[:, item] == basin))
++        sampled_count = int(sum(m.sampled_count for m in moments))
++        deviation = float(np.sqrt(max(0.0, pooled_msr / 3.0)))
++        basin_valid = all(m.mean_diagnostic.valid_for_reference for m in moments)
++        basin_rows.append(
++            BasinSpreadDiagnostic(
++                item_index=item,
++                basin_id=basin,
++                mean_cartesian=combined_mean.mean_cartesian,
++                standard_deviation=deviation,
++                mean_square_radius=pooled_msr,
++                represented_weight=represented,
++                source_sample_count=source_count,
++                sampled_count=sampled_count,
++                replicate_count=len(moments),
++                compact_fast_path_count=sum(int(m.compact_fast_path) for m in moments),
++                fallback_mean_count=sum(int(not m.compact_fast_path) for m in moments),
++            )
++        )
++        combined_by_item.setdefault(item, []).append((represented, pooled_msr, combined_mean, basin_valid))
++
++    deviations = np.full(n_items, np.nan, dtype=np.float64)
++    valid = np.zeros(n_items, dtype=bool)
++    means = np.zeros((n_items, 3), dtype=np.float64)
++    diagnostics: list[PeriodicMeanDiagnostic] = []
++    zero_tolerance = 1.0e-12 * _reference_length(cell)
++    for item in range(n_items):
++        rows = combined_by_item.get(item, [])
++        expected_basins = [int(v) for v in np.unique(basin_labels[:, item][basin_labels[:, item] >= 0])]
++        if not rows or len(rows) != len(expected_basins):
++            # A deterministic placeholder keeps legacy metadata aligned while the
++            # validity mask prevents this item from defining the reference.
++            fallback = periodic_frechet_mean_diagnostic(
++                np.asarray([[0.0, 0.0, 0.0]]),
++                weights=np.asarray([1.0]), cell=cell, pbc=pbc, policy=policy,
++            )
++            diagnostics.append(fallback); means[item] = fallback.mean_cartesian
++            continue
++        total_weight = float(sum(row[0] for row in rows))
++        msr = float(sum(weight * value for weight, value, _diag, _valid in rows) / total_weight)
++        deviation = float(np.sqrt(max(0.0, msr / 3.0)))
++        deviations[item] = 0.0 if deviation <= zero_tolerance else deviation
++        valid[item] = all(row[3] for row in rows)
++        dominant = max(rows, key=lambda row: row[0])[2]
++        diagnostics.append(dominant); means[item] = dominant.mean_cartesian
++
++    required = max(
++        policy.minimum_valid_reference_count,
++        int(np.ceil(policy.minimum_valid_reference_fraction * n_items)),
++    )
++    reference = None
++    if int(np.count_nonzero(valid)) >= required:
++        reference = float(np.quantile(deviations[valid], quantile, method=SPREAD_QUANTILE_METHOD))
++    deviations.setflags(write=False); valid.setflags(write=False); means.setflags(write=False)
++    return deviations, valid, means, tuple(diagnostics), tuple(basin_rows), reference
++
++
++def _placeholder_mean(cell: FloatArray, pbc: BoolArray, policy: PeriodicMeanPolicy) -> PeriodicMeanDiagnostic:
++    return periodic_frechet_mean_diagnostic(
++        np.asarray([[0.0, 0.0, 0.0]]),
++        weights=np.asarray([1.0]),
++        cell=cell,
++        pbc=pbc,
++        policy=policy,
++    )
++
++
+ def periodic_item_spread_diagnostics(
+     fractional_by_frame: Any,
+     *,
+@@ -835,8 +1735,28 @@
+     sample_size: int = 128,
+     sample_seed: int = 0,
+     sampling_strategy: Literal["all", "stratified_random"] = "stratified_random",
++    replicate_count: int = 1,
++    max_replicate_count: int | None = None,
++    convergence_relative_tolerance: float = 0.01,
++    confidence_level: float = 0.95,
++    basin_mode: Literal["auto", "global"] = "global",
++    basin_labels_by_frame: Any | None = None,
++    basin_label_source: str | None = None,
+ ) -> PeriodicSpreadDiagnostics:
+-    """Return periodic item spreads and a validity-filtered quantile reference."""
++    """Return basin-aware periodic item spreads and a converged quantile reference.
++
++    ``basin_labels_by_frame`` is the authoritative route: nonnegative integers
++    identify qualified basin/core membership and negative values are excluded
++    from vibrational variance.  Without labels, ``basin_mode='auto'`` runs the
++    conservative density-independent provisional residence prepass.  ``global``
++    preserves the historical one-basin interpretation explicitly.
++
++    ``sample_size`` is the target number of represented-time strata *per
++    replicate*.  Production density options use four independent 128-stratum
++    replicates, while this low-level API keeps ``replicate_count=1`` for backward
++    compatibility. Compact basins use an O(N) Karcher fast path, so ``all`` or
++    larger sample coverage does not normally trigger the old quadratic medoid.
++    """
+ 
+     samples = np.asarray(fractional_by_frame, dtype=np.float64)
+     matrix = _validated_cell(cell)
+@@ -856,73 +1776,242 @@
+     active_policy = PeriodicMeanPolicy() if policy is None else policy
+     if not isinstance(active_policy, PeriodicMeanPolicy):
+         raise TypeError("policy must be PeriodicMeanPolicy or None.")
+-
+     if isinstance(sample_size, bool) or int(sample_size) < 2:
+         raise DensityNumericalInputError("sample_size must be an integer of at least 2.")
+     if isinstance(sample_seed, bool) or not isinstance(sample_seed, (int, np.integer)):
+         raise DensityNumericalInputError("sample_seed must be an integer.")
+-    source_frame_count = int(samples.shape[0])
+-    samples, normalized_weights, sampled_indices, resolved_strategy = (
+-        _spread_frame_subsample(
+-            samples,
+-            normalized_weights,
+-            sample_size=int(sample_size),
+-            sample_seed=int(sample_seed),
+-            sampling_strategy=sampling_strategy,
+-        )
++    if sampling_strategy not in {"all", "stratified_random"}:
++        raise DensityNumericalInputError("sampling_strategy must be all or stratified_random.")
++    if basin_mode not in {"auto", "global"}:
++        raise DensityNumericalInputError("basin_mode must be auto or global.")
++    if isinstance(replicate_count, bool) or int(replicate_count) < 1:
++        raise DensityNumericalInputError("replicate_count must be a positive integer.")
++    requested_replicates = int(replicate_count)
++    maximum_replicates = requested_replicates if max_replicate_count is None else int(max_replicate_count)
++    if maximum_replicates < requested_replicates:
++        raise DensityNumericalInputError("max_replicate_count cannot be smaller than replicate_count.")
++    tolerance = float(convergence_relative_tolerance)
++    if not np.isfinite(tolerance) or tolerance <= 0.0:
++        raise DensityNumericalInputError("convergence_relative_tolerance must be finite and positive.")
++    level = float(confidence_level)
++    if not np.isfinite(level) or not 0.0 < level < 1.0:
++        raise DensityNumericalInputError("confidence_level must lie in (0, 1).")
++
++    source_frame_count, n_items, _ = samples.shape
++    if basin_labels_by_frame is not None:
++        labels = np.asarray(basin_labels_by_frame, dtype=np.int64)
++        if labels.shape != (source_frame_count, n_items):
++            raise DensityNumericalInputError(
++                "basin_labels_by_frame must have shape (n_frames, n_items)."
++            )
++        labels = np.array(labels, copy=True)
++        labels[normalized_weights <= 0.0, :] = -1
++        basin_source = "provided" if basin_label_source is None else str(basin_label_source)
++    elif basin_mode == "global":
++        labels = np.zeros((source_frame_count, n_items), dtype=np.int64)
++        labels[normalized_weights <= 0.0, :] = -1
++        basin_source = "global"
++    else:
++        labels, basin_source = _provisional_basin_labels(
++            samples, normalized_weights, cell=matrix, pbc=periodic
++        )
++        labels = np.asarray(labels, dtype=np.int64)
++    labels.setflags(write=False)
++
++    basin_counts = np.asarray(
++        [np.unique(labels[:, item][labels[:, item] >= 0]).size for item in range(n_items)],
++        dtype=np.int64,
+     )
++    accepted_counts = np.asarray(
++        [np.count_nonzero(labels[:, item] >= 0) for item in range(n_items)], dtype=np.int64
++    )
++    excluded_counts = source_frame_count - accepted_counts
+ 
+-    folded = _fold_fractional(samples, periodic)
+-    cartesian = folded @ matrix
+-    n_items = samples.shape[1]
+-    deviations = np.empty(n_items, dtype=np.float64)
+-    means = np.empty((n_items, 3), dtype=np.float64)
+-    diagnostics: list[PeriodicMeanDiagnostic] = []
+-    zero_tolerance = 1.0e-12 * _reference_length(matrix)
+-    for item in range(n_items):
+-        diagnostic = periodic_frechet_mean_diagnostic(
+-            folded[:, item, :],
+-            weights=normalized_weights,
+-            cell=matrix,
+-            pbc=periodic,
+-            policy=active_policy,
+-        )
+-        diagnostics.append(diagnostic)
+-        means[item] = diagnostic.mean_cartesian
+-        vectors, _distances, _shifts = minimum_image_geometry(
+-            cartesian[:, item, :] - diagnostic.mean_cartesian,
+-            cell=matrix,
+-            pbc=periodic,
+-        )
+-        mean_square_radius = float(
+-            np.sum(
+-                normalized_weights
+-                * np.einsum("ij,ij->i", vectors, vectors, optimize=True)
++    # Random replicated solves quantify sampling dispersion, while deterministic
++    # represented-time midpoint anchors establish the production point estimate.
++    # Separating those roles avoids a seed-sensitive point estimate without
++    # pretending deterministic convergence removes finite-trajectory uncertainty.
++    target_initial = 1 if sampling_strategy == "all" else requested_replicates
++    target_maximum = 1 if sampling_strategy == "all" else maximum_replicates
++    uncertainty_replicates: list[_ReplicateEstimate] = []
++    anchor_estimates: list[_ReplicateEstimate] = []
++    progressive: list[float] = []
++    realized_replicates = target_initial
++    escalation_occurred = False
++
++    if sampling_strategy == "all":
++        exact = _one_replicate(
++            samples, normalized_weights, labels, cell=matrix, pbc=periodic,
++            quantile=q, policy=active_policy, sample_size=int(sample_size),
++            sample_seed=int(sample_seed), sampling_strategy="all",
++        )
++        uncertainty_replicates.append(exact)
++        anchor_estimates.append(exact)
++        combined_cache = _combine_replicates(
++            [exact], n_items=n_items, cell=matrix, pbc=periodic, quantile=q,
++            policy=active_policy, basin_labels=labels,
++            normalized_weights=normalized_weights,
++        )
++        progressive.append(np.nan if combined_cache[-1] is None else float(combined_cache[-1]))
++        relative_change = None
++        converged = combined_cache[-1] is not None
++        sampling_label = "all"
++    elif requested_replicates == 1:
++        # Preserve the historical low-level one-replicate point-estimate semantics.
++        estimate = _one_replicate(
++            samples, normalized_weights, labels, cell=matrix, pbc=periodic,
++            quantile=q, policy=active_policy, sample_size=int(sample_size),
++            sample_seed=int(sample_seed), sampling_strategy="stratified_random",
++        )
++        uncertainty_replicates.append(estimate)
++        anchor_estimates.append(estimate)
++        combined_cache = _combine_replicates(
++            [estimate], n_items=n_items, cell=matrix, pbc=periodic, quantile=q,
++            policy=active_policy, basin_labels=labels,
++            normalized_weights=normalized_weights,
++        )
++        progressive.append(np.nan if combined_cache[-1] is None else float(combined_cache[-1]))
++        relative_change = None
++        converged = combined_cache[-1] is not None
++        sampling_label = "stratified_random"
++    else:
++        def add_uncertainty_replicates(first: int, stop: int) -> None:
++            for replicate in range(first, stop):
++                uncertainty_replicates.append(
++                    _one_replicate(
++                        samples, normalized_weights, labels, cell=matrix, pbc=periodic,
++                        quantile=q, policy=active_policy, sample_size=int(sample_size),
++                        sample_seed=int(sample_seed) + 7919 * replicate,
++                        sampling_strategy="stratified_random",
++                    )
++                )
++
++        def midpoint_anchor(coverage: int) -> tuple[_ReplicateEstimate, tuple[Any, ...]]:
++            estimate = _one_replicate(
++                samples, normalized_weights, labels, cell=matrix, pbc=periodic,
++                quantile=q, policy=active_policy, sample_size=max(2, int(coverage)),
++                sample_seed=int(sample_seed), sampling_strategy="stratified_midpoint",
++            )
++            combined = _combine_replicates(
++                [estimate], n_items=n_items, cell=matrix, pbc=periodic, quantile=q,
++                policy=active_policy, basin_labels=labels,
++                normalized_weights=normalized_weights,
+             )
++            return estimate, combined
++
++        add_uncertainty_replicates(0, target_initial)
++        realized_replicates = target_initial
++        lower_coverage = max(int(sample_size), int(sample_size) * max(1, realized_replicates // 2))
++        upper_coverage = int(sample_size) * realized_replicates
++        lower_anchor, lower_combined = midpoint_anchor(lower_coverage)
++        upper_anchor, combined_cache = midpoint_anchor(upper_coverage)
++        anchor_estimates.extend((lower_anchor, upper_anchor))
++        progressive.extend((
++            np.nan if lower_combined[-1] is None else float(lower_combined[-1]),
++            np.nan if combined_cache[-1] is None else float(combined_cache[-1]),
++        ))
++
++        def current_relative_change() -> float | None:
++            finite = np.asarray([v for v in progressive if np.isfinite(v)], dtype=np.float64)
++            if finite.size < 2 or finite[-1] <= 0.0:
++                return None
++            return float(abs(finite[-1] - finite[-2]) / finite[-1])
++
++        relative_change = current_relative_change()
++        while (
++            (relative_change is None or relative_change > tolerance)
++            and realized_replicates < target_maximum
++        ):
++            previous = realized_replicates
++            realized_replicates = min(target_maximum, realized_replicates + target_initial)
++            add_uncertainty_replicates(previous, realized_replicates)
++            escalation_occurred = True
++            upper_coverage = int(sample_size) * realized_replicates
++            upper_anchor, combined_cache = midpoint_anchor(upper_coverage)
++            anchor_estimates.append(upper_anchor)
++            progressive.append(
++                np.nan if combined_cache[-1] is None else float(combined_cache[-1])
++            )
++            relative_change = current_relative_change()
++        converged = bool(
++            combined_cache[-1] is not None
++            and relative_change is not None
++            and relative_change <= tolerance
+         )
+-        deviation = float(np.sqrt(max(0.0, mean_square_radius / 3.0)))
+-        deviations[item] = 0.0 if deviation <= zero_tolerance else deviation
++        sampling_label = "convergence_qualified_stratified"
+ 
+-    valid = np.asarray(
+-        [diagnostic.valid_for_reference for diagnostic in diagnostics],
+-        dtype=bool,
+-    )
++    deviations, valid, means, diagnostics, basin_rows, reference = combined_cache
+     required = max(
+         active_policy.minimum_valid_reference_count,
+         int(np.ceil(active_policy.minimum_valid_reference_fraction * n_items)),
+     )
+     valid_count = int(np.count_nonzero(valid))
+-    reference: float | None = None
+-    if samples.shape[0] >= 2 and valid_count >= required and valid_count > 0:
+-        reference = float(
+-            np.quantile(deviations[valid], q, method=SPREAD_QUANTILE_METHOD)
+-        )
++    if valid_count < required:
++        reference = None
+     target_defined = bool(reference is not None and reference > 0.0)
++
++    replicate_refs = np.asarray(
++        [
++            np.nan if rep.reference_standard_deviation is None
++            else rep.reference_standard_deviation
++            for rep in uncertainty_replicates
++        ],
++        dtype=np.float64,
++    )
++    finite_refs = replicate_refs[np.isfinite(replicate_refs)]
++    standard_error: float | None = None
++    ci_low: float | None = None
++    ci_high: float | None = None
++    relative_half: float | None = None
++    if finite_refs.size >= 2 and reference is not None:
++        sample_sd = float(np.std(finite_refs, ddof=1))
++        standard_error = sample_sd / np.sqrt(float(finite_refs.size))
++        try:
++            from scipy.stats import t as student_t
++            multiplier = float(
++                student_t.ppf(0.5 + level / 2.0, df=finite_refs.size - 1)
++            )
++        except Exception:  # pragma: no cover
++            multiplier = 1.96
++        half = multiplier * standard_error
++        ci_low = max(0.0, float(reference - half))
++        ci_high = float(reference + half)
++        if reference > 0.0:
++            relative_half = half / reference
++
++    # For exact/all and the backward-compatible one-replicate mode, lack of a
++    # progressive pair is intentional rather than a convergence failure.
++    if sampling_strategy == "all" or requested_replicates == 1:
++        relative_change = None
++        converged = bool(reference is not None)
++    effective_sample_count = int(
++        sum(row.sampled_count for row in basin_rows) / max(1, n_items)
++    )
++    convergence = SpreadConvergenceDiagnostic(
++        replicate_reference_standard_deviations=replicate_refs,
++        progressive_reference_standard_deviations=np.asarray(progressive, dtype=np.float64),
++        reference_standard_error=standard_error,
++        confidence_level=level,
++        confidence_interval_low=ci_low,
++        confidence_interval_high=ci_high,
++        relative_confidence_half_width=relative_half,
++        requested_replicate_count=target_initial,
++        realized_replicate_count=len(uncertainty_replicates),
++        max_replicate_count=target_maximum,
++        effective_sample_count=effective_sample_count,
++        escalation_occurred=escalation_occurred,
++        convergence_relative_change=relative_change,
++        converged=converged,
++    )
++    sampled_parts = [rep.sampled_indices for rep in uncertainty_replicates]
++    sampled_parts.extend(anchor.sampled_indices for anchor in anchor_estimates)
++    sampled_union = np.unique(np.concatenate(sampled_parts)).astype(np.int64)
++    sampled_union.setflags(write=False)
+     return PeriodicSpreadDiagnostics(
+         standard_deviations=deviations,
+         valid_reference_mask=valid,
+         means_cartesian=means,
+-        mean_diagnostics=tuple(diagnostics),
++        mean_diagnostics=diagnostics,
+         reference_standard_deviation=reference,
+         quantile=q,
+         quantile_method=SPREAD_QUANTILE_METHOD,
+@@ -930,7 +2019,15 @@
+         required_reference_count=required,
+         adaptive_target_defined=target_defined,
+         source_frame_count=source_frame_count,
+-        sampled_frame_indices=sampled_indices,
+-        sampling_strategy=resolved_strategy,
++        sampled_frame_indices=sampled_union,
++        sampling_strategy=sampling_label,
+         sampling_seed=int(sample_seed),
++        basin_source=basin_source,
++        basin_counts_by_item=basin_counts,
++        accepted_source_sample_counts_by_item=accepted_counts,
++        excluded_source_sample_counts_by_item=excluded_counts,
++        basin_diagnostics=basin_rows,
++        convergence=convergence,
++        item_mean_semantics=("dominant_basin_mean" if np.any(basin_counts > 1) else "single_periodic_mean"),
+     )
++
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/mdstats/data/observable_owner_manuals.json mdstats-0.20.120a0-complete-source-package/mdstats/data/observable_owner_manuals.json
+--- mdstats-0.20.119a0-complete-source-package/mdstats/data/observable_owner_manuals.json	2026-08-09 04:25:44.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/mdstats/data/observable_owner_manuals.json	2026-08-09 05:00:29.574839628 +0000
+@@ -17,6 +17,6 @@
+       "uri": "mdstats-doc://vacf-dynamics-architecture/0.20.53a0"
+     }
+   },
+-  "package_version": "0.20.119a0",
++  "package_version": "0.20.120a0",
+   "schema": "mdstats.observable-owner-manual-index.v1"
+ }
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/mdstats/plotting/__init__.py mdstats-0.20.120a0-complete-source-package/mdstats/plotting/__init__.py
+--- mdstats-0.20.119a0-complete-source-package/mdstats/plotting/__init__.py	2026-08-05 18:20:00.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/mdstats/plotting/__init__.py	2026-08-09 04:51:05.761979689 +0000
+@@ -405,14 +405,18 @@
+     CELL_EQUIVALENCE_ABSOLUTE_TOLERANCE,
+     CELL_EQUIVALENCE_RELATIVE_TOLERANCE,
+     SPREAD_QUANTILE_METHOD,
++    BasinSpreadDiagnostic,
+     CellEquivalenceReport,
+     PeriodicMeanDiagnostic,
+     PeriodicMeanPolicy,
+     PeriodicSpreadDiagnostics,
++    SpreadConvergenceDiagnostic,
+     ReciprocalResolutionDiagnostic,
+     evaluate_cell_equivalence,
+     periodic_frechet_mean_diagnostic,
+     periodic_item_spread_diagnostics,
++    spread_basin_labels_from_final_segmentation,
++    spread_basin_labels_from_site_assignment,
+     reciprocal_resolution_diagnostic,
+     require_equivalent_laboratory_density_cells,
+ )
+@@ -822,14 +826,18 @@
+     "CELL_EQUIVALENCE_ABSOLUTE_TOLERANCE",
+     "CELL_EQUIVALENCE_RELATIVE_TOLERANCE",
+     "SPREAD_QUANTILE_METHOD",
++    "BasinSpreadDiagnostic",
+     "CellEquivalenceReport",
+     "PeriodicMeanDiagnostic",
+     "PeriodicMeanPolicy",
+     "PeriodicSpreadDiagnostics",
++    "SpreadConvergenceDiagnostic",
+     "ReciprocalResolutionDiagnostic",
+     "evaluate_cell_equivalence",
+     "periodic_frechet_mean_diagnostic",
+     "periodic_item_spread_diagnostics",
++    "spread_basin_labels_from_final_segmentation",
++    "spread_basin_labels_from_site_assignment",
+     "reciprocal_resolution_diagnostic",
+     "require_equivalent_laboratory_density_cells",
+     "AtomicDensity3DRenderOptions",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/mdstats/plotting/atomic_density.py mdstats-0.20.120a0-complete-source-package/mdstats/plotting/atomic_density.py
+--- mdstats-0.20.119a0-complete-source-package/mdstats/plotting/atomic_density.py	2026-08-05 18:20:00.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/mdstats/plotting/atomic_density.py	2026-08-09 04:50:29.019978474 +0000
+@@ -204,6 +204,10 @@
+     spread_sampling_strategy: Literal["all", "stratified_random"] = (
+         "stratified_random"
+     )
++    spread_replicate_count: int = 4
++    spread_max_replicate_count: int = 8
++    spread_convergence_relative_tolerance: float = 0.01
++    spread_basin_mode: Literal["auto", "global"] = "auto"
+     store_sample_positions: bool = False
+     resolution_options: DensityResolutionOptions | None = None
+     kernel_options: DensityKernelOptions = field(default_factory=DensityKernelOptions)
+@@ -231,6 +235,14 @@
+                 "spread_sampling_strategy",
+                 resolution.spread_sampling_strategy,
+             )
++            object.__setattr__(self, "spread_replicate_count", resolution.spread_replicate_count)
++            object.__setattr__(self, "spread_max_replicate_count", resolution.spread_max_replicate_count)
++            object.__setattr__(
++                self,
++                "spread_convergence_relative_tolerance",
++                resolution.spread_convergence_relative_tolerance,
++            )
++            object.__setattr__(self, "spread_basin_mode", resolution.spread_basin_mode)
+         shape = self.grid_shape
+         if shape is not None:
+             if len(shape) != 3:
+@@ -269,6 +281,19 @@
+             raise GraphStyleError(
+                 "spread_sampling_strategy must be all or stratified_random."
+             )
++        replicate_count = _positive_int(self.spread_replicate_count, name="spread_replicate_count")
++        max_replicates = _positive_int(self.spread_max_replicate_count, name="spread_max_replicate_count")
++        if max_replicates < replicate_count:
++            raise GraphStyleError(
++                "spread_max_replicate_count cannot be smaller than spread_replicate_count."
++            )
++        convergence_tolerance = float(self.spread_convergence_relative_tolerance)
++        if not np.isfinite(convergence_tolerance) or convergence_tolerance <= 0.0:
++            raise GraphStyleError(
++                "spread_convergence_relative_tolerance must be finite and positive."
++            )
++        if self.spread_basin_mode not in {"auto", "global"}:
++            raise GraphStyleError("spread_basin_mode must be auto or global.")
+         object.__setattr__(self, "grid_shape", shape)
+         object.__setattr__(self, "grid_interval", interval)
+         object.__setattr__(self, "gaussian_bandwidth", bandwidth)
+@@ -278,6 +303,11 @@
+         object.__setattr__(self, "sample_sd_quantile", quantile)
+         object.__setattr__(self, "spread_sample_size", sample_size)
+         object.__setattr__(self, "spread_sample_seed", sample_seed)
++        object.__setattr__(self, "spread_replicate_count", replicate_count)
++        object.__setattr__(self, "spread_max_replicate_count", max_replicates)
++        object.__setattr__(
++            self, "spread_convergence_relative_tolerance", convergence_tolerance
++        )
+         object.__setattr__(self, "store_sample_positions", bool(self.store_sample_positions))
+         normalized_resolution = DensityResolutionOptions(
+             grid_shape=shape,
+@@ -290,6 +320,10 @@
+             spread_sample_size=sample_size,
+             spread_sample_seed=sample_seed,
+             spread_sampling_strategy=self.spread_sampling_strategy,
++            spread_replicate_count=replicate_count,
++            spread_max_replicate_count=max_replicates,
++            spread_convergence_relative_tolerance=convergence_tolerance,
++            spread_basin_mode=self.spread_basin_mode,
+             broadening_metric=(
+                 GAUSSIAN_SIGMA_BROADENING
+                 if resolution is None
+@@ -831,6 +865,10 @@
+         sample_size=options.spread_sample_size,
+         sample_seed=options.spread_sample_seed,
+         sampling_strategy=options.spread_sampling_strategy,
++        replicate_count=options.spread_replicate_count,
++        max_replicate_count=options.spread_max_replicate_count,
++        convergence_relative_tolerance=options.spread_convergence_relative_tolerance,
++        basin_mode=options.spread_basin_mode,
+     )
+     item_sds = spread.standard_deviations
+     reference_sd = spread.reference_standard_deviation
+@@ -1204,6 +1242,10 @@
+         sample_size=options.spread_sample_size,
+         sample_seed=options.spread_sample_seed,
+         sampling_strategy=options.spread_sampling_strategy,
++        replicate_count=options.spread_replicate_count,
++        max_replicate_count=options.spread_max_replicate_count,
++        convergence_relative_tolerance=options.spread_convergence_relative_tolerance,
++        basin_mode=options.spread_basin_mode,
+     )
+     item_sds = spread.standard_deviations
+     reference_sd = spread.reference_standard_deviation
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/mdstats/plotting/density_contracts.py mdstats-0.20.120a0-complete-source-package/mdstats/plotting/density_contracts.py
+--- mdstats-0.20.119a0-complete-source-package/mdstats/plotting/density_contracts.py	2026-08-05 18:20:00.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/mdstats/plotting/density_contracts.py	2026-08-09 04:50:11.783720484 +0000
+@@ -480,6 +480,10 @@
+     spread_sampling_strategy: Literal["all", "stratified_random"] = (
+         "stratified_random"
+     )
++    spread_replicate_count: int = 4
++    spread_max_replicate_count: int = 8
++    spread_convergence_relative_tolerance: float = 0.01
++    spread_basin_mode: Literal["auto", "global"] = "auto"
+     broadening_metric: str = GAUSSIAN_SIGMA_BROADENING
+     schema_version: str = DENSITY_OPTIONS_SCHEMA
+ 
+@@ -523,6 +527,23 @@
+             raise GraphStyleError(
+                 "spread_sampling_strategy must be all or stratified_random."
+             )
++        replicate_count = _positive_int(
++            self.spread_replicate_count, name="spread_replicate_count", minimum=1
++        )
++        max_replicates = _positive_int(
++            self.spread_max_replicate_count, name="spread_max_replicate_count", minimum=1
++        )
++        if max_replicates < replicate_count:
++            raise GraphStyleError(
++                "spread_max_replicate_count cannot be smaller than spread_replicate_count."
++            )
++        convergence_tolerance = float(self.spread_convergence_relative_tolerance)
++        if not np.isfinite(convergence_tolerance) or convergence_tolerance <= 0.0:
++            raise GraphStyleError(
++                "spread_convergence_relative_tolerance must be finite and positive."
++            )
++        if self.spread_basin_mode not in {"auto", "global"}:
++            raise GraphStyleError("spread_basin_mode must be auto or global.")
+         if self.broadening_metric not in {
+             GAUSSIAN_SIGMA_BROADENING,
+             EFFECTIVE_CIC_STENCIL_BROADENING,
+@@ -537,6 +558,11 @@
+         object.__setattr__(self, "sample_sd_quantile", quantile)
+         object.__setattr__(self, "spread_sample_size", sample_size)
+         object.__setattr__(self, "spread_sample_seed", sample_seed)
++        object.__setattr__(self, "spread_replicate_count", replicate_count)
++        object.__setattr__(self, "spread_max_replicate_count", max_replicates)
++        object.__setattr__(
++            self, "spread_convergence_relative_tolerance", convergence_tolerance
++        )
+ 
+     def to_json_dict(self) -> dict[str, Any]:
+         return {
+@@ -551,6 +577,10 @@
+             "spread_sample_size": self.spread_sample_size,
+             "spread_sample_seed": self.spread_sample_seed,
+             "spread_sampling_strategy": self.spread_sampling_strategy,
++            "spread_replicate_count": self.spread_replicate_count,
++            "spread_max_replicate_count": self.spread_max_replicate_count,
++            "spread_convergence_relative_tolerance": self.spread_convergence_relative_tolerance,
++            "spread_basin_mode": self.spread_basin_mode,
+             "broadening_metric": self.broadening_metric,
+         }
+ 
+@@ -570,6 +600,12 @@
+             spread_sampling_strategy=str(
+                 value.get("spread_sampling_strategy", "stratified_random")
+             ),  # type: ignore[arg-type]
++            spread_replicate_count=int(value.get("spread_replicate_count", 4)),
++            spread_max_replicate_count=int(value.get("spread_max_replicate_count", 8)),
++            spread_convergence_relative_tolerance=float(
++                value.get("spread_convergence_relative_tolerance", 0.01)
++            ),
++            spread_basin_mode=str(value.get("spread_basin_mode", "auto")),  # type: ignore[arg-type]
+             broadening_metric=str(value["broadening_metric"]),
+         )
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/mdstats/plotting/density_diagnostics.py mdstats-0.20.120a0-complete-source-package/mdstats/plotting/density_diagnostics.py
+--- mdstats-0.20.119a0-complete-source-package/mdstats/plotting/density_diagnostics.py	2026-08-05 18:20:00.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/mdstats/plotting/density_diagnostics.py	2026-08-09 04:51:05.761786844 +0000
+@@ -24,6 +24,8 @@
+ ReciprocalResolutionDiagnostic = _common.ReciprocalResolutionDiagnostic
+ PeriodicMeanDiagnostic = _common.PeriodicMeanDiagnostic
+ PeriodicSpreadDiagnostics = _common.PeriodicSpreadDiagnostics
++BasinSpreadDiagnostic = _common.BasinSpreadDiagnostic
++SpreadConvergenceDiagnostic = _common.SpreadConvergenceDiagnostic
+ 
+ 
+ def _translate(callable_: Any, /, *args: Any, **kwargs: Any) -> Any:
+@@ -65,18 +67,30 @@
+     return _translate(_common.periodic_item_spread_diagnostics, *args, **kwargs)
+ 
+ 
++def spread_basin_labels_from_site_assignment(*args: Any, **kwargs: Any) -> Any:
++    return _translate(_common.spread_basin_labels_from_site_assignment, *args, **kwargs)
++
++
++def spread_basin_labels_from_final_segmentation(*args: Any, **kwargs: Any) -> Any:
++    return _translate(_common.spread_basin_labels_from_final_segmentation, *args, **kwargs)
++
++
+ __all__ = [
+     "CELL_EQUIVALENCE_ABSOLUTE_TOLERANCE",
+     "CELL_EQUIVALENCE_RELATIVE_TOLERANCE",
+     "SPREAD_QUANTILE_METHOD",
++    "BasinSpreadDiagnostic",
+     "CellEquivalenceReport",
+     "PeriodicMeanDiagnostic",
+     "PeriodicMeanPolicy",
+     "PeriodicSpreadDiagnostics",
++    "SpreadConvergenceDiagnostic",
+     "ReciprocalResolutionDiagnostic",
+     "evaluate_cell_equivalence",
+     "periodic_frechet_mean_diagnostic",
+     "periodic_item_spread_diagnostics",
++    "spread_basin_labels_from_final_segmentation",
++    "spread_basin_labels_from_site_assignment",
+     "reciprocal_resolution_diagnostic",
+     "require_equivalent_laboratory_density_cells",
+ ]
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/mdstats/plotting/framework_density.py mdstats-0.20.120a0-complete-source-package/mdstats/plotting/framework_density.py
+--- mdstats-0.20.119a0-complete-source-package/mdstats/plotting/framework_density.py	2026-08-05 18:20:00.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/mdstats/plotting/framework_density.py	2026-08-09 04:50:23.855399496 +0000
+@@ -154,6 +154,10 @@
+     spread_sampling_strategy: Literal["all", "stratified_random"] = (
+         "stratified_random"
+     )
++    spread_replicate_count: int = 4
++    spread_max_replicate_count: int = 8
++    spread_convergence_relative_tolerance: float = 0.01
++    spread_basin_mode: Literal["auto", "global"] = "auto"
+     include_vertex_density: bool = True
+     include_edge_density: bool = True
+     edge_source: Literal["projected", "atomic_paths"] = "projected"
+@@ -201,6 +205,14 @@
+                 "spread_sampling_strategy",
+                 resolution.spread_sampling_strategy,
+             )
++            object.__setattr__(self, "spread_replicate_count", resolution.spread_replicate_count)
++            object.__setattr__(self, "spread_max_replicate_count", resolution.spread_max_replicate_count)
++            object.__setattr__(
++                self,
++                "spread_convergence_relative_tolerance",
++                resolution.spread_convergence_relative_tolerance,
++            )
++            object.__setattr__(self, "spread_basin_mode", resolution.spread_basin_mode)
+         shape = self.grid_shape
+         if shape is not None:
+             if len(shape) != 3:
+@@ -243,6 +255,19 @@
+             raise GraphStyleError(
+                 "spread_sampling_strategy must be all or stratified_random."
+             )
++        replicate_count = _positive_int(self.spread_replicate_count, name="spread_replicate_count")
++        max_replicates = _positive_int(self.spread_max_replicate_count, name="spread_max_replicate_count")
++        if max_replicates < replicate_count:
++            raise GraphStyleError(
++                "spread_max_replicate_count cannot be smaller than spread_replicate_count."
++            )
++        convergence_tolerance = float(self.spread_convergence_relative_tolerance)
++        if not np.isfinite(convergence_tolerance) or convergence_tolerance <= 0.0:
++            raise GraphStyleError(
++                "spread_convergence_relative_tolerance must be finite and positive."
++            )
++        if self.spread_basin_mode not in {"auto", "global"}:
++            raise GraphStyleError("spread_basin_mode must be auto or global.")
+         spacing = float(self.edge_sample_spacing)
+         if not np.isfinite(spacing) or spacing <= 0.0:
+             raise GraphStyleError("edge_sample_spacing must be finite and positive.")
+@@ -273,6 +298,11 @@
+         object.__setattr__(self, "sample_sd_quantile", quantile)
+         object.__setattr__(self, "spread_sample_size", sample_size)
+         object.__setattr__(self, "spread_sample_seed", sample_seed)
++        object.__setattr__(self, "spread_replicate_count", replicate_count)
++        object.__setattr__(self, "spread_max_replicate_count", max_replicates)
++        object.__setattr__(
++            self, "spread_convergence_relative_tolerance", convergence_tolerance
++        )
+         object.__setattr__(self, "edge_sample_spacing", spacing)
+         object.__setattr__(self, "edge_quadrature_refinement_levels", refinement_levels)
+         object.__setattr__(
+@@ -295,6 +325,10 @@
+             spread_sample_size=sample_size,
+             spread_sample_seed=sample_seed,
+             spread_sampling_strategy=self.spread_sampling_strategy,
++            spread_replicate_count=replicate_count,
++            spread_max_replicate_count=max_replicates,
++            spread_convergence_relative_tolerance=convergence_tolerance,
++            spread_basin_mode=self.spread_basin_mode,
+             broadening_metric=(
+                 "gaussian_sigma_v1"
+                 if resolution is None
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/pyproject.toml mdstats-0.20.120a0-complete-source-package/pyproject.toml
+--- mdstats-0.20.119a0-complete-source-package/pyproject.toml	2026-08-09 04:25:44.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/pyproject.toml	2026-08-09 05:00:29.571794637 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.119a0"
++version = "0.20.120a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/release/par_dens0_na_lta_qualification.json mdstats-0.20.120a0-complete-source-package/release/par_dens0_na_lta_qualification.json
+--- mdstats-0.20.119a0-complete-source-package/release/par_dens0_na_lta_qualification.json	1970-01-01 00:00:00.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/release/par_dens0_na_lta_qualification.json	2026-08-09 05:01:16.209863410 +0000
+@@ -0,0 +1,54 @@
++{
++  "schema": "mdstats.par-dens0-na-lta-qualification.v1",
++  "package_version": "0.20.120a0",
++  "qualified_on": "2026-08-08",
++  "input": {
++    "basename": "dump.prod.Na_lta_300K.old.lammpstrj",
++    "sha256": "81c86cc40f5a11031f80817213eb558c02348494d1c6cad9b4775a5bc3c9f9cd",
++    "bytes": 183385600,
++    "frames": 10001,
++    "atoms_per_frame": 168,
++    "na_atoms": 24,
++    "type_map": {"1": "Si", "2": "Al", "3": "O", "4": "Na"},
++    "timestep_ps": 0.001
++  },
++  "registration": "framework_translation",
++  "reference_quantile": 0.10,
++  "results_angstrom": {
++    "global_all_reference": 0.07466881461664253,
++    "basin_aware_all_reference": 0.07466881461664253,
++    "production_512_reference": 0.07468598798979899,
++    "production_relative_error": 0.000229994802138834,
++    "two_basin_na_global": 0.1958590101491643,
++    "two_basin_na_full_within_basin": 0.07960089886380832,
++    "two_basin_na_production_within_basin": 0.07878657624907114
++  },
++  "two_basin_na": {
++    "na_selection_index": 17,
++    "atom_index_zero_based": 137,
++    "qualified_basin_count": 2,
++    "excluded_transition_boundary_frames": 156,
++    "full_basin_spreads_angstrom": [0.08985792820189469, 0.06820587517289656],
++    "full_basin_source_frame_counts": [4845, 5000]
++  },
++  "production_convergence": {
++    "sample_size_per_random_replicate": 128,
++    "requested_random_replicates": 4,
++    "maximum_random_replicates": 8,
++    "effective_anchor_samples": 512,
++    "progressive_reference_standard_deviations_angstrom": [0.07429682685468678, 0.07468598798979899],
++    "relative_anchor_change": 0.005210631144966118,
++    "converged_at_relative_tolerance": 0.01,
++    "random_replicate_reference_standard_deviations_angstrom": [0.07237689946999794, 0.07281497801371803, 0.07614512250840047, 0.07221314352979685],
++    "reference_standard_error_angstrom": 0.0009279318342786089,
++    "confidence_level": 0.95,
++    "confidence_interval_angstrom": [0.0717328947522439, 0.07763908122735408],
++    "relative_confidence_half_width": 0.039540124152316794,
++    "escalation_occurred": false
++  },
++  "environment": {
++    "python": "3.13.5",
++    "numpy": "2.3.5",
++    "scipy": "1.17.0"
++  }
++}
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/tests/test_density_par_dens0.py mdstats-0.20.120a0-complete-source-package/tests/test_density_par_dens0.py
+--- mdstats-0.20.119a0-complete-source-package/tests/test_density_par_dens0.py	1970-01-01 00:00:00.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/tests/test_density_par_dens0.py	2026-08-09 05:00:29.579438780 +0000
+@@ -0,0 +1,219 @@
++"""PAR-DENS0 basin-aware spread and convergence qualification."""
++
++from __future__ import annotations
++
++import numpy as np
++import pytest
++
++import mdstats.analysis.density.diagnostics as diagnostics_module
++from mdstats import periodic_item_spread_diagnostics
++
++
++def _fractional_gaussian(
++    centers_cartesian: np.ndarray,
++    *,
++    frames: int,
++    sigma: float,
++    cell_length: float = 20.0,
++    seed: int = 7,
++) -> np.ndarray:
++    rng = np.random.default_rng(seed)
++    centers = np.asarray(centers_cartesian, dtype=float)
++    noise = rng.normal(0.0, sigma, size=(frames, centers.shape[0], 3))
++    return (centers[None, :, :] + noise) / cell_length
++
++
++def test_provided_two_basin_labels_remove_transition_displacement() -> None:
++    frames = 2000
++    cell = np.eye(3) * 20.0
++    rng = np.random.default_rng(11)
++    cart = rng.normal(0.0, 0.08, size=(frames, 1, 3))
++    cart[:990, 0, :] += np.array([5.0, 5.0, 5.0])
++    cart[1010:, 0, :] += np.array([6.2, 5.0, 5.0])
++    cart[990:1010, 0, :] += np.linspace(
++        np.array([5.0, 5.0, 5.0]), np.array([6.2, 5.0, 5.0]), 20
++    )
++    samples = cart / 20.0
++    weights = np.ones(frames)
++
++    global_spread = periodic_item_spread_diagnostics(
++        samples,
++        weights=weights,
++        quantile=0.1,
++        cell=cell,
++        pbc=np.ones(3, dtype=bool),
++        sampling_strategy="all",
++        basin_mode="global",
++    )
++    labels = np.full((frames, 1), -1, dtype=np.int64)
++    labels[:990, 0] = 0
++    labels[1010:, 0] = 1
++    basin_spread = periodic_item_spread_diagnostics(
++        samples,
++        weights=weights,
++        quantile=0.1,
++        cell=cell,
++        pbc=np.ones(3, dtype=bool),
++        sampling_strategy="all",
++        basin_labels_by_frame=labels,
++        basin_label_source="test-residences",
++    )
++
++    assert global_spread.standard_deviations[0] > 0.30
++    assert basin_spread.standard_deviations[0] == pytest.approx(0.08, abs=0.006)
++    assert basin_spread.standard_deviations[0] < 0.35 * global_spread.standard_deviations[0]
++    assert basin_spread.basin_counts_by_item.tolist() == [2]
++    assert basin_spread.excluded_source_sample_counts_by_item.tolist() == [20]
++    assert basin_spread.basin_source == "test-residences"
++
++
++def test_auto_prepass_does_not_split_compact_single_basin() -> None:
++    frames = 4096
++    cell = np.eye(3) * 20.0
++    t = np.linspace(0.0, 24.0 * np.pi, frames, endpoint=False)
++    cart = np.empty((frames, 1, 3), dtype=float)
++    cart[:, 0, 0] = 5.0 + 0.08 * np.sin(t)
++    cart[:, 0, 1] = 6.0 + 0.06 * np.cos(0.7 * t)
++    cart[:, 0, 2] = 7.0 + 0.05 * np.sin(1.3 * t)
++
++    global_spread = periodic_item_spread_diagnostics(
++        cart / 20.0,
++        weights=np.ones(frames),
++        quantile=0.1,
++        cell=cell,
++        pbc=np.ones(3, dtype=bool),
++        sampling_strategy="all",
++        basin_mode="global",
++    )
++    auto_spread = periodic_item_spread_diagnostics(
++        cart / 20.0,
++        weights=np.ones(frames),
++        quantile=0.1,
++        cell=cell,
++        pbc=np.ones(3, dtype=bool),
++        sampling_strategy="all",
++        basin_mode="auto",
++    )
++
++    assert auto_spread.basin_counts_by_item.tolist() == [1]
++    assert auto_spread.excluded_source_sample_counts_by_item.tolist() == [0]
++    assert auto_spread.standard_deviations[0] == pytest.approx(
++        global_spread.standard_deviations[0], rel=2.0e-12
++    )
++
++
++def test_compact_all_frame_path_does_not_require_quadratic_medoid(monkeypatch: pytest.MonkeyPatch) -> None:
++    frames = 5000
++    cell = np.eye(3) * 20.0
++    samples = _fractional_gaussian(
++        np.array([[5.0, 6.0, 7.0]]), frames=frames, sigma=0.08, seed=19
++    )
++
++    def forbidden_medoid(*args, **kwargs):  # type: ignore[no-untyped-def]
++        raise AssertionError("quadratic medoid fallback should not run for a compact basin")
++
++    monkeypatch.setattr(diagnostics_module, "_weighted_medoid_index", forbidden_medoid)
++    result = periodic_item_spread_diagnostics(
++        samples,
++        weights=np.ones(frames),
++        quantile=0.1,
++        cell=cell,
++        pbc=np.ones(3, dtype=bool),
++        sampling_strategy="all",
++        basin_mode="global",
++    )
++
++    assert result.standard_deviations[0] == pytest.approx(0.08, abs=0.004)
++    assert result.basin_diagnostics[0].compact_fast_path_count == 1
++    assert result.basin_diagnostics[0].fallback_mean_count == 0
++
++
++def test_production_replicates_use_convergence_anchor_and_report_uncertainty() -> None:
++    frames = 10001
++    cell = np.eye(3) * 20.0
++    t = np.arange(frames, dtype=float)
++    # Multiple incommensurate oscillations make systematic undersampling visible,
++    # while the deterministic midpoint anchor remains reproducible.
++    cart = np.empty((frames, 8, 3), dtype=float)
++    for item in range(8):
++        phase = 0.37 * item
++        cart[:, item, 0] = 5.0 + item * 0.2 + 0.10 * np.sin(0.017 * t + phase)
++        cart[:, item, 1] = 6.0 + 0.08 * np.cos(0.023 * t + 0.5 * phase)
++        cart[:, item, 2] = 7.0 + 0.06 * np.sin(0.031 * t - phase)
++    samples = cart / 20.0
++    weights = np.ones(frames)
++
++    exact = periodic_item_spread_diagnostics(
++        samples,
++        weights=weights,
++        quantile=0.1,
++        cell=cell,
++        pbc=np.ones(3, dtype=bool),
++        sampling_strategy="all",
++        basin_mode="global",
++    )
++    production = periodic_item_spread_diagnostics(
++        samples,
++        weights=weights,
++        quantile=0.1,
++        cell=cell,
++        pbc=np.ones(3, dtype=bool),
++        sample_size=128,
++        sample_seed=0,
++        sampling_strategy="stratified_random",
++        replicate_count=4,
++        max_replicate_count=8,
++        convergence_relative_tolerance=0.01,
++        basin_mode="global",
++    )
++
++    assert production.reference_standard_deviation == pytest.approx(
++        exact.reference_standard_deviation, rel=0.01
++    )
++    convergence = production.convergence
++    assert convergence is not None
++    assert convergence.effective_sample_count >= 512
++    assert convergence.realized_replicate_count in {4, 8}
++    assert convergence.replicate_reference_standard_deviations.size == convergence.realized_replicate_count
++    assert convergence.progressive_reference_standard_deviations.size >= 2
++    assert convergence.reference_standard_error is not None
++    assert convergence.confidence_interval_low is not None
++    assert convergence.confidence_interval_high is not None
++    assert convergence.converged is True
++    assert production.sampling_strategy == "convergence_qualified_stratified"
++
++
++def test_final_segmentation_adapter_excludes_retained_excursion_membership() -> None:
++    from mdstats.analysis.density.diagnostics import (
++        spread_basin_labels_from_final_segmentation,
++    )
++    from mdstats.analysis.density.final_segmentation import FinalPassageOutcome
++    from mdstats.analysis.density import FinalSegmentationOptions
++    from tests.test_stage11e6_final_segmentation import _final
++    from tests.test_stage11e4_temporal_assignment import _jitter
++
++    xs = np.r_[_jitter(0.2, 8), [0.45], _jitter(0.2, 8)]
++    catalog, _temporal, result = _final(
++        xs,
++        options=FinalSegmentationOptions(
++            minimum_core_entry_frames=2,
++            minimum_basin_exit_frames=2,
++            recrossing_window_frames=4,
++            sensitivity_thresholds=((2, 2),),
++            sensitivity_stride_factors=(1,),
++            minimum_events_for_stability=1,
++        ),
++    )
++    labels = spread_basin_labels_from_final_segmentation(catalog, result)
++    retained = next(
++        passage for passage in result.passages
++        if passage.outcome is FinalPassageOutcome.RETAINED_EXCURSION
++    )
++    retained_frames = set(int(catalog.frame_indices[i]) for i in retained.sample_indices)
++    frame_axis = np.asarray(catalog.temporal_weighting.frame_indices, dtype=np.int64)
++    positions = [i for i, frame in enumerate(frame_axis) if int(frame) in retained_frames]
++
++    assert labels.shape == (frame_axis.size, 1)
++    assert positions
++    assert np.all(labels[positions, 0] == -1)
++    assert np.any(labels[:, 0] == 0)
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/tests/test_density_par_dens0_qualification.py mdstats-0.20.120a0-complete-source-package/tests/test_density_par_dens0_qualification.py
+--- mdstats-0.20.119a0-complete-source-package/tests/test_density_par_dens0_qualification.py	1970-01-01 00:00:00.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/tests/test_density_par_dens0_qualification.py	2026-08-09 05:01:16.210600366 +0000
+@@ -0,0 +1,27 @@
++from __future__ import annotations
++
++import json
++from pathlib import Path
++
++import pytest
++
++ROOT = Path(__file__).resolve().parents[1]
++QUAL = ROOT / "release" / "par_dens0_na_lta_qualification.json"
++
++
++def test_par_dens0_real_na_lta_qualification_is_release_bound() -> None:
++    payload = json.loads(QUAL.read_text(encoding="utf-8"))
++    assert payload["schema"] == "mdstats.par-dens0-na-lta-qualification.v1"
++    assert payload["package_version"] == "0.20.120a0"
++    assert payload["input"]["frames"] == 10001
++    assert payload["input"]["na_atoms"] == 24
++    results = payload["results_angstrom"]
++    assert results["production_512_reference"] == pytest.approx(
++        results["basin_aware_all_reference"], rel=0.01
++    )
++    assert results["two_basin_na_global"] > 2.0 * results["two_basin_na_full_within_basin"]
++    assert results["two_basin_na_production_within_basin"] == pytest.approx(0.08, abs=0.01)
++    convergence = payload["production_convergence"]
++    assert convergence["effective_anchor_samples"] == 512
++    assert convergence["relative_anchor_change"] < convergence["converged_at_relative_tolerance"]
++    assert convergence["relative_confidence_half_width"] > convergence["relative_anchor_change"]
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/tests/test_density_par_dens_architecture_plan.py mdstats-0.20.120a0-complete-source-package/tests/test_density_par_dens_architecture_plan.py
+--- mdstats-0.20.119a0-complete-source-package/tests/test_density_par_dens_architecture_plan.py	2026-08-09 04:29:05.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/tests/test_density_par_dens_architecture_plan.py	2026-08-09 05:05:26.512599250 +0000
+@@ -8,11 +8,12 @@
+ MANUAL = ROOT / "docs/arch_manuals/mdstats_dynamical_framework_density_architecture_standard.md"
+ 
+ 
+-def test_par_dens_release_is_plan_only_and_versioned() -> None:
+-    assert mdstats.__version__ == "0.20.119a0"
++def test_par_dens0_is_completed_and_par_dens1_is_next() -> None:
++    assert mdstats.__version__ == "0.20.120a0"
+     text = MANUAL.read_text(encoding="utf-8")
+-    assert "not_started` as a runtime implementation in `mdstats 0.20.119a0`" in text
+-    assert "This section freezes the next ordered implementation sequence" in text
++    assert "PAR-DENS0 is `completed` in `mdstats 0.20.120a0`" in text
++    assert "PAR-DENS1 is the next" in text
++    assert "### PAR-DENS0 implementation record (0.20.120a0)" in text
+ 
+ 
+ def test_par_dens_gates_are_present_in_normative_order() -> None:
+@@ -36,7 +37,10 @@
+         "within-basin vibrational spread",
+         "FinalResidenceInterval.sample_indices",
+         "FinalPassageInterval",
+-        "four independent 128-stratum replicates",
++        "four independent 128-stratum random replicates",
++        "deterministic 256- and 512-stratum midpoint anchors",
++        "0.0746859880 Angstrom",
++        "3.95%",
+         "0.0746753 Angstrom",
+         "0.19586 Angstrom",
+         "0.07977 Angstrom",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data0_architecture_specification.py mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data0_architecture_specification.py
+--- mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data0_architecture_specification.py	2026-08-09 04:25:44.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data0_architecture_specification.py	2026-08-09 05:00:29.591890489 +0000
+@@ -263,4 +263,4 @@
+ def test_mlff_data0_pdf_and_version_artifacts_exist() -> None:
+     assert MANUAL_PDF.stat().st_size > 10_000
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.119a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.120a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data1_specification.py mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data1_specification.py
+--- mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data1_specification.py	2026-08-09 04:25:44.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data1_specification.py	2026-08-09 05:00:29.597596404 +0000
+@@ -49,4 +49,4 @@
+     assert callable(mdstats.assign_balanced_round_robin)
+     assert callable(mdstats.build_complete_frame_block_plan)
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.119a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.120a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data2a_manifest_inference_specification.py mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data2a_manifest_inference_specification.py
+--- mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-09 04:25:44.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-09 05:00:29.598581803 +0000
+@@ -15,7 +15,7 @@
+ 
+ 
+ def test_data2a_version_public_api_and_documented_contract() -> None:
+-    assert mdstats.__version__ == "0.20.119a0"
++    assert mdstats.__version__ == "0.20.120a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert callable(mdstats.infer_training_manifest_metadata)
+     policy = mdstats.ManifestInferencePolicy()
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a2_specification.py mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data9a2_specification.py
+--- mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a2_specification.py	2026-08-09 04:25:44.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data9a2_specification.py	2026-08-09 05:00:29.589804412 +0000
+@@ -23,7 +23,7 @@
+         "finite energy, force, and stress",
+     ):
+         assert required in text
+-    assert 'version = "0.20.119a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.120a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "DATA9A2 real-MACE realization is implemented in `0.20.39a0`" in ARCH.read_text()
+ 
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a3_specification.py mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data9a3_specification.py
+--- mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a3_specification.py	2026-08-09 04:25:44.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data9a3_specification.py	2026-08-09 05:00:29.578668710 +0000
+@@ -9,5 +9,5 @@
+     assert "37,632" in text
+     assert "supported_with_temporal_blocks_only" in text
+     assert "production_replay_corpus_not_bound" in text
+-    assert 'version = "0.20.119a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.120a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "MLFF-DATA9A3 production qualification" in ARCH.read_text()
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a4_precision_specification.py mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data9a4_precision_specification.py
+--- mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a4_precision_specification.py	2026-08-09 04:25:44.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data9a4_precision_specification.py	2026-08-09 05:00:29.579719335 +0000
+@@ -9,7 +9,7 @@
+     assert "float32" in text and "float64" in text
+     assert "MaceModelPrecisionRecord" in text
+     assert "MacePrecisionTransitionRecord" in text
+-    assert "version = \"0.20.119a0\"" in (ROOT / "pyproject.toml").read_text()
++    assert "version = \"0.20.120a0\"" in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_bind_precision_to_protocol() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a5_critical_fp64_specification.py mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data9a5_critical_fp64_specification.py
+--- mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-09 04:25:44.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-09 05:00:29.579170162 +0000
+@@ -14,7 +14,7 @@
+     assert 'version: "0.20.42a0"' in text
+     assert "training_force_jacobian_dtype = model" in text
+     assert "Python/ASE" in text
+-    assert 'version = "0.20.119a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.120a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_data9a5_architecture_declares_scope_and_limits() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a5_deployment_specification.py mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data9a5_deployment_specification.py
+--- mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a5_deployment_specification.py	2026-08-09 04:25:44.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data9a5_deployment_specification.py	2026-08-09 05:00:29.592737323 +0000
+@@ -13,7 +13,7 @@
+     assert 'version: "0.20.43a0"' in text
+     assert "downstream runtime owns" in text
+     assert "float32-to-float64 promotion does not restore" in text
+-    assert 'version = "0.20.119a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.120a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_keep_lammps_outside_mdstats_scope() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a6c_observable_evidence_specification.py mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data9a6c_observable_evidence_specification.py
+--- mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-09 04:25:44.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-09 05:00:29.590424019 +0000
+@@ -74,5 +74,5 @@
+ 
+ def test_packaged_owner_manual_index_is_valid() -> None:
+     payload = json.loads(MANUAL_INDEX.read_text(encoding="utf-8"))
+-    assert payload["package_version"] == "0.20.119a0"
++    assert payload["package_version"] == "0.20.120a0"
+     assert "structural-observables-architecture" in payload["manuals"]
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a7a_material_profile_specification.py mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data9a7a_material_profile_specification.py
+--- mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-09 04:25:44.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-09 05:00:29.592829279 +0000
+@@ -64,4 +64,4 @@
+ 
+ 
+ def test_release_version_is_data9a7a() -> None:
+-    assert 'version = "0.20.119a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert 'version = "0.20.120a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a7b_specification.py mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data9a7b_specification.py
+--- mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a7b_specification.py	2026-08-09 04:25:44.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data9a7b_specification.py	2026-08-09 05:00:29.599064557 +0000
+@@ -69,7 +69,7 @@
+ 
+ 
+ def test_data9a7b_public_exports_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.119a0"
++    assert mdstats.__version__ == "0.20.120a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert callable(mdstats.compute_local_structure_features)
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a7c_specification.py mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data9a7c_specification.py
+--- mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a7c_specification.py	2026-08-09 04:25:44.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data9a7c_specification.py	2026-08-09 05:00:29.595050556 +0000
+@@ -47,7 +47,7 @@
+ 
+ 
+ def test_public_api_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.119a0"
++    assert mdstats.__version__ == "0.20.120a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert mdstats.MLFF_DATA9A7C_PARSER_VERSION == "0.20.49a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a7d_specification.py mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data9a7d_specification.py
+--- mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a7d_specification.py	2026-08-09 04:25:44.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data9a7d_specification.py	2026-08-09 05:00:29.593017367 +0000
+@@ -39,6 +39,6 @@
+ 
+ 
+ def test_data9a7d_runtime_versions() -> None:
+-    assert mdstats.__version__ == "0.20.119a0"
++    assert mdstats.__version__ == "0.20.120a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7D_PARSER_VERSION == "0.20.50a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a7e_specification.py mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data9a7e_specification.py
+--- mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a7e_specification.py	2026-08-09 04:25:44.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data9a7e_specification.py	2026-08-09 05:00:29.587654029 +0000
+@@ -39,7 +39,7 @@
+         "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
+         "CROSS_SYSTEM_QUALIFICATION_SUITE",
+     } <= nodes
+-    assert mdstats.__version__ == "0.20.119a0"
++    assert mdstats.__version__ == "0.20.120a0"
+     assert mdstats.MLFF_DATA9A7E_PARSER_VERSION == "0.20.51a0"
+     assert callable(mdstats.qualify_cross_system_case)
+     assert callable(mdstats.build_cross_system_qualification_suite)
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a8_specification.py mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data9a8_specification.py
+--- mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a8_specification.py	2026-08-09 04:25:44.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data9a8_specification.py	2026-08-09 05:00:29.585124435 +0000
+@@ -66,7 +66,7 @@
+ 
+ 
+ def test_public_runtime_exposes_data9a8_without_removed_aliases() -> None:
+-    assert mdstats.__version__ == "0.20.119a0"
++    assert mdstats.__version__ == "0.20.120a0"
+     assert mdstats.MLFF_DATA9A8_PARSER_VERSION == "0.20.52a0"
+     assert mdstats.ObservableComparisonPolicy
+     assert mdstats.compare_mlff_observable_validation
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a9a_specification.py mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data9a9a_specification.py
+--- mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a9a_specification.py	2026-08-09 04:25:44.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data9a9a_specification.py	2026-08-09 05:00:29.594637114 +0000
+@@ -65,7 +65,7 @@
+ 
+ 
+ def test_public_runtime_exports_data9a9a_contracts() -> None:
+-    assert mdstats.__version__ == "0.20.119a0"
++    assert mdstats.__version__ == "0.20.120a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A9A_VERSION
+     assert mdstats.Data6ModelSweepPlan
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a9b_specification.py mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data9a9b_specification.py
+--- mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a9b_specification.py	2026-08-09 04:25:44.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data9a9b_specification.py	2026-08-09 05:00:29.587306364 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9b_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.119a0"
++    assert mdstats.__version__ == "0.20.120a0"
+     for name in (
+         "ProductionMaterializationPlan",
+         "ProductionMaterializationCheckpoint",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a9c_specification.py mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data9a9c_specification.py
+--- mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a9c_specification.py	2026-08-09 04:25:44.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data9a9c_specification.py	2026-08-09 05:00:29.592767077 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9c_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.119a0"
++    assert mdstats.__version__ == "0.20.120a0"
+     for name in (
+         "ProductionCorpusPlan", "ProductionExpectedRun",
+         "ProfileExtensionEvidenceRequirement", "ProductionCorpusQualificationRecord",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a_specification.py mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data9a_specification.py
+--- mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a_specification.py	2026-08-09 04:25:44.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data9a_specification.py	2026-08-09 05:00:29.580853173 +0000
+@@ -14,7 +14,7 @@
+ 
+ 
+ def test_data9a_runtime_specification_is_canonical() -> None:
+-    assert 'version = "0.20.119a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.120a0"' in (ROOT / "pyproject.toml").read_text()
+     architecture = ARCH.read_text()
+     stage = STAGE.read_text()
+     specification = SPEC.read_text()
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9b1_specification.py mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data9b1_specification.py
+--- mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9b1_specification.py	2026-08-09 04:25:44.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data9b1_specification.py	2026-08-09 05:00:29.591205545 +0000
+@@ -18,8 +18,8 @@
+     assert "TrainingCampaignPlan" in text
+     assert "CheckpointSelectionRecord" in text
+     assert "mdstats-mace-train" in text
+-    assert mdstats.__version__ == "0.20.119a0"
+-    assert 'version = "0.20.119a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert mdstats.__version__ == "0.20.120a0"
++    assert 'version = "0.20.120a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+ 
+ 
+ def test_data9b1_is_integrated_into_manual_and_stage_plan() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9b2_specification.py mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data9b2_specification.py
+--- mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9b2_specification.py	2026-08-09 04:25:44.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data9b2_specification.py	2026-08-09 05:00:29.596516045 +0000
+@@ -23,7 +23,7 @@
+         'mdstats-mace-select-head',
+     ):
+         assert token in text
+-    assert mdstats.__version__ == '0.20.119a0'
++    assert mdstats.__version__ == '0.20.120a0'
+     assert mdstats.MLFF_DATA9B2_VERSION == '0.20.57a0'
+ 
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9b3_campaign_cli_specification.py mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data9b3_campaign_cli_specification.py
+--- mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-09 04:25:44.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-09 05:00:29.594860565 +0000
+@@ -16,7 +16,7 @@
+ 
+ 
+ def test_data9b3_version_and_user_surface() -> None:
+-    assert mdstats.__version__ == "0.20.119a0"
++    assert mdstats.__version__ == "0.20.120a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert TOOL.is_file()
+     assert TOOL.stat().st_mode & 0o111
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/tests/test_mlff_opt_ctrl1_specification.py mdstats-0.20.120a0-complete-source-package/tests/test_mlff_opt_ctrl1_specification.py
+--- mdstats-0.20.119a0-complete-source-package/tests/test_mlff_opt_ctrl1_specification.py	2026-08-09 04:25:44.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/tests/test_mlff_opt_ctrl1_specification.py	2026-08-09 05:00:29.579063224 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_ctrl1_release_identity_preserves_scientific_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.119a0"
++    assert mdstats.__version__ == "0.20.120a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.119a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.120a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_ctrl1_architecture_and_spec_close_roadmap() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/tests/test_mlff_opt_eval4_specification.py mdstats-0.20.120a0-complete-source-package/tests/test_mlff_opt_eval4_specification.py
+--- mdstats-0.20.119a0-complete-source-package/tests/test_mlff_opt_eval4_specification.py	2026-08-09 04:25:44.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/tests/test_mlff_opt_eval4_specification.py	2026-08-09 05:00:29.592251333 +0000
+@@ -11,9 +11,9 @@
+ 
+ 
+ def test_opt_eval4_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.119a0"
++    assert mdstats.__version__ == "0.20.120a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+-    assert 'version = "0.20.119a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.120a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_eval4_architecture_and_spec_record_pipeline_contract() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/tests/test_mlff_opt_verify1_specification.py mdstats-0.20.120a0-complete-source-package/tests/test_mlff_opt_verify1_specification.py
+--- mdstats-0.20.119a0-complete-source-package/tests/test_mlff_opt_verify1_specification.py	2026-08-09 04:25:44.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/tests/test_mlff_opt_verify1_specification.py	2026-08-09 05:00:29.599415717 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_verify1_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.119a0"
++    assert mdstats.__version__ == "0.20.120a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.119a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.120a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_verify1_architecture_and_spec_record_contract() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/tests/test_mlff_perf2_parallel_acceleration_specification.py mdstats-0.20.120a0-complete-source-package/tests/test_mlff_perf2_parallel_acceleration_specification.py
+--- mdstats-0.20.119a0-complete-source-package/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-09 04:25:44.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-09 05:00:29.587101211 +0000
+@@ -10,7 +10,7 @@
+ 
+ 
+ def test_perf2_release_and_configuration_contract() -> None:
+-    assert mdstats.__version__ == "0.20.119a0"
++    assert mdstats.__version__ == "0.20.120a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     template = campaign_cli._config_template(
+         workspace="workspace",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/tests/test_mlff_prec1_specification.py mdstats-0.20.120a0-complete-source-package/tests/test_mlff_prec1_specification.py
+--- mdstats-0.20.119a0-complete-source-package/tests/test_mlff_prec1_specification.py	2026-08-09 04:25:44.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/tests/test_mlff_prec1_specification.py	2026-08-09 05:00:29.584254908 +0000
+@@ -12,7 +12,7 @@
+ 
+ 
+ def test_prec1_release_and_architecture_status() -> None:
+-    assert mdstats.__version__ == "0.20.119a0"
++    assert mdstats.__version__ == "0.20.120a0"
+     manual = MANUAL.read_text(encoding="utf-8")
+     spec = SPEC.read_text(encoding="utf-8")
+     assert "PREC1 - precision profiles, explicit staged schedule, and init realization - implemented in 0.20.108a0" in manual
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' mdstats-0.20.119a0-complete-source-package/tests/test_mlff_prec3_specification.py mdstats-0.20.120a0-complete-source-package/tests/test_mlff_prec3_specification.py
+--- mdstats-0.20.119a0-complete-source-package/tests/test_mlff_prec3_specification.py	2026-08-09 04:25:44.000000000 +0000
++++ mdstats-0.20.120a0-complete-source-package/tests/test_mlff_prec3_specification.py	2026-08-09 05:00:29.582571116 +0000
+@@ -16,7 +16,7 @@
+     manual = MANUAL.read_text(encoding="utf-8")
+     spec = SPEC.read_text(encoding="utf-8")
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+-    assert mdstats.__version__ == "0.20.119a0"
++    assert mdstats.__version__ == "0.20.120a0"
+     assert "PREC3 - campaign integration, qualification, and profile activation - implemented in 0.20.110a0" in manual
+     assert "PREC3 implementation closure (0.20.110a0)" in manual
+     assert "PREC3 implemented in mdstats 0.20.110a0" in spec

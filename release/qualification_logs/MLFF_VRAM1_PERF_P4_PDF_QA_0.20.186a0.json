@@ -1,0 +1,57 @@
+{
+  "architecture_revision": 53,
+  "created_at_utc": "2026-08-16T01:44:45.773923Z",
+  "defects_found_and_fixed": [
+    "FINAL-GPU1 foundation SHA-256 table overflow: replaced full hashes in human table with prefixes while retaining full hashes in machine-readable foundation identity lock"
+  ],
+  "documents": [
+    {
+      "name": "architecture",
+      "pages": 195,
+      "path": "mlff_training_data_architecture.pdf",
+      "sha256": "d563ce231acec3df6525f6655f6bbebcd705b5ad7a6e957d578ee887f7045221",
+      "visual_review": "whole_document_low_resolution_plus_targeted_high_resolution_pages_1_189_190_191"
+    },
+    {
+      "name": "vram1_perf_p4_spec",
+      "pages": 4,
+      "path": "mlff_vram1_perf_p4_memory_pipeline_spec.pdf",
+      "sha256": "637db6ebd0bcbe6f7004b9d3a0de2906b1d95c183db813c0d8541d5d13e48156",
+      "visual_review": "all_pages_160dpi"
+    },
+    {
+      "name": "final_gpu1_spec",
+      "pages": 3,
+      "path": "mlff_final_gpu1_deferred_qualification_spec.pdf",
+      "sha256": "59963c7edda924be4618b448a95136d7753dfc52a0b6b1547430cef4b377b472",
+      "visual_review": "all_pages_160dpi_after_overflow_fix"
+    },
+    {
+      "name": "revision_53",
+      "pages": 1,
+      "path": "ARCHITECTURE_NOTES_MLFF_REV53.pdf",
+      "sha256": "4886d932e2e948f546f9ede9718de2fb5b665d577da9290a72220c6a5a0125ce",
+      "visual_review": "full_page_160dpi"
+    },
+    {
+      "name": "patch_notes",
+      "pages": 1,
+      "path": "PATCH_NOTES_0.20.186a0.pdf",
+      "sha256": "e607f3ce5a597d3dd3800320a2d91a14390ece23cb14236b3feb27de184ee8e6",
+      "visual_review": "full_page_160dpi"
+    },
+    {
+      "name": "benchmark",
+      "pages": 1,
+      "path": "benchmarks/mlff_vram1_perf_p4_cloud_cpu_2026-08-15.pdf",
+      "sha256": "af28dfaaee1a94eee6d86b4b0f90f7ba8884c41e040bfc79d4f4c034623f8fd2",
+      "visual_review": "full_page_160dpi"
+    }
+  ],
+  "font_embedding": "all inspected fonts embedded",
+  "manual_blank_like_pages": 0,
+  "preflight": "all PDFs openable, unencrypted, non-scanned, no XFA",
+  "release": "0.20.186a0",
+  "schema": "mdstats.mlff-vram1-perf-p4-pdf-qa.2026-08.v1",
+  "status": "pass"
+}

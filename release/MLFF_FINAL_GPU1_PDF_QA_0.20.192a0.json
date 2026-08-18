@@ -1,0 +1,72 @@
+{
+  "documents": [
+    {
+      "pages": 1,
+      "path": "ARCHITECTURE_NOTES_MLFF_REV59.pdf",
+      "preflight_warnings": [],
+      "sha256": "0bf0590e4947e9214eb294b3e574ca2100f78a3890851fd0b564dd8185fcb2f2",
+      "visual_pages_inspected": [
+        "page-1"
+      ],
+      "visual_status": "pass"
+    },
+    {
+      "pages": 5,
+      "path": "mlff_final_gpu1_deferred_qualification_spec.pdf",
+      "preflight_warnings": [],
+      "sha256": "2939822acc3f8febac2137776a2f97d9bb62edacbb01c573a7892f6c8bc92a96",
+      "visual_pages_inspected": [
+        "page-4",
+        "page-5"
+      ],
+      "visual_status": "pass"
+    },
+    {
+      "pages": 5,
+      "path": "FINAL_GPU1_WORKSTATION_RUNBOOK.pdf",
+      "preflight_warnings": [],
+      "sha256": "fb8ac89d4bdd91db6152db8721ba3045dfc9ed5943b636a910a82e155622698f",
+      "visual_pages_inspected": [
+        "page-1",
+        "page-4",
+        "page-5"
+      ],
+      "visual_status": "pass"
+    },
+    {
+      "pages": 1,
+      "path": "PATCH_NOTES_0.20.192a0.pdf",
+      "preflight_warnings": [],
+      "sha256": "5021084d0fb48ca63801e73342971d331399971e4ca64c251d09fd9a733aaffb",
+      "visual_pages_inspected": [
+        "page-1"
+      ],
+      "visual_status": "pass"
+    },
+    {
+      "pages": 198,
+      "path": "mlff_training_data_architecture.pdf",
+      "preflight_warnings": [],
+      "sha256": "0591b1f112c4248380d3ae4a52d547c498343f1b5fd3ce31fb666a1f2502ebce",
+      "visual_pages_inspected": [
+        "page-1",
+        "page-198"
+      ],
+      "visual_status": "pass"
+    },
+    {
+      "pages": 2,
+      "path": "audits/analysis/mlff_final_gpu1_development_host_2026-08-15.pdf",
+      "preflight_warnings": [],
+      "sha256": "303a8925af38afbe4123a805050d14b3a5763bd9139163f8ecda81dcf7681093",
+      "visual_pages_inspected": [
+        "page-1",
+        "page-2"
+      ],
+      "visual_status": "pass"
+    }
+  ],
+  "mdstats_version": "0.20.192a0",
+  "passed": true,
+  "schema": "mdstats.mlff-final-gpu1-pdf-qa.2026-08.v1"
+}

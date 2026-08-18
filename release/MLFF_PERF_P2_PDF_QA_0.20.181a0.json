@@ -1,0 +1,48 @@
+{
+  "documents": [
+    {
+      "blank_like_pages": 0,
+      "fonts_embedded": true,
+      "pages": 189,
+      "path": "docs/arch_manuals/mlff_training_data_architecture.pdf",
+      "visual_review": "whole-document 45-dpi render sanity; 150-dpi targeted pages 179-184 reviewed; PERF-P2 record and PERF-P3 handoff clean"
+    },
+    {
+      "blank_like_pages": 0,
+      "fonts_embedded": true,
+      "pages": 4,
+      "path": "docs/specs/training_data/mlff_perf_p2_lazy_target_ladder_spec.pdf",
+      "visual_review": "all pages rendered at 140 dpi; title, math, qualification table, references inspected"
+    },
+    {
+      "blank_like_pages": 0,
+      "fonts_embedded": true,
+      "pages": 2,
+      "path": "audits/analysis/mlff_perf_p2_lta_cloud_cpu_2026-08-15.pdf",
+      "visual_review": "all pages rendered at 140 dpi; benchmark tables and limits inspected"
+    },
+    {
+      "blank_like_pages": 0,
+      "fonts_embedded": true,
+      "pages": 1,
+      "path": "ARCHITECTURE_NOTES_MLFF_REV47.pdf",
+      "visual_review": "full page rendered at 140 dpi and inspected"
+    },
+    {
+      "blank_like_pages": 0,
+      "fonts_embedded": true,
+      "pages": 1,
+      "path": "PATCH_NOTES_0.20.181a0.pdf",
+      "visual_review": "full page rendered at 140 dpi and inspected"
+    }
+  ],
+  "gate": "PERF-P2",
+  "latex_warning_cleanup": {
+    "note": "Legacy math-mode \\AA warnings in the canonical manual were rewritten as text-unit angstrom symbols; final pandoc/XeLaTeX render emitted no warnings.",
+    "result": "pass"
+  },
+  "release": "0.20.181a0",
+  "render_workflow": "Markdown -> pandoc -> XeLaTeX -> pdftoppm visual inspection",
+  "result": "pass",
+  "schema": "mdstats.mlff-perf-p2-pdf-qa.v1"
+}

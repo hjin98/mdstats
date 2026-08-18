@@ -1,0 +1,107 @@
+{
+  "release": "0.20.227a0",
+  "schema": "mdstats.mlff-neighbor1-benchmark.v1",
+  "scientific_equivalence": {
+    "feasibility_digest_count": 1,
+    "feasibility_digests": [
+      "937214c70d1f2baae883993082f1ceb25bea6007a5a2be0beee045262f5c0613"
+    ],
+    "neighborhood_digest_count": 1,
+    "neighborhood_digests": [
+      "0220c89084fe957e85eb1e1c87a581eaa44869f11cb98bee7f7bd8cdafd3d74e"
+    ],
+    "sparse_index_digest_count": 1,
+    "sparse_index_digests": [
+      "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c"
+    ]
+  },
+  "summaries": {
+    "1": {
+      "median_cache_hit_mvidx_seconds": 0.3070744429999195,
+      "median_feasibility_plus_csr_seconds": 1.031489163999936,
+      "median_process_cpu_seconds": 1.3845743300000004,
+      "median_total_feas_to_mvidx_seconds": 1.338564546999919,
+      "peak_maxrss_kib": 311544,
+      "repeat_count": 2,
+      "workers": 1
+    },
+    "3": {
+      "median_cache_hit_mvidx_seconds": 0.3138745564999681,
+      "median_feasibility_plus_csr_seconds": 1.2123920555001177,
+      "median_process_cpu_seconds": 2.386546871,
+      "median_total_feas_to_mvidx_seconds": 1.5262674000000516,
+      "peak_maxrss_kib": 335092,
+      "repeat_count": 2,
+      "workers": 3
+    }
+  },
+  "trials": [
+    {
+      "block_size": 512,
+      "cache_hit_mvidx_seconds": 0.29911699499984934,
+      "edges": 3194880,
+      "feasibility_digest": "937214c70d1f2baae883993082f1ceb25bea6007a5a2be0beee045262f5c0613",
+      "feasibility_plus_csr_seconds": 0.9754822529998819,
+      "maxrss_kib": 308132,
+      "neighborhood_digest": "0220c89084fe957e85eb1e1c87a581eaa44869f11cb98bee7f7bd8cdafd3d74e",
+      "process_cpu_seconds": 1.313902658,
+      "repeat_index": 0,
+      "sparse_index_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
+      "total_feas_to_mvidx_seconds": 1.2746002489998318,
+      "witnesses": 49152,
+      "workers": 1
+    },
+    {
+      "block_size": 512,
+      "cache_hit_mvidx_seconds": 0.3150318909999896,
+      "edges": 3194880,
+      "feasibility_digest": "937214c70d1f2baae883993082f1ceb25bea6007a5a2be0beee045262f5c0613",
+      "feasibility_plus_csr_seconds": 1.08749607499999,
+      "maxrss_kib": 311544,
+      "neighborhood_digest": "0220c89084fe957e85eb1e1c87a581eaa44869f11cb98bee7f7bd8cdafd3d74e",
+      "process_cpu_seconds": 1.4552460020000009,
+      "repeat_index": 1,
+      "sparse_index_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
+      "total_feas_to_mvidx_seconds": 1.4025288450000062,
+      "witnesses": 49152,
+      "workers": 1
+    },
+    {
+      "block_size": 512,
+      "cache_hit_mvidx_seconds": 0.3178048869999657,
+      "edges": 3194880,
+      "feasibility_digest": "937214c70d1f2baae883993082f1ceb25bea6007a5a2be0beee045262f5c0613",
+      "feasibility_plus_csr_seconds": 1.6888690630000838,
+      "maxrss_kib": 329996,
+      "neighborhood_digest": "0220c89084fe957e85eb1e1c87a581eaa44869f11cb98bee7f7bd8cdafd3d74e",
+      "process_cpu_seconds": 3.1517061260000006,
+      "repeat_index": 0,
+      "sparse_index_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
+      "total_feas_to_mvidx_seconds": 2.006674786000076,
+      "witnesses": 49152,
+      "workers": 3
+    },
+    {
+      "block_size": 512,
+      "cache_hit_mvidx_seconds": 0.3099442259999705,
+      "edges": 3194880,
+      "feasibility_digest": "937214c70d1f2baae883993082f1ceb25bea6007a5a2be0beee045262f5c0613",
+      "feasibility_plus_csr_seconds": 0.7359150480001517,
+      "maxrss_kib": 335092,
+      "neighborhood_digest": "0220c89084fe957e85eb1e1c87a581eaa44869f11cb98bee7f7bd8cdafd3d74e",
+      "process_cpu_seconds": 1.6213876159999998,
+      "repeat_index": 1,
+      "sparse_index_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
+      "total_feas_to_mvidx_seconds": 1.0458600140000271,
+      "witnesses": 49152,
+      "workers": 3
+    }
+  ],
+  "workload": {
+    "block_size": 512,
+    "edge_count": 3194880,
+    "family_count": 6,
+    "source": "PERFBASE1 deterministic synthetic TARGET-DATA2B authority",
+    "witness_count": 49152
+  }
+}

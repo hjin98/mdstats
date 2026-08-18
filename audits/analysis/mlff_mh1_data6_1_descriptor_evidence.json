@@ -1,0 +1,224 @@
+{
+  "acceptance": {
+    "architecture_aware_batch_calibration": "passed",
+    "descriptor_signature_cache_identity": "passed",
+    "e3nn_official_vs_native_both_foundations": "passed",
+    "legacy_v1_plan_manifest_roundtrip": "passed",
+    "real_cueq_descriptor_selection_parity": "blocked_by_runtime_not_claimed_passed"
+  },
+  "adapter_version": "mdstats.mlff-data6.mace-calculator.2026-08.v2",
+  "content_digest": "3b7323902c6bdf842833dd98cfa6d3016234f4879e93caa90743aa9b59a783a1",
+  "cu_eq_status": {
+    "real_descriptor_parity": "environment_blocked",
+    "reason": "CuEquivariance/OpenEquivariance and authorizing CUDA runtime are absent in the supplied development environment; no silent e3nn substitution is allowed.",
+    "selection_stability_authority": "implemented in MH1-ACCEL1; real CuEq rerun remains pending"
+  },
+  "descriptor_manifest_schema": "mdstats.mace-descriptor-manifest.v2",
+  "descriptor_policy_version": "mdstats.mlff-data6.mace-descriptor.2026-08.v2",
+  "descriptor_signature_schema": "mdstats.mace-descriptor-signature.v1",
+  "gate": "MH1-DATA6-1",
+  "model_sweep_plan_schema": "mdstats.data6-model-sweep-plan.v2",
+  "predecessor": "mdstats-0.20.177a0-complete-source-package-mh1-accel1.zip",
+  "real_e3nn_records": [
+    {
+      "checkpoint_sha256": "ec00a2705854622fbbd898ccfb7701072fcd674709102d009fb919c1b8cc5dde",
+      "cpu_batch_calibration": {
+        "calibration_method": "model_aware_probe_v1",
+        "content_digest": "84d8ac410500f27acea2d88e03241eec50c420343fd8ab5ca80b20c7b75778c6",
+        "descriptor_bytes_per_structure": 16384,
+        "descriptor_signature_digest": "2448d1fc85b5cbb819354004ed9e6dae77b58098cbbabc7b35d13302ab49aa2b",
+        "device": "cpu",
+        "device_budget_bytes": null,
+        "graph_bytes_per_structure": 3987,
+        "peak_device_bytes_per_structure": null,
+        "probed_batch_sizes": [
+          1
+        ],
+        "recommended_batch_size": 1,
+        "requested_max_batch_size": 16,
+        "schema": "mdstats.mace-batch-capacity-calibration.v1",
+        "successful_batch_sizes": [
+          1
+        ]
+      },
+      "descriptor_modes": {
+        "full": {
+          "observed_shapes": [
+            [
+              2,
+              2560
+            ],
+            [
+              2,
+              2560
+            ]
+          ],
+          "official_vs_native_max_abs": 0.0,
+          "signature": {
+            "adapter_version": "mdstats.mlff-data6.mace-calculator.2026-08.v2",
+            "architecture_signature": "62542ca4b684a1c046047bed673606397e672e646c0deb0f0b4dd564c0921de8",
+            "content_digest": "f47597d8b17ba4da194794f4a370cb894478e890abd46e0cd914ec6a4e3c7e24",
+            "global_summary_dimension": 5120,
+            "invariant_features_per_layer": 512,
+            "invariants_only": false,
+            "model_class": "mace.modules.models.ScaleShiftMACE",
+            "num_interactions": 2,
+            "num_layers": 2,
+            "per_atom_full_dimension": 2560,
+            "per_atom_invariant_dimension": 1024,
+            "per_layer_raw_dimensions": [
+              2048,
+              512
+            ],
+            "policy_version": "mdstats.mlff-data6.mace-descriptor.2026-08.v2",
+            "returned_per_atom_dimension": 2560,
+            "schema": "mdstats.mace-descriptor-signature.v1",
+            "selected_head": "omat_pbe",
+            "species_summary_dimension": 2560
+          }
+        },
+        "invariant": {
+          "observed_shapes": [
+            [
+              2,
+              1024
+            ],
+            [
+              2,
+              1024
+            ]
+          ],
+          "official_vs_native_max_abs": 0.0,
+          "signature": {
+            "adapter_version": "mdstats.mlff-data6.mace-calculator.2026-08.v2",
+            "architecture_signature": "62542ca4b684a1c046047bed673606397e672e646c0deb0f0b4dd564c0921de8",
+            "content_digest": "2448d1fc85b5cbb819354004ed9e6dae77b58098cbbabc7b35d13302ab49aa2b",
+            "global_summary_dimension": 2048,
+            "invariant_features_per_layer": 512,
+            "invariants_only": true,
+            "model_class": "mace.modules.models.ScaleShiftMACE",
+            "num_interactions": 2,
+            "num_layers": 2,
+            "per_atom_full_dimension": 2560,
+            "per_atom_invariant_dimension": 1024,
+            "per_layer_raw_dimensions": [
+              2048,
+              512
+            ],
+            "policy_version": "mdstats.mlff-data6.mace-descriptor.2026-08.v2",
+            "returned_per_atom_dimension": 1024,
+            "schema": "mdstats.mace-descriptor-signature.v1",
+            "selected_head": "omat_pbe",
+            "species_summary_dimension": 1024
+          }
+        }
+      },
+      "family": "mace_mh_1",
+      "head": "omat_pbe",
+      "label": "mh1"
+    },
+    {
+      "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
+      "cpu_batch_calibration": {
+        "calibration_method": "model_aware_probe_v1",
+        "content_digest": "ce1bcf9ec8d96b8f69d067aa195afc95c21c5105967c79410a1a444708e141d4",
+        "descriptor_bytes_per_structure": 4096,
+        "descriptor_signature_digest": "21f6fcb7fa3ce638d19cb9636f9c86b9333f6fd8f67b34a3a9d1c87a3c52f007",
+        "device": "cpu",
+        "device_budget_bytes": null,
+        "graph_bytes_per_structure": 3987,
+        "peak_device_bytes_per_structure": null,
+        "probed_batch_sizes": [
+          1
+        ],
+        "recommended_batch_size": 1,
+        "requested_max_batch_size": 16,
+        "schema": "mdstats.mace-batch-capacity-calibration.v1",
+        "successful_batch_sizes": [
+          1
+        ]
+      },
+      "descriptor_modes": {
+        "full": {
+          "observed_shapes": [
+            [
+              2,
+              640
+            ],
+            [
+              2,
+              640
+            ]
+          ],
+          "official_vs_native_max_abs": 0.0,
+          "signature": {
+            "adapter_version": "mdstats.mlff-data6.mace-calculator.2026-08.v2",
+            "architecture_signature": "7993395248f9de0e997930436522bf459e3bddaab98fe9d541fa9a7408c06dc4",
+            "content_digest": "1900cba30fe42fb732145e02273f3153399b8fc6d66448076199b17b2ba70e1d",
+            "global_summary_dimension": 1280,
+            "invariant_features_per_layer": 128,
+            "invariants_only": false,
+            "model_class": "mace.modules.models.ScaleShiftMACE",
+            "num_interactions": 2,
+            "num_layers": 2,
+            "per_atom_full_dimension": 640,
+            "per_atom_invariant_dimension": 256,
+            "per_layer_raw_dimensions": [
+              512,
+              128
+            ],
+            "policy_version": "mdstats.mlff-data6.mace-descriptor.2026-08.v2",
+            "returned_per_atom_dimension": 640,
+            "schema": "mdstats.mace-descriptor-signature.v1",
+            "selected_head": "default",
+            "species_summary_dimension": 640
+          }
+        },
+        "invariant": {
+          "observed_shapes": [
+            [
+              2,
+              256
+            ],
+            [
+              2,
+              256
+            ]
+          ],
+          "official_vs_native_max_abs": 0.0,
+          "signature": {
+            "adapter_version": "mdstats.mlff-data6.mace-calculator.2026-08.v2",
+            "architecture_signature": "7993395248f9de0e997930436522bf459e3bddaab98fe9d541fa9a7408c06dc4",
+            "content_digest": "21f6fcb7fa3ce638d19cb9636f9c86b9333f6fd8f67b34a3a9d1c87a3c52f007",
+            "global_summary_dimension": 512,
+            "invariant_features_per_layer": 128,
+            "invariants_only": true,
+            "model_class": "mace.modules.models.ScaleShiftMACE",
+            "num_interactions": 2,
+            "num_layers": 2,
+            "per_atom_full_dimension": 640,
+            "per_atom_invariant_dimension": 256,
+            "per_layer_raw_dimensions": [
+              512,
+              128
+            ],
+            "policy_version": "mdstats.mlff-data6.mace-descriptor.2026-08.v2",
+            "returned_per_atom_dimension": 256,
+            "schema": "mdstats.mace-descriptor-signature.v1",
+            "selected_head": "default",
+            "species_summary_dimension": 256
+          }
+        }
+      },
+      "family": "mace_mpa_0",
+      "head": "default",
+      "label": "mpa0"
+    }
+  ],
+  "tests": {
+    "additional_data6_model_sweep_slice": "29 passed",
+    "data7_slice": "16 passed",
+    "focused_data6_1": "5 passed",
+    "surrounding_inf1_accel1_data6_data7": "59 passed, 4 slow deselected"
+  }
+}

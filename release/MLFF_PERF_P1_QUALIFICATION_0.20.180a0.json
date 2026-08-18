@@ -1,0 +1,102 @@
+{
+  "architecture_revision": 46,
+  "authority_status": "bounded_pass",
+  "documents": {
+    "markdown_authority": [
+      "docs/arch_manuals/mlff_training_data_architecture.md",
+      "docs/specs/training_data/mlff_perf_p1_shared_exact_selection_spec.md",
+      "ARCHITECTURE_NOTES_MLFF_REV46.md",
+      "audits/analysis/mlff_perf_p1_lta_cloud_cpu_2026-08-15.md",
+      "release/PATCH_NOTES_0.20.180a0.md"
+    ],
+    "pdf_qa": "release/MLFF_PERF_P1_PDF_QA_0.20.180a0.json"
+  },
+  "gate": "PERF-P1",
+  "limitations": [
+    "No authorizing MACE-MH-1 checkpoint or MACE runtime was supplied for gate-local production-model execution.",
+    "No GPU runtime qualification is claimed.",
+    "Progressive four-rung coverage is scientifically exact but measured 10.29% slower on this host; no coverage speedup is claimed.",
+    "The package-wide test suite exceeded the 600 s cloud window; gate-local and adjacent authority tests passed.",
+    "Archival specification tests contain historical release/revision literals and unrelated stale policy/source-text assertions; these are recorded, not rewritten as PERF-P1 work."
+  ],
+  "next_gate": "PERF-P2",
+  "performance": {
+    "coverage_legacy_median_s": 0.6425257730006706,
+    "coverage_p1_median_s": 0.7086262939992594,
+    "data7_k8192_legacy_peak_rss_mib": 1149.890625,
+    "data7_k8192_legacy_persistent_bytes": 536870912,
+    "data7_k8192_p1_peak_rss_mib": 637.21875,
+    "data7_k8192_p1_persistent_bytes": 65536,
+    "full_reference_fps_legacy_median_s": 1.5502767769994534,
+    "full_reference_fps_p1_median_s": 0.6571101760000602,
+    "host": {
+      "cgroup_cpu_max": "800000 100000",
+      "cgroup_memory_max": "4294967296",
+      "cpu_model": "INTEL(R) XEON(R) PLATINUM 8573C",
+      "logical_cpus": 9,
+      "omp_num_threads": "8",
+      "openblas_num_threads": "8",
+      "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+      "python": "3.13.5"
+    },
+    "repeats": 5,
+    "wide_fps_legacy_s": 0.1820893080002861,
+    "wide_fps_p1_s": 0.04870637100066233
+  },
+  "release": "0.20.180a0",
+  "schema": "mdstats.mlff-perf-p1-qualification.v1",
+  "scientific": {
+    "benchmark_scientific_digest": "ff08ca4aee884f1aaf4bf1969454bb75fc9e875eb8c29d57c46fe0100dadb12e",
+    "coverage_report_digests": [
+      "e57f56c4d4a4e7d1cddf03d6ac062006879c980dda4c1e5e9bb3f4351b6ffce0",
+      "0d153e2314e94915ab3a0fdfc5613f380b522a931c39f0dd812ecf40fe2729c2",
+      "c63ed62e899fa09389c1eb01c59c4db2bc3dd76a54a6bdea76b363b55360f298",
+      "d29af5897112c0e2a94fb5e1f58171b423b818e36edfbdde8bbb811a3e86d6d5"
+    ],
+    "coverage_report_exact": true,
+    "fps_order_exact": true,
+    "matrix_exact": true,
+    "reference_content_digest": "4f46dfaa6c366ede1cd4d19cf5fb8be65cfe49067b5aff85d668e0078915f9b8",
+    "selected_neighbor_exact": true,
+    "wide_fps_exact": true
+  },
+  "tests": {
+    "compileall": "pass",
+    "dedicated_perf_p1": {
+      "passed": 7,
+      "result": "pass"
+    },
+    "final_gate_spec_slice": {
+      "command_family": "PERF-P1 implementation/spec + P0/BASE0 specs",
+      "passed": 20,
+      "result": "pass"
+    },
+    "full_suite_attempt": {
+      "failures_observed_before_timeout": 0,
+      "progress_percent_at_timeout": 14,
+      "result": "bounded_timeout",
+      "timeout_seconds": 600
+    },
+    "gate_adjacent_suite": {
+      "command_family": "PERF-P1/P0/BASE0 + TARGET-DATA2B/C/D/E + DATA7 + campaign performance/anchor",
+      "passed": 123,
+      "result": "pass",
+      "warnings": 18
+    },
+    "historical_specification_sweep": {
+      "failed": 63,
+      "note": "Failures are dominated by release-literal/dependency-graph-revision assertions pinned to historical 0.20.140a0/schema 26 plus previously documented stale generated-policy/source-string expectations; not rewritten to inflate PERF-P1.",
+      "passed": 195,
+      "result": "known_archival_debt"
+    },
+    "package_collection": {
+      "collected": 2971,
+      "collection_skips": [
+        "interactive density mesh",
+        "real-MACE PREC2",
+        "real-MACE PREC3"
+      ],
+      "result": "collected_with_optional_skips"
+    }
+  }
+}

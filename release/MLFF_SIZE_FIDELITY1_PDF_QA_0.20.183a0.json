@@ -1,0 +1,64 @@
+{
+  "architecture_revision": 49,
+  "content_digest": "3e553e9024fcf751a7a25fac5289b838676845fcebf7d89e8b544c60e71bbd51",
+  "documents": [
+    {
+      "all_fonts_embedded": true,
+      "encrypted": false,
+      "name": "architecture_manual",
+      "pages": 192,
+      "path": "docs/arch_manuals/mlff_training_data_architecture.pdf",
+      "preflight_openable": true,
+      "sha256": "a1192b2e3ac393a33d649c6c6f06997a667b5aa796bb18dba03402a5acf422c4",
+      "visual_result": "pass_no_clipping_overlap_broken_glyphs_or_unintended_blank_pages",
+      "visual_review": "complete 72-dpi contact-sheet review; 140-dpi targeted review pages 180-184 and 191-192"
+    },
+    {
+      "all_fonts_embedded": true,
+      "encrypted": false,
+      "name": "size_fidelity1_spec",
+      "pages": 4,
+      "path": "docs/specs/training_data/mlff_size_fidelity1_coarse_screen_calibration_spec.pdf",
+      "preflight_openable": true,
+      "sha256": "52f7f387513155f534bcabbb8ab57229446101c38525514e085bdfc1a798c1e1",
+      "visual_result": "pass_no_clipping_overlap_broken_glyphs_or_unintended_blank_pages",
+      "visual_review": "all pages reviewed at 160 dpi"
+    },
+    {
+      "all_fonts_embedded": true,
+      "encrypted": false,
+      "name": "architecture_rev49",
+      "pages": 2,
+      "path": "ARCHITECTURE_NOTES_MLFF_REV49.pdf",
+      "preflight_openable": true,
+      "sha256": "fcacb89469b9efa3f69a1a0c2d749da87677004676808aca7dacce105b8c04a6",
+      "visual_result": "pass_no_clipping_overlap_broken_glyphs_or_unintended_blank_pages",
+      "visual_review": "all pages reviewed at 160 dpi"
+    },
+    {
+      "all_fonts_embedded": true,
+      "encrypted": false,
+      "name": "patch_notes",
+      "pages": 1,
+      "path": "PATCH_NOTES_0.20.183a0.pdf",
+      "preflight_openable": true,
+      "sha256": "147322cf3463c6eaed0566e2803b57e6a58e9cecdb35d7f2c003d2d5eec3cc36",
+      "visual_result": "pass_no_clipping_overlap_broken_glyphs_or_unintended_blank_pages",
+      "visual_review": "all pages reviewed at 160 dpi; long inline API overflow corrected before freeze"
+    },
+    {
+      "all_fonts_embedded": true,
+      "encrypted": false,
+      "name": "execution_readiness",
+      "pages": 2,
+      "path": "mlff_size_fidelity1_execution_readiness_2026-08-15.pdf",
+      "preflight_openable": true,
+      "sha256": "98d79cc0c0488e32aa7cb6c183df4843a34c0ff9df4b359198ecdc5c34a33eb7",
+      "visual_result": "pass_no_clipping_overlap_broken_glyphs_or_unintended_blank_pages",
+      "visual_review": "all pages reviewed at 160 dpi"
+    }
+  ],
+  "release": "0.20.183a0",
+  "result": "pass",
+  "schema": "mdstats.size-fidelity1-pdf-qa.v1"
+}

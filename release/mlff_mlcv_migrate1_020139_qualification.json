@@ -1,0 +1,81 @@
+{
+  "content_digest": "d56856f9c31f76e52a5346a285b6c8e0bb84096f5c08b881a4e9990d5fdf2395",
+  "default_campaign": {
+    "cross_validation_folds": 3,
+    "final_runs_per_seed": 1,
+    "method": "multihead_replay",
+    "seeds": [
+      1,
+      2,
+      3
+    ],
+    "total_training_runs": 12
+  },
+  "document_sha256": {
+    "architecture_pdf": "124ee88f69037405fae359fa18e7fc2f7be4dba4af7f064ba0db0772c22df378",
+    "cli_guide_pdf": "56b9a12d5cfa1fd4fc88a6114289a3e04eb306bcde9ad77921021c35c0498bf6",
+    "migrate1_spec_pdf": "bc2d0fb630724fa73b446c5f9e55ce73f2a04768ebdb9c5e21ce09f8a41c97de"
+  },
+  "documents": {
+    "architecture_pdf": {
+      "pages": 104,
+      "path": "docs/arch_manuals/mlff_training_data_architecture.pdf",
+      "preflight": "pass",
+      "render_review": "pass/no edge clipping"
+    },
+    "cli_guide_pdf": {
+      "pages": 15,
+      "path": "docs/guides/mlff_campaign_cli_user_guide.pdf",
+      "preflight": "pass",
+      "render_review": "pass/no edge clipping"
+    },
+    "migrate1_spec_pdf": {
+      "pages": 4,
+      "path": "docs/specs/training_data/mlff_mlcv_migration_spec.pdf",
+      "preflight": "pass",
+      "render_review": "pass/no edge clipping"
+    }
+  },
+  "gate": "MLCV-MIGRATE1",
+  "lifecycle_authority": {
+    "authority_version": "mdstats.mlcv-nested-cv.2026-08.v1",
+    "candidate_limit_per_run": 5,
+    "canonical_checkpoint_strategy": "mlcv_nested_cv",
+    "historical_adaptive_strategy": "adaptive_topk",
+    "transitional_alias_requires_role1_and_mon1": true
+  },
+  "migration": {
+    "completed_020138_verify1_reused_without_scientific_reinference": true,
+    "dual_production_authority_fails_closed": true,
+    "historical_evidence_preserved_read_only": true,
+    "protocol_freeze_authority_kind": "mlcv_deployment",
+    "stor2_mlcv_checkpoint_compaction": "disabled/protected",
+    "toml_redirection_guard": true
+  },
+  "package_version": "0.20.139a0",
+  "qualification_date": "2026-08-10",
+  "revision_status": "nine-gate conventional-CV correction complete",
+  "schema": "mdstats.mlff-mlcv-migrate1-qualification.v1",
+  "stop1_reminder": {
+    "factors_toml_configurable": true,
+    "replay_stop_multiplier_default": 1.2,
+    "target_stop_fraction_default": 0.8,
+    "thresholds_derived_from_full_criteria": true
+  },
+  "tests": {
+    "broad_segmented_mlff": {
+      "failed_gate_regressions": 0,
+      "passed": 797,
+      "skipped": 16
+    },
+    "fresh_unzip_focused": {
+      "failed": 0,
+      "passed": 45
+    },
+    "known_historical_fixture_deselected": 1,
+    "known_historical_missing_fixture": {
+      "path": "release/mlff_data9a9a_real_mpa0_restart_smoke.json",
+      "status": "absent in supplied historical source archive; one corresponding test deselected"
+    }
+  }
+}

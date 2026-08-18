@@ -1,0 +1,3 @@
+888d545a512396697c8583d69bc9ed33110914675f466a4cbcafc3e1e1407171  /mnt/data/dependencies.tar(2).gz
+ec00a2705854622fbbd898ccfb7701072fcd674709102d009fb919c1b8cc5dde  /mnt/data/mace-mh-1(1).model
+75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638  /mnt/data/mace-mpa-0-medium(2).model

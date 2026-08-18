@@ -1,0 +1,56 @@
+{
+  "schema": "mdstats.mlff-adapt-verify1-qualification.v1",
+  "package_version": "0.20.127a0",
+  "gate": "ADAPT-VERIFY1",
+  "date": "2026-08-09",
+  "status": "qualified",
+  "behavior": {
+    "authoritative_parent": "AdaptiveFullEvaluationRecord.admissible_candidates",
+    "verification_order": "ADAPT-EVAL1 full-score order",
+    "fallback_to_next_full_evaluation_candidate_default": true,
+    "fallback_reuses_existing_full_evaluation": true,
+    "fallback_target_replay_reevaluation": false,
+    "verification_matrix": "complete configured bounded-NVE matrix per attempted candidate",
+    "first_passing_candidate_is_terminal": true,
+    "failed_candidate_model_published": false,
+    "passing_model_exact_bytes_published": true,
+    "adaptive_synthetic_committee_created": false,
+    "fold_run_candidate_deployable": true,
+    "single_model_inference_and_deployment_dtype": "float32",
+    "double_model_inference_and_deployment_dtype": "float64",
+    "mdstats_scientific_analysis_dtype": "float64",
+    "authenticated_nve_case_restart_reuse": true,
+    "adaptive_verification_record": true,
+    "adaptive_deployment_model_record": true,
+    "adaptive_protocol_freeze_record": true,
+    "protocol_freeze_compatibility_authority_key": true,
+    "historical_committee_eval_mf_readable": true,
+    "next_gate": "ADAPT-MIGRATE1"
+  },
+  "tests": [
+    {
+      "scope": "adaptive runtime chain through VERIFY1",
+      "result": "62 passed, 1 skipped",
+      "note": "campaign CLI, ADAPT-EVAL1, verification cost policy, ADAPT-VERIFY1, and OPT-VERIFY1; skip requires external real LTA training root"
+    },
+    {
+      "scope": "adaptive verification + storage/protocol compatibility",
+      "result": "43 passed",
+      "note": "includes adaptive freeze authority, STOR4/STOR5 protocol-freeze presence gates, specification and cost-policy regressions"
+    },
+    {
+      "scope": "MLFF specification/version sweep excluding inherited absent DATA9A9A smoke fixture",
+      "result": "140 passed"
+    },
+    {
+      "scope": "inherited DATA9A9A specification fixture",
+      "result": "4 passed, 1 known pre-existing failure",
+      "note": "release/mlff_data9a9a_real_mpa0_restart_smoke.json is absent in the supplied source package; unchanged from prior adaptive releases"
+    }
+  ],
+  "pdf_verification": {
+    "mlff_adaptive_verification_spec.pdf": "4 pages rendered at 160 dpi and visually inspected",
+    "mlff_training_data_architecture.pdf": "89 pages rendered; changed ADAPT-VERIFY1 pages visually inspected",
+    "mlff_campaign_cli_user_guide.pdf": "13 pages rendered; changed adaptive evaluation/verification page visually inspected"
+  }
+}

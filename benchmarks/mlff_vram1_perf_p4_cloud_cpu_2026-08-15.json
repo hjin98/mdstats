@@ -1,0 +1,52 @@
+{
+  "bounded_pipeline": {
+    "count": 15,
+    "process_cpu_seconds": {
+      "maximum": 0.06303679599999956,
+      "median": 0.05036403999999983,
+      "minimum": 0.046523470000000344
+    },
+    "read_characters_median": 117,
+    "wall_seconds": {
+      "maximum": 0.11598741599937057,
+      "median": 0.07632475299942598,
+      "minimum": 0.06847456400009833
+    },
+    "write_characters_median": 339873
+  },
+  "cpu_model": "AMD EPYC 9V74 80-Core Processor",
+  "created_at_utc": "2026-08-16T01:32:50.647436Z",
+  "fixture": {
+    "artifact_shard_size": 3,
+    "batch_size": 4,
+    "data5_bundle_digest": "645083c786e35e192a792a7471a666551f7cccba56beb0621be285246f033f40",
+    "frame_catalog_digest": "c5d537b01da568008cc666c995fb09197ef74be9bdae975a47147225d342857e",
+    "persistence_queue_depth": 1,
+    "requested_frames": 44
+  },
+  "interpretation": "CPU fixture measures orchestration overhead only; a positive wall-change fraction is not a PERF-P4 failure. The synchronous path is the exact fallback and accelerator throughput/VRAM admission remains a FINAL-GPU1 obligation.",
+  "logical_cpu_count": 9,
+  "mdstats_version": "0.20.186a0",
+  "pipeline_wall_change_fraction": 0.04718870528271357,
+  "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+  "python": "3.13.5",
+  "schema": "mdstats.vram1-perf-p4-cpu-benchmark.2026-08.v1",
+  "scientific_authority_exact": true,
+  "scientific_signature": "c07e1bb049703c0b160b88b18bfa0c6c0c788198cf21a6d0454ef9c19c689a96",
+  "scope": "cpu_control_plane_only_gpu_and_vram_qualification_deferred_to_FINAL_GPU1",
+  "synchronous": {
+    "count": 15,
+    "process_cpu_seconds": {
+      "maximum": 0.04797269800000059,
+      "median": 0.045565115999999684,
+      "minimum": 0.04319368300000015
+    },
+    "read_characters_median": 117,
+    "wall_seconds": {
+      "maximum": 0.07909987599941815,
+      "median": 0.07288538600005268,
+      "minimum": 0.0658361400001013
+    },
+    "write_characters_median": 339873
+  }
+}

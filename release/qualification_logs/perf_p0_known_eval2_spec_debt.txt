@@ -1,0 +1,17 @@
+..F                                                                      [100%]
+=================================== FAILURES ===================================
+_ test_train2_evaluate_dispatches_to_eval2_and_verify_dispatches_to_deploy_verify1 _
+
+    def test_train2_evaluate_dispatches_to_eval2_and_verify_dispatches_to_deploy_verify1():
+        evaluate_source = inspect.getsource(campaign_cli.command_evaluate)
+        verify_source = inspect.getsource(campaign_cli.command_verify)
+        assert "_command_evaluate_train2" in evaluate_source
+        assert "_command_verify_train2_deploy" in verify_source
+        stage_b = inspect.getsource(campaign_cli._eval2_stage_b_evidence)
+>       assert "foundation_checkpoint.sha256" in stage_b
+E       assert 'foundation_checkpoint.sha256' in 'def _eval2_stage_b_evidence(\n    *,\n    cfg: Mapping[str, Any],\n    paths: CampaignPaths,\n    store: CampaignStor...    failure_reasons=(() if target_pass else ("target_threshold_exceeded",)),\n        ))\n    return tuple(evidence)\n'
+
+tests/test_mlff_eval2_specification.py:36: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_mlff_eval2_specification.py::test_train2_evaluate_dispatches_to_eval2_and_verify_dispatches_to_deploy_verify1 - assert 'foundation_checkpoint.sha256' in 'def _eval2_stage_b_evidence(\n    *,\n    cfg: Mapping[str, Any],\n    paths: CampaignPaths,\n    store: CampaignStor...    failure_reasons=(() if target_pass else ("target_threshold_exceeded",)),\n        ))\n    return tuple(evidence)\n'
+1 failed, 2 passed in 4.16s

@@ -1,0 +1,105 @@
+{
+  "content_digest": "16f7b7e821831d024c0d8f52c57f1f05343eba44f7fe4a3206ee1b4f9ca44ec2",
+  "contracts": {
+    "canonical_deploy_record_requires_target_identity": true,
+    "foundation_extract1_role_forbidden": "selected_foundation_head cannot satisfy TargetHeadDeploymentIdentity",
+    "legacy_deploy_record_v1_readable": true,
+    "mliap_export_digest_binds_target_identity": true,
+    "production_source_role": "trained_candidate_multihead",
+    "production_target_role": "learned_target_head",
+    "silent_backend_fallback_permitted": false
+  },
+  "date": "2026-08-14",
+  "gate": "MH1-DEPLOY1",
+  "lammps_run0": {
+    "executable_found": false,
+    "executable_path": null,
+    "status": "blocked_no_lammps_executable"
+  },
+  "mliap_runtime_capability": {
+    "content_digest": "e71916e9cebde1914181bb84f309d03d606b82c83a4fa9c9fa18387aaca471c4",
+    "cuequivariance_available": false,
+    "cuequivariance_torch_available": false,
+    "failure_reasons": [
+      "cuequivariance_unavailable",
+      "cuequivariance_torch_unavailable"
+    ],
+    "mace_version": "0.3.16",
+    "passed": false,
+    "python_executable": "/mnt/data/mh1_gate11_env/bin/python",
+    "schema": "mdstats.mliap-export-runtime-capability.v1",
+    "supported_mace_version": true
+  },
+  "modified_files": {
+    "mdstats/__init__.py": "f3452b5a3e216e8735ac9695e17645d78b2b75a907d1a576e89435c03eed66e3",
+    "mdstats/training_data/__init__.py": "a4c1a8f1fc203ef7b3e7e4ded253d9b66c3f8659221daff66fbbb1510f78199f",
+    "mdstats/training_data/campaign_cli.py": "58d37f5abe4f7f8053a482e3755fb042c013882347af6bc4379edb07195a011e",
+    "mdstats/training_data/deploy_verify.py": "11496a4deaa6783a9846699fa10facb940d52de8f713dfadd1d887861e44653b",
+    "tests/test_mlff_mh1_deploy1.py": "e1e4f6e4f266b059beee615fb19abf244b61cf94ab4f8f4dfa03e745d47f7e8c"
+  },
+  "official_mace_mliap_export_attempt": {
+    "command": "python -m mace.cli.create_lammps_model target.model --format=mliap --dtype=float64 --head=target_head",
+    "convert_e3nn_cueq_py_sha256": "3638d34399b9c1a80fd7fcef3866a853c47b84008416201e46b0476cfa50c70d",
+    "create_lammps_model_py_sha256": "26436715a3ba4e95d15881a7e47dade18675595b5cb2c5cef6144fef83f843c9",
+    "failure_class": "missing_cuequivariance_runtime_conversion",
+    "interpretation": "MACE 0.3.16 official ML-IAP export requires a qualified CuEquivariance runtime even when the learned model was trained/evaluated with e3nn.",
+    "mace_version": "0.3.16",
+    "passed": false,
+    "return_code": 1,
+    "source_behavior": "format=mliap unconditionally invokes run_e3nn_to_cueq before serialization",
+    "terminal_error": "Unexpected key(s) in state_dict: products.0.symmetric_contractions.weight, products.1.symmetric_contractions.weight"
+  },
+  "predecessor_package": {
+    "path": "mdstats-0.20.177a0-complete-source-package-mh1-eval1.zip",
+    "sha256": "c5c1610e02427e149a4170573531de7cc06de2e4d1b0ceed5493d0a506340eab"
+  },
+  "prior_gate_evidence": {
+    "eval1_file_sha256": "99f417a3b2ccc1a5209f4a3949db62795bac33daa9792056469a25534491dd55",
+    "train1_file_sha256": "8458c86b93c6660bd0682ccd1facd6f292310894548e3078ee2dd133dad92116"
+  },
+  "real_target_head_parity": {
+    "atol": 1e-10,
+    "dtype": "float64",
+    "energy_max_abs_eV": 1.7763568394002505e-15,
+    "force_max_abs_eV_per_A": 0.0,
+    "learned_target_model_path": "/mnt/data/mh1_gate11_real_deploy/learned-target-head.model",
+    "learned_target_model_sha256": "e03abd03af63def40b0ec1a736729aa00194ba9807514b23ff15930e5f1eb77d",
+    "passed": true,
+    "rtol": 1e-09,
+    "source_head": "target_head",
+    "stress_max_abs_eV_per_A3": 0.0,
+    "target_validation_configurations": 4,
+    "trained_multihead_model_path": "/mnt/data/mh1_gate11_real_deploy/execution/models/mdstats_final_smoke.model",
+    "trained_multihead_model_sha256": "95c85201eefb6a6506a22b735fa66ddaf9e0cca9b5710c7e00fe6ad02d430ec7"
+  },
+  "schema": "mdstats.mlff-mh1-deploy1-evidence.v1",
+  "schemas": {
+    "deploy_verify_run_canonical": "mdstats.deploy-verify-run.v2",
+    "deploy_verify_run_legacy": "mdstats.deploy-verify-run.v1",
+    "mliap_export_canonical": "mdstats.deploy-verify-mliap-export.v2",
+    "mliap_runtime_capability": "mdstats.mliap-export-runtime-capability.v1",
+    "target_head_deployment_identity": "mdstats.target-head-deployment-identity.v1",
+    "target_head_export_canonical": "mdstats.deploy-verify-target-head-export.v2"
+  },
+  "scope": {
+    "custom_unqualified_mliap_exporter_added": false,
+    "evaluation_scoring_changed": false,
+    "foundation_extract1_artifact_changed": false,
+    "training_policy_changed": false
+  },
+  "status": "implemented_target_head_export_identity_pass_mliap_runtime_blocked",
+  "tests": {
+    "campaign_cli": {
+      "failed": 0,
+      "passed": 43,
+      "skipped": 1
+    },
+    "focused_and_affected_runtime_slice": {
+      "failed": 0,
+      "passed": 69,
+      "skipped": 3
+    },
+    "focused_deploy1_included_in_runtime_slice": true,
+    "known_preexisting_stale_specification_failure": "test_mlff_data9a5_deployment_specification.py asserts historical literal version 0.20.140a0 and was excluded from regression interpretation"
+  }
+}

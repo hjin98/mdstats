@@ -1,0 +1,22 @@
+{
+  "architecture_revision": 100,
+  "files": [
+    {
+      "bytes": 82049,
+      "path": "mdstats/training_data/eval2.py",
+      "sha256": "2a33e845e0fd1f44caa7d022d3940f7b2d774c6bec812eb5537fb3e9aab7f27d"
+    },
+    {
+      "bytes": 58879,
+      "path": "mdstats/training_data/foundation_audit.py",
+      "sha256": "d6128399de575351478e59d53341a06c449fca90ffa9c37369a20d5adc972151"
+    },
+    {
+      "bytes": 6982,
+      "path": "tests/test_mlff_audit_eval_perf1.py",
+      "sha256": "d178d9f4ca8580ca203d7d12badbb933069848a9b2c35d21a4f298ca3d78ce2f"
+    }
+  ],
+  "release": "0.20.233a0",
+  "schema": "mdstats.mlff-audit-eval-perf1-implementation-manifest.v1"
+}

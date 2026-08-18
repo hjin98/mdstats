@@ -1,0 +1,2348 @@
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/CHANGELOG.md mdstats107_work/CHANGELOG.md
+--- mdstats107_pristine/CHANGELOG.md	2026-08-08 12:26:51.000000000 +0000
++++ mdstats107_work/CHANGELOG.md	2026-08-08 13:05:01.916728289 +0000
+@@ -1,3 +1,12 @@
++## 0.20.108a0
++
++- Implement MLFF PREC1 precision profiles and deterministic staged-schedule identity.
++- Add `init --precision single|double|refine`; plain init defaults to canonical single.
++- Canonical refine emits explicit 80/20 FP32->FP64 stages with a 0.5 refinement LR scale and refinement floors.
++- Resolve precision epoch/update boundaries after DATA8 loader exposure and bind them into training-protocol identity.
++- Preserve legacy schedule-free optimizer/protocol digests; represent canonical `single` with an explicit native-FP32 critical-operation policy while keeping execution fail-closed until PREC3.
++- Fail closed until PREC2/PREC3 runtime activation rather than silently executing a staged or canonical-single schedule under legacy arithmetic.
++
+ ## 0.20.107a0
+ 
+ - Complete MLFF gate EVAL-MF2: conservative paired source/temporal-block survivor guards, true-label replay-compatible reserve, and rank-instability expansion on top of EVAL-MF1 nested target/replay evaluation.
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/PATCH_NOTES_0.20.108a0.md mdstats107_work/PATCH_NOTES_0.20.108a0.md
+--- mdstats107_pristine/PATCH_NOTES_0.20.108a0.md	1970-01-01 00:00:00.000000000 +0000
++++ mdstats107_work/PATCH_NOTES_0.20.108a0.md	2026-08-08 13:05:01.915805278 +0000
+@@ -0,0 +1,36 @@
++# mdstats 0.20.108a0 patch notes
++
++This release implements MLFF staged-precision gate **PREC1**. It freezes configuration,
++schedule resolution, and protocol identity; it does **not** yet implement the live
++FP32->FP64 transition (PREC2) or complete profile runtime activation (PREC3).
++
++## Added
++
++- `mdstats.training_data.precision_schedule` with canonical `single`, `double`, and
++  `refine` profiles, generalized multi-stage policies, deterministic epoch/update
++  resolution, refinement floors, and authenticated resolved schedules.
++- `mdstats-mlff-campaign init --precision {single,double,refine}`. Plain `init` is
++  exactly `--precision single`.
++- Generated TOML exposes the requested profile and every precision stage explicitly.
++  Canonical `refine` is 80% FP32 then 20% FP64, LR scale 1.0 then 0.5, with a three
++  FP64-epoch and 15,000-gradient-update refinement floor.
++- DATA8 resolves precision stages after effective target/replay loader exposure is
++  known and binds resolved epoch/update boundaries into `TrainingProtocolIdentity`.
++
++## Compatibility and fail-closed behavior
++
++- Existing configs without `[training.precision]` remain schedule-free and preserve
++  the previous v4 optimizer/v2 protocol serialization and digests.
++- Historical FP32-body/critical-FP64 behavior remains representable as a legacy/custom
++  one-stage policy; it is not silently relabeled canonical `single`.
++- The critical-precision policy schema can now represent canonical native FP32 critical
++  operations for `single` without altering legacy FP64 policy bytes/digests; actual
++  canonical-single execution remains fail-closed until PREC3.
++- Until PREC2/PREC3 are implemented, preflight refuses explicit multi-stage schedules
++  and canonical-single critical-FP32 execution instead of silently running the wrong
++  arithmetic.
++
++## Architecture
++
++MLFF dependency-graph schema remains 26 and architecture revision advances to 27.
++`PREC1` is complete; `PREC2` is the next implementation gate.
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/README.md mdstats107_work/README.md
+--- mdstats107_pristine/README.md	2026-08-08 09:27:31.000000000 +0000
++++ mdstats107_work/README.md	2026-08-08 12:52:42.423559815 +0000
+@@ -4,7 +4,16 @@
+ 
+ Checkpoint accuracy is judged against independent DFT labels. Foundation-generated replay pseudolabels remain the default replay training targets and an absolute behavioral-drift diagnostic. Set `[paths].replay_true_labels` to the original true-label replay directory so mdstats can evaluate both the foundation and fine-tuned checkpoint on the same target and replay geometries without changing training inputs.
+ 
+-Current development release: **0.20.86a0** (adaptive parallel evaluation/verification and 90% CPU/GPU resource defaults).
++Current development release: **0.20.108a0** (PREC1 explicit precision profiles and protocol-bound staged schedule identity).
++
++
++## Explicit precision profiles in 0.20.108a0
++
++`mdstats-mlff-campaign init` now accepts `--precision single|double|refine`; plain init is canonical `single`. The generated TOML exposes the complete precision schedule rather than hiding it behind a profile name. `refine` defaults to 80% FP32 then 20% FP64 training, with a 0.5 learning-rate scale at the refinement boundary, a three-FP64-epoch floor, and a 15,000-gradient-update reference floor. DATA8 resolves epoch/update boundaries after loader exposure and binds the resolved schedule into training-protocol identity. PREC1 is configuration/identity only: staged execution and canonical-single critical-FP32 activation remain fail-closed until PREC2/PREC3.
++
++## Guarded multi-fidelity checkpoint evaluation in 0.20.107a0
++
++The generated production evaluator now screens every saved epoch on deterministic nested target and true-replay subsets (10% -> 33% -> 100%), reuses prediction coverage between rounds, retains statistically ambiguous/replay-plausible candidates, and publishes only full-fidelity finalist records into checkpoint selection. A representative 30-checkpoint qualification matched exhaustive selection while purchasing about 10.9 full-checkpoint equivalents. Historical bounded and exhaustive strategies remain available explicitly.
+ 
+ ## Adaptive parallel evaluation and verification in 0.20.86a0
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/campaign.toml.example mdstats107_work/campaign.toml.example
+--- mdstats107_pristine/campaign.toml.example	2026-08-08 12:20:00.000000000 +0000
++++ mdstats107_work/campaign.toml.example	2026-08-08 12:52:12.366205816 +0000
+@@ -3,6 +3,7 @@
+ [campaign]
+ id = "lta-mpa0-finetune"
+ profile = "lta"
++precision_profile = "single"
+ workspace = "mlff-campaign"
+ 
+ [paths]
+@@ -72,7 +73,7 @@
+ # `init` resolves this once from the active environment. Keep the explicit value
+ # fixed so preparation, preflight, training, evaluation, and verification use
+ # the same backend. Allowed values: "cueq" or "e3nn".
+-backend = "e3nn"
++backend = "cueq"
+ # mdstats qualifies the portable CuEq training path that converts saved models
+ # back to ordinary e3nn form. Leave only_cueq=false for production campaigns.
+ only_cueq = false
+@@ -107,6 +108,24 @@
+ target_head_weight = 5.0
+ replay_head_weight = 1.0
+ 
++[training.precision]
++# PREC1 explicit protocol schedule. Canonical refine uses an 80/20 FP32->FP64
++# split and scales the effective learning rate by 0.5 at the FP64 boundary.
++# Fractions are resolved deterministically against max_num_epochs; with 30
++# epochs refine becomes 24 FP32 + 6 FP64 epochs.
++mode = "single_stage"
++minimum_final_stage_epochs = 0
++minimum_final_stage_gradient_updates = 0
++preserve_optimizer_state = true
++preserve_scheduler_state = true
++preserve_ema_state = true
++critical_operation_dtype = "float32"
++
++[[training.precision.stage]]
++dtype = "float32"
++fraction = 1.00
++learning_rate_scale = 1.0
++
+ [training.naive_fine_tuning]
+ # Three cross-validation folds plus one final-development run are created for
+ # every listed optimizer seed. Default: (3 + 1) * 2 = 8 naïve jobs.
+@@ -334,6 +353,10 @@
+ replay_train_configurations = 64
+ replay_valid_configurations = 8
+ 
++[export]
++# Final deployment dtype is explicit even though PREC3 owns runtime activation.
++dtype = "float32"
++
+ [verification]
+ # Permit bounded checks on the latest completed-model set when the full campaign
+ # is unfinished. Evidence is explicitly graded and never treated as a freeze.
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/docs/README.md mdstats107_work/docs/README.md
+--- mdstats107_pristine/docs/README.md	2026-08-08 12:26:32.000000000 +0000
++++ mdstats107_work/docs/README.md	2026-08-08 12:55:29.062713051 +0000
+@@ -18,7 +18,7 @@
+   selectable and critical precision, production qualification, campaign
+   freezing, checkpoint inventory, and constrained selection.
+ - `arch_manuals/mlff_training_data_dependency_graph.json` is schema 26,
+-  architecture revision 26. LTA/ring/site features remain optional enrichment
++  architecture revision 27. LTA/ring/site features remain optional enrichment
+   rather than generic-core assumptions.
+ - `specs/training_data/mlff_data_stage_plan_spec.{md,pdf}` defines the gated
+   implementation order. DATA9A9a-c and DATA9B1-B3A are implemented; the real production corpus
+@@ -35,8 +35,8 @@
+   in 0.20.106a0 and EVAL-MF2 in 0.20.107a0: equal-fraction target/replay
+   monitor ladders, incremental prediction reuse, conservative survivor control, full
+   finalist evaluation, and comprehensive epoch reporting.
+-- `specs/training_data/mlff_staged_precision_profiles_spec.{md,pdf}` defines the planned
+-  PREC1-PREC3 precision-profile roadmap: `single`, `double`, and `refine` initialization,
++- `specs/training_data/mlff_staged_precision_profiles_spec.{md,pdf}` defines the PREC1-PREC3
++  precision-profile roadmap; PREC1 is implemented in 0.20.108a0 and PREC2/PREC3 remain planned: `single`, `double`, and `refine` initialization,
+   explicit staged schedules, in-process FP32-to-FP64 optimizer/EMA promotion, restart
+   correctness, and campaign-wide qualification.
+ - `specs/training_data/mlff_storage_management_spec.{md,pdf}` defines the planned STOR1-STOR5
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/docs/arch_manuals/README.md mdstats107_work/docs/arch_manuals/README.md
+--- mdstats107_pristine/docs/arch_manuals/README.md	2026-08-08 12:26:32.000000000 +0000
++++ mdstats107_work/docs/arch_manuals/README.md	2026-08-08 12:51:29.128218273 +0000
+@@ -49,13 +49,13 @@
+   execution-optimization line, the 0.20.104a0 source-tool/package-integrity repair,
+   and the 0.20.105a0 progress-timing correctness repair. It records the completed
+   post-first-campaign roadmap (`OPT-EVAL1` through `OPT-CTRL1`) and the planned
+-  post-0.20.105 evaluation/precision/storage roadmap. `EVAL-MF1` is implemented in 0.20.106a0 and `EVAL-MF2` in 0.20.107a0; `PREC1`--`PREC3` and `STOR1`--`STOR5` remain staged future gates.
++  post-0.20.105 evaluation/precision/storage roadmap. `EVAL-MF1` is implemented in 0.20.106a0, `EVAL-MF2` in 0.20.107a0, and `PREC1` in 0.20.108a0; `PREC2`--`PREC3` and `STOR1`--`STOR5` remain staged future gates.
+   The generic core owns provenance, eligibility,
+   partitioning, leakage control, selection orchestration, replay, precision,
+   training-backend calls, deployment, and validation policy. Physical
+   observables remain analysis-owned. LTA/ring/site semantics are an optional
+   profile extensions. DATA9A7a declarative contracts, DATA9A7b universal structural providers, DATA9A7c phase/geometry profiles, DATA9A7d optional-extension/LTA migration, and DATA9A7e cross-system qualification, DATA9A8 observable comparison, and DATA9A9a restartable production model sweeps are implemented.
+ - `mlff_training_data_dependency_graph.json`: machine-readable schema-26,
+-  architecture-revision-26 dependency graph. It separates generic material
++  architecture-revision-27 dependency graph. It separates generic material
+   profiles and observable validation from optional LTA enrichment and freezes
+-  holdout/protocol-exclusion dependencies. Revision 26 records EVAL-MF2 conservative survivor/reporting completion and production-default migration while preserving the staged precision and storage dependencies; earlier DATA2A and scientific identities remain unchanged.
++  holdout/protocol-exclusion dependencies. Revision 27 records PREC1 profile/configuration and resolved-schedule identity completion while preserving the later PREC2/PREC3 and storage dependencies; earlier DATA2A and scientific identities remain unchanged.
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/docs/arch_manuals/mlff_training_data_architecture.md mdstats107_work/docs/arch_manuals/mlff_training_data_architecture.md
+--- mdstats107_pristine/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-08 12:26:32.000000000 +0000
++++ mdstats107_work/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-08 12:51:29.128050153 +0000
+@@ -4233,7 +4233,7 @@
+ enter the existing DATA9B scientific selection path.
+ 
+ 
+-## PREC1 - precision profiles, explicit staged schedule, and init realization - planned
++## PREC1 - precision profiles, explicit staged schedule, and init realization - implemented in 0.20.108a0
+ 
+ ### Goal and user-facing profiles
+ 
+@@ -4387,6 +4387,22 @@
+ Detailed requirements are recorded in
+ `docs/specs/training_data/mlff_staged_precision_profiles_spec.md`.
+ 
++### PREC1 implementation closure (0.20.108a0)
++
++The runtime now owns a generalized `PrecisionSchedulePolicy` plus a fully resolved
++`ResolvedPrecisionSchedule`. Canonical `single`, `double`, and `refine` profiles are
++emitted by `init --precision`, with plain `init` resolving to `single`. The default
++`refine` schedule resolves 30 epochs to 24 FP32 plus 6 FP64 epochs and binds the
++15,000-update/three-epoch refinement floors after DATA8 loader exposure is known. The
++resolved epoch/update boundaries and non-training pipeline dtypes participate directly in
++training-protocol identity. Legacy schedule-free protocols retain their historical bytes and
++digests.
++
++PREC1 deliberately does not perform the live dtype transition. Until PREC2/PREC3 are
++qualified, preflight fails closed for multi-stage schedules and canonical single-profile
++critical-FP32 execution, preventing either from being silently executed under the legacy
++one-stage/critical-FP64 runtime.
++
+ ## PREC2 - in-process staged precision execution and restart correctness - planned
+ 
+ PREC2 implements the risky runtime boundary only after PREC1 freezes configuration and
+@@ -4678,8 +4694,8 @@
+ 8. **capability loss is explicit** - any manual higher-tier reclamation states exactly
+    what can no longer be restarted, recomputed, or re-evaluated cheaply.
+ 
+-`EVAL-MF1` is implemented in 0.20.106a0 and `EVAL-MF2` is implemented in 0.20.107a0. `PREC1` is the next implementation gate. The remaining required implementation sequence is
+-`PREC1 -> PREC2 -> PREC3 -> STOR1 -> STOR2 -> STOR3 -> STOR4 -> STOR5`.
++`EVAL-MF1` is implemented in 0.20.106a0, `EVAL-MF2` in 0.20.107a0, and `PREC1` in 0.20.108a0. `PREC2` is the next implementation gate. The remaining required implementation sequence is
++`PREC2 -> PREC3 -> STOR1 -> STOR2 -> STOR3 -> STOR4 -> STOR5`.
+ Storage implementation does not begin until EVAL-MF and staged-precision work establish
+ the checkpoint, prediction, optimizer-state, and dtype lifetimes that storage policy
+ must respect.
+@@ -4711,5 +4727,5 @@
+ The staged optimization roadmap **OPT-EVAL1 through OPT-CTRL1 is complete**. The
+ post-0.20.105 multi-fidelity-evaluation/staged-precision/storage roadmap above is a
+ separate cycle opened by new production-scale profiling, FP64-training, and storage
+-evidence. `EVAL-MF1` and `EVAL-MF2` are implemented through 0.20.107a0; the next implementation gate is `PREC1`.
++evidence. `EVAL-MF1`, `EVAL-MF2`, and `PREC1` are implemented through 0.20.108a0; the next implementation gate is `PREC2`.
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/docs/arch_manuals/mlff_training_data_dependency_graph.json mdstats107_work/docs/arch_manuals/mlff_training_data_dependency_graph.json
+--- mdstats107_pristine/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-08 12:25:58.000000000 +0000
++++ mdstats107_work/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-08 12:51:35.442974498 +0000
+@@ -1,9 +1,9 @@
+ {
+   "schema_version": 26,
+-  "architecture_revision": 26,
++  "architecture_revision": 27,
+   "branch": "MLFF-DATA",
+   "documentation_gate": "MLFF-DATA0",
+-  "description": "MLFF training-data dependency graph through DATA2A automatic review-manifest inference, DATA9B3A frozen e3nn/cuEquivariance campaigns, MLFF-PERF2 resource-aware process/GPU execution, EVAL-MF1 nested prediction reuse, and EVAL-MF2 conservative multi-fidelity survivor control/reporting; staged precision and ownership-scoped storage management remain planned. Scientific DATA9 identity remains unchanged.",
++  "description": "MLFF training-data dependency graph through DATA2A automatic review-manifest inference, DATA9B3A frozen e3nn/cuEquivariance campaigns, MLFF-PERF2 resource-aware process/GPU execution, EVAL-MF1/MF2 multi-fidelity checkpoint evaluation, and PREC1 explicit precision profiles plus resolved schedule identity; PREC2/PREC3 runtime transitions and ownership-scoped storage management remain planned. Scientific DATA9 identity remains unchanged.",
+   "edge_type_definitions": {
+     "source_identity_requires": "Exact source or checkpoint identity is required.",
+     "execution_requires": "The upstream product must exist before execution.",
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/docs/specs/training_data/mlff_eval_mf_successive_halving_spec.md mdstats107_work/docs/specs/training_data/mlff_eval_mf_successive_halving_spec.md
+--- mdstats107_pristine/docs/specs/training_data/mlff_eval_mf_successive_halving_spec.md	2026-08-08 12:29:01.000000000 +0000
++++ mdstats107_work/docs/specs/training_data/mlff_eval_mf_successive_halving_spec.md	2026-08-08 12:51:29.128374344 +0000
+@@ -1,6 +1,6 @@
+ # MLFF EVAL-MF1/MF2 multi-fidelity checkpoint-evaluation specification
+ 
+-Status: EVAL-MF1 implemented in mdstats 0.20.106a0; EVAL-MF2 implemented in mdstats 0.20.107a0. PREC1 is the next MLFF implementation gate.
++Status: EVAL-MF1 implemented in mdstats 0.20.106a0; EVAL-MF2 implemented in mdstats 0.20.107a0. PREC1 is implemented in mdstats 0.20.108a0; PREC2 is the next MLFF implementation gate.
+ 
+ ## Purpose
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/docs/specs/training_data/mlff_staged_precision_profiles_spec.md mdstats107_work/docs/specs/training_data/mlff_staged_precision_profiles_spec.md
+--- mdstats107_pristine/docs/specs/training_data/mlff_staged_precision_profiles_spec.md	2026-08-08 11:37:17.000000000 +0000
++++ mdstats107_work/docs/specs/training_data/mlff_staged_precision_profiles_spec.md	2026-08-08 12:51:29.126711956 +0000
+@@ -1,6 +1,6 @@
+ # MLFF PREC1-PREC3 staged-precision profile specification
+ 
+-Status: planned after EVAL-MF1/MF2 and before STOR1-STOR5.
++Status: PREC1 implemented in mdstats 0.20.108a0; PREC2 is the next implementation gate; PREC3 and STOR1-STOR5 remain planned.
+ 
+ ## Purpose
+ 
+@@ -44,7 +44,7 @@
+ FP64 critical precision. Legacy FP32-body/critical-FP64 configurations remain readable
+ and reproducible as legacy/custom policies, not canonical `single`.
+ 
+-## PREC1 - explicit configuration and schedule identity
++## PREC1 - explicit configuration and schedule identity - implemented in 0.20.108a0
+ 
+ The generated TOML must record both the friendly requested profile and the explicit
+ resolved schedule. The reference refine policy is:
+@@ -87,6 +87,24 @@
+ non-training pipeline dtypes. Thus `refine` 80/20 and `refine` 90/10 are distinct
+ protocols.
+ 
++
++### 0.20.108a0 implementation note
++
++PREC1 is implemented as a protocol/configuration gate without claiming the later runtime
++transition. `init` accepts `--precision {single,double,refine}` and plain `init` resolves
++to `single`. Generated TOML writes the requested profile, explicit ordered stage tables,
++critical-operation dtype, preservation policy, evaluation/verification/export dtypes, and
++refinement floors. DATA8 resolves the schedule only after effective loader exposure is
++known, so epoch and gradient-update boundaries are bound into `TrainingProtocolIdentity`.
++Legacy campaign files with no `[training.precision]` remain schedule-free in serialized
++v4 optimizer/v2 protocol identity and can be mapped losslessly to the generalized
++one-stage representation for inspection.
++
++Because PREC2/PREC3 are not yet implemented in 0.20.108a0, preflight fails closed for
++explicit multi-stage schedules and for canonical `single` critical-FP32 execution rather
++than silently executing the legacy critical-FP64 wrapper or remaining in the first stage.
++The existing one-stage `double` path is compatible with the already-qualified FP64 runtime.
++
+ ## PREC2 - in-process transition and exact restart
+ 
+ The canonical FP32 -> FP64 switch occurs inside a live training process at a frozen
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/mdstats/__init__.py mdstats107_work/mdstats/__init__.py
+--- mdstats107_pristine/mdstats/__init__.py	2026-08-08 12:18:17.000000000 +0000
++++ mdstats107_work/mdstats/__init__.py	2026-08-08 12:46:55.973203648 +0000
+@@ -4670,3 +4670,30 @@
+     "survivor_count",
+     "conservative_survivor_decision",
+ ]
++
++from .training_data import (
++    PRECISION_STAGE_SCHEMA,
++    PRECISION_SCHEDULE_POLICY_SCHEMA,
++    RESOLVED_PRECISION_STAGE_SCHEMA,
++    RESOLVED_PRECISION_SCHEDULE_SCHEMA,
++    PrecisionProfile,
++    PrecisionStage,
++    PrecisionSchedulePolicy,
++    ResolvedPrecisionStage,
++    ResolvedPrecisionSchedule,
++    canonical_precision_schedule_policy,
++    legacy_one_stage_precision_policy,
++)
++__all__ += [
++    "PRECISION_STAGE_SCHEMA",
++    "PRECISION_SCHEDULE_POLICY_SCHEMA",
++    "RESOLVED_PRECISION_STAGE_SCHEMA",
++    "RESOLVED_PRECISION_SCHEDULE_SCHEMA",
++    "PrecisionProfile",
++    "PrecisionStage",
++    "PrecisionSchedulePolicy",
++    "ResolvedPrecisionStage",
++    "ResolvedPrecisionSchedule",
++    "canonical_precision_schedule_policy",
++    "legacy_one_stage_precision_policy",
++]
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/mdstats/_version.py mdstats107_work/mdstats/_version.py
+--- mdstats107_pristine/mdstats/_version.py	2026-08-08 12:25:58.000000000 +0000
++++ mdstats107_work/mdstats/_version.py	2026-08-08 12:50:52.503093330 +0000
+@@ -1,3 +1,3 @@
+ """Package version."""
+ 
+-__version__ = "0.20.107a0"
++__version__ = "0.20.108a0"
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/mdstats/data/observable_owner_manuals.json mdstats107_work/mdstats/data/observable_owner_manuals.json
+--- mdstats107_pristine/mdstats/data/observable_owner_manuals.json	2026-08-08 12:25:58.000000000 +0000
++++ mdstats107_work/mdstats/data/observable_owner_manuals.json	2026-08-08 12:50:52.503166479 +0000
+@@ -17,6 +17,6 @@
+       "uri": "mdstats-doc://vacf-dynamics-architecture/0.20.53a0"
+     }
+   },
+-  "package_version": "0.20.107a0",
++  "package_version": "0.20.108a0",
+   "schema": "mdstats.observable-owner-manual-index.v1"
+ }
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/mdstats/training_data/__init__.py mdstats107_work/mdstats/training_data/__init__.py
+--- mdstats107_pristine/mdstats/training_data/__init__.py	2026-08-08 12:16:09.000000000 +0000
++++ mdstats107_work/mdstats/training_data/__init__.py	2026-08-08 12:43:17.369208388 +0000
+@@ -1009,3 +1009,19 @@
+     survivor_count,
+     conservative_survivor_decision,
+ )
++
++from .precision_schedule import (
++    PRECISION_STAGE_SCHEMA,
++    PRECISION_SCHEDULE_POLICY_SCHEMA,
++    RESOLVED_PRECISION_STAGE_SCHEMA,
++    RESOLVED_PRECISION_SCHEDULE_SCHEMA,
++    PrecisionProfile,
++    PrecisionStage,
++    PrecisionSchedulePolicy,
++    ResolvedPrecisionStage,
++    ResolvedPrecisionSchedule,
++    canonical_precision_schedule_policy,
++    legacy_one_stage_precision_policy,
++)
++
++__all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/mdstats/training_data/campaign_cli.py mdstats107_work/mdstats/training_data/campaign_cli.py
+--- mdstats107_pristine/mdstats/training_data/campaign_cli.py	2026-08-08 12:27:05.000000000 +0000
++++ mdstats107_work/mdstats/training_data/campaign_cli.py	2026-08-08 12:59:20.499169747 +0000
+@@ -69,7 +69,8 @@
+ # 0.20.103a0 changes only orchestration/telemetry/control-plane execution,
+ # 0.20.104a0 repairs source packaging, 0.20.105a0 repairs progress timing,
+ # 0.20.106a0 implements EVAL-MF1 nested multi-fidelity checkpoint evaluation,
+-# and 0.20.107a0 implements EVAL-MF2 conservative survivor/reporting/default migration.
++# 0.20.107a0 implements EVAL-MF2 conservative survivor/reporting/default migration,
++# and 0.20.108a0 implements PREC1 precision profiles/schedule identity only.
+ # None changes the frozen MLFF scientific/materialization identity, so existing
+ # 0.20.99a0 campaign state and prediction caches remain reusable.
+ MLFF_DATA9B3_VERSION = "0.20.99a0"
+@@ -803,6 +804,135 @@
+         raise CampaignCliError(f"Invalid [acceleration] policy: {exc}") from exc
+ 
+ 
++def _precision_schedule_policy(cfg: Mapping[str, Any]) -> Any | None:
++    """Return the explicit PREC1 schedule, preserving legacy configs as schedule-free."""
++
++    import mdstats
++
++    training = cfg.get("training", {})
++    precision = training.get("precision")
++    if precision is None:
++        return None
++    if not isinstance(precision, Mapping):
++        raise CampaignCliError("[training.precision] must be a TOML table.")
++    stage_payloads = precision.get("stage")
++    if not isinstance(stage_payloads, list) or not stage_payloads:
++        raise CampaignCliError(
++            "[training.precision] requires one or more [[training.precision.stage]] tables."
++        )
++    try:
++        stages = tuple(
++            mdstats.PrecisionStage(
++                dtype=str(item["dtype"]),
++                fraction=float(item["fraction"]),
++                learning_rate_scale=float(item.get("learning_rate_scale", 1.0)),
++            )
++            for item in stage_payloads
++        )
++        profile = str(_cfg(cfg, "campaign", "precision_profile", "custom")).strip() or "custom"
++        policy = mdstats.PrecisionSchedulePolicy(
++            requested_profile=profile,
++            stages=stages,
++            minimum_final_stage_epochs=int(precision.get("minimum_final_stage_epochs", 0)),
++            minimum_final_stage_gradient_updates=int(
++                precision.get("minimum_final_stage_gradient_updates", 0)
++            ),
++            preserve_optimizer_state=bool(precision.get("preserve_optimizer_state", True)),
++            preserve_scheduler_state=bool(precision.get("preserve_scheduler_state", True)),
++            preserve_ema_state=bool(precision.get("preserve_ema_state", True)),
++            model_dtype=str(_cfg(cfg, "model", "dtype", training.get("dtype", "float32"))),
++            critical_operation_dtype=str(
++                precision.get("critical_operation_dtype", "float64")
++            ),
++            evaluation_dtype=str(_cfg(cfg, "evaluation", "dtype", training.get("dtype", "float32"))),
++            verification_dtype=str(_cfg(cfg, "verification", "dtype", training.get("dtype", "float32"))),
++            export_dtype=str(cfg.get("export", {}).get("dtype", training.get("dtype", "float32"))),
++        )
++    except Exception as exc:
++        raise CampaignCliError(f"Invalid staged precision configuration: {exc}") from exc
++    training_dtype = str(training.get("dtype", stages[0].dtype))
++    if training_dtype != stages[0].dtype:
++        raise CampaignCliError(
++            "[training].dtype must equal the first [[training.precision.stage]].dtype."
++        )
++    mode = str(precision.get("mode", policy.mode))
++    if mode != policy.mode:
++        raise CampaignCliError(
++            f"[training.precision].mode={mode!r} disagrees with the explicit stage count; "
++            f"expected {policy.mode!r}."
++        )
++    return policy
++
++
++def _optimizer_policy(
++    cfg: Mapping[str, Any],
++    *,
++    seed: int,
++    num_workers: int,
++) -> Any:
++    """Build one protocol-frozen optimizer policy from the campaign config."""
++
++    import mdstats
++
++    precision_schedule = _precision_schedule_policy(cfg)
++    critical_precision = (
++        mdstats.MaceCriticalPrecisionPolicy()
++        if precision_schedule is None
++        else mdstats.MaceCriticalPrecisionPolicy.for_dtype(
++            precision_schedule.critical_operation_dtype
++        )
++    )
++    return mdstats.MaceOptimizerPolicy(
++        learning_rate=float(_cfg(cfg, "training", "learning_rate", 1.0e-4)),
++        batch_size=int(_cfg(cfg, "training", "batch_size", 2)),
++        valid_batch_size=int(_cfg(cfg, "training", "valid_batch_size", 2)),
++        num_workers=num_workers,
++        max_num_epochs=int(_cfg(cfg, "training", "max_num_epochs", 30)),
++        eval_interval=int(_cfg(cfg, "training", "eval_interval", 1)),
++        default_dtype=str(_cfg(cfg, "training", "dtype", "float32")),
++        device=str(_cfg(cfg, "training", "device", "cuda")),
++        seed=seed,
++        critical_precision_policy=critical_precision,
++        acceleration_policy=_acceleration_policy(cfg),
++        precision_schedule_policy=precision_schedule,
++    )
++
++
++def _precision_template(profile: str) -> dict[str, str]:
++    """Resolve one canonical init profile into TOML-visible dtypes and stage text."""
++
++    import mdstats
++
++    policy = mdstats.canonical_precision_schedule_policy(profile)
++    training_dtype = policy.stages[0].dtype
++    minimum_epochs = policy.minimum_final_stage_epochs
++    minimum_updates = policy.minimum_final_stage_gradient_updates
++    stage_lines: list[str] = []
++    for stage in policy.stages:
++        stage_lines.extend(
++            [
++                "[[training.precision.stage]]",
++                f'dtype = "{stage.dtype}"',
++                f"fraction = {stage.fraction:.2f}",
++                f"learning_rate_scale = {stage.learning_rate_scale:.1f}",
++                "",
++            ]
++        )
++    return {
++        "profile": policy.requested_profile,
++        "model_dtype": policy.model_dtype,
++        "training_dtype": training_dtype,
++        "critical_dtype": policy.critical_operation_dtype,
++        "evaluation_dtype": policy.evaluation_dtype,
++        "verification_dtype": policy.verification_dtype,
++        "export_dtype": policy.export_dtype,
++        "mode": policy.mode,
++        "minimum_epochs": str(minimum_epochs),
++        "minimum_updates": str(minimum_updates),
++        "stages": "\n".join(stage_lines).rstrip(),
++    }
++
++
+ def _path_cfg(cfg: Mapping[str, Any], paths: CampaignPaths, key: str, *, required: bool = True) -> Path | None:
+     value = _cfg(cfg, "paths", key)
+     if value in (None, ""):
+@@ -2141,6 +2271,7 @@
+         replay_true_labels=args.replay_true_labels or "/path/to/LTA_replay_true_labels",
+         acceleration_backend=detected_backend,
+         default_device=detected_device,
++        precision_profile=str(args.precision),
+     )
+     target.write_text(text, encoding="utf-8")
+     cfg, paths = _load_config(target)
+@@ -2152,6 +2283,7 @@
+     print(f"Workspace:     {paths.workspace}")
+     print(f"Device:        {detected_device} (auto-detected and frozen in campaign.toml)")
+     print(f"Acceleration:  {detected_backend} (auto-detected and frozen in campaign.toml)")
++    print(f"Precision:     {args.precision} (explicit profile and schedule frozen in campaign.toml)")
+     print("\nEdit the five input paths, then run:")
+     print(f"  python tools/mdstats-mlff-campaign.py --config {target} doctor")
+     return 0
+@@ -2165,6 +2297,26 @@
+     failures: list[str] = []
+     warnings: list[str] = []
+ 
++    try:
++        precision_policy = _precision_schedule_policy(cfg)
++        if precision_policy is None:
++            _ok("precision: legacy one-stage configuration (no explicit PREC1 schedule)")
++        else:
++            preview = precision_policy.resolve(
++                max_num_epochs=int(_cfg(cfg, "training", "max_num_epochs", 30)),
++                require_update_floor=False,
++            )
++            stage_text = " -> ".join(
++                f"{stage.epoch_count}x{stage.dtype}" for stage in preview.stages
++            )
++            _ok(
++                f"precision profile: {precision_policy.requested_profile}; "
++                f"epoch schedule={stage_text}; protocol-bound policy={precision_policy.policy_digest[:12]}"
++            )
++    except Exception as exc:
++        failures.append(f"precision schedule is invalid: {exc}")
++        _fail(failures[-1])
++
+     checks = [
+         ("training_root", True, "dir"),
+         ("foundation_model", True, "file"),
+@@ -4169,17 +4321,8 @@
+                 maximum_replay_degradation_fraction=float(_cfg(cfg, "acceptance", "maximum_replay_degradation_fraction", 0.20)),
+             ),
+             selection_budget_policy=mdstats.SelectionBudgetPolicy(target_sizes=tuple(sorted(set(int(v) for v in _cfg(cfg, "selection", "sizes", (512,))))),),
+-            optimizer_policy=mdstats.MaceOptimizerPolicy(
+-                learning_rate=float(_cfg(cfg, "training", "learning_rate", 1.0e-4)),
+-                batch_size=int(_cfg(cfg, "training", "batch_size", 2)),
+-                valid_batch_size=int(_cfg(cfg, "training", "valid_batch_size", 2)),
+-                num_workers=loader_workers,
+-                max_num_epochs=int(_cfg(cfg, "training", "max_num_epochs", 30)),
+-                eval_interval=int(_cfg(cfg, "training", "eval_interval", 1)),
+-                default_dtype=str(_cfg(cfg, "training", "dtype", "float32")),
+-                device=str(_cfg(cfg, "training", "device", "cuda")),
+-                seed=seed,
+-                acceleration_policy=_acceleration_policy(cfg),
++            optimizer_policy=_optimizer_policy(
++                cfg, seed=seed, num_workers=loader_workers
+             ),
+             checkpoint_control_policy=mdstats.MaceCheckpointControlPolicy(),
+             extxyz_policy=mdstats.MaceExtxyzPolicy(),
+@@ -5411,6 +5554,26 @@
+     _mark_stage(store, paths, "preflight", StageState.RUNNING, "running bounded training preflight")
+     failures: list[str] = []
+     _print_header("Production preflight")
++    precision_policy = _precision_schedule_policy(cfg)
++    if precision_policy is not None:
++        if len(precision_policy.stages) > 1:
++            message = (
++                "The explicit staged precision schedule is frozen by PREC1 but its in-process "
++                "transition runtime is not enabled until PREC2; preflight refuses to qualify a "
++                "run that would otherwise execute only the first dtype stage."
++            )
++            _fail(message)
++            _mark_stage(store, paths, "preflight", StageState.FAILED, message)
++            return 1
++        if precision_policy.critical_operation_dtype != "float64":
++            message = (
++                "Canonical single-precision critical-operation execution is frozen by PREC1 but "
++                "runtime activation belongs to PREC3; preflight refuses to mislabel the existing "
++                "critical-FP64 wrapper as canonical single precision."
++            )
++            _fail(message)
++            _mark_stage(store, paths, "preflight", StageState.FAILED, message)
++            return 1
+     doctor_result = command_doctor(argparse.Namespace(config=args.config, embedded=True))
+     if doctor_result != 0:
+         failures.append("doctor failed")
+@@ -11574,12 +11737,15 @@
+     replay_true_labels: str = "/path/to/LTA_replay_true_labels",
+     acceleration_backend: str = "e3nn",
+     default_device: str = "cpu",
++    precision_profile: str = "single",
+ ) -> str:
++    precision = _precision_template(precision_profile)
+     return f'''schema = "{CAMPAIGN_CLI_SCHEMA}"
+ 
+ [campaign]
+ id = "lta-mpa0-finetune"
+ profile = "lta"
++precision_profile = "{precision['profile']}"
+ workspace = "{workspace}"
+ 
+ [paths]
+@@ -11629,7 +11795,7 @@
+ [model]
+ foundation_name = "MPA-0-medium"
+ device = "{default_device}"
+-dtype = "float32"
++dtype = "{precision['model_dtype']}"
+ # Completed frames append one recovery record immediately. This value controls
+ # durable journal flushes, not full-history JSON rewrites. Use 1 for maximum
+ # durability or a larger value for lower filesystem synchronization overhead.
+@@ -11672,7 +11838,7 @@
+ # Legacy equivalent defaults: modes = ["naive_fine_tuning", "multihead_replay"]
+ # and seeds = [1, 2]. New campaigns use the explicit per-method tables below.
+ device = "{default_device}"
+-dtype = "float32"
++dtype = "{precision['training_dtype']}"
+ learning_rate = 1.0e-4
+ batch_size = 2
+ valid_batch_size = 2
+@@ -11684,6 +11850,21 @@
+ target_head_weight = 5.0
+ replay_head_weight = 1.0
+ 
++[training.precision]
++# PREC1 explicit protocol schedule. Canonical refine uses an 80/20 FP32->FP64
++# split and scales the effective learning rate by 0.5 at the FP64 boundary.
++# Fractions are resolved deterministically against max_num_epochs; with 30
++# epochs refine becomes 24 FP32 + 6 FP64 epochs.
++mode = "{precision['mode']}"
++minimum_final_stage_epochs = {precision['minimum_epochs']}
++minimum_final_stage_gradient_updates = {precision['minimum_updates']}
++preserve_optimizer_state = true
++preserve_scheduler_state = true
++preserve_ema_state = true
++critical_operation_dtype = "{precision['critical_dtype']}"
++
++{precision['stages']}
++
+ [training.naive_fine_tuning]
+ # Three cross-validation folds plus one final-development run are created for
+ # every listed optimizer seed. Default: (3 + 1) * 2 = 8 naïve jobs.
+@@ -11863,7 +12044,7 @@
+ 
+ [evaluation]
+ device = "{default_device}"
+-dtype = "float32"
++dtype = "{precision['evaluation_dtype']}"
+ # EVAL-MF2 qualified production default. Allowed values: "bounded", "exhaustive",
+ # or "multi_fidelity". Legacy configs that omit this field retain bounded behavior.
+ checkpoint_strategy = "multi_fidelity"
+@@ -11911,6 +12092,10 @@
+ replay_train_configurations = 64
+ replay_valid_configurations = 8
+ 
++[export]
++# Final deployment dtype is explicit even though PREC3 owns runtime activation.
++dtype = "{precision['export_dtype']}"
++
+ [verification]
+ # Permit bounded checks on the latest completed-model set when the full campaign
+ # is unfinished. Evidence is explicitly graded and never treated as a freeze.
+@@ -11919,7 +12104,7 @@
+ structures = []
+ temperatures_kelvin = [300.0, 700.0, 800.0]
+ device = "{default_device}"
+-dtype = "float32"
++dtype = "{precision['verification_dtype']}"
+ timestep_fs = 0.5
+ # Reused across committee members so model comparisons start from identical velocities.
+ velocity_seed = 314159
+@@ -11947,7 +12132,7 @@
+ 3. prepare    Infer XML metadata and verify filename strain hints; review one manifest; then build leakage-safe MACE data.
+ 4. preflight  Verify every job and run the required real one-epoch smoke.
+ 5. train      Execute configured fold/final, seed, size, and naive/replay jobs with safe resume.
+-6. evaluate   Shortlist epochs from training validation, run full monitor metrics on bounded candidates, and freeze only after the full campaign finishes.
++6. evaluate   Screen all epochs through nested 10%/33% target+replay monitors, fully evaluate guarded finalists, and freeze only after the full campaign finishes.
+ 7. verify     Run the full NVE matrix on deployment/final models and short stability smokes on fold-only comparison models.
+ 
+ Use `status` at any time. It reports the next command and never advances a failed gate.
+@@ -11986,13 +12171,18 @@
+ runs complete, at which point rerun `evaluate`. Use `evaluate --require-complete` or
+ `verify --require-frozen` for strict all-or-nothing behavior.
+ 
+-Evaluation does not repeat full monitor inference for every saved epoch by default.
+-MACE's existing validation history shortlists at most four candidates per run; mdstats
+-then computes its authoritative mobile-ion, condition, stress, and replay-retention
+-metrics only for those candidates. The default TOML keeps pseudo labels for replay
+-training but resolves true replay labels independently, evaluating both foundation and
+-candidate on target and replay. Artifact/model/policy changes invalidate stale records.
+-Set `[evaluation].max_checkpoints_per_run = 0` for exhaustive evaluation.
++Evaluation uses guarded multi-fidelity screening by default. Every saved epoch enters a
++deterministic 10% target + 10% true-replay round, survivors expand to nested 33% subsets,
++and guarded finalists receive complete target + complete replay evaluation. Prediction
++coverage is reused between rounds, and only full-fidelity records can authorize final
++selection. `checkpoint_strategy = "bounded"` retains the historical shortlist mode and
++`checkpoint_strategy = "exhaustive"` evaluates every saved checkpoint in full.
++
++Precision is explicit at initialization. Plain `init` generates canonical `single`; use
++`init --precision double` for FP64 throughout or `init --precision refine` for the planned
++80% FP32 -> 20% FP64 refinement schedule. In 0.20.108a0 PREC1 freezes configuration and
++protocol identity only; live staged transition execution is intentionally fail-closed until
++PREC2/PREC3 are qualified.
+ 
+ The final `verify` command is a bounded pre-deployment stability gate. Production
+ committee/final models receive the full configured structure x temperature NVE matrix.
+@@ -12029,6 +12219,12 @@
+     p.add_argument("--replay-train")
+     p.add_argument("--replay-monitor")
+     p.add_argument("--replay-true-labels")
++    p.add_argument(
++        "--precision",
++        choices=("single", "double", "refine"),
++        default="single",
++        help="precision profile for the generated campaign (default: single)",
++    )
+     p.add_argument("--force", action="store_true")
+     p.set_defaults(func=command_init)
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/mdstats/training_data/critical_precision.py mdstats107_work/mdstats/training_data/critical_precision.py
+--- mdstats107_pristine/mdstats/training_data/critical_precision.py	2026-08-05 18:20:00.000000000 +0000
++++ mdstats107_work/mdstats/training_data/critical_precision.py	2026-08-08 12:56:22.464482372 +0000
+@@ -22,7 +22,8 @@
+ 
+ from ._common import TrainingDataInputError, TrainingDataSerializationError, digest
+ 
+-MACE_CRITICAL_PRECISION_POLICY_SCHEMA = "mdstats.mace-critical-precision-policy.v1"
++MACE_CRITICAL_PRECISION_POLICY_SCHEMA = "mdstats.mace-critical-precision-policy.v2"
++MACE_CRITICAL_PRECISION_POLICY_V1_SCHEMA = "mdstats.mace-critical-precision-policy.v1"
+ MACE_CRITICAL_PRECISION_AUDIT_SCHEMA = "mdstats.mace-critical-precision-audit.v1"
+ ASE_MD_STATE_PRECISION_AUDIT_SCHEMA = "mdstats.ase-md-state-precision-audit.v1"
+ SUPPORTED_MACE_VERSION = "0.3.16"
+@@ -43,30 +44,63 @@
+     strategy: str = "scaleshift_mace_0.3.16_runtime_patch_v1"
+ 
+     def __post_init__(self) -> None:
+-        for name in (
+-            "energy_accumulation_dtype",
+-            "virial_accumulation_dtype",
+-            "observable_output_dtype",
+-            "md_state_dtype",
+-        ):
+-            if getattr(self, name) != "float64":
+-                raise TrainingDataInputError(f"{name} is safety-locked to float64.")
++        dtype_values = tuple(
++            getattr(self, name)
++            for name in (
++                "energy_accumulation_dtype",
++                "virial_accumulation_dtype",
++                "observable_output_dtype",
++                "md_state_dtype",
++            )
++        )
++        if self.strategy == "scaleshift_mace_0.3.16_runtime_patch_v1":
++            if any(value != "float64" for value in dtype_values):
++                raise TrainingDataInputError(
++                    "The qualified ScaleShiftMACE critical-precision patch requires FP64 global operations."
++                )
++        elif self.strategy == "native_model_precision_v1":
++            if any(value != "float32" for value in dtype_values):
++                raise TrainingDataInputError(
++                    "Canonical native single-precision critical operations must be uniformly FP32."
++                )
++        else:
++            raise TrainingDataInputError("Unsupported critical-precision strategy.")
+         if self.allow_tf32:
+-            raise TrainingDataInputError("TF32 is disabled by the critical-FP64 policy.")
++            raise TrainingDataInputError("TF32 is disabled by the precision policy.")
+         if not self.differentiate_from_accumulated_energy:
+             raise TrainingDataInputError(
+-                "Inference forces must be differentiated from the same FP64-accumulated energy."
++                "Inference forces must be differentiated from the same accumulated energy."
+             )
+         if self.training_force_jacobian_dtype != "model":
+             raise TrainingDataInputError(
+-                "MACE 0.3.16 force training is safety-locked to the selected model dtype."
++                "MACE 0.3.16 force training is locked to the selected model dtype."
+             )
+-        if self.strategy != "scaleshift_mace_0.3.16_runtime_patch_v1":
+-            raise TrainingDataInputError("Unsupported critical-precision strategy.")
++
++    @property
++    def canonical_dtype(self) -> str:
++        return self.energy_accumulation_dtype
++
++    @classmethod
++    def for_dtype(cls, dtype: str) -> "MaceCriticalPrecisionPolicy":
++        if dtype == "float64":
++            return cls()
++        if dtype == "float32":
++            return cls(
++                energy_accumulation_dtype="float32",
++                virial_accumulation_dtype="float32",
++                observable_output_dtype="float32",
++                md_state_dtype="float32",
++                strategy="native_model_precision_v1",
++            )
++        raise TrainingDataInputError(f"Unsupported critical-operation dtype {dtype!r}.")
+ 
+     def _payload(self) -> dict[str, Any]:
+         return {
+-            "schema": MACE_CRITICAL_PRECISION_POLICY_SCHEMA,
++            "schema": (
++                MACE_CRITICAL_PRECISION_POLICY_V1_SCHEMA
++                if self.strategy == "scaleshift_mace_0.3.16_runtime_patch_v1"
++                else MACE_CRITICAL_PRECISION_POLICY_SCHEMA
++            ),
+             "energy_accumulation_dtype": self.energy_accumulation_dtype,
+             "virial_accumulation_dtype": self.virial_accumulation_dtype,
+             "observable_output_dtype": self.observable_output_dtype,
+@@ -86,7 +120,10 @@
+ 
+     @classmethod
+     def from_dict(cls, payload: Mapping[str, Any]) -> "MaceCriticalPrecisionPolicy":
+-        if payload.get("schema") != MACE_CRITICAL_PRECISION_POLICY_SCHEMA:
++        if payload.get("schema") not in {
++            MACE_CRITICAL_PRECISION_POLICY_SCHEMA,
++            MACE_CRITICAL_PRECISION_POLICY_V1_SCHEMA,
++        }:
+             raise TrainingDataSerializationError("Unsupported critical-precision policy schema.")
+         result = cls(
+             energy_accumulation_dtype=str(payload["energy_accumulation_dtype"]),
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/mdstats/training_data/data8_bundle.py mdstats107_work/mdstats/training_data/data8_bundle.py
+--- mdstats107_pristine/mdstats/training_data/data8_bundle.py	2026-08-08 01:20:07.000000000 +0000
++++ mdstats107_work/mdstats/training_data/data8_bundle.py	2026-08-08 12:44:22.503872531 +0000
+@@ -606,6 +606,27 @@
+             encoding="utf-8",
+         )
+         command_path.chmod(0o755)
++        dry_run = emulate_mace_v0316_loader_dry_run(
++            compatibility_probe=compatibility_probe,
++            target_train_count=train_artifact.configuration_count,
++            target_validation_count=valid_artifact.configuration_count,
++            replay_train_count=local_replay.train_count,
++            replay_validation_count=local_replay.monitor_count,
++            real_pt_data_ratio_threshold=real_pt_data_ratio_threshold,
++            checkpoint_policy=active_checkpoint,
++            config_path=str(config_path),
++        )
++        resolved_precision_schedule = None
++        if active_optimizer.precision_schedule_policy is not None:
++            effective_per_epoch = (
++                dry_run.target_train_count_effective + dry_run.replay_train_count_effective
++            )
++            updates_per_epoch = max(1, effective_per_epoch // active_optimizer.batch_size)
++            resolved_precision_schedule = active_optimizer.precision_schedule_policy.resolve(
++                max_num_epochs=active_optimizer.max_num_epochs,
++                updates_per_epoch=updates_per_epoch,
++                require_update_floor=True,
++            )
+         protocol = TrainingProtocolIdentity(
+             training_mode=training_mode,
+             foundation_checkpoint=staged_foundation,
+@@ -621,16 +642,7 @@
+             optimizer_policy=active_optimizer,
+             selection_size=chosen_size,
+             real_pt_data_ratio_threshold=real_pt_data_ratio_threshold,
+-        )
+-        dry_run = emulate_mace_v0316_loader_dry_run(
+-            compatibility_probe=compatibility_probe,
+-            target_train_count=train_artifact.configuration_count,
+-            target_validation_count=valid_artifact.configuration_count,
+-            replay_train_count=local_replay.train_count,
+-            replay_validation_count=local_replay.monitor_count,
+-            real_pt_data_ratio_threshold=real_pt_data_ratio_threshold,
+-            checkpoint_policy=active_checkpoint,
+-            config_path=str(config_path),
++            resolved_precision_schedule=resolved_precision_schedule,
+         )
+         job = MaceJobArtifact(
+             job_id=job_id,
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/mdstats/training_data/precision_schedule.py mdstats107_work/mdstats/training_data/precision_schedule.py
+--- mdstats107_pristine/mdstats/training_data/precision_schedule.py	1970-01-01 00:00:00.000000000 +0000
++++ mdstats107_work/mdstats/training_data/precision_schedule.py	2026-08-08 12:43:07.831465013 +0000
+@@ -0,0 +1,455 @@
++"""Protocol-bound precision profiles and deterministic staged schedule resolution.
++
++PREC1 freezes configuration and identity semantics only. Runtime dtype transitions are
++implemented by the later PREC2 gate; callers must not interpret a multi-stage schedule
++as executable until that gate is qualified.
++"""
++from __future__ import annotations
++
++from dataclasses import dataclass
++from enum import Enum
++import math
++from typing import Any, Mapping, Sequence
++
++from ._common import TrainingDataInputError, TrainingDataSerializationError, digest
++
++PRECISION_STAGE_SCHEMA = "mdstats.precision-stage.v1"
++PRECISION_SCHEDULE_POLICY_SCHEMA = "mdstats.precision-schedule-policy.v1"
++RESOLVED_PRECISION_STAGE_SCHEMA = "mdstats.resolved-precision-stage.v1"
++RESOLVED_PRECISION_SCHEDULE_SCHEMA = "mdstats.resolved-precision-schedule.v1"
++
++_ALLOWED_DTYPES = {"float32", "float64"}
++_FRACTION_TOLERANCE = 1.0e-9
++
++
++class PrecisionProfile(str, Enum):
++    SINGLE = "single"
++    DOUBLE = "double"
++    REFINE = "refine"
++    CUSTOM = "custom"
++    LEGACY_CUSTOM = "legacy_custom"
++
++
++@dataclass(frozen=True, slots=True)
++class PrecisionStage:
++    dtype: str
++    fraction: float
++    learning_rate_scale: float = 1.0
++
++    def __post_init__(self) -> None:
++        if self.dtype not in _ALLOWED_DTYPES:
++            raise TrainingDataInputError(f"Unsupported precision-stage dtype {self.dtype!r}.")
++        if not math.isfinite(self.fraction) or self.fraction <= 0.0:
++            raise TrainingDataInputError("Precision-stage fractions must be finite and positive.")
++        if not math.isfinite(self.learning_rate_scale) or self.learning_rate_scale <= 0.0:
++            raise TrainingDataInputError("Precision-stage learning-rate scales must be finite and positive.")
++
++    def to_dict(self) -> dict[str, Any]:
++        return {
++            "schema": PRECISION_STAGE_SCHEMA,
++            "dtype": self.dtype,
++            "fraction": self.fraction,
++            "learning_rate_scale": self.learning_rate_scale,
++        }
++
++    @classmethod
++    def from_dict(cls, payload: Mapping[str, Any]) -> "PrecisionStage":
++        if payload.get("schema") not in (None, PRECISION_STAGE_SCHEMA):
++            raise TrainingDataSerializationError("Unsupported precision-stage schema.")
++        return cls(
++            dtype=str(payload["dtype"]),
++            fraction=float(payload["fraction"]),
++            learning_rate_scale=float(payload.get("learning_rate_scale", 1.0)),
++        )
++
++
++@dataclass(frozen=True, slots=True)
++class ResolvedPrecisionStage:
++    dtype: str
++    source_fraction: float
++    learning_rate_scale: float
++    start_epoch: int
++    stop_epoch: int
++    start_update: int | None = None
++    stop_update: int | None = None
++
++    def __post_init__(self) -> None:
++        if self.dtype not in _ALLOWED_DTYPES:
++            raise TrainingDataInputError("Resolved precision stage has unsupported dtype.")
++        if self.start_epoch < 0 or self.stop_epoch <= self.start_epoch:
++            raise TrainingDataInputError("Resolved precision stage has invalid epoch bounds.")
++        if (self.start_update is None) != (self.stop_update is None):
++            raise TrainingDataInputError("Resolved precision update bounds must be both present or both absent.")
++        if self.start_update is not None and (
++            self.start_update < 0 or self.stop_update is None or self.stop_update <= self.start_update
++        ):
++            raise TrainingDataInputError("Resolved precision stage has invalid update bounds.")
++
++    @property
++    def epoch_count(self) -> int:
++        return self.stop_epoch - self.start_epoch
++
++    @property
++    def update_count(self) -> int | None:
++        if self.start_update is None or self.stop_update is None:
++            return None
++        return self.stop_update - self.start_update
++
++    def to_dict(self) -> dict[str, Any]:
++        return {
++            "schema": RESOLVED_PRECISION_STAGE_SCHEMA,
++            "dtype": self.dtype,
++            "source_fraction": self.source_fraction,
++            "learning_rate_scale": self.learning_rate_scale,
++            "start_epoch": self.start_epoch,
++            "stop_epoch": self.stop_epoch,
++            "epoch_count": self.epoch_count,
++            "start_update": self.start_update,
++            "stop_update": self.stop_update,
++            "update_count": self.update_count,
++        }
++
++    @classmethod
++    def from_dict(cls, payload: Mapping[str, Any]) -> "ResolvedPrecisionStage":
++        if payload.get("schema") != RESOLVED_PRECISION_STAGE_SCHEMA:
++            raise TrainingDataSerializationError("Unsupported resolved precision-stage schema.")
++        return cls(
++            dtype=str(payload["dtype"]),
++            source_fraction=float(payload["source_fraction"]),
++            learning_rate_scale=float(payload["learning_rate_scale"]),
++            start_epoch=int(payload["start_epoch"]),
++            stop_epoch=int(payload["stop_epoch"]),
++            start_update=None if payload.get("start_update") is None else int(payload["start_update"]),
++            stop_update=None if payload.get("stop_update") is None else int(payload["stop_update"]),
++        )
++
++
++@dataclass(frozen=True, slots=True)
++class ResolvedPrecisionSchedule:
++    requested_profile: str
++    stages: tuple[ResolvedPrecisionStage, ...]
++    preserve_optimizer_state: bool
++    preserve_scheduler_state: bool
++    preserve_ema_state: bool
++    model_dtype: str
++    critical_operation_dtype: str
++    evaluation_dtype: str
++    verification_dtype: str
++    export_dtype: str
++    max_num_epochs: int
++    updates_per_epoch: int | None
++    minimum_final_stage_epochs: int
++    minimum_final_stage_gradient_updates: int
++
++    def __post_init__(self) -> None:
++        if not self.stages:
++            raise TrainingDataInputError("Resolved precision schedules require at least one stage.")
++        if self.max_num_epochs <= 0:
++            raise TrainingDataInputError("Resolved precision schedule requires positive max_num_epochs.")
++        if self.stages[0].start_epoch != 0 or self.stages[-1].stop_epoch != self.max_num_epochs:
++            raise TrainingDataInputError("Resolved precision stages must cover the complete epoch budget.")
++        previous = 0
++        for stage in self.stages:
++            if stage.start_epoch != previous:
++                raise TrainingDataInputError("Resolved precision stages must be contiguous.")
++            previous = stage.stop_epoch
++        for dtype in (
++            self.model_dtype, self.critical_operation_dtype, self.evaluation_dtype,
++            self.verification_dtype, self.export_dtype,
++        ):
++            if dtype not in _ALLOWED_DTYPES:
++                raise TrainingDataInputError("Resolved pipeline precision contains an unsupported dtype.")
++        if self.updates_per_epoch is not None and self.updates_per_epoch <= 0:
++            raise TrainingDataInputError("updates_per_epoch must be positive when supplied.")
++
++    def _payload(self) -> dict[str, Any]:
++        return {
++            "schema": RESOLVED_PRECISION_SCHEDULE_SCHEMA,
++            "requested_profile": self.requested_profile,
++            "stages": [stage.to_dict() for stage in self.stages],
++            "preserve_optimizer_state": self.preserve_optimizer_state,
++            "preserve_scheduler_state": self.preserve_scheduler_state,
++            "preserve_ema_state": self.preserve_ema_state,
++            "model_dtype": self.model_dtype,
++            "critical_operation_dtype": self.critical_operation_dtype,
++            "evaluation_dtype": self.evaluation_dtype,
++            "verification_dtype": self.verification_dtype,
++            "export_dtype": self.export_dtype,
++            "max_num_epochs": self.max_num_epochs,
++            "updates_per_epoch": self.updates_per_epoch,
++            "minimum_final_stage_epochs": self.minimum_final_stage_epochs,
++            "minimum_final_stage_gradient_updates": self.minimum_final_stage_gradient_updates,
++        }
++
++    @property
++    def content_digest(self) -> str:
++        return digest(self._payload())
++
++    def to_dict(self) -> dict[str, Any]:
++        return {**self._payload(), "content_digest": self.content_digest}
++
++    @classmethod
++    def from_dict(cls, payload: Mapping[str, Any]) -> "ResolvedPrecisionSchedule":
++        if payload.get("schema") != RESOLVED_PRECISION_SCHEDULE_SCHEMA:
++            raise TrainingDataSerializationError("Unsupported resolved precision-schedule schema.")
++        result = cls(
++            requested_profile=str(payload["requested_profile"]),
++            stages=tuple(ResolvedPrecisionStage.from_dict(item) for item in payload["stages"]),
++            preserve_optimizer_state=bool(payload["preserve_optimizer_state"]),
++            preserve_scheduler_state=bool(payload["preserve_scheduler_state"]),
++            preserve_ema_state=bool(payload["preserve_ema_state"]),
++            model_dtype=str(payload["model_dtype"]),
++            critical_operation_dtype=str(payload["critical_operation_dtype"]),
++            evaluation_dtype=str(payload["evaluation_dtype"]),
++            verification_dtype=str(payload["verification_dtype"]),
++            export_dtype=str(payload["export_dtype"]),
++            max_num_epochs=int(payload["max_num_epochs"]),
++            updates_per_epoch=None if payload.get("updates_per_epoch") is None else int(payload["updates_per_epoch"]),
++            minimum_final_stage_epochs=int(payload.get("minimum_final_stage_epochs", 0)),
++            minimum_final_stage_gradient_updates=int(payload.get("minimum_final_stage_gradient_updates", 0)),
++        )
++        if payload.get("content_digest") not in (None, result.content_digest):
++            raise TrainingDataSerializationError("Resolved precision-schedule digest mismatch.")
++        return result
++
++
++@dataclass(frozen=True, slots=True)
++class PrecisionSchedulePolicy:
++    requested_profile: str
++    stages: tuple[PrecisionStage, ...]
++    minimum_final_stage_epochs: int = 0
++    minimum_final_stage_gradient_updates: int = 0
++    preserve_optimizer_state: bool = True
++    preserve_scheduler_state: bool = True
++    preserve_ema_state: bool = True
++    model_dtype: str = "float64"
++    critical_operation_dtype: str = "float64"
++    evaluation_dtype: str = "float64"
++    verification_dtype: str = "float64"
++    export_dtype: str = "float64"
++
++    def __post_init__(self) -> None:
++        stages = tuple(self.stages)
++        if not stages:
++            raise TrainingDataInputError("Precision schedules require at least one stage.")
++        object.__setattr__(self, "stages", stages)
++        total = sum(stage.fraction for stage in stages)
++        if abs(total - 1.0) > _FRACTION_TOLERANCE:
++            raise TrainingDataInputError(
++                f"Precision-stage fractions must sum to 1.0; got {total:.17g}."
++            )
++        if self.minimum_final_stage_epochs < 0 or self.minimum_final_stage_gradient_updates < 0:
++            raise TrainingDataInputError("Precision refinement floors must be nonnegative.")
++        for dtype in (
++            self.model_dtype, self.critical_operation_dtype, self.evaluation_dtype,
++            self.verification_dtype, self.export_dtype,
++        ):
++            if dtype not in _ALLOWED_DTYPES:
++                raise TrainingDataInputError(f"Unsupported pipeline dtype {dtype!r}.")
++        if not str(self.requested_profile).strip():
++            raise TrainingDataInputError("Precision profile label must be non-empty.")
++
++    @property
++    def mode(self) -> str:
++        return "single_stage" if len(self.stages) == 1 else "staged"
++
++    def _payload(self) -> dict[str, Any]:
++        return {
++            "schema": PRECISION_SCHEDULE_POLICY_SCHEMA,
++            "requested_profile": self.requested_profile,
++            "mode": self.mode,
++            "stages": [stage.to_dict() for stage in self.stages],
++            "minimum_final_stage_epochs": self.minimum_final_stage_epochs,
++            "minimum_final_stage_gradient_updates": self.minimum_final_stage_gradient_updates,
++            "preserve_optimizer_state": self.preserve_optimizer_state,
++            "preserve_scheduler_state": self.preserve_scheduler_state,
++            "preserve_ema_state": self.preserve_ema_state,
++            "model_dtype": self.model_dtype,
++            "critical_operation_dtype": self.critical_operation_dtype,
++            "evaluation_dtype": self.evaluation_dtype,
++            "verification_dtype": self.verification_dtype,
++            "export_dtype": self.export_dtype,
++        }
++
++    @property
++    def policy_digest(self) -> str:
++        return digest(self._payload())
++
++    def to_dict(self) -> dict[str, Any]:
++        return {**self._payload(), "policy_digest": self.policy_digest}
++
++    @classmethod
++    def from_dict(cls, payload: Mapping[str, Any]) -> "PrecisionSchedulePolicy":
++        if payload.get("schema") != PRECISION_SCHEDULE_POLICY_SCHEMA:
++            raise TrainingDataSerializationError("Unsupported precision-schedule policy schema.")
++        result = cls(
++            requested_profile=str(payload["requested_profile"]),
++            stages=tuple(PrecisionStage.from_dict(item) for item in payload["stages"]),
++            minimum_final_stage_epochs=int(payload.get("minimum_final_stage_epochs", 0)),
++            minimum_final_stage_gradient_updates=int(payload.get("minimum_final_stage_gradient_updates", 0)),
++            preserve_optimizer_state=bool(payload.get("preserve_optimizer_state", True)),
++            preserve_scheduler_state=bool(payload.get("preserve_scheduler_state", True)),
++            preserve_ema_state=bool(payload.get("preserve_ema_state", True)),
++            model_dtype=str(payload["model_dtype"]),
++            critical_operation_dtype=str(payload["critical_operation_dtype"]),
++            evaluation_dtype=str(payload["evaluation_dtype"]),
++            verification_dtype=str(payload["verification_dtype"]),
++            export_dtype=str(payload["export_dtype"]),
++        )
++        if payload.get("policy_digest") not in (None, result.policy_digest):
++            raise TrainingDataSerializationError("Precision-schedule policy digest mismatch.")
++        return result
++
++    def resolve(
++        self,
++        *,
++        max_num_epochs: int,
++        updates_per_epoch: int | None = None,
++        require_update_floor: bool = False,
++    ) -> ResolvedPrecisionSchedule:
++        if max_num_epochs <= 0:
++            raise TrainingDataInputError("Precision schedule requires a positive epoch budget.")
++        if updates_per_epoch is not None and updates_per_epoch <= 0:
++            raise TrainingDataInputError("updates_per_epoch must be positive when supplied.")
++        if require_update_floor and self.minimum_final_stage_gradient_updates > 0 and updates_per_epoch is None:
++            raise TrainingDataInputError(
++                "The configured precision refinement update floor cannot be resolved without updates_per_epoch."
++            )
++
++        counts: list[int] = []
++        assigned = 0
++        for stage in self.stages[:-1]:
++            count = int(math.floor(stage.fraction * max_num_epochs + 1.0e-12))
++            counts.append(count)
++            assigned += count
++        counts.append(max_num_epochs - assigned)
++        if any(count <= 0 for count in counts):
++            raise TrainingDataInputError(
++                "The epoch budget is too small to assign at least one epoch to every precision stage."
++            )
++
++        required_final = max(1, self.minimum_final_stage_epochs)
++        if updates_per_epoch is not None and self.minimum_final_stage_gradient_updates > 0:
++            required_final = max(
++                required_final,
++                int(math.ceil(self.minimum_final_stage_gradient_updates / updates_per_epoch)),
++            )
++        if counts[-1] < required_final:
++            need = required_final - counts[-1]
++            for index in range(len(counts) - 2, -1, -1):
++                transferable = max(0, counts[index] - 1)
++                moved = min(need, transferable)
++                counts[index] -= moved
++                counts[-1] += moved
++                need -= moved
++                if need == 0:
++                    break
++            if need:
++                raise TrainingDataInputError(
++                    "The epoch budget cannot satisfy the precision refinement floor while retaining "
++                    "at least one epoch in every earlier stage."
++                )
++
++        resolved: list[ResolvedPrecisionStage] = []
++        epoch_cursor = 0
++        update_cursor = 0
++        for source, count in zip(self.stages, counts):
++            start_update = None if updates_per_epoch is None else update_cursor
++            stop_update = None if updates_per_epoch is None else update_cursor + count * updates_per_epoch
++            resolved.append(
++                ResolvedPrecisionStage(
++                    dtype=source.dtype,
++                    source_fraction=source.fraction,
++                    learning_rate_scale=source.learning_rate_scale,
++                    start_epoch=epoch_cursor,
++                    stop_epoch=epoch_cursor + count,
++                    start_update=start_update,
++                    stop_update=stop_update,
++                )
++            )
++            epoch_cursor += count
++            if stop_update is not None:
++                update_cursor = stop_update
++
++        return ResolvedPrecisionSchedule(
++            requested_profile=self.requested_profile,
++            stages=tuple(resolved),
++            preserve_optimizer_state=self.preserve_optimizer_state,
++            preserve_scheduler_state=self.preserve_scheduler_state,
++            preserve_ema_state=self.preserve_ema_state,
++            model_dtype=self.model_dtype,
++            critical_operation_dtype=self.critical_operation_dtype,
++            evaluation_dtype=self.evaluation_dtype,
++            verification_dtype=self.verification_dtype,
++            export_dtype=self.export_dtype,
++            max_num_epochs=max_num_epochs,
++            updates_per_epoch=updates_per_epoch,
++            minimum_final_stage_epochs=self.minimum_final_stage_epochs,
++            minimum_final_stage_gradient_updates=self.minimum_final_stage_gradient_updates,
++        )
++
++
++def canonical_precision_schedule_policy(profile: PrecisionProfile | str) -> PrecisionSchedulePolicy:
++    profile = PrecisionProfile(profile)
++    if profile is PrecisionProfile.SINGLE:
++        return PrecisionSchedulePolicy(
++            requested_profile=profile.value,
++            stages=(PrecisionStage("float32", 1.0, 1.0),),
++            model_dtype="float32",
++            critical_operation_dtype="float32",
++            evaluation_dtype="float32",
++            verification_dtype="float32",
++            export_dtype="float32",
++        )
++    if profile is PrecisionProfile.DOUBLE:
++        return PrecisionSchedulePolicy(
++            requested_profile=profile.value,
++            stages=(PrecisionStage("float64", 1.0, 1.0),),
++            model_dtype="float64",
++            critical_operation_dtype="float64",
++            evaluation_dtype="float64",
++            verification_dtype="float64",
++            export_dtype="float64",
++        )
++    if profile is PrecisionProfile.REFINE:
++        return PrecisionSchedulePolicy(
++            requested_profile=profile.value,
++            stages=(
++                PrecisionStage("float32", 0.80, 1.0),
++                PrecisionStage("float64", 0.20, 0.5),
++            ),
++            minimum_final_stage_epochs=3,
++            minimum_final_stage_gradient_updates=15_000,
++            preserve_optimizer_state=True,
++            preserve_scheduler_state=True,
++            preserve_ema_state=True,
++            model_dtype="float64",
++            critical_operation_dtype="float64",
++            evaluation_dtype="float64",
++            verification_dtype="float64",
++            export_dtype="float64",
++        )
++    raise TrainingDataInputError(f"No canonical generated schedule exists for profile {profile.value!r}.")
++
++
++def legacy_one_stage_precision_policy(
++    *,
++    training_dtype: str,
++    model_dtype: str | None = None,
++    critical_operation_dtype: str = "float64",
++    evaluation_dtype: str | None = None,
++    verification_dtype: str | None = None,
++    export_dtype: str | None = None,
++) -> PrecisionSchedulePolicy:
++    """Losslessly describe a historical one-stage campaign as a generalized policy."""
++    if training_dtype not in _ALLOWED_DTYPES:
++        raise TrainingDataInputError("Unsupported legacy training dtype.")
++    return PrecisionSchedulePolicy(
++        requested_profile=PrecisionProfile.LEGACY_CUSTOM.value,
++        stages=(PrecisionStage(training_dtype, 1.0, 1.0),),
++        model_dtype=training_dtype if model_dtype is None else model_dtype,
++        critical_operation_dtype=critical_operation_dtype,
++        evaluation_dtype=training_dtype if evaluation_dtype is None else evaluation_dtype,
++        verification_dtype=training_dtype if verification_dtype is None else verification_dtype,
++        export_dtype=training_dtype if export_dtype is None else export_dtype,
++    )
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/mdstats/training_data/protocol.py mdstats107_work/mdstats/training_data/protocol.py
+--- mdstats107_pristine/mdstats/training_data/protocol.py	2026-08-05 18:20:00.000000000 +0000
++++ mdstats107_work/mdstats/training_data/protocol.py	2026-08-08 12:58:05.374678155 +0000
+@@ -12,15 +12,18 @@
+ from ._common import TrainingDataInputError, TrainingDataSerializationError, digest, validate_digest
+ from .acceleration import MaceAccelerationPolicy
+ from .critical_precision import MaceCriticalPrecisionPolicy
++from .precision_schedule import PrecisionSchedulePolicy, ResolvedPrecisionSchedule
+ from .mace_compatibility import MaceCheckpointControlPolicy, MaceExposureBackend, MaceLoaderDryRun, MaceSourceProbe
+ from .replay import ReplayPreparationPlan, ReplayMode
+ 
+ FOUNDATION_CHECKPOINT_IDENTITY_SCHEMA = "mdstats.foundation-checkpoint-identity.v2"
+-MACE_OPTIMIZER_POLICY_SCHEMA = "mdstats.mace-optimizer-policy.v4"
++MACE_OPTIMIZER_POLICY_SCHEMA = "mdstats.mace-optimizer-policy.v5"
++MACE_OPTIMIZER_POLICY_V4_SCHEMA = "mdstats.mace-optimizer-policy.v4"
+ MACE_OPTIMIZER_POLICY_V3_SCHEMA = "mdstats.mace-optimizer-policy.v3"
+ MACE_OPTIMIZER_POLICY_V2_SCHEMA = "mdstats.mace-optimizer-policy.v2"
+ MACE_OPTIMIZER_POLICY_LEGACY_SCHEMA = "mdstats.mace-optimizer-policy.v1"
+-TRAINING_PROTOCOL_IDENTITY_SCHEMA = "mdstats.training-protocol-identity.v2"
++TRAINING_PROTOCOL_IDENTITY_SCHEMA = "mdstats.training-protocol-identity.v3"
++TRAINING_PROTOCOL_IDENTITY_V2_SCHEMA = "mdstats.training-protocol-identity.v2"
+ MACE_JOB_ARTIFACT_SCHEMA = "mdstats.mace-job-artifact.v1"
+ SEALED_EVALUATION_ARTIFACT_SCHEMA = "mdstats.sealed-evaluation-artifact.v1"
+ 
+@@ -121,6 +124,7 @@
+     acceleration_policy: MaceAccelerationPolicy = field(
+         default_factory=MaceAccelerationPolicy
+     )
++    precision_schedule_policy: PrecisionSchedulePolicy | None = None
+ 
+     def __post_init__(self) -> None:
+         if self.learning_rate <= 0.0 or self.batch_size <= 0 or self.valid_batch_size <= 0:
+@@ -133,10 +137,27 @@
+             raise TrainingDataInputError("MACE optimizer regularization settings are invalid.")
+         if self.default_dtype not in {"float32", "float64"}:
+             raise TrainingDataInputError("Unsupported MACE dtype.")
++        if self.precision_schedule_policy is not None:
++            if self.precision_schedule_policy.stages[0].dtype != self.default_dtype:
++                raise TrainingDataInputError(
++                    "MACE default_dtype must equal the first configured precision stage dtype."
++                )
++            if (
++                self.precision_schedule_policy.critical_operation_dtype
++                != self.critical_precision_policy.canonical_dtype
++            ):
++                raise TrainingDataInputError(
++                    "MACE critical-precision policy dtype must equal the configured "
++                    "precision schedule critical_operation_dtype."
++                )
+ 
+     def _payload(self) -> dict[str, Any]:
+-        return {
+-            "schema": MACE_OPTIMIZER_POLICY_SCHEMA,
++        payload = {
++            "schema": (
++                MACE_OPTIMIZER_POLICY_SCHEMA
++                if self.precision_schedule_policy is not None
++                else MACE_OPTIMIZER_POLICY_V4_SCHEMA
++            ),
+             "learning_rate": self.learning_rate,
+             "batch_size": self.batch_size,
+             "valid_batch_size": self.valid_batch_size,
+@@ -154,6 +175,9 @@
+             "critical_precision_policy": self.critical_precision_policy.to_dict(),
+             "acceleration_policy": self.acceleration_policy.to_dict(),
+         }
++        if self.precision_schedule_policy is not None:
++            payload["precision_schedule_policy"] = self.precision_schedule_policy.to_dict()
++        return payload
+ 
+     @property
+     def policy_digest(self) -> str:
+@@ -167,6 +191,7 @@
+         schema = payload.get("schema")
+         if schema not in {
+             MACE_OPTIMIZER_POLICY_SCHEMA,
++            MACE_OPTIMIZER_POLICY_V4_SCHEMA,
+             MACE_OPTIMIZER_POLICY_V3_SCHEMA,
+             MACE_OPTIMIZER_POLICY_V2_SCHEMA,
+             MACE_OPTIMIZER_POLICY_LEGACY_SCHEMA,
+@@ -199,9 +224,14 @@
+                 if payload.get("acceleration_policy") is None
+                 else MaceAccelerationPolicy.from_dict(payload["acceleration_policy"])
+             ),
++            precision_schedule_policy=(
++                None
++                if payload.get("precision_schedule_policy") is None
++                else PrecisionSchedulePolicy.from_dict(payload["precision_schedule_policy"])
++            ),
+         )
+         expected_digest = result.policy_digest
+-        if schema in {MACE_OPTIMIZER_POLICY_V3_SCHEMA, MACE_OPTIMIZER_POLICY_V2_SCHEMA, MACE_OPTIMIZER_POLICY_LEGACY_SCHEMA}:
++        if schema in {MACE_OPTIMIZER_POLICY_V4_SCHEMA, MACE_OPTIMIZER_POLICY_V3_SCHEMA, MACE_OPTIMIZER_POLICY_V2_SCHEMA, MACE_OPTIMIZER_POLICY_LEGACY_SCHEMA}:
+             legacy_payload = {
+                 "schema": schema,
+                 "learning_rate": result.learning_rate,
+@@ -218,9 +248,11 @@
+                 "device": result.device,
+                 "seed": result.seed,
+             }
+-            if schema in {MACE_OPTIMIZER_POLICY_V3_SCHEMA, MACE_OPTIMIZER_POLICY_V2_SCHEMA}:
++            if schema == MACE_OPTIMIZER_POLICY_V4_SCHEMA:
++                legacy_payload["num_workers"] = result.num_workers
++            if schema in {MACE_OPTIMIZER_POLICY_V4_SCHEMA, MACE_OPTIMIZER_POLICY_V3_SCHEMA, MACE_OPTIMIZER_POLICY_V2_SCHEMA}:
+                 legacy_payload["critical_precision_policy"] = result.critical_precision_policy.to_dict()
+-            if schema == MACE_OPTIMIZER_POLICY_V3_SCHEMA:
++            if schema in {MACE_OPTIMIZER_POLICY_V4_SCHEMA, MACE_OPTIMIZER_POLICY_V3_SCHEMA}:
+                 legacy_payload["acceleration_policy"] = result.acceleration_policy.to_dict()
+             expected_digest = digest(
+                 legacy_payload
+@@ -247,6 +279,7 @@
+     selection_size: int
+     exposure_backend: MaceExposureBackend = MaceExposureBackend.NATIVE_MACE_FIXED
+     real_pt_data_ratio_threshold: float = 0.1
++    resolved_precision_schedule: ResolvedPrecisionSchedule | None = None
+ 
+     def __post_init__(self) -> None:
+         object.__setattr__(self, "training_mode", TrainingMode(self.training_mode))
+@@ -273,10 +306,34 @@
+             raise TrainingDataInputError("The first DATA8 adapter supports only fixed-file exposure.")
+         if self.real_pt_data_ratio_threshold < 0.0:
+             raise TrainingDataInputError("Replay-ratio threshold must be nonnegative.")
++        if self.resolved_precision_schedule is not None:
++            policy = self.optimizer_policy.precision_schedule_policy
++            if policy is None:
++                raise TrainingDataInputError(
++                    "Resolved precision schedules require an optimizer precision-schedule policy."
++                )
++            if self.resolved_precision_schedule.max_num_epochs != self.optimizer_policy.max_num_epochs:
++                raise TrainingDataInputError("Resolved precision schedule epoch budget disagrees with optimizer policy.")
++            if self.resolved_precision_schedule.stages[0].dtype != self.optimizer_policy.default_dtype:
++                raise TrainingDataInputError("Resolved precision schedule first dtype disagrees with optimizer policy.")
++            if self.resolved_precision_schedule.requested_profile != policy.requested_profile:
++                raise TrainingDataInputError("Resolved precision schedule profile disagrees with optimizer policy.")
++            for name in (
++                "model_dtype", "critical_operation_dtype", "evaluation_dtype",
++                "verification_dtype", "export_dtype",
++            ):
++                if getattr(self.resolved_precision_schedule, name) != getattr(policy, name):
++                    raise TrainingDataInputError(
++                        f"Resolved precision schedule {name} disagrees with optimizer policy."
++                    )
+ 
+     def _payload(self) -> dict[str, Any]:
+-        return {
+-            "schema": TRAINING_PROTOCOL_IDENTITY_SCHEMA,
++        payload = {
++            "schema": (
++                TRAINING_PROTOCOL_IDENTITY_SCHEMA
++                if self.resolved_precision_schedule is not None
++                else TRAINING_PROTOCOL_IDENTITY_V2_SCHEMA
++            ),
+             "training_mode": self.training_mode.value,
+             "foundation_checkpoint": self.foundation_checkpoint.to_dict(),
+             "compatibility_probe_digest": self.compatibility_probe_digest,
+@@ -293,6 +350,9 @@
+             "exposure_backend": self.exposure_backend.value,
+             "real_pt_data_ratio_threshold": self.real_pt_data_ratio_threshold,
+         }
++        if self.resolved_precision_schedule is not None:
++            payload["resolved_precision_schedule"] = self.resolved_precision_schedule.to_dict()
++        return payload
+ 
+     @property
+     def content_digest(self) -> str:
+@@ -303,7 +363,7 @@
+ 
+     @classmethod
+     def from_dict(cls, payload: Mapping[str, Any]) -> "TrainingProtocolIdentity":
+-        if payload.get("schema") not in {TRAINING_PROTOCOL_IDENTITY_SCHEMA, "mdstats.training-protocol-identity.v1"}:
++        if payload.get("schema") not in {TRAINING_PROTOCOL_IDENTITY_SCHEMA, TRAINING_PROTOCOL_IDENTITY_V2_SCHEMA, "mdstats.training-protocol-identity.v1"}:
+             raise TrainingDataSerializationError("Unsupported training-protocol schema.")
+         result = cls(
+             training_mode=TrainingMode(payload["training_mode"]),
+@@ -321,8 +381,13 @@
+             selection_size=int(payload.get("selection_size", 1)),
+             exposure_backend=MaceExposureBackend(payload["exposure_backend"]),
+             real_pt_data_ratio_threshold=float(payload["real_pt_data_ratio_threshold"]),
++            resolved_precision_schedule=(
++                None
++                if payload.get("resolved_precision_schedule") is None
++                else ResolvedPrecisionSchedule.from_dict(payload["resolved_precision_schedule"])
++            ),
+         )
+-        if payload.get("schema") == TRAINING_PROTOCOL_IDENTITY_SCHEMA and payload.get("content_digest") not in (None, result.content_digest):
++        if payload.get("schema") in {TRAINING_PROTOCOL_IDENTITY_SCHEMA, TRAINING_PROTOCOL_IDENTITY_V2_SCHEMA} and payload.get("content_digest") not in (None, result.content_digest):
+             raise TrainingDataSerializationError("Training-protocol digest mismatch.")
+         return result
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/pyproject.toml mdstats107_work/pyproject.toml
+--- mdstats107_pristine/pyproject.toml	2026-08-08 12:25:58.000000000 +0000
++++ mdstats107_work/pyproject.toml	2026-08-08 12:50:52.502879082 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.107a0"
++version = "0.20.108a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/tests/test_mlff_data0_architecture_specification.py mdstats107_work/tests/test_mlff_data0_architecture_specification.py
+--- mdstats107_pristine/tests/test_mlff_data0_architecture_specification.py	2026-08-08 12:25:58.000000000 +0000
++++ mdstats107_work/tests/test_mlff_data0_architecture_specification.py	2026-08-08 12:54:47.886469558 +0000
+@@ -78,7 +78,7 @@
+ def test_mlff_data0_dependency_graph_is_acyclic_and_has_forbidden_edges() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["branch"] == "MLFF-DATA"
+-    assert graph["architecture_revision"] == 26
++    assert graph["architecture_revision"] == 27
+     assert graph["documentation_gate"] == "MLFF-DATA0"
+     assert graph["schema_version"] == 26
+ 
+@@ -263,4 +263,4 @@
+ def test_mlff_data0_pdf_and_version_artifacts_exist() -> None:
+     assert MANUAL_PDF.stat().st_size > 10_000
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.107a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.108a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/tests/test_mlff_data1_specification.py mdstats107_work/tests/test_mlff_data1_specification.py
+--- mdstats107_pristine/tests/test_mlff_data1_specification.py	2026-08-08 12:25:58.000000000 +0000
++++ mdstats107_work/tests/test_mlff_data1_specification.py	2026-08-08 12:54:47.881116971 +0000
+@@ -49,4 +49,4 @@
+     assert callable(mdstats.assign_balanced_round_robin)
+     assert callable(mdstats.build_complete_frame_block_plan)
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.107a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.108a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/tests/test_mlff_data2a_manifest_inference_specification.py mdstats107_work/tests/test_mlff_data2a_manifest_inference_specification.py
+--- mdstats107_pristine/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-08 12:25:58.000000000 +0000
++++ mdstats107_work/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-08 12:54:47.881555522 +0000
+@@ -15,7 +15,7 @@
+ 
+ 
+ def test_data2a_version_public_api_and_documented_contract() -> None:
+-    assert mdstats.__version__ == "0.20.107a0"
++    assert mdstats.__version__ == "0.20.108a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert callable(mdstats.infer_training_manifest_metadata)
+     policy = mdstats.ManifestInferencePolicy()
+@@ -39,7 +39,7 @@
+ def test_data2a_dependency_graph_requires_verified_promotion_before_approval() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 26
++    assert graph["architecture_revision"] == 27
+     nodes = {node["id"] for node in graph["nodes"]}
+     assert {
+         "FILENAME_STRAIN_CANDIDATE",
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/tests/test_mlff_data9a2_specification.py mdstats107_work/tests/test_mlff_data9a2_specification.py
+--- mdstats107_pristine/tests/test_mlff_data9a2_specification.py	2026-08-08 12:25:58.000000000 +0000
++++ mdstats107_work/tests/test_mlff_data9a2_specification.py	2026-08-08 12:54:47.886546432 +0000
+@@ -23,7 +23,7 @@
+         "finite energy, force, and stress",
+     ):
+         assert required in text
+-    assert 'version = "0.20.107a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.108a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "DATA9A2 real-MACE realization is implemented in `0.20.39a0`" in ARCH.read_text()
+ 
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/tests/test_mlff_data9a3_specification.py mdstats107_work/tests/test_mlff_data9a3_specification.py
+--- mdstats107_pristine/tests/test_mlff_data9a3_specification.py	2026-08-08 12:25:58.000000000 +0000
++++ mdstats107_work/tests/test_mlff_data9a3_specification.py	2026-08-08 12:54:47.882691819 +0000
+@@ -9,5 +9,5 @@
+     assert "37,632" in text
+     assert "supported_with_temporal_blocks_only" in text
+     assert "production_replay_corpus_not_bound" in text
+-    assert 'version = "0.20.107a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.108a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "MLFF-DATA9A3 production qualification" in ARCH.read_text()
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/tests/test_mlff_data9a4_precision_specification.py mdstats107_work/tests/test_mlff_data9a4_precision_specification.py
+--- mdstats107_pristine/tests/test_mlff_data9a4_precision_specification.py	2026-08-08 12:25:58.000000000 +0000
++++ mdstats107_work/tests/test_mlff_data9a4_precision_specification.py	2026-08-08 12:54:47.881199123 +0000
+@@ -9,7 +9,7 @@
+     assert "float32" in text and "float64" in text
+     assert "MaceModelPrecisionRecord" in text
+     assert "MacePrecisionTransitionRecord" in text
+-    assert "version = \"0.20.107a0\"" in (ROOT / "pyproject.toml").read_text()
++    assert "version = \"0.20.108a0\"" in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_bind_precision_to_protocol() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/tests/test_mlff_data9a5_critical_fp64_specification.py mdstats107_work/tests/test_mlff_data9a5_critical_fp64_specification.py
+--- mdstats107_pristine/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-08 12:25:58.000000000 +0000
++++ mdstats107_work/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-08 12:54:47.882217976 +0000
+@@ -14,7 +14,7 @@
+     assert 'version: "0.20.42a0"' in text
+     assert "training_force_jacobian_dtype = model" in text
+     assert "Python/ASE" in text
+-    assert 'version = "0.20.107a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.108a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_data9a5_architecture_declares_scope_and_limits() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/tests/test_mlff_data9a5_deployment_specification.py mdstats107_work/tests/test_mlff_data9a5_deployment_specification.py
+--- mdstats107_pristine/tests/test_mlff_data9a5_deployment_specification.py	2026-08-08 12:25:58.000000000 +0000
++++ mdstats107_work/tests/test_mlff_data9a5_deployment_specification.py	2026-08-08 12:54:47.885233252 +0000
+@@ -13,7 +13,7 @@
+     assert 'version: "0.20.43a0"' in text
+     assert "downstream runtime owns" in text
+     assert "float32-to-float64 promotion does not restore" in text
+-    assert 'version = "0.20.107a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.108a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_keep_lammps_outside_mdstats_scope() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/tests/test_mlff_data9a6b_architecture_consistency_specification.py mdstats107_work/tests/test_mlff_data9a6b_architecture_consistency_specification.py
+--- mdstats107_pristine/tests/test_mlff_data9a6b_architecture_consistency_specification.py	2026-08-08 12:25:58.000000000 +0000
++++ mdstats107_work/tests/test_mlff_data9a6b_architecture_consistency_specification.py	2026-08-08 12:54:47.883296867 +0000
+@@ -61,7 +61,7 @@
+ def test_dependency_graph_treats_lta_as_optional() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 26
++    assert graph["architecture_revision"] == 27
+     nodes = {node["id"] for node in graph["nodes"]}
+     assert "MATERIAL_PROFILE_IDENTITY" in nodes
+     assert "LTA_PROFILE_EXTENSION" in nodes
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/tests/test_mlff_data9a6c_observable_evidence_specification.py mdstats107_work/tests/test_mlff_data9a6c_observable_evidence_specification.py
+--- mdstats107_pristine/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-08 12:25:58.000000000 +0000
++++ mdstats107_work/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-08 12:54:47.885367962 +0000
+@@ -38,7 +38,7 @@
+ def test_dependency_graph_places_policy_before_evidence_and_forbids_reverse_edge() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 26
++    assert graph["architecture_revision"] == 27
+     edges = {(e["from"], e["to"]) for e in graph["edges"]}
+     assert ("OBSERVABLE_COMPARISON_POLICY", "OBSERVABLE_VALIDATION_ACTIVATION_RECORD") in edges
+     assert ("OBSERVABLE_VALIDATION_ACTIVATION_RECORD", "OBSERVABLE_VALIDATION_EVIDENCE") in edges
+@@ -74,5 +74,5 @@
+ 
+ def test_packaged_owner_manual_index_is_valid() -> None:
+     payload = json.loads(MANUAL_INDEX.read_text(encoding="utf-8"))
+-    assert payload["package_version"] == "0.20.107a0"
++    assert payload["package_version"] == "0.20.108a0"
+     assert "structural-observables-architecture" in payload["manuals"]
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/tests/test_mlff_data9a7a_material_profile_specification.py mdstats107_work/tests/test_mlff_data9a7a_material_profile_specification.py
+--- mdstats107_pristine/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-08 12:25:58.000000000 +0000
++++ mdstats107_work/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-08 12:54:47.886389799 +0000
+@@ -41,7 +41,7 @@
+ def test_data9a7a_dependency_graph_contains_contract_chain() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 26
++    assert graph["architecture_revision"] == 27
+     nodes = {item["id"] for item in graph["nodes"]}
+     required = {
+         "MATERIAL_PROFILE_PROVIDER_IDENTITY",
+@@ -64,4 +64,4 @@
+ 
+ 
+ def test_release_version_is_data9a7a() -> None:
+-    assert 'version = "0.20.107a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert 'version = "0.20.108a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/tests/test_mlff_data9a7b_specification.py mdstats107_work/tests/test_mlff_data9a7b_specification.py
+--- mdstats107_pristine/tests/test_mlff_data9a7b_specification.py	2026-08-08 12:25:58.000000000 +0000
++++ mdstats107_work/tests/test_mlff_data9a7b_specification.py	2026-08-08 12:54:47.883547059 +0000
+@@ -44,7 +44,7 @@
+ def test_data9a7b_dependency_graph_has_analysis_to_selection_chain() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 26
++    assert graph["architecture_revision"] == 27
+     nodes = {item["id"] for item in graph["nodes"]}
+     assert {
+         "ANALYSIS_LOCAL_STRUCTURE_FEATURES",
+@@ -69,7 +69,7 @@
+ 
+ 
+ def test_data9a7b_public_exports_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.107a0"
++    assert mdstats.__version__ == "0.20.108a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert callable(mdstats.compute_local_structure_features)
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/tests/test_mlff_data9a7c_specification.py mdstats107_work/tests/test_mlff_data9a7c_specification.py
+--- mdstats107_pristine/tests/test_mlff_data9a7c_specification.py	2026-08-08 12:25:58.000000000 +0000
++++ mdstats107_work/tests/test_mlff_data9a7c_specification.py	2026-08-08 12:54:47.887329815 +0000
+@@ -34,7 +34,7 @@
+ def test_dependency_graph_contains_phase_geometry_contracts() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 26
++    assert graph["architecture_revision"] == 27
+     nodes = {node["id"] for node in graph["nodes"]}
+     assert {
+         "PHASE_GEOMETRY_SELECTION_PLAN",
+@@ -47,7 +47,7 @@
+ 
+ 
+ def test_public_api_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.107a0"
++    assert mdstats.__version__ == "0.20.108a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert mdstats.MLFF_DATA9A7C_PARSER_VERSION == "0.20.49a0"
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/tests/test_mlff_data9a7d_specification.py mdstats107_work/tests/test_mlff_data9a7d_specification.py
+--- mdstats107_pristine/tests/test_mlff_data9a7d_specification.py	2026-08-08 12:25:58.000000000 +0000
++++ mdstats107_work/tests/test_mlff_data9a7d_specification.py	2026-08-08 12:54:47.882587915 +0000
+@@ -21,7 +21,7 @@
+ def test_data9a7d_dependency_graph_contract() -> None:
+     graph = json.loads((ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json").read_text())
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 26
++    assert graph["architecture_revision"] == 27
+     nodes = {item["id"] for item in graph["nodes"]}
+     assert {
+         "OPTIONAL_PROFILE_EXTENSION_PROVIDER",
+@@ -39,6 +39,6 @@
+ 
+ 
+ def test_data9a7d_runtime_versions() -> None:
+-    assert mdstats.__version__ == "0.20.107a0"
++    assert mdstats.__version__ == "0.20.108a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7D_PARSER_VERSION == "0.20.50a0"
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/tests/test_mlff_data9a7e_specification.py mdstats107_work/tests/test_mlff_data9a7e_specification.py
+--- mdstats107_pristine/tests/test_mlff_data9a7e_specification.py	2026-08-08 12:25:58.000000000 +0000
++++ mdstats107_work/tests/test_mlff_data9a7e_specification.py	2026-08-08 12:54:47.881484597 +0000
+@@ -31,7 +31,7 @@
+ def test_data9a7e_dependency_graph_and_public_api() -> None:
+     graph = json.loads((ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json").read_text())
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 26
++    assert graph["architecture_revision"] == 27
+     nodes = {item["id"] for item in graph["nodes"]}
+     assert {
+         "CROSS_SYSTEM_QUALIFICATION_POLICY",
+@@ -39,7 +39,7 @@
+         "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
+         "CROSS_SYSTEM_QUALIFICATION_SUITE",
+     } <= nodes
+-    assert mdstats.__version__ == "0.20.107a0"
++    assert mdstats.__version__ == "0.20.108a0"
+     assert mdstats.MLFF_DATA9A7E_PARSER_VERSION == "0.20.51a0"
+     assert callable(mdstats.qualify_cross_system_case)
+     assert callable(mdstats.build_cross_system_qualification_suite)
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/tests/test_mlff_data9a8_specification.py mdstats107_work/tests/test_mlff_data9a8_specification.py
+--- mdstats107_pristine/tests/test_mlff_data9a8_specification.py	2026-08-08 12:25:58.000000000 +0000
++++ mdstats107_work/tests/test_mlff_data9a8_specification.py	2026-08-08 12:54:47.884181691 +0000
+@@ -44,7 +44,7 @@
+ def test_dependency_graph_places_policy_upstream_and_forbids_posthoc_thresholds() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 26
++    assert graph["architecture_revision"] == 27
+     nodes = {node["id"] for node in graph["nodes"]}
+     for node in (
+         "OBSERVABLE_COMPARISON_RULES",
+@@ -66,7 +66,7 @@
+ 
+ 
+ def test_public_runtime_exposes_data9a8_without_removed_aliases() -> None:
+-    assert mdstats.__version__ == "0.20.107a0"
++    assert mdstats.__version__ == "0.20.108a0"
+     assert mdstats.MLFF_DATA9A8_PARSER_VERSION == "0.20.52a0"
+     assert mdstats.ObservableComparisonPolicy
+     assert mdstats.compare_mlff_observable_validation
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/tests/test_mlff_data9a9a_specification.py mdstats107_work/tests/test_mlff_data9a9a_specification.py
+--- mdstats107_pristine/tests/test_mlff_data9a9a_specification.py	2026-08-08 12:25:58.000000000 +0000
++++ mdstats107_work/tests/test_mlff_data9a9a_specification.py	2026-08-08 12:54:47.886675884 +0000
+@@ -47,7 +47,7 @@
+ def test_dependency_graph_contains_restartable_model_sweep_chain() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 26
++    assert graph["architecture_revision"] == 27
+     nodes = {node["id"] for node in graph["nodes"]}
+     required = {
+         "DATA6_MODEL_SWEEP_EXECUTION_POLICY",
+@@ -65,7 +65,7 @@
+ 
+ 
+ def test_public_runtime_exports_data9a9a_contracts() -> None:
+-    assert mdstats.__version__ == "0.20.107a0"
++    assert mdstats.__version__ == "0.20.108a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A9A_VERSION
+     assert mdstats.Data6ModelSweepPlan
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/tests/test_mlff_data9a9b_specification.py mdstats107_work/tests/test_mlff_data9a9b_specification.py
+--- mdstats107_pristine/tests/test_mlff_data9a9b_specification.py	2026-08-08 12:25:58.000000000 +0000
++++ mdstats107_work/tests/test_mlff_data9a9b_specification.py	2026-08-08 12:54:47.883073796 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9b_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.107a0"
++    assert mdstats.__version__ == "0.20.108a0"
+     for name in (
+         "ProductionMaterializationPlan",
+         "ProductionMaterializationCheckpoint",
+@@ -40,7 +40,7 @@
+ def test_dependency_graph_contains_data9a9b_chain() -> None:
+     graph = json.loads((ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json").read_text())
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 26
++    assert graph["architecture_revision"] == 27
+     nodes = {item["id"] for item in graph["nodes"]}
+     required = {
+         "PRODUCTION_MATERIALIZATION_PLAN",
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/tests/test_mlff_data9a9c_specification.py mdstats107_work/tests/test_mlff_data9a9c_specification.py
+--- mdstats107_pristine/tests/test_mlff_data9a9c_specification.py	2026-08-08 12:25:58.000000000 +0000
++++ mdstats107_work/tests/test_mlff_data9a9c_specification.py	2026-08-08 12:54:47.883819523 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9c_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.107a0"
++    assert mdstats.__version__ == "0.20.108a0"
+     for name in (
+         "ProductionCorpusPlan", "ProductionExpectedRun",
+         "ProfileExtensionEvidenceRequirement", "ProductionCorpusQualificationRecord",
+@@ -38,7 +38,7 @@
+ def test_dependency_graph_contains_integrity_gate_chain() -> None:
+     graph = json.loads((ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json").read_text())
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 26
++    assert graph["architecture_revision"] == 27
+     nodes = {item["id"] for item in graph["nodes"]}
+     assert {"PRODUCTION_CORPUS_PLAN", "REPLAY_LABEL_PAYLOAD_IDENTITY",
+             "DATA8_ATOMIC_PROMOTION", "PRODUCTION_GATE_INTEGRITY_EVIDENCE"} <= nodes
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/tests/test_mlff_data9a_specification.py mdstats107_work/tests/test_mlff_data9a_specification.py
+--- mdstats107_pristine/tests/test_mlff_data9a_specification.py	2026-08-08 12:25:58.000000000 +0000
++++ mdstats107_work/tests/test_mlff_data9a_specification.py	2026-08-08 12:54:47.885862126 +0000
+@@ -14,7 +14,7 @@
+ 
+ 
+ def test_data9a_runtime_specification_is_canonical() -> None:
+-    assert 'version = "0.20.107a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.108a0"' in (ROOT / "pyproject.toml").read_text()
+     architecture = ARCH.read_text()
+     stage = STAGE.read_text()
+     specification = SPEC.read_text()
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/tests/test_mlff_data9b1_specification.py mdstats107_work/tests/test_mlff_data9b1_specification.py
+--- mdstats107_pristine/tests/test_mlff_data9b1_specification.py	2026-08-08 12:25:58.000000000 +0000
++++ mdstats107_work/tests/test_mlff_data9b1_specification.py	2026-08-08 12:54:47.887041998 +0000
+@@ -18,8 +18,8 @@
+     assert "TrainingCampaignPlan" in text
+     assert "CheckpointSelectionRecord" in text
+     assert "mdstats-mace-train" in text
+-    assert mdstats.__version__ == "0.20.107a0"
+-    assert 'version = "0.20.107a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert mdstats.__version__ == "0.20.108a0"
++    assert 'version = "0.20.108a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+ 
+ 
+ def test_data9b1_is_integrated_into_manual_and_stage_plan() -> None:
+@@ -33,7 +33,7 @@
+ 
+ def test_data9b1_dependency_graph_nodes_and_gates() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+-    assert graph["architecture_revision"] == 26
++    assert graph["architecture_revision"] == 27
+     nodes = {item["id"] for item in graph["nodes"]}
+     for node in (
+         "TRAINING_CAMPAIGN_POLICY",
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/tests/test_mlff_data9b2_specification.py mdstats107_work/tests/test_mlff_data9b2_specification.py
+--- mdstats107_pristine/tests/test_mlff_data9b2_specification.py	2026-08-08 12:25:58.000000000 +0000
++++ mdstats107_work/tests/test_mlff_data9b2_specification.py	2026-08-08 12:54:47.882758077 +0000
+@@ -23,7 +23,7 @@
+         'mdstats-mace-select-head',
+     ):
+         assert token in text
+-    assert mdstats.__version__ == '0.20.107a0'
++    assert mdstats.__version__ == '0.20.108a0'
+     assert mdstats.MLFF_DATA9B2_VERSION == '0.20.57a0'
+ 
+ 
+@@ -37,7 +37,7 @@
+ 
+ def test_data9b2_dependency_graph_records_and_edges() -> None:
+     graph = json.loads(GRAPH.read_text(encoding='utf-8'))
+-    assert graph['architecture_revision'] == 26
++    assert graph['architecture_revision'] == 27
+     assert graph['schema_version'] == 26
+     nodes = {v['id'] for v in graph['nodes']}
+     for node in (
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/tests/test_mlff_data9b3_campaign_cli_specification.py mdstats107_work/tests/test_mlff_data9b3_campaign_cli_specification.py
+--- mdstats107_pristine/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-08 12:25:58.000000000 +0000
++++ mdstats107_work/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-08 12:54:47.882288280 +0000
+@@ -16,7 +16,7 @@
+ 
+ 
+ def test_data9b3_version_and_user_surface() -> None:
+-    assert mdstats.__version__ == "0.20.107a0"
++    assert mdstats.__version__ == "0.20.108a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert TOOL.is_file()
+     assert TOOL.stat().st_mode & 0o111
+@@ -55,7 +55,7 @@
+ def test_data9b3_dependency_graph_contract() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 26
++    assert graph["architecture_revision"] == 27
+     nodes = {node["id"] for node in graph["nodes"]}
+     required = {
+         "CAMPAIGN_CLI_CONFIGURATION",
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/tests/test_mlff_data9b3a_cueq_specification.py mdstats107_work/tests/test_mlff_data9b3a_cueq_specification.py
+--- mdstats107_pristine/tests/test_mlff_data9b3a_cueq_specification.py	2026-08-08 12:25:58.000000000 +0000
++++ mdstats107_work/tests/test_mlff_data9b3a_cueq_specification.py	2026-08-08 12:54:47.884264534 +0000
+@@ -42,7 +42,7 @@
+ def test_data9b3a_dependency_graph_contract() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 26
++    assert graph["architecture_revision"] == 27
+     nodes = {node["id"] for node in graph["nodes"]}
+     assert {"MACE_ACCELERATION_POLICY", "MACE_ACCELERATION_PROBE"} <= nodes
+     edges = {(edge["from"], edge["to"], edge["type"]) for edge in graph["edges"]}
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/tests/test_mlff_eval_storage_roadmap_specification.py mdstats107_work/tests/test_mlff_eval_storage_roadmap_specification.py
+--- mdstats107_pristine/tests/test_mlff_eval_storage_roadmap_specification.py	2026-08-08 12:25:58.000000000 +0000
++++ mdstats107_work/tests/test_mlff_eval_storage_roadmap_specification.py	2026-08-08 12:55:06.295085539 +0000
+@@ -27,8 +27,9 @@
+         "STOR5",
+     )]
+     assert positions == sorted(positions)
+-    assert "`EVAL-MF2` is implemented in 0.20.107a0" in text
+-    assert "`PREC1` is the next implementation gate" in text
++    assert "EVAL-MF2 - conservative survivor control, diagnostics, and default migration - implemented in 0.20.107a0" in text
++    assert "`PREC1` in 0.20.108a0" in text
++    assert "`PREC2` is the next implementation gate" in text
+ 
+ 
+ def test_multifidelity_plan_preserves_equal_target_replay_fidelity_and_full_final() -> None:
+@@ -74,10 +75,10 @@
+         assert token in text
+ 
+ 
+-def test_dependency_graph_revision_26_contains_eval_precision_storage_nodes() -> None:
++def test_dependency_graph_revision_27_contains_eval_precision_storage_nodes() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 26
++    assert graph["architecture_revision"] == 27
+     nodes = {node["id"] for node in graph["nodes"]}
+     for node in (
+         "NESTED_CHECKPOINT_EVALUATION_PLAN",
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/tests/test_mlff_opt_ctrl1_specification.py mdstats107_work/tests/test_mlff_opt_ctrl1_specification.py
+--- mdstats107_pristine/tests/test_mlff_opt_ctrl1_specification.py	2026-08-08 12:25:58.000000000 +0000
++++ mdstats107_work/tests/test_mlff_opt_ctrl1_specification.py	2026-08-08 12:54:47.887191810 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_ctrl1_release_identity_preserves_scientific_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.107a0"
++    assert mdstats.__version__ == "0.20.108a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.107a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.108a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_ctrl1_architecture_and_spec_close_roadmap() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/tests/test_mlff_opt_eval4_specification.py mdstats107_work/tests/test_mlff_opt_eval4_specification.py
+--- mdstats107_pristine/tests/test_mlff_opt_eval4_specification.py	2026-08-08 12:25:58.000000000 +0000
++++ mdstats107_work/tests/test_mlff_opt_eval4_specification.py	2026-08-08 12:54:47.879943689 +0000
+@@ -11,9 +11,9 @@
+ 
+ 
+ def test_opt_eval4_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.107a0"
++    assert mdstats.__version__ == "0.20.108a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+-    assert 'version = "0.20.107a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.108a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_eval4_architecture_and_spec_record_pipeline_contract() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/tests/test_mlff_opt_verify1_specification.py mdstats107_work/tests/test_mlff_opt_verify1_specification.py
+--- mdstats107_pristine/tests/test_mlff_opt_verify1_specification.py	2026-08-08 12:25:58.000000000 +0000
++++ mdstats107_work/tests/test_mlff_opt_verify1_specification.py	2026-08-08 12:54:47.887159763 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_verify1_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.107a0"
++    assert mdstats.__version__ == "0.20.108a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.107a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.108a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_verify1_architecture_and_spec_record_contract() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/tests/test_mlff_perf2_parallel_acceleration_specification.py mdstats107_work/tests/test_mlff_perf2_parallel_acceleration_specification.py
+--- mdstats107_pristine/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-08 12:25:58.000000000 +0000
++++ mdstats107_work/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-08 12:54:47.884478321 +0000
+@@ -10,7 +10,7 @@
+ 
+ 
+ def test_perf2_release_and_configuration_contract() -> None:
+-    assert mdstats.__version__ == "0.20.107a0"
++    assert mdstats.__version__ == "0.20.108a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     template = campaign_cli._config_template(
+         workspace="workspace",
+@@ -43,7 +43,7 @@
+         .read_text(encoding="utf-8")
+     )
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 26
++    assert graph["architecture_revision"] == 27
+     nodes = {item["id"] for item in graph["nodes"]}
+     assert {
+         "SYSTEM_RESOURCE_SNAPSHOT",
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/tests/test_mlff_prec1_precision_profiles.py mdstats107_work/tests/test_mlff_prec1_precision_profiles.py
+--- mdstats107_pristine/tests/test_mlff_prec1_precision_profiles.py	1970-01-01 00:00:00.000000000 +0000
++++ mdstats107_work/tests/test_mlff_prec1_precision_profiles.py	2026-08-08 12:58:22.504704922 +0000
+@@ -0,0 +1,237 @@
++from __future__ import annotations
++
++from pathlib import Path
++import tomllib
++
++import pytest
++
++import mdstats
++from mdstats.training_data import campaign_cli
++
++
++def _template(profile: str) -> dict:
++    text = campaign_cli._config_template(
++        workspace="work",
++        training_root="training",
++        foundation_model="foundation.model",
++        replay_train="replay-train.xyz",
++        replay_monitor="replay-monitor.xyz",
++        precision_profile=profile,
++    )
++    return tomllib.loads(text)
++
++
++def test_plain_init_and_explicit_single_resolve_equivalent_precision(tmp_path: Path) -> None:
++    plain = tmp_path / "plain.toml"
++    explicit = tmp_path / "explicit.toml"
++    assert campaign_cli.main(["--config", str(plain), "init", "--workspace", "w1"]) == 0
++    assert campaign_cli.main([
++        "--config", str(explicit), "init", "--workspace", "w2", "--precision", "single"
++    ]) == 0
++    p_cfg, _ = campaign_cli._load_config(plain)
++    e_cfg, _ = campaign_cli._load_config(explicit)
++    p = campaign_cli._precision_schedule_policy(p_cfg)
++    e = campaign_cli._precision_schedule_policy(e_cfg)
++    assert p is not None and e is not None
++    assert p.to_dict() == e.to_dict()
++    assert p.requested_profile == "single"
++
++
++def test_canonical_profiles_generate_explicit_pipeline_dtypes_and_stages() -> None:
++    single = _template("single")
++    double = _template("double")
++    refine = _template("refine")
++
++    assert (single["model"]["dtype"], single["training"]["dtype"], single["evaluation"]["dtype"],
++            single["verification"]["dtype"], single["export"]["dtype"]) == ("float32",) * 5
++    assert single["training"]["precision"]["critical_operation_dtype"] == "float32"
++    assert single["training"]["precision"]["mode"] == "single_stage"
++    assert single["training"]["precision"]["stage"] == [
++        {"dtype": "float32", "fraction": 1.0, "learning_rate_scale": 1.0}
++    ]
++
++    assert (double["model"]["dtype"], double["training"]["dtype"], double["evaluation"]["dtype"],
++            double["verification"]["dtype"], double["export"]["dtype"]) == ("float64",) * 5
++    assert double["training"]["precision"]["critical_operation_dtype"] == "float64"
++
++    assert refine["model"]["dtype"] == "float64"
++    assert refine["training"]["dtype"] == "float32"
++    assert refine["evaluation"]["dtype"] == "float64"
++    assert refine["verification"]["dtype"] == "float64"
++    assert refine["export"]["dtype"] == "float64"
++    assert refine["training"]["precision"]["mode"] == "staged"
++    assert refine["training"]["precision"]["stage"] == [
++        {"dtype": "float32", "fraction": 0.8, "learning_rate_scale": 1.0},
++        {"dtype": "float64", "fraction": 0.2, "learning_rate_scale": 0.5},
++    ]
++    assert refine["training"]["precision"]["minimum_final_stage_epochs"] == 3
++    assert refine["training"]["precision"]["minimum_final_stage_gradient_updates"] == 15000
++
++
++def test_canonical_single_critical_policy_is_fp32() -> None:
++    policy = mdstats.canonical_precision_schedule_policy("single")
++    optimizer = mdstats.MaceOptimizerPolicy(
++        default_dtype="float32",
++        critical_precision_policy=mdstats.MaceCriticalPrecisionPolicy.for_dtype(
++            policy.critical_operation_dtype
++        ),
++        precision_schedule_policy=policy,
++    )
++    assert optimizer.critical_precision_policy.canonical_dtype == "float32"
++    assert optimizer.critical_precision_policy.strategy == "native_model_precision_v1"
++
++
++def test_precision_schedule_rejects_critical_policy_dtype_mismatch() -> None:
++    policy = mdstats.canonical_precision_schedule_policy("single")
++    with pytest.raises(mdstats.TrainingDataInputError, match="critical-precision policy dtype"):
++        mdstats.MaceOptimizerPolicy(
++            default_dtype="float32",
++            precision_schedule_policy=policy,
++            critical_precision_policy=mdstats.MaceCriticalPrecisionPolicy(),
++        )
++
++
++def test_refine_30_epochs_resolves_to_24_plus_6_and_update_bounds() -> None:
++    policy = mdstats.canonical_precision_schedule_policy("refine")
++    resolved = policy.resolve(max_num_epochs=30, updates_per_epoch=5223, require_update_floor=True)
++    assert [stage.epoch_count for stage in resolved.stages] == [24, 6]
++    assert [stage.dtype for stage in resolved.stages] == ["float32", "float64"]
++    assert resolved.stages[0].start_update == 0
++    assert resolved.stages[0].stop_update == 24 * 5223
++    assert resolved.stages[1].start_update == 24 * 5223
++    assert resolved.stages[1].stop_update == 30 * 5223
++    assert resolved.stages[1].update_count == 6 * 5223
++    assert mdstats.ResolvedPrecisionSchedule.from_dict(resolved.to_dict()) == resolved
++
++
++def test_refinement_floor_expands_deterministically_and_fails_closed() -> None:
++    policy = mdstats.canonical_precision_schedule_policy("refine")
++    # 12 epochs nominally gives 9/3. A 15k update floor at 3000 updates/epoch
++    # expands the final stage to five epochs while retaining a nonempty FP32 stage.
++    resolved = policy.resolve(max_num_epochs=12, updates_per_epoch=3000, require_update_floor=True)
++    assert [stage.epoch_count for stage in resolved.stages] == [7, 5]
++    with pytest.raises(mdstats.TrainingDataInputError, match="cannot satisfy"):
++        policy.resolve(max_num_epochs=4, updates_per_epoch=3000, require_update_floor=True)
++    with pytest.raises(mdstats.TrainingDataInputError, match="without updates_per_epoch"):
++        policy.resolve(max_num_epochs=30, require_update_floor=True)
++
++
++def _protocol(schedule: mdstats.PrecisionSchedulePolicy) -> mdstats.TrainingProtocolIdentity:
++    optimizer = mdstats.MaceOptimizerPolicy(
++        max_num_epochs=30,
++        default_dtype=schedule.stages[0].dtype,
++        precision_schedule_policy=schedule,
++    )
++    resolved = schedule.resolve(max_num_epochs=30, updates_per_epoch=1000)
++    return mdstats.TrainingProtocolIdentity(
++        training_mode=mdstats.TrainingMode.NAIVE_FINE_TUNING,
++        foundation_checkpoint=mdstats.FoundationCheckpointIdentity(
++            reference="foundation.model", sha256="0" * 64
++        ),
++        compatibility_probe_digest="1" * 64,
++        data7_bundle_digest="2" * 64,
++        target_train_artifact_digest="3" * 64,
++        target_valid_artifact_digest="4" * 64,
++        replay_plan_digest=None,
++        training_objective_policy_digest="5" * 64,
++        configuration_weight_policy_digest="6" * 64,
++        checkpoint_metric_policy_digest="7" * 64,
++        checkpoint_control_policy=mdstats.MaceCheckpointControlPolicy(),
++        optimizer_policy=optimizer,
++        selection_size=512,
++        resolved_precision_schedule=resolved,
++    )
++
++
++def test_resolved_schedule_is_training_protocol_identity() -> None:
++    default = mdstats.canonical_precision_schedule_policy("refine")
++    custom = mdstats.PrecisionSchedulePolicy(
++        requested_profile="refine",
++        stages=(
++            mdstats.PrecisionStage("float32", 0.90, 1.0),
++            mdstats.PrecisionStage("float64", 0.10, 0.5),
++        ),
++        minimum_final_stage_epochs=3,
++        minimum_final_stage_gradient_updates=0,
++        model_dtype="float64",
++        critical_operation_dtype="float64",
++        evaluation_dtype="float64",
++        verification_dtype="float64",
++        export_dtype="float64",
++    )
++    a = _protocol(default)
++    b = _protocol(custom)
++    assert a.content_digest != b.content_digest
++    assert a.optimizer_policy.policy_digest != b.optimizer_policy.policy_digest
++    assert mdstats.TrainingProtocolIdentity.from_dict(a.to_dict()) == a
++
++
++def test_legacy_optimizer_serialization_remains_v4_and_maps_losslessly() -> None:
++    legacy_optimizer = mdstats.MaceOptimizerPolicy(default_dtype="float32", num_workers=3)
++    payload = legacy_optimizer.to_dict()
++    assert payload["schema"] == "mdstats.mace-optimizer-policy.v4"
++    assert "precision_schedule_policy" not in payload
++    assert mdstats.MaceOptimizerPolicy.from_dict(payload) == legacy_optimizer
++
++    mapped = mdstats.legacy_one_stage_precision_policy(
++        training_dtype="float32",
++        model_dtype="float32",
++        critical_operation_dtype="float64",
++        evaluation_dtype="float32",
++        verification_dtype="float32",
++        export_dtype="float32",
++    )
++    assert mapped.requested_profile == "legacy_custom"
++    assert mapped.stages == (mdstats.PrecisionStage("float32", 1.0, 1.0),)
++    assert mapped.critical_operation_dtype == "float64"
++
++
++def test_config_parser_rejects_training_dtype_stage_mismatch() -> None:
++    cfg = _template("refine")
++    cfg["training"]["dtype"] = "float64"
++    with pytest.raises(campaign_cli.CampaignCliError, match="first .*stage"):
++        campaign_cli._precision_schedule_policy(cfg)
++
++
++def test_data8_binds_resolved_schedule_after_loader_exposure(tmp_path: Path) -> None:
++    from tests.test_mlff_data8_mace_artifacts import _data7_bundles, _foundation, _probe
++
++    sources, frames, frame_data, _, data5, _, bundles = _data7_bundles(tmp_path)
++    policy = mdstats.PrecisionSchedulePolicy(
++        requested_profile="refine",
++        stages=(
++            mdstats.PrecisionStage("float32", 0.80, 1.0),
++            mdstats.PrecisionStage("float64", 0.20, 0.5),
++        ),
++        minimum_final_stage_epochs=3,
++        minimum_final_stage_gradient_updates=0,
++        model_dtype="float64",
++        critical_operation_dtype="float64",
++        evaluation_dtype="float64",
++        verification_dtype="float64",
++        export_dtype="float64",
++    )
++    bundle = mdstats.build_data8_preparation_bundle(
++        sources,
++        frames,
++        frame_data,
++        data5,
++        bundles,
++        output_directory=tmp_path / "data8_prec1",
++        foundation_checkpoint=_foundation(tmp_path),
++        compatibility_probe=_probe(),
++        optimizer_policy=mdstats.MaceOptimizerPolicy(
++            device="cpu",
++            max_num_epochs=30,
++            default_dtype="float32",
++            precision_schedule_policy=policy,
++        ),
++        require_foundation_residual_e0=False,
++    )
++    assert bundle.jobs
++    for job in bundle.jobs:
++        resolved = job.protocol.resolved_precision_schedule
++        assert resolved is not None
++        assert [stage.epoch_count for stage in resolved.stages] == [24, 6]
++        assert resolved.updates_per_epoch is not None
++        assert resolved.stages[-1].stop_update == resolved.updates_per_epoch * 30
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch' mdstats107_pristine/tests/test_mlff_prec1_specification.py mdstats107_work/tests/test_mlff_prec1_specification.py
+--- mdstats107_pristine/tests/test_mlff_prec1_specification.py	1970-01-01 00:00:00.000000000 +0000
++++ mdstats107_work/tests/test_mlff_prec1_specification.py	2026-08-08 12:54:47.881274865 +0000
+@@ -0,0 +1,36 @@
++from __future__ import annotations
++
++import json
++from pathlib import Path
++
++import mdstats
++
++ROOT = Path(__file__).resolve().parents[1]
++MANUAL = ROOT / "docs" / "arch_manuals" / "mlff_training_data_architecture.md"
++SPEC = ROOT / "docs" / "specs" / "training_data" / "mlff_staged_precision_profiles_spec.md"
++GRAPH = ROOT / "docs" / "arch_manuals" / "mlff_training_data_dependency_graph.json"
++
++
++def test_prec1_release_and_architecture_status() -> None:
++    assert mdstats.__version__ == "0.20.108a0"
++    manual = MANUAL.read_text(encoding="utf-8")
++    spec = SPEC.read_text(encoding="utf-8")
++    assert "PREC1 - precision profiles, explicit staged schedule, and init realization - implemented in 0.20.108a0" in manual
++    assert "PREC1 implemented in mdstats 0.20.108a0" in spec
++    assert "`PREC2` is the next implementation gate" in manual
++    graph = json.loads(GRAPH.read_text(encoding="utf-8"))
++    assert graph["schema_version"] == 26
++    assert graph["architecture_revision"] == 27
++
++
++def test_prec1_public_contract_is_exported() -> None:
++    for name in (
++        "PrecisionProfile",
++        "PrecisionStage",
++        "PrecisionSchedulePolicy",
++        "ResolvedPrecisionStage",
++        "ResolvedPrecisionSchedule",
++        "canonical_precision_schedule_policy",
++        "legacy_one_stage_precision_policy",
++    ):
++        assert hasattr(mdstats, name)

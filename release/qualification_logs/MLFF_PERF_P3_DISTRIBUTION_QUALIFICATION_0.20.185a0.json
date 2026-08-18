@@ -1,0 +1,29 @@
+{
+  "gpu_qualification": "deferred_to_FINAL-GPU1",
+  "release": "0.20.185a0",
+  "schema": "mdstats.mlff-perf-p3.distribution-qualification.2026-08.v1",
+  "sdist": {
+    "file": "mdstats-0.20.185a0.tar.gz",
+    "smoke": {
+      "failed": 0,
+      "passed": 6,
+      "tests": [
+        "tests/test_mlff_perf_p3.py",
+        "tests/test_mlff_perf_p3_specification.py"
+      ]
+    }
+  },
+  "sdist_contains": [
+    "root architecture MD/PDF",
+    "root PERF-P3 spec MD/PDF",
+    "docs architecture/spec copies",
+    "PERF-P3 benchmark JSON/MD/PDF",
+    "revision 52 note",
+    "release patch notes"
+  ],
+  "status": "passed",
+  "wheel": {
+    "file": "mdstats-0.20.185a0-py3-none-any.whl",
+    "smoke": "version/import/resource-scope passed"
+  }
+}

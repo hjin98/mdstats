@@ -1,0 +1,32 @@
+{
+  "data7_columnar_weights": {
+    "columnar_numeric_bytes": 1176288,
+    "columnar_object_slot_bytes": 588144,
+    "columnar_resident_floor_bytes": 1764432,
+    "frame_count": 36759,
+    "legacy_record_object_floor_bytes": 2058504,
+    "minimum_resident_reduction_factor": 1.1666666666666667
+  },
+  "mace_graph_cache": {
+    "available": true,
+    "cached_rebuilt_graphs": false,
+    "cached_seconds": 0.10337330800030031,
+    "first_seconds": 0.14822212199942442,
+    "graph_build_calls_after_cached": 32,
+    "graph_build_calls_first": 32,
+    "speedup": 1.433852943924304,
+    "structures": 32
+  },
+  "schema": "mdstats.mlff-runtime-optimization-rev4-benchmark.v1",
+  "worker_transport": {
+    "array_bytes": 64000000,
+    "pickle_size_reduction_factor": 270056.6371308017,
+    "reference_pickle_bytes": 237,
+    "reference_write_seconds": 0.00026328000240027905,
+    "restored_equal": true,
+    "restored_is_memmap": true,
+    "standard_pickle_bytes": 64003423,
+    "standard_write_seconds": 0.10008944500259531,
+    "write_speedup": 380.16349168222746
+  }
+}

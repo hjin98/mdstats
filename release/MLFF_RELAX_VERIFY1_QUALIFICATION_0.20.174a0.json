@@ -1,0 +1,119 @@
+{
+  "adversarial_checks": [
+    "LTA framework group excludes mobile Na from protected topology scope",
+    "periodic wrapping is not misclassified as topology or geometry damage",
+    "broken protected bond is rejected as topology change",
+    "connected but distorted geometry is rejected by quantitative fidelity",
+    "unconverged candidate is rejected even when geometry matches",
+    "DFT reference that breaks the protected topology is rejected",
+    "external/reference request identity round-trips",
+    "actual ASE FIRE runtime converges under a deterministic harmonic test calculator",
+    "campaign authority round-trips without loss of failure evidence"
+  ],
+  "date": "2026-08-13",
+  "gate": "RELAX-VERIFY1",
+  "qualification": {
+    "additional_checkpoint_materialization_hardening": {
+      "failed": 0,
+      "passed": 42,
+      "skipped": 0
+    },
+    "expected_skips": [
+      "tests/test_mlff_campaign_cli.py:337 real LTA training root not supplied"
+    ],
+    "final_current_gate_specification_batch": {
+      "failed": 0,
+      "passed": 31,
+      "skipped": 0
+    },
+    "historical_test_debt": [
+      "historical exact-version specification tests pinned to 0.20.140a0 are retained under their original authority and are not rewritten by RELAX-VERIFY1"
+    ],
+    "pdf": {
+      "full_compare_dpi": 40,
+      "inspection_dpi": 150,
+      "no_clipping_overlap_or_broken_glyphs": true,
+      "pages_after": 131,
+      "pages_before": 130,
+      "preflight": "passed",
+      "visually_inspected_pages": [
+        126,
+        127,
+        128
+      ]
+    },
+    "primary_cross_gate_pytest": {
+      "failed": 0,
+      "passed": 238,
+      "skipped": 1
+    },
+    "public_import": "mdstats 0.20.174a0 / mdstats.relax-verify1.2026-08.v1",
+    "python_compileall": "passed",
+    "real_dft_execution": "not fabricated; campaign-time gate requests and waits for authenticated converged fixed-cell DFT relaxations"
+  },
+  "schema": "mdstats.mlff-relax-verify1-qualification.v1",
+  "scientific_contract": {
+    "aggregation_rule": "every common base is a hard gate; no averaging can hide a failed base",
+    "base_authority": "first common candidate-independent PES-VERIFY1 base cohort",
+    "candidate_membership": "only PES-VERIFY1 passed target-only deployment candidates enter RELAX-VERIFY1",
+    "dft_force_convergence_ev_per_angstrom": 0.03,
+    "dft_reference_topology_rule": "protected graph must remain intact relative to the initial request base",
+    "dft_relaxation": "fixed-cell zero-K ionic relaxation from exact frozen request POSCAR",
+    "fixed_cell": true,
+    "generated_lta_topology_groups": [
+      "framework"
+    ],
+    "geometry_tolerances": {
+      "final_max_force_ev_per_angstrom": 0.03,
+      "fixed_cell_strain_norm": 0.0001,
+      "protected_angle_max_abs_error_degrees": 20.0,
+      "protected_angle_rmse_degrees": 8.0,
+      "protected_bond_max_abs_error_angstrom": 0.2,
+      "protected_bond_rmse_angstrom": 0.08,
+      "protected_max_displacement_angstrom": 0.4,
+      "protected_rms_displacement_angstrom": 0.15
+    },
+    "maximum_base_configurations": 4,
+    "mlff_force_convergence_ev_per_angstrom": 0.03,
+    "mlff_maximum_steps": 500,
+    "mlff_optimizer": "ASE FIRE",
+    "topology_cutoff_scale": 1.2,
+    "topology_rule": "same protected atom/species vertices, unordered bonded-pair set, and coordination counts; periodic wrapping equivalent",
+    "verify_stage_after_pass": "WAITING for DYN-VERIFY2"
+  },
+  "scope": {
+    "implemented": [
+      "immutable RELAX policy/base/request/reference/model/run/campaign records",
+      "candidate-independent PES-qualified common zero-K relaxation bases",
+      "restartable fixed-cell DFT relaxation ExtXYZ/manifest/VASP POSCAR request and authenticated collection",
+      "FIRE fixed-budget target-only MACE relaxation",
+      "protected periodic bonded-pair and coordination topology hard gate",
+      "matched DFT relaxed-geometry displacement/bond/angle/cell/force fidelity gates",
+      "TRAIN2 verify progression DEPLOY -> PES -> RELAX -> WAITING for DYN"
+    ],
+    "intentionally_deferred": [
+      "DYN-VERIFY2 short structural dynamical qualification",
+      "SELECT2 final physics-qualified production publication"
+    ]
+  },
+  "sha256": {
+    "CHANGELOG.md": "165fc7921ff262c70247787fc25a9982c53d02f7c273510ca62cda42387c3edb",
+    "PKG-INFO": "a31e79d3f9c79be035edde76814d3a0cdd0392785a91dd53f9414b43cee9d84e",
+    "README.md": "37714fec80eb7b731196ed47e50eac9121d737eb6ad5a9048e3e1f2259c041b2",
+    "campaign.toml.example": "aa4288123ea0e949fcefc9290b26a5bf7bd8c1cc0528d56201731f3c75969b36",
+    "docs/arch_manuals/mlff_training_data_architecture.md": "571fda070116161a0c406caa91355b2be39823dcf4630fbd5764b6cf7151d47b",
+    "docs/arch_manuals/mlff_training_data_architecture.pdf": "f1058f08885c5baa273e5347aca0c4120654deca8a2fe7ce908aab22d506f7e2",
+    "mdstats/__init__.py": "3caba9c563706899208894d14f35f7488dfbe69c58e60a829b3cd59f1781db23",
+    "mdstats/_version.py": "6d1aa07d5550c89610bbb679b4a89ddb8c42fe2ef70d02983483a0d4fe392606",
+    "mdstats/training_data/__init__.py": "90435cd4c9b99de4ea23847392bffbad6be4c8c8ccab32ea16f7875bf38c06a1",
+    "mdstats/training_data/campaign_cli.py": "64378370fb01487e0fb8c9ba543c2c465e2e7b28ea327b5ca4e0e935369837c0",
+    "mdstats/training_data/relax_verify.py": "bfc9eb4b0cc5bb70b8571281383e37232cb16607bfd9b40c07f11c5a2785b3b3",
+    "pyproject.toml": "2b15df38e15c73675166060d01fa933f91f5e9ee5dff2ae48f6cbaaa5283ed75",
+    "release/PATCH_NOTES_0.20.174a0.md": "d3652c69e3ad822d4ba0cb6894e85a8a62864cf63f0abc8f35f3a7a7f49a1dad",
+    "tests/test_mlff_deploy_verify1_specification.py": "d82a208d305629772e2c29dabbda10f5be131bce10e216cd27627077a5d391f5",
+    "tests/test_mlff_eval2_specification.py": "c4bbe048eed72276edd607d417c147933529fb724bd6da7497cf7ced5399bb69",
+    "tests/test_mlff_pes_verify1_specification.py": "1c96e89f787f0dd3ff3257aa7176e24e0fa2a77e6a7d8485242221b13fac2ad3",
+    "tests/test_mlff_relax_verify1_specification.py": "957d8f5ef92442b2c56780f05668288e9f1d0c7a6c0a127795b46da4fd0a7611",
+    "tests/test_relax_verify.py": "0d6b8c41c3f8bde1d1f265350cef4fe9479f6c18356694fd3cdc25d78489e179"
+  }
+}

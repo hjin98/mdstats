@@ -1,0 +1,159 @@
+{
+  "acceptance": {
+    "authenticated_restart_exact": true,
+    "closure_reason": "remaining MVSEL/REPAIR tail is dominated by the exact sequential sparse-state arithmetic itself; no further material duplicated reconstructible CPU state was found under the exact-equivalence constraint",
+    "cold_rebuild_exact": true,
+    "cpu_optimization_program_closed": true,
+    "material_integrated_speedup": true,
+    "memory_ceiling_pass": true,
+    "next_gate": "FINAL-GPU1",
+    "scientific_outputs_exact": true,
+    "stale_lineage_rejected": true,
+    "status": "PASS_CPU_OPTIMIZATION_CLOSED",
+    "tamper_rejected": true
+  },
+  "active_foundation": {
+    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
+    "family": "MACE-MPA-0 medium",
+    "mh1_compatible": true,
+    "model_inference_timed_in_gate": false
+  },
+  "architecture_revision": 103,
+  "authority_change": {
+    "classification": "reconstructible_execution_state_reuse_only",
+    "gpu_numerical": false,
+    "repair_objective_or_tie_authority": false,
+    "scientific": false,
+    "selector_rank_authority": false
+  },
+  "content_digest": "6574082019480b5ea3cbe82e9cee2295db477bb74685123dfd569ab08aa320ac",
+  "exactness_decisions": {
+    "accepted_rule": "checkpoint jumps are allowed only before the first accepted repair swap; after divergence REPAIR carries the historical mutable state forward",
+    "batched_sparse_gather_rule": "gather preparation may be batched, but all candidate-major FP64 mutations retain historical order and are exact-state qualified",
+    "observed_max_abs_representative_gain_difference": 8.24e-17,
+    "pure_checkpoint_reconciliation_after_repair_divergence": "rejected",
+    "reason": "set-difference deselect/select reconstruction changed FP64 representative-gain entries by order 1e-17 to 1e-16 despite identical selected IDs"
+  },
+  "execution": {
+    "cumulative_vs_perfbase1_0_20_225": {
+      "perfbase_chain_seconds": 27.255356811998354,
+      "speedup_fresh_including_mvstate_cache_write": 2.4351176667259553
+    },
+    "proposal_replay_ab": {
+      "batch_median_seconds": 4.372909009498471,
+      "batch_samples_seconds": [
+        4.379347834998043,
+        4.366470183998899
+      ],
+      "scalar_median_seconds": 4.647443332500188,
+      "scalar_samples_seconds": [
+        4.505145471001015,
+        4.789741193999362
+      ],
+      "scientific_repair_digest_exact": true
+    },
+    "target_chain_control": {
+      "peak_maxrss_kib_median": 347618.0,
+      "peak_maxrss_kib_samples": [
+        350460,
+        344776
+      ],
+      "stage_medians": {
+        "feas_neighbor": 1.0699625194993132,
+        "mvidx": 0.0945726995014411,
+        "mvqual": 0.564510178501223,
+        "mvsel_state": 4.904170957499446,
+        "repair": 5.365011229499942
+      },
+      "total": {
+        "median_seconds": 11.998227584501365,
+        "samples_seconds": [
+          11.938603915004933,
+          12.057851253997796
+        ]
+      }
+    },
+    "target_chain_mvstate": {
+      "fresh_total_including_cache_write_seconds": 11.192624153001816,
+      "mvsel_checkpoint_capture_ratio_vs_control": 1.0247720592439775,
+      "peak_maxrss_kib_median": 367086.0,
+      "peak_maxrss_kib_samples": [
+        370316,
+        363856
+      ],
+      "peak_rss_ratio_vs_control": 1.0560040043956296,
+      "repair_speedup": 1.255786355491611,
+      "speedup_vs_control_excluding_persistence": 1.089099656975305,
+      "speedup_vs_control_fresh_including_cache_write": 1.0719762783496567,
+      "stage_medians": {
+        "feas_neighbor": 1.0730596550001792,
+        "mvidx": 0.09201727750041755,
+        "mvqual": 0.5536812619993725,
+        "mvsel_state": 5.025657371001216,
+        "repair": 4.272232458999497
+      },
+      "total_excluding_persistence": {
+        "median_seconds": 11.016648024500682,
+        "samples_seconds": [
+          10.948049785001785,
+          11.08524626399958
+        ]
+      }
+    }
+  },
+  "gate": "MVSTATE-REUSE1",
+  "inputs": {
+    "candidate_count": 8192,
+    "control_release": "0.20.235a0",
+    "family_count": 6,
+    "master_selection_count": 4096,
+    "repair_swaps": 2,
+    "target_sizes": [
+      128,
+      256,
+      512,
+      1024,
+      2048,
+      4096
+    ]
+  },
+  "measurement_date": "2026-08-17",
+  "release": "0.20.236a0",
+  "schema": "mdstats.mlff-mvstate-reuse1-evidence.v1",
+  "scientific": {
+    "all_control_current_digests_exact": true,
+    "batch_replay_state_arrays_exact": true,
+    "feasibility_digest": "937214c70d1f2baae883993082f1ceb25bea6007a5a2be0beee045262f5c0613",
+    "mvidx_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
+    "neighborhoods_digest": "0220c89084fe957e85eb1e1c87a581eaa44869f11cb98bee7f7bd8cdafd3d74e",
+    "qualification_digest": "c19f2f9c3a328c7003e169bd9584277b21e72a6720caa588cf3879bd1cac1b25",
+    "reference_digest": "a66b12eb0bdb604cce053b4ab5df7aec58a8d985143eb7f791ff8360217fc57f",
+    "repair_digest": "ab7dc752555114bcd756913187e1d0eb7069c2e9a093f2a8a41130f485cdc33f",
+    "repair_plan_exact": true,
+    "repair_swaps": 2,
+    "selection_digest": "c179df6cfbb3b052c866d17bcf54aa5088ebc1998b35259afd3bd0ca163e8b8d",
+    "selector_state_replay_exact_at_cached_rungs": true
+  },
+  "state_cache": {
+    "bundle_format": "uncompressed_npz_single_authenticated_bundle",
+    "bytes_median": 7358387.0,
+    "bytes_samples": [
+      7358387,
+      7358387
+    ],
+    "cache_identity_excludes_execution_knobs": true,
+    "content_digest": "9904a0c96c83f4fdfe47558dc115d59664ab1a5a5456e687b9d7d3c75c1912db",
+    "persistence_schema": "mdstats.target-multi-view-selection-state-native-manifest.v1",
+    "read_seconds_median": 0.12541601300108596,
+    "read_seconds_samples": [
+      0.1306144400004996,
+      0.12021758600167232
+    ],
+    "restart_restored_digest_exact": true,
+    "write_seconds_median": 0.17597612850113364,
+    "write_seconds_samples": [
+      0.13013942100224085,
+      0.22181283600002644
+    ]
+  }
+}

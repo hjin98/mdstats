@@ -1,0 +1,20 @@
+{
+  "schema": "mdstats.mlff-data8-job-path-hotfix-qualification.v1",
+  "mdstats_version": "0.20.151a0",
+  "date": "2026-08-11",
+  "defect": "MLCV SELECT1/AGG1 interpreted job-scoped MaceExtxyzArtifact.relative_path values as DATA8-bundle-root-relative paths.",
+  "fix": [
+    "resolve V_i_full/D_full target_checkpoint_full.xyz beneath jobs/<job_id>/",
+    "resolve outer-CV fold_evaluation.xyz beneath jobs/<job_id>/",
+    "retain legacy absolute staging-path rebasing",
+    "reject job/artifact path traversal outside the promoted job root"
+  ],
+  "scientific_identity_changes": false,
+  "requires_data8_regeneration": false,
+  "requires_retraining": false,
+  "qualification": {
+    "campaign_cli_and_data8_monitor": "39 passed, 1 skipped (real LTA training root not supplied)",
+    "mlcv_select_agg_mon": "17 passed, 1 skipped (MACE not installed on qualification host)",
+    "new_job_path_regressions": "3 passed"
+  }
+}

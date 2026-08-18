@@ -1,0 +1,3 @@
+# mdstats 0.20.238a0 - MVIDX multi-billion-edge scaling hardening
+
+This maintenance release keeps MLFF architecture revision 103 and dependency schema 83 unchanged while hardening the completed MVIDX-REUSE1 execution path for production NEIGHBOR1 caches with billions of exact edges. Large inverse families use bounded row-chunk deterministic transposes and file-backed NPY memmaps, PARCORE1 admission charges bounded scratch rather than the complete inverse edge payload, and the native MVIDX store hard-links whole mmap-backed NPY arrays when possible. A disk-space preflight fails before inversion if the exact inverse payload cannot fit. Scientific sparse arrays and content digests remain byte-identical to the in-memory path. FINAL-GPU1 remains next.

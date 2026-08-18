@@ -1,0 +1,3329 @@
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.147a0_to_0.20.148a0.patch' mdstats-0.20.147a0-complete-source-package/CHANGELOG.md mdstats-0.20.148a0-complete-source-package/CHANGELOG.md
+--- mdstats-0.20.147a0-complete-source-package/CHANGELOG.md	2026-08-11 08:41:56.000000000 +0000
++++ mdstats-0.20.148a0-complete-source-package/CHANGELOG.md	2026-08-11 09:39:23.727486963 +0000
+@@ -1,3 +1,10 @@
++## 0.20.148a0 - 2026-08-11
++
++- Complete GFX3D-3 with the packaged `mdstats-3d` command and source-tree `tools/mdstats-3d.py` launcher.
++- Add strict TOML scene configuration, layer shorthand, source-aware LTA compatibility preset, deterministic precedence, canonical manifest-only mode, and protected HTML/manifest output.
++- Convert `examples/plot_lta_mixed_alkali_density.py` into a compatibility shim over the universal CLI while retaining its historical input helpers and default output behavior.
++- Add the formal GFX3D CLI specification, concise user guide, and Na-LTA TOML example. Focused GFX3D/legacy qualification: 83 passed; bounded real Na-LTA CLI smoke completed on 21 stride-500 frames and produced a 6.5 MiB self-contained HTML artifact.
++
+ ## 0.20.147a0 - 2026-08-11
+ 
+ - Complete GFX3D-2 with independent registered framework-topology, atomic-connectivity, atomic-trajectory, and density layer adapters over current qualified scientific products.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.147a0_to_0.20.148a0.patch' mdstats-0.20.147a0-complete-source-package/PATCH_NOTES_0.20.148a0.md mdstats-0.20.148a0-complete-source-package/PATCH_NOTES_0.20.148a0.md
+--- mdstats-0.20.147a0-complete-source-package/PATCH_NOTES_0.20.148a0.md	1970-01-01 00:00:00.000000000 +0000
++++ mdstats-0.20.148a0-complete-source-package/PATCH_NOTES_0.20.148a0.md	2026-08-11 09:39:23.292072825 +0000
+@@ -0,0 +1,64 @@
++# mdstats 0.20.148a0 patch notes
++
++## GFX3D-3 - universal CLI and declarative configuration
++
++This revision promotes the former mixed-alkali LTA visualization example into the universal configurable GFX3D command surface while keeping scientific preparation owned by the already-qualified framework/connectivity/density subsystems.
++
++### Added
++
++- packaged `mdstats-3d` console command backed by `mdstats.graphics3d.cli.main`;
++- source-tree `tools/mdstats-3d.py` launcher;
++- strict TOML configuration compilation into one canonical `GraphicsScene3DRequest`;
++- repeated `--layer TYPE[:SELECTOR][@NAME]` shorthand for framework, connectivity, trajectory, and density layers;
++- deterministic configuration precedence: defaults < preset < TOML < explicit CLI;
++- replacement semantics for layer lists so explicit CLI layers never silently merge with configured/preset layers;
++- source-aware `lta-mixed-alkali-density` compatibility preset;
++- canonical scene-manifest output and `--manifest-only`/`--print-manifest` modes;
++- protected HTML/manifest outputs with explicit `--force` overwrite authority;
++- VASP/LAMMPS trajectory input handling migrated from the prototype, including LAMMPS units/timestep/type-map and topology overrides;
++- concise fail-closed handling for source, selection, plotting-complexity, and output errors;
++- short 3-D graphics user guide and complete normative CLI specification;
++- reusable example configuration at `examples/gfx3d_na_lta.toml`.
++
++### Compatibility
++
++- `examples/plot_lta_mixed_alkali_density.py` is now a thin compatibility launcher over the universal CLI rather than an independent plotting implementation;
++- the old example automatically injects the `lta-mixed-alkali-density` preset when no config/preset/layer is supplied;
++- its historical default HTML filename is retained;
++- historical trajectory-format inference, LAMMPS type-map parsing, and namespace-based input reader helpers remain importable;
++- `--max-wall-time` remains an alias for `--wall-time-target`, and `--max-browser-faces` is retained;
++- GFX3D-3 still prepares current scientific products through one `FrameworkDynamicsScene` compatibility provider; GFX3D-4 will split raw preparation into generic shared dependencies.
++
++### Focused qualification
++
++Focused tests cover:
++
++- strict TOML parsing and unknown-key rejection;
++- shorthand species/pair selection;
++- source-aware preset expansion;
++- preset/TOML/CLI precedence;
++- manifest-only source resolution;
++- overwrite refusal and explicit force;
++- all GFX3D-1/2 contract and layer regressions;
++- current framework-dynamics/Plotly behavior;
++- historical LTA example input-helper compatibility.
++
++Result: **83 passed, 0 failed, 0 skipped**.
++
++The observed warnings are the existing equal-aspect/orientation diagnostics from the qualified legacy Plotly backend.
++
++### Real Na-LTA CLI smoke
++
++The supplied authenticated 300 K Na-LTA LAMMPS dump was read with stride 500, yielding 21 frames x 168 atoms. The promoted CLI compiled exactly:
++
++```text
++framework
++trajectory:Na
++density:Na
++```
++
++and wrote a canonical scene manifest. Under a bounded non-adaptive density smoke configuration (`grid_interval = 0.35 A`, compact browser profile), the same command completed full preparation/rendering and wrote a self-contained **6.5 MiB** HTML artifact.
++
++## Next gate
++
++GFX3D-4 - shared dependency planning and cache authority.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.147a0_to_0.20.148a0.patch' mdstats-0.20.147a0-complete-source-package/docs/arch_manuals/mdstats_3d_graphics_architecture.md mdstats-0.20.148a0-complete-source-package/docs/arch_manuals/mdstats_3d_graphics_architecture.md
+--- mdstats-0.20.147a0-complete-source-package/docs/arch_manuals/mdstats_3d_graphics_architecture.md	2026-08-11 08:41:56.000000000 +0000
++++ mdstats-0.20.148a0-complete-source-package/docs/arch_manuals/mdstats_3d_graphics_architecture.md	2026-08-11 09:35:40.498000631 +0000
+@@ -64,7 +64,7 @@
+ The architecture distinguishes three statuses:
+ 
+ `current baseline`
+-: behavior implemented through `mdstats 0.20.147a0` and available for migration;
++: behavior implemented through `mdstats 0.20.148a0` and available for migration;
+ 
+ `normative target`
+ : behavior required by this standard but not yet implemented;
+@@ -72,7 +72,7 @@
+ `deferred`
+ : behavior intentionally left to a later approved layer or renderer specification.
+ 
+-As of `mdstats 0.20.147a0`, **GFX3D-1 and GFX3D-2 are implemented**. The universal immutable request, selection, dependency, context, identity, registry, manifest, renderer-neutral primitive, generic render-result, and legacy compatibility contracts live under `mdstats.graphics3d`. GFX3D-2 adds registered independent `FrameworkTopologyLayer`, `AtomicConnectivityLayer`, `AtomicTrajectoryLayer`, and `AtomicDensityLayer` adapters over the already-qualified `FrameworkDynamicsScene` scientific products, plus a common layer-keyed Plotly composer. The legacy `FrameworkDynamicsScene`, `FrameworkDynamicsRenderResult`, `plot_framework_dynamics_3d`, and hybrid LTA example remain compatibility/scientific authorities while GFX3D-3 promotes the universal declarative CLI.
++As of `mdstats 0.20.148a0`, **GFX3D-1 through GFX3D-3 are implemented**. The universal immutable request, selection, dependency, context, identity, registry, manifest, renderer-neutral primitive, generic render-result, and legacy compatibility contracts live under `mdstats.graphics3d`. GFX3D-2 adds registered independent `FrameworkTopologyLayer`, `AtomicConnectivityLayer`, `AtomicTrajectoryLayer`, and `AtomicDensityLayer` adapters over the already-qualified `FrameworkDynamicsScene` scientific products, plus a common layer-keyed Plotly composer. GFX3D-3 adds the packaged `mdstats-3d` command, the source-checkout `tools/mdstats-3d.py` launcher, strict TOML compilation, layer shorthand, the source-aware `lta-mixed-alkali-density` compatibility preset, canonical manifest-only mode, deterministic precedence/overwrite behavior, and a compatibility shim at the historical example path. Raw scientific preparation is still provided through the current framework-dynamics compatibility provider; GFX3D-4 is responsible for replacing that one composite provider with the complete generic dependency DAG.
+ 
+ The central design rule is:
+ 
+@@ -1830,9 +1830,17 @@
+ - TOML and equivalent CLI shorthand compile to identical canonical requests;
+ - configuration precedence is deterministic;
+ - the old hybrid workflow is reproducible through the new CLI;
+-- omitted layers are not prepared without dependency need;
++- omitted trajectory/connectivity/density products are not prepared unless requested or scientifically required by the current compatibility provider;
+ - CLI exits fail closed on ambiguous input/selection.
+ 
++### Implemented authority (`0.20.148a0`)
++
++GFX3D-3 is implemented. `mdstats.graphics3d.cli` is the packaged command authority and `tools/mdstats-3d.py` is only a source-tree launcher. TOML, the `lta-mixed-alkali-density` preset, and repeated `--layer TYPE[:SELECTOR][@NAME]` shorthand all compile into the same immutable `GraphicsScene3DRequest`. Precedence is fixed as defaults < preset < TOML < explicit CLI, with a stronger replacement rule for layer lists: TOML `[[layer]]` replaces preset layers, while any explicit `--layer` list replaces both.
++
++The command supports VASP XML/XDATCAR/concatenated-CONTCAR trajectories and native LAMMPS dumps, including explicit LAMMPS units/timestep/type mapping and topology overrides. `--manifest-only` resolves the source and canonical request without framework/connectivity/density preparation. Normal execution writes both a self-contained Plotly HTML artifact and a canonical scene-manifest JSON. Existing output/manifest paths are protected unless `--force` is explicit. Unknown TOML keys and ambiguous scientific selections fail closed.
++
++The historical `examples/plot_lta_mixed_alkali_density.py` is now a compatibility shim around the same command authority. When invoked without a config, preset, or explicit layers, it injects the `lta-mixed-alkali-density` preset and preserves the historical default HTML filename. The migrated LTA scientific provider retains the previous T-O-T framework mapping, hysteretic cutoff calibration, mobile-ion/O connectivity, framework registration, trajectory, and density defaults. It is explicitly transitional: GFX3D-4 will move raw scientific products into independent dependency providers so non-framework scenes no longer need a `FrameworkDynamicsScene` compatibility source.
++
+ ## GFX3D-4 - shared dependency planning and cache authority
+ 
+ ### Scope
+@@ -2063,12 +2071,19 @@
+ 
+ # Recommended next implementation
+ 
+-GFX3D-1 and GFX3D-2 are complete through `mdstats 0.20.147a0`. The next implementation gate is **GFX3D-3 - universal CLI and declarative configuration**.
++GFX3D-1 through GFX3D-3 are complete through `mdstats 0.20.148a0`. The next implementation gate is **GFX3D-4 - shared dependency planning and cache authority**.
+ 
+-The initial independent framework topology, atomic connectivity, atomic trajectory, and atomic density adapters are now implemented and composition-qualified. The universal CLI remains intentionally deferred to GFX3D-3, where the prototype workflow can now be promoted without carrying its fixed all-on composition into the production command surface.
++The universal CLI is now production-facing and the historical LTA hybrid script is a compatibility preset/shim. The remaining architectural coupling is below the command surface: all four current layer adapters still consume one already-prepared `FrameworkDynamicsScene`. GFX3D-4 must replace that compatibility dependency with explicit shared providers for registration, topology, connectivity, trajectories, densities, resource scheduling, and future ring/cage/site products so omitted scientific products are never prepared merely because the legacy composite object requires them.
+ 
+ # Revision record
+ 
++## 2026-08-11 - GFX3D-3 implementation (`0.20.148a0`)
++
++Promoted the prototype workflow into the universal packaged `mdstats-3d` CLI and source-checkout `tools/mdstats-3d.py` launcher. Added strict TOML configuration, source-aware preset expansion, layer shorthand, deterministic configuration precedence, source/input resolution, canonical manifest-only mode, protected HTML/manifest outputs, concise fail-closed errors, and the `lta-mixed-alkali-density` compatibility preset. The historical example path now delegates to the same command authority while preserving its input helpers and default output behavior.
++
++Focused qualification covers CLI/TOML compilation, shorthand, source-aware preset expansion, precedence, overwrite protection, manifest-only source resolution, all GFX3D-1/2 contracts, the existing framework/Plotly stack, and historical example input compatibility. Result: 83 passed. A real Na-LTA source-tree smoke on the authenticated 10,001-frame dump used stride 500 (21 frames), compiled `framework + trajectory:Na + density:Na`, wrote the canonical manifest, and produced a self-contained 6.5 MiB HTML under a bounded density configuration. GFX3D-4 is the next gate.
++
++
+ ## 2026-08-11 - GFX3D-2 implementation (`0.20.147a0`)
+ 
+ Implemented the four initial independent registered layer adapters: `FrameworkTopologyLayer`, `AtomicConnectivityLayer`, `AtomicTrajectoryLayer`, and `AtomicDensityLayer`. Added `prepare_graphics3d_scene()` over a shared `GraphicsSceneContext` dependency and a common `render_graphics3d_plotly()` composer with generic layer-owned trace results. The migration path consumes already-prepared `FrameworkDynamicsScene` products and does not recompute or redefine current framework, connectivity, trajectory, or density science.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.147a0_to_0.20.148a0.patch' mdstats-0.20.147a0-complete-source-package/docs/arch_manuals/mdstats_dynamical_framework_density_architecture_standard.md mdstats-0.20.148a0-complete-source-package/docs/arch_manuals/mdstats_dynamical_framework_density_architecture_standard.md
+--- mdstats-0.20.147a0-complete-source-package/docs/arch_manuals/mdstats_dynamical_framework_density_architecture_standard.md	2026-08-11 04:46:50.000000000 +0000
++++ mdstats-0.20.148a0-complete-source-package/docs/arch_manuals/mdstats_dynamical_framework_density_architecture_standard.md	2026-08-11 09:39:22.602697319 +0000
+@@ -223,6 +223,17 @@
+ connectivity, or density semantics. The density modules must not import Plotly for
+ scientific preparation.
+ 
++As of `mdstats 0.20.148a0`, **universal scene composition is owned by GFX3D**, not
++by this density/framework manual. `FrameworkDynamicsScene` and
++`FrameworkDynamicsRenderResult` remain qualified scientific/compatibility products,
++while new user-facing composition goes through `GraphicsScene3DRequest`, registered
++GFX3D layers, and `mdstats-3d`. This manual remains authoritative for framework
++registration, connectivity-derived products, atomic/framework density estimators,
++HDR semantics, resource planning, and density-specific rendering evidence. The
++canonical generic scene/layer/CLI architecture is defined in
++`mdstats_3d_graphics_architecture.md`; future ring, cage, site, and kinetics layers
++must not be added here merely to extend a visualization container.
++
+ # Public scene API
+ 
+ The implemented preparation entry point is:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.147a0_to_0.20.148a0.patch' mdstats-0.20.147a0-complete-source-package/docs/guides/mdstats_3d_graphics_user_guide.md mdstats-0.20.148a0-complete-source-package/docs/guides/mdstats_3d_graphics_user_guide.md
+--- mdstats-0.20.147a0-complete-source-package/docs/guides/mdstats_3d_graphics_user_guide.md	1970-01-01 00:00:00.000000000 +0000
++++ mdstats-0.20.148a0-complete-source-package/docs/guides/mdstats_3d_graphics_user_guide.md	2026-08-11 09:35:40.653096375 +0000
+@@ -0,0 +1,263 @@
++---
++title: "mdstats 3-D Graphics User Guide"
++subtitle: "Practical configurable framework, connectivity, trajectory, and density visualization with mdstats-3d"
++author: "mdstats user guide"
++date: "2026-08-11"
++geometry: margin=0.78in
++fontsize: 10pt
++toc: true
++toc-depth: 2
++numbersections: true
++colorlinks: true
++header-includes:
++  - |
++    \usepackage{microtype}
++    \usepackage{enumitem}
++    \usepackage{fvextra}
++    \setlist{nosep}
++    \setlength{\emergencystretch}{3em}
++    \RecustomVerbatimEnvironment{verbatim}{Verbatim}{breaklines=true,breakanywhere=true,fontsize=\small}
++---
++
++# What `mdstats-3d` does
++
++`mdstats-3d` is the universal configurable 3-D scene command introduced in `mdstats 0.20.148a0`.
++
++The first four independent graphical layer types are:
++
++```text
++framework      zeolite/framework topology
++connectivity   atomic mean connectivity
++trajectory     selected atomic trajectories
++density        selected atomic probability density
++```
++
++You may display any combination and may use more than one instance of the same type.
++
++# Source-tree and installed commands
++
++From an mdstats source checkout:
++
++```bash
++python tools/mdstats-3d.py TRAJECTORY ...
++```
++
++After package installation:
++
++```bash
++mdstats-3d TRAJECTORY ...
++```
++
++# Fast layer selection
++
++Framework only:
++
++```bash
++mdstats-3d dump.lammpstrj \
++  --lammps-units metal \
++  --lammps-timestep 0.001 \
++  --lammps-type-map "1=Si,2=Al,3=O,4=Na" \
++  --layer framework
++```
++
++Framework plus Na trajectories:
++
++```bash
++mdstats-3d dump.lammpstrj \
++  --lammps-units metal \
++  --lammps-timestep 0.001 \
++  --lammps-type-map "1=Si,2=Al,3=O,4=Na" \
++  --layer framework \
++  --layer trajectory:Na
++```
++
++Na-O connectivity plus Na density:
++
++```bash
++mdstats-3d dump.lammpstrj \
++  --lammps-units metal \
++  --lammps-timestep 0.001 \
++  --lammps-type-map "1=Si,2=Al,3=O,4=Na" \
++  --layer connectivity:Na-O \
++  --layer density:Na
++```
++
++Give a layer a custom name with `@`:
++
++```text
++--layer density:Na@mobile-Na-density
++```
++
++# Reproduce the historical LTA hybrid plot
++
++The former `examples/plot_lta_mixed_alkali_density.py` workflow is now a preset:
++
++```bash
++mdstats-3d dump.lammpstrj \
++  --preset lta-mixed-alkali-density \
++  --lammps-units metal \
++  --lammps-timestep 0.001 \
++  --lammps-type-map "1=Si,2=Al,3=O,4=Na"
++```
++
++The preset detects which of Si, Al, O, Li, Na, and K are present and builds framework, atomic connectivity, trajectories, and one density layer per present supported species.
++
++The old example script still works as a compatibility launcher.
++
++# Use TOML for publication scenes
++
++For a reusable figure, prefer TOML over a long shell command.
++
++Example `na_lta.toml`:
++
++```toml
++[scene]
++title = "Na-LTA 300 K"
++registration = "framework_registered"
++display_cell = "reference"
++trajectory_display_mode = "folded"
++density_grid_interval = 0.20
++density_adaptive_smearing = true
++projection = "orthographic"
++
++[input]
++format = "lammps-dump"
++lammps_units = "metal"
++lammps_timestep = 0.001
++lammps_type_map = "1=Si,2=Al,3=O,4=Na"
++
++[resources]
++max_threads = 8
++max_memory = "12GiB"
++
++[output]
++path = "na_lta.html"
++manifest = "na_lta.scene.json"
++browser_profile = "balanced"
++
++[[layer]]
++type = "framework"
++name = "LTA framework"
++
++[[layer]]
++type = "connectivity"
++name = "Na-O coordination"
++selection = { pairs = ["Na-O"] }
++render = { edge_width = 1.6, edge_opacity = 0.45 }
++
++[[layer]]
++type = "trajectory"
++name = "Na trajectories"
++selection = { species = ["Na"] }
++render = { line_width = 1.6, opacity = 0.28, show_legend = true }
++
++[[layer]]
++type = "density"
++name = "Na density"
++selection = { species = ["Na"] }
++render = { mass_fractions = [0.50, 0.80, 0.95], inner_opacity = 0.22, outer_opacity = 0.04 }
++```
++
++Run it with:
++
++```bash
++mdstats-3d dump.lammpstrj --config na_lta.toml
++```
++
++Paths written inside the TOML file are resolved relative to the TOML file.
++
++# Preview the canonical scene before computing it
++
++Use manifest-only mode:
++
++```bash
++mdstats-3d dump.lammpstrj \
++  --config na_lta.toml \
++  --manifest-only
++```
++
++This reads/resolves the source and writes the normalized scene manifest without building topology, connectivity, density, or Plotly geometry.
++
++To print the manifest as well:
++
++```text
++--print-manifest
++```
++
++This is useful for checking exactly which named layers will be present and how selections were normalized.
++
++# Configuration precedence
++
++The rule is:
++
++```text
++defaults < preset < TOML < explicit CLI
++```
++
++Layer lists are replaced, not merged.
++
++For example, if `na_lta.toml` contains four layers but you run:
++
++```bash
++mdstats-3d dump.lammpstrj \
++  --config na_lta.toml \
++  --layer framework \
++  --layer density:Na
++```
++
++only those two CLI layers are displayed.
++
++# Output protection
++
++`mdstats-3d` does not overwrite an existing HTML or scene manifest by default.
++
++To replace them deliberately:
++
++```text
++--force
++```
++
++Normal execution writes both the HTML and the canonical `.scene.json` evidence.
++
++# LAMMPS input
++
++If the dump has numeric `type` rather than `element`, supply a type map:
++
++```text
++--lammps-type-map "1=Si,2=Al,3=O,4=Na"
++```
++
++If the dump does not record the unit style or physical time, also supply information such as:
++
++```text
++--lammps-units metal
++--lammps-timestep 0.001
++```
++
++or provide a suitable LAMMPS log with `--lammps-log`.
++
++The CLI intentionally fails instead of guessing these quantities.
++
++# Useful resource/render controls
++
++```text
++--max-threads N
++--max-memory 12GiB
++--wall-time-target 1200
++--browser-profile compact|balanced|quality
++--max-browser-faces N
++```
++
++The wall-time value is advisory; it is not a hard scientific stop.
++
++# A note about GFX3D-3's current provider
++
++The command surface and layer composition are now universal, but the first raw scientific provider still uses the existing qualified `FrameworkDynamicsScene` preparation machinery. Consequently, the current CLI is most mature for zeolite/framework trajectories such as the LTA workflow from which it was promoted.
++
++GFX3D-4 will split raw preparation into independent shared providers. That will allow non-framework trajectory/density scenes and future ring, cage, site, and kinetics layers to request only the scientific dependencies they actually need.
++
++# What comes next
++
++The next architecture gate is **GFX3D-4 - shared dependency planning and cache authority**.
++
++After that, GFX3D-5 will complete generic layer-tree interaction, visibility grouping, camera/view presets, periodic-display controls, and renderer-neutral browser accounting.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.147a0_to_0.20.148a0.patch' mdstats-0.20.147a0-complete-source-package/docs/specifications/mdstats_gfx3d_cli_spec.md mdstats-0.20.148a0-complete-source-package/docs/specifications/mdstats_gfx3d_cli_spec.md
+--- mdstats-0.20.147a0-complete-source-package/docs/specifications/mdstats_gfx3d_cli_spec.md	2026-08-11 08:39:35.000000000 +0000
++++ mdstats-0.20.148a0-complete-source-package/docs/specifications/mdstats_gfx3d_cli_spec.md	2026-08-11 09:35:40.648115059 +0000
+@@ -1,64 +1,93 @@
+-# mdstats GFX3D CLI Specification
++---
++title: "mdstats GFX3D CLI Specification"
++subtitle: "Normative command, TOML, preset, manifest, and compatibility contract for mdstats-3d"
++author: "mdstats specification"
++date: "2026-08-11"
++geometry: margin=0.76in
++fontsize: 10pt
++toc: true
++toc-depth: 3
++numbersections: true
++colorlinks: true
++header-includes:
++  - |
++    \usepackage{booktabs}
++    \usepackage{longtable}
++    \usepackage{array}
++    \usepackage{microtype}
++    \usepackage{enumitem}
++    \usepackage{fvextra}
++    \setlist{nosep}
++    \setlength{\emergencystretch}{3em}
++    \RecustomVerbatimEnvironment{verbatim}{Verbatim}{breaklines=true,breakanywhere=true,fontsize=\small}
++---
+ 
+-**Status:** GFX3D-2 layer foundation complete; GFX3D-3 command surface not yet frozen  
+-**Architecture authority:** `docs/arch_manuals/mdstats_3d_graphics_architecture.md`
++# Status and authority
+ 
+-## Purpose
++This specification is the normative user-facing contract for **GFX3D-3**, implemented in `mdstats 0.20.148a0`.
+ 
+-This document will become the normative command/configuration contract for the
+-universal configurable 3-D graphics CLI. GFX3D-1 froze the ownership and
+-configuration-to-scene contracts, and GFX3D-2 qualified the four independent
+-built-in layer families plus common Plotly composition. The final command surface
+-remains a GFX3D-3 deliverable.
++Architecture authority remains:
+ 
+-## Authority boundaries
++```text
++docs/arch_manuals/mdstats_3d_graphics_architecture.md
++```
+ 
+-The CLI must compile every input form into one canonical
+-`GraphicsScene3DRequest`. It may not own scientific definitions for framework
+-topology, atomic connectivity, trajectories, density, rings, cages, sites, or
+-kinetics. Those remain owned by their scientific subsystems and are exposed by
+-registered GFX3D layer adapters.
++The command surface is owned by:
+ 
+-The CLI must fail closed on ambiguous scientific selections and must never let
+-render-only options alter scientific layer identities.
++```text
++mdstats.graphics3d.cli
++```
+ 
+-## Reserved future entry points
++The source-tree launcher is:
+ 
+-The architecture reserves a thin launcher conceptually equivalent to:
++```text
++python tools/mdstats-3d.py ...
++```
++
++An installed package exposes:
+ 
+ ```text
+-tools/mdstats-3d.py
+-mdstats 3d ...
++mdstats-3d ...
+ ```
+ 
+-Neither exact spelling is normative until GFX3D-3.
++The historical `examples/plot_lta_mixed_alkali_density.py` is a compatibility launcher, not a second implementation.
++
++# Core compilation rule
++
++Every input form MUST compile into exactly one canonical `GraphicsScene3DRequest` before scientific scene preparation.
+ 
+-## Canonical compilation contract
++The supported configuration sources are:
+ 
+-All future TOML, shorthand CLI, and preset forms must compile to the same
+-normalized objects:
++1. built-in defaults;
++2. one optional preset;
++3. one optional TOML file;
++4. explicit command-line overrides.
++
++Precedence is:
+ 
+ ```text
+-GraphicsScene3DRequest
+-  ordered named layer requests
+-  scene options
+-  view request
+-  resource request
+-  output request
++defaults < preset < TOML < explicit CLI
+ ```
+ 
+-The normalized manifest must be printable without performing expensive
+-scientific preparation.
++Layer lists use replacement rather than implicit union:
++
++- preset supplies its layer list;
++- any TOML `[[layer]]` entries replace the preset layer list;
++- any repeated `--layer` values replace both TOML and preset layers.
++
++This rule is deliberate. A user-visible figure must never gain an unrequested layer through an implicit merge.
++
++# Invocation grammar
+ 
+-## Configuration precedence
++The canonical syntax is:
+ 
+-GFX3D-3 must define deterministic precedence among defaults, presets, TOML, and
+-explicit command-line overrides. No silent merging rule is authorized by this
+-skeleton.
++```text
++mdstats-3d TRAJECTORY [OPTIONS]
++```
+ 
+-## Initial layer vocabulary
++A scene MUST contain at least one enabled layer after configuration compilation.
+ 
+-The first production CLI will expose independent instances of:
++Initial built-in layer types are:
+ 
+ ```text
+ framework
+@@ -67,26 +96,331 @@
+ density
+ ```
+ 
+-Multiple instances of one type are allowed if names are unique.
++Multiple instances of one layer type are valid when names are unique.
++
++# Layer shorthand
++
++The command accepts repeated:
++
++```text
++--layer TYPE[:SELECTOR][@NAME]
++```
++
++Examples:
++
++```text
++--layer framework
++--layer trajectory:Na
++--layer trajectory:Li,Na,K@mobile-cations
++--layer connectivity:Na-O
++--layer connectivity:Li-O,K-O@alkali-oxygen
++--layer density:Na@Na-density
++```
++
++Rules:
++
++- `framework` has no shorthand selector in GFX3D-3;
++- trajectory and density selectors are species lists;
++- connectivity selectors may be a species list or a homogeneous list of species pairs;
++- pair syntax is `ELEMENT-ELEMENT`;
++- pair and species shorthand cannot be mixed in one connectivity selector;
++- `@NAME` supplies the unique layer name;
++- when `@NAME` is omitted, a deterministic name is derived from layer type and selector.
++
++Compound selections involving atom indices plus species/pairs belong in TOML.
++
++# TOML schema
++
++A TOML configuration may contain these top-level tables:
++
++```text
++[scene]
++[input]
++[resources]
++[output]
++[[layer]]
++```
++
++Unknown top-level tables or unknown keys in the currently defined tables fail closed.
++
++## Scene table
++
++Current keys are:
++
++```toml
++[scene]
++preset = "lta-mixed-alkali-density" # optional
++title = "Na-LTA 300 K"
++registration = "framework_registered"
++trajectory_display_mode = "folded"
++display_cell = "reference"
++connectivity_mode = "occupancy"
++occupancy_threshold = 0.95
++density_grid_interval = 0.20
++density_gaussian_to_grid_ratio = 2.0
++density_adaptive_smearing = true
++density_max_smearing_to_sample_sd_ratio = 0.50
++density_sample_sd_quantile = 0.10
++projection = "orthographic"
++```
++
++`camera` and `periodic_images` are reserved view records. Complete universal view semantics are a GFX3D-5 deliverable.
++
++The density numerical options above are source-wide because GFX3D-3 still prepares current density products through one qualified `FrameworkDynamicsScene` provider. Per-layer raw scientific density providers belong to GFX3D-4.
++
++## Input table
++
++```toml
++[input]
++format = "auto"
++stride = 1
++timestep_fs = 1.0
++lammps_log = "log.lammps"
++lammps_units = "metal"
++lammps_timestep = 0.001
++lammps_type_map = "1=Si,2=Al,3=O,4=Na"
++topology = "topology.json"
++topology_cache = "topology-cache.json"
++no_topology_cache = false
++framework_formation_cutoff = 2.05
++framework_breaking_cutoff = 2.30
++```
++
++Path values in TOML are resolved relative to the TOML file. Explicit CLI path overrides are resolved normally by the shell/current working directory.
++
++## Resources table
++
++```toml
++[resources]
++max_memory = "12GiB"
++max_threads = 8
++wall_time_target = 1200.0
++```
++
++These compile to execution-only resource requests. They do not alter scientific identities.
++
++## Output table
++
++```toml
++[output]
++path = "scene.html"
++manifest = "scene.scene.json"
++browser_profile = "balanced"
++max_browser_faces = 600000
++```
++
++`browser_profile` accepts `compact`, `balanced`, or `quality`.
++
++## Layer tables
++
++```toml
++[[layer]]
++type = "trajectory"
++name = "Na trajectories"
++selection = { species = ["Na"] }
++render = { line_width = 1.6, opacity = 0.28, show_legend = true }
++visible = true
++enabled = true
++
++[[layer]]
++type = "connectivity"
++name = "Na-O connectivity"
++selection = { pairs = ["Na-O"] }
++render = { edge_width = 1.6, edge_opacity = 0.45 }
++
++[[layer]]
++type = "density"
++name = "Na density"
++selection = { species = ["Na"] }
++render = { mass_fractions = [0.50, 0.80, 0.95], inner_opacity = 0.22, outer_opacity = 0.04 }
++```
++
++The universal selection vocabulary also reserves atom IDs, atom indices, framework roles, topology IDs, rings, cages, sites, states, and transitions. A registered layer MUST reject selection fields it does not support.
++
++Scientific `analysis` tables are included in the canonical layer contract. GFX3D-3 adapters over already-prepared products accept only analysis values that can actually be applied; silently ignored scientific options are forbidden.
++
++# Built-in compatibility preset
++
++GFX3D-3 defines:
++
++```text
++lta-mixed-alkali-density
++```
++
++The preset is source-aware. After trajectory parsing it expands to:
++
++- framework topology;
++- atomic mean connectivity;
++- one trajectory layer containing all detected supported species;
++- one atomic-density layer for every detected species among Si, Al, O, Li, Na, and K.
++
++It preserves the prior hybrid example defaults for:
++
++- T-O-T aluminosilicate framework mapping;
++- framework-registered coordinates;
++- folded trajectories;
++- reference display cell;
++- occupancy connectivity with threshold 0.95;
++- density grid interval 0.20 A;
++- Gaussian-to-grid ratio 2.0;
++- adaptive smearing policy;
++- 50/80/95% HDR shells;
++- orthographic projection;
++- balanced browser mesh profile.
++
++The preset is a compatibility configuration, not an LTA dependency of the universal scene contracts.
++
++# Input formats
++
++The CLI currently accepts time-ordered sources supported by the promoted prototype:
++
++```text
++vasp-xml
++vasp-xdatcar
++vasp-contcar-trajectory
++lammps-dump
++```
++
++`--format auto` recognizes `vasprun.xml`, `XDATCAR`, `TRAJECTORY`, `.lammpstrj`, `.dump`, `.lammpsdump`, and common `dump.*` names, including recognized compression suffixes.
++
++LAMMPS numeric atom types require an explicit type map when no element column is present:
++
++```text
++--lammps-type-map "1=Si,2=Al,3=O,4=Na"
++```
++
++If units or physical time cannot be established from the dump/log, the CLI fails closed and requests `--lammps-units`, `--lammps-timestep`, or a suitable log/TIME record.
++
++# Output and overwrite authority
++
++Normal execution writes:
++
++1. one self-contained Plotly HTML file;
++2. one canonical scene-manifest JSON file.
++
++Default HTML path:
++
++```text
++graphics3d.html
++```
++
++Default manifest path for `graphics3d.html`:
++
++```text
++graphics3d.scene.json
++```
++
++Existing HTML or manifest outputs are never replaced implicitly. Use:
++
++```text
++--force
++```
++
++for explicit overwrite authority.
++
++The historical example shim retains its old default HTML filename:
++
++```text
++lta_density_framework_trajectories.html
++```
++
++when no config/output override is supplied.
++
++# Canonical manifest
++
++The manifest is `mdstats.graphics3d.scene-manifest.v1` evidence and records, at minimum:
++
++- mdstats version;
++- source path, byte size, and SHA-256;
++- resolved input format;
++- resolved species/atom mapping;
++- frame-count/atom-count evidence;
++- ordered normalized layer requests;
++- scene, view, resource, and output requests;
++- expanded preset names;
++- deduplicated dependency plan;
++- separate request identity domains inherited from GFX3D contracts.
++
++Manifest serialization MUST be canonical and deterministic for equivalent normalized requests.
++
++# Manifest-only mode
++
++```text
++--manifest-only
++```
++
++parses/resolves the input source and source-aware preset, compiles the canonical request, and writes the manifest **without** framework topology construction, atomic-connectivity preparation, density preparation, or Plotly rendering.
++
++`--print-manifest` additionally writes canonical manifest JSON to stdout.
++
++Manifest-only mode is intended for configuration review, provenance inspection, automation, and preflight.
++
++# Compatibility behavior
++
++`examples/plot_lta_mixed_alkali_density.py` delegates to `mdstats.graphics3d.cli.main`.
++
++When the caller supplies no `--config`, `--preset`, or `--layer`, the shim injects:
++
++```text
++--preset lta-mixed-alkali-density
++```
++
++and, absent an explicit output path, preserves:
++
++```text
++--output lta_density_framework_trajectories.html
++```
++
++Historical trajectory-format inference, LAMMPS type-map parsing, and `read_input_trajectory(argparse.Namespace)` helpers remain importable for compatibility tests and downstream scripts.
++
++Compatibility aliases include:
++
++```text
++--max-wall-time  -> --wall-time-target
++```
++
++and the historical `--max-browser-faces` capability is retained.
++
++# Current scientific-provider boundary
++
++GFX3D-3 is universal at the **scene/CLI composition** level but intentionally transitional at raw scientific preparation.
++
++The four current layer adapters still consume one prepared `FrameworkDynamicsScene`. The migrated aluminosilicate provider therefore still prepares the mean framework coordinate gauge even when the visible framework layer is omitted. Trajectory, atomic-connectivity, and density products are only requested when their corresponding layers need them.
++
++This is not the final dependency architecture. GFX3D-4 MUST split the composite provider into explicit shared dependencies so raw trajectory, framework topology, connectivity, density, and later ring/cage/site products can be prepared independently and deduplicated through the scene DAG.
++
++# Error and exit semantics
++
++Successful execution returns exit status `0`.
++
++Configuration, input, scientific-selection, graph-complexity, and output-authority failures return status `2` from the packaged command and print one concise `mdstats-3d:` error to stderr.
++
++Argparse usage errors retain normal argparse behavior.
++
++The CLI does not silently:
++
++- guess unknown chemical species;
++- guess LAMMPS units or type mappings;
++- merge conflicting layer lists;
++- ignore unsupported scientific layer options;
++- overwrite existing outputs;
++- remove a requested layer to satisfy rendering/resource limits.
++
++# Focused acceptance authority
++
++The GFX3D-3 focused suite covers:
++
++- TOML parsing and strict unknown-key handling;
++- shorthand species and pair selection;
++- preset/TOML/CLI precedence;
++- source-aware preset density expansion;
++- manifest-only source resolution;
++- overwrite refusal and explicit `--force`;
++- GFX3D-1 identities/dependency/manifest contracts;
++- GFX3D-2 independent layer composition;
++- current framework/Plotly compatibility;
++- historical LTA example input-helper compatibility.
+ 
+-## Evidence and outputs
++The implementation record for `0.20.148a0` reports **83 focused tests passed**.
+ 
+-The future CLI must write a canonical scene manifest and must preserve separate
+-scientific, render, and execution identities. HTML/Plotly is the initial output
+-backend, not the scene data model.
+-
+-## Deferred sections
+-
+-GFX3D-3 must complete:
+-
+-- exact invocation grammar;
+-- supported input formats and type-map syntax;
+-- TOML schema;
+-- layer shorthand grammar;
+-- preset expansion;
+-- error/exit semantics;
+-- output path and overwrite rules;
+-- manifest-only mode;
+-- progress reporting;
+-- compatibility behavior for `plot_lta_mixed_alkali_density.py`;
+-- acceptance tests and examples.
++A bounded real source-tree smoke used the authenticated 300 K Na-LTA trajectory with stride 500 (21 frames x 168 atoms), compiled `framework + trajectory:Na + density:Na`, wrote the canonical manifest, and generated a self-contained HTML artifact using a bounded non-adaptive density configuration.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.147a0_to_0.20.148a0.patch' mdstats-0.20.147a0-complete-source-package/examples/gfx3d_na_lta.toml mdstats-0.20.148a0-complete-source-package/examples/gfx3d_na_lta.toml
+--- mdstats-0.20.147a0-complete-source-package/examples/gfx3d_na_lta.toml	1970-01-01 00:00:00.000000000 +0000
++++ mdstats-0.20.148a0-complete-source-package/examples/gfx3d_na_lta.toml	2026-08-11 09:35:40.653725144 +0000
+@@ -0,0 +1,42 @@
++# Example universal GFX3D configuration for a Na-LTA LAMMPS trajectory.
++[scene]
++title = "Na-LTA configurable 3-D scene"
++registration = "framework_registered"
++display_cell = "reference"
++trajectory_display_mode = "folded"
++density_grid_interval = 0.20
++density_adaptive_smearing = true
++projection = "orthographic"
++
++[input]
++format = "lammps-dump"
++lammps_units = "metal"
++lammps_timestep = 0.001
++lammps_type_map = "1=Si,2=Al,3=O,4=Na"
++
++[output]
++path = "na_lta_gfx3d.html"
++manifest = "na_lta_gfx3d.scene.json"
++browser_profile = "balanced"
++
++[[layer]]
++type = "framework"
++name = "LTA framework"
++
++[[layer]]
++type = "connectivity"
++name = "Na-O connectivity"
++selection = { pairs = ["Na-O"] }
++render = { edge_width = 1.6, edge_opacity = 0.45 }
++
++[[layer]]
++type = "trajectory"
++name = "Na trajectories"
++selection = { species = ["Na"] }
++render = { line_width = 1.6, opacity = 0.28, show_legend = true }
++
++[[layer]]
++type = "density"
++name = "Na density"
++selection = { species = ["Na"] }
++render = { mass_fractions = [0.50, 0.80, 0.95], inner_opacity = 0.22, outer_opacity = 0.04, render_mode = "mesh", show_samples = false, show_legend = true }
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.147a0_to_0.20.148a0.patch' mdstats-0.20.147a0-complete-source-package/examples/plot_lta_mixed_alkali_density.py mdstats-0.20.148a0-complete-source-package/examples/plot_lta_mixed_alkali_density.py
+--- mdstats-0.20.147a0-complete-source-package/examples/plot_lta_mixed_alkali_density.py	2026-08-07 23:55:12.000000000 +0000
++++ mdstats-0.20.148a0-complete-source-package/examples/plot_lta_mixed_alkali_density.py	2026-08-11 09:33:29.520038199 +0000
+@@ -1,572 +1,28 @@
+ #!/usr/bin/env python3
++"""Compatibility launcher for the historical mixed-alkali LTA 3-D example.
++
++New work should use ``tools/mdstats-3d.py`` or the installed ``mdstats-3d``
++command. This shim preserves the old example entry point and its trajectory
++input helper functions while delegating plotting to the universal GFX3D CLI.
++"""
+ from __future__ import annotations
+ 
+-import argparse
+-import json
+-import sys
+-import time
+ from pathlib import Path
++import sys
+ 
++ROOT = Path(__file__).resolve().parents[1]
++if str(ROOT) not in sys.path:
++    sys.path.insert(0, str(ROOT))
+ 
+-def _bootstrap_mdstats_source_tree() -> Path | None:
+-    """Make the adjacent source checkout importable for direct example runs.
+-
+-    When this file lives in ``<repository>/examples``, launching it directly puts
+-    only the examples directory on ``sys.path``. Prefer the matching repository
+-    source tree over any separately installed mdstats version. If the script has
+-    been copied elsewhere, leave ``sys.path`` unchanged and use the installed
+-    package normally.
+-    """
+-    script_path = Path(__file__).resolve()
+-    if len(script_path.parents) < 2:
+-        return None
+-    repository_root = script_path.parents[1]
+-    package_init = repository_root / "mdstats" / "__init__.py"
+-    if not package_init.is_file():
+-        return None
+-    root_text = str(repository_root)
+-    if not sys.path or sys.path[0] != root_text:
+-        try:
+-            sys.path.remove(root_text)
+-        except ValueError:
+-            pass
+-        sys.path.insert(0, root_text)
+-    return repository_root
+-
+-
+-SOURCE_TREE_ROOT = _bootstrap_mdstats_source_tree()
+-
+-from ase.data import chemical_symbols
+-
+-from mdstats import (
+-    AtomicDensity3DRenderOptions,
+-    AtomicDensityOptions,
+-    AtomicDensitySelection,
+-    AtomicMeanGraph3DRenderOptions,
+-    AtomicMeanGraphOptions,
+-    BrowserMeshBudget,
+-    BrowserMeshProfile,
+-    CanonicalCellDisplay,
+-    HystereticDistanceConnectivity,
+-    FrameworkAtomRole,
+-    FrameworkDynamicsOptions,
+-    FrameworkDynamicsResources,
+-    FrameworkMapping,
+-    FrameworkPathRule,
+-    FrameworkTopology,
+-    TopologyCatalog,
+-    Graph3DRenderOptions,
+-    PairCutoffRegistry,
+-    SpatialRegistrationMode,
+-    ProgressEmitter,
+-    TextProgressPort,
+-    Trajectory3DRenderOptions,
+-    TrajectoryAtomSelection,
+-    build_topology_catalog,
+-    compute_atomic_connectivity,
+-    plot_framework_dynamics_3d,
+-    prepare_framework_dynamics_scene,
+-    read_lammps_frames,
+-    read_vasp_frames,
+-)
+-
+-
+-TOPOLOGY_CACHE_SUFFIX = '_topology_catalog.json'
+-FRAMEWORK_SPECIES_ORDER = ('Si', 'Al', 'O')
+-MOBILE_SPECIES_ORDER = ('Li', 'Na', 'K')
+-MOBILE_OXYGEN_CUTOFFS = {
+-    'Li': 2.6,
+-    'Na': 2.9,
+-    'K': 3.3,
+-}
+-
+-
+-
+-def framework_mapping() -> FrameworkMapping:
+-    return FrameworkMapping.from_symbol_roles(
+-        {
+-            'Si': FrameworkAtomRole.VERTEX,
+-            'Al': FrameworkAtomRole.VERTEX,
+-            'O': FrameworkAtomRole.LINKER,
+-            'Li': FrameworkAtomRole.SPECTATOR,
+-            'Na': FrameworkAtomRole.SPECTATOR,
+-            'K': FrameworkAtomRole.SPECTATOR,
+-        },
+-        path_rules=(
+-            FrameworkPathRule.from_symbols(
+-                'T-O-T', ('O',), edge_kind='oxygen_bridge'
+-            ),
+-        ),
+-    )
+-
+-
+-def detect_present_species(trajectory) -> tuple[str, ...]:
+-    present = {chemical_symbols[int(z)] for z in trajectory.atomic_numbers}
+-    ordered = [
+-        symbol
+-        for symbol in FRAMEWORK_SPECIES_ORDER + MOBILE_SPECIES_ORDER
+-        if symbol in present
+-    ]
+-    return tuple(ordered)
+-
+-
+-def detect_mobile_species(trajectory) -> tuple[str, ...]:
+-    present = set(detect_present_species(trajectory))
+-    return tuple(symbol for symbol in MOBILE_SPECIES_ORDER if symbol in present)
+-
+-
+-def _sample_framework_bond_distances(
+-    trajectory,
+-    left_symbol: str,
+-    *,
+-    coordination_number: int = 4,
+-) -> list[float]:
+-    """Sample the nearest framework bond shell for hysteresis calibration.
+-
+-    LTA T atoms are tetrahedrally coordinated.  Sampling only the single
+-    nearest oxygen underestimates the formation cutoff and can omit the long
+-    member of an otherwise intact T--O shell.  This helper therefore records
+-    the four nearest oxygen distances for every selected T atom.
+-    """
+-    from ase.geometry import find_mic
+-    import numpy as np
+-
+-    symbols = [chemical_symbols[int(z)] for z in trajectory.atomic_numbers]
+-    left = np.asarray(
+-        [i for i, value in enumerate(symbols) if value == left_symbol],
+-        dtype=np.int64,
+-    )
+-    oxygen = np.asarray(
+-        [i for i, value in enumerate(symbols) if value == 'O'],
+-        dtype=np.int64,
+-    )
+-    if left.size == 0 or oxygen.size < coordination_number:
+-        return []
+-    sample_count = min(96, trajectory.n_frames)
+-    frame_indices = np.unique(
+-        np.linspace(0, trajectory.n_frames - 1, sample_count).round().astype(int)
+-    )
+-    values: list[float] = []
+-    for frame in frame_indices:
+-        cell = np.asarray(trajectory.cells[frame], dtype=float)
+-        cart = np.asarray(trajectory.fractional_positions[frame], dtype=float) @ cell
+-        delta = cart[oxygen][None, :, :] - cart[left][:, None, :]
+-        _mic, distances = find_mic(
+-            delta.reshape(-1, 3),
+-            cell,
+-            pbc=trajectory.pbc,
+-        )
+-        matrix = np.asarray(distances, dtype=float).reshape(left.size, oxygen.size)
+-        nearest_shell = np.partition(
+-            matrix,
+-            kth=coordination_number - 1,
+-            axis=1,
+-        )[:, :coordination_number]
+-        values.extend(
+-            float(value)
+-            for value in nearest_shell.reshape(-1)
+-            if np.isfinite(value)
+-        )
+-    return values
+-
+-
+-def _calibrated_framework_cutoffs(
+-    trajectory,
+-    *,
+-    formation_override: float | None = None,
+-    breaking_override: float | None = None,
+-) -> tuple[dict[tuple[str, str], float], dict[tuple[str, str], float], dict[str, dict[str, float]]]:
+-    """Calibrate separate formation and breaking cutoffs for Si/Al--O."""
+-    import numpy as np
+-
+-    present = set(detect_present_species(trajectory))
+-    formation: dict[tuple[str, str], float] = {}
+-    breaking: dict[tuple[str, str], float] = {}
+-    audit: dict[str, dict[str, float]] = {}
+-    lower_bounds = {'Si': 1.90, 'Al': 1.95}
+-    formation_caps = {'Si': 2.12, 'Al': 2.18}
+-    breaking_caps = {'Si': 2.38, 'Al': 2.45}
+-
+-    for symbol in ('Si', 'Al'):
+-        if symbol not in present:
+-            continue
+-        sampled = np.asarray(
+-            _sample_framework_bond_distances(trajectory, symbol),
+-            dtype=float,
+-        )
+-        if sampled.size:
+-            q995 = float(np.quantile(sampled, 0.995))
+-            q999 = float(np.quantile(sampled, 0.999))
+-            form = float(
+-                np.clip(q995 + 0.03, lower_bounds[symbol], formation_caps[symbol])
+-            )
+-            retain = float(
+-                np.clip(
+-                    max(form + 0.18, q999 + 0.10),
+-                    form + 0.12,
+-                    breaking_caps[symbol],
+-                )
+-            )
+-        else:
+-            q995 = float('nan')
+-            q999 = float('nan')
+-            form = 2.05 if symbol == 'Si' else 2.10
+-            retain = 2.30 if symbol == 'Si' else 2.38
+-
+-        if formation_override is not None:
+-            form = float(formation_override)
+-        if breaking_override is not None:
+-            retain = float(breaking_override)
+-        if not form < retain:
+-            raise ValueError(
+-                'Framework hysteresis requires formation cutoff < breaking cutoff; '
+-                f'got {form:.6g} and {retain:.6g} A for {symbol}-O.'
+-            )
+-        formation[(symbol, 'O')] = form
+-        breaking[(symbol, 'O')] = retain
+-        audit[symbol] = {
+-            'formation_cutoff_angstrom': form,
+-            'breaking_cutoff_angstrom': retain,
+-            'sample_q995_angstrom': q995,
+-            'sample_q999_angstrom': q999,
+-            'sample_count': float(sampled.size),
+-        }
+-    return formation, breaking, audit
+-
+-
+-def framework_connectivity_definition(
+-    trajectory,
+-    *,
+-    formation_override: float | None = None,
+-    breaking_override: float | None = None,
+-) -> tuple[HystereticDistanceConnectivity, dict[str, dict[str, float]]]:
+-    """Return framework-only hysteresis for topology classification."""
+-    formation, breaking, audit = _calibrated_framework_cutoffs(
+-        trajectory,
+-        formation_override=formation_override,
+-        breaking_override=breaking_override,
+-    )
+-    return (
+-        HystereticDistanceConnectivity(
+-            formation_cutoffs=PairCutoffRegistry.from_mapping(formation),
+-            breaking_cutoffs=PairCutoffRegistry.from_mapping(breaking),
+-        ),
+-        audit,
+-    )
+-
+-
+-def atomic_connectivity_definition(
+-    trajectory,
+-    framework_definition: HystereticDistanceConnectivity,
+-) -> HystereticDistanceConnectivity:
+-    """Extend framework hysteresis with mobile-ion--oxygen contacts."""
+-    formation = {
+-        pair: float(cutoff.radius)
+-        for pair, cutoff in framework_definition.formation_cutoffs.cutoffs.items()
+-    }
+-    breaking = {
+-        pair: float(cutoff.radius)
+-        for pair, cutoff in framework_definition.breaking_cutoffs.cutoffs.items()
+-    }
+-    present = set(detect_present_species(trajectory))
+-    for symbol in MOBILE_SPECIES_ORDER:
+-        if symbol in present:
+-            formation[(symbol, 'O')] = MOBILE_OXYGEN_CUTOFFS[symbol]
+-            breaking[(symbol, 'O')] = MOBILE_OXYGEN_CUTOFFS[symbol] + 0.25
+-    return HystereticDistanceConnectivity(
+-        formation_cutoffs=PairCutoffRegistry.from_mapping(formation),
+-        breaking_cutoffs=PairCutoffRegistry.from_mapping(breaking),
+-    )
+-
+-
+-def build_density_selections(trajectory) -> tuple[AtomicDensitySelection, ...]:
+-    selections: list[AtomicDensitySelection] = []
+-    for symbol in detect_mobile_species(trajectory):
+-        selections.append(
+-            AtomicDensitySelection(species=(symbol,), label=f'{symbol} density')
+-        )
+-    for symbol in FRAMEWORK_SPECIES_ORDER:
+-        if symbol in detect_present_species(trajectory):
+-            selections.append(
+-                AtomicDensitySelection(species=(symbol,), label=f'{symbol} density')
+-            )
+-    return tuple(selections)
+-
+-
+-def trajectory_selection_label(trajectory) -> str:
+-    mobile = detect_mobile_species(trajectory)
+-    if not mobile:
+-        return 'Framework trajectories'
+-    return 'Framework and alkali trajectories'
+-
+-
+-def default_topology_cache_path(output: Path) -> Path:
+-    return output.with_name(output.stem + TOPOLOGY_CACHE_SUFFIX)
+-
+-
+-def default_output_path() -> Path:
+-    return Path('lta_density_framework_trajectories.html')
+-
+-
+-def figure_title(trajectory) -> str:
+-    mobile = detect_mobile_species(trajectory)
+-    mobile_text = ' + '.join(mobile) if mobile else 'no alkali cations'
+-    return (
+-        'LTA: detected-species densities, trajectories, '
+-        f'atomic mean net, and mean framework ({mobile_text}; '
+-        f'{trajectory.n_frames} frames)'
+-    )
+-
+-
+-def parse_arguments() -> argparse.Namespace:
+-    parser = argparse.ArgumentParser(
+-        description=(
+-            'Render an LTA trajectory with the averaged framework, occupancy-filtered '            'atomic mean net, three-shell atomic densities, and trajectories. '            'The script detects Li/Na/K automatically and includes the alkali '            'species that are present.'
+-        )
+-    )
+-    parser.add_argument(
+-        'trajectory',
+-        type=Path,
+-        help=(
+-            'Input trajectory. Supported mdstats trajectory sources are VASP '
+-            'vasprun.xml, XDATCAR, watcher-generated concatenated CONTCAR '
+-            'TRAJECTORY files, and native LAMMPS custom dumps.'
+-        ),
+-    )
+-    parser.add_argument(
+-        '--format',
+-        choices=(
+-            'auto',
+-            'vasp-xml',
+-            'vasp-xdatcar',
+-            'vasp-contcar-trajectory',
+-            'lammps-dump',
+-        ),
+-        default='auto',
+-        help=(
+-            'Trajectory format. Default: auto-detect from filename and common '
+-            'LAMMPS dump naming. Use an explicit value for ambiguous filenames.'
+-        ),
+-    )
+-    parser.add_argument(
+-        '--timestep-fs',
+-        type=float,
+-        default=None,
+-        help=(
+-            'Saved-frame spacing in fs for VASP XDATCAR or custom TRAJECTORY '
+-            'input. For backward compatibility, an auto-detected/custom '
+-            'TRAJECTORY defaults to 1.0 fs when this option is omitted.'
+-        ),
+-    )
+-    parser.add_argument(
+-        '--lammps-log',
+-        type=Path,
+-        default=None,
+-        help=(
+-            'Optional LAMMPS log file. It can provide units, timestep, '
+-            'temperature, energies, pressure, and stress for matching dump steps.'
+-        ),
+-    )
+-    parser.add_argument(
+-        '--lammps-units',
+-        choices=('metal', 'real', 'si'),
+-        default=None,
+-        help=(
+-            'LAMMPS unit style when it is not embedded in the dump or available '
+-            'from --lammps-log.'
+-        ),
+-    )
+-    parser.add_argument(
+-        '--lammps-timestep',
+-        type=float,
+-        default=None,
+-        help=(
+-            'LAMMPS integration timestep in the selected LAMMPS unit style. '
+-            'Needed only when neither dump TIME records nor --lammps-log provide time.'
+-        ),
+-    )
+-    parser.add_argument(
+-        '--lammps-type-map',
+-        default=None,
+-        help=(
+-            'Numeric LAMMPS type mapping, e.g. "1=Si,2=Al,3=O,4=Li,5=Na,6=K". '
+-            'Not needed when the dump contains an element column.'
+-        ),
+-    )
+-    parser.add_argument(
+-        '--topology',
+-        type=Path,
+-        default=None,
+-        help=(
+-            'Optional FrameworkTopology or TopologyCatalog JSON override/cache. If supplied, the '
+-            'script loads this topology instead of inferring one from the '
+-            'trajectory.'
+-        ),
+-    )
+-    parser.add_argument(
+-        '--topology-cache',
+-        type=Path,
+-        default=None,
+-        help=(
+-            'Optional output path for the inferred TopologyCatalog JSON cache. '
+-            'Default: <output stem>_framework_topology.json next to the HTML.'
+-        ),
+-    )
+-    parser.add_argument(
+-        '--no-topology-cache',
+-        action='store_true',
+-        help='Do not write the inferred framework-topology cache file.',
+-    )
+-    parser.add_argument(
+-        '--framework-formation-cutoff',
+-        type=float,
+-        default=None,
+-        help=(
+-            'Optional Si/Al--O formation-cutoff override in angstrom. '
+-            'Default: calibrate from the four-nearest-oxygen shell.'
+-        ),
+-    )
+-    parser.add_argument(
+-        '--framework-breaking-cutoff',
+-        type=float,
+-        default=None,
+-        help=(
+-            'Optional Si/Al--O breaking-cutoff override in angstrom. '
+-            'Must be larger than the formation cutoff.'
+-        ),
+-    )
+-    parser.add_argument(
+-        '--output',
+-        type=Path,
+-        default=default_output_path(),
+-        help='Self-contained output HTML file.',
+-    )
+-    parser.add_argument(
+-        '--title',
+-        type=str,
+-        default=None,
+-        help='Optional custom figure title. Default: an automatically generated LTA title.',
+-    )
+-    parser.add_argument(
+-        '--stride',
+-        type=int,
+-        default=1,
+-        help='Frame stride. The default 1 uses every trajectory frame.',
+-    )
+-    parser.add_argument(
+-        '--max-memory',
+-        default=None,
+-        help='Maximum package-owned memory, for example 12GiB. Default: 80%% of detected availability.',
+-    )
+-    parser.add_argument(
+-        '--max-threads',
+-        type=int,
+-        default=None,
+-        help='Maximum worker/native threads. Default: floor(90%% of detected CPU allocation).',
+-    )
+-    parser.add_argument(
+-        '--wall-time-target',
+-        '--max-wall-time',
+-        dest='max_wall_time',
+-        type=float,
+-        default=None,
+-        help='Advisory complete-scene wall-time target in seconds; never a hard stop. --max-wall-time is retained as a compatibility alias. Default: 1200.',
+-    )
+-    parser.add_argument(
+-        '--browser-profile',
+-        choices=('compact', 'balanced', 'quality'),
+-        default='balanced',
+-        help='Interactive mesh profile. Default: balanced (600,000 final density faces).',
+-    )
+-    parser.add_argument(
+-        '--max-browser-faces',
+-        type=int,
+-        default=None,
+-        help='Optional final browser density-face override; the generic interactive profile is used otherwise.',
+-    )
+-    parser.add_argument(
+-        '--quiet',
+-        action='store_true',
+-        help='Suppress progress messages; final result summaries are still printed.',
+-    )
+-    return parser.parse_args()
+-
+-
+-
+-def _strip_compression_suffix(name: str) -> str:
+-    lowered = name.lower()
+-    for suffix in ('.gz', '.bz2', '.xz', '.lzma'):
+-        if lowered.endswith(suffix):
+-            return name[: -len(suffix)]
+-    return name
+-
+-
+-def infer_trajectory_format(path: Path, explicit_format: str = 'auto') -> str:
+-    """Resolve one of the time-ordered trajectory readers exposed by mdstats."""
+-    if explicit_format != 'auto':
+-        return explicit_format
+-
+-    base_name = _strip_compression_suffix(path.name)
+-    upper_name = base_name.upper()
+-    lower_name = base_name.lower()
+-    suffix = Path(base_name).suffix.lower()
+-
+-    if suffix == '.xml':
+-        return 'vasp-xml'
+-    if upper_name.endswith('XDATCAR'):
+-        return 'vasp-xdatcar'
+-    if upper_name == 'TRAJECTORY' or upper_name.endswith('.TRAJECTORY'):
+-        return 'vasp-contcar-trajectory'
+-    if (
+-        suffix in {'.lammpstrj', '.dump', '.lammpsdump'}
+-        or lower_name.startswith('dump.')
+-        or lower_name == 'dump'
+-    ):
+-        return 'lammps-dump'
+-
+-    raise ValueError(
+-        f'Cannot infer trajectory format from {path!s}. Use --format with one of '
+-        'vasp-xml, vasp-xdatcar, vasp-contcar-trajectory, or lammps-dump.'
+-    )
+-
+-
+-def parse_lammps_type_map(value: str | None) -> dict[int, str] | None:
+-    if value is None:
+-        return None
+-    mapping: dict[int, str] = {}
+-    for entry in value.split(','):
+-        entry = entry.strip()
+-        if not entry:
+-            continue
+-        if '=' not in entry:
+-            raise ValueError(
+-                '--lammps-type-map entries must use TYPE=ELEMENT syntax; '
+-                f'observed {entry!r}.'
+-            )
+-        raw_type, raw_symbol = entry.split('=', 1)
+-        try:
+-            atom_type = int(raw_type.strip())
+-        except ValueError as exc:
+-            raise ValueError(
+-                f'LAMMPS atom type {raw_type!r} is not an integer.'
+-            ) from exc
+-        symbol = raw_symbol.strip()
+-        if atom_type < 1 or not symbol:
+-            raise ValueError(
+-                f'Invalid LAMMPS type mapping entry {entry!r}; expected e.g. 1=Si.'
+-            )
+-        if atom_type in mapping:
+-            raise ValueError(f'LAMMPS atom type {atom_type} is mapped more than once.')
+-        mapping[atom_type] = symbol
+-    if not mapping:
+-        raise ValueError('--lammps-type-map did not contain any mappings.')
+-    return mapping
++from mdstats import read_lammps_frames, read_vasp_frames
++from mdstats.graphics3d.cli import main
++from mdstats.graphics3d.lta_preset import infer_trajectory_format, parse_lammps_type_map
+ 
+ 
+-def read_input_trajectory(args: argparse.Namespace):
+-    """Read the example input through the matching public mdstats reader."""
++def read_input_trajectory(args):
++    """Historical argparse-namespace wrapper retained for compatibility."""
+     source_format = infer_trajectory_format(args.trajectory, args.format)
+-    if source_format == 'lammps-dump':
++    if source_format == "lammps-dump":
+         trajectory = read_lammps_frames(
+             str(args.trajectory),
+             log_file=None if args.lammps_log is None else str(args.lammps_log),
+@@ -576,9 +32,8 @@
+             stride=args.stride,
+         )
+         return trajectory, source_format
+-
+     timestep_fs = args.timestep_fs
+-    if source_format == 'vasp-contcar-trajectory' and timestep_fs is None:
++    if source_format == "vasp-contcar-trajectory" and timestep_fs is None:
+         timestep_fs = 1.0
+     trajectory = read_vasp_frames(
+         str(args.trajectory),
+@@ -588,249 +43,19 @@
+     )
+     return trajectory, source_format
+ 
+-def resolve_framework_topology(
+-    trajectory,
+-    args: argparse.Namespace,
+-    progress: ProgressEmitter,
+-    framework_definition: HystereticDistanceConnectivity,
+-    hysteresis_audit: dict[str, dict[str, float]],
+-):
+-    if args.topology is not None:
+-        progress.update("framework_topology", f"loading override from {args.topology}")
+-        payload = json.loads(args.topology.read_text())
+-        if 'frame_topology_ids' in payload and 'topologies' in payload:
+-            value = TopologyCatalog.from_dict(payload)
+-            source = 'user_supplied_catalog'
+-        else:
+-            value = FrameworkTopology.from_dict(payload)
+-            source = 'user_supplied_topology'
+-        return value, None, {'source': source, 'path': str(args.topology)}
+-
+-    progress.started("framework_topology", "computing hysteretic atomic connectivity across selected frames")
+-    connectivity_started = time.perf_counter()
+-    definition = framework_definition
+-    connectivity = compute_atomic_connectivity(trajectory, definition)
+-    progress.update(
+-        "framework_topology",
+-        'hysteretic atomic connectivity complete; '
+-        f'{connectivity.n_states} unique states in {time.perf_counter() - connectivity_started:.1f} s',
+-    )
+-    progress.update("framework_topology", "projecting and classifying framework topology states")
+-    catalog_started = time.perf_counter()
+-    catalog = build_topology_catalog(trajectory, connectivity, framework_mapping())
+-    progress.completed(
+-        "framework_topology",
+-        'catalog complete; '
+-        f'consistency={catalog.consistency.value}, topologies={len(catalog.topologies)}, '
+-        f'elapsed={time.perf_counter() - catalog_started:.1f} s',
+-    )
+-    cache_written = None
+-    if not args.no_topology_cache:
+-        cache_path = args.topology_cache or default_topology_cache_path(args.output)
+-        cache_path.parent.mkdir(parents=True, exist_ok=True)
+-        cache_path.write_text(json.dumps(catalog.to_dict(), indent=2) + '\n')
+-        cache_written = str(cache_path)
+-        progress.update("framework_topology", f"wrote full topology-catalog cache to {cache_path}")
+-    return catalog, connectivity, {
+-        'source': 'inferred_hysteretic_catalog',
+-        'connectivity_state_count': int(connectivity.n_states),
+-        'catalog_consistency': catalog.consistency.value,
+-        'n_topologies': len(catalog.topologies),
+-        'cache_written': cache_written,
+-        'connectivity_definition': definition.to_dict(),
+-        'framework_hysteresis_calibration': hysteresis_audit,
+-    }
+-
+ 
+-def main() -> None:
+-    args = parse_arguments()
+-    progress_port = TextProgressPort(
+-        label="LTA plot",
+-        stream=sys.stdout,
+-        enabled=not args.quiet,
+-        show_source=False,
+-    )
+-    progress = ProgressEmitter(
+-        progress_port,
+-        source="examples.lta_density",
+-    )
+-    if SOURCE_TREE_ROOT is None:
+-        progress.update("import_mode", "using installed mdstats package")
+-    else:
+-        progress.update("import_mode", f"using source checkout at {SOURCE_TREE_ROOT}")
+-    progress.started(
+-        "trajectory_input",
+-        f"reading {args.trajectory} with format={args.format}, stride={args.stride}",
+-    )
+-    parse_started = time.perf_counter()
+-    trajectory, source_format = read_input_trajectory(args)
+-    progress.completed(
+-        "trajectory_input",
+-        f'loaded {trajectory.n_frames} frames and {trajectory.n_atoms} atoms '
+-        f'as {source_format} in {time.perf_counter() - parse_started:.1f} s'
+-    )
+-    present_species = detect_present_species(trajectory)
+-    mobile_species = detect_mobile_species(trajectory)
+-    density_selections = build_density_selections(trajectory)
+-    progress.update("species_detection", 
+-        f'present={present_species}, mobile={mobile_species}, '
+-        f'density_fields={len(density_selections)}'
+-    )
+-    framework_definition, hysteresis_audit = framework_connectivity_definition(
+-        trajectory,
+-        formation_override=args.framework_formation_cutoff,
+-        breaking_override=args.framework_breaking_cutoff,
+-    )
+-    cutoff_summary = ', '.join(
+-        f"{symbol}-O {values['formation_cutoff_angstrom']:.3f}/{values['breaking_cutoff_angstrom']:.3f} A"
+-        for symbol, values in hysteresis_audit.items()
+-    )
+-    progress.update(
+-        "framework_topology",
+-        "hysteresis formation/breaking cutoffs: " + cutoff_summary,
+-    )
+-    topology, framework_connectivity, topology_metadata = resolve_framework_topology(
+-        trajectory,
+-        args,
+-        progress,
+-        framework_definition,
+-        hysteresis_audit,
+-    )
+-    full_definition = atomic_connectivity_definition(
+-        trajectory,
+-        framework_definition,
+-    )
+-    if full_definition.to_dict() == framework_definition.to_dict() and framework_connectivity is not None:
+-        connectivity = framework_connectivity
+-    else:
+-        progress.started(
+-            "atomic_mean_graph",
+-            "computing hysteretic framework/mobile connectivity for the mean graph",
+-        )
+-        connectivity = compute_atomic_connectivity(trajectory, full_definition)
+-        progress.completed(
+-            "atomic_mean_graph",
+-            f"connectivity complete; {connectivity.n_states} unique states",
+-        )
+-
+-    resources = FrameworkDynamicsResources(
+-        max_memory_bytes=args.max_memory,
+-        max_threads=args.max_threads,
+-        max_wall_time_seconds=args.max_wall_time,
+-    )
+-    progress.update("resource_policy", 
+-        'resolved '
+-        f'memory={resources.max_memory_bytes / 1024**3:.2f} GiB, '
+-        f'threads={resources.max_threads}, '
+-        f'wall_time_target={resources.max_wall_time_seconds:.0f} s (advisory)'
+-    )
+-    progress.started("scene_preparation", "starting framework registration, trajectories, mean graph, and density fields")
+-    scene = prepare_framework_dynamics_scene(
+-        trajectory,
+-        topology,
+-        trajectory_selection=TrajectoryAtomSelection(
+-            species=present_species,
+-            label=trajectory_selection_label(trajectory),
+-        ),
+-        atomic_connectivity=connectivity,
+-        atomic_mean_graph_options=AtomicMeanGraphOptions(
+-            mode='occupancy', occupancy_threshold=0.95
+-        ),
+-        atomic_density_selections=density_selections,
+-        atomic_density_options=AtomicDensityOptions(
+-            grid_interval=0.20,
+-            gaussian_to_grid_ratio=2.0,
+-            adaptive_smearing=True,
+-            max_smearing_to_sample_sd_ratio=0.50,
+-            sample_sd_quantile=0.10,
+-        ),
+-        options=FrameworkDynamicsOptions(
+-            registration_mode=SpatialRegistrationMode.FRAMEWORK_REGISTERED,
+-            trajectory_display_mode='folded',
+-            display_cell='reference',
+-        ),
+-        resources=resources,
+-        progress=progress_port,
+-    )
+-
+-    progress.started("rendering", "starting Plotly assembly and density-mesh extraction")
+-    result = plot_framework_dynamics_3d(
+-        scene,
+-        periodic=CanonicalCellDisplay(),
+-        graph_options=Graph3DRenderOptions(
+-            title=args.title or figure_title(trajectory),
+-            cell_mode='reference',
+-            edge_color_mode='constant',
+-            camera_projection='orthographic',
+-            equal_aspect=True,
+-        ),
+-        atomic_mean_graph_options=AtomicMeanGraph3DRenderOptions(
+-            node_size=4.0,
+-            edge_width=1.6,
+-            edge_opacity=0.45,
+-        ),
+-        trajectory_options=Trajectory3DRenderOptions(
+-            line_width=1.6,
+-            opacity=0.28,
+-            # show_start_end=True and endpoint legend labels are defaults.
+-            show_legend=True,
+-        ),
+-        mesh_profile=(
+-            BrowserMeshProfile.coerce(args.browser_profile)
+-            if args.max_browser_faces is None
+-            else BrowserMeshProfile.custom(
+-                BrowserMeshBudget(max_final_density_faces=args.max_browser_faces)
+-            )
+-        ),
+-        density_options=AtomicDensity3DRenderOptions(
+-            mass_fractions=(0.50, 0.80, 0.95),
+-            inner_opacity=0.22,
+-            outer_opacity=0.04,
+-            render_mode='mesh',
+-            show_samples=False,
+-            show_legend=True,
+-        ),
+-        progress=progress_port,
+-    )
+-    progress.completed("rendering", "Plotly scene assembly complete")
+-    result.figure.update_layout(
+-        legend={'itemsizing': 'constant', 'groupclick': 'togglegroup'},
+-        margin={'l': 0, 'r': 0, 't': 55, 'b': 0},
+-    )
+-    args.output.parent.mkdir(parents=True, exist_ok=True)
+-    progress.started("output", f"serializing self-contained HTML to {args.output}")
+-    html_started = time.perf_counter()
+-    result.write_html(args.output, include_plotlyjs=True)
+-    output_size_mib = args.output.stat().st_size / 1024**2
+-    progress.completed("output", 
+-        f'wrote {output_size_mib:.1f} MiB HTML in '
+-        f'{time.perf_counter() - html_started:.1f} s'
+-    )
+-    progress.completed("workflow", "complete")
+-    print(args.output)
+-    print('present_species=' + repr(present_species))
+-    print('mobile_species=' + repr(mobile_species))
+-    print('topology_resolution=' + repr(topology_metadata))
+-    print('runtime_resource_budget=' + repr(scene.resources.runtime_budget.to_json_dict()))
+-    print(
+-        f'frames={trajectory.n_frames} atoms={trajectory.n_atoms} '
+-        f'trajectory_traces={len(set(result.trajectory_trace_indices.values()))} '
+-        f'endpoint_traces={len(result.endpoint_trace_indices)}'
+-    )
+-    print(
+-        'endpoint_legend_entries='
+-        + repr([result.figure.data[i].name for i in result.endpoint_trace_indices])
+-    )
+-    for field in scene.atomic_density_fields:
+-        print(
+-            field.label,
+-            'backend=', field.storage_backend,
+-            'grid=', field.grid_shape,
+-            'sigma=', field.gaussian_bandwidth,
+-            'sample_sd=', field.metadata.get('sample_sd_reference'),
+-            'budget_limited=', field.metadata.get('adaptive_smearing_budget_limited'),
+-        )
++def _compat_argv(argv: list[str]) -> list[str]:
++    configured = "--config" in argv or any(value.startswith("--config=") for value in argv)
++    explicit_layers = "--layer" in argv or any(value.startswith("--layer=") for value in argv)
++    explicit_preset = any(value == "--preset" or value.startswith("--preset=") for value in argv)
++    result = list(argv)
++    if not (configured or explicit_layers or explicit_preset):
++        result.extend(["--preset", "lta-mixed-alkali-density"])
++    explicit_output = "--output" in result or any(value.startswith("--output=") for value in result)
++    if not configured and not explicit_output:
++        result.extend(["--output", "lta_density_framework_trajectories.html"])
++    return result
+ 
+ 
+-if __name__ == '__main__':
+-    main()
++if __name__ == "__main__":
++    raise SystemExit(main(_compat_argv(sys.argv[1:])))
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.147a0_to_0.20.148a0.patch' mdstats-0.20.147a0-complete-source-package/mdstats/__init__.py mdstats-0.20.148a0-complete-source-package/mdstats/__init__.py
+--- mdstats-0.20.147a0-complete-source-package/mdstats/__init__.py	2026-08-11 08:36:59.000000000 +0000
++++ mdstats-0.20.148a0-complete-source-package/mdstats/__init__.py	2026-08-11 09:26:57.417644814 +0000
+@@ -5133,7 +5133,7 @@
+     "build_mlcv_lifecycle_authority", "mlcv_replay_semantics_stale_boundary", "protocol_freeze_authority_from_mlcv",
+ ]
+ 
+-# GFX3D-2 independent composable 3-D scene layers (0.20.147a0).
++# GFX3D-3 universal configurable 3-D graphics CLI (0.20.148a0).
+ from .graphics3d import (
+     GRAPHICS_DEPENDENCY_KEY_SCHEMA,
+     GRAPHICS_LAYER_REQUEST_SCHEMA,
+@@ -5187,6 +5187,15 @@
+     AtomicDensityLayer,
+     prepare_graphics3d_scene,
+     render_graphics3d_plotly,
++    BUILTIN_PRESETS,
++    GFX3D_CONFIG_SCHEMA,
++    LTA_MIXED_ALKALI_PRESET,
++    CompiledGraphics3DConfig,
++    compile_graphics3d_config,
++    layer_from_mapping,
++    load_graphics3d_toml,
++    parse_layer_shorthand,
++    selection_from_mapping,
+ )
+ 
+ __all__ += [
+@@ -5242,4 +5251,13 @@
+     "AtomicDensityLayer",
+     "prepare_graphics3d_scene",
+     "render_graphics3d_plotly",
++    "BUILTIN_PRESETS",
++    "GFX3D_CONFIG_SCHEMA",
++    "LTA_MIXED_ALKALI_PRESET",
++    "CompiledGraphics3DConfig",
++    "compile_graphics3d_config",
++    "layer_from_mapping",
++    "load_graphics3d_toml",
++    "parse_layer_shorthand",
++    "selection_from_mapping",
+ ]
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.147a0_to_0.20.148a0.patch' mdstats-0.20.147a0-complete-source-package/mdstats/_version.py mdstats-0.20.148a0-complete-source-package/mdstats/_version.py
+--- mdstats-0.20.147a0-complete-source-package/mdstats/_version.py	2026-08-11 08:36:59.000000000 +0000
++++ mdstats-0.20.148a0-complete-source-package/mdstats/_version.py	2026-08-11 09:26:32.393295969 +0000
+@@ -1,3 +1,3 @@
+ """Package version."""
+ 
+-__version__ = "0.20.147a0"
++__version__ = "0.20.148a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.147a0_to_0.20.148a0.patch' mdstats-0.20.147a0-complete-source-package/mdstats/graphics3d/__init__.py mdstats-0.20.148a0-complete-source-package/mdstats/graphics3d/__init__.py
+--- mdstats-0.20.147a0-complete-source-package/mdstats/graphics3d/__init__.py	2026-08-11 08:32:14.000000000 +0000
++++ mdstats-0.20.148a0-complete-source-package/mdstats/graphics3d/__init__.py	2026-08-11 09:26:41.415110200 +0000
+@@ -64,3 +64,15 @@
+ from .scene import build_graphics_scene_manifest, plan_graphics_scene_dependencies
+ 
+ __all__ = [name for name in globals() if not name.startswith("_")]
++
++from .config import (
++    BUILTIN_PRESETS,
++    GFX3D_CONFIG_SCHEMA,
++    LTA_MIXED_ALKALI_PRESET,
++    CompiledGraphics3DConfig,
++    compile_graphics3d_config,
++    layer_from_mapping,
++    load_graphics3d_toml,
++    parse_layer_shorthand,
++    selection_from_mapping,
++)
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.147a0_to_0.20.148a0.patch' mdstats-0.20.147a0-complete-source-package/mdstats/graphics3d/cli.py mdstats-0.20.148a0-complete-source-package/mdstats/graphics3d/cli.py
+--- mdstats-0.20.147a0-complete-source-package/mdstats/graphics3d/cli.py	1970-01-01 00:00:00.000000000 +0000
++++ mdstats-0.20.148a0-complete-source-package/mdstats/graphics3d/cli.py	2026-08-11 09:33:28.926843593 +0000
+@@ -0,0 +1,383 @@
++"""Universal configurable 3-D graphics command line interface (GFX3D-3)."""
++from __future__ import annotations
++
++import argparse
++from dataclasses import replace
++import hashlib
++import json
++from pathlib import Path
++import sys
++import time
++from typing import Any, Mapping, Sequence
++
++from mdstats._version import __version__
++from mdstats.exceptions import FrameCollectionError
++from mdstats.plotting.graph_errors import GraphVisualizationError
++
++from .config import (
++    BUILTIN_PRESETS,
++    LTA_MIXED_ALKALI_PRESET,
++    compile_graphics3d_config,
++    load_graphics3d_toml,
++)
++from .context import GraphicsSceneContext
++from .errors import Graphics3DError, Graphics3DValidationError
++from .lta_preset import detect_present_species, read_input_trajectory, prepare_legacy_source_scene
++from .manifest import GraphicsSceneManifest
++from .plotly_renderer import render_graphics3d_plotly
++from .prepare import prepare_graphics3d_scene
++from .scene import build_graphics_scene_manifest
++
++GFX3D_CLI_SCHEMA = "mdstats.graphics3d.cli.v1"
++DEFAULT_OUTPUT = Path("graphics3d.html")
++
++
++def _sha256(path: Path) -> str:
++    digest = hashlib.sha256()
++    with path.open("rb") as handle:
++        for chunk in iter(lambda: handle.read(8 * 1024 * 1024), b""):
++            digest.update(chunk)
++    return digest.hexdigest()
++
++
++def _parser() -> argparse.ArgumentParser:
++    parser = argparse.ArgumentParser(
++        prog="mdstats-3d",
++        description=(
++            "Compose configurable mdstats 3-D scientific scenes from independent "
++            "framework, atomic-connectivity, trajectory, and density layers."
++        ),
++    )
++    parser.add_argument("trajectory", type=Path, help="Input trajectory file.")
++    parser.add_argument("--config", type=Path, help="Declarative GFX3D TOML scene configuration.")
++    parser.add_argument("--preset", choices=BUILTIN_PRESETS, help="Built-in scene preset.")
++    parser.add_argument(
++        "--layer",
++        action="append",
++        default=[],
++        metavar="TYPE[:SELECTOR][@NAME]",
++        help=(
++            "Declare a layer. Repeating --layer replaces the configured/preset layer list. "
++            "Examples: framework, trajectory:Na, connectivity:Na-O, density:Na@Na-density."
++        ),
++    )
++    parser.add_argument(
++        "--format",
++        choices=("auto", "vasp-xml", "vasp-xdatcar", "vasp-contcar-trajectory", "lammps-dump"),
++        default=None,
++        help="Input trajectory format (default: auto).",
++    )
++    parser.add_argument("--stride", type=int, default=None, help="Read every Nth frame.")
++    parser.add_argument("--timestep-fs", type=float, default=None)
++    parser.add_argument("--lammps-log", type=Path, default=None)
++    parser.add_argument("--lammps-units", choices=("metal", "real", "si"), default=None)
++    parser.add_argument("--lammps-timestep", type=float, default=None)
++    parser.add_argument(
++        "--lammps-type-map",
++        default=None,
++        help='Numeric type mapping such as "1=Si,2=Al,3=O,4=Na".',
++    )
++    parser.add_argument("--topology", type=Path, default=None, help="FrameworkTopology/TopologyCatalog JSON override.")
++    parser.add_argument("--topology-cache", type=Path, default=None)
++    parser.add_argument("--no-topology-cache", action="store_true")
++    parser.add_argument("--framework-formation-cutoff", type=float, default=None)
++    parser.add_argument("--framework-breaking-cutoff", type=float, default=None)
++    parser.add_argument("--title", default=None, help="Figure title override.")
++    parser.add_argument("--projection", choices=("orthographic", "perspective"), default=None)
++    parser.add_argument("--max-memory", default=None, help="Package-owned memory ceiling, e.g. 12GiB.")
++    parser.add_argument("--max-threads", type=int, default=None)
++    parser.add_argument("--wall-time-target", "--max-wall-time", dest="wall_time_target", type=float, default=None, help="Advisory scene wall-time target; --max-wall-time is a compatibility alias.")
++    parser.add_argument("--output", type=Path, default=None, help="Self-contained Plotly HTML output.")
++    parser.add_argument("--manifest", type=Path, default=None, help="Canonical scene-manifest JSON output.")
++    parser.add_argument(
++        "--manifest-only",
++        action="store_true",
++        help="Resolve source/layers and write/print the canonical manifest without scientific scene preparation.",
++    )
++    parser.add_argument("--print-manifest", action="store_true", help="Print canonical manifest JSON to stdout.")
++    parser.add_argument("--max-browser-faces", type=int, default=None, help="Override final browser density-face budget.")
++    parser.add_argument(
++        "--browser-profile",
++        choices=("compact", "balanced", "quality"),
++        default=None,
++        help="Interactive density mesh profile.",
++    )
++    parser.add_argument("--force", action="store_true", help="Allow overwriting output/manifest files.")
++    parser.add_argument("--quiet", action="store_true", help="Suppress stage progress messages.")
++    parser.add_argument("--version", action="version", version=f"mdstats-3d {__version__}")
++    return parser
++
++
++def parse_arguments(argv: Sequence[str] | None = None) -> argparse.Namespace:
++    return _parser().parse_args(argv)
++
++
++def _progress(enabled: bool, stage: str, message: str) -> None:
++    if enabled:
++        print(f"[GFX3D {stage}] {message}", file=sys.stderr, flush=True)
++
++
++def _resolve_config_relative(value: Any, config_dir: Path | None) -> Any:
++    if value is None or config_dir is None:
++        return value
++    path = Path(value).expanduser()
++    return path if path.is_absolute() else (config_dir / path).resolve()
++
++
++def _input_overrides(args: argparse.Namespace) -> dict[str, Any]:
++    result = {
++        "format": args.format,
++        "stride": args.stride,
++        "timestep_fs": args.timestep_fs,
++        "lammps_log": args.lammps_log,
++        "lammps_units": args.lammps_units,
++        "lammps_timestep": args.lammps_timestep,
++        "lammps_type_map": args.lammps_type_map,
++        "topology": args.topology,
++        "topology_cache": args.topology_cache,
++        "framework_formation_cutoff": args.framework_formation_cutoff,
++        "framework_breaking_cutoff": args.framework_breaking_cutoff,
++    }
++    if args.no_topology_cache:
++        result["no_topology_cache"] = True
++    return result
++
++
++def _config_output_path(value: Any, config_dir: Path | None) -> Path | None:
++    if value is None:
++        return None
++    return Path(_resolve_config_relative(value, config_dir))
++
++
++def _default_manifest_path(output: Path) -> Path:
++    return output.with_name(output.stem + ".scene.json")
++
++
++def _ensure_writable(path: Path, *, force: bool) -> None:
++    if path.exists() and not force:
++        raise Graphics3DValidationError(
++            f"Refusing to overwrite existing {path}. Use --force to replace it."
++        )
++    path.parent.mkdir(parents=True, exist_ok=True)
++
++
++def _manifest_for_source(
++    request,
++    *,
++    trajectory_path: Path,
++    source_sha256: str,
++    source_format: str,
++    present_species: Sequence[str],
++    trajectory,
++    preset: str | None,
++) -> GraphicsSceneManifest:
++    mapping = {
++        str(index): int(z)
++        for index, z in enumerate(trajectory.atomic_numbers)
++    }
++    return build_graphics_scene_manifest(
++        request,
++        context=GraphicsSceneContext(source_identity=source_sha256),
++        source_descriptors=(
++            {
++                "path": str(trajectory_path.resolve()),
++                "sha256": source_sha256,
++                "size_bytes": trajectory_path.stat().st_size,
++            },
++        ),
++        resolved_input_format=source_format,
++        atom_species_mapping={
++            "present_species": tuple(present_species),
++            "atomic_number_by_atom_index": mapping,
++        },
++        frame_selection={
++            "n_frames": int(trajectory.n_frames),
++            "n_atoms": int(trajectory.n_atoms),
++            "frame_ids": tuple(int(v) for v in trajectory.frame_ids[: min(32, trajectory.n_frames)]),
++            "frame_id_preview_truncated": bool(trajectory.n_frames > 32),
++        },
++        coordinate_policy={"registration": request.scene_options.get("registration", "framework_registered")},
++        display_cell_policy={"display_cell": request.scene_options.get("display_cell", "reference")},
++        expanded_presets=() if preset is None else (preset,),
++    )
++
++
++def _write_manifest(manifest: GraphicsSceneManifest, path: Path, *, force: bool) -> None:
++    _ensure_writable(path, force=force)
++    path.write_text(manifest.to_json(indent=2) + "\n")
++
++
++def _render_output(scene, request, *, browser_profile: str, max_browser_faces: int | None = None):
++    from mdstats.plotting import BrowserMeshBudget, BrowserMeshProfile
++    mesh_profile = (
++        BrowserMeshProfile.coerce(browser_profile)
++        if max_browser_faces is None
++        else BrowserMeshProfile.custom(BrowserMeshBudget(max_final_density_faces=int(max_browser_faces)))
++    )
++    result = render_graphics3d_plotly(scene, mesh_profile=mesh_profile)
++    title = request.scene_options.get("title")
++    if title:
++        result.artifact.update_layout(title=str(title))
++    projection = request.view.get("projection")
++    if projection:
++        result.artifact.update_scenes(camera_projection_type=str(projection))
++    result.artifact.update_layout(
++        legend={"itemsizing": "constant", "groupclick": "togglegroup"},
++        margin={"l": 0, "r": 0, "t": 55, "b": 0},
++    )
++    return result
++
++
++def main(argv: Sequence[str] | None = None) -> int:
++    args = parse_arguments(argv)
++    enabled_progress = not args.quiet
++    try:
++        config_payload: dict[str, Any] = {}
++        config_dir: Path | None = None
++        if args.config is not None:
++            config_payload = load_graphics3d_toml(args.config)
++            config_dir = Path(config_payload["_config_path"]).parent
++        # Resolve TOML path-valued input/output fields relative to the TOML file.
++        input_cfg = dict(config_payload.get("input", {}))
++        for key in ("lammps_log", "topology", "topology_cache"):
++            if key in input_cfg:
++                input_cfg[key] = _resolve_config_relative(input_cfg[key], config_dir)
++        config_payload["input"] = input_cfg
++        output_cfg = dict(config_payload.get("output", {}))
++        for key in ("path", "manifest"):
++            if key in output_cfg:
++                output_cfg[key] = _resolve_config_relative(output_cfg[key], config_dir)
++        config_payload["output"] = output_cfg
++
++        _progress(enabled_progress, "INPUT", f"reading {args.trajectory}")
++        configured_preset = dict(config_payload.get("scene", {})).get("preset")
++        active_preset = args.preset or configured_preset
++        # Presets are source-aware, so read the trajectory before final compilation.
++        preliminary_input = dict(config_payload.get("input", {}))
++        preliminary_input.update({k: v for k, v in _input_overrides(args).items() if v is not None})
++        preliminary_input.setdefault("format", "auto")
++        preliminary_input.setdefault("stride", 1)
++        started = time.perf_counter()
++        trajectory, source_format = read_input_trajectory(args.trajectory, preliminary_input)
++        present_species = detect_present_species(trajectory)
++        _progress(
++            enabled_progress,
++            "INPUT",
++            f"loaded {trajectory.n_frames} frames x {trajectory.n_atoms} atoms as {source_format} "
++            f"in {time.perf_counter() - started:.2f}s; species={present_species}",
++        )
++
++        configured_title = dict(config_payload.get("scene", {})).get("title")
++        automatic_title = None
++        if active_preset == LTA_MIXED_ALKALI_PRESET and args.title is None and configured_title is None:
++            mobile = tuple(symbol for symbol in ("Li", "Na", "K") if symbol in set(present_species))
++            mobile_text = " + ".join(mobile) if mobile else "no alkali cations"
++            automatic_title = (
++                "LTA: detected-species densities, trajectories, atomic mean net, and mean framework "
++                f"({mobile_text}; {trajectory.n_frames} frames)"
++            )
++        cli_scene = {"title": args.title or automatic_title, "projection": args.projection}
++        cli_resources = {
++            "max_memory": args.max_memory,
++            "max_threads": args.max_threads,
++            "wall_time_target": args.wall_time_target,
++        }
++        cli_output = {
++            "path": None if args.output is None else str(args.output),
++            "manifest": None if args.manifest is None else str(args.manifest),
++            "browser_profile": args.browser_profile,
++        "max_browser_faces": args.max_browser_faces,
++        }
++        compiled = compile_graphics3d_config(
++            config_payload,
++            preset=args.preset,
++            cli_layers=args.layer,
++            present_species=present_species,
++            cli_scene=cli_scene,
++            cli_resources=cli_resources,
++            cli_output=cli_output,
++            cli_input=_input_overrides(args),
++        )
++        request = compiled.request
++        input_options = dict(compiled.input_options)
++        input_options.setdefault("format", source_format)
++        input_options.setdefault("stride", int(preliminary_input.get("stride", 1)))
++
++        output_value = request.output.get("path")
++        output_path = Path(output_value) if output_value else DEFAULT_OUTPUT
++        manifest_value = request.output.get("manifest")
++        manifest_path = Path(manifest_value) if manifest_value else _default_manifest_path(output_path)
++        browser_profile = str(request.output.get("browser_profile") or "balanced")
++        max_browser_faces = request.output.get("max_browser_faces")
++
++        source_sha = _sha256(args.trajectory)
++        manifest = _manifest_for_source(
++            request,
++            trajectory_path=args.trajectory,
++            source_sha256=source_sha,
++            source_format=source_format,
++            present_species=present_species,
++            trajectory=trajectory,
++            preset=compiled.preset,
++        )
++        if args.print_manifest:
++            print(manifest.to_json(indent=2))
++        if args.manifest_only:
++            _write_manifest(manifest, manifest_path, force=args.force)
++            _progress(enabled_progress, "MANIFEST", f"wrote {manifest_path}")
++            if not args.print_manifest:
++                print(manifest_path)
++            return 0
++
++        _ensure_writable(output_path, force=args.force)
++        _ensure_writable(manifest_path, force=args.force)
++        _progress(enabled_progress, "PREPARE", f"preparing {len(request.enabled_layers)} enabled layers")
++        prepared_source, topology_metadata = prepare_legacy_source_scene(
++            trajectory,
++            request,
++            input_options=input_options,
++            output_path=output_path,
++            progress=None,
++        )
++        # Preserve an explicit source atom map so density-only scenes can resolve
++        # scientific species without preparing a trajectory/connectivity layer.
++        prepared_source = replace(
++            prepared_source,
++            metadata={
++                **dict(prepared_source.metadata),
++                "gfx3d_atomic_number_by_atom": {
++                    str(index): int(z) for index, z in enumerate(trajectory.atomic_numbers)
++                },
++                "gfx3d_cli_schema": GFX3D_CLI_SCHEMA,
++                "gfx3d_topology_resolution": topology_metadata,
++            },
++        )
++        context = GraphicsSceneContext(
++            source=prepared_source,
++            source_identity=source_sha,
++            resources=prepared_source.resources,
++            metadata={"gfx3d_cli_schema": GFX3D_CLI_SCHEMA},
++        )
++        prepared = prepare_graphics3d_scene(request, context=context)
++        prepared = replace(prepared, manifest=manifest)
++        _progress(enabled_progress, "RENDER", f"rendering {len(prepared.layers)} independent layers")
++        rendered = _render_output(
++            prepared, request, browser_profile=browser_profile,
++            max_browser_faces=None if max_browser_faces is None else int(max_browser_faces),
++        )
++        rendered.artifact.write_html(output_path, include_plotlyjs=True)
++        _write_manifest(manifest, manifest_path, force=True)
++        _progress(
++            enabled_progress,
++            "DONE",
++            f"wrote {output_path} ({output_path.stat().st_size / 1024**2:.1f} MiB) and {manifest_path}",
++        )
++        print(output_path)
++        return 0
++    except (Graphics3DError, FrameCollectionError, GraphVisualizationError, ValueError, OSError, json.JSONDecodeError) as error:
++        print(f"mdstats-3d: {error}", file=sys.stderr)
++        return 2
++
++
++if __name__ == "__main__":  # pragma: no cover
++    raise SystemExit(main())
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.147a0_to_0.20.148a0.patch' mdstats-0.20.147a0-complete-source-package/mdstats/graphics3d/config.py mdstats-0.20.148a0-complete-source-package/mdstats/graphics3d/config.py
+--- mdstats-0.20.147a0-complete-source-package/mdstats/graphics3d/config.py	1970-01-01 00:00:00.000000000 +0000
++++ mdstats-0.20.148a0-complete-source-package/mdstats/graphics3d/config.py	2026-08-11 09:33:28.280905874 +0000
+@@ -0,0 +1,351 @@
++"""Declarative configuration compilation for the universal GFX3D CLI."""
++from __future__ import annotations
++
++from collections.abc import Mapping, Sequence
++from dataclasses import dataclass, field
++from pathlib import Path
++from types import MappingProxyType
++from typing import Any
++
++from .contracts import GraphicsLayer3DRequest, GraphicsScene3DRequest, GraphicsSelection
++from .errors import Graphics3DValidationError
++
++GFX3D_CONFIG_SCHEMA = "mdstats.graphics3d.cli-config.v1"
++LTA_MIXED_ALKALI_PRESET = "lta-mixed-alkali-density"
++BUILTIN_PRESETS = (LTA_MIXED_ALKALI_PRESET,)
++_ALLOWED_TOP_LEVEL = frozenset({"scene", "input", "resources", "output", "layer"})
++_ALLOWED_SCENE = frozenset({
++    "preset", "title", "registration", "trajectory_display_mode", "display_cell",
++    "connectivity_mode", "occupancy_threshold", "density_grid_interval",
++    "density_gaussian_to_grid_ratio", "density_adaptive_smearing",
++    "density_max_smearing_to_sample_sd_ratio", "density_sample_sd_quantile",
++    "projection", "camera", "periodic_images",
++})
++_ALLOWED_INPUT = frozenset({
++    "format", "stride", "timestep_fs", "lammps_log", "lammps_units",
++    "lammps_timestep", "lammps_type_map", "topology", "topology_cache",
++    "no_topology_cache", "framework_formation_cutoff", "framework_breaking_cutoff",
++})
++_ALLOWED_RESOURCES = frozenset({"max_memory", "max_threads", "wall_time_target"})
++_ALLOWED_OUTPUT = frozenset({"path", "manifest", "browser_profile", "max_browser_faces"})
++_ALLOWED_LAYER = frozenset({
++    "type", "name", "enabled", "visible", "initially_visible",
++    "selection", "analysis", "render", "metadata",
++})
++_ALLOWED_SELECTION = frozenset(GraphicsSelection.__dataclass_fields__)
++
++
++def _load_tomllib():
++    try:
++        import tomllib  # type: ignore
++    except ImportError:  # pragma: no cover - Python 3.10 only
++        try:
++            import tomli as tomllib  # type: ignore
++        except ImportError as error:  # pragma: no cover
++            raise Graphics3DValidationError(
++                "Python 3.10 requires the 'tomli' package to read GFX3D TOML configuration."
++            ) from error
++    return tomllib
++
++
++def load_graphics3d_toml(path: str | Path) -> dict[str, Any]:
++    """Load one strict GFX3D TOML file."""
++    source = Path(path).expanduser().resolve()
++    try:
++        with source.open("rb") as handle:
++            payload = _load_tomllib().load(handle)
++    except OSError as error:
++        raise Graphics3DValidationError(f"Could not read GFX3D config {source}: {error}") from error
++    if not isinstance(payload, dict):
++        raise Graphics3DValidationError("GFX3D TOML root must be a table.")
++    unknown = set(payload) - _ALLOWED_TOP_LEVEL
++    if unknown:
++        raise Graphics3DValidationError(
++            "Unknown GFX3D TOML top-level tables/keys: " + ", ".join(sorted(unknown))
++        )
++    for table_name, allowed in (("scene", _ALLOWED_SCENE), ("input", _ALLOWED_INPUT), ("resources", _ALLOWED_RESOURCES), ("output", _ALLOWED_OUTPUT)):
++        table = payload.get(table_name, {})
++        if not isinstance(table, dict):
++            raise Graphics3DValidationError(f"GFX3D TOML [{table_name}] must be a table.")
++        unknown_table = set(table) - allowed
++        if unknown_table:
++            raise Graphics3DValidationError(
++                f"Unknown keys in GFX3D [{table_name}]: " + ", ".join(sorted(unknown_table))
++            )
++    layers = payload.get("layer", [])
++    if not isinstance(layers, list):
++        raise Graphics3DValidationError("GFX3D TOML [[layer]] entries must form an array of tables.")
++    for position, layer in enumerate(layers):
++        if not isinstance(layer, dict):
++            raise Graphics3DValidationError(f"GFX3D TOML layer #{position + 1} must be a table.")
++        unknown_layer = set(layer) - _ALLOWED_LAYER
++        if unknown_layer:
++            raise Graphics3DValidationError(
++                f"Unknown keys in GFX3D layer #{position + 1}: " + ", ".join(sorted(unknown_layer))
++            )
++        selection = layer.get("selection", {})
++        if not isinstance(selection, dict):
++            raise Graphics3DValidationError(f"GFX3D layer #{position + 1} selection must be a table.")
++        unknown_selection = set(selection) - _ALLOWED_SELECTION
++        if unknown_selection:
++            raise Graphics3DValidationError(
++                f"Unknown selection keys in GFX3D layer #{position + 1}: "
++                + ", ".join(sorted(unknown_selection))
++            )
++    payload["_config_path"] = str(source)
++    return payload
++
++
++def _pairs_from_value(value: Any) -> tuple[tuple[str, str], ...]:
++    pairs: list[tuple[str, str]] = []
++    if value is None:
++        return ()
++    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
++        raise Graphics3DValidationError("selection.pairs must be an array.")
++    for item in value:
++        if isinstance(item, str):
++            text = item.strip()
++            if "-" not in text:
++                raise Graphics3DValidationError(
++                    f"Pair selector {text!r} must use ELEMENT-ELEMENT syntax."
++                )
++            left, right = text.split("-", 1)
++            pairs.append((left.strip(), right.strip()))
++        else:
++            try:
++                left, right = item
++            except Exception as error:
++                raise Graphics3DValidationError(
++                    "selection.pairs entries must be 'Na-O' strings or two-element arrays."
++                ) from error
++            pairs.append((str(left), str(right)))
++    return tuple(pairs)
++
++
++def selection_from_mapping(value: Mapping[str, Any] | None) -> GraphicsSelection:
++    raw = dict(value or {})
++    if "pairs" in raw:
++        raw["pairs"] = _pairs_from_value(raw["pairs"])
++    for field_name in (
++        "species", "atom_indices", "atom_ids", "framework_roles", "topology_ids",
++        "ring_sizes", "ring_ids", "cage_types", "cage_ids", "site_types", "site_ids",
++        "state_ids", "transitions",
++    ):
++        if field_name in raw and raw[field_name] is None:
++            raw[field_name] = ()
++        elif field_name in raw and isinstance(raw[field_name], list):
++            raw[field_name] = tuple(raw[field_name])
++    return GraphicsSelection(**raw)
++
++
++def layer_from_mapping(value: Mapping[str, Any]) -> GraphicsLayer3DRequest:
++    if "type" not in value:
++        raise Graphics3DValidationError("Every [[layer]] table requires type = '...'.")
++    layer_type = str(value["type"]).strip().lower()
++    selection = selection_from_mapping(value.get("selection", {}))
++    name = str(value.get("name") or _default_layer_name(layer_type, selection)).strip()
++    visible = value.get("initially_visible", value.get("visible", True))
++    for key in ("analysis", "render", "metadata"):
++        if key in value and not isinstance(value[key], Mapping):
++            raise Graphics3DValidationError(f"Layer {name!r} {key} must be a table/mapping.")
++    return GraphicsLayer3DRequest(
++        name=name,
++        layer_type=layer_type,
++        selection=selection,
++        analysis_options=dict(value.get("analysis", {})),
++        render_options=dict(value.get("render", {})),
++        enabled=bool(value.get("enabled", True)),
++        initially_visible=bool(visible),
++        metadata=dict(value.get("metadata", {})),
++    )
++
++
++def _default_layer_name(layer_type: str, selection: GraphicsSelection) -> str:
++    if selection.pairs:
++        target = ",".join(f"{a}-{b}" for a, b in selection.pairs)
++        return f"{layer_type}:{target}"
++    if selection.species:
++        return f"{layer_type}:{','.join(selection.species)}"
++    if selection.atom_indices:
++        return f"{layer_type}:atoms-{','.join(str(v) for v in selection.atom_indices)}"
++    return layer_type
++
++
++def parse_layer_shorthand(text: str) -> GraphicsLayer3DRequest:
++    """Parse ``TYPE[:SELECTOR][@NAME]`` into one canonical layer request."""
++    raw = str(text).strip()
++    if not raw:
++        raise Graphics3DValidationError("--layer cannot be empty.")
++    body, separator, explicit_name = raw.partition("@")
++    if separator and not explicit_name.strip():
++        raise Graphics3DValidationError("Layer shorthand after '@' must contain a nonempty name.")
++    layer_type, colon, selector = body.partition(":")
++    layer_type = layer_type.strip().lower()
++    if layer_type not in {"framework", "connectivity", "trajectory", "density"}:
++        raise Graphics3DValidationError(
++            f"Unknown built-in GFX3D layer type {layer_type!r}; choose framework, connectivity, trajectory, or density."
++        )
++    selection = GraphicsSelection()
++    selector = selector.strip()
++    if colon:
++        if not selector:
++            raise Graphics3DValidationError("Layer shorthand after ':' must contain a selector.")
++        tokens = tuple(part.strip() for part in selector.split(",") if part.strip())
++        if layer_type == "framework":
++            raise Graphics3DValidationError("The framework shorthand does not accept a selector in GFX3D-3.")
++        if layer_type == "connectivity" and any("-" in token for token in tokens):
++            if not all("-" in token for token in tokens):
++                raise Graphics3DValidationError(
++                    "Connectivity shorthand cannot mix pair and species selectors; use TOML for compound selections."
++                )
++            selection = GraphicsSelection(pairs=tuple(tuple(token.split("-", 1)) for token in tokens))
++        else:
++            selection = GraphicsSelection(species=tokens)
++    name = explicit_name.strip() if separator else _default_layer_name(layer_type, selection)
++    return GraphicsLayer3DRequest(name=name, layer_type=layer_type, selection=selection)
++
++
++def _preset_layers(preset: str, *, present_species: Sequence[str] | None) -> tuple[GraphicsLayer3DRequest, ...]:
++    key = str(preset).strip().lower()
++    if key != LTA_MIXED_ALKALI_PRESET:
++        raise Graphics3DValidationError(
++            f"Unknown GFX3D preset {preset!r}; available: {', '.join(BUILTIN_PRESETS)}."
++        )
++    if present_species is None:
++        raise Graphics3DValidationError(
++            f"Preset {LTA_MIXED_ALKALI_PRESET!r} requires source species resolution before expansion."
++        )
++    ordered = tuple(symbol for symbol in ("Si", "Al", "O", "Li", "Na", "K") if symbol in set(present_species))
++    mobile = tuple(symbol for symbol in ("Li", "Na", "K") if symbol in set(ordered))
++    layers: list[GraphicsLayer3DRequest] = [
++        GraphicsLayer3DRequest(name="framework", layer_type="framework"),
++        GraphicsLayer3DRequest(name="atomic connectivity", layer_type="connectivity"),
++        GraphicsLayer3DRequest(
++            name="atomic trajectories",
++            layer_type="trajectory",
++            selection=GraphicsSelection(species=ordered),
++            render_options={"line_width": 1.6, "opacity": 0.28, "show_legend": True},
++        ),
++    ]
++    for symbol in ordered:
++        layers.append(
++            GraphicsLayer3DRequest(
++                name=f"{symbol} density",
++                layer_type="density",
++                selection=GraphicsSelection(species=(symbol,)),
++                render_options={
++                    "mass_fractions": [0.50, 0.80, 0.95],
++                    "inner_opacity": 0.22,
++                    "outer_opacity": 0.04,
++                    "render_mode": "mesh",
++                    "show_samples": False,
++                    "show_legend": True,
++                },
++                metadata={"preset_mobile_species": symbol in mobile},
++            )
++        )
++    return tuple(layers)
++
++
++@dataclass(frozen=True, slots=True)
++class CompiledGraphics3DConfig:
++    request: GraphicsScene3DRequest
++    input_options: Mapping[str, Any] = field(default_factory=dict)
++    preset: str | None = None
++    config_path: str | None = None
++
++    def __post_init__(self) -> None:
++        object.__setattr__(self, "input_options", MappingProxyType(dict(self.input_options)))
++
++
++def compile_graphics3d_config(
++    payload: Mapping[str, Any] | None = None,
++    *,
++    preset: str | None = None,
++    cli_layers: Sequence[str] = (),
++    present_species: Sequence[str] | None = None,
++    cli_scene: Mapping[str, Any] | None = None,
++    cli_resources: Mapping[str, Any] | None = None,
++    cli_output: Mapping[str, Any] | None = None,
++    cli_input: Mapping[str, Any] | None = None,
++) -> CompiledGraphics3DConfig:
++    """Compile defaults/preset/TOML/CLI into one canonical scene request.
++
++    Precedence is deterministic: built-in defaults < preset < TOML < explicit CLI.
++    A TOML ``[[layer]]`` list replaces preset layers; repeated ``--layer`` values
++    replace both TOML and preset layers.
++    """
++    cfg = dict(payload or {})
++    raw_scene_cfg = dict(cfg.get("scene", {}))
++    input_cfg = dict(cfg.get("input", {}))
++    resources_cfg = dict(cfg.get("resources", {}))
++    output_cfg = dict(cfg.get("output", {}))
++    if not all(isinstance(value, Mapping) for value in (raw_scene_cfg, input_cfg, resources_cfg, output_cfg)):
++        raise Graphics3DValidationError("[scene], [input], [resources], and [output] must be TOML tables.")
++
++    configured_preset = raw_scene_cfg.pop("preset", None)
++    selected_preset = preset or configured_preset
++    scene_cfg: dict[str, Any] = {}
++    if selected_preset:
++        if str(selected_preset).strip().lower() != LTA_MIXED_ALKALI_PRESET:
++            raise Graphics3DValidationError(
++                f"Unknown GFX3D preset {selected_preset!r}; available: {', '.join(BUILTIN_PRESETS)}."
++            )
++        scene_cfg.update({
++            "registration": "framework_registered",
++            "trajectory_display_mode": "folded",
++            "display_cell": "reference",
++            "connectivity_mode": "occupancy",
++            "occupancy_threshold": 0.95,
++            "density_grid_interval": 0.20,
++            "density_gaussian_to_grid_ratio": 2.0,
++            "density_adaptive_smearing": True,
++            "density_max_smearing_to_sample_sd_ratio": 0.50,
++            "density_sample_sd_quantile": 0.10,
++            "projection": "orthographic",
++        })
++        output_cfg = {"browser_profile": "balanced", **output_cfg}
++    scene_cfg.update(raw_scene_cfg)
++    layers: tuple[GraphicsLayer3DRequest, ...] = ()
++    if selected_preset:
++        layers = _preset_layers(str(selected_preset), present_species=present_species)
++    toml_layers = cfg.get("layer", [])
++    if toml_layers:
++        layers = tuple(layer_from_mapping(value) for value in toml_layers)
++    if cli_layers:
++        layers = tuple(parse_layer_shorthand(value) for value in cli_layers)
++    if not layers:
++        raise Graphics3DValidationError(
++            "No GFX3D layers were requested. Supply [[layer]], --layer, or --preset."
++        )
++
++    if cli_scene:
++        scene_cfg.update({k: v for k, v in cli_scene.items() if v is not None})
++    if cli_resources:
++        resources_cfg.update({k: v for k, v in cli_resources.items() if v is not None})
++    if cli_output:
++        output_cfg.update({k: v for k, v in cli_output.items() if v is not None})
++    if cli_input:
++        input_cfg.update({k: v for k, v in cli_input.items() if v is not None})
++
++    # Pull view-only settings out of scene for an explicit identity boundary.
++    view_keys = ("projection", "camera", "periodic_images")
++    view = {key: scene_cfg.pop(key) for key in view_keys if key in scene_cfg}
++    request = GraphicsScene3DRequest(
++        layers=layers,
++        scene_options=scene_cfg,
++        view=view,
++        resources=resources_cfg,
++        output=output_cfg,
++        metadata={
++            "config_schema": GFX3D_CONFIG_SCHEMA,
++            "preset": selected_preset,
++            "config_path": cfg.get("_config_path"),
++        },
++    )
++    return CompiledGraphics3DConfig(
++        request=request,
++        input_options=input_cfg,
++        preset=None if selected_preset is None else str(selected_preset),
++        config_path=cfg.get("_config_path"),
++    )
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.147a0_to_0.20.148a0.patch' mdstats-0.20.147a0-complete-source-package/mdstats/graphics3d/layers.py mdstats-0.20.148a0-complete-source-package/mdstats/graphics3d/layers.py
+--- mdstats-0.20.147a0-complete-source-package/mdstats/graphics3d/layers.py	2026-08-11 08:41:15.000000000 +0000
++++ mdstats-0.20.148a0-complete-source-package/mdstats/graphics3d/layers.py	2026-08-11 09:26:40.779914232 +0000
+@@ -208,7 +208,10 @@
+         # Existing density provenance is atom-index authoritative. Recover species
+         # only from already-prepared scene products; never guess from a field name.
+         wanted_numbers = {int(atomic_numbers[s]) for s in selection.species}
+-        number_by_atom: dict[int, int] = {}
++        number_by_atom: dict[int, int] = {
++            int(i): int(z)
++            for i, z in dict(scene.metadata.get("gfx3d_atomic_number_by_atom", {})).items()
++        }
+         if scene.atomic_mean_graph is not None:
+             number_by_atom.update(
+                 {int(i): int(z) for i, z in zip(scene.atomic_mean_graph.atom_indices, scene.atomic_mean_graph.atomic_numbers)}
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.147a0_to_0.20.148a0.patch' mdstats-0.20.147a0-complete-source-package/mdstats/graphics3d/lta_preset.py mdstats-0.20.148a0-complete-source-package/mdstats/graphics3d/lta_preset.py
+--- mdstats-0.20.147a0-complete-source-package/mdstats/graphics3d/lta_preset.py	1970-01-01 00:00:00.000000000 +0000
++++ mdstats-0.20.148a0-complete-source-package/mdstats/graphics3d/lta_preset.py	2026-08-11 09:25:17.901705833 +0000
+@@ -0,0 +1,371 @@
++"""Current aluminosilicate/LTA scientific provider used by the GFX3D-3 CLI.
++
++This module is intentionally a compatibility scientific provider. GFX3D-4 will
++move raw dependency preparation into the generic dependency DAG. The algorithms
++here are migrated from ``examples/plot_lta_mixed_alkali_density.py`` without
++changing their scientific definitions.
++"""
++from __future__ import annotations
++
++import json
++import time
++from pathlib import Path
++from types import SimpleNamespace
++from typing import Any, Mapping, Sequence
++
++import numpy as np
++from ase.data import chemical_symbols
++
++from mdstats import (
++    AtomicDensityOptions,
++    AtomicDensitySelection,
++    AtomicMeanGraphOptions,
++    FrameworkAtomRole,
++    FrameworkDynamicsOptions,
++    FrameworkDynamicsResources,
++    FrameworkMapping,
++    FrameworkPathRule,
++    FrameworkTopology,
++    HystereticDistanceConnectivity,
++    PairCutoffRegistry,
++    SpatialRegistrationMode,
++    TopologyCatalog,
++    TrajectoryAtomSelection,
++    build_topology_catalog,
++    compute_atomic_connectivity,
++    prepare_framework_dynamics_scene,
++    read_lammps_frames,
++    read_vasp_frames,
++)
++
++FRAMEWORK_SPECIES_ORDER = ("Si", "Al", "O")
++MOBILE_SPECIES_ORDER = ("Li", "Na", "K")
++MOBILE_OXYGEN_CUTOFFS = {"Li": 2.6, "Na": 2.9, "K": 3.3}
++TOPOLOGY_CACHE_SUFFIX = "_topology_catalog.json"
++
++
++def framework_mapping() -> FrameworkMapping:
++    return FrameworkMapping.from_symbol_roles(
++        {
++            "Si": FrameworkAtomRole.VERTEX,
++            "Al": FrameworkAtomRole.VERTEX,
++            "O": FrameworkAtomRole.LINKER,
++            "Li": FrameworkAtomRole.SPECTATOR,
++            "Na": FrameworkAtomRole.SPECTATOR,
++            "K": FrameworkAtomRole.SPECTATOR,
++        },
++        path_rules=(FrameworkPathRule.from_symbols("T-O-T", ("O",), edge_kind="oxygen_bridge"),),
++    )
++
++
++def detect_present_species(trajectory) -> tuple[str, ...]:
++    present = {chemical_symbols[int(z)] for z in trajectory.atomic_numbers}
++    return tuple(
++        symbol for symbol in FRAMEWORK_SPECIES_ORDER + MOBILE_SPECIES_ORDER if symbol in present
++    )
++
++
++def detect_mobile_species(trajectory) -> tuple[str, ...]:
++    present = set(detect_present_species(trajectory))
++    return tuple(symbol for symbol in MOBILE_SPECIES_ORDER if symbol in present)
++
++
++def _strip_compression_suffix(name: str) -> str:
++    lowered = name.lower()
++    for suffix in (".gz", ".bz2", ".xz", ".lzma"):
++        if lowered.endswith(suffix):
++            return name[: -len(suffix)]
++    return name
++
++
++def infer_trajectory_format(path: Path, explicit_format: str = "auto") -> str:
++    if explicit_format != "auto":
++        return explicit_format
++    base_name = _strip_compression_suffix(path.name)
++    upper_name = base_name.upper()
++    lower_name = base_name.lower()
++    suffix = Path(base_name).suffix.lower()
++    if suffix == ".xml":
++        return "vasp-xml"
++    if upper_name.endswith("XDATCAR"):
++        return "vasp-xdatcar"
++    if upper_name == "TRAJECTORY" or upper_name.endswith(".TRAJECTORY"):
++        return "vasp-contcar-trajectory"
++    if suffix in {".lammpstrj", ".dump", ".lammpsdump"} or lower_name.startswith("dump.") or lower_name == "dump":
++        return "lammps-dump"
++    raise ValueError(
++        f"Cannot infer trajectory format from {path!s}. Use --format with one of "
++        "vasp-xml, vasp-xdatcar, vasp-contcar-trajectory, or lammps-dump."
++    )
++
++
++def parse_lammps_type_map(value: str | Mapping[int, str] | None) -> dict[int, str] | None:
++    if value is None:
++        return None
++    if isinstance(value, Mapping):
++        return {int(key): str(symbol) for key, symbol in value.items()}
++    mapping: dict[int, str] = {}
++    for entry in str(value).split(","):
++        entry = entry.strip()
++        if not entry:
++            continue
++        if "=" not in entry:
++            raise ValueError(f"LAMMPS type-map entry {entry!r} must use TYPE=ELEMENT syntax.")
++        raw_type, raw_symbol = entry.split("=", 1)
++        atom_type = int(raw_type.strip())
++        symbol = raw_symbol.strip()
++        if atom_type < 1 or not symbol:
++            raise ValueError(f"Invalid LAMMPS type-map entry {entry!r}.")
++        if atom_type in mapping:
++            raise ValueError(f"LAMMPS atom type {atom_type} is mapped more than once.")
++        mapping[atom_type] = symbol
++    if not mapping:
++        raise ValueError("LAMMPS type map did not contain any mappings.")
++    return mapping
++
++
++def read_input_trajectory(path: str | Path, options: Mapping[str, Any]):
++    source = Path(path)
++    source_format = infer_trajectory_format(source, str(options.get("format", "auto")))
++    stride = int(options.get("stride", 1))
++    if stride < 1:
++        raise ValueError("Trajectory stride must be >= 1.")
++    if source_format == "lammps-dump":
++        trajectory = read_lammps_frames(
++            str(source),
++            log_file=None if options.get("lammps_log") is None else str(options["lammps_log"]),
++            units=options.get("lammps_units"),
++            timestep=options.get("lammps_timestep"),
++            type_map=parse_lammps_type_map(options.get("lammps_type_map")),
++            stride=stride,
++        )
++        return trajectory, source_format
++    timestep_fs = options.get("timestep_fs")
++    if source_format == "vasp-contcar-trajectory" and timestep_fs is None:
++        timestep_fs = 1.0
++    trajectory = read_vasp_frames(
++        str(source), format=source_format, stride=stride, timestep_fs=timestep_fs
++    )
++    return trajectory, source_format
++
++
++def _sample_framework_bond_distances(trajectory, left_symbol: str, coordination_number: int = 4) -> list[float]:
++    from ase.geometry import find_mic
++    symbols = [chemical_symbols[int(z)] for z in trajectory.atomic_numbers]
++    left = np.asarray([i for i, value in enumerate(symbols) if value == left_symbol], dtype=np.int64)
++    oxygen = np.asarray([i for i, value in enumerate(symbols) if value == "O"], dtype=np.int64)
++    if left.size == 0 or oxygen.size < coordination_number:
++        return []
++    sample_count = min(96, trajectory.n_frames)
++    frame_indices = np.unique(np.linspace(0, trajectory.n_frames - 1, sample_count).round().astype(int))
++    values: list[float] = []
++    for frame in frame_indices:
++        cell = np.asarray(trajectory.cells[frame], dtype=float)
++        cart = np.asarray(trajectory.fractional_positions[frame], dtype=float) @ cell
++        delta = cart[oxygen][None, :, :] - cart[left][:, None, :]
++        _mic, distances = find_mic(delta.reshape(-1, 3), cell, pbc=trajectory.pbc)
++        matrix = np.asarray(distances, dtype=float).reshape(left.size, oxygen.size)
++        shell = np.partition(matrix, kth=coordination_number - 1, axis=1)[:, :coordination_number]
++        values.extend(float(value) for value in shell.reshape(-1) if np.isfinite(value))
++    return values
++
++
++def framework_connectivity_definition(
++    trajectory, *, formation_override: float | None = None, breaking_override: float | None = None
++) -> tuple[HystereticDistanceConnectivity, dict[str, dict[str, float]]]:
++    present = set(detect_present_species(trajectory))
++    formation: dict[tuple[str, str], float] = {}
++    breaking: dict[tuple[str, str], float] = {}
++    audit: dict[str, dict[str, float]] = {}
++    lower_bounds = {"Si": 1.90, "Al": 1.95}
++    formation_caps = {"Si": 2.12, "Al": 2.18}
++    breaking_caps = {"Si": 2.38, "Al": 2.45}
++    for symbol in ("Si", "Al"):
++        if symbol not in present:
++            continue
++        sampled = np.asarray(_sample_framework_bond_distances(trajectory, symbol), dtype=float)
++        if sampled.size:
++            q995 = float(np.quantile(sampled, 0.995))
++            q999 = float(np.quantile(sampled, 0.999))
++            form = float(np.clip(q995 + 0.03, lower_bounds[symbol], formation_caps[symbol]))
++            retain = float(np.clip(max(form + 0.18, q999 + 0.10), form + 0.12, breaking_caps[symbol]))
++        else:
++            q995 = q999 = float("nan")
++            form = 2.05 if symbol == "Si" else 2.10
++            retain = 2.30 if symbol == "Si" else 2.38
++        if formation_override is not None:
++            form = float(formation_override)
++        if breaking_override is not None:
++            retain = float(breaking_override)
++        if not form < retain:
++            raise ValueError(f"Framework hysteresis requires formation < breaking for {symbol}-O.")
++        formation[(symbol, "O")] = form
++        breaking[(symbol, "O")] = retain
++        audit[symbol] = {
++            "formation_cutoff_angstrom": form,
++            "breaking_cutoff_angstrom": retain,
++            "sample_q995_angstrom": q995,
++            "sample_q999_angstrom": q999,
++            "sample_count": float(sampled.size),
++        }
++    if not formation:
++        raise ValueError(
++            "The current GFX3D-3 framework provider requires Si/Al-O framework atoms. "
++            "Generic raw-source providers are a GFX3D-4 deliverable."
++        )
++    return (
++        HystereticDistanceConnectivity(
++            formation_cutoffs=PairCutoffRegistry.from_mapping(formation),
++            breaking_cutoffs=PairCutoffRegistry.from_mapping(breaking),
++        ),
++        audit,
++    )
++
++
++def atomic_connectivity_definition(trajectory, framework_definition: HystereticDistanceConnectivity):
++    formation = {pair: float(cutoff.radius) for pair, cutoff in framework_definition.formation_cutoffs.cutoffs.items()}
++    breaking = {pair: float(cutoff.radius) for pair, cutoff in framework_definition.breaking_cutoffs.cutoffs.items()}
++    present = set(detect_present_species(trajectory))
++    for symbol in MOBILE_SPECIES_ORDER:
++        if symbol in present:
++            formation[(symbol, "O")] = MOBILE_OXYGEN_CUTOFFS[symbol]
++            breaking[(symbol, "O")] = MOBILE_OXYGEN_CUTOFFS[symbol] + 0.25
++    return HystereticDistanceConnectivity(
++        formation_cutoffs=PairCutoffRegistry.from_mapping(formation),
++        breaking_cutoffs=PairCutoffRegistry.from_mapping(breaking),
++    )
++
++
++def _density_species_from_request(request, present_species: Sequence[str]) -> tuple[str, ...]:
++    needed: list[str] = []
++    present = set(present_species)
++    for layer in request.enabled_layers:
++        if layer.layer_type != "density":
++            continue
++        if not layer.selection.species:
++            raise ValueError(
++                f"Density layer {layer.name!r} needs an explicit species selection in GFX3D-3."
++            )
++        for symbol in layer.selection.species:
++            if symbol not in present:
++                raise ValueError(f"Density layer {layer.name!r} selects absent species {symbol!r}.")
++            if symbol not in needed:
++                needed.append(symbol)
++    return tuple(needed)
++
++
++def _trajectory_species_from_request(request, present_species: Sequence[str]) -> tuple[str, ...]:
++    selected: list[str] = []
++    present = tuple(present_species)
++    for layer in request.enabled_layers:
++        if layer.layer_type != "trajectory":
++            continue
++        species = layer.selection.species or present
++        for symbol in species:
++            if symbol not in selected:
++                selected.append(symbol)
++    return tuple(selected)
++
++
++def prepare_legacy_source_scene(
++    trajectory,
++    request,
++    *,
++    input_options: Mapping[str, Any],
++    output_path: Path,
++    progress=None,
++):
++    """Prepare the GFX3D-3 compatibility ``FrameworkDynamicsScene`` once."""
++    present_species = detect_present_species(trajectory)
++    framework_definition, hysteresis_audit = framework_connectivity_definition(
++        trajectory,
++        formation_override=input_options.get("framework_formation_cutoff"),
++        breaking_override=input_options.get("framework_breaking_cutoff"),
++    )
++    topology_path = input_options.get("topology")
++    framework_connectivity = None
++    if topology_path:
++        payload = json.loads(Path(topology_path).read_text())
++        topology = (
++            TopologyCatalog.from_dict(payload)
++            if "frame_topology_ids" in payload and "topologies" in payload
++            else FrameworkTopology.from_dict(payload)
++        )
++        topology_metadata = {"source": "user_supplied", "path": str(topology_path)}
++    else:
++        framework_connectivity = compute_atomic_connectivity(trajectory, framework_definition)
++        topology = build_topology_catalog(trajectory, framework_connectivity, framework_mapping())
++        topology_metadata = {
++            "source": "inferred_hysteretic_catalog",
++            "n_topologies": len(topology.topologies),
++            "catalog_consistency": topology.consistency.value,
++            "framework_hysteresis_calibration": hysteresis_audit,
++        }
++        if not bool(input_options.get("no_topology_cache", False)):
++            cache = input_options.get("topology_cache")
++            cache_path = Path(cache) if cache else output_path.with_name(output_path.stem + TOPOLOGY_CACHE_SUFFIX)
++            cache_path.parent.mkdir(parents=True, exist_ok=True)
++            cache_path.write_text(json.dumps(topology.to_dict(), indent=2) + "\n")
++            topology_metadata["cache_written"] = str(cache_path)
++
++    needs_connectivity = any(layer.layer_type == "connectivity" for layer in request.enabled_layers)
++    connectivity = None
++    if needs_connectivity:
++        full_definition = atomic_connectivity_definition(trajectory, framework_definition)
++        if framework_connectivity is not None and full_definition.to_dict() == framework_definition.to_dict():
++            connectivity = framework_connectivity
++        else:
++            connectivity = compute_atomic_connectivity(trajectory, full_definition)
++
++    trajectory_species = _trajectory_species_from_request(request, present_species)
++    density_species = _density_species_from_request(request, present_species)
++    density_selections = tuple(
++        AtomicDensitySelection(species=(symbol,), label=f"{symbol} density")
++        for symbol in density_species
++    )
++    scene_options = dict(request.scene_options)
++    resources = FrameworkDynamicsResources(
++        max_memory_bytes=request.resources.get("max_memory"),
++        max_threads=request.resources.get("max_threads"),
++        max_wall_time_seconds=request.resources.get("wall_time_target"),
++    )
++    source_scene = prepare_framework_dynamics_scene(
++        trajectory,
++        topology,
++        trajectory_selection=(
++            None
++            if not trajectory_species
++            else TrajectoryAtomSelection(species=trajectory_species, label="GFX3D trajectories")
++        ),
++        atomic_connectivity=connectivity,
++        atomic_mean_graph_options=(
++            AtomicMeanGraphOptions(
++                mode=str(scene_options.get("connectivity_mode", "occupancy")),
++                occupancy_threshold=float(scene_options.get("occupancy_threshold", 0.95)),
++            )
++            if needs_connectivity
++            else None
++        ),
++        atomic_density_selections=density_selections,
++        atomic_density_options=(
++            AtomicDensityOptions(
++                grid_interval=float(scene_options.get("density_grid_interval", 0.20)),
++                gaussian_to_grid_ratio=float(scene_options.get("density_gaussian_to_grid_ratio", 2.0)),
++                adaptive_smearing=bool(scene_options.get("density_adaptive_smearing", True)),
++                max_smearing_to_sample_sd_ratio=float(scene_options.get("density_max_smearing_to_sample_sd_ratio", 0.50)),
++                sample_sd_quantile=float(scene_options.get("density_sample_sd_quantile", 0.10)),
++            )
++            if density_selections
++            else None
++        ),
++        options=FrameworkDynamicsOptions(
++            registration_mode=SpatialRegistrationMode(
++                str(scene_options.get("registration", "framework_registered"))
++            ),
++            trajectory_display_mode=str(scene_options.get("trajectory_display_mode", "folded")),
++            display_cell=str(scene_options.get("display_cell", "reference")),
++        ),
++        resources=resources,
++        progress=progress,
++    )
++    return source_scene, topology_metadata
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.147a0_to_0.20.148a0.patch' mdstats-0.20.147a0-complete-source-package/pyproject.toml mdstats-0.20.148a0-complete-source-package/pyproject.toml
+--- mdstats-0.20.147a0-complete-source-package/pyproject.toml	2026-08-11 08:36:59.000000000 +0000
++++ mdstats-0.20.148a0-complete-source-package/pyproject.toml	2026-08-11 09:26:32.393188920 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.147a0"
++version = "0.20.148a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+@@ -15,12 +15,14 @@
+   "networkx>=3.4",
+   "threadpoolctl>=3.1",
+   "packaging>=23",
++  "tomli>=2.0; python_version < '3.11'",
+ ]
+ 
+ [project.scripts]
+ mdstats-mace-train = "mdstats.training_data.critical_precision_cli:train_main"
+ mdstats-mace-eval = "mdstats.training_data.critical_precision_cli:eval_main"
+ mdstats-mace-select-head = "mdstats.training_data.critical_precision_cli:select_head_main"
++mdstats-3d = "mdstats.graphics3d.cli:main"
+ 
+ [tool.pytest.ini_options]
+ testpaths = ["tests"]
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.147a0_to_0.20.148a0.patch' mdstats-0.20.147a0-complete-source-package/release/gfx3d3_focused_test_record.json mdstats-0.20.148a0-complete-source-package/release/gfx3d3_focused_test_record.json
+--- mdstats-0.20.147a0-complete-source-package/release/gfx3d3_focused_test_record.json	1970-01-01 00:00:00.000000000 +0000
++++ mdstats-0.20.148a0-complete-source-package/release/gfx3d3_focused_test_record.json	2026-08-11 09:39:24.462878223 +0000
+@@ -0,0 +1,56 @@
++{
++  "schema_version": "mdstats.gfx3d3-focused-qualification.v1",
++  "mdstats_version": "0.20.148a0",
++  "gate": "GFX3D-3",
++  "focused_tests": {
++    "passed": 83,
++    "failed": 0,
++    "skipped": 0,
++    "test_files": [
++      "tests/test_graphics3d_cli.py",
++      "tests/test_graphics3d_contracts.py",
++      "tests/test_graphics3d_layers.py",
++      "tests/test_framework_dynamics.py",
++      "tests/test_graph_3d.py",
++      "tests/test_lta_example_trajectory_input.py"
++    ]
++  },
++  "real_na_lta_smoke": {
++    "source_path": "/mnt/data/dump.prod.Na_lta_300K.old(1).lammpstrj",
++    "source_sha256": "81c86cc40f5a11031f80817213eb558c02348494d1c6cad9b4775a5bc3c9f9cd",
++    "stride": 500,
++    "resolved_frames": 21,
++    "atoms": 168,
++    "present_species": [
++      "Si",
++      "Al",
++      "O",
++      "Na"
++    ],
++    "layers": [
++      [
++        "framework",
++        "framework"
++      ],
++      [
++        "trajectory:Na",
++        "trajectory"
++      ],
++      [
++        "density:Na",
++        "density"
++      ]
++    ],
++    "density_grid_interval_angstrom": 0.35,
++    "density_adaptive_smearing": false,
++    "browser_profile": "compact",
++    "html_size_bytes": 6766660,
++    "manifest_schema": "mdstats.graphics3d.scene-manifest.v1",
++    "result": "pass"
++  },
++  "environment": {
++    "python": "3.13.5",
++    "platform": "Linux-6.18.35-x86_64-with-glibc2.41"
++  },
++  "next_gate": "GFX3D-4"
++}
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.147a0_to_0.20.148a0.patch' mdstats-0.20.147a0-complete-source-package/tests/test_graphics3d_cli.py mdstats-0.20.148a0-complete-source-package/tests/test_graphics3d_cli.py
+--- mdstats-0.20.147a0-complete-source-package/tests/test_graphics3d_cli.py	1970-01-01 00:00:00.000000000 +0000
++++ mdstats-0.20.148a0-complete-source-package/tests/test_graphics3d_cli.py	2026-08-11 09:33:59.353151547 +0000
+@@ -0,0 +1,165 @@
++from __future__ import annotations
++
++import json
++from pathlib import Path
++
++import pytest
++
++from mdstats.graphics3d.cli import main
++from mdstats.graphics3d.config import (
++    LTA_MIXED_ALKALI_PRESET,
++    compile_graphics3d_config,
++    load_graphics3d_toml,
++    parse_layer_shorthand,
++)
++from mdstats.graphics3d.errors import Graphics3DValidationError
++
++
++def test_layer_shorthand_compiles_to_typed_selection() -> None:
++    layer = parse_layer_shorthand("density:Na@Na occupancy")
++    assert layer.layer_type == "density"
++    assert layer.name == "Na occupancy"
++    assert layer.selection.species == ("Na",)
++
++    pair = parse_layer_shorthand("connectivity:Na-O")
++    assert pair.selection.pairs == (("O", "Na"),)
++
++
++def test_layer_shorthand_rejects_mixed_pair_and_species() -> None:
++    with pytest.raises(Graphics3DValidationError, match="cannot mix"):
++        parse_layer_shorthand("connectivity:Na-O,Na")
++
++
++def test_toml_layers_replace_preset_and_cli_layers_replace_toml(tmp_path: Path) -> None:
++    config = tmp_path / "scene.toml"
++    config.write_text(
++        """
++[scene]
++preset = "lta-mixed-alkali-density"
++title = "configured"
++
++[[layer]]
++type = "trajectory"
++name = "Na paths"
++selection = { species = ["Na"] }
++""",
++        encoding="utf-8",
++    )
++    payload = load_graphics3d_toml(config)
++    compiled = compile_graphics3d_config(
++        payload,
++        present_species=("Si", "Al", "O", "Na"),
++    )
++    assert [layer.name for layer in compiled.request.layers] == ["Na paths"]
++    overridden = compile_graphics3d_config(
++        payload,
++        present_species=("Si", "Al", "O", "Na"),
++        cli_layers=("framework", "density:Na"),
++    )
++    assert [layer.layer_type for layer in overridden.request.layers] == ["framework", "density"]
++
++
++def test_lta_preset_expands_only_present_density_species() -> None:
++    compiled = compile_graphics3d_config(
++        {},
++        preset=LTA_MIXED_ALKALI_PRESET,
++        present_species=("Si", "Al", "O", "Na"),
++    )
++    assert [layer.layer_type for layer in compiled.request.layers[:3]] == [
++        "framework", "connectivity", "trajectory"
++    ]
++    densities = [layer for layer in compiled.request.layers if layer.layer_type == "density"]
++    assert [layer.selection.species for layer in densities] == [
++        ("Si",), ("Al",), ("O",), ("Na",)
++    ]
++
++
++def test_toml_unknown_keys_fail_closed(tmp_path: Path) -> None:
++    path = tmp_path / "bad.toml"
++    path.write_text("[scene]\nunknown = 1\n", encoding="utf-8")
++    with pytest.raises(Graphics3DValidationError, match=r"Unknown keys in GFX3D \[scene\]"):
++        load_graphics3d_toml(path)
++    path.write_text("mystery = 1\n", encoding="utf-8")
++    with pytest.raises(Graphics3DValidationError, match="Unknown GFX3D TOML"):
++        load_graphics3d_toml(path)
++
++
++def _write_small_lammps_dump(path: Path) -> None:
++    path.write_text(
++        """ITEM: TIMESTEP
++0
++ITEM: TIME
++0.0
++ITEM: UNITS
++metal
++ITEM: NUMBER OF ATOMS
++4
++ITEM: BOX BOUNDS pp pp pp
++0 10
++0 10
++0 10
++ITEM: ATOMS id element xsu ysu zsu vx vy vz
++1 Si 0.10 0.10 0.10 0 0 0
++2 Al 0.20 0.10 0.10 0 0 0
++3 O  0.15 0.10 0.10 0 0 0
++4 Na 0.60 0.60 0.60 0 0 0
++ITEM: TIMESTEP
++1
++ITEM: TIME
++0.001
++ITEM: UNITS
++metal
++ITEM: NUMBER OF ATOMS
++4
++ITEM: BOX BOUNDS pp pp pp
++0 10
++0 10
++0 10
++ITEM: ATOMS id element xsu ysu zsu vx vy vz
++1 Si 0.10 0.10 0.10 0 0 0
++2 Al 0.20 0.10 0.10 0 0 0
++3 O  0.15 0.10 0.10 0 0 0
++4 Na 0.61 0.60 0.60 0 0 0
++""",
++        encoding="utf-8",
++    )
++
++
++def test_manifest_only_is_source_aware_without_scientific_preparation(tmp_path: Path) -> None:
++    dump = tmp_path / "dump.test.lammpstrj"
++    manifest = tmp_path / "scene.json"
++    _write_small_lammps_dump(dump)
++    code = main(
++        [
++            str(dump),
++            "--preset", LTA_MIXED_ALKALI_PRESET,
++            "--manifest-only",
++            "--manifest", str(manifest),
++            "--quiet",
++        ]
++    )
++    assert code == 0
++    payload = json.loads(manifest.read_text())
++    assert payload["schema_version"] == "mdstats.graphics3d.scene-manifest.v1"
++    assert payload["resolved_input_format"] == "lammps-dump"
++    assert payload["atom_species_mapping"]["present_species"] == ["Si", "Al", "O", "Na"]
++    assert [layer["layer_type"] for layer in payload["ordered_layer_requests"][:3]] == [
++        "framework", "connectivity", "trajectory"
++    ]
++    assert payload["expanded_presets"] == [LTA_MIXED_ALKALI_PRESET]
++
++
++def test_manifest_only_refuses_overwrite_without_force(tmp_path: Path) -> None:
++    dump = tmp_path / "dump.test.lammpstrj"
++    manifest = tmp_path / "scene.json"
++    _write_small_lammps_dump(dump)
++    manifest.write_text("{}\n")
++    code = main(
++        [str(dump), "--layer", "framework", "--manifest-only", "--manifest", str(manifest), "--quiet"]
++    )
++    assert code == 2
++    assert manifest.read_text() == "{}\n"
++    code = main(
++        [str(dump), "--layer", "framework", "--manifest-only", "--manifest", str(manifest), "--force", "--quiet"]
++    )
++    assert code == 0
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.147a0_to_0.20.148a0.patch' mdstats-0.20.147a0-complete-source-package/tools/README.md mdstats-0.20.148a0-complete-source-package/tools/README.md
+--- mdstats-0.20.147a0-complete-source-package/tools/README.md	2026-08-08 08:58:38.000000000 +0000
++++ mdstats-0.20.148a0-complete-source-package/tools/README.md	2026-08-11 09:39:23.156241783 +0000
+@@ -1,5 +1,16 @@
+ # User-facing tools
+ 
++`mdstats-3d.py` is the supported source-checkout launcher for the universal GFX3D
++scene composer. It delegates to `mdstats.graphics3d.cli.main`, so TOML, presets,
++layer shorthand, manifests, and rendering all use the packaged command authority.
++
++```bash
++python tools/mdstats-3d.py dump.lammpstrj --layer framework --layer trajectory:Na
++python tools/mdstats-3d.py dump.lammpstrj --config examples/gfx3d_na_lta.toml
++```
++
++The installed package exposes the equivalent `mdstats-3d` entry point.
++
+ `mdstats-mlff-campaign.py` is the supported source-checkout interface for the
+ complete MLFF preparation, fine-tuning, checkpoint-selection, committee, and
+ bounded deployment-verification workflow.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=SOURCE_PATCH_0.20.147a0_to_0.20.148a0.patch' mdstats-0.20.147a0-complete-source-package/tools/mdstats-3d.py mdstats-0.20.148a0-complete-source-package/tools/mdstats-3d.py
+--- mdstats-0.20.147a0-complete-source-package/tools/mdstats-3d.py	1970-01-01 00:00:00.000000000 +0000
++++ mdstats-0.20.148a0-complete-source-package/tools/mdstats-3d.py	2026-08-11 09:26:31.949151981 +0000
+@@ -0,0 +1,15 @@
++#!/usr/bin/env python3
++"""Run the universal mdstats GFX3D CLI from a source checkout."""
++from __future__ import annotations
++
++from pathlib import Path
++import sys
++
++ROOT = Path(__file__).resolve().parents[1]
++if str(ROOT) not in sys.path:
++    sys.path.insert(0, str(ROOT))
++
++from mdstats.graphics3d.cli import main
++
++if __name__ == "__main__":
++    raise SystemExit(main())

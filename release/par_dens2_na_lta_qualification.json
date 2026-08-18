@@ -1,0 +1,41 @@
+{
+  "schema": "mdstats.par-dens2-na-lta-qualification.v1",
+  "package_version": "0.20.141a0",
+  "qualified_on": "2026-08-10",
+  "input": {
+    "basename": "dump.prod.Na_lta_300K.old.lammpstrj",
+    "sha256": "81c86cc40f5a11031f80817213eb558c02348494d1c6cad9b4775a5bc3c9f9cd",
+    "bytes": 183385600,
+    "full_frames": 10001,
+    "atoms_per_frame": 168,
+    "na_atoms": 24,
+    "type_map": {"1": "Si", "2": "Al", "3": "O", "4": "Na"}
+  },
+  "bounded_scheduler_smoke": {
+    "stride": 500,
+    "selected_frames": 21,
+    "density_selection": "Na",
+    "grid_shape": [64, 64, 64],
+    "gaussian_bandwidth_angstrom": 0.5,
+    "adaptive_smearing": false,
+    "grid_backend": "dense",
+    "max_memory": "4GiB",
+    "worker_counts": [1, 4],
+    "max_absolute_density_difference": 0.0,
+    "integrated_grid_sum": [1279.564226987593, 1279.564226987593],
+    "scientific_approval_id": "c52b26f5a1300359959dbad008fcf294543924c4295925163db8b83589a698c7",
+    "scientific_approval_id_equal": true,
+    "scheduler_policy": "par_dens2_global_resource_scheduler_v1",
+    "task_contract_schema": "mdstats.density-task-resources.v1"
+  },
+  "interpretation": {
+    "purpose": "worker-count invariance and scheduler integration smoke only",
+    "production_scientific_reference": "release/par_dens0_na_lta_qualification.json",
+    "par_dens3_concurrency_enabled": false
+  },
+  "environment": {
+    "python": "3.13.5",
+    "numpy": "2.3.5",
+    "scipy": "1.17.0"
+  }
+}

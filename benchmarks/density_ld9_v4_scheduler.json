@@ -1,0 +1,87 @@
+{
+  "deterministic_geometry_counts": true,
+  "field": {
+    "grid_shape": [
+      88,
+      80,
+      72
+    ],
+    "nonzero_nodes": 51404
+  },
+  "parallel": {
+    "report": {
+      "isolated_shell_count": 3,
+      "maximum_shell_seconds": 3.69764106599996,
+      "metadata": {
+        "benchmark": "bounded_real_mesh_shells_v1"
+      },
+      "parallel_efficiency": 0.9688238274064328,
+      "parallel_worker_count": 3,
+      "schema_version": "mdstats.density-mesh-execution-report.v1",
+      "sum_shell_seconds": 10.755876098999806,
+      "wall_seconds": 3.7006645909998497
+    },
+    "shells": [
+      {
+        "faces": 1992,
+        "mass_fraction": 0.5,
+        "render_kind": "mesh",
+        "seconds": 3.473276437999857,
+        "vertices": 1020
+      },
+      {
+        "faces": 3958,
+        "mass_fraction": 0.8,
+        "render_kind": "mesh",
+        "seconds": 3.584958594999989,
+        "vertices": 2015
+      },
+      {
+        "faces": 6740,
+        "mass_fraction": 0.95,
+        "render_kind": "mesh",
+        "seconds": 3.69764106599996,
+        "vertices": 3422
+      }
+    ]
+  },
+  "schema": "mdstats.ld9-v4-scheduler-benchmark.v1",
+  "serial": {
+    "report": {
+      "isolated_shell_count": 3,
+      "maximum_shell_seconds": 3.5940757459999304,
+      "metadata": {
+        "benchmark": "bounded_real_mesh_shells_v1"
+      },
+      "parallel_efficiency": 0.9999935733507278,
+      "parallel_worker_count": 1,
+      "schema_version": "mdstats.density-mesh-execution-report.v1",
+      "sum_shell_seconds": 9.996591438999872,
+      "wall_seconds": 9.996655683999847
+    },
+    "shells": [
+      {
+        "faces": 1992,
+        "mass_fraction": 0.5,
+        "render_kind": "mesh",
+        "seconds": 3.5940757459999304,
+        "vertices": 1020
+      },
+      {
+        "faces": 3958,
+        "mass_fraction": 0.8,
+        "render_kind": "mesh",
+        "seconds": 3.0738123319999886,
+        "vertices": 2015
+      },
+      {
+        "faces": 6740,
+        "mass_fraction": 0.95,
+        "render_kind": "mesh",
+        "seconds": 3.3287033609999526,
+        "vertices": 3422
+      }
+    ]
+  },
+  "wall_speedup": 2.701313625750379
+}

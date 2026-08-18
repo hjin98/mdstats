@@ -1,0 +1,32 @@
+{
+  "architecture_revision": 34,
+  "archive": {
+    "archive_id": "9a779477f35d56bdb7ccc97e11a8ceb9",
+    "archive_sha256_present": true,
+    "archive_size_bytes": 20242,
+    "compression_ratio_archive_over_hot": 0.0019867287071992563,
+    "corruption_detection_qualified": true,
+    "hot_logical_bytes": 10188608,
+    "hot_representations_deleted_after_verification": true,
+    "manifest_content_digest_present": true,
+    "restore_exact_sha256": true,
+    "verified_before_hot_deletion": true
+  },
+  "deduplication": {
+    "applied_reclaimed_bytes_estimate": 4194304,
+    "content_addressed_method": "same-filesystem-content-addressed-hardlink",
+    "exact_duplicate_hardlink_equal": true,
+    "planned_duplicate_groups": 1,
+    "potential_reclaimed_bytes": 4194304
+  },
+  "notes": "Filesystem/archive qualification; STOR5 introduces no model numerics or scientific-data identity change.",
+  "runtime_version": "0.20.116a0",
+  "schema": "mdstats.mlff-stor5-qualification.v1",
+  "scientific_identity_changed": false,
+  "security": {
+    "external_inputs_touched": false,
+    "production_models_touched": false,
+    "selected_production_checkpoint_policy": "protected_by_STOR4_STOR5",
+    "symlink_targets_followed": false
+  }
+}

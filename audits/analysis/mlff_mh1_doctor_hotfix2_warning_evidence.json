@@ -1,0 +1,38 @@
+{
+  "behavior": {
+    "automatic_backend_fallback_added": false,
+    "cueq_parity_tolerances_changed": false,
+    "known_userwarning_families_forced_through_capture": true,
+    "parity_failure_includes_compact_metrics": true,
+    "process_deduplication_preserved": true,
+    "qualify_cueq_realization_wrapped": true,
+    "qualify_e3nn_realization_wrapped": true,
+    "unrelated_warnings_replayed": true
+  },
+  "changed_files": {
+    "mdstats/training_data/acceleration.py": "b59d4b8d35c37fbfc0175f21cf7b23214ea2795891cbbd6dc523dd305f0e27a4",
+    "mdstats/training_data/mace_compatibility.py": "7c3961e41dcb9857ee7c35740a33f59649d9f1400e6edf87e195a18eba617828",
+    "tests/test_mlff_mace_compatibility.py": "874c1635a81c8c61cb76a4d1cbc43cb3af1a077658e8a0b7ef058ba72340cff8",
+    "tests/test_mlff_mh1_accel1.py": "0d1170a6f4184b3b18bd8f43180924a40cf68bc900ae1f8db583e5d8d2d6cece"
+  },
+  "content_digest": "cecd7b433ac6701b92d496e1c81f4b11aabf3d1a2b4459b60be150ddb60f1ea2",
+  "date": "2026-08-14",
+  "purpose": "Consolidate repeated MACE/Torch UserWarnings during ACCEL1 qualification without weakening CuEq parity.",
+  "reported_warning_families": [
+    {
+      "category": "UserWarning",
+      "normalized": "tensor-copy construction warning",
+      "origin": "mace/modules/models.py"
+    },
+    {
+      "category": "UserWarning",
+      "normalized": "TorchScript instance-annotation warning",
+      "origin": "ast.py via TorchScript"
+    }
+  ],
+  "schema": "mdstats.mlff-mh1-doctor-hotfix2-warning-evidence.v1",
+  "tests": {
+    "campaign_config_accel_warning_non_slow": "80 passed, 1 skipped, 1 deselected",
+    "warning_and_accel1_non_slow": "26 passed, 1 deselected"
+  }
+}

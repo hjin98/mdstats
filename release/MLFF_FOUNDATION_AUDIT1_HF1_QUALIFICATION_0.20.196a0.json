@@ -1,0 +1,31 @@
+{
+  "schema": "mdstats.foundation-audit1-hf1-qualification.v1",
+  "version": "0.20.196a0",
+  "architecture_revision": 63,
+  "dependency_graph_schema": 45,
+  "gate": "FOUNDATION-AUDIT1-HF1",
+  "status": "pass",
+  "failure_reproduced": "NameError: name 'cfg' is not defined",
+  "repair": {
+    "function": "mdstats.training_data.campaign_cli._ensure_foundation_target_audit",
+    "change": "add explicit keyword-only cfg argument and pass active cfg from _prepare_materialization",
+    "configuration_key": "performance.foundation_audit_temporary_ram_mib",
+    "scientific_identity_changed": false,
+    "selection_identity_changed": false,
+    "acceleration_policy_changed": false,
+    "restart_compatibility": "preserved"
+  },
+  "regression": {
+    "focused_and_adjacent_tests_passed": 45,
+    "focused_and_adjacent_tests_failed": 0,
+    "helper_ram_mib_fixture": 321,
+    "expected_temporary_memory_threshold_bytes": 336592896,
+    "top_level_campaign_cli_unbound_cfg_offenders": []
+  },
+  "verification": {
+    "compileall": "pass",
+    "pdf_preflight": "pass",
+    "pdf_visual_qa": "pass",
+    "canonical_manual_pages": 200
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "schema": "mdstats.gfx3d-harden5-qualification.v1",
+  "version": "0.20.160a0",
+  "date": "2026-08-12",
+  "scope": "GFX3D/PAR-DENS long-density progress observability",
+  "scientific_numerics_changed": false,
+  "focused_tests": {
+    "passed": 81,
+    "failed": 0,
+    "test_files": [
+      "tests/test_density_par_dens2_scheduler.py",
+      "tests/test_density_support_atlas.py",
+      "tests/test_density_tiled_fft.py",
+      "tests/test_atomic_density.py",
+      "tests/test_graphics3d_cli.py",
+      "tests/test_graphics3d_harden1.py",
+      "tests/test_graphics3d_harden3.py"
+    ]
+  },
+  "progress_contract": {
+    "scheduler_heartbeat_seconds": 5.0,
+    "support_atlas_update_target_seconds": 2.0,
+    "field_preparation_steps": 5,
+    "reports_direct_pair_progress": true,
+    "reports_live_worker_allocation": true,
+    "reports_support_source_blocks": true
+  },
+  "real_smoke": {
+    "input": "dump.prod.Na_lta_300K.old(2).lammpstrj",
+    "stride": 500,
+    "type_map": "1=Al,2=Na,3=O,4=Si",
+    "density_fields": 4,
+    "density_realization_completed": true,
+    "observed_events": [
+      "sparse_field_preparation",
+      "density_support_atlas",
+      "density_support_atlas_finalize",
+      "density_scheduler heartbeat",
+      "hybrid_direct_realization",
+      "density_realization 4/4"
+    ]
+  }
+}

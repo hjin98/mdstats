@@ -1,0 +1,854 @@
+{
+  "production_regime_catalog": {
+    "block_partition": {
+      "block_boundaries": [
+        [
+          0,
+          66
+        ],
+        [
+          66,
+          132
+        ],
+        [
+          132,
+          198
+        ],
+        [
+          198,
+          264
+        ],
+        [
+          264,
+          330
+        ],
+        [
+          330,
+          395
+        ],
+        [
+          395,
+          460
+        ],
+        [
+          460,
+          525
+        ],
+        [
+          525,
+          590
+        ],
+        [
+          590,
+          655
+        ],
+        [
+          655,
+          720
+        ],
+        [
+          720,
+          785
+        ],
+        [
+          785,
+          850
+        ],
+        [
+          850,
+          915
+        ],
+        [
+          915,
+          980
+        ],
+        [
+          980,
+          1045
+        ],
+        [
+          1045,
+          1110
+        ],
+        [
+          1110,
+          1175
+        ],
+        [
+          1175,
+          1240
+        ],
+        [
+          1240,
+          1305
+        ],
+        [
+          1305,
+          1370
+        ],
+        [
+          1370,
+          1435
+        ],
+        [
+          1435,
+          1500
+        ]
+      ],
+      "block_center_times_ps": [
+        0.0325,
+        0.0985,
+        0.1645,
+        0.2305,
+        0.2965,
+        0.36200000000000004,
+        0.427,
+        0.492,
+        0.5569999999999999,
+        0.622,
+        0.6870000000000002,
+        0.752,
+        0.817,
+        0.882,
+        0.947,
+        1.012,
+        1.077,
+        1.1420000000000001,
+        1.207,
+        1.272,
+        1.337,
+        1.402,
+        1.467
+      ],
+      "block_length_frames": 64,
+      "frame_count": 1500,
+      "observable_autocorrelation_times_frames": [
+        [
+          "cell_volume",
+          0.5
+        ],
+        [
+          "ionic_temperature",
+          5.834166900095019
+        ],
+        [
+          "kinetic_energy",
+          5.834166900095019
+        ],
+        [
+          "potential_energy",
+          5.803926899317777
+        ],
+        [
+          "total_energy",
+          31.597142963685506
+        ]
+      ],
+      "policy_signature": "c4d85cd65bc0cc59936292621d08c871bdc30cbaec1ab48a0b3110e57cd1f846",
+      "schema": "mdstats.quality-diagnostic-block-partition.v1",
+      "signature": "f506670f0aca8c957163d1f720a596fe773012d435e9ea066ecc74a89e51025a",
+      "source_identity_signature": "92fd811b47ff6d3ff7408a19fe3cb786599827465066075b2615a9cc67c37774",
+      "trajectory_quality_verdict_signature": "63c1e2ffadd31452d75cf8df9560c0e88a0c16bc712529996f8c5ef2fa5de9d5"
+    },
+    "change_points": {
+      "block_indices": [],
+      "external_boundaries": [],
+      "frame_indices": [],
+      "method": "penalized_multivariate_least_squares",
+      "notes": [
+        "Primary observables: ionic_temperature, potential_energy, kinetic_energy"
+      ],
+      "penalty": 28.219447943362347,
+      "schema": "mdstats.change-point-catalog.v1",
+      "segment_cost": 65.99999999999999,
+      "signature": "ef9e1844be595b465534f9060a11b7980137413e7a3e7772d37ed5f458ea6803",
+      "status": "none"
+    },
+    "notes": [
+      "Adaptive site density was not used to select production regimes.",
+      "Scientific downstream methods must apply their own ensemble-specific admissibility gates."
+    ],
+    "overall_status": "accepted",
+    "policy_signature": "c4d85cd65bc0cc59936292621d08c871bdc30cbaec1ab48a0b3110e57cd1f846",
+    "regimes": [
+      {
+        "block_start": 0,
+        "block_stop": 23,
+        "diagnostics": [
+          {
+            "block_count": 23,
+            "block_standard_deviation": 2.16792293314391e-13,
+            "frame_start": 0,
+            "frame_stop": 1500,
+            "integrated_autocorrelation_time_frames": 0.5,
+            "mean": 3701.347188414234,
+            "normalized_span_change": 4.959142240518547e-08,
+            "notes": [],
+            "observable_name": "cell_volume",
+            "observation_span_change": 1.835550718888959e-12,
+            "role": "cell_diagnostic",
+            "schema": "mdstats.observable-stationarity-diagnostic.v1",
+            "signature": "9dae199cfc02f8f54483508ae59f6c68b52cf83b0eef9517b56cf2f931de4b60",
+            "slope_per_ps": 1.2245168238085117e-12,
+            "slope_standard_error_per_ps": 7.753513535594126e-13,
+            "slope_z_score": 1.5793057149988983,
+            "standard_deviation": 0.0,
+            "status": "stationary",
+            "units": "angstrom^3"
+          },
+          {
+            "block_count": 23,
+            "block_standard_deviation": 4.847990750635734,
+            "frame_start": 0,
+            "frame_stop": 1500,
+            "integrated_autocorrelation_time_frames": 4.96146712771885,
+            "mean": 320.17750665200106,
+            "normalized_span_change": 1.501303453679207,
+            "notes": [],
+            "observable_name": "ionic_temperature",
+            "observation_span_change": -7.278305257334279,
+            "role": "distribution_primary",
+            "schema": "mdstats.observable-stationarity-diagnostic.v1",
+            "signature": "1b7e85ef99bb5fe156d2a42f727f8b7b1293dd5adcdd8512d4b821a5f6b581e9",
+            "slope_per_ps": -4.855440465199652,
+            "slope_standard_error_per_ps": 2.1481594753121436,
+            "slope_z_score": 2.260279332610592,
+            "standard_deviation": 14.309590646486633,
+            "status": "stationary",
+            "units": "K"
+          },
+          {
+            "block_count": 23,
+            "block_standard_deviation": 0.10465076363481149,
+            "frame_start": 0,
+            "frame_stop": 1500,
+            "integrated_autocorrelation_time_frames": 4.961467127718849,
+            "mean": 6.911486076046667,
+            "normalized_span_change": 1.5013034536792047,
+            "notes": [],
+            "observable_name": "kinetic_energy",
+            "observation_span_change": -0.1571125528751086,
+            "role": "distribution_primary",
+            "schema": "mdstats.observable-stationarity-diagnostic.v1",
+            "signature": "011173ce0b266f132c1b61a94af029efd9e3b79095899762e56f70bf53c2ac93",
+            "slope_per_ps": -0.1048115763009397,
+            "slope_standard_error_per_ps": 0.0463710722779931,
+            "slope_z_score": 2.2602793326105903,
+            "standard_deviation": 0.30889283117134886,
+            "status": "stationary",
+            "units": "eV"
+          },
+          {
+            "block_count": 23,
+            "block_standard_deviation": 0.10393554781554269,
+            "frame_start": 0,
+            "frame_stop": 1500,
+            "integrated_autocorrelation_time_frames": 4.9028603689011145,
+            "mean": -1175.30161904192,
+            "normalized_span_change": 1.4383430250999192,
+            "notes": [],
+            "observable_name": "potential_energy",
+            "observation_span_change": -0.14949497026042496,
+            "role": "distribution_primary",
+            "schema": "mdstats.observable-stationarity-diagnostic.v1",
+            "signature": "10a359794f4f151c8a6f8681bc3e8bef1e90dedcc01ed21894e76fbe6afff14c",
+            "slope_per_ps": -0.09972980004031018,
+            "slope_standard_error_per_ps": 0.04651189567686,
+            "slope_z_score": 2.1441783567193213,
+            "standard_deviation": 0.3100399806584498,
+            "status": "stationary",
+            "units": "eV"
+          },
+          {
+            "block_count": 23,
+            "block_standard_deviation": 0.001169584622106327,
+            "frame_start": 0,
+            "frame_stop": 1500,
+            "integrated_autocorrelation_time_frames": 28.66965721540386,
+            "mean": 0.0051721404552806,
+            "normalized_span_change": 1.4233540288387168,
+            "notes": [],
+            "observable_name": "pressure",
+            "observation_span_change": 0.0016647329839428486,
+            "role": "optional",
+            "schema": "mdstats.observable-stationarity-diagnostic.v1",
+            "signature": "f4f24e9e9ab77a18bfd08fd1a04b45d8fc937a4a8a6a7bdfff1b64aefc4ce897",
+            "slope_per_ps": 0.001110562364204702,
+            "slope_standard_error_per_ps": 0.0005245839661336803,
+            "slope_z_score": 2.1170345185916264,
+            "standard_deviation": 0.0014601151442919236,
+            "status": "stationary",
+            "units": "eV/angstrom^3"
+          },
+          {
+            "block_count": 23,
+            "block_standard_deviation": 0.0015894612417276242,
+            "frame_start": 0,
+            "frame_stop": 1500,
+            "integrated_autocorrelation_time_frames": 34.53191455823314,
+            "mean": 0.01039064502990975,
+            "normalized_span_change": 1.3009133526368648,
+            "notes": [],
+            "observable_name": "stress_norm",
+            "observation_span_change": 0.0020677513528622377,
+            "role": "optional",
+            "schema": "mdstats.observable-stationarity-diagnostic.v1",
+            "signature": "b73fd025453d9fe7979375136dd43937ae7413fa466faa551479538ef561292a",
+            "slope_per_ps": 0.0013794205155852153,
+            "slope_standard_error_per_ps": 0.0007253248985414925,
+            "slope_z_score": 1.901796723591042,
+            "standard_deviation": 0.002084218017501585,
+            "status": "stationary",
+            "units": "eV/angstrom^3"
+          },
+          {
+            "block_count": 23,
+            "block_standard_deviation": 0.09038178945313306,
+            "frame_start": 0,
+            "frame_stop": 1500,
+            "integrated_autocorrelation_time_frames": 299.8848528729188,
+            "mean": -1168.3901329660332,
+            "normalized_span_change": 3.3923595162043343,
+            "notes": [],
+            "observable_name": "total_energy",
+            "observation_span_change": -0.3066075235429125,
+            "role": "conservation_diagnostic",
+            "schema": "mdstats.observable-stationarity-diagnostic.v1",
+            "signature": "6c04a33690716fbbc73377bc9a4f423ac6d82e81bc7cfccfae15fd2afbd0db11",
+            "slope_per_ps": -0.204541376613017,
+            "slope_standard_error_per_ps": 0.0013497281364703937,
+            "slope_z_score": 151.54264854247083,
+            "standard_deviation": 0.08863347812568609,
+            "status": "nonstationary",
+            "units": "eV"
+          }
+        ],
+        "frame_start": 0,
+        "frame_stop": 1500,
+        "notes": [
+          "STAT0 quality flags remain attached and are not repaired by STAT1."
+        ],
+        "production_interval_status": "scientific_candidate",
+        "quality_outcome": "degraded_quality",
+        "regime_id": "regime_000",
+        "schema": "mdstats.production-regime.v1",
+        "scientific_use_permitted": true,
+        "selection_conditioning_status": "full_source",
+        "signature": "4c3b2bff22d6005185b483a7be7548298d44b7aea1ce838dd9c5a9461aaf04e7",
+        "stationarity_status": "supported",
+        "thermalization_status": "no_detected_transient",
+        "time_start_ps": 0.0,
+        "time_stop_ps": 1.499
+      }
+    ],
+    "schema": "mdstats.production-regime-catalog.v1",
+    "selected_regime_ids": [
+      "regime_000"
+    ],
+    "signature": "5b8e086ccb9b22d2fc695ed5cae8720e2f77db98930e1ce3d54dcbe04aeaaf31",
+    "simulation_control_certificate_signature": "36dc5f6f51e0d3ee2d4fa1ea6d210e7f1536cca1085cb0049b251a9e8bcbb919",
+    "source_identity_signature": "92fd811b47ff6d3ff7408a19fe3cb786599827465066075b2615a9cc67c37774",
+    "trajectory_quality_verdict_signature": "63c1e2ffadd31452d75cf8df9560c0e88a0c16bc712529996f8c5ef2fa5de9d5"
+  },
+  "quality": {
+    "checks": [
+      {
+        "check_id": "integrity.frame_count",
+        "evidence": [],
+        "measured_value": 1500,
+        "message": "",
+        "requirement": "hard_integrity_required",
+        "schema": "mdstats.trajectory-quality-check.v1",
+        "severity": "hard_integrity",
+        "status": "pass",
+        "threshold": 1,
+        "units": "frames"
+      },
+      {
+        "check_id": "integrity.atom_count",
+        "evidence": [],
+        "measured_value": 168,
+        "message": "",
+        "requirement": "hard_integrity_required",
+        "schema": "mdstats.trajectory-quality-check.v1",
+        "severity": "hard_integrity",
+        "status": "pass",
+        "threshold": 1,
+        "units": "atoms"
+      },
+      {
+        "check_id": "integrity.positions_complete",
+        "evidence": [],
+        "measured_value": true,
+        "message": "",
+        "requirement": "hard_integrity_required",
+        "schema": "mdstats.trajectory-quality-check.v1",
+        "severity": "hard_integrity",
+        "status": "pass",
+        "threshold": null,
+        "units": null
+      },
+      {
+        "check_id": "integrity.cells_complete",
+        "evidence": [],
+        "measured_value": true,
+        "message": "",
+        "requirement": "hard_integrity_required",
+        "schema": "mdstats.trajectory-quality-check.v1",
+        "severity": "hard_integrity",
+        "status": "pass",
+        "threshold": null,
+        "units": null
+      },
+      {
+        "check_id": "integrity.positive_cell_determinant",
+        "evidence": [],
+        "measured_value": 3701.347188414234,
+        "message": "",
+        "requirement": "hard_integrity_required",
+        "schema": "mdstats.trajectory-quality-check.v1",
+        "severity": "hard_integrity",
+        "status": "pass",
+        "threshold": 1e-12,
+        "units": "Angstrom^3"
+      },
+      {
+        "check_id": "integrity.uniform_frame_axis",
+        "evidence": [],
+        "measured_value": {
+          "step_uniform": true,
+          "time_uniform": true
+        },
+        "message": "",
+        "requirement": "hard_integrity_required",
+        "schema": "mdstats.trajectory-quality-check.v1",
+        "severity": "hard_integrity",
+        "status": "pass",
+        "threshold": null,
+        "units": null
+      },
+      {
+        "check_id": "integrity.minimum_atomic_distance",
+        "evidence": [],
+        "measured_value": {
+          "lower_bound": 0.35
+        },
+        "message": "No pair was found below the catastrophic-overlap cutoff.",
+        "requirement": "hard_integrity_required",
+        "schema": "mdstats.trajectory-quality-check.v1",
+        "severity": "hard_integrity",
+        "status": "pass",
+        "threshold": 0.35,
+        "units": "Angstrom"
+      },
+      {
+        "check_id": "integrity.maximum_force_norm",
+        "evidence": [],
+        "measured_value": 5.73015588132858,
+        "message": "",
+        "requirement": "hard_integrity_required",
+        "schema": "mdstats.trajectory-quality-check.v1",
+        "severity": "hard_integrity",
+        "status": "pass",
+        "threshold": 100.0,
+        "units": "eV/Angstrom"
+      },
+      {
+        "check_id": "integrity.maximum_speed",
+        "evidence": [],
+        "measured_value": 17.874889458419812,
+        "message": "",
+        "requirement": "hard_integrity_required",
+        "schema": "mdstats.trajectory-quality-check.v1",
+        "severity": "hard_integrity",
+        "status": "pass",
+        "threshold": 1000.0,
+        "units": "Angstrom/ps"
+      },
+      {
+        "check_id": "quality.requested_step_completion",
+        "evidence": [],
+        "measured_value": 1500,
+        "message": "",
+        "requirement": "verdict_critical",
+        "schema": "mdstats.trajectory-quality-check.v1",
+        "severity": "soft_quality",
+        "status": "pass",
+        "threshold": 1500,
+        "units": "ionic steps"
+      },
+      {
+        "check_id": "quality.scf_iteration_limit",
+        "evidence": [],
+        "measured_value": 0.0,
+        "message": "",
+        "requirement": "verdict_critical",
+        "schema": "mdstats.trajectory-quality-check.v1",
+        "severity": "soft_quality",
+        "status": "pass",
+        "threshold": 0.0,
+        "units": "fraction of ionic steps"
+      },
+      {
+        "check_id": "quality.ediff",
+        "evidence": [],
+        "measured_value": 1e-05,
+        "message": "",
+        "requirement": "verdict_critical",
+        "schema": "mdstats.trajectory-quality-check.v1",
+        "severity": "soft_quality",
+        "status": "warning",
+        "threshold": {
+          "maximum_manageable": 0.0001,
+          "strict": 1e-06
+        },
+        "units": "eV"
+      },
+      {
+        "check_id": "quality.prec",
+        "evidence": [],
+        "measured_value": "accura",
+        "message": "",
+        "requirement": "verdict_critical",
+        "schema": "mdstats.trajectory-quality-check.v1",
+        "severity": "soft_quality",
+        "status": "pass",
+        "threshold": "Accurate",
+        "units": null
+      },
+      {
+        "check_id": "quality.lreal",
+        "evidence": [],
+        "measured_value": true,
+        "message": "Real-space projection may reduce precision in demanding MD thermodynamics.",
+        "requirement": "verdict_critical",
+        "schema": "mdstats.trajectory-quality-check.v1",
+        "severity": "soft_quality",
+        "status": "warning",
+        "threshold": false,
+        "units": null
+      },
+      {
+        "check_id": "quality.potim",
+        "evidence": [],
+        "measured_value": 1.0,
+        "message": "",
+        "requirement": "verdict_critical",
+        "schema": "mdstats.trajectory-quality-check.v1",
+        "severity": "soft_quality",
+        "status": "pass",
+        "threshold": 2.0,
+        "units": "fs"
+      },
+      {
+        "check_id": "quality.temperature_mean_confidence",
+        "evidence": [],
+        "measured_value": 2.0312582851786374,
+        "message": "",
+        "requirement": "verdict_critical",
+        "schema": "mdstats.trajectory-quality-check.v1",
+        "severity": "soft_quality",
+        "status": "pass",
+        "threshold": 16.009456338167066,
+        "units": "K"
+      },
+      {
+        "check_id": "quality.temperature_stability",
+        "evidence": [],
+        "measured_value": -7.848036434196014,
+        "message": "",
+        "requirement": "verdict_critical",
+        "schema": "mdstats.trajectory-quality-check.v1",
+        "severity": "soft_quality",
+        "status": "warning",
+        "threshold": 7.146870079162281,
+        "units": "K over observed span"
+      },
+      {
+        "check_id": "quality.target_temperature",
+        "evidence": [],
+        "measured_value": 320.1891267633413,
+        "message": "No authoritative fixed thermostat target applies.",
+        "requirement": "optional",
+        "schema": "mdstats.trajectory-quality-check.v1",
+        "severity": "diagnostic",
+        "status": "not_applicable",
+        "threshold": null,
+        "units": null
+      },
+      {
+        "check_id": "quality.nve_energy_drift",
+        "evidence": [],
+        "measured_value": -0.0012175737839342784,
+        "message": "",
+        "requirement": "verdict_critical",
+        "schema": "mdstats.trajectory-quality-check.v1",
+        "severity": "soft_quality",
+        "status": "warning",
+        "threshold": {
+          "catastrophic": 0.026,
+          "strict": 0.001
+        },
+        "units": "eV/(atom ps)"
+      },
+      {
+        "check_id": "integrity.maximum_energy_jump",
+        "evidence": [],
+        "measured_value": 1.189291666713914e-05,
+        "message": "",
+        "requirement": "hard_integrity_required",
+        "schema": "mdstats.trajectory-quality-check.v1",
+        "severity": "hard_integrity",
+        "status": "pass",
+        "threshold": 1.0,
+        "units": "eV/atom/frame"
+      },
+      {
+        "check_id": "quality.energy_identity",
+        "evidence": [],
+        "measured_value": 5.952453345040946e-11,
+        "message": "",
+        "requirement": "verdict_critical",
+        "schema": "mdstats.trajectory-quality-check.v1",
+        "severity": "soft_quality",
+        "status": "pass",
+        "threshold": 1e-08,
+        "units": "eV/atom"
+      },
+      {
+        "check_id": "quality.fixed_cell_consistency",
+        "evidence": [],
+        "measured_value": 0.0,
+        "message": "",
+        "requirement": "verdict_critical",
+        "schema": "mdstats.trajectory-quality-check.v1",
+        "severity": "soft_quality",
+        "status": "pass",
+        "threshold": 1e-10,
+        "units": "relative Frobenius deviation"
+      },
+      {
+        "check_id": "quality.inactive_thermostat_consistency",
+        "evidence": [],
+        "measured_value": 0.0,
+        "message": "",
+        "requirement": "verdict_critical",
+        "schema": "mdstats.trajectory-quality-check.v1",
+        "severity": "soft_quality",
+        "status": "pass",
+        "threshold": 1e-08,
+        "units": "eV"
+      },
+      {
+        "check_id": "diagnostic.realized_ensemble_consistency",
+        "evidence": [
+          "control ensemble=NVE",
+          "cell-volume trace",
+          "source total-energy trace"
+        ],
+        "measured_value": "degraded",
+        "message": "",
+        "requirement": "method_specific",
+        "schema": "mdstats.trajectory-quality-check.v1",
+        "severity": "diagnostic",
+        "status": "warning",
+        "threshold": null,
+        "units": null
+      }
+    ],
+    "degraded_reasons": [
+      "quality.ediff",
+      "quality.lreal",
+      "quality.temperature_stability",
+      "quality.nve_energy_drift"
+    ],
+    "energy_catalog_signature": "7641864196c99fc4cd734f31904cc2be5cb8d7572921ec4c3b0fe1f8b9df9b30",
+    "energy_conservation": {
+      "detrended_standard_deviation_ev": 0.003252913530798152,
+      "drift_ev_per_atom_ps": -0.0012175737839342784,
+      "drift_ev_per_ps": -0.20455239570095876,
+      "ensemble": "NVE",
+      "final_ev": -1168.54785081,
+      "frame_count": 1500,
+      "identity_residual_max_ev": 1.000012161966879e-08,
+      "initial_ev": -1168.23465517,
+      "maximum_step_jump_ev": 0.0019980100000793755,
+      "maximum_step_jump_ev_per_atom": 1.189291666713914e-05,
+      "mean_ev": -1168.3901329660332,
+      "notes": [],
+      "observation_span_change_ev": -0.3066240411557372,
+      "schema": "mdstats.energy-conservation-statistics.v1",
+      "signature": "56cc493a4866f4a677e3354f951d8f52b156ab58f51a2cba53886c6b36af6411",
+      "source_channel": "total",
+      "standard_deviation_ev": 0.08863347812568609,
+      "status": "warning"
+    },
+    "numerical_quality_controls_signature": "0434ca9f557d11aeaccc225320d21492f23c8ded291d14c640a20c277bb613ec",
+    "outcome": "degraded_quality",
+    "policy_signature": "dad9b0efc9b8e32d3b646df145aff08d58748b66107cb55c636cbfe3d664f997",
+    "realized_ensemble_consistency": {
+      "cell_matrix_relative_deviation": 0.0,
+      "cell_volume_relative_range": 0.0,
+      "control_inferred_ensemble": "NVE",
+      "evidence": [
+        "control ensemble=NVE",
+        "cell-volume trace",
+        "source total-energy trace"
+      ],
+      "inactive_thermostat_energy_max_abs_ev": 0.0,
+      "notes": [
+        "Observed NVE energy drift exceeds the strict conservation tolerance."
+      ],
+      "nve_energy_drift_ev_per_atom_ps": -0.0012175737839342784,
+      "schema": "mdstats.realized-ensemble-consistency.v1",
+      "signature": "e9b88aa06bcdbfcc05b89821259daae84a24912f6fe438e589aa4a12a8ce828b",
+      "simulation_control_certificate_signature": "36dc5f6f51e0d3ee2d4fa1ea6d210e7f1536cca1085cb0049b251a9e8bcbb919",
+      "source_identity_signature": "92fd811b47ff6d3ff7408a19fe3cb786599827465066075b2615a9cc67c37774",
+      "status": "degraded"
+    },
+    "schema": "mdstats.trajectory-quality-verdict.v1",
+    "signature": "63c1e2ffadd31452d75cf8df9560c0e88a0c16bc712529996f8c5ef2fa5de9d5",
+    "simulation_control_certificate_signature": "36dc5f6f51e0d3ee2d4fa1ea6d210e7f1536cca1085cb0049b251a9e8bcbb919",
+    "source_identity_signature": "92fd811b47ff6d3ff7408a19fe3cb786599827465066075b2615a9cc67c37774",
+    "temperature_definition": {
+      "active_coordinate_count": 504,
+      "atom_count": 168,
+      "center_of_mass_translation_removed": true,
+      "constraint_count": 0,
+      "degrees_of_freedom": 501,
+      "dof_basis": "periodic_vasp_3N_minus_3",
+      "energy_catalog_signature": "7641864196c99fc4cd734f31904cc2be5cb8d7572921ec4c3b0fe1f8b9df9b30",
+      "fixed_coordinate_count": 0,
+      "kinetic_energy_channel": "kinetic",
+      "kinetic_energy_source_path": "calculation/energy",
+      "notes": [
+        "No bound constraint count was available; VASP periodic default was used."
+      ],
+      "schema": "mdstats.ionic-temperature-definition.v1",
+      "signature": "39b719ef4fafc27ee28bcad7ddf5300faaaa643206b8d263b94d62c61d30a430",
+      "source_identity_signature": "92fd811b47ff6d3ff7408a19fe3cb786599827465066075b2615a9cc67c37774"
+    },
+    "temperature_statistics": {
+      "block_length_frames": 16,
+      "block_means_kelvin": [
+        315.06902762524976,
+        323.401412504766,
+        311.1963460358244,
+        336.6081689333502,
+        332.5882521538722,
+        326.2007495937412,
+        335.8264877240809,
+        313.8329228672384,
+        310.76395097786167,
+        323.2084864355335,
+        336.8744757444142,
+        319.42436503884926,
+        323.29236182524403,
+        322.3216381516054,
+        322.79785555286617,
+        347.01037984789707,
+        314.9599841840749,
+        319.98226828772005,
+        312.7783583452817,
+        328.44446808782754,
+        321.45387623092813,
+        301.8758798104342,
+        318.32651708301523,
+        325.2661797557756,
+        325.62236353073763,
+        316.3833305056892,
+        333.11308866421496,
+        318.2573040077418,
+        316.99969707364784,
+        308.017610026479,
+        324.40178719882795,
+        336.6685981875191,
+        313.8603701004941,
+        328.7218194005723,
+        336.42752969779315,
+        329.0332175530001,
+        326.6569027600071,
+        317.6865215678196,
+        309.78253119866656,
+        316.84921623769475,
+        307.51823069613835,
+        315.3853334059862,
+        332.7407717426785,
+        313.8765604879176,
+        332.9068895799402,
+        320.35489521318755,
+        312.4965018273755,
+        316.12967108484804,
+        316.82743460350605,
+        326.7885722899004,
+        338.1085164443109,
+        319.0213995947479,
+        307.39428135566857,
+        301.3233312880977,
+        327.0011923671488,
+        313.4247704525358,
+        323.55895521694777,
+        287.05165857465,
+        320.489273737925,
+        319.468139666963,
+        333.4302384072736,
+        324.95299303672493,
+        320.07690877891207,
+        324.3698444597959,
+        335.01718304228,
+        311.10770720567996,
+        304.2660809091451,
+        321.75850233054655,
+        322.22481694909635,
+        312.7355785845512,
+        331.8486158683327,
+        321.0907574245326,
+        318.64906637245366,
+        311.09140210493103,
+        310.8969064725065,
+        327.695848376523,
+        324.8373579513045,
+        319.7945175498264,
+        318.03689017050965,
+        299.5232676510518,
+        329.99302073232116,
+        324.0057172647847,
+        302.4630924007903,
+        310.32799094707644,
+        313.8566514430853,
+        308.60734072198875,
+        315.69374232372235,
+        322.4148605058274,
+        316.92953589071374,
+        316.8458842817431,
+        325.6659324160725,
+        316.61098283482,
+        316.3198685867458
+      ],
+      "confidence_level": 0.95,
+      "definition_signature": "39b719ef4fafc27ee28bcad7ddf5300faaaa643206b8d263b94d62c61d30a430",
+      "drift_confidence_interval_kelvin_per_ps": [
+        -9.864576123351835,
+        -0.6064531417529198
+      ],
+      "drift_kelvin_per_ps": -5.235514632552377,
+      "effective_sample_count": 151.16496405062952,
+      "integrated_autocorrelation_time_frames": 4.96146712771885,
+      "maximum_kelvin": 365.45253382311523,
+      "mean_confidence_interval_kelvin": [
+        318.04392218938585,
+        322.1064387597431
+      ],
+      "mean_standard_error_kelvin": 1.0227442119921941,
+      "minimum_kelvin": 274.66341055996503,
+      "observation_span_change_kelvin": -7.848036434196014,
+      "represented_time_mean_kelvin": 320.1891267633413,
+      "represented_time_standard_deviation_kelvin": 14.293740158324562,
+      "schema": "mdstats.ionic-temperature-statistics.v1",
+      "signature": "11ee6c4759f338f8120e95b469b234054581078e68a941a46c1c686b2a23fb65",
+      "stability_status": "drifting",
+      "temperature_series_sha256": "7fd25e89c7a3638c4578a6afff43bb85228b85de5c8aed2fff4982dd5359c450"
+    },
+    "unqualified_reasons": []
+  }
+}

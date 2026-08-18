@@ -1,0 +1,76 @@
+{
+  "date": "2026-08-13",
+  "gate": "LOCKED-TEST2",
+  "known_historical_test_debt": "legacy specifications pinned to mdstats 0.20.140a0 are unchanged and excluded from current-gate qualification",
+  "pdf": {
+    "clipping_or_overlap_found": false,
+    "full_low_dpi_comparison_completed": true,
+    "pages_after": 135,
+    "pages_before": 134,
+    "preflight_passed": true,
+    "visually_inspected_pages": [
+      131,
+      132,
+      133,
+      134
+    ]
+  },
+  "schema": "mdstats.mlff-locked-test2-qualification.v1",
+  "scientific_contract": {
+    "activation_after_select2_freeze_only": true,
+    "alternative_seed_checkpoint_or_target_size_authority": false,
+    "default_ceiling_inherits_train2_full_target_authority": true,
+    "default_target_force_rmse_ceiling_ev_per_A": 0.03,
+    "exact_once_scientific_activation": true,
+    "failure_publishes_production": false,
+    "fallback_authority": false,
+    "locked_bytes_rematerialized_after_activation": false,
+    "locked_role": "locked_interpolation_test",
+    "published_mliap_artifact": "models/production_best-mliap_lammps.pt",
+    "published_target_model": "models/production_best.model",
+    "ranking_authority": false,
+    "replay_authority": false,
+    "success_publication_byte_preserving": true
+  },
+  "sha256": {
+    "docs/arch_manuals/mlff_training_data_architecture.md": "fb32fb4b03ca347c3df84d96de31919e4e7ba6f65de5a7fa99d771956a092d52",
+    "docs/arch_manuals/mlff_training_data_architecture.pdf": "e739ca50efd3ae5f69572e48fbbe0c9377d6a1a00bf28456ddc0b269aeac2d8f",
+    "mdstats/__init__.py": "6cbeeea5e33cfaee3e24e038dbb23f176cebceaf1dbb7e029525e581a791c90f",
+    "mdstats/training_data/__init__.py": "ab18e86217b437aab4f1aa28ad8c1f4d6fe9f16faea7607981b4d2358657a01b",
+    "mdstats/training_data/campaign_cli.py": "4c2eaec4eef454466e89b704a7430801a5f12001435b25d962666c4e0163fe09",
+    "mdstats/training_data/locked_test2.py": "ac8c25ec1dc0fbc8c71145bf4dd62e15345cefc03ee660d45bf27e63841daed9",
+    "release/PATCH_NOTES_0.20.177a0.md": "9c62ce75aaa6884cca6a0cde0d5a64f06da413d7a3fea97b78496b4cc8662b91",
+    "tests/test_mlff_locked_test2.py": "b2803578dc8bfad42709545888a3aa12da0e392bacdcf40eb745f18bca214335",
+    "tests/test_mlff_locked_test2_specification.py": "6165a3367dae3bca1233afe8d5ee25a43836016d818bba5a1e2ff0142eece86c"
+  },
+  "source_diff": {
+    "added_files": [
+      "mdstats/training_data/locked_test2.py",
+      "tests/test_mlff_locked_test2.py",
+      "tests/test_mlff_locked_test2_specification.py"
+    ],
+    "changed_file_count_before_release_records": 16,
+    "removed_files": [],
+    "unrelated_runtime_changes_found": false
+  },
+  "status": "qualified",
+  "tests": {
+    "additional_storage_materialization_hardening": {
+      "passed": 39,
+      "skipped": 0
+    },
+    "compileall": true,
+    "focused_final_subset": {
+      "note": "overlaps primary qualification",
+      "passed": 15,
+      "skipped": 0
+    },
+    "primary_cross_gate": {
+      "passed": 210,
+      "skip_reason": "external real-LTA training root not supplied",
+      "skipped": 1
+    },
+    "public_import_check": true
+  },
+  "version": "0.20.177a0"
+}

@@ -1,0 +1,277 @@
+{
+  "acceptance": {
+    "exact_scientific_output_digest_across_all_repeats_and_schedules": true,
+    "inputs_content_addressed": true,
+    "next_gate": "PARCORE1",
+    "repeated_trials_per_schedule": 2,
+    "requested_vs_allocated_workers_explicit": true,
+    "status": "PASS"
+  },
+  "active_foundation": {
+    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
+    "family": "mace-mpa-0",
+    "mh1_supported_by_same_contract": true,
+    "schema_foundation_generic": true,
+    "variant": "medium"
+  },
+  "architecture_revision": 92,
+  "artifacts": {
+    "dependency_graph_sha256": "4ff3fb0d8e295c0b2ef11d899221142a4812388ea45331f79857d0ccfb1dd98f",
+    "release_note": "docs/history/mlff/release_notes/PATCH_NOTES_0.20.225a0.md",
+    "revision_note": "docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV92.md"
+  },
+  "authority_change": {
+    "gpu": false,
+    "performance_measurement": true,
+    "runtime_optimization": false,
+    "scientific": false
+  },
+  "baseline": {
+    "baseline_id": "lta-perfbase1-cloud-cpu-mpa0-2026-08-17",
+    "content_digest": "5b8e1d8315cc103d317fd6bb8948bf8f699ef834873e9d2b1983345536d32ece",
+    "execution_digest": "a431a0d611d2fb7be855a1daa9a901cb90434bc054ddb03d6bc896d64ee6a597",
+    "implementation_manifest_sha256": "8fa45b19b6c596b097ad2685b3314e6d7196ce06e6d7f5bdf0b316848569dc65",
+    "limitations": [
+      "Cloud CPU authority is cgroup-constrained; automatic workers use mdstats' detected CPU budget.",
+      "TARGET-DATA2B family extraction/target XML parsing is performed once outside timed radius trials; replay parsing is timed directly.",
+      "FEAS1/MVIDX1/MVSEL1 scaling workloads are deterministic synthetic authorities so algorithmic changes can be compared without model inference noise.",
+      "No GPU performance authority is asserted by PERFBASE1."
+    ],
+    "record_sha256": "06cfe9c4c35f3eac270224647cda77b15584977884cdd0eafe0fd7a46a50ed7d",
+    "report_sha256": "8482489d2cc407208db282dff156d4574740c9f0d721ee981e815b170afbc112",
+    "scientific_digest": "d16fdb3a52112192789a27f1515380ec29e8ac278e70b6b0bf669753a77e39df",
+    "unavailable_workloads": [
+      "FOUNDATION-AUDIT1 model-inference and residual-reduction baseline (MACE runtime unavailable on cloud host)",
+      "EVAL2 checkpoint-inference/statistics baseline (MACE runtime unavailable on cloud host)"
+    ],
+    "workloads": {
+      "replay_unified_extxyz_ingest": {
+        "schedules": {
+          "auto": {
+            "allocated_workers": 1,
+            "median_assigned_lane_occupancy": 1.0180797877865635,
+            "median_wall_seconds": 8.34918463150018,
+            "repeat_count": 2,
+            "requested_workers": 3,
+            "wall_cv": 0.01901735132798233
+          },
+          "dual": {
+            "allocated_workers": 1,
+            "median_assigned_lane_occupancy": 1.015629287118082,
+            "median_wall_seconds": 7.67190966499993,
+            "repeat_count": 2,
+            "requested_workers": 2,
+            "wall_cv": 0.0002315293206907537
+          },
+          "intermediate": {
+            "allocated_workers": 1,
+            "median_assigned_lane_occupancy": 1.015629287118082,
+            "median_wall_seconds": 7.67190966499993,
+            "repeat_count": 2,
+            "requested_workers": 2,
+            "wall_cv": 0.0002315293206907537
+          },
+          "serial": {
+            "allocated_workers": 1,
+            "median_assigned_lane_occupancy": 1.0128266487555302,
+            "median_wall_seconds": 7.763371297000049,
+            "repeat_count": 2,
+            "requested_workers": 1,
+            "wall_cv": 0.005509662263714317
+          }
+        },
+        "scientific_output_digest": "12100732e5b14450645bff77f4db4ab487450ce06aee247f9aedfa99fdb67372"
+      },
+      "target_data2b_feas1": {
+        "schedules": {
+          "auto": {
+            "allocated_workers": 3,
+            "median_assigned_lane_occupancy": 0.6521985046718283,
+            "median_wall_seconds": 0.8542124414999535,
+            "repeat_count": 2,
+            "requested_workers": 3,
+            "wall_cv": 0.04273820687612086
+          },
+          "dual": {
+            "allocated_workers": 2,
+            "median_assigned_lane_occupancy": 0.8225789697901501,
+            "median_wall_seconds": 0.9818184590000101,
+            "repeat_count": 2,
+            "requested_workers": 2,
+            "wall_cv": 0.020507376227868704
+          },
+          "intermediate": {
+            "allocated_workers": 2,
+            "median_assigned_lane_occupancy": 0.8225789697901501,
+            "median_wall_seconds": 0.9818184590000101,
+            "repeat_count": 2,
+            "requested_workers": 2,
+            "wall_cv": 0.020507376227868704
+          },
+          "serial": {
+            "allocated_workers": 1,
+            "median_assigned_lane_occupancy": 1.0207687419327807,
+            "median_wall_seconds": 1.7757480514999315,
+            "repeat_count": 2,
+            "requested_workers": 1,
+            "wall_cv": 0.015556725832421205
+          }
+        },
+        "scientific_output_digest": "937214c70d1f2baae883993082f1ceb25bea6007a5a2be0beee045262f5c0613"
+      },
+      "target_data2b_reference_radii": {
+        "schedules": {
+          "auto": {
+            "allocated_workers": 3,
+            "median_assigned_lane_occupancy": 0.5128954121442777,
+            "median_wall_seconds": 0.4233685440000272,
+            "repeat_count": 2,
+            "requested_workers": 3,
+            "wall_cv": 0.1774179521773378
+          },
+          "dual": {
+            "allocated_workers": 2,
+            "median_assigned_lane_occupancy": 0.6862163667359931,
+            "median_wall_seconds": 0.4574728420000156,
+            "repeat_count": 2,
+            "requested_workers": 2,
+            "wall_cv": 0.040436787776436625
+          },
+          "intermediate": {
+            "allocated_workers": 2,
+            "median_assigned_lane_occupancy": 0.6862163667359931,
+            "median_wall_seconds": 0.4574728420000156,
+            "repeat_count": 2,
+            "requested_workers": 2,
+            "wall_cv": 0.040436787776436625
+          },
+          "serial": {
+            "allocated_workers": 1,
+            "median_assigned_lane_occupancy": 1.0331947213930854,
+            "median_wall_seconds": 0.6123109100000192,
+            "repeat_count": 2,
+            "requested_workers": 1,
+            "wall_cv": 0.05590048942701832
+          }
+        },
+        "scientific_output_digest": "823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d"
+      },
+      "target_data2c_mvidx1": {
+        "schedules": {
+          "auto": {
+            "allocated_workers": 3,
+            "median_assigned_lane_occupancy": 0.333769296832192,
+            "median_wall_seconds": 2.396962672999962,
+            "repeat_count": 2,
+            "requested_workers": 3,
+            "wall_cv": 0.00926717308976968
+          },
+          "dual": {
+            "allocated_workers": 2,
+            "median_assigned_lane_occupancy": 0.4995575783981827,
+            "median_wall_seconds": 2.290015844999857,
+            "repeat_count": 2,
+            "requested_workers": 2,
+            "wall_cv": 0.009630339279787441
+          },
+          "intermediate": {
+            "allocated_workers": 2,
+            "median_assigned_lane_occupancy": 0.4995575783981827,
+            "median_wall_seconds": 2.290015844999857,
+            "repeat_count": 2,
+            "requested_workers": 2,
+            "wall_cv": 0.009630339279787441
+          },
+          "serial": {
+            "allocated_workers": 1,
+            "median_assigned_lane_occupancy": 1.0179023610167097,
+            "median_wall_seconds": 2.1711868274999233,
+            "repeat_count": 2,
+            "requested_workers": 1,
+            "wall_cv": 0.007457356781575114
+          }
+        },
+        "scientific_output_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c"
+      },
+      "target_data2c_mvsel1_kernel": {
+        "schedules": {
+          "auto": {
+            "allocated_workers": 1,
+            "median_assigned_lane_occupancy": 1.0155497926151922,
+            "median_wall_seconds": 2.834312900499981,
+            "repeat_count": 2,
+            "requested_workers": 3,
+            "wall_cv": 0.0071241378752027315
+          },
+          "dual": {
+            "allocated_workers": 1,
+            "median_assigned_lane_occupancy": 1.0147925929159523,
+            "median_wall_seconds": 3.0012557269999434,
+            "repeat_count": 2,
+            "requested_workers": 2,
+            "wall_cv": 0.07167037216588903
+          },
+          "intermediate": {
+            "allocated_workers": 1,
+            "median_assigned_lane_occupancy": 1.0147925929159523,
+            "median_wall_seconds": 3.0012557269999434,
+            "repeat_count": 2,
+            "requested_workers": 2,
+            "wall_cv": 0.07167037216588903
+          },
+          "serial": {
+            "allocated_workers": 1,
+            "median_assigned_lane_occupancy": 1.0122044736209186,
+            "median_wall_seconds": 3.0305396989999736,
+            "repeat_count": 2,
+            "requested_workers": 1,
+            "wall_cv": 0.0089376906990637
+          }
+        },
+        "scientific_output_digest": "ca1ba32846ff7e9c0074a1f095f5ba1625e7a632bb96d28994bc0088733ad806"
+      }
+    }
+  },
+  "date": "2026-08-17",
+  "dependency_graph_schema_version": 74,
+  "gate": "PERFBASE1",
+  "manual": {
+    "canonical_markdown": "docs/arch_manuals/mlff_training_data_architecture.md",
+    "canonical_pdf": "docs/arch_manuals/mlff_training_data_architecture.pdf",
+    "captured_latex_overfull_or_underfull_lines": 0,
+    "layout_pages_spot_checked": [
+      1,
+      39,
+      40,
+      46
+    ],
+    "markdown_lines": 3071,
+    "markdown_sha256": "3947cef5b93bac42899ba9c01e21ac79843b09f273efc8cd4a1c6fbf0dc97142",
+    "pdf_pages": 46,
+    "pdf_sha256": "d8a4b2644ed4cd4e7b820b1179e6d6bacfe58d4d36277a716c174f3c62f4f47b",
+    "rendered_pages_completed": 46
+  },
+  "release": "0.20.225a0",
+  "schema": "mdstats.perfbase1-qualification.v1",
+  "tests": {
+    "benchmark_collect_smoke": {
+      "scientific_output_digest_count": 1,
+      "status": "passed",
+      "trial_count": 8
+    },
+    "historical_version_pinned_specifications": {
+      "qualification_role": "archival; excluded from current-release pass/fail",
+      "reason": "historical tests intentionally assert their release/revision as current authority"
+    },
+    "perfbase1_and_current_documentation": {
+      "failed": 0,
+      "passed": 21
+    },
+    "python_compileall": "passed",
+    "target_data2_functional": {
+      "failed": 0,
+      "passed": 111,
+      "warnings": 18
+    }
+  }
+}

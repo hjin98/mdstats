@@ -1,0 +1,34 @@
+{
+  "artifacts": [
+    {
+      "bytes": 2698515,
+      "filename": "mdstats-0.20.180a0-py3-none-any.whl",
+      "kind": "wheel",
+      "sha256": "4043983e8e47980b2eae16c5353b7e5ea13f5b8d7dbd757772bb534fa0caeb8b"
+    },
+    {
+      "bytes": 30601848,
+      "filename": "mdstats-0.20.180a0.tar.gz",
+      "kind": "sdist",
+      "sha256": "ac8da39304d55670f269bab89efa85d89f7c77dda4015f932dd3aaecf9441a04"
+    }
+  ],
+  "gate": "PERF-P1",
+  "notes": [
+    "Wheel smoke used supplied offline dependencies without installing project dependencies from the network.",
+    "Sdist smoke executed against the extracted source tree."
+  ],
+  "release": "0.20.180a0",
+  "result": "pass",
+  "schema": "mdstats.mlff-perf-p1-distribution-qualification.v1",
+  "sdist_smoke": {
+    "perf_p1_tests_passed": 7,
+    "required_evidence_files_present": true,
+    "result": "pass"
+  },
+  "wheel_smoke": {
+    "perf_p1_tests_passed": 7,
+    "result": "pass",
+    "version": "0.20.180a0"
+  }
+}

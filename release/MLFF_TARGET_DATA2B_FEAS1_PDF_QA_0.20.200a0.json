@@ -1,0 +1,36 @@
+{
+  "schema": "mdstats.mlff.target-data2b-feas1.pdf-qa.v1",
+  "release": "0.20.200a0",
+  "date": "2026-08-16",
+  "status": "PASS",
+  "documents": [
+    {
+      "path": "docs/arch_manuals/mlff_training_data_architecture.pdf",
+      "pages": 210,
+      "preflight": "PASS",
+      "visual_pages_inspected": [1, 209, 210],
+      "result": "no clipping, overflow, or broken glyphs"
+    },
+    {
+      "path": "ARCHITECTURE_NOTES_MLFF_REV67.pdf",
+      "pages": 1,
+      "preflight": "PASS",
+      "visual_pages_inspected": [1],
+      "result": "clean"
+    },
+    {
+      "path": "docs/specs/training_data/mlff_target_data2b_feas1_support_capacity_spec.pdf",
+      "pages": 1,
+      "preflight": "PASS",
+      "visual_pages_inspected": [1],
+      "result": "clean"
+    },
+    {
+      "path": "PATCH_NOTES_0.20.200a0.pdf",
+      "pages": 1,
+      "preflight": "PASS",
+      "visual_pages_inspected": [1],
+      "result": "clean"
+    }
+  ]
+}

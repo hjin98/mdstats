@@ -1,0 +1,24 @@
+{
+  "schema": "mdstats.benchmark.mlff-data7-selection-scaling.v1",
+  "date": "2026-08-05",
+  "environment_note": "Synthetic float64 feature matrices; 24 fitted dimensions; deterministic exact prefix comparison.",
+  "legacy_prefix_comparison": [
+    {"candidate_count": 250, "target_size": 64, "legacy_seconds": 0.877501, "incremental_seconds": 0.004026, "speedup": 218.0},
+    {"candidate_count": 500, "target_size": 64, "legacy_seconds": 1.916092, "incremental_seconds": 0.002899, "speedup": 661.0},
+    {"candidate_count": 1000, "target_size": 64, "legacy_seconds": 3.947476, "incremental_seconds": 0.006648, "speedup": 593.8},
+    {"candidate_count": 2000, "target_size": 64, "legacy_seconds": 7.449398, "incremental_seconds": 0.006089, "speedup": 1223.3}
+  ],
+  "incremental_fixed_target_scaling": [
+    {"candidate_count": 2000, "target_size": 512, "seconds": 0.030008},
+    {"candidate_count": 4000, "target_size": 512, "seconds": 0.050685},
+    {"candidate_count": 8000, "target_size": 512, "seconds": 0.090224},
+    {"candidate_count": 16000, "target_size": 512, "seconds": 0.163786},
+    {"candidate_count": 36759, "target_size": 512, "seconds": 0.504139}
+  ],
+  "complexity": {
+    "former_full_order": "O(N^3 d)",
+    "former_prefix_only": "O(N K^2 d)",
+    "incremental_bounded": "O(N K d)",
+    "coverage": "O(N K d + K^2 d)"
+  }
+}

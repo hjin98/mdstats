@@ -1,0 +1,42 @@
+{
+  "automatic_existing_config_rewrite": false,
+  "date": "2026-08-15",
+  "decision": "New generated MACE-MH-1 / omat_pbe campaigns default to e3nn. CuEq remains explicit opt-in and doctor-qualified.",
+  "explicit_cueq_still_supported": true,
+  "generated_default": {
+    "backend": "e3nn",
+    "configuration_contract_digest": "fb8e8df9bcc69fe04e9fa8e96941518ed81be6f31162e7004d9901615da36f2c",
+    "foundation_family": "mace_mh_1",
+    "foundation_head": "omat_pbe"
+  },
+  "phase_separated_acceleration_deferred_until_successful_full_e3nn_run": true,
+  "reason": {
+    "derived_training_mh1_cueq_pure": {
+      "Dmax": 1.192e-06,
+      "Emax_ev": 1.272e-06,
+      "Fmax_ev_per_a": 1.669e-06,
+      "Smax_ev_per_a3": 3.772e-08,
+      "selection_identical": true
+    },
+    "source_mh1_cueq_oeq_hybrid": {
+      "Dmax": 2.523,
+      "Emax_ev": 1.453,
+      "Fmax_ev_per_a": 0.7523,
+      "Smax_ev_per_a3": 0.01523,
+      "selection_identical": true
+    },
+    "source_mh1_cueq_pure": {
+      "Dmax": 2.336,
+      "Emax_ev": 1.375,
+      "Fmax_ev_per_a": 0.7522,
+      "Smax_ev_per_a3": 0.01263,
+      "selection_identical": false
+    }
+  },
+  "schema": "mdstats.mlff-mh1-e3nn-default-hotfix.v1",
+  "tests": {
+    "deselected": 3,
+    "passed": 80,
+    "skipped": 1
+  }
+}

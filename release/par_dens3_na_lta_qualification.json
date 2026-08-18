@@ -1,0 +1,71 @@
+{
+  "schema": "mdstats.par-dens3-na-lta-qualification.v1",
+  "package_version": "0.20.142a0",
+  "qualified_on": "2026-08-10",
+  "input": {
+    "basename": "dump.prod.Na_lta_300K.old.lammpstrj",
+    "sha256": "81c86cc40f5a11031f80817213eb558c02348494d1c6cad9b4775a5bc3c9f9cd",
+    "bytes": 183385600,
+    "full_frames": 10001,
+    "atoms_per_frame": 168,
+    "na_atoms": 24,
+    "type_map": {"1": "Si", "2": "Al", "3": "O", "4": "Na"}
+  },
+  "bounded_parallel_qualification": {
+    "stride": 100,
+    "selected_frames": 101,
+    "density_selections": ["Na", "Si", "O"],
+    "grid_shape": [64, 64, 64],
+    "gaussian_bandwidth_angstrom": 0.5,
+    "grid_backend": "local_sparse",
+    "storage_block_shape": [8, 8, 8],
+    "max_memory": "4GiB",
+    "worker_counts": [1, 4],
+    "scene_seconds": [9.208529379000083, 8.304266394000024],
+    "measured_scene_speedup": 1.1088913748785088,
+    "maximum_concurrent_tasks": [1, 3],
+    "max_absolute_density_difference_by_field": {
+      "Na": 0.0,
+      "Si": 0.0,
+      "O": 0.0
+    },
+    "content_identity_equal_by_field": {"Na": true, "Si": true, "O": true},
+    "scientific_approval_id": "e784acf9a3d6575741cb59154815e5b1103c8b6d80899e836e1b333f769ccdd2",
+    "scientific_approval_id_equal": true,
+    "execution_plan_id_equal": false,
+    "integrals": {
+      "Na": 23.999999999999996,
+      "Si": 24.0,
+      "O": 95.99999999999999
+    },
+    "hdr_thresholds": {
+      "Na": [0.135355021706656, 0.043569451580927954, 0.008924842403607136],
+      "Si": [0.13014872580682013, 0.04220835910862328, 0.00867867702766571],
+      "O": [0.1280795525626793, 0.04288460605853464, 0.012718827334177379]
+    },
+    "hdr_mass_fractions": [0.5, 0.8, 0.95],
+    "scheduler_policy": "par_dens3_parallel_field_realization_v1",
+    "scene_plan_schema": "mdstats.density-scene-plan.v3"
+  },
+  "acceptance": {
+    "synthetic_dense_and_sparse_worker_matrix": "tests/test_density_par_dens3_parallel.py",
+    "scalar_fields_equal": true,
+    "integrated_measure_equal": true,
+    "periodic_support_equal": true,
+    "hdr_levels_equal": true,
+    "meshes_equal": true,
+    "density_focused_test_result": "351 passed, 1 skipped (optional mdstats[interactive])"
+  },
+  "interpretation": {
+    "purpose": "PAR-DENS3 concurrency, worker-invariance, and bounded real-data throughput qualification",
+    "production_scientific_reference": "release/par_dens0_na_lta_qualification.json",
+    "timing_scope": "scene preparation only; trajectory parsing and connectivity excluded",
+    "small_scene_note": "The prior 21-frame smoke is scheduler-overhead dominated; the 101-frame result is retained as bounded throughput evidence, not a universal speedup guarantee.",
+    "par_dens4_next": true
+  },
+  "environment": {
+    "python": "3.13.5",
+    "numpy": "2.3.5",
+    "scipy": "1.17.0"
+  }
+}

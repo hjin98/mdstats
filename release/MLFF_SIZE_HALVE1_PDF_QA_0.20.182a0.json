@@ -1,0 +1,48 @@
+{
+  "documents": {
+    "ARCHITECTURE_NOTES_MLFF_REV48.pdf": {
+      "inspection": "all_pages_150dpi",
+      "pages": 3,
+      "preflight": "openable_unencrypted_not_scanned",
+      "sha256": "da3862f66b11f1e07c6712cf3f155d4b8da15b18bac105222d8de7789d24bc8f",
+      "size_bytes": 51789
+    },
+    "PATCH_NOTES_0.20.182a0.pdf": {
+      "inspection": "all_pages_150dpi",
+      "pages": 2,
+      "preflight": "openable_unencrypted_not_scanned",
+      "sha256": "efe198c700345fc676976639886f2af91427d5bf44809471287c6d778f67a810",
+      "size_bytes": 33574
+    },
+    "mlff_size_halve1_exposure_analysis_2026-08-15.pdf": {
+      "inspection": "all_pages_150dpi",
+      "pages": 2,
+      "preflight": "openable_unencrypted_not_scanned",
+      "sha256": "245bdbec66d24a12feccb4b2d74327cd1ef1361d5ee57033093f16b3f3e1ed85",
+      "size_bytes": 51568
+    },
+    "mlff_size_halve1_target_size_revision_spec.pdf": {
+      "inspection": "all_pages_150dpi",
+      "pages": 8,
+      "preflight": "openable_unencrypted_not_scanned",
+      "sha256": "e22d6df3b06cf8b5d99b961990e3e212f8e74ee87cdb1e366df45a82fec5b916",
+      "size_bytes": 82538
+    },
+    "mlff_training_data_architecture.pdf": {
+      "inspection": "whole_72dpi_render_plus_targeted_150dpi_pages_123_180_181_182_183",
+      "pages": 191,
+      "preflight": "openable_unencrypted_not_scanned",
+      "sha256": "c7d5568fb1736006112b7c7345804d0651a716a7c9ebf96ff2be0e014ef1e5a2",
+      "size_bytes": 869747
+    }
+  },
+  "notes": [
+    "Markdown is authoritative for all revised documents.",
+    "One long-path margin overflow found during QA was corrected before final render.",
+    "Final 191-page manual low-resolution render contains 191 pages and no near-blank pages."
+  ],
+  "release": "0.20.182a0",
+  "renderer": "pdftoppm/pdfium workflow via md_to_pdf.py + render_pdf.py",
+  "schema": "mdstats.mlff-size-halve1-pdf-qa.v1",
+  "status": "pass"
+}

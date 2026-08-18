@@ -1,0 +1,29 @@
+{
+  "changed_file_sha256": {
+    "mdstats/training_data/campaign_cli.py": "fd179a9493366fc5999628513923015f59b048c43f637242657f42c4f4516de6",
+    "mdstats/training_data/mace_runtime_freeze.py": "76c8e8b0825026cbaa64e2243e4249e0f96d9e745a0a1a64b91b5860d7b1c6d1",
+    "tests/test_mlff_mh1_accel1.py": "41a0968a8a8ec7b41d67e1b4672329aed8eb3ac85d52d209de106f896096fcbf",
+    "tests/test_mlff_mh1_dep0_runtime_freeze.py": "c0b622eb7773e01bbeca346da45be9d6b9b48008e5683df398d1d4375beed583"
+  },
+  "fixes": {
+    "legacy": "v1 runtime-freeze records retain historical serialization and content digest",
+    "mace_source_compatibility": "exact v0.3.16 byte lock remains preferred; semantically compatible 0.3.16 source may qualify via fixed-file/selected-head/CuEq CLI probes",
+    "numpy_scope": "_doctor_acceleration_corpus imports numpy locally before use",
+    "oeq_policy": "OpenEquivariance is optional by default; pure CuEq may authorize training/inference, hybrid is opportunistic",
+    "replay_cascade": "canonical external pseudolabel replay qualification is deferred when acceleration realization has not qualified, avoiding a secondary false-independent failure"
+  },
+  "focused_regression": {
+    "deselected": 2,
+    "passed": 106,
+    "skipped": 2
+  },
+  "legacy_dep0_evidence_digest": "00a98ff9d1ea5ac94af91a8581cb7118d599df4d3d42c522271c2da44b36a862",
+  "schema": "mdstats.mh1-doctor-hotfix1-evidence.v1",
+  "source_package": "mdstats-0.20.177a0-complete-source-package-mh1-cert1",
+  "timestamp_utc": "2026-08-15T03:51:56.626729+00:00",
+  "triggered_failures": [
+    "cuEquivariance campaign dependency freeze is incomplete: exact MACE source lock mismatch + OEQ unavailable",
+    "acceleration qualification failed: name 'np' is not defined",
+    "replay qualification failed because acceleration realization was missing"
+  ]
+}

@@ -1,0 +1,69 @@
+{
+  "architecture_revision": 30,
+  "campaign_cli_regression_subset": {
+    "coverage": [
+      "parser surface",
+      "init",
+      "campaign store roundtrip",
+      "obsolete-runtime cleanup",
+      "reconstructable-cache cleanup"
+    ],
+    "failed": 0,
+    "passed": 5
+  },
+  "destructive_reclamation_added": false,
+  "focused_tests": {
+    "command": "pytest -q tests/test_mlff_stor1_storage_accounting.py tests/test_mlff_eval_storage_roadmap_specification.py",
+    "failed": 0,
+    "notes": "Package import used a temporary ASE import stub because ASE is not installed in the release execution environment; STOR1 logic itself does not call ASE/MACE.",
+    "passed": 17
+  },
+  "gate": "STOR1",
+  "implemented_contracts": {
+    "allocated_physical_bytes": "inode-deduplicated st_blocks*512 when available, otherwise st_size",
+    "checkpoint_pruning_authority_hardened": true,
+    "existing_cleanup_authority_hardened": true,
+    "largest_files_and_directories": true,
+    "logical_bytes": "path-based non-directory st_size",
+    "protected_configured_inputs": true,
+    "read_only_storage_report": true,
+    "real_path_containment": true,
+    "separate_symlink_unlink_and_tree_traversal_authority": true,
+    "symlink_escape_detection": true,
+    "unique_inode_bytes": "inode-deduplicated non-directory st_size"
+  },
+  "mlff_specification_suite": {
+    "failed": 1,
+    "passed": 120,
+    "pre_existing_failure": "release/mlff_data9a9a_real_mpa0_restart_smoke.json is absent",
+    "stor1_related_failures": 0
+  },
+  "next_gate": "STOR2",
+  "package_version": "0.20.111a0",
+  "packaged_copy_gate": {
+    "artifact": "mdstats-0.20.111a0.tar.gz",
+    "ase_import_scaffolding": "temporary import-only ASE stub; not packaged and not scientific/runtime qualification evidence",
+    "deselected": 1,
+    "deselected_test": "test_real_mpa0_restart_smoke_is_valid_and_bounded",
+    "failed": 0,
+    "passed": 137,
+    "reason": "pre-existing historical evidence artifact is absent"
+  },
+  "protected_input_classes": [
+    "campaign_config",
+    "training_root",
+    "foundation_model",
+    "replay_train",
+    "replay_monitor",
+    "replay_true_labels"
+  ],
+  "runtime_dependency_boundary": {
+    "ase_available_in_current_environment": false,
+    "real_mace_rerun_performed": false,
+    "real_mace_rerun_required_for_stor1": false,
+    "reason": "STOR1 is filesystem accounting/ownership logic and does not invoke MACE; no claim of a new real-MACE qualification is made."
+  },
+  "schema": "mdstats.mlff-stor1-ownership-storage-qualification.v1",
+  "status": "passed",
+  "user_data_mutation_performed": false
+}

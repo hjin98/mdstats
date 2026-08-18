@@ -1,0 +1,2323 @@
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/CHANGELOG.md /mnt/data/mdstats-0.20.112a0-complete-source-package/CHANGELOG.md
+--- /mnt/data/mdstats111_warning_pristine/CHANGELOG.md	2026-08-08 21:22:50.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/CHANGELOG.md	2026-08-08 21:46:01.436887177 +0000
+@@ -1,3 +1,10 @@
++## 0.20.112a0 - 2026-08-08
++
++- Extend the MACE runtime warning compatibility scope from exact TorchScript deprecations to all warnings originating from MACE/PyTorch, grouping repeated warnings by origin/category/source/message and emitting one compact `MaceRuntimeCompatibilityWarning` summary.
++- Recognize and shorten the high-volume MACE/Torch warnings observed during checkpoint evaluation: `torch.jit.load/save/script` deprecations, MACE tensor-copy construction warnings, and TorchScript instance-annotation warnings emitted through `ast.py`.
++- Wrap the full campaign `evaluate` command plus checkpoint materialization and target-head export so setup/reconstruction/export warnings are condensed as well as inference warnings. Non-MACE/non-PyTorch warnings continue to be replayed unchanged.
++- Preserve the historical TorchScript `warning_codes` compatibility tuple and the frozen MLFF scientific/materialization identities. STOR2 remains the next architecture gate.
++
+ ## 0.20.111a0 - 2026-08-08
+ 
+ - Implement MLFF STOR1 read-only storage accounting via `mdstats-mlff-campaign storage`, including logical, allocated-physical, and unique-inode byte accounting plus largest file/directory reporting.
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/PATCH_NOTES_0.20.112a0.md /mnt/data/mdstats-0.20.112a0-complete-source-package/PATCH_NOTES_0.20.112a0.md
+--- /mnt/data/mdstats111_warning_pristine/PATCH_NOTES_0.20.112a0.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/PATCH_NOTES_0.20.112a0.md	2026-08-08 21:46:01.437359198 +0000
+@@ -0,0 +1,11 @@
++# mdstats 0.20.112a0 patch notes
++
++This is a small MLFF runtime-output hotfix. It does not advance the architecture roadmap; STOR2 remains next.
++
++## MACE/PyTorch warning condensation
++
++Evaluation now captures repeated warnings originating from MACE and PyTorch across checkpoint materialization, inference, and target-head/deployment export. Repeated instances are grouped by origin, warning category, compact source path, and normalized message, then reported once as a compact `MaceRuntimeCompatibilityWarning`. The known TorchScript deprecation, tensor-copy, and TorchScript AST annotation warnings are shortened to concise labels.
++
++The full campaign `evaluate` command is also an outer warning scope, so warnings emitted by setup/reconstruction code around the lower-level inference scopes are intercepted. Non-MACE/non-PyTorch warnings are still replayed with their original warning category/location.
++
++The public historical TorchScript warning code remains unchanged; broader warning groups are additive fields on the compatibility record. Scientific DATA8/training/evaluation identities and existing campaign caches are unchanged.
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/docs/README.md /mnt/data/mdstats-0.20.112a0-complete-source-package/docs/README.md
+--- /mnt/data/mdstats111_warning_pristine/docs/README.md	2026-08-08 21:25:48.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/docs/README.md	2026-08-08 21:47:24.105442124 +0000
+@@ -85,3 +85,5 @@
+ The standardized dispatcher in `mdstats.analysis.observable_validation` binds
+ recipes to the authoritative analysis APIs. The MLFF layer may invoke and compare
+ those results but does not redefine their physical algorithms.
++
++Runtime note: 0.20.112a0 condenses repeated upstream MACE/PyTorch evaluation warnings; the architecture roadmap remains STOR1 -> STOR2.
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/mdstats/_version.py /mnt/data/mdstats-0.20.112a0-complete-source-package/mdstats/_version.py
+--- /mnt/data/mdstats111_warning_pristine/mdstats/_version.py	2026-08-08 21:22:50.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/mdstats/_version.py	2026-08-08 21:46:01.434355829 +0000
+@@ -1,3 +1,3 @@
+ """Package version."""
+ 
+-__version__ = "0.20.111a0"
++__version__ = "0.20.112a0"
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/mdstats/data/observable_owner_manuals.json /mnt/data/mdstats-0.20.112a0-complete-source-package/mdstats/data/observable_owner_manuals.json
+--- /mnt/data/mdstats111_warning_pristine/mdstats/data/observable_owner_manuals.json	2026-08-08 21:22:50.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/mdstats/data/observable_owner_manuals.json	2026-08-08 21:47:24.105357368 +0000
+@@ -17,6 +17,6 @@
+       "uri": "mdstats-doc://vacf-dynamics-architecture/0.20.53a0"
+     }
+   },
+-  "package_version": "0.20.111a0",
++  "package_version": "0.20.112a0",
+   "schema": "mdstats.observable-owner-manual-index.v1"
+ }
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/mdstats/training_data/campaign_cli.py /mnt/data/mdstats-0.20.112a0-complete-source-package/mdstats/training_data/campaign_cli.py
+--- /mnt/data/mdstats111_warning_pristine/mdstats/training_data/campaign_cli.py	2026-08-08 21:28:46.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/mdstats/training_data/campaign_cli.py	2026-08-08 21:46:01.436282709 +0000
+@@ -78,7 +78,8 @@
+ # 0.20.108a0 implements PREC1 precision profiles/schedule identity, and
+ # 0.20.109a0 implements the PREC2 staged-transition/restart runtime substrate, and
+ # 0.20.110a0 implements PREC3 profile activation/reporting/cross-stage deployment, and
+-# 0.20.111a0 implements STOR1 read-only storage accounting/ownership boundaries.
++# 0.20.111a0 implements STOR1 read-only storage accounting/ownership boundaries, and
++# 0.20.112a0 is a warning-condensation hotfix for MACE/PyTorch evaluation/runtime noise.
+ # None changes the frozen MLFF scientific/materialization identity, so existing
+ # 0.20.99a0 campaign state and prediction caches remain reusable.
+ MLFF_DATA9B3_VERSION = "0.20.99a0"
+@@ -9870,6 +9871,7 @@
+         ranked.append((value, run_id, member))
+     return (min(ranked, key=lambda item: (item[0], item[1]))[2],) if ranked else ()
+ 
++@mace_runtime_warning_handled("campaign checkpoint evaluation")
+ def command_evaluate(args: argparse.Namespace) -> int:
+     import mdstats
+ 
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/mdstats/training_data/campaign_execution.py /mnt/data/mdstats-0.20.112a0-complete-source-package/mdstats/training_data/campaign_execution.py
+--- /mnt/data/mdstats111_warning_pristine/mdstats/training_data/campaign_execution.py	2026-08-08 21:01:54.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/mdstats/training_data/campaign_execution.py	2026-08-08 21:40:38.278960741 +0000
+@@ -390,6 +390,7 @@
+     os.replace(temporary_sidecar, cached_sidecar)
+     return cached_model
+ 
++@mace_runtime_warning_handled("MACE checkpoint materialization")
+ def materialize_mace_checkpoint_model(
+     checkpoint: CheckpointFileRecord,
+     checkpoint_path: str | Path,
+@@ -4126,6 +4127,7 @@
+         intermediate.unlink(missing_ok=True)
+ 
+ 
++@mace_runtime_warning_handled("MACE target-head committee export")
+ def export_target_head_member(
+     run_plan: TrainingCampaignRunPlan,
+     selection: CheckpointSelectionRecord,
+@@ -4268,6 +4270,7 @@
+         return result
+ 
+ 
++@mace_runtime_warning_handled("MACE target-head verification export")
+ def export_target_head_verification_model(
+     run_plan: TrainingCampaignRunPlan,
+     selection: CheckpointSelectionRecord,
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/mdstats/training_data/mace_compatibility.py /mnt/data/mdstats-0.20.112a0-complete-source-package/mdstats/training_data/mace_compatibility.py
+--- /mnt/data/mdstats111_warning_pristine/mdstats/training_data/mace_compatibility.py	2026-08-05 18:20:00.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/mdstats/training_data/mace_compatibility.py	2026-08-08 21:45:41.011747218 +0000
+@@ -487,7 +487,7 @@
+ # Runtime warning compatibility handling
+ # ---------------------------------------------------------------------------
+ 
+-MACE_RUNTIME_COMPATIBILITY_SCHEMA = "mdstats.mace-runtime-compatibility.v1"
++MACE_RUNTIME_COMPATIBILITY_SCHEMA = "mdstats.mace-runtime-compatibility.v2"
+ MACE_TORCHSCRIPT_DEPRECATION_CODE = "mace_legacy_torchscript_deprecation"
+ 
+ _TORCHSCRIPT_MESSAGE = re.compile(
+@@ -497,7 +497,7 @@
+ _ACTIVE_CAPTURE: ContextVar["_CaptureState | None"] = ContextVar(
+     "mdstats_mace_warning_capture", default=None
+ )
+-_EMITTED_SIGNATURES: set[tuple[str | None, str | None, tuple[str, ...]]] = set()
++_EMITTED_SIGNATURES: set[tuple[Any, ...]] = set()
+ _EMITTED_LOCK = Lock()
+ 
+ 
+@@ -543,6 +543,62 @@
+     )
+ 
+ 
++def _upstream_warning_origin(item: warnings.WarningMessage) -> str | None:
++    """Return the upstream family for warnings that mdstats may condense.
++
++    The classification is intentionally narrow: warnings must originate in the
++    installed MACE/PyTorch packages, except for the well-known TorchScript AST
++    warning which is emitted through Python's stdlib ``ast.py`` while TorchScript
++    is compiling a MACE module.  Unrelated application/library warnings are
++    replayed unchanged.
++    """
++
++    normalized = str(Path(item.filename)).replace("\\", "/")
++    lowered = normalized.lower()
++    if "/site-packages/mace/" in lowered or "/mace/" in lowered:
++        return "mace"
++    if "/site-packages/torch/" in lowered or "/torch/" in lowered:
++        return "torch"
++    if Path(normalized).name == "ast.py" and str(item.message).startswith(
++        "The TorchScript type system doesn't support"
++    ):
++        return "torch"
++    return None
++
++
++def _compact_warning_source(item: warnings.WarningMessage, origin: str) -> str:
++    normalized = str(Path(item.filename)).replace("\\", "/")
++    marker = f"/{origin}/"
++    lowered = normalized.lower()
++    index = lowered.rfind(marker)
++    if index >= 0:
++        return normalized[index + 1 :]
++    return Path(normalized).name
++
++
++def _compact_warning_message(item: warnings.WarningMessage) -> str:
++    message = " ".join(str(item.message).split())
++    api = _torchscript_api(item)
++    if api is not None:
++        return f"{api} deprecated"
++    if message.startswith("To copy construct from a tensor, it is recommended"):
++        return "tensor-copy construction warning"
++    if message.startswith("The TorchScript type system doesn't support instance-level annotations"):
++        return "TorchScript instance-annotation warning"
++    if "TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD" in message and "weights_only=False" in message:
++        return "TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD forces weights_only=False"
++    return message
++
++
++def _warning_fingerprint(item: warnings.WarningMessage, origin: str) -> tuple[str, str, str, str]:
++    return (
++        origin,
++        item.category.__name__,
++        _compact_warning_source(item, origin),
++        _compact_warning_message(item),
++    )
++
++
+ @dataclass(frozen=True, slots=True)
+ class MaceRuntimeCompatibilityRecord:
+     """Observed compatibility evidence from one outer MACE warning scope."""
+@@ -553,6 +609,8 @@
+     torchscript_apis: tuple[str, ...]
+     raw_warning_count: int
+     warning_codes: tuple[str, ...]
++    upstream_warning_count: int = 0
++    upstream_warning_groups: tuple[tuple[str, str, str, str, int], ...] = ()
+     schema: str = MACE_RUNTIME_COMPATIBILITY_SCHEMA
+ 
+     @property
+@@ -568,6 +626,17 @@
+             "torchscript_apis": list(self.torchscript_apis),
+             "raw_warning_count": self.raw_warning_count,
+             "warning_codes": list(self.warning_codes),
++            "upstream_warning_count": self.upstream_warning_count,
++            "upstream_warning_groups": [
++                {
++                    "origin": origin,
++                    "category": category,
++                    "source": source,
++                    "message": message,
++                    "count": count,
++                }
++                for origin, category, source, message, count in self.upstream_warning_groups
++            ],
+             "legacy_torchscript_observed": self.legacy_torchscript_observed,
+         }
+ 
+@@ -595,25 +664,38 @@
+ 
+ 
+ def _compatibility_message(record: MaceRuntimeCompatibilityRecord) -> str:
+-    apis = ", ".join(record.torchscript_apis)
+     operations = ", ".join(record.operations)
+     runtime = (
+         f"PyTorch {record.torch_version or 'unknown'} / "
+         f"mace-torch {record.mace_version or 'unknown'}"
+     )
++    groups = []
++    for origin, category, source, message, count in record.upstream_warning_groups:
++        groups.append(f"{count}x {origin}:{category} [{source}] {message}")
++    detail = "; ".join(groups)
++    if len(detail) > 1800:
++        detail = detail[:1797] + "..."
++    legacy = (
++        f"mdstats observed {record.raw_warning_count} legacy TorchScript deprecation warning(s) "
++        if record.raw_warning_count
++        else "mdstats observed upstream runtime warnings "
++    )
+     return (
+-        f"mdstats observed {record.raw_warning_count} legacy TorchScript deprecation "
+-        f"warning(s) from MACE during {operations}: {apis}. The duplicate upstream "
+-        f"warnings were consolidated; unrelated warnings were preserved. Current "
+-        f"model loading/inference remains enabled for {runtime}, but the upstream "
+-        "MACE serialization/deployment path must migrate before TorchScript is removed."
++        legacy
++        + f"during {operations}; condensed {record.upstream_warning_count} total MACE/PyTorch "
++        + f"warning(s) into {len(record.upstream_warning_groups)} unique group(s): {detail}. "
++        + f"Runtime: {runtime}. Non-MACE/non-PyTorch warnings were preserved."
+     )
+ 
+ 
+ def _emit_once(record: MaceRuntimeCompatibilityRecord) -> None:
+-    if not record.legacy_torchscript_observed:
++    if not record.upstream_warning_groups:
+         return
+-    signature = (record.torch_version, record.mace_version, record.torchscript_apis)
++    signature = (
++        record.torch_version,
++        record.mace_version,
++        tuple(group[:4] for group in record.upstream_warning_groups),
++    )
+     with _EMITTED_LOCK:
+         if signature in _EMITTED_SIGNATURES:
+             return
+@@ -665,21 +747,40 @@
+ 
+     apis: list[str] = []
+     unrelated: list[warnings.WarningMessage] = []
++    grouped: dict[tuple[str, str, str, str], int] = {}
++    upstream_count = 0
+     for item in captured:
+         api = _torchscript_api(item)
+-        if api is None:
+-            unrelated.append(item)
+-        else:
++        if api is not None:
+             apis.append(api)
++        origin = _upstream_warning_origin(item)
++        if origin is None:
++            unrelated.append(item)
++            continue
++        fingerprint = _warning_fingerprint(item, origin)
++        grouped[fingerprint] = grouped.get(fingerprint, 0) + 1
++        upstream_count += 1
+ 
+     unique_apis = tuple(sorted(set(apis)))
++    upstream_groups = tuple(
++        (*fingerprint, count)
++        for fingerprint, count in sorted(grouped.items(), key=lambda value: value[0])
++    )
++    warning_codes: list[str] = []
++    if unique_apis:
++        # Preserve the historical public compatibility code exactly. Broader
++        # upstream warning aggregation is exposed through the additive
++        # ``upstream_warning_*`` fields instead of changing this tuple.
++        warning_codes.append(MACE_TORCHSCRIPT_DEPRECATION_CODE)
+     record = MaceRuntimeCompatibilityRecord(
+         operations=tuple(sorted(state.operations)),
+         torch_version=_torch_version(),
+         mace_version=_distribution_version("mace-torch"),
+         torchscript_apis=unique_apis,
+         raw_warning_count=len(apis),
+-        warning_codes=(MACE_TORCHSCRIPT_DEPRECATION_CODE,) if unique_apis else (),
++        warning_codes=tuple(warning_codes),
++        upstream_warning_count=upstream_count,
++        upstream_warning_groups=upstream_groups,
+     )
+     state.record = record
+ 
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/mdstats.egg-info/PKG-INFO /mnt/data/mdstats-0.20.112a0-complete-source-package/mdstats.egg-info/PKG-INFO
+--- /mnt/data/mdstats111_warning_pristine/mdstats.egg-info/PKG-INFO	2026-08-08 21:32:30.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/mdstats.egg-info/PKG-INFO	1970-01-01 00:00:00.000000000 +0000
+@@ -1,19 +0,0 @@
+-Metadata-Version: 2.4
+-Name: mdstats
+-Version: 0.20.111a0
+-Summary: Transparent atomistic frame collections and structural/dynamical statistics
+-Requires-Python: >=3.10
+-Requires-Dist: numpy>=1.26
+-Requires-Dist: ase>=3.26
+-Requires-Dist: scipy>=1.11
+-Requires-Dist: matplotlib>=3.8
+-Requires-Dist: networkx>=3.4
+-Requires-Dist: threadpoolctl>=3.1
+-Requires-Dist: packaging>=23
+-Provides-Extra: manifest
+-Requires-Dist: PyYAML>=6.0; extra == "manifest"
+-Provides-Extra: interactive
+-Requires-Dist: plotly>=5.20; extra == "interactive"
+-Requires-Dist: scikit-image>=0.22; extra == "interactive"
+-Requires-Dist: fast-simplification>=0.1.13; extra == "interactive"
+-Requires-Dist: cloudpickle>=3.0; extra == "interactive"
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/mdstats.egg-info/SOURCES.txt /mnt/data/mdstats-0.20.112a0-complete-source-package/mdstats.egg-info/SOURCES.txt
+--- /mnt/data/mdstats111_warning_pristine/mdstats.egg-info/SOURCES.txt	2026-08-08 21:32:30.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/mdstats.egg-info/SOURCES.txt	1970-01-01 00:00:00.000000000 +0000
+@@ -1,1434 +0,0 @@
+-ARCHITECTURE_NOTES_MLFF_REV23.md
+-CHANGELOG.md
+-MANIFEST.in
+-PATCH_NOTES_0.20.100a0.md
+-PATCH_NOTES_0.20.101a0.md
+-PATCH_NOTES_0.20.102a0.md
+-PATCH_NOTES_0.20.103a0.md
+-PATCH_NOTES_0.20.104a0.md
+-PATCH_NOTES_0.20.105a0.md
+-PATCH_NOTES_0.20.106a0.md
+-PATCH_NOTES_0.20.107a0.md
+-PATCH_NOTES_0.20.108a0.md
+-PATCH_NOTES_0.20.109a0.md
+-PATCH_NOTES_0.20.110a0.md
+-PATCH_NOTES_0.20.111a0.md
+-PATCH_NOTES_0.20.64a0.md
+-PATCH_NOTES_0.20.65a0.md
+-PATCH_NOTES_0.20.66a0.md
+-PATCH_NOTES_0.20.67a0.md
+-PATCH_NOTES_0.20.68a0.md
+-PATCH_NOTES_0.20.69a0.md
+-PATCH_NOTES_0.20.70a0.md
+-PATCH_NOTES_0.20.71a0.md
+-PATCH_NOTES_0.20.72a0.md
+-PATCH_NOTES_0.20.73a0.md
+-PATCH_NOTES_0.20.74a0.md
+-PATCH_NOTES_0.20.75a0.md
+-PATCH_NOTES_0.20.76a0.md
+-PATCH_NOTES_0.20.77a0.md
+-PATCH_NOTES_0.20.78a0.md
+-PATCH_NOTES_0.20.79a0.md
+-PATCH_NOTES_0.20.80a0.md
+-PATCH_NOTES_0.20.81a0.md
+-PATCH_NOTES_0.20.82a0.md
+-PATCH_NOTES_0.20.83a0.md
+-PATCH_NOTES_0.20.84a0.md
+-PATCH_NOTES_0.20.85a0.md
+-PATCH_NOTES_0.20.86a0.md
+-PATCH_NOTES_0.20.87a0.md
+-PATCH_NOTES_0.20.88a0.md
+-PATCH_NOTES_0.20.89a0.md
+-PATCH_NOTES_0.20.90a0.md
+-PATCH_NOTES_0.20.91a0.md
+-PATCH_NOTES_0.20.92a0.md
+-PATCH_NOTES_0.20.93a0.md
+-PATCH_NOTES_0.20.94a0.md
+-PATCH_NOTES_0.20.95a0.md
+-PATCH_NOTES_0.20.96a0.md
+-PATCH_NOTES_0.20.97a0.md
+-PATCH_NOTES_0.20.98a0.md
+-PATCH_NOTES_0.20.99a0.md
+-README.md
+-campaign.toml.example
+-pyproject.toml
+-setup.cfg
+-audits/MLFF_OPTIMIZATION_REVIEW_2026-08-05_REV3.md
+-audits/MLFF_OPTIMIZATION_REVIEW_2026-08-05_REV4.md
+-audits/MLFF_PERFORMANCE_AUDIT_2026-08-05.md
+-audits/MLFF_SCALING_AUDIT_2026-08-05_REV2.md
+-audits/README.md
+-audits/documentation_audit.md
+-audits/mlff_post_data6_scaling_audit_2026-08-05.md
+-audits/analysis/_cell_list_spec_audit.md
+-audits/analysis/_verlet_cache_deformation_spec_audit.md
+-audits/analysis/cell_list_backend_audit.md
+-audits/analysis/dense_neighbor_oracle_audit.md
+-audits/analysis/diffusion_estimation_audit.md
+-audits/analysis/face_candidates_audit.md
+-audits/analysis/framework_topology_integration_audit.md
+-audits/analysis/framework_topology_orientation_audit.md
+-audits/analysis/framework_topology_spec_audit.md
+-audits/analysis/lta_natural_tiling_gate_audit.md
+-audits/analysis/mlff_data9a3_production_qualification_report.md
+-audits/analysis/natural_tiling_architecture_audit.md
+-audits/analysis/natural_tiling_audit.md
+-audits/analysis/natural_tiling_refinement_audit.md
+-audits/analysis/natural_tiling_search_audit.md
+-audits/analysis/neighbor_search_integration_audit.md
+-audits/analysis/neighbor_search_semantics_audit.md
+-audits/analysis/neighbor_search_spec_audit.md
+-audits/analysis/periodic_cell_complex_audit.md
+-audits/analysis/periodic_net_embedding_audit.md
+-audits/analysis/periodic_net_symmetry_discovery_audit.md
+-audits/analysis/periodic_net_symmetry_group_audit.md
+-audits/analysis/periodic_net_view_audit.md
+-audits/analysis/periodic_ring_action_audit.md
+-audits/analysis/periodic_spatial_edge_intersection_audit.md
+-audits/analysis/primitive_ring_cancellation_audit.md
+-audits/analysis/primitive_ring_implementation_audit.md
+-audits/analysis/primitive_ring_index_audit.md
+-audits/analysis/ring_strength_audit.md
+-audits/analysis/stage11_site_discovery_architecture_rev11_audit.md
+-audits/analysis/stage11_site_discovery_architecture_rev12_audit.md
+-audits/analysis/stage11_site_discovery_architecture_rev13_audit.md
+-audits/analysis/stage11_site_discovery_architecture_rev14_audit.md
+-audits/analysis/stage11_site_kinetics_architecture_audit.md
+-audits/analysis/stage5_periodic_infrastructure_audit.md
+-audits/analysis/stage7r_boundary_cleanup_audit.md
+-audits/analysis/tiling_geometry_cage_audit.md
+-audits/analysis/tiling_geometry_frames_audit.md
+-audits/analysis/topology_catalog_audit.md
+-audits/analysis/vacf_msd_reconstruction_audit.md
+-audits/analysis/vacf_transport_implementation_audit.md
+-audits/analysis/vdos_implementation_audit.md
+-audits/analysis/velocity_common_spectrum_plan_audit.md
+-audits/analysis/velocity_spectrum_implementation_audit.md
+-audits/analysis/verlet_cache_audit.md
+-audits/analysis/verlet_cache_deformation_audit.md
+-audits/analysis/verlet_cache_spec_audit.md
+-audits/analysis/view_bound_periodic_automorphism_audit.md
+-audits/analysis/welch_velocity_spectrum_audit.md
+-audits/analysis/topology_statistics/atomic_statistics_audit.md
+-audits/analysis/topology_statistics/combined_statistics_audit.md
+-audits/analysis/topology_statistics/common_foundation_audit.md
+-audits/analysis/topology_statistics/framework_statistics_audit.md
+-audits/analysis/topology_statistics/temporal_statistics_audit.md
+-audits/io/topology_statistics_export_audit.md
+-audits/io/vasp_contcar_trajectory_audit.md
+-audits/plotting/adaptive_density_smearing_audit.md
+-audits/plotting/atomic_density_audit.md
+-audits/plotting/atomic_mean_graph_audit.md
+-audits/plotting/atomic_mean_vertex_gauge_audit.md
+-audits/plotting/density_grid_interval_audit.md
+-audits/plotting/euclidean_metric_density_resolution_audit.md
+-audits/plotting/framework_density_audit.md
+-audits/plotting/framework_density_browser_rendering_audit.md
+-audits/plotting/framework_dynamics_audit.md
+-audits/plotting/framework_dynamics_canonical_density_fix_audit.md
+-audits/plotting/framework_topology_example_generation_audit.md
+-audits/plotting/framework_topology_graph_integration_audit.md
+-audits/plotting/framework_topology_graph_spec_audit.md
+-audits/plotting/ld8_finite_support_refinement_plan_audit.md
+-audits/plotting/ld8_ld9_architecture_revision_audit.md
+-audits/plotting/ld9_hard_browser_budget_revision_audit.md
+-audits/plotting/lta_3d_integration_audit.md
+-audits/plotting/lta_integration_audit.md
+-audits/plotting/node_display_integration_audit.md
+-audits/plotting/node_display_spec_audit.md
+-audits/plotting/render_tuning_audit.md
+-audits/plotting/rendering_update_audit.md
+-audits/plotting/topology_statistics_audit.md
+-audits/plotting/velocity_spectrum_plotting_audit.md
+-benchmarks/README.md
+-benchmarks/_s3_clear_test.py
+-benchmarks/_s3_nocache_test.py
+-benchmarks/_s3_plan_test.py
+-benchmarks/_s3_stage_test.py
+-benchmarks/benchmark_ld9_v1_one.py
+-benchmarks/benchmark_ld9_v1_stress_mesh.py
+-benchmarks/benchmark_mlff_runtime_optimization_rev4.py
+-benchmarks/benchmark_mlff_runtime_optimization_rev4_results.json
+-benchmarks/benchmark_mlff_scaling_audit_v2.py
+-benchmarks/benchmark_mlff_scaling_audit_v2_results.json
+-benchmarks/benchmark_mlff_storage_optimization_rev3.py
+-benchmarks/benchmark_mlff_storage_optimization_rev3_results.json
+-benchmarks/cell_list_benchmark.json
+-benchmarks/cell_list_benchmark.md
+-benchmarks/cell_list_benchmark.py
+-benchmarks/dense_neighbors_benchmark.json
+-benchmarks/dense_neighbors_benchmark.md
+-benchmarks/dense_neighbors_benchmark.py
+-benchmarks/density_broadening_migration.json
+-benchmarks/density_broadening_migration.md
+-benchmarks/density_broadening_migration.py
+-benchmarks/density_browser_validation.json
+-benchmarks/density_browser_validation.md
+-benchmarks/density_browser_validation.py
+-benchmarks/density_full_trajectory_ld7_benchmark.json
+-benchmarks/density_full_trajectory_ld7_benchmark.md
+-benchmarks/density_ld8_p0_benchmark.json
+-benchmarks/density_ld8_p0_benchmark.md
+-benchmarks/density_ld8_p0_benchmark.py
+-benchmarks/density_ld8_p0_full_baseline.json
+-benchmarks/density_ld8_p0_full_baseline.md
+-benchmarks/density_ld8_s1_full_support_atlas.json
+-benchmarks/density_ld8_s1_full_support_atlas.md
+-benchmarks/density_ld8_s1_support_atlas_benchmark.py
+-benchmarks/density_ld8_s2_direct_benchmark.json
+-benchmarks/density_ld8_s2_direct_benchmark.md
+-benchmarks/density_ld8_s2_direct_benchmark.py
+-benchmarks/density_ld8_s3_hybrid_benchmark.py
+-benchmarks/density_ld8_s3_hybrid_evidence.json
+-benchmarks/density_ld8_s3_hybrid_evidence.md
+-benchmarks/density_ld8_s3_hybrid_microbenchmark.json
+-benchmarks/density_ld8_s3_hybrid_microbenchmark.md
+-benchmarks/density_ld8_s3_hybrid_microbenchmark.py
+-benchmarks/density_ld8_s4_production_gate.json
+-benchmarks/density_ld8_s4_production_gate.md
+-benchmarks/density_ld8_s4_production_gate.py
+-benchmarks/density_ld9_v0_calibration.json
+-benchmarks/density_ld9_v0_calibration.md
+-benchmarks/density_ld9_v0_calibration.py
+-benchmarks/density_ld9_v1_stress_gate.json
+-benchmarks/density_ld9_v1_stress_gate.md
+-benchmarks/density_ld9_v2_simplification_gate.json
+-benchmarks/density_ld9_v2_simplification_gate.md
+-benchmarks/density_ld9_v2_simplification_gate.py
+-benchmarks/density_ld9_v3_browser_gate.json
+-benchmarks/density_ld9_v3_browser_gate.md
+-benchmarks/density_ld9_v3_browser_gate.py
+-benchmarks/density_ld9_v4_scheduler.json
+-benchmarks/density_ld9_v4_scheduler.md
+-benchmarks/density_ld9_v4_scheduler.py
+-benchmarks/density_multilevel_research_benchmark.json
+-benchmarks/density_multilevel_research_benchmark.md
+-benchmarks/density_multilevel_research_benchmark.py
+-benchmarks/density_operator_migration.json
+-benchmarks/density_operator_migration.md
+-benchmarks/density_operator_migration.py
+-benchmarks/density_sparse_optimization_benchmark.json
+-benchmarks/density_sparse_optimization_benchmark.md
+-benchmarks/density_sparse_optimization_benchmark.py
+-benchmarks/interpreter_hotpath_stage2_benchmark.py
+-benchmarks/mlff_data6_finalize_optimization_2026-08-05.json
+-benchmarks/mlff_data7_selection_scaling_2026-08-05.json
+-benchmarks/mlff_data7_selection_scaling_2026-08-05.md
+-benchmarks/na_lta_300K_all_species_browser_validation.json
+-benchmarks/na_lta_300K_all_species_browser_validation.md
+-benchmarks/na_lta_300K_all_species_plot_summary.json
+-benchmarks/na_lta_300K_stage11e8a_closeout_replay.json
+-benchmarks/na_lta_300K_stage11e8a_closeout_replay.md
+-benchmarks/na_lta_300K_stage11e8a_preflight.json
+-benchmarks/na_lta_300K_stage11e8a_preflight.md
+-benchmarks/na_lta_300K_stage11e8a_s0_source_bootstrap.json
+-benchmarks/na_lta_300K_stage11e8a_s0_source_bootstrap.md
+-benchmarks/na_lta_300K_stage11e8a_s1_density_attractor.json
+-benchmarks/na_lta_300K_stage11e8a_s1_density_attractor.md
+-benchmarks/na_lta_300K_stage11e8a_s1_products.json
+-benchmarks/na_lta_300K_stage11e8a_s2_refinement_lineage.json
+-benchmarks/na_lta_300K_stage11e8a_s2_refinement_lineage.md
+-benchmarks/na_lta_300K_stage11e8a_s3_structural_temporal.json
+-benchmarks/na_lta_300K_stage11e8a_s3_structural_temporal.md
+-benchmarks/na_lta_300K_stage11e8a_s4_force_paths.json
+-benchmarks/na_lta_300K_stage11e8a_s4_force_paths.md
+-benchmarks/na_lta_stage11_ens0_source_replay.json
+-benchmarks/na_lta_stage11_ens0_source_replay.md
+-benchmarks/na_lta_stage11_ens1_control_replay.json
+-benchmarks/na_lta_stage11_ens1_control_replay.md
+-benchmarks/na_lta_stage11_stat0_quality_replay.json
+-benchmarks/na_lta_stage11_stat0_quality_replay.md
+-benchmarks/na_lta_stage11_stat1_regime_replay.json
+-benchmarks/na_lta_stage11_stat1_regime_replay.md
+-benchmarks/neighbor_search_benchmark.json
+-benchmarks/neighbor_search_benchmark.md
+-benchmarks/neighbor_search_benchmark.py
+-benchmarks/s3_al_density.json
+-benchmarks/s3_al_density.md
+-benchmarks/s3_na_density.json
+-benchmarks/s3_na_density.md
+-benchmarks/s3_si.json
+-benchmarks/s3_si.md
+-benchmarks/verlet_cache_benchmark.json
+-benchmarks/verlet_cache_benchmark.md
+-benchmarks/verlet_cache_benchmark.py
+-docs/README.md
+-docs/arch_manuals/README.md
+-docs/arch_manuals/framework_ring_architecture.md
+-docs/arch_manuals/framework_ring_architecture.pdf
+-docs/arch_manuals/mdstats_dynamical_framework_density_architecture_standard.md
+-docs/arch_manuals/mdstats_dynamical_framework_density_architecture_standard.pdf
+-docs/arch_manuals/mdstats_interpreter_hotpath_patching_manual.md
+-docs/arch_manuals/mdstats_interpreter_hotpath_patching_manual.pdf
+-docs/arch_manuals/mlff_bounded_evaluation_verification.md
+-docs/arch_manuals/mlff_checkpoint_model_reconstruction.md
+-docs/arch_manuals/mlff_constraint_aware_evaluation.md
+-docs/arch_manuals/mlff_schema_compatibility.md
+-docs/arch_manuals/mlff_training_data_architecture.md
+-docs/arch_manuals/mlff_training_data_architecture.pdf
+-docs/arch_manuals/mlff_training_data_dependency_graph.json
+-docs/arch_manuals/periodic_neighbor_search_architecture.md
+-docs/arch_manuals/periodic_neighbor_search_architecture.pdf
+-docs/arch_manuals/stage11_dependency_graph.json
+-docs/arch_manuals/stage11_site_kinetics_architecture.md
+-docs/arch_manuals/stage11_site_kinetics_architecture.pdf
+-docs/arch_manuals/stage11_site_kinetics_status_history.md
+-docs/arch_manuals/stage11_site_kinetics_status_history.pdf
+-docs/arch_manuals/structural_observables_architecture.md
+-docs/arch_manuals/structural_observables_architecture.pdf
+-docs/arch_manuals/thermomechanical_energetic_validation_architecture.md
+-docs/arch_manuals/thermomechanical_energetic_validation_architecture.pdf
+-docs/arch_manuals/topology_statistics_architecture.md
+-docs/arch_manuals/topology_statistics_architecture.pdf
+-docs/arch_manuals/vacf_dynamics_architecture.md
+-docs/arch_manuals/vacf_dynamics_architecture.pdf
+-docs/arch_manuals/figures/periodic_neighbor_search/architecture.png
+-docs/arch_manuals/figures/periodic_neighbor_search/cache_lifecycle.png
+-docs/arch_manuals/figures/periodic_neighbor_search/s2_cache_lifecycle.png
+-docs/arch_manuals/figures/periodic_neighbor_search/s2_verlet_architecture.png
+-docs/arch_manuals/figures/periodic_neighbor_search/stages.png
+-docs/guides/mlff_campaign_cli_user_guide.md
+-docs/guides/mlff_campaign_cli_user_guide.pdf
+-docs/specs/README.md
+-docs/specs/collection_spec.md
+-docs/specs/collection_spec.pdf
+-docs/specs/mlff_true_label_replay_evaluation.md
+-docs/specs/progress_spec.md
+-docs/specs/progress_spec.pdf
+-docs/specs/analysis/README.md
+-docs/specs/analysis/_cell_list_spec.md
+-docs/specs/analysis/_cell_list_spec.pdf
+-docs/specs/analysis/_displacement_common_spec.md
+-docs/specs/analysis/_displacement_common_spec.pdf
+-docs/specs/analysis/_dynamics_common_spec.md
+-docs/specs/analysis/_dynamics_common_spec.pdf
+-docs/specs/analysis/_fft_spec.md
+-docs/specs/analysis/_fft_spec.pdf
+-docs/specs/analysis/_neighbors_spec.md
+-docs/specs/analysis/_neighbors_spec.pdf
+-docs/specs/analysis/_quadrature_spec.md
+-docs/specs/analysis/_quadrature_spec.pdf
+-docs/specs/analysis/_spectral_spec.md
+-docs/specs/analysis/_spectral_spec.pdf
+-docs/specs/analysis/_spectral_units_spec.md
+-docs/specs/analysis/_spectral_units_spec.pdf
+-docs/specs/analysis/_velocity_common_spec.md
+-docs/specs/analysis/_velocity_common_spec.pdf
+-docs/specs/analysis/_verlet_cache_deformation_spec.md
+-docs/specs/analysis/_verlet_cache_deformation_spec.pdf
+-docs/specs/analysis/_verlet_cache_spec.md
+-docs/specs/analysis/_verlet_cache_spec.pdf
+-docs/specs/analysis/atomic_connectivity_spec.md
+-docs/specs/analysis/atomic_connectivity_spec.pdf
+-docs/specs/analysis/bond_angle_spec.md
+-docs/specs/analysis/bond_angle_spec.pdf
+-docs/specs/analysis/coordination_spec.md
+-docs/specs/analysis/coordination_spec.pdf
+-docs/specs/analysis/current_correlation_spec.md
+-docs/specs/analysis/current_correlation_spec.pdf
+-docs/specs/analysis/diffusion_estimation_spec.md
+-docs/specs/analysis/diffusion_estimation_spec.pdf
+-docs/specs/analysis/displacement_dynamics_spec.md
+-docs/specs/analysis/displacement_dynamics_spec.pdf
+-docs/specs/analysis/face_candidates_spec.md
+-docs/specs/analysis/face_candidates_spec.pdf
+-docs/specs/analysis/framework_semantics_spec.md
+-docs/specs/analysis/framework_semantics_spec.pdf
+-docs/specs/analysis/framework_topology_spec.md
+-docs/specs/analysis/framework_topology_spec.pdf
+-docs/specs/analysis/ionic_conductivity_spec.md
+-docs/specs/analysis/ionic_conductivity_spec.pdf
+-docs/specs/analysis/local_structure_features_spec.md
+-docs/specs/analysis/local_structure_features_spec.pdf
+-docs/specs/analysis/lta_natural_tiling_gate_spec.md
+-docs/specs/analysis/lta_natural_tiling_gate_spec.pdf
+-docs/specs/analysis/msd_spec.md
+-docs/specs/analysis/msd_spec.pdf
+-docs/specs/analysis/natural_tiling_refinement_spec.md
+-docs/specs/analysis/natural_tiling_refinement_spec.pdf
+-docs/specs/analysis/natural_tiling_search_spec.md
+-docs/specs/analysis/natural_tiling_search_spec.pdf
+-docs/specs/analysis/natural_tiling_spec.md
+-docs/specs/analysis/natural_tiling_spec.pdf
+-docs/specs/analysis/neighbor_search_spec.md
+-docs/specs/analysis/neighbor_search_spec.pdf
+-docs/specs/analysis/net_symmetry_discovery_spec.md
+-docs/specs/analysis/net_symmetry_discovery_spec.pdf
+-docs/specs/analysis/net_symmetry_spec.md
+-docs/specs/analysis/net_symmetry_spec.pdf
+-docs/specs/analysis/observable_validation_spec.md
+-docs/specs/analysis/observable_validation_spec.pdf
+-docs/specs/analysis/periodic_barycentric_spec.md
+-docs/specs/analysis/periodic_barycentric_spec.pdf
+-docs/specs/analysis/periodic_cell_complex_spec.md
+-docs/specs/analysis/periodic_cell_complex_spec.pdf
+-docs/specs/analysis/periodic_edge_intersection_spec.md
+-docs/specs/analysis/periodic_edge_intersection_spec.pdf
+-docs/specs/analysis/periodic_net_embedding_spec.md
+-docs/specs/analysis/periodic_net_embedding_spec.pdf
+-docs/specs/analysis/periodic_net_view_spec.md
+-docs/specs/analysis/periodic_net_view_spec.pdf
+-docs/specs/analysis/periodic_ring_action_spec.md
+-docs/specs/analysis/periodic_ring_action_spec.pdf
+-docs/specs/analysis/primitive_ring_cancellation_spec.md
+-docs/specs/analysis/primitive_ring_cancellation_spec.pdf
+-docs/specs/analysis/primitive_ring_index_spec.md
+-docs/specs/analysis/primitive_ring_index_spec.pdf
+-docs/specs/analysis/primitive_ring_spec.md
+-docs/specs/analysis/primitive_ring_spec.pdf
+-docs/specs/analysis/primitive_ring_symmetry_spec.md
+-docs/specs/analysis/primitive_ring_symmetry_spec.pdf
+-docs/specs/analysis/rdf_spec.md
+-docs/specs/analysis/rdf_spec.pdf
+-docs/specs/analysis/registered_structural_view_spec.md
+-docs/specs/analysis/registered_structural_view_spec.pdf
+-docs/specs/analysis/ring_boundary_spec.md
+-docs/specs/analysis/ring_boundary_spec.pdf
+-docs/specs/analysis/ring_geometry_frames_spec.md
+-docs/specs/analysis/ring_geometry_frames_spec.pdf
+-docs/specs/analysis/ring_geometry_spec.md
+-docs/specs/analysis/ring_geometry_spec.pdf
+-docs/specs/analysis/ring_strength_spec.md
+-docs/specs/analysis/ring_strength_spec.pdf
+-docs/specs/analysis/site_assignment_spec.md
+-docs/specs/analysis/site_assignment_spec.pdf
+-docs/specs/analysis/site_samples_spec.md
+-docs/specs/analysis/site_samples_spec.pdf
+-docs/specs/analysis/site_topology_spec.md
+-docs/specs/analysis/site_topology_spec.pdf
+-docs/specs/analysis/stage5_periodic_infrastructure_spec.md
+-docs/specs/analysis/stage5_periodic_infrastructure_spec.pdf
+-docs/specs/analysis/stage7r_certification_persistence_spec.md
+-docs/specs/analysis/stage7r_certification_persistence_spec.pdf
+-docs/specs/analysis/tiling_geometry_cage_spec.md
+-docs/specs/analysis/tiling_geometry_cage_spec.pdf
+-docs/specs/analysis/tiling_geometry_frames_spec.md
+-docs/specs/analysis/tiling_geometry_frames_spec.pdf
+-docs/specs/analysis/topology_catalog_spec.md
+-docs/specs/analysis/topology_catalog_spec.pdf
+-docs/specs/analysis/vacf_msd_reconstruction_spec.md
+-docs/specs/analysis/vacf_msd_reconstruction_spec.pdf
+-docs/specs/analysis/vacf_spec.md
+-docs/specs/analysis/vacf_spec.pdf
+-docs/specs/analysis/vacf_transport_spec.md
+-docs/specs/analysis/vacf_transport_spec.pdf
+-docs/specs/analysis/vdos_spec.md
+-docs/specs/analysis/vdos_spec.pdf
+-docs/specs/analysis/velocity_spectrum_spec.md
+-docs/specs/analysis/velocity_spectrum_spec.pdf
+-docs/specs/analysis/density/attractors_spec.md
+-docs/specs/analysis/density/attractors_spec.pdf
+-docs/specs/analysis/density/common_grid_diagnostics_spec.md
+-docs/specs/analysis/density/common_grid_diagnostics_spec.pdf
+-docs/specs/analysis/density/common_grid_planning_spec.md
+-docs/specs/analysis/density/common_grid_planning_spec.pdf
+-docs/specs/analysis/density/coordination_fingerprints_spec.md
+-docs/specs/analysis/density/coordination_fingerprints_spec.pdf
+-docs/specs/analysis/density/evidence_validation_spec.md
+-docs/specs/analysis/density/evidence_validation_spec.pdf
+-docs/specs/analysis/density/facade_spec.md
+-docs/specs/analysis/density/facade_spec.pdf
+-docs/specs/analysis/density/final_segmentation_spec.md
+-docs/specs/analysis/density/final_segmentation_spec.pdf
+-docs/specs/analysis/density/fixed_kernel_grid_refinement_spec.md
+-docs/specs/analysis/density/fixed_kernel_grid_refinement_spec.pdf
+-docs/specs/analysis/density/force_refinement_spec.md
+-docs/specs/analysis/density/force_refinement_spec.pdf
+-docs/specs/analysis/density/geometry_conditioning_spec.md
+-docs/specs/analysis/density/geometry_conditioning_spec.pdf
+-docs/specs/analysis/density/index.md
+-docs/specs/analysis/density/index.pdf
+-docs/specs/analysis/density/observed_network_spec.md
+-docs/specs/analysis/density/observed_network_spec.pdf
+-docs/specs/analysis/density/pilot_audit_spec.md
+-docs/specs/analysis/density/pilot_audit_spec.pdf
+-docs/specs/analysis/density/pilot_closeout_spec.md
+-docs/specs/analysis/density/pilot_closeout_spec.pdf
+-docs/specs/analysis/density/pilot_common_spec.md
+-docs/specs/analysis/density/pilot_common_spec.pdf
+-docs/specs/analysis/density/pilot_density_attractor_spec.md
+-docs/specs/analysis/density/pilot_density_attractor_spec.pdf
+-docs/specs/analysis/density/pilot_execution_spec.md
+-docs/specs/analysis/density/pilot_execution_spec.pdf
+-docs/specs/analysis/density/pilot_force_paths_spec.md
+-docs/specs/analysis/density/pilot_force_paths_spec.pdf
+-docs/specs/analysis/density/pilot_refinement_lineage_spec.md
+-docs/specs/analysis/density/pilot_refinement_lineage_spec.pdf
+-docs/specs/analysis/density/pilot_structural_temporal_spec.md
+-docs/specs/analysis/density/pilot_structural_temporal_spec.pdf
+-docs/specs/analysis/density/plotting_grid_adaptation_spec.md
+-docs/specs/analysis/density/plotting_grid_adaptation_spec.pdf
+-docs/specs/analysis/density/protocols_spec.md
+-docs/specs/analysis/density/protocols_spec.pdf
+-docs/specs/analysis/density/resources_spec.md
+-docs/specs/analysis/density/resources_spec.pdf
+-docs/specs/analysis/density/scientific_grid_refinement_spec.md
+-docs/specs/analysis/density/scientific_grid_refinement_spec.pdf
+-docs/specs/analysis/density/species_spec.md
+-docs/specs/analysis/density/species_spec.pdf
+-docs/specs/analysis/density/temporal_assignment_spec.md
+-docs/specs/analysis/density/temporal_assignment_spec.pdf
+-docs/specs/analysis/density/trajectory_temperature_quality_spec.md
+-docs/specs/analysis/density/trajectory_temperature_quality_spec.pdf
+-docs/specs/analysis/density/transition_paths_spec.md
+-docs/specs/analysis/density/transition_paths_spec.pdf
+-docs/specs/analysis/topology_statistics/_common_spec.md
+-docs/specs/analysis/topology_statistics/_common_spec.pdf
+-docs/specs/analysis/topology_statistics/atomic_spec.md
+-docs/specs/analysis/topology_statistics/atomic_spec.pdf
+-docs/specs/analysis/topology_statistics/combined_spec.md
+-docs/specs/analysis/topology_statistics/combined_spec.pdf
+-docs/specs/analysis/topology_statistics/framework_spec.md
+-docs/specs/analysis/topology_statistics/framework_spec.pdf
+-docs/specs/analysis/topology_statistics/temporal_spec.md
+-docs/specs/analysis/topology_statistics/temporal_spec.pdf
+-docs/specs/coordinates/affine_registration_spec.md
+-docs/specs/coordinates/affine_registration_spec.pdf
+-docs/specs/coordinates/consumer_adapters_spec.md
+-docs/specs/coordinates/consumer_adapters_spec.pdf
+-docs/specs/coordinates/contracts_spec.md
+-docs/specs/coordinates/contracts_spec.pdf
+-docs/specs/coordinates/metric_geometry_spec.md
+-docs/specs/coordinates/metric_geometry_spec.pdf
+-docs/specs/coordinates/periodic_gauge_spec.md
+-docs/specs/coordinates/periodic_gauge_spec.pdf
+-docs/specs/documentation/architecture_manual_ownership_spec.md
+-docs/specs/documentation/architecture_manual_ownership_spec.pdf
+-docs/specs/documentation/stage11_revision43_consistency_spec.md
+-docs/specs/documentation/stage11_revision43_consistency_spec.pdf
+-docs/specs/documentation/stage11_revision44_grid_refinement_consistency_spec.md
+-docs/specs/documentation/stage11_revision44_grid_refinement_consistency_spec.pdf
+-docs/specs/documentation/stage11_revision45_dependency_force_transition_consistency_spec.md
+-docs/specs/documentation/stage11_revision45_dependency_force_transition_consistency_spec.pdf
+-docs/specs/documentation/stage11_revision46_event_rate_gating_dag_spec.md
+-docs/specs/documentation/stage11_revision46_event_rate_gating_dag_spec.pdf
+-docs/specs/documentation/stage11_revision47_provenance_kinetic_pmf_dag_spec.md
+-docs/specs/documentation/stage11_revision47_provenance_kinetic_pmf_dag_spec.pdf
+-docs/specs/io/ensemble_admissibility_spec.md
+-docs/specs/io/ensemble_admissibility_spec.pdf
+-docs/specs/io/production_regime_catalog_spec.md
+-docs/specs/io/production_regime_catalog_spec.pdf
+-docs/specs/io/sampling_crossfit_spec.md
+-docs/specs/io/sampling_crossfit_spec.pdf
+-docs/specs/io/topology_statistics_spec.md
+-docs/specs/io/topology_statistics_spec.pdf
+-docs/specs/io/trajectory_quality_spec.md
+-docs/specs/io/trajectory_quality_spec.pdf
+-docs/specs/io/vasp_contcar_trajectory_spec.md
+-docs/specs/io/vasp_contcar_trajectory_spec.pdf
+-docs/specs/io/vasp_ensemble_certificate_spec.md
+-docs/specs/io/vasp_ensemble_certificate_spec.pdf
+-docs/specs/io/vasp_run_controls_spec.md
+-docs/specs/io/vasp_run_controls_spec.pdf
+-docs/specs/performance/interpreter_hotpath_policy.md
+-docs/specs/performance/interpreter_hotpath_policy.pdf
+-docs/specs/plotting/atomic_connectivity_graph_spec.md
+-docs/specs/plotting/atomic_connectivity_graph_spec.pdf
+-docs/specs/plotting/atomic_density_spec.md
+-docs/specs/plotting/atomic_density_spec.pdf
+-docs/specs/plotting/atomic_mean_graph_spec.md
+-docs/specs/plotting/atomic_mean_graph_spec.pdf
+-docs/specs/plotting/density_backend_selection_ld4_spec.md
+-docs/specs/plotting/density_backend_selection_ld4_spec.pdf
+-docs/specs/plotting/density_block_direct_ld8_s2_spec.md
+-docs/specs/plotting/density_block_direct_ld8_s2_spec.pdf
+-docs/specs/plotting/density_block_routing_ld8_s0_spec.md
+-docs/specs/plotting/density_block_routing_ld8_s0_spec.pdf
+-docs/specs/plotting/density_block_sparse_ld1_b_spec.md
+-docs/specs/plotting/density_block_sparse_ld1_b_spec.pdf
+-docs/specs/plotting/density_broadening_ld0_b_spec.md
+-docs/specs/plotting/density_broadening_ld0_b_spec.pdf
+-docs/specs/plotting/density_browser_acceptance_spec.md
+-docs/specs/plotting/density_browser_acceptance_spec.pdf
+-docs/specs/plotting/density_contracts_ld0_r1_spec.md
+-docs/specs/plotting/density_contracts_ld0_r1_spec.pdf
+-docs/specs/plotting/density_default_auto_policy_ld11_spec.md
+-docs/specs/plotting/density_default_auto_policy_ld11_spec.pdf
+-docs/specs/plotting/density_diagnostics_ld0_r2_spec.md
+-docs/specs/plotting/density_diagnostics_ld0_r2_spec.pdf
+-docs/specs/plotting/density_downstream_reuse_ld8_s4_spec.md
+-docs/specs/plotting/density_downstream_reuse_ld8_s4_spec.pdf
+-docs/specs/plotting/density_evidence_benchmark_ld8_p0_spec.md
+-docs/specs/plotting/density_evidence_benchmark_ld8_p0_spec.pdf
+-docs/specs/plotting/density_framework_sparse_ld3_spec.md
+-docs/specs/plotting/density_framework_sparse_ld3_spec.pdf
+-docs/specs/plotting/density_full_trajectory_tractability_ld7_spec.md
+-docs/specs/plotting/density_full_trajectory_tractability_ld7_spec.pdf
+-docs/specs/plotting/density_hybrid_scene_admission_ld12_spec.md
+-docs/specs/plotting/density_hybrid_scene_admission_ld12_spec.pdf
+-docs/specs/plotting/density_kernel_ld0_k_spec.md
+-docs/specs/plotting/density_kernel_ld0_k_spec.pdf
+-docs/specs/plotting/density_mesh_contracts_spec.md
+-docs/specs/plotting/density_mesh_contracts_spec.pdf
+-docs/specs/plotting/density_mesh_execution_spec.md
+-docs/specs/plotting/density_mesh_execution_spec.pdf
+-docs/specs/plotting/density_mesh_simplify_spec.md
+-docs/specs/plotting/density_mesh_simplify_spec.pdf
+-docs/specs/plotting/density_mesh_validation_ld9_v0_spec.md
+-docs/specs/plotting/density_mesh_validation_ld9_v0_spec.pdf
+-docs/specs/plotting/density_multilevel_research_ld6_spec.md
+-docs/specs/plotting/density_multilevel_research_ld6_spec.pdf
+-docs/specs/plotting/density_packed_field_ld8_s0_spec.md
+-docs/specs/plotting/density_packed_field_ld8_s0_spec.pdf
+-docs/specs/plotting/density_packed_mesh_read_ld13_spec.md
+-docs/specs/plotting/density_packed_mesh_read_ld13_spec.pdf
+-docs/specs/plotting/density_render_budget_spec.md
+-docs/specs/plotting/density_render_budget_spec.pdf
+-docs/specs/plotting/density_runtime_resource_policy_ld10_spec.md
+-docs/specs/plotting/density_runtime_resource_policy_ld10_spec.pdf
+-docs/specs/plotting/density_scene_budget_spec.md
+-docs/specs/plotting/density_scene_budget_spec.pdf
+-docs/specs/plotting/density_scene_fit_spec.md
+-docs/specs/plotting/density_scene_fit_spec.pdf
+-docs/specs/plotting/density_scene_planning_ld0_r3_spec.md
+-docs/specs/plotting/density_scene_planning_ld0_r3_spec.pdf
+-docs/specs/plotting/density_sparse_mesh_ld2_b_spec.md
+-docs/specs/plotting/density_sparse_mesh_ld2_b_spec.pdf
+-docs/specs/plotting/density_sparse_optimization_ld5_spec.md
+-docs/specs/plotting/density_sparse_optimization_ld5_spec.pdf
+-docs/specs/plotting/density_sparse_reference_ld1_a_spec.md
+-docs/specs/plotting/density_sparse_reference_ld1_a_spec.pdf
+-docs/specs/plotting/density_sparse_render_ld2_a_spec.md
+-docs/specs/plotting/density_sparse_render_ld2_a_spec.pdf
+-docs/specs/plotting/density_support_atlas_ld8_s1_spec.md
+-docs/specs/plotting/density_support_atlas_ld8_s1_spec.pdf
+-docs/specs/plotting/density_tiled_contour_ld9_v1_spec.md
+-docs/specs/plotting/density_tiled_contour_ld9_v1_spec.pdf
+-docs/specs/plotting/density_tiled_fft_ld8_s3_spec.md
+-docs/specs/plotting/density_tiled_fft_ld8_s3_spec.pdf
+-docs/specs/plotting/density_wall_time_advisory_020100_spec.md
+-docs/specs/plotting/framework_density_spec.md
+-docs/specs/plotting/framework_density_spec.pdf
+-docs/specs/plotting/framework_dynamics_spec.md
+-docs/specs/plotting/framework_dynamics_spec.pdf
+-docs/specs/plotting/framework_topology_graph_spec.md
+-docs/specs/plotting/framework_topology_graph_spec.pdf
+-docs/specs/plotting/graph_2d_spec.md
+-docs/specs/plotting/graph_2d_spec.pdf
+-docs/specs/plotting/graph_3d_spec.md
+-docs/specs/plotting/graph_3d_spec.pdf
+-docs/specs/plotting/graph_styles_spec.md
+-docs/specs/plotting/graph_styles_spec.pdf
+-docs/specs/plotting/graph_view_spec.md
+-docs/specs/plotting/graph_view_spec.pdf
+-docs/specs/plotting/index.md
+-docs/specs/plotting/index.pdf
+-docs/specs/plotting/periodic_graph_spec.md
+-docs/specs/plotting/periodic_graph_spec.pdf
+-docs/specs/plotting/topology_statistics_spec.md
+-docs/specs/plotting/topology_statistics_spec.pdf
+-docs/specs/plotting/vacf_diffusion_spec.md
+-docs/specs/plotting/vacf_diffusion_spec.pdf
+-docs/specs/plotting/velocity_spectrum_spec.md
+-docs/specs/plotting/velocity_spectrum_spec.pdf
+-docs/specs/sampling/README.md
+-docs/specs/sampling/shared_sampling_primitives_spec.md
+-docs/specs/sampling/shared_sampling_primitives_spec.pdf
+-docs/specs/training_data/README.md
+-docs/specs/training_data/mlff_85_95_gpu_calibration_spec.md
+-docs/specs/training_data/mlff_data2_source_catalog_spec.md
+-docs/specs/training_data/mlff_data2_source_catalog_spec.pdf
+-docs/specs/training_data/mlff_data2a_manifest_inference_gate_spec.md
+-docs/specs/training_data/mlff_data2a_manifest_inference_gate_spec.pdf
+-docs/specs/training_data/mlff_data3_frame_conditions_spec.md
+-docs/specs/training_data/mlff_data3_frame_conditions_spec.pdf
+-docs/specs/training_data/mlff_data4_raw_features_events_spec.md
+-docs/specs/training_data/mlff_data4_raw_features_events_spec.pdf
+-docs/specs/training_data/mlff_data5_partition_roles_spec.md
+-docs/specs/training_data/mlff_data5_partition_roles_spec.pdf
+-docs/specs/training_data/mlff_data6_selection_descriptors_spec.md
+-docs/specs/training_data/mlff_data6_selection_descriptors_spec.pdf
+-docs/specs/training_data/mlff_data7_fitted_metrics_selection_spec.md
+-docs/specs/training_data/mlff_data7_fitted_metrics_selection_spec.pdf
+-docs/specs/training_data/mlff_data8_mace_artifacts_spec.md
+-docs/specs/training_data/mlff_data8_mace_artifacts_spec.pdf
+-docs/specs/training_data/mlff_data9a2_real_mace_realization_spec.md
+-docs/specs/training_data/mlff_data9a3_production_corpus_qualification_spec.md
+-docs/specs/training_data/mlff_data9a3_production_corpus_qualification_spec.pdf
+-docs/specs/training_data/mlff_data9a4_precision_and_production_realization_spec.md
+-docs/specs/training_data/mlff_data9a5_critical_fp64_spec.md
+-docs/specs/training_data/mlff_data9a5_critical_fp64_spec.pdf
+-docs/specs/training_data/mlff_data9a5_deployment_artifact_spec.md
+-docs/specs/training_data/mlff_data9a5_deployment_artifact_spec.pdf
+-docs/specs/training_data/mlff_data9a6b_architecture_consistency_spec.md
+-docs/specs/training_data/mlff_data9a6b_architecture_consistency_spec.pdf
+-docs/specs/training_data/mlff_data9a6c_observable_evidence_leakage_spec.md
+-docs/specs/training_data/mlff_data9a6c_observable_evidence_leakage_spec.pdf
+-docs/specs/training_data/mlff_data9a7a_material_profile_contracts_spec.md
+-docs/specs/training_data/mlff_data9a7a_material_profile_contracts_spec.pdf
+-docs/specs/training_data/mlff_data9a7b_universal_structural_selection_spec.md
+-docs/specs/training_data/mlff_data9a7b_universal_structural_selection_spec.pdf
+-docs/specs/training_data/mlff_data9a7c_phase_geometry_profiles_spec.md
+-docs/specs/training_data/mlff_data9a7c_phase_geometry_profiles_spec.pdf
+-docs/specs/training_data/mlff_data9a7d_profile_extension_migration_spec.md
+-docs/specs/training_data/mlff_data9a7d_profile_extension_migration_spec.pdf
+-docs/specs/training_data/mlff_data9a7e_cross_system_qualification_spec.md
+-docs/specs/training_data/mlff_data9a7e_cross_system_qualification_spec.pdf
+-docs/specs/training_data/mlff_data9a8_observable_comparison_spec.md
+-docs/specs/training_data/mlff_data9a8_observable_comparison_spec.pdf
+-docs/specs/training_data/mlff_data9a9a_production_model_sweep_spec.md
+-docs/specs/training_data/mlff_data9a9a_production_model_sweep_spec.pdf
+-docs/specs/training_data/mlff_data9a9b_production_materialization_spec.md
+-docs/specs/training_data/mlff_data9a9b_production_materialization_spec.pdf
+-docs/specs/training_data/mlff_data9a9c_production_gate_integrity_spec.md
+-docs/specs/training_data/mlff_data9a9c_production_gate_integrity_spec.pdf
+-docs/specs/training_data/mlff_data9a_integration_qualification_spec.md
+-docs/specs/training_data/mlff_data9a_integration_qualification_spec.pdf
+-docs/specs/training_data/mlff_data9b1_campaign_checkpoint_control_spec.md
+-docs/specs/training_data/mlff_data9b1_campaign_checkpoint_control_spec.pdf
+-docs/specs/training_data/mlff_data9b2_execution_aggregation_freeze_spec.md
+-docs/specs/training_data/mlff_data9b2_execution_aggregation_freeze_spec.pdf
+-docs/specs/training_data/mlff_data9b3_campaign_cli_spec.md
+-docs/specs/training_data/mlff_data9b3_campaign_cli_spec.pdf
+-docs/specs/training_data/mlff_data9b3a_cueq_campaign_spec.md
+-docs/specs/training_data/mlff_data9b3a_cueq_campaign_spec.pdf
+-docs/specs/training_data/mlff_data9b4_storage_restart_spec.md
+-docs/specs/training_data/mlff_data_stage_plan_spec.md
+-docs/specs/training_data/mlff_data_stage_plan_spec.pdf
+-docs/specs/training_data/mlff_durable_evaluated_model_reconciliation_spec.md
+-docs/specs/training_data/mlff_eval_mf_successive_halving_spec.md
+-docs/specs/training_data/mlff_eval_mf_successive_halving_spec.pdf
+-docs/specs/training_data/mlff_mace_torchscript_warning_compatibility_spec.md
+-docs/specs/training_data/mlff_mixed_stage_admission_progress_spec.md
+-docs/specs/training_data/mlff_observable_validation_bridge_spec.md
+-docs/specs/training_data/mlff_observable_validation_bridge_spec.pdf
+-docs/specs/training_data/mlff_opt_ctrl1_control_plane_telemetry_spec.md
+-docs/specs/training_data/mlff_opt_eval1_fast_checkpoint_reconstruction_spec.md
+-docs/specs/training_data/mlff_opt_eval2_persistent_prediction_reuse_spec.md
+-docs/specs/training_data/mlff_opt_eval3_monitor_graph_view_cache_spec.md
+-docs/specs/training_data/mlff_opt_eval4_staged_evaluation_pipeline_spec.md
+-docs/specs/training_data/mlff_opt_verify1_verification_reuse_neighbor_scaling_spec.md
+-docs/specs/training_data/mlff_parallel_cueq_incremental_export_spec.md
+-docs/specs/training_data/mlff_parallel_evaluation_verification_spec.md
+-docs/specs/training_data/mlff_peak_trimmed_gpu_calibration_spec.md
+-docs/specs/training_data/mlff_single_job_gpu_calibration_spec.md
+-docs/specs/training_data/mlff_staged_precision_profiles_spec.md
+-docs/specs/training_data/mlff_staged_precision_profiles_spec.pdf
+-docs/specs/training_data/mlff_storage_management_spec.md
+-docs/specs/training_data/mlff_storage_management_spec.pdf
+-docs/specs/training_data/mlff_true_inference_telemetry_gate_spec.md
+-docs/specs/training_data/mlff_true_label_restart_lineage_spec.md
+-docs/specs/training_data/mlff_upper_tail_gpu_calibration_spec.md
+-docs/specs/training_data/mlff_work_conserving_inference_queue_spec.md
+-examples/README.md
+-examples/mlff_critical_precision.py
+-examples/mlff_precision_policy.py
+-examples/plot_lta_mixed_alkali_density.py
+-examples/plot_na_lta_300k_all_species_density.py
+-examples/plot_na_lta_300k_atomic_mean_graph.py
+-examples/plot_na_lta_300k_framework_dynamics.py
+-examples/graph_visualization/README.md
+-examples/graph_visualization/2d/README.md
+-examples/graph_visualization/2d/na_lta_framework_local_si0.png
+-examples/graph_visualization/2d/na_lta_framework_local_si0.svg
+-examples/graph_visualization/2d/na_lta_framework_local_si0_hop4.png
+-examples/graph_visualization/2d/na_lta_framework_local_si0_hop4.svg
+-examples/graph_visualization/2d/na_lta_framework_orthographic_contact.png
+-examples/graph_visualization/2d/na_lta_framework_physical_pca.png
+-examples/graph_visualization/2d/na_lta_framework_physical_pca.svg
+-examples/graph_visualization/2d/na_lta_framework_spring.png
+-examples/graph_visualization/2d/na_lta_framework_spring.svg
+-examples/graph_visualization/2d/na_lta_framework_xy.png
+-examples/graph_visualization/2d/na_lta_framework_xy.svg
+-examples/graph_visualization/2d/na_lta_framework_xz.png
+-examples/graph_visualization/2d/na_lta_framework_xz.svg
+-examples/graph_visualization/2d/na_lta_framework_yz.png
+-examples/graph_visualization/2d/na_lta_framework_yz.svg
+-examples/graph_visualization/2d/na_lta_full_atomic_physical_pca.png
+-examples/graph_visualization/2d/na_lta_full_atomic_physical_pca.svg
+-examples/graph_visualization/2d/render_na_lta_2d.py
+-examples/graph_visualization/3d/README.md
+-examples/graph_visualization/3d/na_lta_framework_canonical_3d.html
+-examples/graph_visualization/3d/na_lta_framework_canonical_orthographic_3d.html
+-examples/graph_visualization/3d/na_lta_framework_expanded_2x2x1_3d.html
+-examples/graph_visualization/3d/na_lta_framework_local_si0_hop4_3d.html
+-examples/graph_visualization/3d/na_lta_full_atomic_canonical_3d.html
+-examples/graph_visualization/3d/render_na_lta_3d.py
+-examples/graph_visualization/framework_topology/na_lta_framework_atomic_paths_canonical_3d.html
+-examples/graph_visualization/framework_topology/na_lta_framework_atomic_paths_pca_2d.png
+-examples/graph_visualization/framework_topology/na_lta_projected_framework_2x2x1_3d.html
+-examples/graph_visualization/framework_topology/na_lta_projected_framework_canonical_3d.html
+-examples/graph_visualization/framework_topology/na_lta_projected_framework_dots_canonical_3d.html
+-examples/graph_visualization/framework_topology/na_lta_projected_framework_dots_pca_2d.png
+-examples/graph_visualization/framework_topology/na_lta_projected_framework_edges_only_2x2x1_3d.html
+-examples/graph_visualization/framework_topology/na_lta_projected_framework_edges_only_canonical_3d.html
+-examples/graph_visualization/framework_topology/na_lta_projected_framework_edges_only_pca_2d.png
+-examples/graph_visualization/framework_topology/na_lta_projected_framework_local_t0_hop3_2d.png
+-examples/graph_visualization/framework_topology/na_lta_projected_framework_pca_2d.png
+-examples/graph_visualization/framework_topology/na_lta_projected_framework_pca_2d.svg
+-examples/graph_visualization/framework_topology/render_framework_topology.py
+-examples/graph_visualization/tuned/na_lta_framework_canonical_3d_tuned.html
+-examples/graph_visualization/tuned/na_lta_framework_expanded_2x2x1_3d_tuned.html
+-examples/graph_visualization/tuned/na_lta_framework_local_si0_hop4_3d_tuned.html
+-examples/graph_visualization/tuned/na_lta_framework_pca_2d_tuned.png
+-examples/primitive_ring/na_lta_300K/README.md
+-examples/primitive_ring/na_lta_300K/generate_catalog.py
+-examples/primitive_ring/na_lta_300K/na_lta_framework_topology.json
+-examples/primitive_ring/na_lta_300K/generated/REPORT.md
+-examples/primitive_ring/na_lta_300K/generated/edge_shortest_subset_catalog.json
+-examples/primitive_ring/na_lta_300K/generated/primitive_ring_catalog.json
+-examples/primitive_ring/na_lta_300K/generated/rings.csv
+-examples/primitive_ring/na_lta_300K/generated/source_searches.csv
+-examples/site_discovery/na_lta_300K_stage11e8a_density_attractor_pilot.py
+-examples/site_discovery/na_lta_300K_stage11e8a_force_paths.py
+-examples/site_discovery/na_lta_300K_stage11e8a_preflight.py
+-examples/site_discovery/na_lta_300K_stage11e8a_refinement_lineage.py
+-examples/site_discovery/na_lta_300K_stage11e8a_source_bootstrap.py
+-examples/site_discovery/na_lta_300K_stage11e8a_structural_temporal.py
+-examples/topology_statistics/README.md
+-examples/topology_statistics/na_lta_300K/README.md
+-examples/topology_statistics/na_lta_300K/generate_figures.py
+-examples/topology_statistics/na_lta_300K/generated/REPORT.md
+-examples/topology_statistics/na_lta_300K/generated/al_o_count_distribution.pdf
+-examples/topology_statistics/na_lta_300K/generated/al_o_count_distribution.png
+-examples/topology_statistics/na_lta_300K/generated/atomic_dwell_distribution.pdf
+-examples/topology_statistics/na_lta_300K/generated/atomic_dwell_distribution.png
+-examples/topology_statistics/na_lta_300K/generated/atomic_state_occupancy.pdf
+-examples/topology_statistics/na_lta_300K/generated/atomic_state_occupancy.png
+-examples/topology_statistics/na_lta_300K/generated/atomic_state_timeline.pdf
+-examples/topology_statistics/na_lta_300K/generated/atomic_state_timeline.png
+-examples/topology_statistics/na_lta_300K/generated/atomic_transition_raster.pdf
+-examples/topology_statistics/na_lta_300K/generated/atomic_transition_raster.png
+-examples/topology_statistics/na_lta_300K/generated/cross_layer_boundary_counts.pdf
+-examples/topology_statistics/na_lta_300K/generated/cross_layer_boundary_counts.png
+-examples/topology_statistics/na_lta_300K/generated/cross_layer_contingency.pdf
+-examples/topology_statistics/na_lta_300K/generated/cross_layer_contingency.png
+-examples/topology_statistics/na_lta_300K/generated/framework_class_timeline.pdf
+-examples/topology_statistics/na_lta_300K/generated/framework_class_timeline.png
+-examples/topology_statistics/na_lta_300K/generated/framework_edge_count.pdf
+-examples/topology_statistics/na_lta_300K/generated/framework_edge_count.png
+-examples/topology_statistics/na_lta_300K/generated/na_lta_300K_ts5_summary.json
+-examples/topology_statistics/na_lta_300K/generated/na_o_count_distribution.pdf
+-examples/topology_statistics/na_lta_300K/generated/na_o_count_distribution.png
+-examples/topology_statistics/na_lta_300K/generated/na_o_count_timeseries.pdf
+-examples/topology_statistics/na_lta_300K/generated/na_o_count_timeseries.png
+-examples/topology_statistics/na_lta_300K/generated/si_o_count_distribution.pdf
+-examples/topology_statistics/na_lta_300K/generated/si_o_count_distribution.png
+-examples/topology_statistics/na_lta_300K/generated/tables/na_lta_300K.json
+-examples/topology_statistics/na_lta_300K/generated/tables/na_lta_300K_atomic_catalog_occupancy.csv
+-examples/topology_statistics/na_lta_300K/generated/tables/na_lta_300K_atomic_contact_occupancy.csv
+-examples/topology_statistics/na_lta_300K/generated/tables/na_lta_300K_atomic_pair_count_distribution.csv
+-examples/topology_statistics/na_lta_300K/generated/tables/na_lta_300K_atomic_pair_count_series.csv
+-examples/topology_statistics/na_lta_300K/generated/tables/na_lta_300K_atomic_state_assignments.csv
+-examples/topology_statistics/na_lta_300K/generated/tables/na_lta_300K_atomic_state_residence.csv
+-examples/topology_statistics/na_lta_300K/generated/tables/na_lta_300K_atomic_state_transitions.csv
+-examples/topology_statistics/na_lta_300K/generated/tables/na_lta_300K_atomic_total_edge_series.csv
+-examples/topology_statistics/na_lta_300K/generated/tables/na_lta_300K_cross_layer_assignments.csv
+-examples/topology_statistics/na_lta_300K/generated/tables/na_lta_300K_cross_layer_boundaries.csv
+-examples/topology_statistics/na_lta_300K/generated/tables/na_lta_300K_cross_layer_contingency.csv
+-examples/topology_statistics/na_lta_300K/generated/tables/na_lta_300K_frame_axis.csv
+-examples/topology_statistics/na_lta_300K/generated/tables/na_lta_300K_framework_bridge_signature_distribution.csv
+-examples/topology_statistics/na_lta_300K/generated/tables/na_lta_300K_framework_bridge_signature_series.csv
+-examples/topology_statistics/na_lta_300K/generated/tables/na_lta_300K_framework_catalog_occupancy.csv
+-examples/topology_statistics/na_lta_300K/generated/tables/na_lta_300K_framework_descriptor_distribution.csv
+-examples/topology_statistics/na_lta_300K/generated/tables/na_lta_300K_framework_descriptor_series.csv
+-examples/topology_statistics/na_lta_300K/generated/tables/na_lta_300K_framework_edge_occupancy.csv
+-examples/topology_statistics/na_lta_300K/generated/tables/na_lta_300K_framework_endpoint_pair_distribution.csv
+-examples/topology_statistics/na_lta_300K/generated/tables/na_lta_300K_framework_endpoint_pair_series.csv
+-examples/topology_statistics/na_lta_300K/generated/tables/na_lta_300K_framework_state_assignments.csv
+-examples/topology_statistics/na_lta_300K/generated/tables/na_lta_300K_framework_state_residence.csv
+-examples/topology_statistics/na_lta_300K/generated/tables/na_lta_300K_framework_state_transitions.csv
+-examples/vacf_dynamics/README.md
+-examples/vacf_dynamics/vasp_contcar_trajectory_vdos_diffusion.py
+-examples/vasp_contcar_trajectory/README.md
+-examples/vasp_contcar_trajectory/vasp_contcar.sh
+-examples/vasp_contcar_trajectory/watch_contcar.sh
+-mdstats/__init__.py
+-mdstats/_version.py
+-mdstats/collection.py
+-mdstats/exceptions.py
+-mdstats/progress.py
+-mdstats/provenance.py
+-mdstats/semantics.py
+-mdstats.egg-info/PKG-INFO
+-mdstats.egg-info/SOURCES.txt
+-mdstats.egg-info/dependency_links.txt
+-mdstats.egg-info/entry_points.txt
+-mdstats.egg-info/requires.txt
+-mdstats.egg-info/top_level.txt
+-mdstats/analysis/__init__.py
+-mdstats/analysis/_cell_list.py
+-mdstats/analysis/_displacement_common.py
+-mdstats/analysis/_dynamics_common.py
+-mdstats/analysis/_fft.py
+-mdstats/analysis/_neighbor_compare.py
+-mdstats/analysis/_neighbors.py
+-mdstats/analysis/_periodic_graph.py
+-mdstats/analysis/_periodic_spatial.py
+-mdstats/analysis/_quadrature.py
+-mdstats/analysis/_robust_geometry.py
+-mdstats/analysis/_spectral.py
+-mdstats/analysis/_spectral_units.py
+-mdstats/analysis/_surface_mesh.py
+-mdstats/analysis/_velocity_common.py
+-mdstats/analysis/_verlet_cache.py
+-mdstats/analysis/atomic_connectivity.py
+-mdstats/analysis/bond_angle.py
+-mdstats/analysis/cage.py
+-mdstats/analysis/coordination.py
+-mdstats/analysis/current_correlation.py
+-mdstats/analysis/cutoffs.py
+-mdstats/analysis/diffusion.py
+-mdstats/analysis/displacement_dynamics.py
+-mdstats/analysis/face_candidates.py
+-mdstats/analysis/framework_semantics.py
+-mdstats/analysis/framework_topology.py
+-mdstats/analysis/ionic_conductivity.py
+-mdstats/analysis/local_structure.py
+-mdstats/analysis/lta_natural_tiling.py
+-mdstats/analysis/msd.py
+-mdstats/analysis/natural_tiling.py
+-mdstats/analysis/natural_tiling_refinement.py
+-mdstats/analysis/natural_tiling_search.py
+-mdstats/analysis/neighbor_search.py
+-mdstats/analysis/net_symmetry.py
+-mdstats/analysis/net_symmetry_discovery.py
+-mdstats/analysis/observable_validation.py
+-mdstats/analysis/periodic_barycentric.py
+-mdstats/analysis/periodic_cell_complex.py
+-mdstats/analysis/periodic_cycle.py
+-mdstats/analysis/periodic_edge_intersection.py
+-mdstats/analysis/periodic_net_embedding.py
+-mdstats/analysis/periodic_net_view.py
+-mdstats/analysis/periodic_ring_action.py
+-mdstats/analysis/primitive_ring.py
+-mdstats/analysis/primitive_ring_cancellation.py
+-mdstats/analysis/primitive_ring_index.py
+-mdstats/analysis/primitive_ring_symmetry.py
+-mdstats/analysis/rdf.py
+-mdstats/analysis/registered_structural_view.py
+-mdstats/analysis/ring_boundary.py
+-mdstats/analysis/ring_geometry.py
+-mdstats/analysis/ring_geometry_frames.py
+-mdstats/analysis/ring_site.py
+-mdstats/analysis/ring_strength.py
+-mdstats/analysis/selection.py
+-mdstats/analysis/site_assignment.py
+-mdstats/analysis/site_kinetic_network.py
+-mdstats/analysis/site_samples.py
+-mdstats/analysis/tiling_geometry.py
+-mdstats/analysis/tiling_geometry_frames.py
+-mdstats/analysis/topology_catalog.py
+-mdstats/analysis/vacf.py
+-mdstats/analysis/vacf_transport.py
+-mdstats/analysis/velocity_spectrum.py
+-mdstats/analysis/density/__init__.py
+-mdstats/analysis/density/_frozen_json.py
+-mdstats/analysis/density/_pilot_common.py
+-mdstats/analysis/density/attractors.py
+-mdstats/analysis/density/broadening.py
+-mdstats/analysis/density/coordination_fingerprints.py
+-mdstats/analysis/density/diagnostics.py
+-mdstats/analysis/density/evidence_validation.py
+-mdstats/analysis/density/facade.py
+-mdstats/analysis/density/final_segmentation.py
+-mdstats/analysis/density/force_refinement.py
+-mdstats/analysis/density/geometry_conditioning.py
+-mdstats/analysis/density/grid_geometry.py
+-mdstats/analysis/density/numerical_errors.py
+-mdstats/analysis/density/observed_network.py
+-mdstats/analysis/density/pilot_audit.py
+-mdstats/analysis/density/pilot_density_attractors.py
+-mdstats/analysis/density/pilot_execution.py
+-mdstats/analysis/density/pilot_force_paths.py
+-mdstats/analysis/density/pilot_refinement_lineage.py
+-mdstats/analysis/density/pilot_structural_temporal.py
+-mdstats/analysis/density/planning.py
+-mdstats/analysis/density/protocols.py
+-mdstats/analysis/density/refinement.py
+-mdstats/analysis/density/resources.py
+-mdstats/analysis/density/species.py
+-mdstats/analysis/density/stencil_diagnostics.py
+-mdstats/analysis/density/temporal_assignment.py
+-mdstats/analysis/density/transition_paths.py
+-mdstats/analysis/topology_statistics/__init__.py
+-mdstats/analysis/topology_statistics/_common.py
+-mdstats/analysis/topology_statistics/atomic.py
+-mdstats/analysis/topology_statistics/combined.py
+-mdstats/analysis/topology_statistics/framework.py
+-mdstats/analysis/topology_statistics/temporal.py
+-mdstats/coordinates/__init__.py
+-mdstats/coordinates/consumer_adapters.py
+-mdstats/coordinates/contracts.py
+-mdstats/coordinates/metric_geometry.py
+-mdstats/coordinates/periodic_gauge.py
+-mdstats/coordinates/registration.py
+-mdstats/data/na_lta_framework_topology.json
+-mdstats/data/na_lta_primitive_ring_catalog.json
+-mdstats/data/observable_owner_manuals.json
+-mdstats/io/__init__.py
+-mdstats/io/admissibility.py
+-mdstats/io/common.py
+-mdstats/io/control_certificates.py
+-mdstats/io/lammps.py
+-mdstats/io/production_regimes.py
+-mdstats/io/sampling_crossfit.py
+-mdstats/io/source_controls.py
+-mdstats/io/structure.py
+-mdstats/io/topology_statistics.py
+-mdstats/io/trajectory_quality.py
+-mdstats/io/units.py
+-mdstats/io/vasp.py
+-mdstats/io/vasp_admissibility.py
+-mdstats/io/vasp_contcar_trajectory.py
+-mdstats/io/vasp_controls.py
+-mdstats/io/vasp_ensemble.py
+-mdstats/io/vasp_quality.py
+-mdstats/io/vasp_stationarity.py
+-mdstats/io/xml_recovery.py
+-mdstats/plotting/__init__.py
+-mdstats/plotting/_density_mesh_worker.py
+-mdstats/plotting/atomic_connectivity_graph.py
+-mdstats/plotting/atomic_density.py
+-mdstats/plotting/coordination.py
+-mdstats/plotting/density_backend_selection.py
+-mdstats/plotting/density_block_direct.py
+-mdstats/plotting/density_block_routing.py
+-mdstats/plotting/density_block_sparse.py
+-mdstats/plotting/density_broadening.py
+-mdstats/plotting/density_browser_acceptance.py
+-mdstats/plotting/density_contour_tiles.py
+-mdstats/plotting/density_contracts.py
+-mdstats/plotting/density_diagnostics.py
+-mdstats/plotting/density_hdr.py
+-mdstats/plotting/density_kernel.py
+-mdstats/plotting/density_mesh_contracts.py
+-mdstats/plotting/density_mesh_execution.py
+-mdstats/plotting/density_mesh_simplify.py
+-mdstats/plotting/density_mesh_validation.py
+-mdstats/plotting/density_multilevel_research.py
+-mdstats/plotting/density_node_cloud.py
+-mdstats/plotting/density_packed_field.py
+-mdstats/plotting/density_planning.py
+-mdstats/plotting/density_render_budget.py
+-mdstats/plotting/density_resource_policy.py
+-mdstats/plotting/density_scene_budget.py
+-mdstats/plotting/density_scene_fit.py
+-mdstats/plotting/density_scene_planning.py
+-mdstats/plotting/density_sparse_mesh.py
+-mdstats/plotting/density_sparse_optimization.py
+-mdstats/plotting/density_sparse_reference.py
+-mdstats/plotting/density_support_atlas.py
+-mdstats/plotting/density_tiled_fft.py
+-mdstats/plotting/density_tiled_mesh.py
+-mdstats/plotting/density_visual_policy.py
+-mdstats/plotting/framework_density.py
+-mdstats/plotting/framework_dynamics.py
+-mdstats/plotting/framework_topology_graph.py
+-mdstats/plotting/graph_2d.py
+-mdstats/plotting/graph_3d.py
+-mdstats/plotting/graph_errors.py
+-mdstats/plotting/graph_styles.py
+-mdstats/plotting/graph_view.py
+-mdstats/plotting/msd.py
+-mdstats/plotting/periodic_graph.py
+-mdstats/plotting/rdf.py
+-mdstats/plotting/runtime_resources.py
+-mdstats/plotting/topology_statistics.py
+-mdstats/plotting/vacf_transport.py
+-mdstats/plotting/velocity_spectrum.py
+-mdstats/preprocess/__init__.py
+-mdstats/preprocess/normalize.py
+-mdstats/preprocess/unwrap.py
+-mdstats/preprocess/validate.py
+-mdstats/preprocess/velocity.py
+-mdstats/sampling/__init__.py
+-mdstats/sampling/_common.py
+-mdstats/sampling/assignment.py
+-mdstats/sampling/autocorrelation.py
+-mdstats/sampling/blocks.py
+-mdstats/training_data/__init__.py
+-mdstats/training_data/_array_pickle.py
+-mdstats/training_data/_common.py
+-mdstats/training_data/_frame_access.py
+-mdstats/training_data/_npz_mmap.py
+-mdstats/training_data/acceleration.py
+-mdstats/training_data/atomic_references.py
+-mdstats/training_data/blinding.py
+-mdstats/training_data/campaign_cli.py
+-mdstats/training_data/campaign_control.py
+-mdstats/training_data/campaign_execution.py
+-mdstats/training_data/conditions.py
+-mdstats/training_data/critical_precision.py
+-mdstats/training_data/critical_precision_cli.py
+-mdstats/training_data/cross_system_qualification.py
+-mdstats/training_data/data4_bundle.py
+-mdstats/training_data/data4_sharded_store.py
+-mdstats/training_data/data5_bundle.py
+-mdstats/training_data/data6_bundle.py
+-mdstats/training_data/data6_sharded_store.py
+-mdstats/training_data/data7_archive.py
+-mdstats/training_data/data7_bundle.py
+-mdstats/training_data/data8_bundle.py
+-mdstats/training_data/difficulty.py
+-mdstats/training_data/eligibility.py
+-mdstats/training_data/energy.py
+-mdstats/training_data/evaluation_predictions.py
+-mdstats/training_data/evaluation_views.py
+-mdstats/training_data/events.py
+-mdstats/training_data/feature_metric.py
+-mdstats/training_data/feature_worker.py
+-mdstats/training_data/frame_cache.py
+-mdstats/training_data/frame_catalog.py
+-mdstats/training_data/identity.py
+-mdstats/training_data/inference_parallel.py
+-mdstats/training_data/labels.py
+-mdstats/training_data/leakage.py
+-mdstats/training_data/lta_profile.py
+-mdstats/training_data/lta_selection.py
+-mdstats/training_data/mace_compatibility.py
+-mdstats/training_data/mace_deployment.py
+-mdstats/training_data/mace_export.py
+-mdstats/training_data/mace_qualification.py
+-mdstats/training_data/mace_realization.py
+-mdstats/training_data/mace_runtime.py
+-mdstats/training_data/manifest.py
+-mdstats/training_data/manifest_inference.py
+-mdstats/training_data/material_profiles.py
+-mdstats/training_data/model_features.py
+-mdstats/training_data/multi_fidelity_evaluation.py
+-mdstats/training_data/objectives.py
+-mdstats/training_data/observable_comparison.py
+-mdstats/training_data/observable_validation.py
+-mdstats/training_data/partition.py
+-mdstats/training_data/phase_geometry_profiles.py
+-mdstats/training_data/precision.py
+-mdstats/training_data/precision_runtime.py
+-mdstats/training_data/precision_schedule.py
+-mdstats/training_data/production_materialization.py
+-mdstats/training_data/production_model_sweep.py
+-mdstats/training_data/production_qualification.py
+-mdstats/training_data/profile_extensions.py
+-mdstats/training_data/progress_timing.py
+-mdstats/training_data/protocol.py
+-mdstats/training_data/raw_features.py
+-mdstats/training_data/reference_fit.py
+-mdstats/training_data/replay.py
+-mdstats/training_data/resources.py
+-mdstats/training_data/role_budget.py
+-mdstats/training_data/selection.py
+-mdstats/training_data/source_worker.py
+-mdstats/training_data/sources.py
+-mdstats/training_data/storage_accounting.py
+-mdstats/training_data/strain.py
+-mdstats/training_data/structural_selection.py
+-mdstats/training_data/training_parallel.py
+-release/ARCHITECTURE_PATCH_MLFF_REV22_TO_REV23.patch
+-release/SHA256SUMS_0.20.100a0.txt
+-release/SHA256SUMS_0.20.101a0.txt
+-release/SHA256SUMS_0.20.102a0.txt
+-release/SHA256SUMS_0.20.97a0.txt
+-release/SHA256SUMS_0.20.98a0.txt
+-release/SOURCE_PATCH_0.20.100a0_to_0.20.101a0.patch
+-release/SOURCE_PATCH_0.20.101a0_to_0.20.102a0.patch
+-release/SOURCE_PATCH_0.20.102a0_to_0.20.103a0.patch
+-release/SOURCE_PATCH_0.20.103a0_to_0.20.104a0.patch
+-release/SOURCE_PATCH_0.20.104a0_to_0.20.105a0.patch
+-release/SOURCE_PATCH_0.20.105a0_to_0.20.106a0.patch
+-release/SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch
+-release/SOURCE_PATCH_0.20.107a0_to_0.20.108a0.patch
+-release/SOURCE_PATCH_0.20.108a0_to_0.20.109a0.patch
+-release/SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch
+-release/SOURCE_PATCH_0.20.110a0_to_0.20.111a0.patch
+-release/SOURCE_PATCH_0.20.96a0_to_0.20.97a0.patch
+-release/SOURCE_PATCH_0.20.97a0_to_0.20.98a0.patch
+-release/SOURCE_PATCH_0.20.98a0_to_0.20.99a0.patch
+-release/SOURCE_PATCH_0.20.99a0_to_0.20.100a0.patch
+-release/mlff_eval_mf2_exhaustive_30_checkpoint_qualification.json
+-release/mlff_prec2_real_mace_e3nn_qualification.json
+-release/mlff_prec3_profile_activation_qualification.json
+-release/mlff_stor1_ownership_storage_qualification.json
+-tests/__init__.py
+-tests/_lta_tiling_fixture.py
+-tests/_ring_geometry_fixture.py
+-tests/conftest.py
+-tests/test_atomic_connectivity.py
+-tests/test_atomic_density.py
+-tests/test_bond_angle.py
+-tests/test_cell_list.py
+-tests/test_coordination.py
+-tests/test_core.py
+-tests/test_current_correlation.py
+-tests/test_cutoffs.py
+-tests/test_density_backend_selection.py
+-tests/test_density_benchmark_contracts.py
+-tests/test_density_block_direct.py
+-tests/test_density_block_routing.py
+-tests/test_density_block_sparse.py
+-tests/test_density_broadening.py
+-tests/test_density_browser_acceptance_ld9_v4.py
+-tests/test_density_contracts.py
+-tests/test_density_diagnostics.py
+-tests/test_density_hdr.py
+-tests/test_density_kernel.py
+-tests/test_density_ld8_s4.py
+-tests/test_density_mesh_contract_stage2.py
+-tests/test_density_mesh_execution_ld9_v4.py
+-tests/test_density_mesh_repair_compact_topology_01978.py
+-tests/test_density_mesh_simplify.py
+-tests/test_density_mesh_validation.py
+-tests/test_density_multilevel_research.py
+-tests/test_density_node_cloud.py
+-tests/test_density_packed_field.py
+-tests/test_density_planning.py
+-tests/test_density_render_budget.py
+-tests/test_density_scene_budget_ld9_v3.py
+-tests/test_density_scene_fit_partitioned_topology_01976.py
+-tests/test_density_sparse_mesh.py
+-tests/test_density_sparse_optimization.py
+-tests/test_density_sparse_reference.py
+-tests/test_density_support_atlas.py
+-tests/test_density_tiled_fft.py
+-tests/test_density_tiled_mesh.py
+-tests/test_diffusion.py
+-tests/test_displacement_common.py
+-tests/test_displacement_dynamics.py
+-tests/test_dynamics_hardening.py
+-tests/test_ensemble.py
+-tests/test_ensemble_admissibility.py
+-tests/test_example_source_bootstrap.py
+-tests/test_face_candidates.py
+-tests/test_fft.py
+-tests/test_frame_registration.py
+-tests/test_framework_density.py
+-tests/test_framework_dynamics.py
+-tests/test_framework_semantics.py
+-tests/test_framework_topology.py
+-tests/test_framework_topology_visualization.py
+-tests/test_graph_3d.py
+-tests/test_graph_visualization.py
+-tests/test_interpreter_hotpath_policy.py
+-tests/test_interpreter_hotpath_stage2.py
+-tests/test_ionic_conductivity.py
+-tests/test_lammps.py
+-tests/test_local_structure.py
+-tests/test_lta_example_hysteresis_01979.py
+-tests/test_lta_example_trajectory_input.py
+-tests/test_lta_natural_tiling.py
+-tests/test_mesh_topology_revision_stage1.py
+-tests/test_mlff_campaign_cli.py
+-tests/test_mlff_campaign_performance.py
+-tests/test_mlff_campaign_production_gate_anchor.py
+-tests/test_mlff_checkpoint_model_materialization.py
+-tests/test_mlff_cueq_parallel_conversion_guard.py
+-tests/test_mlff_data0_architecture_specification.py
+-tests/test_mlff_data1_specification.py
+-tests/test_mlff_data2_manifest_inference.py
+-tests/test_mlff_data2_source_catalog.py
+-tests/test_mlff_data2_specification.py
+-tests/test_mlff_data2a_manifest_inference_specification.py
+-tests/test_mlff_data3_frame_conditions.py
+-tests/test_mlff_data3_specification.py
+-tests/test_mlff_data4_raw_features_events.py
+-tests/test_mlff_data4_specification.py
+-tests/test_mlff_data5_partition_roles.py
+-tests/test_mlff_data5_specification.py
+-tests/test_mlff_data6_mace_native_batch_autograd.py
+-tests/test_mlff_data6_selection_descriptors.py
+-tests/test_mlff_data6_specification.py
+-tests/test_mlff_data7_fitted_metrics_selection.py
+-tests/test_mlff_data7_selection_scaling.py
+-tests/test_mlff_data7_specification.py
+-tests/test_mlff_data8_mace_artifacts.py
+-tests/test_mlff_data8_specification.py
+-tests/test_mlff_data9a2_real_mace_realization.py
+-tests/test_mlff_data9a2_specification.py
+-tests/test_mlff_data9a3_production_qualification.py
+-tests/test_mlff_data9a3_specification.py
+-tests/test_mlff_data9a4_precision.py
+-tests/test_mlff_data9a4_precision_specification.py
+-tests/test_mlff_data9a4_real_precision.py
+-tests/test_mlff_data9a5_critical_fp64_specification.py
+-tests/test_mlff_data9a5_critical_precision.py
+-tests/test_mlff_data9a5_deployment.py
+-tests/test_mlff_data9a5_deployment_specification.py
+-tests/test_mlff_data9a6b_architecture_consistency_specification.py
+-tests/test_mlff_data9a6c_observable_evidence_specification.py
+-tests/test_mlff_data9a7a_material_profile_specification.py
+-tests/test_mlff_data9a7a_material_profiles.py
+-tests/test_mlff_data9a7b_specification.py
+-tests/test_mlff_data9a7b_universal_structural_selection.py
+-tests/test_mlff_data9a7c_phase_geometry_profiles.py
+-tests/test_mlff_data9a7c_specification.py
+-tests/test_mlff_data9a7d_profile_extension_migration.py
+-tests/test_mlff_data9a7d_specification.py
+-tests/test_mlff_data9a7e_cross_system_qualification.py
+-tests/test_mlff_data9a7e_specification.py
+-tests/test_mlff_data9a8_observable_comparison.py
+-tests/test_mlff_data9a8_specification.py
+-tests/test_mlff_data9a9a_production_model_sweep.py
+-tests/test_mlff_data9a9a_specification.py
+-tests/test_mlff_data9a9b_production_materialization.py
+-tests/test_mlff_data9a9b_specification.py
+-tests/test_mlff_data9a9c_production_gate_integrity.py
+-tests/test_mlff_data9a9c_specification.py
+-tests/test_mlff_data9a_hardening.py
+-tests/test_mlff_data9a_runtime_environment.py
+-tests/test_mlff_data9a_specification.py
+-tests/test_mlff_data9b1_campaign_checkpoint_control.py
+-tests/test_mlff_data9b1_specification.py
+-tests/test_mlff_data9b2_execution_aggregation_freeze.py
+-tests/test_mlff_data9b2_real_mace_evaluation.py
+-tests/test_mlff_data9b2_specification.py
+-tests/test_mlff_data9b3_campaign_cli_specification.py
+-tests/test_mlff_data9b3a_cueq_campaign.py
+-tests/test_mlff_data9b3a_cueq_specification.py
+-tests/test_mlff_eval_mf1_successive_halving.py
+-tests/test_mlff_eval_mf2_guard_reporting.py
+-tests/test_mlff_eval_storage_roadmap_specification.py
+-tests/test_mlff_evaluation_verification_cost_policy.py
+-tests/test_mlff_immediate_evaluated_model_reconciliation.py
+-tests/test_mlff_inference_parallel_scheduler.py
+-tests/test_mlff_label_domain_scaling.py
+-tests/test_mlff_legacy_schema_compatibility.py
+-tests/test_mlff_mace_compatibility.py
+-tests/test_mlff_observable_validation_bridge.py
+-tests/test_mlff_opt_ctrl1_control_plane.py
+-tests/test_mlff_opt_ctrl1_specification.py
+-tests/test_mlff_opt_eval2_prediction_cache.py
+-tests/test_mlff_opt_eval3_monitor_graph_view_cache.py
+-tests/test_mlff_opt_eval3_specification.py
+-tests/test_mlff_opt_eval4_specification.py
+-tests/test_mlff_opt_eval4_staged_evaluation_pipeline.py
+-tests/test_mlff_opt_verify1.py
+-tests/test_mlff_opt_verify1_specification.py
+-tests/test_mlff_parallel_resources.py
+-tests/test_mlff_partial_completed_verification.py
+-tests/test_mlff_perf2_parallel_acceleration_specification.py
+-tests/test_mlff_prec1_precision_profiles.py
+-tests/test_mlff_prec1_specification.py
+-tests/test_mlff_prec2_precision_runtime.py
+-tests/test_mlff_prec2_real_mace.py
+-tests/test_mlff_prec2_specification.py
+-tests/test_mlff_prec3_profile_activation.py
+-tests/test_mlff_prec3_real_mace.py
+-tests/test_mlff_prec3_specification.py
+-tests/test_mlff_progress_timing.py
+-tests/test_mlff_pseudolabel_replay_semantics.py
+-tests/test_mlff_restart_progress_seed_matrix_02077.py
+-tests/test_mlff_rev3_storage_evaluation_optimizations.py
+-tests/test_mlff_rev4_runtime_memory_optimizations.py
+-tests/test_mlff_stor1_storage_accounting.py
+-tests/test_mlff_training_parallel_scheduler.py
+-tests/test_mlff_true_label_replay_evaluation.py
+-tests/test_msd.py
+-tests/test_natural_tiling.py
+-tests/test_natural_tiling_refinement.py
+-tests/test_natural_tiling_search.py
+-tests/test_neighbor_oracle.py
+-tests/test_neighbor_search_integration.py
+-tests/test_neighbors.py
+-tests/test_net_symmetry.py
+-tests/test_net_symmetry_discovery.py
+-tests/test_observable_validation_api.py
+-tests/test_observable_validation_wheel_parity.py
+-tests/test_periodic_barycentric.py
+-tests/test_periodic_cell_complex.py
+-tests/test_periodic_edge_intersection.py
+-tests/test_periodic_graph.py
+-tests/test_periodic_net_embedding.py
+-tests/test_periodic_net_view.py
+-tests/test_periodic_ring_action.py
+-tests/test_periodic_spatial.py
+-tests/test_plot_coordination.py
+-tests/test_plot_msd.py
+-tests/test_plot_rdf.py
+-tests/test_plot_vacf_diffusion.py
+-tests/test_plot_velocity_spectrum.py
+-tests/test_primitive_ring.py
+-tests/test_primitive_ring_cancellation.py
+-tests/test_primitive_ring_index.py
+-tests/test_primitive_ring_symmetry.py
+-tests/test_production_regimes.py
+-tests/test_progress.py
+-tests/test_progress_port_interfaces.py
+-tests/test_quadrature.py
+-tests/test_rdf.py
+-tests/test_registered_structural_view.py
+-tests/test_ring_geometry.py
+-tests/test_ring_geometry_frames.py
+-tests/test_ring_strength.py
+-tests/test_runtime_resource_static_audit_ld10.py
+-tests/test_runtime_resources_ld10.py
+-tests/test_sampling_primitives.py
+-tests/test_single_frame.py
+-tests/test_site_assignment.py
+-tests/test_site_topology.py
+-tests/test_source_coordinate_contract.py
+-tests/test_spec_modular_consolidation.py
+-tests/test_spectral.py
+-tests/test_stage11_architecture_ownership.py
+-tests/test_stage11_ens0_spec.py
+-tests/test_stage11_ens1_specification.py
+-tests/test_stage11_gr0_common_grid_diagnostics.py
+-tests/test_stage11_gr0_specification.py
+-tests/test_stage11_gr1_common_grid_planning.py
+-tests/test_stage11_gr1_specification.py
+-tests/test_stage11_gr2_plotting_grid_adaptation.py
+-tests/test_stage11_gr2_specification.py
+-tests/test_stage11_gr3_fixed_kernel_refinement.py
+-tests/test_stage11_gr3_specification.py
+-tests/test_stage11_revision43_quality_contract.py
+-tests/test_stage11_revision44_grid_refinement_contract.py
+-tests/test_stage11_revision45_dependency_contract.py
+-tests/test_stage11_revision46_dag_contract.py
+-tests/test_stage11_revision47_semantic_contract.py
+-tests/test_stage11_samp0.py
+-tests/test_stage11_samp0_specification.py
+-tests/test_stage11_stat0_specification.py
+-tests/test_stage11_stat1_specification.py
+-tests/test_stage11_stat2_specification.py
+-tests/test_stage11c3_ring_boundary.py
+-tests/test_stage11e0a_density_facade.py
+-tests/test_stage11e0b_site_samples.py
+-tests/test_stage11e1_periodic_species_density.py
+-tests/test_stage11e2_density_attractors.py
+-tests/test_stage11e3_force_refinement.py
+-tests/test_stage11e4_temporal_assignment.py
+-tests/test_stage11e5_joint_evidence_validation.py
+-tests/test_stage11e5a_coordination_fingerprints.py
+-tests/test_stage11e5b_geometry_conditioning.py
+-tests/test_stage11e6_final_segmentation.py
+-tests/test_stage11e6b_transition_paths.py
+-tests/test_stage11e7_observed_network.py
+-tests/test_stage11e8a_density_attractor_pilot.py
+-tests/test_stage11e8a_force_path_pilot.py
+-tests/test_stage11e8a_pilot_audit.py
+-tests/test_stage11e8a_pilot_common.py
+-tests/test_stage11e8a_refinement_lineage_pilot.py
+-tests/test_stage11e8a_source_bootstrap.py
+-tests/test_stage11e8a_structural_temporal_pilot.py
+-tests/test_stage5_api_hygiene.py
+-tests/test_stage_c0b_consumer_migration.py
+-tests/test_tiling_geometry_cage.py
+-tests/test_tiling_geometry_frames.py
+-tests/test_tools_restoration.py
+-tests/test_topology_catalog.py
+-tests/test_topology_statistics_atomic.py
+-tests/test_topology_statistics_combined.py
+-tests/test_topology_statistics_common.py
+-tests/test_topology_statistics_framework.py
+-tests/test_topology_statistics_plotting_export.py
+-tests/test_topology_statistics_temporal.py
+-tests/test_trajectory_quality.py
+-tests/test_vacf.py
+-tests/test_vacf_msd.py
+-tests/test_vacf_transport.py
+-tests/test_vasp.py
+-tests/test_vasp_contcar_trajectory.py
+-tests/test_vasp_ensemble_certificate.py
+-tests/test_vasp_run_controls.py
+-tests/test_vdos.py
+-tests/test_velocity_common.py
+-tests/test_velocity_spectrum.py
+-tests/test_verlet_cache.py
+-tests/data/Na_LTA_relaxed.POSCAR
+-tests/data/mesh_topology_revision_stage1_cases.json
+-tests/data/na_lta_framework_topology.json
+-tests/support/__init__.py
+-tests/support/neighbor_cases.py
+-tools/README.md
+-tools/finalize_lta_data9a3_qualification.py
+-tools/mdstats-mlff-campaign.py
+-tools/qualify_mace_runtime.py
+-tools/performance/scan_interpreter_hotpaths.py
+\ No newline at end of file
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/mdstats.egg-info/dependency_links.txt /mnt/data/mdstats-0.20.112a0-complete-source-package/mdstats.egg-info/dependency_links.txt
+--- /mnt/data/mdstats111_warning_pristine/mdstats.egg-info/dependency_links.txt	2026-08-08 21:32:30.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/mdstats.egg-info/dependency_links.txt	1970-01-01 00:00:00.000000000 +0000
+@@ -1 +0,0 @@
+-
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/mdstats.egg-info/entry_points.txt /mnt/data/mdstats-0.20.112a0-complete-source-package/mdstats.egg-info/entry_points.txt
+--- /mnt/data/mdstats111_warning_pristine/mdstats.egg-info/entry_points.txt	2026-08-08 21:32:30.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/mdstats.egg-info/entry_points.txt	1970-01-01 00:00:00.000000000 +0000
+@@ -1,4 +0,0 @@
+-[console_scripts]
+-mdstats-mace-eval = mdstats.training_data.critical_precision_cli:eval_main
+-mdstats-mace-select-head = mdstats.training_data.critical_precision_cli:select_head_main
+-mdstats-mace-train = mdstats.training_data.critical_precision_cli:train_main
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/mdstats.egg-info/requires.txt /mnt/data/mdstats-0.20.112a0-complete-source-package/mdstats.egg-info/requires.txt
+--- /mnt/data/mdstats111_warning_pristine/mdstats.egg-info/requires.txt	2026-08-08 21:32:30.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/mdstats.egg-info/requires.txt	1970-01-01 00:00:00.000000000 +0000
+@@ -1,16 +0,0 @@
+-numpy>=1.26
+-ase>=3.26
+-scipy>=1.11
+-matplotlib>=3.8
+-networkx>=3.4
+-threadpoolctl>=3.1
+-packaging>=23
+-
+-[interactive]
+-plotly>=5.20
+-scikit-image>=0.22
+-fast-simplification>=0.1.13
+-cloudpickle>=3.0
+-
+-[manifest]
+-PyYAML>=6.0
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/mdstats.egg-info/top_level.txt /mnt/data/mdstats-0.20.112a0-complete-source-package/mdstats.egg-info/top_level.txt
+--- /mnt/data/mdstats111_warning_pristine/mdstats.egg-info/top_level.txt	2026-08-08 21:32:30.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/mdstats.egg-info/top_level.txt	1970-01-01 00:00:00.000000000 +0000
+@@ -1 +0,0 @@
+-mdstats
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/pyproject.toml /mnt/data/mdstats-0.20.112a0-complete-source-package/pyproject.toml
+--- /mnt/data/mdstats111_warning_pristine/pyproject.toml	2026-08-08 21:22:50.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/pyproject.toml	2026-08-08 21:46:01.434497178 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.111a0"
++version = "0.20.112a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/release/mlff_warning_condensation_qualification.json /mnt/data/mdstats-0.20.112a0-complete-source-package/release/mlff_warning_condensation_qualification.json
+--- /mnt/data/mdstats111_warning_pristine/release/mlff_warning_condensation_qualification.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/release/mlff_warning_condensation_qualification.json	2026-08-08 21:48:22.847175527 +0000
+@@ -0,0 +1,34 @@
++{
++  "architecture_revision": 30,
++  "behavior": {
++    "checkpoint_materialization_scope": true,
++    "historical_torchscript_warning_code_preserved": true,
++    "mace_torch_warnings": "grouped by origin/category/source/message and emitted once per process signature",
++    "non_mace_torch_warnings": "replayed unchanged",
++    "outer_evaluation_scope": true,
++    "target_head_export_scope": true
++  },
++  "date": "2026-08-08",
++  "notes": [
++    "Real MACE 0.3.16/e3nn checkpoint materialization/export tests were included in the compatibility sweep.",
++    "No MLFF DATA8, checkpoint-selection, prediction-cache, precision-profile, or storage ownership identity changed."
++  ],
++  "observed_user_warning_groups": [
++    "torch.jit.load deprecated",
++    "torch.jit.save deprecated",
++    "torch.jit.script deprecated",
++    "MACE tensor-copy construction warning",
++    "TorchScript instance-annotation warning via ast.py"
++  ],
++  "package_version": "0.20.112a0",
++  "pre_existing_failure": "release/mlff_data9a9a_real_mpa0_restart_smoke.json is absent",
++  "roadmap_next_gate": "STOR2",
++  "schema": "mdstats.mlff-warning-condensation-qualification.v1",
++  "scientific_identity_changed": false,
++  "scope": "MACE/PyTorch warning condensation during campaign evaluation",
++  "tests": {
++    "campaign_evaluation_real_mace_compatibility_sweep": "97 passed, 1 external-LTA skip",
++    "mlff_specification_suite": "120 passed, 1 pre-existing missing historical evidence failure",
++    "warning_compatibility_tests": "13 passed"
++  }
++}
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data0_architecture_specification.py /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data0_architecture_specification.py
+--- /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data0_architecture_specification.py	2026-08-08 21:25:55.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data0_architecture_specification.py	2026-08-08 21:47:24.100107904 +0000
+@@ -263,4 +263,4 @@
+ def test_mlff_data0_pdf_and_version_artifacts_exist() -> None:
+     assert MANUAL_PDF.stat().st_size > 10_000
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.111a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.112a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data1_specification.py /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data1_specification.py
+--- /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data1_specification.py	2026-08-08 21:25:55.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data1_specification.py	2026-08-08 21:47:24.103195709 +0000
+@@ -49,4 +49,4 @@
+     assert callable(mdstats.assign_balanced_round_robin)
+     assert callable(mdstats.build_complete_frame_block_plan)
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.111a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.112a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data2a_manifest_inference_specification.py /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data2a_manifest_inference_specification.py
+--- /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-08 21:25:55.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-08 21:47:24.103677033 +0000
+@@ -15,7 +15,7 @@
+ 
+ 
+ def test_data2a_version_public_api_and_documented_contract() -> None:
+-    assert mdstats.__version__ == "0.20.111a0"
++    assert mdstats.__version__ == "0.20.112a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert callable(mdstats.infer_training_manifest_metadata)
+     policy = mdstats.ManifestInferencePolicy()
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data9a2_specification.py /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a2_specification.py
+--- /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data9a2_specification.py	2026-08-08 21:25:55.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a2_specification.py	2026-08-08 21:47:24.100570141 +0000
+@@ -23,7 +23,7 @@
+         "finite energy, force, and stress",
+     ):
+         assert required in text
+-    assert 'version = "0.20.111a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.112a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "DATA9A2 real-MACE realization is implemented in `0.20.39a0`" in ARCH.read_text()
+ 
+ 
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data9a3_specification.py /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a3_specification.py
+--- /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data9a3_specification.py	2026-08-08 21:25:55.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a3_specification.py	2026-08-08 21:47:24.105092565 +0000
+@@ -9,5 +9,5 @@
+     assert "37,632" in text
+     assert "supported_with_temporal_blocks_only" in text
+     assert "production_replay_corpus_not_bound" in text
+-    assert 'version = "0.20.111a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.112a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "MLFF-DATA9A3 production qualification" in ARCH.read_text()
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data9a4_precision_specification.py /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a4_precision_specification.py
+--- /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data9a4_precision_specification.py	2026-08-08 21:25:55.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a4_precision_specification.py	2026-08-08 21:47:24.101141429 +0000
+@@ -9,7 +9,7 @@
+     assert "float32" in text and "float64" in text
+     assert "MaceModelPrecisionRecord" in text
+     assert "MacePrecisionTransitionRecord" in text
+-    assert "version = \"0.20.111a0\"" in (ROOT / "pyproject.toml").read_text()
++    assert "version = \"0.20.112a0\"" in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_bind_precision_to_protocol() -> None:
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data9a5_critical_fp64_specification.py /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a5_critical_fp64_specification.py
+--- /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-08 21:25:55.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-08 21:47:24.099480773 +0000
+@@ -14,7 +14,7 @@
+     assert 'version: "0.20.42a0"' in text
+     assert "training_force_jacobian_dtype = model" in text
+     assert "Python/ASE" in text
+-    assert 'version = "0.20.111a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.112a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_data9a5_architecture_declares_scope_and_limits() -> None:
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data9a5_deployment_specification.py /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a5_deployment_specification.py
+--- /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data9a5_deployment_specification.py	2026-08-08 21:25:55.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a5_deployment_specification.py	2026-08-08 21:47:24.101032958 +0000
+@@ -13,7 +13,7 @@
+     assert 'version: "0.20.43a0"' in text
+     assert "downstream runtime owns" in text
+     assert "float32-to-float64 promotion does not restore" in text
+-    assert 'version = "0.20.111a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.112a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_keep_lammps_outside_mdstats_scope() -> None:
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data9a6c_observable_evidence_specification.py /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a6c_observable_evidence_specification.py
+--- /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-08 21:25:55.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-08 21:47:24.105259463 +0000
+@@ -74,5 +74,5 @@
+ 
+ def test_packaged_owner_manual_index_is_valid() -> None:
+     payload = json.loads(MANUAL_INDEX.read_text(encoding="utf-8"))
+-    assert payload["package_version"] == "0.20.111a0"
++    assert payload["package_version"] == "0.20.112a0"
+     assert "structural-observables-architecture" in payload["manuals"]
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data9a7a_material_profile_specification.py /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a7a_material_profile_specification.py
+--- /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-08 21:25:55.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-08 21:47:24.099678196 +0000
+@@ -64,4 +64,4 @@
+ 
+ 
+ def test_release_version_is_data9a7a() -> None:
+-    assert 'version = "0.20.111a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert 'version = "0.20.112a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data9a7b_specification.py /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a7b_specification.py
+--- /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data9a7b_specification.py	2026-08-08 21:25:55.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a7b_specification.py	2026-08-08 21:47:24.105150511 +0000
+@@ -69,7 +69,7 @@
+ 
+ 
+ def test_data9a7b_public_exports_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.111a0"
++    assert mdstats.__version__ == "0.20.112a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert callable(mdstats.compute_local_structure_features)
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data9a7c_specification.py /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a7c_specification.py
+--- /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data9a7c_specification.py	2026-08-08 21:25:55.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a7c_specification.py	2026-08-08 21:47:24.102026373 +0000
+@@ -47,7 +47,7 @@
+ 
+ 
+ def test_public_api_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.111a0"
++    assert mdstats.__version__ == "0.20.112a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert mdstats.MLFF_DATA9A7C_PARSER_VERSION == "0.20.49a0"
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data9a7d_specification.py /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a7d_specification.py
+--- /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data9a7d_specification.py	2026-08-08 21:25:55.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a7d_specification.py	2026-08-08 21:47:24.101739677 +0000
+@@ -39,6 +39,6 @@
+ 
+ 
+ def test_data9a7d_runtime_versions() -> None:
+-    assert mdstats.__version__ == "0.20.111a0"
++    assert mdstats.__version__ == "0.20.112a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7D_PARSER_VERSION == "0.20.50a0"
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data9a7e_specification.py /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a7e_specification.py
+--- /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data9a7e_specification.py	2026-08-08 21:25:55.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a7e_specification.py	2026-08-08 21:47:24.098847924 +0000
+@@ -39,7 +39,7 @@
+         "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
+         "CROSS_SYSTEM_QUALIFICATION_SUITE",
+     } <= nodes
+-    assert mdstats.__version__ == "0.20.111a0"
++    assert mdstats.__version__ == "0.20.112a0"
+     assert mdstats.MLFF_DATA9A7E_PARSER_VERSION == "0.20.51a0"
+     assert callable(mdstats.qualify_cross_system_case)
+     assert callable(mdstats.build_cross_system_qualification_suite)
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data9a8_specification.py /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a8_specification.py
+--- /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data9a8_specification.py	2026-08-08 21:25:55.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a8_specification.py	2026-08-08 21:47:24.102388400 +0000
+@@ -66,7 +66,7 @@
+ 
+ 
+ def test_public_runtime_exposes_data9a8_without_removed_aliases() -> None:
+-    assert mdstats.__version__ == "0.20.111a0"
++    assert mdstats.__version__ == "0.20.112a0"
+     assert mdstats.MLFF_DATA9A8_PARSER_VERSION == "0.20.52a0"
+     assert mdstats.ObservableComparisonPolicy
+     assert mdstats.compare_mlff_observable_validation
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data9a9a_specification.py /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a9a_specification.py
+--- /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data9a9a_specification.py	2026-08-08 21:25:55.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a9a_specification.py	2026-08-08 21:47:24.100695787 +0000
+@@ -65,7 +65,7 @@
+ 
+ 
+ def test_public_runtime_exports_data9a9a_contracts() -> None:
+-    assert mdstats.__version__ == "0.20.111a0"
++    assert mdstats.__version__ == "0.20.112a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A9A_VERSION
+     assert mdstats.Data6ModelSweepPlan
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data9a9b_specification.py /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a9b_specification.py
+--- /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data9a9b_specification.py	2026-08-08 21:25:55.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a9b_specification.py	2026-08-08 21:47:24.103788859 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9b_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.111a0"
++    assert mdstats.__version__ == "0.20.112a0"
+     for name in (
+         "ProductionMaterializationPlan",
+         "ProductionMaterializationCheckpoint",
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data9a9c_specification.py /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a9c_specification.py
+--- /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data9a9c_specification.py	2026-08-08 21:25:55.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a9c_specification.py	2026-08-08 21:47:24.104047333 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9c_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.111a0"
++    assert mdstats.__version__ == "0.20.112a0"
+     for name in (
+         "ProductionCorpusPlan", "ProductionExpectedRun",
+         "ProfileExtensionEvidenceRequirement", "ProductionCorpusQualificationRecord",
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data9a_specification.py /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a_specification.py
+--- /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data9a_specification.py	2026-08-08 21:25:55.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a_specification.py	2026-08-08 21:47:24.104929333 +0000
+@@ -14,7 +14,7 @@
+ 
+ 
+ def test_data9a_runtime_specification_is_canonical() -> None:
+-    assert 'version = "0.20.111a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.112a0"' in (ROOT / "pyproject.toml").read_text()
+     architecture = ARCH.read_text()
+     stage = STAGE.read_text()
+     specification = SPEC.read_text()
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data9b1_specification.py /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9b1_specification.py
+--- /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data9b1_specification.py	2026-08-08 21:25:55.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9b1_specification.py	2026-08-08 21:47:24.101951602 +0000
+@@ -18,8 +18,8 @@
+     assert "TrainingCampaignPlan" in text
+     assert "CheckpointSelectionRecord" in text
+     assert "mdstats-mace-train" in text
+-    assert mdstats.__version__ == "0.20.111a0"
+-    assert 'version = "0.20.111a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert mdstats.__version__ == "0.20.112a0"
++    assert 'version = "0.20.112a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+ 
+ 
+ def test_data9b1_is_integrated_into_manual_and_stage_plan() -> None:
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data9b2_specification.py /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9b2_specification.py
+--- /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data9b2_specification.py	2026-08-08 21:25:55.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9b2_specification.py	2026-08-08 21:47:24.103460973 +0000
+@@ -23,7 +23,7 @@
+         'mdstats-mace-select-head',
+     ):
+         assert token in text
+-    assert mdstats.__version__ == '0.20.111a0'
++    assert mdstats.__version__ == '0.20.112a0'
+     assert mdstats.MLFF_DATA9B2_VERSION == '0.20.57a0'
+ 
+ 
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data9b3_campaign_cli_specification.py /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9b3_campaign_cli_specification.py
+--- /mnt/data/mdstats111_warning_pristine/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-08 21:25:55.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-08 21:47:24.103324300 +0000
+@@ -16,7 +16,7 @@
+ 
+ 
+ def test_data9b3_version_and_user_surface() -> None:
+-    assert mdstats.__version__ == "0.20.111a0"
++    assert mdstats.__version__ == "0.20.112a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert TOOL.is_file()
+     assert TOOL.stat().st_mode & 0o111
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/tests/test_mlff_mace_compatibility.py /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_mace_compatibility.py
+--- /mnt/data/mdstats111_warning_pristine/tests/test_mlff_mace_compatibility.py	2026-08-08 21:06:42.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_mace_compatibility.py	2026-08-08 21:47:24.104323183 +0000
+@@ -203,3 +203,126 @@
+     assert result.skipped_reason is None
+     assert "MaceRuntimeCompatibilityWarning" in result.stderr_tail
+     assert "/vendor/torch/jit/_script.py:42: DeprecationWarning" not in result.stderr_tail
++
++
++def test_repeated_mace_and_torch_warnings_are_grouped_without_replay() -> None:
++    tensor_message = (
++        "To copy construct from a tensor, it is recommended to use "
++        "sourceTensor.detach().clone() or sourceTensor.detach().clone().requires_grad_(True), "
++        "rather than torch.tensor(sourceTensor)."
++    )
++    annotation_message = (
++        "The TorchScript type system doesn't support instance-level annotations on empty "
++        "non-base types in `__init__`. Instead, either 1) use a type annotation in the "
++        "class body, or 2) wrap the type in `torch.jit.Attribute`."
++    )
++    save_message = "`torch.jit.save` is deprecated. Please switch to `torch.export`."
++
++    with warnings.catch_warnings(record=True) as observed:
++        warnings.simplefilter("always")
++        with mdstats.mace_runtime_warning_scope("evaluation inference") as capture:
++            for line in (176, 176, 176):
++                warnings.warn_explicit(
++                    LOAD_MESSAGE,
++                    DeprecationWarning,
++                    "/runtime/site-packages/torch/jit/_serialization.py",
++                    line,
++                )
++            warnings.warn_explicit(
++                save_message,
++                DeprecationWarning,
++                "/runtime/site-packages/torch/jit/_serialization.py",
++                89,
++            )
++            for _ in range(2):
++                warnings.warn_explicit(
++                    tensor_message,
++                    UserWarning,
++                    "/runtime/site-packages/mace/modules/models.py",
++                    86,
++                )
++            for _ in range(7):
++                warnings.warn_explicit(
++                    SCRIPT_MESSAGE,
++                    DeprecationWarning,
++                    "/runtime/site-packages/torch/jit/_script.py",
++                    1488,
++                )
++                warnings.warn_explicit(
++                    annotation_message,
++                    UserWarning,
++                    "/usr/lib/python3.11/ast.py",
++                    418,
++                )
++
++    assert len(observed) == 1
++    assert observed[0].category is mdstats.MaceRuntimeCompatibilityWarning
++    message = str(observed[0].message)
++    assert "condensed 20 total MACE/PyTorch warning(s) into 5 unique group(s)" in message
++    assert "3x torch:DeprecationWarning [torch/jit/_serialization.py]" in message
++    assert "2x mace:UserWarning [mace/modules/models.py]" in message
++    assert "7x torch:UserWarning [ast.py]" in message
++    assert capture.record.upstream_warning_count == 20
++    assert len(capture.record.upstream_warning_groups) == 5
++    assert capture.record.raw_warning_count == 11
++    assert capture.record.torchscript_apis == (
++        "torch.jit.load",
++        "torch.jit.save",
++        "torch.jit.script",
++    )
++
++
++def test_new_upstream_warning_group_emits_once_per_process_signature() -> None:
++    message = "MACE warning that should be visible once as a condensed group"
++    with warnings.catch_warnings(record=True) as observed:
++        warnings.simplefilter("always")
++        for operation in ("first", "second"):
++            with mdstats.mace_runtime_warning_scope(operation):
++                warnings.warn_explicit(
++                    message,
++                    UserWarning,
++                    "/runtime/site-packages/mace/modules/models.py",
++                    999,
++                )
++                warnings.warn_explicit(
++                    message,
++                    UserWarning,
++                    "/runtime/site-packages/mace/modules/models.py",
++                    999,
++                )
++
++    assert len(observed) == 1
++    assert observed[0].category is mdstats.MaceRuntimeCompatibilityWarning
++    assert "2 total MACE/PyTorch warning(s) into 1 unique group(s)" in str(observed[0].message)
++
++
++def test_campaign_evaluate_outer_scope_catches_setup_warnings(monkeypatch) -> None:
++    import argparse
++    import mdstats.training_data.campaign_cli as campaign_cli
++
++    def noisy_load_config(_path):
++        warnings.warn_explicit(
++            SCRIPT_MESSAGE,
++            DeprecationWarning,
++            "/runtime/site-packages/torch/jit/_script.py",
++            1488,
++        )
++        warnings.warn_explicit(
++            "synthetic MACE setup warning",
++            UserWarning,
++            "/runtime/site-packages/mace/modules/models.py",
++            86,
++        )
++        raise RuntimeError("stop after setup")
++
++    monkeypatch.setattr(campaign_cli, "_load_config", noisy_load_config)
++    with warnings.catch_warnings(record=True) as observed:
++        warnings.simplefilter("always")
++        with pytest.raises(RuntimeError, match="stop after setup"):
++            campaign_cli.command_evaluate(argparse.Namespace(config="campaign.toml"))
++
++    assert len(observed) == 1
++    assert observed[0].category is mdstats.MaceRuntimeCompatibilityWarning
++    summary = str(observed[0].message)
++    assert "campaign checkpoint evaluation" in summary
++    assert "2 total MACE/PyTorch warning(s) into 2 unique group(s)" in summary
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/tests/test_mlff_opt_ctrl1_specification.py /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_opt_ctrl1_specification.py
+--- /mnt/data/mdstats111_warning_pristine/tests/test_mlff_opt_ctrl1_specification.py	2026-08-08 21:25:55.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_opt_ctrl1_specification.py	2026-08-08 21:47:24.104633764 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_ctrl1_release_identity_preserves_scientific_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.111a0"
++    assert mdstats.__version__ == "0.20.112a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.111a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.112a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_ctrl1_architecture_and_spec_close_roadmap() -> None:
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/tests/test_mlff_opt_eval4_specification.py /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_opt_eval4_specification.py
+--- /mnt/data/mdstats111_warning_pristine/tests/test_mlff_opt_eval4_specification.py	2026-08-08 21:25:55.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_opt_eval4_specification.py	2026-08-08 21:47:24.104692551 +0000
+@@ -11,9 +11,9 @@
+ 
+ 
+ def test_opt_eval4_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.111a0"
++    assert mdstats.__version__ == "0.20.112a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+-    assert 'version = "0.20.111a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.112a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_eval4_architecture_and_spec_record_pipeline_contract() -> None:
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/tests/test_mlff_opt_verify1_specification.py /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_opt_verify1_specification.py
+--- /mnt/data/mdstats111_warning_pristine/tests/test_mlff_opt_verify1_specification.py	2026-08-08 21:25:55.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_opt_verify1_specification.py	2026-08-08 21:47:24.098305939 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_verify1_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.111a0"
++    assert mdstats.__version__ == "0.20.112a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.111a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.112a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_verify1_architecture_and_spec_record_contract() -> None:
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/tests/test_mlff_perf2_parallel_acceleration_specification.py /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_perf2_parallel_acceleration_specification.py
+--- /mnt/data/mdstats111_warning_pristine/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-08 21:25:55.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-08 21:47:24.102793762 +0000
+@@ -10,7 +10,7 @@
+ 
+ 
+ def test_perf2_release_and_configuration_contract() -> None:
+-    assert mdstats.__version__ == "0.20.111a0"
++    assert mdstats.__version__ == "0.20.112a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     template = campaign_cli._config_template(
+         workspace="workspace",
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/tests/test_mlff_prec1_specification.py /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_prec1_specification.py
+--- /mnt/data/mdstats111_warning_pristine/tests/test_mlff_prec1_specification.py	2026-08-08 21:25:55.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_prec1_specification.py	2026-08-08 21:47:24.100959909 +0000
+@@ -12,7 +12,7 @@
+ 
+ 
+ def test_prec1_release_and_architecture_status() -> None:
+-    assert mdstats.__version__ == "0.20.111a0"
++    assert mdstats.__version__ == "0.20.112a0"
+     manual = MANUAL.read_text(encoding="utf-8")
+     spec = SPEC.read_text(encoding="utf-8")
+     assert "PREC1 - precision profiles, explicit staged schedule, and init realization - implemented in 0.20.108a0" in manual
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats111_warning_pristine/tests/test_mlff_prec3_specification.py /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_prec3_specification.py
+--- /mnt/data/mdstats111_warning_pristine/tests/test_mlff_prec3_specification.py	2026-08-08 21:25:55.000000000 +0000
++++ /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_prec3_specification.py	2026-08-08 21:47:24.103077834 +0000
+@@ -16,7 +16,7 @@
+     manual = MANUAL.read_text(encoding="utf-8")
+     spec = SPEC.read_text(encoding="utf-8")
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+-    assert mdstats.__version__ == "0.20.111a0"
++    assert mdstats.__version__ == "0.20.112a0"
+     assert "PREC3 - campaign integration, qualification, and profile activation - implemented in 0.20.110a0" in manual
+     assert "PREC3 implementation closure (0.20.110a0)" in manual
+     assert "PREC3 implemented in mdstats 0.20.110a0" in spec

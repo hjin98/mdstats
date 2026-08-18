@@ -1,0 +1,190 @@
+{
+  "acceptance": {
+    "advance_to": "REPAIR-PAR1",
+    "broad_regression": "PASS",
+    "exact_mvqual_authority": "PASS",
+    "exact_selector_state_per_rank": "PASS",
+    "scientific_policy_unchanged": "PASS",
+    "throughput_improved": "PASS"
+  },
+  "architecture_revision": 97,
+  "authority_change": {
+    "gpu": false,
+    "runtime_optimization": true,
+    "scientific": false
+  },
+  "content_digest": "5ef3028c9fde6d5cb84a0ce494236a17dec16e028eb0cb0b95d4cae0ec14b41d",
+  "date": "2026-08-17",
+  "documentation": {
+    "architecture_revision_note": {
+      "path": "docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV97.md",
+      "sha256": "609cafda67bc8ce6db3cf87e8ee4fa4ee1a49ea3ffb7f4c0b7813936a62c08d9"
+    },
+    "canonical_markdown": {
+      "path": "docs/arch_manuals/mlff_training_data_architecture.md",
+      "sha256": "be0f5e23f90ea1cdef6a45e8714a08cf07103b2c8e79e3afd666729cb3dc13f9"
+    },
+    "canonical_pdf": {
+      "comparison_note": "48-page revision-96 and revision-97 PDFs were render-compared at 72 dpi; seven pages changed as expected. Pages 1-48 rendered successfully at 150 dpi, and the changed release/status/reference region was visually inspected with no clipping or overlap.",
+      "full_render": "PASS",
+      "pages": 48,
+      "path": "docs/arch_manuals/mlff_training_data_architecture.pdf",
+      "preflight": "PASS",
+      "sha256": "ae4448d80a5f960b76f71a975675fb0bc931f0a9c6e63b324ec11398c65663bf",
+      "visual_qa": "PASS"
+    },
+    "dependency_graph": {
+      "path": "docs/arch_manuals/mlff_training_data_dependency_graph.json",
+      "sha256": "d80bb42dede249ed7f4c5227d1eb978a3a81df58371d236b6baab217b4612ed1"
+    },
+    "release_note": {
+      "path": "docs/history/mlff/release_notes/PATCH_NOTES_0.20.230a0.md",
+      "sha256": "4e2455e3937ec0e9680e5ee2d54f11aa863ea8cd7c7bcd10a814b6a2757113aa"
+    },
+    "spec": {
+      "path": "docs/specs/training_data/mlff_mvkernel1_sparse_vector_kernels_spec.md",
+      "sha256": "cf69cadc3ee661b3fe9ec69d8a9b3175d0b3e70cab8b700d4a898e1e6a6e8ffd"
+    }
+  },
+  "foundation": {
+    "active_qualification_family": "mace-mpa-0",
+    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
+    "mh1_supported_by_same_contract": true,
+    "note": "MVKERNEL1 is independent of foundational-model family; MPA-0 is the active qualification checkpoint and MACE-MH-1 remains supported by the same selector/qualification sparse-kernel contract.",
+    "variant": "medium"
+  },
+  "gate": "MVKERNEL1_SPARSE_SELECTOR_QUALIFICATION_VECTOR_KERNELS",
+  "implementation": {
+    "canonical_ordered_np_add_at_retained": true,
+    "implementation_manifest": {
+      "path": "benchmarks/mlff_mvkernel1_implementation_manifest_0.20.230a0.json",
+      "sha256": "ce398f8581dc3d7da21e7ee6ce4277842870a76b937cf8f26d5532d0972fb8c4"
+    },
+    "incremental_required_hard_obligation_pending_count": true,
+    "mvqual_multiplicity_unique_owner_vectorized": true,
+    "mvqual_provenance_codes_built_once_per_domain": true,
+    "obligation_count_bincount": true,
+    "paired_family_domain_scatter_stream": true,
+    "scalar_mvqual_telemetry_reference_retained": true,
+    "scalar_selector_reference_retained": true,
+    "selected_subset_coverage_bincount": true,
+    "sequential_rank_authority_changed": false,
+    "shared_ragged_csr_gather": true,
+    "vectorized_witness_weight_arithmetic": true
+  },
+  "inputs": {
+    "dependency_archive": {
+      "path": "/mnt/data/dependencies.tar(20260817-112644).gz",
+      "sha256": "888d545a512396697c8583d69bc9ed33110914675f466a4cbcafc3e1e1407171"
+    },
+    "replay_source": {
+      "path": "/mnt/data/replay_fps_12000.extxyz",
+      "sha256": "187eed42fb2d6cf5e7e745ffed0ce34541e92c6a35ec9e654520cd3c7198403c"
+    },
+    "target_archive": {
+      "path": "/mnt/data/training_LTA.tar(4).gz",
+      "sha256": "bc1b7e25ba338507ae38b260bcd283356de887b6c6cf762a2c146733f1c3c958"
+    }
+  },
+  "next_gate": "REPAIR-PAR1",
+  "performance_evidence": {
+    "interpretation": "Same-host long-lived-process control/current timings are execution evidence. Exact selector state, ordered selection digests, telemetry bytes, and full MVQUAL plan digest are scientific authority.",
+    "mvqual_telemetry_16384_8192_6family": {
+      "control_median_seconds": 0.5779456809996191,
+      "control_trials_seconds": [
+        0.5890249719996064,
+        0.5767970189999687,
+        0.5699440199996388,
+        0.5919615829998293,
+        0.5779456809996191
+      ],
+      "current_median_seconds": 0.04112498700033029,
+      "current_trials_seconds": [
+        0.0452122340002461,
+        0.04092534500068723,
+        0.040243059000204084,
+        0.04112498700033029,
+        0.041311094999400666
+      ],
+      "speedup": 14.053394861741289
+    },
+    "primary_record": {
+      "path": "benchmarks/mlff_mvkernel1_cloud_cpu_mpa0_2026-08-17.json",
+      "sha256": "9cfe5d9c1864cedef6b3509887decca268b37e2d4e585bf0909b802d73aec55d"
+    },
+    "report": {
+      "path": "benchmarks/mlff_mvkernel1_cloud_cpu_mpa0_2026-08-17.md",
+      "sha256": "158507663c66024fd53b8c174c127e82aab43469190687d7cbecc541703a68ad"
+    },
+    "selector_24576_16384": {
+      "control_seconds": 6.6397316060001685,
+      "current_seconds": 5.590918543000043,
+      "speedup": 1.1875922632271692
+    },
+    "selector_4096_2048": {
+      "control_median_seconds": 1.403764596999281,
+      "control_trials_seconds": [
+        1.403764596999281,
+        1.4242025100002138,
+        1.3560113050007203,
+        1.5705718970002636,
+        1.3805350359998556
+      ],
+      "current_median_seconds": 0.8106222610003897,
+      "current_trials_seconds": [
+        0.8017894859995067,
+        0.8031685890000517,
+        0.8106222610003897,
+        0.8383097099995211,
+        0.8158502169999338
+      ],
+      "speedup": 1.731712370280695
+    }
+  },
+  "release": "0.20.230a0",
+  "schema": "mdstats.mlff-mvkernel1-qualification.v1",
+  "scientific_oracles": {
+    "full_mvqual_plan_digest_equal_to_control": true,
+    "mvqual_plan_digest": "ff8f64607a4835309889cb9b4c1e886959d9e47468a48df07676e0bf32295a80",
+    "mvqual_telemetry_authority_digest": "d51daef220edffd1f9a72676ee5835ed4f0db44d8818b78f3449defcba63894c",
+    "mvqual_telemetry_byte_equivalent": true,
+    "scale_16384_selection_digest": "aaec42fb0c1df6a62ce2286ec5f5b8897bc089d6d31726da89a0461bcd75d608",
+    "selector_digest": "d147d85acd64dd386dcd9b64e1bd534001e1b1a9e1736522b2ffaddbb978b378",
+    "selector_state_exact_after_every_qualified_rank": true
+  },
+  "status": "PASS",
+  "tests": {
+    "archival_spec_boundary": {
+      "excluded_from_current_release_pass_fail": [
+        "tests/test_mlff_target_data2c_mvidx1_specification.py"
+      ],
+      "reason": "Historical release-pinned specification remains archival; runtime/scientific test_mlff_target_data2c_mvidx1.py remains included in the 111-test current authority."
+    },
+    "compileall": {
+      "paths": [
+        "mdstats",
+        "benchmarks",
+        "tools"
+      ],
+      "status": "PASS"
+    },
+    "current_gate_and_dependencies": {
+      "failed": 0,
+      "passed": 75,
+      "warnings": 3
+    },
+    "packaging_metadata": {
+      "pip_wheel_no_deps_no_build_isolation": "PASS",
+      "pyproject_version": "0.20.230a0",
+      "root_pkg_info_version": "0.20.230a0",
+      "wheel_metadata_name": "mdstats",
+      "wheel_metadata_version": "0.20.230a0"
+    },
+    "target_data2_functional_authority": {
+      "failed": 0,
+      "passed": 111,
+      "warning_class": "expected velocity-reconstruction/normalization warnings unchanged from prior authority",
+      "warnings": 18
+    }
+  }
+}

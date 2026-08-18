@@ -1,0 +1,58 @@
+........................................................................ [ 86%]
+...........                                                              [100%]
+=============================== warnings summary ===============================
+tests/test_graphics3d_contracts.py::test_current_framework_dynamics_render_result_adapts_to_layer_keyed_result
+tests/test_framework_dynamics.py::test_composite_legend_groups_paths_and_recomputes_equal_aspect
+tests/test_framework_dynamics.py::test_plotly_composite_adds_paths_endpoints_and_serializes
+tests/test_framework_dynamics.py::test_composite_render_adds_atomic_mean_graph_species_traces
+  /mnt/data/mdstats_gfx5_work/mdstats/plotting/framework_dynamics.py:4871: RuntimeWarning:
+  
+  Equal-aspect display added range padding along a degenerate coordinate axis.
+
+tests/test_graph_3d.py::test_canonical_3d_render_hover_and_html
+  /mnt/data/mdstats_gfx5_work/tests/test_graph_3d.py:53: RuntimeWarning:
+  
+  Equal-aspect display added range padding along a degenerate coordinate axis.
+
+tests/test_graph_3d.py::test_local_and_expanded_3d_geometry
+  /mnt/data/mdstats_gfx5_work/tests/test_graph_3d.py:73: RuntimeWarning:
+  
+  Equal-aspect display added range padding along a degenerate coordinate axis.
+
+tests/test_graph_3d.py::test_local_and_expanded_3d_geometry
+  /mnt/data/mdstats_gfx5_work/tests/test_graph_3d.py:73: RuntimeWarning:
+  
+  Axes and unit-cell wireframes are both hidden; absolute orientation may be unclear.
+
+tests/test_graph_3d.py::test_local_and_expanded_3d_geometry
+  /mnt/data/mdstats_gfx5_work/tests/test_graph_3d.py:84: RuntimeWarning:
+  
+  Equal-aspect display added range padding along a degenerate coordinate axis.
+
+tests/test_graph_3d.py::test_directed_parallel_and_self_loop_guards
+  /mnt/data/mdstats_gfx5_work/tests/test_graph_3d.py:174: RuntimeWarning:
+  
+  Equal-aspect display added range padding along a degenerate coordinate axis.
+
+tests/test_graph_3d.py::test_directed_parallel_and_self_loop_guards
+  /mnt/data/mdstats_gfx5_work/tests/test_graph_3d.py:174: RuntimeWarning:
+  
+  Axes and unit-cell wireframes are both hidden; absolute orientation may be unclear.
+
+tests/test_graph_3d.py::test_directed_parallel_and_self_loop_guards
+  /mnt/data/mdstats_gfx5_work/tests/test_graph_3d.py:193: RuntimeWarning:
+  
+  Equal-aspect display added range padding along a degenerate coordinate axis.
+
+tests/test_graph_3d.py::test_directed_parallel_and_self_loop_guards
+  /mnt/data/mdstats_gfx5_work/tests/test_graph_3d.py:193: RuntimeWarning:
+  
+  Axes and unit-cell wireframes are both hidden; absolute orientation may be unclear.
+
+tests/test_graph_3d.py::test_segmented_gradient_mode_is_explicit
+  /mnt/data/mdstats_gfx5_work/tests/test_graph_3d.py:214: RuntimeWarning:
+  
+  Axes and unit-cell wireframes are both hidden; absolute orientation may be unclear.
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+83 passed, 13 warnings in 5.41s

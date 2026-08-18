@@ -1,0 +1,36 @@
+{
+  "schema": "mdstats.mlff.target-data2c-mvidx1.pdf-qa.v1",
+  "release": "0.20.201a0",
+  "date": "2026-08-16",
+  "status": "PASS",
+  "documents": [
+    {
+      "path": "docs/arch_manuals/mlff_training_data_architecture.pdf",
+      "pages": 212,
+      "preflight": "PASS",
+      "visual_pages_inspected": [1, 208, 210, 211, 212],
+      "result": "no clipping, overflow, or broken glyphs"
+    },
+    {
+      "path": "ARCHITECTURE_NOTES_MLFF_REV68.pdf",
+      "pages": 1,
+      "preflight": "PASS",
+      "visual_pages_inspected": [1],
+      "result": "clean"
+    },
+    {
+      "path": "docs/specs/training_data/mlff_target_data2c_mvidx1_sparse_coverage_index_spec.pdf",
+      "pages": 1,
+      "preflight": "PASS",
+      "visual_pages_inspected": [1],
+      "result": "clean"
+    },
+    {
+      "path": "PATCH_NOTES_0.20.201a0.pdf",
+      "pages": 1,
+      "preflight": "PASS",
+      "visual_pages_inspected": [1],
+      "result": "clean"
+    }
+  ]
+}

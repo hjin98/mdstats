@@ -1,0 +1,24 @@
+{
+  "architecture_revision": 97,
+  "changed_runtime_files": [
+    "mdstats/training_data/_sparse_vector_kernels.py",
+    "mdstats/training_data/target_multi_view_selector.py",
+    "mdstats/training_data/target_multi_view_qualification.py",
+    "mdstats/training_data/target_coverage_sparse_index.py"
+  ],
+  "execution_changes": [
+    "vectorized canonical ragged CSR gather",
+    "paired family/domain scatter stream reuse with independent ordered np.add.at",
+    "vectorized witness-weight arithmetic",
+    "incremental required hard-obligation pending count",
+    "selected-subset coverage and obligation bincount kernels",
+    "vectorized MVQUAL multiplicity/unique-owner telemetry and one-time provenance coding"
+  ],
+  "independent_mvqual_rescorer_changed": false,
+  "next_gate": "REPAIR-PAR1",
+  "release": "0.20.230a0",
+  "schema": "mdstats.mlff-mvkernel1-implementation-manifest.v1",
+  "scientific_policy_changed": false,
+  "scientific_schemas_changed": false,
+  "selector_rank_authority_changed": false
+}

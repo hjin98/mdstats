@@ -1,0 +1,100 @@
+{
+  "architecture_revision": 53,
+  "authority": {
+    "perf_p4": "execution_only_scientifically_inert",
+    "vram1": "schema_changing_capacity_evidence"
+  },
+  "cpu_benchmark": {
+    "performance_claim": "none; bounded CPU fixture shows orchestration overhead, accelerator benefit remains pending",
+    "pipeline_wall_change_fraction": 0.04718870528271357,
+    "pipeline_wall_median_s": 0.07632475299942598,
+    "repetitions_per_mode": 15,
+    "sync_wall_median_s": 0.07288538600005268
+  },
+  "created_at_utc": "2026-08-16T01:44:45.772743Z",
+  "deferred_FINAL_GPU1": [
+    "CUDA allocated/reserved/driver capacity acceptance",
+    "deliberate OOM-backoff CUDA equivalence",
+    "VRAM reserve qualification",
+    "host-to-device overlap",
+    "pinned/nonblocking transfer decision",
+    "accelerator throughput and VRAM benefit"
+  ],
+  "dependency_graph_schema": 35,
+  "environment": {
+    "cpu_model": "AMD EPYC 9V74 80-Core Processor",
+    "cuda_available": false,
+    "cuda_device_count": 0,
+    "logical_cpu_count": 9,
+    "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+    "python": "3.13.5",
+    "torch": "2.10.0+cpu"
+  },
+  "foundation_models": {
+    "mace_mh_1": {
+      "path": "external:/mnt/data/mace-mh-1.model",
+      "required_head": "omat_pbe",
+      "sha256": "ec00a2705854622fbbd898ccfb7701072fcd674709102d009fb919c1b8cc5dde"
+    },
+    "mace_mpa_0_medium": {
+      "path": "external:/mnt/data/mace-mpa-0-medium.model",
+      "required_head": "default",
+      "sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638"
+    }
+  },
+  "gate": "VRAM1+PERF-P4",
+  "implemented_features": [
+    "MaceBatchCapacityCalibration.v2 with descriptor/prediction/combined workload modes",
+    "per-probe allocator and driver-visible memory/throughput evidence",
+    "deterministic stress-oriented calibration corpus identities",
+    "one-time cleanup and fresh live-memory re-clamp before execution",
+    "throughput-aware smallest-near-best safe batch selection",
+    "identity-bound durable OOM safe caps",
+    "host queue admission accounting graph+descriptor+prediction residency",
+    "CPU graph preparation separated from device evaluation",
+    "bounded asynchronous shard persistence with ordered journal commit",
+    "scientifically exact synchronous fallback"
+  ],
+  "next_implementation_gate": "PERF-P5",
+  "release": "0.20.186a0",
+  "schema": "mdstats.mlff-vram1-perf-p4-qualification.2026-08.v1",
+  "scientific_equivalence": {
+    "bounded_data6_fixture_exact": true,
+    "real_foundation_prepared_vs_direct_combined_evaluation": "byte_identical_for_MH1_and_MPA0_on_locked_regression_structures",
+    "signature": "c07e1bb049703c0b160b88b18bfa0c6c0c788198cf21a6d0454ef9c19c689a96",
+    "sync_vs_pipeline": "identical_scientific_signature"
+  },
+  "status": {
+    "accelerator_qualification": "pending_FINAL_GPU1",
+    "cpu_control_plane_qualification": "pass",
+    "implementation": "complete"
+  },
+  "tests": {
+    "focused_runtime_and_adjacent": {
+      "failed": 0,
+      "passed": 67,
+      "warnings": 58
+    },
+    "historical_specification_sweep_non_authoritative": {
+      "failed": 78,
+      "interpretation": "archival exact-release/schema debt retained; not mass-edited",
+      "passed": 174
+    },
+    "live_cross_gate_spec_sync": {
+      "failed": 0,
+      "passed": 14
+    },
+    "package_collection_with_tests_on_pythonpath": {
+      "collected": 3045,
+      "errors": 0
+    },
+    "sdist_vram1_perf_p4_smoke": {
+      "failed": 0,
+      "passed": 13,
+      "warnings": 41
+    },
+    "wheel_public_api_smoke": {
+      "passed": true
+    }
+  }
+}

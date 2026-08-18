@@ -1,0 +1,32 @@
+{
+  "architecture_revision": 98,
+  "contracts": {
+    "adaptive_parallel_proposals": true,
+    "canonical_winner_reduction": "historical_removal_shortlist_order",
+    "native_threads_per_parallel_task": 1,
+    "next_gate": "MVQUAL-PAR1",
+    "scalar_reference_retained": true,
+    "sequential_repair_authority_changed": false
+  },
+  "files": {
+    "docs/specs/training_data/mlff_repair_par1_deterministic_parallel_proposals_spec.md": {
+      "bytes": 2268,
+      "sha256": "0b6b14464111ae07d74cf574622c0e5a2f359e49f1bdcfcd078d4b93a5ff851e"
+    },
+    "mdstats/training_data/campaign_cli.py": {
+      "bytes": 1166130,
+      "sha256": "bc9e10398046c823d1b782bae11650f7c7570ebf681f5e48a12e188aea2d05d9"
+    },
+    "mdstats/training_data/target_multi_view_repair.py": {
+      "bytes": 85394,
+      "sha256": "73a581ea16c03e201f717086edd08e7a3d8cc3c6a20297056bba5dbf48c15711"
+    },
+    "tests/test_mlff_repair_par1.py": {
+      "bytes": 4594,
+      "sha256": "dcb00720fdf67ca1a2b2f52a9948d8185b2eee176de2ccf43886c26dd9610c88"
+    }
+  },
+  "gate": "REPAIR-PAR1",
+  "release": "0.20.231a0",
+  "schema": "mdstats.mlff-repair-par1-implementation.v1"
+}

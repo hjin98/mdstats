@@ -1,0 +1,92 @@
+{
+  "date": "2026-08-13",
+  "gate": "SELECT2",
+  "pdf": {
+    "clipping_or_overlap_found": false,
+    "full_low_dpi_changed_pages": 10,
+    "pages_after": 134,
+    "pages_before": 133,
+    "preflight_passed": true,
+    "visually_inspected_pages": [
+      130,
+      131
+    ]
+  },
+  "publication_boundary": {
+    "artifact": "pre-locked-test frozen candidate",
+    "directory": "models/select2-frozen",
+    "final_production_claim": false,
+    "next_gate": "one-shot locked post-freeze test and final production publication"
+  },
+  "schema": "mdstats.mlff-select2-qualification.v1",
+  "scientific_contract": {
+    "bootstrap": {
+      "confidence": 0.95,
+      "correlation_block_based": true,
+      "minimum_blocks": 10,
+      "paired": true,
+      "replicates": 2000
+    },
+    "candidate_scope": "selected-size FINAL_DEVELOPMENT seed representatives",
+    "fallback_scope": "pre-ranked final-development seed representatives",
+    "locked_test_reselection_authority": false,
+    "physical_eligibility_chain": [
+      "DEPLOY-VERIFY1",
+      "PES-VERIFY1",
+      "RELAX-VERIFY1",
+      "DYN-VERIFY2"
+    ],
+    "physical_metric_ranking_credit": false,
+    "practical_equivalence_eV_per_A": 0.001,
+    "primary_metric": "full target force RMSE",
+    "replay_positive_ranking_credit": false,
+    "secondary_order": [
+      "worst_target_stratum_rmse",
+      "species_macro_force_rmse",
+      "target_p95",
+      "target_p99",
+      "checkpoint_maturity",
+      "stable_identity"
+    ],
+    "static_target_order_frozen_before_physical_filter": true
+  },
+  "sha256": {
+    "docs/arch_manuals/mlff_training_data_architecture.md": "5f784644b5cb6141b7c49bfa8a9e29eeee92c43ed3e39a343c091fd551ec2da5",
+    "docs/arch_manuals/mlff_training_data_architecture.pdf": "f9e1bdd262c97e3b5169b1d5d168558c068d6a354f8a237edeb32cfb4d1926a6",
+    "mdstats/training_data/campaign_cli.py": "831bb4b7e6f6ba4bde5e584d2bcb3394a96894c4b750c7cef10296542d3fa018",
+    "mdstats/training_data/select2.py": "e0386793228726816f0efe94988c721a32f4f4a42050fea17525e3e7f850fee7",
+    "release/PATCH_NOTES_0.20.176a0.md": "e513f23767aaf4de2ddca651c8762b4ada44e105ef184dcebd833cf5735f8fb4",
+    "tests/test_mlff_select2.py": "c5ca47f789191d1575dc960cc5cfd6254483067e4ce1c0659387900496090749",
+    "tests/test_mlff_select2_specification.py": "2579fc64825f466374932696c03c87d11e5576ceea27c8f35e3b467b744e3ffb"
+  },
+  "source_diff": {
+    "added_files": [
+      "mdstats/training_data/select2.py",
+      "tests/test_mlff_select2.py",
+      "tests/test_mlff_select2_specification.py"
+    ],
+    "changed_file_count_before_release_records": 15,
+    "removed_files": [],
+    "unrelated_runtime_changes_found": false
+  },
+  "status": "qualified",
+  "tests": {
+    "additional_storage_materialization_hardening": {
+      "passed": 43,
+      "skipped": 0
+    },
+    "compileall": true,
+    "focused_select2_subset": {
+      "note": "overlaps broader qualification; not added to totals",
+      "passed": 30,
+      "skipped": 0
+    },
+    "primary_cross_gate": {
+      "passed": 254,
+      "skip_reason": "external real-LTA-root integration data unavailable",
+      "skipped": 1
+    },
+    "public_import_check": true
+  },
+  "version": "0.20.176a0"
+}

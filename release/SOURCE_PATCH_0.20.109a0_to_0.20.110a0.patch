@@ -1,0 +1,4254 @@
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/CHANGELOG.md /mnt/data/mdstats109_full/CHANGELOG.md
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/CHANGELOG.md	2026-08-08 13:28:47.000000000 +0000
++++ /mnt/data/mdstats109_full/CHANGELOG.md	2026-08-08 21:05:49.628768864 +0000
+@@ -1,3 +1,12 @@
++## 0.20.110a0
++
++- Implement MLFF gate PREC3: activate `single`, `double`, and `refine` precision profiles end to end across preparation, preflight, training, checkpoint evaluation, verification, and deployment reporting.
++- Replace dtype-based critical-precision guesses with the immutable profile-bound `MaceCriticalPrecisionPolicy`; canonical `single` uses native FP32 critical operations while legacy schedule-free FP32 campaigns retain the historical critical-FP64 wrapper.
++- Permit explicit-profile EVAL-MF reconstruction of checkpoints from either staged dtype and evaluate all candidates under the profile-declared evaluation dtype.
++- Enforce profile deployment dtype on target-head exports using exact MACE conversion/reload/state verification; `refine` therefore publishes FP64 even when an FP32-stage checkpoint wins.
++- Persist `results/precision-profile.json` and embed the precision profile in final evaluation and verification payloads.
++- Add real MACE 0.3.16/e3nn qualification for native single/double inference, FP32-candidate evaluation under FP64 refine policy, and FP32-to-FP64 deployment conversion. Real CuEq runtime remains environment-gated because cuequivariance is not available in the release qualification environment.
++
+ ## 0.20.109a0
+ 
+ - Implement MLFF gate PREC2: exact in-process staged precision transitions at frozen epoch boundaries.
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/PATCH_NOTES_0.20.110a0.md /mnt/data/mdstats109_full/PATCH_NOTES_0.20.110a0.md
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/PATCH_NOTES_0.20.110a0.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats109_full/PATCH_NOTES_0.20.110a0.md	2026-08-08 21:05:49.628904045 +0000
+@@ -0,0 +1,19 @@
++# mdstats 0.20.110a0 patch notes
++
++This release closes MLFF gate PREC3.
++
++## Precision-profile activation
++
++- `single`: FP32 preparation/model/training/evaluation/verification/export and native FP32 profile-controlled critical operations.
++- `double`: FP64 throughout.
++- `refine`: FP64 non-training stages and 80/20 FP32→FP64 staged training by default, with optimizer/scheduler/EMA continuity from PREC2.
++
++Explicit profiles bind critical precision into training, real-MACE preflight, checkpoint evaluation, and bounded NVE verification. Schedule-free legacy campaigns preserve the prior critical-FP64 behavior.
++
++## Cross-stage evaluation and deployment
++
++EVAL-MF can restore early FP32 and late FP64 refine checkpoints and evaluate both under the configured FP64 evaluation contract. Final target-head exports are converted to the profile deployment dtype with exact state verification and a deployment manifest, so an FP32-stage refine winner still produces a uniformly FP64 deployment model.
++
++## Qualification
++
++Focused and real-MACE 0.3.16/e3nn tests cover single/double inference, staged refine transition/restart, cross-stage FP64 evaluation, exact deployment conversion, and backward compatibility. `cuequivariance` is not available in the release environment; CuEq campaigns remain runtime-gated and must pass the normal real-MACE preflight in a CuEq-enabled environment.
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/PKG-INFO /mnt/data/mdstats109_full/PKG-INFO
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/PKG-INFO	2026-08-08 13:34:06.967293500 +0000
++++ /mnt/data/mdstats109_full/PKG-INFO	2026-08-08 21:06:27.401043148 +0000
+@@ -1,6 +1,6 @@
+ Metadata-Version: 2.4
+ Name: mdstats
+-Version: 0.20.109a0
++Version: 0.20.110a0
+ Summary: Transparent atomistic frame collections and structural/dynamical statistics
+ Requires-Python: >=3.10
+ Requires-Dist: numpy>=1.26
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/README.md /mnt/data/mdstats109_full/README.md
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/README.md	2026-08-08 12:52:42.000000000 +0000
++++ /mnt/data/mdstats109_full/README.md	2026-08-08 21:07:10.780340482 +0000
+@@ -4,12 +4,12 @@
+ 
+ Checkpoint accuracy is judged against independent DFT labels. Foundation-generated replay pseudolabels remain the default replay training targets and an absolute behavioral-drift diagnostic. Set `[paths].replay_true_labels` to the original true-label replay directory so mdstats can evaluate both the foundation and fine-tuned checkpoint on the same target and replay geometries without changing training inputs.
+ 
+-Current development release: **0.20.108a0** (PREC1 explicit precision profiles and protocol-bound staged schedule identity).
++Current development release: **0.20.110a0** (PREC3 end-to-end precision-profile activation and cross-stage evaluation/deployment).
+ 
+ 
+ ## Explicit precision profiles in 0.20.108a0
+ 
+-`mdstats-mlff-campaign init` now accepts `--precision single|double|refine`; plain init is canonical `single`. The generated TOML exposes the complete precision schedule rather than hiding it behind a profile name. `refine` defaults to 80% FP32 then 20% FP64 training, with a 0.5 learning-rate scale at the refinement boundary, a three-FP64-epoch floor, and a 15,000-gradient-update reference floor. DATA8 resolves epoch/update boundaries after loader exposure and binds the resolved schedule into training-protocol identity. PREC1 is configuration/identity only: staged execution and canonical-single critical-FP32 activation remain fail-closed until PREC2/PREC3.
++`mdstats-mlff-campaign init` now accepts `--precision single|double|refine`; plain init is canonical `single`. The generated TOML exposes the complete precision schedule rather than hiding it behind a profile name. `refine` defaults to 80% FP32 then 20% FP64 training, with a 0.5 learning-rate scale at the refinement boundary, a three-FP64-epoch floor, and a 15,000-gradient-update reference floor. DATA8 resolves epoch/update boundaries after loader exposure and binds the resolved schedule into training-protocol identity. PREC1 freezes configuration/identity, PREC2 implements the live FP32→FP64 transition and exact restart state, and PREC3 activates the profiles end to end. Canonical `single` now uses native FP32 profile-controlled critical operations; `refine` evaluates/verifies/exports in FP64 and publishes a verified FP64 artifact even when an FP32-stage checkpoint wins.
+ 
+ ## Guarded multi-fidelity checkpoint evaluation in 0.20.107a0
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/campaign.toml.example /mnt/data/mdstats109_full/campaign.toml.example
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/campaign.toml.example	2026-08-08 12:52:12.000000000 +0000
++++ /mnt/data/mdstats109_full/campaign.toml.example	2026-08-08 21:07:10.780660647 +0000
+@@ -354,7 +354,7 @@
+ replay_valid_configurations = 8
+ 
+ [export]
+-# Final deployment dtype is explicit even though PREC3 owns runtime activation.
++# Final deployment dtype is explicit and enforced for canonical precision profiles.
+ dtype = "float32"
+ 
+ [verification]
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/docs/README.md /mnt/data/mdstats109_full/docs/README.md
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/docs/README.md	2026-08-08 12:55:29.000000000 +0000
++++ /mnt/data/mdstats109_full/docs/README.md	2026-08-08 21:07:10.780513338 +0000
+@@ -36,7 +36,7 @@
+   monitor ladders, incremental prediction reuse, conservative survivor control, full
+   finalist evaluation, and comprehensive epoch reporting.
+ - `specs/training_data/mlff_staged_precision_profiles_spec.{md,pdf}` defines the PREC1-PREC3
+-  precision-profile roadmap; PREC1 is implemented in 0.20.108a0 and PREC2/PREC3 remain planned: `single`, `double`, and `refine` initialization,
++  precision-profile roadmap; PREC1/PREC2/PREC3 are implemented through 0.20.110a0: `single`, `double`, and `refine` initialization,
+   explicit staged schedules, in-process FP32-to-FP64 optimizer/EMA promotion, restart
+   correctness, and campaign-wide qualification.
+ - `specs/training_data/mlff_storage_management_spec.{md,pdf}` defines the planned STOR1-STOR5
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/docs/arch_manuals/mlff_training_data_architecture.md /mnt/data/mdstats109_full/docs/arch_manuals/mlff_training_data_architecture.md
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-08 13:29:11.000000000 +0000
++++ /mnt/data/mdstats109_full/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-08 21:05:37.818512050 +0000
+@@ -4477,9 +4477,9 @@
+ 
+ Focused tensor-state tests demonstrate exact uninterrupted-versus-resumed continuation for model parameters, Adam/AMSGrad state, and EMA shadow state. A real MACE 0.3.16 force-training smoke crosses FP32 -> FP64 in-process, finishes with uniformly FP64 model parameters, applies the expected 0.5 LR scale, and writes the transition/companion evidence. Existing CuEq campaign/source-contract regressions remain clean; the supplied qualification environment contains no `cuequivariance`/`cuequivariance_torch`, so **real CuEq runtime execution remains a mandatory PREC3 production-activation check rather than a fabricated PREC2 claim**.
+ 
+-PREC2 does not yet authorize canonical staged profiles at campaign preflight. That activation/reporting/default-qualification work remains PREC3.
++PREC2 did not itself authorize canonical staged profiles at campaign preflight; that activation/reporting/default-qualification work is completed by PREC3 in 0.20.110a0.
+ 
+-## PREC3 - campaign integration, qualification, and profile activation - planned
++## PREC3 - campaign integration, qualification, and profile activation - implemented in 0.20.110a0
+ 
+ PREC3 integrates staged precision with the complete campaign only after the transition
+ mechanics are qualified.
+@@ -4545,6 +4545,20 @@
+ Only after PREC3 is qualified may the storage roadmap rely on staged-precision
+ checkpoint lifetimes and dtype-specific capsule requirements.
+ 
++### PREC3 implementation closure (0.20.110a0)
++
++PREC3 activates the immutable precision profile across the complete campaign. Preparation, training, preflight, checkpoint evaluation, verification, and final result surfaces report the requested profile, its resolved epoch stages, critical-operation dtype, and non-training/export dtypes. `results/precision-profile.json` is the durable profile summary.
++
++Runtime critical precision is policy-driven. Canonical `single` removes the historical ScaleShiftMACE critical-FP64 patch and executes profile-controlled critical operations in FP32. `double` and `refine` retain FP64 critical operations. Schedule-free campaigns keep the legacy FP32-body/critical-FP64 contract. The MACE training wrapper, real-MACE preflight, checkpoint evaluator, and bounded NVE verifier all consume the same DATA8/config-bound critical-precision policy.
++
++EVAL-MF is precision-stage agnostic. Under an explicit profile, direct checkpoint reconstruction may cast the completed deployment architecture to the raw checkpoint state dtype; MACECalculator then converts the candidate to the evaluation dtype. This allows early FP32 and late FP64 refine checkpoints to be ranked under the same FP64 monitor contract without weakening the legacy dtype-mismatch fallback.
++
++Explicit-profile target-head exports are routed through the existing exact deployment converter. A `refine` checkpoint selected from the FP32 portion is therefore promoted, reloaded, state-verified, and published as uniformly FP64; `single` publishes FP32 and `double` FP64. Deployment manifests preserve the conversion kind and exact-state evidence.
++
++Real MACE 0.3.16/e3nn tests cover native single/double inference, FP32-candidate evaluation under FP64 refine evaluation, exact FP32-to-FP64 deployment conversion, and the PREC2 in-process staged force-training/restart transition. `cuequivariance` is not installed in the release qualification environment, so no fabricated real-CuEq execution evidence is claimed. CuEq production remains conditional on runtime availability and must pass the campaign's real-MACE preflight in the CuEq-enabled environment before training.
++
++With PREC3 closed, staged-precision checkpoint lifetimes and dtype-specific storage roles are stable enough for STOR1.
++
+ ## STOR1 - campaign storage accounting and ownership boundary - planned
+ 
+ Storage optimization begins with accounting and deletion authority, not deletion.
+@@ -4705,8 +4719,8 @@
+ 8. **capability loss is explicit** - any manual higher-tier reclamation states exactly
+    what can no longer be restarted, recomputed, or re-evaluated cheaply.
+ 
+-`EVAL-MF1` is implemented in 0.20.106a0, `EVAL-MF2` in 0.20.107a0, `PREC1` in 0.20.108a0, and `PREC2` in 0.20.109a0. `PREC3` is the next implementation gate. The remaining required implementation sequence is
+-`PREC3 -> STOR1 -> STOR2 -> STOR3 -> STOR4 -> STOR5`.
++`EVAL-MF1` is implemented in 0.20.106a0, `EVAL-MF2` in 0.20.107a0, `PREC1` in 0.20.108a0, `PREC2` in 0.20.109a0, and `PREC3` in 0.20.110a0. The next implementation gate is `STOR1`. The remaining required implementation sequence is
++`STOR1 -> STOR2 -> STOR3 -> STOR4 -> STOR5`.
+ Storage implementation does not begin until EVAL-MF and staged-precision work establish
+ the checkpoint, prediction, optimizer-state, and dtype lifetimes that storage policy
+ must respect.
+@@ -4738,5 +4752,5 @@
+ The staged optimization roadmap **OPT-EVAL1 through OPT-CTRL1 is complete**. The
+ post-0.20.105 multi-fidelity-evaluation/staged-precision/storage roadmap above is a
+ separate cycle opened by new production-scale profiling, FP64-training, and storage
+-evidence. `EVAL-MF1`, `EVAL-MF2`, `PREC1`, and `PREC2` are implemented through 0.20.109a0; the next implementation gate is `PREC3`.
++evidence. `EVAL-MF1`, `EVAL-MF2`, `PREC1`, `PREC2`, and `PREC3` are implemented through 0.20.110a0; the next implementation gate is `STOR1`.
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/docs/arch_manuals/mlff_training_data_dependency_graph.json /mnt/data/mdstats109_full/docs/arch_manuals/mlff_training_data_dependency_graph.json
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-08 13:29:11.000000000 +0000
++++ /mnt/data/mdstats109_full/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-08 21:05:56.219603079 +0000
+@@ -1,742 +1,16 @@
+ {
+-  "schema_version": 26,
+-  "architecture_revision": 28,
++  "architecture_revision": 29,
+   "branch": "MLFF-DATA",
++  "description": "MLFF training-data dependency graph through DATA2A automatic review-manifest inference,  DATA9B3A frozen e3nn/cuEquivariance campaigns, MLFF-PERF2 resource-aware process/GPU execution,  EVAL-MF1/MF2 multi-fidelity checkpoint evaluation, and PREC1-PREC3 explicit precision profiles,  staged runtime transitions, cross-stage evaluation, and deployment activation. STOR1-STOR5 ownership-scoped  storage management remain planned. Scientific DATA9 identity remains unchanged.",
+   "documentation_gate": "MLFF-DATA0",
+-  "description": "MLFF training-data dependency graph through DATA2A automatic review-manifest inference, DATA9B3A frozen e3nn/cuEquivariance campaigns, MLFF-PERF2 resource-aware process/GPU execution, EVAL-MF1/MF2 multi-fidelity checkpoint evaluation, and PREC1 explicit precision profiles plus resolved schedule identity; PREC2/PREC3 runtime transitions and ownership-scoped storage management remain planned. Scientific DATA9 identity remains unchanged.",
+   "edge_type_definitions": {
+-    "source_identity_requires": "Exact source or checkpoint identity is required.",
+     "execution_requires": "The upstream product must exist before execution.",
+-    "promotion_requires": "The upstream product must pass a declared predicate.",
+     "fit_domain_requires": "The fitted object may inspect only the declared training domain.",
+     "optional_enrichment": "The upstream product enriches but is not required for the base path.",
+-    "replay_triggers": "The upstream event creates a new immutable generation."
++    "promotion_requires": "The upstream product must pass a declared predicate.",
++    "replay_triggers": "The upstream event creates a new immutable generation.",
++    "source_identity_requires": "Exact source or checkpoint identity is required."
+   },
+-  "nodes": [
+-    {
+-      "id": "ACQUISITION_DECISIONS"
+-    },
+-    {
+-      "id": "ADAPTIVE_INFERENCE_CONCURRENCY_PLAN"
+-    },
+-    {
+-      "id": "ANALYSIS_LOCAL_STRUCTURE_FEATURES"
+-    },
+-    {
+-      "id": "ASE_MD_STATE_PRECISION_AUDIT"
+-    },
+-    {
+-      "id": "ATOMIC_MODEL_PREDICTION_MANIFEST"
+-    },
+-    {
+-      "id": "ATOM_GROUP_CATALOG"
+-    },
+-    {
+-      "id": "BLINDED_EVALUATION_PREDICTIONS"
+-    },
+-    {
+-      "id": "BLINDING_BOUNDARY_CATALOG"
+-    },
+-    {
+-      "id": "BOUNDED_DEPLOYMENT_VERIFICATION"
+-    },
+-    {
+-      "id": "CALIBRATION_APPLICABILITY_DOMAIN"
+-    },
+-    {
+-      "id": "CALIBRATION_DOMAIN"
+-    },
+-    {
+-      "id": "CALIBRATION_TRANSFER_DECISION"
+-    },
+-    {
+-      "id": "CAMPAIGN_ARTIFACT_OWNERSHIP_CATALOG"
+-    },
+-    {
+-      "id": "CAMPAIGN_CLEANUP_MANIFEST"
+-    },
+-    {
+-      "id": "CAMPAIGN_CLI_CONFIGURATION"
+-    },
+-    {
+-      "id": "CAMPAIGN_MANIFEST_APPROVAL"
+-    },
+-    {
+-      "id": "CAMPAIGN_PRECISION_PROFILE"
+-    },
+-    {
+-      "id": "CAMPAIGN_PREFLIGHT_RECORD"
+-    },
+-    {
+-      "id": "CAMPAIGN_PREPARATION_GATE"
+-    },
+-    {
+-      "id": "CAMPAIGN_RESULT_SUMMARY"
+-    },
+-    {
+-      "id": "CAMPAIGN_STATE_DATABASE"
+-    },
+-    {
+-      "id": "CAMPAIGN_STATUS_VIEW"
+-    },
+-    {
+-      "id": "CAMPAIGN_STORAGE_REPORT"
+-    },
+-    {
+-      "id": "CANDIDATE_ADMISSIBILITY"
+-    },
+-    {
+-      "id": "CANDIDATE_CATALOG"
+-    },
+-    {
+-      "id": "CANDIDATE_CHECKPOINT_CATALOG"
+-    },
+-    {
+-      "id": "CANDIDATE_TRAJECTORIES"
+-    },
+-    {
+-      "id": "CHECKPOINT_ADMISSIBILITY_DECISION"
+-    },
+-    {
+-      "id": "CHECKPOINT_EPOCH_REPORT"
+-    },
+-    {
+-      "id": "CHECKPOINT_EVALUATION_CAPSULE"
+-    },
+-    {
+-      "id": "CHECKPOINT_EVALUATION_POLICY"
+-    },
+-    {
+-      "id": "CHECKPOINT_EVALUATION_RECORD"
+-    },
+-    {
+-      "id": "CHECKPOINT_METRIC_POLICY"
+-    },
+-    {
+-      "id": "CHECKPOINT_METRIC_RECORD"
+-    },
+-    {
+-      "id": "CHECKPOINT_SCREENING_ROUND_RECORD"
+-    },
+-    {
+-      "id": "CHECKPOINT_SELECTION_DECISION"
+-    },
+-    {
+-      "id": "CHECKPOINT_SELECTION_RECORD"
+-    },
+-    {
+-      "id": "CHECKPOINT_SURVIVOR_GUARD_EVIDENCE"
+-    },
+-    {
+-      "id": "CHECKPOINT_SURVIVOR_RECORD"
+-    },
+-    {
+-      "id": "COLD_ARCHIVE_MANIFEST"
+-    },
+-    {
+-      "id": "COMMITTEE_EXPORT_POLICY"
+-    },
+-    {
+-      "id": "COMMITTEE_IDENTITY"
+-    },
+-    {
+-      "id": "COMMITTEE_MEMBER_RECORD"
+-    },
+-    {
+-      "id": "CONDITION_AXIS_CATALOG"
+-    },
+-    {
+-      "id": "CONFIGURATION_WEIGHT_POLICY"
+-    },
+-    {
+-      "id": "CPU_INFERENCE_TELEMETRY"
+-    },
+-    {
+-      "id": "CPU_RAM_PARALLEL_EXECUTION_PLAN"
+-    },
+-    {
+-      "id": "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE"
+-    },
+-    {
+-      "id": "CROSS_SYSTEM_QUALIFICATION_POLICY"
+-    },
+-    {
+-      "id": "CROSS_SYSTEM_QUALIFICATION_SUITE"
+-    },
+-    {
+-      "id": "CROSS_VALIDATION_JOB_FAMILY"
+-    },
+-    {
+-      "id": "CROSS_VALIDATION_PLAN"
+-    },
+-    {
+-      "id": "DATA6_MODEL_SWEEP_CHECKPOINT"
+-    },
+-    {
+-      "id": "DATA6_MODEL_SWEEP_EXECUTION_POLICY"
+-    },
+-    {
+-      "id": "DATA6_MODEL_SWEEP_PLAN"
+-    },
+-    {
+-      "id": "DATA8_ATOMIC_PROMOTION"
+-    },
+-    {
+-      "id": "DATA9A_GATE"
+-    },
+-    {
+-      "id": "DATA9B_EXECUTION"
+-    },
+-    {
+-      "id": "DERIVATIVE_CONVENTION"
+-    },
+-    {
+-      "id": "DEVELOPMENT_MACE_BUNDLE"
+-    },
+-    {
+-      "id": "DEVELOPMENT_POOL"
+-    },
+-    {
+-      "id": "DFT_QUERY_MANIFEST"
+-    },
+-    {
+-      "id": "ENERGY_REFERENCE_IDENTITY"
+-    },
+-    {
+-      "id": "ENSEMBLE_CERTIFICATE"
+-    },
+-    {
+-      "id": "EVALUATION_ACTIVATION_DECISION"
+-    },
+-    {
+-      "id": "EVALUATION_RESULT_CATALOG"
+-    },
+-    {
+-      "id": "EVENT_CATALOG"
+-    },
+-    {
+-      "id": "EXPOSURE_BACKEND_POLICY"
+-    },
+-    {
+-      "id": "FEATURE_METRIC_POLICY_TEMPLATE"
+-    },
+-    {
+-      "id": "FILENAME_STRAIN_CANDIDATE"
+-    },
+-    {
+-      "id": "FINAL_ATOMIC_REFERENCE_FIT"
+-    },
+-    {
+-      "id": "FINAL_COMMITTEE_CALIBRATION_PREDICTIONS"
+-    },
+-    {
+-      "id": "FINAL_FEATURE_METRIC_FIT"
+-    },
+-    {
+-      "id": "FINAL_FEATURE_TRANSFORM"
+-    },
+-    {
+-      "id": "FINAL_SELECTION_MASTER_ORDER"
+-    },
+-    {
+-      "id": "FINAL_TARGET_TRAINING_DOMAIN"
+-    },
+-    {
+-      "id": "FINAL_TRAINING_DIFFICULTY_FEATURES"
+-    },
+-    {
+-      "id": "FOCUS_ATOM_GROUP_POLICY"
+-    },
+-    {
+-      "id": "FOLD_ATOMIC_REFERENCE_FITS"
+-    },
+-    {
+-      "id": "FOLD_CHECKPOINT_MONITORS"
+-    },
+-    {
+-      "id": "FOLD_DEFINITIONS"
+-    },
+-    {
+-      "id": "FOLD_EVALUATION_DOMAINS"
+-    },
+-    {
+-      "id": "FOLD_FEATURE_METRIC_FITS"
+-    },
+-    {
+-      "id": "FOLD_LOCAL_SELECTIONS"
+-    },
+-    {
+-      "id": "FOLD_LOCAL_TRANSFORMS"
+-    },
+-    {
+-      "id": "FOLD_TRAINING_DIFFICULTY_FEATURES"
+-    },
+-    {
+-      "id": "FOLD_TRAIN_DOMAINS"
+-    },
+-    {
+-      "id": "FOUNDATION_CHECKPOINT"
+-    },
+-    {
+-      "id": "FOUNDATION_RESIDUAL_E0_FIT"
+-    },
+-    {
+-      "id": "FRAME_CATALOG"
+-    },
+-    {
+-      "id": "FRAME_ELIGIBILITY"
+-    },
+-    {
+-      "id": "FRAME_FACTS"
+-    },
+-    {
+-      "id": "FULL_FIDELITY_FINALIST_EVALUATION"
+-    },
+-    {
+-      "id": "GENERIC_IMPORT_ISOLATION_EVIDENCE"
+-    },
+-    {
+-      "id": "GENERIC_STRUCTURAL_EVENT_CATALOG"
+-    },
+-    {
+-      "id": "GEOMETRY_FINGERPRINT"
+-    },
+-    {
+-      "id": "GPU_INFERENCE_TELEMETRY"
+-    },
+-    {
+-      "id": "GPU_VRAM_BATCH_EXECUTION_PLAN"
+-    },
+-    {
+-      "id": "INDEPENDENCE_AXIS_CATALOG"
+-    },
+-    {
+-      "id": "INSTALLED_MACE_QUALIFICATION"
+-    },
+-    {
+-      "id": "ISOLATED_TRAJECTORY_WORKER"
+-    },
+-    {
+-      "id": "LABELED_ACTIVE_ROUND"
+-    },
+-    {
+-      "id": "LABELED_CONFIGURATION_FINGERPRINT"
+-    },
+-    {
+-      "id": "LABELED_FRAME_ELIGIBILITY"
+-    },
+-    {
+-      "id": "LABEL_DOMAIN"
+-    },
+-    {
+-      "id": "LABEL_PAYLOAD_DIGEST"
+-    },
+-    {
+-      "id": "LEAKAGE_AUDIT_REPORT"
+-    },
+-    {
+-      "id": "LEARNING_CURVE_RECORD"
+-    },
+-    {
+-      "id": "LOCKED_CHALLENGE_TESTS"
+-    },
+-    {
+-      "id": "LOCKED_INTERPOLATION_TEST"
+-    },
+-    {
+-      "id": "LOCKED_TEST_OBSERVABLE_EVIDENCE"
+-    },
+-    {
+-      "id": "LTA_PROFILE_EXTENSION"
+-    },
+-    {
+-      "id": "MACE_ACCELERATION_POLICY"
+-    },
+-    {
+-      "id": "MACE_ACCELERATION_PROBE"
+-    },
+-    {
+-      "id": "MACE_ADAPTER_LOCK"
+-    },
+-    {
+-      "id": "MACE_CHECKPOINT_CONTROL_POLICY"
+-    },
+-    {
+-      "id": "MACE_CLI_SMOKE_RECORD"
+-    },
+-    {
+-      "id": "MACE_CONFIG_REALIZATION_RECORD"
+-    },
+-    {
+-      "id": "MACE_CRITICAL_PRECISION_AUDIT"
+-    },
+-    {
+-      "id": "MACE_CRITICAL_PRECISION_POLICY"
+-    },
+-    {
+-      "id": "MACE_DATALOADER_WORKER_PLAN"
+-    },
+-    {
+-      "id": "MACE_DEPENDENCY_MANIFEST"
+-    },
+-    {
+-      "id": "MACE_DEPLOYMENT_ARTIFACT"
+-    },
+-    {
+-      "id": "MACE_DEPLOYMENT_EXPORT_POLICY"
+-    },
+-    {
+-      "id": "MACE_EXPOSURE_REALIZATION_RECORD"
+-    },
+-    {
+-      "id": "MACE_INFERENCE_COMPARISON"
+-    },
+-    {
+-      "id": "MACE_JOB_EXECUTION_SMOKE_RECORD"
+-    },
+-    {
+-      "id": "MACE_MODEL_PRECISION_RECORD"
+-    },
+-    {
+-      "id": "MACE_PRECISION_POLICY"
+-    },
+-    {
+-      "id": "MACE_PRECISION_TRANSITION_RECORD"
+-    },
+-    {
+-      "id": "MACE_RAW_DESCRIPTORS"
+-    },
+-    {
+-      "id": "MACE_RUNTIME_ENVIRONMENT_RECORD"
+-    },
+-    {
+-      "id": "MANIFEST_INFERENCE_POLICY"
+-    },
+-    {
+-      "id": "MATERIAL_PROFILE_CONTRACTS"
+-    },
+-    {
+-      "id": "MATERIAL_PROFILE_IDENTITY"
+-    },
+-    {
+-      "id": "MATERIAL_PROFILE_PROVIDER_IDENTITY"
+-    },
+-    {
+-      "id": "MLFF_CAMPAIGN_CLI_TOOL"
+-    },
+-    {
+-      "id": "MLFF_CAMPAIGN_USER_GUIDE"
+-    },
+-    {
+-      "id": "NATIVE_MACE_GRAPH_BATCH"
+-    },
+-    {
+-      "id": "NESTED_CHECKPOINT_EVALUATION_PLAN"
+-    },
+-    {
+-      "id": "NEW_DATASET_GENERATION"
+-    },
+-    {
+-      "id": "NUMERICAL_QUALITY_PROFILE"
+-    },
+-    {
+-      "id": "OBSERVABLE_ACCEPTANCE_DECISION"
+-    },
+-    {
+-      "id": "OBSERVABLE_ANALYSIS_RECIPE"
+-    },
+-    {
+-      "id": "OBSERVABLE_COLLECTION_IDENTITIES"
+-    },
+-    {
+-      "id": "OBSERVABLE_COMPARISON_POLICY"
+-    },
+-    {
+-      "id": "OBSERVABLE_COMPARISON_RESULT"
+-    },
+-    {
+-      "id": "OBSERVABLE_COMPARISON_RULES"
+-    },
+-    {
+-      "id": "OBSERVABLE_RESULT_IDENTITIES"
+-    },
+-    {
+-      "id": "OBSERVABLE_SCOPE_AGGREGATION"
+-    },
+-    {
+-      "id": "OBSERVABLE_SCORE_UNCERTAINTY"
+-    },
+-    {
+-      "id": "OBSERVABLE_VALIDATION_ACTIVATION_RECORD"
+-    },
+-    {
+-      "id": "OBSERVABLE_VALIDATION_EVIDENCE"
+-    },
+-    {
+-      "id": "OFFLINE_MACE_WHEELHOUSE"
+-    },
+-    {
+-      "id": "OPTIONAL_PROFILE_EXTENSION_PROVIDER"
+-    },
+-    {
+-      "id": "OUTER_MONITOR_VALIDATION"
+-    },
+-    {
+-      "id": "OUTER_PARTITION"
+-    },
+-    {
+-      "id": "OUT_OF_FOLD_PREDICTIONS"
+-    },
+-    {
+-      "id": "PARALLEL_CHECKPOINT_EVALUATION"
+-    },
+-    {
+-      "id": "PARALLEL_NVE_VERIFICATION"
+-    },
+-    {
+-      "id": "PARTIAL_CHECKPOINT_PREDICTION_COVERAGE"
+-    },
+-    {
+-      "id": "PARTITION_CRITICAL_PROFILE_FEATURES"
+-    },
+-    {
+-      "id": "PARTITION_FEASIBILITY_REPORT"
+-    },
+-    {
+-      "id": "PARTITION_INDEPENDENCE_REPORT"
+-    },
+-    {
+-      "id": "PARTITION_ROLE_BUDGET_POLICY"
+-    },
+-    {
+-      "id": "PARTITION_UNIT_CATALOG"
+-    },
+-    {
+-      "id": "PHASE_COMPONENT_IDENTITIES"
+-    },
+-    {
+-      "id": "PHASE_GEOMETRY_SELECTION_PLAN"
+-    },
+-    {
+-      "id": "PORTABLE_MACE_BUNDLE"
+-    },
+-    {
+-      "id": "PRECISION_STAGE_EXECUTION_PLAN"
+-    },
+-    {
+-      "id": "PRECISION_STAGE_TRANSITION_RECORD"
+-    },
+-    {
+-      "id": "PREDECLARED_OBSERVABLE_THRESHOLDS"
+-    },
+-    {
+-      "id": "PRODUCTION_CORPUS_PLAN"
+-    },
+-    {
+-      "id": "PRODUCTION_DATA7_ARTIFACTS"
+-    },
+-    {
+-      "id": "PRODUCTION_DATA8_ARTIFACT"
+-    },
+-    {
+-      "id": "PRODUCTION_GATE_INTEGRITY_EVIDENCE"
+-    },
+-    {
+-      "id": "PRODUCTION_MATERIALIZATION_CHECKPOINT"
+-    },
+-    {
+-      "id": "PRODUCTION_MATERIALIZATION_PLAN"
+-    },
+-    {
+-      "id": "PRODUCTION_MATERIALIZATION_RECORD"
+-    },
+-    {
+-      "id": "PRODUCTION_PREPARATION_BENCHMARK"
+-    },
+-    {
+-      "id": "PRODUCTION_REGIMES"
+-    },
+-    {
+-      "id": "PROFILE_BOUND_UNIVERSAL_STRUCTURAL_POLICY"
+-    },
+-    {
+-      "id": "PROFILE_ENVIRONMENT_COVERAGE"
+-    },
+-    {
+-      "id": "PROFILE_EVENT_CATALOGS"
+-    },
+-    {
+-      "id": "PROFILE_EXTENSION_COVERAGE_EVIDENCE"
+-    },
+-    {
+-      "id": "PROFILE_OBSERVABLE_RECOMMENDATIONS"
+-    },
+-    {
+-      "id": "PROFILE_PARTITION_FEATURE_CATALOGS"
+-    },
+-    {
+-      "id": "PROFILE_SELECTION_FEATURE_CATALOGS"
+-    },
+-    {
+-      "id": "PROPERTY_WEIGHT_POLICY"
+-    },
+-    {
+-      "id": "PROTOCOL_COMPARISON_RECORD"
+-    },
+-    {
+-      "id": "PROTOCOL_FAMILY_AGGREGATE"
+-    },
+-    {
+-      "id": "PROTOCOL_FREEZE_RECORD"
+-    },
+-    {
+-      "id": "PROTOCOL_VARIANT_AGGREGATE"
+-    },
+-    {
+-      "id": "PYTHON_ASE_MACE_EXECUTION"
+-    },
+-    {
+-      "id": "RAW_GENERIC_FEATURES"
+-    },
+-    {
+-      "id": "REFERENCE_CELL"
+-    },
+-    {
+-      "id": "REPLAY_LABEL_PAYLOAD_IDENTITY"
+-    },
+-    {
+-      "id": "REPLAY_MONITOR"
+-    },
+-    {
+-      "id": "REPLAY_PLAN"
+-    },
+-    {
+-      "id": "REPLAY_RETENTION_POLICY"
+-    },
+-    {
+-      "id": "REPLAY_SOURCE"
+-    },
+-    {
+-      "id": "REVIEW_MANIFEST_INFERENCE_RESULT"
+-    },
+-    {
+-      "id": "ROLE_INHERITANCE_POLICY"
+-    },
+-    {
+-      "id": "SEALED_EVALUATION_BUNDLE"
+-    },
+-    {
+-      "id": "SELECTION_BUDGET_POLICY"
+-    },
+-    {
+-      "id": "SELECTION_COVERAGE_REPORT"
+-    },
+-    {
+-      "id": "SELECTION_FEATURE_CATALOGS"
+-    },
+-    {
+-      "id": "SELECTION_LEVEL_IDENTITY"
+-    },
+-    {
+-      "id": "SOFTWARE_PROVENANCE"
+-    },
+-    {
+-      "id": "SOURCE_BYTES"
+-    },
+-    {
+-      "id": "SOURCE_CATALOG"
+-    },
+-    {
+-      "id": "SOURCE_OCCURRENCE_IDENTITY"
+-    },
+-    {
+-      "id": "STAGED_PRECISION_QUALIFICATION_RECORD"
+-    },
+-    {
+-      "id": "STAGED_TRAINING_PRECISION_POLICY"
+-    },
+-    {
+-      "id": "STRUCTURAL_ATOMIC_REFERENCE_AUDIT"
+-    },
+-    {
+-      "id": "STRUCTURAL_ATOMIC_REFERENCE_FIT_POLICY"
+-    },
+-    {
+-      "id": "SYSTEM_RESOURCE_SNAPSHOT"
+-    },
+-    {
+-      "id": "TEMPORAL_BLOCKS"
+-    },
+-    {
+-      "id": "THEORY_IDENTITY"
+-    },
+-    {
+-      "id": "THERMOMECHANICAL_VALIDATION_RECIPES"
+-    },
+-    {
+-      "id": "TIERED_STORAGE_RECLAMATION_PLAN"
+-    },
+-    {
+-      "id": "TRAINED_COMMITTEE"
+-    },
+-    {
+-      "id": "TRAINING_CAMPAIGN_PLAN"
+-    },
+-    {
+-      "id": "TRAINING_CAMPAIGN_POLICY"
+-    },
+-    {
+-      "id": "TRAINING_CAMPAIGN_RUN_PLAN"
+-    },
+-    {
+-      "id": "TRAINING_CHECKPOINTS"
+-    },
+-    {
+-      "id": "TRAINING_EXECUTION_POLICY"
+-    },
+-    {
+-      "id": "TRAINING_OBJECTIVE_POLICY"
+-    },
+-    {
+-      "id": "TRAINING_PROTOCOL_IDENTITY"
+-    },
+-    {
+-      "id": "TRAINING_RUN_ATTEMPT_RECORD"
+-    },
+-    {
+-      "id": "TRAINING_RUN_EXECUTION_RECORD"
+-    },
+-    {
+-      "id": "TRAINING_SELECTION_LADDER"
+-    },
+-    {
+-      "id": "TRAJECTORY_COLLECTION"
+-    },
+-    {
+-      "id": "TRAJECTORY_GENERATION_IDENTITIES"
+-    },
+-    {
+-      "id": "TRAJECTORY_QUALITY"
+-    },
+-    {
+-      "id": "UNCERTAINTY_CALIBRATION"
+-    },
+-    {
+-      "id": "UNCERTAINTY_SIGNAL_DIAGNOSTIC"
+-    },
+-    {
+-      "id": "UNIVERSAL_STRUCTURAL_FEATURE_CATALOG"
+-    },
+-    {
+-      "id": "VASP_CONTROLS"
+-    },
+-    {
+-      "id": "VERIFIED_STRAIN_RELATIONSHIP"
+-    },
+-    {
+-      "id": "PRECISION_RUNTIME_COMPANION"
+-    }
+-  ],
+   "edges": [
+     {
+       "from": "ACQUISITION_DECISIONS",
+@@ -800,9 +74,9 @@
+     },
+     {
+       "from": "ATOM_GROUP_CATALOG",
++      "predicate": "group_scoped_rules_only",
+       "to": "OBSERVABLE_SCOPE_AGGREGATION",
+-      "type": "source_identity_requires",
+-      "predicate": "group_scoped_rules_only"
++      "type": "source_identity_requires"
+     },
+     {
+       "from": "ATOM_GROUP_CATALOG",
+@@ -1106,9 +380,9 @@
+     },
+     {
+       "from": "CONDITION_AXIS_CATALOG",
++      "predicate": "condition_scoped_rules_only",
+       "to": "OBSERVABLE_SCOPE_AGGREGATION",
+-      "type": "source_identity_requires",
+-      "predicate": "condition_scoped_rules_only"
++      "type": "source_identity_requires"
+     },
+     {
+       "from": "CONDITION_AXIS_CATALOG",
+@@ -1167,27 +441,27 @@
+     },
+     {
+       "from": "DATA6_MODEL_SWEEP_CHECKPOINT",
++      "predicate": "checkpoint_complete_and_verified",
+       "to": "ATOMIC_MODEL_PREDICTION_MANIFEST",
+-      "type": "promotion_requires",
+-      "predicate": "checkpoint_complete_and_verified"
++      "type": "promotion_requires"
+     },
+     {
+       "from": "DATA6_MODEL_SWEEP_CHECKPOINT",
++      "predicate": "checkpoint_complete_and_verified",
+       "to": "DATA9A_GATE",
+-      "type": "promotion_requires",
+-      "predicate": "checkpoint_complete_and_verified"
++      "type": "promotion_requires"
+     },
+     {
+       "from": "DATA6_MODEL_SWEEP_CHECKPOINT",
++      "predicate": "checkpoint_complete_and_verified",
+       "to": "MACE_RAW_DESCRIPTORS",
+-      "type": "promotion_requires",
+-      "predicate": "checkpoint_complete_and_verified"
++      "type": "promotion_requires"
+     },
+     {
+       "from": "DATA6_MODEL_SWEEP_CHECKPOINT",
++      "predicate": "checkpoint_complete_and_verified",
+       "to": "PRODUCTION_MATERIALIZATION_PLAN",
+-      "type": "promotion_requires",
+-      "predicate": "checkpoint_complete_and_verified"
++      "type": "promotion_requires"
+     },
+     {
+       "from": "DATA6_MODEL_SWEEP_EXECUTION_POLICY",
+@@ -1211,9 +485,9 @@
+     },
+     {
+       "from": "DATA8_ATOMIC_PROMOTION",
++      "predicate": "atomic_pointer_targets_verified_generation",
+       "to": "PRODUCTION_MATERIALIZATION_RECORD",
+-      "type": "promotion_requires",
+-      "predicate": "atomic_pointer_targets_verified_generation"
++      "type": "promotion_requires"
+     },
+     {
+       "from": "DATA9A_GATE",
+@@ -1227,9 +501,9 @@
+     },
+     {
+       "from": "DATA9A_GATE",
++      "predicate": "full_production_gate_passed",
+       "to": "TRAINING_CAMPAIGN_PLAN",
+-      "type": "gates",
+-      "predicate": "full_production_gate_passed"
++      "type": "gates"
+     },
+     {
+       "from": "DERIVATIVE_CONVENTION",
+@@ -1273,9 +547,9 @@
+     },
+     {
+       "from": "EVALUATION_ACTIVATION_DECISION",
++      "predicate": "evaluation_activated",
+       "to": "EVALUATION_RESULT_CATALOG",
+-      "type": "promotion_requires",
+-      "predicate": "evaluation_activated"
++      "type": "promotion_requires"
+     },
+     {
+       "from": "EVALUATION_ACTIVATION_DECISION",
+@@ -1284,9 +558,9 @@
+     },
+     {
+       "from": "EVALUATION_ACTIVATION_DECISION",
++      "predicate": "locked_test_only",
+       "to": "OBSERVABLE_VALIDATION_ACTIVATION_RECORD",
+-      "type": "promotion_requires",
+-      "predicate": "locked_test_only"
++      "type": "promotion_requires"
+     },
+     {
+       "from": "EVENT_CATALOG",
+@@ -1595,9 +869,9 @@
+     },
+     {
+       "from": "FOUNDATION_RESIDUAL_E0_FIT",
++      "predicate": "required_by_frozen_plan",
+       "to": "PRODUCTION_GATE_INTEGRITY_EVIDENCE",
+-      "type": "promotion_requires",
+-      "predicate": "required_by_frozen_plan"
++      "type": "promotion_requires"
+     },
+     {
+       "from": "FRAME_CATALOG",
+@@ -1776,9 +1050,9 @@
+     },
+     {
+       "from": "LEAKAGE_AUDIT_REPORT",
++      "predicate": "no_error_findings",
+       "to": "DEVELOPMENT_POOL",
+-      "type": "promotion_requires",
+-      "predicate": "no_error_findings"
++      "type": "promotion_requires"
+     },
+     {
+       "from": "LOCKED_CHALLENGE_TESTS",
+@@ -1787,9 +1061,9 @@
+     },
+     {
+       "from": "LOCKED_CHALLENGE_TESTS",
++      "predicate": "challenge_test_role",
+       "to": "LOCKED_TEST_OBSERVABLE_EVIDENCE",
+-      "type": "source_identity_requires",
+-      "predicate": "challenge_test_role"
++      "type": "source_identity_requires"
+     },
+     {
+       "from": "LOCKED_CHALLENGE_TESTS",
+@@ -1803,9 +1077,9 @@
+     },
+     {
+       "from": "LOCKED_INTERPOLATION_TEST",
++      "predicate": "interpolation_test_role",
+       "to": "LOCKED_TEST_OBSERVABLE_EVIDENCE",
+-      "type": "source_identity_requires",
+-      "predicate": "interpolation_test_role"
++      "type": "source_identity_requires"
+     },
+     {
+       "from": "LOCKED_INTERPOLATION_TEST",
+@@ -2044,9 +1318,9 @@
+     },
+     {
+       "from": "MATERIAL_PROFILE_CONTRACTS",
++      "predicate": "profile_bound_policies_only",
+       "to": "OBSERVABLE_COMPARISON_POLICY",
+-      "type": "source_identity_requires",
+-      "predicate": "profile_bound_policies_only"
++      "type": "source_identity_requires"
+     },
+     {
+       "from": "MATERIAL_PROFILE_CONTRACTS",
+@@ -2210,9 +1484,9 @@
+     },
+     {
+       "from": "OBSERVABLE_VALIDATION_EVIDENCE",
++      "predicate": "evidence_role_is_locked_test",
+       "to": "LOCKED_TEST_OBSERVABLE_EVIDENCE",
+-      "type": "promotion_requires",
+-      "predicate": "evidence_role_is_locked_test"
++      "type": "promotion_requires"
+     },
+     {
+       "from": "OBSERVABLE_VALIDATION_EVIDENCE",
+@@ -2301,9 +1575,9 @@
+     },
+     {
+       "from": "OUTER_PARTITION",
++      "predicate": "partitioned_validation_roles_only",
+       "to": "OBSERVABLE_VALIDATION_ACTIVATION_RECORD",
+-      "type": "source_identity_requires",
+-      "predicate": "partitioned_validation_roles_only"
++      "type": "source_identity_requires"
+     },
+     {
+       "from": "OUTER_PARTITION",
+@@ -2362,21 +1636,21 @@
+     },
+     {
+       "from": "PARTITION_FEASIBILITY_REPORT",
++      "predicate": "cross_validation_roles_feasible",
+       "to": "CROSS_VALIDATION_PLAN",
+-      "type": "promotion_requires",
+-      "predicate": "cross_validation_roles_feasible"
++      "type": "promotion_requires"
+     },
+     {
+       "from": "PARTITION_FEASIBILITY_REPORT",
++      "predicate": "partition_roles_feasible",
+       "to": "OUTER_PARTITION",
+-      "type": "promotion_requires",
+-      "predicate": "partition_roles_feasible"
++      "type": "promotion_requires"
+     },
+     {
+       "from": "PARTITION_ROLE_BUDGET_POLICY",
++      "predicate": "partitioned_validation_roles_only",
+       "to": "OBSERVABLE_VALIDATION_ACTIVATION_RECORD",
+-      "type": "source_identity_requires",
+-      "predicate": "partitioned_validation_roles_only"
++      "type": "source_identity_requires"
+     },
+     {
+       "from": "PARTITION_ROLE_BUDGET_POLICY",
+@@ -2475,15 +1749,15 @@
+     },
+     {
+       "from": "PRODUCTION_DATA7_ARTIFACTS",
++      "predicate": "all_final_and_fold_domains_verified",
+       "to": "PRODUCTION_DATA8_ARTIFACT",
+-      "type": "promotion_requires",
+-      "predicate": "all_final_and_fold_domains_verified"
++      "type": "promotion_requires"
+     },
+     {
+       "from": "PRODUCTION_DATA7_ARTIFACTS",
++      "predicate": "all_domains_verified",
+       "to": "PRODUCTION_MATERIALIZATION_RECORD",
+-      "type": "promotion_requires",
+-      "predicate": "all_domains_verified"
++      "type": "promotion_requires"
+     },
+     {
+       "from": "PRODUCTION_DATA8_ARTIFACT",
+@@ -2492,15 +1766,15 @@
+     },
+     {
+       "from": "PRODUCTION_DATA8_ARTIFACT",
++      "predicate": "tree_verified_before_pointer_switch",
+       "to": "DATA8_ATOMIC_PROMOTION",
+-      "type": "promotion_requires",
+-      "predicate": "tree_verified_before_pointer_switch"
++      "type": "promotion_requires"
+     },
+     {
+       "from": "PRODUCTION_DATA8_ARTIFACT",
++      "predicate": "tree_and_bundle_verified",
+       "to": "PRODUCTION_MATERIALIZATION_RECORD",
+-      "type": "promotion_requires",
+-      "predicate": "tree_and_bundle_verified"
++      "type": "promotion_requires"
+     },
+     {
+       "from": "PRODUCTION_DATA8_ARTIFACT",
+@@ -2509,15 +1783,15 @@
+     },
+     {
+       "from": "PRODUCTION_GATE_INTEGRITY_EVIDENCE",
++      "predicate": "all_frozen_plan_requirements_satisfied",
+       "to": "DATA9A_GATE",
+-      "type": "promotion_requires",
+-      "predicate": "all_frozen_plan_requirements_satisfied"
++      "type": "promotion_requires"
+     },
+     {
+       "from": "PRODUCTION_MATERIALIZATION_CHECKPOINT",
++      "predicate": "all_data7_records_complete",
+       "to": "PRODUCTION_DATA8_ARTIFACT",
+-      "type": "promotion_requires",
+-      "predicate": "all_data7_records_complete"
++      "type": "promotion_requires"
+     },
+     {
+       "from": "PRODUCTION_MATERIALIZATION_PLAN",
+@@ -2531,9 +1805,9 @@
+     },
+     {
+       "from": "PRODUCTION_MATERIALIZATION_RECORD",
++      "predicate": "record_complete_and_self_verified",
+       "to": "PRODUCTION_GATE_INTEGRITY_EVIDENCE",
+-      "type": "promotion_requires",
+-      "predicate": "record_complete_and_self_verified"
++      "type": "promotion_requires"
+     },
+     {
+       "from": "PRODUCTION_PREPARATION_BENCHMARK",
+@@ -2652,9 +1926,9 @@
+     },
+     {
+       "from": "PROTOCOL_FREEZE_RECORD",
++      "predicate": "protocol_and_committee_frozen",
+       "to": "EVALUATION_ACTIVATION_DECISION",
+-      "type": "promotion_requires",
+-      "predicate": "protocol_and_committee_frozen"
++      "type": "promotion_requires"
+     },
+     {
+       "from": "PROTOCOL_FREEZE_RECORD",
+@@ -2663,9 +1937,9 @@
+     },
+     {
+       "from": "PROTOCOL_FREEZE_RECORD",
++      "predicate": "locked_test_only",
+       "to": "OBSERVABLE_VALIDATION_ACTIVATION_RECORD",
+-      "type": "promotion_requires",
+-      "predicate": "locked_test_only"
++      "type": "promotion_requires"
+     },
+     {
+       "from": "PROTOCOL_VARIANT_AGGREGATE",
+@@ -2754,9 +2028,9 @@
+     },
+     {
+       "from": "REPLAY_PLAN",
++      "predicate": "numerical_label_payload_verified",
+       "to": "PRODUCTION_GATE_INTEGRITY_EVIDENCE",
+-      "type": "promotion_requires",
+-      "predicate": "numerical_label_payload_verified"
++      "type": "promotion_requires"
+     },
+     {
+       "from": "REPLAY_PLAN",
+@@ -3200,9 +2474,9 @@
+     },
+     {
+       "from": "TRAJECTORY_QUALITY",
++      "predicate": "trajectory_quality != unqualified",
+       "to": "PRODUCTION_REGIMES",
+-      "type": "promotion_requires",
+-      "predicate": "trajectory_quality != unqualified"
++      "type": "promotion_requires"
+     },
+     {
+       "from": "TRAJECTORY_QUALITY",
+@@ -3371,32 +2645,33 @@
+         "LOCKED_CHALLENGE_TESTS",
+         "LOCKED_TEST_OBSERVABLE_EVIDENCE"
+       ],
++      "reason": "Locked-test physical-observable evidence shall not tune comparison policies, training, data selection, or checkpoint decisions.",
+       "to": [
+         "OBSERVABLE_COMPARISON_POLICY",
+         "TRAINING_PROTOCOL_IDENTITY",
+         "CHECKPOINT_SELECTION_DECISION",
+         "FOLD_FEATURE_METRIC_FITS",
+         "FINAL_FEATURE_METRIC_FIT"
+-      ],
+-      "reason": "Locked-test physical-observable evidence shall not tune comparison policies, training, data selection, or checkpoint decisions."
++      ]
+     },
+     {
+       "from": [
+         "OBSERVABLE_COMPARISON_RESULT",
+         "OBSERVABLE_ACCEPTANCE_DECISION"
+       ],
++      "reason": "Post-training physical validation shall not retroactively alter data selection or the frozen training protocol.",
+       "to": [
+         "FOLD_LOCAL_SELECTIONS",
+         "FINAL_SELECTION_MASTER_ORDER",
+         "TRAINING_PROTOCOL_IDENTITY"
+-      ],
+-      "reason": "Post-training physical validation shall not retroactively alter data selection or the frozen training protocol."
++      ]
+     },
+     {
+       "from": [
+         "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
+         "CROSS_SYSTEM_QUALIFICATION_SUITE"
+       ],
++      "reason": "Cross-system software qualification is a release gate and shall not tune scientific features, selections, protocols, or checkpoints.",
+       "to": [
+         "FOLD_LOCAL_TRANSFORMS",
+         "FOLD_FEATURE_METRIC_FITS",
+@@ -3406,8 +2681,7 @@
+         "FINAL_SELECTION_MASTER_ORDER",
+         "TRAINING_PROTOCOL_IDENTITY",
+         "CHECKPOINT_SELECTION_DECISION"
+-      ],
+-      "reason": "Cross-system software qualification is a release gate and shall not tune scientific features, selections, protocols, or checkpoints."
++      ]
+     },
+     {
+       "from": [
+@@ -3425,53 +2699,779 @@
+     },
+     {
+       "from": "CALLER_ASSERTED_FOUNDATION_STATUS",
+-      "to": "DATA9A_GATE",
+-      "reason": "Foundation features and residual E0 must be derived from verified DATA6/DATA7 artifacts."
++      "reason": "Foundation features and residual E0 must be derived from verified DATA6/DATA7 artifacts.",
++      "to": "DATA9A_GATE"
+     },
+     {
+       "from": "UNFROZEN_CORPUS_COUNTS",
+-      "to": "DATA9A_GATE",
+-      "reason": "Qualification must bind the immutable ProductionCorpusPlan."
++      "reason": "Qualification must bind the immutable ProductionCorpusPlan.",
++      "to": "DATA9A_GATE"
+     },
+     {
+       "from": "REPLAY_GEOMETRY_ONLY_IDENTITY",
+-      "to": "PRODUCTION_DATA8_ARTIFACT",
+-      "reason": "Replay semantic identity must include numerical label payloads."
++      "reason": "Replay semantic identity must include numerical label payloads.",
++      "to": "PRODUCTION_DATA8_ARTIFACT"
+     },
+     {
+       "from": [
+         "CAMPAIGN_CLEANUP_MANIFEST",
+         "TIERED_STORAGE_RECLAMATION_PLAN"
+       ],
++      "reason": "Campaign cleanup may reference external user inputs for provenance but shall never acquire deletion authority over user-supplied source or replay material.",
+       "to": [
+         "SOURCE_BYTES",
+         "REPLAY_SOURCE"
+-      ],
+-      "reason": "Campaign cleanup may reference external user inputs for provenance but shall never acquire deletion authority over user-supplied source or replay material."
++      ]
+     },
+     {
+       "from": [
+         "CHECKPOINT_SCREENING_ROUND_RECORD",
+         "PARTIAL_CHECKPOINT_PREDICTION_COVERAGE"
+       ],
++      "reason": "Partial multi-fidelity screening evidence cannot authorize final scientific admissibility, checkpoint selection, or protocol freeze.",
+       "to": [
+         "CHECKPOINT_ADMISSIBILITY_DECISION",
+         "CHECKPOINT_SELECTION_RECORD",
+         "PROTOCOL_FREEZE_RECORD"
+-      ],
+-      "reason": "Partial multi-fidelity screening evidence cannot authorize final scientific admissibility, checkpoint selection, or protocol freeze."
++      ]
+     },
+     {
+       "from": [
+         "CHECKPOINT_SCREENING_ROUND_RECORD",
+         "PARTIAL_CHECKPOINT_PREDICTION_COVERAGE"
+       ],
++      "reason": "Partial or full checkpoint-evaluation evidence shall not tune or rewrite a frozen training precision schedule or stage transition.",
+       "to": [
+         "STAGED_TRAINING_PRECISION_POLICY",
+         "PRECISION_STAGE_EXECUTION_PLAN",
+         "PRECISION_STAGE_TRANSITION_RECORD"
+-      ],
+-      "reason": "Partial or full checkpoint-evaluation evidence shall not tune or rewrite a frozen training precision schedule or stage transition."
++      ]
+     }
+-  ]
++  ],
++  "nodes": [
++    {
++      "id": "ACQUISITION_DECISIONS"
++    },
++    {
++      "id": "ADAPTIVE_INFERENCE_CONCURRENCY_PLAN"
++    },
++    {
++      "id": "ANALYSIS_LOCAL_STRUCTURE_FEATURES"
++    },
++    {
++      "id": "ASE_MD_STATE_PRECISION_AUDIT"
++    },
++    {
++      "id": "ATOMIC_MODEL_PREDICTION_MANIFEST"
++    },
++    {
++      "id": "ATOM_GROUP_CATALOG"
++    },
++    {
++      "id": "BLINDED_EVALUATION_PREDICTIONS"
++    },
++    {
++      "id": "BLINDING_BOUNDARY_CATALOG"
++    },
++    {
++      "id": "BOUNDED_DEPLOYMENT_VERIFICATION"
++    },
++    {
++      "id": "CALIBRATION_APPLICABILITY_DOMAIN"
++    },
++    {
++      "id": "CALIBRATION_DOMAIN"
++    },
++    {
++      "id": "CALIBRATION_TRANSFER_DECISION"
++    },
++    {
++      "id": "CAMPAIGN_ARTIFACT_OWNERSHIP_CATALOG"
++    },
++    {
++      "id": "CAMPAIGN_CLEANUP_MANIFEST"
++    },
++    {
++      "id": "CAMPAIGN_CLI_CONFIGURATION"
++    },
++    {
++      "id": "CAMPAIGN_MANIFEST_APPROVAL"
++    },
++    {
++      "id": "CAMPAIGN_PRECISION_PROFILE"
++    },
++    {
++      "id": "CAMPAIGN_PREFLIGHT_RECORD"
++    },
++    {
++      "id": "CAMPAIGN_PREPARATION_GATE"
++    },
++    {
++      "id": "CAMPAIGN_RESULT_SUMMARY"
++    },
++    {
++      "id": "CAMPAIGN_STATE_DATABASE"
++    },
++    {
++      "id": "CAMPAIGN_STATUS_VIEW"
++    },
++    {
++      "id": "CAMPAIGN_STORAGE_REPORT"
++    },
++    {
++      "id": "CANDIDATE_ADMISSIBILITY"
++    },
++    {
++      "id": "CANDIDATE_CATALOG"
++    },
++    {
++      "id": "CANDIDATE_CHECKPOINT_CATALOG"
++    },
++    {
++      "id": "CANDIDATE_TRAJECTORIES"
++    },
++    {
++      "id": "CHECKPOINT_ADMISSIBILITY_DECISION"
++    },
++    {
++      "id": "CHECKPOINT_EPOCH_REPORT"
++    },
++    {
++      "id": "CHECKPOINT_EVALUATION_CAPSULE"
++    },
++    {
++      "id": "CHECKPOINT_EVALUATION_POLICY"
++    },
++    {
++      "id": "CHECKPOINT_EVALUATION_RECORD"
++    },
++    {
++      "id": "CHECKPOINT_METRIC_POLICY"
++    },
++    {
++      "id": "CHECKPOINT_METRIC_RECORD"
++    },
++    {
++      "id": "CHECKPOINT_SCREENING_ROUND_RECORD"
++    },
++    {
++      "id": "CHECKPOINT_SELECTION_DECISION"
++    },
++    {
++      "id": "CHECKPOINT_SELECTION_RECORD"
++    },
++    {
++      "id": "CHECKPOINT_SURVIVOR_GUARD_EVIDENCE"
++    },
++    {
++      "id": "CHECKPOINT_SURVIVOR_RECORD"
++    },
++    {
++      "id": "COLD_ARCHIVE_MANIFEST"
++    },
++    {
++      "id": "COMMITTEE_EXPORT_POLICY"
++    },
++    {
++      "id": "COMMITTEE_IDENTITY"
++    },
++    {
++      "id": "COMMITTEE_MEMBER_RECORD"
++    },
++    {
++      "id": "CONDITION_AXIS_CATALOG"
++    },
++    {
++      "id": "CONFIGURATION_WEIGHT_POLICY"
++    },
++    {
++      "id": "CPU_INFERENCE_TELEMETRY"
++    },
++    {
++      "id": "CPU_RAM_PARALLEL_EXECUTION_PLAN"
++    },
++    {
++      "id": "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE"
++    },
++    {
++      "id": "CROSS_SYSTEM_QUALIFICATION_POLICY"
++    },
++    {
++      "id": "CROSS_SYSTEM_QUALIFICATION_SUITE"
++    },
++    {
++      "id": "CROSS_VALIDATION_JOB_FAMILY"
++    },
++    {
++      "id": "CROSS_VALIDATION_PLAN"
++    },
++    {
++      "id": "DATA6_MODEL_SWEEP_CHECKPOINT"
++    },
++    {
++      "id": "DATA6_MODEL_SWEEP_EXECUTION_POLICY"
++    },
++    {
++      "id": "DATA6_MODEL_SWEEP_PLAN"
++    },
++    {
++      "id": "DATA8_ATOMIC_PROMOTION"
++    },
++    {
++      "id": "DATA9A_GATE"
++    },
++    {
++      "id": "DATA9B_EXECUTION"
++    },
++    {
++      "id": "DERIVATIVE_CONVENTION"
++    },
++    {
++      "id": "DEVELOPMENT_MACE_BUNDLE"
++    },
++    {
++      "id": "DEVELOPMENT_POOL"
++    },
++    {
++      "id": "DFT_QUERY_MANIFEST"
++    },
++    {
++      "id": "ENERGY_REFERENCE_IDENTITY"
++    },
++    {
++      "id": "ENSEMBLE_CERTIFICATE"
++    },
++    {
++      "id": "EVALUATION_ACTIVATION_DECISION"
++    },
++    {
++      "id": "EVALUATION_RESULT_CATALOG"
++    },
++    {
++      "id": "EVENT_CATALOG"
++    },
++    {
++      "id": "EXPOSURE_BACKEND_POLICY"
++    },
++    {
++      "id": "FEATURE_METRIC_POLICY_TEMPLATE"
++    },
++    {
++      "id": "FILENAME_STRAIN_CANDIDATE"
++    },
++    {
++      "id": "FINAL_ATOMIC_REFERENCE_FIT"
++    },
++    {
++      "id": "FINAL_COMMITTEE_CALIBRATION_PREDICTIONS"
++    },
++    {
++      "id": "FINAL_FEATURE_METRIC_FIT"
++    },
++    {
++      "id": "FINAL_FEATURE_TRANSFORM"
++    },
++    {
++      "id": "FINAL_SELECTION_MASTER_ORDER"
++    },
++    {
++      "id": "FINAL_TARGET_TRAINING_DOMAIN"
++    },
++    {
++      "id": "FINAL_TRAINING_DIFFICULTY_FEATURES"
++    },
++    {
++      "id": "FOCUS_ATOM_GROUP_POLICY"
++    },
++    {
++      "id": "FOLD_ATOMIC_REFERENCE_FITS"
++    },
++    {
++      "id": "FOLD_CHECKPOINT_MONITORS"
++    },
++    {
++      "id": "FOLD_DEFINITIONS"
++    },
++    {
++      "id": "FOLD_EVALUATION_DOMAINS"
++    },
++    {
++      "id": "FOLD_FEATURE_METRIC_FITS"
++    },
++    {
++      "id": "FOLD_LOCAL_SELECTIONS"
++    },
++    {
++      "id": "FOLD_LOCAL_TRANSFORMS"
++    },
++    {
++      "id": "FOLD_TRAINING_DIFFICULTY_FEATURES"
++    },
++    {
++      "id": "FOLD_TRAIN_DOMAINS"
++    },
++    {
++      "id": "FOUNDATION_CHECKPOINT"
++    },
++    {
++      "id": "FOUNDATION_RESIDUAL_E0_FIT"
++    },
++    {
++      "id": "FRAME_CATALOG"
++    },
++    {
++      "id": "FRAME_ELIGIBILITY"
++    },
++    {
++      "id": "FRAME_FACTS"
++    },
++    {
++      "id": "FULL_FIDELITY_FINALIST_EVALUATION"
++    },
++    {
++      "id": "GENERIC_IMPORT_ISOLATION_EVIDENCE"
++    },
++    {
++      "id": "GENERIC_STRUCTURAL_EVENT_CATALOG"
++    },
++    {
++      "id": "GEOMETRY_FINGERPRINT"
++    },
++    {
++      "id": "GPU_INFERENCE_TELEMETRY"
++    },
++    {
++      "id": "GPU_VRAM_BATCH_EXECUTION_PLAN"
++    },
++    {
++      "id": "INDEPENDENCE_AXIS_CATALOG"
++    },
++    {
++      "id": "INSTALLED_MACE_QUALIFICATION"
++    },
++    {
++      "id": "ISOLATED_TRAJECTORY_WORKER"
++    },
++    {
++      "id": "LABELED_ACTIVE_ROUND"
++    },
++    {
++      "id": "LABELED_CONFIGURATION_FINGERPRINT"
++    },
++    {
++      "id": "LABELED_FRAME_ELIGIBILITY"
++    },
++    {
++      "id": "LABEL_DOMAIN"
++    },
++    {
++      "id": "LABEL_PAYLOAD_DIGEST"
++    },
++    {
++      "id": "LEAKAGE_AUDIT_REPORT"
++    },
++    {
++      "id": "LEARNING_CURVE_RECORD"
++    },
++    {
++      "id": "LOCKED_CHALLENGE_TESTS"
++    },
++    {
++      "id": "LOCKED_INTERPOLATION_TEST"
++    },
++    {
++      "id": "LOCKED_TEST_OBSERVABLE_EVIDENCE"
++    },
++    {
++      "id": "LTA_PROFILE_EXTENSION"
++    },
++    {
++      "id": "MACE_ACCELERATION_POLICY"
++    },
++    {
++      "id": "MACE_ACCELERATION_PROBE"
++    },
++    {
++      "id": "MACE_ADAPTER_LOCK"
++    },
++    {
++      "id": "MACE_CHECKPOINT_CONTROL_POLICY"
++    },
++    {
++      "id": "MACE_CLI_SMOKE_RECORD"
++    },
++    {
++      "id": "MACE_CONFIG_REALIZATION_RECORD"
++    },
++    {
++      "id": "MACE_CRITICAL_PRECISION_AUDIT"
++    },
++    {
++      "id": "MACE_CRITICAL_PRECISION_POLICY"
++    },
++    {
++      "id": "MACE_DATALOADER_WORKER_PLAN"
++    },
++    {
++      "id": "MACE_DEPENDENCY_MANIFEST"
++    },
++    {
++      "id": "MACE_DEPLOYMENT_ARTIFACT"
++    },
++    {
++      "id": "MACE_DEPLOYMENT_EXPORT_POLICY"
++    },
++    {
++      "id": "MACE_EXPOSURE_REALIZATION_RECORD"
++    },
++    {
++      "id": "MACE_INFERENCE_COMPARISON"
++    },
++    {
++      "id": "MACE_JOB_EXECUTION_SMOKE_RECORD"
++    },
++    {
++      "id": "MACE_MODEL_PRECISION_RECORD"
++    },
++    {
++      "id": "MACE_PRECISION_POLICY"
++    },
++    {
++      "id": "MACE_PRECISION_TRANSITION_RECORD"
++    },
++    {
++      "id": "MACE_RAW_DESCRIPTORS"
++    },
++    {
++      "id": "MACE_RUNTIME_ENVIRONMENT_RECORD"
++    },
++    {
++      "id": "MANIFEST_INFERENCE_POLICY"
++    },
++    {
++      "id": "MATERIAL_PROFILE_CONTRACTS"
++    },
++    {
++      "id": "MATERIAL_PROFILE_IDENTITY"
++    },
++    {
++      "id": "MATERIAL_PROFILE_PROVIDER_IDENTITY"
++    },
++    {
++      "id": "MLFF_CAMPAIGN_CLI_TOOL"
++    },
++    {
++      "id": "MLFF_CAMPAIGN_USER_GUIDE"
++    },
++    {
++      "id": "NATIVE_MACE_GRAPH_BATCH"
++    },
++    {
++      "id": "NESTED_CHECKPOINT_EVALUATION_PLAN"
++    },
++    {
++      "id": "NEW_DATASET_GENERATION"
++    },
++    {
++      "id": "NUMERICAL_QUALITY_PROFILE"
++    },
++    {
++      "id": "OBSERVABLE_ACCEPTANCE_DECISION"
++    },
++    {
++      "id": "OBSERVABLE_ANALYSIS_RECIPE"
++    },
++    {
++      "id": "OBSERVABLE_COLLECTION_IDENTITIES"
++    },
++    {
++      "id": "OBSERVABLE_COMPARISON_POLICY"
++    },
++    {
++      "id": "OBSERVABLE_COMPARISON_RESULT"
++    },
++    {
++      "id": "OBSERVABLE_COMPARISON_RULES"
++    },
++    {
++      "id": "OBSERVABLE_RESULT_IDENTITIES"
++    },
++    {
++      "id": "OBSERVABLE_SCOPE_AGGREGATION"
++    },
++    {
++      "id": "OBSERVABLE_SCORE_UNCERTAINTY"
++    },
++    {
++      "id": "OBSERVABLE_VALIDATION_ACTIVATION_RECORD"
++    },
++    {
++      "id": "OBSERVABLE_VALIDATION_EVIDENCE"
++    },
++    {
++      "id": "OFFLINE_MACE_WHEELHOUSE"
++    },
++    {
++      "id": "OPTIONAL_PROFILE_EXTENSION_PROVIDER"
++    },
++    {
++      "id": "OUTER_MONITOR_VALIDATION"
++    },
++    {
++      "id": "OUTER_PARTITION"
++    },
++    {
++      "id": "OUT_OF_FOLD_PREDICTIONS"
++    },
++    {
++      "id": "PARALLEL_CHECKPOINT_EVALUATION"
++    },
++    {
++      "id": "PARALLEL_NVE_VERIFICATION"
++    },
++    {
++      "id": "PARTIAL_CHECKPOINT_PREDICTION_COVERAGE"
++    },
++    {
++      "id": "PARTITION_CRITICAL_PROFILE_FEATURES"
++    },
++    {
++      "id": "PARTITION_FEASIBILITY_REPORT"
++    },
++    {
++      "id": "PARTITION_INDEPENDENCE_REPORT"
++    },
++    {
++      "id": "PARTITION_ROLE_BUDGET_POLICY"
++    },
++    {
++      "id": "PARTITION_UNIT_CATALOG"
++    },
++    {
++      "id": "PHASE_COMPONENT_IDENTITIES"
++    },
++    {
++      "id": "PHASE_GEOMETRY_SELECTION_PLAN"
++    },
++    {
++      "id": "PORTABLE_MACE_BUNDLE"
++    },
++    {
++      "id": "PRECISION_STAGE_EXECUTION_PLAN"
++    },
++    {
++      "id": "PRECISION_STAGE_TRANSITION_RECORD"
++    },
++    {
++      "id": "PREDECLARED_OBSERVABLE_THRESHOLDS"
++    },
++    {
++      "id": "PRODUCTION_CORPUS_PLAN"
++    },
++    {
++      "id": "PRODUCTION_DATA7_ARTIFACTS"
++    },
++    {
++      "id": "PRODUCTION_DATA8_ARTIFACT"
++    },
++    {
++      "id": "PRODUCTION_GATE_INTEGRITY_EVIDENCE"
++    },
++    {
++      "id": "PRODUCTION_MATERIALIZATION_CHECKPOINT"
++    },
++    {
++      "id": "PRODUCTION_MATERIALIZATION_PLAN"
++    },
++    {
++      "id": "PRODUCTION_MATERIALIZATION_RECORD"
++    },
++    {
++      "id": "PRODUCTION_PREPARATION_BENCHMARK"
++    },
++    {
++      "id": "PRODUCTION_REGIMES"
++    },
++    {
++      "id": "PROFILE_BOUND_UNIVERSAL_STRUCTURAL_POLICY"
++    },
++    {
++      "id": "PROFILE_ENVIRONMENT_COVERAGE"
++    },
++    {
++      "id": "PROFILE_EVENT_CATALOGS"
++    },
++    {
++      "id": "PROFILE_EXTENSION_COVERAGE_EVIDENCE"
++    },
++    {
++      "id": "PROFILE_OBSERVABLE_RECOMMENDATIONS"
++    },
++    {
++      "id": "PROFILE_PARTITION_FEATURE_CATALOGS"
++    },
++    {
++      "id": "PROFILE_SELECTION_FEATURE_CATALOGS"
++    },
++    {
++      "id": "PROPERTY_WEIGHT_POLICY"
++    },
++    {
++      "id": "PROTOCOL_COMPARISON_RECORD"
++    },
++    {
++      "id": "PROTOCOL_FAMILY_AGGREGATE"
++    },
++    {
++      "id": "PROTOCOL_FREEZE_RECORD"
++    },
++    {
++      "id": "PROTOCOL_VARIANT_AGGREGATE"
++    },
++    {
++      "id": "PYTHON_ASE_MACE_EXECUTION"
++    },
++    {
++      "id": "RAW_GENERIC_FEATURES"
++    },
++    {
++      "id": "REFERENCE_CELL"
++    },
++    {
++      "id": "REPLAY_LABEL_PAYLOAD_IDENTITY"
++    },
++    {
++      "id": "REPLAY_MONITOR"
++    },
++    {
++      "id": "REPLAY_PLAN"
++    },
++    {
++      "id": "REPLAY_RETENTION_POLICY"
++    },
++    {
++      "id": "REPLAY_SOURCE"
++    },
++    {
++      "id": "REVIEW_MANIFEST_INFERENCE_RESULT"
++    },
++    {
++      "id": "ROLE_INHERITANCE_POLICY"
++    },
++    {
++      "id": "SEALED_EVALUATION_BUNDLE"
++    },
++    {
++      "id": "SELECTION_BUDGET_POLICY"
++    },
++    {
++      "id": "SELECTION_COVERAGE_REPORT"
++    },
++    {
++      "id": "SELECTION_FEATURE_CATALOGS"
++    },
++    {
++      "id": "SELECTION_LEVEL_IDENTITY"
++    },
++    {
++      "id": "SOFTWARE_PROVENANCE"
++    },
++    {
++      "id": "SOURCE_BYTES"
++    },
++    {
++      "id": "SOURCE_CATALOG"
++    },
++    {
++      "id": "SOURCE_OCCURRENCE_IDENTITY"
++    },
++    {
++      "id": "STAGED_PRECISION_QUALIFICATION_RECORD"
++    },
++    {
++      "id": "STAGED_TRAINING_PRECISION_POLICY"
++    },
++    {
++      "id": "STRUCTURAL_ATOMIC_REFERENCE_AUDIT"
++    },
++    {
++      "id": "STRUCTURAL_ATOMIC_REFERENCE_FIT_POLICY"
++    },
++    {
++      "id": "SYSTEM_RESOURCE_SNAPSHOT"
++    },
++    {
++      "id": "TEMPORAL_BLOCKS"
++    },
++    {
++      "id": "THEORY_IDENTITY"
++    },
++    {
++      "id": "THERMOMECHANICAL_VALIDATION_RECIPES"
++    },
++    {
++      "id": "TIERED_STORAGE_RECLAMATION_PLAN"
++    },
++    {
++      "id": "TRAINED_COMMITTEE"
++    },
++    {
++      "id": "TRAINING_CAMPAIGN_PLAN"
++    },
++    {
++      "id": "TRAINING_CAMPAIGN_POLICY"
++    },
++    {
++      "id": "TRAINING_CAMPAIGN_RUN_PLAN"
++    },
++    {
++      "id": "TRAINING_CHECKPOINTS"
++    },
++    {
++      "id": "TRAINING_EXECUTION_POLICY"
++    },
++    {
++      "id": "TRAINING_OBJECTIVE_POLICY"
++    },
++    {
++      "id": "TRAINING_PROTOCOL_IDENTITY"
++    },
++    {
++      "id": "TRAINING_RUN_ATTEMPT_RECORD"
++    },
++    {
++      "id": "TRAINING_RUN_EXECUTION_RECORD"
++    },
++    {
++      "id": "TRAINING_SELECTION_LADDER"
++    },
++    {
++      "id": "TRAJECTORY_COLLECTION"
++    },
++    {
++      "id": "TRAJECTORY_GENERATION_IDENTITIES"
++    },
++    {
++      "id": "TRAJECTORY_QUALITY"
++    },
++    {
++      "id": "UNCERTAINTY_CALIBRATION"
++    },
++    {
++      "id": "UNCERTAINTY_SIGNAL_DIAGNOSTIC"
++    },
++    {
++      "id": "UNIVERSAL_STRUCTURAL_FEATURE_CATALOG"
++    },
++    {
++      "id": "VASP_CONTROLS"
++    },
++    {
++      "id": "VERIFIED_STRAIN_RELATIONSHIP"
++    },
++    {
++      "id": "PRECISION_RUNTIME_COMPANION"
++    }
++  ],
++  "schema_version": 26
+ }
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/docs/specs/training_data/mlff_staged_precision_profiles_spec.md /mnt/data/mdstats109_full/docs/specs/training_data/mlff_staged_precision_profiles_spec.md
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/docs/specs/training_data/mlff_staged_precision_profiles_spec.md	2026-08-08 13:29:11.000000000 +0000
++++ /mnt/data/mdstats109_full/docs/specs/training_data/mlff_staged_precision_profiles_spec.md	2026-08-08 21:05:37.817388963 +0000
+@@ -1,6 +1,6 @@
+ # MLFF PREC1-PREC3 staged-precision profile specification
+ 
+-Status: PREC1 implemented in mdstats 0.20.108a0; PREC2 implemented in mdstats 0.20.109a0; PREC3 and STOR1-STOR5 remain planned.
++Status: PREC1 implemented in mdstats 0.20.108a0; PREC2 implemented in mdstats 0.20.109a0; PREC3 implemented in mdstats 0.20.110a0. STOR1-STOR5 remain planned.
+ 
+ ## Purpose
+ 
+@@ -133,9 +133,9 @@
+ 
+ A durable transition receipt records source/destination stage, epoch/update boundary, pre/post dtype inventories, LR state, schedule/protocol identities, and source checkpoint/companion digests. Focused restart tests demonstrate identical continuation across the boundary, and a real MACE 0.3.16 e3nn force-training smoke finishes the post-switch stage uniformly FP64. Existing CuEq campaign/source-contract tests pass, but `cuequivariance` is not present in the supplied qualification environment; real CuEq runtime execution is therefore retained as a PREC3 activation requirement.
+ 
+-PREC2 intentionally does not remove the production preflight gate for `refine`; PREC3 owns end-to-end campaign activation, reporting, and canonical `single` runtime activation.
++PREC2 intentionally left production profile activation to PREC3. mdstats 0.20.110a0 removes that temporary gate only after profile-bound critical precision, cross-stage evaluation, deployment dtype enforcement, and campaign reporting are integrated.
+ 
+-## PREC3 - campaign integration and qualification
++## PREC3 - campaign integration and qualification - implemented in 0.20.110a0
+ 
+ The requested profile and resolved schedule are visible in doctor/preflight/training,
+ evaluation, verification, and final reports. `refine` uses FP64 for all non-training
+@@ -154,6 +154,20 @@
+ After qualification, plain `init` still generates `single`; `double` and `refine` remain
+ explicit opt-ins.
+ 
++### PREC3 implementation closure (0.20.110a0)
++
++The campaign now activates the DATA8-bound critical-precision policy instead of inferring behavior from a local model dtype. Explicit `single` disables the historical ScaleShiftMACE critical-FP64 patch and executes profile-controlled critical operations in native FP32. `double` and `refine` activate the qualified FP64 critical policy. Schedule-free legacy configurations retain their historical FP32-body/critical-FP64 behavior and serialization identity.
++
++`doctor`, `prepare`, `preflight`, `train`, evaluation, verification, and final result surfaces expose the requested profile and resolved stage schedule. Preparation writes `results/precision-profile.json`; final evaluation and verification payloads embed the same profile record. No accelerator/resource heuristic changes the requested precision profile.
++
++Checkpoint evaluation is stage-independent: explicit-profile checkpoint reconstruction may cast the completed whole-model architecture template to the checkpoint state dtype, and MACECalculator then converts that model to the profile's evaluation dtype. Thus EVAL-MF can evaluate FP32 and FP64 refine epochs under the same FP64 authoritative evaluation contract. Legacy materialization retains the old fail-safe dtype-mismatch fallback.
++
++Target-head deployment for explicit profiles passes through the existing exact MACE deployment converter. Consequently, a refine winner originating in the FP32 stage is still serialized, reloaded, and state-verified as a uniformly FP64 deployment/verification model; canonical single exports uniformly FP32. Conversion manifests are retained beside deployment artifacts.
++
++Real MACE 0.3.16/e3nn qualification exercises canonical FP32 and FP64 calculator paths, FP32-checkpoint evaluation under an FP64 refine policy, exact FP32-to-FP64 deployment conversion, and the PREC2 staged force-training transition/restart tests. The build environment does not provide `cuequivariance`/`cuequivariance_torch`; therefore no local real-CuEq execution claim is made. CuEq campaigns remain fail-closed on runtime availability and their normal real-MACE preflight consumes the same immutable critical-precision policy. A CuEq-enabled environment must complete that runtime preflight before production training.
++
++PREC3 does not claim that refine and double converge to equal RMSE. That remains empirical model-quality evidence for EVAL-MF.
++
+ ## Acceptance checklist
+ 
+ ### PREC1
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/mdstats/__init__.py /mnt/data/mdstats109_full/mdstats/__init__.py
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/mdstats/__init__.py	2026-08-08 12:46:55.000000000 +0000
++++ /mnt/data/mdstats109_full/mdstats/__init__.py	2026-08-08 20:52:13.741412753 +0000
+@@ -3856,6 +3856,7 @@
+     build_mace_critical_precision_calculator,
+     configure_torch_critical_precision,
+     install_mace_critical_fp64_patch,
++    activate_mace_critical_precision_policy,
+     mace_critical_fp64_patch_installed,
+     uninstall_mace_critical_fp64_patch,
+     MACE_CONFIG_REALIZATION_POLICY_SCHEMA,
+@@ -3910,6 +3911,7 @@
+     "build_mace_critical_precision_calculator",
+     "configure_torch_critical_precision",
+     "install_mace_critical_fp64_patch",
++    "activate_mace_critical_precision_policy",
+     "mace_critical_fp64_patch_installed",
+     "uninstall_mace_critical_fp64_patch",
+     "MACE_CONFIG_REALIZATION_POLICY_SCHEMA",
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/mdstats/_version.py /mnt/data/mdstats109_full/mdstats/_version.py
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/mdstats/_version.py	2026-08-08 13:28:47.000000000 +0000
++++ /mnt/data/mdstats109_full/mdstats/_version.py	2026-08-08 21:06:27.400860917 +0000
+@@ -1,3 +1,3 @@
+ """Package version."""
+ 
+-__version__ = "0.20.109a0"
++__version__ = "0.20.110a0"
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/mdstats/data/observable_owner_manuals.json /mnt/data/mdstats109_full/mdstats/data/observable_owner_manuals.json
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/mdstats/data/observable_owner_manuals.json	2026-08-08 13:28:47.000000000 +0000
++++ /mnt/data/mdstats109_full/mdstats/data/observable_owner_manuals.json	2026-08-08 21:06:27.400985522 +0000
+@@ -17,6 +17,6 @@
+       "uri": "mdstats-doc://vacf-dynamics-architecture/0.20.53a0"
+     }
+   },
+-  "package_version": "0.20.109a0",
++  "package_version": "0.20.110a0",
+   "schema": "mdstats.observable-owner-manual-index.v1"
+ }
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/mdstats/training_data/__init__.py /mnt/data/mdstats109_full/mdstats/training_data/__init__.py
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/mdstats/training_data/__init__.py	2026-08-08 13:19:40.000000000 +0000
++++ /mnt/data/mdstats109_full/mdstats/training_data/__init__.py	2026-08-08 20:52:13.740898049 +0000
+@@ -561,6 +561,7 @@
+     build_mace_critical_precision_calculator,
+     configure_torch_critical_precision,
+     install_mace_critical_fp64_patch,
++    activate_mace_critical_precision_policy,
+     mace_critical_fp64_patch_installed,
+     uninstall_mace_critical_fp64_patch,
+ )
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/mdstats/training_data/campaign_cli.py /mnt/data/mdstats109_full/mdstats/training_data/campaign_cli.py
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/mdstats/training_data/campaign_cli.py	2026-08-08 13:33:50.000000000 +0000
++++ /mnt/data/mdstats109_full/mdstats/training_data/campaign_cli.py	2026-08-08 21:07:18.690990113 +0000
+@@ -71,7 +71,8 @@
+ # 0.20.106a0 implements EVAL-MF1 nested multi-fidelity checkpoint evaluation,
+ # 0.20.107a0 implements EVAL-MF2 conservative survivor/reporting/default migration,
+ # 0.20.108a0 implements PREC1 precision profiles/schedule identity, and
+-# 0.20.109a0 implements the PREC2 staged-transition/restart runtime substrate.
++# 0.20.109a0 implements the PREC2 staged-transition/restart runtime substrate, and
++# 0.20.110a0 implements PREC3 profile activation/reporting/cross-stage deployment.
+ # None changes the frozen MLFF scientific/materialization identity, so existing
+ # 0.20.99a0 campaign state and prediction caches remain reusable.
+ MLFF_DATA9B3_VERSION = "0.20.99a0"
+@@ -865,6 +866,90 @@
+     return policy
+ 
+ 
++def _critical_precision_policy(cfg: Mapping[str, Any]) -> Any:
++    """Return the profile-bound critical precision policy.
++
++    Schedule-free configurations retain the historical critical-FP64 policy.
++    Explicit PREC1 profiles bind the critical operation dtype into DATA8 and
++    all runtime stages consume the same policy rather than inferring behavior
++    from a local model dtype.
++    """
++
++    import mdstats
++
++    precision_schedule = _precision_schedule_policy(cfg)
++    if precision_schedule is None:
++        return mdstats.MaceCriticalPrecisionPolicy()
++    return mdstats.MaceCriticalPrecisionPolicy.for_dtype(
++        precision_schedule.critical_operation_dtype
++    )
++
++
++def _precision_profile_payload(cfg: Mapping[str, Any]) -> dict[str, Any]:
++    """Return one durable human-readable precision profile summary."""
++
++    policy = _precision_schedule_policy(cfg)
++    if policy is None:
++        return {
++            "schema": "mdstats.mlff-precision-profile.v1",
++            "requested_profile": "legacy",
++            "mode": "legacy_one_stage",
++            "model_dtype": str(_cfg(cfg, "model", "dtype", _cfg(cfg, "training", "dtype", "float32"))),
++            "training_dtype": str(_cfg(cfg, "training", "dtype", "float32")),
++            "critical_operation_dtype": "float64",
++            "evaluation_dtype": str(_cfg(cfg, "evaluation", "dtype", _cfg(cfg, "training", "dtype", "float32"))),
++            "verification_dtype": str(_cfg(cfg, "verification", "dtype", _cfg(cfg, "training", "dtype", "float32"))),
++            "export_dtype": None,
++            "policy_digest": None,
++            "stages": [],
++        }
++    preview = policy.resolve(
++        max_num_epochs=int(_cfg(cfg, "training", "max_num_epochs", 30)),
++        require_update_floor=False,
++    )
++    return {
++        "schema": "mdstats.mlff-precision-profile.v1",
++        "requested_profile": policy.requested_profile,
++        "mode": policy.mode,
++        "model_dtype": policy.model_dtype,
++        "training_dtype": policy.stages[0].dtype,
++        "critical_operation_dtype": policy.critical_operation_dtype,
++        "evaluation_dtype": policy.evaluation_dtype,
++        "verification_dtype": policy.verification_dtype,
++        "export_dtype": policy.export_dtype,
++        "policy_digest": policy.policy_digest,
++        "stages": [
++            {
++                "index": int(index),
++                "dtype": stage.dtype,
++                "epoch_start": int(stage.start_epoch),
++                "epoch_stop": int(stage.stop_epoch),
++                "epoch_count": int(stage.epoch_count),
++                "learning_rate_scale": float(stage.learning_rate_scale),
++            }
++            for index, stage in enumerate(preview.stages)
++        ],
++    }
++
++
++def _print_precision_profile(cfg: Mapping[str, Any], *, prefix: str = "precision") -> dict[str, Any]:
++    payload = _precision_profile_payload(cfg)
++    stages = payload["stages"]
++    if stages:
++        stage_text = " -> ".join(
++            f"{item['epoch_count']}x{item['dtype']}@LRx{item['learning_rate_scale']:g}"
++            for item in stages
++        )
++    else:
++        stage_text = str(payload["training_dtype"])
++    _ok(
++        f"{prefix}: profile={payload['requested_profile']}; training={stage_text}; "
++        f"critical={payload['critical_operation_dtype']}; eval={payload['evaluation_dtype']}; "
++        f"verify={payload['verification_dtype']}; export={payload['export_dtype'] or 'legacy'}"
++    )
++    return payload
++
++
+ def _optimizer_policy(
+     cfg: Mapping[str, Any],
+     *,
+@@ -876,13 +961,7 @@
+     import mdstats
+ 
+     precision_schedule = _precision_schedule_policy(cfg)
+-    critical_precision = (
+-        mdstats.MaceCriticalPrecisionPolicy()
+-        if precision_schedule is None
+-        else mdstats.MaceCriticalPrecisionPolicy.for_dtype(
+-            precision_schedule.critical_operation_dtype
+-        )
+-    )
++    critical_precision = _critical_precision_policy(cfg)
+     return mdstats.MaceOptimizerPolicy(
+         learning_rate=float(_cfg(cfg, "training", "learning_rate", 1.0e-4)),
+         batch_size=int(_cfg(cfg, "training", "batch_size", 2)),
+@@ -2044,8 +2123,8 @@
+     device = str(_cfg(cfg, "model", "device", _cfg(cfg, "training", "device", "cuda")))
+     dtype = str(_cfg(cfg, "model", "dtype", "float32"))
+     acceleration = _acceleration_policy(cfg)
+-    if dtype == "float32":
+-        mdstats.install_mace_critical_fp64_patch()
++    critical_precision = _critical_precision_policy(cfg)
++    mdstats.activate_mace_critical_precision_policy(critical_precision)
+     calculator = MACECalculator(
+         model_paths=str(model_path),
+         device=device,
+@@ -4499,6 +4578,9 @@
+         return 0
+ 
+     _mark_stage(store, paths, "prepare", StageState.RUNNING, "building production MACE data")
++    precision_profile = _print_precision_profile(cfg)
++    store.put_record("precision_profile", precision_profile)
++    _atomic_json(paths.results / "precision-profile.json", precision_profile)
+     frame_data: Mapping[str, Any] | None = None
+     try:
+         if not store.has_record("data5") or args.rebuild_catalog:
+@@ -5557,24 +5639,14 @@
+     _print_header("Production preflight")
+     precision_policy = _precision_schedule_policy(cfg)
+     if precision_policy is not None:
+-        if len(precision_policy.stages) > 1:
+-            message = (
+-                "The staged precision execution substrate is implemented by PREC2, but production "
+-                "profile activation and end-to-end qualification belong to PREC3; preflight refuses "
+-                "to authorize staged production training until that gate is complete."
+-            )
+-            _fail(message)
+-            _mark_stage(store, paths, "preflight", StageState.FAILED, message)
+-            return 1
+-        if precision_policy.critical_operation_dtype != "float64":
+-            message = (
+-                "Canonical single-precision critical-operation execution is frozen by PREC1 but "
+-                "runtime activation belongs to PREC3; preflight refuses to mislabel the existing "
+-                "critical-FP64 wrapper as canonical single precision."
+-            )
+-            _fail(message)
+-            _mark_stage(store, paths, "preflight", StageState.FAILED, message)
+-            return 1
++        _ok(
++            "precision profile: "
++            f"{precision_policy.requested_profile}; training={precision_policy.mode}; "
++            f"critical={precision_policy.critical_operation_dtype}; "
++            f"evaluation={precision_policy.evaluation_dtype}; "
++            f"verification={precision_policy.verification_dtype}; "
++            f"export={precision_policy.export_dtype}"
++        )
+     doctor_result = command_doctor(argparse.Namespace(config=args.config, embedded=True))
+     if doctor_result != 0:
+         failures.append("doctor failed")
+@@ -7448,6 +7520,7 @@
+     if not selected_runs:
+         raise CampaignCliError("No campaign runs matched the requested filters.")
+ 
++    _print_precision_profile(cfg)
+     execution_policy = _training_execution_policy(cfg)
+     runtime_input_failures: list[str] = []
+     for run in selected_runs:
+@@ -8820,6 +8893,9 @@
+                         job_working_directory=job_root,
+                         cache_directory=checkpoint_model_cache,
+                         wrapper_path=local_wrappers["mdstats-mace-train"],
++                        allow_checkpoint_dtype_template_cast=(
++                            evaluation_policy.critical_precision_policy is not None
++                        ),
+                     )
+                 return mdstats.run_prepared_mace_checkpoint_inference(
+                     prepared, calculator_model_path=calculator_model
+@@ -9741,6 +9817,7 @@
+         if full_evaluation
+         else "Interim completed-model evaluation"
+     )
++    precision_profile = _print_precision_profile(cfg)
+ 
+     true_replay_resolution = _resolve_true_label_replay_inputs(
+         cfg, paths, require_train=False
+@@ -9751,6 +9828,8 @@
+             f"({true_replay_resolution.monitor_artifact.configuration_count} configurations)"
+         )
+ 
++    precision_schedule = _precision_schedule_policy(cfg)
++    deployment_dtype = None if precision_schedule is None else precision_schedule.export_dtype
+     evaluation_policy = mdstats.CheckpointEvaluationPolicy(
+         focus_atomic_numbers=tuple(
+             int(v) for v in _cfg(cfg, "profile", "mobile_atomic_numbers", (3, 11, 19))
+@@ -9780,6 +9859,9 @@
+             )
+         ),
+         acceleration_policy=_acceleration_policy(cfg),
++        critical_precision_policy=(
++            None if precision_schedule is None else _critical_precision_policy(cfg)
++        ),
+     )
+     metric_policy = _checkpoint_metric_policy(cfg)
+ 
+@@ -9995,6 +10077,7 @@
+             job_working_directory=context["job_root"],
+             cache_directory=context["checkpoint_model_cache"],
+             wrapper_path=local_wrappers["mdstats-mace-train"],
++            allow_checkpoint_dtype_template_cast=precision_schedule is not None,
+         )
+         reuse_note = (
+             "completed training model"
+@@ -10019,6 +10102,7 @@
+                 minimum_members=1,
+             ),
+             wrapper_path=local_wrappers["mdstats-mace-select-head"],
++            deployment_dtype=deployment_dtype,
+         )
+         # Commit the durable publication receipt immediately.  A restart with a
+         # complete evaluation set but no receipt/file will rerun this exact path.
+@@ -10432,6 +10516,7 @@
+                         job_working_directory=active_job_root,
+                         cache_directory=active_checkpoint_model_cache,
+                         wrapper_path=local_wrappers["mdstats-mace-train"],
++                        allow_checkpoint_dtype_template_cast=precision_schedule is not None,
+                     )
+                 return mdstats.run_prepared_mace_checkpoint_inference(
+                     prepared,
+@@ -10531,6 +10616,7 @@
+             "true_label_refresh_limited_runs": refresh_limited_runs,
+             "true_label_refresh_unavailable_checkpoints": unavailable_refresh_checkpoints,
+             "production_freeze_created": False,
++            "precision": precision_profile,
+         }
+         store.put_record("interim_evaluation", summary)
+         _atomic_json(paths.results / "interim-completed-model-evaluation.json", summary)
+@@ -10610,6 +10696,7 @@
+                 job_working_directory=job_root,
+                 cache_directory=paths.runs / run.run_id / "checkpoint-model-cache",
+                 wrapper_path=local_wrappers["mdstats-mace-train"],
++                allow_checkpoint_dtype_template_cast=precision_schedule is not None,
+             )
+             output = interim_dir / f"{run.run_id}-target.model"
+             try:
+@@ -10620,6 +10707,7 @@
+                     output,
+                     source_model_path=model_source,
+                     wrapper_path=wrapper,
++                    deployment_dtype=deployment_dtype,
+                 )
+             finally:
+                 if model_source.resolve() != source.resolve():
+@@ -10791,6 +10879,7 @@
+             job_working_directory=job_root,
+             cache_directory=paths.runs / run.run_id / "checkpoint-model-cache",
+             wrapper_path=local_wrappers["mdstats-mace-train"],
++            allow_checkpoint_dtype_template_cast=precision_schedule is not None,
+         )
+         output = paths.models / f"{run.run_id}-target.model"
+         try:
+@@ -10801,6 +10890,7 @@
+                 output,
+                 source_model_path=model_source,
+                 wrapper_path=local_wrappers["mdstats-mace-select-head"],
++                deployment_dtype=deployment_dtype,
+             )
+         finally:
+             if model_source.resolve() != source.resolve():
+@@ -10830,6 +10920,7 @@
+     )
+     summary = {
+         "selected_training_mode": comparison.selected_training_mode.value,
++        "precision": precision_profile,
+         "selected_protocol_family_digest": comparison.selected_protocol_family_digest,
+         "committee_members": [v.exported_model_path for v in committee.members],
+         "protocol_freeze_digest": freeze.content_digest,
+@@ -10942,12 +11033,18 @@
+     device: str,
+     dtype: str,
+     acceleration_policy: Any,
+-) -> tuple[str, str, str, str]:
++    critical_precision_policy: Any | None = None,
++) -> tuple[str, str, str, str, str]:
+     return (
+         str(model_path.resolve()),
+         str(device),
+         str(dtype),
+         str(getattr(acceleration_policy, "policy_digest", repr(acceleration_policy))),
++        str(
++            getattr(critical_precision_policy, "policy_digest", "legacy-critical-fp64")
++            if critical_precision_policy is not None
++            else "legacy-critical-fp64"
++        ),
+     )
+ 
+ 
+@@ -10957,6 +11054,7 @@
+     device: str,
+     dtype: str,
+     acceleration_policy: Any,
++    critical_precision_policy: Any | None = None,
+ ) -> tuple[Any, bool]:
+     """Return one private calculator cached on the current verification worker.
+ 
+@@ -10970,16 +11068,26 @@
+         device=device,
+         dtype=dtype,
+         acceleration_policy=acceleration_policy,
++        critical_precision_policy=critical_precision_policy,
+     )
+     cached = getattr(_VERIFICATION_WORKER_LOCAL, "nve_calculator", None)
+     if cached is not None and cached[0] == key:
+         return cached[1], True
+-    calculator = _nve_calculator(
+-        model_path,
+-        device=device,
+-        dtype=dtype,
+-        acceleration_policy=acceleration_policy,
+-    )
++    if critical_precision_policy is None:
++        calculator = _nve_calculator(
++            model_path,
++            device=device,
++            dtype=dtype,
++            acceleration_policy=acceleration_policy,
++        )
++    else:
++        calculator = _nve_calculator(
++            model_path,
++            device=device,
++            dtype=dtype,
++            acceleration_policy=acceleration_policy,
++            critical_precision_policy=critical_precision_policy,
++        )
+     _VERIFICATION_WORKER_LOCAL.nve_calculator = (key, calculator)
+     return calculator, False
+ 
+@@ -11005,12 +11113,17 @@
+     device: str,
+     dtype: str,
+     acceleration_policy: Any,
++    critical_precision_policy: Any | None = None,
+ ) -> Any:
+     import mdstats
+     from mace.calculators import MACECalculator
+ 
+-    if dtype == "float32":
+-        mdstats.install_mace_critical_fp64_patch()
++    active_critical_precision = (
++        mdstats.MaceCriticalPrecisionPolicy()
++        if critical_precision_policy is None
++        else critical_precision_policy
++    )
++    mdstats.activate_mace_critical_precision_policy(active_critical_precision)
+     return MACECalculator(
+         model_paths=str(model_path),
+         device=device,
+@@ -11031,6 +11144,7 @@
+     timestep_fs: float,
+     steps: int,
+     velocity_seed: int,
++    critical_precision_policy: Any | None = None,
+     sample_interval_steps: int = 10,
+     calculator: Any | None = None,
+     structure_atoms: Any | None = None,
+@@ -11057,6 +11171,7 @@
+                 device=device,
+                 dtype=dtype,
+                 acceleration_policy=acceleration_policy,
++                critical_precision_policy=critical_precision_policy,
+             )
+         else:
+             active_calculator = _nve_calculator(
+@@ -11064,6 +11179,7 @@
+                 device=device,
+                 dtype=dtype,
+                 acceleration_policy=acceleration_policy,
++                critical_precision_policy=critical_precision_policy,
+             )
+             calculator_reused = False
+     atoms.calc = active_calculator
+@@ -11205,6 +11321,7 @@
+             f"on {len(members)} completed models"
+         )
+     _mark_stage(store, paths, "verify", StageState.RUNNING, stage_message)
++    precision_profile = _print_precision_profile(cfg)
+     structures = list(args.structure or _cfg(cfg, "verification", "structures", ()))
+     if not structures:
+         raise CampaignCliError(
+@@ -11227,6 +11344,7 @@
+     min_distance_limit = float(_cfg(cfg, "verification", "minimum_pair_distance_angstrom", 0.8))
+     max_force_limit = float(_cfg(cfg, "verification", "maximum_force_ev_per_angstrom", 100.0))
+     acceleration = _acceleration_policy(cfg)
++    critical_precision = _critical_precision_policy(cfg)
+     screening_steps = int(_cfg(cfg, "verification", "screening_steps", 200))
+     sample_interval_steps = int(
+         _cfg(cfg, "verification", "sample_interval_steps", 10)
+@@ -11329,6 +11447,7 @@
+             "device": device,
+             "dtype": dtype,
+             "acceleration_policy_digest": acceleration.policy_digest,
++            "critical_precision_policy_digest": critical_precision.policy_digest,
+             "runtime_digest": verification_runtime_digest,
+         }
+         case_digest = _verification_case_digest(identity)
+@@ -11390,6 +11509,7 @@
+                 device=device,
+                 dtype=dtype,
+                 acceleration_policy=acceleration,
++                critical_precision_policy=critical_precision,
+                 temperature=active_temperature,
+                 timestep_fs=timestep,
+                 steps=active_steps,
+@@ -11480,6 +11600,7 @@
+             else verification_set.evidence_level.value
+         ),
+         "scientific_acceptance_status": "required_separately",
++        "precision": precision_profile,
+         "protocol_freeze_digest": (
+             None if freeze is None else freeze.content_digest
+         ),
+@@ -12094,7 +12215,7 @@
+ replay_valid_configurations = 8
+ 
+ [export]
+-# Final deployment dtype is explicit even though PREC3 owns runtime activation.
++# Final deployment dtype is explicit and enforced by PREC3 for canonical profiles.
+ dtype = "{precision['export_dtype']}"
+ 
+ [verification]
+@@ -12183,7 +12304,7 @@
+ `init --precision double` for FP64 throughout or `init --precision refine` for the planned
+ 80% FP32 -> 20% FP64 refinement schedule. PREC1 freezes configuration and protocol identity;
+ PREC2 implements the exact in-process FP32 -> FP64 transition and restart substrate. Production
+-profile activation remains intentionally fail-closed until PREC3 completes end-to-end qualification.
++profile activation is qualified by PREC3; the generated profile remains immutable and no hardware heuristic may substitute another precision mode.
+ 
+ The final `verify` command is a bounded pre-deployment stability gate. Production
+ committee/final models receive the full configured structure x temperature NVE matrix.
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/mdstats/training_data/campaign_execution.py /mnt/data/mdstats109_full/mdstats/training_data/campaign_execution.py
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/mdstats/training_data/campaign_execution.py	2026-08-08 13:19:04.000000000 +0000
++++ /mnt/data/mdstats109_full/mdstats/training_data/campaign_execution.py	2026-08-08 21:01:54.988460211 +0000
+@@ -48,7 +48,12 @@
+     TrainingCampaignRunPlan,
+     inventory_mace_checkpoints,
+ )
+-from .critical_precision import install_mace_critical_fp64_patch
++from .critical_precision import (
++    CRITICAL_PRECISION_POLICY_ENVIRONMENT_VARIABLE,
++    MaceCriticalPrecisionPolicy,
++    activate_mace_critical_precision_policy,
++    install_mace_critical_fp64_patch,
++)
+ from .acceleration import MaceAccelerationPolicy
+ from .mace_export import MaceExtxyzArtifact
+ from .mace_compatibility import mace_runtime_warning_handled
+@@ -62,7 +67,8 @@
+ TRAINING_EXECUTION_POLICY_LEGACY_SCHEMA = "mdstats.training-execution-policy.v1"
+ TRAINING_RUN_ATTEMPT_SCHEMA = "mdstats.training-run-attempt.v1"
+ TRAINING_RUN_EXECUTION_SCHEMA = "mdstats.training-run-execution.v1"
+-CHECKPOINT_EVALUATION_POLICY_SCHEMA = "mdstats.checkpoint-evaluation-policy.v4"
++CHECKPOINT_EVALUATION_POLICY_SCHEMA = "mdstats.checkpoint-evaluation-policy.v5"
++CHECKPOINT_EVALUATION_POLICY_LEGACY_V4_SCHEMA = "mdstats.checkpoint-evaluation-policy.v4"
+ CHECKPOINT_EVALUATION_POLICY_LEGACY_V3_SCHEMA = "mdstats.checkpoint-evaluation-policy.v3"
+ CHECKPOINT_EVALUATION_POLICY_LEGACY_V2_SCHEMA = "mdstats.checkpoint-evaluation-policy.v2"
+ CHECKPOINT_EVALUATION_POLICY_LEGACY_SCHEMA = "mdstats.checkpoint-evaluation-policy.v1"
+@@ -192,6 +198,21 @@
+     return candidate if candidate.is_file() else None
+ 
+ 
++def _uniform_floating_state_dtype(state: Mapping[str, Any]) -> str | None:
++    """Return the unique floating dtype carried by a checkpoint model state."""
++
++    values: set[str] = set()
++    for value in state.values():
++        is_floating = bool(getattr(value, "is_floating_point", lambda: False)())
++        if is_floating:
++            values.add(str(value.dtype).removeprefix("torch."))
++    if not values:
++        return None
++    if len(values) != 1 or next(iter(values)) not in {"float32", "float64"}:
++        return None
++    return next(iter(values))
++
++
+ def _state_dict_structure_compatible(model: Any, state: Mapping[str, Any]) -> bool:
+     """Require exact state keys/shapes/dtypes so load_state_dict cannot cast silently."""
+ 
+@@ -237,6 +258,8 @@
+     template_path: Path,
+     checkpoint_payload: Mapping[str, Any],
+     config_payload: Mapping[str, Any],
++    *,
++    allow_dtype_cast: bool = False,
+ ) -> tuple[Any, bool] | None:
+     """Restore one MACE checkpoint state into a completed-run architecture template.
+ 
+@@ -262,6 +285,20 @@
+     state = checkpoint_payload.get("model")
+     if not isinstance(state, Mapping):
+         return None
++    checkpoint_dtype = _uniform_floating_state_dtype(state)
++    if checkpoint_dtype is None:
++        return None
++    template_dtype = _uniform_floating_state_dtype(model.state_dict())
++    if template_dtype is None:
++        return None
++    if template_dtype != checkpoint_dtype:
++        if not allow_dtype_cast:
++            return None
++        try:
++            import torch
++            model = model.to(dtype=torch.float32 if checkpoint_dtype == "float32" else torch.float64)
++        except Exception:
++            return None
+ 
+     enable_cueq = _bool_config(config_payload.get("enable_cueq"))
+     only_cueq = _bool_config(config_payload.get("only_cueq"))
+@@ -363,6 +400,7 @@
+     wrapper_path: str | Path | None = None,
+     environment: Mapping[str, str] | None = None,
+     timeout_seconds: float = 3600.0,
++    allow_checkpoint_dtype_template_cast: bool = False,
+ ) -> Path:
+     """Return a deployable whole-model serialization for one exact checkpoint.
+ 
+@@ -449,7 +487,10 @@
+     template = _training_whole_model_path(cache_root, name)
+     if template is not None:
+         report_inference_worker_phase("restoring checkpoint weights directly")
+-        restored = _restore_checkpoint_into_template(template, payload, loaded)
++        restored = _restore_checkpoint_into_template(
++            template, payload, loaded,
++            allow_dtype_cast=allow_checkpoint_dtype_template_cast,
++        )
+         if restored is not None:
+             direct_model, template_matches = restored
+             if template_matches:
+@@ -505,8 +546,12 @@
+     shutil.copy2(source, qualified_checkpoint)
+ 
+     derived = dict(loaded)
++    checkpoint_state_dtype = _uniform_floating_state_dtype(payload["model"])
++    if checkpoint_state_dtype is None:
++        raise TrainingDataInputError("Checkpoint model state does not carry one qualified floating dtype.")
+     derived.update(
+         {
++            "default_dtype": checkpoint_state_dtype,
+             "model_dir": str(model_dir),
+             "checkpoints_dir": str(checkpoints_dir),
+             "log_dir": str(log_dir),
+@@ -1024,6 +1069,14 @@
+     merged_env = dict(os.environ)
+     if environment is not None:
+         merged_env.update({str(k): str(v) for k, v in environment.items()})
++    # PREC3 binds the wrapper runtime to the immutable DATA8 critical-precision
++    # policy.  Missing explicit schedules still carry the historical FP64 policy
++    # through the optimizer identity, so no legacy behavior is changed here.
++    merged_env[CRITICAL_PRECISION_POLICY_ENVIRONMENT_VARIABLE] = json.dumps(
++        job.protocol.optimizer_policy.critical_precision_policy.to_dict(),
++        sort_keys=True,
++        separators=(",", ":"),
++    )
+     # Python hash randomization is fixed before the nested MACE interpreter is
+     # launched.  MACE itself receives the same run seed through DATA8.
+     merged_env.setdefault("PYTHONHASHSEED", str(run_plan.seed))
+@@ -1298,6 +1351,13 @@
+     cache_replay_baseline: bool = True
+     evaluate_foundation_on_target: bool = False
+     acceleration_policy: MaceAccelerationPolicy = field(default_factory=MaceAccelerationPolicy)
++    # None preserves the historical critical-FP64 evaluation identity.  PREC3
++    # passes an explicit profile-bound policy for canonical single/double/refine.
++    critical_precision_policy: MaceCriticalPrecisionPolicy | None = None
++
++    @property
++    def active_critical_precision_policy(self) -> MaceCriticalPrecisionPolicy:
++        return MaceCriticalPrecisionPolicy() if self.critical_precision_policy is None else self.critical_precision_policy
+ 
+     def __post_init__(self) -> None:
+         if not self.target_head_name.strip() or not self.replay_head_name.strip() or not self.energy_key.strip() or not self.forces_key.strip():
+@@ -1323,11 +1383,16 @@
+     def _payload(self) -> dict[str, Any]:
+         # Preserve the exact v3 identity when the new comparison is disabled.
+         # This keeps legacy campaign TOMLs and cached evaluations reusable.
++        explicit_precision = self.critical_precision_policy is not None
+         payload = {
+             "schema": (
+                 CHECKPOINT_EVALUATION_POLICY_SCHEMA
+-                if self.evaluate_foundation_on_target
+-                else CHECKPOINT_EVALUATION_POLICY_LEGACY_V3_SCHEMA
++                if explicit_precision
++                else (
++                    CHECKPOINT_EVALUATION_POLICY_LEGACY_V4_SCHEMA
++                    if self.evaluate_foundation_on_target
++                    else CHECKPOINT_EVALUATION_POLICY_LEGACY_V3_SCHEMA
++                )
+             ),
+             "target_head_name": self.target_head_name,
+             "replay_head_name": self.replay_head_name,
+@@ -1351,6 +1416,8 @@
+         }
+         if self.evaluate_foundation_on_target:
+             payload["evaluate_foundation_on_target"] = True
++        if explicit_precision:
++            payload["critical_precision_policy"] = self.critical_precision_policy.to_dict()
+         return payload
+ 
+     @property
+@@ -1364,6 +1431,7 @@
+     def from_dict(cls, payload: Mapping[str, Any]) -> "CheckpointEvaluationPolicy":
+         if payload.get("schema") not in {
+             CHECKPOINT_EVALUATION_POLICY_SCHEMA,
++            CHECKPOINT_EVALUATION_POLICY_LEGACY_V4_SCHEMA,
+             CHECKPOINT_EVALUATION_POLICY_LEGACY_V3_SCHEMA,
+             CHECKPOINT_EVALUATION_POLICY_LEGACY_V2_SCHEMA,
+             CHECKPOINT_EVALUATION_POLICY_LEGACY_SCHEMA,
+@@ -1387,7 +1455,7 @@
+             default_dtype=str(payload["default_dtype"]),
+             batch_size=(
+                 int(payload.get("batch_size", 8))
+-                if payload.get("schema") in {CHECKPOINT_EVALUATION_POLICY_SCHEMA, CHECKPOINT_EVALUATION_POLICY_LEGACY_V3_SCHEMA}
++                if payload.get("schema") in {CHECKPOINT_EVALUATION_POLICY_SCHEMA, CHECKPOINT_EVALUATION_POLICY_LEGACY_V4_SCHEMA, CHECKPOINT_EVALUATION_POLICY_LEGACY_V3_SCHEMA}
+                 else 1
+             ),
+             cache_monitor_datasets=bool(payload.get("cache_monitor_datasets", True)),
+@@ -1398,8 +1466,39 @@
+                 if payload.get("acceleration_policy") is None
+                 else MaceAccelerationPolicy.from_dict(payload["acceleration_policy"])
+             ),
++            critical_precision_policy=(
++                None
++                if payload.get("critical_precision_policy") is None
++                else MaceCriticalPrecisionPolicy.from_dict(payload["critical_precision_policy"])
++            ),
+         )
+         expected_digest = result.policy_digest
++        if payload.get("schema") == CHECKPOINT_EVALUATION_POLICY_LEGACY_V4_SCHEMA:
++            expected_digest = digest(
++                {
++                    "schema": CHECKPOINT_EVALUATION_POLICY_LEGACY_V4_SCHEMA,
++                    "target_head_name": result.target_head_name,
++                    "replay_head_name": result.replay_head_name,
++                    "replay_baseline_head_name": result.replay_baseline_head_name,
++                    "energy_key": result.energy_key,
++                    "forces_key": result.forces_key,
++                    "stress_key": result.stress_key,
++                    "focus_atomic_numbers": list(result.focus_atomic_numbers),
++                    "condition_keys": list(result.condition_keys),
++                    "replay_metric": result.replay_metric,
++                    "replay_baseline_floor": result.replay_baseline_floor,
++                    "combined_energy_weight": result.combined_energy_weight,
++                    "combined_force_weight": result.combined_force_weight,
++                    "combined_stress_weight": result.combined_stress_weight,
++                    "device": result.device,
++                    "default_dtype": result.default_dtype,
++                    "batch_size": result.batch_size,
++                    "cache_monitor_datasets": bool(result.cache_monitor_datasets),
++                    "cache_replay_baseline": bool(result.cache_replay_baseline),
++                    "acceleration_policy": result.acceleration_policy.to_dict(),
++                    "evaluate_foundation_on_target": True,
++                }
++            )
+         if payload.get("schema") == CHECKPOINT_EVALUATION_POLICY_LEGACY_V3_SCHEMA:
+             expected_digest = digest(
+                 {
+@@ -1678,7 +1777,7 @@
+         # campaign path uses MaceCalculatorProvider.from_model_path, which installs
+         # the patch itself).  Avoid re-importing/re-patching MACE for every batch
+         # when a private provider is intentionally being reused.
+-        install_mace_critical_fp64_patch()
++        activate_mace_critical_precision_policy(policy.active_critical_precision_policy)
+         from .model_features import MaceCalculatorProvider
+ 
+         calculator_kwargs = dict(policy.acceleration_policy.calculator_kwargs())
+@@ -1688,6 +1787,7 @@
+             model_path,
+             device=policy.device,
+             default_dtype=policy.default_dtype,
++            critical_precision_policy=policy.active_critical_precision_policy,
+             **calculator_kwargs,
+         )
+     else:
+@@ -2862,6 +2962,7 @@
+                 active_calculator_model,
+                 device=policy.device,
+                 default_dtype=policy.default_dtype,
++                critical_precision_policy=policy.active_critical_precision_policy,
+                 **candidate_kwargs,
+             )
+         else:
+@@ -2882,6 +2983,7 @@
+                 baseline,
+                 device=policy.device,
+                 default_dtype=policy.default_dtype,
++                critical_precision_policy=policy.active_critical_precision_policy,
+                 **baseline_kwargs,
+             )
+         else:
+@@ -3961,6 +4063,69 @@
+         staged.unlink(missing_ok=True)
+ 
+ 
++def _export_target_head_model_with_dtype(
++    source_model: Path,
++    output: Path,
++    *,
++    target_head_name: str,
++    target_device: str,
++    wrapper_path: str | Path | None,
++    required_wrapper: str,
++    failure_prefix: str,
++    deployment_dtype: str | None,
++) -> None:
++    """Export a target head and optionally enforce its deployment dtype.
++
++    ``deployment_dtype=None`` preserves the historical byte path.  Explicit
++    precision profiles route the extracted head through the existing exact
++    MACE deployment converter so a refine checkpoint selected from the FP32
++    stage still produces a uniformly FP64 deployment artifact.
++    """
++
++    if deployment_dtype is None:
++        _export_target_head_model(
++            source_model, output,
++            target_head_name=target_head_name,
++            target_device=target_device,
++            wrapper_path=wrapper_path,
++            required_wrapper=required_wrapper,
++            failure_prefix=failure_prefix,
++        )
++        return
++    output.parent.mkdir(parents=True, exist_ok=True)
++    fd, intermediate_name = tempfile.mkstemp(
++        prefix=f".{output.stem}-head-", suffix=output.suffix or ".model", dir=output.parent
++    )
++    os.close(fd)
++    intermediate = Path(intermediate_name)
++    intermediate.unlink(missing_ok=True)
++    try:
++        _export_target_head_model(
++            source_model, intermediate,
++            target_head_name=target_head_name,
++            target_device=target_device,
++            wrapper_path=wrapper_path,
++            required_wrapper=required_wrapper,
++            failure_prefix=failure_prefix,
++        )
++        from .mace_deployment import MaceDeploymentExportPolicy, export_mace_deployment_artifact
++
++        export_mace_deployment_artifact(
++            intermediate,
++            output.parent,
++            deployment_dtype=str(deployment_dtype),
++            filename=output.name,
++            target_head=target_head_name,
++            policy=MaceDeploymentExportPolicy(
++                deployment_dtype=str(deployment_dtype),
++                require_inference_probe=False,
++            ),
++            overwrite=True,
++        )
++    finally:
++        intermediate.unlink(missing_ok=True)
++
++
+ def export_target_head_member(
+     run_plan: TrainingCampaignRunPlan,
+     selection: CheckpointSelectionRecord,
+@@ -3970,6 +4135,7 @@
+     source_model_path: str | Path | None = None,
+     policy: CommitteeExportPolicy = CommitteeExportPolicy(),
+     wrapper_path: str | Path | None = None,
++    deployment_dtype: str | None = None,
+ ) -> CommitteeMemberRecord:
+     if run_plan.kind is not MaceJobKind.FINAL_DEVELOPMENT:
+         raise TrainingDataInputError("Committee members must come from final-development runs.")
+@@ -3982,7 +4148,7 @@
+         raise TrainingDataInputError("Committee source checkpoint bytes do not match selection.")
+     if not model_source.is_file():
+         raise TrainingDataInputError("Deployable source model for target-head export is missing.")
+-    _export_target_head_model(
++    _export_target_head_model_with_dtype(
+         model_source,
+         output,
+         target_head_name=policy.target_head_name,
+@@ -3990,6 +4156,7 @@
+         wrapper_path=wrapper_path,
+         required_wrapper=policy.required_wrapper,
+         failure_prefix="Target-head export",
++        deployment_dtype=deployment_dtype,
+     )
+     return CommitteeMemberRecord(
+         protocol_family_digest=run_plan.protocol_family_digest,
+@@ -4110,6 +4277,7 @@
+     source_model_path: str | Path | None = None,
+     policy: CommitteeExportPolicy = CommitteeExportPolicy(minimum_members=1),
+     wrapper_path: str | Path | None = None,
++    deployment_dtype: str | None = None,
+ ) -> VerificationModelRecord:
+     if selection.run_plan_digest != run_plan.content_digest:
+         raise TrainingDataInputError("Verification selection does not belong to the run.")
+@@ -4120,7 +4288,7 @@
+         raise TrainingDataInputError("Verification source checkpoint bytes do not match selection.")
+     if not model_source.is_file():
+         raise TrainingDataInputError("Deployable source model for verification export is missing.")
+-    _export_target_head_model(
++    _export_target_head_model_with_dtype(
+         model_source,
+         output,
+         target_head_name=policy.target_head_name,
+@@ -4128,6 +4296,7 @@
+         wrapper_path=wrapper_path,
+         required_wrapper=policy.required_wrapper,
+         failure_prefix="Target-head verification export",
++        deployment_dtype=deployment_dtype,
+     )
+     return VerificationModelRecord(
+         protocol_family_digest=run_plan.protocol_family_digest,
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/mdstats/training_data/critical_precision.py /mnt/data/mdstats109_full/mdstats/training_data/critical_precision.py
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/mdstats/training_data/critical_precision.py	2026-08-08 12:56:22.000000000 +0000
++++ /mnt/data/mdstats109_full/mdstats/training_data/critical_precision.py	2026-08-08 20:52:33.524748551 +0000
+@@ -24,10 +24,12 @@
+ 
+ MACE_CRITICAL_PRECISION_POLICY_SCHEMA = "mdstats.mace-critical-precision-policy.v2"
+ MACE_CRITICAL_PRECISION_POLICY_V1_SCHEMA = "mdstats.mace-critical-precision-policy.v1"
+-MACE_CRITICAL_PRECISION_AUDIT_SCHEMA = "mdstats.mace-critical-precision-audit.v1"
++MACE_CRITICAL_PRECISION_AUDIT_SCHEMA = "mdstats.mace-critical-precision-audit.v2"
++MACE_CRITICAL_PRECISION_AUDIT_V1_SCHEMA = "mdstats.mace-critical-precision-audit.v1"
+ ASE_MD_STATE_PRECISION_AUDIT_SCHEMA = "mdstats.ase-md-state-precision-audit.v1"
+ SUPPORTED_MACE_VERSION = "0.3.16"
+ PATCH_ENVIRONMENT_VARIABLE = "MDSTATS_MACE_CRITICAL_FP64"
++CRITICAL_PRECISION_POLICY_ENVIRONMENT_VARIABLE = "MDSTATS_MACE_CRITICAL_PRECISION_POLICY"
+ 
+ 
+ @dataclass(frozen=True, slots=True)
+@@ -156,24 +158,32 @@
+     patch_installed: bool
+     tf32_allowed: bool
+     policy_digest: str
++    expected_observable_dtype: str = "float64"
++    expected_patch_installed: bool = True
++
++    def __post_init__(self) -> None:
++        if self.expected_observable_dtype not in {"float32", "float64"}:
++            raise TrainingDataInputError("Critical-precision audit expected dtype must be float32 or float64.")
+ 
+     @property
+     def passed(self) -> bool:
++        expected = self.expected_observable_dtype
+         return (
+             self.mace_version == SUPPORTED_MACE_VERSION
+             and self.model_class.endswith("ScaleShiftMACE")
+             and self.model_dtype in {"float32", "float64"}
+-            and self.energy_dtype == "float64"
+-            and self.force_dtype in {None, "float64"}
+-            and self.virial_dtype in {None, "float64"}
+-            and self.stress_dtype in {None, "float64"}
+-            and self.patch_installed
++            and self.energy_dtype == expected
++            and self.force_dtype in {None, expected}
++            and self.virial_dtype in {None, expected}
++            and self.stress_dtype in {None, expected}
++            and self.patch_installed == self.expected_patch_installed
+             and not self.tf32_allowed
+         )
+ 
+     def _payload(self) -> dict[str, Any]:
+-        return {
+-            "schema": MACE_CRITICAL_PRECISION_AUDIT_SCHEMA,
++        legacy = self.expected_observable_dtype == "float64" and self.expected_patch_installed
++        payload = {
++            "schema": MACE_CRITICAL_PRECISION_AUDIT_V1_SCHEMA if legacy else MACE_CRITICAL_PRECISION_AUDIT_SCHEMA,
+             "mace_version": self.mace_version,
+             "model_class": self.model_class,
+             "model_dtype": self.model_dtype,
+@@ -186,6 +196,10 @@
+             "policy_digest": self.policy_digest,
+             "passed": self.passed,
+         }
++        if not legacy:
++            payload["expected_observable_dtype"] = self.expected_observable_dtype
++            payload["expected_patch_installed"] = self.expected_patch_installed
++        return payload
+ 
+     @property
+     def content_digest(self) -> str:
+@@ -196,8 +210,9 @@
+ 
+     @classmethod
+     def from_dict(cls, payload: Mapping[str, Any]) -> "MaceCriticalPrecisionAudit":
+-        if payload.get("schema") != MACE_CRITICAL_PRECISION_AUDIT_SCHEMA:
++        if payload.get("schema") not in {MACE_CRITICAL_PRECISION_AUDIT_SCHEMA, MACE_CRITICAL_PRECISION_AUDIT_V1_SCHEMA}:
+             raise TrainingDataSerializationError("Unsupported critical-precision audit schema.")
++        legacy = payload.get("schema") == MACE_CRITICAL_PRECISION_AUDIT_V1_SCHEMA
+         result = cls(
+             mace_version=str(payload["mace_version"]),
+             model_class=str(payload["model_class"]),
+@@ -209,6 +224,8 @@
+             patch_installed=bool(payload["patch_installed"]),
+             tf32_allowed=bool(payload["tf32_allowed"]),
+             policy_digest=str(payload["policy_digest"]),
++            expected_observable_dtype=("float64" if legacy else str(payload["expected_observable_dtype"])),
++            expected_patch_installed=(True if legacy else bool(payload["expected_patch_installed"])),
+         )
+         if payload.get("content_digest") not in (None, result.content_digest):
+             raise TrainingDataSerializationError("Critical-precision audit digest mismatch.")
+@@ -641,7 +658,10 @@
+         torch.backends.cuda.matmul.allow_tf32 = False
+     if hasattr(torch.backends, "cudnn"):
+         torch.backends.cudnn.allow_tf32 = False
+-    os.environ[PATCH_ENVIRONMENT_VARIABLE] = "1"
++    if active.strategy == "scaleshift_mace_0.3.16_runtime_patch_v1":
++        os.environ[PATCH_ENVIRONMENT_VARIABLE] = "1"
++    else:
++        os.environ.pop(PATCH_ENVIRONMENT_VARIABLE, None)
+ 
+ 
+ def install_mace_critical_fp64_patch(
+@@ -688,6 +708,27 @@
+         _PATCH_INSTALLED = True
+ 
+ 
++def activate_mace_critical_precision_policy(
++    policy: MaceCriticalPrecisionPolicy | None = None,
++) -> None:
++    """Activate one explicit profile-bound critical-precision policy.
++
++    Historical/legacy execution uses the qualified FP64 reduction patch.  Canonical
++    ``single`` instead restores native MACE arithmetic, disables TF32, and leaves
++    critical/global observables in the model's FP32 dtype.
++    """
++
++    active = MaceCriticalPrecisionPolicy() if policy is None else policy
++    if active.strategy == "scaleshift_mace_0.3.16_runtime_patch_v1":
++        install_mace_critical_fp64_patch(active)
++        return
++    if active.strategy == "native_model_precision_v1":
++        uninstall_mace_critical_fp64_patch()
++        configure_torch_critical_precision(active)
++        return
++    raise TrainingDataInputError(f"Unsupported critical-precision strategy {active.strategy!r}.")
++
++
+ def uninstall_mace_critical_fp64_patch() -> None:
+     global _ORIGINAL_FORWARD, _ORIGINAL_CONDITIONAL_HUBER_FORCES, _PATCH_INSTALLED
+     if not _PATCH_INSTALLED:
+@@ -745,7 +786,9 @@
+             else False
+         ),
+         policy_digest=active.policy_digest,
++        expected_observable_dtype=active.observable_output_dtype,
++        expected_patch_installed=(active.strategy == "scaleshift_mace_0.3.16_runtime_patch_v1"),
+     )
+     if not audit.passed:
+-        raise TrainingDataInputError(f"Critical-FP64 audit failed: {audit.to_dict()!r}")
++        raise TrainingDataInputError(f"Critical-precision audit failed: {audit.to_dict()!r}")
+     return audit
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/mdstats/training_data/critical_precision_cli.py /mnt/data/mdstats109_full/mdstats/training_data/critical_precision_cli.py
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/mdstats/training_data/critical_precision_cli.py	2026-08-08 13:18:38.000000000 +0000
++++ /mnt/data/mdstats109_full/mdstats/training_data/critical_precision_cli.py	2026-08-08 20:52:33.524908398 +0000
+@@ -10,6 +10,7 @@
+ 
+ from __future__ import annotations
+ 
++import json
+ import logging
+ from contextlib import contextmanager
+ import os
+@@ -23,7 +24,11 @@
+ 
+ import numpy as np
+ 
+-from .critical_precision import install_mace_critical_fp64_patch
++from .critical_precision import (
++    CRITICAL_PRECISION_POLICY_ENVIRONMENT_VARIABLE,
++    MaceCriticalPrecisionPolicy,
++    activate_mace_critical_precision_policy,
++)
+ from .mace_compatibility import mace_runtime_warning_handled, mace_runtime_warning_scope
+ 
+ 
+@@ -231,8 +236,33 @@
+     patched.__doc__ = original.__doc__
+     mace_tools.train = patched
+ 
++
++CRITICAL_PRECISION_POLICY_ENV = CRITICAL_PRECISION_POLICY_ENVIRONMENT_VARIABLE
++
++
++def _critical_precision_policy_from_environment() -> MaceCriticalPrecisionPolicy:
++    """Restore the protocol-bound critical policy for one wrapper process.
++
++    Missing environment state is intentionally interpreted as the historical
++    critical-FP64 policy so old direct wrapper invocations remain compatible.
++    """
++
++    raw = os.environ.get(CRITICAL_PRECISION_POLICY_ENV)
++    if raw in (None, ""):
++        return MaceCriticalPrecisionPolicy()
++    try:
++        payload = json.loads(raw)
++        if not isinstance(payload, dict):
++            raise TypeError("policy payload must be a JSON object")
++        return MaceCriticalPrecisionPolicy.from_dict(payload)
++    except Exception as exc:
++        raise RuntimeError(
++            f"Invalid {CRITICAL_PRECISION_POLICY_ENV} wrapper policy: {exc}"
++        ) from exc
++
++
+ def _dispatch(module: str) -> None:
+-    install_mace_critical_fp64_patch()
++    activate_mace_critical_precision_policy(_critical_precision_policy_from_environment())
+     if module == "train":
+         _install_mace_restart_epoch_patch()
+         from mace.cli.run_train import main
+@@ -348,10 +378,11 @@
+             "    if os.getppid() != _mdstats_parent_pid:",
+             "        os.kill(os.getpid(), signal.SIGTERM)",
+             f"sys.path.insert(0, {str(source_root)!r})",
+-            "from mdstats.training_data.critical_precision import install_mace_critical_fp64_patch",
++            "from mdstats.training_data.critical_precision import activate_mace_critical_precision_policy",
++            "from mdstats.training_data.critical_precision_cli import _critical_precision_policy_from_environment",
+             "from mdstats.training_data.critical_precision_cli import _install_mace_restart_epoch_patch",
+             "from mdstats.training_data.mace_compatibility import mace_runtime_warning_scope",
+-            "install_mace_critical_fp64_patch()",
++            "activate_mace_critical_precision_policy(_critical_precision_policy_from_environment())",
+             "_install_mace_restart_epoch_patch()" if module == "train" else "pass",
+             imports[module],
+             f"with mace_runtime_warning_scope({('MACE ' + module + ' child execution')!r}):",
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/mdstats/training_data/mace_realization.py /mnt/data/mdstats109_full/mdstats/training_data/mace_realization.py
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/mdstats/training_data/mace_realization.py	2026-08-06 00:27:44.000000000 +0000
++++ /mnt/data/mdstats109_full/mdstats/training_data/mace_realization.py	2026-08-08 20:56:40.441839894 +0000
+@@ -36,7 +36,11 @@
+ )
+ from .protocol import MaceJobArtifact
+ from .precision import MacePrecisionTransitionRecord, build_mace_precision_transition_record
+-from .critical_precision import MaceCriticalPrecisionAudit
++from .critical_precision import (
++    CRITICAL_PRECISION_POLICY_ENVIRONMENT_VARIABLE,
++    MaceCriticalPrecisionAudit,
++    MaceCriticalPrecisionPolicy,
++)
+ 
+ MACE_CONFIG_REALIZATION_POLICY_SCHEMA = "mdstats.mace-config-realization-policy.v1"
+ MACE_CONFIG_REALIZATION_RECORD_SCHEMA = "mdstats.mace-config-realization-record.v3"
+@@ -254,16 +258,32 @@
+     completion_paths: Sequence[Path] = (),
+     completion_text: str | None = None,
+     install_critical_fp64: bool = False,
++    critical_precision_policy: MaceCriticalPrecisionPolicy | None = None,
+ ) -> MaceCliCommandResult:
+     """Run a real MACE CLI main function with external completion sentinels."""
+ 
+-    precision_bootstrap = (
+-        "from mdstats.training_data.critical_precision import "
+-        "install_mace_critical_fp64_patch as _install_critical_fp64; "
+-        "_install_critical_fp64(); "
+-        if install_critical_fp64
+-        else ""
+-    )
++    if critical_precision_policy is not None:
++        active_env = dict(env)
++        active_env[CRITICAL_PRECISION_POLICY_ENVIRONMENT_VARIABLE] = json.dumps(
++            critical_precision_policy.to_dict(), sort_keys=True, separators=(",", ":")
++        )
++        env = active_env
++        precision_bootstrap = (
++            "import json as _json; "
++            "from mdstats.training_data.critical_precision import "
++            "CRITICAL_PRECISION_POLICY_ENVIRONMENT_VARIABLE as _cp_env, "
++            "MaceCriticalPrecisionPolicy as _CP, "
++            "activate_mace_critical_precision_policy as _activate_cp; "
++            "_activate_cp(_CP.from_dict(_json.loads(os.environ[_cp_env]))); "
++        )
++    else:
++        precision_bootstrap = (
++            "from mdstats.training_data.critical_precision import "
++            "install_mace_critical_fp64_patch as _install_critical_fp64; "
++            "_install_critical_fp64(); "
++            if install_critical_fp64
++            else ""
++        )
+     operation = f"MACE {module} command-line execution"
+     code = (
+         "import os,sys; "
+@@ -901,18 +921,21 @@
+     num_threads: int,
+     device: str,
+     enable_cueq: bool,
++    critical_precision_policy: MaceCriticalPrecisionPolicy,
+ ) -> MaceCriticalPrecisionAudit | None:
+     code = r'''
+ import json, os, sys, torch
+ from ase.io import read
+ from mace.calculators import MACECalculator
+ from mdstats.training_data.critical_precision import (
++    MaceCriticalPrecisionPolicy,
++    activate_mace_critical_precision_policy,
+     audit_mace_critical_precision,
+-    install_mace_critical_fp64_patch,
+ )
+ from mdstats.training_data.mace_compatibility import mace_runtime_warning_scope
+ 
+-install_mace_critical_fp64_patch()
++_policy = MaceCriticalPrecisionPolicy.from_dict(json.loads(sys.argv[6]))
++activate_mace_critical_precision_policy(_policy)
+ with mace_runtime_warning_scope("critical-precision subprocess audit"):
+     atoms = read(sys.argv[2], index=0)
+     calculator = MACECalculator(
+@@ -936,7 +959,7 @@
+         compute_stress=True,
+         training=False,
+     )
+-    print(json.dumps(audit_mace_critical_precision(model, out).to_dict(), sort_keys=True))
++    print(json.dumps(audit_mace_critical_precision(model, out, policy=_policy).to_dict(), sort_keys=True))
+     print("MDSTATS_CRITICAL_PRECISION_AUDIT_COMPLETE", flush=True)
+ sys.stdout.flush(); sys.stderr.flush(); os._exit(0)
+ '''
+@@ -949,6 +972,7 @@
+             default_dtype,
+             device,
+             str(bool(enable_cueq)).lower(),
++            json.dumps(critical_precision_policy.to_dict(), sort_keys=True, separators=(",", ":")),
+         ),
+         cwd=cwd,
+         timeout_seconds=timeout_seconds,
+@@ -979,6 +1003,7 @@
+             "MACE execution-smoke dtype override differs from the DATA8 training protocol."
+         )
+     execution_dtype = protocol_dtype
++    critical_precision_policy = job.protocol.optimizer_policy.critical_precision_policy
+     if not realization.passed:
+         raise TrainingDataInputError("MACE job execution smoke requires a passing config realization.")
+     if realization.environment_digest != environment.content_digest or realization.job_digest != job.content_digest:
+@@ -1029,7 +1054,7 @@
+             model_dir / f"{name}.model",
+             model_dir / f"{name}_compiled.model",
+         ),
+-        install_critical_fp64=True,
++        critical_precision_policy=critical_precision_policy,
+     )
+     model_artifacts = _artifact_inventory(smoke_root, ("models/**/*.model", "models/**/*.pt"))
+     checkpoint_artifacts = _artifact_inventory(smoke_root, ("checkpoints/**/*.model", "checkpoints/**/*.pt"))
+@@ -1120,7 +1145,7 @@
+                 env=env,
+                 timeout_seconds=active.timeout_seconds,
+                 completion_paths=(output,),
+-                install_critical_fp64=True,
++                critical_precision_policy=critical_precision_policy,
+             )
+             if eval_result.passed and output.is_file():
+                 evaluation_artifact = (str(output.relative_to(smoke_root)), _sha256_file(output))
+@@ -1150,6 +1175,7 @@
+                     num_threads=active.num_threads,
+                     device=active.device,
+                     enable_cueq=job.protocol.optimizer_policy.acceleration_policy.enable_cueq,
++                    critical_precision_policy=critical_precision_policy,
+                 )
+     return MaceJobExecutionSmokeRecord(
+         environment_digest=environment.content_digest,
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/mdstats/training_data/model_features.py /mnt/data/mdstats109_full/mdstats/training_data/model_features.py
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/mdstats/training_data/model_features.py	2026-08-07 21:12:50.000000000 +0000
++++ /mnt/data/mdstats109_full/mdstats/training_data/model_features.py	2026-08-08 20:57:38.403796796 +0000
+@@ -37,7 +37,7 @@
+ from .mace_compatibility import mace_runtime_warning_handled
+ from .critical_precision import (
+     MaceCriticalPrecisionPolicy,
+-    install_mace_critical_fp64_patch,
++    activate_mace_critical_precision_policy,
+ )
+ 
+ MODEL_CHECKPOINT_IDENTITY_SCHEMA = "mdstats.model-checkpoint-identity.v1"
+@@ -726,7 +726,7 @@
+             else critical_precision_policy
+         )
+         if enforce_critical_fp64:
+-            install_mace_critical_fp64_patch(active_critical_policy)
++            activate_mace_critical_precision_policy(active_critical_policy)
+         if any(
+             (
+                 bool(calculator_kwargs.get("enable_cueq", False)),
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/pyproject.toml /mnt/data/mdstats109_full/pyproject.toml
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/pyproject.toml	2026-08-08 13:28:47.000000000 +0000
++++ /mnt/data/mdstats109_full/pyproject.toml	2026-08-08 21:05:49.628022606 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.109a0"
++version = "0.20.110a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/release/mlff_prec3_profile_activation_qualification.json /mnt/data/mdstats109_full/release/mlff_prec3_profile_activation_qualification.json
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/release/mlff_prec3_profile_activation_qualification.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats109_full/release/mlff_prec3_profile_activation_qualification.json	2026-08-08 21:06:27.401210386 +0000
+@@ -0,0 +1,26 @@
++{
++  "architecture_revision": 29,
++  "backend_qualification": {
++    "cueq_production_requirement": "A CuEq-selected campaign must pass the normal real-MACE preflight in its CuEq-enabled runtime before production training.",
++    "cueq_real_runtime_executed": false,
++    "cueq_reason": "cuequivariance and cuequivariance_torch are unavailable in the release qualification environment",
++    "e3nn_real_mace_executed": true
++  },
++  "mace_version": "0.3.16",
++  "notes": [
++    "PREC3 qualifies arithmetic realization and campaign integration, not equality of refine and double RMSE.",
++    "No real CuEq execution claim is made in this release environment."
++  ],
++  "package_version": "0.20.110a0",
++  "qualified_behaviors": [
++    "canonical_single_native_fp32_critical_policy",
++    "canonical_double_fp64_policy",
++    "canonical_refine_fp32_to_fp64_staged_runtime",
++    "fp32_refine_checkpoint_evaluated_under_fp64_policy",
++    "fp32_refine_winner_exactly_promoted_to_fp64_deployment",
++    "profile_reporting_and_durable_precision_summary",
++    "legacy_schedule_free_critical_fp64_backward_compatibility"
++  ],
++  "schema": "mdstats.mlff-prec3-qualification.v1",
++  "scientific_equivalence_claimed": false
++}
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data0_architecture_specification.py /mnt/data/mdstats109_full/tests/test_mlff_data0_architecture_specification.py
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data0_architecture_specification.py	2026-08-08 13:29:53.000000000 +0000
++++ /mnt/data/mdstats109_full/tests/test_mlff_data0_architecture_specification.py	2026-08-08 21:06:42.056839901 +0000
+@@ -78,7 +78,7 @@
+ def test_mlff_data0_dependency_graph_is_acyclic_and_has_forbidden_edges() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["branch"] == "MLFF-DATA"
+-    assert graph["architecture_revision"] == 28
++    assert graph["architecture_revision"] == 29
+     assert graph["documentation_gate"] == "MLFF-DATA0"
+     assert graph["schema_version"] == 26
+ 
+@@ -263,4 +263,4 @@
+ def test_mlff_data0_pdf_and_version_artifacts_exist() -> None:
+     assert MANUAL_PDF.stat().st_size > 10_000
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.109a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.110a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data1_specification.py /mnt/data/mdstats109_full/tests/test_mlff_data1_specification.py
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data1_specification.py	2026-08-08 13:29:53.000000000 +0000
++++ /mnt/data/mdstats109_full/tests/test_mlff_data1_specification.py	2026-08-08 21:06:42.058862734 +0000
+@@ -49,4 +49,4 @@
+     assert callable(mdstats.assign_balanced_round_robin)
+     assert callable(mdstats.build_complete_frame_block_plan)
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.109a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.110a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data2a_manifest_inference_specification.py /mnt/data/mdstats109_full/tests/test_mlff_data2a_manifest_inference_specification.py
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-08 13:29:53.000000000 +0000
++++ /mnt/data/mdstats109_full/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-08 21:06:42.059223550 +0000
+@@ -15,7 +15,7 @@
+ 
+ 
+ def test_data2a_version_public_api_and_documented_contract() -> None:
+-    assert mdstats.__version__ == "0.20.109a0"
++    assert mdstats.__version__ == "0.20.110a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert callable(mdstats.infer_training_manifest_metadata)
+     policy = mdstats.ManifestInferencePolicy()
+@@ -39,7 +39,7 @@
+ def test_data2a_dependency_graph_requires_verified_promotion_before_approval() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 28
++    assert graph["architecture_revision"] == 29
+     nodes = {node["id"] for node in graph["nodes"]}
+     assert {
+         "FILENAME_STRAIN_CANDIDATE",
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data9a2_specification.py /mnt/data/mdstats109_full/tests/test_mlff_data9a2_specification.py
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data9a2_specification.py	2026-08-08 13:29:53.000000000 +0000
++++ /mnt/data/mdstats109_full/tests/test_mlff_data9a2_specification.py	2026-08-08 21:06:42.057074880 +0000
+@@ -23,7 +23,7 @@
+         "finite energy, force, and stress",
+     ):
+         assert required in text
+-    assert 'version = "0.20.109a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.110a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "DATA9A2 real-MACE realization is implemented in `0.20.39a0`" in ARCH.read_text()
+ 
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data9a3_specification.py /mnt/data/mdstats109_full/tests/test_mlff_data9a3_specification.py
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data9a3_specification.py	2026-08-08 13:29:53.000000000 +0000
++++ /mnt/data/mdstats109_full/tests/test_mlff_data9a3_specification.py	2026-08-08 21:06:42.060384965 +0000
+@@ -9,5 +9,5 @@
+     assert "37,632" in text
+     assert "supported_with_temporal_blocks_only" in text
+     assert "production_replay_corpus_not_bound" in text
+-    assert 'version = "0.20.109a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.110a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "MLFF-DATA9A3 production qualification" in ARCH.read_text()
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data9a4_precision_specification.py /mnt/data/mdstats109_full/tests/test_mlff_data9a4_precision_specification.py
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data9a4_precision_specification.py	2026-08-08 13:32:51.000000000 +0000
++++ /mnt/data/mdstats109_full/tests/test_mlff_data9a4_precision_specification.py	2026-08-08 21:06:42.057431880 +0000
+@@ -9,7 +9,7 @@
+     assert "float32" in text and "float64" in text
+     assert "MaceModelPrecisionRecord" in text
+     assert "MacePrecisionTransitionRecord" in text
+-    assert "version = \"0.20.109a0\"" in (ROOT / "pyproject.toml").read_text()
++    assert "version = \"0.20.110a0\"" in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_bind_precision_to_protocol() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data9a5_critical_fp64_specification.py /mnt/data/mdstats109_full/tests/test_mlff_data9a5_critical_fp64_specification.py
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-08 13:29:53.000000000 +0000
++++ /mnt/data/mdstats109_full/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-08 21:06:42.056200001 +0000
+@@ -14,7 +14,7 @@
+     assert 'version: "0.20.42a0"' in text
+     assert "training_force_jacobian_dtype = model" in text
+     assert "Python/ASE" in text
+-    assert 'version = "0.20.109a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.110a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_data9a5_architecture_declares_scope_and_limits() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data9a5_deployment_specification.py /mnt/data/mdstats109_full/tests/test_mlff_data9a5_deployment_specification.py
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data9a5_deployment_specification.py	2026-08-08 13:29:53.000000000 +0000
++++ /mnt/data/mdstats109_full/tests/test_mlff_data9a5_deployment_specification.py	2026-08-08 21:06:42.057366433 +0000
+@@ -13,7 +13,7 @@
+     assert 'version: "0.20.43a0"' in text
+     assert "downstream runtime owns" in text
+     assert "float32-to-float64 promotion does not restore" in text
+-    assert 'version = "0.20.109a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.110a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_keep_lammps_outside_mdstats_scope() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data9a6b_architecture_consistency_specification.py /mnt/data/mdstats109_full/tests/test_mlff_data9a6b_architecture_consistency_specification.py
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data9a6b_architecture_consistency_specification.py	2026-08-08 13:29:53.000000000 +0000
++++ /mnt/data/mdstats109_full/tests/test_mlff_data9a6b_architecture_consistency_specification.py	2026-08-08 21:06:42.058505234 +0000
+@@ -61,7 +61,7 @@
+ def test_dependency_graph_treats_lta_as_optional() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 28
++    assert graph["architecture_revision"] == 29
+     nodes = {node["id"] for node in graph["nodes"]}
+     assert "MATERIAL_PROFILE_IDENTITY" in nodes
+     assert "LTA_PROFILE_EXTENSION" in nodes
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data9a6c_observable_evidence_specification.py /mnt/data/mdstats109_full/tests/test_mlff_data9a6c_observable_evidence_specification.py
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-08 13:29:53.000000000 +0000
++++ /mnt/data/mdstats109_full/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-08 21:06:42.060489179 +0000
+@@ -38,7 +38,7 @@
+ def test_dependency_graph_places_policy_before_evidence_and_forbids_reverse_edge() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 28
++    assert graph["architecture_revision"] == 29
+     edges = {(e["from"], e["to"]) for e in graph["edges"]}
+     assert ("OBSERVABLE_COMPARISON_POLICY", "OBSERVABLE_VALIDATION_ACTIVATION_RECORD") in edges
+     assert ("OBSERVABLE_VALIDATION_ACTIVATION_RECORD", "OBSERVABLE_VALIDATION_EVIDENCE") in edges
+@@ -74,5 +74,5 @@
+ 
+ def test_packaged_owner_manual_index_is_valid() -> None:
+     payload = json.loads(MANUAL_INDEX.read_text(encoding="utf-8"))
+-    assert payload["package_version"] == "0.20.109a0"
++    assert payload["package_version"] == "0.20.110a0"
+     assert "structural-observables-architecture" in payload["manuals"]
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data9a7a_material_profile_specification.py /mnt/data/mdstats109_full/tests/test_mlff_data9a7a_material_profile_specification.py
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-08 13:29:53.000000000 +0000
++++ /mnt/data/mdstats109_full/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-08 21:06:42.056468800 +0000
+@@ -41,7 +41,7 @@
+ def test_data9a7a_dependency_graph_contains_contract_chain() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 28
++    assert graph["architecture_revision"] == 29
+     nodes = {item["id"] for item in graph["nodes"]}
+     required = {
+         "MATERIAL_PROFILE_PROVIDER_IDENTITY",
+@@ -64,4 +64,4 @@
+ 
+ 
+ def test_release_version_is_data9a7a() -> None:
+-    assert 'version = "0.20.109a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert 'version = "0.20.110a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data9a7b_specification.py /mnt/data/mdstats109_full/tests/test_mlff_data9a7b_specification.py
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data9a7b_specification.py	2026-08-08 13:29:53.000000000 +0000
++++ /mnt/data/mdstats109_full/tests/test_mlff_data9a7b_specification.py	2026-08-08 21:06:42.060417042 +0000
+@@ -44,7 +44,7 @@
+ def test_data9a7b_dependency_graph_has_analysis_to_selection_chain() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 28
++    assert graph["architecture_revision"] == 29
+     nodes = {item["id"] for item in graph["nodes"]}
+     assert {
+         "ANALYSIS_LOCAL_STRUCTURE_FEATURES",
+@@ -69,7 +69,7 @@
+ 
+ 
+ def test_data9a7b_public_exports_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.109a0"
++    assert mdstats.__version__ == "0.20.110a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert callable(mdstats.compute_local_structure_features)
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data9a7c_specification.py /mnt/data/mdstats109_full/tests/test_mlff_data9a7c_specification.py
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data9a7c_specification.py	2026-08-08 13:29:53.000000000 +0000
++++ /mnt/data/mdstats109_full/tests/test_mlff_data9a7c_specification.py	2026-08-08 21:06:42.057998581 +0000
+@@ -34,7 +34,7 @@
+ def test_dependency_graph_contains_phase_geometry_contracts() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 28
++    assert graph["architecture_revision"] == 29
+     nodes = {node["id"] for node in graph["nodes"]}
+     assert {
+         "PHASE_GEOMETRY_SELECTION_PLAN",
+@@ -47,7 +47,7 @@
+ 
+ 
+ def test_public_api_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.109a0"
++    assert mdstats.__version__ == "0.20.110a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert mdstats.MLFF_DATA9A7C_PARSER_VERSION == "0.20.49a0"
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data9a7d_specification.py /mnt/data/mdstats109_full/tests/test_mlff_data9a7d_specification.py
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data9a7d_specification.py	2026-08-08 13:29:53.000000000 +0000
++++ /mnt/data/mdstats109_full/tests/test_mlff_data9a7d_specification.py	2026-08-08 21:06:42.057807868 +0000
+@@ -21,7 +21,7 @@
+ def test_data9a7d_dependency_graph_contract() -> None:
+     graph = json.loads((ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json").read_text())
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 28
++    assert graph["architecture_revision"] == 29
+     nodes = {item["id"] for item in graph["nodes"]}
+     assert {
+         "OPTIONAL_PROFILE_EXTENSION_PROVIDER",
+@@ -39,6 +39,6 @@
+ 
+ 
+ def test_data9a7d_runtime_versions() -> None:
+-    assert mdstats.__version__ == "0.20.109a0"
++    assert mdstats.__version__ == "0.20.110a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7D_PARSER_VERSION == "0.20.50a0"
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data9a7e_specification.py /mnt/data/mdstats109_full/tests/test_mlff_data9a7e_specification.py
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data9a7e_specification.py	2026-08-08 13:29:53.000000000 +0000
++++ /mnt/data/mdstats109_full/tests/test_mlff_data9a7e_specification.py	2026-08-08 21:06:42.055517277 +0000
+@@ -31,7 +31,7 @@
+ def test_data9a7e_dependency_graph_and_public_api() -> None:
+     graph = json.loads((ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json").read_text())
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 28
++    assert graph["architecture_revision"] == 29
+     nodes = {item["id"] for item in graph["nodes"]}
+     assert {
+         "CROSS_SYSTEM_QUALIFICATION_POLICY",
+@@ -39,7 +39,7 @@
+         "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
+         "CROSS_SYSTEM_QUALIFICATION_SUITE",
+     } <= nodes
+-    assert mdstats.__version__ == "0.20.109a0"
++    assert mdstats.__version__ == "0.20.110a0"
+     assert mdstats.MLFF_DATA9A7E_PARSER_VERSION == "0.20.51a0"
+     assert callable(mdstats.qualify_cross_system_case)
+     assert callable(mdstats.build_cross_system_qualification_suite)
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data9a8_specification.py /mnt/data/mdstats109_full/tests/test_mlff_data9a8_specification.py
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data9a8_specification.py	2026-08-08 13:29:53.000000000 +0000
++++ /mnt/data/mdstats109_full/tests/test_mlff_data9a8_specification.py	2026-08-08 21:06:42.058227031 +0000
+@@ -44,7 +44,7 @@
+ def test_dependency_graph_places_policy_upstream_and_forbids_posthoc_thresholds() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 28
++    assert graph["architecture_revision"] == 29
+     nodes = {node["id"] for node in graph["nodes"]}
+     for node in (
+         "OBSERVABLE_COMPARISON_RULES",
+@@ -66,7 +66,7 @@
+ 
+ 
+ def test_public_runtime_exposes_data9a8_without_removed_aliases() -> None:
+-    assert mdstats.__version__ == "0.20.109a0"
++    assert mdstats.__version__ == "0.20.110a0"
+     assert mdstats.MLFF_DATA9A8_PARSER_VERSION == "0.20.52a0"
+     assert mdstats.ObservableComparisonPolicy
+     assert mdstats.compare_mlff_observable_validation
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data9a9a_specification.py /mnt/data/mdstats109_full/tests/test_mlff_data9a9a_specification.py
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data9a9a_specification.py	2026-08-08 13:29:53.000000000 +0000
++++ /mnt/data/mdstats109_full/tests/test_mlff_data9a9a_specification.py	2026-08-08 21:06:42.057162120 +0000
+@@ -47,7 +47,7 @@
+ def test_dependency_graph_contains_restartable_model_sweep_chain() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 28
++    assert graph["architecture_revision"] == 29
+     nodes = {node["id"] for node in graph["nodes"]}
+     required = {
+         "DATA6_MODEL_SWEEP_EXECUTION_POLICY",
+@@ -65,7 +65,7 @@
+ 
+ 
+ def test_public_runtime_exports_data9a9a_contracts() -> None:
+-    assert mdstats.__version__ == "0.20.109a0"
++    assert mdstats.__version__ == "0.20.110a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A9A_VERSION
+     assert mdstats.Data6ModelSweepPlan
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data9a9b_specification.py /mnt/data/mdstats109_full/tests/test_mlff_data9a9b_specification.py
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data9a9b_specification.py	2026-08-08 13:29:53.000000000 +0000
++++ /mnt/data/mdstats109_full/tests/test_mlff_data9a9b_specification.py	2026-08-08 21:06:42.059306423 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9b_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.109a0"
++    assert mdstats.__version__ == "0.20.110a0"
+     for name in (
+         "ProductionMaterializationPlan",
+         "ProductionMaterializationCheckpoint",
+@@ -40,7 +40,7 @@
+ def test_dependency_graph_contains_data9a9b_chain() -> None:
+     graph = json.loads((ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json").read_text())
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 28
++    assert graph["architecture_revision"] == 29
+     nodes = {item["id"] for item in graph["nodes"]}
+     required = {
+         "PRODUCTION_MATERIALIZATION_PLAN",
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data9a9c_specification.py /mnt/data/mdstats109_full/tests/test_mlff_data9a9c_specification.py
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data9a9c_specification.py	2026-08-08 13:29:53.000000000 +0000
++++ /mnt/data/mdstats109_full/tests/test_mlff_data9a9c_specification.py	2026-08-08 21:06:42.059636674 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9c_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.109a0"
++    assert mdstats.__version__ == "0.20.110a0"
+     for name in (
+         "ProductionCorpusPlan", "ProductionExpectedRun",
+         "ProfileExtensionEvidenceRequirement", "ProductionCorpusQualificationRecord",
+@@ -38,7 +38,7 @@
+ def test_dependency_graph_contains_integrity_gate_chain() -> None:
+     graph = json.loads((ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json").read_text())
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 28
++    assert graph["architecture_revision"] == 29
+     nodes = {item["id"] for item in graph["nodes"]}
+     assert {"PRODUCTION_CORPUS_PLAN", "REPLAY_LABEL_PAYLOAD_IDENTITY",
+             "DATA8_ATOMIC_PROMOTION", "PRODUCTION_GATE_INTEGRITY_EVIDENCE"} <= nodes
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data9a_specification.py /mnt/data/mdstats109_full/tests/test_mlff_data9a_specification.py
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data9a_specification.py	2026-08-08 13:29:53.000000000 +0000
++++ /mnt/data/mdstats109_full/tests/test_mlff_data9a_specification.py	2026-08-08 21:06:42.060229394 +0000
+@@ -14,7 +14,7 @@
+ 
+ 
+ def test_data9a_runtime_specification_is_canonical() -> None:
+-    assert 'version = "0.20.109a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.110a0"' in (ROOT / "pyproject.toml").read_text()
+     architecture = ARCH.read_text()
+     stage = STAGE.read_text()
+     specification = SPEC.read_text()
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data9b1_specification.py /mnt/data/mdstats109_full/tests/test_mlff_data9b1_specification.py
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data9b1_specification.py	2026-08-08 13:29:53.000000000 +0000
++++ /mnt/data/mdstats109_full/tests/test_mlff_data9b1_specification.py	2026-08-08 21:06:42.057965843 +0000
+@@ -18,8 +18,8 @@
+     assert "TrainingCampaignPlan" in text
+     assert "CheckpointSelectionRecord" in text
+     assert "mdstats-mace-train" in text
+-    assert mdstats.__version__ == "0.20.109a0"
+-    assert 'version = "0.20.109a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert mdstats.__version__ == "0.20.110a0"
++    assert 'version = "0.20.110a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+ 
+ 
+ def test_data9b1_is_integrated_into_manual_and_stage_plan() -> None:
+@@ -33,7 +33,7 @@
+ 
+ def test_data9b1_dependency_graph_nodes_and_gates() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+-    assert graph["architecture_revision"] == 28
++    assert graph["architecture_revision"] == 29
+     nodes = {item["id"] for item in graph["nodes"]}
+     for node in (
+         "TRAINING_CAMPAIGN_POLICY",
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data9b2_specification.py /mnt/data/mdstats109_full/tests/test_mlff_data9b2_specification.py
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data9b2_specification.py	2026-08-08 13:29:53.000000000 +0000
++++ /mnt/data/mdstats109_full/tests/test_mlff_data9b2_specification.py	2026-08-08 21:06:42.059053908 +0000
+@@ -23,7 +23,7 @@
+         'mdstats-mace-select-head',
+     ):
+         assert token in text
+-    assert mdstats.__version__ == '0.20.109a0'
++    assert mdstats.__version__ == '0.20.110a0'
+     assert mdstats.MLFF_DATA9B2_VERSION == '0.20.57a0'
+ 
+ 
+@@ -37,7 +37,7 @@
+ 
+ def test_data9b2_dependency_graph_records_and_edges() -> None:
+     graph = json.loads(GRAPH.read_text(encoding='utf-8'))
+-    assert graph['architecture_revision'] == 28
++    assert graph['architecture_revision'] == 29
+     assert graph['schema_version'] == 26
+     nodes = {v['id'] for v in graph['nodes']}
+     for node in (
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data9b3_campaign_cli_specification.py /mnt/data/mdstats109_full/tests/test_mlff_data9b3_campaign_cli_specification.py
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-08 13:29:53.000000000 +0000
++++ /mnt/data/mdstats109_full/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-08 21:06:42.058927230 +0000
+@@ -16,7 +16,7 @@
+ 
+ 
+ def test_data9b3_version_and_user_surface() -> None:
+-    assert mdstats.__version__ == "0.20.109a0"
++    assert mdstats.__version__ == "0.20.110a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert TOOL.is_file()
+     assert TOOL.stat().st_mode & 0o111
+@@ -55,7 +55,7 @@
+ def test_data9b3_dependency_graph_contract() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 28
++    assert graph["architecture_revision"] == 29
+     nodes = {node["id"] for node in graph["nodes"]}
+     required = {
+         "CAMPAIGN_CLI_CONFIGURATION",
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data9b3a_cueq_specification.py /mnt/data/mdstats109_full/tests/test_mlff_data9b3a_cueq_specification.py
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_data9b3a_cueq_specification.py	2026-08-08 13:29:53.000000000 +0000
++++ /mnt/data/mdstats109_full/tests/test_mlff_data9b3a_cueq_specification.py	2026-08-08 21:06:42.056436592 +0000
+@@ -42,7 +42,7 @@
+ def test_data9b3a_dependency_graph_contract() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 28
++    assert graph["architecture_revision"] == 29
+     nodes = {node["id"] for node in graph["nodes"]}
+     assert {"MACE_ACCELERATION_POLICY", "MACE_ACCELERATION_PROBE"} <= nodes
+     edges = {(edge["from"], edge["to"], edge["type"]) for edge in graph["edges"]}
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_eval_storage_roadmap_specification.py /mnt/data/mdstats109_full/tests/test_mlff_eval_storage_roadmap_specification.py
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_eval_storage_roadmap_specification.py	2026-08-08 13:29:53.000000000 +0000
++++ /mnt/data/mdstats109_full/tests/test_mlff_eval_storage_roadmap_specification.py	2026-08-08 21:06:42.064270143 +0000
+@@ -29,7 +29,7 @@
+     assert positions == sorted(positions)
+     assert "EVAL-MF2 - conservative survivor control, diagnostics, and default migration - implemented in 0.20.107a0" in text
+     assert "`PREC1` in 0.20.108a0" in text
+-    assert "`PREC3` is the next implementation gate" in text
++    assert "The next implementation gate is `STOR1`" in text
+ 
+ 
+ def test_multifidelity_plan_preserves_equal_target_replay_fidelity_and_full_final() -> None:
+@@ -75,10 +75,10 @@
+         assert token in text
+ 
+ 
+-def test_dependency_graph_revision_27_contains_eval_precision_storage_nodes() -> None:
++def test_dependency_graph_revision_29_contains_eval_precision_storage_nodes() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 28
++    assert graph["architecture_revision"] == 29
+     nodes = {node["id"] for node in graph["nodes"]}
+     for node in (
+         "NESTED_CHECKPOINT_EVALUATION_PLAN",
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_opt_ctrl1_specification.py /mnt/data/mdstats109_full/tests/test_mlff_opt_ctrl1_specification.py
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_opt_ctrl1_specification.py	2026-08-08 13:29:53.000000000 +0000
++++ /mnt/data/mdstats109_full/tests/test_mlff_opt_ctrl1_specification.py	2026-08-08 21:06:42.060053552 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_ctrl1_release_identity_preserves_scientific_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.109a0"
++    assert mdstats.__version__ == "0.20.110a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.109a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.110a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_ctrl1_architecture_and_spec_close_roadmap() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_opt_eval4_specification.py /mnt/data/mdstats109_full/tests/test_mlff_opt_eval4_specification.py
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_opt_eval4_specification.py	2026-08-08 13:29:53.000000000 +0000
++++ /mnt/data/mdstats109_full/tests/test_mlff_opt_eval4_specification.py	2026-08-08 21:06:42.060083367 +0000
+@@ -11,9 +11,9 @@
+ 
+ 
+ def test_opt_eval4_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.109a0"
++    assert mdstats.__version__ == "0.20.110a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+-    assert 'version = "0.20.109a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.110a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_eval4_architecture_and_spec_record_pipeline_contract() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_opt_verify1_specification.py /mnt/data/mdstats109_full/tests/test_mlff_opt_verify1_specification.py
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_opt_verify1_specification.py	2026-08-08 13:29:53.000000000 +0000
++++ /mnt/data/mdstats109_full/tests/test_mlff_opt_verify1_specification.py	2026-08-08 21:06:42.054736739 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_verify1_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.109a0"
++    assert mdstats.__version__ == "0.20.110a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.109a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.110a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_verify1_architecture_and_spec_record_contract() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_perf2_parallel_acceleration_specification.py /mnt/data/mdstats109_full/tests/test_mlff_perf2_parallel_acceleration_specification.py
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-08 13:29:53.000000000 +0000
++++ /mnt/data/mdstats109_full/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-08 21:06:42.058444724 +0000
+@@ -10,7 +10,7 @@
+ 
+ 
+ def test_perf2_release_and_configuration_contract() -> None:
+-    assert mdstats.__version__ == "0.20.109a0"
++    assert mdstats.__version__ == "0.20.110a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     template = campaign_cli._config_template(
+         workspace="workspace",
+@@ -43,7 +43,7 @@
+         .read_text(encoding="utf-8")
+     )
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 28
++    assert graph["architecture_revision"] == 29
+     nodes = {item["id"] for item in graph["nodes"]}
+     assert {
+         "SYSTEM_RESOURCE_SNAPSHOT",
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_prec1_specification.py /mnt/data/mdstats109_full/tests/test_mlff_prec1_specification.py
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_prec1_specification.py	2026-08-08 13:29:53.000000000 +0000
++++ /mnt/data/mdstats109_full/tests/test_mlff_prec1_specification.py	2026-08-08 21:06:42.064069094 +0000
+@@ -12,15 +12,15 @@
+ 
+ 
+ def test_prec1_release_and_architecture_status() -> None:
+-    assert mdstats.__version__ == "0.20.109a0"
++    assert mdstats.__version__ == "0.20.110a0"
+     manual = MANUAL.read_text(encoding="utf-8")
+     spec = SPEC.read_text(encoding="utf-8")
+     assert "PREC1 - precision profiles, explicit staged schedule, and init realization - implemented in 0.20.108a0" in manual
+     assert "PREC1 implemented in mdstats 0.20.108a0" in spec
+-    assert "`PREC3` is the next implementation gate" in manual
++    assert "the next implementation gate is `STOR1`" in manual
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 28
++    assert graph["architecture_revision"] == 29
+ 
+ 
+ def test_prec1_public_contract_is_exported() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_prec2_specification.py /mnt/data/mdstats109_full/tests/test_mlff_prec2_specification.py
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_prec2_specification.py	2026-08-08 13:29:53.000000000 +0000
++++ /mnt/data/mdstats109_full/tests/test_mlff_prec2_specification.py	2026-08-08 21:06:42.064199328 +0000
+@@ -13,9 +13,9 @@
+     assert "PREC2 - in-process transition and exact restart - implemented in 0.20.109a0" in spec
+     assert "latest-only authenticated companion" in manual
+     assert "real MACE 0.3.16" in manual
+-    assert "real CuEq runtime execution remains a mandatory PREC3" in manual
+-    assert "`PREC3` is the next implementation gate" in manual
++    assert "no fabricated real-CuEq execution evidence is claimed" in manual
++    assert "the next implementation gate is `STOR1`" in manual
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 28
++    assert graph["architecture_revision"] == 29
+     node_ids = {node["id"] for node in graph["nodes"]}
+     assert "PRECISION_RUNTIME_COMPANION" in node_ids
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_prec3_profile_activation.py /mnt/data/mdstats109_full/tests/test_mlff_prec3_profile_activation.py
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_prec3_profile_activation.py	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats109_full/tests/test_mlff_prec3_profile_activation.py	2026-08-08 21:06:42.058791699 +0000
+@@ -0,0 +1,146 @@
++from __future__ import annotations
++
++from pathlib import Path
++
++import pytest
++
++import mdstats
++from mdstats.training_data import campaign_cli
++from mdstats.training_data import campaign_execution
++from mdstats.training_data import critical_precision as cp
++
++
++torch = pytest.importorskip("torch")
++
++
++class _TinyTargetModel(torch.nn.Module):
++    def __init__(self, dtype: torch.dtype = torch.float32) -> None:
++        super().__init__()
++        self.linear = torch.nn.Linear(3, 2, bias=True, dtype=dtype)
++        self.register_buffer("scale", torch.ones(1, dtype=dtype))
++        self.heads = ["target_head"]
++
++    def forward(self, value):
++        return self.linear(value) * self.scale
++
++
++def _cfg(profile: str) -> dict:
++    policy = mdstats.canonical_precision_schedule_policy(profile)
++    return {
++        "campaign": {"precision_profile": profile},
++        "model": {"dtype": policy.model_dtype},
++        "training": {
++            "dtype": policy.stages[0].dtype,
++            "max_num_epochs": 30,
++            "precision": {
++                "mode": policy.mode,
++                "minimum_final_stage_epochs": policy.minimum_final_stage_epochs,
++                "minimum_final_stage_gradient_updates": policy.minimum_final_stage_gradient_updates,
++                "critical_operation_dtype": policy.critical_operation_dtype,
++                "stage": [
++                    {
++                        "dtype": stage.dtype,
++                        "fraction": stage.fraction,
++                        "learning_rate_scale": stage.learning_rate_scale,
++                    }
++                    for stage in policy.stages
++                ],
++            },
++        },
++        "evaluation": {"dtype": policy.evaluation_dtype},
++        "verification": {"dtype": policy.verification_dtype},
++        "export": {"dtype": policy.export_dtype},
++    }
++
++
++def test_prec3_explicit_profiles_bind_runtime_critical_policy() -> None:
++    single = campaign_cli._critical_precision_policy(_cfg("single"))
++    double = campaign_cli._critical_precision_policy(_cfg("double"))
++    refine = campaign_cli._critical_precision_policy(_cfg("refine"))
++    legacy = campaign_cli._critical_precision_policy({"training": {"dtype": "float32"}})
++
++    assert single.observable_output_dtype == "float32"
++    assert single.strategy == "native_model_precision_v1"
++    assert double.observable_output_dtype == "float64"
++    assert refine.observable_output_dtype == "float64"
++    assert legacy.observable_output_dtype == "float64"
++
++
++def test_prec3_precision_report_is_profile_complete() -> None:
++    payload = campaign_cli._precision_profile_payload(_cfg("refine"))
++    assert payload["requested_profile"] == "refine"
++    assert payload["critical_operation_dtype"] == "float64"
++    assert payload["evaluation_dtype"] == "float64"
++    assert payload["verification_dtype"] == "float64"
++    assert payload["export_dtype"] == "float64"
++    assert [(stage["epoch_count"], stage["dtype"]) for stage in payload["stages"]] == [
++        (24, "float32"),
++        (6, "float64"),
++    ]
++
++
++def test_prec3_evaluation_policy_binds_explicit_single_critical_policy() -> None:
++    critical = mdstats.MaceCriticalPrecisionPolicy.for_dtype("float32")
++    policy = mdstats.CheckpointEvaluationPolicy(
++        device="cpu",
++        default_dtype="float32",
++        critical_precision_policy=critical,
++    )
++    restored = mdstats.CheckpointEvaluationPolicy.from_dict(policy.to_dict())
++    assert restored.active_critical_precision_policy.policy_digest == critical.policy_digest
++    assert restored.active_critical_precision_policy.observable_output_dtype == "float32"
++    assert restored.to_dict()["schema"] == "mdstats.checkpoint-evaluation-policy.v5"
++
++
++def test_prec3_refine_export_promotes_fp32_target_model_to_fp64(tmp_path: Path) -> None:
++    source = tmp_path / "source.model"
++    output = tmp_path / "refine-target.model"
++    torch.save(_TinyTargetModel(torch.float32), source)
++
++    campaign_execution._export_target_head_model_with_dtype(
++        source,
++        output,
++        target_head_name="target_head",
++        target_device="cpu",
++        wrapper_path=None,
++        required_wrapper="mdstats-mace-select-head",
++        failure_prefix="PREC3 test export",
++        deployment_dtype="float64",
++    )
++
++    precision = mdstats.inspect_mace_model_precision(output, expected_dtype="float64")
++    assert precision.passed
++    assert precision.uniform_floating_dtype == "float64"
++    assert (tmp_path / "refine-target.model.manifest.json").is_file()
++
++
++def test_prec3_single_export_remains_uniform_fp32(tmp_path: Path) -> None:
++    source = tmp_path / "source.model"
++    output = tmp_path / "single-target.model"
++    torch.save(_TinyTargetModel(torch.float64), source)
++
++    campaign_execution._export_target_head_model_with_dtype(
++        source,
++        output,
++        target_head_name="target_head",
++        target_device="cpu",
++        wrapper_path=None,
++        required_wrapper="mdstats-mace-select-head",
++        failure_prefix="PREC3 test export",
++        deployment_dtype="float32",
++    )
++
++    precision = mdstats.inspect_mace_model_precision(output, expected_dtype="float32")
++    assert precision.passed
++    assert precision.uniform_floating_dtype == "float32"
++
++
++def test_prec3_native_activation_uninstalls_legacy_patch(monkeypatch) -> None:
++    calls: list[str] = []
++    monkeypatch.setattr(cp, "uninstall_mace_critical_fp64_patch", lambda: calls.append("uninstall"))
++    monkeypatch.setattr(cp, "configure_torch_critical_precision", lambda policy=None: calls.append(policy.observable_output_dtype))
++    monkeypatch.setattr(cp, "install_mace_critical_fp64_patch", lambda policy=None: calls.append("install"))
++
++    cp.activate_mace_critical_precision_policy(mdats := mdstats.MaceCriticalPrecisionPolicy.for_dtype("float32"))
++    assert mdats.observable_output_dtype == "float32"
++    assert calls == ["uninstall", "float32"]
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_prec3_real_mace.py /mnt/data/mdstats109_full/tests/test_mlff_prec3_real_mace.py
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_prec3_real_mace.py	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats109_full/tests/test_mlff_prec3_real_mace.py	2026-08-08 21:06:42.058136787 +0000
+@@ -0,0 +1,111 @@
++from __future__ import annotations
++
++from pathlib import Path
++
++import numpy as np
++import pytest
++
++import mdstats
++
++
++torch = pytest.importorskip("torch")
++pytest.importorskip("e3nn")
++pytest.importorskip("mace")
++
++from ase import Atoms
++from e3nn import o3
++from mace import modules, tools
++from mace.calculators import MACECalculator
++
++
++def _tiny_mace(dtype: torch.dtype):
++    previous = torch.get_default_dtype()
++    torch.set_default_dtype(dtype)
++    try:
++        table = tools.AtomicNumberTable([1, 8])
++        model = modules.ScaleShiftMACE(
++            r_max=4.0,
++            num_bessel=4,
++            num_polynomial_cutoff=3,
++            max_ell=1,
++            interaction_cls=modules.interaction_classes["RealAgnosticResidualInteractionBlock"],
++            interaction_cls_first=modules.interaction_classes["RealAgnosticResidualInteractionBlock"],
++            num_interactions=2,
++            num_elements=2,
++            hidden_irreps=o3.Irreps("8x0e + 8x1o"),
++            MLP_irreps=o3.Irreps("4x0e"),
++            gate=torch.nn.functional.silu,
++            atomic_energies=np.array([0.0, 0.0]),
++            avg_num_neighbors=2.0,
++            atomic_numbers=table.zs,
++            correlation=2,
++            atomic_inter_scale=1.0,
++            atomic_inter_shift=0.0,
++        )
++    finally:
++        torch.set_default_dtype(previous)
++    return model.to(dtype=dtype)
++
++
++def _water() -> Atoms:
++    return Atoms(
++        "H2O",
++        positions=[[0.0, 0.0, 0.0], [0.8, 0.0, 0.0], [0.0, 0.8, 0.0]],
++        cell=[10.0, 10.0, 10.0],
++        pbc=True,
++    )
++
++
++def test_prec3_real_mace_single_and_double_calculator_profiles(tmp_path: Path) -> None:
++    for dtype in ("float32", "float64"):
++        torch_dtype = torch.float32 if dtype == "float32" else torch.float64
++        path = tmp_path / f"{dtype}.model"
++        torch.save(_tiny_mace(torch_dtype), path)
++        policy = mdstats.MaceCriticalPrecisionPolicy.for_dtype(dtype)
++        mdstats.activate_mace_critical_precision_policy(policy)
++        calculator = MACECalculator(
++            model_paths=str(path), device="cpu", default_dtype=dtype
++        )
++        assert {parameter.dtype for parameter in calculator.models[0].parameters()} == {torch_dtype}
++        atoms = _water()
++        atoms.calc = calculator
++        assert np.isfinite(float(atoms.get_potential_energy()))
++        assert np.isfinite(np.asarray(atoms.get_forces())).all()
++
++
++def test_prec3_real_mace_refine_evaluation_promotes_fp32_checkpoint_model(tmp_path: Path) -> None:
++    source = tmp_path / "early-fp32.model"
++    torch.save(_tiny_mace(torch.float32), source)
++    mdstats.activate_mace_critical_precision_policy(
++        mdstats.MaceCriticalPrecisionPolicy.for_dtype("float64")
++    )
++    calculator = MACECalculator(
++        model_paths=str(source), device="cpu", default_dtype="float64"
++    )
++    assert {parameter.dtype for parameter in calculator.models[0].parameters()} == {torch.float64}
++    atoms = _water()
++    atoms.calc = calculator
++    assert np.isfinite(float(atoms.get_potential_energy()))
++    assert np.isfinite(np.asarray(atoms.get_forces())).all()
++
++
++def test_prec3_real_mace_refine_deployment_promotes_early_model(tmp_path: Path) -> None:
++    source = tmp_path / "early-fp32.model"
++    torch.save(_tiny_mace(torch.float32), source)
++    artifact = mdstats.export_mace_deployment_artifact(
++        source,
++        tmp_path,
++        deployment_dtype="float64",
++        filename="refine-final.model",
++        policy=mdstats.MaceDeploymentExportPolicy(
++            deployment_dtype="float64", require_inference_probe=False
++        ),
++        overwrite=True,
++    )
++    precision = mdstats.inspect_mace_model_precision(
++        tmp_path / "refine-final.model", expected_dtype="float64"
++    )
++    assert artifact.deployment_dtype == "float64"
++    assert artifact.conversion_kind == "promotion_float32_to_float64"
++    assert artifact.state_conversion_exact
++    assert precision.passed
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=dist' '--exclude=build' '--exclude=mdstats.egg-info' '--exclude=SOURCE_PATCH_0.20.109a0_to_0.20.110a0.patch' /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_prec3_specification.py /mnt/data/mdstats109_full/tests/test_mlff_prec3_specification.py
+--- /mnt/data/mdstats109_pristine/mdstats-0.20.109a0/tests/test_mlff_prec3_specification.py	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats109_full/tests/test_mlff_prec3_specification.py	2026-08-08 21:06:42.260076609 +0000
+@@ -0,0 +1,34 @@
++from __future__ import annotations
++
++import json
++from pathlib import Path
++
++import mdstats
++
++ROOT = Path(__file__).resolve().parents[1]
++MANUAL = ROOT / "docs/arch_manuals/mlff_training_data_architecture.md"
++SPEC = ROOT / "docs/specs/training_data/mlff_staged_precision_profiles_spec.md"
++GRAPH = ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json"
++EVIDENCE = ROOT / "release/mlff_prec3_profile_activation_qualification.json"
++
++
++def test_prec3_architecture_is_closed_and_storage_is_next() -> None:
++    manual = MANUAL.read_text(encoding="utf-8")
++    spec = SPEC.read_text(encoding="utf-8")
++    graph = json.loads(GRAPH.read_text(encoding="utf-8"))
++    assert mdstats.__version__ == "0.20.110a0"
++    assert "PREC3 - campaign integration, qualification, and profile activation - implemented in 0.20.110a0" in manual
++    assert "PREC3 implementation closure (0.20.110a0)" in manual
++    assert "PREC3 implemented in mdstats 0.20.110a0" in spec
++    assert "The next implementation gate is `STOR1`" in manual
++    assert graph["schema_version"] == 26
++    assert graph["architecture_revision"] == 29
++
++
++def test_prec3_qualification_evidence_is_transparent_about_cueq() -> None:
++    payload = json.loads(EVIDENCE.read_text(encoding="utf-8"))
++    assert payload["package_version"] == "0.20.110a0"
++    assert payload["backend_qualification"]["e3nn_real_mace_executed"] is True
++    assert payload["backend_qualification"]["cueq_real_runtime_executed"] is False
++    assert "unavailable" in payload["backend_qualification"]["cueq_reason"]
++    assert payload["scientific_equivalence_claimed"] is False

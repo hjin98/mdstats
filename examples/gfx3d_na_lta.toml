@@ -1,0 +1,42 @@
+# Example universal GFX3D configuration for a Na-LTA LAMMPS trajectory.
+[scene]
+title = "Na-LTA configurable 3-D scene"
+registration = "framework_registered"
+display_cell = "reference"
+trajectory_display_mode = "folded"
+density_grid_interval = 0.20
+density_adaptive_smearing = true
+projection = "orthographic"
+
+[input]
+format = "lammps-dump"
+lammps_units = "metal"
+lammps_timestep = 0.001
+lammps_type_map = "1=Si,2=Al,3=O,4=Na"
+
+[output]
+path = "na_lta_gfx3d.html"
+manifest = "na_lta_gfx3d.scene.json"
+browser_profile = "balanced"
+
+[[layer]]
+type = "framework"
+name = "LTA framework"
+
+[[layer]]
+type = "connectivity"
+name = "Na-O connectivity"
+selection = { pairs = ["Na-O"] }
+render = { edge_width = 1.6, edge_opacity = 0.45 }
+
+[[layer]]
+type = "trajectory"
+name = "Na trajectories"
+selection = { species = ["Na"] }
+render = { line_width = 1.6, opacity = 0.28, show_legend = true }
+
+[[layer]]
+type = "density"
+name = "Na density"
+selection = { species = ["Na"] }
+render = { mass_fractions = [0.50, 0.80, 0.95], inner_opacity = 0.22, outer_opacity = 0.04, render_mode = "mesh", show_samples = false, show_legend = true }

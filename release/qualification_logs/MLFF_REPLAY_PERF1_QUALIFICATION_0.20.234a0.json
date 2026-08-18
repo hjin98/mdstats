@@ -1,0 +1,199 @@
+{
+  "acceptance": {
+    "advance_to": "CAMPAIGN-PERF-QUAL1",
+    "broad_regression": "PASS",
+    "exact_replay_authority": "PASS",
+    "full_source_no_material_regression": "PASS",
+    "source_index_restart_reuse": "PASS",
+    "source_mutation_invalidation": "PASS",
+    "subset_materialization_speedup": "PASS"
+  },
+  "architecture_revision": 101,
+  "authority_change": {
+    "gpu": false,
+    "model_inference": false,
+    "runtime_optimization": true,
+    "scientific": false
+  },
+  "content_digest": "7d5bbfe93fbf693b51b058a284fa896137b467b974beb1db57264cd2b3280570",
+  "date": "2026-08-17",
+  "dependency_graph_schema": 81,
+  "documentation": {
+    "architecture_revision_note": {
+      "path": "docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV101.md",
+      "sha256": "e51a3583d6667cace9fec0e70f8f2db1cf2273c99dbf587e846707fcc47b29d3"
+    },
+    "canonical_markdown": {
+      "path": "docs/arch_manuals/mlff_training_data_architecture.md",
+      "sha256": "6d5621f97a6e436b403dd6851ac18a092ae31dbe7b0f3d02e192e314faaae0f2"
+    },
+    "canonical_pdf": {
+      "comparison_note": "Revision-100 50-page PDF and revision-101 51-page PDF compared at 50 dpi; all 51 final pages rendered at 120 dpi. Front matter, performance/status region, and final reference page were visually inspected with no clipping or overlap.",
+      "full_render": "PASS",
+      "pages": 51,
+      "path": "docs/arch_manuals/mlff_training_data_architecture.pdf",
+      "preflight": "PASS",
+      "sha256": "b1459e10189bc6b8ba587a4d411eaaaf10d06f35441847c5de59af585e746d74",
+      "visual_qa": "PASS"
+    },
+    "dependency_graph": {
+      "path": "docs/arch_manuals/mlff_training_data_dependency_graph.json",
+      "sha256": "e4f84d2c7774b53784a3b1e8822cf544f63394a65378c7dff6e19439a6b29970"
+    },
+    "release_note": {
+      "path": "docs/history/mlff/release_notes/PATCH_NOTES_0.20.234a0.md",
+      "sha256": "fcdecec9ac74ae3a8e51646b82b6fe3c411a5f3cb91636af6580edf56647e540"
+    },
+    "spec": {
+      "path": "docs/specs/training_data/mlff_replay_perf1_index_cache_spec.md",
+      "sha256": "44b5a46ba270ccad3e0a40bb701f638a48c76b728b6d6a039003ac50cbf41a2e"
+    }
+  },
+  "foundation": {
+    "active_qualification_family": "mace-mpa-0",
+    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
+    "mh1_supported_by_same_contract": true,
+    "note": "REPLAY-PERF1 changes replay indexing/materialization only. MACE-MPA-0 medium is the active qualification checkpoint; MACE-MH-1 uses the same replay-source/index/materialization contract.",
+    "variant": "medium"
+  },
+  "gate": "REPLAY_PERF1_INDEX_CACHE",
+  "implementation": {
+    "contiguous_chunk_parsing": true,
+    "corrupt_receipt_rebuild": true,
+    "geometry_identity_reuse": true,
+    "implementation_manifest": {
+      "path": "benchmarks/mlff_replay_perf1_implementation_manifest_0.20.234a0.json",
+      "sha256": "1a5f2c23d2ff1c69eb4212645ad5203a2129ab00029be13c38a14b9f08358bdb"
+    },
+    "parser_parallelism": "serial_measured_authority",
+    "source_artifact_bound": true,
+    "source_change_invalidation": true,
+    "source_index_content_digest": "ce6c678ad556cff63be8ee75754d87cba2b3d08e80f544c5983fe4498dc0c5e1",
+    "source_index_receipt_schema": "mdstats.replay-source-index-receipt.v1",
+    "source_index_schema": "mdstats.replay-source-index.v1",
+    "source_order_bound": true,
+    "source_sha_bound": true,
+    "sparse_direct_seek": true,
+    "threaded_ase_parser_rejected_as_slower": true
+  },
+  "inputs": {
+    "dependency_archive": {
+      "path": "/mnt/data/dependencies.tar(20260817-112644).gz",
+      "sha256": "888d545a512396697c8583d69bc9ed33110914675f466a4cbcafc3e1e1407171"
+    },
+    "replay_source": {
+      "frames": 12000,
+      "path": "/mnt/data/replay_fps_12000.extxyz",
+      "sha256": "187eed42fb2d6cf5e7e745ffed0ce34541e92c6a35ec9e654520cd3c7198403c",
+      "source_artifact_digest": "9f43677d6100cea85f6de287fe1dd739322609fd82cbeb320e46f9434ce90688"
+    },
+    "target_archive": {
+      "path": "/mnt/data/training_LTA.tar(4).gz",
+      "sha256": "bc1b7e25ba338507ae38b260bcd283356de887b6c6cf762a2c146733f1c3c958"
+    }
+  },
+  "next_gate": "CAMPAIGN-PERF-QUAL1",
+  "performance_evidence": {
+    "full_source_parse_identity": {
+      "control_seconds": 7.641843772998982,
+      "current_seconds": 6.423186239999268,
+      "frames": 12000,
+      "speedup": 1.1897278838671588
+    },
+    "index": {
+      "authenticated_hit_seconds": 0.07091366700115032,
+      "build_seconds": 0.45059363399923313
+    },
+    "monitor_only_true_label_materialization": {
+      "control_median_seconds": 9.138929937000285,
+      "control_release": "0.20.233a0",
+      "control_trials_seconds": [
+        9.049325910000334,
+        9.228533964000235
+      ],
+      "current_median_seconds": 3.0124864780009375,
+      "current_release": "0.20.234a0",
+      "current_trials_seconds": [
+        2.9133628890012915,
+        3.1116100670005835
+      ],
+      "requested_frames": 2000,
+      "source_frames": 12000,
+      "speedup": 3.0336833057138923
+    },
+    "primary_record": {
+      "path": "benchmarks/mlff_replay_perf1_cloud_cpu_mpa0_2026-08-17.json",
+      "sha256": "89b30118d873aac690dd09f73949cbcd3078f67573f0086746c9c41395a7cdec"
+    },
+    "report": {
+      "path": "benchmarks/mlff_replay_perf1_cloud_cpu_mpa0_2026-08-17.md",
+      "sha256": "ad5873085880b20a2e2c407755f43a77980f526e24d90b99bf7bd6d506591d3c"
+    },
+    "train_monitor_true_label_materialization": {
+      "control_median_seconds": 15.676349609499994,
+      "control_release": "0.20.233a0",
+      "control_trials_seconds": [
+        15.723951702000704,
+        15.628747516999283
+      ],
+      "current_median_seconds": 14.347956869500194,
+      "current_release": "0.20.234a0",
+      "current_trials_seconds": [
+        14.606789539999227,
+        14.089124199001162
+      ],
+      "requested_frames": 12000,
+      "source_frames": 12000,
+      "speedup": 1.0925841046277185
+    }
+  },
+  "release": "0.20.234a0",
+  "schema": "mdstats.mlff-replay-perf1-qualification.v1",
+  "scientific_oracles": {
+    "chunk_size_invariant": true,
+    "full_materialization_control_exact": true,
+    "monitor_control_exact": true,
+    "monitor_extxyz_sha256": "cc0f9b308becd5c027a2adc64fc251808323e19c217412d82ea3d50b3deab2cf",
+    "monitor_logical_digest": "633aae8a6deb1a3d857880f3eecd9bb40dbaedba8357a13944184c1bafbf1114",
+    "ordered_geometry_identity_digest": "89d5b7a678ed846557c1f15f6592058e9ee3b78d81eb3516a320d2eabca7659f",
+    "prediction_authority_changed": false,
+    "pseudolabel_authority_changed": false,
+    "split_authority_changed": false,
+    "train_extxyz_sha256": "e6977082593a5b5610292e13ae49df7afbdbb7744ea9fe496952952474636f8c",
+    "train_logical_digest": "8d7a29c35443cd8a8e7b2142157dce7c9804c8137d4a42e824edef9e42240901",
+    "true_label_authority_changed": false
+  },
+  "status": "PASS",
+  "tests": {
+    "compileall": {
+      "paths": [
+        "mdstats",
+        "benchmarks",
+        "tools"
+      ],
+      "status": "PASS"
+    },
+    "current_gate_and_dependencies": {
+      "failed": 0,
+      "passed": 102,
+      "warnings": 3
+    },
+    "packaging_metadata": {
+      "pip_wheel_no_deps_no_build_isolation": "PASS",
+      "pyproject_version": "0.20.234a0",
+      "root_pkg_info_version": "0.20.234a0",
+      "wheel_metadata_name": "mdstats",
+      "wheel_metadata_version": "0.20.234a0"
+    },
+    "replay_specific": {
+      "failed": 0,
+      "passed": 46
+    },
+    "target_data2_functional_authority": {
+      "failed": 0,
+      "passed": 111,
+      "warning_class": "expected velocity-reconstruction/normalization warnings unchanged from prior authority",
+      "warnings": 18
+    }
+  }
+}

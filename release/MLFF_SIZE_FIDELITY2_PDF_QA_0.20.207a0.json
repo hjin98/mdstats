@@ -1,0 +1,47 @@
+{
+  "architecture_revision": 74,
+  "date": "2026-08-16",
+  "documents": [
+    {
+      "pages": 1,
+      "path": "ARCHITECTURE_NOTES_MLFF_REV74.pdf",
+      "preflight": "pass",
+      "sha256": "13a1c27434e9ce5717b3102b8402a274c3df5888a85599834c78be91f46f3185",
+      "visual": "pass"
+    },
+    {
+      "pages": 1,
+      "path": "docs/specs/training_data/mlff_size_fidelity2_mv_survivor_requalification_spec.pdf",
+      "preflight": "pass",
+      "sha256": "70daf6de58ef1b134ec27b1837ebc9549ed374e39f85b2d8a03f2b45d2216b65",
+      "visual": "pass"
+    },
+    {
+      "pages": 1,
+      "path": "PATCH_NOTES_0.20.207a0.pdf",
+      "preflight": "pass",
+      "sha256": "e0971cc0a10b2387c62c800d0ef81ebb671af952e4b3893379f46c3788dc193d",
+      "visual": "pass"
+    },
+    {
+      "pages": 222,
+      "path": "docs/arch_manuals/mlff_training_data_architecture.pdf",
+      "preflight": "pass",
+      "sha256": "89fd1e14ebaafa50faed28067495936ce37fe1e416db2731469f2d7f82515156",
+      "visual": "pass",
+      "visual_tail_pages": [
+        220,
+        221,
+        222
+      ]
+    }
+  ],
+  "layout_corrections": [
+    "condensed SIZE-FIDELITY2 normative specification from a nearly empty two-page rendering to one balanced page",
+    "verified the revision-74 manual tail across pages 220-222; no clipping, overflow, orphaned heading, or margin violation remained"
+  ],
+  "manual_root_and_mirror_pdf_identical": true,
+  "release": "0.20.207a0",
+  "schema": "mdstats.size-fidelity2-pdf-qa.v1",
+  "status": "pass"
+}

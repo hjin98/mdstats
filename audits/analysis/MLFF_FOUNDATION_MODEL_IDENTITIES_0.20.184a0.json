@@ -1,0 +1,26 @@
+{
+  "binary_payloads_included": false,
+  "content_digest": "8712d931e17570414a59e4c21d7d3153d85ccdd792b72e0bc02caf59a934c3f7",
+  "created_at_utc": "2026-08-16T00:12:51Z",
+  "mdstats_version": "0.20.184a0",
+  "models": [
+    {
+      "expected_filename": "mace-mh-1.model",
+      "family": "mace_mh_1",
+      "label": "MACE-MH-1",
+      "required_head": "omat_pbe",
+      "sha256": "ec00a2705854622fbbd898ccfb7701072fcd674709102d009fb919c1b8cc5dde",
+      "size_bytes": 59208715
+    },
+    {
+      "expected_filename": "mace-mpa-0-medium.model",
+      "family": "mace_mpa_0",
+      "label": "MACE-MPA-0-medium",
+      "required_head": "default",
+      "sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
+      "size_bytes": 79462305
+    }
+  ],
+  "note": "External locked inputs. FINAL-GPU1 verifies these identities before accelerator qualification.",
+  "schema": "mdstats.foundation-model-identities.2026-08.v1"
+}

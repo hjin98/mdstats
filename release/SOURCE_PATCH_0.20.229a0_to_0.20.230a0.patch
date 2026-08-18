@@ -1,0 +1,1687 @@
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/CHANGELOG.md /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/CHANGELOG.md
+--- /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/CHANGELOG.md	2026-08-17 21:56:30.000000000 +0000
++++ /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/CHANGELOG.md	2026-08-17 22:42:28.814433685 +0000
+@@ -1,3 +1,12 @@
++## 0.20.230a0 - 2026-08-17
++
++- Implement MVKERNEL1 / architecture revision 97 as exact sparse-vector hardening around the frozen sequential MVSEL rank authority and independent MVQUAL scientific scorer.
++- Add shared vectorized ragged-CSR gathers, fuse identical family/domain scatter streams, vectorize witness-weight arithmetic, and maintain hard-obligation pending count incrementally without changing selector decisions.
++- Vectorize MVIDX selected-subset coverage and obligation telemetry with canonical CSR gathers and `bincount`; MVQUAL provenance coding is built once per domain and telemetry remains byte-equivalent to the scalar reference.
++- Preserve the 4,096/2,048 selector digest `d147d85acd64dd386dcd9b64e1bd534001e1b1a9e1736522b2ffaddbb978b378` and the 24,576/16,384 scale digest `aaec42fb0c1df6a62ce2286ec5f5b8897bc089d6d31726da89a0461bcd75d608`.
++- On the cloud CPU, reduce the representative selector fixture from about 1.404 s to about 0.811 s and the 16,384-selection stress path from about 6.640 s to about 5.591 s; reduce 8,192-frame/6-family MVQUAL telemetry from about 0.578 s to about 0.041 s while preserving the exact telemetry authority.
++- Keep active qualification on supplied MACE-MPA-0 medium while preserving model-generic compatibility with MACE-MH-1; next optimization gate is REPAIR-PAR1.
++
+ ## 0.20.229a0 - 2026-08-17
+ 
+ - Implement COVREF-PAR1 / architecture revision 96: exact TARGET-DATA2B reference-radius block parallelism on the shared deterministic scheduler with one native cKDTree worker per task.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/PKG-INFO /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/PKG-INFO
+--- /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/PKG-INFO	2026-08-17 17:55:43.000000000 +0000
++++ /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/PKG-INFO	2026-08-17 22:51:29.164935217 +0000
+@@ -1,6 +1,6 @@
+ Metadata-Version: 2.4
+ Name: mdstats
+-Version: 0.20.227a0
++Version: 0.20.230a0
+ Summary: Transparent atomistic frame collections and structural/dynamical statistics
+ Requires-Python: >=3.10
+ Requires-Dist: numpy>=1.26
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/benchmarks/benchmark_mlff_mvkernel1.py /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/benchmarks/benchmark_mlff_mvkernel1.py
+--- /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/benchmarks/benchmark_mlff_mvkernel1.py	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/benchmarks/benchmark_mlff_mvkernel1.py	2026-08-17 22:36:33.106433685 +0000
+@@ -0,0 +1,190 @@
++#!/usr/bin/env python3
++"""MVKERNEL1 exact sparse selector/qualification kernel benchmark."""
++from __future__ import annotations
++
++import argparse
++import hashlib
++import json
++import resource
++import statistics
++import time
++from types import SimpleNamespace
++from typing import Any
++
++import numpy as np
++
++
++class _SparseFamily:
++    def __init__(self, family_id: str, n: int, degree: int, stride: int) -> None:
++        self.family_id = family_id
++        self.candidate_count = n
++        self.witness_count = n
++        base = np.arange(n, dtype=np.uint32)
++        rows = np.empty((n, degree), dtype=np.uint32)
++        for j in range(degree):
++            rows[:, j] = (base + j * (2 * stride + 1)) % n
++        rows.sort(axis=1)
++        self.candidate_offsets = np.arange(0, (n + 1) * degree, degree, dtype=np.uint64)
++        self.candidate_witnesses = rows.ravel()
++        counts = np.bincount(self.candidate_witnesses.astype(np.int64), minlength=n)
++        self.witness_offsets = np.empty(n + 1, dtype=np.uint64)
++        self.witness_offsets[0] = 0
++        np.cumsum(counts, dtype=np.int64, out=self.witness_offsets[1:])
++        self.witness_candidates = np.empty(n * degree, dtype=np.uint32)
++        cursor = self.witness_offsets[:-1].copy()
++        for candidate in range(n):
++            for witness in rows[candidate]:
++                position = int(cursor[witness])
++                self.witness_candidates[position] = candidate
++                cursor[witness] += 1
++        for witness in range(n):
++            start, stop = int(self.witness_offsets[witness]), int(self.witness_offsets[witness + 1])
++            self.witness_candidates[start:stop].sort()
++
++    def candidate_witness_indices(self, candidate: int) -> np.ndarray:
++        start, stop = int(self.candidate_offsets[candidate]), int(self.candidate_offsets[candidate + 1])
++        return self.candidate_witnesses[start:stop]
++
++    def witness_candidate_indices(self, witness: int) -> np.ndarray:
++        start, stop = int(self.witness_offsets[witness]), int(self.witness_offsets[witness + 1])
++        return self.witness_candidates[start:stop]
++
++
++class _ReferenceFamily:
++    def __init__(self, family_id: str, n: int, phase: float) -> None:
++        self.family_id = family_id
++        x = np.arange(n, dtype=np.float64)
++        weights = 1.0 + ((x * 0.6180339887498949 + phase) % 1.0)
++        self.weights = weights / np.sum(weights, dtype=np.float64)
++
++
++class _ReferenceDomain:
++    label_domain_id = "mvkernel1"
++    content_digest = "a" * 64
++    frame_domain_digest = "b" * 64
++
++    def __init__(self, n: int, families: tuple[_SparseFamily, ...]) -> None:
++        self.frame_uids = tuple(hashlib.sha256(f"mvkernel1-frame-{i:08d}".encode()).hexdigest() for i in range(n))
++        self._families = {
++            family.family_id: _ReferenceFamily(family.family_id, n, i / 11.0)
++            for i, family in enumerate(families)
++        }
++
++    def family(self, family_id: str) -> _ReferenceFamily:
++        return self._families[family_id]
++
++
++class _SparseDomain:
++    content_digest = "c" * 64
++    frame_domain_digest = "b" * 64
++    obligations: tuple[Any, ...] = ()
++
++    def __init__(self, n: int, families: tuple[_SparseFamily, ...]) -> None:
++        self.candidate_count = n
++        self.families = families
++        unit_count = max(1, n // 32)
++        self.correlation_unit_ids = tuple(str(i) for i in range(unit_count))
++        self.candidate_correlation_unit_codes = np.arange(n, dtype=np.int32) % unit_count
++
++    def candidate_obligation_indices(self, candidate: int) -> np.ndarray:
++        return np.empty(0, dtype=np.uint32)
++
++    def obligation_candidate_indices(self, obligation: int) -> np.ndarray:
++        return np.empty(0, dtype=np.uint32)
++
++
++def _fixture(n: int, degree: int, family_count: int):
++    families = tuple(_SparseFamily(f"family_{i}", n, degree, 2 * i + 1) for i in range(family_count))
++    return _ReferenceDomain(n, families), _SparseDomain(n, families)
++
++
++def _selector_once(n: int, k: int, degree: int, family_count: int) -> dict[str, Any]:
++    from mdstats.training_data import target_multi_view_selector as mvsel
++
++    reference, sparse = _fixture(n, degree, family_count)
++    policy = mvsel.TargetMultiViewSelectorPolicy(target_sizes=(k,))
++    state = mvsel._build_domain_state(reference, sparse)
++    selected: list[int] = []
++    started = time.perf_counter(); cpu_started = time.process_time()
++    for _ in range(k):
++        candidate, _, _, _ = mvsel._choose_candidate(reference, sparse, state, policy)
++        selected.append(candidate)
++        mvsel._select_and_update(candidate, sparse, state)
++    wall = time.perf_counter() - started; cpu = time.process_time() - cpu_started
++    return {
++        "wall_seconds": wall,
++        "cpu_seconds": cpu,
++        "selection_digest": hashlib.sha256(np.asarray(selected, dtype="<u4").tobytes()).hexdigest(),
++        "maxrss_kib": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
++    }
++
++
++def _selector_benchmark(repeats: int) -> dict[str, Any]:
++    trials = [_selector_once(4096, 2048, 24, 3) for _ in range(repeats)]
++    scale = _selector_once(24576, 16384, 8, 2)
++    return {
++        "fixture": {"n": 4096, "k": 2048, "degree": 24, "family_count": 3, "edge_count": 294912},
++        "trial_wall_seconds": [x["wall_seconds"] for x in trials],
++        "median_wall_seconds": statistics.median(x["wall_seconds"] for x in trials),
++        "selection_digests": sorted({x["selection_digest"] for x in trials}),
++        "scale": {
++            "n": 24576, "k": 16384, "degree": 8, "family_count": 2, "edge_count": 393216,
++            **scale,
++        },
++    }
++
++
++def _telemetry_benchmark(repeats: int) -> dict[str, Any]:
++    from mdstats.training_data import target_multi_view_qualification as mvqual
++
++    n, k, degree, family_count = 16384, 8192, 16, 6
++    reference, sparse = _fixture(n, degree, family_count)
++    role = SimpleNamespace(development_intervals=(SimpleNamespace(
++        frame_uids=reference.frame_uids, run_id="run0", condition_id="condition0", unit_id="unit0"
++    ),))
++    selected_uids = reference.frame_uids[:k]
++    # Warm once so the timed region represents the kernel, not first-call import/cache effects.
++    authority = mvqual._selector_telemetry(reference, sparse, role, selected_uids).to_dict()
++    trials = []
++    for _ in range(repeats):
++        started = time.perf_counter(); cpu_started = time.process_time()
++        result = mvqual._selector_telemetry(reference, sparse, role, selected_uids).to_dict()
++        trials.append((time.perf_counter() - started, time.process_time() - cpu_started))
++        if result != authority:
++            raise RuntimeError("MVKERNEL1 telemetry benchmark changed authority across repeats.")
++    authority_digest = hashlib.sha256(
++        json.dumps(authority, sort_keys=True, separators=(",", ":")).encode()
++    ).hexdigest()
++    return {
++        "fixture": {"n": n, "k": k, "degree": degree, "family_count": family_count, "edge_count": n * degree * family_count},
++        "trial_wall_seconds": [x[0] for x in trials],
++        "median_wall_seconds": statistics.median(x[0] for x in trials),
++        "authority_digest": authority_digest,
++        "authority": authority,
++    }
++
++
++def main() -> None:
++    parser = argparse.ArgumentParser()
++    parser.add_argument("--mode", choices=("selector", "telemetry", "all"), default="all")
++    parser.add_argument("--repeats", type=int, default=5)
++    parser.add_argument("--output")
++    args = parser.parse_args()
++    result: dict[str, Any] = {
++        "schema": "mdstats.mlff-mvkernel1-benchmark.v1",
++        "release": __import__("mdstats").__version__,
++    }
++    if args.mode in {"selector", "all"}:
++        result["selector"] = _selector_benchmark(args.repeats)
++    if args.mode in {"telemetry", "all"}:
++        result["telemetry"] = _telemetry_benchmark(args.repeats)
++    text = json.dumps(result, indent=2, sort_keys=True) + "\n"
++    if args.output:
++        with open(args.output, "w", encoding="utf-8") as handle:
++            handle.write(text)
++    else:
++        print(text, end="")
++
++
++if __name__ == "__main__":
++    main()
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/benchmarks/mlff_mvkernel1_cloud_cpu_mpa0_2026-08-17.json /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/benchmarks/mlff_mvkernel1_cloud_cpu_mpa0_2026-08-17.json
+--- /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/benchmarks/mlff_mvkernel1_cloud_cpu_mpa0_2026-08-17.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/benchmarks/mlff_mvkernel1_cloud_cpu_mpa0_2026-08-17.json	2026-08-17 22:43:03.446618435 +0000
+@@ -0,0 +1,172 @@
++{
++  "acceptance": {
++    "full_mvqual_plan_digest_equal_to_control": true,
++    "mvqual_telemetry_byte_equivalent": true,
++    "next_gate": "REPAIR-PAR1",
++    "selector_plan_byte_equivalent": true,
++    "selector_state_exact_per_rank": true,
++    "status": "PASS",
++    "throughput_improved": true
++  },
++  "active_foundation": {
++    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
++    "family": "MACE-MPA-0 medium",
++    "mh1_compatible": true,
++    "model_specific_kernel_assumptions": false
++  },
++  "architecture_revision": 97,
++  "control": {
++    "raw": {
++      "maxrss_kib": 291216,
++      "release": "0.20.229a0",
++      "scale": {
++        "cpu_seconds": 6.639518193999999,
++        "selection_digest": "aaec42fb0c1df6a62ce2286ec5f5b8897bc089d6d31726da89a0461bcd75d608",
++        "wall_seconds": 6.6397316060001685
++      },
++      "selector": {
++        "digests": [
++          "d147d85acd64dd386dcd9b64e1bd534001e1b1a9e1736522b2ffaddbb978b378"
++        ],
++        "median": 1.403764596999281,
++        "times": [
++          1.403764596999281,
++          1.4242025100002138,
++          1.3560113050007203,
++          1.5705718970002636,
++          1.3805350359998556
++        ]
++      },
++      "telemetry": {
++        "authority": {
++          "condition_count": 1,
++          "content_digest": "da2a8fbf0411677316cdc6769a4556c91509f10dc52b3f056237c1175fc8ea21",
++          "correlation_unit_count": 512,
++          "maximum_correlation_unit_fraction": 0.001953125,
++          "run_count": 1,
++          "schema": "mdstats.target-multi-view-qualification-telemetry.v1",
++          "uncovered_reference_mass": 2.9285405130383175,
++          "uncovered_witness_count": 47982,
++          "unique_reference_mass_fraction": 0.0015794429314692695,
++          "zero_unique_candidate_fraction": 0.994384765625
++        },
++        "authority_digest": "d51daef220edffd1f9a72676ee5835ed4f0db44d8818b78f3449defcba63894c",
++        "median": 0.5779456809996191,
++        "times": [
++          0.5890249719996064,
++          0.5767970189999687,
++          0.5699440199996388,
++          0.5919615829998293,
++          0.5779456809996191
++        ]
++      }
++    },
++    "release": "0.20.229a0"
++  },
++  "current": {
++    "raw": {
++      "maxrss_kib": 295328,
++      "release": "0.20.230a0",
++      "scale": {
++        "cpu_seconds": 5.588193260999999,
++        "selection_digest": "aaec42fb0c1df6a62ce2286ec5f5b8897bc089d6d31726da89a0461bcd75d608",
++        "wall_seconds": 5.590918543000043
++      },
++      "selector": {
++        "digests": [
++          "d147d85acd64dd386dcd9b64e1bd534001e1b1a9e1736522b2ffaddbb978b378"
++        ],
++        "median": 0.8106222610003897,
++        "times": [
++          0.8017894859995067,
++          0.8031685890000517,
++          0.8106222610003897,
++          0.8383097099995211,
++          0.8158502169999338
++        ]
++      },
++      "telemetry": {
++        "authority": {
++          "condition_count": 1,
++          "content_digest": "da2a8fbf0411677316cdc6769a4556c91509f10dc52b3f056237c1175fc8ea21",
++          "correlation_unit_count": 512,
++          "maximum_correlation_unit_fraction": 0.001953125,
++          "run_count": 1,
++          "schema": "mdstats.target-multi-view-qualification-telemetry.v1",
++          "uncovered_reference_mass": 2.9285405130383175,
++          "uncovered_witness_count": 47982,
++          "unique_reference_mass_fraction": 0.0015794429314692695,
++          "zero_unique_candidate_fraction": 0.994384765625
++        },
++        "authority_digest": "d51daef220edffd1f9a72676ee5835ed4f0db44d8818b78f3449defcba63894c",
++        "median": 0.04112498700033029,
++        "times": [
++          0.0452122340002461,
++          0.04092534500068723,
++          0.040243059000204084,
++          0.04112498700033029,
++          0.041311094999400666
++        ]
++      }
++    },
++    "release": "0.20.230a0"
++  },
++  "date": "2026-08-17",
++  "execution": {
++    "mvqual_telemetry_16384_8192_6family": {
++      "control_median_seconds": 0.5779456809996191,
++      "control_trials_seconds": [
++        0.5890249719996064,
++        0.5767970189999687,
++        0.5699440199996388,
++        0.5919615829998293,
++        0.5779456809996191
++      ],
++      "current_median_seconds": 0.04112498700033029,
++      "current_trials_seconds": [
++        0.0452122340002461,
++        0.04092534500068723,
++        0.040243059000204084,
++        0.04112498700033029,
++        0.041311094999400666
++      ],
++      "speedup": 14.053394861741289
++    },
++    "selector_24576_16384": {
++      "control_seconds": 6.6397316060001685,
++      "current_seconds": 5.590918543000043,
++      "speedup": 1.1875922632271692
++    },
++    "selector_4096_2048": {
++      "control_median_seconds": 1.403764596999281,
++      "control_trials_seconds": [
++        1.403764596999281,
++        1.4242025100002138,
++        1.3560113050007203,
++        1.5705718970002636,
++        1.3805350359998556
++      ],
++      "current_median_seconds": 0.8106222610003897,
++      "current_trials_seconds": [
++        0.8017894859995067,
++        0.8031685890000517,
++        0.8106222610003897,
++        0.8383097099995211,
++        0.8158502169999338
++      ],
++      "speedup": 1.731712370280695
++    }
++  },
++  "host_scope": "cloud CPU/cgroup-limited execution authority; timing is non-scientific evidence",
++  "release": "0.20.230a0",
++  "schema": "mdstats.mlff-mvkernel1-qualification-benchmark.v1",
++  "scientific": {
++    "mvqual_plan_digest": "ff8f64607a4835309889cb9b4c1e886959d9e47468a48df07676e0bf32295a80",
++    "mvqual_telemetry_authority_digest": "d51daef220edffd1f9a72676ee5835ed4f0db44d8818b78f3449defcba63894c",
++    "scale_16384_selector_digest": "aaec42fb0c1df6a62ce2286ec5f5b8897bc089d6d31726da89a0461bcd75d608",
++    "scale_digest_equal": true,
++    "selector_digest": "d147d85acd64dd386dcd9b64e1bd534001e1b1a9e1736522b2ffaddbb978b378",
++    "selector_digest_equal": true,
++    "telemetry_digest_equal": true
++  }
++}
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/benchmarks/mlff_mvkernel1_cloud_cpu_mpa0_2026-08-17.md /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/benchmarks/mlff_mvkernel1_cloud_cpu_mpa0_2026-08-17.md
+--- /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/benchmarks/mlff_mvkernel1_cloud_cpu_mpa0_2026-08-17.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/benchmarks/mlff_mvkernel1_cloud_cpu_mpa0_2026-08-17.md	2026-08-17 22:43:03.446719590 +0000
+@@ -0,0 +1,29 @@
++# MVKERNEL1 cloud-CPU qualification benchmark
++
++Release: `mdstats 0.20.230a0`  
++Architecture revision: 97  
++Active foundation checkpoint: MACE-MPA-0 medium (`75428afe...638`)  
++Scientific scope: foundation-model independent; MACE-MH-1 remains supported.
++
++## Scientific equivalence
++
++- Representative MVSEL ordered-selection digest: `d147d85acd64dd386dcd9b64e1bd534001e1b1a9e1736522b2ffaddbb978b378`.
++- 16,384-selection stress digest: `aaec42fb0c1df6a62ce2286ec5f5b8897bc089d6d31726da89a0461bcd75d608`.
++- MVQUAL telemetry authority digest: `d51daef220edffd1f9a72676ee5835ed4f0db44d8818b78f3449defcba63894c`.
++- Full MVQUAL plan digest: `ff8f64607a4835309889cb9b4c1e886959d9e47468a48df07676e0bf32295a80`.
++- Optimized MVSEL state agrees with the retained scalar reference after every qualified rank.
++- Optimized MVQUAL telemetry serializes byte-for-byte identically to the retained scalar reference.
++
++## Same-host execution evidence
++
++| Workload | 0.20.229a0 | 0.20.230a0 | Speedup |
++|---|---:|---:|---:|
++| MVSEL n=4096, k=2048, degree=24, 3 families (median of 5) | 1.404 s | 0.811 s | 1.73x |
++| MVSEL n=24576, k=16384, degree=8, 2 families | 6.640 s | 5.591 s | 1.19x |
++| MVQUAL telemetry n=16384, selected=8192, degree=16, 6 families (median of 5) | 0.578 s | 0.041 s | 14.05x |
++
++Timing is execution evidence only. Exact state, serialized records, and scientific digests are the acceptance authority.
++
++## Decision
++
++MVKERNEL1 passes. Sequential rank authority and independent TARGET-DATA2B rescoring are unchanged. The next optimization gate is `REPAIR-PAR1`.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/benchmarks/mlff_mvkernel1_implementation_manifest_0.20.230a0.json /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/benchmarks/mlff_mvkernel1_implementation_manifest_0.20.230a0.json
+--- /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/benchmarks/mlff_mvkernel1_implementation_manifest_0.20.230a0.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/benchmarks/mlff_mvkernel1_implementation_manifest_0.20.230a0.json	2026-08-17 22:43:03.446802294 +0000
+@@ -0,0 +1,24 @@
++{
++  "architecture_revision": 97,
++  "changed_runtime_files": [
++    "mdstats/training_data/_sparse_vector_kernels.py",
++    "mdstats/training_data/target_multi_view_selector.py",
++    "mdstats/training_data/target_multi_view_qualification.py",
++    "mdstats/training_data/target_coverage_sparse_index.py"
++  ],
++  "execution_changes": [
++    "vectorized canonical ragged CSR gather",
++    "paired family/domain scatter stream reuse with independent ordered np.add.at",
++    "vectorized witness-weight arithmetic",
++    "incremental required hard-obligation pending count",
++    "selected-subset coverage and obligation bincount kernels",
++    "vectorized MVQUAL multiplicity/unique-owner telemetry and one-time provenance coding"
++  ],
++  "independent_mvqual_rescorer_changed": false,
++  "next_gate": "REPAIR-PAR1",
++  "release": "0.20.230a0",
++  "schema": "mdstats.mlff-mvkernel1-implementation-manifest.v1",
++  "scientific_policy_changed": false,
++  "scientific_schemas_changed": false,
++  "selector_rank_authority_changed": false
++}
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/docs/arch_manuals/mlff_training_data/00_front_matter.md /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/docs/arch_manuals/mlff_training_data/00_front_matter.md
+--- /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/docs/arch_manuals/mlff_training_data/00_front_matter.md	2026-08-17 21:56:08.000000000 +0000
++++ /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/docs/arch_manuals/mlff_training_data/00_front_matter.md	2026-08-17 22:39:37.942269410 +0000
+@@ -1,8 +1,8 @@
+ ---
+ geometry: "margin=0.75in"
+-architecture_revision: 96
+-release: "mdstats 0.20.229a0"
+-status: "current normative architecture; COVREF-PAR1 complete; MVKERNEL1 next"
++architecture_revision: 97
++release: "mdstats 0.20.230a0"
++status: "current normative architecture; MVKERNEL1 complete; REPAIR-PAR1 next"
+ last_updated: "2026-08-17"
+ ---
+ 
+@@ -76,4 +76,4 @@
+ 
+ ## Current release boundary
+ 
+-Revision 96 completes `COVREF-PAR1` on top of `PARCORE1`. TARGET-DATA2B reference-radius construction now uses one stage-wide deterministic outer block queue with exactly one native cKDTree worker per task, cache-sized/adaptive row blocks, shared read-only scaled arrays/trees, and exact disjoint row writes. Raw-pair and foundation-species extraction use O(1) lookup maps, and target-label scalar families apply their historical constant-family rejection before statistics/tree construction. The frozen local-radius/reference-family authority is unchanged byte-for-byte across worker counts. The active qualification checkpoint remains MACE-MPA-0 medium, while the optimization contains no foundation-specific assumptions and remains valid for MACE-MH-1 campaigns. `MVKERNEL1` is next; GPU performance authority remains deferred.
++Revision 97 completes `MVKERNEL1` on top of the exact sparse MVIDX substrate. The sequential MVSEL rank authority is unchanged, while ragged inverse-edge gathers, paired family/domain scatters, witness-weight arithmetic, selected-subset coverage, obligation counts, and MVQUAL multiplicity/unique-owner telemetry now use shared vectorized CSR kernels. Required hard-obligation pending state is maintained incrementally, and MVQUAL provenance codes are constructed once per domain. Optimized MVSEL state is compared against the scalar reference after every qualified rank and MVQUAL telemetry is byte-equivalent to its retained scalar reference. The active qualification checkpoint remains MACE-MPA-0 medium, and the execution kernels are foundation-model independent and remain valid for MACE-MH-1 campaigns. `REPAIR-PAR1` is next; GPU performance authority remains deferred.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/docs/arch_manuals/mlff_training_data/70_status_and_gates.md /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/docs/arch_manuals/mlff_training_data/70_status_and_gates.md
+--- /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/docs/arch_manuals/mlff_training_data/70_status_and_gates.md	2026-08-17 21:58:40.000000000 +0000
++++ /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/docs/arch_manuals/mlff_training_data/70_status_and_gates.md	2026-08-17 22:42:28.808409053 +0000
+@@ -71,13 +71,15 @@
+ 
+ **Next gate.** `MVKERNEL1`.
+ 
+-### Gate MVKERNEL1 - sparse selector/qualification vector kernels
++### Gate MVKERNEL1 - sparse selector/qualification vector kernels - COMPLETE
+ 
+ **Purpose.** Reduce Python overhead in MVSEL/MVQUAL without altering sequential rank decisions.
+ 
+-**Implementation.** Vectorized ragged CSR gather, indexed weights, `bincount` telemetry, and incremental hard-obligation/family counters.
++**Implementation.** `0.20.230a0` adds shared exact ragged-CSR gather kernels and routes MVSEL inverse-edge updates through them. Per-family and domain-total gain arrays share one gathered edge stream, while `np.add.at` is still applied independently in canonical witness/edge order so floating-point state remains exact. Coverage and representative witness amounts are vectorized, and required hard-obligation pending count is maintained incrementally. MVIDX selected-subset coverage and obligation helpers gather candidate CSR rows once and use boolean assignment/`bincount`. MVQUAL gathers selected candidate rows once per family to derive multiplicity, covered/unique witness masks, and unique-owner candidates; DATA2A run/condition provenance codes are built once per domain. The scalar MVSEL update and scalar MVQUAL telemetry implementations are retained as qualification references.
+ 
+-**Acceptance.** MVSEL state agrees after every rank; MVQUAL metrics are integer/FP authority-equivalent; throughput improves on sparse-edge workloads.
++**Acceptance. PASS.** Optimized and scalar MVSEL states agree exactly after every qualified rank and persisted selection plans remain byte-identical. The frozen 4,096-candidate/2,048-selection digest remains `d147d85acd64dd386dcd9b64e1bd534001e1b1a9e1736522b2ffaddbb978b378`; the 24,576-candidate/16,384-selection stress digest remains `aaec42fb0c1df6a62ce2286ec5f5b8897bc089d6d31726da89a0461bcd75d608`. Same-host measurements reduce the representative selector median from about 1.404 s in untouched `0.20.229a0` to about 0.811 s, and the 16,384-selection stress path from about 6.640 s to about 5.591 s. A 16,384-candidate/8,192-selected/6-family MVQUAL telemetry fixture drops from about 0.578 s to about 0.041 s (about 14.1x), with byte-identical telemetry. Full MVQUAL plan evidence remains digest-identical to untouched `0.20.229a0`. Timing is execution evidence; exact selector state and qualification records are authority.
++
++**Next gate.** `REPAIR-PAR1`.
+ 
+ ### Gate REPAIR-PAR1 - deterministic parallel repair proposals
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/docs/arch_manuals/mlff_training_data_architecture.md /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/docs/arch_manuals/mlff_training_data_architecture.md
+--- /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-17 22:15:48.000000000 +0000
++++ /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-17 22:42:30.240614603 +0000
+@@ -1,8 +1,8 @@
+ ---
+ geometry: "margin=0.75in"
+-architecture_revision: 96
+-release: "mdstats 0.20.229a0"
+-status: "current normative architecture; COVREF-PAR1 complete; MVKERNEL1 next"
++architecture_revision: 97
++release: "mdstats 0.20.230a0"
++status: "current normative architecture; MVKERNEL1 complete; REPAIR-PAR1 next"
+ last_updated: "2026-08-17"
+ ---
+ 
+@@ -76,7 +76,7 @@
+ 
+ ## Current release boundary
+ 
+-Revision 96 completes `COVREF-PAR1` on top of `PARCORE1`. TARGET-DATA2B reference-radius construction now uses one stage-wide deterministic outer block queue with exactly one native cKDTree worker per task, cache-sized/adaptive row blocks, shared read-only scaled arrays/trees, and exact disjoint row writes. Raw-pair and foundation-species extraction use O(1) lookup maps, and target-label scalar families apply their historical constant-family rejection before statistics/tree construction. The frozen local-radius/reference-family authority is unchanged byte-for-byte across worker counts. The active qualification checkpoint remains MACE-MPA-0 medium, while the optimization contains no foundation-specific assumptions and remains valid for MACE-MH-1 campaigns. `MVKERNEL1` is next; GPU performance authority remains deferred.
++Revision 97 completes `MVKERNEL1` on top of the exact sparse MVIDX substrate. The sequential MVSEL rank authority is unchanged, while ragged inverse-edge gathers, paired family/domain scatters, witness-weight arithmetic, selected-subset coverage, obligation counts, and MVQUAL multiplicity/unique-owner telemetry now use shared vectorized CSR kernels. Required hard-obligation pending state is maintained incrementally, and MVQUAL provenance codes are constructed once per domain. Optimized MVSEL state is compared against the scalar reference after every qualified rank and MVQUAL telemetry is byte-equivalent to its retained scalar reference. The active qualification checkpoint remains MACE-MPA-0 medium, and the execution kernels are foundation-model independent and remain valid for MACE-MH-1 campaigns. `REPAIR-PAR1` is next; GPU performance authority remains deferred.
+ 
+ # Part I - Foundations and ownership
+ 
+@@ -2691,13 +2691,15 @@
+ 
+ **Next gate.** `MVKERNEL1`.
+ 
+-### Gate MVKERNEL1 - sparse selector/qualification vector kernels
++### Gate MVKERNEL1 - sparse selector/qualification vector kernels - COMPLETE
+ 
+ **Purpose.** Reduce Python overhead in MVSEL/MVQUAL without altering sequential rank decisions.
+ 
+-**Implementation.** Vectorized ragged CSR gather, indexed weights, `bincount` telemetry, and incremental hard-obligation/family counters.
++**Implementation.** `0.20.230a0` adds shared exact ragged-CSR gather kernels and routes MVSEL inverse-edge updates through them. Per-family and domain-total gain arrays share one gathered edge stream, while `np.add.at` is still applied independently in canonical witness/edge order so floating-point state remains exact. Coverage and representative witness amounts are vectorized, and required hard-obligation pending count is maintained incrementally. MVIDX selected-subset coverage and obligation helpers gather candidate CSR rows once and use boolean assignment/`bincount`. MVQUAL gathers selected candidate rows once per family to derive multiplicity, covered/unique witness masks, and unique-owner candidates; DATA2A run/condition provenance codes are built once per domain. The scalar MVSEL update and scalar MVQUAL telemetry implementations are retained as qualification references.
+ 
+-**Acceptance.** MVSEL state agrees after every rank; MVQUAL metrics are integer/FP authority-equivalent; throughput improves on sparse-edge workloads.
++**Acceptance. PASS.** Optimized and scalar MVSEL states agree exactly after every qualified rank and persisted selection plans remain byte-identical. The frozen 4,096-candidate/2,048-selection digest remains `d147d85acd64dd386dcd9b64e1bd534001e1b1a9e1736522b2ffaddbb978b378`; the 24,576-candidate/16,384-selection stress digest remains `aaec42fb0c1df6a62ce2286ec5f5b8897bc089d6d31726da89a0461bcd75d608`. Same-host measurements reduce the representative selector median from about 1.404 s in untouched `0.20.229a0` to about 0.811 s, and the 16,384-selection stress path from about 6.640 s to about 5.591 s. A 16,384-candidate/8,192-selected/6-family MVQUAL telemetry fixture drops from about 0.578 s to about 0.041 s (about 14.1x), with byte-identical telemetry. Full MVQUAL plan evidence remains digest-identical to untouched `0.20.229a0`. Timing is execution evidence; exact selector state and qualification records are authority.
++
++**Next gate.** `REPAIR-PAR1`.
+ 
+ ### Gate REPAIR-PAR1 - deterministic parallel repair proposals
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/docs/arch_manuals/mlff_training_data_dependency_graph.json /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/docs/arch_manuals/mlff_training_data_dependency_graph.json
+--- /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-17 21:56:08.000000000 +0000
++++ /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-17 22:39:37.946878666 +0000
+@@ -1,8 +1,8 @@
+ {
+-  "architecture_revision": 96,
++  "architecture_revision": 97,
+   "branch": "MLFF-DATA",
+-  "description": "MLFF training-data dependency graph through architecture revision 96. COVREF-PAR1 implements exact TARGET-DATA2B outer block scheduling and adapter lookup hardening; MVKERNEL1 is next.",
+-  "documentation_gate": "COVREF_PAR1_GLOBAL_BLOCK_QUEUE",
++  "description": "MLFF training-data dependency graph through architecture revision 97. MVKERNEL1 implements exact vectorized sparse selector/qualification kernels; REPAIR-PAR1 is next.",
++  "documentation_gate": "MVKERNEL1_VECTOR_SPARSE_KERNELS",
+   "edge_type_definitions": {
+     "execution_requires": "The upstream product must exist before execution.",
+     "fit_domain_requires": "The fitted object may inspect only the declared training domain.",
+@@ -3201,7 +3201,7 @@
+       ]
+     }
+   ],
+-  "next_gate": "MVKERNEL1_VECTOR_SPARSE_KERNELS",
++  "next_gate": "REPAIR_PAR1_PROPOSAL_QUEUE",
+   "nodes": [
+     {
+       "id": "ACQUISITION_DECISIONS"
+@@ -5399,15 +5399,22 @@
+       "single_native_tree_worker_per_task": true
+     },
+     {
+-      "architecture_revision": 96,
+-      "authority_class": "planned_performance_exact_equivalence",
++      "architecture_revision": 97,
++      "authority_class": "performance_exact_equivalence",
+       "gate_name": "MVKERNEL1",
+       "id": "MVKERNEL1_VECTOR_SPARSE_KERNELS",
+-      "implementation_status": "planned",
+-      "scientific_authority_change": false
++      "implementation_status": "implemented_exact_vector_sparse_kernels",
++      "scientific_authority_change": false,
++      "implemented_release": "0.20.230a0",
++      "selector_rank_authority_changed": false,
++      "ragged_csr_gather": "vectorized_canonical_order",
++      "paired_gain_scatter": "single_gather_independent_ordered_add_at",
++      "hard_obligation_pending_count": "incremental",
++      "mvqual_telemetry": "csr_gather_bincount_exact",
++      "next_gate": "REPAIR_PAR1_PROPOSAL_QUEUE"
+     },
+     {
+-      "architecture_revision": 91,
++      "architecture_revision": 97,
+       "authority_class": "planned_performance_exact_equivalence",
+       "gate_name": "REPAIR-PAR1",
+       "id": "REPAIR_PAR1_PROPOSAL_QUEUE",
+@@ -5447,5 +5454,5 @@
+       "scientific_authority_change": false
+     }
+   ],
+-  "schema_version": 76
++  "schema_version": 77
+ }
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/docs/history/mlff/LINEAGE.md /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/docs/history/mlff/LINEAGE.md
+--- /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/docs/history/mlff/LINEAGE.md	2026-08-17 12:08:11.000000000 +0000
++++ /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/docs/history/mlff/LINEAGE.md	2026-08-17 22:39:47.977590118 +0000
+@@ -9,7 +9,7 @@
+ | Multi-view target-data architecture | 64-76 | bounded rescue, multi-view plan, FEAS1, MVIDX1, MVSEL1, REPAIR1, MVPERF1/MVQUAL1, size halving/fidelity, migration |
+ | Replay/CuEq/repeatability hardening | 77-87 | replay unification, CuEq defaults, repeatability diagnostics, campaign-wide warning containment |
+ | FEAS1 utilization hardening | 88-90 | vectorized reduction, block parallelism experiments, final global single-level PERF3 queue and global progress |
+-| Current documentation/performance program | 91-92 | current-state manual reorganization, frozen exact-equivalence optimization sequence, and PERFBASE1 measurement authority |
++| Current documentation/performance program | 91-97 | current-state manual reorganization, PERFBASE1, shared scheduler, exact-neighborhood reuse, sparse inversion, reference-radius parallelism, and sparse vector kernels |
+ 
+ Detailed lineage:
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV97.md /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV97.md
+--- /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV97.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV97.md	2026-08-17 22:39:38.220560124 +0000
+@@ -0,0 +1,11 @@
++# MLFF architecture revision 97 - MVKERNEL1
++
++Revision 97 completes the exact-equivalence `MVKERNEL1` performance gate.
++
++- Introduces shared canonical ragged-CSR gather kernels for MVSEL/MVQUAL/MVIDX telemetry.
++- Fuses duplicate MVSEL family/domain edge gathering while preserving independent ordered FP64 scatter operations.
++- Vectorizes witness arithmetic and selected-subset `bincount` telemetry.
++- Maintains required hard-obligation pending state incrementally without changing sequential rank authority.
++- Retains scalar MVSEL and MVQUAL telemetry references for exact qualification.
++- Leaves independent TARGET-DATA2B MVQUAL rescoring unchanged.
++- Advances the optimization program to `REPAIR-PAR1`.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/docs/history/mlff/architecture_revisions/INDEX.md /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/docs/history/mlff/architecture_revisions/INDEX.md
+--- /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/docs/history/mlff/architecture_revisions/INDEX.md	2026-08-17 21:56:30.000000000 +0000
++++ /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/docs/history/mlff/architecture_revisions/INDEX.md	2026-08-17 22:39:39.434623957 +0000
+@@ -78,3 +78,4 @@
+ | 94 | NEIGHBOR1 / mdstats 0.20.227a0 | [MLFF Architecture Revision 94](ARCHITECTURE_NOTES_MLFF_REV94.md) | - |
+ | 95 | MVIDX-REUSE1 / mdstats 0.20.228a0 | [MLFF Architecture Revision 95](ARCHITECTURE_NOTES_MLFF_REV95.md) | - |
+ | 96 | COVREF-PAR1 / mdstats 0.20.229a0 | [MLFF Architecture Revision 96](ARCHITECTURE_NOTES_MLFF_REV96.md) | - |
++| 97 | - | [MLFF architecture revision 97 - MVKERNEL1](ARCHITECTURE_NOTES_MLFF_REV97.md) | - |
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/docs/history/mlff/release_notes/INDEX.md /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/docs/history/mlff/release_notes/INDEX.md
+--- /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/docs/history/mlff/release_notes/INDEX.md	2026-08-17 21:56:30.000000000 +0000
++++ /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/docs/history/mlff/release_notes/INDEX.md	2026-08-17 22:39:39.438908913 +0000
+@@ -170,3 +170,4 @@
+ | `0.20.227a0` | [PATCH_NOTES_0.20.227a0.md](PATCH_NOTES_0.20.227a0.md) | - |
+ | `0.20.228a0` | [PATCH_NOTES_0.20.228a0.md](PATCH_NOTES_0.20.228a0.md) | - |
+ | `0.20.229a0` | [PATCH_NOTES_0.20.229a0.md](PATCH_NOTES_0.20.229a0.md) | - |
++| `0.20.230a0` | [PATCH_NOTES_0.20.230a0.md](PATCH_NOTES_0.20.230a0.md) | - |
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.230a0.md /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.230a0.md
+--- /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.230a0.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.230a0.md	2026-08-17 22:39:38.226883015 +0000
+@@ -0,0 +1,10 @@
++# mdstats 0.20.230a0 patch notes
++
++- Implement MVKERNEL1 / architecture revision 97 as exact sparse-vector performance hardening.
++- Add canonical vectorized ragged-CSR gathers and reuse one gathered stream for paired MVSEL family/domain gain updates.
++- Vectorize coverage/representative witness arithmetic while preserving scalar-reference state after every qualified rank.
++- Convert selected-subset coverage, hard-obligation counts, and MVQUAL multiplicity/unique-owner telemetry to CSR gather plus `bincount` kernels.
++- Build DATA2A run/condition provenance codes once per MVQUAL domain.
++- Preserve representative and 16,384-selection stress digests and full MVQUAL plan authority.
++- Keep MACE-MPA-0 as the active qualification checkpoint while retaining model-generic MACE-MH-1 compatibility.
++- Next optimization gate is REPAIR-PAR1.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/docs/specs/training_data/mlff_mvkernel1_sparse_vector_kernels_spec.md /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/docs/specs/training_data/mlff_mvkernel1_sparse_vector_kernels_spec.md
+--- /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/docs/specs/training_data/mlff_mvkernel1_sparse_vector_kernels_spec.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/docs/specs/training_data/mlff_mvkernel1_sparse_vector_kernels_spec.md	2026-08-17 22:39:38.206433685 +0000
+@@ -0,0 +1,22 @@
++# MVKERNEL1 exact sparse selector/qualification vector-kernel specification
++
++**Release:** `mdstats 0.20.230a0`  
++**Architecture:** revision 97 / dependency-graph schema 77  
++**Status:** implemented exact-equivalence performance hardening
++
++## Frozen contract
++
++1. MVSEL sequential rank decisions, tie hierarchy, FP64 gain authority, hard 0.95 coverage predicates, stable UID final tie-break, and persisted scientific schemas remain unchanged.
++2. `_select_and_update_reference` remains the scalar MVSEL oracle. The optimized state SHALL compare exactly after each qualification rank, including coverage/representative gains, covered masks, multiplicity, hard gains, obligation counts, unit counts, coverage mass, and pending required-obligation count.
++3. Ragged CSR gathers SHALL preserve the supplied row order and each CSR row's canonical edge order. Oversized batching may split only between complete rows.
++4. Per-family and domain-total gain updates MAY share one gathered edge stream, but each authority array SHALL receive its own ordered `np.add.at` operation so arithmetic order is unchanged.
++5. MVIDX selected-subset coverage and hard-obligation counts MAY use vectorized CSR gather and `bincount`; returned masks/counts must equal the scalar candidate-row traversal exactly.
++6. MVQUAL MVIDX telemetry MAY use CSR gather, `bincount`, indexed weights, and one-time per-domain DATA2A provenance coding. The retained scalar telemetry reference SHALL produce the same serialized telemetry dictionary.
++7. Execution-kernel choices and temporary batch sizes are not scientific policy and SHALL NOT enter selection/qualification content digests.
++8. No parallel rank selection, approximate sparse reduction, GPU graph authority, or change to independent TARGET-DATA2B rescoring is authorized.
++
++## Qualification
++
++The release SHALL demonstrate: exact MVSEL state after every tested rank; byte-identical optimized/reference selection plans; exact MVQUAL telemetry against the scalar reference; unchanged full MVQUAL plan digest against the predecessor release; and measurable throughput improvement on sparse selector and qualification telemetry fixtures. The 16,384-selection stress fixture SHALL complete with the frozen selection digest.
++
++The next gate is `REPAIR-PAR1`.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/mdstats/_version.py /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/mdstats/_version.py
+--- /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/mdstats/_version.py	2026-08-17 21:56:08.000000000 +0000
++++ /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/mdstats/_version.py	2026-08-17 22:39:37.932270630 +0000
+@@ -1 +1 @@
+-__version__ = "0.20.229a0"
++__version__ = "0.20.230a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/mdstats/training_data/_sparse_vector_kernels.py /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/mdstats/training_data/_sparse_vector_kernels.py
+--- /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/mdstats/training_data/_sparse_vector_kernels.py	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/mdstats/training_data/_sparse_vector_kernels.py	2026-08-17 22:26:01.858433685 +0000
+@@ -0,0 +1,99 @@
++"""Execution-only exact sparse vector kernels for MLFF training-data stages.
++
++The helpers in this module preserve canonical CSR row order.  They are not
++scientific policy and must not enter content digests.
++"""
++from __future__ import annotations
++
++from collections.abc import Iterator
++
++import numpy as np
++
++
++def csr_row_lengths(offsets: np.ndarray, rows: np.ndarray) -> np.ndarray:
++    """Return CSR row lengths for ``rows`` without materializing row slices."""
++    off = np.asarray(offsets)
++    r = np.asarray(rows, dtype=np.int64)
++    return np.asarray(off[r + 1] - off[r], dtype=np.int64)
++
++
++def csr_gather_rows(
++    offsets: np.ndarray,
++    indices: np.ndarray,
++    rows: np.ndarray,
++    *,
++    lengths: np.ndarray | None = None,
++) -> tuple[np.ndarray, np.ndarray]:
++    """Gather complete CSR rows in the supplied row order.
++
++    Returns ``(gathered_indices, row_lengths)``.  The gathered array is exactly
++    equivalent to ``concatenate(indices[offsets[r]:offsets[r+1]] for r in rows)``
++    but constructs edge positions with vectorized prefix arithmetic rather than
++    one Python/NumPy slice per row.
++    """
++    off = np.asarray(offsets)
++    idx = np.asarray(indices)
++    r = np.asarray(rows, dtype=np.int64)
++    if r.ndim != 1:
++        raise ValueError("CSR gather rows must be one-dimensional.")
++    if r.size == 0:
++        return np.empty(0, dtype=idx.dtype), np.empty(0, dtype=np.int64)
++    lens = csr_row_lengths(off, r) if lengths is None else np.asarray(lengths, dtype=np.int64)
++    if lens.shape != r.shape or np.any(lens < 0):
++        raise ValueError("CSR gather row lengths are invalid.")
++    total = int(np.sum(lens, dtype=np.int64))
++    if total == 0:
++        return np.empty(0, dtype=idx.dtype), lens
++    edge_prefix = np.empty(r.size + 1, dtype=np.int64)
++    edge_prefix[0] = 0
++    np.cumsum(lens, dtype=np.int64, out=edge_prefix[1:])
++    starts = np.asarray(off[r], dtype=np.int64)
++    bases = np.repeat(starts - edge_prefix[:-1], lens)
++    positions = bases + np.arange(total, dtype=np.int64)
++    return idx[positions], lens
++
++
++def iter_csr_gather_batches(
++    offsets: np.ndarray,
++    indices: np.ndarray,
++    rows: np.ndarray,
++    *,
++    max_edges: int,
++) -> Iterator[tuple[np.ndarray, np.ndarray, slice]]:
++    """Yield bounded complete-row CSR gathers in canonical row order.
++
++    The common path emits one vectorized gather.  Oversized inputs use a small
++    greedy row-boundary loop only to choose batch boundaries; edge gathering
++    inside each batch remains vectorized.  A single row may exceed ``max_edges``
++    and is emitted whole, matching MVPERF1 semantics.
++    """
++    r = np.asarray(rows, dtype=np.int64)
++    if r.ndim != 1:
++        raise ValueError("CSR gather rows must be one-dimensional.")
++    if r.size == 0:
++        return
++    edge_limit = max(1, int(max_edges))
++    lengths = csr_row_lengths(offsets, r)
++    total = int(np.sum(lengths, dtype=np.int64))
++    if total <= edge_limit:
++        gathered, lens = csr_gather_rows(offsets, indices, r, lengths=lengths)
++        yield gathered, lens, slice(0, r.size)
++        return
++
++    cursor = 0
++    while cursor < r.size:
++        stop = cursor
++        edge_count = 0
++        while stop < r.size:
++            row_edges = int(lengths[stop])
++            if stop > cursor and edge_count + row_edges > edge_limit:
++                break
++            edge_count += row_edges
++            stop += 1
++            if edge_count >= edge_limit:
++                break
++        gathered, lens = csr_gather_rows(
++            offsets, indices, r[cursor:stop], lengths=lengths[cursor:stop]
++        )
++        yield gathered, lens, slice(cursor, stop)
++        cursor = stop
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/mdstats/training_data/target_coverage_sparse_index.py /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/mdstats/training_data/target_coverage_sparse_index.py
+--- /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/mdstats/training_data/target_coverage_sparse_index.py	2026-08-17 22:15:27.000000000 +0000
++++ /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/mdstats/training_data/target_coverage_sparse_index.py	2026-08-17 22:30:37.021364343 +0000
+@@ -26,6 +26,7 @@
+ 
+ 
+ from ._common import TrainingDataInputError, TrainingDataSerializationError, digest, validate_digest
++from ._sparse_vector_kernels import csr_gather_rows
+ from .target_coverage import _coverage_array_reference, _validate_array_reference
+ from .target_coverage_exact_neighborhood import (
+     TargetCoverageExactNeighborhoodFamily,
+@@ -1206,9 +1207,11 @@
+     if selected.size != np.unique(selected).size:
+         raise TrainingDataInputError("TARGET-DATA2C-MVIDX1 selected candidate indices must be unique.")
+     covered = np.zeros(family_index.witness_count, dtype=np.bool_)
+-    for candidate in selected:
+-        witnesses = family_index.candidate_witness_indices(int(candidate))
+-        covered[witnesses] = True
++    if selected.size:
++        witnesses, _ = csr_gather_rows(
++            family_index.candidate_offsets, family_index.candidate_witnesses, selected
++        )
++        covered[np.asarray(witnesses, dtype=np.int64)] = True
+     return covered
+ 
+ 
+@@ -1247,7 +1250,12 @@
+         raise TrainingDataInputError("TARGET-DATA2C-MVIDX1 selected candidate index is outside the domain.")
+     if selected.size != np.unique(selected).size:
+         raise TrainingDataInputError("TARGET-DATA2C-MVIDX1 selected candidate indices must be unique.")
+-    counts = np.zeros(len(domain_index.obligations), dtype=np.int64)
+-    for candidate in selected:
+-        counts[domain_index.candidate_obligation_indices(int(candidate))] += 1
+-    return counts
++    if not selected.size:
++        return np.zeros(len(domain_index.obligations), dtype=np.int64)
++    obligation_indices, _ = csr_gather_rows(
++        domain_index.candidate_obligation_offsets, domain_index.candidate_obligations, selected
++    )
++    return np.bincount(
++        np.asarray(obligation_indices, dtype=np.int64),
++        minlength=len(domain_index.obligations),
++    ).astype(np.int64, copy=False)
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/mdstats/training_data/target_multi_view_qualification.py /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/mdstats/training_data/target_multi_view_qualification.py
+--- /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/mdstats/training_data/target_multi_view_qualification.py	2026-08-16 18:18:03.000000000 +0000
++++ /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/mdstats/training_data/target_multi_view_qualification.py	2026-08-17 22:35:05.224796858 +0000
+@@ -20,6 +20,7 @@
+ import numpy as np
+ 
+ from ._common import TrainingDataInputError, TrainingDataSerializationError, digest, validate_digest
++from ._sparse_vector_kernels import csr_gather_rows
+ from .target_coverage import score_target_subset_coverage
+ from .target_coverage_sparse_index import indexed_family_covered_mask, indexed_obligation_selected_counts
+ 
+@@ -539,10 +540,11 @@
+     return max(deficits), float(sum(deficits))
+ 
+ 
+-def _selector_telemetry(reference_domain: Any, sparse_domain: Any, role_domain: Any, selected_uids: Sequence[str]) -> TargetMultiViewSelectorTelemetry:
++def _selector_telemetry_reference(reference_domain: Any, sparse_domain: Any, role_domain: Any, selected_uids: Sequence[str]) -> TargetMultiViewSelectorTelemetry:
++    """Frozen scalar/ragged MVQUAL1 telemetry reference for MVKERNEL1 tests."""
++
+     uid_to_index = {uid: i for i, uid in enumerate(reference_domain.frame_uids)}
+     selected = np.asarray([uid_to_index[uid] for uid in selected_uids], dtype=np.int64)
+-    selected_set = set(int(v) for v in selected)
+     total_uncovered_count = 0
+     total_uncovered_mass = np.float64(0.0)
+     total_unique_mass = np.float64(0.0)
+@@ -551,13 +553,15 @@
+     for sparse_family in sparse_domain.families:
+         family = reference_domain.family(sparse_family.family_id)
+         weights = np.asarray(family.weights, dtype=np.float64)
+-        covered = indexed_family_covered_mask(sparse_family, selected)
++        covered = np.zeros(sparse_family.witness_count, dtype=np.bool_)
++        multiplicity = np.zeros(sparse_family.witness_count, dtype=np.int32)
++        for candidate in selected:
++            witnesses = np.asarray(sparse_family.candidate_witness_indices(int(candidate)), dtype=np.int64)
++            covered[witnesses] = True
++            multiplicity[witnesses] += 1
+         total_uncovered_count += int(np.count_nonzero(~covered))
+         total_uncovered_mass += np.sum(weights[~covered], dtype=np.float64)
+         total_reference_mass += np.sum(weights, dtype=np.float64)
+-        multiplicity = np.zeros(sparse_family.witness_count, dtype=np.int32)
+-        for candidate in selected:
+-            multiplicity[np.asarray(sparse_family.candidate_witness_indices(int(candidate)), dtype=np.int64)] += 1
+         unique_witness = multiplicity == 1
+         total_unique_mass += np.sum(weights[unique_witness], dtype=np.float64)
+         if np.any(unique_witness):
+@@ -594,6 +598,97 @@
+     )
+ 
+ 
++def _qualification_provenance_codes(reference_domain: Any, role_domain: Any) -> tuple[dict[str, int], np.ndarray, np.ndarray]:
++    """Build immutable DATA2A provenance codes once per qualification domain."""
++
++    uid_to_index = {uid: i for i, uid in enumerate(reference_domain.frame_uids)}
++    run_codes = np.full(len(reference_domain.frame_uids), -1, dtype=np.int32)
++    condition_codes = np.full(len(reference_domain.frame_uids), -1, dtype=np.int32)
++    run_lookup: dict[str, int] = {}
++    condition_lookup: dict[str, int] = {}
++    for interval in role_domain.development_intervals:
++        run_id = str(getattr(interval, "run_id", interval.unit_id))
++        condition_id = str(getattr(interval, "condition_id", interval.unit_id))
++        run_code = run_lookup.setdefault(run_id, len(run_lookup))
++        condition_code = condition_lookup.setdefault(condition_id, len(condition_lookup))
++        for uid in interval.frame_uids:
++            index = uid_to_index.get(uid)
++            if index is not None:
++                run_codes[index] = run_code
++                condition_codes[index] = condition_code
++    return uid_to_index, run_codes, condition_codes
++
++
++def _selector_telemetry_indices(
++    reference_domain: Any,
++    sparse_domain: Any,
++    selected: np.ndarray,
++    run_codes: np.ndarray,
++    condition_codes: np.ndarray,
++) -> TargetMultiViewSelectorTelemetry:
++    """Vectorized exact MVIDX telemetry for one selected candidate set."""
++
++    selected = np.asarray(selected, dtype=np.int64)
++    total_uncovered_count = 0
++    total_uncovered_mass = np.float64(0.0)
++    total_unique_mass = np.float64(0.0)
++    total_reference_mass = np.float64(0.0)
++    unique_owner = np.zeros(len(reference_domain.frame_uids), dtype=np.bool_)
++
++    for sparse_family in sparse_domain.families:
++        family = reference_domain.family(sparse_family.family_id)
++        weights = np.asarray(family.weights, dtype=np.float64)
++        witnesses, lengths = csr_gather_rows(
++            sparse_family.candidate_offsets, sparse_family.candidate_witnesses, selected
++        )
++        witness_indices = np.asarray(witnesses, dtype=np.int64)
++        multiplicity = np.bincount(
++            witness_indices, minlength=sparse_family.witness_count
++        ).astype(np.int32, copy=False)
++        covered = multiplicity > 0
++        total_uncovered_count += int(np.count_nonzero(~covered))
++        total_uncovered_mass += np.sum(weights[~covered], dtype=np.float64)
++        total_reference_mass += np.sum(weights, dtype=np.float64)
++        unique_witness = multiplicity == 1
++        total_unique_mass += np.sum(weights[unique_witness], dtype=np.float64)
++        if witness_indices.size and np.any(unique_witness):
++            edge_owners = np.repeat(selected, lengths)
++            unique_owner[edge_owners[unique_witness[witness_indices]]] = True
++
++    zero_unique = 1.0 - float(np.count_nonzero(unique_owner[selected])) / float(len(selected))
++    unique_fraction = 0.0 if total_reference_mass <= 0.0 else float(total_unique_mass / total_reference_mass)
++    unit_codes = np.asarray(sparse_domain.candidate_correlation_unit_codes, dtype=np.int64)[selected]
++    counts = np.bincount(unit_codes, minlength=len(sparse_domain.correlation_unit_ids))
++    nonzero = counts[counts > 0]
++    max_unit_fraction = 0.0 if nonzero.size == 0 else float(np.max(nonzero)) / float(len(selected))
++
++    selected_run_codes = run_codes[selected]
++    selected_condition_codes = condition_codes[selected]
++    if np.any(selected_run_codes < 0) or np.any(selected_condition_codes < 0):
++        raise TrainingDataInputError("TARGET-DATA2C-MVQUAL1 selected frame lacks DATA2A provenance mapping.")
++    return TargetMultiViewSelectorTelemetry(
++        uncovered_witness_count=total_uncovered_count,
++        uncovered_reference_mass=float(total_uncovered_mass),
++        unique_reference_mass_fraction=unique_fraction,
++        zero_unique_candidate_fraction=zero_unique,
++        correlation_unit_count=int(nonzero.size),
++        maximum_correlation_unit_fraction=max_unit_fraction,
++        run_count=int(np.unique(selected_run_codes).size),
++        condition_count=int(np.unique(selected_condition_codes).size),
++    )
++
++
++def _selector_telemetry(reference_domain: Any, sparse_domain: Any, role_domain: Any, selected_uids: Sequence[str]) -> TargetMultiViewSelectorTelemetry:
++    uid_to_index, run_codes, condition_codes = _qualification_provenance_codes(reference_domain, role_domain)
++    try:
++        selected = np.asarray([uid_to_index[uid] for uid in selected_uids], dtype=np.int64)
++    except KeyError as exc:
++        raise TrainingDataInputError("TARGET-DATA2C-MVQUAL1 selected frame is outside the reference domain.") from exc
++    return _selector_telemetry_indices(
++        reference_domain, sparse_domain, selected, run_codes, condition_codes
++    )
++
++
+ def _hard_obligation_state(sparse_domain: Any, selected_candidate_indices: Sequence[int]) -> tuple[bool, tuple[str, ...]]:
+     counts = indexed_obligation_selected_counts(sparse_domain, selected_candidate_indices)
+     unsatisfied = tuple(sorted(
+@@ -718,6 +813,9 @@
+         legacy_domain = legacy_target_data_ladder.domain(label)
+         repair_domain = target_multi_view_repair.domain(label)
+         role_domain = target_data_role_freeze.domain(label)
++        uid_to_index, run_codes, condition_codes = _qualification_provenance_codes(
++            reference_domain, role_domain
++        )
+         legacy_rungs = {v.target_size: v for v in legacy_domain.rungs if v.materializable}
+         mv_rungs = {v.target_size: v for v in repair_domain.rungs if v.materializable}
+         common = tuple(sorted(set(legacy_rungs) & set(mv_rungs)))
+@@ -730,12 +828,16 @@
+             mv_uids = mv_rungs[size].frame_uids
+             legacy_report = score_target_subset_coverage(target_coverage_reference, label, legacy_uids, query_workers=workers)
+             mv_report = score_target_subset_coverage(target_coverage_reference, label, mv_uids, query_workers=workers)
+-            legacy_telemetry = _selector_telemetry(reference_domain, sparse_domain, role_domain, legacy_uids)
+-            mv_telemetry = _selector_telemetry(reference_domain, sparse_domain, role_domain, mv_uids)
++            legacy_indices_array = np.asarray([uid_to_index[uid] for uid in legacy_uids], dtype=np.int64)
++            mv_indices_array = np.asarray([uid_to_index[uid] for uid in mv_uids], dtype=np.int64)
++            legacy_telemetry = _selector_telemetry_indices(
++                reference_domain, sparse_domain, legacy_indices_array, run_codes, condition_codes
++            )
++            mv_telemetry = _selector_telemetry_indices(
++                reference_domain, sparse_domain, mv_indices_array, run_codes, condition_codes
++            )
+             # MVIDX is secondary telemetry only; covered mass must agree with the independent scorer.
+-            uid_to_index = {uid: i for i, uid in enumerate(reference_domain.frame_uids)}
+-            for report, uids in ((legacy_report, legacy_uids), (mv_report, mv_uids)):
+-                selected = [uid_to_index[uid] for uid in uids]
++            for report, selected in ((legacy_report, legacy_indices_array), (mv_report, mv_indices_array)):
+                 for sf in sparse_domain.families:
+                     family = reference_domain.family(sf.family_id)
+                     mask = indexed_family_covered_mask(sf, selected)
+@@ -743,8 +845,8 @@
+                     direct_mass = next(v.covered_reference_mass for v in report.family_reports if v.family_id == sf.family_id)
+                     if not math.isclose(indexed_mass, direct_mass, rel_tol=0.0, abs_tol=5.0e-12):
+                         raise TrainingDataInputError("TARGET-DATA2C-MVQUAL1 independent scorer disagrees with MVIDX telemetry.")
+-            legacy_indices = [uid_to_index[uid] for uid in legacy_uids]
+-            mv_indices = [uid_to_index[uid] for uid in mv_uids]
++            legacy_indices = legacy_indices_array
++            mv_indices = mv_indices_array
+             comparison = _compare_reports(
+                 legacy_report, mv_report, threshold=policy.coverage_threshold,
+                 tolerance=policy.comparison_tolerance, legacy_telemetry=legacy_telemetry, mv_telemetry=mv_telemetry,
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/mdstats/training_data/target_multi_view_selector.py /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/mdstats/training_data/target_multi_view_selector.py
+--- /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/mdstats/training_data/target_multi_view_selector.py	2026-08-16 17:45:41.000000000 +0000
++++ /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/mdstats/training_data/target_multi_view_selector.py	2026-08-17 22:33:38.853202853 +0000
+@@ -27,6 +27,7 @@
+ import numpy as np
+ 
+ from ._common import TrainingDataInputError, TrainingDataSerializationError, digest, validate_digest
++from ._sparse_vector_kernels import iter_csr_gather_batches
+ 
+ 
+ TARGET_MULTI_VIEW_SELECTOR_POLICY_SCHEMA = "mdstats.target-multi-view-selector-policy.v1"
+@@ -436,6 +437,7 @@
+     hard_gain: np.ndarray
+     obligation_counts: np.ndarray
+     required_obligation_mask: np.ndarray
++    unsatisfied_required_obligation_count: int
+     unit_counts: np.ndarray
+ 
+ 
+@@ -488,6 +490,7 @@
+         hard_gain=hard_gain,
+         obligation_counts=np.zeros(len(sparse_domain.obligations), dtype=np.int32),
+         required_obligation_mask=required_mask,
++        unsatisfied_required_obligation_count=int(np.count_nonzero(required_mask)),
+         unit_counts=np.zeros(len(sparse_domain.correlation_unit_ids), dtype=np.int32),
+     )
+ 
+@@ -513,10 +516,9 @@
+ 
+ 
+ def _hard_obligations_satisfied(sparse_domain: Any, state: _DomainSelectorState) -> bool:
+-    for oi, obligation in enumerate(sparse_domain.obligations):
+-        if obligation.required and int(state.obligation_counts[oi]) < int(obligation.minimum_selected_frames):
+-            return False
+-    return True
++    # MVKERNEL1 maintains the threshold-transition count incrementally; the
++    # sparse-domain argument is retained for the frozen private call signature.
++    return int(state.unsatisfied_required_obligation_count) == 0
+ 
+ 
+ def _unsatisfied_required_obligations(sparse_domain: Any, state: _DomainSelectorState) -> tuple[str, ...]:
+@@ -641,6 +643,9 @@
+         # REPAIR1 requires the true count to determine whether a removal can
+         # preserve a hard obligation without rescanning the subset.
+         if before < minimum and after >= minimum:
++            state.unsatisfied_required_obligation_count -= 1
++            if state.unsatisfied_required_obligation_count < 0:
++                raise TrainingDataInputError("TARGET-DATA2C-MVSEL1 hard-obligation pending count became negative.")
+             candidates = np.asarray(sparse_domain.obligation_candidate_indices(oi_int), dtype=np.int64)
+             state.hard_gain[candidates] -= 1
+             if np.any(state.hard_gain[candidates] < 0):
+@@ -662,45 +667,20 @@
+ ):
+     """Yield exact witness-ordered inverse-edge scatter batches.
+ 
+-    The unoptimized MVSEL1 reference applies one scalar decrement per witness
+-    row.  MVPERF1 groups consecutive witness rows into bounded ``np.add.at``
+-    calls while preserving the same row and per-edge order.  This removes
+-    millions of Python/NumPy dispatches without changing arithmetic order.
++    MVKERNEL1 keeps the frozen MVPERF1 batching semantics but replaces the
++    Python list-of-slices gather with a vectorized ragged-CSR gather.  Witness
++    order and canonical candidate-edge order remain unchanged.
+     """
+ 
+     witnesses = np.asarray(witness_indices, dtype=np.int64)
+     amounts = np.asarray(witness_amounts, dtype=np.float64)
+     if witnesses.ndim != 1 or amounts.shape != witnesses.shape:
+-        raise TrainingDataInputError("TARGET-DATA2C-MVPERF1 scatter witness/amount shape mismatch.")
+-    if witnesses.size == 0:
+-        return
+-    edge_limit = max(1, int(max_edges))
+-    cursor = 0
+-    while cursor < witnesses.size:
+-        stop = cursor
+-        edge_count = 0
+-        # Keep complete witness rows together and preserve witness order.
+-        while stop < witnesses.size:
+-            witness = int(witnesses[stop])
+-            row_edges = int(offsets[witness + 1]) - int(offsets[witness])
+-            if stop > cursor and edge_count + row_edges > edge_limit:
+-                break
+-            edge_count += row_edges
+-            stop += 1
+-            if edge_count >= edge_limit:
+-                break
+-        batch_witnesses = witnesses[cursor:stop]
+-        batch_amounts = amounts[cursor:stop]
+-        parts = [
+-            indices[int(offsets[int(w)]):int(offsets[int(w) + 1])]
+-            for w in batch_witnesses
+-        ]
+-        lengths = np.fromiter((len(part) for part in parts), dtype=np.int64, count=len(parts))
+-        if int(np.sum(lengths, dtype=np.int64)):
+-            rows = np.concatenate(parts).astype(np.int64, copy=False)
+-            edge_amounts = np.repeat(batch_amounts, lengths)
+-            yield rows, edge_amounts
+-        cursor = stop
++        raise TrainingDataInputError("TARGET-DATA2C-MVKERNEL1 scatter witness/amount shape mismatch.")
++    for rows, lengths, row_slice in iter_csr_gather_batches(
++        offsets, indices, witnesses, max_edges=max_edges
++    ):
++        if rows.size:
++            yield rows.astype(np.int64, copy=False), np.repeat(amounts[row_slice], lengths)
+ 
+ 
+ def _scatter_decrement_exact(
+@@ -731,6 +711,41 @@
+         raise TrainingDataInputError("TARGET-DATA2C-MVSEL1 incremental gain bookkeeping became negative.")
+ 
+ 
++def _scatter_decrement_pair_exact(
++    left: np.ndarray,
++    right: np.ndarray,
++    offsets: np.ndarray,
++    indices: np.ndarray,
++    witness_indices: np.ndarray,
++    witness_amounts: np.ndarray,
++) -> None:
++    """Apply one exact ragged gather to two MVSEL gain arrays.
++
++    MVSEL updates the per-family and domain-total gain arrays with identical
++    edge/amount streams.  MVKERNEL1 gathers that stream once, then applies the
++    frozen ordered ``np.add.at`` operation independently to both arrays.
++    """
++
++    touched: list[np.ndarray] = []
++    for rows, edge_amounts in _iter_inverse_scatter_batches(
++        offsets, indices, witness_indices, witness_amounts
++    ):
++        np.add.at(left, rows, -edge_amounts)
++        np.add.at(right, rows, -edge_amounts)
++        touched.append(rows)
++    if not touched:
++        return
++    rows = np.concatenate(touched) if len(touched) > 1 else touched[0]
++    for array in (left, right):
++        near = rows[np.abs(array[rows]) <= 5.0e-13]
++        if near.size:
++            array[near] = 0.0
++        if np.any(array[rows] < -5.0e-12):
++            raise TrainingDataInputError(
++                "TARGET-DATA2C-MVSEL1 incremental gain bookkeeping became negative."
++            )
++
++
+ def _select_and_update(candidate: int, sparse_domain: Any, state: _DomainSelectorState) -> None:
+     """MVPERF1 exact batched implementation of the frozen MVSEL1 update."""
+ 
+@@ -747,17 +762,10 @@
+             newly_covered = witnesses[~family_state.covered[witnesses]]
+             if newly_covered.size:
+                 coverage_amounts = np.asarray(
+-                    [float(family_state.weights[int(w)]) for w in newly_covered],
+-                    dtype=np.float64,
++                    family_state.weights[newly_covered], dtype=np.float64
+                 )
+-                _scatter_decrement_exact(
++                _scatter_decrement_pair_exact(
+                     family_state.coverage_gain,
+-                    sparse_family.witness_offsets,
+-                    sparse_family.witness_candidates,
+-                    newly_covered,
+-                    coverage_amounts,
+-                )
+-                _scatter_decrement_exact(
+                     state.total_coverage_gain,
+                     sparse_family.witness_offsets,
+                     sparse_family.witness_candidates,
+@@ -768,19 +776,14 @@
+ 
+             # Compute every witness decrement with the same scalar operation
+             # order as the MVSEL1 reference, then scatter edges in witness order.
+-            representative_amounts = np.asarray([
+-                float(family_state.weights[int(w)]) / (1.0 + int(family_state.multiplicity[int(w)]))
+-                - float(family_state.weights[int(w)]) / (2.0 + int(family_state.multiplicity[int(w)]))
+-                for w in witnesses
+-            ], dtype=np.float64)
+-            _scatter_decrement_exact(
+-                family_state.representative_gain,
+-                sparse_family.witness_offsets,
+-                sparse_family.witness_candidates,
+-                witnesses,
+-                representative_amounts,
++            witness_weights = family_state.weights[witnesses]
++            witness_multiplicity = family_state.multiplicity[witnesses].astype(np.float64, copy=False)
++            representative_amounts = (
++                witness_weights / (1.0 + witness_multiplicity)
++                - witness_weights / (2.0 + witness_multiplicity)
+             )
+-            _scatter_decrement_exact(
++            _scatter_decrement_pair_exact(
++                family_state.representative_gain,
+                 state.total_representative_gain,
+                 sparse_family.witness_offsets,
+                 sparse_family.witness_candidates,
+@@ -799,6 +802,9 @@
+         state.obligation_counts[oi_int] = after
+         minimum = int(obligation.minimum_selected_frames)
+         if before < minimum and after >= minimum:
++            state.unsatisfied_required_obligation_count -= 1
++            if state.unsatisfied_required_obligation_count < 0:
++                raise TrainingDataInputError("TARGET-DATA2C-MVSEL1 hard-obligation pending count became negative.")
+             candidates = np.asarray(sparse_domain.obligation_candidate_indices(oi_int), dtype=np.int64)
+             state.hard_gain[candidates] -= 1
+             if np.any(state.hard_gain[candidates] < 0):
+@@ -817,6 +823,7 @@
+         and np.array_equal(left.total_representative_gain, right.total_representative_gain)
+         and np.array_equal(left.hard_gain, right.hard_gain)
+         and np.array_equal(left.obligation_counts, right.obligation_counts)
++        and left.unsatisfied_required_obligation_count == right.unsatisfied_required_obligation_count
+         and np.array_equal(left.unit_counts, right.unit_counts)
+     ):
+         return False
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/pyproject.toml /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/pyproject.toml
+--- /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/pyproject.toml	2026-08-17 21:56:08.000000000 +0000
++++ /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/pyproject.toml	2026-08-17 22:51:29.164735623 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.229a0"
++version = "0.20.230a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/release/qualification_logs/MLFF_MVKERNEL1_QUALIFICATION_0.20.230a0.json /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/release/qualification_logs/MLFF_MVKERNEL1_QUALIFICATION_0.20.230a0.json
+--- /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/release/qualification_logs/MLFF_MVKERNEL1_QUALIFICATION_0.20.230a0.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/release/qualification_logs/MLFF_MVKERNEL1_QUALIFICATION_0.20.230a0.json	2026-08-17 22:52:17.554266926 +0000
+@@ -0,0 +1,190 @@
++{
++  "acceptance": {
++    "advance_to": "REPAIR-PAR1",
++    "broad_regression": "PASS",
++    "exact_mvqual_authority": "PASS",
++    "exact_selector_state_per_rank": "PASS",
++    "scientific_policy_unchanged": "PASS",
++    "throughput_improved": "PASS"
++  },
++  "architecture_revision": 97,
++  "authority_change": {
++    "gpu": false,
++    "runtime_optimization": true,
++    "scientific": false
++  },
++  "content_digest": "5ef3028c9fde6d5cb84a0ce494236a17dec16e028eb0cb0b95d4cae0ec14b41d",
++  "date": "2026-08-17",
++  "documentation": {
++    "architecture_revision_note": {
++      "path": "docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV97.md",
++      "sha256": "609cafda67bc8ce6db3cf87e8ee4fa4ee1a49ea3ffb7f4c0b7813936a62c08d9"
++    },
++    "canonical_markdown": {
++      "path": "docs/arch_manuals/mlff_training_data_architecture.md",
++      "sha256": "be0f5e23f90ea1cdef6a45e8714a08cf07103b2c8e79e3afd666729cb3dc13f9"
++    },
++    "canonical_pdf": {
++      "comparison_note": "48-page revision-96 and revision-97 PDFs were render-compared at 72 dpi; seven pages changed as expected. Pages 1-48 rendered successfully at 150 dpi, and the changed release/status/reference region was visually inspected with no clipping or overlap.",
++      "full_render": "PASS",
++      "pages": 48,
++      "path": "docs/arch_manuals/mlff_training_data_architecture.pdf",
++      "preflight": "PASS",
++      "sha256": "ae4448d80a5f960b76f71a975675fb0bc931f0a9c6e63b324ec11398c65663bf",
++      "visual_qa": "PASS"
++    },
++    "dependency_graph": {
++      "path": "docs/arch_manuals/mlff_training_data_dependency_graph.json",
++      "sha256": "d80bb42dede249ed7f4c5227d1eb978a3a81df58371d236b6baab217b4612ed1"
++    },
++    "release_note": {
++      "path": "docs/history/mlff/release_notes/PATCH_NOTES_0.20.230a0.md",
++      "sha256": "4e2455e3937ec0e9680e5ee2d54f11aa863ea8cd7c7bcd10a814b6a2757113aa"
++    },
++    "spec": {
++      "path": "docs/specs/training_data/mlff_mvkernel1_sparse_vector_kernels_spec.md",
++      "sha256": "cf69cadc3ee661b3fe9ec69d8a9b3175d0b3e70cab8b700d4a898e1e6a6e8ffd"
++    }
++  },
++  "foundation": {
++    "active_qualification_family": "mace-mpa-0",
++    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
++    "mh1_supported_by_same_contract": true,
++    "note": "MVKERNEL1 is independent of foundational-model family; MPA-0 is the active qualification checkpoint and MACE-MH-1 remains supported by the same selector/qualification sparse-kernel contract.",
++    "variant": "medium"
++  },
++  "gate": "MVKERNEL1_SPARSE_SELECTOR_QUALIFICATION_VECTOR_KERNELS",
++  "implementation": {
++    "canonical_ordered_np_add_at_retained": true,
++    "implementation_manifest": {
++      "path": "benchmarks/mlff_mvkernel1_implementation_manifest_0.20.230a0.json",
++      "sha256": "ce398f8581dc3d7da21e7ee6ce4277842870a76b937cf8f26d5532d0972fb8c4"
++    },
++    "incremental_required_hard_obligation_pending_count": true,
++    "mvqual_multiplicity_unique_owner_vectorized": true,
++    "mvqual_provenance_codes_built_once_per_domain": true,
++    "obligation_count_bincount": true,
++    "paired_family_domain_scatter_stream": true,
++    "scalar_mvqual_telemetry_reference_retained": true,
++    "scalar_selector_reference_retained": true,
++    "selected_subset_coverage_bincount": true,
++    "sequential_rank_authority_changed": false,
++    "shared_ragged_csr_gather": true,
++    "vectorized_witness_weight_arithmetic": true
++  },
++  "inputs": {
++    "dependency_archive": {
++      "path": "/mnt/data/dependencies.tar(20260817-112644).gz",
++      "sha256": "888d545a512396697c8583d69bc9ed33110914675f466a4cbcafc3e1e1407171"
++    },
++    "replay_source": {
++      "path": "/mnt/data/replay_fps_12000.extxyz",
++      "sha256": "187eed42fb2d6cf5e7e745ffed0ce34541e92c6a35ec9e654520cd3c7198403c"
++    },
++    "target_archive": {
++      "path": "/mnt/data/training_LTA.tar(4).gz",
++      "sha256": "bc1b7e25ba338507ae38b260bcd283356de887b6c6cf762a2c146733f1c3c958"
++    }
++  },
++  "next_gate": "REPAIR-PAR1",
++  "performance_evidence": {
++    "interpretation": "Same-host long-lived-process control/current timings are execution evidence. Exact selector state, ordered selection digests, telemetry bytes, and full MVQUAL plan digest are scientific authority.",
++    "mvqual_telemetry_16384_8192_6family": {
++      "control_median_seconds": 0.5779456809996191,
++      "control_trials_seconds": [
++        0.5890249719996064,
++        0.5767970189999687,
++        0.5699440199996388,
++        0.5919615829998293,
++        0.5779456809996191
++      ],
++      "current_median_seconds": 0.04112498700033029,
++      "current_trials_seconds": [
++        0.0452122340002461,
++        0.04092534500068723,
++        0.040243059000204084,
++        0.04112498700033029,
++        0.041311094999400666
++      ],
++      "speedup": 14.053394861741289
++    },
++    "primary_record": {
++      "path": "benchmarks/mlff_mvkernel1_cloud_cpu_mpa0_2026-08-17.json",
++      "sha256": "9cfe5d9c1864cedef6b3509887decca268b37e2d4e585bf0909b802d73aec55d"
++    },
++    "report": {
++      "path": "benchmarks/mlff_mvkernel1_cloud_cpu_mpa0_2026-08-17.md",
++      "sha256": "158507663c66024fd53b8c174c127e82aab43469190687d7cbecc541703a68ad"
++    },
++    "selector_24576_16384": {
++      "control_seconds": 6.6397316060001685,
++      "current_seconds": 5.590918543000043,
++      "speedup": 1.1875922632271692
++    },
++    "selector_4096_2048": {
++      "control_median_seconds": 1.403764596999281,
++      "control_trials_seconds": [
++        1.403764596999281,
++        1.4242025100002138,
++        1.3560113050007203,
++        1.5705718970002636,
++        1.3805350359998556
++      ],
++      "current_median_seconds": 0.8106222610003897,
++      "current_trials_seconds": [
++        0.8017894859995067,
++        0.8031685890000517,
++        0.8106222610003897,
++        0.8383097099995211,
++        0.8158502169999338
++      ],
++      "speedup": 1.731712370280695
++    }
++  },
++  "release": "0.20.230a0",
++  "schema": "mdstats.mlff-mvkernel1-qualification.v1",
++  "scientific_oracles": {
++    "full_mvqual_plan_digest_equal_to_control": true,
++    "mvqual_plan_digest": "ff8f64607a4835309889cb9b4c1e886959d9e47468a48df07676e0bf32295a80",
++    "mvqual_telemetry_authority_digest": "d51daef220edffd1f9a72676ee5835ed4f0db44d8818b78f3449defcba63894c",
++    "mvqual_telemetry_byte_equivalent": true,
++    "scale_16384_selection_digest": "aaec42fb0c1df6a62ce2286ec5f5b8897bc089d6d31726da89a0461bcd75d608",
++    "selector_digest": "d147d85acd64dd386dcd9b64e1bd534001e1b1a9e1736522b2ffaddbb978b378",
++    "selector_state_exact_after_every_qualified_rank": true
++  },
++  "status": "PASS",
++  "tests": {
++    "archival_spec_boundary": {
++      "excluded_from_current_release_pass_fail": [
++        "tests/test_mlff_target_data2c_mvidx1_specification.py"
++      ],
++      "reason": "Historical release-pinned specification remains archival; runtime/scientific test_mlff_target_data2c_mvidx1.py remains included in the 111-test current authority."
++    },
++    "compileall": {
++      "paths": [
++        "mdstats",
++        "benchmarks",
++        "tools"
++      ],
++      "status": "PASS"
++    },
++    "current_gate_and_dependencies": {
++      "failed": 0,
++      "passed": 75,
++      "warnings": 3
++    },
++    "packaging_metadata": {
++      "pip_wheel_no_deps_no_build_isolation": "PASS",
++      "pyproject_version": "0.20.230a0",
++      "root_pkg_info_version": "0.20.230a0",
++      "wheel_metadata_name": "mdstats",
++      "wheel_metadata_version": "0.20.230a0"
++    },
++    "target_data2_functional_authority": {
++      "failed": 0,
++      "passed": 111,
++      "warning_class": "expected velocity-reconstruction/normalization warnings unchanged from prior authority",
++      "warnings": 18
++    }
++  }
++}
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/tests/test_mlff_covref_par1_specification.py /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/tests/test_mlff_covref_par1_specification.py
+--- /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/tests/test_mlff_covref_par1_specification.py	2026-08-17 21:56:46.000000000 +0000
++++ /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/tests/test_mlff_covref_par1_specification.py	2026-08-17 22:40:34.574315749 +0000
+@@ -12,22 +12,16 @@
+ EVIDENCE = ROOT / "benchmarks/mlff_covref_par1_cloud_cpu_mpa0_2026-08-17.json"
+ 
+ 
+-def test_covref_par1_release_docs_are_current() -> None:
+-    assert mdstats.__version__ == "0.20.229a0"
++def test_covref_par1_release_docs_are_retained() -> None:
+     text = MANUAL.read_text(encoding="utf-8")
+-    assert "architecture_revision: 96" in text
+-    assert 'release: "mdstats 0.20.229a0"' in text
+     assert "Gate COVREF-PAR1 - TARGET-DATA2B exact CPU parallelization - COMPLETE" in text
+-    assert "**Next gate.** `MVKERNEL1`." in text
+-    assert "one native cKDTree worker per task" in text
++    assert "one native cKDTree worker/task" in text
+     assert SPEC.is_file()
+ 
+ 
+ def test_covref_par1_dependency_graph_is_closed() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+-    assert graph["architecture_revision"] == 96
+-    assert graph["documentation_gate"] == "COVREF_PAR1_GLOBAL_BLOCK_QUEUE"
+-    assert graph["next_gate"] == "MVKERNEL1_VECTOR_SPARSE_KERNELS"
++    assert graph["architecture_revision"] >= 96
+     node = next(item for item in graph["nodes"] if item["id"] == "COVREF_PAR1_GLOBAL_BLOCK_QUEUE")
+     assert node["implementation_status"] == "implemented"
+     assert node["implemented_release"] == "0.20.229a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/tests/test_mlff_doc_arch1_specification.py /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/tests/test_mlff_doc_arch1_specification.py
+--- /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/tests/test_mlff_doc_arch1_specification.py	2026-08-17 21:56:45.000000000 +0000
++++ /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/tests/test_mlff_doc_arch1_specification.py	2026-08-17 22:40:17.689116379 +0000
+@@ -16,10 +16,10 @@
+ 
+ 
+ def test_doc_arch1_release_and_current_authority_are_synchronized():
+-    assert mdstats.__version__ == "0.20.229a0"
++    assert mdstats.__version__ == "0.20.230a0"
+     text = MANUAL.read_text(encoding="utf-8")
+-    assert "architecture_revision: 96" in text
+-    assert 'release: "mdstats 0.20.229a0"' in text
++    assert "architecture_revision: 97" in text
++    assert 'release: "mdstats 0.20.230a0"' in text
+     assert "# Part VI - Performance and execution architecture" in text
+     assert "# Part VII - Current implementation status and frozen forward gates" in text
+     assert "## Context retrieval index" in text
+@@ -72,7 +72,7 @@
+     revision_rows = [line for line in REV_INDEX.read_text().splitlines() if re.match(r"^\|\s*\d+\s*\|", line)]
+     revisions = [int(line.split("|")[1].strip()) for line in revision_rows]
+     assert revisions == sorted(set(revisions))
+-    assert revisions[-1] == 96
++    assert revisions[-1] == 97
+     assert "NEIGHBOR1" in REV_INDEX.read_text()
+     assert "0.20.227a0" in REL_INDEX.read_text()
+     assert (ROOT / "docs/history/mlff/LINEAGE.md").is_file()
+@@ -81,14 +81,14 @@
+ 
+ def test_doc_arch1_graph_and_directory_ownership_are_current():
+     graph = json.loads(GRAPH.read_text())
+-    assert graph["architecture_revision"] == 96
+-    assert graph["schema_version"] == 76
++    assert graph["architecture_revision"] == 97
++    assert graph["schema_version"] == 77
+     node_ids = {node["id"] for node in graph["nodes"]}
+     for node in (
+         "DOC_ARCH1_MANUAL_RESTRUCTURE_PERFORMANCE_ROADMAP",
+         "PERFBASE1_CAMPAIGN_BASELINES", "PARCORE1_DETERMINISTIC_WORK_QUEUE",
+         "NEIGHBOR1_SHARED_EXACT_ENGINE", "MVIDX_REUSE1_SPARSE_TRANSPOSE",
+-        "COVREF_PAR1_GLOBAL_BLOCK_QUEUE",
++        "COVREF_PAR1_GLOBAL_BLOCK_QUEUE", "MVKERNEL1_VECTOR_SPARSE_KERNELS",
+         "CAMPAIGN_PERF_QUAL1_CLOSURE",
+     ):
+         assert node in node_ids
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/tests/test_mlff_mvkernel1.py /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/tests/test_mlff_mvkernel1.py
+--- /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/tests/test_mlff_mvkernel1.py	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/tests/test_mlff_mvkernel1.py	2026-08-17 22:35:21.020969908 +0000
+@@ -0,0 +1,66 @@
++from __future__ import annotations
++
++import numpy as np
++
++from mdstats.training_data import target_multi_view_selector as mvsel
++from mdstats.training_data import target_multi_view_qualification as mvqual
++from mdstats.training_data._sparse_vector_kernels import csr_gather_rows, iter_csr_gather_batches
++from tests.test_mlff_target_data2c_mvqual1 import _authorities
++from tests.test_mlff_target_data2c_mvsel1 import _selector
++
++
++def test_mvkernel1_ragged_gather_matches_canonical_python_concatenation() -> None:
++    offsets = np.asarray([0, 2, 2, 5, 9, 10], dtype=np.uint64)
++    indices = np.asarray([7, 8, 1, 4, 9, 2, 3, 5, 8, 6], dtype=np.uint32)
++    rows = np.asarray([3, 0, 1, 4, 2], dtype=np.int64)
++    gathered, lengths = csr_gather_rows(offsets, indices, rows)
++    expected_parts = [indices[int(offsets[r]):int(offsets[r + 1])] for r in rows]
++    expected = np.concatenate(expected_parts)
++    assert np.array_equal(gathered, expected)
++    assert np.array_equal(lengths, np.asarray([4, 2, 0, 1, 3], dtype=np.int64))
++
++
++def test_mvkernel1_bounded_ragged_batches_preserve_complete_row_order() -> None:
++    offsets = np.asarray([0, 3, 6, 9, 12], dtype=np.uint64)
++    indices = np.arange(12, dtype=np.uint32)
++    rows = np.asarray([0, 1, 2, 3], dtype=np.int64)
++    batches = list(iter_csr_gather_batches(offsets, indices, rows, max_edges=5))
++    assert [a.tolist() for a, _, _ in batches] == [
++        [0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11]
++    ]
++
++
++def test_mvkernel1_selector_state_matches_reference_after_every_rank() -> None:
++    reference, _, _, index, policy, _ = _selector()
++    ref_domain = reference.domain("target")
++    sparse_domain = index.domain("target")
++    optimized = mvsel._build_domain_state(ref_domain, sparse_domain)
++    scalar = mvsel._build_domain_state(ref_domain, sparse_domain)
++    for _ in range(min(24, sparse_domain.candidate_count)):
++        chosen_opt, *_ = mvsel._choose_candidate(ref_domain, sparse_domain, optimized, policy)
++        chosen_ref, *_ = mvsel._choose_candidate(ref_domain, sparse_domain, scalar, policy)
++        assert chosen_opt == chosen_ref
++        mvsel._select_and_update(chosen_opt, sparse_domain, optimized)
++        mvsel._select_and_update_reference(chosen_ref, sparse_domain, scalar)
++        assert mvsel._states_exactly_equal(optimized, scalar)
++
++
++def test_mvkernel1_mvqual_telemetry_is_byte_equivalent_to_scalar_reference() -> None:
++    reference, role, _, sparse, _, repair, _, _ = _authorities()
++    ref_domain = reference.domain("target")
++    sparse_domain = sparse.domain("target")
++    selected_uids = repair.domain("target").rungs[-1].frame_uids
++    optimized = mvqual._selector_telemetry(ref_domain, sparse_domain, role.domain("target"), selected_uids)
++    scalar = mvqual._selector_telemetry_reference(ref_domain, sparse_domain, role.domain("target"), selected_uids)
++    assert optimized.to_dict() == scalar.to_dict()
++
++
++def test_mvkernel1_full_mvqual_plan_digest_is_repeatable() -> None:
++    reference, role, feasibility, sparse, _, repair, legacy, policy = _authorities()
++    first = __import__("mdstats").build_target_multi_view_qualification_plan(
++        reference, sparse, feasibility, role, legacy, repair, policy=policy
++    )
++    second = __import__("mdstats").build_target_multi_view_qualification_plan(
++        reference, sparse, feasibility, role, legacy, repair, policy=policy
++    )
++    assert first.to_dict() == second.to_dict()
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/tests/test_mlff_mvkernel1_specification.py /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/tests/test_mlff_mvkernel1_specification.py
+--- /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/tests/test_mlff_mvkernel1_specification.py	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/tests/test_mlff_mvkernel1_specification.py	2026-08-17 22:51:29.165144592 +0000
+@@ -0,0 +1,85 @@
++from __future__ import annotations
++
++import json
++from pathlib import Path
++
++import mdstats
++
++ROOT = Path(__file__).resolve().parents[1]
++MANUAL = ROOT / "docs/arch_manuals/mlff_training_data_architecture.md"
++GRAPH = ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json"
++SPEC = ROOT / "docs/specs/training_data/mlff_mvkernel1_sparse_vector_kernels_spec.md"
++
++
++def test_mvkernel1_release_manual_and_spec_are_synchronized() -> None:
++    assert mdstats.__version__ == "0.20.230a0"
++    assert 'version = "0.20.230a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert "Version: 0.20.230a0" in (ROOT / "PKG-INFO").read_text(encoding="utf-8")
++    text = MANUAL.read_text(encoding="utf-8")
++    assert "architecture_revision: 97" in text
++    assert 'release: "mdstats 0.20.230a0"' in text
++    assert "Gate MVKERNEL1 - sparse selector/qualification vector kernels - COMPLETE" in text
++    assert "**Next gate.** `REPAIR-PAR1`." in text
++    assert "ragged-CSR" in text
++    assert "byte-identical telemetry" in text
++    assert SPEC.is_file()
++
++
++def test_mvkernel1_dependency_graph_is_closed() -> None:
++    graph = json.loads(GRAPH.read_text(encoding="utf-8"))
++    assert graph["architecture_revision"] == 97
++    assert graph["schema_version"] == 77
++    assert graph["documentation_gate"] == "MVKERNEL1_VECTOR_SPARSE_KERNELS"
++    assert graph["next_gate"] == "REPAIR_PAR1_PROPOSAL_QUEUE"
++    node = next(item for item in graph["nodes"] if item["id"] == "MVKERNEL1_VECTOR_SPARSE_KERNELS")
++    assert node["implementation_status"] == "implemented_exact_vector_sparse_kernels"
++    assert node["implemented_release"] == "0.20.230a0"
++    assert node["selector_rank_authority_changed"] is False
++    assert node["scientific_authority_change"] is False
++
++
++def test_mvkernel1_code_retains_exact_reference_oracles() -> None:
++    selector = (ROOT / "mdstats/training_data/target_multi_view_selector.py").read_text(encoding="utf-8")
++    qualification = (ROOT / "mdstats/training_data/target_multi_view_qualification.py").read_text(encoding="utf-8")
++    sparse = (ROOT / "mdstats/training_data/_sparse_vector_kernels.py").read_text(encoding="utf-8")
++    assert "_select_and_update_reference" in selector
++    assert "_scatter_decrement_pair_exact" in selector
++    assert "unsatisfied_required_obligation_count" in selector
++    assert "_selector_telemetry_reference" in qualification
++    assert "csr_gather_rows" in sparse
++    assert "np.bincount" in qualification
++
++
++def test_mvkernel1_history_records_are_present() -> None:
++    assert (ROOT / "docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV97.md").is_file()
++    assert (ROOT / "docs/history/mlff/release_notes/PATCH_NOTES_0.20.230a0.md").is_file()
++    assert "0.20.230a0" in (ROOT / "CHANGELOG.md").read_text(encoding="utf-8").splitlines()[0]
++
++
++def test_mvkernel1_frozen_benchmark_evidence_is_consistent() -> None:
++    evidence_path = ROOT / "benchmarks/mlff_mvkernel1_cloud_cpu_mpa0_2026-08-17.json"
++    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
++    assert evidence["release"] == "0.20.230a0"
++    assert evidence["architecture_revision"] == 97
++    assert evidence["acceptance"]["status"] == "PASS"
++    assert evidence["acceptance"]["next_gate"] == "REPAIR-PAR1"
++    assert evidence["active_foundation"]["family"] == "MACE-MPA-0 medium"
++    assert evidence["active_foundation"]["checkpoint_sha256"] == (
++        "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638"
++    )
++    assert evidence["active_foundation"]["mh1_compatible"] is True
++    assert evidence["scientific"]["selector_digest"] == (
++        "d147d85acd64dd386dcd9b64e1bd534001e1b1a9e1736522b2ffaddbb978b378"
++    )
++    assert evidence["scientific"]["scale_16384_selector_digest"] == (
++        "aaec42fb0c1df6a62ce2286ec5f5b8897bc089d6d31726da89a0461bcd75d608"
++    )
++    assert evidence["scientific"]["mvqual_telemetry_authority_digest"] == (
++        "d51daef220edffd1f9a72676ee5835ed4f0db44d8818b78f3449defcba63894c"
++    )
++    assert evidence["scientific"]["mvqual_plan_digest"] == (
++        "ff8f64607a4835309889cb9b4c1e886959d9e47468a48df07676e0bf32295a80"
++    )
++    assert evidence["execution"]["selector_4096_2048"]["speedup"] > 1.0
++    assert evidence["execution"]["selector_24576_16384"]["speedup"] > 1.0
++    assert evidence["execution"]["mvqual_telemetry_16384_8192_6family"]["speedup"] > 10.0
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/tests/test_mlff_neighbor1_specification.py /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/tests/test_mlff_neighbor1_specification.py
+--- /mnt/data/mdstats-mvkernel1-control/mdstats-0.20.229a0/tests/test_mlff_neighbor1_specification.py	2026-08-17 21:59:31.000000000 +0000
++++ /mnt/data/mdstats-mvkernel1-work/mdstats-0.20.230a0/tests/test_mlff_neighbor1_specification.py	2026-08-17 22:45:34.347282622 +0000
+@@ -25,7 +25,7 @@
+ def test_neighbor1_dependency_graph_closes_gate_and_advances_sparse_transpose() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["architecture_revision"] >= 94
+-    assert graph["schema_version"] == 76
++    assert graph["schema_version"] >= 76
+     assert graph["documentation_gate"] in {node["id"] for node in graph["nodes"]}
+     assert "MVIDX_REUSE1_SPARSE_TRANSPOSE" in {node["id"] for node in graph["nodes"]}
+     node = next(item for item in graph["nodes"] if item["id"] == "NEIGHBOR1_SHARED_EXACT_ENGINE")

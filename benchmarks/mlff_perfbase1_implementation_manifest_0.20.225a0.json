@@ -1,0 +1,52 @@
+{
+  "files": [
+    {
+      "path": "mdstats/_version.py",
+      "sha256": "e0c32e40c542d68466f78d81391e3938864d5d290d9d3197678dd7414453b7b0",
+      "size_bytes": 27
+    },
+    {
+      "path": "mdstats/training_data/perfbase1.py",
+      "sha256": "a8ee679e024175e1ecc7c5bba0a94fe23d5692bd0ec22eb8379684000ee38da1",
+      "size_bytes": 32288
+    },
+    {
+      "path": "mdstats/training_data/performance_baseline.py",
+      "sha256": "62c0a575e4925a00353a987a0beadabd8b9f08c2d02291b4672e351a4947fcd4",
+      "size_bytes": 64256
+    },
+    {
+      "path": "mdstats/training_data/resources.py",
+      "sha256": "6882c949ff8e94ab90ef15fa57eee54f6a60fb7c4c7396a52f7ef59342512201",
+      "size_bytes": 19680
+    },
+    {
+      "path": "mdstats/training_data/target_coverage.py",
+      "sha256": "ab221861f550dc7919e5e71e2a62e81b8aa1d13f912f7c2a1320bf9f31067772",
+      "size_bytes": 124280
+    },
+    {
+      "path": "mdstats/training_data/target_coverage_feasibility.py",
+      "sha256": "43fadc8b1ac3f01742b0a7d6eae09ba935685ab673194949f19badec15f6503a",
+      "size_bytes": 63455
+    },
+    {
+      "path": "mdstats/training_data/target_coverage_sparse_index.py",
+      "sha256": "c501504a9f60195c86cc65a806ce1f5e995452884f70dbba53833f7815c208b7",
+      "size_bytes": 59215
+    },
+    {
+      "path": "mdstats/training_data/target_multi_view_selector.py",
+      "sha256": "19317468539749ca2906acfa70c5b21d6992ba240b31d904ac9bc0b417133df8",
+      "size_bytes": 56043
+    },
+    {
+      "path": "benchmarks/benchmark_mlff_perfbase1.py",
+      "sha256": "9e75b5786f8a71acb4bcdc50ca46a83c794e786a15f6e5425429cb8c3363d52b",
+      "size_bytes": 32723
+    }
+  ],
+  "schema": "mdstats.mlff-perfbase1-implementation-manifest.v1",
+  "scope": "PERFBASE1 measured runtime kernels and measurement harness",
+  "source_version": "0.20.225a0"
+}

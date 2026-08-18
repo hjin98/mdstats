@@ -1,0 +1,2865 @@
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/ARCHITECTURE_NOTES_MLFF_REV24.md b/ARCHITECTURE_NOTES_MLFF_REV24.md
+--- a/ARCHITECTURE_NOTES_MLFF_REV24.md	2026-08-09 22:11:26.237880118 +0000
++++ b/ARCHITECTURE_NOTES_MLFF_REV24.md	2026-08-09 22:47:14.622838487 +0000
+@@ -1,6 +1,6 @@
+ # MLFF architecture revision 24 planning notes
+ 
+-This source-tree note records the adaptive-training and evaluation-simplification revision opened after mdstats 0.20.120a0. The original seven-gate plan is preserved below; implementation has now closed ADAPT-PREC1 (0.20.122a0), ADAPT-MON1 (0.20.123a0), ADAPT-STOP1 (0.20.124a0), ADAPT-RANK1 (0.20.125a0), and ADAPT-EVAL1 (0.20.126a0). ADAPT-VERIFY1 and ADAPT-MIGRATE1 remain pending.
++This source-tree note records the adaptive-training and evaluation-simplification revision opened after mdstats 0.20.120a0. The original seven-gate plan is preserved below; implementation has now closed ADAPT-PREC1 (0.20.122a0), ADAPT-MON1 (0.20.123a0), ADAPT-STOP1 (0.20.124a0), ADAPT-RANK1 (0.20.125a0), ADAPT-EVAL1 (0.20.126a0), and ADAPT-VERIFY1 (0.20.127a0). Only ADAPT-MIGRATE1 remains pending.
+ 
+ Ordered gates:
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/ARCHITECTURE_NOTES_MLFF_REV30.md b/ARCHITECTURE_NOTES_MLFF_REV30.md
+--- a/ARCHITECTURE_NOTES_MLFF_REV30.md	1970-01-01 00:00:00.000000000 +0000
++++ b/ARCHITECTURE_NOTES_MLFF_REV30.md	2026-08-09 22:43:40.753548101 +0000
+@@ -0,0 +1,33 @@
++# MLFF architecture revision 30 - ADAPT-VERIFY1 implementation
++
++This release implements `ADAPT-VERIFY1` on top of the binary model-precision, common-monitor,
++adaptive-stop, run-local champion, and authoritative top-K full-evaluation evidence established by
++ADAPT-PREC1 through ADAPT-EVAL1.
++
++Implemented contract:
++
++- verification consumes only the fully evaluated admissible candidates frozen by ADAPT-EVAL1 and
++  attempts them strictly in authoritative full-score order;
++- the lowest-score candidate receives the complete bounded NVE matrix first; hard verification
++  failure advances deterministically to the next already fully evaluated admissible candidate when
++  fallback is enabled;
++- fallback purchases no new target/replay accuracy evaluation and stops at the first verification
++  pass;
++- an adaptive winner may be a fold-run champion, so adaptive production publishes one verified
++  deployment identity rather than fabricating a historical final-development committee;
++- candidate checkpoints/capsules are authenticated and reconstructed without dtype-template casts,
++  then their exact target-head bytes are used for NVE;
++- failed verification-only model materializations are never published; the first passing model is
++  atomically copied into `models/`, and its published SHA-256 must match the bytes that passed NVE;
++- `single` candidates remain FP32 learned-model inference/deployment and `double` candidates remain
++  FP64, while mdstats-owned persistent MD state, reductions, drift fits, and reporting remain FP64;
++- content-addressed NVE case evidence is restart-reused and candidate/aggregate verification,
++  deployment, and adaptive protocol-freeze records are immutable;
++- the compatibility `protocol_freeze` authority key is populated by the adaptive freeze so storage
++  lifecycle gates remain sealed, while typed historical protocol-freeze handling remains confined
++  to legacy verification paths;
++- ADAPT-MIGRATE1 remains the final closure gate for schema/restart/storage migration and broad
++  historical-campaign qualification.
++
++The canonical contract is documented in
++`docs/specs/training_data/mlff_adaptive_verification_spec.{md,pdf}` and the MLFF architecture manual.
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/CHANGELOG.md b/CHANGELOG.md
+--- a/CHANGELOG.md	2026-08-09 22:21:21.760488881 +0000
++++ b/CHANGELOG.md	2026-08-09 22:43:41.155390613 +0000
+@@ -1,3 +1,11 @@
++## 0.20.127a0 - 2026-08-09
++
++- Implement ADAPT-VERIFY1 score-ordered deployment verification: verify the best fully admissible ADAPT-EVAL1 candidate first and deterministically fall back to the next already fully evaluated candidate only after a hard verification failure.
++- Publish exactly one verified target-head model and require its bytes/SHA-256 to be identical to the internal artifact that passed bounded NVE; adaptive fold winners are deployed directly rather than wrapped in a synthetic historical committee.
++- Preserve binary learned-model precision through verification/export (`single` FP32, `double` FP64) while keeping mdstats-owned MD state, reductions, drift regression, scoring, and reporting hard-coded FP64.
++- Add content-addressed restartable NVE-case evidence plus immutable adaptive verification, deployment-model, and protocol-freeze records; fallback introduces no new target/replay evaluation.
++- ADAPT-MIGRATE1 remains the final adaptive-revision closure gate for schema/restart/storage migration and broad historical qualification.
++
+ ## 0.20.126a0 - 2026-08-09
+ 
+ - Implement ADAPT-EVAL1 top-K authoritative full evaluation and make `adaptive_topk` the generated production checkpoint strategy; historical EVAL-MF strategies remain readable/selectable for compatible old campaigns.
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/PATCH_NOTES_0.20.127a0.md b/PATCH_NOTES_0.20.127a0.md
+--- a/PATCH_NOTES_0.20.127a0.md	1970-01-01 00:00:00.000000000 +0000
++++ b/PATCH_NOTES_0.20.127a0.md	2026-08-09 22:43:40.754378789 +0000
+@@ -0,0 +1,38 @@
++# mdstats 0.20.127a0 patch notes
++
++## ADAPT-VERIFY1 — score-ordered final verification and verified deployment
++
++This release implements the sixth gate of the post-0.20.120 adaptive MLFF revision and closes the
++new production selection loop from ADAPT-EVAL1 full-score ordering to one verified deployed model.
++
++### Sequential authoritative verification
++
++Adaptive verification consumes only ADAPT-EVAL1's fully evaluated admissible candidates. It tests
++the lowest-full-score candidate first with the complete configured bounded-NVE matrix. A hard
++verification failure advances to the next already fully evaluated candidate when
++`fallback_to_next_full_evaluation_candidate = true`; verification stops at the first pass. Fallback
++never purchases additional target/replay evaluation.
++
++### Exact-byte publication instead of synthetic committee reconstruction
++
++An adaptive winner may originate from a cross-validation fold, so the historical final-development
++committee exporter cannot represent the new selection rule faithfully. mdstats authenticates each
++candidate checkpoint/capsule, reconstructs it without dtype-template promotion, materializes its
++exact target head internally, and verifies those bytes. Failed internal artifacts are deleted. The
++first passing target-head artifact is atomically promoted into `models/`, and the deployment record
++requires its SHA-256 to match the bytes that passed NVE. No synthetic adaptive committee is created.
++
++### Precision and restart evidence
++
++`single` remains FP32 learned-model inference/deployment and `double` remains FP64. mdstats-owned
++persistent MD state, energy/observable accumulation, drift regression, scoring, and reporting remain
++hard-coded FP64. Each NVE case is content-addressed and can be reused after interruption. Immutable
++candidate, aggregate verification, deployment-model, and adaptive protocol-freeze records bind the
++selected model back to EVAL1, checkpoint, full target/replay domains, model dtype, and exact bytes.
++
++### Gate boundary
++
++ADAPT-VERIFY1 publishes the first fully evaluated candidate that passes final deployment
++verification. ADAPT-MIGRATE1 remains the final gate for schema/restart/storage migration closure and
++broad historical-readability qualification. Historical committee/EVAL-MF workflows remain readable
++for compatible old campaigns and do not determine adaptive winners.
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/campaign.toml.example b/campaign.toml.example
+--- a/campaign.toml.example	2026-08-09 22:16:28.350390002 +0000
++++ b/campaign.toml.example	2026-08-09 22:38:54.920668456 +0000
+@@ -350,6 +350,9 @@
+ dtype = "float32"
+ 
+ [verification]
++# ADAPT-VERIFY1 tries fully admissible EVAL1 candidates in full-score order and
++# falls back only after a hard bounded-NVE verification failure.
++fallback_to_next_full_evaluation_candidate = true
+ # Permit bounded checks on the latest completed-model set when the full campaign
+ # is unfinished. Evidence is explicitly graded and never treated as a freeze.
+ allow_interim_completed_models = true
+@@ -359,7 +362,7 @@
+ device = "cuda"
+ dtype = "float32"
+ timestep_fs = 0.5
+-# Reused across committee members so model comparisons start from identical velocities.
++# Reused across fallback candidates / historical committee members so comparisons start from identical velocities.
+ velocity_seed = 314159
+ # Full NVE length for deployment/final models.
+ steps = 2000
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/docs/README.md b/docs/README.md
+--- a/docs/README.md	2026-08-09 22:09:32.436295509 +0000
++++ b/docs/README.md	2026-08-09 22:43:40.621414682 +0000
+@@ -52,6 +52,10 @@
+   implemented in 0.20.126a0: generated `adaptive_topk` screening, at-most-five initial full
+   finalists, common full target/TRUE_DFT replay evaluation, hard acceptance before weighted
+   scoring, and deterministic next-five rescue.
++- `specs/training_data/mlff_adaptive_verification_spec.{md,pdf}` defines ADAPT-VERIFY1,
++  implemented in 0.20.127a0: score-ordered bounded deployment verification, deterministic fallback
++  across already fully evaluated admissible candidates, exact verified target-head publication, and
++  binary learned-model dtype propagation with invariant FP64 scientific bookkeeping.
+ - `specs/training_data/mlff_staged_precision_profiles_spec.{md,pdf}` is retained as the
+   historical PREC1-PREC3 staged-precision compatibility specification for campaigns
+   created before ADAPT-PREC1; staged `refine` is no longer a new-production profile.
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/docs/arch_manuals/README.md b/docs/arch_manuals/README.md
+--- a/docs/arch_manuals/README.md	2026-08-09 22:09:32.436434446 +0000
++++ b/docs/arch_manuals/README.md	2026-08-09 22:47:14.622978185 +0000
+@@ -49,7 +49,7 @@
+   execution-optimization line, the 0.20.104a0 source-tool/package-integrity repair,
+   and the 0.20.105a0 progress-timing correctness repair. It records the completed
+   post-first-campaign roadmap (`OPT-EVAL1` through `OPT-CTRL1`) and the planned
+-  post-0.20.105 evaluation/precision/storage roadmap and the post-0.20.120 adaptive revision. `EVAL-MF1/MF2` remain historical compatibility architecture; `ADAPT-PREC1` through `ADAPT-EVAL1` are implemented in 0.20.122a0--0.20.126a0, while ADAPT-VERIFY1/ADAPT-MIGRATE1 remain pending.
++  post-0.20.105 evaluation/precision/storage roadmap and the post-0.20.120 adaptive revision. `EVAL-MF1/MF2` remain historical compatibility architecture; `ADAPT-PREC1` through `ADAPT-VERIFY1` are implemented in 0.20.122a0--0.20.127a0, while only ADAPT-MIGRATE1 remains pending.
+   The generic core owns provenance, eligibility,
+   partitioning, leakage control, selection orchestration, replay, precision,
+   training-backend calls, deployment, and validation policy. Physical
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/docs/arch_manuals/mlff_training_data_architecture.md b/docs/arch_manuals/mlff_training_data_architecture.md
+--- a/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-09 22:19:25.454970207 +0000
++++ b/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-09 22:37:40.667775702 +0000
+@@ -34,7 +34,7 @@
+ STAT1 and SAMP0 workflows consume those primitives without changing their
+ serialized evidence. MLFF-DATA2 is implemented in `0.20.30a0`: deterministic source manifests, VASP source catalogs, named energy selection, decomposed label domains, and per-label-domain structural atomic-reference identifiability are public runtime contracts. MLFF-DATA3 is implemented in `0.20.31a0`: manifest-bound frame occurrences, geometry and label identities, duplicate/restart detection, post-DFT eligibility, temperature conditions, reference-cell resolution, and rotation-separated finite strain are public runtime contracts. MLFF-DATA4 is implemented in `0.20.32a0` and generalized through DATA9A7d: partition-independent raw physical features, optional profile-extension states, protected event bursts, deterministic feature caches, and partition-role budget requests are public runtime contracts. MLFF-DATA5 is implemented in `0.20.33a0`: autocorrelation-aware partition units, role feasibility, deterministic outer evidence roles, independence grades, nested cross-validation monitors, blinding boundaries, and fail-closed leakage audits are public runtime contracts. MLFF-DATA6 is implemented in `0.20.34a0` and generalized through DATA9A7d: profile-aware universal and optional extension descriptors, optional checkpoint-bound MACE atomic descriptor sidecars, training-domain-only foundation residuals, blinded non-training predictions, and sealed locked-test prediction records are public runtime contracts. MLFF-DATA7 is implemented in `0.20.35a0`: canonical final/fold training domains, fold-local fitted metrics, domain-local atomic-reference fits, explicit objective and checkpoint policies, deterministic quota-interleaved selection ladders, and coverage reports are public runtime contracts. MLFF-DATA8 is implemented in `0.20.36a0`: verified MACE-readable extended-XYZ artifacts, explicit E0 mappings, replay train/monitor plans, a v0.3.16 source compatibility lock, complete training-protocol identities, loader dry-run exposure records, independent final/fold job bundles, and sealed locked-test metadata are public runtime contracts. MLFF-DATA9A hardening began in `0.20.37a0`, its offline runtime bootstrap is implemented in `0.20.38a0`, and DATA9A2 real-MACE realization is implemented in `0.20.39a0`: checkpoint-residual E0 fits, relocatable bundles, strict replay/XYZ audits, source-declared dependency manifests, isolated local-artifact installation, installed-environment qualification, v0.3.16 scalar-literal serialization, fixed-file target/replay weight realization, genuine parser/loader dry runs, bounded training, checkpoint/head inventory, target-head extraction, and finite evaluation round trips are public contracts. The supplied dependency bundle and MPA-0 checkpoint pass executable qualification. DATA9A3 in 0.20.40a0 qualifies the complete 27-source, 37,632-frame bulk-LTA target corpus through DATA5 with a passing leakage audit. DATA9A production execution remains open for checkpoint-bound production DATA6/DATA7 evidence, DATA8 job materialization, exact replay-corpus identity, and later protocol-matched training and freeze. DATA9A4 in 0.20.41a0 adds a protocol-bound selectable precision contract: the float64 MPA-0 checkpoint may initialize either a float32 or float64 fine-tuned model, and actual serialized parameter/buffer dtypes are immutable execution evidence rather than inferred from CLI text. DATA9A5a/9A5b in 0.20.42a0-0.20.43a0 close Python/ASE critical precision and deployment-artifact semantics. DATA9A6 in 0.20.44a0 introduces the analysis-owned observable-call bridge. DATA9A6b in 0.20.45a0 closes recipe dependency safety, collection and model lineage, runtime-duration/warning evidence, capability requirement schemas, documentation conflicts, and the thermomechanical/energetic analysis ownership plan. DATA9A6c in 0.20.46a0 verifies supplied identities against the actual collections, requires symmetric reference/candidate generation lineage for production evidence, binds analysis-owned result digests, freezes observable evidence roles and comparison-policy identity before locked evaluation, and corrects runtime/package identity and dependency ordering. DATA9A7a in 0.20.47a0 introduces user-declared compositional material profiles, phase components, atom-group catalogs, condition axes, independence axes, a declarative provider protocol, and DATA4 schema-v2 profile threading without changing existing feature or selection behavior. DATA9A7b in 0.20.48a0 adds an analysis-owned universal local-structure kernel, profile/atom-group-aware DATA6 structural catalogs, generic structural events, a DATA7 universal feature block, and generic per-species environment coverage without importing LTA. DATA9A7c in 0.20.49a0 derives immutable phase/geometry selection plans, profile-specific feature/event activation, geometry-aware atom-group priorities, DATA6-v3 plan lineage, and compositional observable-call recommendations. DATA9A7d in 0.20.50a0 migrates LTA behind generic optional profile-extension catalogs, advances DATA4/DATA6 canonical schemas, and replaces generic-core cation/site assumptions with focus groups, structural realizations, and extension coverage. DATA9A7e in 0.20.51a0 qualifies bounded crystal, amorphous, liquid, interface, and LTA DATA4-DATA7 paths, adds immutable qualification evidence, and makes MLFF LTA implementation imports lazy so generic workflows neither import nor serialize LTA-specific evidence. DATA9A8 in 0.20.52a0 adds frozen profile-aware observable comparison and acceptance policies. DATA9A9a in 0.20.53a0 adds the exact DATA5-authorized checkpoint-bound descriptor/prediction plan, per-frame restart sidecars, atomic checkpoints, corruption recovery, and DATA6 reuse without repeated foundation-model inference. DATA9A9b in 0.20.54a0 adds restartable final/fold DATA7 materialization, exact replay binding, complete DATA8 job-tree evidence, corruption-driven downstream invalidation, and a relocatable production materialization record. DATA9A9c in 0.20.55a0 adds the immutable production-corpus plan, evidence-derived foundation and residual-E0 qualification, numerical replay-label identity, content-addressed DATA8 generation promotion, self-verifying loaders, and generic optional-extension gate requirements. DATA9B1 in 0.20.56a0 adds passed-gate campaign-matrix freezing, protocol-family and seed-variant identities, content-addressed checkpoint catalogs, external metric records, deterministic hard-constraint admissibility, and fail-closed checkpoint selection. DATA9B2 in 0.20.57a0 adds supervised/restartable MACE execution, automatic target/replay checkpoint evaluation, fold/seed aggregation, learning curves, deterministic protocol comparison, target-head committee export, protocol freeze, and sealed-evaluation activation. DATA9B3 in 0.20.58a0 adds the unified source-checkout campaign CLI, one-database orchestration state, manifest approval, production preparation/training/evaluation commands, source-local precision-wrapper shims, and bounded NVE deployment verification. DATA9B3A in 0.20.59a0 makes the MACE acceleration backend a frozen campaign policy, auto-selects cuEquivariance at initialization when qualified, and propagates it through DATA6, DATA8, preflight, production training, checkpoint evaluation, and bounded verification without silent fallback. DATA2A in 0.20.60a0 adds XML-backed review-manifest metadata, percentage-aware filename strain candidates, exact LTA fixed-cell geometry verification, and fail-safe promotion before manual manifest approval. DATA2 interrupted-stream hardening in 0.20.61a0 adds EOF-qualified interrupted `vasprun.xml` recovery across ENS0, DATA2 source audit, and normalized trajectory loading while preserving strict rejection of ambiguous or mid-file corruption.
+ The post-0.20.105 evaluation/storage cycle implements EVAL-MF1 in 0.20.106a0 and EVAL-MF2 in 0.20.107a0: deterministic nested equal-fraction target/replay checkpoint screening, delta-only prediction reuse, conservative source/block-aware survivor guards, comprehensive epoch reporting, and full-fidelity finalist publication are now the generated production evaluation strategy.
+-The post-0.20.120 adaptive-training revision was recorded as architecture-only planning in 0.20.121a0. **ADAPT-PREC1 is implemented in 0.20.122a0**, **ADAPT-MON1 in 0.20.123a0**, **ADAPT-STOP1 in 0.20.124a0**, **ADAPT-RANK1 in 0.20.125a0**, and **ADAPT-EVAL1 in 0.20.126a0**: new campaigns use binary `single|double` learned-model precision, fixed common target/true-replay online monitors, criterion-driven epoch termination, zero-new-inference one-champion-per-run screening, and top-K authoritative full evaluation. EVAL-MF remains readable as historical behavior but is no longer the generated production evaluator.
++The post-0.20.120 adaptive-training revision was recorded as architecture-only planning in 0.20.121a0. **ADAPT-PREC1 is implemented in 0.20.122a0**, **ADAPT-MON1 in 0.20.123a0**, **ADAPT-STOP1 in 0.20.124a0**, **ADAPT-RANK1 in 0.20.125a0**, and **ADAPT-EVAL1 in 0.20.126a0**, and **ADAPT-VERIFY1 in 0.20.127a0**: new campaigns use binary `single|double` learned-model precision, fixed common target/true-replay online monitors, criterion-driven epoch termination, zero-new-inference one-champion-per-run screening, top-K authoritative full evaluation, and score-ordered bounded verification with deterministic fallback to the next already fully evaluated admissible candidate. Only the first verification-passing target-head artifact is published. EVAL-MF and historical committee workflows remain readable but are no longer the generated adaptive production path.
+ 
+ The central architectural rule is:
+ 
+@@ -4807,7 +4807,7 @@
+ **Status:** architecture recorded in `mdstats 0.20.121a0`; `ADAPT-PREC1` is implemented
+ in `mdstats 0.20.122a0`, `ADAPT-MON1` in `mdstats 0.20.123a0`, `ADAPT-STOP1` in
+ `mdstats 0.20.124a0`, `ADAPT-RANK1` in `mdstats 0.20.125a0`, and `ADAPT-EVAL1` in
+-`mdstats 0.20.126a0`. `ADAPT-VERIFY1` and `ADAPT-MIGRATE1` remain `not_started`.
++`mdstats 0.20.127a0`. `ADAPT-VERIFY1` is implemented; only `ADAPT-MIGRATE1` remains `not_started`.
+ Binary learned-model precision, fixed common online monitors, criterion-driven training
+ termination, and top-K full evaluation now supersede the corresponding legacy production
+ semantics for new campaigns. EVAL-MF remains readable and explicitly selectable only for
+@@ -5448,7 +5448,7 @@
+ 
+ ## ADAPT-VERIFY1 - final selection, verification, and precision propagation
+ 
+-**Status:** `not_started`.
++**Status:** implemented in `mdstats 0.20.127a0`.
+ 
+ Among all fully evaluated admissible candidates purchased by ADAPT-EVAL1, select
+ 
+@@ -5491,6 +5491,47 @@
+ binary model dtype and FP64 scientific-analysis boundary, and when no historical
+ `refine` conversion or EVAL-MF rank can silently determine a new-production winner.
+ 
++### ADAPT-VERIFY1 implementation record (`0.20.127a0`)
++
++New `adaptive_topk` campaigns route completed authoritative EVAL1 evidence directly into an
++ordered deployment-verification path. Fully evaluated admissible candidates are sorted by
++`S_full`; the best receives the complete configured structure x temperature bounded-NVE matrix.
++If it fails a hard finite/drift/minimum-distance/maximum-force gate and
++`fallback_to_next_full_evaluation_candidate = true`, the next already fully evaluated admissible
++candidate is tested. No new target/replay evaluation is purchased during fallback, and verification
++stops immediately at the first passing candidate. Setting the fallback option false makes failure of
++the best full-score candidate terminal.
++
++A candidate may originate from either a fold or a final-development run. The historical committee
++export helper therefore cannot define adaptive deployment because it rejects fold-run sources and
++would fabricate a different scientific selection. ADAPT-VERIFY1 instead materializes the exact
++selected checkpoint, extracts its target head into an internal verification-only artifact in the
++learned-model dtype, and runs NVE on those exact bytes. Failed candidate artifacts are not published.
++When one candidate passes, those already verified bytes are atomically promoted into `models/`; no
++post-verification dtype conversion or fresh export is allowed. Adaptive production publishes one
++`AdaptiveDeploymentModelRecord` rather than synthesizing a legacy final-development committee.
++Historical committee evidence remains readable and continues to serve historical evaluator paths.
++
++The verification evidence chain is explicit and restartable. Per-case NVE results are content
++addressed by checkpoint/model bytes, structure bytes, temperature, timestep, step count, model
++inference dtype, acceleration/critical-precision policies, and runtime identity. Candidate-level
++`AdaptiveVerificationCandidateRecord` evidence freezes pass/fail reasons and the case digests. A
++parent interruption can therefore resume without repeating completed NVE cases. The aggregate
++`AdaptiveVerificationRecord` records every attempted fully admissible candidate in score order and
++the first passing attempt, if any. `AdaptiveDeploymentModelRecord` binds the published model bytes
++to the passing checkpoint and full-evaluation candidate. `AdaptiveProtocolFreezeRecord` binds the
++production qualification, common full target/true-replay domains, EVAL1 decision, verification
++decision, selected model bytes, learned-model dtype, and invariant FP64 analysis dtype.
++
++Precision semantics remain binary and exact: `single` uses FP32 MACE inference in NVE and publishes
++an FP32 learned model; `double` uses FP64 inference and publishes FP64 learned-model bytes. Positions,
++velocities/momenta, cell state, energy-drift regression, metric/statistical reductions, and other
++mdstats-owned scientific bookkeeping remain FP64 in both cases. The production verification report
++publishes the selected candidate's full target/replay RMSE, weighted score, foundation replay
++degradation diagnostics, retained energy/stress/focus/worst-condition metrics, exact full-domain
++identities, verification thresholds/case results, fallback provenance, acceleration identity, model
++dtype, and scientific-analysis dtype.
++
+ ## ADAPT-MIGRATE1 - schema, restart, storage, and historical compatibility closure
+ 
+ **Status:** `not_started`.
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/docs/guides/mlff_campaign_cli_user_guide.md b/docs/guides/mlff_campaign_cli_user_guide.md
+--- a/docs/guides/mlff_campaign_cli_user_guide.md	2026-08-09 22:16:05.563313605 +0000
++++ b/docs/guides/mlff_campaign_cli_user_guide.md	2026-08-09 22:37:40.668134175 +0000
+@@ -49,7 +49,7 @@
+ |-- .mdstats/campaign.sqlite3    # durable internal state and provenance
+ |-- data/                         # generated MACE datasets/configurations
+ |-- runs/                         # checkpoints and per-run logs
+-|-- models/                       # exported target-head committee
++|-- models/                       # verified adaptive winner or historical target-head committee
+ `-- results/                      # benchmark, selection, and verification summaries
+ ```
+ 
+@@ -349,9 +349,7 @@
+ worst-condition safety gates before its weighted full score can be ranked. Foundation-relative
+ replay degradation is reported as a diagnostic rather than the default hard selector.
+ 
+-ADAPT-EVAL1 freezes the ordered fully admissible candidate evidence but does **not** yet perform
+-deployment verification, verification-failure fallback, or final model/committee export. Those
+-actions remain the next `ADAPT-VERIFY1` gate.
++Beginning in 0.20.127a0, ADAPT-VERIFY1 consumes that ordered fully admissible EVAL1 evidence. It verifies the lowest-full-score candidate first and, if a hard bounded-NVE gate fails, tries the next already fully evaluated admissible candidate when `fallback_to_next_full_evaluation_candidate = true`. No additional target/replay evaluation is purchased during fallback.
+ 
+ Evaluation records are bound to the monitor artifact digests, model hashes, and
+ evaluation-policy digest. Adding or changing `replay_true_labels` therefore
+@@ -401,13 +399,17 @@
+ python tools/mdstats-mlff-campaign.py --config campaign.toml verify
+ ```
+ 
+-For a completed campaign, the CLI tests every frozen committee member. For an
+-interrupted campaign, it tests only the completed models exported by the latest
+-interim `evaluate`. Two or more completed folds carry reduced cross-fold evidence;
+-a single completed model is still tested for finite predictions, atomic collapse,
+-extreme forces, and NVE energy drift, but the result explicitly states that no
+-cross-fold estimate exists. Use `verify --require-frozen` to reject this weaker
+-path and require the full production committee.
++For a completed `adaptive_topk` campaign, verification is sequential rather than committee-wide.
++The best fully admissible full-evaluation candidate receives the complete configured structure x
++temperature NVE matrix. If it fails a hard finite/drift/minimum-distance/maximum-force threshold,
++mdstats falls back to the next admissible full-score candidate. Verification stops at the first pass,
++and only that exact target-head artifact is published in `models/`. A fold-run candidate is allowed to
++win; mdstats does not fabricate a final-development committee around it. The learned-model dtype is
++unchanged (`single` -> FP32, `double` -> FP64), while MD state and analysis remain FP64.
++
++For an interrupted campaign, the historical interim verification path is still available for the
++latest completed-model set. It remains explicitly weaker evidence and cannot create an adaptive
++production deployment freeze. Use `verify --require-frozen` when you want to prohibit interim checks.
+ 
+ The hard total-energy-drift limit remains 26 meV/atom/ps. A good model should be
+ comfortably below it, not merely just under it. Interim output is written to
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/docs/specs/training_data/mlff_adaptive_verification_spec.md b/docs/specs/training_data/mlff_adaptive_verification_spec.md
+--- a/docs/specs/training_data/mlff_adaptive_verification_spec.md	1970-01-01 00:00:00.000000000 +0000
++++ b/docs/specs/training_data/mlff_adaptive_verification_spec.md	2026-08-09 22:38:02.194180243 +0000
+@@ -0,0 +1,147 @@
++# MLFF ADAPT-VERIFY1 adaptive final verification specification
++
++Status: implemented in `mdstats 0.20.127a0`.
++
++## Purpose
++
++ADAPT-VERIFY1 closes the adaptive campaign's deployment-selection loop. It consumes only the
++fully evaluated admissible candidates already purchased by ADAPT-EVAL1, verifies them in
++authoritative full-score order, and publishes exactly one target-head model: the first candidate
++that passes the bounded deployment/NVE gates.
++
++It performs no new target/replay accuracy evaluation and does not restore EVAL-MF screening.
++
++## Inputs and ordering
++
++The authoritative parent is `AdaptiveFullEvaluationRecord`. Only its `admissible_candidates` enter
++verification. Their order is the deterministic EVAL1 full-score order:
++
++1. lower weighted full target/replay force score;
++2. lower target force RMSE;
++3. lower replay force RMSE;
++4. lower original finalist rank;
++5. stable checkpoint SHA-256.
++
++By default `[verification].fallback_to_next_full_evaluation_candidate = true`.
++
++The best candidate is verified first. If it fails a hard verification condition, the next already
++fully evaluated admissible candidate is verified. Verification stops immediately at the first pass.
++If fallback is disabled, failure of the best candidate is terminal.
++
++## Verification matrix and hard gates
++
++Each attempted candidate receives the complete configured verification matrix:
++
++- every `[verification].structures` entry;
++- every `[verification].temperatures_kelvin` value;
++- the configured timestep, NVE step count, sampling interval, and velocity seed.
++
++A candidate passes only if every case satisfies:
++
++- finite model/trajectory observables;
++- absolute energy drift <= `maximum_energy_drift_ev_per_atom_per_ps`;
++- minimum pair distance >= `minimum_pair_distance_angstrom`;
++- maximum force <= `maximum_force_ev_per_angstrom`.
++
++A failure is a hard rejection of that deployment candidate. Verification does not modify its EVAL1
++accuracy score or retroactively change RANK1/STOP1 evidence.
++
++## Precision boundary
++
++`[campaign].precision_profile` controls only learned-model arithmetic:
++
++```text
++single -> FP32 MACE inference and FP32 deployed learned-model bytes
++double -> FP64 MACE inference and FP64 deployed learned-model bytes
++```
++
++There is no mixed or refine mode. No FP32 candidate is promoted to FP64 during verification or
++export and no FP64 candidate is demoted.
++
++mdstats-owned scientific arithmetic remains hard-coded FP64 in both modes, including persistent MD
++state, energy/observable accumulation, drift regression, and reporting/statistical reductions.
++The verification record exposes both `model_inference_dtype` and `scientific_analysis_dtype`.
++
++## Target-head materialization and publication
++
++An EVAL1 winner may be a cross-validation fold run or a final-development run. Historical committee
++export requires final-development runs and therefore cannot be used to manufacture adaptive
++selection semantics.
++
++For each candidate, mdstats:
++
++1. authenticates the frozen checkpoint or its qualified storage capsule;
++2. reconstructs the exact checkpoint model without dtype-template casting;
++3. extracts the target head into an internal verification-only artifact using the selected learned-
++   model dtype;
++4. runs bounded NVE on those exact target-head bytes;
++5. deletes failed candidate model materializations; and
++6. atomically promotes the exact passing bytes into `models/`.
++
++The final deployed model is therefore byte-identical to the artifact that passed NVE. There is no
++post-verification re-export or dtype conversion.
++
++Adaptive production publishes a single `AdaptiveDeploymentModelRecord`. It does not fabricate a
++legacy committee around a fold winner. Historical committee evidence remains readable for
++historical evaluator paths.
++
++## Evidence and restart semantics
++
++Each NVE case has a content-addressed identity containing at least:
++
++- adaptive full-evaluation candidate identity;
++- checkpoint SHA-256 and target-head model SHA-256;
++- verification structure SHA-256;
++- temperature, timestep, NVE steps, sampling interval, and velocity seed;
++- device and learned-model inference dtype;
++- invariant FP64 scientific-analysis dtype;
++- acceleration/critical-precision policy identities; and
++- verification runtime identity.
++
++Authenticated completed cases are reused after interruption.
++
++`AdaptiveVerificationCandidateRecord` freezes one candidate's case digests, model bytes, full score,
++full target/replay RMSE, dtype boundary, pass/fail outcome, and hard rejection reasons.
++
++`AdaptiveVerificationRecord` freezes the score-ordered attempted candidate sequence. A successful
++record must end at exactly one first passing candidate; evidence after a passing candidate is invalid.
++
++`AdaptiveDeploymentModelRecord` binds the published model bytes to the passing full-evaluation
++candidate and source checkpoint.
++
++`AdaptiveProtocolFreezeRecord` binds the production qualification, campaign, full target and true-
++replay domains, EVAL1 record, VERIFY1 record, deployment model, selected checkpoint, model dtype,
++and invariant FP64 analysis dtype.
++
++## Required final report content
++
++`results/production-verification.json` publishes at least:
++
++- selected EVAL1 finalist rank/batch and run/checkpoint provenance;
++- common full target force RMSE;
++- common true-replay force RMSE;
++- target/replay weights, thresholds, and weighted full score;
++- foundation replay RMSE and absolute/fractional degradation diagnostics;
++- retained target energy, focus-force, stress, and worst-condition metrics;
++- full target/replay domain identities and counts;
++- every attempted candidate and its verification case results/rejection reasons;
++- verification thresholds and fallback count;
++- acceleration/backend identity;
++- learned-model inference dtype and FP64 scientific-analysis dtype; and
++- exact published model path and SHA-256.
++
++## Acceptance criteria
++
++ADAPT-VERIFY1 is qualified only if:
++
++1. candidates are tried strictly in authoritative EVAL1 full-score order;
++2. fallback occurs only after a hard verification failure and only among already fully evaluated
++   admissible candidates;
++3. no target/replay reevaluation is introduced by fallback;
++4. completed NVE cases are restart-reused under exact identities;
++5. failed candidate artifacts are not published;
++6. the first passing candidate's exact verified target-head bytes are atomically published;
++7. `single|double` model dtype is preserved through verification and deployment;
++8. mdstats-owned state/analysis remains FP64;
++9. a fold-run candidate may be deployed without synthetic committee/final-run substitution; and
++10. historical committee/refine/EVAL-MF evidence cannot silently determine an adaptive winner.
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/mdstats/__init__.py b/mdstats/__init__.py
+--- a/mdstats/__init__.py	2026-08-09 21:56:10.014145487 +0000
++++ b/mdstats/__init__.py	2026-08-09 22:32:30.027341084 +0000
+@@ -4834,3 +4834,32 @@
+     "build_campaign_finalist_queue",
+     "assess_full_evaluation_candidate",
+ ]
++
++from .training_data import (
++    ADAPTIVE_VERIFICATION_POLICY_SCHEMA,
++    ADAPTIVE_VERIFICATION_CANDIDATE_SCHEMA,
++    ADAPTIVE_VERIFICATION_RECORD_SCHEMA,
++    ADAPTIVE_DEPLOYMENT_MODEL_SCHEMA,
++    ADAPTIVE_PROTOCOL_FREEZE_SCHEMA,
++    AdaptiveVerificationPolicy,
++    AdaptiveVerificationCandidateRecord,
++    AdaptiveVerificationRecord,
++    AdaptiveDeploymentModelRecord,
++    AdaptiveProtocolFreezeRecord,
++    ordered_admissible_candidates,
++    verification_rejection_reasons,
++)
++__all__ += [
++    "ADAPTIVE_VERIFICATION_POLICY_SCHEMA",
++    "ADAPTIVE_VERIFICATION_CANDIDATE_SCHEMA",
++    "ADAPTIVE_VERIFICATION_RECORD_SCHEMA",
++    "ADAPTIVE_DEPLOYMENT_MODEL_SCHEMA",
++    "ADAPTIVE_PROTOCOL_FREEZE_SCHEMA",
++    "AdaptiveVerificationPolicy",
++    "AdaptiveVerificationCandidateRecord",
++    "AdaptiveVerificationRecord",
++    "AdaptiveDeploymentModelRecord",
++    "AdaptiveProtocolFreezeRecord",
++    "ordered_admissible_candidates",
++    "verification_rejection_reasons",
++]
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/mdstats/_version.py b/mdstats/_version.py
+--- a/mdstats/_version.py	2026-08-09 21:54:29.494901467 +0000
++++ b/mdstats/_version.py	2026-08-09 22:31:24.505385273 +0000
+@@ -1,3 +1,3 @@
+ """Package version."""
+ 
+-__version__ = "0.20.126a0"
++__version__ = "0.20.127a0"
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/mdstats/data/observable_owner_manuals.json b/mdstats/data/observable_owner_manuals.json
+--- a/mdstats/data/observable_owner_manuals.json	2026-08-09 22:10:38.026308387 +0000
++++ b/mdstats/data/observable_owner_manuals.json	2026-08-09 22:31:24.505430391 +0000
+@@ -17,6 +17,6 @@
+       "uri": "mdstats-doc://vacf-dynamics-architecture/0.20.53a0"
+     }
+   },
+-  "package_version": "0.20.126a0",
++  "package_version": "0.20.127a0",
+   "schema": "mdstats.observable-owner-manual-index.v1"
+ }
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/mdstats/training_data/__init__.py b/mdstats/training_data/__init__.py
+--- a/mdstats/training_data/__init__.py	2026-08-09 21:56:09.551262237 +0000
++++ b/mdstats/training_data/__init__.py	2026-08-09 22:32:30.027341084 +0000
+@@ -1125,3 +1125,20 @@
+ )
+ 
+ __all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
++
++from .adaptive_verification import (
++    ADAPTIVE_VERIFICATION_POLICY_SCHEMA,
++    ADAPTIVE_VERIFICATION_CANDIDATE_SCHEMA,
++    ADAPTIVE_VERIFICATION_RECORD_SCHEMA,
++    ADAPTIVE_DEPLOYMENT_MODEL_SCHEMA,
++    ADAPTIVE_PROTOCOL_FREEZE_SCHEMA,
++    AdaptiveVerificationPolicy,
++    AdaptiveVerificationCandidateRecord,
++    AdaptiveVerificationRecord,
++    AdaptiveDeploymentModelRecord,
++    AdaptiveProtocolFreezeRecord,
++    ordered_admissible_candidates,
++    verification_rejection_reasons,
++)
++
++__all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/mdstats/training_data/adaptive_verification.py b/mdstats/training_data/adaptive_verification.py
+--- a/mdstats/training_data/adaptive_verification.py	1970-01-01 00:00:00.000000000 +0000
++++ b/mdstats/training_data/adaptive_verification.py	2026-08-09 22:32:57.593608309 +0000
+@@ -0,0 +1,490 @@
++"""ADAPT-VERIFY1 final verification, fallback, and deployment evidence."""
++from __future__ import annotations
++
++from dataclasses import dataclass
++import math
++from pathlib import Path
++from typing import Any, Mapping, Sequence
++
++from ._common import (
++    TrainingDataInputError,
++    TrainingDataSerializationError,
++    digest,
++    validate_digest,
++)
++from .adaptive_full_evaluation import (
++    AdaptiveFullEvaluationRecord,
++    FullEvaluationCandidateRecord,
++)
++
++ADAPTIVE_VERIFICATION_POLICY_SCHEMA = "mdstats.adaptive-verification-policy.v1"
++ADAPTIVE_VERIFICATION_CANDIDATE_SCHEMA = "mdstats.adaptive-verification-candidate.v1"
++ADAPTIVE_VERIFICATION_RECORD_SCHEMA = "mdstats.adaptive-verification-record.v1"
++ADAPTIVE_DEPLOYMENT_MODEL_SCHEMA = "mdstats.adaptive-deployment-model.v1"
++ADAPTIVE_PROTOCOL_FREEZE_SCHEMA = "mdstats.adaptive-protocol-freeze.v1"
++
++
++@dataclass(frozen=True, slots=True)
++class AdaptiveVerificationPolicy:
++    fallback_to_next_admissible_candidate: bool = True
++    model_inference_dtype: str = "float32"
++    scientific_analysis_dtype: str = "float64"
++
++    def __post_init__(self) -> None:
++        model_dtype = str(self.model_inference_dtype).strip().lower()
++        if model_dtype not in {"float32", "float64"}:
++            raise TrainingDataInputError(
++                "Adaptive verification model_inference_dtype must be float32 or float64."
++            )
++        analysis_dtype = str(self.scientific_analysis_dtype).strip().lower()
++        if analysis_dtype != "float64":
++            raise TrainingDataInputError(
++                "ADAPT-VERIFY1 scientific_analysis_dtype is an invariant float64."
++            )
++        object.__setattr__(self, "model_inference_dtype", model_dtype)
++        object.__setattr__(self, "scientific_analysis_dtype", analysis_dtype)
++        object.__setattr__(
++            self,
++            "fallback_to_next_admissible_candidate",
++            bool(self.fallback_to_next_admissible_candidate),
++        )
++
++    def _payload(self) -> dict[str, Any]:
++        return {
++            "schema": ADAPTIVE_VERIFICATION_POLICY_SCHEMA,
++            "fallback_to_next_admissible_candidate": self.fallback_to_next_admissible_candidate,
++            "model_inference_dtype": self.model_inference_dtype,
++            "scientific_analysis_dtype": self.scientific_analysis_dtype,
++        }
++
++    @property
++    def policy_digest(self) -> str:
++        return digest(self._payload())
++
++    def to_dict(self) -> dict[str, Any]:
++        return {**self._payload(), "policy_digest": self.policy_digest}
++
++    @classmethod
++    def from_dict(cls, payload: Mapping[str, Any]) -> "AdaptiveVerificationPolicy":
++        if payload.get("schema") != ADAPTIVE_VERIFICATION_POLICY_SCHEMA:
++            raise TrainingDataSerializationError("Unsupported adaptive-verification policy schema.")
++        result = cls(
++            fallback_to_next_admissible_candidate=bool(
++                payload["fallback_to_next_admissible_candidate"]
++            ),
++            model_inference_dtype=str(payload["model_inference_dtype"]),
++            scientific_analysis_dtype=str(payload["scientific_analysis_dtype"]),
++        )
++        if payload.get("policy_digest") not in (None, result.policy_digest):
++            raise TrainingDataSerializationError("Adaptive-verification policy digest mismatch.")
++        return result
++
++
++@dataclass(frozen=True, slots=True)
++class AdaptiveVerificationCandidateRecord:
++    adaptive_full_evaluation_digest: str
++    verification_policy_digest: str
++    full_evaluation_candidate_digest: str
++    finalist_rank: int
++    finalist_batch_index: int
++    run_plan_digest: str
++    run_id: str
++    checkpoint_sha256: str
++    checkpoint_epoch: int
++    full_score_ev_per_angstrom: float
++    target_force_rmse_ev_per_angstrom: float
++    replay_force_rmse_ev_per_angstrom: float
++    candidate_model_sha256: str
++    model_inference_dtype: str
++    scientific_analysis_dtype: str
++    verification_case_digests: tuple[str, ...]
++    passed: bool
++    rejection_reasons: tuple[str, ...] = ()
++
++    def __post_init__(self) -> None:
++        for name in (
++            "adaptive_full_evaluation_digest",
++            "verification_policy_digest",
++            "full_evaluation_candidate_digest",
++            "run_plan_digest",
++            "checkpoint_sha256",
++            "candidate_model_sha256",
++        ):
++            object.__setattr__(self, name, validate_digest(getattr(self, name), name=name))
++        if self.finalist_rank <= 0 or self.finalist_batch_index <= 0 or self.checkpoint_epoch < 0:
++            raise TrainingDataInputError("Adaptive verification candidate rank/batch/epoch is invalid.")
++        if not str(self.run_id).strip():
++            raise TrainingDataInputError("Adaptive verification candidate run_id is empty.")
++        for name in (
++            "full_score_ev_per_angstrom",
++            "target_force_rmse_ev_per_angstrom",
++            "replay_force_rmse_ev_per_angstrom",
++        ):
++            value = float(getattr(self, name))
++            if not math.isfinite(value) or value < 0.0:
++                raise TrainingDataInputError(f"{name} must be finite and nonnegative.")
++            object.__setattr__(self, name, value)
++        dtype = str(self.model_inference_dtype).strip().lower()
++        if dtype not in {"float32", "float64"}:
++            raise TrainingDataInputError("Adaptive verification candidate model dtype is invalid.")
++        if str(self.scientific_analysis_dtype).strip().lower() != "float64":
++            raise TrainingDataInputError("Adaptive verification scientific analysis must remain float64.")
++        object.__setattr__(self, "model_inference_dtype", dtype)
++        object.__setattr__(self, "scientific_analysis_dtype", "float64")
++        cases = tuple(validate_digest(value, name="verification_case_digest") for value in self.verification_case_digests)
++        if not cases:
++            raise TrainingDataInputError("Adaptive verification candidate requires at least one verification case.")
++        if len(set(cases)) != len(cases):
++            raise TrainingDataInputError("Adaptive verification candidate contains duplicate cases.")
++        object.__setattr__(self, "verification_case_digests", cases)
++        reasons = tuple(sorted(set(str(value) for value in self.rejection_reasons)))
++        if self.passed and reasons:
++            raise TrainingDataInputError("Passing adaptive verification candidate cannot carry rejection reasons.")
++        if not self.passed and not reasons:
++            raise TrainingDataInputError("Failed adaptive verification candidate requires rejection reasons.")
++        object.__setattr__(self, "rejection_reasons", reasons)
++
++    def _payload(self) -> dict[str, Any]:
++        return {
++            "schema": ADAPTIVE_VERIFICATION_CANDIDATE_SCHEMA,
++            "adaptive_full_evaluation_digest": self.adaptive_full_evaluation_digest,
++            "verification_policy_digest": self.verification_policy_digest,
++            "full_evaluation_candidate_digest": self.full_evaluation_candidate_digest,
++            "finalist_rank": self.finalist_rank,
++            "finalist_batch_index": self.finalist_batch_index,
++            "run_plan_digest": self.run_plan_digest,
++            "run_id": self.run_id,
++            "checkpoint_sha256": self.checkpoint_sha256,
++            "checkpoint_epoch": self.checkpoint_epoch,
++            "full_score_ev_per_angstrom": self.full_score_ev_per_angstrom,
++            "target_force_rmse_ev_per_angstrom": self.target_force_rmse_ev_per_angstrom,
++            "replay_force_rmse_ev_per_angstrom": self.replay_force_rmse_ev_per_angstrom,
++            "candidate_model_sha256": self.candidate_model_sha256,
++            "model_inference_dtype": self.model_inference_dtype,
++            "scientific_analysis_dtype": self.scientific_analysis_dtype,
++            "verification_case_digests": list(self.verification_case_digests),
++            "passed": bool(self.passed),
++            "rejection_reasons": list(self.rejection_reasons),
++        }
++
++    @property
++    def content_digest(self) -> str:
++        return digest(self._payload())
++
++    def to_dict(self) -> dict[str, Any]:
++        return {**self._payload(), "content_digest": self.content_digest}
++
++    @classmethod
++    def from_dict(cls, payload: Mapping[str, Any]) -> "AdaptiveVerificationCandidateRecord":
++        if payload.get("schema") != ADAPTIVE_VERIFICATION_CANDIDATE_SCHEMA:
++            raise TrainingDataSerializationError("Unsupported adaptive-verification candidate schema.")
++        result = cls(
++            adaptive_full_evaluation_digest=str(payload["adaptive_full_evaluation_digest"]),
++            verification_policy_digest=str(payload["verification_policy_digest"]),
++            full_evaluation_candidate_digest=str(payload["full_evaluation_candidate_digest"]),
++            finalist_rank=int(payload["finalist_rank"]),
++            finalist_batch_index=int(payload["finalist_batch_index"]),
++            run_plan_digest=str(payload["run_plan_digest"]),
++            run_id=str(payload["run_id"]),
++            checkpoint_sha256=str(payload["checkpoint_sha256"]),
++            checkpoint_epoch=int(payload["checkpoint_epoch"]),
++            full_score_ev_per_angstrom=float(payload["full_score_ev_per_angstrom"]),
++            target_force_rmse_ev_per_angstrom=float(payload["target_force_rmse_ev_per_angstrom"]),
++            replay_force_rmse_ev_per_angstrom=float(payload["replay_force_rmse_ev_per_angstrom"]),
++            candidate_model_sha256=str(payload["candidate_model_sha256"]),
++            model_inference_dtype=str(payload["model_inference_dtype"]),
++            scientific_analysis_dtype=str(payload["scientific_analysis_dtype"]),
++            verification_case_digests=tuple(str(v) for v in payload["verification_case_digests"]),
++            passed=bool(payload["passed"]),
++            rejection_reasons=tuple(str(v) for v in payload.get("rejection_reasons", ())),
++        )
++        if payload.get("content_digest") not in (None, result.content_digest):
++            raise TrainingDataSerializationError("Adaptive-verification candidate digest mismatch.")
++        return result
++
++
++@dataclass(frozen=True, slots=True)
++class AdaptiveVerificationRecord:
++    campaign_plan_digest: str
++    adaptive_full_evaluation_digest: str
++    verification_policy_digest: str
++    attempts: tuple[AdaptiveVerificationCandidateRecord, ...]
++    outcome: str
++    selected_attempt_digest: str | None = None
++
++    def __post_init__(self) -> None:
++        for name in ("campaign_plan_digest", "adaptive_full_evaluation_digest", "verification_policy_digest"):
++            object.__setattr__(self, name, validate_digest(getattr(self, name), name=name))
++        attempts = tuple(self.attempts)
++        if not attempts:
++            raise TrainingDataInputError("Adaptive verification requires at least one attempted candidate.")
++        ranks = [v.finalist_rank for v in attempts]
++        if ranks != sorted(ranks) or len(set(ranks)) != len(ranks):
++            raise TrainingDataInputError("Adaptive verification attempts must follow unique finalist-rank order.")
++        object.__setattr__(self, "attempts", attempts)
++        allowed = {"verified_candidate_selected", "no_candidate_passed"}
++        if self.outcome not in allowed:
++            raise TrainingDataInputError("Unsupported adaptive verification outcome.")
++        passing = tuple(v for v in attempts if v.passed)
++        if self.outcome == "verified_candidate_selected":
++            if len(passing) != 1 or passing[-1] is not attempts[-1]:
++                raise TrainingDataInputError("Adaptive verification must stop immediately at the first passing candidate.")
++            expected = passing[0].content_digest
++            if self.selected_attempt_digest is None:
++                object.__setattr__(self, "selected_attempt_digest", expected)
++            elif validate_digest(self.selected_attempt_digest, name="selected_attempt_digest") != expected:
++                raise TrainingDataInputError("Adaptive verification selected-attempt digest mismatch.")
++        else:
++            if passing or self.selected_attempt_digest is not None:
++                raise TrainingDataInputError("No-candidate-passed outcome cannot carry a selected attempt.")
++
++    @property
++    def selected_attempt(self) -> AdaptiveVerificationCandidateRecord | None:
++        return next((v for v in self.attempts if v.passed), None)
++
++    def _payload(self) -> dict[str, Any]:
++        return {
++            "schema": ADAPTIVE_VERIFICATION_RECORD_SCHEMA,
++            "campaign_plan_digest": self.campaign_plan_digest,
++            "adaptive_full_evaluation_digest": self.adaptive_full_evaluation_digest,
++            "verification_policy_digest": self.verification_policy_digest,
++            "attempts": [v.to_dict() for v in self.attempts],
++            "outcome": self.outcome,
++            "selected_attempt_digest": self.selected_attempt_digest,
++        }
++
++    @property
++    def content_digest(self) -> str:
++        return digest(self._payload())
++
++    def to_dict(self) -> dict[str, Any]:
++        return {**self._payload(), "content_digest": self.content_digest}
++
++    @classmethod
++    def from_dict(cls, payload: Mapping[str, Any]) -> "AdaptiveVerificationRecord":
++        if payload.get("schema") != ADAPTIVE_VERIFICATION_RECORD_SCHEMA:
++            raise TrainingDataSerializationError("Unsupported adaptive-verification record schema.")
++        result = cls(
++            campaign_plan_digest=str(payload["campaign_plan_digest"]),
++            adaptive_full_evaluation_digest=str(payload["adaptive_full_evaluation_digest"]),
++            verification_policy_digest=str(payload["verification_policy_digest"]),
++            attempts=tuple(AdaptiveVerificationCandidateRecord.from_dict(v) for v in payload["attempts"]),
++            outcome=str(payload["outcome"]),
++            selected_attempt_digest=(None if payload.get("selected_attempt_digest") is None else str(payload["selected_attempt_digest"])),
++        )
++        if payload.get("content_digest") not in (None, result.content_digest):
++            raise TrainingDataSerializationError("Adaptive-verification record digest mismatch.")
++        return result
++
++
++@dataclass(frozen=True, slots=True)
++class AdaptiveDeploymentModelRecord:
++    campaign_plan_digest: str
++    adaptive_full_evaluation_digest: str
++    adaptive_verification_digest: str
++    selected_full_evaluation_candidate_digest: str
++    selected_verification_attempt_digest: str
++    run_plan_digest: str
++    run_id: str
++    checkpoint_sha256: str
++    checkpoint_epoch: int
++    target_head_name: str
++    model_inference_dtype: str
++    scientific_analysis_dtype: str
++    exported_model_path: str
++    exported_model_sha256: str
++    byte_size: int
++
++    def __post_init__(self) -> None:
++        for name in (
++            "campaign_plan_digest", "adaptive_full_evaluation_digest", "adaptive_verification_digest",
++            "selected_full_evaluation_candidate_digest", "selected_verification_attempt_digest",
++            "run_plan_digest", "checkpoint_sha256", "exported_model_sha256",
++        ):
++            object.__setattr__(self, name, validate_digest(getattr(self, name), name=name))
++        if self.checkpoint_epoch < 0 or self.byte_size <= 0:
++            raise TrainingDataInputError("Adaptive deployment checkpoint epoch/size is invalid.")
++        if not str(self.run_id).strip() or not str(self.target_head_name).strip():
++            raise TrainingDataInputError("Adaptive deployment run/head identity is empty.")
++        dtype = str(self.model_inference_dtype).strip().lower()
++        if dtype not in {"float32", "float64"}:
++            raise TrainingDataInputError("Adaptive deployment model dtype is invalid.")
++        if str(self.scientific_analysis_dtype).strip().lower() != "float64":
++            raise TrainingDataInputError("Adaptive deployment scientific analysis must remain float64.")
++        object.__setattr__(self, "model_inference_dtype", dtype)
++        object.__setattr__(self, "scientific_analysis_dtype", "float64")
++
++    def _payload(self) -> dict[str, Any]:
++        return {
++            "schema": ADAPTIVE_DEPLOYMENT_MODEL_SCHEMA,
++            "campaign_plan_digest": self.campaign_plan_digest,
++            "adaptive_full_evaluation_digest": self.adaptive_full_evaluation_digest,
++            "adaptive_verification_digest": self.adaptive_verification_digest,
++            "selected_full_evaluation_candidate_digest": self.selected_full_evaluation_candidate_digest,
++            "selected_verification_attempt_digest": self.selected_verification_attempt_digest,
++            "run_plan_digest": self.run_plan_digest,
++            "run_id": self.run_id,
++            "checkpoint_sha256": self.checkpoint_sha256,
++            "checkpoint_epoch": self.checkpoint_epoch,
++            "target_head_name": self.target_head_name,
++            "model_inference_dtype": self.model_inference_dtype,
++            "scientific_analysis_dtype": self.scientific_analysis_dtype,
++            "exported_model_path": self.exported_model_path,
++            "exported_model_sha256": self.exported_model_sha256,
++            "byte_size": self.byte_size,
++        }
++
++    @property
++    def content_digest(self) -> str:
++        return digest(self._payload())
++
++    def to_dict(self) -> dict[str, Any]:
++        return {**self._payload(), "content_digest": self.content_digest}
++
++    @classmethod
++    def from_dict(cls, payload: Mapping[str, Any]) -> "AdaptiveDeploymentModelRecord":
++        if payload.get("schema") != ADAPTIVE_DEPLOYMENT_MODEL_SCHEMA:
++            raise TrainingDataSerializationError("Unsupported adaptive-deployment model schema.")
++        result = cls(
++            campaign_plan_digest=str(payload["campaign_plan_digest"]),
++            adaptive_full_evaluation_digest=str(payload["adaptive_full_evaluation_digest"]),
++            adaptive_verification_digest=str(payload["adaptive_verification_digest"]),
++            selected_full_evaluation_candidate_digest=str(payload["selected_full_evaluation_candidate_digest"]),
++            selected_verification_attempt_digest=str(payload["selected_verification_attempt_digest"]),
++            run_plan_digest=str(payload["run_plan_digest"]), run_id=str(payload["run_id"]),
++            checkpoint_sha256=str(payload["checkpoint_sha256"]), checkpoint_epoch=int(payload["checkpoint_epoch"]),
++            target_head_name=str(payload["target_head_name"]), model_inference_dtype=str(payload["model_inference_dtype"]),
++            scientific_analysis_dtype=str(payload["scientific_analysis_dtype"]), exported_model_path=str(payload["exported_model_path"]),
++            exported_model_sha256=str(payload["exported_model_sha256"]), byte_size=int(payload["byte_size"]),
++        )
++        if payload.get("content_digest") not in (None, result.content_digest):
++            raise TrainingDataSerializationError("Adaptive-deployment model digest mismatch.")
++        return result
++
++
++@dataclass(frozen=True, slots=True)
++class AdaptiveProtocolFreezeRecord:
++    production_qualification_digest: str
++    campaign_plan_digest: str
++    adaptive_full_evaluation_digest: str
++    adaptive_verification_digest: str
++    adaptive_deployment_model_digest: str
++    selected_full_evaluation_candidate_digest: str
++    full_target_artifact_digest: str
++    full_replay_artifact_digest: str
++    exported_model_sha256: str
++    model_inference_dtype: str
++    scientific_analysis_dtype: str
++    frozen_at_utc: str
++
++    def __post_init__(self) -> None:
++        for name in (
++            "production_qualification_digest", "campaign_plan_digest", "adaptive_full_evaluation_digest",
++            "adaptive_verification_digest", "adaptive_deployment_model_digest",
++            "selected_full_evaluation_candidate_digest", "full_target_artifact_digest",
++            "full_replay_artifact_digest", "exported_model_sha256",
++        ):
++            object.__setattr__(self, name, validate_digest(getattr(self, name), name=name))
++        dtype = str(self.model_inference_dtype).strip().lower()
++        if dtype not in {"float32", "float64"}:
++            raise TrainingDataInputError("Adaptive protocol-freeze model dtype is invalid.")
++        if str(self.scientific_analysis_dtype).strip().lower() != "float64":
++            raise TrainingDataInputError("Adaptive protocol-freeze analysis dtype must remain float64.")
++        if not str(self.frozen_at_utc).strip():
++            raise TrainingDataInputError("Adaptive protocol freeze requires a timestamp.")
++        object.__setattr__(self, "model_inference_dtype", dtype)
++        object.__setattr__(self, "scientific_analysis_dtype", "float64")
++
++    def _payload(self) -> dict[str, Any]:
++        return {
++            "schema": ADAPTIVE_PROTOCOL_FREEZE_SCHEMA,
++            "production_qualification_digest": self.production_qualification_digest,
++            "campaign_plan_digest": self.campaign_plan_digest,
++            "adaptive_full_evaluation_digest": self.adaptive_full_evaluation_digest,
++            "adaptive_verification_digest": self.adaptive_verification_digest,
++            "adaptive_deployment_model_digest": self.adaptive_deployment_model_digest,
++            "selected_full_evaluation_candidate_digest": self.selected_full_evaluation_candidate_digest,
++            "full_target_artifact_digest": self.full_target_artifact_digest,
++            "full_replay_artifact_digest": self.full_replay_artifact_digest,
++            "exported_model_sha256": self.exported_model_sha256,
++            "model_inference_dtype": self.model_inference_dtype,
++            "scientific_analysis_dtype": self.scientific_analysis_dtype,
++            "frozen_at_utc": self.frozen_at_utc,
++        }
++
++    @property
++    def content_digest(self) -> str:
++        return digest(self._payload())
++
++    def to_dict(self) -> dict[str, Any]:
++        return {**self._payload(), "content_digest": self.content_digest}
++
++    @classmethod
++    def from_dict(cls, payload: Mapping[str, Any]) -> "AdaptiveProtocolFreezeRecord":
++        if payload.get("schema") != ADAPTIVE_PROTOCOL_FREEZE_SCHEMA:
++            raise TrainingDataSerializationError("Unsupported adaptive protocol-freeze schema.")
++        result = cls(
++            production_qualification_digest=str(payload["production_qualification_digest"]),
++            campaign_plan_digest=str(payload["campaign_plan_digest"]),
++            adaptive_full_evaluation_digest=str(payload["adaptive_full_evaluation_digest"]),
++            adaptive_verification_digest=str(payload["adaptive_verification_digest"]),
++            adaptive_deployment_model_digest=str(payload["adaptive_deployment_model_digest"]),
++            selected_full_evaluation_candidate_digest=str(payload["selected_full_evaluation_candidate_digest"]),
++            full_target_artifact_digest=str(payload["full_target_artifact_digest"]),
++            full_replay_artifact_digest=str(payload["full_replay_artifact_digest"]),
++            exported_model_sha256=str(payload["exported_model_sha256"]),
++            model_inference_dtype=str(payload["model_inference_dtype"]),
++            scientific_analysis_dtype=str(payload["scientific_analysis_dtype"]),
++            frozen_at_utc=str(payload["frozen_at_utc"]),
++        )
++        if payload.get("content_digest") not in (None, result.content_digest):
++            raise TrainingDataSerializationError("Adaptive protocol-freeze digest mismatch.")
++        return result
++
++
++def ordered_admissible_candidates(
++    record: AdaptiveFullEvaluationRecord,
++    *,
++    fallback_to_next_admissible_candidate: bool = True,
++) -> tuple[FullEvaluationCandidateRecord, ...]:
++    """Return the exact ADAPT-VERIFY1 verification order."""
++    candidates = record.admissible_candidates
++    if not candidates:
++        raise TrainingDataInputError("ADAPT-VERIFY1 requires at least one fully admissible EVAL1 candidate.")
++    return candidates if fallback_to_next_admissible_candidate else candidates[:1]
++
++
++def verification_rejection_reasons(
++    cases: Sequence[Mapping[str, Any]],
++    *,
++    maximum_energy_drift_ev_per_atom_per_ps: float,
++    minimum_pair_distance_angstrom: float,
++    maximum_force_ev_per_angstrom: float,
++) -> tuple[str, ...]:
++    reasons: set[str] = set()
++    for case in cases:
++        if not bool(case.get("finite", False)):
++            reasons.add("nonfinite_nve_observable")
++        if float(case.get("absolute_energy_drift_ev_per_atom_per_ps", math.inf)) > float(maximum_energy_drift_ev_per_atom_per_ps):
++            reasons.add("energy_drift_threshold_exceeded")
++        if float(case.get("minimum_pair_distance_angstrom", -math.inf)) < float(minimum_pair_distance_angstrom):
++            reasons.add("minimum_pair_distance_threshold_violated")
++        if float(case.get("maximum_force_ev_per_angstrom", math.inf)) > float(maximum_force_ev_per_angstrom):
++            reasons.add("maximum_force_threshold_exceeded")
++    return tuple(sorted(reasons))
++
++
++__all__ = [
++    "ADAPTIVE_VERIFICATION_POLICY_SCHEMA",
++    "ADAPTIVE_VERIFICATION_CANDIDATE_SCHEMA",
++    "ADAPTIVE_VERIFICATION_RECORD_SCHEMA",
++    "ADAPTIVE_DEPLOYMENT_MODEL_SCHEMA",
++    "ADAPTIVE_PROTOCOL_FREEZE_SCHEMA",
++    "AdaptiveVerificationPolicy",
++    "AdaptiveVerificationCandidateRecord",
++    "AdaptiveVerificationRecord",
++    "AdaptiveDeploymentModelRecord",
++    "AdaptiveProtocolFreezeRecord",
++    "ordered_admissible_candidates",
++    "verification_rejection_reasons",
++]
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/mdstats/training_data/campaign_cli.py b/mdstats/training_data/campaign_cli.py
+--- a/mdstats/training_data/campaign_cli.py	2026-08-09 22:16:28.352516929 +0000
++++ b/mdstats/training_data/campaign_cli.py	2026-08-09 22:38:21.479353792 +0000
+@@ -130,7 +130,7 @@
+     ("prepare", "source audit, partitioning, model sweep, and MACE data"),
+     ("preflight", "bounded real-MACE and accelerator smoke test"),
+     ("train", "restartable fold/final fine-tuning jobs"),
+-    ("evaluate", "checkpoint constraints, protocol comparison, and committee"),
++    ("evaluate", "adaptive full-model selection or historical protocol comparison"),
+     ("verify", "bounded deployment and MD stability verification"),
+ )
+ 
+@@ -11028,7 +11028,7 @@
+     if full_evaluation:
+         _mark_stage(
+             store, paths, "evaluate", StageState.COMPLETE,
+-            f"ADAPT-EVAL1 completed {len(evaluated)} full evaluation(s) through batch {completed_batches}; ADAPT-VERIFY1 pending",
++            f"ADAPT-EVAL1 completed {len(evaluated)} full evaluation(s) through batch {completed_batches}; ready for ADAPT-VERIFY1",
+         )
+     else:
+         _mark_stage(
+@@ -12580,6 +12580,734 @@
+     }
+ 
+ 
++
++def _adaptive_verification_policy(
++    cfg: Mapping[str, Any], *, model_dtype: str
++) -> Any:
++    """Freeze ADAPT-VERIFY1 fallback and precision semantics."""
++    import mdstats
++
++    return mdstats.AdaptiveVerificationPolicy(
++        fallback_to_next_admissible_candidate=bool(
++            _cfg(
++                cfg,
++                "verification",
++                "fallback_to_next_full_evaluation_candidate",
++                True,
++            )
++        ),
++        model_inference_dtype=str(model_dtype),
++        scientific_analysis_dtype="float64",
++    )
++
++
++def _atomic_copy_file(source: Path, destination: Path) -> None:
++    """Publish one verified immutable model by same-directory atomic replace."""
++    destination.parent.mkdir(parents=True, exist_ok=True)
++    fd, temporary_name = tempfile.mkstemp(
++        prefix=f".{destination.name}.", suffix=".tmp", dir=destination.parent
++    )
++    os.close(fd)
++    temporary = Path(temporary_name)
++    try:
++        shutil.copy2(source, temporary)
++        with temporary.open("rb") as handle:
++            os.fsync(handle.fileno())
++        os.replace(temporary, destination)
++    finally:
++        temporary.unlink(missing_ok=True)
++
++
++def _adaptive_verification_case_results(
++    store: CampaignStore,
++    case_digests: Sequence[str],
++) -> list[dict[str, Any]]:
++    results: list[dict[str, Any]] = []
++    for case_digest in case_digests:
++        payload = store.get_payload_optional(f"verification_case:{case_digest}")
++        if payload is None or payload.get("case_digest") != case_digest:
++            raise CampaignCliError(
++                "ADAPT-VERIFY1 verification-case evidence disappeared after the "
++                "candidate decision was frozen."
++            )
++        results.append(dict(payload["result"]))
++    return results
++
++
++def _command_verify_adaptive_topk(
++    args: argparse.Namespace,
++    *,
++    cfg: Mapping[str, Any],
++    paths: CampaignPaths,
++    store: CampaignStore,
++    model_dtype: str,
++) -> int:
++    """ADAPT-VERIFY1: verify ordered EVAL1 candidates and publish first passer."""
++    import mdstats
++    from .campaign_execution import _export_target_head_model_with_dtype
++
++    evaluation = store.get_record_optional(
++        "adaptive_full_evaluation", mdstats.AdaptiveFullEvaluationRecord
++    )
++    if evaluation is None:
++        raise CampaignCliError(
++            "ADAPT-VERIFY1 requires a completed authoritative ADAPT-EVAL1 record."
++        )
++    if evaluation.outcome != "admissible_candidates_available":
++        raise CampaignCliError(
++            "ADAPT-VERIFY1 cannot run because ADAPT-EVAL1 has no fully admissible candidate."
++        )
++    campaign = store.get_record("training_campaign", mdstats.TrainingCampaignPlan)
++    if evaluation.campaign_plan_digest != campaign.content_digest:
++        raise CampaignCliError("ADAPT-VERIFY1 campaign/full-evaluation lineage mismatch.")
++    policy = _adaptive_verification_policy(cfg, model_dtype=model_dtype)
++    candidates = mdstats.ordered_admissible_candidates(
++        evaluation,
++        fallback_to_next_admissible_candidate=policy.fallback_to_next_admissible_candidate,
++    )
++
++    existing = store.get_record_optional(
++        "adaptive_verification", mdstats.AdaptiveVerificationRecord
++    )
++    if existing is not None:
++        if (
++            existing.campaign_plan_digest != campaign.content_digest
++            or existing.adaptive_full_evaluation_digest != evaluation.content_digest
++            or existing.verification_policy_digest != policy.policy_digest
++        ):
++            raise CampaignCliError(
++                "Existing ADAPT-VERIFY1 evidence belongs to a different full-evaluation "
++                "or verification policy. Refusing to reinterpret frozen verification evidence."
++            )
++        if existing.outcome == "no_candidate_passed":
++            _mark_stage(
++                store,
++                paths,
++                "verify",
++                StageState.FAILED,
++                "all authorized fully admissible ADAPT-EVAL1 candidates failed bounded verification",
++            )
++            return 1
++        deployment = store.get_record_optional(
++            "adaptive_deployment_model", mdstats.AdaptiveDeploymentModelRecord
++        )
++        freeze = store.get_record_optional(
++            "adaptive_protocol_freeze", mdstats.AdaptiveProtocolFreezeRecord
++        )
++        if deployment is None or freeze is None:
++            raise CampaignCliError(
++                "ADAPT-VERIFY1 selected a candidate but deployment/freeze evidence is incomplete."
++            )
++        published = Path(deployment.exported_model_path)
++        if not published.is_file() or _sha256(published) != deployment.exported_model_sha256:
++            raise CampaignCliError(
++                "Published adaptive deployment model is missing or changed after verification."
++            )
++        if freeze.adaptive_verification_digest != existing.content_digest:
++            raise CampaignCliError("Adaptive protocol freeze/verification digest mismatch.")
++        _mark_stage(
++            store,
++            paths,
++            "verify",
++            StageState.COMPLETE,
++            f"ADAPT-VERIFY1 already selected {deployment.run_id} epoch {deployment.checkpoint_epoch}",
++        )
++        _ok(
++            f"reused verified deployment model: {published.name} "
++            f"({deployment.model_inference_dtype} model inference; FP64 scientific arithmetic)"
++        )
++        return 0
++
++    # Adaptive production never allows historical committee/freeze evidence to
++    # choose a winner. A stale legacy committee in a new adaptive campaign is a
++    # lineage conflict, not an alternative fallback source.
++    if store.has_record("committee"):
++        raise CampaignCliError(
++            "ADAPT-VERIFY1 found legacy committee evidence in an adaptive_topk campaign. "
++            "Refusing to let historical committee ranking determine the adaptive winner."
++        )
++
++    structures = list(args.structure or _cfg(cfg, "verification", "structures", ()))
++    if not structures:
++        raise CampaignCliError(
++            "No verification structures were provided. Add [verification].structures or pass --structure."
++        )
++    resolved_structures = [_resolve_path(v, paths.config_dir) for v in structures]
++    for structure in resolved_structures:
++        if not structure.is_file():
++            raise CampaignCliError(f"Verification structure not found: {structure}")
++    temperatures = tuple(
++        float(v)
++        for v in _cfg(cfg, "verification", "temperatures_kelvin", (300.0, 700.0, 800.0))
++    )
++    if not temperatures:
++        raise CampaignCliError("[verification].temperatures_kelvin must not be empty.")
++    steps = int(
++        args.steps
++        if args.steps is not None
++        else _cfg(cfg, "verification", "steps", 2000)
++    )
++    timestep = float(_cfg(cfg, "verification", "timestep_fs", 0.5))
++    velocity_seed = int(_cfg(cfg, "verification", "velocity_seed", 314159))
++    sample_interval_steps = int(_cfg(cfg, "verification", "sample_interval_steps", 10))
++    drift_limit = float(
++        _cfg(cfg, "verification", "maximum_energy_drift_ev_per_atom_per_ps", 0.026)
++    )
++    min_distance_limit = float(
++        _cfg(cfg, "verification", "minimum_pair_distance_angstrom", 0.8)
++    )
++    max_force_limit = float(
++        _cfg(cfg, "verification", "maximum_force_ev_per_angstrom", 100.0)
++    )
++    if steps <= 0 or timestep <= 0 or sample_interval_steps <= 0 or velocity_seed < 0:
++        raise CampaignCliError("ADAPT-VERIFY1 verification integration settings are invalid.")
++
++    device = str(
++        _cfg(cfg, "verification", "device", _cfg(cfg, "training", "device", "cuda"))
++    )
++    acceleration = _acceleration_policy(cfg)
++    critical_precision = _critical_precision_policy(cfg)
++    precision_profile = _print_precision_profile(cfg)
++    local_wrappers = _ensure_local_wrappers(paths)
++    data8_entries = _current_data8_entries(store)
++    jobs = _job_lookup(data8_entries)
++    executions = _available_successful_executions(cfg, paths, store, campaign, jobs)
++    runs = {run.content_digest: run for run in campaign.runs}
++    first_run = runs.get(candidates[0].run_plan_digest)
++    if first_run is None:
++        raise CampaignCliError("ADAPT-VERIFY1 first candidate run is absent from campaign plan.")
++    _first_bundle, first_job, _first_root = jobs[first_run.mace_job_artifact_digest]
++    if first_job.protocol.adaptive_stop_policy is None:
++        raise CampaignCliError("ADAPT-VERIFY1 cannot reconstruct the EVAL1 score policy.")
++    full_policy = _adaptive_full_evaluation_policy(
++        cfg, first_job.protocol.adaptive_stop_policy, _checkpoint_metric_policy(cfg)
++    )
++    if full_policy.policy_digest != evaluation.policy_digest:
++        raise CampaignCliError(
++            "ADAPT-VERIFY1 reconstructed full-evaluation policy differs from frozen EVAL1 evidence."
++        )
++    structure_sha256_by_path = {str(path): _sha256(path) for path in resolved_structures}
++    structure_templates = _load_verification_structure_templates(resolved_structures)
++    doctor_versions = (
++        store.get_payload("doctor").get("versions", {})
++        if store.has_record("doctor")
++        else {}
++    )
++    verification_runtime_digest = digest(
++        {
++            "schema": "mdstats.mlff-adaptive-verification-runtime.v1",
++            "mdstats_version": "0.20.127a0",
++            "configured_mace_version": str(_cfg(cfg, "runtime", "mace_version", "0.3.16")),
++            "doctor_versions": doctor_versions,
++        }
++    )
++    qualification = store.get_record(
++        "production_qualification", mdstats.ProductionCorpusQualificationRecord
++    )
++    candidate_root = paths.internal / "verification-candidates"
++    candidate_root.mkdir(parents=True, exist_ok=True)
++    attempts: list[Any] = []
++    selected_candidate = None
++    selected_candidate_model = None
++    selected_target_head = None
++
++    _mark_stage(
++        store,
++        paths,
++        "verify",
++        StageState.RUNNING,
++        f"ADAPT-VERIFY1 testing {len(candidates)} fully admissible EVAL1 candidate(s) in score order",
++    )
++    _print_header("ADAPT-VERIFY1 ordered deployment verification")
++
++    for candidate_index, candidate in enumerate(candidates, start=1):
++        run = runs.get(candidate.run_plan_digest)
++        if run is None:
++            raise CampaignCliError("ADAPT-VERIFY1 candidate run is absent from campaign plan.")
++        execution = executions.get(run.content_digest)
++        if execution is None:
++            raise CampaignCliError(f"{run.run_id}: successful execution evidence is unavailable.")
++        bundle, job, root = jobs[run.mace_job_artifact_digest]
++        stop_policy = job.protocol.adaptive_stop_policy
++        if stop_policy is None:
++            raise CampaignCliError(f"{run.run_id}: adaptive stop/target-head identity is missing.")
++        target_head_name = str(stop_policy.target_head_name)
++        catalog = _evaluation_checkpoint_catalog(store, run.run_id, execution)
++        checkpoint = next(
++            (
++                item
++                for item in catalog.checkpoints
++                if item.sha256 == candidate.checkpoint_sha256
++                and item.epoch == candidate.checkpoint_epoch
++            ),
++            None,
++        )
++        if checkpoint is None:
++            raise CampaignCliError(
++                f"{run.run_id}: selected EVAL1 checkpoint is absent from the frozen catalog."
++            )
++        full_eval_record = store.get_record_optional(
++            f"adaptive_full_evaluation:{run.run_id}:{checkpoint.sha256}",
++            mdstats.CheckpointEvaluationRecord,
++        )
++        if (
++            full_eval_record is None
++            or full_eval_record.content_digest != candidate.evaluation_record_digest
++        ):
++            raise CampaignCliError(
++                f"{run.run_id}: authoritative full-evaluation metric evidence is missing or changed."
++            )
++
++        attempt_key = f"adaptive_verification_candidate:{run.run_id}:{checkpoint.sha256}"
++        attempt = store.get_record_optional(
++            attempt_key, mdstats.AdaptiveVerificationCandidateRecord
++        )
++        candidate_dir = candidate_root / f"rank-{candidate.finalist_rank:03d}-{checkpoint.sha256[:12]}"
++        temporary_model = candidate_dir / "target.model"
++        candidate_model_sha256 = None
++        if attempt is not None:
++            expected_identity = (
++                attempt.adaptive_full_evaluation_digest == evaluation.content_digest
++                and attempt.verification_policy_digest == policy.policy_digest
++                and attempt.full_evaluation_candidate_digest == candidate.content_digest
++                and attempt.run_plan_digest == run.content_digest
++                and attempt.checkpoint_sha256 == checkpoint.sha256
++                and attempt.checkpoint_epoch == checkpoint.epoch
++                and attempt.model_inference_dtype == model_dtype
++                and attempt.scientific_analysis_dtype == "float64"
++            )
++            if not expected_identity:
++                raise CampaignCliError(
++                    f"{run.run_id}: existing ADAPT-VERIFY1 candidate evidence disagrees with current immutable lineage."
++                )
++            attempts.append(attempt)
++            _ok(
++                f"candidate {candidate_index}/{len(candidates)} rank {candidate.finalist_rank}: "
++                f"reused {'PASS' if attempt.passed else 'FAIL'} verification evidence"
++            )
++            if attempt.passed:
++                # Reconstruct the exact passing target-head artifact if the parent
++                # died after verification but before publication.
++                candidate_model_sha256 = attempt.candidate_model_sha256
++                if not temporary_model.is_file() or _sha256(temporary_model) != candidate_model_sha256:
++                    temporary_model.parent.mkdir(parents=True, exist_ok=True)
++                    source, capsule = _checkpoint_source_for_evaluation(
++                        paths, store, run.run_id, checkpoint, execution.checkpoint_catalog
++                    )
++                    job_root = (root / job.relative_directory).resolve()
++                    config_path = (root / job.config_relative_path).resolve()
++                    model_source = mdstats.materialize_mace_checkpoint_model(
++                        checkpoint,
++                        source,
++                        mace_config_path=config_path,
++                        job_working_directory=job_root,
++                        cache_directory=paths.runs / run.run_id / "checkpoint-model-cache",
++                        wrapper_path=local_wrappers["mdstats-mace-train"],
++                        allow_checkpoint_dtype_template_cast=False,
++                        evaluation_state_capsule=capsule,
++                    )
++                    try:
++                        _export_target_head_model_with_dtype(
++                            model_source,
++                            temporary_model,
++                            target_head_name=target_head_name,
++                            target_device="cpu",
++                            wrapper_path=local_wrappers["mdstats-mace-select-head"],
++                            required_wrapper="mdstats-mace-select-head",
++                            failure_prefix="ADAPT-VERIFY1 target-head materialization",
++                            deployment_dtype=model_dtype,
++                        )
++                    finally:
++                        if Path(model_source).resolve() != Path(source).resolve():
++                            mdstats.remove_materialized_mace_checkpoint_model(model_source)
++                    if _sha256(temporary_model) != candidate_model_sha256:
++                        raise CampaignCliError(
++                            f"{run.run_id}: regenerated passing candidate model bytes disagree with frozen verification evidence."
++                        )
++                selected_candidate = candidate
++                selected_candidate_model = temporary_model
++                selected_target_head = target_head_name
++                break
++            if not policy.fallback_to_next_admissible_candidate:
++                break
++            continue
++
++        source, capsule = _checkpoint_source_for_evaluation(
++            paths, store, run.run_id, checkpoint, execution.checkpoint_catalog
++        )
++        if not source.is_file():
++            raise CampaignCliError(
++                f"{run.run_id}: source checkpoint/capsule is unavailable for verification."
++            )
++        candidate_dir.mkdir(parents=True, exist_ok=True)
++        job_root = (root / job.relative_directory).resolve()
++        config_path = (root / job.config_relative_path).resolve()
++        model_source = mdstats.materialize_mace_checkpoint_model(
++            checkpoint,
++            source,
++            mace_config_path=config_path,
++            job_working_directory=job_root,
++            cache_directory=paths.runs / run.run_id / "checkpoint-model-cache",
++            wrapper_path=local_wrappers["mdstats-mace-train"],
++            allow_checkpoint_dtype_template_cast=False,
++            evaluation_state_capsule=capsule,
++        )
++        try:
++            _export_target_head_model_with_dtype(
++                model_source,
++                temporary_model,
++                target_head_name=target_head_name,
++                target_device="cpu",
++                wrapper_path=local_wrappers["mdstats-mace-select-head"],
++                required_wrapper="mdstats-mace-select-head",
++                failure_prefix="ADAPT-VERIFY1 target-head materialization",
++                deployment_dtype=model_dtype,
++            )
++        finally:
++            if Path(model_source).resolve() != Path(source).resolve():
++                mdstats.remove_materialized_mace_checkpoint_model(model_source)
++        candidate_model_sha256 = _sha256(temporary_model)
++
++        cases: list[dict[str, Any]] = []
++        pending: list[_AdaptiveInferenceTask] = []
++        progress = _ProgressReporter(
++            f"VERIFY candidate rank {candidate.finalist_rank}",
++            len(resolved_structures) * len(temperatures),
++        )
++        case_index = 0
++        for structure in resolved_structures:
++            for temperature in temperatures:
++                case_index += 1
++                identity = {
++                    "schema": "mdstats.mlff-adaptive-verification-case-identity.v1",
++                    "adaptive_full_evaluation_digest": evaluation.content_digest,
++                    "full_evaluation_candidate_digest": candidate.content_digest,
++                    "checkpoint_sha256": checkpoint.sha256,
++                    "candidate_model_sha256": candidate_model_sha256,
++                    "structure_sha256": structure_sha256_by_path[str(structure)],
++                    "temperature_kelvin": temperature,
++                    "timestep_fs": timestep,
++                    "steps": steps,
++                    "sample_interval_steps": sample_interval_steps,
++                    "velocity_seed": velocity_seed,
++                    "device": device,
++                    "model_inference_dtype": model_dtype,
++                    "scientific_analysis_dtype": "float64",
++                    "acceleration_policy_digest": acceleration.policy_digest,
++                    "critical_precision_policy_digest": critical_precision.policy_digest,
++                    "runtime_digest": verification_runtime_digest,
++                }
++                case_digest = _verification_case_digest(identity)
++                cache_key = f"verification_case:{case_digest}"
++                cached = store.get_payload_optional(cache_key)
++                if cached is not None and cached.get("case_digest") == case_digest:
++                    cases.append({"case_digest": case_digest, "result": dict(cached["result"])})
++                    progress.item_start(case_index, f"{structure.name}:{temperature:g}K", "cached")
++                    progress.item_done(case_index, f"{structure.name}:{temperature:g}K", "reused")
++                    continue
++
++                def execute_case(
++                    *,
++                    active_structure: Path = structure,
++                    active_structure_atoms: Any = structure_templates[str(structure)],
++                    active_temperature: float = temperature,
++                    active_model: Path = temporary_model,
++                ) -> dict[str, Any]:
++                    return _nve_verify(
++                        active_model,
++                        active_structure,
++                        device=device,
++                        dtype=model_dtype,
++                        acceleration_policy=acceleration,
++                        critical_precision_policy=critical_precision,
++                        temperature=active_temperature,
++                        timestep_fs=timestep,
++                        steps=steps,
++                        velocity_seed=velocity_seed,
++                        sample_interval_steps=sample_interval_steps,
++                        calculator=None,
++                        structure_atoms=active_structure_atoms,
++                        reuse_worker_calculator=True,
++                    )
++
++                pending.append(
++                    _AdaptiveInferenceTask(
++                        display_index=case_index,
++                        key=case_digest,
++                        label=f"{structure.name}:{temperature:g}K",
++                        start_detail=f"rank {candidate.finalist_rank} full NVE",
++                        execute=execute_case,
++                        done_detail=lambda value, wall: (
++                            f"drift={value['absolute_energy_drift_ev_per_atom_per_ps']*1000:.2f} meV/atom/ps, "
++                            f"r_min={value['minimum_pair_distance_angstrom']:.2f} A, "
++                            f"wall={_ProgressReporter._duration(wall)}"
++                        ),
++                        on_success=lambda value, active_cache_key=cache_key,
++                        active_case_digest=case_digest, active_identity=identity: store.put_record(
++                            active_cache_key,
++                            {
++                                "schema": "mdstats.mlff-verification-case-cache.v1",
++                                "case_digest": active_case_digest,
++                                "identity": active_identity,
++                                "result": value,
++                                "created_at_utc": _utc_now(),
++                            },
++                        ),
++                    )
++                )
++        completed = _run_adaptive_inference_tasks(
++            pending,
++            cfg=cfg,
++            phase="verification",
++            device=device,
++            progress=progress,
++        )
++        for task in pending:
++            cases.append({"case_digest": task.key, "result": dict(completed[task.key])})
++        cases.sort(key=lambda item: item["case_digest"])
++        reasons = mdstats.verification_rejection_reasons(
++            [item["result"] for item in cases],
++            maximum_energy_drift_ev_per_atom_per_ps=drift_limit,
++            minimum_pair_distance_angstrom=min_distance_limit,
++            maximum_force_ev_per_angstrom=max_force_limit,
++        )
++        attempt = mdstats.AdaptiveVerificationCandidateRecord(
++            adaptive_full_evaluation_digest=evaluation.content_digest,
++            verification_policy_digest=policy.policy_digest,
++            full_evaluation_candidate_digest=candidate.content_digest,
++            finalist_rank=candidate.finalist_rank,
++            finalist_batch_index=candidate.finalist_batch_index,
++            run_plan_digest=run.content_digest,
++            run_id=run.run_id,
++            checkpoint_sha256=checkpoint.sha256,
++            checkpoint_epoch=checkpoint.epoch,
++            full_score_ev_per_angstrom=candidate.full_score_ev_per_angstrom,
++            target_force_rmse_ev_per_angstrom=candidate.target_force_rmse_ev_per_angstrom,
++            replay_force_rmse_ev_per_angstrom=candidate.replay_force_rmse_ev_per_angstrom,
++            candidate_model_sha256=candidate_model_sha256,
++            model_inference_dtype=model_dtype,
++            scientific_analysis_dtype="float64",
++            verification_case_digests=tuple(item["case_digest"] for item in cases),
++            passed=not reasons,
++            rejection_reasons=reasons,
++        )
++        store.put_record(attempt_key, attempt)
++        attempts.append(attempt)
++        if attempt.passed:
++            _ok(
++                f"candidate rank {candidate.finalist_rank} PASS: {run.run_id} epoch {checkpoint.epoch}; "
++                f"full score={candidate.full_score_ev_per_angstrom*1000:.2f} meV/A"
++            )
++            selected_candidate = candidate
++            selected_candidate_model = temporary_model
++            selected_target_head = target_head_name
++            break
++        _fail(
++            f"candidate rank {candidate.finalist_rank} FAIL: {run.run_id} epoch {checkpoint.epoch}; "
++            + ", ".join(reasons)
++        )
++        temporary_model.unlink(missing_ok=True)
++        if not policy.fallback_to_next_admissible_candidate:
++            break
++
++    if selected_candidate is None or selected_candidate_model is None or selected_target_head is None:
++        record = mdstats.AdaptiveVerificationRecord(
++            campaign_plan_digest=campaign.content_digest,
++            adaptive_full_evaluation_digest=evaluation.content_digest,
++            verification_policy_digest=policy.policy_digest,
++            attempts=tuple(attempts),
++            outcome="no_candidate_passed",
++            selected_attempt_digest=None,
++        )
++        store.put_record("adaptive_verification", record)
++        payload = {
++            **record.to_dict(),
++            "precision": precision_profile,
++            "model_inference_dtype": model_dtype,
++            "scientific_analysis_dtype": "float64",
++            "full_evaluation_policy": full_policy.to_dict(),
++            "verification_attempt_details": [
++                {
++                    "attempt": attempt.to_dict(),
++                    "cases": _adaptive_verification_case_results(
++                        store, attempt.verification_case_digests
++                    ),
++                }
++                for attempt in attempts
++            ],
++            "thresholds": {
++                "maximum_energy_drift_ev_per_atom_per_ps": drift_limit,
++                "minimum_pair_distance_angstrom": min_distance_limit,
++                "maximum_force_ev_per_angstrom": max_force_limit,
++            },
++            "published_model": None,
++        }
++        _atomic_json(paths.results / "production-verification.json", payload)
++        _mark_stage(
++            store,
++            paths,
++            "verify",
++            StageState.FAILED,
++            f"ADAPT-VERIFY1 exhausted {len(attempts)} authorized candidate(s) without a verification pass",
++        )
++        return 1
++
++    selected_attempt = attempts[-1]
++    record = mdstats.AdaptiveVerificationRecord(
++        campaign_plan_digest=campaign.content_digest,
++        adaptive_full_evaluation_digest=evaluation.content_digest,
++        verification_policy_digest=policy.policy_digest,
++        attempts=tuple(attempts),
++        outcome="verified_candidate_selected",
++        selected_attempt_digest=selected_attempt.content_digest,
++    )
++    selected_run = runs[selected_candidate.run_plan_digest]
++    published = paths.models / (
++        f"selected-{selected_run.run_id}-epoch-{selected_candidate.checkpoint_epoch}-target.model"
++    )
++    _atomic_copy_file(selected_candidate_model, published)
++    published_sha = _sha256(published)
++    if published_sha != selected_attempt.candidate_model_sha256:
++        raise CampaignCliError("Published adaptive deployment model changed during atomic promotion.")
++    # The verified bytes are now protected in models/. Internal candidate
++    # materialization is reconstructable and must not look like a second
++    # published model.
++    selected_candidate_model.unlink(missing_ok=True)
++    try:
++        selected_candidate_model.parent.rmdir()
++    except OSError:
++        pass
++    deployment = mdstats.AdaptiveDeploymentModelRecord(
++        campaign_plan_digest=campaign.content_digest,
++        adaptive_full_evaluation_digest=evaluation.content_digest,
++        adaptive_verification_digest=record.content_digest,
++        selected_full_evaluation_candidate_digest=selected_candidate.content_digest,
++        selected_verification_attempt_digest=selected_attempt.content_digest,
++        run_plan_digest=selected_run.content_digest,
++        run_id=selected_run.run_id,
++        checkpoint_sha256=selected_candidate.checkpoint_sha256,
++        checkpoint_epoch=selected_candidate.checkpoint_epoch,
++        target_head_name=selected_target_head,
++        model_inference_dtype=model_dtype,
++        scientific_analysis_dtype="float64",
++        exported_model_path=str(published.resolve()),
++        exported_model_sha256=published_sha,
++        byte_size=published.stat().st_size,
++    )
++    freeze = mdstats.AdaptiveProtocolFreezeRecord(
++        production_qualification_digest=qualification.content_digest,
++        campaign_plan_digest=campaign.content_digest,
++        adaptive_full_evaluation_digest=evaluation.content_digest,
++        adaptive_verification_digest=record.content_digest,
++        adaptive_deployment_model_digest=deployment.content_digest,
++        selected_full_evaluation_candidate_digest=selected_candidate.content_digest,
++        full_target_artifact_digest=evaluation.full_target_artifact_digest,
++        full_replay_artifact_digest=evaluation.full_replay_artifact_digest,
++        exported_model_sha256=published_sha,
++        model_inference_dtype=model_dtype,
++        scientific_analysis_dtype="float64",
++        frozen_at_utc=_utc_now(),
++    )
++    store.put_records(
++        {
++            "adaptive_verification": record,
++            "adaptive_deployment_model": deployment,
++            "adaptive_protocol_freeze": freeze,
++            # Compatibility authority token for existing storage lifecycle gates.
++            # ADAPT-MIGRATE1 will remove the remaining old ProtocolFreezeRecord type
++            # assumptions; the schema remains explicit and cannot be mistaken for
++            # a historical committee freeze by typed readers.
++            "protocol_freeze": freeze,
++        }
++    )
++
++    full_eval_metric = store.get_record(
++        f"adaptive_full_evaluation:{selected_run.run_id}:{selected_candidate.checkpoint_sha256}",
++        mdstats.CheckpointEvaluationRecord,
++    )
++    target_metrics = full_eval_metric.target_candidate_metrics
++    replay_metrics = full_eval_metric.replay_candidate_metrics
++    payload = {
++        **record.to_dict(),
++        "selected_model": deployment.to_dict(),
++        "adaptive_protocol_freeze": freeze.to_dict(),
++        "precision": precision_profile,
++        "model_inference_dtype": model_dtype,
++        "scientific_analysis_dtype": "float64",
++        "acceleration_policy": acceleration.to_dict(),
++        "fallback_count": max(0, len(attempts) - 1),
++        "full_evaluation_policy": full_policy.to_dict(),
++        "verification_attempt_details": [
++            {
++                "attempt": attempt.to_dict(),
++                "cases": _adaptive_verification_case_results(
++                    store, attempt.verification_case_digests
++                ),
++            }
++            for attempt in attempts
++        ],
++        "full_evaluation": {
++            "finalist_rank": selected_candidate.finalist_rank,
++            "finalist_batch_index": selected_candidate.finalist_batch_index,
++            "target_force_rmse_ev_per_angstrom": selected_candidate.target_force_rmse_ev_per_angstrom,
++            "replay_force_rmse_ev_per_angstrom": selected_candidate.replay_force_rmse_ev_per_angstrom,
++            "full_score_ev_per_angstrom": selected_candidate.full_score_ev_per_angstrom,
++            "replay_foundation_force_rmse_ev_per_angstrom": selected_candidate.replay_foundation_force_rmse_ev_per_angstrom,
++            "replay_absolute_degradation_ev_per_angstrom": selected_candidate.replay_absolute_degradation_ev_per_angstrom,
++            "replay_fractional_degradation": selected_candidate.replay_fractional_degradation,
++            "target_energy_mae_ev_per_atom": None if target_metrics is None else target_metrics.energy_mae_ev_per_atom,
++            "target_stress_rmse_ev_per_angstrom3": None if target_metrics is None else target_metrics.stress_rmse_ev_per_angstrom3,
++            "target_focus_force_rmse_ev_per_angstrom": None if target_metrics is None else list(target_metrics.focus_force_rmse_ev_per_angstrom),
++            "target_worst_condition_force_rmse_ev_per_angstrom": None if target_metrics is None else target_metrics.worst_condition_force_rmse_ev_per_angstrom,
++            "target_configuration_count": None if target_metrics is None else target_metrics.configuration_count,
++            "replay_configuration_count": None if replay_metrics is None else replay_metrics.configuration_count,
++            "full_target_artifact_digest": evaluation.full_target_artifact_digest,
++            "full_replay_artifact_digest": evaluation.full_replay_artifact_digest,
++        },
++        "verification_thresholds": {
++            "maximum_energy_drift_ev_per_atom_per_ps": drift_limit,
++            "minimum_pair_distance_angstrom": min_distance_limit,
++            "maximum_force_ev_per_angstrom": max_force_limit,
++        },
++        "committee_handling": "adaptive_single_verified_deployment; legacy committee ranking not used",
++        "passed": True,
++    }
++    _atomic_json(paths.results / "production-verification.json", payload)
++    store.put_record("production_verification", payload)
++    _update_benchmark(
++        paths,
++        "verify",
++        {
++            "passed": True,
++            "adaptive_verify1": True,
++            "attempted_candidate_count": len(attempts),
++            "fallback_count": max(0, len(attempts) - 1),
++            "selected_finalist_rank": selected_candidate.finalist_rank,
++            "model_inference_dtype": model_dtype,
++            "scientific_analysis_dtype": "float64",
++        },
++    )
++    _mark_stage(
++        store,
++        paths,
++        "verify",
++        StageState.COMPLETE,
++        f"ADAPT-VERIFY1 selected finalist rank {selected_candidate.finalist_rank}: "
++        f"{selected_run.run_id} epoch {selected_candidate.checkpoint_epoch}",
++    )
++    cleanup_report = _campaign_cleanup(
++        cfg, paths, store, phase="verify-end", include_preparation_caches=True
++    )
++    _print_cleanup_report(cleanup_report)
++    print(
++        "\nADAPT-VERIFY1 deployment verification passed. "
++        f"Published {published.name} after {len(attempts)} candidate attempt(s). "
++        "This bounded stability gate is still not a substitute for matched scientific observable validation.",
++        flush=True,
++    )
++    return 0
++
++
+ def command_verify(args: argparse.Namespace) -> int:
+     import mdstats
+ 
+@@ -12588,6 +13316,13 @@
+     model_dtype = str(precision_contract["model_dtype"])
+     store = CampaignStore(paths.state_db)
+     evaluate_state, evaluate_message = _effective_stage(store, paths, "evaluate")
++    checkpoint_strategy = str(
++        _cfg(cfg, "evaluation", "checkpoint_strategy", "bounded")
++    ).strip().lower()
++    if evaluate_state is StageState.COMPLETE and checkpoint_strategy == "adaptive_topk":
++        return _command_verify_adaptive_topk(
++            args, cfg=cfg, paths=paths, store=store, model_dtype=model_dtype
++        )
+     committee = (
+         store.get_record_optional("committee", mdstats.CommitteeIdentity)
+         if evaluate_state is StageState.COMPLETE
+@@ -14413,6 +15148,10 @@
+ dtype = "{precision['export_dtype']}"
+ 
+ [verification]
++# ADAPT-VERIFY1 verifies fully admissible EVAL1 candidates in full-score order.
++# If the current winner fails a hard bounded-NVE gate, try the next already fully
++# evaluated admissible candidate. Set false to fail immediately on the best candidate.
++fallback_to_next_full_evaluation_candidate = true
+ # Permit bounded checks on the latest completed-model set when the full campaign
+ # is unfinished. Evidence is explicitly graded and never treated as a freeze.
+ allow_interim_completed_models = true
+@@ -14449,7 +15188,7 @@
+ 4. preflight  Verify every job and run the required real one-epoch smoke.
+ 5. train      Execute configured fold/final, seed, size, and naive/replay jobs with safe resume; common monitors are validated each epoch.
+ 6. evaluate   Screen saved epochs through the still-current EVAL-MF policy; ADAPT-EVAL1 retirement is a later gate.
+-7. verify     Run the full NVE matrix on deployment/final models and short stability smokes on fold-only comparison models.
++7. verify     For adaptive_topk, run the full NVE matrix on the best fully admissible candidate and fall back by full score until one passes; publish only the verified winner. Historical evaluators retain committee/fold verification behavior.
+ 
+ Use `status` at any time. It reports the next command and never advances a failed gate.
+ Use the unified `storage` command for all STOR1-STOR5 storage operations.
+@@ -14515,11 +15254,15 @@
+ reductions, statistics, and persistent MD bookkeeping remain FP64 in either model mode, and no
+ hardware heuristic may substitute another learned-model dtype.
+ 
+-The final `verify` command is a bounded pre-deployment stability gate. Production
+-committee/final models receive the full configured structure x temperature NVE matrix.
+-Fold-only comparison models receive one short high-temperature divergence smoke, and
+-identical verification cases are cached across restarts. This does not replace matched
+-RDF, coordination, site-population, VDOS, or diffusion validation.
++ADAPT-VERIFY1 is active in 0.20.127a0. For completed `adaptive_topk` campaigns, the final
++`verify` command tests the lowest-full-score admissible candidate on the complete configured
++structure x temperature NVE matrix. A hard verification failure advances to the next already fully
++evaluated admissible candidate when fallback is enabled. The first passing target-head artifact is
++atomically published; failed candidate artifacts never enter `models/`. The model keeps its
++`single|double` learned-model dtype while MD state, drift analysis, and other mdstats-owned
++scientific arithmetic remain FP64. Historical evaluator paths retain their committee/fold
++verification behavior. This bounded gate does not replace matched RDF, coordination, site-population,
++VDOS, or diffusion validation.
+ 
+ When the result is weak: first check E0/reference-energy consistency if energies are bad
+ but forces are reasonable; increase structurally independent data rather than adjacent
+@@ -14537,7 +15280,7 @@
+     parser = argparse.ArgumentParser(
+         prog="mdstats-mlff-campaign",
+         formatter_class=_Formatter,
+-        description="Run an auditable MACE fine-tuning campaign from VASP data to a frozen, verified committee.",
++        description="Run an auditable MACE fine-tuning campaign from VASP data to a frozen, verified deployment model.",
+         epilog="Run `... guide` for the short scientific workflow and `... status` for the next safe action.",
+     )
+     parser.add_argument("--config", default=DEFAULT_CONFIG_NAME, help="campaign TOML file (default: campaign.toml)")
+@@ -14618,7 +15361,7 @@
+ 
+     p = sub.add_parser(
+         "verify",
+-        help="run bounded NVE checks on the frozen committee or the latest completed-model verification set",
++        help="run adaptive ordered deployment verification or historical bounded committee/completed-model checks",
+     )
+     p.add_argument("--structure", action="append", help="verification structure; may be repeated")
+     p.add_argument("--steps", type=int, help="override bounded NVE step count")
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/pyproject.toml b/pyproject.toml
+--- a/pyproject.toml	2026-08-09 21:54:29.494753356 +0000
++++ b/pyproject.toml	2026-08-09 22:31:24.505255580 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.126a0"
++version = "0.20.127a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/release/mlff_adapt_verify1_final_verification_qualification.json b/release/mlff_adapt_verify1_final_verification_qualification.json
+--- a/release/mlff_adapt_verify1_final_verification_qualification.json	1970-01-01 00:00:00.000000000 +0000
++++ b/release/mlff_adapt_verify1_final_verification_qualification.json	2026-08-09 22:46:49.209696199 +0000
+@@ -0,0 +1,56 @@
++{
++  "schema": "mdstats.mlff-adapt-verify1-qualification.v1",
++  "package_version": "0.20.127a0",
++  "gate": "ADAPT-VERIFY1",
++  "date": "2026-08-09",
++  "status": "qualified",
++  "behavior": {
++    "authoritative_parent": "AdaptiveFullEvaluationRecord.admissible_candidates",
++    "verification_order": "ADAPT-EVAL1 full-score order",
++    "fallback_to_next_full_evaluation_candidate_default": true,
++    "fallback_reuses_existing_full_evaluation": true,
++    "fallback_target_replay_reevaluation": false,
++    "verification_matrix": "complete configured bounded-NVE matrix per attempted candidate",
++    "first_passing_candidate_is_terminal": true,
++    "failed_candidate_model_published": false,
++    "passing_model_exact_bytes_published": true,
++    "adaptive_synthetic_committee_created": false,
++    "fold_run_candidate_deployable": true,
++    "single_model_inference_and_deployment_dtype": "float32",
++    "double_model_inference_and_deployment_dtype": "float64",
++    "mdstats_scientific_analysis_dtype": "float64",
++    "authenticated_nve_case_restart_reuse": true,
++    "adaptive_verification_record": true,
++    "adaptive_deployment_model_record": true,
++    "adaptive_protocol_freeze_record": true,
++    "protocol_freeze_compatibility_authority_key": true,
++    "historical_committee_eval_mf_readable": true,
++    "next_gate": "ADAPT-MIGRATE1"
++  },
++  "tests": [
++    {
++      "scope": "adaptive runtime chain through VERIFY1",
++      "result": "62 passed, 1 skipped",
++      "note": "campaign CLI, ADAPT-EVAL1, verification cost policy, ADAPT-VERIFY1, and OPT-VERIFY1; skip requires external real LTA training root"
++    },
++    {
++      "scope": "adaptive verification + storage/protocol compatibility",
++      "result": "43 passed",
++      "note": "includes adaptive freeze authority, STOR4/STOR5 protocol-freeze presence gates, specification and cost-policy regressions"
++    },
++    {
++      "scope": "MLFF specification/version sweep excluding inherited absent DATA9A9A smoke fixture",
++      "result": "140 passed"
++    },
++    {
++      "scope": "inherited DATA9A9A specification fixture",
++      "result": "4 passed, 1 known pre-existing failure",
++      "note": "release/mlff_data9a9a_real_mpa0_restart_smoke.json is absent in the supplied source package; unchanged from prior adaptive releases"
++    }
++  ],
++  "pdf_verification": {
++    "mlff_adaptive_verification_spec.pdf": "4 pages rendered at 160 dpi and visually inspected",
++    "mlff_training_data_architecture.pdf": "89 pages rendered; changed ADAPT-VERIFY1 pages visually inspected",
++    "mlff_campaign_cli_user_guide.pdf": "13 pages rendered; changed adaptive evaluation/verification page visually inspected"
++  }
++}
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/tests/test_mlff_adapt_eval1_specification.py b/tests/test_mlff_adapt_eval1_specification.py
+--- a/tests/test_mlff_adapt_eval1_specification.py	2026-08-09 22:10:38.230820800 +0000
++++ b/tests/test_mlff_adapt_eval1_specification.py	2026-08-09 22:40:21.430479428 +0000
+@@ -11,7 +11,7 @@
+ 
+ 
+ def test_adapt_eval1_release_identity_and_specification() -> None:
+-    assert mdstats.__version__ == "0.20.126a0"
++    assert mdstats.__version__ == "0.20.127a0"
+     text = SPEC.read_text(encoding="utf-8")
+     assert "Status: implemented in mdstats 0.20.126a0" in text
+     assert 'checkpoint_strategy = "adaptive_topk"' in text
+@@ -34,11 +34,12 @@
+     assert mdstats.MultiFidelityEvaluationPolicy().minimum_finalists >= 1
+ 
+ 
+-def test_architecture_marks_adapt_eval1_implemented_and_verify_pending() -> None:
++def test_architecture_marks_adapt_eval1_and_verify1_implemented() -> None:
+     text = ARCH.read_text(encoding="utf-8")
+     start = text.index("## ADAPT-EVAL1")
+     section = text[start : start + 7000]
+     assert "**Status:** implemented in `mdstats 0.20.126a0`." in section
+     assert "### ADAPT-EVAL1 implementation record (`0.20.126a0`)" in section
+     verify = text[text.index("## ADAPT-VERIFY1") : text.index("## ADAPT-MIGRATE1")]
+-    assert "**Status:** `not_started`." in verify
++    assert "**Status:** implemented in `mdstats 0.20.127a0`." in verify
++    assert "### ADAPT-VERIFY1 implementation record (`0.20.127a0`)" in verify
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/tests/test_mlff_adapt_mon1_specification.py b/tests/test_mlff_adapt_mon1_specification.py
+--- a/tests/test_mlff_adapt_mon1_specification.py	2026-08-09 22:10:38.024727042 +0000
++++ b/tests/test_mlff_adapt_mon1_specification.py	2026-08-09 22:40:21.445712593 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_adapt_mon1_release_and_normative_defaults():
+-    assert mdstats.__version__ == "0.20.126a0"
++    assert mdstats.__version__ == "0.20.127a0"
+     text = SPEC.read_text(encoding="utf-8")
+     assert "Status: implemented in mdstats 0.20.123a0" in text
+     assert "256 configurations" in text
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/tests/test_mlff_adapt_prec1_specification.py b/tests/test_mlff_adapt_prec1_specification.py
+--- a/tests/test_mlff_adapt_prec1_specification.py	2026-08-09 22:11:50.600488305 +0000
++++ b/tests/test_mlff_adapt_prec1_specification.py	2026-08-09 22:40:21.448003234 +0000
+@@ -8,7 +8,7 @@
+ 
+ 
+ def test_adapt_prec1_release_and_spec_contract():
+-    assert mdstats.__version__ == "0.20.126a0"
++    assert mdstats.__version__ == "0.20.127a0"
+     text = SPEC.read_text(encoding="utf-8")
+     assert "Status: implemented in mdstats 0.20.122a0" in text
+     assert "`single`: learned-model" in text
+@@ -18,7 +18,7 @@
+     assert "Historical staged `refine` schedules remain deserializable" in text
+ 
+ 
+-def test_adapt_prec1_manual_is_closed_while_mon1_is_closed_and_later_gates_remain_open():
++def test_adapt_prec1_manual_tracks_closed_adaptive_gates_and_open_migration():
+     text = MANUAL.read_text(encoding="utf-8")
+     assert "## ADAPT-PREC1 - binary model precision" in text
+     assert "**Status:** implemented in `mdstats 0.20.122a0`." in text
+@@ -30,6 +30,7 @@
+     assert "**Status:** implemented in `mdstats 0.20.125a0`." in text[rank_start : rank_start + 1000]
+     eval_start = text.index("## ADAPT-EVAL1")
+     assert "**Status:** implemented in `mdstats 0.20.126a0`." in text[eval_start : eval_start + 1000]
+-    for heading in ["## ADAPT-VERIFY1", "## ADAPT-MIGRATE1"]:
+-        start = text.index(heading)
+-        assert "**Status:** `not_started`." in text[start : start + 1000]
++    verify_start = text.index("## ADAPT-VERIFY1")
++    assert "**Status:** implemented in `mdstats 0.20.127a0`." in text[verify_start : verify_start + 1000]
++    migrate_start = text.index("## ADAPT-MIGRATE1")
++    assert "**Status:** `not_started`." in text[migrate_start : migrate_start + 1000]
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/tests/test_mlff_adapt_rank1_specification.py b/tests/test_mlff_adapt_rank1_specification.py
+--- a/tests/test_mlff_adapt_rank1_specification.py	2026-08-09 22:12:33.577193071 +0000
++++ b/tests/test_mlff_adapt_rank1_specification.py	2026-08-09 22:40:21.429714689 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_adapt_rank1_release_and_spec_contract() -> None:
+-    assert mdstats.__version__ == "0.20.126a0"
++    assert mdstats.__version__ == "0.20.127a0"
+     text = SPEC.read_text(encoding="utf-8")
+     assert "Status: implemented in mdstats 0.20.125a0" in text
+     assert "zero" in text.lower() and "inference" in text.lower()
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/tests/test_mlff_adapt_verify1_final_verification.py b/tests/test_mlff_adapt_verify1_final_verification.py
+--- a/tests/test_mlff_adapt_verify1_final_verification.py	1970-01-01 00:00:00.000000000 +0000
++++ b/tests/test_mlff_adapt_verify1_final_verification.py	2026-08-09 22:41:24.915360425 +0000
+@@ -0,0 +1,465 @@
++from __future__ import annotations
++
++import argparse
++import hashlib
++from pathlib import Path
++from types import SimpleNamespace
++
++import pytest
++
++import mdstats
++from mdstats.training_data import campaign_cli
++
++
++def _sha(text: str) -> str:
++    return hashlib.sha256(text.encode()).hexdigest()
++
++
++def _candidate(rank: int, score: float, *, admissible: bool = True):
++    return mdstats.FullEvaluationCandidateRecord(
++        finalist_rank=rank,
++        finalist_batch_index=1,
++        run_plan_digest=_sha(f"run-{rank}"),
++        run_id=f"run-{rank}",
++        checkpoint_sha256=_sha(f"checkpoint-{rank}"),
++        checkpoint_epoch=rank,
++        evaluation_record_digest=_sha(f"eval-{rank}"),
++        target_force_rmse_ev_per_angstrom=score,
++        replay_force_rmse_ev_per_angstrom=score,
++        full_score_ev_per_angstrom=score,
++        admissible=admissible,
++        rejection_reasons=() if admissible else ("target_force_rmse_threshold_exceeded",),
++        replay_foundation_force_rmse_ev_per_angstrom=0.02,
++        replay_absolute_degradation_ev_per_angstrom=score - 0.02,
++        replay_fractional_degradation=(score - 0.02) / 0.02,
++    )
++
++
++def _full_eval(*candidates):
++    return mdstats.AdaptiveFullEvaluationRecord(
++        campaign_plan_digest=_sha("campaign"),
++        policy_digest=_sha("eval-policy"),
++        finalist_queue_digest=_sha("queue"),
++        full_target_artifact_digest=_sha("target-domain"),
++        full_replay_artifact_digest=_sha("replay-domain"),
++        evaluated_candidates=tuple(candidates),
++        completed_batch_count=1,
++        outcome="admissible_candidates_available",
++    )
++
++
++def test_verify_order_uses_full_score_and_fallback_policy():
++    record = _full_eval(_candidate(1, 0.028), _candidate(2, 0.024), _candidate(3, 0.026))
++    ordered = mdstats.ordered_admissible_candidates(record)
++    assert [item.finalist_rank for item in ordered] == [2, 3, 1]
++    assert [item.finalist_rank for item in mdstats.ordered_admissible_candidates(
++        record, fallback_to_next_admissible_candidate=False
++    )] == [2]
++
++
++def test_verification_reasons_are_hard_gates():
++    good = {
++        "finite": True,
++        "absolute_energy_drift_ev_per_atom_per_ps": 0.010,
++        "minimum_pair_distance_angstrom": 1.2,
++        "maximum_force_ev_per_angstrom": 5.0,
++    }
++    assert mdstats.verification_rejection_reasons(
++        [good],
++        maximum_energy_drift_ev_per_atom_per_ps=0.026,
++        minimum_pair_distance_angstrom=0.8,
++        maximum_force_ev_per_angstrom=100.0,
++    ) == ()
++    bad = dict(good)
++    bad.update(
++        finite=False,
++        absolute_energy_drift_ev_per_atom_per_ps=0.030,
++        minimum_pair_distance_angstrom=0.7,
++        maximum_force_ev_per_angstrom=101.0,
++    )
++    assert mdstats.verification_rejection_reasons(
++        [bad],
++        maximum_energy_drift_ev_per_atom_per_ps=0.026,
++        minimum_pair_distance_angstrom=0.8,
++        maximum_force_ev_per_angstrom=100.0,
++    ) == (
++        "energy_drift_threshold_exceeded",
++        "maximum_force_threshold_exceeded",
++        "minimum_pair_distance_threshold_violated",
++        "nonfinite_nve_observable",
++    )
++
++
++def _attempt(rank: int, passed: bool):
++    return mdstats.AdaptiveVerificationCandidateRecord(
++        adaptive_full_evaluation_digest=_sha("full-eval"),
++        verification_policy_digest=_sha("verify-policy"),
++        full_evaluation_candidate_digest=_sha(f"full-candidate-{rank}"),
++        finalist_rank=rank,
++        finalist_batch_index=1,
++        run_plan_digest=_sha(f"run-{rank}"),
++        run_id=f"run-{rank}",
++        checkpoint_sha256=_sha(f"checkpoint-{rank}"),
++        checkpoint_epoch=rank,
++        full_score_ev_per_angstrom=0.020 + rank / 1000,
++        target_force_rmse_ev_per_angstrom=0.020,
++        replay_force_rmse_ev_per_angstrom=0.021,
++        candidate_model_sha256=_sha(f"model-{rank}"),
++        model_inference_dtype="float32",
++        scientific_analysis_dtype="float64",
++        verification_case_digests=(_sha(f"case-{rank}"),),
++        passed=passed,
++        rejection_reasons=() if passed else ("energy_drift_threshold_exceeded",),
++    )
++
++
++def test_verification_record_stops_at_first_passing_candidate():
++    failed = _attempt(1, False)
++    passed = _attempt(2, True)
++    record = mdstats.AdaptiveVerificationRecord(
++        campaign_plan_digest=_sha("campaign"),
++        adaptive_full_evaluation_digest=_sha("full-eval"),
++        verification_policy_digest=_sha("verify-policy"),
++        attempts=(failed, passed),
++        outcome="verified_candidate_selected",
++        selected_attempt_digest=passed.content_digest,
++    )
++    assert record.selected_attempt == passed
++    assert mdstats.AdaptiveVerificationRecord.from_dict(record.to_dict()) == record
++    passed_first = _attempt(1, True)
++    failed_second = _attempt(2, False)
++    with pytest.raises(Exception, match="stop immediately"):
++        mdstats.AdaptiveVerificationRecord(
++            campaign_plan_digest=_sha("campaign"),
++            adaptive_full_evaluation_digest=_sha("full-eval"),
++            verification_policy_digest=_sha("verify-policy"),
++            attempts=(passed_first, failed_second),
++            outcome="verified_candidate_selected",
++            selected_attempt_digest=passed_first.content_digest,
++        )
++
++
++def test_binary_model_dtype_and_fp64_analysis_are_frozen_in_policy():
++    single = mdstats.AdaptiveVerificationPolicy(model_inference_dtype="float32")
++    double = mdstats.AdaptiveVerificationPolicy(model_inference_dtype="float64")
++    assert single.model_inference_dtype == "float32"
++    assert double.model_inference_dtype == "float64"
++    assert single.scientific_analysis_dtype == double.scientific_analysis_dtype == "float64"
++    with pytest.raises(Exception, match="float64"):
++        mdstats.AdaptiveVerificationPolicy(
++            model_inference_dtype="float32", scientific_analysis_dtype="float32"
++        )
++
++
++def test_adaptive_verify_routes_before_legacy_committee_lookup(monkeypatch, tmp_path: Path):
++    cfg = {"evaluation": {"checkpoint_strategy": "adaptive_topk"}}
++    paths = SimpleNamespace(state_db=tmp_path / "state.sqlite")
++    fake_store = object()
++    monkeypatch.setattr(campaign_cli, "_load_config", lambda _: (cfg, paths))
++    monkeypatch.setattr(campaign_cli, "_binary_model_precision_contract", lambda _: {"model_dtype": "float32"})
++    monkeypatch.setattr(campaign_cli, "CampaignStore", lambda _: fake_store)
++    monkeypatch.setattr(campaign_cli, "_effective_stage", lambda *_: (campaign_cli.StageState.COMPLETE, "complete"))
++    called = {}
++    def fake_adaptive(args, **kwargs):
++        called.update(kwargs)
++        return 17
++    monkeypatch.setattr(campaign_cli, "_command_verify_adaptive_topk", fake_adaptive)
++    result = campaign_cli.command_verify(argparse.Namespace(config="campaign.toml"))
++    assert result == 17
++    assert called["store"] is fake_store
++    assert called["model_dtype"] == "float32"
++
++
++def test_generated_config_enables_score_ordered_verification_fallback():
++    text = campaign_cli._config_template(
++        workspace="workspace",
++        training_root="training",
++        foundation_model="foundation.model",
++        replay_train="replay_train.xyz",
++        replay_monitor="replay_monitor.xyz",
++    )
++    assert 'checkpoint_strategy = "adaptive_topk"' in text
++    assert "fallback_to_next_full_evaluation_candidate = true" in text
++
++
++def test_atomic_publication_copies_exact_bytes(tmp_path: Path):
++    source = tmp_path / "candidate.model"
++    destination = tmp_path / "models" / "selected.model"
++    source.write_bytes(b"verified-model")
++    campaign_cli._atomic_copy_file(source, destination)
++    assert destination.read_bytes() == b"verified-model"
++
++
++def test_deployment_and_adaptive_freeze_preserve_verified_model_bytes(tmp_path: Path):
++    failed = _attempt(1, False)
++    passed = _attempt(2, True)
++    verification = mdstats.AdaptiveVerificationRecord(
++        campaign_plan_digest=_sha("campaign"),
++        adaptive_full_evaluation_digest=_sha("full-eval"),
++        verification_policy_digest=_sha("verify-policy"),
++        attempts=(failed, passed),
++        outcome="verified_candidate_selected",
++        selected_attempt_digest=passed.content_digest,
++    )
++    model = tmp_path / "selected.model"
++    model.write_bytes(b"model")
++    model_sha = hashlib.sha256(model.read_bytes()).hexdigest()
++    deployment = mdstats.AdaptiveDeploymentModelRecord(
++        campaign_plan_digest=_sha("campaign"),
++        adaptive_full_evaluation_digest=_sha("full-eval"),
++        adaptive_verification_digest=verification.content_digest,
++        selected_full_evaluation_candidate_digest=passed.full_evaluation_candidate_digest,
++        selected_verification_attempt_digest=passed.content_digest,
++        run_plan_digest=passed.run_plan_digest,
++        run_id=passed.run_id,
++        checkpoint_sha256=passed.checkpoint_sha256,
++        checkpoint_epoch=passed.checkpoint_epoch,
++        target_head_name="target_head",
++        model_inference_dtype="float32",
++        scientific_analysis_dtype="float64",
++        exported_model_path=str(model),
++        exported_model_sha256=model_sha,
++        byte_size=model.stat().st_size,
++    )
++    restored = mdstats.AdaptiveDeploymentModelRecord.from_dict(deployment.to_dict())
++    assert restored == deployment
++    freeze = mdstats.AdaptiveProtocolFreezeRecord(
++        production_qualification_digest=_sha("qualification"),
++        campaign_plan_digest=_sha("campaign"),
++        adaptive_full_evaluation_digest=_sha("full-eval"),
++        adaptive_verification_digest=verification.content_digest,
++        adaptive_deployment_model_digest=deployment.content_digest,
++        selected_full_evaluation_candidate_digest=passed.full_evaluation_candidate_digest,
++        full_target_artifact_digest=_sha("target-domain"),
++        full_replay_artifact_digest=_sha("replay-domain"),
++        exported_model_sha256=model_sha,
++        model_inference_dtype="float32",
++        scientific_analysis_dtype="float64",
++        frozen_at_utc="2026-08-09T22:00:00+00:00",
++    )
++    assert mdstats.AdaptiveProtocolFreezeRecord.from_dict(freeze.to_dict()) == freeze
++
++
++def test_adaptive_verify_falls_back_and_publishes_only_first_passer(monkeypatch, tmp_path: Path):
++    from types import SimpleNamespace
++    from tests.test_mlff_adapt_eval1_topk_full_evaluation import _evaluation
++    from mdstats.training_data import campaign_execution
++
++    class Store:
++        def __init__(self):
++            self.records = {}
++        def get_record_optional(self, key, cls):
++            return self.records.get(key)
++        def get_record(self, key, cls):
++            return self.records[key]
++        def get_payload_optional(self, key):
++            value = self.records.get(key)
++            if value is None:
++                return None
++            return value if isinstance(value, dict) else value.to_dict()
++        def get_payload(self, key):
++            value = self.records[key]
++            return value if isinstance(value, dict) else value.to_dict()
++        def has_record(self, key):
++            return key in self.records
++        def put_record(self, key, value):
++            self.records[key] = value
++        def put_records(self, values):
++            self.records.update(values)
++        def delete_record(self, key):
++            self.records.pop(key, None)
++
++    workspace = tmp_path / "workspace"
++    paths = SimpleNamespace(
++        config_dir=tmp_path,
++        workspace=workspace,
++        state_db=workspace / ".mdstats" / "state.sqlite",
++        internal=workspace / ".mdstats",
++        runs=workspace / "runs",
++        models=workspace / "models",
++        results=workspace / "results",
++    )
++    for path in (paths.internal, paths.runs, paths.models, paths.results):
++        path.mkdir(parents=True, exist_ok=True)
++    structure = tmp_path / "verify.xyz"
++    structure.write_text("structure", encoding="utf-8")
++
++    stop_policy = mdstats.AdaptiveTrainingStopPolicy(
++        target_head_name="target_head", replay_head_name="replay_monitor"
++    )
++    runs = []
++    jobs = {}
++    executions = {}
++    finalists = []
++    full_evals = {}
++    for rank, score in ((1, 0.020), (2, 0.021)):
++        run_digest = _sha(f"integration-run-{rank}")
++        run_id = f"run-{rank}"
++        checkpoint_path = tmp_path / f"checkpoint-{rank}.pt"
++        checkpoint_path.write_bytes(f"model-{rank}".encode())
++        checkpoint_sha = hashlib.sha256(checkpoint_path.read_bytes()).hexdigest()
++        checkpoint = mdstats.CheckpointFileRecord(
++            run_plan_digest=run_digest,
++            candidate_id=f"{run_id}:epoch:{rank}",
++            epoch=rank,
++            relative_path=checkpoint_path.name,
++            sha256=checkpoint_sha,
++            size_bytes=checkpoint_path.stat().st_size,
++        )
++        catalog = mdstats.CandidateCheckpointCatalog(
++            run_plan_digest=run_digest,
++            root_directory=str(tmp_path),
++            checkpoints=(checkpoint,),
++            pattern="*.pt",
++        )
++        run = SimpleNamespace(
++            content_digest=run_digest,
++            run_id=run_id,
++            mace_job_artifact_digest=_sha(f"job-{rank}"),
++        )
++        runs.append(run)
++        job_root = tmp_path / f"job-root-{rank}"
++        job_root.mkdir()
++        (job_root / "config.yaml").write_text("config", encoding="utf-8")
++        job = SimpleNamespace(
++            protocol=SimpleNamespace(adaptive_stop_policy=stop_policy),
++            relative_directory=".",
++            config_relative_path="config.yaml",
++        )
++        jobs[run.mace_job_artifact_digest] = (SimpleNamespace(), job, job_root)
++        executions[run_digest] = SimpleNamespace(checkpoint_catalog=catalog)
++        finalist = mdstats.CampaignFinalistCandidate(
++            rank=rank,
++            batch_index=1,
++            run_plan_digest=run_digest,
++            run_id=run_id,
++            champion_record_digest=_sha(f"champ-{rank}"),
++            checkpoint_sha256=checkpoint_sha,
++            checkpoint_epoch=rank,
++            lightweight_score_ev_per_angstrom=score,
++        )
++        full_eval = _evaluation(finalist, score, score)
++        candidate = mdstats.FullEvaluationCandidateRecord(
++            finalist_rank=rank,
++            finalist_batch_index=1,
++            run_plan_digest=run_digest,
++            run_id=run_id,
++            checkpoint_sha256=checkpoint_sha,
++            checkpoint_epoch=rank,
++            evaluation_record_digest=full_eval.content_digest,
++            target_force_rmse_ev_per_angstrom=score,
++            replay_force_rmse_ev_per_angstrom=score,
++            full_score_ev_per_angstrom=score,
++            admissible=True,
++            replay_foundation_force_rmse_ev_per_angstrom=0.015,
++            replay_absolute_degradation_ev_per_angstrom=score - 0.015,
++            replay_fractional_degradation=(score - 0.015) / 0.015,
++        )
++        finalists.append(candidate)
++        full_evals[(run_id, checkpoint_sha)] = full_eval
++
++    campaign = SimpleNamespace(content_digest=_sha("integration-campaign"), runs=tuple(runs))
++    full_record = mdstats.AdaptiveFullEvaluationRecord(
++        campaign_plan_digest=campaign.content_digest,
++        policy_digest=_sha("integration-full-policy"),
++        finalist_queue_digest=_sha("integration-queue"),
++        full_target_artifact_digest=_sha("integration-target"),
++        full_replay_artifact_digest=_sha("integration-replay"),
++        evaluated_candidates=tuple(finalists),
++        completed_batch_count=1,
++        outcome="admissible_candidates_available",
++    )
++    store = Store()
++    store.records["adaptive_full_evaluation"] = full_record
++    store.records["training_campaign"] = campaign
++    store.records["production_qualification"] = SimpleNamespace(content_digest=_sha("qualification"))
++    for (run_id, checkpoint_sha), value in full_evals.items():
++        store.records[f"adaptive_full_evaluation:{run_id}:{checkpoint_sha}"] = value
++
++    cfg = {
++        "evaluation": {"checkpoint_strategy": "adaptive_topk"},
++        "verification": {
++            "structures": [str(structure)],
++            "temperatures_kelvin": [300.0],
++            "steps": 10,
++            "timestep_fs": 0.5,
++            "sample_interval_steps": 5,
++            "velocity_seed": 7,
++            "fallback_to_next_full_evaluation_candidate": True,
++        },
++    }
++    fake_full_policy = SimpleNamespace(
++        policy_digest=full_record.policy_digest,
++        to_dict=lambda: {"policy_digest": full_record.policy_digest},
++    )
++    monkeypatch.setattr(campaign_cli, "_adaptive_full_evaluation_policy", lambda *a, **k: fake_full_policy)
++    monkeypatch.setattr(campaign_cli, "_checkpoint_metric_policy", lambda cfg: object())
++    monkeypatch.setattr(campaign_cli, "_current_data8_entries", lambda store: ())
++    monkeypatch.setattr(campaign_cli, "_job_lookup", lambda entries: jobs)
++    monkeypatch.setattr(campaign_cli, "_available_successful_executions", lambda *a, **k: executions)
++    monkeypatch.setattr(campaign_cli, "_evaluation_checkpoint_catalog", lambda store, run_id, execution: execution.checkpoint_catalog)
++    monkeypatch.setattr(campaign_cli, "_checkpoint_source_for_evaluation", lambda paths, store, run_id, checkpoint, catalog: (Path(catalog.root_directory) / checkpoint.relative_path, None))
++    monkeypatch.setattr(campaign_cli, "_load_verification_structure_templates", lambda paths: {str(path): object() for path in paths})
++    monkeypatch.setattr(campaign_cli, "_ensure_local_wrappers", lambda paths: {"mdstats-mace-train": tmp_path / "train", "mdstats-mace-select-head": tmp_path / "head"})
++    fake_accel = SimpleNamespace(policy_digest=_sha("accel"), to_dict=lambda: {"backend": "test"})
++    fake_critical = SimpleNamespace(policy_digest=_sha("critical"))
++    monkeypatch.setattr(campaign_cli, "_acceleration_policy", lambda cfg: fake_accel)
++    monkeypatch.setattr(campaign_cli, "_critical_precision_policy", lambda cfg: fake_critical)
++    monkeypatch.setattr(campaign_cli, "_print_precision_profile", lambda cfg: {"model_dtype": "float32"})
++    monkeypatch.setattr(campaign_cli, "_campaign_cleanup", lambda *a, **k: SimpleNamespace())
++    monkeypatch.setattr(campaign_cli, "_print_cleanup_report", lambda *a, **k: None)
++    monkeypatch.setattr(campaign_cli, "_update_benchmark", lambda *a, **k: None)
++    monkeypatch.setattr(campaign_cli, "_mark_stage", lambda *a, **k: None)
++    monkeypatch.setattr(campaign_cli, "_ok", lambda *a, **k: None)
++    monkeypatch.setattr(campaign_cli, "_fail", lambda *a, **k: None)
++    monkeypatch.setattr(campaign_cli, "_print_header", lambda *a, **k: None)
++    monkeypatch.setattr(mdstats, "materialize_mace_checkpoint_model", lambda checkpoint, source, **kwargs: source)
++    monkeypatch.setattr(mdstats, "remove_materialized_mace_checkpoint_model", lambda path: None)
++
++    def fake_export(source, output, **kwargs):
++        output.parent.mkdir(parents=True, exist_ok=True)
++        output.write_bytes(Path(source).read_bytes())
++    monkeypatch.setattr(campaign_execution, "_export_target_head_model_with_dtype", fake_export)
++
++    def fake_nve(model_path, *args, **kwargs):
++        is_first = Path(model_path).read_bytes() == b"model-1"
++        return {
++            "finite": True,
++            "absolute_energy_drift_ev_per_atom_per_ps": 0.030 if is_first else 0.010,
++            "minimum_pair_distance_angstrom": 1.0,
++            "maximum_force_ev_per_angstrom": 5.0,
++            "model": str(model_path),
++            "structure": str(structure),
++            "temperature_kelvin": 300.0,
++        }
++    monkeypatch.setattr(campaign_cli, "_nve_verify", fake_nve)
++
++    def run_tasks(tasks, **kwargs):
++        result = {}
++        for task in tasks:
++            value = task.execute()
++            result[task.key] = value
++            if task.on_success is not None:
++                task.on_success(value)
++        return result
++    monkeypatch.setattr(campaign_cli, "_run_adaptive_inference_tasks", run_tasks)
++
++    rc = campaign_cli._command_verify_adaptive_topk(
++        argparse.Namespace(structure=None, steps=None),
++        cfg=cfg,
++        paths=paths,
++        store=store,
++        model_dtype="float32",
++    )
++    assert rc == 0
++    record = store.records["adaptive_verification"]
++    assert [attempt.passed for attempt in record.attempts] == [False, True]
++    deployment = store.records["adaptive_deployment_model"]
++    assert deployment.run_id == "run-2"
++    assert deployment.checkpoint_epoch == 2
++    assert deployment.model_inference_dtype == "float32"
++    assert deployment.scientific_analysis_dtype == "float64"
++    published_models = list(paths.models.glob("*.model"))
++    assert len(published_models) == 1
++    assert published_models[0].read_bytes() == b"model-2"
++    assert not any((paths.internal / "verification-candidates").rglob("*.model"))
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/tests/test_mlff_adapt_verify1_specification.py b/tests/test_mlff_adapt_verify1_specification.py
+--- a/tests/test_mlff_adapt_verify1_specification.py	1970-01-01 00:00:00.000000000 +0000
++++ b/tests/test_mlff_adapt_verify1_specification.py	2026-08-09 22:40:21.440772026 +0000
+@@ -0,0 +1,35 @@
++from __future__ import annotations
++
++from pathlib import Path
++
++import mdstats
++from mdstats.training_data import campaign_cli
++
++ROOT = Path(__file__).resolve().parents[1]
++SPEC = ROOT / "docs" / "specs" / "training_data" / "mlff_adaptive_verification_spec.md"
++ARCH = ROOT / "docs" / "arch_manuals" / "mlff_training_data_architecture.md"
++
++
++def test_adapt_verify1_release_identity_and_specification() -> None:
++    assert mdstats.__version__ == "0.20.127a0"
++    text = SPEC.read_text(encoding="utf-8")
++    assert "Status: implemented in `mdstats 0.20.127a0`." in text
++    assert "fallback_to_next_full_evaluation_candidate = true" in text
++    assert "single -> FP32" in text
++    assert "double -> FP64" in text
++    assert "scientific_analysis_dtype" in text
++    assert "atomically promotes the exact passing bytes" in text
++    assert "does not fabricate a" in text and "legacy committee around a fold winner" in text
++
++
++def test_adapt_verify1_generated_config_and_architecture_are_closed() -> None:
++    source = Path(campaign_cli.__file__).read_text(encoding="utf-8")
++    example = (ROOT / "campaign.toml.example").read_text(encoding="utf-8")
++    assert "fallback_to_next_full_evaluation_candidate = true" in source
++    assert "fallback_to_next_full_evaluation_candidate = true" in example
++    verify = ARCH.read_text(encoding="utf-8")
++    section = verify[verify.index("## ADAPT-VERIFY1") : verify.index("## ADAPT-MIGRATE1")]
++    assert "**Status:** implemented in `mdstats 0.20.127a0`." in section
++    assert "### ADAPT-VERIFY1 implementation record (`0.20.127a0`)" in section
++    assert "first passing candidate" in section
++    assert "AdaptiveDeploymentModelRecord" in section
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/tests/test_mlff_adaptive_training_revision_plan.py b/tests/test_mlff_adaptive_training_revision_plan.py
+--- a/tests/test_mlff_adaptive_training_revision_plan.py	2026-08-09 22:10:38.021359797 +0000
++++ b/tests/test_mlff_adaptive_training_revision_plan.py	2026-08-09 22:40:21.436241499 +0000
+@@ -6,7 +6,7 @@
+ 
+ def test_adaptive_revision_gate_order_and_defaults():
+     version_text = (ROOT / "mdstats" / "_version.py").read_text(encoding="utf-8")
+-    assert '__version__ = "0.20.126a0"' in version_text
++    assert '__version__ = "0.20.127a0"' in version_text
+     text = MANUAL.read_text(encoding="utf-8")
+     headings = [
+         "## ADAPT-PREC1",
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/tests/test_mlff_data0_architecture_specification.py b/tests/test_mlff_data0_architecture_specification.py
+--- a/tests/test_mlff_data0_architecture_specification.py	2026-08-09 22:10:38.025645059 +0000
++++ b/tests/test_mlff_data0_architecture_specification.py	2026-08-09 22:40:21.447737278 +0000
+@@ -263,4 +263,4 @@
+ def test_mlff_data0_pdf_and_version_artifacts_exist() -> None:
+     assert MANUAL_PDF.stat().st_size > 10_000
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.126a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.127a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/tests/test_mlff_data1_specification.py b/tests/test_mlff_data1_specification.py
+--- a/tests/test_mlff_data1_specification.py	2026-08-09 22:10:38.020346168 +0000
++++ b/tests/test_mlff_data1_specification.py	2026-08-09 22:40:21.434042444 +0000
+@@ -49,4 +49,4 @@
+     assert callable(mdstats.assign_balanced_round_robin)
+     assert callable(mdstats.build_complete_frame_block_plan)
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.126a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.127a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/tests/test_mlff_data2a_manifest_inference_specification.py b/tests/test_mlff_data2a_manifest_inference_specification.py
+--- a/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-09 22:10:38.025023173 +0000
++++ b/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-09 22:40:21.446275752 +0000
+@@ -15,7 +15,7 @@
+ 
+ 
+ def test_data2a_version_public_api_and_documented_contract() -> None:
+-    assert mdstats.__version__ == "0.20.126a0"
++    assert mdstats.__version__ == "0.20.127a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert callable(mdstats.infer_training_manifest_metadata)
+     policy = mdstats.ManifestInferencePolicy()
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/tests/test_mlff_data9a2_specification.py b/tests/test_mlff_data9a2_specification.py
+--- a/tests/test_mlff_data9a2_specification.py	2026-08-09 22:10:38.020277936 +0000
++++ b/tests/test_mlff_data9a2_specification.py	2026-08-09 22:40:21.433841855 +0000
+@@ -23,7 +23,7 @@
+         "finite energy, force, and stress",
+     ):
+         assert required in text
+-    assert 'version = "0.20.126a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.127a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "DATA9A2 real-MACE realization is implemented in `0.20.39a0`" in ARCH.read_text()
+ 
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/tests/test_mlff_data9a3_specification.py b/tests/test_mlff_data9a3_specification.py
+--- a/tests/test_mlff_data9a3_specification.py	2026-08-09 22:10:38.023621065 +0000
++++ b/tests/test_mlff_data9a3_specification.py	2026-08-09 22:40:21.442273221 +0000
+@@ -9,5 +9,5 @@
+     assert "37,632" in text
+     assert "supported_with_temporal_blocks_only" in text
+     assert "production_replay_corpus_not_bound" in text
+-    assert 'version = "0.20.126a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.127a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "MLFF-DATA9A3 production qualification" in ARCH.read_text()
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/tests/test_mlff_data9a4_precision_specification.py b/tests/test_mlff_data9a4_precision_specification.py
+--- a/tests/test_mlff_data9a4_precision_specification.py	2026-08-09 22:10:38.024234358 +0000
++++ b/tests/test_mlff_data9a4_precision_specification.py	2026-08-09 22:40:40.499913451 +0000
+@@ -9,7 +9,7 @@
+     assert "float32" in text and "float64" in text
+     assert "MaceModelPrecisionRecord" in text
+     assert "MacePrecisionTransitionRecord" in text
+-    assert "version = \"0.20.126a0\"" in (ROOT / "pyproject.toml").read_text()
++    assert "version = \"0.20.127a0\"" in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_bind_precision_to_protocol() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/tests/test_mlff_data9a5_critical_fp64_specification.py b/tests/test_mlff_data9a5_critical_fp64_specification.py
+--- a/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-09 22:10:38.023803256 +0000
++++ b/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-09 22:40:21.442825383 +0000
+@@ -14,7 +14,7 @@
+     assert 'version: "0.20.42a0"' in text
+     assert "training_force_jacobian_dtype = model" in text
+     assert "Python/ASE" in text
+-    assert 'version = "0.20.126a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.127a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_data9a5_architecture_declares_scope_and_limits() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/tests/test_mlff_data9a5_deployment_specification.py b/tests/test_mlff_data9a5_deployment_specification.py
+--- a/tests/test_mlff_data9a5_deployment_specification.py	2026-08-09 22:10:38.026201137 +0000
++++ b/tests/test_mlff_data9a5_deployment_specification.py	2026-08-09 22:40:21.448649937 +0000
+@@ -13,7 +13,7 @@
+     assert 'version: "0.20.43a0"' in text
+     assert "downstream runtime owns" in text
+     assert "float32-to-float64 promotion does not restore" in text
+-    assert 'version = "0.20.126a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.127a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_keep_lammps_outside_mdstats_scope() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/tests/test_mlff_data9a6c_observable_evidence_specification.py b/tests/test_mlff_data9a6c_observable_evidence_specification.py
+--- a/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-09 22:10:38.029599888 +0000
++++ b/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-09 22:40:21.446658532 +0000
+@@ -74,5 +74,5 @@
+ 
+ def test_packaged_owner_manual_index_is_valid() -> None:
+     payload = json.loads(MANUAL_INDEX.read_text(encoding="utf-8"))
+-    assert payload["package_version"] == "0.20.126a0"
++    assert payload["package_version"] == "0.20.127a0"
+     assert "structural-observables-architecture" in payload["manuals"]
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/tests/test_mlff_data9a7a_material_profile_specification.py b/tests/test_mlff_data9a7a_material_profile_specification.py
+--- a/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-09 22:10:38.025491049 +0000
++++ b/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-09 22:40:21.447485273 +0000
+@@ -64,4 +64,4 @@
+ 
+ 
+ def test_release_version_is_data9a7a() -> None:
+-    assert 'version = "0.20.126a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert 'version = "0.20.127a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/tests/test_mlff_data9a7b_specification.py b/tests/test_mlff_data9a7b_specification.py
+--- a/tests/test_mlff_data9a7b_specification.py	2026-08-09 22:10:38.025681363 +0000
++++ b/tests/test_mlff_data9a7b_specification.py	2026-08-09 22:40:21.447768154 +0000
+@@ -69,7 +69,7 @@
+ 
+ 
+ def test_data9a7b_public_exports_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.126a0"
++    assert mdstats.__version__ == "0.20.127a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert callable(mdstats.compute_local_structure_features)
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/tests/test_mlff_data9a7c_specification.py b/tests/test_mlff_data9a7c_specification.py
+--- a/tests/test_mlff_data9a7c_specification.py	2026-08-09 22:10:38.025158865 +0000
++++ b/tests/test_mlff_data9a7c_specification.py	2026-08-09 22:40:21.446923206 +0000
+@@ -47,7 +47,7 @@
+ 
+ 
+ def test_public_api_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.126a0"
++    assert mdstats.__version__ == "0.20.127a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert mdstats.MLFF_DATA9A7C_PARSER_VERSION == "0.20.49a0"
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/tests/test_mlff_data9a7d_specification.py b/tests/test_mlff_data9a7d_specification.py
+--- a/tests/test_mlff_data9a7d_specification.py	2026-08-09 22:10:38.023503900 +0000
++++ b/tests/test_mlff_data9a7d_specification.py	2026-08-09 22:40:21.442046023 +0000
+@@ -39,6 +39,6 @@
+ 
+ 
+ def test_data9a7d_runtime_versions() -> None:
+-    assert mdstats.__version__ == "0.20.126a0"
++    assert mdstats.__version__ == "0.20.127a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7D_PARSER_VERSION == "0.20.50a0"
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/tests/test_mlff_data9a7e_specification.py b/tests/test_mlff_data9a7e_specification.py
+--- a/tests/test_mlff_data9a7e_specification.py	2026-08-09 22:10:38.024481085 +0000
++++ b/tests/test_mlff_data9a7e_specification.py	2026-08-09 22:40:21.444854926 +0000
+@@ -39,7 +39,7 @@
+         "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
+         "CROSS_SYSTEM_QUALIFICATION_SUITE",
+     } <= nodes
+-    assert mdstats.__version__ == "0.20.126a0"
++    assert mdstats.__version__ == "0.20.127a0"
+     assert mdstats.MLFF_DATA9A7E_PARSER_VERSION == "0.20.51a0"
+     assert callable(mdstats.qualify_cross_system_case)
+     assert callable(mdstats.build_cross_system_qualification_suite)
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/tests/test_mlff_data9a8_specification.py b/tests/test_mlff_data9a8_specification.py
+--- a/tests/test_mlff_data9a8_specification.py	2026-08-09 22:10:38.018536603 +0000
++++ b/tests/test_mlff_data9a8_specification.py	2026-08-09 22:40:21.430360211 +0000
+@@ -66,7 +66,7 @@
+ 
+ 
+ def test_public_runtime_exposes_data9a8_without_removed_aliases() -> None:
+-    assert mdstats.__version__ == "0.20.126a0"
++    assert mdstats.__version__ == "0.20.127a0"
+     assert mdstats.MLFF_DATA9A8_PARSER_VERSION == "0.20.52a0"
+     assert mdstats.ObservableComparisonPolicy
+     assert mdstats.compare_mlff_observable_validation
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/tests/test_mlff_data9a9a_specification.py b/tests/test_mlff_data9a9a_specification.py
+--- a/tests/test_mlff_data9a9a_specification.py	2026-08-09 22:10:38.023284333 +0000
++++ b/tests/test_mlff_data9a9a_specification.py	2026-08-09 22:40:21.441256267 +0000
+@@ -65,7 +65,7 @@
+ 
+ 
+ def test_public_runtime_exports_data9a9a_contracts() -> None:
+-    assert mdstats.__version__ == "0.20.126a0"
++    assert mdstats.__version__ == "0.20.127a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A9A_VERSION
+     assert mdstats.Data6ModelSweepPlan
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/tests/test_mlff_data9a9b_specification.py b/tests/test_mlff_data9a9b_specification.py
+--- a/tests/test_mlff_data9a9b_specification.py	2026-08-09 22:10:38.018934476 +0000
++++ b/tests/test_mlff_data9a9b_specification.py	2026-08-09 22:40:21.431628870 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9b_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.126a0"
++    assert mdstats.__version__ == "0.20.127a0"
+     for name in (
+         "ProductionMaterializationPlan",
+         "ProductionMaterializationCheckpoint",
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/tests/test_mlff_data9a9c_specification.py b/tests/test_mlff_data9a9c_specification.py
+--- a/tests/test_mlff_data9a9c_specification.py	2026-08-09 22:10:38.024397831 +0000
++++ b/tests/test_mlff_data9a9c_specification.py	2026-08-09 22:40:21.444687176 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9c_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.126a0"
++    assert mdstats.__version__ == "0.20.127a0"
+     for name in (
+         "ProductionCorpusPlan", "ProductionExpectedRun",
+         "ProfileExtensionEvidenceRequirement", "ProductionCorpusQualificationRecord",
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/tests/test_mlff_data9a_specification.py b/tests/test_mlff_data9a_specification.py
+--- a/tests/test_mlff_data9a_specification.py	2026-08-09 22:10:38.024127769 +0000
++++ b/tests/test_mlff_data9a_specification.py	2026-08-09 22:40:21.443955707 +0000
+@@ -14,7 +14,7 @@
+ 
+ 
+ def test_data9a_runtime_specification_is_canonical() -> None:
+-    assert 'version = "0.20.126a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.127a0"' in (ROOT / "pyproject.toml").read_text()
+     architecture = ARCH.read_text()
+     stage = STAGE.read_text()
+     specification = SPEC.read_text()
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/tests/test_mlff_data9b1_specification.py b/tests/test_mlff_data9b1_specification.py
+--- a/tests/test_mlff_data9b1_specification.py	2026-08-09 22:10:38.023573384 +0000
++++ b/tests/test_mlff_data9b1_specification.py	2026-08-09 22:40:21.442075276 +0000
+@@ -18,8 +18,8 @@
+     assert "TrainingCampaignPlan" in text
+     assert "CheckpointSelectionRecord" in text
+     assert "mdstats-mace-train" in text
+-    assert mdstats.__version__ == "0.20.126a0"
+-    assert 'version = "0.20.126a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert mdstats.__version__ == "0.20.127a0"
++    assert 'version = "0.20.127a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+ 
+ 
+ def test_data9b1_is_integrated_into_manual_and_stage_plan() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/tests/test_mlff_data9b2_specification.py b/tests/test_mlff_data9b2_specification.py
+--- a/tests/test_mlff_data9b2_specification.py	2026-08-09 22:10:38.023686372 +0000
++++ b/tests/test_mlff_data9b2_specification.py	2026-08-09 22:40:21.442452618 +0000
+@@ -23,7 +23,7 @@
+         'mdstats-mace-select-head',
+     ):
+         assert token in text
+-    assert mdstats.__version__ == '0.20.126a0'
++    assert mdstats.__version__ == '0.20.127a0'
+     assert mdstats.MLFF_DATA9B2_VERSION == '0.20.57a0'
+ 
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/tests/test_mlff_data9b3_campaign_cli_specification.py b/tests/test_mlff_data9b3_campaign_cli_specification.py
+--- a/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-09 22:10:38.021143535 +0000
++++ b/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-09 22:40:21.435556609 +0000
+@@ -16,7 +16,7 @@
+ 
+ 
+ def test_data9b3_version_and_user_surface() -> None:
+-    assert mdstats.__version__ == "0.20.126a0"
++    assert mdstats.__version__ == "0.20.127a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert TOOL.is_file()
+     assert TOOL.stat().st_mode & 0o111
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/tests/test_mlff_evaluation_verification_cost_policy.py b/tests/test_mlff_evaluation_verification_cost_policy.py
+--- a/tests/test_mlff_evaluation_verification_cost_policy.py	2026-08-09 22:10:38.022603009 +0000
++++ b/tests/test_mlff_evaluation_verification_cost_policy.py	2026-08-09 22:40:21.439558909 +0000
+@@ -90,7 +90,7 @@
+     ) == (fold, final)
+ 
+ 
+-def test_generated_config_exposes_bounded_evaluation_and_verification() -> None:
++def test_generated_config_exposes_adaptive_evaluation_and_verification() -> None:
+     text = campaign_cli._config_template(
+         workspace="workspace",
+         training_root="training",
+@@ -98,7 +98,9 @@
+         replay_train="replay_train.xyz",
+         replay_monitor="replay_monitor.xyz",
+     )
+-    assert "max_checkpoints_per_run = 4" in text
++    assert 'checkpoint_strategy = "adaptive_topk"' in text
++    assert "finalist_count = 5" in text
++    assert "fallback_to_next_full_evaluation_candidate = true" in text
+     assert "screening_steps = 200" in text
+     assert "sample_interval_steps = 10" in text
+     assert "prune_screened_out_checkpoints_after_evaluate = true" in text
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/tests/test_mlff_opt_ctrl1_specification.py b/tests/test_mlff_opt_ctrl1_specification.py
+--- a/tests/test_mlff_opt_ctrl1_specification.py	2026-08-09 22:10:38.025598419 +0000
++++ b/tests/test_mlff_opt_ctrl1_specification.py	2026-08-09 22:40:21.447698891 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_ctrl1_release_identity_preserves_scientific_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.126a0"
++    assert mdstats.__version__ == "0.20.127a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.126a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.127a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_ctrl1_architecture_and_spec_close_roadmap() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/tests/test_mlff_opt_eval4_specification.py b/tests/test_mlff_opt_eval4_specification.py
+--- a/tests/test_mlff_opt_eval4_specification.py	2026-08-09 22:10:38.022658311 +0000
++++ b/tests/test_mlff_opt_eval4_specification.py	2026-08-09 22:40:21.439778296 +0000
+@@ -11,9 +11,9 @@
+ 
+ 
+ def test_opt_eval4_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.126a0"
++    assert mdstats.__version__ == "0.20.127a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+-    assert 'version = "0.20.126a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.127a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_eval4_architecture_and_spec_record_pipeline_contract() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/tests/test_mlff_opt_verify1_specification.py b/tests/test_mlff_opt_verify1_specification.py
+--- a/tests/test_mlff_opt_verify1_specification.py	2026-08-09 22:10:38.025187427 +0000
++++ b/tests/test_mlff_opt_verify1_specification.py	2026-08-09 22:40:21.447297954 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_verify1_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.126a0"
++    assert mdstats.__version__ == "0.20.127a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.126a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.127a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_verify1_architecture_and_spec_record_contract() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/tests/test_mlff_perf2_parallel_acceleration_specification.py b/tests/test_mlff_perf2_parallel_acceleration_specification.py
+--- a/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-09 22:10:38.023736056 +0000
++++ b/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-09 22:40:21.442795829 +0000
+@@ -10,7 +10,7 @@
+ 
+ 
+ def test_perf2_release_and_configuration_contract() -> None:
+-    assert mdstats.__version__ == "0.20.126a0"
++    assert mdstats.__version__ == "0.20.127a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     template = campaign_cli._config_template(
+         workspace="workspace",
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/tests/test_mlff_prec1_specification.py b/tests/test_mlff_prec1_specification.py
+--- a/tests/test_mlff_prec1_specification.py	2026-08-09 22:10:38.018627719 +0000
++++ b/tests/test_mlff_prec1_specification.py	2026-08-09 22:40:21.430611795 +0000
+@@ -12,7 +12,7 @@
+ 
+ 
+ def test_prec1_release_and_architecture_status() -> None:
+-    assert mdstats.__version__ == "0.20.126a0"
++    assert mdstats.__version__ == "0.20.127a0"
+     manual = MANUAL.read_text(encoding="utf-8")
+     spec = SPEC.read_text(encoding="utf-8")
+     assert "PREC1 - precision profiles, explicit staged schedule, and init realization - implemented in 0.20.108a0" in manual
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.126a0_to_0.20.127a0.patch' a/tests/test_mlff_prec3_specification.py b/tests/test_mlff_prec3_specification.py
+--- a/tests/test_mlff_prec3_specification.py	2026-08-09 22:10:38.025227507 +0000
++++ b/tests/test_mlff_prec3_specification.py	2026-08-09 22:40:21.447456991 +0000
+@@ -16,7 +16,7 @@
+     manual = MANUAL.read_text(encoding="utf-8")
+     spec = SPEC.read_text(encoding="utf-8")
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+-    assert mdstats.__version__ == "0.20.126a0"
++    assert mdstats.__version__ == "0.20.127a0"
+     assert "PREC3 - campaign integration, qualification, and profile activation - implemented in 0.20.110a0" in manual
+     assert "PREC3 implementation closure (0.20.110a0)" in manual
+     assert "PREC3 implemented in mdstats 0.20.110a0" in spec

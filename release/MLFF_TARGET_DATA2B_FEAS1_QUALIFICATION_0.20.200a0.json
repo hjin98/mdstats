@@ -1,0 +1,43 @@
+{
+  "schema": "mdstats.mlff.target-data2b-feas1.release-qualification.v1",
+  "release": "0.20.200a0",
+  "date": "2026-08-16",
+  "gate": "TARGET-DATA2B-FEAS1",
+  "architecture_revision": 67,
+  "dependency_graph_schema": 49,
+  "status": "PASS",
+  "implementation_mode": "diagnostic_only",
+  "runtime_selector_changed": false,
+  "current_target_data2c_runtime": "revision-64 TARGET-DATA2C v4 unchanged",
+  "fixed_candidate_ceiling": 16384,
+  "authority": {
+    "self_consistency": "fail_closed",
+    "cross_support_diagnostics": [
+      "self_excluded",
+      "own_correlation_unit_excluded"
+    ],
+    "cardinality_lower_bound": [
+      "required-family optimistic singleton coverage bound",
+      "required strata and extent obligations",
+      "TARGET-DATA2A development correlation interval count"
+    ],
+    "terminal_states": [
+      "optimization_required",
+      "cross_support_fragile",
+      "provably_capacity_infeasible"
+    ],
+    "scientific_digest_excludes_execution_only_worker_and_block_settings": true
+  },
+  "validation": {
+    "focused_feas1": {"passed": 6, "failed": 0},
+    "functional_current_adjacent": {"passed": 92, "failed": 0},
+    "current_release_specifications": {"passed": 39, "failed": 0},
+    "compileall": "PASS",
+    "public_api_exports": "PASS",
+    "worker_block_determinism": "PASS",
+    "production_style_target_data2b_fixture": "PASS",
+    "pdf_preflight": "PASS",
+    "historical_version_pinned_specification_sweep": "excluded_from_current_release_metric"
+  },
+  "next_gate": "TARGET-DATA2C-MVIDX1"
+}

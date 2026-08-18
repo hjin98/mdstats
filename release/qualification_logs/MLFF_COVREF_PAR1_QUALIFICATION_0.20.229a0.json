@@ -1,0 +1,152 @@
+{
+  "acceptance": {
+    "advance_to": "MVKERNEL1",
+    "broad_regression": "PASS",
+    "exact_scientific_equivalence": "PASS",
+    "material_multi_lane_improvement": "PASS",
+    "nested_native_parallelism_absent": "PASS",
+    "worker_count_invariance": "PASS"
+  },
+  "architecture_revision": 96,
+  "authority_change": {
+    "gpu": false,
+    "runtime_optimization": true,
+    "scientific": false
+  },
+  "content_digest": "c01301262d8e015e88ab227d6b39b136c6863f2ec0e91ac1a4c053d8df460b4f",
+  "date": "2026-08-17",
+  "documentation": {
+    "architecture_revision_note": {
+      "path": "docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV96.md",
+      "sha256": "fe0665e0105f9bc1fc84c39a33c69f908c378082aa8255a7bb5627430336bcdb"
+    },
+    "canonical_markdown": {
+      "path": "docs/arch_manuals/mlff_training_data_architecture.md",
+      "sha256": "c2a13c19f24e240f046fa80aa3f88d166e4a49688a79ab343856a116de6893c7"
+    },
+    "canonical_pdf": {
+      "comparison_note": "The before/after comparison wrapper timed out while generating intermediate renders; the final 48-page PDF fully rendered and modified COVREF/status pages were visually inspected directly.",
+      "full_render": "PASS",
+      "pages": 48,
+      "path": "docs/arch_manuals/mlff_training_data_architecture.pdf",
+      "preflight": "PASS",
+      "sha256": "506e4debbbac420fd65ea0c6b9c5aa93b1759717cc569693df779f6ca0a24aae",
+      "visual_qa": "PASS"
+    },
+    "dependency_graph": {
+      "path": "docs/arch_manuals/mlff_training_data_dependency_graph.json",
+      "sha256": "0d2bc9fda9ee8b39e676609483b4df73bf58e2df9ca473e273f012ec832d1088"
+    },
+    "release_note": {
+      "path": "docs/history/mlff/release_notes/PATCH_NOTES_0.20.229a0.md",
+      "sha256": "12c70a7ecc0b890628b1ea1378124a5b6b64753f5603e71e8ed4587d15f3a25b"
+    },
+    "spec": {
+      "path": "docs/specs/training_data/mlff_covref_par1_reference_radius_parallel_spec.md",
+      "sha256": "49023cb60300282efc30ea56f546c1f166715030464fa6fc78d336ac45814026"
+    }
+  },
+  "foundation": {
+    "active_qualification_family": "mace-mpa-0",
+    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
+    "mh1_supported_by_same_contract": true,
+    "note": "COVREF-PAR1 is independent of foundational-model family; MPA-0 is the active qualification checkpoint and MACE-MH-1 remains supported by the same target-coverage execution contract.",
+    "variant": "medium"
+  },
+  "gate": "COVREF-PAR1_TARGET_DATA2B_EXACT_CPU_PARALLELIZATION",
+  "implementation": {
+    "adaptive_block_granularity": true,
+    "direct_api_historical_native_worker_path_retained": true,
+    "direct_api_implicit_ram_scope": "FEAS1/NEIGHBOR1/MVIDX implicit direct scopes are unbounded; explicit campaign StageResourceScope RAM limits remain fail-closed",
+    "direct_feas1_implicit_ram_scope": "unbounded unless caller supplies StageResourceScope; explicit campaign RAM limits remain fail-closed",
+    "implementation_manifest": {
+      "path": "benchmarks/mlff_covref_par1_implementation_manifest_0.20.229a0.json",
+      "sha256": "5578de18a88ecfefc241e82cf6fb6a156bdaefa6b0a3eb742fe5d0efda0f8bf5"
+    },
+    "native_ckdtree_workers_per_task": 1,
+    "nested_native_parallelism": false,
+    "outer_scheduler": "DeterministicWorkQueue",
+    "pair_rule_lookup": "O(1) map",
+    "scalar_constant_rejection": "historical np.allclose predicate evaluated before expensive radius construction",
+    "species_residual_lookup": "O(1) map"
+  },
+  "inputs": {
+    "dependency_archive": {
+      "path": "/mnt/data/dependencies.tar(20260817-112644).gz",
+      "sha256": "888d545a512396697c8583d69bc9ed33110914675f466a4cbcafc3e1e1407171"
+    },
+    "replay_source": {
+      "path": "/mnt/data/replay_fps_12000.extxyz",
+      "sha256": "187eed42fb2d6cf5e7e745ffed0ce34541e92c6a35ec9e654520cd3c7198403c"
+    },
+    "target_archive": {
+      "path": "/mnt/data/training_LTA.tar(4).gz",
+      "sha256": "bc1b7e25ba338507ae38b260bcd283356de887b6c6cf762a2c146733f1c3c958"
+    }
+  },
+  "next_gate": "MVKERNEL1",
+  "performance_evidence": {
+    "interpretation": "Same-host paired timing is execution evidence. Exact radius bytes/digests and the TARGET-DATA2 regression are scientific authority; one-lane queue overhead is explicitly retained in the evidence.",
+    "paired_supplied_cache": {
+      "control_0_20_228a0_three_native_median_seconds": 0.2792267405000075,
+      "control_one_native_median_seconds": 0.5093284130000484,
+      "current_one_lane_median_seconds": 0.5316665015000126,
+      "current_three_outer_lane_median_seconds": 0.22342467399994348,
+      "families": 8,
+      "family_elements": 32800,
+      "frames": 4100,
+      "max_busy_outer_lanes": 3,
+      "three_lane_speedup": 1.249757851275093
+    },
+    "primary_record": {
+      "path": "benchmarks/mlff_covref_par1_cloud_cpu_mpa0_2026-08-17.json",
+      "sha256": "1d9af715d461c2e71d75b7a4ea0600a905991c5e14c3c09e2b6ab71b72dcc085"
+    },
+    "report": {
+      "path": "benchmarks/mlff_covref_par1_cloud_cpu_mpa0_2026-08-17.md",
+      "sha256": "a55fbc6a32fea11bf1a5d240b59f4d0870a9dbe2d4557613a08dac04a32db0cd"
+    },
+    "weighted_36408_stress": {
+      "control_three_native_median_seconds": 5.9354197880002175,
+      "current_three_outer_lane_median_seconds": 5.131133342499879,
+      "rows": 36408,
+      "three_lane_speedup": 1.1567463544240095
+    }
+  },
+  "release": "0.20.229a0",
+  "schema": "mdstats.mlff-covref-par1-qualification.v1",
+  "scientific_oracles": {
+    "control_new_exact": true,
+    "perfbase1_radius_digest": "823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d",
+    "weighted_36408_stress_radius_sha256": "240d4eb275f217a09d2fc43b3b26ae136489f4351c52ede57b6a5bfc18f18480",
+    "worker_count_invariant": true
+  },
+  "status": "PASS",
+  "tests": {
+    "archival_spec_boundary": {
+      "excluded_from_current_release_pass_fail": [
+        "tests/test_mlff_target_data2c_mvidx1_specification.py"
+      ],
+      "reason": "Historical release-pinned specification is retained as archival evidence; runtime/scientific test_mlff_target_data2c_mvidx1.py remains in the 111-test current authority."
+    },
+    "compileall": {
+      "paths": [
+        "mdstats",
+        "benchmarks",
+        "tools"
+      ],
+      "status": "PASS"
+    },
+    "current_gate_and_dependencies": {
+      "failed": 0,
+      "passed": 66,
+      "warnings": 11
+    },
+    "target_data2_functional_authority": {
+      "failed": 0,
+      "passed": 111,
+      "warning_class": "expected velocity-reconstruction/normalization warnings unchanged from prior authority",
+      "warnings": 18
+    }
+  }
+}

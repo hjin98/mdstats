@@ -1,0 +1,69 @@
+{
+  "active_foundation": {
+    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
+    "family": "MACE-MPA-0 medium",
+    "mh1_compatible": true
+  },
+  "architecture_revision": 102,
+  "build": {
+    "compileall": "PASS",
+    "wheel_version": "0.20.235a0"
+  },
+  "closure_decision": {
+    "final_gpu_qualification_deferred": true,
+    "next_gate": "MVSTATE_REUSE1_SELECTOR_REPAIR_HANDOFF",
+    "optimization_program_closed": false,
+    "reason": "Integrated profiling identifies duplicated reconstruction of MVSEL sparse terminal state inside REPAIR as the dominant exact-reuse opportunity."
+  },
+  "content_digest": "fff6b4d7057f2371218ead60e1dc82286def972701c99a803f137c29ce7f946c",
+  "dependency_graph_schema": 82,
+  "documentation": {
+    "manual_markdown_sha256": "b7bc33b7ab7f3a3bda54d698c87eb9999b735f93a243ff62fd0db6b9a05141eb",
+    "manual_pdf_pages": 52,
+    "manual_pdf_sha256": "87cfc54f8d5ff93037547681423dae90e20399a96717eb1d6da4920291f48bc6",
+    "pdf_preflight": "PASS",
+    "pdf_visual_qa": "PASS"
+  },
+  "evidence": {
+    "content_digest": "d169137cca79709841f4ac9e531306324247a5420964018de2239d3f4e0f5539",
+    "path": "benchmarks/mlff_campaign_perf_qual1_cloud_cpu_mpa0_2026-08-17.json",
+    "sha256": "1781ba7fdee32f48ec8becc308637e7fa3a14f615b921f3dd4dc8d61dca76b85"
+  },
+  "gate": "CAMPAIGN-PERF-QUAL1",
+  "gpu_authority_change": false,
+  "performance": {
+    "bootstrap_seconds": 0.015309499998693354,
+    "eval2_metric_seconds": 0.4710217569991073,
+    "replay_monitor_seconds": 2.7579258580008172,
+    "target_chain_current_4_lane_median_seconds": 11.948233002500274,
+    "target_chain_speedup_vs_0_20_225_control": 2.2811202967246227
+  },
+  "release": "0.20.235a0",
+  "runtime_algorithm_change": false,
+  "schema": "mdstats.mlff-campaign-perf-qual1-qualification.v1",
+  "scientific": {
+    "eval2_exact": true,
+    "feasibility_digest": "937214c70d1f2baae883993082f1ceb25bea6007a5a2be0beee045262f5c0613",
+    "foundation_audit_exact": true,
+    "mvidx_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
+    "qualification_digest": "c19f2f9c3a328c7003e169bd9584277b21e72a6720caa588cf3879bd1cac1b25",
+    "repair_digest": "ab7dc752555114bcd756913187e1d0eb7069c2e9a093f2a8a41130f485cdc33f",
+    "replay_monitor_exact": true,
+    "selection_digest": "c179df6cfbb3b052c866d17bcf54aa5088ebc1998b35259afd3bd0ca163e8b8d",
+    "target_chain_exact": true
+  },
+  "scientific_authority_change": false,
+  "status": "PASS_FOLLOWUP_REQUIRED",
+  "tests": {
+    "current_optimization_documentation": {
+      "failed": 0,
+      "passed": 106,
+      "warnings": 3
+    },
+    "target_data2_scientific_authority": {
+      "failed": 0,
+      "passed": 111,
+      "warnings": 18
+    }
+  }
+}

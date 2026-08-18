@@ -1,0 +1,90 @@
+{
+  "documents": {
+    "benchmark": {
+      "blank_pages": [],
+      "font_rows": 7,
+      "not_embedded_font_rows": [],
+      "outer_edge_dark_pixel_hits": [],
+      "pages": 3,
+      "path": "audits/analysis/mlff_perf_p0_lta_cloud_cpu_2026-08-15.pdf",
+      "render_source": "/mnt/data/mdstats_perf_p0/final_pdf_scan_small/benchmark",
+      "rendered_pages": 3,
+      "replacement_characters": 0,
+      "sha256": "d70f5e76cec2e92ed7697acf9deb3abdec672a7bb10ce8d3d173b4658cb4f324"
+    },
+    "manual": {
+      "blank_pages": [],
+      "font_rows": 11,
+      "not_embedded_font_rows": [],
+      "outer_edge_dark_pixel_hits": [],
+      "pages": 187,
+      "path": "docs/arch_manuals/mlff_training_data_architecture.pdf",
+      "render_source": "/mnt/data/mdstats_perf_p0/pdf_qa/new",
+      "rendered_pages": 187,
+      "replacement_characters": 0,
+      "sha256": "444d162997beaf1fb42d4584b69c4dff73e91ade8f3c4f039e01804d873edf07"
+    },
+    "patch": {
+      "blank_pages": [],
+      "font_rows": 7,
+      "not_embedded_font_rows": [],
+      "outer_edge_dark_pixel_hits": [],
+      "pages": 3,
+      "path": "release/PATCH_NOTES_0.20.179a0.pdf",
+      "render_source": "/mnt/data/mdstats_perf_p0/final_pdf_scan_small/patch",
+      "rendered_pages": 3,
+      "replacement_characters": 0,
+      "sha256": "834f121fd2d144ef1f6c528b31c0a02896719e587419e74c63ab048034d998b4"
+    },
+    "rev45": {
+      "blank_pages": [],
+      "font_rows": 9,
+      "not_embedded_font_rows": [],
+      "outer_edge_dark_pixel_hits": [],
+      "pages": 3,
+      "path": "ARCHITECTURE_NOTES_MLFF_REV45.pdf",
+      "render_source": "/mnt/data/mdstats_perf_p0/final_pdf_scan_small/rev45",
+      "rendered_pages": 3,
+      "replacement_characters": 0,
+      "sha256": "ccd8925f81cc02eafb0fd20460b8421d82a8190a62f299b02ec8dc0ee96f5e69"
+    },
+    "spec": {
+      "blank_pages": [],
+      "font_rows": 9,
+      "not_embedded_font_rows": [],
+      "outer_edge_dark_pixel_hits": [],
+      "pages": 8,
+      "path": "docs/specs/training_data/mlff_perf_p0_native_target_coverage_spec.pdf",
+      "render_source": "/mnt/data/mdstats_perf_p0/final_pdf_scan_small/spec",
+      "rendered_pages": 8,
+      "replacement_characters": 0,
+      "sha256": "b72da72e0b327d50a76a5810345e7d4eab020e97cd17f2728a8a5f7fea4c0b0e"
+    }
+  },
+  "edge_scan_dark_threshold": 96,
+  "edge_scan_outer_pixels": 4,
+  "manual_gate_local_edge_hits": [],
+  "manual_gate_local_pages": [
+    174,
+    175,
+    176,
+    177,
+    178
+  ],
+  "schema": "mdstats.mlff-perf-p0-pdf-qa.v1",
+  "visual_inspection": {
+    "historical_manual_note": "outer-edge hits outside gate-local pages correspond to pre-existing long-token overflow locations retained from the prior manual; they are not new PERF-P0 content",
+    "manual_pages": [
+      1,
+      53,
+      174,
+      175,
+      176,
+      177,
+      178,
+      187
+    ],
+    "result": "no gate-local clipping, overlap, blank pages, missing glyphs, or unembedded fonts observed",
+    "small_documents": "all pages reviewed through contact sheets and targeted full-page renders"
+  }
+}

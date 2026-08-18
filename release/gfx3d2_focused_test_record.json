@@ -1,0 +1,32 @@
+{
+  "schema_version": "mdstats.gfx3d2-focused-qualification.v1",
+  "package_version": "0.20.147a0",
+  "gate": "GFX3D-2",
+  "date": "2026-08-11",
+  "command": "pytest -q tests/test_graphics3d_contracts.py tests/test_graphics3d_layers.py tests/test_framework_dynamics.py tests/test_graph_3d.py",
+  "environment": {
+    "ase_source": "supplied dependency bundle, ase-3.29.0",
+    "base_interpreter_note": "base host lacked ASE; supplied local source dependency was added to PYTHONPATH"
+  },
+  "result": {
+    "passed": 62,
+    "failed": 0,
+    "skipped": 0,
+    "warnings": 29
+  },
+  "acceptance": {
+    "all_15_nonempty_initial_layer_combinations": true,
+    "duplicate_trajectory_instances": true,
+    "duplicate_density_instances": true,
+    "shared_prepared_scene_dependency_deduplicated": true,
+    "connectivity_pair_selection_filtered": true,
+    "absent_density_selection_fails_closed": true,
+    "unapplied_scientific_options_fail_closed": true,
+    "legacy_framework_dynamics_path_unchanged": true,
+    "legacy_graph3d_path_unchanged": true
+  },
+  "notes": [
+    "Warnings are existing equal-aspect/orientation diagnostics from the legacy Plotly renderer.",
+    "GFX3D-2 consumes already-prepared FrameworkDynamicsScene scientific products and does not recompute framework, connectivity, trajectory, or density science."
+  ]
+}

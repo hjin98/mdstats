@@ -1,0 +1,1319 @@
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/ARCHITECTURE_NOTES_MLFF_REV32.md /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/ARCHITECTURE_NOTES_MLFF_REV32.md
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/ARCHITECTURE_NOTES_MLFF_REV32.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/ARCHITECTURE_NOTES_MLFF_REV32.md	2026-08-10 06:01:38.985077644 +0000
+@@ -0,0 +1,38 @@
++# MLFF architecture revision 32 - conventional CV and final-model selection roadmap
++
++This architecture-only revision records the next gated MLFF correction after the completed
++ADAPT-PREC1 -> ADAPT-MIGRATE1 cycle. It does **not** change production runtime behavior yet.
++
++The new `MLCV-ROLE1` -> `MLCV-MIGRATE1` roadmap restores conventional nested cross-validation and
++separates checkpoint selection from outer-fold evidence and final-model deployment:
++
++1. `MLCV-ROLE1` - freeze training, nested checkpoint-selection, outer CV, final-validation `D`,
++   locked-test `E`, and replay roles with fail-closed anti-leakage lineage;
++2. `MLCV-MON1` - use fold-local nested lightweight/full checkpoint monitors, final `D_light/D_full`,
++   TRUE_DFT replay light/full monitors, and diagnostic training-error histories;
++3. `MLCV-STOP1` - keep 80% target-success and 120% replay-exhaustion as lightweight stopping
++   heuristics only; absolute 30 meV/A acceptance is reserved for full validation;
++4. `MLCV-RANK1` - rank every finite epoch and keep up to five candidates per independent run without
++   lightweight hard-threshold disqualification;
++5. `MLCV-SELECT1` - select fold representatives on nested full validation and final representatives
++   on full `D`, always with full TRUE_DFT replay validation and component-wise hard gates;
++6. `MLCV-AGG1` - evaluate each frozen fold representative exactly once on its untouched outer fold
++   and publish conventional CV robustness statistics;
++7. `MLCV-FINAL1` - allow only full-development final-seed representatives to compete for production;
++   export exactly one production-best model plus the qualified final-seed committee when requested;
++8. `MLCV-VERIFY1` - restrict physical-verification fallback to qualified final models and activate
++   locked `E` exactly once after the production candidate is frozen; and
++9. `MLCV-MIGRATE1` - preserve historical adaptive evidence while closing new schema/restart/storage
++   authority and end-to-end qualification.
++
++The generated default remains multi-head replay only with four optimizer seeds and three common CV
++folds plus one final fit per seed (`4 x (3 + 1) = 16` runs). Shared folds remain the default so fold
++variance and optimizer-seed variance stay separable. Per-seed fold randomization may later be exposed
++as a robustness mode, but it is not treated as a mechanism for diversifying full-data final models.
++
++A critical statistical correction is explicit: the top-five fold checkpoints are selected using a
++nested full checkpoint monitor carved from the fold's training side. The rotating outer CV fold is
++never used to stop, rank, or select an epoch. It is evaluated only after the fold representative is
++frozen. This preserves the DATA5 anti-leakage principle already stated in the canonical manual.
++
++Canonical details are in `docs/arch_manuals/mlff_training_data_architecture.{md,pdf}`.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/CHANGELOG.md /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/CHANGELOG.md
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/CHANGELOG.md	2026-08-10 02:33:25.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/CHANGELOG.md	2026-08-10 06:01:39.440781868 +0000
+@@ -1,3 +1,11 @@
++## 0.20.130a0 - 2026-08-10
++
++- Record a documentation-only nine-gate `MLCV-ROLE1` through `MLCV-MIGRATE1` correction roadmap; executable 0.20.129 adaptive behavior is unchanged in this release.
++- Restore conventional nested-CV semantics: fold checkpoint selection uses a training-side nested monitor, while the rotating outer fold is touched only after the fold representative is frozen.
++- Reserve 80%/120% target/replay margins for lightweight stopping, move absolute 30 meV/A acceptance to full validation, and plan run-local top-five full checkpoint selection without lightweight hard-threshold disqualification.
++- Restrict future production competition to full-development final-seed representatives; fold models become CV evidence only, while qualified final seeds may form an active-learning committee.
++- Define `D` as final model-selection validation and locked `E` as one-shot post-freeze evidence; add planned per-run training/target/replay diagnostic plots and explicit seed/partition semantics.
++
+ ## 0.20.129a0 - 2026-08-09
+ 
+ - Refine newly initialized MLFF campaigns to use multi-head replay fine-tuning as the sole enabled default; naive/native target-only fine-tuning remains fully configurable but opt-in.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/PATCH_NOTES_0.20.130a0.md /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/PATCH_NOTES_0.20.130a0.md
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/PATCH_NOTES_0.20.130a0.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/PATCH_NOTES_0.20.130a0.md	2026-08-10 06:01:38.985708007 +0000
+@@ -0,0 +1,30 @@
++# mdstats 0.20.130a0 patch notes
++
++## MLFF conventional-CV/final-selection revision plan
++
++This release is architecture/documentation only. It records a new nine-gate MLFF revision and does
++not change executable training, stopping, evaluation, verification, or export behavior.
++
++The roadmap corrects the completed adaptive selector by restoring conventional statistical roles:
++
++- fold models use a training-side nested checkpoint monitor for stopping/ranking/epoch selection;
++- the rotating outer CV fold is untouched until one fold representative has already been frozen;
++- lightweight target/replay monitors remain 256/512 configurations by default and control adaptive
++  stopping, but the 30 meV/A target/replay acceptance thresholds no longer disqualify lightweight
++  candidates;
++- up to five epochs are ranked **per run**, then full checkpoint-selection validation applies the
++  hard target/replay gates and chooses one representative;
++- fold representatives are evaluated once on untouched outer folds and are never production-model
++  candidates;
++- only the four full-development final-seed representatives compete for the single production-best
++  model; qualified final representatives may also be exported as an active-learning committee;
++- shared CV folds remain the default across optimizer seeds so partition and optimizer variance can
++  be separated; optional per-seed fold randomization is defined only as broader robustness sampling;
++- per-run training/target/replay diagnostic histories and plots become planned auditable artifacts;
++- final validation `D` is explicitly a model-selection domain, while locked test `E` remains one-shot
++  post-freeze evidence and cannot trigger fallback; and
++- historical ADAPT-MON1/STOP1/RANK1/EVAL1/VERIFY1 evidence remains readable under its original
++  authority and is never silently reinterpreted.
++
++The implementation order is `MLCV-ROLE1`, `MLCV-MON1`, `MLCV-STOP1`, `MLCV-RANK1`,
++`MLCV-SELECT1`, `MLCV-AGG1`, `MLCV-FINAL1`, `MLCV-VERIFY1`, and `MLCV-MIGRATE1`.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/PKG-INFO /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/PKG-INFO
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/PKG-INFO	2026-08-10 02:33:25.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/PKG-INFO	2026-08-10 06:03:27.025914798 +0000
+@@ -1,6 +1,6 @@
+ Metadata-Version: 2.4
+ Name: mdstats
+-Version: 0.20.129a0
++Version: 0.20.130a0
+ Summary: Transparent atomistic frame collections and structural/dynamical statistics
+ Requires-Python: >=3.10
+ Requires-Dist: numpy>=1.26
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/README.md /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/README.md
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/README.md	2026-08-10 02:33:25.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/README.md	2026-08-10 06:03:27.474855690 +0000
+@@ -4,7 +4,7 @@
+ 
+ Checkpoint accuracy is judged against independent DFT labels. Foundation-generated replay pseudolabels remain the default replay training targets and an absolute behavioral-drift diagnostic. Set `[paths].replay_true_labels` to the original true-label replay directory so mdstats can evaluate both the foundation and fine-tuned checkpoint on the same target and replay geometries without changing training inputs.
+ 
+-Current development release: **0.20.129a0** (post-closure MLFF campaign-default refinement: multi-head replay fine-tuning is the sole generated default, using four seeds with three folds plus one final-development fit per seed).
++Current development release: **0.20.130a0** (architecture/documentation-only MLFF conventional-CV correction roadmap; executable training/evaluation behavior remains the 0.20.129 adaptive path until the new MLCV gates are implemented).
+ 
+ 
+ ## Multi-head-only default campaign in 0.20.129a0
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/docs/arch_manuals/mlff_training_data_architecture.md /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/docs/arch_manuals/mlff_training_data_architecture.md
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-09 23:54:05.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-10 06:01:13.342289145 +0000
+@@ -2,7 +2,7 @@
+ title: "mdstats MLFF Training-Data Architecture"
+ subtitle: "Canonical architecture and staged implementation"
+ author: "mdstats project"
+-date: "2026-08-09 (revision: adaptive training, binary model precision, and simplified evaluation roadmap)"
++date: "2026-08-10 (revision: conventional CV, nested checkpoint selection, and final-model authority roadmap)"
+ geometry: margin=0.78in
+ toc: true
+ toc-depth: 3
+@@ -34,7 +34,7 @@
+ STAT1 and SAMP0 workflows consume those primitives without changing their
+ serialized evidence. MLFF-DATA2 is implemented in `0.20.30a0`: deterministic source manifests, VASP source catalogs, named energy selection, decomposed label domains, and per-label-domain structural atomic-reference identifiability are public runtime contracts. MLFF-DATA3 is implemented in `0.20.31a0`: manifest-bound frame occurrences, geometry and label identities, duplicate/restart detection, post-DFT eligibility, temperature conditions, reference-cell resolution, and rotation-separated finite strain are public runtime contracts. MLFF-DATA4 is implemented in `0.20.32a0` and generalized through DATA9A7d: partition-independent raw physical features, optional profile-extension states, protected event bursts, deterministic feature caches, and partition-role budget requests are public runtime contracts. MLFF-DATA5 is implemented in `0.20.33a0`: autocorrelation-aware partition units, role feasibility, deterministic outer evidence roles, independence grades, nested cross-validation monitors, blinding boundaries, and fail-closed leakage audits are public runtime contracts. MLFF-DATA6 is implemented in `0.20.34a0` and generalized through DATA9A7d: profile-aware universal and optional extension descriptors, optional checkpoint-bound MACE atomic descriptor sidecars, training-domain-only foundation residuals, blinded non-training predictions, and sealed locked-test prediction records are public runtime contracts. MLFF-DATA7 is implemented in `0.20.35a0`: canonical final/fold training domains, fold-local fitted metrics, domain-local atomic-reference fits, explicit objective and checkpoint policies, deterministic quota-interleaved selection ladders, and coverage reports are public runtime contracts. MLFF-DATA8 is implemented in `0.20.36a0`: verified MACE-readable extended-XYZ artifacts, explicit E0 mappings, replay train/monitor plans, a v0.3.16 source compatibility lock, complete training-protocol identities, loader dry-run exposure records, independent final/fold job bundles, and sealed locked-test metadata are public runtime contracts. MLFF-DATA9A hardening began in `0.20.37a0`, its offline runtime bootstrap is implemented in `0.20.38a0`, and DATA9A2 real-MACE realization is implemented in `0.20.39a0`: checkpoint-residual E0 fits, relocatable bundles, strict replay/XYZ audits, source-declared dependency manifests, isolated local-artifact installation, installed-environment qualification, v0.3.16 scalar-literal serialization, fixed-file target/replay weight realization, genuine parser/loader dry runs, bounded training, checkpoint/head inventory, target-head extraction, and finite evaluation round trips are public contracts. The supplied dependency bundle and MPA-0 checkpoint pass executable qualification. DATA9A3 in 0.20.40a0 qualifies the complete 27-source, 37,632-frame bulk-LTA target corpus through DATA5 with a passing leakage audit. DATA9A production execution remains open for checkpoint-bound production DATA6/DATA7 evidence, DATA8 job materialization, exact replay-corpus identity, and later protocol-matched training and freeze. DATA9A4 in 0.20.41a0 adds a protocol-bound selectable precision contract: the float64 MPA-0 checkpoint may initialize either a float32 or float64 fine-tuned model, and actual serialized parameter/buffer dtypes are immutable execution evidence rather than inferred from CLI text. DATA9A5a/9A5b in 0.20.42a0-0.20.43a0 close Python/ASE critical precision and deployment-artifact semantics. DATA9A6 in 0.20.44a0 introduces the analysis-owned observable-call bridge. DATA9A6b in 0.20.45a0 closes recipe dependency safety, collection and model lineage, runtime-duration/warning evidence, capability requirement schemas, documentation conflicts, and the thermomechanical/energetic analysis ownership plan. DATA9A6c in 0.20.46a0 verifies supplied identities against the actual collections, requires symmetric reference/candidate generation lineage for production evidence, binds analysis-owned result digests, freezes observable evidence roles and comparison-policy identity before locked evaluation, and corrects runtime/package identity and dependency ordering. DATA9A7a in 0.20.47a0 introduces user-declared compositional material profiles, phase components, atom-group catalogs, condition axes, independence axes, a declarative provider protocol, and DATA4 schema-v2 profile threading without changing existing feature or selection behavior. DATA9A7b in 0.20.48a0 adds an analysis-owned universal local-structure kernel, profile/atom-group-aware DATA6 structural catalogs, generic structural events, a DATA7 universal feature block, and generic per-species environment coverage without importing LTA. DATA9A7c in 0.20.49a0 derives immutable phase/geometry selection plans, profile-specific feature/event activation, geometry-aware atom-group priorities, DATA6-v3 plan lineage, and compositional observable-call recommendations. DATA9A7d in 0.20.50a0 migrates LTA behind generic optional profile-extension catalogs, advances DATA4/DATA6 canonical schemas, and replaces generic-core cation/site assumptions with focus groups, structural realizations, and extension coverage. DATA9A7e in 0.20.51a0 qualifies bounded crystal, amorphous, liquid, interface, and LTA DATA4-DATA7 paths, adds immutable qualification evidence, and makes MLFF LTA implementation imports lazy so generic workflows neither import nor serialize LTA-specific evidence. DATA9A8 in 0.20.52a0 adds frozen profile-aware observable comparison and acceptance policies. DATA9A9a in 0.20.53a0 adds the exact DATA5-authorized checkpoint-bound descriptor/prediction plan, per-frame restart sidecars, atomic checkpoints, corruption recovery, and DATA6 reuse without repeated foundation-model inference. DATA9A9b in 0.20.54a0 adds restartable final/fold DATA7 materialization, exact replay binding, complete DATA8 job-tree evidence, corruption-driven downstream invalidation, and a relocatable production materialization record. DATA9A9c in 0.20.55a0 adds the immutable production-corpus plan, evidence-derived foundation and residual-E0 qualification, numerical replay-label identity, content-addressed DATA8 generation promotion, self-verifying loaders, and generic optional-extension gate requirements. DATA9B1 in 0.20.56a0 adds passed-gate campaign-matrix freezing, protocol-family and seed-variant identities, content-addressed checkpoint catalogs, external metric records, deterministic hard-constraint admissibility, and fail-closed checkpoint selection. DATA9B2 in 0.20.57a0 adds supervised/restartable MACE execution, automatic target/replay checkpoint evaluation, fold/seed aggregation, learning curves, deterministic protocol comparison, target-head committee export, protocol freeze, and sealed-evaluation activation. DATA9B3 in 0.20.58a0 adds the unified source-checkout campaign CLI, one-database orchestration state, manifest approval, production preparation/training/evaluation commands, source-local precision-wrapper shims, and bounded NVE deployment verification. DATA9B3A in 0.20.59a0 makes the MACE acceleration backend a frozen campaign policy, auto-selects cuEquivariance at initialization when qualified, and propagates it through DATA6, DATA8, preflight, production training, checkpoint evaluation, and bounded verification without silent fallback. DATA2A in 0.20.60a0 adds XML-backed review-manifest metadata, percentage-aware filename strain candidates, exact LTA fixed-cell geometry verification, and fail-safe promotion before manual manifest approval. DATA2 interrupted-stream hardening in 0.20.61a0 adds EOF-qualified interrupted `vasprun.xml` recovery across ENS0, DATA2 source audit, and normalized trajectory loading while preserving strict rejection of ambiguous or mid-file corruption.
+ The post-0.20.105 evaluation/storage cycle implements EVAL-MF1 in 0.20.106a0 and EVAL-MF2 in 0.20.107a0: deterministic nested equal-fraction target/replay checkpoint screening, delta-only prediction reuse, conservative source/block-aware survivor guards, comprehensive epoch reporting, and full-fidelity finalist publication are now the generated production evaluation strategy.
+-The post-0.20.120 adaptive-training revision was recorded as architecture-only planning in 0.20.121a0. **ADAPT-PREC1 is implemented in 0.20.122a0**, **ADAPT-MON1 in 0.20.123a0**, **ADAPT-STOP1 in 0.20.124a0**, **ADAPT-RANK1 in 0.20.125a0**, **ADAPT-EVAL1 in 0.20.126a0**, **ADAPT-VERIFY1 in 0.20.127a0**, and **ADAPT-MIGRATE1 in 0.20.128a0**: new campaigns use binary `single|double` learned-model precision, fixed common target/true-replay online monitors, criterion-driven epoch termination, zero-new-inference one-champion-per-run screening, top-K authoritative full evaluation, score-ordered bounded verification with deterministic fallback, and schema-aware migration/storage authority. Only the first verification-passing target-head artifact is published. EVAL-MF and historical committee workflows remain readable but are no longer the generated adaptive production path. The seven-gate adaptive revision is complete.
++The post-0.20.120 adaptive-training revision was recorded as architecture-only planning in 0.20.121a0. **ADAPT-PREC1 is implemented in 0.20.122a0**, **ADAPT-MON1 in 0.20.123a0**, **ADAPT-STOP1 in 0.20.124a0**, **ADAPT-RANK1 in 0.20.125a0**, **ADAPT-EVAL1 in 0.20.126a0**, **ADAPT-VERIFY1 in 0.20.127a0**, and **ADAPT-MIGRATE1 in 0.20.128a0**: new campaigns use binary `single|double` learned-model precision, fixed common target/true-replay online monitors, criterion-driven epoch termination, zero-new-inference one-champion-per-run screening, top-K authoritative full evaluation, score-ordered bounded verification with deterministic fallback, and schema-aware migration/storage authority. Only the first verification-passing target-head artifact is published. EVAL-MF and historical committee workflows remain readable but are no longer the generated adaptive production path. The seven-gate adaptive revision is complete. A new documentation-only conventional-CV correction roadmap is recorded in `0.20.130a0`; it restores DATA5 nested checkpoint-selection semantics, reserves outer folds for CV evidence, and restricts future production selection to full-development final runs. Runtime behavior remains unchanged until the new MLCV gates are implemented.
+ 
+ The central architectural rule is:
+ 
+@@ -5670,6 +5670,667 @@
+ silently control new adaptive campaign identities.
+ 
+ 
++# Post-0.20.129 conventional-CV checkpoint-selection and final-model revision
++
++**Status:** architecture recorded in `mdstats 0.20.130a0`; runtime implementation is **not**
++yet enabled by this documentation-only release. The gates below intentionally supersede, for new
++campaigns only after their implementation, the production selection semantics introduced by
++`ADAPT-MON1`, `ADAPT-RANK1`, `ADAPT-EVAL1`, and the fold-winner deployment part of
++`ADAPT-VERIFY1`. Historical adaptive evidence remains valid for the campaigns that created it and
++must never be silently reinterpreted under this revision.
++
++This revision restores the original DATA5 principle that a cross-validation evaluation fold does
++not select its own checkpoint. It also makes the distinction between optimization diagnostics,
++checkpoint-selection validation, cross-validation evidence, final-model validation, locked testing,
++and physical verification explicit in both data lineage and runtime authority.
++
++## Motivation and correction of the completed adaptive design
++
++The completed post-0.20.120 adaptive revision solved real production problems: it reduced redundant
++inference, made stopping criterion-driven, preserved true-replay retention evidence, and made
++checkpoint/export lineage restartable. Its implementation is internally consistent with its frozen
++specification. The scientific issue is that the specification assigned too many roles to the same
++validation domains.
++
++In particular, the completed adaptive path:
++
++1. replaced each fold's DATA5 nested checkpoint monitor with one common target `outer_monitor`;
++2. applied the absolute target/replay acceptance thresholds during lightweight ranking;
++3. retained only one lightweight champion per run before authoritative full evaluation;
++4. pooled fold-run and final-run champions into one campaign-wide finalist queue; and
++5. allowed a fold-run champion to become the published production model.
++
++Those choices improve comparability and evaluation cost, but they blur conventional machine-learning
++roles. Under this revision:
++
++- **training diagnostics** describe how well the optimizer fits data it is allowed to see;
++- **checkpoint-selection validation** controls stopping and selects epochs;
++- **cross-validation folds** evaluate the training procedure on data that did not select the epoch;
++- **final validation `D`** selects among models trained on the complete development pool;
++- **locked test `E`** evaluates the frozen winner exactly once and never selects a fallback; and
++- **physical verification** determines whether the statistically selected model is usable as an
++  interatomic potential.
++
++The default campaign remains multi-head replay fine-tuning only with four optimizer seeds and three
++cross-validation folds plus one full-development final fit per seed:
++
++```text
++4 seeds x (3 CV folds + 1 final fit) = 16 training runs
++```
++
++Naive/native target-only fine-tuning remains an explicit opt-in comparison protocol, not a default
++production campaign member.
++
++## Binding statistical hierarchy
++
++Let the target development pool be conceptually `A + B + C`, let `D` be an independent outer
++validation/model-selection domain, and let `E` be a locked post-freeze test domain.
++
++For three-fold cross-validation, the rotating outer folds are:
++
++```text
++fold 0: outer CV evaluation = C
++fold 1: outer CV evaluation = B
++fold 2: outer CV evaluation = A
++```
++
++The other two thirds are not used wholesale for gradient training. DATA5 already supports a nested
++checkpoint-monitor role inside the training side. Therefore each fold is decomposed as:
++
++```text
++fold i:
++    gradient-training domain        T_i
++    nested checkpoint domain        V_i_full
++    lightweight checkpoint subset   V_i_light subset of V_i_full
++    outer CV evaluation fold        C_i
++```
++
++with hard disjointness:
++
++```text
++T_i intersect V_i_full = empty
++T_i intersect C_i      = empty
++V_i_full intersect C_i = empty
++```
++
++`V_i_light` is a deterministic subset of `V_i_full`; it is not an additional statistical role.
++The outer CV fold `C_i` is never used for early stopping, lightweight ranking, top-K checkpoint
++selection, or tuning of the fold representative.
++
++For each seed's final run:
++
++```text
++gradient-training domain        = A + B + C
++lightweight target validation   = D_light subset of D_full
++full final validation           = D_full
++locked post-freeze test         = E
++```
++
++`D` is therefore a **validation/model-selection** domain, not a pristine test set. Looking at `D`
++to rank epochs or choose among the four final seeds is allowed and is part of its declared role.
++`E` remains sealed until the production candidate has been selected and physically verified.
++
++Replay roles remain separate from target CV roles:
++
++```text
++replay training domain          R_train      (pseudo labels allowed by policy)
++lightweight replay validation   R_light      (TRUE_DFT, default 512 configurations)
++full replay validation          R_full       (TRUE_DFT, complete configured validation domain)
++```
++
++`R_light` is a deterministic subset of `R_full`. Pseudo labels may affect replay gradients but never
++satisfy absolute replay acceptance or final retention evidence.
++
++### Correlation-aware split requirement
++
++Cross-validation is only meaningful if the partition units match the scientific dependence
++structure. Frame-wise random shuffling of adjacent AIMD frames is prohibited as the production
++default. DATA5 autocorrelation-aware units, trajectory blocks, protected event groups, condition
++axes, and profile-defined independence units remain authoritative. The CV split answers the
++question encoded by those units; it must not manufacture an easy validation problem by placing
++near-duplicate time-adjacent configurations on both sides of a fold boundary.
++
++## Per-epoch metric contract
++
++Every training run shall expose separate diagnostic and validation channels. Names in immutable
++evidence must identify the statistical role rather than using an ambiguous generic `target_error`.
++At minimum, the runtime shall distinguish:
++
++```text
++train_objective_loss
++train_target_diagnostic_force_rmse      # optional fixed-size diagnostic inference, default enabled
++checkpoint_target_force_rmse            # lightweight target validation
++checkpoint_replay_force_rmse            # lightweight TRUE_DFT replay validation
++```
++
++The optimizer's accumulated training loss is not interpreted as a post-epoch generalization metric.
++Because batches are evaluated while parameters are changing within the epoch, it is retained as an
++optimization diagnostic only.
++
++To make over-fitting visible on the same RMSE scale, the generated production policy should also
++materialize a deterministic target training-diagnostic monitor from configurations that genuinely
++belong to the gradient-training domain. The planned default maximum is 256 configurations. It may
++be evaluated with the epoch-final checkpoint and plotted against validation RMSE, but it has **zero
++selection authority**: it cannot stop training, rank checkpoints, satisfy acceptance, or rescue a
++failed model.
++
++For fold runs:
++
++```text
++checkpoint_target_force_rmse  = error on V_i_light
++checkpoint_replay_force_rmse  = error on R_light
++```
++
++For final runs:
++
++```text
++checkpoint_target_force_rmse  = error on D_light
++checkpoint_replay_force_rmse  = error on R_light
++```
++
++The default lightweight budgets remain:
++
++```text
++target checkpoint monitor      256 configurations
++replay checkpoint monitor      512 configurations
++training diagnostic monitor    256 configurations (diagnostic only)
++```
++
++If an eligible parent domain contains fewer configurations than the configured maximum, the
++realized monitor size and the resulting statistical limitation must be explicit immutable evidence;
++the implementation must not silently duplicate configurations merely to reach the nominal count.
++
++## Threshold semantics: lightweight control versus full acceptance
++
++The existing default full target force-RMSE ceiling remains:
++
++```text
++T_max = 0.030 eV/A = 30 meV/A
++```
++
++The default replay ceiling remains weight-coupled unless explicitly replaced by a future
++identity-bearing policy:
++
++```text
++R_max = (w_T / w_R) * T_max
++```
++
++so the default 1:1 target/replay score weighting gives:
++
++```text
++R_max = 30 meV/A
++```
++
++The existing lightweight stopping margins remain useful but acquire a stricter interpretation:
++
++```text
++target-success stop level    = 0.80 * T_max
++replay-exhaustion stop level = 1.20 * R_max
++```
++
++At the default 1:1 weighting:
++
++```text
++target-success stop level    = 24 meV/A
++replay-exhaustion stop level = 36 meV/A
++```
++
++These 80%/120% values are **training-control heuristics on lightweight validation only**. They are
++not acceptance thresholds and do not certify or disqualify an epoch.
++
++Therefore the new production path must remove the ADAPT-RANK1 rule that requires lightweight
++`T <= T_max` and `R <= R_max` before an epoch can be ranked. Any checkpoint with complete finite
++lightweight target/replay metrics is rankable. For example, an epoch with a 31 meV/A lightweight
++target estimate may still receive full validation and may later prove to satisfy the authoritative
++30 meV/A threshold.
++
++Absolute target/replay thresholds become authoritative only when applied to a declared **full
++checkpoint-selection validation domain** or to declared outer/final evidence as specified by later
++gates.
++
++A configurable minimum evidence floor must prevent an unusually favorable first epoch from ending
++training before a meaningful learning trajectory exists. The planned generated default is:
++
++```text
++minimum_epochs_before_adaptive_stop = 3
++```
++
++The hard maximum epoch ceiling remains 30 by default. The minimum does not force training past a
++hard numerical failure or invalid checkpoint.
++
++### Foundation replay feasibility
++
++The completed STOP1 path compares the foundation replay baseline with the absolute replay ceiling
++before epoch 0. Under the new distinction between lightweight control and full acceptance, that
++feasibility decision must not be based on the 512-frame lightweight estimate alone.
++
++The foundation model shall instead be evaluated once on `R_full`, with reusable content-addressed
++prediction/metric evidence. That full TRUE_DFT replay baseline determines whether the requested
++retention ceiling is feasible before target adaptation begins. `R_light` remains the per-epoch
++forgetting trend monitor.
++
++## Run-local checkpoint-selection hierarchy
++
++Every independent training run owns its own checkpoint-selection problem. Epochs from different
++folds, seeds, or final fits never compete until each run has produced one representative.
++
++For a run ending at epoch `N`:
++
++1. compute the lightweight score for every checkpoint with finite monitor metrics;
++2. rank checkpoints using the configured target/replay score weights;
++3. retain up to five lowest-score checkpoints by default;
++4. perform authoritative **run-local checkpoint-selection validation** on those checkpoints;
++5. apply hard target/replay acceptance boundaries only at that full-validation stage; and
++6. choose the lowest full-score admissible checkpoint as the run representative.
++
++The lightweight score remains:
++
++```text
++S_light = (w_T * T_light + w_R * R_light) / (w_T + w_R)
++```
++
++and the full checkpoint-selection score remains:
++
++```text
++S_full = (w_T * T_full + w_R * R_full) / (w_T + w_R)
++```
++
++but scores never compensate for component-wise hard-gate failure. A checkpoint is full-validation
++admissible only when both:
++
++```text
++T_full <= T_max
++R_full <= R_max
++```
++
++and all retained energy/stress/focus/worst-condition gates required by the protocol also pass.
++
++`top_k = 5` is a maximum, not an entitlement. If fewer than five checkpoints exist, evaluate the
++available set. Deterministic tie-breaking must remain content-addressed and restart-stable. An
++optional future diversity rule may impose a minimum epoch separation among purchased checkpoints,
++but no such spacing is required by the first implementation.
++
++### Critical nested-CV correction
++
++For **fold runs**, the top-five full target evaluation must use `V_i_full`, not the outer fold `C_i`:
++
++```text
++fold checkpoint selection:
++    light ranking        -> V_i_light + R_light
++    top-five full select -> V_i_full  + R_full
++    representative       -> chosen without inspecting C_i
++```
++
++Only after the representative is frozen is it evaluated on `C_i`.
++
++This is stricter than selecting the best of five directly on `C_i`. Selecting among five on `C_i`
++would make the nominal CV fold part of checkpoint selection and would bias its reported error. The
++nested DATA5 monitor exists precisely to avoid that leakage.
++
++For **final runs**, the top-five full target evaluation legitimately uses `D_full` because `D` is
++declared as the final-model validation/selection domain:
++
++```text
++final checkpoint selection:
++    light ranking        -> D_light + R_light
++    top-five full select -> D_full  + R_full
++    representative       -> best admissible checkpoint on D_full + R_full
++```
++
++## Conventional cross-validation evidence
++
++After a fold representative has been chosen without access to `C_i`, mdstats evaluates that exact
++checkpoint once on the complete outer fold `C_i`.
++
++The outer-fold target result is the conventional cross-validation estimate for that fold. It must
++be recorded separately from the nested checkpoint-selection result. At minimum:
++
++```text
++fold_target_outer_rmse
++fold_representative_replay_full_rmse
++fold_representative_combined_score
++```
++
++The combined fold score may combine `C_i` target error with the representative's `R_full` replay
++error for deployment-oriented reporting, but the architecture must not pretend that replay has the
++same rotating outer-fold independence as the target CV domain. The statistically clean CV target
++quantity is the error on `C_i`.
++
++For every seed, all three folds must produce a representative whose outer target error satisfies the
++configured target acceptance ceiling. A fold with no full-selection-admissible checkpoint, or a
++representative that later fails on its untouched outer fold, marks that seed/protocol CV result as
++not robust.
++
++Cross-fold aggregation shall report, separately for target, replay, and combined score where
++applicable:
++
++```text
++mean
++sample standard deviation
++minimum
++maximum
++range
++worst fold
++```
++
++The first implementation shall make **all-fold survival** a hard CV requirement but shall keep the
++magnitude of cross-fold dispersion as a diagnostic/warning rather than inventing an uncalibrated
++universal standard-deviation cutoff. A future hard consistency threshold may be introduced only
++from empirical campaign evidence and must become an identity-bearing policy.
++
++CV folds are evidence about the **training recipe**. They are not deployment candidates. No fold
++checkpoint may enter the final production-model competition merely because it has a lower score than
++a full-development model.
++
++## Final-model selection across seeds
++
++Each of the four default seeds produces one final representative trained from the complete target
++development pool `A+B+C` and selected using `D_light -> D_full` plus the replay validation domains.
++Only those final representatives are eligible for production selection.
++
++Conceptually:
++
++```text
++seed 1 final representative --\
++seed 2 final representative ---+--> compare on full D + R_full --> best qualified final model
++seed 3 final representative ---+
++seed 4 final representative --/
++```
++
++The best final representative is determined from full-validation-admissible models by the configured
++full target/replay score and deterministic tie-breaking. Fold results may fail the protocol or raise
++robustness warnings, but they never directly outrank a final model.
++
++The export layer shall support two explicitly different products:
++
++```text
++production_best.model
++committee/
++    one qualified final representative per seed, when available
++```
++
++The production artifact contains exactly one model. The committee contains only qualified **final**
++seed representatives and is intended for disagreement estimation and active learning. It must not
++contain fold models merely to increase member count.
++
++Exactly four committee members are not guaranteed. If one final seed has no admissible
++representative, a three-member qualified committee plus an explicit warning is preferable to
++exporting a model that violated the scientific gates. A later policy may launch replacement seeds
++when a fixed committee size is required.
++
++### Seed semantics and diversity modes
++
++The generated default remains the statistically paired design:
++
++```text
++training seeds vary:       [1, 2, 3, 4]
++CV partition seed:         one common fixed value
++```
++
++This allows the 4 x 3 CV matrix to separate optimizer stochasticity from partition sensitivity.
++The campaign seed controls the MACE stochastic training trajectory; the common fold partition keeps
++seed-to-seed CV comparisons paired.
++
++An optional advanced mode may derive a different CV partition from each training seed. Its purpose
++must be described as **broader robustness sampling**, not as final-model committee diversification:
++all final runs still train on the same `A+B+C`, so changing only the fold partition cannot directly
++make the final models more diverse.
++
++The first planned configuration vocabulary is conceptually:
++
++```text
++seed_mode = optimizer_only                 # generated default
++seed_mode = optimizer_and_cv_partition     # optional robustness mode
++```
++
++Any future attempt to deliberately increase final committee diversity through bootstrap/resampled
++training domains, architecture perturbations, or other mechanisms requires a separately versioned
++scientific policy rather than overloading cross-validation semantics.
++
++Committee diversity shall eventually be measured rather than assumed. A fixed probe set may report
++per-configuration force disagreement across qualified final seeds, but disagreement metrics are a
++later active-learning/committee qualification stage and are not a prerequisite for this first CV
++correction.
++
++## Locked test and physical verification semantics
++
++After final validation chooses the best final-seed representative, bounded physical verification
++remains required before production publication. Verification may reject a statistically strong
++candidate for physical reasons such as unstable NVE behavior. If verification fallback is retained,
++it may proceed only through other already full-validation-qualified **final-seed representatives**;
++fold models remain ineligible.
++
++Once one verification-passing production candidate is frozen, the locked test `E` is activated and
++evaluated exactly once on that frozen model. `E` is post-selection evidence. If the model performs
++poorly on `E`, the campaign fails or requires scientific review/new protocol identity. The program
++must not try seed 2, seed 3, or another checkpoint on `E`, because doing so would turn the locked
++test into another validation/model-selection set.
++
++The resulting hierarchy is therefore:
++
++```text
++training                    -> fit parameters
++nested checkpoint monitor   -> stop/rank/select fold checkpoints
++outer CV folds              -> judge recipe robustness
++D                            -> select full-development checkpoint and seed
++physical verification       -> reject statistically good but unusable potentials
++E                            -> one-shot post-freeze generalization evidence
++production export           -> immutable selected model bytes
++```
++
++## Diagnostic artifacts and auditability
++
++Every training run shall generate human-readable and machine-readable diagnostic history under its
++run directory. Planned artifacts include:
++
++```text
++diagnostics/
++    training_history.json
++    training_history.csv
++    validation_history.png
++```
++
++The primary validation plot shall show by epoch:
++
++- lightweight target validation force RMSE;
++- lightweight replay validation force RMSE;
++- optional target training-diagnostic force RMSE;
++- the 80% target-success stopping level;
++- the full target acceptance threshold as a reference line;
++- the full replay acceptance threshold as a reference line;
++- the 120% replay-exhaustion stopping level; and
++- the realized adaptive stop epoch and stop reason.
++
++The plot legend/caption must state that the 30 meV/A lines are **full-validation acceptance
++references, not lightweight rejection gates**. Training-diagnostic RMSE, when present, must be
++visually and semantically marked as non-authoritative.
++
++The campaign-level ML diagnostics report shall summarize:
++
++```text
++per-run training/validation curves
++adaptive stop reasons
++run-local top-five lightweight candidates
++full checkpoint-selection results
++representative checkpoint per run
++outer CV target results
++cross-fold mean/std/worst/range
++seed-to-seed final-validation results
++selected production model
++qualified committee membership
++physical verification result
++locked-test result, once activated
++```
++
++The report must preserve target and replay components separately even when a weighted combined score
++is also shown.
++
++## Ordered implementation sequence
++
++The revision is implemented in the following order. No later gate may silently emulate a missing
++earlier gate.
++
++1. `MLCV-ROLE1` - restore and freeze statistical data roles, lineage, and anti-leakage barriers;
++2. `MLCV-MON1` - construct fold-local nested/full/light monitors, final `D` monitors, replay monitors,
++   training diagnostics, and their persistent history artifacts;
++3. `MLCV-STOP1` - convert 80%/120% logic to lightweight control only, add the minimum-epoch floor,
++   and move foundation replay feasibility to `R_full`;
++4. `MLCV-RANK1` - rank every finite lightweight checkpoint and retain up to five candidates per run
++   without lightweight hard-threshold disqualification;
++5. `MLCV-SELECT1` - perform run-local top-five full checkpoint selection using `V_i_full + R_full`
++   for folds and `D_full + R_full` for final runs;
++6. `MLCV-AGG1` - evaluate frozen fold representatives once on untouched outer folds and publish
++   conventional CV robustness statistics;
++7. `MLCV-FINAL1` - restrict production competition to final-development representatives, choose one
++   best final model, and export the qualified final-seed committee separately;
++8. `MLCV-VERIFY1` - restrict physical-verification fallback to qualified final representatives and
++   activate locked `E` exactly once after the production candidate is frozen; and
++9. `MLCV-MIGRATE1` - close schema/restart/storage/history compatibility and qualify the complete new
++   lifecycle.
++
++### MLCV-ROLE1 acceptance gate
++
++The gate closes only when tests prove that:
++
++1. every fold has disjoint gradient-training, nested checkpoint-selection, and outer-evaluation
++   roles;
++2. the outer fold cannot be passed to stopping, ranking, or top-five selection APIs;
++3. final `D` is explicitly validation/model-selection evidence rather than locked-test evidence;
++4. locked `E` remains sealed from training, checkpoint selection, seed selection, and verification
++   fallback;
++5. replay training labels and TRUE_DFT replay validation lineage cannot be confused; and
++6. correlation-aware DATA5 partition units remain the production split authority.
++
++### MLCV-MON1 acceptance gate
++
++The gate closes only when tests prove that:
++
++1. fold `V_i_light` is deterministic and contained in `V_i_full`;
++2. final `D_light` is deterministic and contained in `D_full`;
++3. `R_light` is deterministic, TRUE_DFT, and contained in `R_full`;
++4. default realized maxima are 256 target-light, 512 replay-light, and 256 target-training diagnostic
++   configurations;
++5. monitor membership/lineage is immutable and restart-stable; and
++6. JSON/CSV/PNG diagnostic artifacts reproduce the persisted epoch metrics without triggering new
++   scientific inference during reporting.
++
++### MLCV-STOP1 acceptance gate
++
++The gate closes only when tests prove that:
++
++1. 24 meV/A target success and 36 meV/A replay exhaustion at default 1:1 weighting are lightweight
++   stop signals only;
++2. a lightweight target/replay value outside 30/30 does not itself disqualify a checkpoint;
++3. adaptive stopping cannot trigger before the configured minimum epoch except for hard runtime
++   failure;
++4. the 30-epoch ceiling remains hard;
++5. the foundation replay feasibility gate uses cached `R_full` TRUE_DFT evidence; and
++6. restart at a durable stop boundary executes no extra epoch.
++
++### MLCV-RANK1 acceptance gate
++
++The gate closes only when tests prove that:
++
++1. every finite checkpoint with complete lightweight target/replay metrics is rankable;
++2. no outer fold or full `D` inference is purchased by ranking;
++3. up to five candidates are retained independently per run;
++4. fewer-than-five trajectories are handled without synthetic duplication; and
++5. ranking/tie-breaking is deterministic under restart.
++
++### MLCV-SELECT1 acceptance gate
++
++The gate closes only when tests prove that:
++
++1. fold top-five target selection uses `V_i_full`, never `C_i`;
++2. final top-five target selection uses `D_full`;
++3. both use complete `R_full` TRUE_DFT replay evidence;
++4. 30 meV/A target and the resolved replay ceiling are component-wise hard gates before scoring;
++5. retained energy/stress/focus/worst-condition constraints remain hard gates where configured; and
++6. exactly one immutable representative or one explicit no-representative outcome is produced per
++   run.
++
++### MLCV-AGG1 acceptance gate
++
++The gate closes only when tests prove that:
++
++1. each fold representative is evaluated once on its untouched outer fold after checkpoint freeze;
++2. no outer-fold result can cause a different epoch from the same fold run to be selected;
++3. all-fold survival is a hard robustness requirement;
++4. target/replay/combined statistics remain separate and report mean/std/min/max/range/worst fold;
++5. cross-fold dispersion is diagnostic by default, with no uncalibrated hard SD threshold; and
++6. fold representatives are marked permanently ineligible for production export.
++
++### MLCV-FINAL1 acceptance gate
++
++The gate closes only when tests prove that:
++
++1. only final-development representatives compete for the production model;
++2. the default 4-seed campaign can produce up to four qualified final committee members but exactly
++   one `production_best` selection;
++3. a failed final seed is not exported merely to preserve committee cardinality;
++4. default shared folds keep optimizer-seed and partition variance statistically separable;
++5. optional per-seed partitioning changes CV robustness evidence without falsely claiming to alter
++   final-model training data; and
++6. final-seed comparison is restartable and deterministic from immutable full-validation records.
++
++### MLCV-VERIFY1 acceptance gate
++
++The gate closes only when tests prove that:
++
++1. physical-verification fallback, when enabled, can visit only qualified final-seed representatives;
++2. fold checkpoints can never become fallback deployment models;
++3. selected model dtype remains exact through verification/export;
++4. locked `E` activates only after a production candidate is frozen;
++5. `E` is evaluated once and cannot select another seed/checkpoint; and
++6. a locked-test failure creates campaign failure/review evidence rather than automatic fallback.
++
++### MLCV-MIGRATE1 acceptance gate
++
++The gate closes only when tests prove that:
++
++1. new campaigns bind a versioned CV/final-selection authority distinct from historical
++   `adaptive_topk`;
++2. completed ADAPT-MON1/STOP1/RANK1/EVAL1/VERIFY1 records remain readable and ownership-safe;
++3. old campaigns are never silently re-ranked under new nested-CV semantics;
++4. new campaigns cannot regain fold-winner deployment or lightweight hard-gating behavior by editing
++   TOML after protocol identity is frozen;
++5. storage retention protects top-five candidates, run representatives, selected final models,
++   committee members, locked-test evidence, and diagnostics until their declared lifecycle permits
++   reclamation; and
++6. end-to-end qualification covers interruption/restart at monitor inference, top-five full
++   selection, outer-fold evaluation, final-seed selection, verification, and locked-test activation.
++
++## Completion rule for the conventional-CV revision
++
++This roadmap is complete only when the production workflow satisfies all of the following:
++
++1. **role separation** - training, checkpoint selection, CV evaluation, final validation, locked test,
++   and physical verification are explicit non-interchangeable evidence roles;
++2. **no outer-fold checkpoint leakage** - an outer CV fold never stops, ranks, or selects a checkpoint;
++3. **diagnostic training error** - training fit is visible but has zero model-selection authority;
++4. **lightweight stopping only** - 80%/120% margins control training but never perform final
++   acceptance;
++5. **full thresholds are full-validation gates** - 30 meV/A target and the resolved replay ceiling
++   are enforced only on declared full validation/evaluation evidence;
++6. **top-five is run-local** - each of the 16 default runs may purchase up to five full
++   checkpoint-selection evaluations before producing one representative;
++7. **CV judges the recipe** - three untouched outer folds per seed provide conventional robustness
++   evidence and cannot become production models;
++8. **final runs produce deployment candidates** - only the four full-development seed
++   representatives can compete for production or committee export;
++9. **paired seeds are the default** - optimizer randomness varies while the CV partition remains
++   common, preserving variance attribution;
++10. **committee semantics are explicit** - qualified final-seed models may be exported as an
++    active-learning committee independently of the one production-best model;
++11. **locked testing is one-shot** - `E` cannot become another fallback selector; and
++12. **history remains valid** - historical adaptive campaigns remain readable under the authority
++    that created them and are never rewritten retrospectively.
++
++Until all nine gates close, `0.20.129a0` adaptive runtime semantics remain authoritative for
++existing executable campaigns. Architecture text in this section is a forward implementation plan,
++not a claim that those runtime changes already exist.
++
++
+ ## Deferred or intentionally unchanged work
+ 
+ The current DATA6/DATA7 production architecture is not scheduled for another broad
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/mdstats/_version.py /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/mdstats/_version.py
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/mdstats/_version.py	2026-08-10 02:33:25.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/mdstats/_version.py	2026-08-10 06:01:39.435602028 +0000
+@@ -1,3 +1,3 @@
+ """Package version."""
+ 
+-__version__ = "0.20.129a0"
++__version__ = "0.20.130a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/mdstats/data/observable_owner_manuals.json /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/mdstats/data/observable_owner_manuals.json
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/mdstats/data/observable_owner_manuals.json	2026-08-10 02:33:25.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/mdstats/data/observable_owner_manuals.json	2026-08-10 06:03:27.024757145 +0000
+@@ -17,6 +17,6 @@
+       "uri": "mdstats-doc://vacf-dynamics-architecture/0.20.53a0"
+     }
+   },
+-  "package_version": "0.20.129a0",
++  "package_version": "0.20.130a0",
+   "schema": "mdstats.observable-owner-manual-index.v1"
+ }
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/mdstats/training_data/campaign_cli.py /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/mdstats/training_data/campaign_cli.py
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/mdstats/training_data/campaign_cli.py	2026-08-10 02:35:27.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/mdstats/training_data/campaign_cli.py	2026-08-10 06:03:27.022087513 +0000
+@@ -13104,7 +13104,7 @@
+     verification_runtime_digest = digest(
+         {
+             "schema": "mdstats.mlff-adaptive-verification-runtime.v1",
+-            "mdstats_version": "0.20.129a0",
++            "mdstats_version": "0.20.130a0",
+             "configured_mace_version": str(_cfg(cfg, "runtime", "mace_version", "0.3.16")),
+             "doctor_versions": doctor_versions,
+         }
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/pyproject.toml /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/pyproject.toml
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/pyproject.toml	2026-08-10 02:33:25.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/pyproject.toml	2026-08-10 06:01:39.435490242 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.129a0"
++version = "0.20.130a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_adapt_eval1_specification.py /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_adapt_eval1_specification.py
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_adapt_eval1_specification.py	2026-08-10 02:33:25.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_adapt_eval1_specification.py	2026-08-10 06:03:27.003650600 +0000
+@@ -11,7 +11,7 @@
+ 
+ 
+ def test_adapt_eval1_release_identity_and_specification() -> None:
+-    assert mdstats.__version__ == "0.20.129a0"
++    assert mdstats.__version__ == "0.20.130a0"
+     text = SPEC.read_text(encoding="utf-8")
+     assert "Status: implemented in mdstats 0.20.126a0" in text
+     assert 'checkpoint_strategy = "adaptive_topk"' in text
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_adapt_migrate1_specification.py /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_adapt_migrate1_specification.py
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_adapt_migrate1_specification.py	2026-08-10 02:34:08.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_adapt_migrate1_specification.py	2026-08-10 06:03:27.001770662 +0000
+@@ -12,8 +12,8 @@
+ 
+ 
+ def test_adapt_migrate1_release_identity_and_specification() -> None:
+-    assert mdstats.__version__ == "0.20.129a0"
+-    assert 'version = "0.20.129a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert mdstats.__version__ == "0.20.130a0"
++    assert 'version = "0.20.130a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+     text = SPEC.read_text(encoding="utf-8")
+     assert "Status: implemented in `mdstats 0.20.128a0`." in text
+     assert "ProtocolFreezeAuthorityRecord" in text
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_adapt_mon1_specification.py /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_adapt_mon1_specification.py
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_adapt_mon1_specification.py	2026-08-10 02:33:25.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_adapt_mon1_specification.py	2026-08-10 06:03:27.008297747 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_adapt_mon1_release_and_normative_defaults():
+-    assert mdstats.__version__ == "0.20.129a0"
++    assert mdstats.__version__ == "0.20.130a0"
+     text = SPEC.read_text(encoding="utf-8")
+     assert "Status: implemented in mdstats 0.20.123a0" in text
+     assert "256 configurations" in text
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_adapt_prec1_specification.py /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_adapt_prec1_specification.py
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_adapt_prec1_specification.py	2026-08-10 02:33:25.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_adapt_prec1_specification.py	2026-08-10 06:03:27.014241053 +0000
+@@ -8,7 +8,7 @@
+ 
+ 
+ def test_adapt_prec1_release_and_spec_contract():
+-    assert mdstats.__version__ == "0.20.129a0"
++    assert mdstats.__version__ == "0.20.130a0"
+     text = SPEC.read_text(encoding="utf-8")
+     assert "Status: implemented in mdstats 0.20.122a0" in text
+     assert "`single`: learned-model" in text
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_adapt_rank1_specification.py /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_adapt_rank1_specification.py
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_adapt_rank1_specification.py	2026-08-10 02:33:25.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_adapt_rank1_specification.py	2026-08-10 06:03:27.003678782 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_adapt_rank1_release_and_spec_contract() -> None:
+-    assert mdstats.__version__ == "0.20.129a0"
++    assert mdstats.__version__ == "0.20.130a0"
+     text = SPEC.read_text(encoding="utf-8")
+     assert "Status: implemented in mdstats 0.20.125a0" in text
+     assert "zero" in text.lower() and "inference" in text.lower()
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_adapt_verify1_specification.py /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_adapt_verify1_specification.py
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_adapt_verify1_specification.py	2026-08-10 02:33:25.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_adapt_verify1_specification.py	2026-08-10 06:03:27.014002267 +0000
+@@ -11,7 +11,7 @@
+ 
+ 
+ def test_adapt_verify1_release_identity_and_specification() -> None:
+-    assert mdstats.__version__ == "0.20.129a0"
++    assert mdstats.__version__ == "0.20.130a0"
+     text = SPEC.read_text(encoding="utf-8")
+     assert "Status: implemented in `mdstats 0.20.127a0`." in text
+     assert "fallback_to_next_full_evaluation_candidate = true" in text
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_adaptive_training_revision_plan.py /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_adaptive_training_revision_plan.py
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_adaptive_training_revision_plan.py	2026-08-10 02:33:25.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_adaptive_training_revision_plan.py	2026-08-10 06:03:27.002922446 +0000
+@@ -6,7 +6,7 @@
+ 
+ def test_adaptive_revision_gate_order_and_defaults():
+     version_text = (ROOT / "mdstats" / "_version.py").read_text(encoding="utf-8")
+-    assert '__version__ = "0.20.129a0"' in version_text
++    assert '__version__ = "0.20.130a0"' in version_text
+     text = MANUAL.read_text(encoding="utf-8")
+     headings = [
+         "## ADAPT-PREC1",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_conventional_cv_revision_plan.py /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_conventional_cv_revision_plan.py
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_conventional_cv_revision_plan.py	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_conventional_cv_revision_plan.py	2026-08-10 06:04:30.916867525 +0000
+@@ -0,0 +1,48 @@
++from pathlib import Path
++
++import mdstats
++
++
++ROOT = Path(__file__).resolve().parents[1]
++MANUAL = ROOT / "docs" / "arch_manuals" / "mlff_training_data_architecture.md"
++
++
++def test_release_records_architecture_only_mlcv_revision():
++    assert mdstats.__version__ == "0.20.130a0"
++    text = MANUAL.read_text(encoding="utf-8")
++    assert "Post-0.20.129 conventional-CV checkpoint-selection and final-model revision" in text
++    assert "runtime implementation is **not**" in text and "yet enabled" in text
++    for gate in (
++        "MLCV-ROLE1",
++        "MLCV-MON1",
++        "MLCV-STOP1",
++        "MLCV-RANK1",
++        "MLCV-SELECT1",
++        "MLCV-AGG1",
++        "MLCV-FINAL1",
++        "MLCV-VERIFY1",
++        "MLCV-MIGRATE1",
++    ):
++        assert gate in text
++
++
++def test_outer_cv_fold_has_no_checkpoint_selection_authority():
++    text = MANUAL.read_text(encoding="utf-8")
++    assert "The outer CV fold `C_i` is never used for early stopping" in text
++    assert "fold top-five target selection uses `V_i_full`, never `C_i`" in text
++    assert "each fold representative is evaluated once on its untouched outer fold" in text
++
++
++def test_lightweight_thresholds_are_control_not_acceptance():
++    text = MANUAL.read_text(encoding="utf-8")
++    assert "training-control heuristics on lightweight validation only" in text
++    assert "Any checkpoint with complete finite" in text and "lightweight target/replay metrics is rankable" in text
++    assert "30 meV/A target and the resolved replay ceiling are component-wise hard gates" in text
++
++
++def test_only_final_development_models_can_be_exported():
++    text = MANUAL.read_text(encoding="utf-8")
++    assert "CV folds are evidence about the **training recipe**" in text
++    assert "Only those final representatives are eligible for production selection" in text
++    assert "one qualified final representative per seed, when available" in text
++    assert "locked test `E` is activated" in text and "evaluated exactly once" in text
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data0_architecture_specification.py /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data0_architecture_specification.py
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data0_architecture_specification.py	2026-08-10 02:33:25.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data0_architecture_specification.py	2026-08-10 06:03:27.007396586 +0000
+@@ -263,4 +263,4 @@
+ def test_mlff_data0_pdf_and_version_artifacts_exist() -> None:
+     assert MANUAL_PDF.stat().st_size > 10_000
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.129a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.130a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data1_specification.py /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data1_specification.py
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data1_specification.py	2026-08-10 02:33:25.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data1_specification.py	2026-08-10 06:03:27.014030209 +0000
+@@ -49,4 +49,4 @@
+     assert callable(mdstats.assign_balanced_round_robin)
+     assert callable(mdstats.build_complete_frame_block_plan)
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.129a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.130a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data2a_manifest_inference_specification.py /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data2a_manifest_inference_specification.py
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-10 02:33:25.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-10 06:03:27.015731341 +0000
+@@ -15,7 +15,7 @@
+ 
+ 
+ def test_data2a_version_public_api_and_documented_contract() -> None:
+-    assert mdstats.__version__ == "0.20.129a0"
++    assert mdstats.__version__ == "0.20.130a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert callable(mdstats.infer_training_manifest_metadata)
+     policy = mdstats.ManifestInferencePolicy()
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a2_specification.py /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a2_specification.py
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a2_specification.py	2026-08-10 02:33:25.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a2_specification.py	2026-08-10 06:03:27.007163038 +0000
+@@ -23,7 +23,7 @@
+         "finite energy, force, and stress",
+     ):
+         assert required in text
+-    assert 'version = "0.20.129a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.130a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "DATA9A2 real-MACE realization is implemented in `0.20.39a0`" in ARCH.read_text()
+ 
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a3_specification.py /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a3_specification.py
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a3_specification.py	2026-08-10 02:33:25.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a3_specification.py	2026-08-10 06:03:27.001827767 +0000
+@@ -9,5 +9,5 @@
+     assert "37,632" in text
+     assert "supported_with_temporal_blocks_only" in text
+     assert "production_replay_corpus_not_bound" in text
+-    assert 'version = "0.20.129a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.130a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "MLFF-DATA9A3 production qualification" in ARCH.read_text()
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a4_precision_specification.py /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a4_precision_specification.py
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a4_precision_specification.py	2026-08-10 02:33:25.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a4_precision_specification.py	2026-08-10 06:03:27.015688958 +0000
+@@ -9,7 +9,7 @@
+     assert "float32" in text and "float64" in text
+     assert "MaceModelPrecisionRecord" in text
+     assert "MacePrecisionTransitionRecord" in text
+-    assert "version = \"0.20.129a0\"" in (ROOT / "pyproject.toml").read_text()
++    assert "version = \"0.20.130a0\"" in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_bind_precision_to_protocol() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a5_critical_fp64_specification.py /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a5_critical_fp64_specification.py
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-10 02:33:25.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-10 06:03:26.999351521 +0000
+@@ -14,7 +14,7 @@
+     assert 'version: "0.20.42a0"' in text
+     assert "training_force_jacobian_dtype = model" in text
+     assert "Python/ASE" in text
+-    assert 'version = "0.20.129a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.130a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_data9a5_architecture_declares_scope_and_limits() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a5_deployment_specification.py /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a5_deployment_specification.py
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a5_deployment_specification.py	2026-08-10 02:33:25.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a5_deployment_specification.py	2026-08-10 06:03:27.014215595 +0000
+@@ -13,7 +13,7 @@
+     assert 'version: "0.20.43a0"' in text
+     assert "downstream runtime owns" in text
+     assert "float32-to-float64 promotion does not restore" in text
+-    assert 'version = "0.20.129a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.130a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_keep_lammps_outside_mdstats_scope() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a6c_observable_evidence_specification.py /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a6c_observable_evidence_specification.py
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-10 02:33:25.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-10 06:03:27.002007875 +0000
+@@ -74,5 +74,5 @@
+ 
+ def test_packaged_owner_manual_index_is_valid() -> None:
+     payload = json.loads(MANUAL_INDEX.read_text(encoding="utf-8"))
+-    assert payload["package_version"] == "0.20.129a0"
++    assert payload["package_version"] == "0.20.130a0"
+     assert "structural-observables-architecture" in payload["manuals"]
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a7a_material_profile_specification.py /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a7a_material_profile_specification.py
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-10 02:33:25.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-10 06:03:27.001801678 +0000
+@@ -64,4 +64,4 @@
+ 
+ 
+ def test_release_version_is_data9a7a() -> None:
+-    assert 'version = "0.20.129a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert 'version = "0.20.130a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a7b_specification.py /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a7b_specification.py
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a7b_specification.py	2026-08-10 02:33:25.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a7b_specification.py	2026-08-10 06:03:27.003966350 +0000
+@@ -69,7 +69,7 @@
+ 
+ 
+ def test_data9a7b_public_exports_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.129a0"
++    assert mdstats.__version__ == "0.20.130a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert callable(mdstats.compute_local_structure_features)
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a7c_specification.py /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a7c_specification.py
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a7c_specification.py	2026-08-10 02:33:25.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a7c_specification.py	2026-08-10 06:03:27.012741211 +0000
+@@ -47,7 +47,7 @@
+ 
+ 
+ def test_public_api_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.129a0"
++    assert mdstats.__version__ == "0.20.130a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert mdstats.MLFF_DATA9A7C_PARSER_VERSION == "0.20.49a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a7d_specification.py /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a7d_specification.py
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a7d_specification.py	2026-08-10 02:33:25.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a7d_specification.py	2026-08-10 06:03:27.007664264 +0000
+@@ -39,6 +39,6 @@
+ 
+ 
+ def test_data9a7d_runtime_versions() -> None:
+-    assert mdstats.__version__ == "0.20.129a0"
++    assert mdstats.__version__ == "0.20.130a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7D_PARSER_VERSION == "0.20.50a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a7e_specification.py /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a7e_specification.py
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a7e_specification.py	2026-08-10 02:33:25.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a7e_specification.py	2026-08-10 06:03:27.003936896 +0000
+@@ -39,7 +39,7 @@
+         "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
+         "CROSS_SYSTEM_QUALIFICATION_SUITE",
+     } <= nodes
+-    assert mdstats.__version__ == "0.20.129a0"
++    assert mdstats.__version__ == "0.20.130a0"
+     assert mdstats.MLFF_DATA9A7E_PARSER_VERSION == "0.20.51a0"
+     assert callable(mdstats.qualify_cross_system_case)
+     assert callable(mdstats.build_cross_system_qualification_suite)
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a8_specification.py /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a8_specification.py
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a8_specification.py	2026-08-10 02:33:25.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a8_specification.py	2026-08-10 06:03:27.003995023 +0000
+@@ -66,7 +66,7 @@
+ 
+ 
+ def test_public_runtime_exposes_data9a8_without_removed_aliases() -> None:
+-    assert mdstats.__version__ == "0.20.129a0"
++    assert mdstats.__version__ == "0.20.130a0"
+     assert mdstats.MLFF_DATA9A8_PARSER_VERSION == "0.20.52a0"
+     assert mdstats.ObservableComparisonPolicy
+     assert mdstats.compare_mlff_observable_validation
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a9a_specification.py /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a9a_specification.py
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a9a_specification.py	2026-08-10 02:33:25.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a9a_specification.py	2026-08-10 06:03:27.002864059 +0000
+@@ -65,7 +65,7 @@
+ 
+ 
+ def test_public_runtime_exports_data9a9a_contracts() -> None:
+-    assert mdstats.__version__ == "0.20.129a0"
++    assert mdstats.__version__ == "0.20.130a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A9A_VERSION
+     assert mdstats.Data6ModelSweepPlan
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a9b_specification.py /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a9b_specification.py
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a9b_specification.py	2026-08-10 02:33:25.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a9b_specification.py	2026-08-10 06:03:27.001040655 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9b_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.129a0"
++    assert mdstats.__version__ == "0.20.130a0"
+     for name in (
+         "ProductionMaterializationPlan",
+         "ProductionMaterializationCheckpoint",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a9c_specification.py /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a9c_specification.py
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a9c_specification.py	2026-08-10 02:33:25.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a9c_specification.py	2026-08-10 06:03:27.006887738 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9c_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.129a0"
++    assert mdstats.__version__ == "0.20.130a0"
+     for name in (
+         "ProductionCorpusPlan", "ProductionExpectedRun",
+         "ProfileExtensionEvidenceRequirement", "ProductionCorpusQualificationRecord",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a_specification.py /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a_specification.py
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a_specification.py	2026-08-10 02:33:25.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9a_specification.py	2026-08-10 06:03:27.003908985 +0000
+@@ -14,7 +14,7 @@
+ 
+ 
+ def test_data9a_runtime_specification_is_canonical() -> None:
+-    assert 'version = "0.20.129a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.130a0"' in (ROOT / "pyproject.toml").read_text()
+     architecture = ARCH.read_text()
+     stage = STAGE.read_text()
+     specification = SPEC.read_text()
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9b1_specification.py /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9b1_specification.py
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9b1_specification.py	2026-08-10 02:33:25.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9b1_specification.py	2026-08-10 06:03:27.002452477 +0000
+@@ -18,8 +18,8 @@
+     assert "TrainingCampaignPlan" in text
+     assert "CheckpointSelectionRecord" in text
+     assert "mdstats-mace-train" in text
+-    assert mdstats.__version__ == "0.20.129a0"
+-    assert 'version = "0.20.129a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert mdstats.__version__ == "0.20.130a0"
++    assert 'version = "0.20.130a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+ 
+ 
+ def test_data9b1_is_integrated_into_manual_and_stage_plan() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9b2_specification.py /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9b2_specification.py
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9b2_specification.py	2026-08-10 02:33:25.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9b2_specification.py	2026-08-10 06:03:27.003117296 +0000
+@@ -23,7 +23,7 @@
+         'mdstats-mace-select-head',
+     ):
+         assert token in text
+-    assert mdstats.__version__ == '0.20.129a0'
++    assert mdstats.__version__ == '0.20.130a0'
+     assert mdstats.MLFF_DATA9B2_VERSION == '0.20.57a0'
+ 
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9b3_campaign_cli_specification.py /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9b3_campaign_cli_specification.py
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-10 02:33:25.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-10 06:03:27.008464295 +0000
+@@ -16,7 +16,7 @@
+ 
+ 
+ def test_data9b3_version_and_user_surface() -> None:
+-    assert mdstats.__version__ == "0.20.129a0"
++    assert mdstats.__version__ == "0.20.130a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert TOOL.is_file()
+     assert TOOL.stat().st_mode & 0o111
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_opt_ctrl1_specification.py /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_opt_ctrl1_specification.py
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_opt_ctrl1_specification.py	2026-08-10 02:33:25.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_opt_ctrl1_specification.py	2026-08-10 06:03:27.005314306 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_ctrl1_release_identity_preserves_scientific_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.129a0"
++    assert mdstats.__version__ == "0.20.130a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.129a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.130a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_ctrl1_architecture_and_spec_close_roadmap() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_opt_eval4_specification.py /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_opt_eval4_specification.py
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_opt_eval4_specification.py	2026-08-10 02:33:25.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_opt_eval4_specification.py	2026-08-10 06:03:26.999878195 +0000
+@@ -11,9 +11,9 @@
+ 
+ 
+ def test_opt_eval4_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.129a0"
++    assert mdstats.__version__ == "0.20.130a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+-    assert 'version = "0.20.129a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.130a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_eval4_architecture_and_spec_record_pipeline_contract() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_opt_verify1_specification.py /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_opt_verify1_specification.py
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_opt_verify1_specification.py	2026-08-10 02:33:25.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_opt_verify1_specification.py	2026-08-10 06:03:27.004775855 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_verify1_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.129a0"
++    assert mdstats.__version__ == "0.20.130a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.129a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.130a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_verify1_architecture_and_spec_record_contract() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_perf2_parallel_acceleration_specification.py /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_perf2_parallel_acceleration_specification.py
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-10 02:33:25.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-10 06:03:27.018881259 +0000
+@@ -10,7 +10,7 @@
+ 
+ 
+ def test_perf2_release_and_configuration_contract() -> None:
+-    assert mdstats.__version__ == "0.20.129a0"
++    assert mdstats.__version__ == "0.20.130a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     template = campaign_cli._config_template(
+         workspace="workspace",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_prec1_specification.py /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_prec1_specification.py
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_prec1_specification.py	2026-08-10 02:33:25.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_prec1_specification.py	2026-08-10 06:03:26.999185905 +0000
+@@ -12,7 +12,7 @@
+ 
+ 
+ def test_prec1_release_and_architecture_status() -> None:
+-    assert mdstats.__version__ == "0.20.129a0"
++    assert mdstats.__version__ == "0.20.130a0"
+     manual = MANUAL.read_text(encoding="utf-8")
+     spec = SPEC.read_text(encoding="utf-8")
+     assert "PREC1 - precision profiles, explicit staged schedule, and init realization - implemented in 0.20.108a0" in manual
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.129a0_to_0.20.130a0.patch' /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_prec3_specification.py /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_prec3_specification.py
+--- /mnt/data/orig129_clean/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_prec3_specification.py	2026-08-10 02:33:25.000000000 +0000
++++ /mnt/data/mdstats-0.20.129a0-edit/mdstats-0.20.129a0-complete-source-package/tests/test_mlff_prec3_specification.py	2026-08-10 06:03:27.008375302 +0000
+@@ -16,7 +16,7 @@
+     manual = MANUAL.read_text(encoding="utf-8")
+     spec = SPEC.read_text(encoding="utf-8")
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+-    assert mdstats.__version__ == "0.20.129a0"
++    assert mdstats.__version__ == "0.20.130a0"
+     assert "PREC3 - campaign integration, qualification, and profile activation - implemented in 0.20.110a0" in manual
+     assert "PREC3 implementation closure (0.20.110a0)" in manual
+     assert "PREC3 implemented in mdstats 0.20.110a0" in spec

@@ -1,0 +1,120 @@
+{
+  "architecture_revision": 74,
+  "authority_boundary": {
+    "data8_membership_changed": false,
+    "generated_defaults_changed": false,
+    "positive_gpu_execution_performed": false,
+    "positive_gpu_qualification_status": "deferred_final_gpu_qualification",
+    "production_authority_changed": false,
+    "production_target_data2c": "revision-64 TARGET-DATA2C v4",
+    "production_target_data2d": "TARGET-DATA2D v2",
+    "synthetic_fixture_pass_claimed_as_production_evidence": false
+  },
+  "calibration_contract": {
+    "admission_widths": [
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "checkpoint_epochs": [
+      3,
+      10,
+      30
+    ],
+    "halving_disabled_during_calibration_truth_collection": true,
+    "q8_full_prediction_products": 72,
+    "q8_training_trajectories": 24,
+    "screening_seeds": [
+      1,
+      2,
+      3
+    ],
+    "separate_q_specific_training_campaigns": false,
+    "single_exhaustive_trajectory_matrix_reused_across_q": true,
+    "training_run_count_rule": "n_seeds * q_max"
+  },
+  "campaign_integration": {
+    "blocked_size_halve2_yields_no_work_plan": true,
+    "legacy_production_path_remains_operational": true,
+    "prepare_restart_receipt_integration": true,
+    "record": "size_fidelity2_execution_plan"
+  },
+  "continuation_contract": {
+    "checkpoint_optimizer_rng_parent_authentication": true,
+    "completed_epochs_repaid": false,
+    "foundation_evaluation_train2_training_run_schedule_identity_continuity": true,
+    "normalized_schedule_progress": [
+      "3/30",
+      "10/30",
+      "30/30"
+    ],
+    "optimizer_update_and_structure_exposure_strictly_increase": true
+  },
+  "date": "2026-08-16",
+  "dependency_graph_schema": 56,
+  "gate": "SIZE-FIDELITY2",
+  "monitor_contract": {
+    "additional_monitor_model_inference_count": 0,
+    "candidate_sizes": [
+      128,
+      256,
+      512,
+      1024
+    ],
+    "derived_from_same_epoch3_full_prediction_digest": true,
+    "recommendation": "smallest monitor with exact epoch3 promotion-set equivalence across every seed/q width and complete eventual-finalist retention"
+  },
+  "next_gate": "TARGET-DATA2C-MVMIGRATE1",
+  "package_checks": {
+    "compileall": "pass",
+    "graph_mirrors_identical": true,
+    "manual_markdown_mirrors_identical": true,
+    "manual_pdf_mirrors_identical": true,
+    "pdf_preflight_and_visual_qa": "pass",
+    "version_metadata_consistent": true
+  },
+  "release": "0.20.207a0",
+  "schema": "mdstats.size-fidelity2-qualification.v1",
+  "status": "pass_pre_migration_control_plane_gpu_deferred",
+  "survivor_recall_contract": {
+    "epoch10_geometry": "4 -> 2",
+    "epoch3_geometry": "q -> min(q,4)",
+    "fixed_ceiling": 16384,
+    "materially_superior_boundary_outcome": "qualification_fail_fixed_ceiling_nonconvergence",
+    "reference_finalists": "top two candidates from complete epoch-30 population under SIZE-HALVE2 deterministic practical-equivalence ordering",
+    "required_epoch10_two_finalist_recall": 1.0,
+    "required_epoch3_two_finalist_recall": 1.0,
+    "winner_recall_is_diagnostic_only": true
+  },
+  "tests": {
+    "campaign_orchestration": {
+      "failed": 0,
+      "passed": 84,
+      "skip_reason": "real LTA training root not supplied",
+      "skipped": 1
+    },
+    "current_release_specifications": {
+      "failed": 0,
+      "passed": 68,
+      "skipped": 0
+    },
+    "focused_size_fidelity2": {
+      "failed": 0,
+      "passed": 11,
+      "skipped": 0
+    },
+    "note": "A larger aggregate invocation exceeded the harness timeout after >70% progress with no reported failures and is not counted as qualification evidence.",
+    "post_layout_focused_plus_live_specs": {
+      "failed": 0,
+      "passed": 79,
+      "skipped": 0
+    },
+    "scientific_current_and_adjacent": {
+      "failed": 0,
+      "passed": 138,
+      "skipped": 0
+    }
+  }
+}

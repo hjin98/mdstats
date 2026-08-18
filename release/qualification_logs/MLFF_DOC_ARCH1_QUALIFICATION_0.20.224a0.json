@@ -1,0 +1,105 @@
+{
+  "architecture_revision": 91,
+  "artifacts": {
+    "dependency_graph_sha256": "fd1c2c3b70992e48072ec63883043b0a6d21a3774fdc4cc7b097d9e79050bdd2",
+    "release_note": "docs/history/mlff/release_notes/PATCH_NOTES_0.20.224a0.md",
+    "revision_note": "docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV91.md"
+  },
+  "authority_change": {
+    "documentation_structure": true,
+    "performance_roadmap_frozen": true,
+    "runtime": false,
+    "scientific": false
+  },
+  "date": "2026-08-17",
+  "dependency_graph_schema_version": 73,
+  "directory_reorganization": {
+    "canonical_final_gpu_runbook": "docs/guides/mlff_final_gpu1_workstation_runbook.md",
+    "graphics3d_cli_spec": "docs/specs/graphics3d/mdstats_gfx3d_cli_spec.md",
+    "historical_release_notes_indexed": 161,
+    "historical_revision_notes_indexed": 69,
+    "history_files_total": 321,
+    "legacy_docs_specifications_directory_removed": true,
+    "root_architecture_or_patch_note_files_after": 0,
+    "root_files_after": 7,
+    "root_files_after_names": [
+      "CHANGELOG.md",
+      "MANIFEST.in",
+      "PKG-INFO",
+      "README.md",
+      "campaign.toml.example",
+      "pyproject.toml",
+      "setup.cfg"
+    ],
+    "root_files_before": 369
+  },
+  "gate": "DOC-ARCH1",
+  "key_contracts": [
+    "FEAS1 and MVIDX1 share one exact-neighborhood substrate",
+    "MVIDX1 reuses authenticated FEAS1 witness CSR on semantic cache identity match",
+    "single-level outer parallelism is preferred when enough independent work exists",
+    "scientific reductions retain canonical deterministic order",
+    "long stages expose global scientific progress and executor telemetry",
+    "memory and NUMA locality are execution concerns, not scientific identity"
+  ],
+  "manual": {
+    "canonical_markdown": "docs/arch_manuals/mlff_training_data_architecture.md",
+    "canonical_pdf": "docs/arch_manuals/mlff_training_data_architecture.pdf",
+    "chapter_count": 10,
+    "chapter_source_dir": "docs/arch_manuals/mlff_training_data",
+    "latex_overfull_hbox_count": 0,
+    "latex_underfull_hbox_count": 4,
+    "layout_text_samples_checked_pages": [
+      [
+        1,
+        2
+      ],
+      [
+        35,
+        40
+      ],
+      [
+        43,
+        45
+      ]
+    ],
+    "pdf_pages": 45,
+    "rendered_pages_completed": 45,
+    "revision90_lines": 12044,
+    "revision90_snapshot": "docs/history/mlff/manual_snapshots/mlff_training_data_architecture_rev090_full.md",
+    "revision91_lines": 3055,
+    "sha256_markdown": "6e5e1045fdb492ceaf75d13681ac7cfde0af2803e1219095042d8b1b24261e26",
+    "sha256_pdf": "2c948b235744a05e2053093e7fb1f2650844cdd67bbb5ef93af9ccdf2f89f336"
+  },
+  "performance_gates_frozen": [
+    "PERFBASE1",
+    "PARCORE1",
+    "NEIGHBOR1",
+    "MVIDX-REUSE1",
+    "COVREF-PAR1",
+    "MVKERNEL1",
+    "REPAIR-PAR1",
+    "MVQUAL-PAR1",
+    "AUDIT-EVAL-PERF1",
+    "REPLAY-PERF1",
+    "CAMPAIGN-PERF-QUAL1"
+  ],
+  "release": "0.20.224a0",
+  "schema": "mdstats.doc-arch1-qualification.v1",
+  "tests": {
+    "doc_arch1_specification": {
+      "failed": 0,
+      "passed": 7
+    },
+    "historical_version_pinned_specifications": {
+      "qualification_role": "archival; intentionally excluded from current-release pass/fail",
+      "reason": "many assert that their historical release/version/revision was the current package authority"
+    },
+    "python_compileall": "passed",
+    "target_data2_functional": {
+      "failed": 0,
+      "passed": 111,
+      "warnings": 18
+    }
+  }
+}

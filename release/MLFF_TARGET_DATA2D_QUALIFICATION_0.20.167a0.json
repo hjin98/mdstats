@@ -1,0 +1,97 @@
+{
+  "adversarial_checks": [
+    "fewer than three Stage-A qualifiers fails closed",
+    "every target label domain must independently qualify",
+    "mandatory correlation/stratum obligations cannot be hidden by continuous coverage",
+    "Stage-B replay values cannot reject or reorder candidates",
+    "anchored equivalence bands avoid chained non-transitive pairwise ties",
+    "Stage-C replay and physical evidence act as hard gates only",
+    "largest-rung material improvement reports bounded-ladder non-convergence",
+    "Stage-C mismatched schedule or Stage-B parent ancestry is rejected",
+    "changed target coverage policy invalidates restart evidence",
+    "new campaign initialization emits exactly two default optimizer seeds"
+  ],
+  "date": "2026-08-13",
+  "evidence_identity": {
+    "evaluation_role_frozen": true,
+    "foundation_checkpoint_frozen": true,
+    "records_instantaneous_learning_rate": true,
+    "records_normalized_schedule_progress": true,
+    "records_optimizer_update_count": true,
+    "records_structures_presented": true,
+    "records_wall_time_seconds": true,
+    "stage_c_requires_stage_b_checkpoint_parent": true,
+    "stage_c_requires_stage_b_optimizer_state_parent": true,
+    "train2_policy_frozen": true
+  },
+  "gate": "TARGET-DATA2D",
+  "qualification": {
+    "documentation_audit": {
+      "historical_data0_failed": 1,
+      "historical_data0_passed": 7,
+      "known_failure": "historical test hard-codes pyproject version 0.20.140a0",
+      "target_data2d_spec_passed": 7
+    },
+    "expected_skip": "tests/test_mlff_campaign_cli.py:337 real LTA training root not supplied",
+    "focused_and_regression_pytest": {
+      "failed": 0,
+      "passed": 150,
+      "skipped": 1,
+      "warnings": 49
+    },
+    "pdf": {
+      "pages_after": 125,
+      "pages_before": 125,
+      "result": "passed",
+      "visually_inspected_pages": [
+        115,
+        116
+      ]
+    },
+    "python_compileall": "passed"
+  },
+  "schema": "mdstats.mlff-target-data2d-qualification.v1",
+  "scientific_contract": {
+    "legacy_adaptive_stop_evidence_allowed": false,
+    "practical_equivalence_mev_per_a": 1.0,
+    "ranking": "target_only_anchored_practical_equivalence_bands_prefer_smaller",
+    "stage_a_maximum_short_training_candidates": 4,
+    "stage_a_minimum_qualifiers": 3,
+    "stage_b_completed_epochs": 10,
+    "stage_b_replay_authority": "diagnostic_only",
+    "stage_c_completed_epochs": 30,
+    "stage_c_replay_authority": "hard_admissibility_gate_zero_ranking_credit"
+  },
+  "scope": {
+    "implemented": [
+      "Stage-A coverage/extent/mandatory-support reducer across every TARGET-DATA2C label domain",
+      "bounded >4 -> four-smallest, 3/4 -> retain-all, <3 -> fail-closed rule",
+      "immutable Stage-B exact 10-of-30 evidence contract and target-only two-finalist reducer",
+      "immutable Stage-C exact 30-of-30 evidence contract, replay/physical hard-gate reducer, and boundary non-convergence outcome",
+      "authenticated Stage-B to Stage-C checkpoint/optimizer continuation ancestry",
+      "campaign coverage-policy override wiring into TARGET-DATA2B identity",
+      "intentional two-seed newly generated production default (2 x (3 CV + 1 final) = 8)"
+    ],
+    "intentionally_deferred": [
+      "actual Stage-B/Stage-C training evidence generation by TRAIN2/EVAL2",
+      "deployment/PES/relaxation/dynamics qualification evidence generation by later VERIFY gates"
+    ]
+  },
+  "sha256": {
+    "CHANGELOG.md": "268070b78f11fc7cf5c3bed62f8526e7b94ce4273f6d92481b0baac676c54c95",
+    "PATCH_NOTES_0.20.167a0.md": "e1cc2a75d3f5deb4b92025fe5a3556f7494c344d42ef2fc3d091b0043ba392f5",
+    "PKG-INFO": "28ada8f2902b82a5873490430938511ae56c93e2f6f0de249e83c800e8f705f9",
+    "campaign.toml.example": "fe39fc2565b7113e050be211f2f7bf357f7eb47edcffe4fe22e10376a29fac27",
+    "docs/arch_manuals/mlff_training_data_architecture.md": "bcbd12d0afcac6db5728444d72347e8cf6a70d9d47bb67fd2fa30a68c5147dce",
+    "docs/arch_manuals/mlff_training_data_architecture.pdf": "a973d0057629aece3ec2b0c44aa226ee993ef1fa46be604683e96719e62353c8",
+    "mdstats/__init__.py": "b6ca9d23147099c6c6f808ead296aad07846f2d29b485244b49d00346c57ab3c",
+    "mdstats/_version.py": "9ff75a28f050165ab1f39c5e59b95aec02ef51312a595ebdfd42784959516172",
+    "mdstats/training_data/__init__.py": "21014a2b903258d001c441dab3ca15ba6b990786b66e41da7e19241a3bec5185",
+    "mdstats/training_data/campaign_cli.py": "71ba3f224880c173a5c4f8e4485db6d38fcd17e8c860a6e7a19f8c7079698335",
+    "mdstats/training_data/target_size_convergence.py": "62a1edad70f7bc6bc84c56f63716f8ffe980cf33418c58071423c4c1c9e3a695",
+    "pyproject.toml": "350b895f2ebbc9f730e2d8df73c10ad3242cc23c9567fabd46568cb752d035fe",
+    "tests/test_mlff_target_data2d_convergence.py": "8cc9debe86521f70bef762cb560296747f606ea08ee0e8464423983303651d83",
+    "tests/test_mlff_target_data2d_specification.py": "65c03787c2b21ee2593f377d15c3f0e1c6ce7e2ced4d92bbeb8b46809437f0f8"
+  },
+  "version": "0.20.167a0"
+}

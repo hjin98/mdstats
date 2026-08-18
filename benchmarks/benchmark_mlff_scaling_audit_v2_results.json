@@ -1,0 +1,79 @@
+[
+  {
+    "kernel": "pending_frame_uids",
+    "new_seconds": 1.4401999578694813e-05,
+    "old_seconds": 0.0012387540009513032,
+    "size": 500,
+    "speedup": 86.01263971593352
+  },
+  {
+    "kernel": "pending_frame_uids",
+    "new_seconds": 2.844200025720056e-05,
+    "old_seconds": 0.00613386300028651,
+    "size": 1000,
+    "speedup": 215.66215262000154
+  },
+  {
+    "kernel": "pending_frame_uids",
+    "new_seconds": 5.434099875856191e-05,
+    "old_seconds": 0.0193893420000677,
+    "size": 2000,
+    "speedup": 356.80871612638026
+  },
+  {
+    "kernel": "pending_frame_uids",
+    "new_seconds": 0.00011375800022506155,
+    "old_seconds": 0.10035777300072368,
+    "size": 4000,
+    "speedup": 882.2040894018307
+  },
+  {
+    "kernel": "pending_frame_uids",
+    "new_seconds": 0.0002447120004944736,
+    "old_seconds": 0.3255413500010036,
+    "size": 8000,
+    "speedup": 1330.3039873124465
+  },
+  {
+    "kernel": "pending_frame_uids",
+    "new_seconds": 0.0006033040008333046,
+    "old_seconds": 1.6916279079996457,
+    "size": 16000,
+    "speedup": 2803.939482687186
+  },
+  {
+    "kernel": "pending_job_queue",
+    "new_seconds": 3.8377000237233005e-05,
+    "old_seconds": 8.419500045420136e-05,
+    "size": 1000,
+    "speedup": 2.1938921732740373
+  },
+  {
+    "kernel": "pending_job_queue",
+    "new_seconds": 0.00015962600082275458,
+    "old_seconds": 0.0007996450003702193,
+    "size": 4000,
+    "speedup": 5.009490911559757
+  },
+  {
+    "kernel": "pending_job_queue",
+    "new_seconds": 0.0006336580008792225,
+    "old_seconds": 0.012912821999634616,
+    "size": 16000,
+    "speedup": 20.37821976794679
+  },
+  {
+    "kernel": "centroid_prefix_selection",
+    "new_seconds": 0.004441666998900473,
+    "old_seconds": 0.019428859999607084,
+    "size": 36759,
+    "speedup": 4.374227064842246
+  },
+  {
+    "kernel": "selection_coverage_neighbors",
+    "new_seconds": 0.001124585998695693,
+    "old_seconds": 0.0019507489996613003,
+    "size": 512,
+    "speedup": 1.7346374594062173
+  }
+]

@@ -1,0 +1,100 @@
+{
+  "data8": {
+    "historical_v1_through_v4_readable": true,
+    "mlcv_monitor_catalog_schema": "mdstats.mlcv-monitor-catalog.v1",
+    "parser_version": "0.20.132a0",
+    "per_job_target_full_light_and_training_diagnostic_persisted": true,
+    "replay_full_validation_persisted": true,
+    "schema": "mdstats.data8-preparation-bundle.v5"
+  },
+  "default_campaign": {
+    "cross_validation_folds": 3,
+    "enabled_training_modes": [
+      "multihead_replay"
+    ],
+    "final_development_fits_per_seed": 1,
+    "naive_fine_tuning_default_enabled": false,
+    "nominal_training_runs": 12,
+    "optimizer_seeds": [
+      1,
+      2,
+      3
+    ],
+    "shipped_example_matches_generated_default": true
+  },
+  "documentation": {
+    "architecture_markdown_sha256": "2763bd5ae8cc967769a18cf0411b16030d23990616513bdb927305f1e071e825",
+    "architecture_pdf_pages": 100,
+    "architecture_pdf_sha256": "e000e144e588049088c0e30dd82aa78020f01d93d2404d19cd0262e9221cc5e0",
+    "architecture_render_compare_changed_pages": 21,
+    "campaign_guide_markdown_sha256": "da6c6ec042b4a5dc0583153932d16d8828038751c588318a77f7dfe110fe471a",
+    "campaign_guide_pdf_pages": 13,
+    "campaign_guide_pdf_sha256": "74da8496d7cba462563570a6d845f6a447254614f807b38bb3b290c05d64d79d",
+    "campaign_guide_render_compare_changed_pages": 8,
+    "pdf_preflight_openable": true
+  },
+  "gate": "MLCV-MON1",
+  "known_packaging_gap": {
+    "historical_missing_fixture": "release/mlff_data9a9a_real_mpa0_restart_smoke.json",
+    "introduced_by_mon1": false
+  },
+  "mace_integration": {
+    "diagnostic_history_artifacts": [
+      "training_history.json",
+      "training_history.csv",
+      "validation_history.png"
+    ],
+    "diagnostic_loader_precedes_ordinary_target_loader": true,
+    "ordinary_target_remains_native_checkpoint_patience_scalar": true,
+    "partial_attempt_diagnostics_supported": true,
+    "training_diagnostic_head": "target_train_diagnostic"
+  },
+  "monitor_policy": {
+    "final_target_topology": "D_light subset of D_full",
+    "fold_target_topology": "V_i_light subset of V_i_full nested inside the fold training side; outer CV fold excluded",
+    "replay_light_configurations": 512,
+    "replay_topology": "R_light subset of R_full with TRUE_DFT replay labels",
+    "reporting_inference_count": 0,
+    "sampling_seed": 161803,
+    "schema": "mdstats.mlcv-monitor-policy.v1",
+    "target_light_configurations": 256,
+    "training_diagnostic_configurations": 256,
+    "training_diagnostic_topology": "fixed subset of exact gradient-training membership; selection-inert"
+  },
+  "package_version": "0.20.132a0",
+  "schema": "mdstats.mlff-mlcv-mon1-qualification.v1",
+  "scope_boundary": {
+    "adaptive_stop_semantics_changed": false,
+    "cv_aggregation_semantics_changed": false,
+    "final_seed_selection_semantics_changed": false,
+    "lightweight_rank_semantics_changed": false,
+    "next_gate": "MLCV-STOP1",
+    "top5_full_selection_semantics_changed": false,
+    "verification_semantics_changed": false
+  },
+  "status": "passed",
+  "tests": {
+    "focused_mon1_role_data8_suite": {
+      "failed": 0,
+      "passed": 30,
+      "skipped": 0
+    },
+    "historical_data9a9a_specification_file": {
+      "failed": 1,
+      "passed": 4,
+      "reason": "release/mlff_data9a9a_real_mpa0_restart_smoke.json is absent from the supplied source package; pre-existing packaging gap"
+    },
+    "mace_runtime": "mace-torch 0.3.16 imported from supplied dependency archive; PyTorch 2.10.0+cpu",
+    "post_audit_campaign_cli_suite": {
+      "failed": 0,
+      "passed": 34,
+      "skip_reason": "external real LTA training root not available",
+      "skipped": 1
+    },
+    "segmented_broad_mlff_regression": {
+      "failed": 0,
+      "passed": 730,
+      "skipped": 16
+    }
+  }
+}

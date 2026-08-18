@@ -1,0 +1,232 @@
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SOURCE_PATCH_0.20.150a0_to_0.20.151a0.patch' /mnt/data/mdstats_150/mdstats-0.20.150a0-complete-source-package/CHANGELOG.md /mnt/data/mdstats_151_work/CHANGELOG.md
+--- /mnt/data/mdstats_150/mdstats-0.20.150a0-complete-source-package/CHANGELOG.md	2026-08-11 10:43:36.000000000 +0000
++++ /mnt/data/mdstats_151_work/CHANGELOG.md	2026-08-11 20:42:58.647194516 +0000
+@@ -1,3 +1,10 @@
++## 0.20.151a0 - 2026-08-11
++
++- Fix MLCV-SELECT1 job-scoped DATA8 path resolution: `target_checkpoint_full.xyz` (`V_i_full`/`D_full`) is now resolved beneath the owning `jobs/<job_id>/` directory instead of incorrectly beneath the DATA8 bundle root.
++- Fix the same latent MLCV-AGG1 path-resolution defect for job-scoped `fold_evaluation.xyz` outer-CV artifacts.
++- Preserve immutable DATA8 artifact digests and existing training/evaluation evidence; this is an evaluation-side runtime-path hotfix and does not require DATA8 regeneration or retraining when the promoted files are intact.
++- Add regression coverage for job-scoped relative paths, legacy absolute staging-path rebasing, and real MLCV-MON1 DATA8 target/outer artifact resolution.
++
+ ## 0.20.150a0 - 2026-08-11
+ 
+ - Complete GFX3D-5 universal renderer-neutral composition: built-in layers emit generic primitives and the common Plotly backend contains no built-in science-family dispatch.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SOURCE_PATCH_0.20.150a0_to_0.20.151a0.patch' /mnt/data/mdstats_150/mdstats-0.20.150a0-complete-source-package/PATCH_NOTES_0.20.151a0.md /mnt/data/mdstats_151_work/PATCH_NOTES_0.20.151a0.md
+--- /mnt/data/mdstats_150/mdstats-0.20.150a0-complete-source-package/PATCH_NOTES_0.20.151a0.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats_151_work/PATCH_NOTES_0.20.151a0.md	2026-08-11 20:42:58.647369526 +0000
+@@ -0,0 +1,12 @@
++# mdstats 0.20.151a0
++
++## MLFF conventional-CV DATA8 path hotfix
++
++`MLCV-SELECT1` previously treated the `relative_path` stored by job-local `MaceExtxyzArtifact` records as though it were relative to the complete DATA8 bundle root. DATA8 writes these records from each `jobs/<job_id>/` directory, so a recorded `target_checkpoint_full.xyz` actually lives at `jobs/<job_id>/target_checkpoint_full.xyz`. The evaluator consequently reported valid `V_i_full`/`D_full` artifacts as "missing or stale" before inference.
++
++This release adds an explicit job-scoped DATA8 resolver and uses it for:
++
++- SELECT1 complete target validation (`V_i_full` for folds, `D_full` for final-development jobs);
++- AGG1 untouched outer-fold evaluation (`fold_evaluation.xyz`).
++
++Historical absolute staging paths continue to use the existing promotion/rebase compatibility path. Path traversal outside the promoted job root is rejected. No scientific artifact identity, frame membership, checkpoint identity, threshold, score, or training protocol changes. Existing promoted DATA8 files and completed training runs remain reusable.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SOURCE_PATCH_0.20.150a0_to_0.20.151a0.patch' /mnt/data/mdstats_150/mdstats-0.20.150a0-complete-source-package/mdstats/_version.py /mnt/data/mdstats_151_work/mdstats/_version.py
+--- /mnt/data/mdstats_150/mdstats-0.20.150a0-complete-source-package/mdstats/_version.py	2026-08-11 10:40:39.000000000 +0000
++++ /mnt/data/mdstats_151_work/mdstats/_version.py	2026-08-11 20:42:58.646232515 +0000
+@@ -1,3 +1,3 @@
+ """Package version."""
+ 
+-__version__ = "0.20.150a0"
++__version__ = "0.20.151a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SOURCE_PATCH_0.20.150a0_to_0.20.151a0.patch' /mnt/data/mdstats_150/mdstats-0.20.150a0-complete-source-package/mdstats/training_data/campaign_cli.py /mnt/data/mdstats_151_work/mdstats/training_data/campaign_cli.py
+--- /mnt/data/mdstats_150/mdstats-0.20.150a0-complete-source-package/mdstats/training_data/campaign_cli.py	2026-08-10 14:24:42.000000000 +0000
++++ /mnt/data/mdstats_151_work/mdstats/training_data/campaign_cli.py	2026-08-11 20:40:51.595432831 +0000
+@@ -3139,12 +3139,13 @@
+     runtime_root: Path,
+     recorded_path: str | Path,
+ ) -> Path:
+-    """Rebase a DATA8 member recorded under staging onto the promoted tree.
++    """Rebase a bundle-scoped DATA8 member onto the promoted runtime tree.
+ 
+-    DATA8 extxyz artifacts use paths relative to the bundle root, but replay
+-    artifact records predate that convention and contain absolute staging paths.
+-    Preserve their immutable identity while resolving the corresponding live
+-    file beneath the promoted generation.
++    Bundle-scoped artifacts use paths relative to the DATA8 bundle root, while
++    older replay records may contain absolute staging paths.  Run/job-scoped
++    ``MaceExtxyzArtifact.relative_path`` values are intentionally handled by
++    :func:`_resolve_data8_job_member` because those paths are relative to the
++    job directory that created them, not to the bundle root.
+     """
+ 
+     path = Path(recorded_path)
+@@ -3160,6 +3161,44 @@
+     return runtime_root / relative
+ 
+ 
++def _resolve_data8_job_member(
++    bundle: Any,
++    runtime_root: Path,
++    job: Any,
++    recorded_path: str | Path,
++) -> Path:
++    """Resolve one DATA8 artifact whose relative path is job-directory scoped.
++
++    ``write_mace_extxyz_artifact(job_dir, ...)`` records paths relative to
++    ``job_dir`` (for example ``target_checkpoint_full.xyz``).  The promoted
++    runtime root, however, is the DATA8 bundle root.  Reattach the immutable job
++    directory before resolving the artifact so SELECT1/AGG1 inspect the bytes
++    that DATA8 actually materialized.  Historical absolute paths retain the
++    ordinary DATA8 staging-rebase behavior.
++    """
++
++    path = Path(recorded_path)
++    if path.is_absolute():
++        return _resolve_data8_runtime_member(bundle, runtime_root, path)
++
++    root = Path(runtime_root).resolve()
++    job_root = (root / job.relative_directory).resolve()
++    try:
++        job_root.relative_to(root)
++    except ValueError as exc:
++        raise CampaignCliError(
++            f"DATA8 job directory escaped its promoted bundle root: {job.relative_directory}"
++        ) from exc
++    candidate = (job_root / path).resolve()
++    try:
++        candidate.relative_to(job_root)
++    except ValueError as exc:
++        raise CampaignCliError(
++            f"DATA8 job artifact escaped its job directory: {recorded_path}"
++        ) from exc
++    return candidate
++
++
+ def _training_modes(cfg: Mapping[str, Any]) -> tuple[str, ...]:
+     return tuple(item.mode for item in _training_method_specs(cfg))
+ 
+@@ -11556,7 +11595,9 @@
+             raise CampaignCliError(f"{run.run_id}: missing successful execution evidence for AGG1.")
+         bundle, job, root = jobs[run.mace_job_artifact_digest]
+         outer_artifact = _mlcv_outer_fold_artifact(bundle, job)
+-        outer_path = _resolve_data8_runtime_member(bundle, root, outer_artifact.relative_path)
++        outer_path = _resolve_data8_job_member(
++            bundle, root, job, outer_artifact.relative_path
++        )
+         if not outer_path.is_file() or _sha256(outer_path) != outer_artifact.sha256:
+             raise CampaignCliError(f"{run.run_id}: outer CV artifact is missing or stale.")
+ 
+@@ -11978,8 +12019,8 @@
+         selection_policy = _mlcv_run_selection_policy(stop_policy, metric_policy)
+ 
+         target_full_artifact, target_role = _mlcv_target_full_artifact(bundle, job)
+-        target_full_path = _resolve_data8_runtime_member(
+-            bundle, root, target_full_artifact.relative_path
++        target_full_path = _resolve_data8_job_member(
++            bundle, root, job, target_full_artifact.relative_path
+         )
+         if (
+             not target_full_path.is_file()
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SOURCE_PATCH_0.20.150a0_to_0.20.151a0.patch' /mnt/data/mdstats_150/mdstats-0.20.150a0-complete-source-package/pyproject.toml /mnt/data/mdstats_151_work/pyproject.toml
+--- /mnt/data/mdstats_150/mdstats-0.20.150a0-complete-source-package/pyproject.toml	2026-08-11 10:41:03.000000000 +0000
++++ /mnt/data/mdstats_151_work/pyproject.toml	2026-08-11 20:42:58.646106577 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.150a0"
++version = "0.20.151a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SOURCE_PATCH_0.20.150a0_to_0.20.151a0.patch' /mnt/data/mdstats_150/mdstats-0.20.150a0-complete-source-package/release/mlff_data8_job_path_hotfix_020151_qualification.json /mnt/data/mdstats_151_work/release/mlff_data8_job_path_hotfix_020151_qualification.json
+--- /mnt/data/mdstats_150/mdstats-0.20.150a0-complete-source-package/release/mlff_data8_job_path_hotfix_020151_qualification.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats_151_work/release/mlff_data8_job_path_hotfix_020151_qualification.json	2026-08-11 20:43:40.496131540 +0000
+@@ -0,0 +1,20 @@
++{
++  "schema": "mdstats.mlff-data8-job-path-hotfix-qualification.v1",
++  "mdstats_version": "0.20.151a0",
++  "date": "2026-08-11",
++  "defect": "MLCV SELECT1/AGG1 interpreted job-scoped MaceExtxyzArtifact.relative_path values as DATA8-bundle-root-relative paths.",
++  "fix": [
++    "resolve V_i_full/D_full target_checkpoint_full.xyz beneath jobs/<job_id>/",
++    "resolve outer-CV fold_evaluation.xyz beneath jobs/<job_id>/",
++    "retain legacy absolute staging-path rebasing",
++    "reject job/artifact path traversal outside the promoted job root"
++  ],
++  "scientific_identity_changes": false,
++  "requires_data8_regeneration": false,
++  "requires_retraining": false,
++  "qualification": {
++    "campaign_cli_and_data8_monitor": "39 passed, 1 skipped (real LTA training root not supplied)",
++    "mlcv_select_agg_mon": "17 passed, 1 skipped (MACE not installed on qualification host)",
++    "new_job_path_regressions": "3 passed"
++  }
++}
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SOURCE_PATCH_0.20.150a0_to_0.20.151a0.patch' /mnt/data/mdstats_150/mdstats-0.20.150a0-complete-source-package/tests/test_mlff_adapt_mon1_online_monitors.py /mnt/data/mdstats_151_work/tests/test_mlff_adapt_mon1_online_monitors.py
+--- /mnt/data/mdstats_150/mdstats-0.20.150a0-complete-source-package/tests/test_mlff_adapt_mon1_online_monitors.py	2026-08-10 14:31:43.000000000 +0000
++++ /mnt/data/mdstats_151_work/tests/test_mlff_adapt_mon1_online_monitors.py	2026-08-11 20:42:25.525358845 +0000
+@@ -8,6 +8,7 @@
+ from ase.io import write
+ 
+ import mdstats
++from mdstats.training_data import campaign_cli
+ from tests.test_mlff_data8_mace_artifacts import _data7_bundles, _foundation, _probe, _write_replay
+ 
+ 
+@@ -138,11 +139,22 @@
+         assert (job_dir / "target_valid.xyz").is_file()
+         assert (job_dir / "target_checkpoint_full.xyz").is_file()
+         assert (job_dir / "target_training_diagnostic.xyz").is_file()
++        full = next(
++            artifact for artifact in result.target_artifacts
++            if artifact.role == "target_checkpoint_full"
++            and artifact.frame_uids == record.target_full_frame_uids
++        )
++        assert campaign_cli._resolve_data8_job_member(
++            result, output, job, full.relative_path
++        ) == (job_dir / "target_checkpoint_full.xyz").resolve()
+         if job.kind is mdstats.MaceJobKind.CROSS_VALIDATION_FOLD:
+             assert record.target_statistical_role == "target_checkpoint_selection"
+             assert (job_dir / "fold_evaluation.xyz").is_file()
+             outer = next(a for a in result.fold_evaluation_artifacts if a.content_digest == job.fold_evaluation_artifact_digest)
+             assert not set(record.target_full_frame_uids) & set(outer.frame_uids)
++            assert campaign_cli._resolve_data8_job_member(
++                result, output, job, outer.relative_path
++            ) == (job_dir / "fold_evaluation.xyz").resolve()
+         else:
+             assert record.target_statistical_role == "target_final_validation"
+             assert result.full_target_evaluation_artifact is not None
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SOURCE_PATCH_0.20.150a0_to_0.20.151a0.patch' /mnt/data/mdstats_150/mdstats-0.20.150a0-complete-source-package/tests/test_mlff_campaign_cli.py /mnt/data/mdstats_151_work/tests/test_mlff_campaign_cli.py
+--- /mnt/data/mdstats_150/mdstats-0.20.150a0-complete-source-package/tests/test_mlff_campaign_cli.py	2026-08-10 14:31:43.000000000 +0000
++++ /mnt/data/mdstats_151_work/tests/test_mlff_campaign_cli.py	2026-08-11 20:41:02.199585860 +0000
+@@ -430,6 +430,31 @@
+     assert observed == runtime_root / "shared" / "replay" / "replay_monitor.xyz"
+ 
+ 
++def test_data8_job_member_resolves_job_scoped_extxyz_path(tmp_path: Path) -> None:
++    from types import SimpleNamespace
++
++    recorded_root = tmp_path / ".data8-staging-deleted"
++    runtime_root = tmp_path / "generation"
++    bundle = SimpleNamespace(output_directory=str(recorded_root))
++    job = SimpleNamespace(relative_directory="jobs/fold_00")
++    observed = campaign_cli._resolve_data8_job_member(
++        bundle, runtime_root, job, "target_checkpoint_full.xyz"
++    )
++    assert observed == (runtime_root / "jobs" / "fold_00" / "target_checkpoint_full.xyz").resolve()
++
++
++def test_data8_job_member_rebases_absolute_staged_path_without_double_job_prefix(tmp_path: Path) -> None:
++    from types import SimpleNamespace
++
++    recorded_root = tmp_path / ".data8-staging-deleted"
++    runtime_root = tmp_path / "generation"
++    bundle = SimpleNamespace(output_directory=str(recorded_root))
++    job = SimpleNamespace(relative_directory="jobs/fold_00")
++    recorded = recorded_root / "jobs" / "fold_00" / "fold_evaluation.xyz"
++    observed = campaign_cli._resolve_data8_job_member(bundle, runtime_root, job, recorded)
++    assert observed == runtime_root / "jobs" / "fold_00" / "fold_evaluation.xyz"
++
++
+ def test_preflight_static_e0_check_reports_replay_only_gap() -> None:
+     payload = {
+         "atomic_numbers": "[1, 3, 8]",

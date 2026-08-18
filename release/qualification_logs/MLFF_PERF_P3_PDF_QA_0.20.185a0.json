@@ -1,0 +1,34 @@
+{
+  "files": {
+    "ARCHITECTURE_NOTES_MLFF_REV52.pdf": {
+      "sha256": "0214a6dc85335bb32ea4a33de1397dc98d340d78bdc51de72ed88c4cc160d089"
+    },
+    "PATCH_NOTES_0.20.185a0.pdf": {
+      "sha256": "1f635649142552d0558f9ef687398b1354009562290d9e32c15163a21db0b814"
+    },
+    "benchmarks/mlff_perf_p3_cloud_cpu_2026-08-15.pdf": {
+      "sha256": "89f57a46008ad97b5dfbb52e2b4d8e5e0fce34a5efd0c6acf8d17f9f43cacb8c"
+    },
+    "mlff_perf_p3_cpu_structural_reduction_spec.pdf": {
+      "sha256": "8e857730c3951cd9c627c2b2f15979ec61fb524d61082a72f9f7fe7b83fb2672"
+    },
+    "mlff_training_data_architecture.pdf": {
+      "sha256": "e500b73937c9becf1a46de81e05e732cda533fe2f26c98aa4e8db5888e2adffa"
+    }
+  },
+  "fonts_embedded": true,
+  "manual_high_resolution_pages_reviewed": [
+    185,
+    186,
+    187,
+    188
+  ],
+  "manual_pages": 193,
+  "preflight": "passed",
+  "release": "0.20.185a0",
+  "schema": "mdstats.mlff-perf-p3.pdf-qa.2026-08.v1",
+  "small_documents_reviewed_in_full": true,
+  "status": "passed",
+  "whole_manual_low_resolution_render_reviewed": true,
+  "workflow": "Markdown -> Pandoc/XeLaTeX -> render -> visual inspection"
+}

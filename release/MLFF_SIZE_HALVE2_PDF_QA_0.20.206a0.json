@@ -1,0 +1,47 @@
+{
+  "architecture_revision": 73,
+  "date": "2026-08-16",
+  "documents": [
+    {
+      "pages": 1,
+      "path": "ARCHITECTURE_NOTES_MLFF_REV73.pdf",
+      "preflight": "pass",
+      "sha256": "2c8df99bfe723641c1696a6228e0a6e17c269fa8ebd4870b93f836c8863922d4",
+      "visual": "pass"
+    },
+    {
+      "pages": 1,
+      "path": "docs/specs/training_data/mlff_size_halve2_fixed_eight_funnel_spec.pdf",
+      "preflight": "pass",
+      "sha256": "1af0d3056c4531883e66dfd3a88e1ac66474eee7afaad1be19120c453bafc86e",
+      "visual": "pass"
+    },
+    {
+      "pages": 1,
+      "path": "PATCH_NOTES_0.20.206a0.pdf",
+      "preflight": "pass",
+      "sha256": "59e1fae8e9b3809fef8496fe87d2a31f062657df0bd2f5292479bc0f9f6810c4",
+      "visual": "pass"
+    },
+    {
+      "pages": 220,
+      "path": "docs/arch_manuals/mlff_training_data_architecture.pdf",
+      "preflight": "pass",
+      "sha256": "5fa0978ebacd34df9876d7b056507b2f5484ab5d844751675a303b796041b0f3",
+      "visual": "pass",
+      "visual_tail_pages": [
+        218,
+        219,
+        220
+      ]
+    }
+  ],
+  "layout_corrections": [
+    "condensed SIZE-HALVE2 normative specification from a nearly empty two-page rendering to one balanced page",
+    "condensed the SIZE-HALVE2 manual tail so the next-gate sentence no longer occupied an orphaned final page; canonical manual reduced from 221 to 220 pages"
+  ],
+  "manual_root_and_mirror_pdf_identical": true,
+  "release": "0.20.206a0",
+  "schema": "mdstats.size-halve2-pdf-qa.v1",
+  "status": "pass"
+}

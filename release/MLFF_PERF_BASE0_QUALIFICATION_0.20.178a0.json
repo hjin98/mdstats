@@ -1,0 +1,222 @@
+{
+  "authority": {
+    "comparison_digest": "c3d31a3922c89d19cc9a5670b9b4ca8f7ffaa65f82cffa8c16a25c0fb50d5e9e",
+    "exact_fps_prefix": 1024,
+    "exact_radii_family_elements": 263398,
+    "fps_nested_rungs": [
+      128,
+      256,
+      512,
+      1024
+    ],
+    "primary_execution_digest": "2c7614fea8dc60594e176e7c4fa17413922c56d67982e881a8fab0eebbc5b18c",
+    "primary_record_digest": "a8573580a906da95ff4e5af3154814bcba8b702174fe81437a1c22f1375da198",
+    "replay": {
+      "atoms": 364370,
+      "authoritative_splits": 3,
+      "frames": 12000
+    },
+    "rerun_execution_digest": "0d3649ed0dfdb92e3daddb8a7d9a5361b591e0f1e1069156a602afb019fec564",
+    "rerun_record_digest": "aa5d77e067ac6a87fd9688f84a36db3b986d93c3ccdb32a0a9028887cbce9a2c",
+    "same_host_scientific_match": true,
+    "scientific_digest": "44a5aa8b492cece8d303f83a163ddbeee6d3a340932d4716c53b4ddf28a81e3c",
+    "scientific_telemetry_separation": true,
+    "scope": "complete supplied target/replay byte identities plus compact, adversarial, exact weighted-radii, and bounded exact FPS CPU references",
+    "target": {
+      "atoms": 6322344,
+      "extracted_bytes": 966777484,
+      "frames": 37633,
+      "source_files": 27
+    },
+    "unavailable_not_fabricated": [
+      "MACE-MH-1 checkpoint-derived DATA6 families and inference telemetry",
+      "TARGET-DATA2C mandatory-quota and exhaustive-ladder authority",
+      "complete DATA7 and DATA8 campaign materialization",
+      "TRAIN2 and EVAL2 timing/identity evidence",
+      "GPU memory, GPU utilization, OOM, and backoff evidence"
+    ]
+  },
+  "cpu_baseline": {
+    "cgroup_cpu_quota_cores": 8.0,
+    "cgroup_memory_limit_bytes": 4294967296,
+    "cpu_model": "INTEL(R) XEON(R) PLATINUM 8573C",
+    "declared_native_threads": 8,
+    "dominant_observed_cost": "sequential ASE VASP-XML ingestion",
+    "effective_core_range": {
+      "target_data2b_exact_radii": [
+        4.05,
+        4.385
+      ],
+      "target_data2c_exact_fps": [
+        6.718,
+        7.183
+      ],
+      "target_xml_ingest": [
+        1.01,
+        1.021
+      ]
+    },
+    "interpretation": "scientific identity is exact; the two-run timing spread is the initial same-host execution-noise envelope",
+    "peak_rss_mib_range": [
+      559.38,
+      563.39
+    ],
+    "runs": 2,
+    "throughput_range": {
+      "fps_selections_per_second": [
+        106.67014953593977,
+        170.13808305967729
+      ],
+      "radii_family_elements_per_second": [
+        42043.9741682992,
+        47732.79841477865
+      ],
+      "replay_frames_per_second": [
+        1419.3391547220522,
+        1643.6720375216732
+      ],
+      "target_xml_frames_per_second": [
+        285.4312577692653,
+        321.50017961131636
+      ]
+    },
+    "visible_logical_cpus": 9,
+    "wall_time_seconds_range": {
+      "replay_extxyz_ingest": [
+        7.30072649900012,
+        8.454638878999958
+      ],
+      "target_data2b_exact_radii": [
+        5.518176363999828,
+        6.264821659000063
+      ],
+      "target_data2c_exact_fps": [
+        6.018640751000021,
+        9.599686552000094
+      ],
+      "target_xml_ingest": [
+        117.05436695400022,
+        131.84610646400006
+      ]
+    }
+  },
+  "date": "2026-08-15",
+  "distribution_checksums": "MDSTATS_0.20.178a0_DISTRIBUTION_SHA256SUMS.txt (external sidecar generated after the final wheel, sdist, and complete-source ZIP are frozen)",
+  "evidence": {
+    "comparison_record": "audits/analysis/mlff_perf_base0_reproducibility_comparison.json",
+    "primary_record": "audits/analysis/mlff_perf_base0_lta_cloud_cpu_reference.json",
+    "primary_report": "benchmarks/mlff_perf_base0_lta_cloud_cpu_2026-08-15.md",
+    "reproducibility_report": "benchmarks/mlff_perf_base0_reproducibility_2026-08-15.md",
+    "rerun_record": "benchmarks/mlff_perf_base0_lta_cloud_cpu_repro_run2_2026-08-15.json"
+  },
+  "gate": "PERF-BASE0",
+  "known_historical_test_debt": "The package retains archival source-text and current-release assertions in older specification files; the current gate qualification is the explicit 118-test PERF/TARGET/MH1 slice above. One unrelated EVAL2 source-text assertion remains stale against the already-generalized MH-1 implementation and was not altered merely to expand this gate.",
+  "next_gate": "PERF-P0",
+  "pdf": {
+    "changed_pages": 39,
+    "clipping_or_overlap_found": false,
+    "comparison_dpi": 36,
+    "full_low_dpi_comparison_completed": true,
+    "pages_after": 186,
+    "pages_before": 184,
+    "preflight_passed": true,
+    "visual_inspection_dpi": 160,
+    "visually_inspected_pages": [
+      1,
+      10,
+      13,
+      172,
+      173,
+      174
+    ]
+  },
+  "schema": "mdstats.mlff-perf-base0-qualification.v1",
+  "sha256": {
+    "ARCHITECTURE_NOTES_MLFF_REV44.md": "d9707196437077caa3cfcfa1cd9e6e9fddd73a7b730af297587b6d54ced41fcd",
+    "CHANGELOG.md": "ccb1bc4845ea86bac9d3162b08e95543ed6c473d44253364594adb4ef7b9c07c",
+    "MANIFEST.in": "d8de9ffdbd1f232ef80364e40bdb920af9cdea160718d4237139d81e577c5794",
+    "README.md": "8b00e7187df2efb2863a92bb1f899baa84a6f743d9dedb662cfb8e819a4fe870",
+    "audits/analysis/mlff_perf_base0_lta_cloud_cpu_reference.json": "a7b7d027f34aad0913334d01b8032a330d27b9ed8c9923790389a203f72b5186",
+    "audits/analysis/mlff_perf_base0_reproducibility_comparison.json": "b3183d2a4b93ee67f7e781e83deee15b18858dc0743504d89e1461d73e4f1aa4",
+    "benchmarks/benchmark_mlff_perf_base0.py": "c7aaf7d8980c13fc2a75ac11c2313835be0ec5c020b6838a4eb3db2035470b1a",
+    "benchmarks/mlff_perf_base0_lta_cloud_cpu_2026-08-15.md": "11d67e6dea4a1c40bf4b40cb0a07c8404881055ebf33a51eab3b223845ca40e1",
+    "benchmarks/mlff_perf_base0_lta_cloud_cpu_repro_run2_2026-08-15.json": "ef7c0e0d2ec6db1ae93e19eaea2392755c3dac4924829bc44f1786ab9b6ac308",
+    "benchmarks/mlff_perf_base0_lta_cloud_cpu_repro_run2_2026-08-15.md": "4bef11badb50b51982f12b4ae1f3a29f3ebcc5e47ecd975d1ff0c9c094063950",
+    "benchmarks/mlff_perf_base0_reproducibility_2026-08-15.md": "d069f32d988d92643975972f9896a87b496e3a6e900638e008a379d91f131b39",
+    "docs/arch_manuals/README.md": "9980bceb239793cdbdac5c663e0c3872abd2c80a33dd6fe0e62cbc4921a2dd95",
+    "docs/arch_manuals/mlff_training_data_architecture.md": "df89906410e30afa8e69c4c05c0c6ebd516cefff3b20c9a8499eeeff785a2956",
+    "docs/arch_manuals/mlff_training_data_architecture.pdf": "dc6ba9052f61e355f9ff8caa73640ff05e2984aefff2dead8016774cbabcac90",
+    "mdstats/__init__.py": "c4be0d4b740dee1732322fcd22f6dfbe50f5d03280c976c7f029d1ae4aa5865b",
+    "mdstats/_version.py": "4119ebced9a8ef797a21dad00864dfe30b781cd864a25b3a38bbd5a9aa561614",
+    "mdstats/training_data/__init__.py": "14e49a6bbfdcd8152485b8020a3b2bdc11c3cfefae3455662f62215ef92c7518",
+    "mdstats/training_data/performance_baseline.py": "62c0a575e4925a00353a987a0beadabd8b9f08c2d02291b4672e351a4947fcd4",
+    "pyproject.toml": "c8b8915cabbe317b922897622d4a968e3988eeac76d6e3863988092115bbaf3d",
+    "release/PATCH_NOTES_0.20.178a0.md": "80254be87f172a545e3ded3c752a1ebdf49744a3120a4eab0e54c1637394f038",
+    "tests/test_mlff_perf2_parallel_acceleration_specification.py": "ddff166e6cebd4e81d2e0a5c4ad3f26f7e04b27b5bff395a681c930ebdc9ab4b",
+    "tests/test_mlff_perf_base0.py": "afd87bbb0d373859f4b300c39b4a405f2207a673351d6c29975fbaa3fe7d37fe",
+    "tests/test_mlff_perf_base0_specification.py": "cb442d9d32d9095119ce3615130b73afa8159de00439a6c9a203dfe3773325d6"
+  },
+  "source_diff": {
+    "added_files": [
+      "ARCHITECTURE_NOTES_MLFF_REV44.md",
+      "audits/analysis/mlff_perf_base0_lta_cloud_cpu_reference.json",
+      "audits/analysis/mlff_perf_base0_reproducibility_comparison.json",
+      "benchmarks/benchmark_mlff_perf_base0.py",
+      "benchmarks/mlff_perf_base0_lta_cloud_cpu_2026-08-15.md",
+      "benchmarks/mlff_perf_base0_lta_cloud_cpu_repro_run2_2026-08-15.json",
+      "benchmarks/mlff_perf_base0_lta_cloud_cpu_repro_run2_2026-08-15.md",
+      "benchmarks/mlff_perf_base0_reproducibility_2026-08-15.md",
+      "mdstats/training_data/performance_baseline.py",
+      "release/MLFF_PERF_BASE0_QUALIFICATION_0.20.178a0.json",
+      "release/PATCH_NOTES_0.20.178a0.md",
+      "tests/test_mlff_perf_base0.py",
+      "tests/test_mlff_perf_base0_specification.py"
+    ],
+    "base_archive": "mdstats-0.20.177a0-complete-source-package-mh1-postcert-perf-roadmap-frozen(2).zip",
+    "changed_files": [
+      "CHANGELOG.md",
+      "MANIFEST.in",
+      "PKG-INFO",
+      "README.md",
+      "docs/arch_manuals/README.md",
+      "docs/arch_manuals/mlff_training_data_architecture.md",
+      "docs/arch_manuals/mlff_training_data_architecture.pdf",
+      "mdstats/__init__.py",
+      "mdstats/_version.py",
+      "mdstats/training_data/__init__.py",
+      "pyproject.toml",
+      "tests/test_mlff_deploy_verify1_specification.py",
+      "tests/test_mlff_dyn_verify2_specification.py",
+      "tests/test_mlff_eval2_specification.py",
+      "tests/test_mlff_locked_test2_specification.py",
+      "tests/test_mlff_perf2_parallel_acceleration_specification.py",
+      "tests/test_mlff_pes_verify1_specification.py",
+      "tests/test_mlff_relax_verify1_specification.py",
+      "tests/test_mlff_select2_specification.py"
+    ],
+    "removed_files": [],
+    "unrelated_runtime_changes_found": false
+  },
+  "status": "qualified_bounded",
+  "tests": {
+    "compileall": true,
+    "focused_perf_target_mh1_cross_gate": {
+      "passed": 118,
+      "skip_reason": "locked MACE/MH-1 checkpoint, deployment runtime, or model fixtures were not supplied/mounted",
+      "skipped": 15,
+      "warnings": 19
+    },
+    "perf_base0_unit_and_specification": {
+      "passed": 10,
+      "skipped": 0
+    },
+    "sdist_build": true,
+    "sdist_perf_base0_unit_and_specification": {
+      "passed": 10,
+      "skipped": 0
+    },
+    "wheel_build": true,
+    "wheel_public_import_and_record_smoke": true
+  },
+  "version": "0.20.178a0"
+}

@@ -1,0 +1,75 @@
+{
+  "schema": "mdstats.par-dens4-na-lta-qualification.v1",
+  "package_version": "0.20.143a0",
+  "qualified_on": "2026-08-10",
+  "input": {
+    "basename": "dump.prod.Na_lta_300K.old.lammpstrj",
+    "sha256": "81c86cc40f5a11031f80817213eb558c02348494d1c6cad9b4775a5bc3c9f9cd",
+    "bytes": 183385600,
+    "full_frames": 10001,
+    "atoms_per_frame": 168,
+    "na_atoms": 24,
+    "type_map": {
+      "1": "Si",
+      "2": "Al",
+      "3": "O",
+      "4": "Na"
+    }
+  },
+  "bounded_preprocessing_qualification": {
+    "stride": 100,
+    "selected_frames": 101,
+    "hysteretic_worker_counts": [
+      1,
+      4
+    ],
+    "hysteretic_seconds": [
+      1.0340949019999925,
+      1.4802314129999559
+    ],
+    "hysteretic_parallel_speedup": 0.698603537878049,
+    "observed_connectivity_states": [
+      94,
+      94
+    ],
+    "frame_state_ids_equal": true,
+    "state_digests_equal": true,
+    "transitions_equal": true,
+    "parallel_hysteresis_fold": "deterministic_collection_frame_order_v1",
+    "parallel_granularity_interpretation": "overhead_dominated_for_168_atom_dense_per_frame_workload",
+    "geometry_reuse": {
+      "framework_only_seconds": 1.023328130999971,
+      "full_after_framework_warm_seconds": 1.0243384720000677,
+      "full_cold_seconds": 1.729917118000003,
+      "warm_vs_cold_full_speedup": 1.6888139665615223,
+      "cache_entries_after_framework": 202,
+      "cache_hits_after_framework": 0,
+      "cache_entries_after_warm_full": 303,
+      "cache_hits_after_warm_full": 202,
+      "cold_full_cache_hits": 0,
+      "warm_and_cold_full_connectivity_equal": true,
+      "cache_schema": "mdstats.atomic-connectivity-geometry-cache.v1"
+    },
+    "framework_scene_schema": "mdstats.framework-dynamics-scene.v15"
+  },
+  "acceptance": {
+    "synthetic_preprocessing_matrix": "tests/test_density_par_dens4_preprocessing.py",
+    "serial_parallel_hysteresis_identity": true,
+    "geometry_cache_reuse_identity": true,
+    "partitioned_category_scheduler_identity": true,
+    "relevant_regression_chunks": "all selected density/framework/connectivity files passed; optional mdstats[interactive] mesh simplification skipped"
+  },
+  "interpretation": {
+    "purpose": "PAR-DENS4 preprocessing worker-invariance, geometry reuse, and bounded real-data throughput qualification",
+    "production_scientific_reference": "release/par_dens0_na_lta_qualification.json",
+    "timing_scope": "connectivity preprocessing only; trajectory parsing excluded",
+    "parallel_granularity_note": "Four-worker frame candidate generation is exact but slower on this small dense per-frame problem; worker parallelism is therefore capability/resource bounded rather than a universal speed claim.",
+    "geometry_reuse_note": "The measured warm-pass improvement is the material PAR-DENS4 gain on this Na-LTA sample because framework Si/Al-O neighbor requests are exactly reusable by the broader framework+Na-O pass.",
+    "par_dens5_next": true
+  },
+  "environment": {
+    "python": "3.13.5",
+    "numpy": "2.3.5",
+    "scipy": "1.17.0"
+  }
+}

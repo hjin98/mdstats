@@ -1,0 +1,169 @@
+{
+  "acceptance": {
+    "advance_to": "REPLAY-PERF1",
+    "broad_regression": "PASS",
+    "exact_bootstrap_record": "PASS",
+    "exact_eval2_metrics": "PASS",
+    "exact_foundation_audit": "PASS",
+    "gpu_authority_unchanged": "PASS",
+    "no_additional_inference": "PASS",
+    "throughput_improved": "PASS"
+  },
+  "architecture_revision": 100,
+  "authority_change": {
+    "gpu": false,
+    "model_inference": false,
+    "runtime_optimization": true,
+    "scientific": false
+  },
+  "content_digest": "0aceda624e8fe744707b3cc910de4ad4f1acc11b929e210de2b695c62101fa17",
+  "date": "2026-08-17",
+  "dependency_graph_schema": 80,
+  "documentation": {
+    "architecture_revision_note": {
+      "path": "docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV100.md",
+      "sha256": "cd0327c90b70488731dac1da909eda17dc1c6acfa175007730dc2e9924023542"
+    },
+    "canonical_markdown": {
+      "path": "docs/arch_manuals/mlff_training_data_architecture.md",
+      "sha256": "14190e37c5b7a5299a8d8883c6f2e5ac283fa1c74fe8e1023fd420f150ae90bd"
+    },
+    "canonical_pdf": {
+      "comparison_note": "Revision-99 49-page PDF and revision-100 50-page PDF compared at 40 dpi; 13 pages changed including the expected new final page. All 50 final pages rendered at 120 dpi; front matter and changed performance/status/reference region were visually inspected with no clipping or overlap.",
+      "full_render": "PASS",
+      "pages": 50,
+      "path": "docs/arch_manuals/mlff_training_data_architecture.pdf",
+      "preflight": "PASS",
+      "sha256": "01eba9363f24d7017af2852df66074ead938fcdb37962dfd887251f36874b87b",
+      "visual_qa": "PASS"
+    },
+    "dependency_graph": {
+      "path": "docs/arch_manuals/mlff_training_data_dependency_graph.json",
+      "sha256": "fced14410e9d1cdded995b0a31a9d3ee6ccf688bb2b7a117db60fb0bff1050aa"
+    },
+    "release_note": {
+      "path": "docs/history/mlff/release_notes/PATCH_NOTES_0.20.233a0.md",
+      "sha256": "513e1690e21203b24896f3697e3a47342237291e3f152afeeb29feb3d626c0a8"
+    },
+    "spec": {
+      "path": "docs/specs/training_data/mlff_audit_eval_perf1_cpu_kernels_spec.md",
+      "sha256": "4c82b367523e603b1836a40fc1570813caf6fc5d0583fa800d162167ba94c4c6"
+    }
+  },
+  "foundation": {
+    "active_qualification_family": "mace-mpa-0",
+    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
+    "mh1_supported_by_same_contract": true,
+    "note": "AUDIT-EVAL-PERF1 changes CPU reduction/statistics only. MACE-MPA-0 medium is the active qualification checkpoint; MACE-MH-1 uses the same post-inference reduction contract.",
+    "variant": "medium"
+  },
+  "gate": "AUDIT_EVAL_PERF1_CPU_KERNELS",
+  "implementation": {
+    "additional_model_inference": false,
+    "bootstrap_temporary_target_mib": 32,
+    "eval2_memory_bounded_batched_bootstrap": true,
+    "eval2_preallocated_force_tail_buffer": true,
+    "eval2_static_reduction_metadata_cache": true,
+    "foundation_batched_tail_quantiles": true,
+    "foundation_delta_squared_reuse": true,
+    "foundation_shared_frame_array_index": true,
+    "foundation_shared_species_membership": true,
+    "gpu_numerical_authority_changed": false,
+    "implementation_manifest": {
+      "path": "benchmarks/mlff_audit_eval_perf1_implementation_manifest_0.20.233a0.json",
+      "sha256": "89bfefe034590b35af1bb1ec6d12a5b084ffa3162c512d4dc6082284d3dc1355"
+    }
+  },
+  "inputs": {
+    "dependency_archive": {
+      "path": "/mnt/data/dependencies.tar(20260817-112644).gz",
+      "sha256": "888d545a512396697c8583d69bc9ed33110914675f466a4cbcafc3e1e1407171"
+    },
+    "replay_source": {
+      "path": "/mnt/data/replay_fps_12000.extxyz",
+      "sha256": "187eed42fb2d6cf5e7e745ffed0ce34541e92c6a35ec9e654520cd3c7198403c"
+    },
+    "target_archive": {
+      "path": "/mnt/data/training_LTA.tar(4).gz",
+      "sha256": "bc1b7e25ba338507ae38b260bcd283356de887b6c6cf762a2c146733f1c3c958"
+    }
+  },
+  "next_gate": "REPLAY-PERF1",
+  "performance_evidence": {
+    "eval2_target_reduction": {
+      "control_median_seconds": 0.8620806569997512,
+      "current_median_seconds": 0.4492151720005495,
+      "speedup": 1.9190817913841447
+    },
+    "foundation_audit": {
+      "control_median_seconds": 0.05802883449996443,
+      "current_median_seconds": 0.054530274500393716,
+      "interpretation": "Available no-inference audit fixture is already dominated by authenticated sidecar/conditioning work; major gate payoff is repeated EVAL2 reduction and bootstrap.",
+      "speedup": 1.064158121917128
+    },
+    "paired_bootstrap": {
+      "control_median_seconds": 0.051166544000807335,
+      "current_median_seconds": 0.015222844000163605,
+      "speedup": 3.3611685175422825
+    },
+    "primary_record": {
+      "path": "benchmarks/mlff_audit_eval_perf1_cloud_cpu_mpa0_2026-08-17.json",
+      "sha256": "22ea2ea6ae4358a129256401ed49df88822a56908f118fe69be9c198727389fa"
+    },
+    "report": {
+      "path": "benchmarks/mlff_audit_eval_perf1_cloud_cpu_mpa0_2026-08-17.md",
+      "sha256": "f47976c29abe32256dca0e1b9839b364e932cbb82b7a097fc2627427aa9cb638"
+    }
+  },
+  "release": "0.20.233a0",
+  "schema": "mdstats.mlff-audit-eval-perf1-qualification.v1",
+  "scientific_oracles": {
+    "bootstrap_comparison_digest": "9664354fd2d871e67113ff5b9ef28118c9414a59f29a5fd4114acb729590397e",
+    "eval2_metric_digest": "d9dd9db2c2d47e2d6f034e0b58f094c04c516d5a0dc4f0089d3f15762d434658",
+    "exact_persisted_records": true,
+    "foundation_audit_digest": "39b8b207c741798f5a8555b41ceb0c746948935612d84d45961ba87b0e8c94e5",
+    "foundation_model_provider_calls_control": [
+      44,
+      44
+    ],
+    "foundation_model_provider_calls_current": [
+      44,
+      44
+    ]
+  },
+  "status": "PASS",
+  "tests": {
+    "archival_spec_boundary": {
+      "excluded_from_current_release_pass_fail": [
+        "tests/test_mlff_target_data2c_mvidx1_specification.py"
+      ],
+      "reason": "Historical release-pinned MVIDX specification remains archival; current functional/scientific MVIDX authority is included in the 111-test regression."
+    },
+    "compileall": {
+      "paths": [
+        "mdstats",
+        "benchmarks",
+        "tools"
+      ],
+      "status": "PASS"
+    },
+    "current_gate_and_dependencies": {
+      "failed": 0,
+      "passed": 119,
+      "warnings": 8
+    },
+    "packaging_metadata": {
+      "pip_wheel_no_deps_no_build_isolation": "PASS",
+      "pyproject_version": "0.20.233a0",
+      "root_pkg_info_version": "0.20.233a0",
+      "wheel_metadata_name": "mdstats",
+      "wheel_metadata_version": "0.20.233a0"
+    },
+    "target_data2_functional_authority": {
+      "failed": 0,
+      "passed": 111,
+      "warning_class": "expected velocity-reconstruction/normalization warnings unchanged from prior authority",
+      "warnings": 18
+    }
+  }
+}

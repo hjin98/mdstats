@@ -1,0 +1,46 @@
+{
+  "architecture_revision": 72,
+  "date": "2026-08-16",
+  "documents": [
+    {
+      "pages": 1,
+      "path": "ARCHITECTURE_NOTES_MLFF_REV72.pdf",
+      "preflight": "pass",
+      "sha256": "774ad62afdfd778058230fbea46fbb49c02a1908e57eaeadd8650ece677a6c34",
+      "visual": "pass"
+    },
+    {
+      "pages": 1,
+      "path": "docs/specs/training_data/mlff_target_data2c_mvqual1_same_n_qualification_spec.pdf",
+      "preflight": "pass",
+      "sha256": "d50ed7e1bcd4569e2888d0a571c7e8a6d99f84af551e8e13fdf81d7354ec2187",
+      "visual": "pass"
+    },
+    {
+      "pages": 1,
+      "path": "PATCH_NOTES_0.20.205a0.pdf",
+      "preflight": "pass",
+      "sha256": "6a58ed27506f5b9d394e23987b2f665d25f9fe2ba4bcc285dae872e5b23d191f",
+      "visual": "pass"
+    },
+    {
+      "pages": 219,
+      "path": "docs/arch_manuals/mlff_training_data_architecture.pdf",
+      "preflight": "pass",
+      "sha256": "b1d227ab8e939c2373cf14d3b6e36272089037ce72af50f05a9f847fc1968a84",
+      "visual": "pass",
+      "visual_tail_pages": [
+        218,
+        219
+      ]
+    }
+  ],
+  "layout_corrections": [
+    "condensed MVQUAL1 normative spec from two pages with an underfilled second page to one balanced page",
+    "reformatted long capacity-diagnosis identifiers and acceptance prose in manual to eliminate right-margin overflow"
+  ],
+  "manual_root_and_mirror_pdf_identical": true,
+  "release": "0.20.205a0",
+  "schema": "mdstats.target-data2c-mvqual1-pdf-qa.v1",
+  "status": "pass"
+}

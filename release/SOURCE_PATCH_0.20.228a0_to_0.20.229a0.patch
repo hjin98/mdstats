@@ -1,0 +1,2188 @@
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/CHANGELOG.md /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/CHANGELOG.md
+--- /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/CHANGELOG.md	2026-08-17 21:34:11.000000000 +0000
++++ /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/CHANGELOG.md	2026-08-17 21:56:30.580596964 +0000
+@@ -1,3 +1,9 @@
++## 0.20.229a0 - 2026-08-17
++
++- Implement COVREF-PAR1 / architecture revision 96: exact TARGET-DATA2B reference-radius block parallelism on the shared deterministic scheduler with one native cKDTree worker per task.
++- Add adaptive cache-sized radius blocks, O(1) pair/species adapters, and exact pre-tree scalar constant-family rejection while preserving TARGET-DATA2B scientific authority.
++- Preserve PERFBASE1 supplied-family radius digest `823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d`; next gate is MVKERNEL1.
++
+ ## 0.20.228a0 - 2026-08-17
+ 
+ - Implement MVIDX-REUSE1 / architecture revision 95 as an exact-equivalence optimization of TARGET-DATA2C sparse-index inversion after NEIGHBOR1 removes the duplicate geometry sweep.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/benchmarks/mlff_covref_par1_cloud_cpu_mpa0_2026-08-17.json /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/benchmarks/mlff_covref_par1_cloud_cpu_mpa0_2026-08-17.json
+--- /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/benchmarks/mlff_covref_par1_cloud_cpu_mpa0_2026-08-17.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/benchmarks/mlff_covref_par1_cloud_cpu_mpa0_2026-08-17.json	2026-08-17 21:59:05.605985464 +0000
+@@ -0,0 +1,340 @@
++{
++  "acceptance": {
++    "nested_native_parallelism": false,
++    "next_gate": "MVKERNEL1",
++    "scientific_authority_changed": false,
++    "status": "PASS"
++  },
++  "active_foundation": {
++    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
++    "family": "MACE-MPA-0",
++    "mh1_supported_by_same_contract": true,
++    "variant": "medium"
++  },
++  "architecture_revision": 96,
++  "artifacts": {
++    "control_source_package_sha256": "160357b70c7124ee92bab39878a3c432c375618719d499b74a6065dbf0005c72",
++    "perfbase1_target_cache_sha256": "5eddf2a3df8f7922161fa4ab49c11a8d5d2d51835ed8aa3e44211eb49bda9f4f",
++    "training_archive_sha256": "bc1b7e25ba338507ae38b260bcd283356de887b6c6cf762a2c146733f1c3c958"
++  },
++  "date": "2026-08-17",
++  "execution": {
++    "host": {
++      "logical_cpus": 5,
++      "platform": "Linux-6.18.35-x86_64-with-glibc2.41"
++    },
++    "supplied_cache": {
++      "control_trials": {
++        "1": {
++          "median_process_cpu_seconds": 0.509301164,
++          "median_wall_seconds": 0.5093284130000484,
++          "trials": [
++            {
++              "digest": "823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d",
++              "max_busy_workers": null,
++              "process_cpu_seconds": 0.5554377969999997,
++              "repeat": 0,
++              "submitted_tasks": null,
++              "wall_seconds": 0.5554587500000707
++            },
++            {
++              "digest": "823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d",
++              "max_busy_workers": null,
++              "process_cpu_seconds": 0.517705909,
++              "repeat": 1,
++              "submitted_tasks": null,
++              "wall_seconds": 0.5177646080001068
++            },
++            {
++              "digest": "823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d",
++              "max_busy_workers": null,
++              "process_cpu_seconds": 0.500896419,
++              "repeat": 2,
++              "submitted_tasks": null,
++              "wall_seconds": 0.50089221799999
++            },
++            {
++              "digest": "823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d",
++              "max_busy_workers": null,
++              "process_cpu_seconds": 0.492358243,
++              "repeat": 3,
++              "submitted_tasks": null,
++              "wall_seconds": 0.49279066100007185
++            }
++          ]
++        },
++        "2": {
++          "median_process_cpu_seconds": 0.481650676000001,
++          "median_wall_seconds": 0.35238637149996066,
++          "trials": [
++            {
++              "digest": "823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d",
++              "max_busy_workers": null,
++              "process_cpu_seconds": 0.5028290079999991,
++              "repeat": 0,
++              "submitted_tasks": null,
++              "wall_seconds": 0.3954322550002871
++            },
++            {
++              "digest": "823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d",
++              "max_busy_workers": null,
++              "process_cpu_seconds": 0.4664498160000008,
++              "repeat": 1,
++              "submitted_tasks": null,
++              "wall_seconds": 0.3422348909998618
++            },
++            {
++              "digest": "823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d",
++              "max_busy_workers": null,
++              "process_cpu_seconds": 0.4415040930000007,
++              "repeat": 2,
++              "submitted_tasks": null,
++              "wall_seconds": 0.34180339199974696
++            },
++            {
++              "digest": "823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d",
++              "max_busy_workers": null,
++              "process_cpu_seconds": 0.4968515360000012,
++              "repeat": 3,
++              "submitted_tasks": null,
++              "wall_seconds": 0.3625378520000595
++            }
++          ]
++        },
++        "3": {
++          "median_process_cpu_seconds": 0.4626273344999996,
++          "median_wall_seconds": 0.2792267405000075,
++          "trials": [
++            {
++              "digest": "823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d",
++              "max_busy_workers": null,
++              "process_cpu_seconds": 0.40117959400000025,
++              "repeat": 0,
++              "submitted_tasks": null,
++              "wall_seconds": 0.2745433130003221
++            },
++            {
++              "digest": "823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d",
++              "max_busy_workers": null,
++              "process_cpu_seconds": 0.529294440000001,
++              "repeat": 1,
++              "submitted_tasks": null,
++              "wall_seconds": 0.3111513379999451
++            },
++            {
++              "digest": "823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d",
++              "max_busy_workers": null,
++              "process_cpu_seconds": 0.4617780570000001,
++              "repeat": 2,
++              "submitted_tasks": null,
++              "wall_seconds": 0.27328651200014065
++            },
++            {
++              "digest": "823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d",
++              "max_busy_workers": null,
++              "process_cpu_seconds": 0.4634766119999991,
++              "repeat": 3,
++              "submitted_tasks": null,
++              "wall_seconds": 0.28391016799969293
++            }
++          ]
++        }
++      },
++      "control_version": "0.20.228a0",
++      "family_count": 8,
++      "family_elements": 32800,
++      "frame_count": 4100,
++      "new_one_lane_median_seconds": 0.5316665015000126,
++      "new_three_lane_max_busy_workers": 3,
++      "new_three_lane_median_seconds": 0.22342467399994348,
++      "new_three_lane_submitted_tasks": [
++        96
++      ],
++      "new_trials": {
++        "1": {
++          "median_process_cpu_seconds": 0.5324629835000003,
++          "median_wall_seconds": 0.5316665015000126,
++          "trials": [
++            {
++              "digest": "823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d",
++              "max_busy_workers": 1,
++              "process_cpu_seconds": 0.6113218009999999,
++              "repeat": 0,
++              "submitted_tasks": 40,
++              "wall_seconds": 0.6192421470000227
++            },
++            {
++              "digest": "823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d",
++              "max_busy_workers": 1,
++              "process_cpu_seconds": 0.5346304060000007,
++              "repeat": 1,
++              "submitted_tasks": 40,
++              "wall_seconds": 0.5303695550001066
++            },
++            {
++              "digest": "823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d",
++              "max_busy_workers": 1,
++              "process_cpu_seconds": 0.530295561,
++              "repeat": 2,
++              "submitted_tasks": 40,
++              "wall_seconds": 0.5277663839997331
++            },
++            {
++              "digest": "823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d",
++              "max_busy_workers": 1,
++              "process_cpu_seconds": 0.5301233160000001,
++              "repeat": 3,
++              "submitted_tasks": 40,
++              "wall_seconds": 0.5329634479999186
++            }
++          ]
++        },
++        "2": {
++          "median_process_cpu_seconds": 0.6045410595000007,
++          "median_wall_seconds": 0.3337575884997932,
++          "trials": [
++            {
++              "digest": "823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d",
++              "max_busy_workers": 2,
++              "process_cpu_seconds": 0.6705504740000006,
++              "repeat": 0,
++              "submitted_tasks": 64,
++              "wall_seconds": 0.36269635600001493
++            },
++            {
++              "digest": "823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d",
++              "max_busy_workers": 2,
++              "process_cpu_seconds": 0.5503824910000006,
++              "repeat": 1,
++              "submitted_tasks": 64,
++              "wall_seconds": 0.2917237080000632
++            },
++            {
++              "digest": "823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d",
++              "max_busy_workers": 2,
++              "process_cpu_seconds": 0.6173969830000008,
++              "repeat": 2,
++              "submitted_tasks": 64,
++              "wall_seconds": 0.341814028999579
++            },
++            {
++              "digest": "823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d",
++              "max_busy_workers": 2,
++              "process_cpu_seconds": 0.5916851360000006,
++              "repeat": 3,
++              "submitted_tasks": 64,
++              "wall_seconds": 0.3257011480000074
++            }
++          ]
++        },
++        "3": {
++          "median_process_cpu_seconds": 0.5755844755000004,
++          "median_wall_seconds": 0.22342467399994348,
++          "trials": [
++            {
++              "digest": "823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d",
++              "max_busy_workers": 3,
++              "process_cpu_seconds": 0.6026617880000007,
++              "repeat": 0,
++              "submitted_tasks": 96,
++              "wall_seconds": 0.2312853409998752
++            },
++            {
++              "digest": "823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d",
++              "max_busy_workers": 3,
++              "process_cpu_seconds": 0.548507163,
++              "repeat": 1,
++              "submitted_tasks": 96,
++              "wall_seconds": 0.2100111059999108
++            },
++            {
++              "digest": "823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d",
++              "max_busy_workers": 3,
++              "process_cpu_seconds": 0.548238486999999,
++              "repeat": 2,
++              "submitted_tasks": 96,
++              "wall_seconds": 0.21556400700001177
++            },
++            {
++              "digest": "823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d",
++              "max_busy_workers": 3,
++              "process_cpu_seconds": 0.6097402600000006,
++              "repeat": 3,
++              "submitted_tasks": 96,
++              "wall_seconds": 0.23570220400006292
++            }
++          ]
++        }
++      },
++      "new_two_lane_median_seconds": 0.3337575884997932,
++      "new_version": "0.20.229a0",
++      "old_one_native_median_seconds": 0.5093284130000484,
++      "old_three_native_median_seconds": 0.2792267405000075,
++      "old_two_native_median_seconds": 0.35238637149996066,
++      "repeats": 4,
++      "three_lane_speedup": 1.249757851275093
++    },
++    "weighted_36408_stress": {
++      "control_trials": [
++        {
++          "max_busy_workers": null,
++          "process_cpu_seconds": 15.521558773,
++          "sha256": "240d4eb275f217a09d2fc43b3b26ae136489f4351c52ede57b6a5bfc18f18480",
++          "submitted_tasks": null,
++          "wall_seconds": 5.9372487260002345
++        },
++        {
++          "max_busy_workers": null,
++          "process_cpu_seconds": 15.337838358999996,
++          "sha256": "240d4eb275f217a09d2fc43b3b26ae136489f4351c52ede57b6a5bfc18f18480",
++          "submitted_tasks": null,
++          "wall_seconds": 5.933590850000201
++        }
++      ],
++      "features": 7,
++      "new_max_busy_workers": 3,
++      "new_submitted_tasks": [
++        361
++      ],
++      "new_three_lane_median_seconds": 5.131133342499879,
++      "new_trials": [
++        {
++          "max_busy_workers": 3,
++          "process_cpu_seconds": 15.627372383,
++          "sha256": "240d4eb275f217a09d2fc43b3b26ae136489f4351c52ede57b6a5bfc18f18480",
++          "submitted_tasks": 361,
++          "wall_seconds": 5.26715108299959
++        },
++        {
++          "max_busy_workers": 3,
++          "process_cpu_seconds": 14.951484231000002,
++          "sha256": "240d4eb275f217a09d2fc43b3b26ae136489f4351c52ede57b6a5bfc18f18480",
++          "submitted_tasks": 361,
++          "wall_seconds": 4.995115602000169
++        }
++      ],
++      "old_three_native_median_seconds": 5.9354197880002175,
++      "repeats": 2,
++      "rows": 36408,
++      "three_lane_speedup": 1.1567463544240095,
++      "unit_sizes": [
++        6200,
++        5900,
++        5500,
++        5100,
++        4900,
++        4600,
++        4208
++      ]
++    }
++  },
++  "gate": "COVREF-PAR1",
++  "release": "0.20.229a0",
++  "schema": "mdstats.mlff-covref-par1-benchmark.v1",
++  "scientific": {
++    "all_worker_schedules_exact": true,
++    "control_new_exact": true,
++    "perfbase1_radius_digest": "823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d",
++    "stress_radius_sha256": "240d4eb275f217a09d2fc43b3b26ae136489f4351c52ede57b6a5bfc18f18480"
++  }
++}
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/benchmarks/mlff_covref_par1_cloud_cpu_mpa0_2026-08-17.md /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/benchmarks/mlff_covref_par1_cloud_cpu_mpa0_2026-08-17.md
+--- /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/benchmarks/mlff_covref_par1_cloud_cpu_mpa0_2026-08-17.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/benchmarks/mlff_covref_par1_cloud_cpu_mpa0_2026-08-17.md	2026-08-17 21:59:05.606275033 +0000
+@@ -0,0 +1,23 @@
++# COVREF-PAR1 cloud CPU qualification benchmark
++
++Release `0.20.229a0`, architecture revision 96. Active campaign provenance is the supplied MACE-MPA-0 medium checkpoint (`75428afe3a1d7d80…`); COVREF-PAR1 is foundation-generic and applies unchanged to MACE-MH-1.
++
++## Scientific invariant
++
++The PERFBASE1 supplied-family radius digest is exactly `823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d` for every qualified schedule and for the untouched 0.20.228a0 control. The 36,408-row weighted stress fixture is likewise byte-identical (`240d4eb275f217a09d2fc43b3b26ae136489f4351c52ede57b6a5bfc18f18480`).
++
++## Supplied 4,100-frame / eight-family cache
++
++| Schedule | Untouched 0.20.228a0 | COVREF-PAR1 0.20.229a0 |
++|---|---:|---:|
++| 1 lane | 0.509 s | 0.532 s |
++| 2 lanes | 0.352 s | 0.334 s |
++| 3 lanes | 0.279 s | **0.223 s** |
++
++Three-lane paired speedup: **1.25×**. All three outer workers were observed busy. The one-lane queue path is intentionally reported even though it is slightly slower on this small fixture.
++
++## 36,408-row nonuniform equal-unit/equal-frame stress family
++
++Untouched 0.20.228a0 at three native cKDTree workers: **5.935 s**. COVREF-PAR1 at three outer lanes: **5.131 s**, a **1.16×** speedup. The adaptive scheduler emitted 361 cache-sized row tasks and used all three lanes.
++
++Timing is execution evidence only. Exact arrays/digests are the gate authority.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/benchmarks/mlff_covref_par1_implementation_manifest_0.20.229a0.json /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/benchmarks/mlff_covref_par1_implementation_manifest_0.20.229a0.json
+--- /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/benchmarks/mlff_covref_par1_implementation_manifest_0.20.229a0.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/benchmarks/mlff_covref_par1_implementation_manifest_0.20.229a0.json	2026-08-17 21:59:05.606566884 +0000
+@@ -0,0 +1,22 @@
++{
++  "active_foundation_qualification": "MACE-MPA-0 medium",
++  "architecture_revision": 96,
++  "mh1_supported_by_same_contract": true,
++  "modules": [
++    "mdstats/training_data/target_coverage.py",
++    "mdstats/training_data/campaign_cli.py",
++    "mdstats/training_data/work_queue.py"
++  ],
++  "realization": {
++    "direct_api_native_worker_path_retained": true,
++    "native_tree_workers_per_task": 1,
++    "outer_scheduler": "DeterministicWorkQueue",
++    "pair_rule_lookup": "O(1) map",
++    "parallel_block_size": "adaptive <= configured block; ~2 MiB query temporary target; >=4 tasks/lane when possible",
++    "scalar_constant_rejection": "historical np.allclose before radius construction",
++    "species_residual_lookup": "O(1) map"
++  },
++  "release": "0.20.229a0",
++  "schema": "mdstats.mlff-covref-par1-implementation-manifest.v1",
++  "scientific_authority_change": false
++}
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/docs/arch_manuals/README.md /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/docs/arch_manuals/README.md
+--- /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/docs/arch_manuals/README.md	2026-08-17 21:25:32.000000000 +0000
++++ /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/docs/arch_manuals/README.md	2026-08-17 21:56:08.379339761 +0000
+@@ -44,7 +44,7 @@
+ 
+ ## MLFF architecture
+ 
+-- `mlff_training_data_architecture.{md,pdf}`: current normative MLFF training-data/fine-tuning architecture, revision 95. The manual is state-oriented and includes theory, ownership, target-data multi-view algorithms, execution/performance design, current status, and forward gates.
++- `mlff_training_data_architecture.{md,pdf}`: current normative MLFF training-data/fine-tuning architecture, revision 96. The manual is state-oriented and includes theory, ownership, target-data multi-view algorithms, execution/performance design, current status, and forward gates.
+ - `mlff_training_data/`: numbered maintainable chapter sources for the assembled manual. Use `tools/build_mlff_architecture_manual.py`; do not hand-edit only the assembled file.
+ - `mlff_training_data_dependency_graph.json`: machine-readable current dependency and gate graph.
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/docs/arch_manuals/mlff_training_data/00_front_matter.md /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/docs/arch_manuals/mlff_training_data/00_front_matter.md
+--- /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/docs/arch_manuals/mlff_training_data/00_front_matter.md	2026-08-17 21:25:32.000000000 +0000
++++ /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/docs/arch_manuals/mlff_training_data/00_front_matter.md	2026-08-17 21:56:08.378717535 +0000
+@@ -1,8 +1,8 @@
+ ---
+ geometry: "margin=0.75in"
+-architecture_revision: 95
+-release: "mdstats 0.20.228a0"
+-status: "current normative architecture; MVIDX-REUSE1 complete; COVREF-PAR1 next"
++architecture_revision: 96
++release: "mdstats 0.20.229a0"
++status: "current normative architecture; COVREF-PAR1 complete; MVKERNEL1 next"
+ last_updated: "2026-08-17"
+ ---
+ 
+@@ -76,4 +76,4 @@
+ 
+ ## Current release boundary
+ 
+-Revision 95 completes `MVIDX-REUSE1` on top of `NEIGHBOR1` and `PARCORE1`. On an authenticated NEIGHBOR1 cache hit, MVIDX1 now performs no geometry and schedules independent required-family inversions plus hard-obligation inversion through one bounded deterministic work queue. Each individual CSR-to-CSC conversion remains a deterministic compiled counting transpose with one native execution lane; canonical family order is restored after arbitrary task completion. The former per-row sorted/unique validator is replaced by an exact vectorized CSR-boundary-masked predicate, removing the dominant Python-loop overhead. Scientific FEAS1/MVIDX authorities, TARGET-DATA2 selection semantics, training/evaluation semantics, and GPU authority are unchanged. The active qualification checkpoint remains MACE-MPA-0 medium, while the optimization contains no foundation-specific assumptions and remains valid for MACE-MH-1 campaigns. `COVREF-PAR1` is next; GPU performance authority remains deferred.
++Revision 96 completes `COVREF-PAR1` on top of `PARCORE1`. TARGET-DATA2B reference-radius construction now uses one stage-wide deterministic outer block queue with exactly one native cKDTree worker per task, cache-sized/adaptive row blocks, shared read-only scaled arrays/trees, and exact disjoint row writes. Raw-pair and foundation-species extraction use O(1) lookup maps, and target-label scalar families apply their historical constant-family rejection before statistics/tree construction. The frozen local-radius/reference-family authority is unchanged byte-for-byte across worker counts. The active qualification checkpoint remains MACE-MPA-0 medium, while the optimization contains no foundation-specific assumptions and remains valid for MACE-MH-1 campaigns. `MVKERNEL1` is next; GPU performance authority remains deferred.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/docs/arch_manuals/mlff_training_data/60_execution_performance.md /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/docs/arch_manuals/mlff_training_data/60_execution_performance.md
+--- /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/docs/arch_manuals/mlff_training_data/60_execution_performance.md	2026-08-17 21:25:32.000000000 +0000
++++ /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/docs/arch_manuals/mlff_training_data/60_execution_performance.md	2026-08-17 22:15:46.519254165 +0000
+@@ -82,6 +82,18 @@
+ 
+ The prior row-by-row strict-order validator was also a measured MVIDX hotspot. Revision 95 replaces it with one vectorized adjacent-index comparison and masks pairs crossing CSR row boundaries. The predicate is mathematically identical: every within-row adjacent pair must remain strictly increasing; worker count and queue completion order remain execution-only.
+ 
++## COVREF-PAR1 - exact reference-radius block scheduling
++
++`COVREF-PAR1` (`0.20.229a0`) removes the remaining one-driver/native-tree pattern from TARGET-DATA2B reference-radius construction. Each family still computes the identical robust scales, scaled coordinates, balanced reference masses, and exact leave-one-out local radius. The scaled matrix and one read-only `cKDTree` are constructed once per family; independent row blocks are then submitted to the stage-wide `DeterministicWorkQueue`, and every task calls the tree with `workers=1`. Results write to disjoint canonical row slices, so task completion order cannot alter the local-radius array. Direct API calls that omit `execution_scope` retain the historical native-tree `query_workers` realization for compatibility and oracle comparison.
++
++Parallel block size is execution-only. The configured `radius_block_size` remains an upper bound, while the queue may reduce it to keep the estimated cKDTree temporary working set near 2 MiB and expose at least four blocks per assigned lane on sufficiently large families. This is especially important for 30k-40k-frame target domains: a fixed 1024-row block would expose only about 36 tasks and develop a large tail on a 28-lane workstation. Block boundaries are not scientific inputs; qualification requires byte-identical radii across block/worker schedules.
++
++The family-adaptation path is also hardened without changing inclusion rules. Pair-geometry records are indexed once by `(frame_uid, rule_id)`, foundation species residuals once by `(frame_uid, atomic_number)`, and target-label scalar channels execute the exact historical `np.allclose` constant-family rejection before robust-statistic/tree work instead of after it. Weight-profile caching remains content-derived execution state, and scaling is materialized once per family and shared read-only by radius tasks.
++
++The campaign resolves TARGET-DATA2B construction workers separately from later coverage-scoring native-tree widths. Automatic COVREF uses the complete configured CPU budget as outer lanes; `StageResourceScope` fixes `tree_workers=1` and `blas_threads=1`, making $P_{\mathrm{outer}}\times P_{\mathrm{native}}=P_{\mathrm{outer}}$ and preventing nested oversubscription.
++
++Direct FEAS1, NEIGHBOR1-rebuild, and MVIDX inversion API calls that do not supply a `StageResourceScope` likewise retain historical host-independent execution semantics: their implicit scopes do not synthesize hard RAM ceilings from momentary shared-host/cgroup free-memory readings. Campaign execution, which owns the resource contract, continues to pass explicit RAM-bounded scopes and therefore remains fail-closed under declared memory limits. This distinction prevents transient unrelated host load from turning an otherwise identical direct scientific call into a scheduler-admission failure.
++
+ ## Memory budget and persistence
+ 
+ CPU admission is necessary but insufficient. The scheduler SHALL track an estimated memory budget
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/docs/arch_manuals/mlff_training_data/70_status_and_gates.md /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/docs/arch_manuals/mlff_training_data/70_status_and_gates.md
+--- /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/docs/arch_manuals/mlff_training_data/70_status_and_gates.md	2026-08-17 21:31:58.000000000 +0000
++++ /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/docs/arch_manuals/mlff_training_data/70_status_and_gates.md	2026-08-17 21:58:40.138519369 +0000
+@@ -7,6 +7,7 @@
+ The most recent implemented performance gate is:
+ 
+ - **MVIDX-REUSE1 (`0.20.228a0`)** - cached MVIDX component-level sparse inversion on the shared deterministic scheduler plus exact vectorized CSR validation; NEIGHBOR1 geometry reuse remains unchanged.
++- **COVREF-PAR1 (`0.20.229a0`)** - TARGET-DATA2B exact reference-radius construction on one single-level global block queue with adaptive cache-sized tasks, O(1) pair/species adapters, and unchanged radius/reference authority.
+ 
+ `PERFBASE1` (`0.20.225a0`) remains the frozen measurement authority used to judge subsequent optimization gates. `TARGET-DATA2B-FEAS1-PERF3` (`0.20.223a0`) is the direct predecessor scheduler whose successful global single-level execution pattern PARCORE1 generalizes.
+ 
+@@ -60,13 +61,15 @@
+ 
+ **Next gate.** `COVREF-PAR1`.
+ 
+-### Gate COVREF-PAR1 - TARGET-DATA2B exact CPU parallelization
++### Gate COVREF-PAR1 - TARGET-DATA2B exact CPU parallelization - COMPLETE
+ 
+ **Purpose.** Remove the remaining one-driver cKDTree pattern from reference-radius/coverage construction.
+ 
+-**Implementation.** Global block scheduling, one native tree worker/task while the queue is full, early constant-family rejection, cached scaling and O(1) rule/species lookup maps.
++**Implementation.** `0.20.229a0` routes exact local-radius row blocks through the stage-wide `DeterministicWorkQueue`, with one native cKDTree worker/task and one shared read-only tree/scaled matrix per family. Execution-only adaptive row sizing caps the historical block size by an approximately 2 MiB query-temporary target and a minimum task-count rule, preventing long tails on high-core-count hosts. Pair-rule and foundation-species adapters use O(1) maps, and target-label scalar channels apply their exact historical constant-family rejection before expensive statistics/tree work. Direct API calls without an execution scope retain the historical native-tree implementation for qualification/backward compatibility.
+ 
+-**Acceptance.** Decision/array equality to serial authority; high occupancy on compute-bound bulk work; no nested oversubscription.
++**Acceptance. PASS.** The frozen PERFBASE1 supplied-data radius digest remains exactly `823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d` across 1/2/3 outer lanes. In the final same-host four-repeat supplied-cache comparison, untouched `0.20.228a0` measures about 0.279 s median at three native cKDTree workers and `0.20.229a0` measures about 0.223 s at three outer lanes (about 1.25x faster); all three outer lanes are observed active. The frozen PERFBASE1 three-lane baseline was about 0.42 s, illustrating host-load variability and why paired controls are retained. A separate 36,408-row nonuniform equal-unit/equal-frame two-repeat stress family preserves byte-identical radii and improves from about 5.94 s to about 5.13 s (about 1.16x). One-lane queue execution is essentially neutral/slightly slower on the small cache, so the gate does not claim a serial speedup. The exact scientific/reference arrays, not wall time, are the gate authority; nested native-tree parallelism is rejected.
++
++**Next gate.** `MVKERNEL1`.
+ 
+ ### Gate MVKERNEL1 - sparse selector/qualification vector kernels
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/docs/arch_manuals/mlff_training_data_architecture.md /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/docs/arch_manuals/mlff_training_data_architecture.md
+--- /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-17 21:31:59.000000000 +0000
++++ /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-17 22:15:48.087979369 +0000
+@@ -1,8 +1,8 @@
+ ---
+ geometry: "margin=0.75in"
+-architecture_revision: 95
+-release: "mdstats 0.20.228a0"
+-status: "current normative architecture; MVIDX-REUSE1 complete; COVREF-PAR1 next"
++architecture_revision: 96
++release: "mdstats 0.20.229a0"
++status: "current normative architecture; COVREF-PAR1 complete; MVKERNEL1 next"
+ last_updated: "2026-08-17"
+ ---
+ 
+@@ -76,7 +76,7 @@
+ 
+ ## Current release boundary
+ 
+-Revision 95 completes `MVIDX-REUSE1` on top of `NEIGHBOR1` and `PARCORE1`. On an authenticated NEIGHBOR1 cache hit, MVIDX1 now performs no geometry and schedules independent required-family inversions plus hard-obligation inversion through one bounded deterministic work queue. Each individual CSR-to-CSC conversion remains a deterministic compiled counting transpose with one native execution lane; canonical family order is restored after arbitrary task completion. The former per-row sorted/unique validator is replaced by an exact vectorized CSR-boundary-masked predicate, removing the dominant Python-loop overhead. Scientific FEAS1/MVIDX authorities, TARGET-DATA2 selection semantics, training/evaluation semantics, and GPU authority are unchanged. The active qualification checkpoint remains MACE-MPA-0 medium, while the optimization contains no foundation-specific assumptions and remains valid for MACE-MH-1 campaigns. `COVREF-PAR1` is next; GPU performance authority remains deferred.
++Revision 96 completes `COVREF-PAR1` on top of `PARCORE1`. TARGET-DATA2B reference-radius construction now uses one stage-wide deterministic outer block queue with exactly one native cKDTree worker per task, cache-sized/adaptive row blocks, shared read-only scaled arrays/trees, and exact disjoint row writes. Raw-pair and foundation-species extraction use O(1) lookup maps, and target-label scalar families apply their historical constant-family rejection before statistics/tree construction. The frozen local-radius/reference-family authority is unchanged byte-for-byte across worker counts. The active qualification checkpoint remains MACE-MPA-0 medium, while the optimization contains no foundation-specific assumptions and remains valid for MACE-MH-1 campaigns. `MVKERNEL1` is next; GPU performance authority remains deferred.
+ 
+ # Part I - Foundations and ownership
+ 
+@@ -2493,6 +2493,18 @@
+ 
+ The prior row-by-row strict-order validator was also a measured MVIDX hotspot. Revision 95 replaces it with one vectorized adjacent-index comparison and masks pairs crossing CSR row boundaries. The predicate is mathematically identical: every within-row adjacent pair must remain strictly increasing; worker count and queue completion order remain execution-only.
+ 
++## COVREF-PAR1 - exact reference-radius block scheduling
++
++`COVREF-PAR1` (`0.20.229a0`) removes the remaining one-driver/native-tree pattern from TARGET-DATA2B reference-radius construction. Each family still computes the identical robust scales, scaled coordinates, balanced reference masses, and exact leave-one-out local radius. The scaled matrix and one read-only `cKDTree` are constructed once per family; independent row blocks are then submitted to the stage-wide `DeterministicWorkQueue`, and every task calls the tree with `workers=1`. Results write to disjoint canonical row slices, so task completion order cannot alter the local-radius array. Direct API calls that omit `execution_scope` retain the historical native-tree `query_workers` realization for compatibility and oracle comparison.
++
++Parallel block size is execution-only. The configured `radius_block_size` remains an upper bound, while the queue may reduce it to keep the estimated cKDTree temporary working set near 2 MiB and expose at least four blocks per assigned lane on sufficiently large families. This is especially important for 30k-40k-frame target domains: a fixed 1024-row block would expose only about 36 tasks and develop a large tail on a 28-lane workstation. Block boundaries are not scientific inputs; qualification requires byte-identical radii across block/worker schedules.
++
++The family-adaptation path is also hardened without changing inclusion rules. Pair-geometry records are indexed once by `(frame_uid, rule_id)`, foundation species residuals once by `(frame_uid, atomic_number)`, and target-label scalar channels execute the exact historical `np.allclose` constant-family rejection before robust-statistic/tree work instead of after it. Weight-profile caching remains content-derived execution state, and scaling is materialized once per family and shared read-only by radius tasks.
++
++The campaign resolves TARGET-DATA2B construction workers separately from later coverage-scoring native-tree widths. Automatic COVREF uses the complete configured CPU budget as outer lanes; `StageResourceScope` fixes `tree_workers=1` and `blas_threads=1`, making $P_{\mathrm{outer}}\times P_{\mathrm{native}}=P_{\mathrm{outer}}$ and preventing nested oversubscription.
++
++Direct FEAS1, NEIGHBOR1-rebuild, and MVIDX inversion API calls that do not supply a `StageResourceScope` likewise retain historical host-independent execution semantics: their implicit scopes do not synthesize hard RAM ceilings from momentary shared-host/cgroup free-memory readings. Campaign execution, which owns the resource contract, continues to pass explicit RAM-bounded scopes and therefore remains fail-closed under declared memory limits. This distinction prevents transient unrelated host load from turning an otherwise identical direct scientific call into a scheduler-admission failure.
++
+ ## Memory budget and persistence
+ 
+ CPU admission is necessary but insufficient. The scheduler SHALL track an estimated memory budget
+@@ -2615,6 +2627,7 @@
+ The most recent implemented performance gate is:
+ 
+ - **MVIDX-REUSE1 (`0.20.228a0`)** - cached MVIDX component-level sparse inversion on the shared deterministic scheduler plus exact vectorized CSR validation; NEIGHBOR1 geometry reuse remains unchanged.
++- **COVREF-PAR1 (`0.20.229a0`)** - TARGET-DATA2B exact reference-radius construction on one single-level global block queue with adaptive cache-sized tasks, O(1) pair/species adapters, and unchanged radius/reference authority.
+ 
+ `PERFBASE1` (`0.20.225a0`) remains the frozen measurement authority used to judge subsequent optimization gates. `TARGET-DATA2B-FEAS1-PERF3` (`0.20.223a0`) is the direct predecessor scheduler whose successful global single-level execution pattern PARCORE1 generalizes.
+ 
+@@ -2668,13 +2681,15 @@
+ 
+ **Next gate.** `COVREF-PAR1`.
+ 
+-### Gate COVREF-PAR1 - TARGET-DATA2B exact CPU parallelization
++### Gate COVREF-PAR1 - TARGET-DATA2B exact CPU parallelization - COMPLETE
+ 
+ **Purpose.** Remove the remaining one-driver cKDTree pattern from reference-radius/coverage construction.
+ 
+-**Implementation.** Global block scheduling, one native tree worker/task while the queue is full, early constant-family rejection, cached scaling and O(1) rule/species lookup maps.
++**Implementation.** `0.20.229a0` routes exact local-radius row blocks through the stage-wide `DeterministicWorkQueue`, with one native cKDTree worker/task and one shared read-only tree/scaled matrix per family. Execution-only adaptive row sizing caps the historical block size by an approximately 2 MiB query-temporary target and a minimum task-count rule, preventing long tails on high-core-count hosts. Pair-rule and foundation-species adapters use O(1) maps, and target-label scalar channels apply their exact historical constant-family rejection before expensive statistics/tree work. Direct API calls without an execution scope retain the historical native-tree implementation for qualification/backward compatibility.
++
++**Acceptance. PASS.** The frozen PERFBASE1 supplied-data radius digest remains exactly `823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d` across 1/2/3 outer lanes. In the final same-host four-repeat supplied-cache comparison, untouched `0.20.228a0` measures about 0.279 s median at three native cKDTree workers and `0.20.229a0` measures about 0.223 s at three outer lanes (about 1.25x faster); all three outer lanes are observed active. The frozen PERFBASE1 three-lane baseline was about 0.42 s, illustrating host-load variability and why paired controls are retained. A separate 36,408-row nonuniform equal-unit/equal-frame two-repeat stress family preserves byte-identical radii and improves from about 5.94 s to about 5.13 s (about 1.16x). One-lane queue execution is essentially neutral/slightly slower on the small cache, so the gate does not claim a serial speedup. The exact scientific/reference arrays, not wall time, are the gate authority; nested native-tree parallelism is rejected.
+ 
+-**Acceptance.** Decision/array equality to serial authority; high occupancy on compute-bound bulk work; no nested oversubscription.
++**Next gate.** `MVKERNEL1`.
+ 
+ ### Gate MVKERNEL1 - sparse selector/qualification vector kernels
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/docs/arch_manuals/mlff_training_data_dependency_graph.json /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/docs/arch_manuals/mlff_training_data_dependency_graph.json
+--- /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-17 21:26:02.000000000 +0000
++++ /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-17 21:56:08.391939576 +0000
+@@ -1,8 +1,8 @@
+ {
+-  "architecture_revision": 95,
++  "architecture_revision": 96,
+   "branch": "MLFF-DATA",
+-  "description": "MLFF training-data dependency graph through architecture revision 95. MVIDX-REUSE1 implements exact cached sparse-inversion parallelism and vectorized CSR validation; COVREF-PAR1 is next.",
+-  "documentation_gate": "MVIDX_REUSE1_SPARSE_TRANSPOSE",
++  "description": "MLFF training-data dependency graph through architecture revision 96. COVREF-PAR1 implements exact TARGET-DATA2B outer block scheduling and adapter lookup hardening; MVKERNEL1 is next.",
++  "documentation_gate": "COVREF_PAR1_GLOBAL_BLOCK_QUEUE",
+   "edge_type_definitions": {
+     "execution_requires": "The upstream product must exist before execution.",
+     "fit_domain_requires": "The fitted object may inspect only the declared training domain.",
+@@ -3201,7 +3201,7 @@
+       ]
+     }
+   ],
+-  "next_gate": "COVREF_PAR1_GLOBAL_BLOCK_QUEUE",
++  "next_gate": "MVKERNEL1_VECTOR_SPARSE_KERNELS",
+   "nodes": [
+     {
+       "id": "ACQUISITION_DECISIONS"
+@@ -5382,15 +5382,24 @@
+       "vectorized_sorted_unique_row_validation": true
+     },
+     {
+-      "architecture_revision": 95,
+-      "authority_class": "planned_performance_exact_equivalence",
++      "active_foundation_qualification": "MACE-MPA-0 medium",
++      "adaptive_cache_sized_blocks": true,
++      "architecture_revision": 96,
++      "authority_class": "performance_exact_equivalence",
+       "gate_name": "COVREF-PAR1",
+       "id": "COVREF_PAR1_GLOBAL_BLOCK_QUEUE",
+-      "implementation_status": "planned",
+-      "scientific_authority_change": false
++      "implementation_status": "implemented",
++      "implemented_release": "0.20.229a0",
++      "mh1_supported_by_same_contract": true,
++      "o1_pair_species_lookup_maps": true,
++      "parallel_granularity": "exact local-radius row blocks",
++      "radius_scientific_output_digest": "823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d",
++      "runtime_optimization_change": true,
++      "scientific_authority_change": false,
++      "single_native_tree_worker_per_task": true
+     },
+     {
+-      "architecture_revision": 91,
++      "architecture_revision": 96,
+       "authority_class": "planned_performance_exact_equivalence",
+       "gate_name": "MVKERNEL1",
+       "id": "MVKERNEL1_VECTOR_SPARSE_KERNELS",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV96.md /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV96.md
+--- /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV96.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV96.md	2026-08-17 22:15:46.519572511 +0000
+@@ -0,0 +1,16 @@
++# MLFF Architecture Revision 96
++
++**Release:** `mdstats 0.20.229a0`  
++**Gate:** `COVREF-PAR1`
++
++Revision 96 completes exact CPU parallelization of TARGET-DATA2B reference-radius construction. The historical family-by-family driver used multi-threaded native cKDTree queries inside a serial Python block loop. The new execution path uses the shared PARCORE1 deterministic queue as the outer concurrency layer and fixes each native tree call to one worker.
++
++The scientific algorithm is unchanged: balanced correlation-unit masses, robust scales, scaled Euclidean metric, leave-one-out `beta=1/128` reference mass, extent statistics, family identities, and serialized authority remain identical. Row blocks write to disjoint output ranges, so arbitrary completion order cannot perturb results.
++
++An execution-only adaptive block policy keeps query temporaries cache-sized and exposes enough tasks for high-core-count hosts. O(1) pair-rule and species-residual maps remove repeated linear record scans, and the historical target-label scalar constant-family rejection is moved before expensive radius construction without changing its predicate.
++
++Clean-room qualification also hardened the PARCORE1 fallback boundary: direct FEAS1, NEIGHBOR1-rebuild, and MVIDX calls with no caller-supplied resource scope are no longer bound to transient auto-detected free-RAM snapshots. Explicit campaign scopes still enforce their RAM budgets exactly. This removes host-load-dependent direct-API failures without relaxing campaign memory admission.
++
++The active performance qualification uses the supplied MACE-MPA-0 medium checkpoint only as campaign provenance. COVREF-PAR1 itself contains no foundation-model assumption and remains applicable to MACE-MH-1.
++
++`MVKERNEL1` is the next optimization gate.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/docs/history/mlff/architecture_revisions/INDEX.md /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/docs/history/mlff/architecture_revisions/INDEX.md
+--- /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/docs/history/mlff/architecture_revisions/INDEX.md	2026-08-17 21:26:03.000000000 +0000
++++ /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/docs/history/mlff/architecture_revisions/INDEX.md	2026-08-17 21:56:30.581067092 +0000
+@@ -77,3 +77,4 @@
+ | 93 | PARCORE1 / mdstats 0.20.226a0 | [MLFF Architecture Revision 93](ARCHITECTURE_NOTES_MLFF_REV93.md) | - |
+ | 94 | NEIGHBOR1 / mdstats 0.20.227a0 | [MLFF Architecture Revision 94](ARCHITECTURE_NOTES_MLFF_REV94.md) | - |
+ | 95 | MVIDX-REUSE1 / mdstats 0.20.228a0 | [MLFF Architecture Revision 95](ARCHITECTURE_NOTES_MLFF_REV95.md) | - |
++| 96 | COVREF-PAR1 / mdstats 0.20.229a0 | [MLFF Architecture Revision 96](ARCHITECTURE_NOTES_MLFF_REV96.md) | - |
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/docs/history/mlff/release_notes/INDEX.md /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/docs/history/mlff/release_notes/INDEX.md
+--- /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/docs/history/mlff/release_notes/INDEX.md	2026-08-17 21:26:03.000000000 +0000
++++ /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/docs/history/mlff/release_notes/INDEX.md	2026-08-17 21:56:30.581189589 +0000
+@@ -169,3 +169,4 @@
+ | `0.20.226a0` | [PATCH_NOTES_0.20.226a0.md](PATCH_NOTES_0.20.226a0.md) | - |
+ | `0.20.227a0` | [PATCH_NOTES_0.20.227a0.md](PATCH_NOTES_0.20.227a0.md) | - |
+ | `0.20.228a0` | [PATCH_NOTES_0.20.228a0.md](PATCH_NOTES_0.20.228a0.md) | - |
++| `0.20.229a0` | [PATCH_NOTES_0.20.229a0.md](PATCH_NOTES_0.20.229a0.md) | - |
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.229a0.md /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.229a0.md
+--- /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.229a0.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.229a0.md	2026-08-17 22:15:46.519486158 +0000
+@@ -0,0 +1,12 @@
++# mdstats 0.20.229a0 patch notes
++
++- Implement COVREF-PAR1 / architecture revision 96 as an exact-equivalence optimization of TARGET-DATA2B reference-radius construction.
++- Replace the serial Python block driver around multi-threaded cKDTree with one stage-wide PARCORE1 outer block queue; every native tree query uses one worker.
++- Add execution-only adaptive row-block sizing to keep query temporaries cache-sized and expose several tasks per assigned CPU lane on 30k-40k-frame domains.
++- Preserve the historical direct API native-tree path when no execution scope is supplied, providing a stable serial/native oracle and backward-compatible execution control.
++- Harden PARCORE1 direct FEAS1/NEIGHBOR1/MVIDX fallback semantics: implicit direct-API execution no longer derives hard RAM ceilings from transient host/cgroup free memory; explicit campaign `StageResourceScope` RAM limits remain strictly enforced.
++- Replace repeated pair-rule and foundation-species linear scans with O(1) lookup maps.
++- Move the exact historical target-label scalar constant-family rejection before statistics/tree construction so rejected families consume no radius work.
++- Preserve frozen PERFBASE1 radius digest `823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d` across qualified worker schedules.
++- Keep active qualification on supplied MACE-MPA-0 medium while preserving the same execution contract for MACE-MH-1.
++- Next optimization gate is MVKERNEL1.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/docs/specs/training_data/mlff_covref_par1_reference_radius_parallel_spec.md /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/docs/specs/training_data/mlff_covref_par1_reference_radius_parallel_spec.md
+--- /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/docs/specs/training_data/mlff_covref_par1_reference_radius_parallel_spec.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/docs/specs/training_data/mlff_covref_par1_reference_radius_parallel_spec.md	2026-08-17 21:56:29.334433685 +0000
+@@ -0,0 +1,34 @@
++# MLFF COVREF-PAR1 exact reference-radius parallelization specification
++
++**Release:** `mdstats 0.20.229a0`  
++**Architecture revision:** 96  
++**Authority class:** performance exact equivalence
++
++## Scope
++
++COVREF-PAR1 changes TARGET-DATA2B reference construction execution only. It SHALL NOT change the target development domain, correlation-unit weights, robust scaling, extent statistics, reference-mass beta, leave-one-out rule, cKDTree metric, family inclusion, local-radius arrays, or serialized TARGET-DATA2B authority.
++
++## Parallel realization
++
++1. Campaign construction resolves an outer worker count from the configured CPU budget.
++2. A single `StageResourceScope` owns the stage with `python_workers=P`, `tree_workers=1`, and `blas_threads=1`.
++3. Each family constructs its scaled matrix and read-only cKDTree once.
++4. Independent row blocks are submitted through the shared `DeterministicWorkQueue`; every cKDTree query uses `workers=1`.
++5. Blocks write to disjoint canonical output slices. Completion order is execution-only.
++6. The configured radius block size is an upper bound. The parallel path may reduce it using execution-only cache-working-set and occupancy heuristics.
++7. Direct API calls without an execution scope retain the historical native-tree `query_workers` path for compatibility and exact-oracle comparison.
++
++## Adapter hardening
++
++- Pair geometry lookup SHALL be O(1) by frame/rule after one index build.
++- Foundation species residual lookup SHALL be O(1) by frame/atomic number after one index build.
++- Target-label scalar constant-family rejection SHALL use the exact historical `np.allclose` predicate before robust statistics/tree construction.
++- Weight-profile caching and scaled arrays remain reconstructible execution state.
++
++## Acceptance
++
++- PERFBASE1 supplied-family radius digest is exactly `823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d` for all qualified worker schedules.
++- Full TARGET-DATA2B references are dictionary/digest identical between serial historical execution and COVREF-PAR1 execution.
++- Parallel work observes all assigned lanes on compute-bound fixtures.
++- Nested native-tree parallelism is rejected when an outer execution scope is active.
++- The active qualification checkpoint is MACE-MPA-0 medium; the contract is foundation-generic and applies unchanged to MACE-MH-1.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/mdstats/_version.py /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/mdstats/_version.py
+--- /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/mdstats/_version.py	2026-08-17 21:25:32.000000000 +0000
++++ /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/mdstats/_version.py	2026-08-17 21:56:08.378275624 +0000
+@@ -1 +1 @@
+-__version__ = "0.20.228a0"
++__version__ = "0.20.229a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/mdstats/training_data/campaign_cli.py /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/mdstats/training_data/campaign_cli.py
+--- /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/mdstats/training_data/campaign_cli.py	2026-08-17 21:23:24.000000000 +0000
++++ /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/mdstats/training_data/campaign_cli.py	2026-08-17 21:45:19.742433685 +0000
+@@ -3910,6 +3910,33 @@
+     return workers, resources
+ 
+ 
++def _target_coverage_reference_parallelism(cfg: Mapping[str, Any]) -> tuple[int, Any]:
++    """Resolve COVREF-PAR1 outer block workers for TARGET-DATA2B construction.
++
++    Reference construction is deliberately single-level: every Python lane
++    owns an independent cKDTree query block with ``workers=1``.  Automatic
++    mode uses the configured CPU budget rather than the historical eight-way
++    native-tree cap; the existing ``target_coverage_workers`` option remains
++    the execution-only explicit override.
++    """
++
++    resources = detect_system_resources(
++        cpu_fraction=float(_cfg(cfg, "performance", "cpu_fraction", 0.90)),
++        ram_fraction=float(_cfg(cfg, "performance", "ram_fraction", 0.80)),
++        gpu_memory_fraction=float(_cfg(cfg, "performance", "gpu_memory_fraction", 0.90)),
++        device="cpu",
++    )
++    requested = int(_cfg(cfg, "performance", "target_coverage_workers", 0))
++    if requested < 0:
++        raise CampaignCliError(
++            "[performance].target_coverage_workers must be zero (automatic) or a positive integer."
++        )
++    budget = max(1, int(resources.cpu_threads_budget))
++    available = max(1, int(resources.cpu_threads_available))
++    workers = min(budget, available) if requested == 0 else min(requested, budget, available)
++    return max(1, int(workers)), resources
++
++
+ def _target_coverage_feasibility_parallelism(
+     cfg: Mapping[str, Any],
+     coverage_reference: Any,
+@@ -4104,30 +4131,31 @@
+             return existing
+ 
+     _print_header("TARGET-DATA2B hierarchical reference-mass coverage authority")
+-    coverage_workers, coverage_resources = _target_coverage_query_workers(cfg)
++    coverage_workers, coverage_resources = _target_coverage_reference_parallelism(cfg)
+     print(
+-        f"[TARGET-DATA2B] exact local-kNN workers={coverage_workers}; "
++        f"[TARGET-DATA2B] COVREF-PAR1 outer workers={coverage_workers}; native cKDTree workers/task=1; "
+         f"CPU budget={coverage_resources.cpu_threads_budget}/{coverage_resources.cpu_threads_available}",
+         flush=True,
+     )
+     started = time.monotonic()
+     coverage_scope = build_stage_resource_scope(
+         coverage_resources,
+-        stage_name="TARGET-DATA2B",
+-        tree_workers=coverage_workers,
++        stage_name="TARGET-DATA2B-COVREF-PAR1",
++        python_workers=coverage_workers,
++        tree_workers=1,
+         blas_threads=1,
+     )
+-    with stage_resource_scope(coverage_scope):
+-        reference = mdstats.build_target_coverage_reference(
+-            data4,
+-            data5,
+-            data6,
+-            role_freeze,
+-            foundation_audit,
+-            policy=policy,
+-            progress_callback=lambda message: print(f"[TARGET-DATA2B] {message}", flush=True),
+-            query_workers=coverage_workers,
+-        )
++    reference = mdstats.build_target_coverage_reference(
++        data4,
++        data5,
++        data6,
++        role_freeze,
++        foundation_audit,
++        policy=policy,
++        progress_callback=lambda message: print(f"[TARGET-DATA2B] {message}", flush=True),
++        query_workers=1,
++        execution_scope=coverage_scope,
++    )
+     store.put_record("target_coverage_reference", reference)
+     for domain in reference.domains:
+         required = sum(item.required for item in domain.families)
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/mdstats/training_data/target_coverage.py /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/mdstats/training_data/target_coverage.py
+--- /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/mdstats/training_data/target_coverage.py	2026-08-15 14:15:02.000000000 +0000
++++ /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/mdstats/training_data/target_coverage.py	2026-08-17 21:53:27.552900520 +0000
+@@ -29,6 +29,8 @@
+     validate_digest,
+ )
+ from .difficulty import TrainingDifficultyDomainKind
++from .resources import StageResourceScope
++from .work_queue import DeterministicWorkQueue
+ 
+ TARGET_COVERAGE_POLICY_SCHEMA = "mdstats.target-coverage-policy.v1"
+ TARGET_COVERAGE_EXTENT_SCHEMA = "mdstats.target-coverage-extent.v1"
+@@ -1306,6 +1308,7 @@
+     weight_cache: _TargetCoverageBuildCache | None
+     radius_block_size: int
+     uniform_fast_path: bool
++    radius_queue: DeterministicWorkQueue | None = None
+ 
+ 
+ def _uniform_reference_rank(
+@@ -1337,6 +1340,98 @@
+     return index + 1
+ 
+ 
++def _local_reference_radii_uniform_block(
++    tree: cKDTree,
++    points: np.ndarray,
++    *,
++    start: int,
++    stop: int,
++    rank: int,
++    leave_one_out: bool,
++    query_workers: int,
++) -> tuple[int, np.ndarray]:
++    """Resolve one uniform local-radius row block exactly."""
++
++    n, dim = points.shape
++    query_k = min(n, rank + (1 if leave_one_out else 0))
++    rows = np.arange(start, stop, dtype=np.int64)
++    distances, neighbors = tree.query(points[rows], k=query_k, workers=query_workers)
++    if query_k == 1:
++        distances = np.asarray(distances, dtype=np.float64)[:, None]
++        neighbors = np.asarray(neighbors, dtype=np.int64)[:, None]
++    else:
++        distances = np.asarray(distances, dtype=np.float64)
++        neighbors = np.asarray(neighbors, dtype=np.int64)
++    valid = np.isfinite(distances) & (neighbors >= 0) & (neighbors < n)
++    if leave_one_out:
++        valid &= neighbors != rows[:, None]
++    valid_rank = np.cumsum(valid, axis=1)
++    reached = valid & (valid_rank == rank)
++    if np.any(~np.any(reached, axis=1)):
++        raise TrainingDataInputError("TARGET-DATA2B uniform neighbor rank cannot be resolved.")
++    hit = np.argmax(reached, axis=1)
++    norm = math.sqrt(float(dim))
++    block = distances[np.arange(rows.size), hit] / norm
++    return int(start), np.asarray(block, dtype=np.float64)
++
++
++def _local_reference_radii_weighted_block(
++    tree: cKDTree,
++    points: np.ndarray,
++    weights: np.ndarray,
++    *,
++    start: int,
++    stop: int,
++    beta: float,
++    leave_one_out: bool,
++    query_workers: int,
++) -> tuple[int, np.ndarray]:
++    """Resolve one weighted local-radius row block exactly."""
++
++    n, dim = points.shape
++    initial_k = min(n, max(8, int(math.ceil(beta * n * 1.5)) + 2))
++    norm = math.sqrt(float(dim))
++    block = np.empty(stop - start, dtype=np.float64)
++    pending = np.arange(start, stop, dtype=np.int64)
++    k = initial_k
++    while pending.size:
++        distances, neighbors = tree.query(points[pending], k=k, workers=query_workers)
++        if k == 1:
++            distances = distances[:, None]
++            neighbors = neighbors[:, None]
++        distances = np.asarray(distances, dtype=np.float64)
++        neighbors = np.asarray(neighbors, dtype=np.int64)
++        valid = np.isfinite(distances) & (neighbors >= 0) & (neighbors < n)
++        if leave_one_out:
++            valid &= neighbors != pending[:, None]
++            denominators = 1.0 - weights[pending]
++        else:
++            denominators = np.ones(pending.size, dtype=np.float64)
++        if np.any(denominators <= 0.0) or np.any(~np.any(valid, axis=1)):
++            raise TrainingDataInputError("TARGET-DATA2B local-radius reference is degenerate.")
++        safe_neighbors = np.where(valid, neighbors, 0)
++        neighbor_mass = np.where(valid, weights[safe_neighbors], 0.0)
++        cumulative = np.cumsum(neighbor_mass / denominators[:, None], axis=1)
++        reached = cumulative >= beta - 1.0e-15
++        resolved = np.any(reached, axis=1)
++        if np.any(resolved):
++            rows = np.flatnonzero(resolved)
++            first_hit = np.argmax(reached[rows], axis=1)
++            block[pending[rows] - start] = distances[rows, first_hit] / norm
++        unresolved_rows = np.flatnonzero(~resolved)
++        if unresolved_rows.size == 0:
++            break
++        if k >= n:
++            tails = cumulative[unresolved_rows, -1]
++            if np.any(tails + 1.0e-12 < beta):
++                raise TrainingDataInputError("TARGET-DATA2B local-radius mass target cannot be reached.")
++            block[pending[unresolved_rows] - start] = distances[unresolved_rows, -1] / norm
++            break
++        pending = pending[unresolved_rows]
++        k = min(n, max(k + 1, k * 2))
++    return int(start), block
++
++
+ def _local_reference_radii_uniform(
+     points: np.ndarray,
+     *,
+@@ -1345,30 +1440,21 @@
+     block_size: int,
+     query_workers: int,
+ ) -> np.ndarray:
+-    n, dim = points.shape
+-    query_k = min(n, rank + (1 if leave_one_out else 0))
++    n, _ = points.shape
+     tree = cKDTree(points)
+     radii = np.empty(n, dtype=np.float64)
+-    norm = math.sqrt(float(dim))
+     for start in range(0, n, block_size):
+         stop = min(n, start + block_size)
+-        rows = np.arange(start, stop, dtype=np.int64)
+-        distances, neighbors = tree.query(points[rows], k=query_k, workers=query_workers)
+-        if query_k == 1:
+-            distances = np.asarray(distances, dtype=np.float64)[:, None]
+-            neighbors = np.asarray(neighbors, dtype=np.int64)[:, None]
+-        else:
+-            distances = np.asarray(distances, dtype=np.float64)
+-            neighbors = np.asarray(neighbors, dtype=np.int64)
+-        valid = np.isfinite(distances) & (neighbors >= 0) & (neighbors < n)
+-        if leave_one_out:
+-            valid &= neighbors != rows[:, None]
+-        valid_rank = np.cumsum(valid, axis=1)
+-        reached = valid & (valid_rank == rank)
+-        if np.any(~np.any(reached, axis=1)):
+-            raise TrainingDataInputError("TARGET-DATA2B uniform neighbor rank cannot be resolved.")
+-        hit = np.argmax(reached, axis=1)
+-        radii[rows] = distances[np.arange(rows.size), hit] / norm
++        block_start, block = _local_reference_radii_uniform_block(
++            tree,
++            points,
++            start=start,
++            stop=stop,
++            rank=rank,
++            leave_one_out=leave_one_out,
++            query_workers=query_workers,
++        )
++        radii[block_start:block_start + block.size] = block
+     return radii
+ 
+ 
+@@ -1381,50 +1467,170 @@
+     block_size: int,
+     query_workers: int,
+ ) -> np.ndarray:
+-    n, dim = points.shape
++    n, _ = points.shape
+     tree = cKDTree(points)
+     radii = np.empty(n, dtype=np.float64)
+-    initial_k = min(n, max(8, int(math.ceil(beta * n * 1.5)) + 2))
+-    norm = math.sqrt(float(dim))
+     for start in range(0, n, block_size):
+         stop = min(n, start + block_size)
+-        pending = np.arange(start, stop, dtype=np.int64)
+-        k = initial_k
+-        while pending.size:
+-            distances, neighbors = tree.query(points[pending], k=k, workers=query_workers)
+-            if k == 1:
+-                distances = distances[:, None]
+-                neighbors = neighbors[:, None]
+-            distances = np.asarray(distances, dtype=np.float64)
+-            neighbors = np.asarray(neighbors, dtype=np.int64)
+-            valid = np.isfinite(distances) & (neighbors >= 0) & (neighbors < n)
+-            if leave_one_out:
+-                valid &= neighbors != pending[:, None]
+-                denominators = 1.0 - weights[pending]
+-            else:
+-                denominators = np.ones(pending.size, dtype=np.float64)
+-            if np.any(denominators <= 0.0) or np.any(~np.any(valid, axis=1)):
+-                raise TrainingDataInputError("TARGET-DATA2B local-radius reference is degenerate.")
+-            safe_neighbors = np.where(valid, neighbors, 0)
+-            neighbor_mass = np.where(valid, weights[safe_neighbors], 0.0)
+-            cumulative = np.cumsum(neighbor_mass / denominators[:, None], axis=1)
+-            reached = cumulative >= beta - 1.0e-15
+-            resolved = np.any(reached, axis=1)
+-            if np.any(resolved):
+-                rows = np.flatnonzero(resolved)
+-                first_hit = np.argmax(reached[rows], axis=1)
+-                radii[pending[rows]] = distances[rows, first_hit] / norm
+-            unresolved_rows = np.flatnonzero(~resolved)
+-            if unresolved_rows.size == 0:
+-                break
+-            if k >= n:
+-                tails = cumulative[unresolved_rows, -1]
+-                if np.any(tails + 1.0e-12 < beta):
+-                    raise TrainingDataInputError("TARGET-DATA2B local-radius mass target cannot be reached.")
+-                radii[pending[unresolved_rows]] = distances[unresolved_rows, -1] / norm
+-                break
+-            pending = pending[unresolved_rows]
+-            k = min(n, max(k + 1, k * 2))
++        block_start, block = _local_reference_radii_weighted_block(
++            tree,
++            points,
++            weights,
++            start=start,
++            stop=stop,
++            beta=beta,
++            leave_one_out=leave_one_out,
++            query_workers=query_workers,
++        )
++        radii[block_start:block_start + block.size] = block
++    return radii
++
++
++def _covref_parallel_block_size(
++    *,
++    n: int,
++    query_k: int,
++    configured_block_size: int,
++    workers: int,
++) -> int:
++    """Choose an execution-only row block that keeps tasks cache-sized and plentiful.
++
++    The scientific result is row-local and independent of block boundaries.
++    COVREF-PAR1 therefore caps each task near a ~2 MiB temporary-query working
++    set and also exposes at least four blocks per assigned outer lane when the
++    family is large enough.  The user/configured block remains an upper bound.
++    """
++
++    configured = max(1, int(configured_block_size))
++    rows = max(1, int(n))
++    k = max(1, int(query_k))
++    lanes = max(1, int(workers))
++    target_temp_bytes = 2 * 1024 * 1024
++    memory_rows = max(64, target_temp_bytes // max(1, k * 48))
++    occupancy_rows = max(64, int(math.ceil(rows / max(1, lanes * 4))))
++    return max(1, min(configured, memory_rows, occupancy_rows, rows))
++
++
++def _parallel_radius_memory_estimate(
++    *,
++    rows: int,
++    query_k: int,
++) -> int:
++    """Estimate bounded cKDTree block temporaries for scheduler admission."""
++
++    # Distances, indices, safe indices, masses/cumulative/rank arrays and
++    # boolean masks.  This is execution telemetry/admission only and is not
++    # scientific authority.
++    return int(max(1, rows) * max(1, query_k) * 48 + max(1, rows) * 128)
++
++
++def _local_reference_radii_parallel(
++    values: np.ndarray,
++    weights: np.ndarray,
++    *,
++    beta: float,
++    leave_one_out: bool,
++    block_size: int,
++    queue: DeterministicWorkQueue,
++    task_prefix: str,
++    uniform_fast_path: bool,
++) -> np.ndarray:
++    """Exact single-level COVREF-PAR1 block scheduling over one shared tree."""
++
++    points = np.asarray(values, dtype=np.float64)
++    weights = np.asarray(weights, dtype=np.float64)
++    if points.ndim != 2 or weights.shape != (points.shape[0],):
++        raise TrainingDataInputError("TARGET-DATA2B local-radius arrays are misaligned.")
++    n, _ = points.shape
++    if n < 2:
++        raise TrainingDataInputError("TARGET-DATA2B local radii require at least two elements.")
++    configured_block = max(1, int(block_size))
++    tree = cKDTree(points)
++    radii = np.empty(n, dtype=np.float64)
++    rank = _uniform_reference_rank(weights, beta=beta, leave_one_out=leave_one_out)
++    uniform = bool(uniform_fast_path and rank is not None)
++    if uniform:
++        query_k = min(n, int(rank) + (1 if leave_one_out else 0))
++    else:
++        query_k = min(n, max(8, int(math.ceil(beta * n * 1.5)) + 2))
++    row_block = _covref_parallel_block_size(
++        n=n,
++        query_k=query_k,
++        configured_block_size=configured_block,
++        workers=queue.allocated_workers,
++    )
++
++    submitters: list[Callable[[], None]] = []
++    for block_number, start in enumerate(range(0, n, row_block)):
++        stop = min(n, start + row_block)
++        memory = _parallel_radius_memory_estimate(rows=stop - start, query_k=query_k)
++        if uniform:
++            def submit_uniform(
++                *,
++                block_number: int = block_number,
++                start: int = start,
++                stop: int = stop,
++                memory: int = memory,
++            ) -> None:
++                queue.submit(
++                    task_id=f"{task_prefix}:radius:{block_number:08d}",
++                    canonical_order=(block_number,),
++                    function=_local_reference_radii_uniform_block,
++                    args=(tree, points),
++                    kwargs={
++                        "start": start,
++                        "stop": stop,
++                        "rank": int(rank),
++                        "leave_one_out": leave_one_out,
++                        "query_workers": 1,
++                    },
++                    task_kind="target-data2b-reference-radius",
++                    estimated_memory_bytes=memory,
++                    locality_key=task_prefix,
++                )
++            submitters.append(submit_uniform)
++        else:
++            def submit_weighted(
++                *,
++                block_number: int = block_number,
++                start: int = start,
++                stop: int = stop,
++                memory: int = memory,
++            ) -> None:
++                queue.submit(
++                    task_id=f"{task_prefix}:radius:{block_number:08d}",
++                    canonical_order=(block_number,),
++                    function=_local_reference_radii_weighted_block,
++                    args=(tree, points, weights),
++                    kwargs={
++                        "start": start,
++                        "stop": stop,
++                        "beta": beta,
++                        "leave_one_out": leave_one_out,
++                        "query_workers": 1,
++                    },
++                    task_kind="target-data2b-reference-radius",
++                    estimated_memory_bytes=memory,
++                    locality_key=task_prefix,
++                )
++            submitters.append(submit_weighted)
++
++    # Submit/drain directly instead of using a nested executor.  The queue is
++    # shared across the entire TARGET-DATA2B construction stage.
++    next_submit = 0
++    completed = 0
++    while completed < len(submitters):
++        while next_submit < len(submitters) and queue.can_submit():
++            submitters[next_submit]()
++            next_submit += 1
++        queue.wait_for_completion()
++        for completion in queue.drain_completed():
++            start, block = completion.value
++            block = np.asarray(block, dtype=np.float64)
++            radii[int(start):int(start) + block.size] = block
++            completed += 1
++    if next_submit != len(submitters) or queue.has_outstanding_work:
++        raise RuntimeError("COVREF-PAR1 radius queue did not drain exactly.")
+     return radii
+ 
+ 
+@@ -1437,8 +1643,15 @@
+     block_size: int = 1024,
+     query_workers: int = 1,
+     uniform_fast_path: bool = True,
++    work_queue: DeterministicWorkQueue | None = None,
++    task_prefix: str = "target-data2b",
+ ) -> np.ndarray:
+-    """Return exact fixed-reference-mass radii with bounded query memory."""
++    """Return exact fixed-reference-mass radii with bounded query memory.
++
++    ``work_queue`` activates COVREF-PAR1 single-level block parallelism.  It is
++    execution-only; omitted callers retain the historical native-cKDTree
++    ``query_workers`` behavior for backward compatibility and qualification.
++    """
+ 
+     points = np.asarray(values, dtype=np.float64)
+     weights = np.asarray(weights, dtype=np.float64)
+@@ -1451,6 +1664,17 @@
+     if workers < 1:
+         raise TrainingDataInputError("TARGET-DATA2B query_workers must be positive.")
+     row_block = max(1, int(block_size))
++    if work_queue is not None:
++        return _local_reference_radii_parallel(
++            points,
++            weights,
++            beta=beta,
++            leave_one_out=leave_one_out,
++            block_size=row_block,
++            queue=work_queue,
++            task_prefix=str(task_prefix),
++            uniform_fast_path=uniform_fast_path,
++        )
+     rank = _uniform_reference_rank(weights, beta=beta, leave_one_out=leave_one_out)
+     if uniform_fast_path and rank is not None:
+         return _local_reference_radii_uniform(
+@@ -1469,7 +1693,6 @@
+         query_workers=workers,
+     )
+ 
+-
+ def _local_reference_radii_dense_exact(
+     values: np.ndarray,
+     weights: np.ndarray,
+@@ -1575,6 +1798,11 @@
+         block_size=(execution_context.radius_block_size if execution_context is not None else radius_block_size),
+         query_workers=query_workers,
+         uniform_fast_path=(execution_context.uniform_fast_path if execution_context is not None else uniform_fast_path),
++        work_queue=(execution_context.radius_queue if execution_context is not None else None),
++        task_prefix=(
++            f"{execution_context.label_domain_id}:{family_id}"
++            if execution_context is not None else family_id
++        ),
+     )
+     extent_channels: list[TargetCoverageExtentChannel] = []
+     if extent:
+@@ -1867,7 +2095,11 @@
+     execution_context: _TargetCoverageExecutionContext | None = None,
+ ) -> list[TargetCoverageFamilyReference]:
+     records = {uid: data4_bundle.raw_features.for_frame(uid) for uid in domain_frame_uids}
+-    rule_ids = sorted({item.rule_id for record in records.values() for item in record.pair_geometry_statistics})
++    pair_by_rule = {
++        uid: {item.rule_id: item for item in record.pair_geometry_statistics}
++        for uid, record in records.items()
++    }
++    rule_ids = sorted({rule_id for mapping in pair_by_rule.values() for rule_id in mapping})
+     result: list[TargetCoverageFamilyReference] = []
+     for rule_id in rule_ids:
+         for semantic, feature_names, getters in (
+@@ -1889,7 +2121,7 @@
+             uids: list[str] = []
+             rows: list[tuple[float, ...]] = []
+             for uid in domain_frame_uids:
+-                match = next((item for item in records[uid].pair_geometry_statistics if item.rule_id == rule_id), None)
++                match = pair_by_rule[uid].get(rule_id)
+                 if match is None:
+                     continue
+                 values = tuple(getter(match) for getter in getters)
+@@ -1986,13 +2218,19 @@
+                 continue
+             uids.append(uid)
+             rows.append((float(value),))
++        scalar_values = np.asarray(rows, dtype=np.float64)
++        # This is exactly the historical post-build rejection predicate, moved
++        # before robust statistics/tree construction so a constant scalar
++        # family cannot consume COVREF work.
++        if scalar_values.size and np.allclose(scalar_values[:, 0], scalar_values[0, 0]):
++            continue
+         family = _build_family(
+             family_id=family_id,
+             family_kind="target_label",
+             semantic_family=feature_name,
+             feature_names=(feature_name,),
+             frame_uids=uids,
+-            values=np.asarray(rows, dtype=np.float64),
++            values=scalar_values,
+             domain_frame_index=domain_frame_index,
+             data5_bundle=data5_bundle,
+             policy=policy,
+@@ -2001,8 +2239,9 @@
+             extent=True,
+             notes=("Physically interpretable scalar target-development channel.",),
+             query_workers=query_workers,
++            execution_context=execution_context,
+         )
+-        if family is not None and not np.allclose(np.asarray(family.values)[:, 0], np.asarray(family.values)[0, 0]):
++        if family is not None:
+             result.append(family)
+     return result
+ 
+@@ -2071,13 +2310,17 @@
+     if family is not None:
+         result.append(family)
+ 
+-    atomic_numbers = sorted({item.atomic_number for record in difficulty.records for item in record.species_force_errors})
++    species_by_uid = {
++        uid: {item.atomic_number: item for item in by_uid[uid].species_force_errors}
++        for uid in domain_frame_uids
++    }
++    atomic_numbers = sorted({atomic_number for mapping in species_by_uid.values() for atomic_number in mapping})
+     for atomic_number in atomic_numbers:
+         uids: list[str] = []
+         rows: list[tuple[float, ...]] = []
+         symbol = f"Z{atomic_number}"
+         for uid in domain_frame_uids:
+-            match = next((item for item in by_uid[uid].species_force_errors if item.atomic_number == atomic_number), None)
++            match = species_by_uid[uid].get(atomic_number)
+             if match is None:
+                 continue
+             symbol = match.symbol
+@@ -2108,6 +2351,7 @@
+             extent=True,
+             notes=("Species-normalized foundation residual family; species are separate pass/fail authorities.",),
+             query_workers=query_workers,
++            execution_context=execution_context,
+         )
+         if family is not None:
+             result.append(family)
+@@ -2213,6 +2457,7 @@
+     radius_block_size: int = 1024,
+     use_execution_caches: bool = True,
+     uniform_fast_path: bool = True,
++    execution_scope: StageResourceScope | None = None,
+ ) -> TargetCoverageReference:
+     """Freeze TARGET-DATA2B descriptor families, weights, local radii, and strata."""
+ 
+@@ -2232,126 +2477,153 @@
+     if not data6_bundle.universal_structural_features:
+         raise TrainingDataInputError("TARGET-DATA2B requires DATA6 universal structural features.")
+ 
+-    domains: list[TargetCoverageDomainReference] = []
+-    shared_weight_cache = _TargetCoverageBuildCache() if use_execution_caches else None
+-    for domain_number, frozen in enumerate(target_data_role_freeze.domains, start=1):
+-        frame_uids = tuple(sorted(frozen.size_development_frame_uids))
+-        frame_index = {uid: index for index, uid in enumerate(frame_uids)}
+-        try:
+-            correlation_unit_by_uid = {
+-                uid: data5_bundle.unit_catalog.unit_for_frame(uid).unit_id
+-                for uid in frame_uids
+-            }
+-        except KeyError as exc:
+-            raise TrainingDataInputError(
+-                "TARGET-DATA2B domain contains a frame outside DATA5."
+-            ) from exc
+-        execution_context = _TargetCoverageExecutionContext(
+-            label_domain_id=frozen.label_domain_id,
+-            correlation_unit_by_uid=correlation_unit_by_uid,
+-            weight_cache=shared_weight_cache,
+-            radius_block_size=max(1, int(radius_block_size)),
+-            uniform_fast_path=bool(uniform_fast_path),
+-        )
+-        if progress_callback is not None:
+-            progress_callback(
+-                f"TARGET-DATA2B domain {domain_number}/{len(target_data_role_freeze.domains)} "
+-                f"{frozen.label_domain_id}: {len(frame_uids):,} reference frames"
++    if execution_scope is not None and int(query_workers) != 1:
++        raise TrainingDataInputError(
++            "COVREF-PAR1 execution_scope requires query_workers=1 to prevent nested cKDTree parallelism."
++        )
++
++    def _build_domains(radius_queue: DeterministicWorkQueue | None) -> list[TargetCoverageDomainReference]:
++        domains: list[TargetCoverageDomainReference] = []
++        shared_weight_cache = _TargetCoverageBuildCache() if use_execution_caches else None
++        for domain_number, frozen in enumerate(target_data_role_freeze.domains, start=1):
++            frame_uids = tuple(sorted(frozen.size_development_frame_uids))
++            frame_index = {uid: index for index, uid in enumerate(frame_uids)}
++            try:
++                correlation_unit_by_uid = {
++                    uid: data5_bundle.unit_catalog.unit_for_frame(uid).unit_id
++                    for uid in frame_uids
++                }
++            except KeyError as exc:
++                raise TrainingDataInputError(
++                    "TARGET-DATA2B domain contains a frame outside DATA5."
++                ) from exc
++            execution_context = _TargetCoverageExecutionContext(
++                label_domain_id=frozen.label_domain_id,
++                correlation_unit_by_uid=correlation_unit_by_uid,
++                weight_cache=shared_weight_cache,
++                radius_block_size=max(1, int(radius_block_size)),
++                uniform_fast_path=bool(uniform_fast_path),
++                radius_queue=radius_queue,
+             )
+-            progress_callback(
+-                f"TARGET-DATA2B exact local-kNN execution: workers={int(query_workers)}; "
+-                "vectorized weighted-mass accumulation=on"
++            if progress_callback is not None:
++                progress_callback(
++                    f"TARGET-DATA2B domain {domain_number}/{len(target_data_role_freeze.domains)} "
++                    f"{frozen.label_domain_id}: {len(frame_uids):,} reference frames"
++                )
++                if radius_queue is None:
++                    progress_callback(
++                        f"TARGET-DATA2B exact local-kNN execution: native_workers={int(query_workers)}; "
++                        "outer_block_queue=off; vectorized weighted-mass accumulation=on"
++                    )
++                else:
++                    progress_callback(
++                        "TARGET-DATA2B exact local-kNN execution: "
++                        f"outer_workers={radius_queue.allocated_workers}; native_workers=1; "
++                        "outer_block_queue=on; vectorized weighted-mass accumulation=on"
++                    )
++            families: list[TargetCoverageFamilyReference] = []
++            families.extend(
++                _structural_families_for_domain(
++                    domain_frame_uids=frame_uids,
++                    domain_frame_index=frame_index,
++                    data5_bundle=data5_bundle,
++                    data6_bundle=data6_bundle,
++                    policy=active,
++                    progress_callback=progress_callback,
++                    query_workers=query_workers,
++                    execution_context=execution_context,
++                )
+             )
+-        families: list[TargetCoverageFamilyReference] = []
+-        families.extend(
+-            _structural_families_for_domain(
+-                domain_frame_uids=frame_uids,
+-                domain_frame_index=frame_index,
+-                data5_bundle=data5_bundle,
+-                data6_bundle=data6_bundle,
+-                policy=active,
+-                progress_callback=progress_callback,
+-                query_workers=query_workers,
+-                execution_context=execution_context,
++            families.extend(
++                _profile_families_for_domain(
++                    domain_frame_uids=frame_uids,
++                    domain_frame_index=frame_index,
++                    data5_bundle=data5_bundle,
++                    data6_bundle=data6_bundle,
++                    policy=active,
++                    query_workers=query_workers,
++                    execution_context=execution_context,
++                )
+             )
+-        )
+-        families.extend(
+-            _profile_families_for_domain(
+-                domain_frame_uids=frame_uids,
+-                domain_frame_index=frame_index,
+-                data5_bundle=data5_bundle,
+-                data6_bundle=data6_bundle,
+-                policy=active,
+-                query_workers=query_workers,
+-                execution_context=execution_context,
++            families.extend(
++                _raw_pair_families_for_domain(
++                    domain_frame_uids=frame_uids,
++                    domain_frame_index=frame_index,
++                    data4_bundle=data4_bundle,
++                    data5_bundle=data5_bundle,
++                    policy=active,
++                    query_workers=query_workers,
++                    execution_context=execution_context,
++                )
+             )
+-        )
+-        families.extend(
+-            _raw_pair_families_for_domain(
+-                domain_frame_uids=frame_uids,
+-                domain_frame_index=frame_index,
+-                data4_bundle=data4_bundle,
+-                data5_bundle=data5_bundle,
+-                policy=active,
+-                query_workers=query_workers,
+-                execution_context=execution_context,
++            families.extend(
++                _target_label_families_for_domain(
++                    domain_frame_uids=frame_uids,
++                    domain_frame_index=frame_index,
++                    data4_bundle=data4_bundle,
++                    data5_bundle=data5_bundle,
++                    policy=active,
++                    query_workers=query_workers,
++                    execution_context=execution_context,
++                )
+             )
+-        )
+-        families.extend(
+-            _target_label_families_for_domain(
+-                domain_frame_uids=frame_uids,
+-                domain_frame_index=frame_index,
+-                data4_bundle=data4_bundle,
+-                data5_bundle=data5_bundle,
+-                policy=active,
+-                query_workers=query_workers,
+-                execution_context=execution_context,
++            families.extend(
++                _foundation_residual_families_for_domain(
++                    label_domain_id=frozen.label_domain_id,
++                    domain_frame_uids=frame_uids,
++                    domain_frame_index=frame_index,
++                    data5_bundle=data5_bundle,
++                    data6_bundle=data6_bundle,
++                    foundation_target_audit=foundation_target_audit,
++                    policy=active,
++                    query_workers=query_workers,
++                    execution_context=execution_context,
++                )
+             )
+-        )
+-        families.extend(
+-            _foundation_residual_families_for_domain(
++            if not families:
++                raise TrainingDataInputError(f"TARGET-DATA2B produced no coverage families for {frozen.label_domain_id!r}.")
++            strata = _strata_for_domain(
+                 label_domain_id=frozen.label_domain_id,
+                 domain_frame_uids=frame_uids,
+                 domain_frame_index=frame_index,
+                 data5_bundle=data5_bundle,
+                 data6_bundle=data6_bundle,
+-                foundation_target_audit=foundation_target_audit,
+                 policy=active,
+-                query_workers=query_workers,
+-                execution_context=execution_context,
+-            )
+-        )
+-        if not families:
+-            raise TrainingDataInputError(f"TARGET-DATA2B produced no coverage families for {frozen.label_domain_id!r}.")
+-        strata = _strata_for_domain(
+-            label_domain_id=frozen.label_domain_id,
+-            domain_frame_uids=frame_uids,
+-            domain_frame_index=frame_index,
+-            data5_bundle=data5_bundle,
+-            data6_bundle=data6_bundle,
+-            policy=active,
+-        )
+-        frame_domain_digest = digest(
+-            {
+-                "schema": "mdstats.target-coverage-frame-domain.v1",
+-                "label_domain_id": frozen.label_domain_id,
+-                "frame_uids": list(frame_uids),
+-            }
+-        )
+-        domains.append(
+-            TargetCoverageDomainReference(
+-                label_domain_id=frozen.label_domain_id,
+-                frame_uids=frame_uids,
+-                families=tuple(families),
+-                strata=tuple(strata),
+-                frame_domain_digest=frame_domain_digest,
+             )
+-        )
+-        if progress_callback is not None:
+-            progress_callback(
+-                f"TARGET-DATA2B {frozen.label_domain_id}: {len(families)} required families, "
+-                f"{len(strata)} support strata"
++            frame_domain_digest = digest(
++                {
++                    "schema": "mdstats.target-coverage-frame-domain.v1",
++                    "label_domain_id": frozen.label_domain_id,
++                    "frame_uids": list(frame_uids),
++                }
++            )
++            domains.append(
++                TargetCoverageDomainReference(
++                    label_domain_id=frozen.label_domain_id,
++                    frame_uids=frame_uids,
++                    families=tuple(families),
++                    strata=tuple(strata),
++                    frame_domain_digest=frame_domain_digest,
++                )
+             )
++            if progress_callback is not None:
++                progress_callback(
++                    f"TARGET-DATA2B {frozen.label_domain_id}: {len(families)} required families, "
++                    f"{len(strata)} support strata"
++                )
++        return domains
++
++    if execution_scope is None:
++        domains = _build_domains(None)
++    else:
++        with DeterministicWorkQueue(
++            execution_scope,
++            max_ready_tasks=max(2, 2 * int(execution_scope.python_workers)),
++            max_inflight_tasks=max(2, 2 * int(execution_scope.python_workers)),
++            max_completed_tasks=max(2, 2 * int(execution_scope.python_workers)),
++            thread_name_prefix="mdstats-covref-par1",
++        ) as radius_queue:
++            domains = _build_domains(radius_queue)
+ 
+     return TargetCoverageReference(
+         dataset_id=data4_bundle.dataset_id,
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/mdstats/training_data/target_coverage_exact_neighborhood.py /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/mdstats/training_data/target_coverage_exact_neighborhood.py
+--- /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/mdstats/training_data/target_coverage_exact_neighborhood.py	2026-08-17 17:52:57.000000000 +0000
++++ /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/mdstats/training_data/target_coverage_exact_neighborhood.py	2026-08-17 22:14:15.646433685 +0000
+@@ -24,7 +24,7 @@
+ 
+ from ._common import TrainingDataInputError, TrainingDataSerializationError, digest, validate_digest
+ from ._target_coverage_neighborhood import compress_unique_candidate_block
+-from .resources import StageResourceScope, available_cpu_threads, available_memory_bytes
++from .resources import StageResourceScope, available_cpu_threads
+ from .target_coverage import _coverage_array_reference, _validate_array_reference
+ from .work_queue import DeterministicOrderedReducer, DeterministicWorkQueue, DeterministicWorkQueueSnapshot
+ 
+@@ -649,7 +649,11 @@
+ def _default_scope(*, workers: int, tree_workers: int) -> StageResourceScope:
+     visible = max(1, int(available_cpu_threads()))
+     nested = max(1, int(workers) * max(1, int(tree_workers)))
+-    memory = available_memory_bytes()
++    # The implicit direct-API scope preserves historical host-independent
++    # behavior.  Campaign callers pass an explicit StageResourceScope when
++    # RAM admission/backpressure is part of the execution contract; a direct
++    # scientific call must not fail merely because an unrelated process makes
++    # the instantaneous cgroup free-memory snapshot very small.
+     return StageResourceScope(
+         stage_name="TARGET-DATA2B-NEIGHBOR1",
+         cpu_threads_available=max(visible, nested),
+@@ -657,7 +661,7 @@
+         python_workers=max(1, int(workers)),
+         tree_workers=max(1, int(tree_workers)),
+         blas_threads=1,
+-        ram_budget_bytes=None if memory is None else max(1, int(memory * 0.8)),
++        ram_budget_bytes=None,
+     )
+ 
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/mdstats/training_data/target_coverage_feasibility.py /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/mdstats/training_data/target_coverage_feasibility.py
+--- /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/mdstats/training_data/target_coverage_feasibility.py	2026-08-17 17:52:57.000000000 +0000
++++ /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/mdstats/training_data/target_coverage_feasibility.py	2026-08-17 22:09:25.999571856 +0000
+@@ -27,7 +27,7 @@
+ import numpy as np
+ 
+ from ._common import TrainingDataInputError, TrainingDataSerializationError, digest, validate_digest
+-from .resources import StageResourceScope, available_cpu_threads, available_memory_bytes
++from .resources import StageResourceScope, available_cpu_threads
+ from .target_coverage_exact_neighborhood import (
+     ExactNeighborhoodBlockResult,
+     ExactNeighborhoodCSRStream,
+@@ -921,7 +921,12 @@
+ ) -> StageResourceScope:
+     nested = max(1, int(worker_count) * max(1, int(tree_workers)))
+     visible = max(1, int(available_cpu_threads()))
+-    memory = available_memory_bytes()
++    # A direct API call has no caller-supplied RAM contract.  Keep its
++    # historical semantics independent of transient host/cgroup free-memory
++    # readings; campaign execution passes an explicit StageResourceScope when
++    # RAM admission/backpressure is required.  Otherwise a momentarily nearly
++    # full shared host can make the exact same scientific call fail before its
++    # first tiny task is dispatched.
+     return StageResourceScope(
+         stage_name="TARGET-DATA2B-FEAS1",
+         cpu_threads_available=max(visible, nested),
+@@ -929,7 +934,7 @@
+         python_workers=max(1, int(worker_count)),
+         tree_workers=max(1, int(tree_workers)),
+         blas_threads=1,
+-        ram_budget_bytes=(None if memory is None else max(1, int(memory * 0.8))),
++        ram_budget_bytes=None,
+     )
+ 
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/mdstats/training_data/target_coverage_sparse_index.py /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/mdstats/training_data/target_coverage_sparse_index.py
+--- /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/mdstats/training_data/target_coverage_sparse_index.py	2026-08-17 21:24:13.000000000 +0000
++++ /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/mdstats/training_data/target_coverage_sparse_index.py	2026-08-17 22:15:27.355797366 +0000
+@@ -34,7 +34,7 @@
+     validate_target_coverage_exact_neighborhood_store,
+ )
+ from .target_coverage_feasibility import validate_target_coverage_feasibility_authority
+-from .resources import StageResourceScope, available_cpu_threads, available_memory_bytes
++from .resources import StageResourceScope, available_cpu_threads
+ from .work_queue import DeterministicWorkQueue
+ 
+ 
+@@ -834,7 +834,9 @@
+         tree_workers=1,
+         blas_threads=1,
+         pytorch_cpu_workers=1,
+-        ram_budget_bytes=available_memory_bytes(),
++        # Direct API default: no transient host-derived hard RAM ceiling.
++        # Campaign execution supplies an explicit bounded scope.
++        ram_budget_bytes=None,
+     )
+ 
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/pyproject.toml /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/pyproject.toml
+--- /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/pyproject.toml	2026-08-17 21:25:32.000000000 +0000
++++ /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/pyproject.toml	2026-08-17 21:56:08.378542679 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.228a0"
++version = "0.20.229a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/release/qualification_logs/MLFF_COVREF_PAR1_QUALIFICATION_0.20.229a0.json /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/release/qualification_logs/MLFF_COVREF_PAR1_QUALIFICATION_0.20.229a0.json
+--- /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/release/qualification_logs/MLFF_COVREF_PAR1_QUALIFICATION_0.20.229a0.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/release/qualification_logs/MLFF_COVREF_PAR1_QUALIFICATION_0.20.229a0.json	2026-08-17 22:17:57.017780380 +0000
+@@ -0,0 +1,152 @@
++{
++  "acceptance": {
++    "advance_to": "MVKERNEL1",
++    "broad_regression": "PASS",
++    "exact_scientific_equivalence": "PASS",
++    "material_multi_lane_improvement": "PASS",
++    "nested_native_parallelism_absent": "PASS",
++    "worker_count_invariance": "PASS"
++  },
++  "architecture_revision": 96,
++  "authority_change": {
++    "gpu": false,
++    "runtime_optimization": true,
++    "scientific": false
++  },
++  "content_digest": "c01301262d8e015e88ab227d6b39b136c6863f2ec0e91ac1a4c053d8df460b4f",
++  "date": "2026-08-17",
++  "documentation": {
++    "architecture_revision_note": {
++      "path": "docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV96.md",
++      "sha256": "fe0665e0105f9bc1fc84c39a33c69f908c378082aa8255a7bb5627430336bcdb"
++    },
++    "canonical_markdown": {
++      "path": "docs/arch_manuals/mlff_training_data_architecture.md",
++      "sha256": "c2a13c19f24e240f046fa80aa3f88d166e4a49688a79ab343856a116de6893c7"
++    },
++    "canonical_pdf": {
++      "comparison_note": "The before/after comparison wrapper timed out while generating intermediate renders; the final 48-page PDF fully rendered and modified COVREF/status pages were visually inspected directly.",
++      "full_render": "PASS",
++      "pages": 48,
++      "path": "docs/arch_manuals/mlff_training_data_architecture.pdf",
++      "preflight": "PASS",
++      "sha256": "506e4debbbac420fd65ea0c6b9c5aa93b1759717cc569693df779f6ca0a24aae",
++      "visual_qa": "PASS"
++    },
++    "dependency_graph": {
++      "path": "docs/arch_manuals/mlff_training_data_dependency_graph.json",
++      "sha256": "0d2bc9fda9ee8b39e676609483b4df73bf58e2df9ca473e273f012ec832d1088"
++    },
++    "release_note": {
++      "path": "docs/history/mlff/release_notes/PATCH_NOTES_0.20.229a0.md",
++      "sha256": "12c70a7ecc0b890628b1ea1378124a5b6b64753f5603e71e8ed4587d15f3a25b"
++    },
++    "spec": {
++      "path": "docs/specs/training_data/mlff_covref_par1_reference_radius_parallel_spec.md",
++      "sha256": "49023cb60300282efc30ea56f546c1f166715030464fa6fc78d336ac45814026"
++    }
++  },
++  "foundation": {
++    "active_qualification_family": "mace-mpa-0",
++    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
++    "mh1_supported_by_same_contract": true,
++    "note": "COVREF-PAR1 is independent of foundational-model family; MPA-0 is the active qualification checkpoint and MACE-MH-1 remains supported by the same target-coverage execution contract.",
++    "variant": "medium"
++  },
++  "gate": "COVREF-PAR1_TARGET_DATA2B_EXACT_CPU_PARALLELIZATION",
++  "implementation": {
++    "adaptive_block_granularity": true,
++    "direct_api_historical_native_worker_path_retained": true,
++    "direct_api_implicit_ram_scope": "FEAS1/NEIGHBOR1/MVIDX implicit direct scopes are unbounded; explicit campaign StageResourceScope RAM limits remain fail-closed",
++    "direct_feas1_implicit_ram_scope": "unbounded unless caller supplies StageResourceScope; explicit campaign RAM limits remain fail-closed",
++    "implementation_manifest": {
++      "path": "benchmarks/mlff_covref_par1_implementation_manifest_0.20.229a0.json",
++      "sha256": "5578de18a88ecfefc241e82cf6fb6a156bdaefa6b0a3eb742fe5d0efda0f8bf5"
++    },
++    "native_ckdtree_workers_per_task": 1,
++    "nested_native_parallelism": false,
++    "outer_scheduler": "DeterministicWorkQueue",
++    "pair_rule_lookup": "O(1) map",
++    "scalar_constant_rejection": "historical np.allclose predicate evaluated before expensive radius construction",
++    "species_residual_lookup": "O(1) map"
++  },
++  "inputs": {
++    "dependency_archive": {
++      "path": "/mnt/data/dependencies.tar(20260817-112644).gz",
++      "sha256": "888d545a512396697c8583d69bc9ed33110914675f466a4cbcafc3e1e1407171"
++    },
++    "replay_source": {
++      "path": "/mnt/data/replay_fps_12000.extxyz",
++      "sha256": "187eed42fb2d6cf5e7e745ffed0ce34541e92c6a35ec9e654520cd3c7198403c"
++    },
++    "target_archive": {
++      "path": "/mnt/data/training_LTA.tar(4).gz",
++      "sha256": "bc1b7e25ba338507ae38b260bcd283356de887b6c6cf762a2c146733f1c3c958"
++    }
++  },
++  "next_gate": "MVKERNEL1",
++  "performance_evidence": {
++    "interpretation": "Same-host paired timing is execution evidence. Exact radius bytes/digests and the TARGET-DATA2 regression are scientific authority; one-lane queue overhead is explicitly retained in the evidence.",
++    "paired_supplied_cache": {
++      "control_0_20_228a0_three_native_median_seconds": 0.2792267405000075,
++      "control_one_native_median_seconds": 0.5093284130000484,
++      "current_one_lane_median_seconds": 0.5316665015000126,
++      "current_three_outer_lane_median_seconds": 0.22342467399994348,
++      "families": 8,
++      "family_elements": 32800,
++      "frames": 4100,
++      "max_busy_outer_lanes": 3,
++      "three_lane_speedup": 1.249757851275093
++    },
++    "primary_record": {
++      "path": "benchmarks/mlff_covref_par1_cloud_cpu_mpa0_2026-08-17.json",
++      "sha256": "1d9af715d461c2e71d75b7a4ea0600a905991c5e14c3c09e2b6ab71b72dcc085"
++    },
++    "report": {
++      "path": "benchmarks/mlff_covref_par1_cloud_cpu_mpa0_2026-08-17.md",
++      "sha256": "a55fbc6a32fea11bf1a5d240b59f4d0870a9dbe2d4557613a08dac04a32db0cd"
++    },
++    "weighted_36408_stress": {
++      "control_three_native_median_seconds": 5.9354197880002175,
++      "current_three_outer_lane_median_seconds": 5.131133342499879,
++      "rows": 36408,
++      "three_lane_speedup": 1.1567463544240095
++    }
++  },
++  "release": "0.20.229a0",
++  "schema": "mdstats.mlff-covref-par1-qualification.v1",
++  "scientific_oracles": {
++    "control_new_exact": true,
++    "perfbase1_radius_digest": "823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d",
++    "weighted_36408_stress_radius_sha256": "240d4eb275f217a09d2fc43b3b26ae136489f4351c52ede57b6a5bfc18f18480",
++    "worker_count_invariant": true
++  },
++  "status": "PASS",
++  "tests": {
++    "archival_spec_boundary": {
++      "excluded_from_current_release_pass_fail": [
++        "tests/test_mlff_target_data2c_mvidx1_specification.py"
++      ],
++      "reason": "Historical release-pinned specification is retained as archival evidence; runtime/scientific test_mlff_target_data2c_mvidx1.py remains in the 111-test current authority."
++    },
++    "compileall": {
++      "paths": [
++        "mdstats",
++        "benchmarks",
++        "tools"
++      ],
++      "status": "PASS"
++    },
++    "current_gate_and_dependencies": {
++      "failed": 0,
++      "passed": 66,
++      "warnings": 11
++    },
++    "target_data2_functional_authority": {
++      "failed": 0,
++      "passed": 111,
++      "warning_class": "expected velocity-reconstruction/normalization warnings unchanged from prior authority",
++      "warnings": 18
++    }
++  }
++}
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/tests/test_mlff_covref_par1.py /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/tests/test_mlff_covref_par1.py
+--- /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/tests/test_mlff_covref_par1.py	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/tests/test_mlff_covref_par1.py	2026-08-17 21:53:53.545516766 +0000
+@@ -0,0 +1,147 @@
++from __future__ import annotations
++
++from pathlib import Path
++
++import numpy as np
++import pytest
++
++import mdstats
++from mdstats.training_data import target_coverage as tc
++from mdstats.training_data.work_queue import DeterministicWorkQueue
++from tests.test_mlff_target_data2b_coverage import _build_coverage_inputs
++
++
++def _scope(workers: int) -> mdstats.StageResourceScope:
++    return mdstats.StageResourceScope(
++        stage_name="COVREF-PAR1-test",
++        cpu_threads_available=max(3, workers),
++        cpu_threads_budget=max(3, workers),
++        python_workers=workers,
++        tree_workers=1,
++        blas_threads=1,
++    )
++
++
++def _nonuniform_case() -> tuple[np.ndarray, np.ndarray]:
++    rng = np.random.default_rng(104729)
++    values = rng.normal(size=(513, 5))
++    values[100:104] = values[7]
++    weights = np.empty(values.shape[0], dtype=np.float64)
++    cursor = 0
++    for size in (301, 127, 61, 24):
++        weights[cursor:cursor + size] = (1.0 / 4.0) / size
++        cursor += size
++    weights /= np.sum(weights, dtype=np.float64)
++    return values, weights
++
++
++def test_covref_par1_weighted_block_queue_is_byte_exact_and_uses_all_lanes() -> None:
++    values, weights = _nonuniform_case()
++    serial = tc._local_reference_radii(
++        values,
++        weights,
++        beta=1.0 / 128.0,
++        leave_one_out=True,
++        block_size=73,
++        query_workers=1,
++    )
++    with DeterministicWorkQueue(_scope(3)) as queue:
++        parallel = tc._local_reference_radii(
++            values,
++            weights,
++            beta=1.0 / 128.0,
++            leave_one_out=True,
++            block_size=73,
++            query_workers=1,
++            work_queue=queue,
++            task_prefix="weighted",
++        )
++        snapshot = queue.snapshot()
++    assert np.array_equal(parallel, serial)
++    assert parallel.tobytes() == serial.tobytes()
++    assert snapshot.max_busy_workers == 3
++    assert snapshot.submitted_tasks >= 8
++    assert snapshot.finished_tasks == snapshot.committed_tasks == snapshot.submitted_tasks
++
++
++def test_covref_par1_uniform_fast_path_is_byte_exact() -> None:
++    rng = np.random.default_rng(271828)
++    values = rng.normal(size=(1025, 4))
++    weights = np.full(values.shape[0], 1.0 / values.shape[0], dtype=np.float64)
++    serial = tc._local_reference_radii(
++        values,
++        weights,
++        beta=1.0 / 128.0,
++        leave_one_out=True,
++        block_size=91,
++        query_workers=1,
++    )
++    with DeterministicWorkQueue(_scope(3)) as queue:
++        parallel = tc._local_reference_radii(
++            values,
++            weights,
++            beta=1.0 / 128.0,
++            leave_one_out=True,
++            block_size=91,
++            query_workers=1,
++            work_queue=queue,
++            task_prefix="uniform",
++        )
++    assert np.array_equal(parallel, serial)
++    assert parallel.tobytes() == serial.tobytes()
++
++
++def test_covref_par1_full_reference_is_scientifically_identical(tmp_path: Path) -> None:
++    _, _, _, data4, data5, data6, freeze, audit = _build_coverage_inputs(tmp_path)
++    serial = mdstats.build_target_coverage_reference(
++        data4, data5, data6, freeze, audit, query_workers=1
++    )
++    parallel = mdstats.build_target_coverage_reference(
++        data4,
++        data5,
++        data6,
++        freeze,
++        audit,
++        query_workers=1,
++        execution_scope=_scope(3),
++    )
++    assert parallel.content_digest == serial.content_digest
++    assert parallel.to_dict() == serial.to_dict()
++    for serial_domain, parallel_domain in zip(serial.domains, parallel.domains, strict=True):
++        for serial_family, parallel_family in zip(serial_domain.families, parallel_domain.families, strict=True):
++            assert parallel_family.local_radii.tobytes() == serial_family.local_radii.tobytes()
++            assert parallel_family.scales.tobytes() == serial_family.scales.tobytes()
++            assert parallel_family.weights.tobytes() == serial_family.weights.tobytes()
++
++
++def test_covref_par1_rejects_nested_native_tree_parallelism(tmp_path: Path) -> None:
++    _, _, _, data4, data5, data6, freeze, audit = _build_coverage_inputs(tmp_path)
++    with pytest.raises(mdstats.TrainingDataInputError, match="query_workers=1"):
++        mdstats.build_target_coverage_reference(
++            data4,
++            data5,
++            data6,
++            freeze,
++            audit,
++            query_workers=2,
++            execution_scope=_scope(2),
++        )
++
++
++def test_covref_par1_campaign_parallelism_uses_full_configured_budget(monkeypatch: pytest.MonkeyPatch) -> None:
++    from mdstats.training_data import campaign_cli
++
++    class _Resources:
++        cpu_threads_budget = 7
++        cpu_threads_available = 8
++
++    monkeypatch.setattr(campaign_cli, "detect_system_resources", lambda **kwargs: _Resources())
++    workers, resources = campaign_cli._target_coverage_reference_parallelism(
++        {"performance": {"target_coverage_workers": 0}}
++    )
++    assert workers == 7
++    assert resources.cpu_threads_budget == 7
++    explicit, _ = campaign_cli._target_coverage_reference_parallelism(
++        {"performance": {"target_coverage_workers": 5}}
++    )
++    assert explicit == 5
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/tests/test_mlff_covref_par1_specification.py /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/tests/test_mlff_covref_par1_specification.py
+--- /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/tests/test_mlff_covref_par1_specification.py	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/tests/test_mlff_covref_par1_specification.py	2026-08-17 21:56:46.194330838 +0000
+@@ -0,0 +1,47 @@
++from __future__ import annotations
++
++import json
++from pathlib import Path
++
++import mdstats
++
++ROOT = Path(__file__).resolve().parents[1]
++MANUAL = ROOT / "docs/arch_manuals/mlff_training_data_architecture.md"
++GRAPH = ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json"
++SPEC = ROOT / "docs/specs/training_data/mlff_covref_par1_reference_radius_parallel_spec.md"
++EVIDENCE = ROOT / "benchmarks/mlff_covref_par1_cloud_cpu_mpa0_2026-08-17.json"
++
++
++def test_covref_par1_release_docs_are_current() -> None:
++    assert mdstats.__version__ == "0.20.229a0"
++    text = MANUAL.read_text(encoding="utf-8")
++    assert "architecture_revision: 96" in text
++    assert 'release: "mdstats 0.20.229a0"' in text
++    assert "Gate COVREF-PAR1 - TARGET-DATA2B exact CPU parallelization - COMPLETE" in text
++    assert "**Next gate.** `MVKERNEL1`." in text
++    assert "one native cKDTree worker per task" in text
++    assert SPEC.is_file()
++
++
++def test_covref_par1_dependency_graph_is_closed() -> None:
++    graph = json.loads(GRAPH.read_text(encoding="utf-8"))
++    assert graph["architecture_revision"] == 96
++    assert graph["documentation_gate"] == "COVREF_PAR1_GLOBAL_BLOCK_QUEUE"
++    assert graph["next_gate"] == "MVKERNEL1_VECTOR_SPARSE_KERNELS"
++    node = next(item for item in graph["nodes"] if item["id"] == "COVREF_PAR1_GLOBAL_BLOCK_QUEUE")
++    assert node["implementation_status"] == "implemented"
++    assert node["implemented_release"] == "0.20.229a0"
++    assert node["scientific_authority_change"] is False
++    assert node["single_native_tree_worker_per_task"] is True
++    assert node["radius_scientific_output_digest"] == "823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d"
++
++
++def test_covref_par1_frozen_benchmark_evidence() -> None:
++    assert EVIDENCE.is_file()
++    evidence = json.loads(EVIDENCE.read_text(encoding="utf-8"))
++    assert evidence["release"] == "0.20.229a0"
++    assert evidence["architecture_revision"] == 96
++    assert evidence["scientific"]["perfbase1_radius_digest"] == "823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d"
++    assert evidence["acceptance"]["status"] == "PASS"
++    assert evidence["acceptance"]["next_gate"] == "MVKERNEL1"
++    assert evidence["execution"]["supplied_cache"]["new_three_lane_median_seconds"] < evidence["execution"]["supplied_cache"]["old_three_native_median_seconds"]
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/tests/test_mlff_doc_arch1_specification.py /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/tests/test_mlff_doc_arch1_specification.py
+--- /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/tests/test_mlff_doc_arch1_specification.py	2026-08-17 21:26:44.000000000 +0000
++++ /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/tests/test_mlff_doc_arch1_specification.py	2026-08-17 21:56:45.970806840 +0000
+@@ -16,10 +16,10 @@
+ 
+ 
+ def test_doc_arch1_release_and_current_authority_are_synchronized():
+-    assert mdstats.__version__ == "0.20.228a0"
++    assert mdstats.__version__ == "0.20.229a0"
+     text = MANUAL.read_text(encoding="utf-8")
+-    assert "architecture_revision: 95" in text
+-    assert 'release: "mdstats 0.20.228a0"' in text
++    assert "architecture_revision: 96" in text
++    assert 'release: "mdstats 0.20.229a0"' in text
+     assert "# Part VI - Performance and execution architecture" in text
+     assert "# Part VII - Current implementation status and frozen forward gates" in text
+     assert "## Context retrieval index" in text
+@@ -72,7 +72,7 @@
+     revision_rows = [line for line in REV_INDEX.read_text().splitlines() if re.match(r"^\|\s*\d+\s*\|", line)]
+     revisions = [int(line.split("|")[1].strip()) for line in revision_rows]
+     assert revisions == sorted(set(revisions))
+-    assert revisions[-1] == 95
++    assert revisions[-1] == 96
+     assert "NEIGHBOR1" in REV_INDEX.read_text()
+     assert "0.20.227a0" in REL_INDEX.read_text()
+     assert (ROOT / "docs/history/mlff/LINEAGE.md").is_file()
+@@ -81,13 +81,14 @@
+ 
+ def test_doc_arch1_graph_and_directory_ownership_are_current():
+     graph = json.loads(GRAPH.read_text())
+-    assert graph["architecture_revision"] == 95
++    assert graph["architecture_revision"] == 96
+     assert graph["schema_version"] == 76
+     node_ids = {node["id"] for node in graph["nodes"]}
+     for node in (
+         "DOC_ARCH1_MANUAL_RESTRUCTURE_PERFORMANCE_ROADMAP",
+         "PERFBASE1_CAMPAIGN_BASELINES", "PARCORE1_DETERMINISTIC_WORK_QUEUE",
+         "NEIGHBOR1_SHARED_EXACT_ENGINE", "MVIDX_REUSE1_SPARSE_TRANSPOSE",
++        "COVREF_PAR1_GLOBAL_BLOCK_QUEUE",
+         "CAMPAIGN_PERF_QUAL1_CLOSURE",
+     ):
+         assert node in node_ids
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/tests/test_mlff_mvidx_reuse1_specification.py /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/tests/test_mlff_mvidx_reuse1_specification.py
+--- /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/tests/test_mlff_mvidx_reuse1_specification.py	2026-08-17 21:26:00.000000000 +0000
++++ /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/tests/test_mlff_mvidx_reuse1_specification.py	2026-08-17 21:56:45.971017228 +0000
+@@ -52,12 +52,9 @@
+             mvidx._validate_sorted_unique_rows(offsets, bad, name="test")
+ 
+ 
+-def test_mvidx_reuse1_release_docs_and_evidence_are_current() -> None:
+-    assert mdstats.__version__ == "0.20.228a0"
++def test_mvidx_reuse1_release_docs_and_evidence_are_retained() -> None:
+     text = MANUAL.read_text(encoding="utf-8")
+-    assert "architecture_revision: 95" in text
+     assert "Gate MVIDX-REUSE1 - stable parallel sparse inversion - COMPLETE" in text
+-    assert "**Next gate.** `COVREF-PAR1`." in text
+     assert SPEC.is_file() and EVIDENCE.is_file()
+     evidence = json.loads(EVIDENCE.read_text(encoding="utf-8"))
+     assert evidence["release"] == "0.20.228a0"
+@@ -69,9 +66,7 @@
+ 
+ def test_mvidx_reuse1_dependency_graph_is_closed() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+-    assert graph["architecture_revision"] == 95
+-    assert graph["documentation_gate"] == "MVIDX_REUSE1_SPARSE_TRANSPOSE"
+-    assert graph["next_gate"] == "COVREF_PAR1_GLOBAL_BLOCK_QUEUE"
++    assert graph["architecture_revision"] >= 95
+     node = next(item for item in graph["nodes"] if item["id"] == "MVIDX_REUSE1_SPARSE_TRANSPOSE")
+     assert node["implementation_status"] == "implemented"
+     assert node["implemented_release"] == "0.20.228a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/tests/test_mlff_neighbor1_specification.py /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/tests/test_mlff_neighbor1_specification.py
+--- /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/tests/test_mlff_neighbor1_specification.py	2026-08-17 21:26:26.000000000 +0000
++++ /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/tests/test_mlff_neighbor1_specification.py	2026-08-17 21:59:31.405746880 +0000
+@@ -26,7 +26,7 @@
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["architecture_revision"] >= 94
+     assert graph["schema_version"] == 76
+-    assert graph["documentation_gate"] in {"NEIGHBOR1_SHARED_EXACT_ENGINE", "MVIDX_REUSE1_SPARSE_TRANSPOSE"}
++    assert graph["documentation_gate"] in {node["id"] for node in graph["nodes"]}
+     assert "MVIDX_REUSE1_SPARSE_TRANSPOSE" in {node["id"] for node in graph["nodes"]}
+     node = next(item for item in graph["nodes"] if item["id"] == "NEIGHBOR1_SHARED_EXACT_ENGINE")
+     assert node["implementation_status"] == "implemented"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.pyo' '--exclude=SHA256SUMS_*' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/tests/test_mlff_parcore1.py /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/tests/test_mlff_parcore1.py
+--- /mnt/data/mdstats-covref-work/control/mdstats-0.20.228a0/tests/test_mlff_parcore1.py	2026-08-17 12:29:48.000000000 +0000
++++ /mnt/data/mdstats-covref-work/mdstats-0.20.229a0/tests/test_mlff_parcore1.py	2026-08-17 22:15:27.582433685 +0000
+@@ -124,3 +124,64 @@
+     )
+     assert scope.ram_budget_bytes == 800
+     assert scope.estimated_nested_cpu_threads == 2
++
++
++def test_feas1_implicit_scope_is_not_bound_to_transient_host_free_ram(monkeypatch, tmp_path):
++    """Direct FEAS1 API remains deterministic when shared-host free RAM fluctuates.
++
++    Campaign callers provide an explicit StageResourceScope and retain strict
++    RAM admission.  The implicit direct-API scope must not manufacture a hard
++    limit from a transient cgroup snapshot.
++    """
++    import mdstats
++    import mdstats.training_data.resources as resources_module
++    from tests.test_mlff_target_data2b_coverage import _build_coverage_inputs
++
++    _, _, _, data4, data5, data6, freeze, audit = _build_coverage_inputs(tmp_path)
++    reference = mdstats.build_target_coverage_reference(data4, data5, data6, freeze, audit)
++    monkeypatch.setattr(resources_module, "available_memory_bytes", lambda: 1)
++    report = mdstats.build_target_coverage_feasibility_report(
++        reference, freeze, query_block_size=8
++    )
++    assert report.domains
++
++
++def test_neighbor1_implicit_scope_is_not_bound_to_transient_host_free_ram(monkeypatch):
++    """Direct NEIGHBOR1 reconstruction is independent of transient free RAM."""
++    import mdstats
++    import mdstats.training_data.resources as resources_module
++    from tests.test_mlff_target_data2b_feas1 import _reference_and_role
++
++    reference, _ = _reference_and_role(split_units=True)
++    monkeypatch.setattr(resources_module, "available_memory_bytes", lambda: 1)
++    store = mdstats.build_target_coverage_exact_neighborhood_store(
++        reference,
++        global_workers=1,
++        query_workers=1,
++        query_block_size=3,
++    )
++    assert store.domains
++
++
++def test_mvidx_implicit_scope_is_not_bound_to_transient_host_free_ram(monkeypatch):
++    """Direct parallel MVIDX inversion is independent of transient free RAM."""
++    import mdstats
++    import mdstats.training_data.resources as resources_module
++    from tests.test_mlff_target_data2b_feas1 import _reference_and_role
++
++    reference, role = _reference_and_role(split_units=True)
++    feasibility = mdstats.build_target_coverage_feasibility_report(reference, role)
++    neighborhoods = mdstats.build_target_coverage_exact_neighborhood_store(
++        reference, global_workers=1, query_workers=1, query_block_size=3
++    )
++    monkeypatch.setattr(resources_module, "available_memory_bytes", lambda: 1)
++    index = mdstats.build_target_coverage_sparse_index(
++        reference,
++        role,
++        feasibility,
++        exact_neighborhood_store=neighborhoods,
++        query_workers=1,
++        global_workers=2,
++        query_block_size=3,
++    )
++    assert index.domains

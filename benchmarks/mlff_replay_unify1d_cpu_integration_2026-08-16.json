@@ -1,0 +1,40 @@
+{
+  "schema": "mdstats.replay-unify1d-cpu-integration-qualification.v1",
+  "release": "0.20.213a0",
+  "architecture_revision": 80,
+  "gate": "REPLAY-UNIFY1D",
+  "qualification_scope": "single_source_campaign_integration_true_dft_plus_deterministic_pseudolabel_tests",
+  "gpu_mace_execution_status": "deferred_to_regenerated_FINAL_GPU1_after_REPLAY_UNIFY1E",
+  "source": {
+    "logical_name": "LTA_replay/mp_replay_selected.extxyz",
+    "sha256": "671aa55f740e9ce890a740f47bda8ab1d02ca7458994005441682d5276d95ddc",
+    "configuration_count": 12000,
+    "geometry_set_digest": "13975290b0851948e54536f4dee9375ef0675ed1398a342eea4462a7ddb45532"
+  },
+  "counts": {
+    "train": 10000,
+    "monitor": 2000
+  },
+  "timings_seconds": {
+    "cold_campaign_plan_true_dft": 27.5965,
+    "process_style_restart": 0.5993
+  },
+  "peak_rss_kb": 336088,
+  "verified_invariants": [
+    "new generated campaign configuration exposes replay_set and omits replay_train/replay_monitor/replay_true_labels",
+    "new and legacy replay interfaces cannot be mixed",
+    "single replay_set produces exact deterministic 5:1 train/monitor membership",
+    "true_dft campaign path materializes internal true train/monitor views and preserves downstream ReplayFileArtifact compatibility",
+    "foundation_pseudolabel campaign tests materialize pseudo train/monitor and independent true monitor on identical split geometry authority",
+    "doctor defers full replay foundation prediction to prepare after acceleration/runtime qualification",
+    "prepare persists single-source replay config/source/cache/qualification/split/view records for restart authority",
+    "source inspection receipt avoids ExtXYZ reparse on process-style restart when source SHA and locator are unchanged",
+    "storage accounting protects replay_set as the sole new-style external replay input",
+    "legacy split-file campaign parsing remains supported through hidden compatibility inputs"
+  ],
+  "observations": [
+    "The 12k timing uses the supplied LTA source through the campaign-facing true_dft path, not the lower-level Gate-B API.",
+    "Pseudo-label campaign integration is exercised with deterministic provider tests; no real MACE/CUDA/CuEq throughput or parity claim is made.",
+    "Final GPU qualification remains intentionally deferred until REPLAY-UNIFY1E regenerates FINAL-GPU1."
+  ]
+}

@@ -1,0 +1,187 @@
+{
+  "atoms": 168,
+  "attractor_counts": [
+    24,
+    24,
+    24
+  ],
+  "bandwidth_sigmas_angstrom": [
+    0.4,
+    0.5,
+    0.6000000000000001
+  ],
+  "candidate_scale_intervals": [
+    [
+      0,
+      0
+    ],
+    [
+      1,
+      1
+    ],
+    [
+      2,
+      2
+    ]
+  ],
+  "evidence_statuses": {
+    "attractor_lineage": "partial",
+    "cost": "resolved",
+    "field_certificate": "resolved",
+    "force_availability": "resolved",
+    "kernel_metric_periodization": "resolved",
+    "memory": "resolved",
+    "provisional_cores": "partial",
+    "reference_cell_sensitivity": "resolved",
+    "registration": "resolved",
+    "stationarity": "partial",
+    "topology_certificate": "partial",
+    "unresolved_fraction": "partial"
+  },
+  "force_shape": [
+    1500,
+    168,
+    3
+  ],
+  "frames": 1500,
+  "lineage_ambiguous": false,
+  "lineage_correspondence_links": [
+    24,
+    24
+  ],
+  "lineage_grid_shape": [
+    12,
+    12,
+    12
+  ],
+  "lineage_unmatched": [
+    0,
+    0
+  ],
+  "missing_required_evidence": [
+    "structural_mapping",
+    "temporal_support",
+    "force_density_agreement",
+    "transition_paths"
+  ],
+  "overall_status": "blocked_missing_required_evidence",
+  "reference_cell_sensitivity": {
+    "accepted": true,
+    "anchor_displacement_limit_angstrom": 0.3,
+    "cell_difference_limit": 0.02,
+    "comparison_cell_digest": "2bb3737d06ffda40cf90790cd8c3984182af19cfe1cab17c8a06c416efbbf340",
+    "comparison_registration_signature": "78768b677cf0171d185f8b7c73a94288542197adbe6305543a1fc0bc6234367d",
+    "comparison_source_frame_index": 762,
+    "exact_identity_shortcut": true,
+    "fractional_probability_l1": 0.0,
+    "matched_attractor_count": 24,
+    "maximum_anchor_displacement_angstrom": 0.0,
+    "probability_l1_limit": 0.1,
+    "relative_cell_frobenius_difference": 0.0,
+    "relative_volume_difference": 0.0,
+    "rms_anchor_displacement_angstrom": 0.0,
+    "schema": "mdstats.reference-cell-sensitivity-certificate.v1",
+    "selected_cell_digest": "2bb3737d06ffda40cf90790cd8c3984182af19cfe1cab17c8a06c416efbbf340",
+    "selected_registration_signature": "78768b677cf0171d185f8b7c73a94288542197adbe6305543a1fc0bc6234367d",
+    "signature": "0eb58d53f3aa4879906d20e7f9e014f3f8d862e421091081a61e0e711a8bec22",
+    "unmatched_attractor_limit": 0,
+    "unmatched_comparison_count": 0,
+    "unmatched_selected_count": 0
+  },
+  "refinement_grid_shapes": [
+    [
+      12,
+      12,
+      12
+    ],
+    [
+      16,
+      16,
+      16
+    ]
+  ],
+  "refinement_minimum_basin_overlap": 0.56,
+  "refinement_reasons": [
+    "saddle_adjacency_changes"
+  ],
+  "refinement_status": "unstable",
+  "representative_frames": [
+    12,
+    37,
+    62,
+    87,
+    112,
+    137,
+    162,
+    187,
+    212,
+    237,
+    262,
+    287,
+    312,
+    337,
+    362,
+    387,
+    412,
+    437,
+    462,
+    487,
+    512,
+    537,
+    562,
+    587,
+    612,
+    637,
+    662,
+    687,
+    712,
+    737,
+    762,
+    787,
+    812,
+    837,
+    862,
+    887,
+    912,
+    937,
+    962,
+    987,
+    1012,
+    1037,
+    1062,
+    1087,
+    1112,
+    1137,
+    1162,
+    1187,
+    1212,
+    1237,
+    1262,
+    1287,
+    1312,
+    1337,
+    1362,
+    1387,
+    1412,
+    1437,
+    1462,
+    1487
+  ],
+  "represented_duration_ps": 1.499,
+  "saddle_counts": [
+    53,
+    100,
+    145
+  ],
+  "scale_status": "scale_ambiguous",
+  "selected_catalog_signature": null,
+  "stage": "11E8a-S2",
+  "trajectory_sha256": "ad54b98c5d927d722ac1cb8a4a3b1fe472a50603a6e8ece5497b06e55a8679eb",
+  "velocity_shape": [
+    1500,
+    168,
+    3
+  ],
+  "velocity_source": "finite_difference",
+  "wall_seconds": 21.963962402000107
+}

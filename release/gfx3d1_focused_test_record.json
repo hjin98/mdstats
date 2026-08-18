@@ -1,0 +1,33 @@
+{
+  "schema_version": "mdstats.gfx3d1-focused-qualification.v1",
+  "package_version": "0.20.146a0",
+  "gate": "GFX3D-1",
+  "date": "2026-08-11",
+  "command": "pytest -q tests/test_graphics3d_contracts.py tests/test_framework_dynamics.py tests/test_graph_3d.py",
+  "tests": [
+    "tests/test_graphics3d_contracts.py",
+    "tests/test_framework_dynamics.py",
+    "tests/test_graph_3d.py"
+  ],
+  "result": {
+    "passed": 42,
+    "failed": 0,
+    "skipped": 0,
+    "warnings": 13
+  },
+  "warnings_note": "Warnings are the pre-existing equal-aspect/orientation diagnostics from the legacy Plotly graph path.",
+  "scientific_plotting_algorithms_changed": false,
+  "qualification_scope": [
+    "canonical deterministic serialization",
+    "unique named layer instances",
+    "scientific/render/execution identity separation",
+    "dependency-key deduplication",
+    "scene-context dependency reuse",
+    "deterministic layer registry",
+    "selection fail-closed validation",
+    "renderer-neutral primitive immutability",
+    "FrameworkDynamicsScene compatibility adaptation",
+    "FrameworkDynamicsRenderResult generic layer-keyed adaptation",
+    "legacy graph_3d compatibility"
+  ]
+}

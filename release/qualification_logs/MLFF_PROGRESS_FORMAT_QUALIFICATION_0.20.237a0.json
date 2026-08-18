@@ -1,0 +1,105 @@
+{
+  "active_foundation": {
+    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
+    "family": "MACE-MPA-0 medium",
+    "mh1_compatible": true
+  },
+  "architecture_revision": 103,
+  "build": {
+    "compileall": "PASS",
+    "wheel_build": "PASS_NO_BUILD_ISOLATION",
+    "wheel_version": "0.20.237a0"
+  },
+  "content_digest": "065e231295e6a656fd9388a4ea4c0a97feae046d740d5903dd79cb0854e64791",
+  "coverage": [
+    "generic campaign progress reporter",
+    "DATA2/DATA3/DATA4/DATA6/DATA7 callbacks",
+    "structural selection",
+    "TARGET-DATA2B",
+    "FEAS1",
+    "NEIGHBOR1",
+    "MVIDX1",
+    "MVSEL1",
+    "REPAIR1",
+    "MVQUAL1",
+    "production materialization/model sweep",
+    "adaptive inference scheduler",
+    "staged evaluation scheduler",
+    "TRAIN heartbeat/scheduler"
+  ],
+  "dependency_graph_schema": 83,
+  "documentation": {
+    "architecture_revision_unchanged": true,
+    "manual_markdown_sha256": "80de2bcc6445ac672dd127f082dfd7fb55e987cb8f7052b0dfaa6fb4253937d8",
+    "manual_pdf_pages": 53,
+    "manual_pdf_sha256": "47421f4536e38df54303b7f6048e2660bde99dab31229435a154bb8faed3fb51",
+    "pdf_full_render": "PASS_53_PAGES",
+    "pdf_preflight": "PASS",
+    "pdf_visual_qa": "PASS_PAGES_1_2_41_42"
+  },
+  "format_contract": {
+    "delimiter": "semicolon",
+    "elapsed": "HH:MM:SS",
+    "eta_known": "HH:MM:SS",
+    "eta_unknown": "--:--:--",
+    "field_order": [
+      "status",
+      "progress",
+      "elapsed",
+      "eta",
+      "rate",
+      "stage_specific_telemetry"
+    ],
+    "legacy_eta_dialects_forbidden": [
+      "39m44s",
+      "decimal minutes",
+      "seconds-only ETA",
+      "estimating"
+    ],
+    "phase_only": "status=phase; phase=...",
+    "progress_fraction": "completed/total (percent%)"
+  },
+  "gpu_authority_change": false,
+  "known_preexisting_fixture": {
+    "classification": "pre_existing_environment_sensitive_acceleration_configuration_mismatch",
+    "progress_format_related": false,
+    "reproduced_on_untouched_0_20_236a0": true,
+    "test": "test_check_only_preflight_reuses_promoted_data8_tree"
+  },
+  "maintenance": "MLFF_PROGRESS_FORMAT_CONSISTENCY",
+  "next_gate": "FINAL_GPU1_DEFERRED_RELEASE_QUALIFICATION",
+  "release": "0.20.237a0",
+  "runtime_algorithm_change": false,
+  "schema": "mdstats.mlff-progress-format-qualification.v1",
+  "scientific_authority_change": false,
+  "status": "PASS_PRESENTATION_ONLY",
+  "tests": {
+    "modified_data2_data7_paths": {
+      "failed": 0,
+      "passed": 56,
+      "warnings": 54
+    },
+    "production_materialization_except_preexisting_fixture": {
+      "deselected_preexisting": 1,
+      "failed": 0,
+      "passed": 14,
+      "warnings": 13
+    },
+    "production_model_sweep": {
+      "failed": 0,
+      "passed": 9,
+      "warnings": 9
+    },
+    "progress_current_authority": {
+      "failed": 0,
+      "passed": 122,
+      "skipped": 1,
+      "warnings": 10
+    },
+    "target_data2_scientific_authority": {
+      "failed": 0,
+      "passed": 111,
+      "warnings": 18
+    }
+  }
+}

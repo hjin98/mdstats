@@ -1,0 +1,805 @@
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.116a0_to_0.20.117a0.patch' /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/CHANGELOG.md /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/CHANGELOG.md
+--- /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/CHANGELOG.md	2026-08-08 23:37:07.000000000 +0000
++++ /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/CHANGELOG.md	2026-08-09 03:01:48.059220524 +0000
+@@ -1,3 +1,9 @@
++## 0.20.117a0 - 2026-08-08
++
++- Consolidate the MLFF campaign storage-management CLI under one top-level `storage` command: `storage report`, `storage cleanup`, `storage deduplicate`, and `storage archive create|verify|restore`.
++- Keep bare `storage` as the read-only report shorthand and transparently normalize the pre-0.20.117 top-level `cleanup`, `deduplicate`, and `archive` spellings for script compatibility without exposing them in top-level help.
++- Preserve all STOR1-STOR5 storage semantics, ownership gates, capability planning, archive verification, and scientific/materialization identities; this release changes CLI organization only.
++
+ ## 0.20.116a0 - 2026-08-08
+ 
+ - Implement STOR5 exact immutable content-addressed hardlink deduplication through `deduplicate [--apply]`, gated by completed verification and protocol freeze.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.116a0_to_0.20.117a0.patch' /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/PATCH_NOTES_0.20.117a0.md /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/PATCH_NOTES_0.20.117a0.md
+--- /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/PATCH_NOTES_0.20.117a0.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/PATCH_NOTES_0.20.117a0.md	2026-08-09 03:01:48.059356845 +0000
+@@ -0,0 +1,10 @@
++# mdstats 0.20.117a0 patch notes
++
++- Consolidate the four MLFF campaign storage commands into one coherent hierarchy:
++  - `storage report` — STOR1 read-only accounting/ownership report; bare `storage` remains an equivalent shorthand.
++  - `storage cleanup` — STOR4 tiered reclamation and STOR5 archive-tier reclamation.
++  - `storage deduplicate` — STOR5 immutable exact-byte content-addressed deduplication.
++  - `storage archive create|verify|restore` — STOR5 authenticated reversible cold archive operations.
++- Remove `cleanup`, `deduplicate`, and `archive` from the visible top-level parser surface. The `main()` entry point still normalizes those pre-0.20.117 spellings into the new hierarchy so existing shell scripts continue to run.
++- Update the CLI guide, storage specification, architecture manual, README, and generated TOML comments to use the unified hierarchy.
++- No storage algorithm, scientific identity, materialization identity, campaign-state schema, or cache identity changes. Existing campaigns remain directly reusable.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.116a0_to_0.20.117a0.patch' /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/PKG-INFO /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/PKG-INFO
+--- /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/PKG-INFO	2026-08-08 21:32:12.000000000 +0000
++++ /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/PKG-INFO	2026-08-09 03:02:54.185217262 +0000
+@@ -1,6 +1,6 @@
+ Metadata-Version: 2.4
+ Name: mdstats
+-Version: 0.20.111a0
++Version: 0.20.117a0
+ Summary: Transparent atomistic frame collections and structural/dynamical statistics
+ Requires-Python: >=3.10
+ Requires-Dist: numpy>=1.26
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.116a0_to_0.20.117a0.patch' /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/README.md /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/README.md
+--- /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/README.md	2026-08-08 23:27:07.000000000 +0000
++++ /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/README.md	2026-08-09 03:01:46.994696730 +0000
+@@ -8,7 +8,7 @@
+ 
+ ## Read-only campaign storage accounting in 0.20.111a0
+ 
+-Run `mdstats-mlff-campaign storage -c campaign.toml` to inventory the campaign workspace without reclaiming anything. STOR5 adds `deduplicate [--apply]` for exact immutable hardlink deduplication and `archive create|verify|restore`; `cleanup --tier archive --apply` deletes consequential hot representations only after a verified reversible archive exists. STOR1 reports logical bytes, inode-deduplicated allocated physical bytes, unique-inode logical bytes, ownership/retention families, protected external inputs, symlink escapes, future reclamation eligibility, capability loss, and the largest files/directories. The JSON report is written to `results/storage-report.json` only when that destination is itself inside the verified ownership boundary.
++Run `mdstats-mlff-campaign --config campaign.toml storage report` to inventory the campaign workspace without reclaiming anything (bare `storage` is the same report). All storage management now lives under this one command: `storage cleanup`, `storage deduplicate [--apply]`, and `storage archive create|verify|restore`. `storage cleanup --tier archive --apply` deletes consequential hot representations only after a verified reversible archive exists. STOR1 reports logical bytes, inode-deduplicated allocated physical bytes, unique-inode logical bytes, ownership/retention families, protected external inputs, symlink escapes, future reclamation eligibility, capability loss, and the largest files/directories. The JSON report is written to `results/storage-report.json` only when that destination is itself inside the verified ownership boundary.
+ 
+ Configured training, foundation, replay, true-label, and campaign-config paths remain protected user/reference inputs even when physically located inside the workspace. Existing cleanup and checkpoint-pruning code now consumes the same real-path/symlink containment boundary, so a path found in TOML/SQLite/JSON never grants deletion authority over external data. STOR1 adds no new deletion mode; STOR2 is the next gate.
+ 
+@@ -75,7 +75,7 @@
+ 
+ ## Automatic storage cleanup and durable training restart in 0.20.74a0
+ 
+-Campaign lifecycle cleanup now removes only provably stale or reconstructable artifacts: orphaned external records, obsolete DATA8 generations, stale promotion trees, duplicated frame/DATA7 caches after preflight, heavy completed preflight-smoke outputs, and obsolete runtime-policy trees after preserving compact diagnostics. A manual `cleanup --dry-run` previews every deletion and reclaimed byte count. Before evaluation, all training checkpoints are retained; after every checkpoint is evaluated and one is selected, only evaluated unselected optimizer snapshots are removed while the selected checkpoint, full metrics, selection evidence, logs, and original catalog identities remain.
++Campaign lifecycle cleanup now removes only provably stale or reconstructable artifacts: orphaned external records, obsolete DATA8 generations, stale promotion trees, duplicated frame/DATA7 caches after preflight, heavy completed preflight-smoke outputs, and obsolete runtime-policy trees after preserving compact diagnostics. A manual `storage cleanup --dry-run` previews every deletion and reclaimed byte count. Before evaluation, all training checkpoints are retained; after every checkpoint is evaluated and one is selected, only evaluated unselected optimizer snapshots are removed while the selected checkpoint, full metrics, selection evidence, logs, and original catalog identities remain.
+ 
+ Production `train` now handles `Ctrl-C` and low-disk stops as durable interruptions: active MACE process groups are terminated gracefully, checkpoint bytes remain, interrupted attempts do not consume retry allowance, and the next invocation resumes with `--restart_latest`. Run-local records and valid final model/checkpoint artifacts recover parent-process commit gaps. Completed runs are SHA-256 re-inventoried and skipped; changed/missing checkpoint bytes fail closed rather than triggering silent recalculation. See `PATCH_NOTES_0.20.74a0.md`.
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.116a0_to_0.20.117a0.patch' /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/campaign.toml.example /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/campaign.toml.example
+--- /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/campaign.toml.example	2026-08-08 23:10:44.000000000 +0000
++++ /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/campaign.toml.example	2026-08-09 03:01:46.997162520 +0000
+@@ -260,7 +260,7 @@
+ 
+ [cleanup]
+ # Conservative lifecycle cleanup runs automatically at train/evaluate/verify boundaries.
+-# Manual retention is CLI-selected: cleanup --tier safe|cache|recompute|compact|archive.
++# Manual retention is CLI-selected: storage cleanup --tier safe|cache|recompute|compact|archive.
+ # Every tier emits a capability plan first; recompute/compact require --apply; archive
+ # remains plan-only until STOR5 provides authenticated archive/restore support.
+ enabled = true
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.116a0_to_0.20.117a0.patch' /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/docs/arch_manuals/mlff_training_data_architecture.md /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/docs/arch_manuals/mlff_training_data_architecture.md
+--- /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-08 23:27:23.000000000 +0000
++++ /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-09 03:02:10.975722976 +0000
+@@ -4593,7 +4593,7 @@
+ - restart/re-evaluation capability retained or lost by deletion; and
+ - the largest individual files/directories.
+ 
+-STOR1 is read-only with respect to reclamation. `mdstats-mlff-campaign storage`
++STOR1 is read-only with respect to reclamation. `mdstats-mlff-campaign storage report` (or bare `storage`)
+ walks the campaign workspace without following directory symlinks, writes
+ `results/storage-report.json` when that destination itself passes containment checks,
+ and reports logical bytes, inode-deduplicated allocated physical bytes, unique-inode
+@@ -4710,9 +4710,9 @@
+ | `compact` | nonproduction checkpoints/models and cold materializations after freeze | exact continuation or cheap alternative-model recovery may be lost |
+ | `archive` | explicitly selected cold reproducibility material | retained only in a verified archival representation |
+ 
+-The implementation keeps these tiers cumulative and explicit. `cleanup --tier safe` uses only lifecycle-safe reclamation; `cache` additionally removes reconstructable acceleration caches. `recompute` may remove DATA6/model-sweep, evaluation-prediction, and verified true-label replay materializations after the required downstream stages complete and only while configured reconstruction inputs still exist. `compact` requires full verification, a protocol freeze, and a protected exported production model before it may remove nonselected evaluation capsules, nonproduction per-run model copies, or hot DATA7/DATA8 materializations.
++The implementation keeps these tiers cumulative and explicit. `storage cleanup --tier safe` uses only lifecycle-safe reclamation; `cache` additionally removes reconstructable acceleration caches. `recompute` may remove DATA6/model-sweep, evaluation-prediction, and verified true-label replay materializations after the required downstream stages complete and only while configured reconstruction inputs still exist. `compact` requires full verification, a protocol freeze, and a protected exported production model before it may remove nonselected evaluation capsules, nonproduction per-run model copies, or hot DATA7/DATA8 materializations.
+ 
+-Every invocation first emits and writes `results/manual-reclamation-plan-<tier>.json`. `recompute` and `compact` do not apply unless `--apply` is explicit. With STOR5, `archive --apply` additionally requires successful archive creation, independent member verification, and a committed archive receipt before consequential hot deletion. Diagnostic text/log records remain retained at every tier. External inputs, workspace production models, selected production raw checkpoints, and campaign protocol/selection/verification records are never STOR4 deletion candidates.
++Every invocation first emits and writes `results/manual-reclamation-plan-<tier>.json`. `recompute` and `compact` do not apply unless `--apply` is explicit. With STOR5, `storage cleanup --tier archive --apply` additionally requires successful archive creation, independent member verification, and a committed archive receipt before consequential hot deletion. Diagnostic text/log records remain retained at every tier. External inputs, workspace production models, selected production raw checkpoints, and campaign protocol/selection/verification records are never STOR4 deletion candidates.
+ 
+ The capability report covers training restart, exact checkpoint re-evaluation, metric-only recomputation, DATA7 reselection, DATA8 rematerialization, current production inference, and verification replay. It distinguishes fully preserved capability from capability that remains possible only after reinference/rematerialization. Intentional higher-tier capability losses are appended to `results/cleanup-manifest.jsonl`; STOR3 automatic events retain the stricter empty-loss contract.
+ 
+@@ -4721,7 +4721,7 @@
+ STOR5 implements two optional physical-storage optimizations while preserving the
+ scientific checkpoint/model/data identities frozen by the earlier gates.
+ 
+-`deduplicate` is plan-only by default and requires completed verification plus an
++`storage deduplicate` is plan-only by default and requires completed verification plus an
+ authoritative protocol freeze. It scans only known campaign-owned immutable families
+ (DATA7/DATA8 materializations, qualified scientific/reconstructable caches,
+ nonselected evaluation capsules, nonproduction run models, and checkpoint-model
+@@ -4732,8 +4732,8 @@
+ configured external input are excluded. Symlinks are never followed. STOR1 accounting
+ continues to report logical bytes separately from inode-deduplicated physical bytes.
+ 
+-Cold archival is available independently through `archive create`, `archive verify`, and
+-`archive restore`, and is integrated into `cleanup --tier archive --apply`. Only
++Cold archival is available independently through `storage archive create`, `storage archive verify`, and
++`storage archive restore`, and is integrated into `storage cleanup --tier archive --apply`. Only
+ consequential STOR4 `recompute`/`compact` actions require archival; disposable `safe`
+ and `cache` material does not. The archive is a self-contained `tar+gzip` object under
+ `.mdstats/cold-archive/` with workspace-relative members, SHA-256/size/mode for every
+@@ -4750,10 +4750,10 @@
+ member verification, receipt persistence, or ownership failure leaves consequential hot
+ bytes in place.
+ 
+-`archive restore` re-verifies both manifest and archive, reconstructs members beneath a
++`storage archive restore` re-verifies both manifest and archive, reconstructs members beneath a
+ campaign-owned staging tree, authenticates every staged file, preflights all hot
+ destinations, refuses conflicting existing content, atomically installs missing files,
+-and hashes the final layout again before writing a restore receipt. `archive verify` is
++and hashes the final layout again before writing a restore receipt. `storage archive verify` is
+ read-only. Orphan content-addressed objects whose last hot hardlink has disappeared are
+ pruned after reclamation so earlier deduplication cannot pin deleted hot bytes on disk.
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.116a0_to_0.20.117a0.patch' /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/docs/guides/mlff_campaign_cli_user_guide.md /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/docs/guides/mlff_campaign_cli_user_guide.md
+--- /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/docs/guides/mlff_campaign_cli_user_guide.md	2026-08-08 23:27:07.000000000 +0000
++++ /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/docs/guides/mlff_campaign_cli_user_guide.md	2026-08-09 03:03:32.648383670 +0000
+@@ -15,27 +15,32 @@
+ Storage retention
+ -----------------
+ 
+-Use `storage` for a read-only ownership and byte inventory. STOR4 manual cleanup is
+-explicitly tiered:
++Use the unified `storage` command for STOR1-STOR5 accounting and retention. `storage report` is the read-only ownership and byte inventory (bare `storage` is an equivalent shorthand). STOR4 manual cleanup is explicitly tiered:
+ 
+ ```bash
+-python tools/mdstats-mlff-campaign.py --config campaign.toml cleanup --tier safe --dry-run
+-python tools/mdstats-mlff-campaign.py --config campaign.toml cleanup --tier cache
+-python tools/mdstats-mlff-campaign.py --config campaign.toml cleanup --tier recompute --apply
+-python tools/mdstats-mlff-campaign.py --config campaign.toml cleanup --tier compact --apply
+-python tools/mdstats-mlff-campaign.py --config campaign.toml cleanup --tier archive --dry-run
+-python tools/mdstats-mlff-campaign.py --config campaign.toml cleanup --tier archive --apply
+-python tools/mdstats-mlff-campaign.py --config campaign.toml archive verify
+-python tools/mdstats-mlff-campaign.py --config campaign.toml archive restore
+-python tools/mdstats-mlff-campaign.py --config campaign.toml deduplicate
+-python tools/mdstats-mlff-campaign.py --config campaign.toml deduplicate --apply
++python tools/mdstats-mlff-campaign.py --config campaign.toml storage report
++python tools/mdstats-mlff-campaign.py --config campaign.toml storage cleanup --tier safe --dry-run
++python tools/mdstats-mlff-campaign.py --config campaign.toml storage cleanup --tier cache
++python tools/mdstats-mlff-campaign.py --config campaign.toml storage cleanup --tier recompute --apply
++python tools/mdstats-mlff-campaign.py --config campaign.toml storage cleanup --tier compact --apply
++python tools/mdstats-mlff-campaign.py --config campaign.toml storage cleanup --tier archive --dry-run
++python tools/mdstats-mlff-campaign.py --config campaign.toml storage cleanup --tier archive --apply
++python tools/mdstats-mlff-campaign.py --config campaign.toml storage archive create
++python tools/mdstats-mlff-campaign.py --config campaign.toml storage archive verify
++python tools/mdstats-mlff-campaign.py --config campaign.toml storage archive restore
++python tools/mdstats-mlff-campaign.py --config campaign.toml storage deduplicate
++python tools/mdstats-mlff-campaign.py --config campaign.toml storage deduplicate --apply
+ ```
+ 
+ Every cleanup invocation prints and writes a capability plan first. `recompute` and
+-`compact` require explicit `--apply`. `archive --apply` is additionally gated by STOR5: consequential hot bytes are removed only after a compressed archive is created, independently verified, and registered. `archive restore` reconstructs and re-verifies the exact hot layout. `deduplicate` is plan-only unless `--apply` is given and operates only on verified/frozen immutable campaign-owned files. External inputs, workspace
++`compact` require explicit `--apply`. The `archive` cleanup tier with `--apply` is additionally gated by STOR5: consequential hot bytes are removed only after a compressed archive is created, independently verified, and registered. `storage archive restore` reconstructs and re-verifies the exact hot layout. `storage deduplicate` is plan-only unless `--apply` is given and operates only on verified/frozen immutable campaign-owned files. External inputs, workspace
+ production models, selected production raw checkpoints, protocol/selection/verification
+ records, and diagnostic logs are never STOR4 deletion candidates.
+ 
++For transition compatibility, the launcher still accepts the former top-level `cleanup`,
++`deduplicate`, and `archive` spellings, but they are intentionally omitted from top-level
++help. New scripts should use the `storage ...` hierarchy.
++
+ The visible campaign workspace stays compact:
+ 
+ ```text
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.116a0_to_0.20.117a0.patch' /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/docs/specs/training_data/mlff_storage_management_spec.md /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/docs/specs/training_data/mlff_storage_management_spec.md
+--- /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/docs/specs/training_data/mlff_storage_management_spec.md	2026-08-08 23:27:07.000000000 +0000
++++ /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/docs/specs/training_data/mlff_storage_management_spec.md	2026-08-09 03:02:10.974534667 +0000
+@@ -107,7 +107,7 @@
+ 
+ ## STOR4 - manual tiered reclamation - implemented in 0.20.115a0
+ 
+-Manual cleanup exposes increasingly consequential cumulative tiers through `cleanup --tier`. Every invocation first computes and prints/writes a dry-run capability plan. The implemented semantics are ordered:
++Manual cleanup exposes increasingly consequential cumulative tiers through `storage cleanup --tier`. Every invocation first computes and prints/writes a dry-run capability plan. The implemented semantics are ordered:
+ 
+ - `safe`: no scientific/restart capability loss;
+ - `cache`: only reconstructable acceleration caches; future execution may be slower;
+@@ -118,7 +118,7 @@
+ - `archive`: explicitly selected cold reproducibility material converted to verified
+   archival representation.
+ 
+-The implementation distinguishes planning from authorization. `safe` and `cache` retain the pre-STOR4 low-consequence behavior; `recompute` and `compact` are plan-only unless `--apply` is supplied. With STOR5, `archive --apply` first creates and independently verifies a reversible cold archive of every consequential `recompute`/`compact` hot artifact; only after that receipt is committed may those hot representations be removed.
++The implementation distinguishes planning from authorization. `safe` and `cache` retain the pre-STOR4 low-consequence behavior; `recompute` and `compact` are plan-only unless `--apply` is supplied. With STOR5, `storage cleanup --tier archive --apply` first creates and independently verifies a reversible cold archive of every consequential `recompute`/`compact` hot artifact; only after that receipt is committed may those hot representations be removed.
+ 
+ The capability plan states the status of training restart, exact checkpoint re-evaluation, metric-only recomputation, DATA7 reselection, DATA8 rematerialization, current production inference, and verification replay. `recompute` requires authoritative evaluation plus the continued availability of configured reconstruction inputs before scientific prediction/DATA6 caches can be removed. `compact` additionally requires full verification, an authoritative protocol freeze, and a protected production model; it may then remove nonselected evaluation capsules, nonproduction per-run model copies, and hot DATA7/DATA8 materializations. Selected production raw checkpoints, workspace production models, protocol/selection/verification records, and default diagnostics/logs are never STOR4 deletion candidates.
+ 
+@@ -127,7 +127,7 @@
+ ## STOR5 - immutable deduplication and authenticated cold archival - implemented in 0.20.116a0
+ 
+ STOR5 closes the optional physical-storage layer without changing scientific identities.
+-`deduplicate` scans only verified/frozen campaign-owned immutable families. Exact byte
++`storage deduplicate` scans only verified/frozen campaign-owned immutable families. Exact byte
+ duplicates are SHA-256 grouped and, with explicit `--apply`, replaced atomically by
+ same-filesystem hardlinks backed by `.mdstats/content-store/sha256/<prefix>/<digest>`.
+ The command is plan-only by default, excludes active checkpoints/state/logs/production
+@@ -135,8 +135,8 @@
+ symlinks. Storage accounting therefore continues to distinguish logical bytes from
+ inode-deduplicated physical allocation.
+ 
+-Cold archival is exposed through `archive create|verify|restore` and through
+-`cleanup --tier archive --apply`. Archive candidates are the consequential STOR4
++Cold archival is exposed through `storage archive create|verify|restore` and through
++`storage cleanup --tier archive --apply`. Archive candidates are the consequential STOR4
+ `recompute`/`compact` actions only; safe/cache garbage need not be archived. The archive
+ is a self-contained `tar+gzip` representation under `.mdstats/cold-archive/`, with
+ workspace-relative member paths, per-file SHA-256/size/mode records, an authenticated
+@@ -151,11 +151,11 @@
+ capability loss. Corruption, unsafe paths, missing members, or hash mismatch fail closed
+ before consequential deletion.
+ 
+-`archive restore` verifies the registered manifest/archive again, reconstructs files in a
++`storage archive restore` verifies the registered manifest/archive again, reconstructs files in a
+ campaign-owned staging tree, authenticates staged bytes, preflights all destinations for
+ conflicts, installs only missing exact files, and rehashes the final hot layout. Existing
+ conflicting bytes are never overwritten. A restore receipt is persisted in campaign
+-state/results. `archive verify` is read-only.
++state/results. `storage archive verify` is read-only.
+ 
+ STOR5 also garbage-collects content-store objects whose last hot hardlink was removed, so
+ prior deduplication cannot defeat later archive/cleanup disk savings. External source,
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.116a0_to_0.20.117a0.patch' /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/mdstats/_version.py /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/mdstats/_version.py
+--- /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/mdstats/_version.py	2026-08-08 23:27:07.000000000 +0000
++++ /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/mdstats/_version.py	2026-08-09 03:01:48.058249827 +0000
+@@ -1,3 +1,3 @@
+ """Package version."""
+ 
+-__version__ = "0.20.116a0"
++__version__ = "0.20.117a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.116a0_to_0.20.117a0.patch' /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/mdstats/data/observable_owner_manuals.json /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/mdstats/data/observable_owner_manuals.json
+--- /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/mdstats/data/observable_owner_manuals.json	2026-08-08 23:27:07.000000000 +0000
++++ /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/mdstats/data/observable_owner_manuals.json	2026-08-09 03:01:48.058296206 +0000
+@@ -17,6 +17,6 @@
+       "uri": "mdstats-doc://vacf-dynamics-architecture/0.20.53a0"
+     }
+   },
+-  "package_version": "0.20.116a0",
++  "package_version": "0.20.117a0",
+   "schema": "mdstats.observable-owner-manual-index.v1"
+ }
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.116a0_to_0.20.117a0.patch' /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/mdstats/training_data/campaign_cli.py /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/mdstats/training_data/campaign_cli.py
+--- /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/mdstats/training_data/campaign_cli.py	2026-08-08 23:29:30.000000000 +0000
++++ /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/mdstats/training_data/campaign_cli.py	2026-08-09 03:03:32.647965922 +0000
+@@ -92,7 +92,8 @@
+ # 0.20.113a0 implements STOR2 authenticated nonselected-checkpoint compaction, and
+ # 0.20.114a0 implements STOR3 lifecycle-safe automatic reclamation/audit manifests, and
+ # 0.20.115a0 implements STOR4 manual tiered reclamation/capability plans, and
+-# 0.20.116a0 implements STOR5 immutable deduplication and authenticated cold archive/restore.
++# 0.20.116a0 implements STOR5 immutable deduplication and authenticated cold archive/restore, and
++# 0.20.117a0 consolidates the four storage-management CLI commands under `storage`.
+ # None changes the frozen MLFF scientific/materialization identity, so existing
+ # 0.20.99a0 campaign state and prediction caches remain reusable.
+ MLFF_DATA9B3_VERSION = "0.20.99a0"
+@@ -12958,7 +12959,7 @@
+         flush=True,
+     )
+     if not bool(getattr(args, "apply", False)):
+-        _warn("Deduplication plan only; rerun with `deduplicate --apply` to replace exact duplicates with content-addressed hardlinks.")
++        _warn("Deduplication plan only; rerun with `storage deduplicate --apply` to replace exact duplicates with content-addressed hardlinks.")
+     return 0
+ 
+ 
+@@ -13112,14 +13113,14 @@
+ 
+     if bool(args.dry_run) or (tier == "archive" and not apply_requested):
+         if tier == "archive":
+-            _warn("Archive tier plan only; rerun with `cleanup --tier archive --apply` to create, verify, and then remove archived hot representations.")
++            _warn("Archive tier plan only; rerun with `storage cleanup --tier archive --apply` to create, verify, and then remove archived hot representations.")
+         return 0
+ 
+     consequential = _MANUAL_RECLAMATION_RANK[tier] >= _MANUAL_RECLAMATION_RANK["recompute"]
+     if consequential and not apply_requested:
+         _warn(
+             f"Tier `{tier}` changes future reanalysis/recompute capability. "
+-            f"Plan only; rerun with `cleanup --tier {tier} --apply` to authorize it."
++            f"Plan only; rerun with `storage cleanup --tier {tier} --apply` to authorize it."
+         )
+         return 0
+ 
+@@ -13561,7 +13562,7 @@
+ 
+ [cleanup]
+ # Conservative lifecycle cleanup runs automatically at train/evaluate/verify boundaries.
+-# Manual retention is CLI-selected: cleanup --tier safe|cache|recompute|compact|archive.
++# Manual retention is CLI-selected: storage cleanup --tier safe|cache|recompute|compact|archive.
+ # Every tier emits a capability plan first; recompute/compact require --apply; archive
+ # additionally creates and verifies a reversible STOR5 cold archive before consequential hot deletion.
+ enabled = true
+@@ -13704,13 +13705,14 @@
+ 7. verify     Run the full NVE matrix on deployment/final models and short stability smokes on fold-only comparison models.
+ 
+ Use `status` at any time. It reports the next command and never advances a failed gate.
+-Use `storage` at any time for the STOR1 read-only ownership/storage inventory; it
+-performs no reclamation and will not follow workspace symlinks into external data.
+-Use `cleanup --tier safe|cache|recompute|compact|archive` for STOR4 manual retention.
+-Every tier prints a capability plan first; `recompute`/`compact` require `--apply`.
+-`archive --apply` first creates and verifies a reversible STOR5 cold archive. Use
+-`archive verify|restore` for integrity checking/restoration and `deduplicate [--apply]`
+-for exact immutable content-addressed hardlink deduplication after protocol freeze.
++Use the unified `storage` command for all STOR1-STOR5 storage operations.
++`storage report` is the read-only ownership/storage inventory (bare `storage` is a
++shorthand). Use `storage cleanup --tier safe|cache|recompute|compact|archive` for
++manual retention. Every tier prints a capability plan first; `recompute`/`compact`
++require `--apply`; the archive tier creates and verifies a reversible cold archive
++before consequential deletion. Use `storage archive verify|restore` for integrity
++checking/restoration and `storage deduplicate [--apply]` for exact immutable
++content-addressed hardlink deduplication after protocol freeze.
+ 
+ Seeds and folds
+ ---------------
+@@ -13874,44 +13876,56 @@
+ 
+     p = sub.add_parser(
+         "storage",
+-        help="STOR1 read-only storage accounting and ownership report",
++        help="inspect and manage MLFF campaign storage",
++        description=(
++            "Unified STOR1-STOR5 storage management. Use `report`, `cleanup`, "
++            "`deduplicate`, or `archive`. Bare `storage` is a shorthand for `storage report`."
++        ),
+     )
+     p.add_argument(
+         "--top", type=int, default=20,
++        help="with bare `storage`, number of largest artifacts retained in the report",
++    )
++    storage_sub = p.add_subparsers(dest="storage_command", metavar="{report,cleanup,deduplicate,archive}")
++    p.set_defaults(func=command_storage, storage_command="report")
++
++    sp = storage_sub.add_parser("report", help="STOR1 read-only storage accounting and ownership report")
++    sp.add_argument(
++        "--top", type=int, default=20,
+         help="number of largest individual artifacts to retain in the JSON report",
+     )
+-    p.set_defaults(func=command_storage)
++    sp.set_defaults(func=command_storage, storage_command="report")
+ 
+-    p = sub.add_parser("cleanup", help="STOR4 manual tiered reclamation with capability-loss reporting")
+-    p.add_argument(
++    sp = storage_sub.add_parser("cleanup", help="STOR4 manual tiered reclamation with capability-loss reporting")
++    sp.add_argument(
+         "--tier", choices=_MANUAL_RECLAMATION_TIERS,
+         help=(
+             "manual retention tier: safe, cache, recompute, compact, or archive; "
+-            "omitting it preserves the legacy cleanup/cache behavior"
++            "omitting it runs the conservative cleanup/cache policy"
+         ),
+     )
+-    p.add_argument("--dry-run", action="store_true", help="print/write the mandatory capability plan without deleting anything")
+-    p.add_argument(
++    sp.add_argument("--dry-run", action="store_true", help="print/write the mandatory capability plan without deleting anything")
++    sp.add_argument(
+         "--apply", action="store_true",
+         help="authorize consequential reclamation after the plan is shown; archive additionally creates and verifies a reversible STOR5 cold archive first",
+     )
+-    p.add_argument(
++    sp.add_argument(
+         "--keep-preparation-caches", action="store_true",
+         help="retain normalized frame, shared DATA7, and preflight-heavy caches",
+     )
+-    p.add_argument(
++    sp.add_argument(
+         "--keep-unselected-checkpoints", action="store_true",
+         help="after evaluate, retain all evaluated checkpoint bytes",
+     )
+-    p.set_defaults(func=command_cleanup)
++    sp.set_defaults(func=command_cleanup, storage_command="cleanup")
+ 
+-    p = sub.add_parser("deduplicate", help="STOR5 exact-byte immutable content-addressed deduplication")
+-    p.add_argument("--apply", action="store_true", help="replace exact immutable duplicates with same-filesystem content-addressed hardlinks")
+-    p.set_defaults(func=command_deduplicate)
+-
+-    p = sub.add_parser("archive", help="STOR5 authenticated cold archive create/verify/restore")
+-    p.add_argument("archive_action", choices=("create", "verify", "restore"), help="create a verified archive, verify the registered archive, or restore its exact hot layout")
+-    p.set_defaults(func=command_archive)
++    sp = storage_sub.add_parser("deduplicate", help="STOR5 exact-byte immutable content-addressed deduplication")
++    sp.add_argument("--apply", action="store_true", help="replace exact immutable duplicates with same-filesystem content-addressed hardlinks")
++    sp.set_defaults(func=command_deduplicate, storage_command="deduplicate")
++
++    sp = storage_sub.add_parser("archive", help="STOR5 authenticated cold archive create/verify/restore")
++    sp.add_argument("archive_action", choices=("create", "verify", "restore"), help="create a verified archive, verify the registered archive, or restore its exact hot layout")
++    sp.set_defaults(func=command_archive, storage_command="archive")
+ 
+     p = sub.add_parser("status", help="show stage state, paths, and the next safe command")
+     p.set_defaults(func=command_status)
+@@ -13924,9 +13938,28 @@
+     return parser
+ 
+ 
++def _normalize_legacy_storage_argv(argv: Sequence[str] | None) -> list[str]:
++    """Map pre-0.20.117 top-level storage commands into the unified hierarchy."""
++
++    tokens = list(sys.argv[1:] if argv is None else argv)
++    index = 0
++    while index < len(tokens):
++        token = tokens[index]
++        if token == "--config":
++            index += 2
++            continue
++        if token.startswith("--config="):
++            index += 1
++            continue
++        break
++    if index < len(tokens) and tokens[index] in {"cleanup", "deduplicate", "archive"}:
++        tokens.insert(index, "storage")
++    return tokens
++
++
+ def main(argv: Sequence[str] | None = None) -> int:
+     parser = build_parser()
+-    args = parser.parse_args(argv)
++    args = parser.parse_args(_normalize_legacy_storage_argv(argv))
+     try:
+         return int(args.func(args))
+     except CampaignCliError as exc:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.116a0_to_0.20.117a0.patch' /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/pyproject.toml /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/pyproject.toml
+--- /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/pyproject.toml	2026-08-08 23:27:07.000000000 +0000
++++ /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/pyproject.toml	2026-08-09 03:01:48.058127276 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.116a0"
++version = "0.20.117a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.116a0_to_0.20.117a0.patch' /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_campaign_cli.py /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_campaign_cli.py
+--- /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_campaign_cli.py	2026-08-08 23:31:06.000000000 +0000
++++ /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_campaign_cli.py	2026-08-09 03:01:47.534530358 +0000
+@@ -13,8 +13,28 @@
+     parser = campaign_cli.build_parser()
+     choices = parser._subparsers._group_actions[0].choices
+     assert tuple(choices) == (
+-        "init", "doctor", "prepare", "preflight", "train", "evaluate", "verify", "storage", "cleanup", "deduplicate", "archive", "status", "advance", "guide"
++        "init", "doctor", "prepare", "preflight", "train", "evaluate", "verify", "storage", "status", "advance", "guide"
+     )
++    storage = choices["storage"]
++    storage_choices = storage._subparsers._group_actions[0].choices
++    assert tuple(storage_choices) == ("report", "cleanup", "deduplicate", "archive")
++    assert parser.parse_args(["storage"]).func is campaign_cli.command_storage
++    assert parser.parse_args(["storage", "report", "--top", "7"]).top == 7
++    assert parser.parse_args(["storage", "cleanup", "--tier", "cache"]).func is campaign_cli.command_cleanup
++    assert parser.parse_args(["storage", "deduplicate", "--apply"]).func is campaign_cli.command_deduplicate
++    assert parser.parse_args(["storage", "archive", "verify"]).archive_action == "verify"
++
++
++def test_legacy_storage_commands_normalize_without_polluting_top_level_help() -> None:
++    assert campaign_cli._normalize_legacy_storage_argv(["cleanup", "--tier", "safe"]) == [
++        "storage", "cleanup", "--tier", "safe"
++    ]
++    assert campaign_cli._normalize_legacy_storage_argv([
++        "--config", "campaign.toml", "deduplicate", "--apply"
++    ]) == ["--config", "campaign.toml", "storage", "deduplicate", "--apply"]
++    assert campaign_cli._normalize_legacy_storage_argv([
++        "--config=campaign.toml", "archive", "verify"
++    ]) == ["--config=campaign.toml", "storage", "archive", "verify"]
+ 
+ 
+ def test_init_creates_one_config_and_one_state_database(tmp_path: Path) -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.116a0_to_0.20.117a0.patch' /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data0_architecture_specification.py /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data0_architecture_specification.py
+--- /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data0_architecture_specification.py	2026-08-08 23:31:06.000000000 +0000
++++ /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data0_architecture_specification.py	2026-08-09 03:02:26.033820521 +0000
+@@ -263,4 +263,4 @@
+ def test_mlff_data0_pdf_and_version_artifacts_exist() -> None:
+     assert MANUAL_PDF.stat().st_size > 10_000
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.116a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.117a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.116a0_to_0.20.117a0.patch' /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data1_specification.py /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data1_specification.py
+--- /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data1_specification.py	2026-08-08 23:31:06.000000000 +0000
++++ /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data1_specification.py	2026-08-09 03:02:26.035341923 +0000
+@@ -49,4 +49,4 @@
+     assert callable(mdstats.assign_balanced_round_robin)
+     assert callable(mdstats.build_complete_frame_block_plan)
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.116a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.117a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.116a0_to_0.20.117a0.patch' /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data2a_manifest_inference_specification.py /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data2a_manifest_inference_specification.py
+--- /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-08 23:31:06.000000000 +0000
++++ /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-09 03:02:26.035551242 +0000
+@@ -15,7 +15,7 @@
+ 
+ 
+ def test_data2a_version_public_api_and_documented_contract() -> None:
+-    assert mdstats.__version__ == "0.20.116a0"
++    assert mdstats.__version__ == "0.20.117a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert callable(mdstats.infer_training_manifest_metadata)
+     policy = mdstats.ManifestInferencePolicy()
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.116a0_to_0.20.117a0.patch' /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a2_specification.py /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a2_specification.py
+--- /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a2_specification.py	2026-08-08 23:31:06.000000000 +0000
++++ /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a2_specification.py	2026-08-09 03:02:26.033330075 +0000
+@@ -23,7 +23,7 @@
+         "finite energy, force, and stress",
+     ):
+         assert required in text
+-    assert 'version = "0.20.116a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.117a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "DATA9A2 real-MACE realization is implemented in `0.20.39a0`" in ARCH.read_text()
+ 
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.116a0_to_0.20.117a0.patch' /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a3_specification.py /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a3_specification.py
+--- /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a3_specification.py	2026-08-08 23:31:06.000000000 +0000
++++ /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a3_specification.py	2026-08-09 03:02:26.030807031 +0000
+@@ -9,5 +9,5 @@
+     assert "37,632" in text
+     assert "supported_with_temporal_blocks_only" in text
+     assert "production_replay_corpus_not_bound" in text
+-    assert 'version = "0.20.116a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.117a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "MLFF-DATA9A3 production qualification" in ARCH.read_text()
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.116a0_to_0.20.117a0.patch' /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a4_precision_specification.py /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a4_precision_specification.py
+--- /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a4_precision_specification.py	2026-08-08 23:31:06.000000000 +0000
++++ /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a4_precision_specification.py	2026-08-09 03:02:26.031171991 +0000
+@@ -9,7 +9,7 @@
+     assert "float32" in text and "float64" in text
+     assert "MaceModelPrecisionRecord" in text
+     assert "MacePrecisionTransitionRecord" in text
+-    assert "version = \"0.20.116a0\"" in (ROOT / "pyproject.toml").read_text()
++    assert "version = \"0.20.117a0\"" in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_bind_precision_to_protocol() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.116a0_to_0.20.117a0.patch' /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a5_critical_fp64_specification.py /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a5_critical_fp64_specification.py
+--- /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-08 23:31:06.000000000 +0000
++++ /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-09 03:02:26.031018484 +0000
+@@ -14,7 +14,7 @@
+     assert 'version: "0.20.42a0"' in text
+     assert "training_force_jacobian_dtype = model" in text
+     assert "Python/ASE" in text
+-    assert 'version = "0.20.116a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.117a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_data9a5_architecture_declares_scope_and_limits() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.116a0_to_0.20.117a0.patch' /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a5_deployment_specification.py /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a5_deployment_specification.py
+--- /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a5_deployment_specification.py	2026-08-08 23:31:06.000000000 +0000
++++ /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a5_deployment_specification.py	2026-08-09 03:02:26.034025725 +0000
+@@ -13,7 +13,7 @@
+     assert 'version: "0.20.43a0"' in text
+     assert "downstream runtime owns" in text
+     assert "float32-to-float64 promotion does not restore" in text
+-    assert 'version = "0.20.116a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.117a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_keep_lammps_outside_mdstats_scope() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.116a0_to_0.20.117a0.patch' /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a6c_observable_evidence_specification.py /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a6c_observable_evidence_specification.py
+--- /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-08 23:31:06.000000000 +0000
++++ /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-09 03:02:26.033492706 +0000
+@@ -74,5 +74,5 @@
+ 
+ def test_packaged_owner_manual_index_is_valid() -> None:
+     payload = json.loads(MANUAL_INDEX.read_text(encoding="utf-8"))
+-    assert payload["package_version"] == "0.20.116a0"
++    assert payload["package_version"] == "0.20.117a0"
+     assert "structural-observables-architecture" in payload["manuals"]
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.116a0_to_0.20.117a0.patch' /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a7a_material_profile_specification.py /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a7a_material_profile_specification.py
+--- /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-08 23:31:06.000000000 +0000
++++ /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-09 03:02:26.034157730 +0000
+@@ -64,4 +64,4 @@
+ 
+ 
+ def test_release_version_is_data9a7a() -> None:
+-    assert 'version = "0.20.116a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert 'version = "0.20.117a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.116a0_to_0.20.117a0.patch' /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a7b_specification.py /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a7b_specification.py
+--- /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a7b_specification.py	2026-08-08 23:31:06.000000000 +0000
++++ /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a7b_specification.py	2026-08-09 03:02:26.035680594 +0000
+@@ -69,7 +69,7 @@
+ 
+ 
+ def test_data9a7b_public_exports_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.116a0"
++    assert mdstats.__version__ == "0.20.117a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert callable(mdstats.compute_local_structure_features)
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.116a0_to_0.20.117a0.patch' /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a7c_specification.py /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a7c_specification.py
+--- /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a7c_specification.py	2026-08-08 23:31:06.000000000 +0000
++++ /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a7c_specification.py	2026-08-09 03:02:26.034755264 +0000
+@@ -47,7 +47,7 @@
+ 
+ 
+ def test_public_api_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.116a0"
++    assert mdstats.__version__ == "0.20.117a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert mdstats.MLFF_DATA9A7C_PARSER_VERSION == "0.20.49a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.116a0_to_0.20.117a0.patch' /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a7d_specification.py /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a7d_specification.py
+--- /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a7d_specification.py	2026-08-08 23:31:06.000000000 +0000
++++ /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a7d_specification.py	2026-08-09 03:02:26.034229035 +0000
+@@ -39,6 +39,6 @@
+ 
+ 
+ def test_data9a7d_runtime_versions() -> None:
+-    assert mdstats.__version__ == "0.20.116a0"
++    assert mdstats.__version__ == "0.20.117a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7D_PARSER_VERSION == "0.20.50a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.116a0_to_0.20.117a0.patch' /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a7e_specification.py /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a7e_specification.py
+--- /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a7e_specification.py	2026-08-08 23:31:06.000000000 +0000
++++ /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a7e_specification.py	2026-08-09 03:02:26.033028208 +0000
+@@ -39,7 +39,7 @@
+         "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
+         "CROSS_SYSTEM_QUALIFICATION_SUITE",
+     } <= nodes
+-    assert mdstats.__version__ == "0.20.116a0"
++    assert mdstats.__version__ == "0.20.117a0"
+     assert mdstats.MLFF_DATA9A7E_PARSER_VERSION == "0.20.51a0"
+     assert callable(mdstats.qualify_cross_system_case)
+     assert callable(mdstats.build_cross_system_qualification_suite)
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.116a0_to_0.20.117a0.patch' /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a8_specification.py /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a8_specification.py
+--- /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a8_specification.py	2026-08-08 23:31:06.000000000 +0000
++++ /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a8_specification.py	2026-08-09 03:02:26.032398636 +0000
+@@ -66,7 +66,7 @@
+ 
+ 
+ def test_public_runtime_exposes_data9a8_without_removed_aliases() -> None:
+-    assert mdstats.__version__ == "0.20.116a0"
++    assert mdstats.__version__ == "0.20.117a0"
+     assert mdstats.MLFF_DATA9A8_PARSER_VERSION == "0.20.52a0"
+     assert mdstats.ObservableComparisonPolicy
+     assert mdstats.compare_mlff_observable_validation
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.116a0_to_0.20.117a0.patch' /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a9a_specification.py /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a9a_specification.py
+--- /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a9a_specification.py	2026-08-08 23:31:06.000000000 +0000
++++ /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a9a_specification.py	2026-08-09 03:02:26.034594466 +0000
+@@ -65,7 +65,7 @@
+ 
+ 
+ def test_public_runtime_exports_data9a9a_contracts() -> None:
+-    assert mdstats.__version__ == "0.20.116a0"
++    assert mdstats.__version__ == "0.20.117a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A9A_VERSION
+     assert mdstats.Data6ModelSweepPlan
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.116a0_to_0.20.117a0.patch' /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a9b_specification.py /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a9b_specification.py
+--- /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a9b_specification.py	2026-08-08 23:31:06.000000000 +0000
++++ /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a9b_specification.py	2026-08-09 03:02:26.032911205 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9b_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.116a0"
++    assert mdstats.__version__ == "0.20.117a0"
+     for name in (
+         "ProductionMaterializationPlan",
+         "ProductionMaterializationCheckpoint",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.116a0_to_0.20.117a0.patch' /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a9c_specification.py /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a9c_specification.py
+--- /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a9c_specification.py	2026-08-08 23:31:06.000000000 +0000
++++ /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a9c_specification.py	2026-08-09 03:02:26.034069600 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9c_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.116a0"
++    assert mdstats.__version__ == "0.20.117a0"
+     for name in (
+         "ProductionCorpusPlan", "ProductionExpectedRun",
+         "ProfileExtensionEvidenceRequirement", "ProductionCorpusQualificationRecord",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.116a0_to_0.20.117a0.patch' /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a_specification.py /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a_specification.py
+--- /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a_specification.py	2026-08-08 23:31:06.000000000 +0000
++++ /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9a_specification.py	2026-08-09 03:02:26.031366158 +0000
+@@ -14,7 +14,7 @@
+ 
+ 
+ def test_data9a_runtime_specification_is_canonical() -> None:
+-    assert 'version = "0.20.116a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.117a0"' in (ROOT / "pyproject.toml").read_text()
+     architecture = ARCH.read_text()
+     stage = STAGE.read_text()
+     specification = SPEC.read_text()
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.116a0_to_0.20.117a0.patch' /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9b1_specification.py /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9b1_specification.py
+--- /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9b1_specification.py	2026-08-08 23:31:06.000000000 +0000
++++ /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9b1_specification.py	2026-08-09 03:02:26.033667915 +0000
+@@ -18,8 +18,8 @@
+     assert "TrainingCampaignPlan" in text
+     assert "CheckpointSelectionRecord" in text
+     assert "mdstats-mace-train" in text
+-    assert mdstats.__version__ == "0.20.116a0"
+-    assert 'version = "0.20.116a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert mdstats.__version__ == "0.20.117a0"
++    assert 'version = "0.20.117a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+ 
+ 
+ def test_data9b1_is_integrated_into_manual_and_stage_plan() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.116a0_to_0.20.117a0.patch' /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9b2_specification.py /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9b2_specification.py
+--- /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9b2_specification.py	2026-08-08 23:31:06.000000000 +0000
++++ /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9b2_specification.py	2026-08-09 03:02:26.035069199 +0000
+@@ -23,7 +23,7 @@
+         'mdstats-mace-select-head',
+     ):
+         assert token in text
+-    assert mdstats.__version__ == '0.20.116a0'
++    assert mdstats.__version__ == '0.20.117a0'
+     assert mdstats.MLFF_DATA9B2_VERSION == '0.20.57a0'
+ 
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.116a0_to_0.20.117a0.patch' /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9b3_campaign_cli_specification.py /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9b3_campaign_cli_specification.py
+--- /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-08 23:31:06.000000000 +0000
++++ /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-09 03:02:26.034669688 +0000
+@@ -16,7 +16,7 @@
+ 
+ 
+ def test_data9b3_version_and_user_surface() -> None:
+-    assert mdstats.__version__ == "0.20.116a0"
++    assert mdstats.__version__ == "0.20.117a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert TOOL.is_file()
+     assert TOOL.stat().st_mode & 0o111
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.116a0_to_0.20.117a0.patch' /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_opt_ctrl1_specification.py /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_opt_ctrl1_specification.py
+--- /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_opt_ctrl1_specification.py	2026-08-08 23:31:06.000000000 +0000
++++ /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_opt_ctrl1_specification.py	2026-08-09 03:02:26.030971374 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_ctrl1_release_identity_preserves_scientific_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.116a0"
++    assert mdstats.__version__ == "0.20.117a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.116a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.117a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_ctrl1_architecture_and_spec_close_roadmap() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.116a0_to_0.20.117a0.patch' /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_opt_eval4_specification.py /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_opt_eval4_specification.py
+--- /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_opt_eval4_specification.py	2026-08-08 23:31:06.000000000 +0000
++++ /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_opt_eval4_specification.py	2026-08-09 03:02:26.033918896 +0000
+@@ -11,9 +11,9 @@
+ 
+ 
+ def test_opt_eval4_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.116a0"
++    assert mdstats.__version__ == "0.20.117a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+-    assert 'version = "0.20.116a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.117a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_eval4_architecture_and_spec_record_pipeline_contract() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.116a0_to_0.20.117a0.patch' /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_opt_verify1_specification.py /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_opt_verify1_specification.py
+--- /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_opt_verify1_specification.py	2026-08-08 23:31:06.000000000 +0000
++++ /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_opt_verify1_specification.py	2026-08-09 03:02:26.035785639 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_verify1_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.116a0"
++    assert mdstats.__version__ == "0.20.117a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.116a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.117a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_verify1_architecture_and_spec_record_contract() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.116a0_to_0.20.117a0.patch' /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_perf2_parallel_acceleration_specification.py /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_perf2_parallel_acceleration_specification.py
+--- /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-08 23:31:06.000000000 +0000
++++ /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-09 03:02:26.032805338 +0000
+@@ -10,7 +10,7 @@
+ 
+ 
+ def test_perf2_release_and_configuration_contract() -> None:
+-    assert mdstats.__version__ == "0.20.116a0"
++    assert mdstats.__version__ == "0.20.117a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     template = campaign_cli._config_template(
+         workspace="workspace",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.116a0_to_0.20.117a0.patch' /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_prec1_specification.py /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_prec1_specification.py
+--- /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_prec1_specification.py	2026-08-08 23:31:06.000000000 +0000
++++ /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_prec1_specification.py	2026-08-09 03:02:26.032088247 +0000
+@@ -12,7 +12,7 @@
+ 
+ 
+ def test_prec1_release_and_architecture_status() -> None:
+-    assert mdstats.__version__ == "0.20.116a0"
++    assert mdstats.__version__ == "0.20.117a0"
+     manual = MANUAL.read_text(encoding="utf-8")
+     spec = SPEC.read_text(encoding="utf-8")
+     assert "PREC1 - precision profiles, explicit staged schedule, and init realization - implemented in 0.20.108a0" in manual
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.116a0_to_0.20.117a0.patch' /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_prec3_specification.py /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_prec3_specification.py
+--- /mnt/data/mdstats_base/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_prec3_specification.py	2026-08-08 23:31:06.000000000 +0000
++++ /mnt/data/mdstats_work/mdstats-0.20.116a0-complete-source-package/tests/test_mlff_prec3_specification.py	2026-08-09 03:02:26.031776085 +0000
+@@ -16,7 +16,7 @@
+     manual = MANUAL.read_text(encoding="utf-8")
+     spec = SPEC.read_text(encoding="utf-8")
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+-    assert mdstats.__version__ == "0.20.116a0"
++    assert mdstats.__version__ == "0.20.117a0"
+     assert "PREC3 - campaign integration, qualification, and profile activation - implemented in 0.20.110a0" in manual
+     assert "PREC3 implementation closure (0.20.110a0)" in manual
+     assert "PREC3 implemented in mdstats 0.20.110a0" in spec

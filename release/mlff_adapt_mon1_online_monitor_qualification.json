@@ -1,0 +1,45 @@
+{
+  "schema": "mdstats.mlff-adapt-mon1-qualification.v1",
+  "package_version": "0.20.123a0",
+  "gate": "ADAPT-MON1",
+  "date": "2026-08-09",
+  "policy_defaults": {
+    "target_configurations": 256,
+    "replay_configurations": 512,
+    "seed": 161803,
+    "target_strategy": "balanced_condition_run_time_systematic",
+    "replay_strategy": "chemistry_size_systematic",
+    "replay_label_mode": "true_dft"
+  },
+  "contracts": {
+    "policy_schema": "mdstats.online-monitor-policy.v1",
+    "record_schema": "mdstats.online-monitor-record.v1",
+    "data8_schema": "mdstats.data8-preparation-bundle.v2",
+    "production_plan_schema": "mdstats.production-materialization-plan.v4",
+    "training_protocol_schema": "mdstats.training-protocol-identity.v4"
+  },
+  "qualification": {
+    "focused_monitor_data8_materialization_legacy": {
+      "passed": 44,
+      "failed": 0
+    },
+    "mlff_specification_and_monitor_subset": {
+      "passed": 166,
+      "failed": 0,
+      "deselected": 1,
+      "deselected_reason": "pre-existing missing release/mlff_data9a9a_real_mpa0_restart_smoke.json fixture"
+    },
+    "campaign_cli": {
+      "passed": 33,
+      "failed": 0,
+      "skipped": 1,
+      "skipped_reason": "real LTA training root not supplied"
+    }
+  },
+  "runtime_boundary": {
+    "adaptive_stopping_enabled": false,
+    "max_num_epochs_still_authoritative": true,
+    "eval_mf_still_authoritative": true,
+    "next_gate": "ADAPT-STOP1"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "schema": "mdstats.mlff-cueq-default1-hf1-qualification.v1",
+  "version": "0.20.194a0",
+  "architecture_revision": 61,
+  "dependency_graph_schema": 43,
+  "status": "control_plane_pass_workstation_rerun_required",
+  "foundation_contract_reporting_fix": true,
+  "source_data6_float32_policy": {"rtol": 1e-5, "atol": 1e-6},
+  "train2_selected_head_float32_policy": {"rtol": 1e-5, "atol": 2e-6},
+  "float64_policy": {"rtol": 1e-10, "atol": 1e-12},
+  "reported_workstation_observation": {
+    "energy_max_abs": 3.576e-7,
+    "force_max_abs": 1.490e-6,
+    "stress_max_abs": 1.564e-8,
+    "descriptor_max_abs": 1.570e-6,
+    "selection_identical": true,
+    "accepted_by_train2_policy": true,
+    "independently_rerun_on_release_host": false
+  },
+  "focused_tests": {"passed": 42, "skipped": 1, "failed": 0},
+  "supplied_foundation_acceptance": {"passed": 1, "failed": 0},
+  "source_data6_tolerance_relaxed": false,
+  "silent_fallback_allowed": false
+}

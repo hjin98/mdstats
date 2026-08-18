@@ -1,0 +1,2709 @@
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/CHANGELOG.md ./CHANGELOG.md
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/CHANGELOG.md	2026-08-08 21:46:01.436887177 +0000
++++ ./CHANGELOG.md	2026-08-08 22:07:03.242653773 +0000
+@@ -1,3 +1,11 @@
++## 0.20.113a0 - 2026-08-08
++
++- Implement MLFF STOR2 authenticated completed-checkpoint compaction: after per-run checkpoint selection, retain the selected full restart-capable checkpoint and replace qualified nonselected optimizer-bearing checkpoints with smaller model-state-only evaluation capsules.
++- Bind every capsule to the original checkpoint SHA-256, run/epoch lineage, immutable MACE config digest, reconstruction contract, model-state digest, and capsule byte identity; raw deletion occurs only after atomic capsule write, independent exact reconstruction, campaign-state commit/readback, and re-authentication.
++- Make OPT-EVAL1/OPT-EVAL4 and true-label replay refresh representation-aware so later re-evaluation can transparently use capsules while preserving the original checkpoint scientific/cache identity.
++- Preserve active/incomplete-run restart state and pre-selection raw checkpoints; unsupported layouts, corruption, ownership ambiguity, non-saving capsules, or reconstruction mismatch fail closed to raw retention.
++- Qualify STOR2 on real MACE 0.3.16/e3nn with exact model-state and energy/force/stress equivalence. STOR3 is the next architecture gate.
++
+ ## 0.20.112a0 - 2026-08-08
+ 
+ - Extend the MACE runtime warning compatibility scope from exact TorchScript deprecations to all warnings originating from MACE/PyTorch, grouping repeated warnings by origin/category/source/message and emitting one compact `MaceRuntimeCompatibilityWarning` summary.
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/PATCH_NOTES_0.20.113a0.md ./PATCH_NOTES_0.20.113a0.md
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/PATCH_NOTES_0.20.113a0.md	1970-01-01 00:00:00.000000000 +0000
++++ ./PATCH_NOTES_0.20.113a0.md	2026-08-08 22:07:03.242789224 +0000
+@@ -0,0 +1,8 @@
++# mdstats 0.20.113a0 patch notes
++
++- Implement MLFF STOR2 authenticated completed-checkpoint compaction: after per-run checkpoint selection, retain the selected full restart-capable checkpoint and replace qualified nonselected optimizer-bearing checkpoints with smaller model-state-only evaluation capsules.
++- Bind every capsule to the original checkpoint SHA-256, run/epoch lineage, immutable MACE config digest, reconstruction contract, model-state digest, and capsule byte identity; raw deletion occurs only after atomic capsule write, independent exact reconstruction, campaign-state commit/readback, and re-authentication.
++- Make OPT-EVAL1/OPT-EVAL4 and true-label replay refresh representation-aware so later re-evaluation can transparently use capsules while preserving the original checkpoint scientific/cache identity.
++- Preserve active/incomplete-run restart state and pre-selection raw checkpoints; unsupported layouts, corruption, ownership ambiguity, non-saving capsules, or reconstruction mismatch fail closed to raw retention.
++- Qualify STOR2 on real MACE 0.3.16/e3nn with exact model-state and energy/force/stress equivalence. STOR3 is the next architecture gate.
++
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/docs/arch_manuals/README.md ./docs/arch_manuals/README.md
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/docs/arch_manuals/README.md	2026-08-08 21:29:19.152818786 +0000
++++ ./docs/arch_manuals/README.md	2026-08-08 22:07:02.624747723 +0000
+@@ -58,4 +58,4 @@
+ - `mlff_training_data_dependency_graph.json`: machine-readable schema-26,
+   architecture-revision-30 dependency graph. It separates generic material
+   profiles and observable validation from optional LTA enrichment and freezes
+-  holdout/protocol-exclusion dependencies. Revision 30 records completed EVAL-MF1/MF2, PREC1/PREC2/PREC3, and STOR1 ownership/accounting while preserving STOR2-STOR5 dependencies; earlier DATA2A and scientific identities remain unchanged.
++  holdout/protocol-exclusion dependencies. Revision 31 records completed EVAL-MF1/MF2, PREC1/PREC2/PREC3, STOR1 ownership/accounting, and STOR2 authenticated checkpoint compaction while preserving STOR3-STOR5 dependencies; earlier DATA2A and scientific identities remain unchanged.
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/docs/arch_manuals/mlff_training_data_architecture.md ./docs/arch_manuals/mlff_training_data_architecture.md
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-08 21:28:11.344958988 +0000
++++ ./docs/arch_manuals/mlff_training_data_architecture.md	2026-08-08 22:06:47.320800929 +0000
+@@ -4617,37 +4617,54 @@
+ path-traversal/external materialization references, and preservation of existing safe
+ cache cleanup behavior.
+ 
+-## STOR2 - lossless completed-checkpoint compaction - planned
++## STOR2 - lossless completed-checkpoint compaction - implemented in 0.20.113a0
+ 
+-Optimizer-bearing MACE checkpoints are expected to dominate live campaign storage.
+-For an incomplete run they remain restart-critical and are untouched. Once a training
+-run is durably complete, however, intermediate epochs no longer require optimizer,
+-scheduler, or other continuation state merely to participate in checkpoint evaluation.
+-
+-STOR2 shall therefore qualify a compact **evaluation state capsule** (provisional name)
+-containing the exact model state and minimum architecture/provenance information needed
+-by the OPT-EVAL1 direct-restoration path. Conversion is allowed only after byte/digest
+-lineage is recorded and numerical E/F/stress predictions are proven equivalent to the
+-original full checkpoint.
++Optimizer-bearing MACE checkpoints dominate live campaign storage because Adam/AMSGrad,
++scheduler, and related continuation state can exceed the deployable model state by a
++large factor. STOR2 introduces an authenticated **evaluation state capsule** for completed,
++nonselected checkpoints while keeping the scientific checkpoint identity anchored to the
++original raw-checkpoint SHA-256.
+ 
+-The intended completed-run hierarchy is:
++The implemented lifetime is deliberately conservative:
+ 
+ ```text
+ active/interrupted training:
+-    retain full restart-capable checkpoint state
++    retain every required full restart-capable checkpoint
+ 
+-training complete, evaluation unfinished:
+-    retain at least one full restart checkpoint as policy requires;
+-    compact non-resume epochs to authenticated evaluation-state capsules when qualified
+-
+-evaluation/selection complete:
+-    retain the selected production checkpoint and production model by default;
+-    nonselected capsules become lower-retention storage classes
++training complete, winner not yet selected:
++    retain raw checkpoints; a model-only capsule cannot guarantee restart capability
++    for a checkpoint that may still become the production winner
++
++per-run evaluation/selection complete:
++    retain the selected raw checkpoint + production model by default
++    replace each qualified nonselected raw checkpoint with an authenticated
++    model-state-only evaluation capsule
+ ```
+ 
+-STOR2 must not delete a raw checkpoint until the replacement capsule, its source hash,
+-and its round/evaluation usability have been atomically committed and independently
+-reloaded. Unsupported MACE/checkpoint layouts fail closed to ordinary retention.
++The capsule binds source checkpoint SHA-256, epoch/run lineage, immutable DATA8 MACE
++configuration digest, reconstruction contract, model-state digest, and capsule byte
++identity. Evaluation source resolution is representation-aware: OPT-EVAL1/OPT-EVAL4 may
++consume the original raw checkpoint or the validated capsule while continuing to use the
++original checkpoint SHA as scientific/cache identity. This preserves later true-label
++refresh, checkpoint re-evaluation, and target-head reconstruction without retaining
++optimizer continuation state for every rejected epoch.
++
++Raw removal follows a strict transaction: verify raw source -> atomically write capsule ->
++authenticate capsule -> reconstruct independently -> prove exact deployable-state match ->
++commit/read-back the campaign capsule record -> re-authenticate -> delete the raw source
++through the STOR1 ownership boundary. A capsule that is not smaller than the raw checkpoint
++is rejected as a storage optimization. Corruption, unsupported checkpoint layout, missing
++immutable DATA8 configuration, reconstruction mismatch, or ownership ambiguity all fail
++closed to raw retention. Completed-run validation accepts the original immutable checkpoint
++catalog represented by either raw checkpoints or authenticated capsules; rerunning `train`
++does not retrain merely because STOR2 has compacted nonselected bytes.
++
++Qualification includes a real MACE 0.3.16/e3nn model in which reconstruction from the raw
++checkpoint and from the capsule produces exactly identical model state and energy, force,
++and stress outputs. Existing multi-head/direct-restoration semantics are preserved by
++reusing the qualified OPT-EVAL1 reconstruction path rather than inventing a separate model
++loader. The selected production checkpoint remains full/restart-capable by default.
++STOR2 does not authorize general cache/prediction cleanup; that begins at STOR3.
+ 
+ ## STOR3 - automatic lifecycle-safe reclamation - planned
+ 
+@@ -4740,8 +4757,8 @@
+ 8. **capability loss is explicit** - any manual higher-tier reclamation states exactly
+    what can no longer be restarted, recomputed, or re-evaluated cheaply.
+ 
+-`EVAL-MF1` is implemented in 0.20.106a0, `EVAL-MF2` in 0.20.107a0, `PREC1` in 0.20.108a0, `PREC2` in 0.20.109a0, `PREC3` in 0.20.110a0, and `STOR1` in 0.20.111a0. The next implementation gate is `STOR2`. The remaining required implementation sequence is
+-`STOR2 -> STOR3 -> STOR4 -> STOR5`.
++`EVAL-MF1` is implemented in 0.20.106a0, `EVAL-MF2` in 0.20.107a0, `PREC1` in 0.20.108a0, `PREC2` in 0.20.109a0, `PREC3` in 0.20.110a0, `STOR1` in 0.20.111a0, and `STOR2` in 0.20.113a0. The next implementation gate is `STOR3`. The remaining required implementation sequence is
++`STOR3 -> STOR4 -> STOR5`.
+ Storage implementation does not begin until EVAL-MF and staged-precision work establish
+ the checkpoint, prediction, optimizer-state, and dtype lifetimes that storage policy
+ must respect.
+@@ -4773,5 +4790,5 @@
+ The staged optimization roadmap **OPT-EVAL1 through OPT-CTRL1 is complete**. The
+ post-0.20.105 multi-fidelity-evaluation/staged-precision/storage roadmap above is a
+ separate cycle opened by new production-scale profiling, FP64-training, and storage
+-evidence. `EVAL-MF1`, `EVAL-MF2`, `PREC1`, `PREC2`, `PREC3`, and `STOR1` are implemented through 0.20.111a0; the next implementation gate is `STOR2`.
++evidence. `EVAL-MF1`, `EVAL-MF2`, `PREC1`, `PREC2`, `PREC3`, `STOR1`, and `STOR2` are implemented through 0.20.113a0; the next implementation gate is `STOR3`.
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/docs/arch_manuals/mlff_training_data_dependency_graph.json ./docs/arch_manuals/mlff_training_data_dependency_graph.json
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-08 21:25:48.008129642 +0000
++++ ./docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-08 22:06:47.321826962 +0000
+@@ -1,7 +1,7 @@
+ {
+-  "architecture_revision": 30,
++  "architecture_revision": 31,
+   "branch": "MLFF-DATA",
+-  "description": "MLFF training-data dependency graph through DATA2A automatic review-manifest inference,  DATA9B3A frozen e3nn/cuEquivariance campaigns, MLFF-PERF2 resource-aware process/GPU execution,  EVAL-MF1/MF2 multi-fidelity checkpoint evaluation, and PREC1-PREC3 explicit precision profiles,  staged runtime transitions, cross-stage evaluation, and deployment activation. STOR1 read-only ownership/storage accounting is implemented; STOR2-STOR5 ownership-scoped  storage management remain planned. Scientific DATA9 identity remains unchanged.",
++  "description": "MLFF training-data dependency graph through DATA2A automatic review-manifest inference,  DATA9B3A frozen e3nn/cuEquivariance campaigns, MLFF-PERF2 resource-aware process/GPU execution,  EVAL-MF1/MF2 multi-fidelity checkpoint evaluation, and PREC1-PREC3 explicit precision profiles,  staged runtime transitions, cross-stage evaluation, and deployment activation. STOR1 read-only ownership/storage accounting and STOR2 authenticated completed-checkpoint compaction are implemented; STOR3-STOR5 ownership-scoped storage management remain planned. Scientific DATA9 identity remains unchanged.",
+   "documentation_gate": "MLFF-DATA0",
+   "edge_type_definitions": {
+     "execution_requires": "The upstream product must exist before execution.",
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/docs/specs/training_data/mlff_staged_precision_profiles_spec.md ./docs/specs/training_data/mlff_staged_precision_profiles_spec.md
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/docs/specs/training_data/mlff_staged_precision_profiles_spec.md	2026-08-08 21:25:48.007929204 +0000
++++ ./docs/specs/training_data/mlff_staged_precision_profiles_spec.md	2026-08-08 22:07:02.624830436 +0000
+@@ -1,6 +1,6 @@
+ # MLFF PREC1-PREC3 staged-precision profile specification
+ 
+-Status: PREC1 implemented in mdstats 0.20.108a0; PREC2 implemented in mdstats 0.20.109a0; PREC3 implemented in mdstats 0.20.110a0. STOR1 is implemented in mdstats 0.20.111a0; STOR2-STOR5 remain planned.
++Status: PREC1 implemented in mdstats 0.20.108a0; PREC2 implemented in mdstats 0.20.109a0; PREC3 implemented in mdstats 0.20.110a0. STOR1 is implemented in mdstats 0.20.111a0 and STOR2 in mdstats 0.20.113a0; STOR3-STOR5 remain planned.
+ 
+ ## Purpose
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/docs/specs/training_data/mlff_storage_management_spec.md ./docs/specs/training_data/mlff_storage_management_spec.md
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/docs/specs/training_data/mlff_storage_management_spec.md	2026-08-08 21:28:11.345151564 +0000
++++ ./docs/specs/training_data/mlff_storage_management_spec.md	2026-08-08 22:07:52.415802369 +0000
+@@ -1,6 +1,6 @@
+ # MLFF STOR1-STOR5 campaign storage-management specification
+ 
+-Status: STOR1 implemented in 0.20.111a0; STOR2-STOR5 planned.
++Status: STOR1 implemented in 0.20.111a0; STOR2 implemented in 0.20.113a0; STOR3-STOR5 planned.
+ 
+ ## Purpose
+ 
+@@ -48,25 +48,45 @@
+ a stricter traversal authorization; cleanup roots are traversed only when their resolved
+ targets remain inside the campaign boundary and outside every protected input.
+ 
+-## STOR2 - completed-checkpoint compaction
++## STOR2 - completed-checkpoint compaction - implemented in 0.20.113a0
+ 
+-Full optimizer checkpoints remain untouched for active/interrupted training. After a
+-run is durably complete, non-resume epochs may be converted to authenticated
+-model-state-only evaluation capsules when exact MACE reconstruction has been qualified.
+-The capsule must preserve the state needed by OPT-EVAL1 for energy/force/stress
+-prediction and target-head export but need not preserve optimizer continuation state.
+-
+-A raw checkpoint may be replaced only after:
+-
+-- its SHA-256 and lineage are persisted;
+-- the compact capsule is atomically written and authenticated;
+-- reconstruction succeeds;
+-- representative E/F/stress outputs match the original under the precision contract;
+-- required multi-head/head-removal semantics match; and
+-- the capsule is registered as satisfying all pending evaluation dependencies.
+-
+-Unsupported checkpoint layouts fail closed to retention. At least the selected
+-production checkpoint remains full/restart-capable by default.
++Full optimizer checkpoints remain untouched for active/interrupted training and, by
++default, while the eventual production winner is still unknown. A model-state-only
++**evaluation state capsule** (the STOR2 evaluation capsules representation) is therefore created only after a run has a durable
++scientific checkpoint selection: the selected production checkpoint remains byte-for-byte
++full/restart-capable, while each nonselected checkpoint may be replaced by an
++authenticated capsule. This slightly more conservative lifetime is intentional: a
++model-only capsule cannot preserve optimizer continuation for a checkpoint that might
++later become the production winner.
++
++The v1 capsule preserves the original checkpoint scientific identity and stores the exact
++MACE model state plus the source checkpoint SHA-256, epoch/run lineage, immutable MACE
++configuration digest, reconstruction contract, model-state digest, and capsule byte
++identity. OPT-EVAL1/OPT-EVAL4 source resolution accepts either the original raw checkpoint
++or a validated capsule, so true-label refresh and later checkpoint re-evaluation can reuse
++the compact representation without changing selection identity. The completed-run
++validator likewise accepts the immutable original checkpoint catalog represented by a
++mixture of raw checkpoints and authenticated capsules.
++
++A raw nonselected checkpoint is removed only after all of the following succeed in order:
++
++- its original SHA-256 and run/epoch lineage are verified;
++- the capsule is atomically written and authenticated;
++- direct MACE reconstruction from the capsule succeeds;
++- reconstructed deployable model state exactly matches reconstruction from the raw
++  checkpoint;
++- a real MACE 0.3.16 qualification confirms identical energy, force, and stress outputs;
++- the capsule is smaller than the source checkpoint (otherwise the raw checkpoint is
++  retained);
++- the capsule record is committed to campaign state and independently read back and
++  re-authenticated; and only then
++- the raw checkpoint is deleted through the STOR1 ownership boundary.
++
++Unsupported checkpoint layouts, missing/changed DATA8 configuration, capsule corruption,
++reconstruction mismatch, ownership ambiguity, or a non-saving capsule all fail closed to
++ordinary raw-checkpoint retention. The selected production checkpoint and production
++model remain retained by default. STOR2 introduces no broader cache/artifact reclamation;
++that authority begins at STOR3.
+ 
+ ## STOR3 - automatic lifecycle-safe reclamation
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/mdstats/__init__.py ./mdstats/__init__.py
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/mdstats/__init__.py	2026-08-08 21:16:12.160778550 +0000
++++ ./mdstats/__init__.py	2026-08-08 22:02:02.334527115 +0000
+@@ -4541,6 +4541,7 @@
+     checkpoint_prediction_cache_complete,
+     bind_checkpoint_evaluation_replay_provenance,
+     materialize_mace_checkpoint_model,
++    create_mace_evaluation_state_capsule,
+     remove_materialized_mace_checkpoint_model,
+     aggregate_protocol_variant,
+     aggregate_protocol_family,
+@@ -4604,6 +4605,7 @@
+     "checkpoint_prediction_cache_complete",
+     "bind_checkpoint_evaluation_replay_provenance",
+     "materialize_mace_checkpoint_model",
++    "create_mace_evaluation_state_capsule",
+     "remove_materialized_mace_checkpoint_model",
+     "aggregate_protocol_variant",
+     "aggregate_protocol_family",
+@@ -4617,6 +4619,24 @@
+ ]
+ 
+ from .training_data import (
++    EVALUATION_STATE_CAPSULE_FILE_SCHEMA,
++    EVALUATION_STATE_CAPSULE_RECORD_SCHEMA,
++    EVALUATION_STATE_CAPSULE_CONTRACT,
++    EvaluationStateCapsuleRecord,
++    model_state_sha256,
++    load_validated_capsule_payload,
++)
++
++__all__ += [
++    "EVALUATION_STATE_CAPSULE_FILE_SCHEMA",
++    "EVALUATION_STATE_CAPSULE_RECORD_SCHEMA",
++    "EVALUATION_STATE_CAPSULE_CONTRACT",
++    "EvaluationStateCapsuleRecord",
++    "model_state_sha256",
++    "load_validated_capsule_payload",
++]
++
++from .training_data import (
+     MACE_RUNTIME_COMPATIBILITY_SCHEMA,
+     MACE_TORCHSCRIPT_DEPRECATION_CODE,
+     MaceRuntimeCompatibilityWarning,
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/mdstats/_version.py ./mdstats/_version.py
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/mdstats/_version.py	2026-08-08 21:46:01.434355829 +0000
++++ ./mdstats/_version.py	2026-08-08 22:07:03.241882027 +0000
+@@ -1,3 +1,3 @@
+ """Package version."""
+ 
+-__version__ = "0.20.112a0"
++__version__ = "0.20.113a0"
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/mdstats/data/observable_owner_manuals.json ./mdstats/data/observable_owner_manuals.json
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/mdstats/data/observable_owner_manuals.json	2026-08-08 21:47:24.105357368 +0000
++++ ./mdstats/data/observable_owner_manuals.json	2026-08-08 22:07:03.241930609 +0000
+@@ -17,6 +17,6 @@
+       "uri": "mdstats-doc://vacf-dynamics-architecture/0.20.53a0"
+     }
+   },
+-  "package_version": "0.20.112a0",
++  "package_version": "0.20.113a0",
+   "schema": "mdstats.observable-owner-manual-index.v1"
+ }
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/mdstats/training_data/__init__.py ./mdstats/training_data/__init__.py
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/mdstats/training_data/__init__.py	2026-08-08 21:16:12.160778550 +0000
++++ ./mdstats/training_data/__init__.py	2026-08-08 21:58:10.867742856 +0000
+@@ -927,6 +927,7 @@
+     checkpoint_prediction_cache_complete,
+     bind_checkpoint_evaluation_replay_provenance,
+     materialize_mace_checkpoint_model,
++    create_mace_evaluation_state_capsule,
+     remove_materialized_mace_checkpoint_model,
+     aggregate_protocol_variant,
+     aggregate_protocol_family,
+@@ -1061,3 +1062,14 @@
+     configured_protected_inputs,
+     build_campaign_storage_report,
+ )
++
++from .checkpoint_capsule import (
++    EVALUATION_STATE_CAPSULE_FILE_SCHEMA,
++    EVALUATION_STATE_CAPSULE_RECORD_SCHEMA,
++    EVALUATION_STATE_CAPSULE_CONTRACT,
++    EvaluationStateCapsuleRecord,
++    model_state_sha256,
++    load_validated_capsule_payload,
++)
++
++__all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/mdstats/training_data/campaign_cli.py ./mdstats/training_data/campaign_cli.py
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/mdstats/training_data/campaign_cli.py	2026-08-08 21:46:01.436282709 +0000
++++ ./mdstats/training_data/campaign_cli.py	2026-08-08 22:07:12.403117831 +0000
+@@ -79,7 +79,8 @@
+ # 0.20.109a0 implements the PREC2 staged-transition/restart runtime substrate, and
+ # 0.20.110a0 implements PREC3 profile activation/reporting/cross-stage deployment, and
+ # 0.20.111a0 implements STOR1 read-only storage accounting/ownership boundaries, and
+-# 0.20.112a0 is a warning-condensation hotfix for MACE/PyTorch evaluation/runtime noise.
++# 0.20.112a0 is a warning-condensation hotfix for MACE/PyTorch evaluation/runtime noise, and
++# 0.20.113a0 implements STOR2 authenticated nonselected-checkpoint compaction.
+ # None changes the frozen MLFF scientific/materialization identity, so existing
+ # 0.20.99a0 campaign state and prediction caches remain reusable.
+ MLFF_DATA9B3_VERSION = "0.20.99a0"
+@@ -7715,30 +7716,23 @@
+             store.delete_record(key)
+ 
+         if previous is not None and previous.state is mdstats.TrainingRunState.SUCCEEDED:
+-            try:
+-                verified_catalog = mdstats.inventory_mace_checkpoints(
+-                    run,
+-                    run_root / "checkpoints",
+-                    pattern=execution_policy.checkpoint_glob,
+-                )
+-            except Exception as exc:
++            if previous.checkpoint_catalog is None:
+                 raise CampaignCliError(
+-                    f"Completed training run {run.run_id} cannot be resumed safely because "
+-                    f"its checkpoint inventory is unavailable: {exc}"
+-                ) from exc
+-            if (
+-                previous.checkpoint_catalog is None
+-                or verified_catalog.content_digest
+-                != previous.checkpoint_catalog.content_digest
+-            ):
++                    f"Completed training run {run.run_id} is missing its frozen checkpoint catalog."
++                )
++            storage_ok, storage_detail = _completed_checkpoint_storage_matches(
++                paths, store, run.run_id, previous.checkpoint_catalog
++            )
++            if not storage_ok:
+                 raise CampaignCliError(
+                     f"Completed training run {run.run_id} has changed or missing checkpoint "
+-                    "bytes. mdstats will not recalculate or overwrite a completed run; "
+-                    "restore the recorded checkpoint files or inspect the run directory."
++                    f"representations ({storage_detail}). mdstats will not recalculate or overwrite "
++                    "a completed run; restore the recorded raw checkpoint/capsule bytes or inspect "
++                    "the run directory."
+                 )
+             completed_progress += 1
+             training_progress.item_done(
+-                completed_progress, run.run_id, "already complete; checkpoint bytes verified"
++                completed_progress, run.run_id, f"already complete; {storage_detail}"
+             )
+             continue
+ 
+@@ -8153,6 +8147,138 @@
+     return target, replay
+ 
+ 
++def _checkpoint_capsule_key(run_id: str, checkpoint_sha256: str) -> str:
++    return f"checkpoint_capsule:{run_id}:{checkpoint_sha256}"
++
++
++def _checkpoint_source_for_evaluation(
++    paths: CampaignPaths,
++    store: CampaignStore,
++    run_id: str,
++    checkpoint: Any,
++    catalog: Any,
++) -> tuple[Path, Any | None]:
++    """Resolve raw checkpoint bytes or a qualified STOR2 evaluation capsule.
++
++    The original ``CheckpointFileRecord`` remains the scientific identity.  A
++    capsule is only a storage representation of that exact model state.
++    """
++
++    import mdstats
++
++    root = Path(catalog.root_directory).resolve()
++    raw = (root / checkpoint.relative_path).resolve()
++    try:
++        raw.relative_to(root)
++    except ValueError as exc:
++        raise CampaignCliError(
++            f"Checkpoint path escaped its catalog root for {run_id}: {raw}"
++        ) from exc
++    if raw.is_file():
++        if _sha256(raw) != checkpoint.sha256:
++            raise CampaignCliError(
++                f"Checkpoint bytes no longer match the frozen inventory: {run_id} epoch {checkpoint.epoch}."
++            )
++        return raw, None
++
++    record = store.get_record_optional(
++        _checkpoint_capsule_key(run_id, checkpoint.sha256),
++        mdstats.EvaluationStateCapsuleRecord,
++    )
++    if record is None:
++        return raw, None
++    run_root = (paths.runs / run_id).resolve()
++    capsule = Path(record.capsule_path).resolve()
++    try:
++        capsule.relative_to(run_root)
++    except ValueError as exc:
++        raise CampaignCliError(
++            f"STOR2 capsule escaped the campaign run root for {run_id}: {capsule}"
++        ) from exc
++    if (
++        record.run_plan_digest != checkpoint.run_plan_digest
++        or record.source_checkpoint_sha256 != checkpoint.sha256
++        or record.source_checkpoint_epoch != checkpoint.epoch
++    ):
++        raise CampaignCliError(
++            f"STOR2 capsule lineage mismatch for {run_id} epoch {checkpoint.epoch}."
++        )
++    if not capsule.is_file() or _sha256(capsule) != record.capsule_sha256:
++        raise CampaignCliError(
++            f"STOR2 capsule bytes are missing or changed for {run_id} epoch {checkpoint.epoch}."
++        )
++    return capsule, record
++
++
++def _completed_checkpoint_storage_matches(
++    paths: CampaignPaths,
++    store: CampaignStore,
++    run_id: str,
++    catalog: Any,
++) -> tuple[bool, str]:
++    """Validate a completed run after STOR2/legacy post-evaluation retention."""
++
++    import mdstats
++
++    root = Path(catalog.root_directory).resolve()
++    retention = store.get_payload(f"checkpoint_retention:{run_id}") if store.has_record(
++        f"checkpoint_retention:{run_id}"
++    ) else None
++    legacy_removed: set[str] = set()
++    selected_sha: str | None = None
++    if isinstance(retention, Mapping):
++        selected_sha = str(retention.get("selected_checkpoint_sha256") or "") or None
++        if retention.get("schema") == "mdstats.mlff-checkpoint-retention.v1":
++            legacy_removed = {
++                str(item.get("sha256"))
++                for item in retention.get("removed_checkpoints", ())
++                if isinstance(item, Mapping) and item.get("sha256")
++            }
++
++    for checkpoint in catalog.checkpoints:
++        raw = (root / checkpoint.relative_path).resolve()
++        if raw.is_file():
++            if _sha256(raw) != checkpoint.sha256:
++                return False, f"changed raw checkpoint at epoch {checkpoint.epoch}"
++            continue
++        record = store.get_record_optional(
++            _checkpoint_capsule_key(run_id, checkpoint.sha256),
++            mdstats.EvaluationStateCapsuleRecord,
++        )
++        if record is not None:
++            capsule = Path(record.capsule_path).resolve()
++            run_root = (paths.runs / run_id).resolve()
++            try:
++                capsule.relative_to(run_root)
++            except ValueError:
++                return False, f"capsule escapes run root at epoch {checkpoint.epoch}"
++            if (
++                record.run_plan_digest != checkpoint.run_plan_digest
++                or record.source_checkpoint_sha256 != checkpoint.sha256
++                or record.source_checkpoint_epoch != checkpoint.epoch
++                or not capsule.is_file()
++                or _sha256(capsule) != record.capsule_sha256
++            ):
++                return False, f"invalid capsule at epoch {checkpoint.epoch}"
++            continue
++        if checkpoint.sha256 in legacy_removed:
++            # 0.20.112 and earlier intentionally deleted these after evaluation.
++            # Preserve restart compatibility with those already-compacted campaigns;
++            # STOR2 cannot reconstruct lost optimizer/model bytes retroactively.
++            continue
++        return False, f"missing checkpoint representation at epoch {checkpoint.epoch}"
++
++    if selected_sha is not None:
++        selected = next(
++            (item for item in catalog.checkpoints if item.sha256 == selected_sha), None
++        )
++        if selected is not None:
++            selected_path = (root / selected.relative_path).resolve()
++            if not selected_path.is_file() or _sha256(selected_path) != selected.sha256:
++                return False, "selected production checkpoint is not restart-capable"
++    return True, "raw/capsule checkpoint representations verified"
++
++
+ def _evaluation_checkpoint_catalog(
+     store: CampaignStore,
+     run_id: str,
+@@ -8183,13 +8309,20 @@
+     campaign: Any,
+     *,
+     dry_run: bool = False,
++    run_ids: set[str] | None = None,
+ ) -> _CampaignCleanupReport:
+-    """Retain one selected restart/diagnostic checkpoint per evaluated run."""
++    """STOR2: replace nonselected full checkpoints with verified evaluation capsules.
++
++    The selected production checkpoint remains byte-for-byte restart-capable.  No
++    raw checkpoint is removed until its model-only capsule has been atomically
++    written, independently reconstructed, committed to campaign state, and read
++    back with matching authentication metadata.
++    """
+ 
+     import mdstats
+ 
+     report = _CampaignCleanupReport(
+-        phase="post-evaluate-checkpoints",
++        phase="stor2-checkpoint-compaction",
+         dry_run=dry_run,
+         ownership_boundary=CampaignOwnershipBoundary(
+             paths.workspace,
+@@ -8202,168 +8335,240 @@
+     store_authorized, store_detail = report.ownership_boundary.destructive_authorization(store.path)
+     if not store_authorized:
+         report.skipped.append(
+-            f"checkpoint cleanup refused because campaign state is outside ownership boundary: {store_detail}"
++            f"STOR2 refused because campaign state is outside ownership boundary: {store_detail}"
+         )
+         return report
+     if not bool(
+-        _cfg(
+-            cfg,
+-            "cleanup",
+-            "prune_unselected_checkpoints_after_evaluate",
+-            True,
+-        )
++        _cfg(cfg, "cleanup", "prune_unselected_checkpoints_after_evaluate", True)
+     ):
+-        report.skipped.append(
+-            "unselected checkpoint pruning disabled by cleanup policy"
+-        )
++        report.skipped.append("STOR2 checkpoint compaction disabled by cleanup policy")
++        return report
++
++    try:
++        job_lookup = _job_lookup(_current_data8_entries(store))
++    except Exception as exc:
++        report.skipped.append(f"STOR2 could not resolve immutable DATA8 jobs: {exc}")
+         return report
+ 
+     for run in campaign.runs:
++        if run_ids is not None and run.run_id not in run_ids:
++            continue
+         selection_key = f"selection:{run.run_id}"
+         execution_key = f"execution:{run.run_id}"
+         if not store.has_record(selection_key) or not store.has_record(execution_key):
+             report.skipped.append(
+-                f"checkpoint cleanup skipped for {run.run_id}: selection/execution missing"
++                f"STOR2 skipped {run.run_id}: selection/execution missing"
++            )
++            continue
++        selection = store.get_record(selection_key, mdstats.CheckpointSelectionRecord)
++        execution = store.get_record(execution_key, mdstats.TrainingRunExecutionRecord)
++        if execution.state is not mdstats.TrainingRunState.SUCCEEDED:
++            report.skipped.append(
++                f"STOR2 skipped {run.run_id}: training is not durably complete"
+             )
+             continue
+-        selection = store.get_record(
+-            selection_key, mdstats.CheckpointSelectionRecord
+-        )
+-        execution = store.get_record(
+-            execution_key, mdstats.TrainingRunExecutionRecord
+-        )
+         original = _evaluation_checkpoint_catalog(store, run.run_id, execution)
+-        selected = tuple(
+-            item
+-            for item in original.checkpoints
+-            if item.sha256 == selection.selected_checkpoint_sha256
++        selected = next(
++            (
++                item for item in original.checkpoints
++                if item.sha256 == selection.selected_checkpoint_sha256
++            ),
++            None,
+         )
+-        if len(selected) != 1:
++        if selected is None:
+             report.skipped.append(
+-                f"checkpoint cleanup skipped for {run.run_id}: selected checkpoint unavailable"
++                f"STOR2 skipped {run.run_id}: selected checkpoint unavailable"
+             )
+             continue
+-        shortlist_payload = None
+-        shortlist_key = f"checkpoint_shortlist:{run.run_id}"
+-        if store.has_record(shortlist_key):
+-            candidate = store.get_payload(shortlist_key)
+-            if candidate.get("original_catalog_digest") == original.content_digest:
+-                shortlist_payload = candidate
+-        prune_screened = bool(
+-            _cfg(
+-                cfg,
+-                "cleanup",
+-                "prune_screened_out_checkpoints_after_evaluate",
+-                True,
++
++        root = Path(original.root_directory).resolve()
++        root_authorized, root_detail = report.ownership_boundary.traversal_authorization(root)
++        if not root_authorized:
++            report.skipped.append(
++                f"STOR2 refused {run.run_id}: checkpoint root failed ownership checks: {root_detail}: {root}"
+             )
+-        )
+-        if shortlist_payload is not None and shortlist_payload.get("strategy") == "multi_fidelity":
+-            # EVAL-MF1 deliberately does not change checkpoint-retention authority.
+-            # Partial-round losers are screening outcomes, not full scientific
+-            # rejections. STOR2 will later define qualified compaction/capsules.
+-            prune_screened = False
+-        required_evaluation_sha256s = (
+-            {str(value) for value in shortlist_payload.get("checkpoint_sha256s", ())}
+-            if shortlist_payload is not None and prune_screened
+-            else {item.sha256 for item in original.checkpoints}
+-        )
+-        missing_evaluations = [
+-            sha256
+-            for sha256 in sorted(required_evaluation_sha256s)
+-            if not store.has_record(f"evaluation:{run.run_id}:{sha256}")
+-        ]
+-        if missing_evaluations:
++            continue
++        selected_path = (root / selected.relative_path).resolve()
++        if not selected_path.is_file() or _sha256(selected_path) != selected.sha256:
+             report.skipped.append(
+-                f"checkpoint cleanup skipped for {run.run_id}: "
+-                f"{len(missing_evaluations)} required evaluations are incomplete"
++                f"STOR2 skipped {run.run_id}: selected production checkpoint is missing or changed"
+             )
+             continue
+ 
+-        run_state_path = paths.runs / run.run_id / "training_execution.json"
+-        run_state_authorized, run_state_detail = report.ownership_boundary.destructive_authorization(
+-            run_state_path
+-        )
+-        if not run_state_authorized:
++        try:
++            _bundle, job, data8_root = job_lookup[run.mace_job_artifact_digest]
++        except KeyError:
+             report.skipped.append(
+-                f"checkpoint cleanup refused for {run.run_id}: runtime record destination failed ownership checks: "
+-                f"{run_state_detail}"
++                f"STOR2 skipped {run.run_id}: immutable DATA8 job lookup is missing"
+             )
+             continue
+-        root = Path(original.root_directory).resolve()
+-        root_authorized, root_detail = report.ownership_boundary.traversal_authorization(root)
+-        if not root_authorized:
++        job_root = (Path(data8_root).resolve() / job.relative_directory).resolve()
++        config_path = (Path(data8_root).resolve() / job.config_relative_path).resolve()
++        if not config_path.is_file() or _sha256(config_path) != job.config_sha256:
+             report.skipped.append(
+-                f"checkpoint cleanup refused for {run.run_id}: {root_detail}: {root}"
++                f"STOR2 skipped {run.run_id}: immutable DATA8 MACE config is missing or changed"
+             )
+             continue
+-        retained_catalog = mdstats.CandidateCheckpointCatalog(
+-            run_plan_digest=original.run_plan_digest,
+-            root_directory=original.root_directory,
+-            checkpoints=selected,
+-            pattern=original.pattern,
++
++        run_root = (paths.runs / run.run_id).resolve()
++        capsule_root = run_root / "evaluation-capsules"
++        capsule_authorized, capsule_detail = report.ownership_boundary.destructive_authorization(
++            capsule_root
+         )
+-        removed_records: list[dict[str, Any]] = []
++        if not capsule_authorized:
++            report.skipped.append(
++                f"STOR2 refused {run.run_id}: capsule destination failed ownership checks: {capsule_detail}"
++            )
++            continue
++        if not dry_run:
++            capsule_root.mkdir(parents=True, exist_ok=True)
++
++        capsule_records: list[Any] = []
++        all_nonselected_ready = True
+         for checkpoint in original.checkpoints:
+             if checkpoint.sha256 == selection.selected_checkpoint_sha256:
+                 continue
+-            path = (root / checkpoint.relative_path).resolve()
++            raw = (root / checkpoint.relative_path).resolve()
+             try:
+-                path.relative_to(root)
++                raw.relative_to(root)
+             except ValueError:
++                all_nonselected_ready = False
+                 report.skipped.append(
+-                    f"unsafe checkpoint path retained for {run.run_id}: {path}"
++                    f"STOR2 retained unsafe checkpoint path for {run.run_id}: {raw}"
+                 )
+                 continue
+-            if path.is_file():
+-                # Evaluation records already bind the candidate SHA-256. Verify
+-                # one last time before deleting the bulky optimizer snapshot.
+-                if _sha256(path) != checkpoint.sha256:
+-                    report.skipped.append(
+-                        f"changed checkpoint retained for diagnostics: {path}"
+-                    )
++
++            key = _checkpoint_capsule_key(run.run_id, checkpoint.sha256)
++            existing = store.get_record_optional(key, mdstats.EvaluationStateCapsuleRecord)
++            if existing is not None:
++                capsule = Path(existing.capsule_path).resolve()
++                try:
++                    capsule.relative_to(run_root)
++                    mdstats.load_validated_capsule_payload(
++                        existing,
++                        capsule,
++                        expected_run_plan_digest=checkpoint.run_plan_digest,
++                        expected_checkpoint_sha256=checkpoint.sha256,
++                        expected_epoch=checkpoint.epoch,
++                        expected_config_sha256=job.config_sha256,
++                    )
++                    capsule_records.append(existing)
++                    if raw.is_file():
++                        if _sha256(raw) != checkpoint.sha256:
++                            all_nonselected_ready = False
++                            report.skipped.append(
++                                f"STOR2 retained changed redundant raw checkpoint: {raw}"
++                            )
++                        else:
++                            _cleanup_remove(
++                                report,
++                                raw,
++                                reason=(
++                                    f"STOR2 verified capsule already exists for {run.run_id}; "
++                                    f"remove redundant optimizer checkpoint epoch={checkpoint.epoch}"
++                                ),
++                            )
+                     continue
++                except Exception:
++                    store.delete_record(key)
++                    existing = None
++
++            if not raw.is_file():
++                all_nonselected_ready = False
++                report.skipped.append(
++                    f"STOR2 cannot compact {run.run_id} epoch {checkpoint.epoch}: raw checkpoint and valid capsule are both unavailable"
++                )
++                continue
++            if _sha256(raw) != checkpoint.sha256:
++                all_nonselected_ready = False
++                report.skipped.append(
++                    f"STOR2 retained changed checkpoint for diagnostics: {raw}"
++                )
++                continue
++            if dry_run:
++                report.add(
++                    raw,
++                    reason=(
++                        f"STOR2 dry-run: would create authenticated model-state capsule then remove "
++                        f"optimizer checkpoint for {run.run_id} epoch={checkpoint.epoch}"
++                    ),
++                    size_bytes=checkpoint.size_bytes,
++                )
++                continue
++
++            capsule_path = capsule_root / (
++                f"epoch-{checkpoint.epoch:04d}-{checkpoint.sha256[:20]}.eval-state.pt"
++            )
++            try:
++                record = mdstats.create_mace_evaluation_state_capsule(
++                    checkpoint,
++                    raw,
++                    mace_config_path=config_path,
++                    cache_directory=run_root / "checkpoint-model-cache",
++                    capsule_path=capsule_path,
++                    allow_checkpoint_dtype_template_cast=(
++                        getattr(job.protocol.optimizer_policy, "precision_schedule_policy", None)
++                        is not None
++                    ),
++                )
++                # Commit the replacement before source deletion, then independently
++                # reload the committed record and capsule.  A crash between commit
++                # and unlink leaves redundant bytes, never lost capability.
++                store.put_record(key, record)
++                committed = store.get_record(key, mdstats.EvaluationStateCapsuleRecord)
++                mdstats.load_validated_capsule_payload(
++                    committed,
++                    capsule_path,
++                    expected_run_plan_digest=checkpoint.run_plan_digest,
++                    expected_checkpoint_sha256=checkpoint.sha256,
++                    expected_epoch=checkpoint.epoch,
++                    expected_config_sha256=job.config_sha256,
++                )
++                capsule_records.append(committed)
+                 _cleanup_remove(
+                     report,
+-                    path,
++                    raw,
+                     reason=(
+-                        (
+-                            f"evaluated unselected checkpoint for {run.run_id}; "
+-                            if checkpoint.sha256 in required_evaluation_sha256s
+-                            else f"training-validation-screened checkpoint for {run.run_id}; "
+-                        )
+-                        + f"epoch={checkpoint.epoch}"
++                        f"STOR2 authenticated evaluation-state capsule committed for {run.run_id}; "
++                        f"remove nonselected optimizer checkpoint epoch={checkpoint.epoch}"
+                     ),
+                 )
+-            removed_records.append(checkpoint.to_dict())
++            except Exception as exc:
++                all_nonselected_ready = False
++                capsule_path.unlink(missing_ok=True)
++                store.delete_record(key)
++                report.skipped.append(
++                    f"STOR2 retained raw checkpoint {run.run_id} epoch {checkpoint.epoch}: {type(exc).__name__}: {exc}"
++                )
+ 
+         if dry_run:
+             continue
+         retention_payload = {
+-            "schema": "mdstats.mlff-checkpoint-retention.v1",
++            "schema": "mdstats.mlff-checkpoint-retention.v2",
+             "run_id": run.run_id,
+             "created_utc": _utc_now(),
+             "original_checkpoint_catalog": original.to_dict(),
+-            "retained_checkpoint_catalog": retained_catalog.to_dict(),
+             "selected_checkpoint_sha256": selection.selected_checkpoint_sha256,
+             "selected_checkpoint_epoch": selection.selected_checkpoint_epoch,
+-            "removed_checkpoints": removed_records,
+-            "checkpoint_shortlist": shortlist_payload,
++            "selected_checkpoint_restart_capable": True,
++            "evaluation_capsules": [
++                value.to_dict()
++                for value in sorted(
++                    capsule_records,
++                    key=lambda item: (item.source_checkpoint_epoch, item.source_checkpoint_sha256),
++                )
++            ],
++            "all_nonselected_capsules_ready": bool(all_nonselected_ready),
++            "raw_checkpoint_count_retained": sum(
++                1
++                for item in original.checkpoints
++                if (root / item.relative_path).is_file()
++            ),
++            "checkpoint_catalog_identity_preserved": True,
+         }
+         store.put_record(f"checkpoint_retention:{run.run_id}", retention_payload)
+-        compact_execution = mdstats.TrainingRunExecutionRecord(
+-            run_plan_digest=execution.run_plan_digest,
+-            mace_job_artifact_digest=execution.mace_job_artifact_digest,
+-            execution_policy_digest=execution.execution_policy_digest,
+-            attempts=execution.attempts,
+-            state=execution.state,
+-            successful_attempt_index=execution.successful_attempt_index,
+-            checkpoint_catalog=retained_catalog,
+-        )
+-        store.put_record(execution_key, compact_execution)
+-        store.put_record(
+-            f"checkpoint_catalog:{run.run_id}", retained_catalog
+-        )
+-        _atomic_json(run_state_path, compact_execution.to_dict())
++
++        # Remove empty checkpoint subdirectories only; never touch capsule/model/log trees.
+         for directory in sorted(root.rglob("*"), reverse=True):
+             if directory.is_dir():
+                 try:
+@@ -8372,7 +8577,6 @@
+                     pass
+ 
+     if not dry_run:
+-        assert report.ownership_boundary is not None
+         cleanup_report_path = paths.results / "cleanup-post-evaluate-checkpoints.json"
+         output_authorized, output_detail = report.ownership_boundary.destructive_authorization(
+             cleanup_report_path
+@@ -8381,7 +8585,7 @@
+             _atomic_json(cleanup_report_path, report.to_dict())
+         else:
+             report.skipped.append(
+-                f"checkpoint cleanup report write skipped by ownership boundary: {output_detail}"
++                f"STOR2 report write skipped by ownership boundary: {output_detail}"
+             )
+     return report
+ 
+@@ -8996,12 +9200,15 @@
+                     store.put_record(f"evaluation:{run.run_id}:{checkpoint.sha256}", cached.evaluation_record)
+                 continue
+ 
+-            model_path = Path(execution.checkpoint_catalog.root_directory) / checkpoint.relative_path
++            model_path, capsule_record = _checkpoint_source_for_evaluation(
++                paths, store, run.run_id, checkpoint, execution.checkpoint_catalog
++            )
+             label = f"{run.run_id}:epoch{checkpoint.epoch}"
+ 
+             def prepare_delta(
+                 *, active_checkpoint=checkpoint,
+                 active_model_path=model_path,
++                active_capsule_record=capsule_record,
+                 active_target_delta=target_delta,
+                 active_replay_delta=replay_delta,
+             ):
+@@ -9010,6 +9217,7 @@
+                     active_checkpoint,
+                     candidate_model_path=active_model_path,
+                     calculator_model_path=None,
++                    evaluation_state_capsule=active_capsule_record,
+                     target_monitor_path=target_path,
+                     target_monitor_artifact=target_artifact,
+                     policy=evaluation_policy,
+@@ -9030,6 +9238,7 @@
+                 prepared,
+                 *, active_checkpoint=checkpoint,
+                 active_model_path=model_path,
++                active_capsule_record=capsule_record,
+             ):
+                 calculator_model = None
+                 if prepared.requires_candidate_inference:
+@@ -9043,6 +9252,7 @@
+                         allow_checkpoint_dtype_template_cast=(
+                             evaluation_policy.critical_precision_policy is not None
+                         ),
++                        evaluation_state_capsule=active_capsule_record,
+                     )
+                 return mdstats.run_prepared_mace_checkpoint_inference(
+                     prepared, calculator_model_path=calculator_model
+@@ -9053,6 +9263,7 @@
+                 predictions,
+                 *, active_checkpoint=checkpoint,
+                 active_model_path=model_path,
++                active_capsule_record=capsule_record,
+                 active_target_indices=target_indices,
+                 active_replay_indices=replay_indices,
+                 active_record_key=record_key,
+@@ -9084,6 +9295,7 @@
+                         active_checkpoint,
+                         candidate_model_path=active_model_path,
+                         calculator_model_path=None,
++                        evaluation_state_capsule=active_capsule_record,
+                         target_monitor_path=target_path,
+                         target_monitor_artifact=target_artifact,
+                         policy=evaluation_policy,
+@@ -9630,7 +9842,26 @@
+             path.relative_to(root)
+         except ValueError:
+             return False
+-        return path.is_file() and _sha256(path) == checkpoint.sha256
++        if path.is_file() and _sha256(path) == checkpoint.sha256:
++            return True
++        capsule = store.get_record_optional(
++            _checkpoint_capsule_key(run.run_id, checkpoint.sha256),
++            mdstats.EvaluationStateCapsuleRecord,
++        )
++        if capsule is None:
++            return False
++        capsule_path = Path(capsule.capsule_path).resolve()
++        try:
++            capsule_path.relative_to(root.parent.resolve())
++        except ValueError:
++            return False
++        return bool(
++            capsule.run_plan_digest == checkpoint.run_plan_digest
++            and capsule.source_checkpoint_sha256 == checkpoint.sha256
++            and capsule.source_checkpoint_epoch == checkpoint.epoch
++            and capsule_path.is_file()
++            and _sha256(capsule_path) == capsule.capsule_sha256
++        )
+ 
+     shortlisted = tuple(shortlist.catalog.checkpoints)
+     unavailable = tuple(item for item in shortlisted if not available(item))
+@@ -10375,6 +10606,15 @@
+                 metric_policy=metric_policy,
+                 selection=selection,
+             )
++        # STOR2 can compact this run immediately because its selected checkpoint
++        # is now known and already published.  The selected raw checkpoint remains
++        # restart-capable; every nonselected epoch is replaced only after an exact
++        # evaluation-state capsule has been committed and independently reloaded.
++        stor2_report = _compact_evaluated_checkpoints(
++            cfg, paths, store, campaign, run_ids={run.run_id}
++        )
++        if stor2_report.actions or stor2_report.skipped:
++            _print_cleanup_report(stor2_report)
+         context["selection_finalized"] = True
+ 
+     for run in runs_to_evaluate:
+@@ -10512,7 +10752,9 @@
+         for checkpoint in evaluation_catalog.checkpoints:
+             checkpoint_index += 1
+             display_index = checkpoint_index
+-            model_path = Path(execution.checkpoint_catalog.root_directory) / checkpoint.relative_path
++            model_path, capsule_record = _checkpoint_source_for_evaluation(
++                paths, store, run.run_id, checkpoint, execution.checkpoint_catalog
++            )
+             key = f"evaluation:{run.run_id}:{checkpoint.sha256}"
+             evaluation = None
+             try:
+@@ -10595,11 +10837,14 @@
+                 ),
+             )
+             if model_path.is_file():
+-                if _sha256(model_path) != checkpoint.sha256:
++                expected_source_sha = (
++                    checkpoint.sha256 if capsule_record is None else capsule_record.capsule_sha256
++                )
++                if _sha256(model_path) != expected_source_sha:
+                     raise CampaignCliError(
+-                        f"Checkpoint bytes no longer match the frozen inventory: "
+-                        f"{run.run_id} epoch {checkpoint.epoch}. Refusing to hide a changed "
+-                        "checkpoint behind cached predictions."
++                        f"Checkpoint/capsule bytes no longer match the frozen inventory: "
++                        f"{run.run_id} epoch {checkpoint.epoch}. Refusing to hide changed "
++                        "model state behind cached predictions."
+                     )
+             elif not candidate_prediction_cache_ready:
+                 raise CampaignCliError(
+@@ -10615,6 +10860,7 @@
+                 active_run: Any = run,
+                 active_checkpoint: Any = checkpoint,
+                 active_model_path: Path = model_path,
++                active_capsule_record: Any = capsule_record,
+                 active_target_path: Path = target_path,
+                 active_target_artifact: Any = target_artifact,
+                 active_replay_path: Path | None = replay_path,
+@@ -10628,6 +10874,7 @@
+                     active_checkpoint,
+                     candidate_model_path=active_model_path,
+                     calculator_model_path=None,
++                    evaluation_state_capsule=active_capsule_record,
+                     target_monitor_path=active_target_path,
+                     target_monitor_artifact=active_target_artifact,
+                     policy=evaluation_policy,
+@@ -10647,6 +10894,7 @@
+                 *,
+                 active_checkpoint: Any = checkpoint,
+                 active_model_path: Path = model_path,
++                active_capsule_record: Any = capsule_record,
+                 active_config_path: Path = config_path,
+                 active_job_root: Path = job_root,
+                 active_checkpoint_model_cache: Path = checkpoint_model_cache,
+@@ -10665,6 +10913,7 @@
+                         cache_directory=active_checkpoint_model_cache,
+                         wrapper_path=local_wrappers["mdstats-mace-train"],
+                         allow_checkpoint_dtype_template_cast=precision_schedule is not None,
++                        evaluation_state_capsule=active_capsule_record,
+                     )
+                 return mdstats.run_prepared_mace_checkpoint_inference(
+                     prepared,
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/mdstats/training_data/campaign_execution.py ./mdstats/training_data/campaign_execution.py
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/mdstats/training_data/campaign_execution.py	2026-08-08 21:40:38.278960741 +0000
++++ ./mdstats/training_data/campaign_execution.py	2026-08-08 22:04:08.621790468 +0000
+@@ -57,6 +57,13 @@
+ from .acceleration import MaceAccelerationPolicy
+ from .mace_export import MaceExtxyzArtifact
+ from .mace_compatibility import mace_runtime_warning_handled
++from .checkpoint_capsule import (
++    EvaluationStateCapsuleRecord,
++    capsule_file_payload,
++    load_validated_capsule_payload,
++    model_state_sha256,
++    write_capsule_file_atomic,
++)
+ from .replay import ReplayFileArtifact, ReplayLabelMode
+ from .protocol import MaceJobArtifact, MaceJobKind, SealedEvaluationArtifact, TrainingMode
+ from .production_qualification import ProductionCorpusQualificationRecord, ProductionGateStatus
+@@ -390,6 +397,150 @@
+     os.replace(temporary_sidecar, cached_sidecar)
+     return cached_model
+ 
++
++def _deployable_state_dicts_equal(first: Any, second: Any) -> bool:
++    try:
++        left = first.state_dict()
++        right = second.state_dict()
++        if set(left) != set(right):
++            return False
++        for key in left:
++            a = left[key].detach().cpu() if hasattr(left[key], "detach") else left[key]
++            b = right[key].detach().cpu() if hasattr(right[key], "detach") else right[key]
++            if getattr(a, "shape", None) != getattr(b, "shape", None):
++                return False
++            if getattr(a, "dtype", None) != getattr(b, "dtype", None):
++                return False
++            if hasattr(a, "equal"):
++                if not bool(a.equal(b)):
++                    return False
++            elif a != b:
++                return False
++        return True
++    except Exception:
++        return False
++
++
++@mace_runtime_warning_handled("MACE checkpoint compaction")
++def create_mace_evaluation_state_capsule(
++    checkpoint: CheckpointFileRecord,
++    checkpoint_path: str | Path,
++    *,
++    mace_config_path: str | Path,
++    cache_directory: str | Path,
++    capsule_path: str | Path,
++    allow_checkpoint_dtype_template_cast: bool = False,
++) -> EvaluationStateCapsuleRecord:
++    """Create and independently validate a STOR2 model-state-only capsule.
++
++    The original optimizer-bearing checkpoint is never modified by this function.
++    A caller may delete it only after this record has been durably committed.
++    """
++
++    source = Path(checkpoint_path).resolve()
++    config = Path(mace_config_path).resolve()
++    cache_root = Path(cache_directory).resolve()
++    destination = Path(capsule_path).resolve()
++    if not source.is_file() or _sha256_file(source) != checkpoint.sha256:
++        raise TrainingDataInputError(
++            "Checkpoint bytes required for STOR2 compaction do not match inventory."
++        )
++    if not config.is_file():
++        raise TrainingDataInputError("Immutable DATA8 MACE configuration is missing.")
++    raw_payload = _load_torch_payload(source)
++    if not _is_mace_training_checkpoint_payload(raw_payload):
++        raise TrainingDataInputError(
++            "STOR2 compaction supports qualified optimizer-bearing MACE training checkpoints only."
++        )
++    state = raw_payload.get("model")
++    if not isinstance(state, Mapping):
++        raise TrainingDataInputError("MACE checkpoint does not contain a model state mapping.")
++    state_digest = model_state_sha256(state)
++    config_sha = _sha256_file(config)
++
++    try:
++        import yaml
++        loaded = yaml.safe_load(config.read_text(encoding="utf-8"))
++    except Exception as exc:
++        raise TrainingDataInputError("Could not parse immutable DATA8 MACE config for STOR2.") from exc
++    if not isinstance(loaded, dict):
++        raise TrainingDataInputError("DATA8 MACE configuration must be a mapping.")
++    name = str(loaded.get("name", "")).strip()
++    if not name:
++        raise TrainingDataInputError("DATA8 MACE configuration does not define a model name.")
++    template = _training_whole_model_path(cache_root, name)
++    if template is None:
++        raise TrainingDataInputError(
++            "STOR2 cannot compact this checkpoint because the completed whole-model architecture template is missing."
++        )
++
++    restored_raw = _restore_checkpoint_into_template(
++        template, raw_payload, loaded,
++        allow_dtype_cast=allow_checkpoint_dtype_template_cast,
++    )
++    if restored_raw is None:
++        raise TrainingDataInputError(
++            "STOR2 direct reconstruction is unsupported for this MACE checkpoint layout; raw checkpoint retained."
++        )
++    raw_model, _ = restored_raw
++
++    payload = capsule_file_payload(
++        run_plan_digest=checkpoint.run_plan_digest,
++        source_checkpoint_sha256=checkpoint.sha256,
++        source_checkpoint_epoch=checkpoint.epoch,
++        source_checkpoint_size_bytes=checkpoint.size_bytes,
++        model_state=state,
++        model_state_digest=state_digest,
++        mace_config_sha256=config_sha,
++    )
++    capsule_sha, capsule_size = write_capsule_file_atomic(destination, payload)
++    if capsule_size >= checkpoint.size_bytes:
++        destination.unlink(missing_ok=True)
++        raise TrainingDataInputError(
++            "STOR2 model-state capsule would not reduce storage; raw checkpoint retained."
++        )
++    record = EvaluationStateCapsuleRecord(
++        run_plan_digest=checkpoint.run_plan_digest,
++        source_checkpoint_sha256=checkpoint.sha256,
++        source_checkpoint_epoch=checkpoint.epoch,
++        source_checkpoint_size_bytes=checkpoint.size_bytes,
++        capsule_path=str(destination),
++        capsule_sha256=capsule_sha,
++        capsule_size_bytes=capsule_size,
++        model_state_sha256=state_digest,
++        mace_config_sha256=config_sha,
++        verified_exact_model_state=True,
++        created_at_utc=_utc_now(),
++    )
++    try:
++        compact_payload = load_validated_capsule_payload(
++            record, destination,
++            expected_run_plan_digest=checkpoint.run_plan_digest,
++            expected_checkpoint_sha256=checkpoint.sha256,
++            expected_epoch=checkpoint.epoch,
++            expected_config_sha256=config_sha,
++        )
++        restored_compact = _restore_checkpoint_into_template(
++            template, compact_payload, loaded,
++            allow_dtype_cast=allow_checkpoint_dtype_template_cast,
++        )
++        if restored_compact is None or not _deployable_state_dicts_equal(
++            raw_model, restored_compact[0]
++        ):
++            raise TrainingDataInputError(
++                "STOR2 capsule reconstruction did not reproduce the original deployable model state exactly."
++            )
++    except Exception:
++        destination.unlink(missing_ok=True)
++        raise
++    if _sha256_file(source) != checkpoint.sha256:
++        destination.unlink(missing_ok=True)
++        raise TrainingDataInputError(
++            "STOR2 compaction observed a changed source checkpoint; capsule discarded."
++        )
++    return record
++
++
+ @mace_runtime_warning_handled("MACE checkpoint materialization")
+ def materialize_mace_checkpoint_model(
+     checkpoint: CheckpointFileRecord,
+@@ -402,6 +553,7 @@
+     environment: Mapping[str, str] | None = None,
+     timeout_seconds: float = 3600.0,
+     allow_checkpoint_dtype_template_cast: bool = False,
++    evaluation_state_capsule: EvaluationStateCapsuleRecord | None = None,
+ ) -> Path:
+     """Return a deployable whole-model serialization for one exact checkpoint.
+ 
+@@ -431,23 +583,35 @@
+     config = Path(mace_config_path).resolve()
+     job_root = Path(job_working_directory).resolve()
+     cache_root = Path(cache_directory).resolve()
+-    if not source.is_file() or _sha256_file(source) != checkpoint.sha256:
+-        raise TrainingDataInputError(
+-            "Checkpoint bytes required for model reconstruction do not match inventory."
+-        )
+     if not config.is_file():
+         raise TrainingDataInputError("Immutable DATA8 MACE configuration is missing.")
+     if not job_root.is_dir():
+         raise TrainingDataInputError("Immutable DATA8 MACE job directory is missing.")
+ 
+     report_inference_worker_phase("reading checkpoint payload")
+-    payload = _load_torch_payload(source)
+-    if _is_deployable_mace_model_payload(payload):
+-        return source
+-    if not _is_mace_training_checkpoint_payload(payload):
+-        raise TrainingDataInputError(
+-            "Candidate is neither a deployable MACE model nor a qualified MACE "
+-            "training checkpoint containing model/optimizer/lr_scheduler state."
++    source_expected_sha256 = checkpoint.sha256
++    if evaluation_state_capsule is None:
++        if not source.is_file() or _sha256_file(source) != checkpoint.sha256:
++            raise TrainingDataInputError(
++                "Checkpoint bytes required for model reconstruction do not match inventory."
++            )
++        payload = _load_torch_payload(source)
++        if _is_deployable_mace_model_payload(payload):
++            return source
++        if not _is_mace_training_checkpoint_payload(payload):
++            raise TrainingDataInputError(
++                "Candidate is neither a deployable MACE model nor a qualified MACE "
++                "training checkpoint containing model/optimizer/lr_scheduler state."
++            )
++    else:
++        source_expected_sha256 = evaluation_state_capsule.capsule_sha256
++        payload = load_validated_capsule_payload(
++            evaluation_state_capsule,
++            source,
++            expected_run_plan_digest=checkpoint.run_plan_digest,
++            expected_checkpoint_sha256=checkpoint.sha256,
++            expected_epoch=checkpoint.epoch,
++            expected_config_sha256=_sha256_file(config),
+         )
+ 
+     try:
+@@ -510,7 +674,7 @@
+                 reconstruction_method="direct_state_restore",
+                 elapsed_seconds=time.monotonic() - materialization_started,
+             )
+-            if _sha256_file(source) != checkpoint.sha256:
++            if _sha256_file(source) != source_expected_sha256:
+                 result.unlink(missing_ok=True)
+                 cached_sidecar.unlink(missing_ok=True)
+                 raise TrainingDataInputError(
+@@ -523,6 +687,12 @@
+             )
+             return result
+ 
++    if evaluation_state_capsule is not None:
++        raise TrainingDataInputError(
++            "Evaluation-state capsule could not be restored through the qualified direct path; "
++            "the source raw checkpoint is required for this unsupported layout."
++        )
++
+     report_inference_worker_phase("direct restoration unavailable; using legacy restart export")
+     executable = str(wrapper_path or shutil.which("mdstats-mace-train") or "")
+     if not executable:
+@@ -642,7 +812,7 @@
+     )
+     os.replace(temporary_sidecar, cached_sidecar)
+     shutil.rmtree(staging, ignore_errors=True)
+-    if _sha256_file(source) != checkpoint.sha256:
++    if _sha256_file(source) != source_expected_sha256:
+         cached_model.unlink(missing_ok=True)
+         cached_sidecar.unlink(missing_ok=True)
+         raise TrainingDataInputError(
+@@ -2498,6 +2668,7 @@
+     candidate_model_path: Path
+     calculator_model_path: Path | None
+     candidate_checkpoint_available: bool
++    evaluation_state_capsule: EvaluationStateCapsuleRecord | None
+     target_monitor_path: Path
+     target_monitor_artifact: MaceExtxyzArtifact
+     target_atoms: tuple[Any, ...]
+@@ -2586,6 +2757,7 @@
+     candidate_model_path: str | Path,
+     target_monitor_path: str | Path,
+     calculator_model_path: str | Path | None = None,
++    evaluation_state_capsule: EvaluationStateCapsuleRecord | None = None,
+     target_monitor_artifact: MaceExtxyzArtifact,
+     policy: CheckpointEvaluationPolicy = CheckpointEvaluationPolicy(),
+     replay_monitor_path: str | Path | None = None,
+@@ -2617,8 +2789,20 @@
+     )
+     target = Path(target_monitor_path).resolve()
+     candidate_checkpoint_available = candidate.is_file()
+-    if candidate_checkpoint_available and _sha256_file(candidate) != checkpoint.sha256:
+-        raise TrainingDataInputError("Candidate model bytes do not match checkpoint inventory.")
++    if candidate_checkpoint_available:
++        if evaluation_state_capsule is None:
++            if _sha256_file(candidate) != checkpoint.sha256:
++                raise TrainingDataInputError("Candidate model bytes do not match checkpoint inventory.")
++        else:
++            if (
++                evaluation_state_capsule.run_plan_digest != checkpoint.run_plan_digest
++                or evaluation_state_capsule.source_checkpoint_sha256 != checkpoint.sha256
++                or evaluation_state_capsule.source_checkpoint_epoch != checkpoint.epoch
++                or _sha256_file(candidate) != evaluation_state_capsule.capsule_sha256
++            ):
++                raise TrainingDataInputError(
++                    "Candidate evaluation-state capsule does not match checkpoint inventory."
++                )
+     if target_monitor_artifact.content_digest != run_plan.target_monitor_artifact_digest:
+         raise TrainingDataInputError("Target monitor artifact lineage does not match campaign run.")
+     if not target.is_file() or _sha256_file(target) != target_monitor_artifact.sha256:
+@@ -2866,6 +3050,7 @@
+         candidate_model_path=candidate,
+         calculator_model_path=calculator_model,
+         candidate_checkpoint_available=candidate_checkpoint_available,
++        evaluation_state_capsule=evaluation_state_capsule,
+         target_monitor_path=target,
+         target_monitor_artifact=target_monitor_artifact,
+         target_atoms=target_atoms,
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/mdstats/training_data/checkpoint_capsule.py ./mdstats/training_data/checkpoint_capsule.py
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/mdstats/training_data/checkpoint_capsule.py	1970-01-01 00:00:00.000000000 +0000
++++ ./mdstats/training_data/checkpoint_capsule.py	2026-08-08 21:57:04.942344204 +0000
+@@ -0,0 +1,273 @@
++"""Authenticated model-state-only capsules for completed MACE checkpoints.
++
++STOR2 deliberately preserves the original checkpoint identity while replacing
++nonselected optimizer-bearing checkpoint bytes with a smaller artifact that can
++still participate in exact checkpoint evaluation.  Capsules are *not* restart
++checkpoints: optimizer/scheduler/EMA continuation state is intentionally absent.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++from pathlib import Path
++from typing import Any, Mapping
++import hashlib
++import json
++import os
++import time
++
++from ._common import (
++    TrainingDataInputError,
++    TrainingDataSerializationError,
++    digest,
++    validate_digest,
++)
++
++EVALUATION_STATE_CAPSULE_FILE_SCHEMA = "mdstats.mace-evaluation-state-capsule-file.v1"
++EVALUATION_STATE_CAPSULE_RECORD_SCHEMA = "mdstats.mace-evaluation-state-capsule-record.v1"
++EVALUATION_STATE_CAPSULE_CONTRACT = "mace-0.3.16-model-state-only.v1"
++
++
++def _sha256_file(path: Path) -> str:
++    hasher = hashlib.sha256()
++    with path.open("rb") as handle:
++        for block in iter(lambda: handle.read(8 * 1024 * 1024), b""):
++            hasher.update(block)
++    return hasher.hexdigest()
++
++
++def model_state_sha256(state: Mapping[str, Any]) -> str:
++    """Hash an ordered tensor state independently of torch serialization bytes."""
++
++    hasher = hashlib.sha256()
++    for key in sorted(state):
++        value = state[key]
++        if not hasattr(value, "detach") or not hasattr(value, "shape"):
++            raise TrainingDataInputError(
++                f"Evaluation capsule model state contains unsupported non-tensor value: {key}."
++            )
++        tensor = value.detach().cpu().contiguous()
++        hasher.update(key.encode("utf-8"))
++        hasher.update(b"\0")
++        hasher.update(str(tensor.dtype).encode("ascii"))
++        hasher.update(b"\0")
++        hasher.update(json.dumps(tuple(int(v) for v in tensor.shape)).encode("ascii"))
++        hasher.update(b"\0")
++        # numpy() supports the floating/integer/bool tensors used by MACE state_dict.
++        try:
++            payload = tensor.numpy().tobytes(order="C")
++        except Exception:
++            # bfloat16 and unusual tensor dtypes are not part of the qualified
++            # production contract, but hashing their raw byte representation is
++            # still preferable to silently accepting them.
++            try:
++                payload = tensor.view("uint8").numpy().tobytes(order="C")
++            except Exception as exc:
++                raise TrainingDataInputError(
++                    f"Could not hash evaluation capsule tensor state: {key}."
++                ) from exc
++        hasher.update(payload)
++        hasher.update(b"\xff")
++    return hasher.hexdigest()
++
++
++def _torch_load(path: Path) -> Any:
++    try:
++        import torch
++    except ModuleNotFoundError as exc:  # pragma: no cover - optional dependency
++        raise TrainingDataInputError(
++            "Evaluation-state capsules require the optional torch package."
++        ) from exc
++    try:
++        return torch.load(path, map_location="cpu", weights_only=False, mmap=True)
++    except (TypeError, RuntimeError, ValueError):
++        try:
++            return torch.load(path, map_location="cpu", weights_only=False)
++        except TypeError:  # pragma: no cover - older torch
++            return torch.load(path, map_location="cpu")
++
++
++@dataclass(frozen=True, slots=True)
++class EvaluationStateCapsuleRecord:
++    run_plan_digest: str
++    source_checkpoint_sha256: str
++    source_checkpoint_epoch: int
++    source_checkpoint_size_bytes: int
++    capsule_path: str
++    capsule_sha256: str
++    capsule_size_bytes: int
++    model_state_sha256: str
++    mace_config_sha256: str
++    reconstruction_contract: str = EVALUATION_STATE_CAPSULE_CONTRACT
++    verified_exact_model_state: bool = True
++    created_at_utc: str = ""
++
++    def __post_init__(self) -> None:
++        for name in (
++            "run_plan_digest",
++            "source_checkpoint_sha256",
++            "capsule_sha256",
++            "model_state_sha256",
++            "mace_config_sha256",
++        ):
++            object.__setattr__(self, name, validate_digest(getattr(self, name), name=name))
++        if self.source_checkpoint_epoch < 0:
++            raise TrainingDataInputError("Evaluation capsule epoch must be nonnegative.")
++        if self.source_checkpoint_size_bytes <= 0 or self.capsule_size_bytes <= 0:
++            raise TrainingDataInputError("Evaluation capsule byte counts must be positive.")
++        if not self.capsule_path.strip():
++            raise TrainingDataInputError("Evaluation capsule path must be non-empty.")
++        if self.reconstruction_contract != EVALUATION_STATE_CAPSULE_CONTRACT:
++            raise TrainingDataInputError("Unsupported evaluation capsule reconstruction contract.")
++        if not self.verified_exact_model_state:
++            raise TrainingDataInputError("Unverified evaluation capsules are not admissible.")
++
++    def _payload(self) -> dict[str, Any]:
++        return {
++            "schema": EVALUATION_STATE_CAPSULE_RECORD_SCHEMA,
++            "run_plan_digest": self.run_plan_digest,
++            "source_checkpoint_sha256": self.source_checkpoint_sha256,
++            "source_checkpoint_epoch": self.source_checkpoint_epoch,
++            "source_checkpoint_size_bytes": self.source_checkpoint_size_bytes,
++            "capsule_path": self.capsule_path,
++            "capsule_sha256": self.capsule_sha256,
++            "capsule_size_bytes": self.capsule_size_bytes,
++            "model_state_sha256": self.model_state_sha256,
++            "mace_config_sha256": self.mace_config_sha256,
++            "reconstruction_contract": self.reconstruction_contract,
++            "verified_exact_model_state": self.verified_exact_model_state,
++            "created_at_utc": self.created_at_utc,
++        }
++
++    @property
++    def content_digest(self) -> str:
++        return digest(self._payload())
++
++    @property
++    def saved_bytes(self) -> int:
++        return max(0, int(self.source_checkpoint_size_bytes) - int(self.capsule_size_bytes))
++
++    def to_dict(self) -> dict[str, Any]:
++        return {**self._payload(), "content_digest": self.content_digest}
++
++    @classmethod
++    def from_dict(cls, payload: Mapping[str, Any]) -> "EvaluationStateCapsuleRecord":
++        if payload.get("schema") != EVALUATION_STATE_CAPSULE_RECORD_SCHEMA:
++            raise TrainingDataSerializationError("Unsupported evaluation-state capsule schema.")
++        result = cls(
++            run_plan_digest=str(payload["run_plan_digest"]),
++            source_checkpoint_sha256=str(payload["source_checkpoint_sha256"]),
++            source_checkpoint_epoch=int(payload["source_checkpoint_epoch"]),
++            source_checkpoint_size_bytes=int(payload["source_checkpoint_size_bytes"]),
++            capsule_path=str(payload["capsule_path"]),
++            capsule_sha256=str(payload["capsule_sha256"]),
++            capsule_size_bytes=int(payload["capsule_size_bytes"]),
++            model_state_sha256=str(payload["model_state_sha256"]),
++            mace_config_sha256=str(payload["mace_config_sha256"]),
++            reconstruction_contract=str(payload.get("reconstruction_contract", "")),
++            verified_exact_model_state=bool(payload.get("verified_exact_model_state", False)),
++            created_at_utc=str(payload.get("created_at_utc", "")),
++        )
++        if payload.get("content_digest") not in (None, result.content_digest):
++            raise TrainingDataSerializationError("Evaluation-state capsule digest mismatch.")
++        return result
++
++
++def capsule_file_payload(
++    *,
++    run_plan_digest: str,
++    source_checkpoint_sha256: str,
++    source_checkpoint_epoch: int,
++    source_checkpoint_size_bytes: int,
++    model_state: Mapping[str, Any],
++    model_state_digest: str,
++    mace_config_sha256: str,
++) -> dict[str, Any]:
++    return {
++        "schema": EVALUATION_STATE_CAPSULE_FILE_SCHEMA,
++        "contract": EVALUATION_STATE_CAPSULE_CONTRACT,
++        "run_plan_digest": validate_digest(run_plan_digest, name="run_plan_digest"),
++        "source_checkpoint_sha256": validate_digest(
++            source_checkpoint_sha256, name="source_checkpoint_sha256"
++        ),
++        "source_checkpoint_epoch": int(source_checkpoint_epoch),
++        "source_checkpoint_size_bytes": int(source_checkpoint_size_bytes),
++        "model_state_sha256": validate_digest(model_state_digest, name="model_state_sha256"),
++        "mace_config_sha256": validate_digest(mace_config_sha256, name="mace_config_sha256"),
++        "model": dict(model_state),
++    }
++
++
++def write_capsule_file_atomic(path: str | Path, payload: Mapping[str, Any]) -> tuple[str, int]:
++    try:
++        import torch
++    except ModuleNotFoundError as exc:  # pragma: no cover
++        raise TrainingDataInputError(
++            "Evaluation-state capsules require the optional torch package."
++        ) from exc
++    destination = Path(path).resolve()
++    destination.parent.mkdir(parents=True, exist_ok=True)
++    temporary = destination.with_name(
++        f".{destination.name}.{os.getpid()}.{time.time_ns()}.tmp"
++    )
++    try:
++        torch.save(dict(payload), temporary)
++        with temporary.open("rb") as handle:
++            os.fsync(handle.fileno())
++        os.replace(temporary, destination)
++    finally:
++        temporary.unlink(missing_ok=True)
++    return _sha256_file(destination), destination.stat().st_size
++
++
++def load_validated_capsule_payload(
++    record: EvaluationStateCapsuleRecord,
++    path: str | Path,
++    *,
++    expected_run_plan_digest: str | None = None,
++    expected_checkpoint_sha256: str | None = None,
++    expected_epoch: int | None = None,
++    expected_config_sha256: str | None = None,
++) -> Mapping[str, Any]:
++    source = Path(path).resolve()
++    if not source.is_file():
++        raise TrainingDataInputError(f"Evaluation-state capsule is missing: {source}.")
++    if _sha256_file(source) != record.capsule_sha256:
++        raise TrainingDataInputError("Evaluation-state capsule bytes changed after recording.")
++    if source.stat().st_size != record.capsule_size_bytes:
++        raise TrainingDataInputError("Evaluation-state capsule byte count changed after recording.")
++    if expected_run_plan_digest is not None and record.run_plan_digest != expected_run_plan_digest:
++        raise TrainingDataInputError("Evaluation-state capsule run lineage mismatch.")
++    if expected_checkpoint_sha256 is not None and record.source_checkpoint_sha256 != expected_checkpoint_sha256:
++        raise TrainingDataInputError("Evaluation-state capsule source checkpoint mismatch.")
++    if expected_epoch is not None and record.source_checkpoint_epoch != int(expected_epoch):
++        raise TrainingDataInputError("Evaluation-state capsule epoch mismatch.")
++    if expected_config_sha256 is not None and record.mace_config_sha256 != expected_config_sha256:
++        raise TrainingDataInputError("Evaluation-state capsule DATA8 config mismatch.")
++
++    payload = _torch_load(source)
++    if not isinstance(payload, Mapping):
++        raise TrainingDataInputError("Evaluation-state capsule payload is not a mapping.")
++    if payload.get("schema") != EVALUATION_STATE_CAPSULE_FILE_SCHEMA:
++        raise TrainingDataInputError("Unsupported evaluation-state capsule file schema.")
++    if payload.get("contract") != EVALUATION_STATE_CAPSULE_CONTRACT:
++        raise TrainingDataInputError("Unsupported evaluation-state capsule file contract.")
++    fields = {
++        "run_plan_digest": record.run_plan_digest,
++        "source_checkpoint_sha256": record.source_checkpoint_sha256,
++        "source_checkpoint_epoch": record.source_checkpoint_epoch,
++        "source_checkpoint_size_bytes": record.source_checkpoint_size_bytes,
++        "model_state_sha256": record.model_state_sha256,
++        "mace_config_sha256": record.mace_config_sha256,
++    }
++    for key, value in fields.items():
++        if payload.get(key) != value:
++            raise TrainingDataInputError(
++                f"Evaluation-state capsule metadata mismatch: {key}."
++            )
++    state = payload.get("model")
++    if not isinstance(state, Mapping):
++        raise TrainingDataInputError("Evaluation-state capsule does not contain a model state.")
++    if model_state_sha256(state) != record.model_state_sha256:
++        raise TrainingDataInputError("Evaluation-state capsule model-state digest mismatch.")
++    return payload
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/mdstats/training_data/storage_accounting.py ./mdstats/training_data/storage_accounting.py
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/mdstats/training_data/storage_accounting.py	2026-08-08 21:27:31.410045641 +0000
++++ ./mdstats/training_data/storage_accounting.py	2026-08-08 22:00:45.628648873 +0000
+@@ -23,6 +23,7 @@
+     PROTECTED_PRODUCTION = "protected_production"
+     PROTECTED_DIAGNOSTIC = "protected_diagnostic"
+     RESTART_CRITICAL = "restart_critical"
++    EVALUATION_CAPSULE = "evaluation_capsule"
+     SCIENTIFIC_CACHE = "scientific_cache"
+     RECONSTRUCTABLE_CACHE = "reconstructable_cache"
+     INTERMEDIATE = "intermediate"
+@@ -350,6 +351,8 @@
+     if parts[0] == "data":
+         return ("data7_data8_materializations", ArtifactRetentionClass.INTERMEDIATE, "not_yet_qualified", "candidate_after_stor4", ("data8_rematerialization", "training_input_materialization"))
+     if parts[0] == "runs":
++        if "evaluation-capsules" in parts or name.endswith(".eval-state.pt"):
++            return ("evaluation_state_capsules", ArtifactRetentionClass.EVALUATION_CAPSULE, "prohibited", "candidate_after_stor3", ("exact_checkpoint_reevaluation", "target_head_reexport"))
+         if "checkpoints" in parts or name.endswith(".pt"):
+             return ("training_checkpoints", ArtifactRetentionClass.RESTART_CRITICAL, "prohibited", "candidate_after_stor2", ("training_restart", "exact_checkpoint_reevaluation"))
+         if "checkpoint-model-cache" in parts:
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/pyproject.toml ./pyproject.toml
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/pyproject.toml	2026-08-08 21:46:01.434497178 +0000
++++ ./pyproject.toml	2026-08-08 22:07:03.241754127 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.112a0"
++version = "0.20.113a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/release/mlff_stor2_checkpoint_compaction_qualification.json ./release/mlff_stor2_checkpoint_compaction_qualification.json
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/release/mlff_stor2_checkpoint_compaction_qualification.json	1970-01-01 00:00:00.000000000 +0000
++++ ./release/mlff_stor2_checkpoint_compaction_qualification.json	2026-08-08 22:08:49.466849461 +0000
+@@ -0,0 +1,28 @@
++{
++  "schema": "mdstats.mlff-stor2-qualification.v1",
++  "runtime_version": "0.20.113a0",
++  "architecture_revision": 31,
++  "mace_version": "0.3.16",
++  "torch_version": "2.10.0+cpu",
++  "backend": "e3nn",
++  "checkpoint_epoch": 7,
++  "source_checkpoint_sha256": "9ac9b64338e4c8cebe895911750517e8d9c418c91e717b0b148223591ec35c1b",
++  "source_checkpoint_size_bytes": 4116076,
++  "capsule_sha256": "ae64d2541ba0c3105515ab5bfc471b24bf1380fb00b73862f02acfdc6ca65e1e",
++  "capsule_size_bytes": 114140,
++  "saved_bytes": 4001936,
++  "fraction_saved": 0.9722697054184617,
++  "model_state_sha256": "a63adb3ce2571403d092e49601e8518c0d0703ac24af61bc3a75a5f475e69b38",
++  "verified_exact_model_state": true,
++  "energy_force_stress_max_abs_difference": {
++    "energy": 0.0,
++    "forces": 0.0,
++    "stress": 0.0
++  },
++  "energy_force_stress_exact_equal": true,
++  "selected_raw_checkpoint_retained_by_policy": true,
++  "raw_deletion_order": "capsule atomic write/authentication -> exact reconstruction -> campaign record commit/readback -> re-authentication -> STOR1-authorized raw deletion",
++  "unsupported_or_corrupt_capsule_behavior": "fail closed to raw checkpoint retention",
++  "cueq_runtime_qualified_in_this_gate": false,
++  "cueq_note": "CuEq runtime was not available in the qualification environment; STOR2 uses the existing direct-restoration contract and retains unsupported layouts fail-closed."
++}
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data0_architecture_specification.py ./tests/test_mlff_data0_architecture_specification.py
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data0_architecture_specification.py	2026-08-08 21:47:24.100107904 +0000
++++ ./tests/test_mlff_data0_architecture_specification.py	2026-08-08 22:08:23.961128195 +0000
+@@ -78,7 +78,7 @@
+ def test_mlff_data0_dependency_graph_is_acyclic_and_has_forbidden_edges() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["branch"] == "MLFF-DATA"
+-    assert graph["architecture_revision"] == 30
++    assert graph["architecture_revision"] == 31
+     assert graph["documentation_gate"] == "MLFF-DATA0"
+     assert graph["schema_version"] == 26
+ 
+@@ -263,4 +263,4 @@
+ def test_mlff_data0_pdf_and_version_artifacts_exist() -> None:
+     assert MANUAL_PDF.stat().st_size > 10_000
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.112a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.113a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data1_specification.py ./tests/test_mlff_data1_specification.py
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data1_specification.py	2026-08-08 21:47:24.103195709 +0000
++++ ./tests/test_mlff_data1_specification.py	2026-08-08 22:08:23.962158876 +0000
+@@ -49,4 +49,4 @@
+     assert callable(mdstats.assign_balanced_round_robin)
+     assert callable(mdstats.build_complete_frame_block_plan)
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.112a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.113a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data2a_manifest_inference_specification.py ./tests/test_mlff_data2a_manifest_inference_specification.py
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-08 21:47:24.103677033 +0000
++++ ./tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-08 22:08:23.962312684 +0000
+@@ -15,7 +15,7 @@
+ 
+ 
+ def test_data2a_version_public_api_and_documented_contract() -> None:
+-    assert mdstats.__version__ == "0.20.112a0"
++    assert mdstats.__version__ == "0.20.113a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert callable(mdstats.infer_training_manifest_metadata)
+     policy = mdstats.ManifestInferencePolicy()
+@@ -39,7 +39,7 @@
+ def test_data2a_dependency_graph_requires_verified_promotion_before_approval() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 30
++    assert graph["architecture_revision"] == 31
+     nodes = {node["id"] for node in graph["nodes"]}
+     assert {
+         "FILENAME_STRAIN_CANDIDATE",
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a2_specification.py ./tests/test_mlff_data9a2_specification.py
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a2_specification.py	2026-08-08 21:47:24.100570141 +0000
++++ ./tests/test_mlff_data9a2_specification.py	2026-08-08 22:08:23.961273050 +0000
+@@ -23,7 +23,7 @@
+         "finite energy, force, and stress",
+     ):
+         assert required in text
+-    assert 'version = "0.20.112a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.113a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "DATA9A2 real-MACE realization is implemented in `0.20.39a0`" in ARCH.read_text()
+ 
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a3_specification.py ./tests/test_mlff_data9a3_specification.py
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a3_specification.py	2026-08-08 21:47:24.105092565 +0000
++++ ./tests/test_mlff_data9a3_specification.py	2026-08-08 22:08:23.962711045 +0000
+@@ -9,5 +9,5 @@
+     assert "37,632" in text
+     assert "supported_with_temporal_blocks_only" in text
+     assert "production_replay_corpus_not_bound" in text
+-    assert 'version = "0.20.112a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.113a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "MLFF-DATA9A3 production qualification" in ARCH.read_text()
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a4_precision_specification.py ./tests/test_mlff_data9a4_precision_specification.py
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a4_precision_specification.py	2026-08-08 21:47:24.101141429 +0000
++++ ./tests/test_mlff_data9a4_precision_specification.py	2026-08-08 22:08:23.961534679 +0000
+@@ -9,7 +9,7 @@
+     assert "float32" in text and "float64" in text
+     assert "MaceModelPrecisionRecord" in text
+     assert "MacePrecisionTransitionRecord" in text
+-    assert "version = \"0.20.112a0\"" in (ROOT / "pyproject.toml").read_text()
++    assert "version = \"0.20.113a0\"" in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_bind_precision_to_protocol() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a5_critical_fp64_specification.py ./tests/test_mlff_data9a5_critical_fp64_specification.py
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-08 21:47:24.099480773 +0000
++++ ./tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-08 22:08:23.960930001 +0000
+@@ -14,7 +14,7 @@
+     assert 'version: "0.20.42a0"' in text
+     assert "training_force_jacobian_dtype = model" in text
+     assert "Python/ASE" in text
+-    assert 'version = "0.20.112a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.113a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_data9a5_architecture_declares_scope_and_limits() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a5_deployment_specification.py ./tests/test_mlff_data9a5_deployment_specification.py
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a5_deployment_specification.py	2026-08-08 21:47:24.101032958 +0000
++++ ./tests/test_mlff_data9a5_deployment_specification.py	2026-08-08 22:08:23.961473398 +0000
+@@ -13,7 +13,7 @@
+     assert 'version: "0.20.43a0"' in text
+     assert "downstream runtime owns" in text
+     assert "float32-to-float64 promotion does not restore" in text
+-    assert 'version = "0.20.112a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.113a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_keep_lammps_outside_mdstats_scope() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a6b_architecture_consistency_specification.py ./tests/test_mlff_data9a6b_architecture_consistency_specification.py
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a6b_architecture_consistency_specification.py	2026-08-08 21:47:24.102897606 +0000
++++ ./tests/test_mlff_data9a6b_architecture_consistency_specification.py	2026-08-08 22:08:23.962044346 +0000
+@@ -61,7 +61,7 @@
+ def test_dependency_graph_treats_lta_as_optional() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 30
++    assert graph["architecture_revision"] == 31
+     nodes = {node["id"] for node in graph["nodes"]}
+     assert "MATERIAL_PROFILE_IDENTITY" in nodes
+     assert "LTA_PROFILE_EXTENSION" in nodes
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a6c_observable_evidence_specification.py ./tests/test_mlff_data9a6c_observable_evidence_specification.py
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-08 21:47:24.105259463 +0000
++++ ./tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-08 22:08:23.962765657 +0000
+@@ -38,7 +38,7 @@
+ def test_dependency_graph_places_policy_before_evidence_and_forbids_reverse_edge() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 30
++    assert graph["architecture_revision"] == 31
+     edges = {(e["from"], e["to"]) for e in graph["edges"]}
+     assert ("OBSERVABLE_COMPARISON_POLICY", "OBSERVABLE_VALIDATION_ACTIVATION_RECORD") in edges
+     assert ("OBSERVABLE_VALIDATION_ACTIVATION_RECORD", "OBSERVABLE_VALIDATION_EVIDENCE") in edges
+@@ -74,5 +74,5 @@
+ 
+ def test_packaged_owner_manual_index_is_valid() -> None:
+     payload = json.loads(MANUAL_INDEX.read_text(encoding="utf-8"))
+-    assert payload["package_version"] == "0.20.112a0"
++    assert payload["package_version"] == "0.20.113a0"
+     assert "structural-observables-architecture" in payload["manuals"]
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a7a_material_profile_specification.py ./tests/test_mlff_data9a7a_material_profile_specification.py
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-08 21:47:24.099678196 +0000
++++ ./tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-08 22:08:23.961002819 +0000
+@@ -41,7 +41,7 @@
+ def test_data9a7a_dependency_graph_contains_contract_chain() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 30
++    assert graph["architecture_revision"] == 31
+     nodes = {item["id"] for item in graph["nodes"]}
+     required = {
+         "MATERIAL_PROFILE_PROVIDER_IDENTITY",
+@@ -64,4 +64,4 @@
+ 
+ 
+ def test_release_version_is_data9a7a() -> None:
+-    assert 'version = "0.20.112a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert 'version = "0.20.113a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a7b_specification.py ./tests/test_mlff_data9a7b_specification.py
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a7b_specification.py	2026-08-08 21:47:24.105150511 +0000
++++ ./tests/test_mlff_data9a7b_specification.py	2026-08-08 22:08:23.962738326 +0000
+@@ -44,7 +44,7 @@
+ def test_data9a7b_dependency_graph_has_analysis_to_selection_chain() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 30
++    assert graph["architecture_revision"] == 31
+     nodes = {item["id"] for item in graph["nodes"]}
+     assert {
+         "ANALYSIS_LOCAL_STRUCTURE_FEATURES",
+@@ -69,7 +69,7 @@
+ 
+ 
+ def test_data9a7b_public_exports_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.112a0"
++    assert mdstats.__version__ == "0.20.113a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert callable(mdstats.compute_local_structure_features)
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a7c_specification.py ./tests/test_mlff_data9a7c_specification.py
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a7c_specification.py	2026-08-08 21:47:24.102026373 +0000
++++ ./tests/test_mlff_data9a7c_specification.py	2026-08-08 22:08:23.961719283 +0000
+@@ -34,7 +34,7 @@
+ def test_dependency_graph_contains_phase_geometry_contracts() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 30
++    assert graph["architecture_revision"] == 31
+     nodes = {node["id"] for node in graph["nodes"]}
+     assert {
+         "PHASE_GEOMETRY_SELECTION_PLAN",
+@@ -47,7 +47,7 @@
+ 
+ 
+ def test_public_api_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.112a0"
++    assert mdstats.__version__ == "0.20.113a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert mdstats.MLFF_DATA9A7C_PARSER_VERSION == "0.20.49a0"
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a7d_specification.py ./tests/test_mlff_data9a7d_specification.py
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a7d_specification.py	2026-08-08 21:47:24.101739677 +0000
++++ ./tests/test_mlff_data9a7d_specification.py	2026-08-08 22:08:23.961599986 +0000
+@@ -21,7 +21,7 @@
+ def test_data9a7d_dependency_graph_contract() -> None:
+     graph = json.loads((ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json").read_text())
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 30
++    assert graph["architecture_revision"] == 31
+     nodes = {item["id"] for item in graph["nodes"]}
+     assert {
+         "OPTIONAL_PROFILE_EXTENSION_PROVIDER",
+@@ -39,6 +39,6 @@
+ 
+ 
+ def test_data9a7d_runtime_versions() -> None:
+-    assert mdstats.__version__ == "0.20.112a0"
++    assert mdstats.__version__ == "0.20.113a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7D_PARSER_VERSION == "0.20.50a0"
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a7e_specification.py ./tests/test_mlff_data9a7e_specification.py
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a7e_specification.py	2026-08-08 21:47:24.098847924 +0000
++++ ./tests/test_mlff_data9a7e_specification.py	2026-08-08 22:08:23.960770474 +0000
+@@ -31,7 +31,7 @@
+ def test_data9a7e_dependency_graph_and_public_api() -> None:
+     graph = json.loads((ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json").read_text())
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 30
++    assert graph["architecture_revision"] == 31
+     nodes = {item["id"] for item in graph["nodes"]}
+     assert {
+         "CROSS_SYSTEM_QUALIFICATION_POLICY",
+@@ -39,7 +39,7 @@
+         "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
+         "CROSS_SYSTEM_QUALIFICATION_SUITE",
+     } <= nodes
+-    assert mdstats.__version__ == "0.20.112a0"
++    assert mdstats.__version__ == "0.20.113a0"
+     assert mdstats.MLFF_DATA9A7E_PARSER_VERSION == "0.20.51a0"
+     assert callable(mdstats.qualify_cross_system_case)
+     assert callable(mdstats.build_cross_system_qualification_suite)
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a8_specification.py ./tests/test_mlff_data9a8_specification.py
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a8_specification.py	2026-08-08 21:47:24.102388400 +0000
++++ ./tests/test_mlff_data9a8_specification.py	2026-08-08 22:08:23.961829417 +0000
+@@ -44,7 +44,7 @@
+ def test_dependency_graph_places_policy_upstream_and_forbids_posthoc_thresholds() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 30
++    assert graph["architecture_revision"] == 31
+     nodes = {node["id"] for node in graph["nodes"]}
+     for node in (
+         "OBSERVABLE_COMPARISON_RULES",
+@@ -66,7 +66,7 @@
+ 
+ 
+ def test_public_runtime_exposes_data9a8_without_removed_aliases() -> None:
+-    assert mdstats.__version__ == "0.20.112a0"
++    assert mdstats.__version__ == "0.20.113a0"
+     assert mdstats.MLFF_DATA9A8_PARSER_VERSION == "0.20.52a0"
+     assert mdstats.ObservableComparisonPolicy
+     assert mdstats.compare_mlff_observable_validation
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a9a_specification.py ./tests/test_mlff_data9a9a_specification.py
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a9a_specification.py	2026-08-08 21:47:24.100695787 +0000
++++ ./tests/test_mlff_data9a9a_specification.py	2026-08-08 22:08:23.961359218 +0000
+@@ -47,7 +47,7 @@
+ def test_dependency_graph_contains_restartable_model_sweep_chain() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 30
++    assert graph["architecture_revision"] == 31
+     nodes = {node["id"] for node in graph["nodes"]}
+     required = {
+         "DATA6_MODEL_SWEEP_EXECUTION_POLICY",
+@@ -65,7 +65,7 @@
+ 
+ 
+ def test_public_runtime_exports_data9a9a_contracts() -> None:
+-    assert mdstats.__version__ == "0.20.112a0"
++    assert mdstats.__version__ == "0.20.113a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A9A_VERSION
+     assert mdstats.Data6ModelSweepPlan
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a9b_specification.py ./tests/test_mlff_data9a9b_specification.py
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a9b_specification.py	2026-08-08 21:47:24.103788859 +0000
++++ ./tests/test_mlff_data9a9b_specification.py	2026-08-08 22:08:23.962369939 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9b_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.112a0"
++    assert mdstats.__version__ == "0.20.113a0"
+     for name in (
+         "ProductionMaterializationPlan",
+         "ProductionMaterializationCheckpoint",
+@@ -40,7 +40,7 @@
+ def test_dependency_graph_contains_data9a9b_chain() -> None:
+     graph = json.loads((ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json").read_text())
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 30
++    assert graph["architecture_revision"] == 31
+     nodes = {item["id"] for item in graph["nodes"]}
+     required = {
+         "PRODUCTION_MATERIALIZATION_PLAN",
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a9c_specification.py ./tests/test_mlff_data9a9c_specification.py
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a9c_specification.py	2026-08-08 21:47:24.104047333 +0000
++++ ./tests/test_mlff_data9a9c_specification.py	2026-08-08 22:08:23.962475235 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9c_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.112a0"
++    assert mdstats.__version__ == "0.20.113a0"
+     for name in (
+         "ProductionCorpusPlan", "ProductionExpectedRun",
+         "ProfileExtensionEvidenceRequirement", "ProductionCorpusQualificationRecord",
+@@ -38,7 +38,7 @@
+ def test_dependency_graph_contains_integrity_gate_chain() -> None:
+     graph = json.loads((ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json").read_text())
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 30
++    assert graph["architecture_revision"] == 31
+     nodes = {item["id"] for item in graph["nodes"]}
+     assert {"PRODUCTION_CORPUS_PLAN", "REPLAY_LABEL_PAYLOAD_IDENTITY",
+             "DATA8_ATOMIC_PROMOTION", "PRODUCTION_GATE_INTEGRITY_EVIDENCE"} <= nodes
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a_specification.py ./tests/test_mlff_data9a_specification.py
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9a_specification.py	2026-08-08 21:47:24.104929333 +0000
++++ ./tests/test_mlff_data9a_specification.py	2026-08-08 22:08:23.962684847 +0000
+@@ -14,7 +14,7 @@
+ 
+ 
+ def test_data9a_runtime_specification_is_canonical() -> None:
+-    assert 'version = "0.20.112a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.113a0"' in (ROOT / "pyproject.toml").read_text()
+     architecture = ARCH.read_text()
+     stage = STAGE.read_text()
+     specification = SPEC.read_text()
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9b1_specification.py ./tests/test_mlff_data9b1_specification.py
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9b1_specification.py	2026-08-08 21:47:24.101951602 +0000
++++ ./tests/test_mlff_data9b1_specification.py	2026-08-08 22:08:23.961650160 +0000
+@@ -18,8 +18,8 @@
+     assert "TrainingCampaignPlan" in text
+     assert "CheckpointSelectionRecord" in text
+     assert "mdstats-mace-train" in text
+-    assert mdstats.__version__ == "0.20.112a0"
+-    assert 'version = "0.20.112a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert mdstats.__version__ == "0.20.113a0"
++    assert 'version = "0.20.113a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+ 
+ 
+ def test_data9b1_is_integrated_into_manual_and_stage_plan() -> None:
+@@ -33,7 +33,7 @@
+ 
+ def test_data9b1_dependency_graph_nodes_and_gates() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+-    assert graph["architecture_revision"] == 30
++    assert graph["architecture_revision"] == 31
+     nodes = {item["id"] for item in graph["nodes"]}
+     for node in (
+         "TRAINING_CAMPAIGN_POLICY",
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9b2_execution_aggregation_freeze.py ./tests/test_mlff_data9b2_execution_aggregation_freeze.py
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9b2_execution_aggregation_freeze.py	2026-08-08 21:47:24.103549414 +0000
++++ ./tests/test_mlff_data9b2_execution_aggregation_freeze.py	2026-08-08 22:09:08.121067701 +0000
+@@ -646,10 +646,13 @@
+ 
+ 
+ 
+-def test_post_evaluate_cleanup_keeps_selected_checkpoint_and_full_metric_evidence(tmp_path: Path) -> None:
++def test_post_evaluate_cleanup_keeps_selected_checkpoint_and_full_metric_evidence(
++    tmp_path: Path, monkeypatch
++) -> None:
+     from types import SimpleNamespace
++    import torch
+ 
+-    job, run, _ = _job(tmp_path)
++    job, run, job_config = _job(tmp_path)
+     config = tmp_path / "campaign.toml"
+     config.write_text(
+         campaign_cli._config_template(
+@@ -666,8 +669,29 @@
+     run_root = paths.runs / run.run_id
+     checkpoint_root = run_root / "checkpoints"
+     checkpoint_root.mkdir(parents=True)
+-    (checkpoint_root / "model_epoch-1.pt").write_bytes(b"epoch-one")
+-    (checkpoint_root / "model_epoch-2.pt").write_bytes(b"epoch-two")
++    models = run_root / "models"
++    models.mkdir(parents=True)
++    template = torch.nn.Linear(2, 1)
++    torch.save(template, models / "fake.model")
++    for epoch, delta in ((1, 0.1), (2, 0.2)):
++        candidate = torch.nn.Linear(2, 1)
++        with torch.no_grad():
++            candidate.weight.add_(delta)
++        torch.save(
++            {
++                "model": candidate.state_dict(),
++                "optimizer": {
++                    "state": {
++                        0: {
++                            "exp_avg": torch.ones(10000),
++                            "exp_avg_sq": torch.ones(10000),
++                        }
++                    }
++                },
++                "lr_scheduler": {"last_epoch": epoch},
++            },
++            checkpoint_root / f"model_epoch-{epoch}.pt",
++        )
+     catalog = mdstats.inventory_mace_checkpoints(
+         run, checkpoint_root, pattern="*epoch*.pt"
+     )
+@@ -731,6 +755,13 @@
+     selection = mdstats.select_checkpoint(run, catalog, metrics, _metric_policy())
+     store.put_record(f"selection:{run.run_id}", selection)
+ 
++    monkeypatch.setattr(campaign_cli, "_current_data8_entries", lambda _store: ())
++    monkeypatch.setattr(
++        campaign_cli,
++        "_job_lookup",
++        lambda _entries: {job.content_digest: (None, job, tmp_path)},
++    )
++
+     report = campaign_cli._compact_evaluated_checkpoints(
+         cfg,
+         paths,
+@@ -741,14 +772,45 @@
+     retained = store.get_record(
+         f"execution:{run.run_id}", mdstats.TrainingRunExecutionRecord
+     )
+-    assert len(retained.checkpoint_catalog.checkpoints) == 1
+-    assert retained.checkpoint_catalog.checkpoints[0].sha256 == selection.selected_checkpoint_sha256
++    # STOR2 preserves the original scientific checkpoint catalog identity.
++    assert len(retained.checkpoint_catalog.checkpoints) == 2
++    assert retained.checkpoint_catalog.content_digest == catalog.content_digest
+     assert len(list(checkpoint_root.glob("*.pt"))) == 1
++    selected_record = next(
++        item for item in catalog.checkpoints
++        if item.sha256 == selection.selected_checkpoint_sha256
++    )
++    assert (checkpoint_root / selected_record.relative_path).is_file()
++    nonselected = next(
++        item for item in catalog.checkpoints
++        if item.sha256 != selection.selected_checkpoint_sha256
++    )
++    capsule = store.get_record(
++        f"checkpoint_capsule:{run.run_id}:{nonselected.sha256}",
++        mdstats.EvaluationStateCapsuleRecord,
++    )
++    assert Path(capsule.capsule_path).is_file()
++    assert capsule.capsule_size_bytes < capsule.source_checkpoint_size_bytes
+     original = campaign_cli._evaluation_checkpoint_catalog(
+         store, run.run_id, retained
+     )
+     assert len(original.checkpoints) == 2
+-    assert (run_root / "training_execution.json").is_file()
++    retention = store.get_payload(f"checkpoint_retention:{run.run_id}")
++    assert retention["schema"] == "mdstats.mlff-checkpoint-retention.v2"
++    assert retention["selected_checkpoint_restart_capable"] is True
++    ok, detail = campaign_cli._completed_checkpoint_storage_matches(
++        paths, store, run.run_id, catalog
++    )
++    assert ok, detail
++
++    # STOR2 is restart/idempotency safe: a second pass trusts the committed capsule,
++    # leaves the selected raw checkpoint untouched, and performs no further compaction.
++    second = campaign_cli._compact_evaluated_checkpoints(
++        cfg, paths, store, SimpleNamespace(runs=(run,))
++    )
++    assert second.reclaimed_bytes == 0
++    assert len(list(checkpoint_root.glob("*.pt"))) == 1
++    assert Path(capsule.capsule_path).is_file()
+ 
+ 
+ def test_completed_training_run_is_checksum_verified_and_not_recalculated(tmp_path: Path) -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9b2_specification.py ./tests/test_mlff_data9b2_specification.py
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9b2_specification.py	2026-08-08 21:47:24.103460973 +0000
++++ ./tests/test_mlff_data9b2_specification.py	2026-08-08 22:08:23.962266365 +0000
+@@ -23,7 +23,7 @@
+         'mdstats-mace-select-head',
+     ):
+         assert token in text
+-    assert mdstats.__version__ == '0.20.112a0'
++    assert mdstats.__version__ == '0.20.113a0'
+     assert mdstats.MLFF_DATA9B2_VERSION == '0.20.57a0'
+ 
+ 
+@@ -37,7 +37,7 @@
+ 
+ def test_data9b2_dependency_graph_records_and_edges() -> None:
+     graph = json.loads(GRAPH.read_text(encoding='utf-8'))
+-    assert graph['architecture_revision'] == 30
++    assert graph['architecture_revision'] == 31
+     assert graph['schema_version'] == 26
+     nodes = {v['id'] for v in graph['nodes']}
+     for node in (
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9b3_campaign_cli_specification.py ./tests/test_mlff_data9b3_campaign_cli_specification.py
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-08 21:47:24.103324300 +0000
++++ ./tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-08 22:08:23.962206677 +0000
+@@ -16,7 +16,7 @@
+ 
+ 
+ def test_data9b3_version_and_user_surface() -> None:
+-    assert mdstats.__version__ == "0.20.112a0"
++    assert mdstats.__version__ == "0.20.113a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert TOOL.is_file()
+     assert TOOL.stat().st_mode & 0o111
+@@ -55,7 +55,7 @@
+ def test_data9b3_dependency_graph_contract() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 30
++    assert graph["architecture_revision"] == 31
+     nodes = {node["id"] for node in graph["nodes"]}
+     required = {
+         "CAMPAIGN_CLI_CONFIGURATION",
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9b3a_cueq_specification.py ./tests/test_mlff_data9b3a_cueq_specification.py
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_data9b3a_cueq_specification.py	2026-08-08 21:47:24.099603035 +0000
++++ ./tests/test_mlff_data9b3a_cueq_specification.py	2026-08-08 22:08:23.960967988 +0000
+@@ -42,7 +42,7 @@
+ def test_data9b3a_dependency_graph_contract() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 30
++    assert graph["architecture_revision"] == 31
+     nodes = {node["id"] for node in graph["nodes"]}
+     assert {"MACE_ACCELERATION_POLICY", "MACE_ACCELERATION_PROBE"} <= nodes
+     edges = {(edge["from"], edge["to"], edge["type"]) for edge in graph["edges"]}
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_eval_storage_roadmap_specification.py ./tests/test_mlff_eval_storage_roadmap_specification.py
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_eval_storage_roadmap_specification.py	2026-08-08 21:47:24.103863560 +0000
++++ ./tests/test_mlff_eval_storage_roadmap_specification.py	2026-08-08 22:09:08.121209972 +0000
+@@ -9,6 +9,7 @@
+ EVAL_SPEC = ROOT / "docs" / "specs" / "training_data" / "mlff_eval_mf_successive_halving_spec.md"
+ PREC_SPEC = ROOT / "docs" / "specs" / "training_data" / "mlff_staged_precision_profiles_spec.md"
+ STOR_SPEC = ROOT / "docs" / "specs" / "training_data" / "mlff_storage_management_spec.md"
++STOR2_EVIDENCE = ROOT / "release" / "mlff_stor2_checkpoint_compaction_qualification.json"
+ 
+ 
+ def test_eval_precision_storage_roadmap_is_recorded_in_binding_order() -> None:
+@@ -29,8 +30,9 @@
+     assert positions == sorted(positions)
+     assert "EVAL-MF2 - conservative survivor control, diagnostics, and default migration - implemented in 0.20.107a0" in text
+     assert "`PREC1` in 0.20.108a0" in text
+-    assert "The next implementation gate is `STOR2`" in text
++    assert "The next implementation gate is `STOR3`" in text
+     assert "STOR1 - campaign storage accounting and ownership boundary - implemented in 0.20.111a0" in text
++    assert "STOR2 - lossless completed-checkpoint compaction - implemented in 0.20.113a0" in text
+ 
+ 
+ def test_multifidelity_plan_preserves_equal_target_replay_fidelity_and_full_final() -> None:
+@@ -76,10 +78,10 @@
+         assert token in text
+ 
+ 
+-def test_dependency_graph_revision_30_contains_eval_precision_storage_nodes() -> None:
++def test_dependency_graph_revision_31_contains_eval_precision_storage_nodes() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 30
++    assert graph["architecture_revision"] == 31
+     nodes = {node["id"] for node in graph["nodes"]}
+     for node in (
+         "NESTED_CHECKPOINT_EVALUATION_PLAN",
+@@ -97,3 +99,18 @@
+         "CAMPAIGN_CLEANUP_MANIFEST",
+     ):
+         assert node in nodes
++
++
++def test_stor2_real_mace_qualification_records_exact_equivalence_and_savings() -> None:
++    payload = json.loads(STOR2_EVIDENCE.read_text(encoding="utf-8"))
++    assert payload["schema"] == "mdstats.mlff-stor2-qualification.v1"
++    assert payload["runtime_version"] == "0.20.113a0"
++    assert payload["architecture_revision"] == 31
++    assert payload["backend"] == "e3nn"
++    assert payload["verified_exact_model_state"] is True
++    assert payload["energy_force_stress_exact_equal"] is True
++    assert all(value == 0.0 for value in payload["energy_force_stress_max_abs_difference"].values())
++    assert payload["capsule_size_bytes"] < payload["source_checkpoint_size_bytes"]
++    assert payload["saved_bytes"] > 0
++    assert payload["selected_raw_checkpoint_retained_by_policy"] is True
++    assert payload["cueq_runtime_qualified_in_this_gate"] is False
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_opt_ctrl1_specification.py ./tests/test_mlff_opt_ctrl1_specification.py
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_opt_ctrl1_specification.py	2026-08-08 21:47:24.104633764 +0000
++++ ./tests/test_mlff_opt_ctrl1_specification.py	2026-08-08 22:08:23.962548104 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_ctrl1_release_identity_preserves_scientific_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.112a0"
++    assert mdstats.__version__ == "0.20.113a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.112a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.113a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_ctrl1_architecture_and_spec_close_roadmap() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_opt_eval4_specification.py ./tests/test_mlff_opt_eval4_specification.py
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_opt_eval4_specification.py	2026-08-08 21:47:24.104692551 +0000
++++ ./tests/test_mlff_opt_eval4_specification.py	2026-08-08 22:08:23.962607201 +0000
+@@ -11,9 +11,9 @@
+ 
+ 
+ def test_opt_eval4_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.112a0"
++    assert mdstats.__version__ == "0.20.113a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+-    assert 'version = "0.20.112a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.113a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_eval4_architecture_and_spec_record_pipeline_contract() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_opt_verify1_specification.py ./tests/test_mlff_opt_verify1_specification.py
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_opt_verify1_specification.py	2026-08-08 21:47:24.098305939 +0000
++++ ./tests/test_mlff_opt_verify1_specification.py	2026-08-08 22:08:23.960609696 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_verify1_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.112a0"
++    assert mdstats.__version__ == "0.20.113a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.112a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.113a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_verify1_architecture_and_spec_record_contract() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_perf2_parallel_acceleration_specification.py ./tests/test_mlff_perf2_parallel_acceleration_specification.py
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-08 21:47:24.102793762 +0000
++++ ./tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-08 22:08:23.961941102 +0000
+@@ -10,7 +10,7 @@
+ 
+ 
+ def test_perf2_release_and_configuration_contract() -> None:
+-    assert mdstats.__version__ == "0.20.112a0"
++    assert mdstats.__version__ == "0.20.113a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     template = campaign_cli._config_template(
+         workspace="workspace",
+@@ -43,7 +43,7 @@
+         .read_text(encoding="utf-8")
+     )
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 30
++    assert graph["architecture_revision"] == 31
+     nodes = {item["id"] for item in graph["nodes"]}
+     assert {
+         "SYSTEM_RESOURCE_SNAPSHOT",
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_prec1_specification.py ./tests/test_mlff_prec1_specification.py
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_prec1_specification.py	2026-08-08 21:47:24.100959909 +0000
++++ ./tests/test_mlff_prec1_specification.py	2026-08-08 22:08:23.961410535 +0000
+@@ -12,15 +12,15 @@
+ 
+ 
+ def test_prec1_release_and_architecture_status() -> None:
+-    assert mdstats.__version__ == "0.20.112a0"
++    assert mdstats.__version__ == "0.20.113a0"
+     manual = MANUAL.read_text(encoding="utf-8")
+     spec = SPEC.read_text(encoding="utf-8")
+     assert "PREC1 - precision profiles, explicit staged schedule, and init realization - implemented in 0.20.108a0" in manual
+     assert "PREC1 implemented in mdstats 0.20.108a0" in spec
+-    assert "the next implementation gate is `STOR2`" in manual
++    assert "the next implementation gate is `STOR3`" in manual
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 30
++    assert graph["architecture_revision"] == 31
+ 
+ 
+ def test_prec1_public_contract_is_exported() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_prec2_specification.py ./tests/test_mlff_prec2_specification.py
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_prec2_specification.py	2026-08-08 21:47:24.100234182 +0000
++++ ./tests/test_mlff_prec2_specification.py	2026-08-08 22:08:23.961219211 +0000
+@@ -14,8 +14,8 @@
+     assert "latest-only authenticated companion" in manual
+     assert "real MACE 0.3.16" in manual
+     assert "no fabricated real-CuEq execution evidence is claimed" in manual
+-    assert "the next implementation gate is `STOR2`" in manual
++    assert "the next implementation gate is `STOR3`" in manual
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 30
++    assert graph["architecture_revision"] == 31
+     node_ids = {node["id"] for node in graph["nodes"]}
+     assert "PRECISION_RUNTIME_COMPANION" in node_ids
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_prec3_specification.py ./tests/test_mlff_prec3_specification.py
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_prec3_specification.py	2026-08-08 21:47:24.103077834 +0000
++++ ./tests/test_mlff_prec3_specification.py	2026-08-08 22:08:23.962090134 +0000
+@@ -16,13 +16,13 @@
+     manual = MANUAL.read_text(encoding="utf-8")
+     spec = SPEC.read_text(encoding="utf-8")
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+-    assert mdstats.__version__ == "0.20.112a0"
++    assert mdstats.__version__ == "0.20.113a0"
+     assert "PREC3 - campaign integration, qualification, and profile activation - implemented in 0.20.110a0" in manual
+     assert "PREC3 implementation closure (0.20.110a0)" in manual
+     assert "PREC3 implemented in mdstats 0.20.110a0" in spec
+-    assert "The next implementation gate is `STOR2`" in manual
++    assert "The next implementation gate is `STOR3`" in manual
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 30
++    assert graph["architecture_revision"] == 31
+ 
+ 
+ def test_prec3_qualification_evidence_is_transparent_about_cueq() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_stor1_storage_accounting.py ./tests/test_mlff_stor1_storage_accounting.py
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_stor1_storage_accounting.py	2026-08-08 21:47:24.102528128 +0000
++++ ./tests/test_mlff_stor1_storage_accounting.py	2026-08-08 22:04:17.256715990 +0000
+@@ -307,3 +307,23 @@
+     else:
+         raise AssertionError("cleanup must fail closed before opening an external state database")
+     assert not (external / "campaign.sqlite3").exists()
++
++
++def test_stor2_capsules_have_distinct_storage_retention_family(tmp_path: Path) -> None:
++    config = _write_config(tmp_path)
++    cfg, paths = campaign_cli._load_config(config)
++    capsule_root = paths.runs / "run-a" / "evaluation-capsules"
++    capsule_root.mkdir(parents=True)
++    (capsule_root / "epoch-0001.eval-state.pt").write_bytes(b"capsule" * 100)
++    report = build_campaign_storage_report(
++        paths.workspace,
++        protected_inputs=configured_protected_inputs(
++            cfg, config_dir=paths.config_dir, config_path=paths.config
++        ),
++    )
++    family = next(
++        item for item in report.to_dict()["families"]
++        if item["family"] == "evaluation_state_capsules"
++    )
++    assert family["retention_class"] == ArtifactRetentionClass.EVALUATION_CAPSULE.value
++    assert family["automatic_reclamation_eligibility"] == "prohibited"
+diff -ruN '--exclude=*.pdf' '--exclude=*.pyc' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=build' '--exclude=dist' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_0.20.112a0_to_0.20.113a0.patch' /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_stor2_checkpoint_compaction.py ./tests/test_mlff_stor2_checkpoint_compaction.py
+--- /mnt/data/mdstats-0.20.112a0-complete-source-package/tests/test_mlff_stor2_checkpoint_compaction.py	1970-01-01 00:00:00.000000000 +0000
++++ ./tests/test_mlff_stor2_checkpoint_compaction.py	2026-08-08 22:03:47.684716632 +0000
+@@ -0,0 +1,265 @@
++from __future__ import annotations
++
++import hashlib
++from pathlib import Path
++
++import pytest
++
++import mdstats
++from mdstats.training_data import campaign_execution
++
++
++def _sha(path: Path) -> str:
++    return hashlib.sha256(path.read_bytes()).hexdigest()
++
++
++def _record(path: Path, *, epoch: int = 3, run_digest: str = "1" * 64) -> mdstats.CheckpointFileRecord:
++    return mdstats.CheckpointFileRecord(
++        run_plan_digest=run_digest,
++        candidate_id=f"run:epoch-{epoch}",
++        epoch=epoch,
++        relative_path=path.name,
++        sha256=_sha(path),
++        size_bytes=path.stat().st_size,
++    )
++
++
++def _checkpoint(path: Path, model, *, extra_optimizer_elements: int = 100_000) -> mdstats.CheckpointFileRecord:
++    import torch
++
++    torch.save(
++        {
++            "model": model.state_dict(),
++            "optimizer": {
++                "state": {
++                    0: {
++                        "exp_avg": torch.ones(extra_optimizer_elements, dtype=torch.float32),
++                        "exp_avg_sq": torch.ones(extra_optimizer_elements, dtype=torch.float32),
++                    }
++                }
++            },
++            "lr_scheduler": {"last_epoch": 3},
++        },
++        path,
++    )
++    return _record(path)
++
++
++def test_stor2_capsule_is_smaller_and_reconstructs_exact_model_state(tmp_path: Path) -> None:
++    torch = pytest.importorskip("torch")
++    yaml = pytest.importorskip("yaml")
++
++    run_root = tmp_path / "run"
++    models = run_root / "models"
++    models.mkdir(parents=True)
++    cache = run_root / "checkpoint-model-cache"
++    job_root = tmp_path / "job"
++    job_root.mkdir()
++    config = job_root / "config.yaml"
++    config.write_text(yaml.safe_dump({"name": "model", "seed": 1}), encoding="utf-8")
++
++    template = torch.nn.Linear(3, 2)
++    torch.save(template, models / "model.model")
++    selected = torch.nn.Linear(3, 2)
++    with torch.no_grad():
++        selected.weight.copy_(torch.tensor([[1.0, 2.0, 3.0], [-1.0, 0.5, 4.0]]))
++        selected.bias.copy_(torch.tensor([0.25, -0.75]))
++    raw = run_root / "checkpoints" / "model_epoch-3.pt"
++    raw.parent.mkdir()
++    checkpoint = _checkpoint(raw, selected)
++
++    capsule_path = run_root / "evaluation-capsules" / "epoch-0003.eval-state.pt"
++    record = mdstats.create_mace_evaluation_state_capsule(
++        checkpoint,
++        raw,
++        mace_config_path=config,
++        cache_directory=cache,
++        capsule_path=capsule_path,
++    )
++    assert raw.is_file()
++    assert capsule_path.is_file()
++    assert record.source_checkpoint_sha256 == checkpoint.sha256
++    assert record.capsule_size_bytes < record.source_checkpoint_size_bytes
++    assert record.saved_bytes > 0
++
++    restored_path = mdstats.materialize_mace_checkpoint_model(
++        checkpoint,
++        capsule_path,
++        mace_config_path=config,
++        job_working_directory=job_root,
++        cache_directory=cache,
++        evaluation_state_capsule=record,
++        wrapper_path=tmp_path / "must-not-run",
++    )
++    restored = torch.load(restored_path, map_location="cpu", weights_only=False)
++    for key, value in selected.state_dict().items():
++        assert torch.equal(restored.state_dict()[key], value)
++
++
++def test_stor2_capsule_corruption_fails_closed(tmp_path: Path) -> None:
++    torch = pytest.importorskip("torch")
++    yaml = pytest.importorskip("yaml")
++    run_root = tmp_path / "run"
++    (run_root / "models").mkdir(parents=True)
++    model = torch.nn.Linear(2, 1)
++    torch.save(model, run_root / "models" / "model.model")
++    job_root = tmp_path / "job"
++    job_root.mkdir()
++    config = job_root / "config.yaml"
++    config.write_text(yaml.safe_dump({"name": "model", "seed": 1}), encoding="utf-8")
++    raw = run_root / "checkpoints" / "model_epoch-3.pt"
++    raw.parent.mkdir()
++    checkpoint = _checkpoint(raw, model, extra_optimizer_elements=10_000)
++    capsule = run_root / "evaluation-capsules" / "epoch.eval-state.pt"
++    record = mdstats.create_mace_evaluation_state_capsule(
++        checkpoint,
++        raw,
++        mace_config_path=config,
++        cache_directory=run_root / "checkpoint-model-cache",
++        capsule_path=capsule,
++    )
++    with capsule.open("ab") as handle:
++        handle.write(b"tamper")
++    with pytest.raises(mdstats.TrainingDataInputError):
++        mdstats.load_validated_capsule_payload(record, capsule)
++
++
++def test_prepare_evaluation_accepts_authenticated_capsule_identity(tmp_path: Path, monkeypatch) -> None:
++    """CPU preparation may authenticate a capsule before accelerator materialization."""
++
++    torch = pytest.importorskip("torch")
++    yaml = pytest.importorskip("yaml")
++    run_root = tmp_path / "run"
++    (run_root / "models").mkdir(parents=True)
++    model = torch.nn.Linear(2, 1)
++    torch.save(model, run_root / "models" / "model.model")
++    job_root = tmp_path / "job"
++    job_root.mkdir()
++    config = job_root / "config.yaml"
++    config.write_text(yaml.safe_dump({"name": "model", "seed": 1}), encoding="utf-8")
++    raw = run_root / "checkpoints" / "model_epoch-3.pt"
++    raw.parent.mkdir()
++    checkpoint = _checkpoint(raw, model, extra_optimizer_elements=10_000)
++    capsule = run_root / "evaluation-capsules" / "epoch.eval-state.pt"
++    record = mdstats.create_mace_evaluation_state_capsule(
++        checkpoint,
++        raw,
++        mace_config_path=config,
++        cache_directory=run_root / "checkpoint-model-cache",
++        capsule_path=capsule,
++    )
++
++    # This test exercises the source authentication branch without needing a full
++    # MACE/ASE monitor.  A changed capsule is rejected before monitor parsing.
++    capsule.write_bytes(capsule.read_bytes() + b"x")
++    run = type("Run", (), {"target_monitor_artifact_digest": "2" * 64})()
++    artifact = type("Artifact", (), {"content_digest": "2" * 64, "sha256": "3" * 64})()
++    with pytest.raises(mdstats.TrainingDataInputError, match="capsule"):
++        campaign_execution.prepare_mace_checkpoint_evaluation(
++            run,
++            checkpoint,
++            candidate_model_path=capsule,
++            evaluation_state_capsule=record,
++            target_monitor_path=tmp_path / "missing.xyz",
++            target_monitor_artifact=artifact,
++        )
++
++
++def test_stor2_real_mace_capsule_preserves_energy_force_stress(tmp_path: Path, monkeypatch) -> None:
++    """STOR2 numerical qualification on an actual MACE 0.3.16 model."""
++
++    monkeypatch.setenv("TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD", "1")
++    torch = pytest.importorskip("torch")
++    np = pytest.importorskip("numpy")
++    yaml = pytest.importorskip("yaml")
++    pytest.importorskip("mace")
++    e3nn = pytest.importorskip("e3nn")
++    from copy import deepcopy
++    from mace import data, modules, tools
++
++    table = tools.AtomicNumberTable([1, 8])
++    model_config = dict(
++        r_max=3.0,
++        num_bessel=4,
++        num_polynomial_cutoff=4,
++        max_ell=1,
++        interaction_cls=modules.interaction_classes["RealAgnosticResidualInteractionBlock"],
++        interaction_cls_first=modules.interaction_classes["RealAgnosticResidualInteractionBlock"],
++        num_interactions=2,
++        num_elements=2,
++        hidden_irreps=e3nn.o3.Irreps("8x0e + 8x1o"),
++        MLP_irreps=e3nn.o3.Irreps("4x0e"),
++        gate=torch.nn.functional.silu,
++        atomic_energies=np.array([0.1, 0.2]),
++        avg_num_neighbors=3.0,
++        atomic_numbers=table.zs,
++        correlation=2,
++        radial_type="bessel",
++    )
++    template = modules.MACE(**model_config)
++    candidate = deepcopy(template)
++    with torch.no_grad():
++        next(candidate.parameters()).add_(0.015625)
++
++    run_root = tmp_path / "run"
++    (run_root / "models").mkdir(parents=True)
++    torch.save(template, run_root / "models" / "tiny-mace.model")
++    raw = run_root / "checkpoints" / "tiny-mace_epoch-7.pt"
++    raw.parent.mkdir()
++    torch.save(
++        {
++            "model": candidate.state_dict(),
++            "optimizer": {
++                "state": {
++                    0: {
++                        "exp_avg": torch.ones(500_000, dtype=torch.float32),
++                        "exp_avg_sq": torch.ones(500_000, dtype=torch.float32),
++                    }
++                }
++            },
++            "lr_scheduler": {"last_epoch": 7},
++        },
++        raw,
++    )
++    checkpoint = _record(raw, epoch=7)
++    job_root = tmp_path / "job"
++    job_root.mkdir()
++    config = job_root / "config.yaml"
++    config.write_text(
++        yaml.safe_dump({"name": "tiny-mace", "seed": 11, "enable_cueq": False}),
++        encoding="utf-8",
++    )
++    capsule_path = run_root / "evaluation-capsules" / "epoch-0007.eval-state.pt"
++    capsule = mdstats.create_mace_evaluation_state_capsule(
++        checkpoint,
++        raw,
++        mace_config_path=config,
++        cache_directory=run_root / "checkpoint-model-cache",
++        capsule_path=capsule_path,
++    )
++    restored_path = mdstats.materialize_mace_checkpoint_model(
++        checkpoint,
++        capsule_path,
++        mace_config_path=config,
++        job_working_directory=job_root,
++        cache_directory=run_root / "checkpoint-model-cache",
++        evaluation_state_capsule=capsule,
++        wrapper_path=tmp_path / "must-not-run",
++    )
++    restored = torch.load(restored_path, map_location="cpu", weights_only=False)
++
++    atoms_config = data.Configuration(
++        atomic_numbers=np.array([8, 1, 1]),
++        positions=np.array([[0.0, 0.0, 0.0], [0.9, 0.0, 0.0], [-0.2, 0.8, 0.0]]),
++        properties={},
++        property_weights={},
++    )
++    atomic_data = data.AtomicData.from_config(atoms_config, z_table=table, cutoff=3.0)
++    loader = tools.torch_geometric.dataloader.DataLoader(
++        dataset=[atomic_data], batch_size=1, shuffle=False, drop_last=False
++    )
++    batch = next(iter(loader)).to_dict()
++    expected = candidate(batch, training=False, compute_force=True, compute_stress=True)
++    actual = restored(batch, training=False, compute_force=True, compute_stress=True)
++    for key in ("energy", "forces", "stress"):
++        assert torch.allclose(actual[key], expected[key], rtol=0.0, atol=0.0), key

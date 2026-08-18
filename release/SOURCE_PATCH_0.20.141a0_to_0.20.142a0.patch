@@ -1,0 +1,1828 @@
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_141_orig/mdstats-0.20.141a0-complete-source-package/CHANGELOG.md /mnt/data/mdstats_141_work/mdstats-0.20.141a0-complete-source-package/CHANGELOG.md
+--- /mnt/data/mdstats_141_orig/mdstats-0.20.141a0-complete-source-package/CHANGELOG.md	2026-08-10 19:02:53.000000000 +0000
++++ /mnt/data/mdstats_141_work/mdstats-0.20.141a0-complete-source-package/CHANGELOG.md	2026-08-10 19:32:55.161476060 +0000
+@@ -1,3 +1,11 @@
++## 0.20.142a0 - 2026-08-10
++
++- Implement PAR-DENS3 concurrent density realization through the PAR-DENS2 global scheduler: independent atomic/framework fields execute concurrently only when aggregate CPU/RAM admission permits, with deterministic construction-order collation and dynamic CPU return to surviving fields.
++- Parallelize sparse support-atlas source-block construction in bounded memory-aware groups, partition target-owned direct realization by destination block, replace hot repeated scatter with grouped/segmented reductions where practical, and standardize production FFT calls on worker-aware `scipy.fft` using the live scheduler lease.
++- Advance density-scene plans to v3 with a more complete worker/storage/executor-neutral scientific approval projection while preserving historical v1 resource-sensitive and v2 PAR-DENS2 digest semantics. Execution-specific hybrid identities, worker counts, backend choices, and calibrated costs remain separately auditable.
++- Qualify scalar/support/HDR/mesh worker invariance across serial and parallel dense/sparse paths. The complete density-focused suite passes 351 tests with one optional interactive skip.
++- Requalify the supplied 300 K Na-LTA trajectory: a 101-frame/64^3 sparse Na/Si/O scene admits three concurrent fields at four threads, remains bit-identical to one-thread execution, preserves field/scientific identities and HDR levels, and reduces scene preparation from 9.209 s to 8.304 s in the qualification environment (1.109x). PAR-DENS4 is now the next density gate.
++
+ ## 0.20.141a0 - 2026-08-10
+ 
+ - Close PAR-DENS1 with execution-faithful irregular direct-reduction/support-atlas and worker-aware SciPy FFT calibration; the density time model advances to v3 and wall-time ranking remains advisory.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_141_orig/mdstats-0.20.141a0-complete-source-package/PATCH_NOTES_0.20.142a0.md /mnt/data/mdstats_141_work/mdstats-0.20.141a0-complete-source-package/PATCH_NOTES_0.20.142a0.md
+--- /mnt/data/mdstats_141_orig/mdstats-0.20.141a0-complete-source-package/PATCH_NOTES_0.20.142a0.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats_141_work/mdstats-0.20.141a0-complete-source-package/PATCH_NOTES_0.20.142a0.md	2026-08-10 19:32:55.161659814 +0000
+@@ -0,0 +1,14 @@
++# mdstats 0.20.142a0 patch notes
++
++## PAR-DENS3: parallel density planning and realization
++
++- Execute independent atomic and framework density fields concurrently through the single PAR-DENS2 `DensitySceneScheduler`; aggregate retained/transient memory and minimum CPU demand remain hard admission constraints, results are collated in deterministic construction order, and CPUs released by short fields are returned to surviving fields.
++- Bind every scheduled field to a live worker lease so chunked sparse kernels and FFTs can observe dynamic CPU reallocation without changing scientific results. Nested density APIs retain the scene memory ceiling while the scheduler remains the sole aggregate resource authority.
++- Parallelize support-atlas/source-block construction over bounded independent source-block groups. Before field realization exists, Phase-B planning uses the global LD10 CPU/RAM ceiling; inside a scheduled task it automatically uses the task lease and declared transient-memory slack.
++- Partition target-owned direct sparse realization by destination block. Each worker owns a private target accumulator and writes a disjoint packed output range, eliminating shared-output contention while preserving canonical per-block reduction order.
++- Replace repeated hot global `np.add.at` scatter in hybrid realization with stable destination grouping plus compiled segmented reduction where practical.
++- Standardize dense, tiled, and support-dilation FFT execution on `scipy.fft` worker semantics and source worker counts from the live scheduler allocation rather than giving every field the full scene thread count.
++- Advance `mdstats.density-scene-plan` to v3. New scientific approval IDs exclude sparse storage geometry, executor/tile choices, hybrid plan IDs, FFT worker counts, cache hits, calibrated timing, and memory/work decomposition; complete execution evidence remains in `execution_plan_id`. Historical v1 and v2 plans retain their original approval semantics and round-trip without reinterpretation.
++- Add PAR-DENS3 acceptance coverage comparing serial/parallel scalar fields, integrated measure, periodic packed support, HDR thresholds, and sparse meshes under multiple worker counts.
++- On the supplied 300 K Na-LTA source (SHA-256 `81c86cc40f5a11031f80817213eb558c02348494d1c6cad9b4775a5bc3c9f9cd`), a 101-frame stride-100 sparse 64^3 Na/Si/O qualification produced three concurrent fields at four threads, `max |Delta rho| = 0` for every field, identical content/scientific IDs and HDR thresholds, and a measured 1.109x scene-preparation speedup over one thread in the qualification environment.
++- PAR-DENS0 scientific density/spread semantics remain unchanged. PAR-DENS4 is the next gate.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_141_orig/mdstats-0.20.141a0-complete-source-package/docs/arch_manuals/mdstats_dynamical_framework_density_architecture_standard.md /mnt/data/mdstats_141_work/mdstats-0.20.141a0-complete-source-package/docs/arch_manuals/mdstats_dynamical_framework_density_architecture_standard.md
+--- /mnt/data/mdstats_141_orig/mdstats-0.20.141a0-complete-source-package/docs/arch_manuals/mdstats_dynamical_framework_density_architecture_standard.md	2026-08-10 19:02:53.000000000 +0000
++++ /mnt/data/mdstats_141_work/mdstats-0.20.141a0-complete-source-package/docs/arch_manuals/mdstats_dynamical_framework_density_architecture_standard.md	2026-08-10 19:32:55.162182191 +0000
+@@ -4587,9 +4587,9 @@
+ # PAR-DENS long-trajectory density refinement and parallel-execution plan
+ 
+ **Status:** PAR-DENS0 is `completed` in `mdstats 0.20.120a0`; PAR-DENS1 and
+-PAR-DENS2 are `completed` in `mdstats 0.20.141a0`; PAR-DENS3 is the next
+-implementation gate. The remaining gates stay ordered and inactive until their
+-predecessors qualify.
++PAR-DENS2 are `completed` in `mdstats 0.20.141a0`; PAR-DENS3 is `completed` in
++`mdstats 0.20.142a0`; PAR-DENS4 is the next implementation gate. The remaining
++gates stay ordered and inactive until their predecessors qualify.
+ 
+ The trigger for this plan is the long-trajectory LTA density workflow. The current
+ plotting stack already owns a scheduler/cgroup-aware runtime budget through LD10 and
+@@ -4945,7 +4945,7 @@
+ 
+ ## PAR-DENS3 - parallel density planning and realization
+ 
+-**Status:** `not_started`; depends on PAR-DENS2.
++**Status:** `completed` in `mdstats 0.20.142a0`; depends on PAR-DENS2.
+ 
+ This is the primary CPU-performance gate.
+ 
+@@ -4972,6 +4972,57 @@
+ periodic support, and resulting meshes against the serial/reference path under
+ multiple worker counts.
+ 
++### PAR-DENS3 implementation record (0.20.142a0)
++
++Independent atomic and framework field realization now executes as separate
++`DensityScheduledTask` objects under the single PAR-DENS2 scene scheduler. Exact
++Phase-B resource contracts remain authoritative for admission. When memory permits,
++fields overlap; scheduler leases are deterministically water-filled toward preferred
++worker counts and a field still running after siblings finish can consume the returned
++CPU tokens. Completion order remains non-authoritative: realized fields are collated
++by construction order before Phase-B/realization authentication. Established plotting
++errors are unwrapped at the facade so parallel execution does not change public error
++semantics.
++
++Sparse Phase-B planning and realization now use bounded parallel kernels. Support-atlas
++source blocks are processed in independent groups sized jointly by the active CPU budget
++and available transient memory. Before a field lease exists, Phase-B construction uses
++the global LD10 host budget; inside a scheduled task the same code automatically uses
++the live field lease. Target-owned direct realization is partitioned by destination
++block so each worker owns a private accumulator and writes only a disjoint packed
++output range. Hybrid direct scatter replaces repeated global `np.add.at` operations
++with stable destination grouping plus compiled segmented reduction where practical.
++Dense, tiled, and support-dilation FFT paths use worker-aware `scipy.fft`; live FFT
++worker counts come from the scheduler lease and therefore cannot oversubscribe the
++scene CPU pool.
++
++Density-scene planning advances to `mdstats.density-scene-plan.v3`. The scientific
++approval projection now excludes sparse storage geometry, direct/FFT executor and tile
++selection, hybrid execution-plan identities, FFT worker counts, cache hits, calibrated
++timing, and memory/work decomposition. These remain serialized in the separate
++execution plan. Historical v1 resource-sensitive approval semantics and v2 PAR-DENS2
++scientific-digest semantics remain separately versioned and round-trip without
++reinterpretation.
++
++The serial/parallel acceptance matrix covers dense and local-sparse framework fields
++at one and four workers. It requires exact scalar values, integrals, packed periodic
++support, field content identities, 50/80/95% HDR thresholds, and resulting sparse
++mesh geometry/topology to agree. The density-focused regression surface closes with
++351 passing tests and one optional `mdstats[interactive]` mesh-simplification skip.
++
++The supplied 10,001-frame 300 K Na-LTA source was requalified with a bounded
++101-frame stride-100, 64^3 local-sparse Na/Si/O scene. At four workers the scheduler
++admitted all three fields concurrently. One- and four-worker results had
++`max |Delta rho| = 0` for every field, identical packed-field content identities,
++identical v3 scientific approval IDs, equal integrated measures, and equal 50/80/95%
++HDR thresholds. Scene preparation measured 9.209 s at one worker and 8.304 s at four
++workers in the qualification environment (1.109x). This bounded timing is evidence
++that concurrency is active, not a universal speedup guarantee; very small scenes may
++remain scheduler-overhead dominated.
++
++PAR-DENS3 is therefore closed. PAR-DENS4 may optimize trajectory preprocessing and
++geometry reuse but may not alter the density scientific contracts established here.
++
+ ## PAR-DENS4 - parallel trajectory preprocessing and geometry reuse
+ 
+ **Status:** `not_started`; depends on PAR-DENS2 and may proceed after PAR-DENS3
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_141_orig/mdstats-0.20.141a0-complete-source-package/mdstats/_version.py /mnt/data/mdstats_141_work/mdstats-0.20.141a0-complete-source-package/mdstats/_version.py
+--- /mnt/data/mdstats_141_orig/mdstats-0.20.141a0-complete-source-package/mdstats/_version.py	2026-08-10 19:02:53.000000000 +0000
++++ /mnt/data/mdstats_141_work/mdstats-0.20.141a0-complete-source-package/mdstats/_version.py	2026-08-10 19:29:28.192011865 +0000
+@@ -1,3 +1,3 @@
+ """Package version."""
+ 
+-__version__ = "0.20.141a0"
++__version__ = "0.20.142a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_141_orig/mdstats-0.20.141a0-complete-source-package/mdstats/plotting/atomic_density.py /mnt/data/mdstats_141_work/mdstats-0.20.141a0-complete-source-package/mdstats/plotting/atomic_density.py
+--- /mnt/data/mdstats_141_orig/mdstats-0.20.141a0-complete-source-package/mdstats/plotting/atomic_density.py	2026-08-09 04:50:29.000000000 +0000
++++ /mnt/data/mdstats_141_work/mdstats-0.20.141a0-complete-source-package/mdstats/plotting/atomic_density.py	2026-08-10 19:17:31.149880135 +0000
+@@ -1759,7 +1759,14 @@
+             min_fft_source_nodes=options.optimization_options.hybrid_min_fft_source_nodes,
+             fft_workers=options.optimization_options.hybrid_fft_workers,
+             cache_kernel_spectra=options.optimization_options.cache_stencil_supports,
+-            metadata={"dispatch_stage": "ld8_s4"},
++            metadata={
++                "dispatch_stage": "ld8_s4",
++                "fft_worker_source": str(
++                    options.optimization_options.metadata.get(
++                        "hybrid_fft_workers_source", "explicit"
++                    )
++                ),
++            },
+         )
+         plan = plan_hybrid_tiled_realization(
+             source, stencil, routing, atlas, options=hybrid_options
+@@ -2049,6 +2056,7 @@
+     max_planning_bytes: int | None = None,
+     max_workspace_bytes: int | None = None,
+     max_cic_contributions: int | None = None,
++    field_index_offset: int = 0,
+     progress: ProgressPortLike | None = None,
+     progress_callback: Callable[[str], None] | None = None,
+ ) -> tuple[ScalarField3D, ...]:
+@@ -2088,6 +2096,11 @@
+         environment_label="mdstats-prepare",
+     )
+     reporter = ProgressEmitter(progress_port, source="plotting.atomic_density")
++    if isinstance(field_index_offset, bool) or not isinstance(field_index_offset, (int, np.integer)):
++        raise GraphStyleError("field_index_offset must be a nonnegative integer.")
++    field_index_offset = int(field_index_offset)
++    if field_index_offset < 0:
++        raise GraphStyleError("field_index_offset must be a nonnegative integer.")
+     if not selections:
+         return ()
+     if not np.all(collection.pbc):
+@@ -2146,11 +2159,12 @@
+     used_voxels = 0
+     results: list[ScalarField3D] = []
+     total_fields = len(selections)
+-    for field_index, selection in enumerate(selections):
++    for local_field_index, selection in enumerate(selections):
++        field_index = field_index_offset + local_field_index
+         reporter.started(
+             "field_realization",
+             "resolving samples and numerical plan",
+-            current=field_index + 1,
++            current=local_field_index + 1,
+             total=total_fields,
+             unit="fields",
+             metadata={"field_index": field_index, "field_key": f"atomic-density-{field_index}"},
+@@ -2363,7 +2377,7 @@
+                 "field_realization",
+                 f"completed {label!r} with backend={selected_backend}, "
+                 f"grid={grid_shape}, sigma={bandwidth:.6g} A",
+-                current=field_index + 1,
++                current=local_field_index + 1,
+                 total=total_fields,
+                 unit="fields",
+                 metadata={
+@@ -2413,7 +2427,7 @@
+             "field_realization",
+             f"completed {label!r} with backend={selected_backend}, "
+             f"grid={grid_shape}, sigma={bandwidth:.6g} A",
+-            current=field_index + 1,
++            current=local_field_index + 1,
+             total=total_fields,
+             unit="fields",
+             metadata={
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_141_orig/mdstats-0.20.141a0-complete-source-package/mdstats/plotting/density_block_direct.py /mnt/data/mdstats_141_work/mdstats-0.20.141a0-complete-source-package/mdstats/plotting/density_block_direct.py
+--- /mnt/data/mdstats_141_orig/mdstats-0.20.141a0-complete-source-package/mdstats/plotting/density_block_direct.py	2026-08-07 23:58:07.000000000 +0000
++++ /mnt/data/mdstats_141_work/mdstats-0.20.141a0-complete-source-package/mdstats/plotting/density_block_direct.py	2026-08-10 19:17:04.699224067 +0000
+@@ -15,6 +15,7 @@
+ from __future__ import annotations
+ 
+ import hashlib
++from concurrent.futures import ThreadPoolExecutor
+ from collections.abc import Mapping
+ from dataclasses import dataclass, field
+ from typing import Any
+@@ -40,6 +41,7 @@
+ )
+ from .graph_errors import GraphAdapterError, GraphComplexityError, GraphStyleError
+ from .runtime_resources import resolve_density_resource_limits
++from .density_scheduler import current_density_worker_count, current_density_worker_lease
+ 
+ FloatArray = NDArray[np.float64]
+ IntArray = NDArray[np.int64]
+@@ -771,8 +773,6 @@
+     block_nodes = local_node_count(block_shape)
+     signed = routing.signed_offsets.astype(np.int64, copy=False)
+     weights = stencil.active_weights
+-    accumulator = np.zeros(block_nodes, dtype=np.float64)
+-
+     support_counts = bitset_popcounts(atlas.target_support_bitsets)
+     offsets = np.concatenate(
+         (np.asarray([0], dtype=np.int64), np.cumsum(support_counts, dtype=np.int64))
+@@ -784,8 +784,13 @@
+     peak_chunk_pairs = 0
+     peak_pair_workspace = 0
+ 
+-    for target_row, target_index in enumerate(atlas.active_target_block_indices):
+-        accumulator.fill(0.0)
++    def realize_target_row(
++        target_row: int,
++    ) -> tuple[int, int, int, int, int]:
++        # Target ownership makes this write-disjoint: every worker owns one
++        # packed output slice and accumulates into a private dense block.
++        accumulator = np.zeros(block_nodes, dtype=np.float64)
++        target_index = atlas.active_target_block_indices[target_row]
+         target_start = target_index.astype(np.int64) * block
+         extent = np.asarray(
+             routing.extent_for_block(tuple(int(value) for value in target_index)),
+@@ -795,6 +800,11 @@
+         source_rows = target_sources[
+             int(target_ranges[target_row]) : int(target_ranges[target_row + 1])
+         ].astype(np.int64, copy=False)
++        local_candidate_pairs = 0
++        local_accepted = 0
++        local_chunk_count = 0
++        local_peak_chunk_pairs = 0
++        local_peak_workspace = 0
+         if source_rows.size:
+             relevant = _relevant_stencil_matrix(
+                 signed,
+@@ -811,23 +821,17 @@
+                     source_field.block_value_offsets[source_rows_per_edge + 1]
+                     - source_field.block_value_offsets[source_rows_per_edge]
+                 ).astype(np.int64, copy=False)
+-                edge_pair_ends = np.cumsum(
+-                    source_counts_per_edge, dtype=np.int64
+-                )
++                edge_pair_ends = np.cumsum(source_counts_per_edge, dtype=np.int64)
+                 total_pairs = int(edge_pair_ends[-1])
+-                candidate_pairs += total_pairs
++                local_candidate_pairs += total_pairs
+                 for pair_start in range(0, total_pairs, plan.pair_chunk_size):
+                     pair_stop = min(total_pairs, pair_start + plan.pair_chunk_size)
+-                    pair_positions = np.arange(
+-                        pair_start, pair_stop, dtype=np.int64
+-                    )
++                    pair_positions = np.arange(pair_start, pair_stop, dtype=np.int64)
+                     selected_edges = np.searchsorted(
+                         edge_pair_ends, pair_positions, side="right"
+                     ).astype(np.int64, copy=False)
+                     prior_ends = np.where(
+-                        selected_edges == 0,
+-                        0,
+-                        edge_pair_ends[selected_edges - 1],
++                        selected_edges == 0, 0, edge_pair_ends[selected_edges - 1]
+                     )
+                     local_source_positions = pair_positions - prior_ends
+                     selected_source_rows = source_rows_per_edge[selected_edges]
+@@ -849,7 +853,7 @@
+                         np.int64, copy=False
+                     )
+                     if accepted_rows.size:
+-                        accepted_contributions += int(accepted_rows.size)
++                        local_accepted += int(accepted_rows.size)
+                         accepted_targets = targets[accepted_rows]
+                         local = accepted_targets - target_start[None, :]
+                         local_flat = (
+@@ -858,17 +862,17 @@
+                         ).astype(np.int64, copy=False)
+                         contributions = (
+                             weights[chosen_offsets[accepted_rows]]
+-                            * source_field.packed_values[
+-                                source_indices[accepted_rows]
+-                            ]
++                            * source_field.packed_values[source_indices[accepted_rows]]
+                         )
++                        # Destination-owned bounded bincount replaces contended
++                        # global scatter while preserving one canonical target.
+                         accumulator += np.bincount(
+                             local_flat,
+                             weights=contributions,
+                             minlength=block_nodes,
+                         ).astype(np.float64, copy=False)
+-                        peak_pair_workspace = max(
+-                            peak_pair_workspace,
++                        local_peak_workspace = max(
++                            local_peak_workspace,
+                             int(
+                                 pair_positions.nbytes
+                                 + selected_edges.nbytes
+@@ -886,8 +890,8 @@
+                             ),
+                         )
+                     else:
+-                        peak_pair_workspace = max(
+-                            peak_pair_workspace,
++                        local_peak_workspace = max(
++                            local_peak_workspace,
+                             int(
+                                 pair_positions.nbytes
+                                 + selected_edges.nbytes
+@@ -898,8 +902,8 @@
+                             ),
+                         )
+                     pair_count = pair_stop - pair_start
+-                    peak_chunk_pairs = max(peak_chunk_pairs, pair_count)
+-                    chunk_count += 1
++                    local_peak_chunk_pairs = max(local_peak_chunk_pairs, pair_count)
++                    local_chunk_count += 1
+         expected_local = unpack_local_bitset(
+             atlas.target_support_bitsets[target_row], block_shape
+         )
+@@ -922,6 +926,58 @@
+                 "Atlas support count changed during target realization."
+             )
+         node_masses[packed_start:packed_stop] = current
++        return (
++            local_candidate_pairs,
++            local_accepted,
++            local_chunk_count,
++            local_peak_chunk_pairs,
++            local_peak_workspace,
++        )
++
++    lease = current_density_worker_lease()
++    shared_transient = int(plan.source_coordinate_bytes + plan.reverse_csr_bytes)
++    per_worker_transient = max(
++        1, int(plan.peak_pair_workspace_bytes + plan.accumulator_bytes)
++    )
++    available_transient = (
++        shared_transient + per_worker_transient
++        if lease is None
++        else max(shared_transient + per_worker_transient, int(lease.resources.transient_bytes))
++    )
++    memory_worker_cap = max(
++        1, (available_transient - shared_transient) // per_worker_transient
++    )
++    target_count = int(atlas.target_block_count)
++    cursor = 0
++    while cursor < target_count:
++        group_workers = max(
++            1,
++            min(
++                current_density_worker_count(default=1),
++                memory_worker_cap,
++                target_count - cursor,
++            ),
++        )
++        group_size = max(1, min(target_count - cursor, 4 * group_workers))
++        rows = tuple(range(cursor, cursor + group_size))
++        if group_workers == 1:
++            stats = tuple(realize_target_row(row) for row in rows)
++        else:
++            with ThreadPoolExecutor(
++                max_workers=group_workers,
++                thread_name_prefix="mdstats-density-direct",
++            ) as pool:
++                stats = tuple(pool.map(realize_target_row, rows))
++        # Reductions follow canonical target-row order irrespective of worker
++        # completion order.  Floating values themselves were written only by
++        # their unique destination owners.
++        for local_candidate, local_accepted, local_chunks, local_peak_pairs, local_peak_bytes in stats:
++            candidate_pairs += int(local_candidate)
++            accepted_contributions += int(local_accepted)
++            chunk_count += int(local_chunks)
++            peak_chunk_pairs = max(peak_chunk_pairs, int(local_peak_pairs))
++            peak_pair_workspace = max(peak_pair_workspace, int(local_peak_bytes))
++        cursor += group_size
+ 
+     if candidate_pairs != plan.conservative_candidate_pair_count:
+         raise GraphAdapterError(
+@@ -1009,7 +1065,7 @@
+             "final_measure": final_measure,
+             "packed_field_bytes": retained_bytes,
+             "deterministic_accumulation_order": (
+-                "target_block_then_source_block_then_stencil_then_source_local"
++                "destination_owned_target_blocks_with_canonical_per_block_reduction"
+             ),
+             "complete_fine_pair_array_allocated": False,
+             "global_target_coordinate_array_allocated": False,
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_141_orig/mdstats-0.20.141a0-complete-source-package/mdstats/plotting/density_kernel.py /mnt/data/mdstats_141_work/mdstats-0.20.141a0-complete-source-package/mdstats/plotting/density_kernel.py
+--- /mnt/data/mdstats_141_orig/mdstats-0.20.141a0-complete-source-package/mdstats/plotting/density_kernel.py	2026-08-05 18:20:00.000000000 +0000
++++ /mnt/data/mdstats_141_work/mdstats-0.20.141a0-complete-source-package/mdstats/plotting/density_kernel.py	2026-08-10 19:15:39.242889916 +0000
+@@ -14,6 +14,7 @@
+ 
+ import numpy as np
+ from numpy.typing import NDArray
++from scipy.fft import fftn, ifftn
+ from scipy.special import gammainccinv
+ 
+ from .density_contracts import (
+@@ -25,6 +26,7 @@
+ )
+ from .graph_errors import GraphAdapterError, GraphComplexityError
+ from .runtime_resources import resolve_density_resource_limits
++from .density_scheduler import current_density_worker_count
+ 
+ FloatArray = NDArray[np.float64]
+ IntArray = NDArray[np.int64]
+@@ -1044,7 +1046,11 @@
+     mass = _validated_mass_grid(mass_grid, stencil.grid_shape)
+     if stencil.gaussian_bandwidth == 0.0:
+         return mass
+-    raw = np.fft.ifftn(np.fft.fftn(mass) * np.fft.fftn(stencil.values)).real
++    workers = current_density_worker_count(default=1)
++    raw = ifftn(
++        fftn(mass, workers=workers) * fftn(stencil.values, workers=workers),
++        workers=workers,
++    ).real
+     completed, _, _ = _complete_canonical_convolution(
+         raw,
+         original_mass=float(np.sum(mass, dtype=np.float64)),
+@@ -1074,7 +1080,8 @@
+     reciprocal = 2.0 * np.pi * (integer_modes @ np.linalg.inv(cell).T)
+     k2 = np.einsum("...i,...i->...", reciprocal, reciprocal, optimize=True)
+     kernel = np.exp(-0.5 * sigma * sigma * k2)
+-    smoothed = np.fft.ifftn(np.fft.fftn(mass) * kernel).real
++    workers = current_density_worker_count(default=1)
++    smoothed = ifftn(fftn(mass, workers=workers) * kernel, workers=workers).real
+     threshold = 1.0e-13 * max(1.0, float(np.max(np.abs(smoothed))))
+     clipped_count = int(np.count_nonzero(smoothed < threshold))
+     smoothed[smoothed < threshold] = 0.0
+@@ -1141,7 +1148,11 @@
+         sigma,
+         kernel_tail_tolerance=kernel_options.kernel_tail_tolerance,
+     )
+-    raw = np.fft.ifftn(np.fft.fftn(mass) * np.fft.fftn(stencil.values)).real
++    workers = current_density_worker_count(default=1)
++    raw = ifftn(
++        fftn(mass, workers=workers) * fftn(stencil.values, workers=workers),
++        workers=workers,
++    ).real
+     smoothed, negative_count, factor = _complete_canonical_convolution(
+         raw,
+         original_mass=float(np.sum(mass, dtype=np.float64)),
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_141_orig/mdstats-0.20.141a0-complete-source-package/mdstats/plotting/density_planning.py /mnt/data/mdstats_141_work/mdstats-0.20.141a0-complete-source-package/mdstats/plotting/density_planning.py
+--- /mnt/data/mdstats_141_orig/mdstats-0.20.141a0-complete-source-package/mdstats/plotting/density_planning.py	2026-08-10 19:00:26.000000000 +0000
++++ /mnt/data/mdstats_141_work/mdstats-0.20.141a0-complete-source-package/mdstats/plotting/density_planning.py	2026-08-10 19:24:14.932000038 +0000
+@@ -31,8 +31,13 @@
+ DENSITY_PLANNING_LIMITS_SCHEMA = "mdstats.density-planning-limits.v1"
+ DENSITY_PHASE_A_PLAN_SCHEMA = "mdstats.density-phase-a-field-plan.v1"
+ DENSITY_PHASE_B_PLAN_SCHEMA = "mdstats.density-phase-b-field-plan.v1"
+-DENSITY_SCENE_PLAN_SCHEMA = "mdstats.density-scene-plan.v2"
+-_LEGACY_DENSITY_SCENE_PLAN_SCHEMAS = frozenset({"mdstats.density-scene-plan.v1"})
++DENSITY_SCENE_PLAN_SCHEMA = "mdstats.density-scene-plan.v3"
++_DENSITY_SCENE_PLAN_V1_SCHEMA = "mdstats.density-scene-plan.v1"
++_DENSITY_SCENE_PLAN_V2_SCHEMA = "mdstats.density-scene-plan.v2"
++_LEGACY_DENSITY_SCENE_PLAN_SCHEMAS = frozenset({
++    _DENSITY_SCENE_PLAN_V1_SCHEMA,
++    _DENSITY_SCENE_PLAN_V2_SCHEMA,
++})
+ 
+ 
+ def _nonnegative_int(value: Any, *, name: str) -> int:
+@@ -414,13 +419,15 @@
+         }
+ 
+     @staticmethod
+-    def _scientific_field_identity(field_plan: DensityPhaseBFieldPlan) -> dict[str, Any]:
+-        """Return worker/backend-neutral scientific identity for one field plan."""
++    def _scientific_field_identity_v1(field_plan: DensityPhaseBFieldPlan) -> dict[str, Any]:
++        """Return the PAR-DENS2/v2 scientific identity projection.
++
++        This projection is frozen for historical v2 digest compatibility.  It
++        intentionally reflects the exact 0.20.141a0 exclusion set, even though
++        PAR-DENS3 identifies additional execution-only sparse/hybrid metadata.
++        """
+ 
+         metadata = field_plan.metadata.to_json_dict()
+-        # Backend selection, sparse executor/tile choices, and cost estimates are
+-        # execution evidence.  They may legitimately change with CPU allocation but
+-        # must not alter the scientific/cache identity of the approved density field.
+         for key in (
+             "backend",
+             "backend_selection",
+@@ -444,51 +451,122 @@
+             "metadata": metadata,
+         }
+ 
+-    def _scientific_identity_payload(self) -> dict[str, Any]:
++    @staticmethod
++    def _scientific_field_identity_v2(field_plan: DensityPhaseBFieldPlan) -> dict[str, Any]:
++        """Return PAR-DENS3 worker/storage/executor-neutral field identity."""
++
++        metadata = field_plan.metadata.to_json_dict()
++        # These keys describe representation, executor selection, cache state,
++        # calibrated cost, or memory/work decomposition.  None changes the
++        # continuous density definition.  Keep them in execution_plan_id and
++        # serialized diagnostics, but never in the scientific/cache authority.
++        execution_only = {
++            "backend",
++            "backend_selection",
++            "block_shape",
++            "block_lattice_shape",
++            "active_target_node_count",
++            "valid_block_value_count",
++            "allocated_block_value_count",
++            "partial_block_count",
++            "rendering_available_from_ld2",
++            "sparse_evaluation_mode",
++            "sparse_realization_mode",
++            "phase_b_execution_planner",
++            "phase_b_support_planner",
++            "stencil_cache_enabled",
++            "stencil_cache_hit_during_planning",
++            "routing_cache_hit_during_planning",
++            "source_block_count",
++            "source_node_count",
++            "support_atlas_target_block_count",
++            "support_atlas_target_node_count",
++            "hybrid_compute_tile_count",
++            "hybrid_direct_tile_count",
++            "hybrid_fft_tile_count",
++            "exact_contribution_count",
++            "direct_pair_count",
++            "fft_padded_node_count",
++            "hybrid_estimated_wall_seconds",
++            "hybrid_predicted_peak_bytes",
++            "hybrid_plan_identity",
++            "kernel_pair_semantics",
++            "nominal_all_direct_pairs_are_diagnostic_only",
++            "streaming_scatter",
++            "streaming_scatter_chunk_pair_upper",
++            "sparse_pair_chunk_size",
++            "sparse_group_batch_size",
++            "estimated_wall_seconds",
++            "time_model_source",
++            "fft_workers",
++            "fft_worker_source",
++            "fft_worker_policy",
++            "fft_worker_execution_policy",
++            "max_threads",
++            "max_wall_time_seconds",
++            "resource_policy",
++            "pair_chunk_source",
++            "timing_overrides_are_tightening_only",
++        }
++        for key in execution_only:
++            metadata.pop(key, None)
++        return {
++            "field_key": field_plan.field_key,
++            "source_kind": field_plan.source_kind,
++            "construction_order": field_plan.construction_order,
++            "sample_count": field_plan.sample_count,
++            "grid_shape": list(field_plan.grid_shape),
++            "logical_node_count": field_plan.logical_node_count,
++            "metadata": metadata,
++        }
++
++    def _scientific_identity_payload_v1(self) -> dict[str, Any]:
++        """Return the frozen 0.20.141a0/v2 scientific identity payload."""
++
+         metadata = self.metadata.to_json_dict()
+-        # Scene-level performance/resource diagnostics are deliberately excluded.
+-        # Registration/frame identity and any caller-supplied scientific metadata
+-        # remain represented either here or in the per-field registration signature.
+         scientific_metadata = {
+             key: value
+             for key, value in metadata.items()
+             if key
+             not in {
+-                "backend",
+-                "total_stored_values",
+-                "total_dense_voxels",
+-                "total_nonzero_node_upper",
+-                "total_stencil_values",
+-                "total_blocks",
+-                "total_kernel_pairs",
+-                "total_direct_kernel_pairs",
+-                "total_exact_contributions",
+-                "total_fft_padded_nodes",
+-                "hybrid_field_count",
+-                "hybrid_estimated_wall_seconds_raw",
+-                "nonhybrid_kernel_pairs",
+-                "kernel_pair_semantics",
+-                "total_mesh_cells",
+-                "total_mesh_faces_upper",
+-                "total_render_points_upper",
++                "backend", "total_stored_values", "total_dense_voxels",
++                "total_nonzero_node_upper", "total_stencil_values",
++                "total_blocks", "total_kernel_pairs",
++                "total_direct_kernel_pairs", "total_exact_contributions",
++                "total_fft_padded_nodes", "hybrid_field_count",
++                "hybrid_estimated_wall_seconds_raw", "nonhybrid_kernel_pairs",
++                "kernel_pair_semantics", "total_mesh_cells",
++                "total_mesh_faces_upper", "total_render_points_upper",
+                 "estimated_preparation_wall_seconds",
+-                "max_density_wall_time_seconds",
+-                "wall_time_admission_enforced",
+-                "wall_time_budget_exceeded",
+-                "max_density_threads",
++                "max_density_wall_time_seconds", "wall_time_admission_enforced",
++                "wall_time_budget_exceeded", "max_density_threads",
+                 "density_time_model",
+             }
+         }
+         return {
+-            "schema_version": DENSITY_SCENE_PLAN_SCHEMA,
++            "schema_version": _DENSITY_SCENE_PLAN_V2_SCHEMA,
+             "identity_semantics": "worker_backend_neutral_scientific_plan_v1",
+             "fields": [
+-                self._scientific_field_identity(field_plan)
++                self._scientific_field_identity_v1(field_plan)
+                 for field_plan in self.phase_b_fields
+             ],
+             "metadata": scientific_metadata,
+         }
+ 
++    def _scientific_identity_payload(self) -> dict[str, Any]:
++        """Return the PAR-DENS3 scientific identity payload."""
++
++        old = self._scientific_identity_payload_v1()
++        return {
++            "schema_version": DENSITY_SCENE_PLAN_SCHEMA,
++            "identity_semantics": "worker_storage_executor_neutral_scientific_plan_v2",
++            "fields": [
++                self._scientific_field_identity_v2(field_plan)
++                for field_plan in self.phase_b_fields
++            ],
++            "metadata": old["metadata"],
++        }
++
+     @staticmethod
+     def _hash_identity_payload(payload: Mapping[str, Any]) -> str:
+         encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False)
+@@ -509,8 +587,10 @@
+         realization remains auditable through :attr:`execution_plan_id`.
+         """
+ 
+-        if self.schema_version in _LEGACY_DENSITY_SCENE_PLAN_SCHEMAS:
++        if self.schema_version == _DENSITY_SCENE_PLAN_V1_SCHEMA:
+             return self.execution_plan_id
++        if self.schema_version == _DENSITY_SCENE_PLAN_V2_SCHEMA:
++            return self._hash_identity_payload(self._scientific_identity_payload_v1())
+         return self._hash_identity_payload(self._scientific_identity_payload())
+ 
+     def to_json_dict(self, *, include_indices: bool = False) -> dict[str, Any]:
+@@ -528,10 +608,12 @@
+             "approval_id": self.approval_id,
+             "metadata": self.metadata.to_json_dict(),
+         }
+-        if self.schema_version == DENSITY_SCENE_PLAN_SCHEMA:
++        if self.schema_version in {DENSITY_SCENE_PLAN_SCHEMA, _DENSITY_SCENE_PLAN_V2_SCHEMA}:
+             result["execution_plan_id"] = self.execution_plan_id
+             result["approval_identity_semantics"] = (
+-                "worker_backend_neutral_scientific_plan_v1"
++                "worker_storage_executor_neutral_scientific_plan_v2"
++                if self.schema_version == DENSITY_SCENE_PLAN_SCHEMA
++                else "worker_backend_neutral_scientific_plan_v1"
+             )
+         return result
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_141_orig/mdstats-0.20.141a0-complete-source-package/mdstats/plotting/density_scheduler.py /mnt/data/mdstats_141_work/mdstats-0.20.141a0-complete-source-package/mdstats/plotting/density_scheduler.py
+--- /mnt/data/mdstats_141_orig/mdstats-0.20.141a0-complete-source-package/mdstats/plotting/density_scheduler.py	2026-08-10 18:57:49.000000000 +0000
++++ /mnt/data/mdstats_141_work/mdstats-0.20.141a0-complete-source-package/mdstats/plotting/density_scheduler.py	2026-08-10 19:13:38.295531974 +0000
+@@ -16,6 +16,7 @@
+ 
+ import multiprocessing as mp
+ import threading
++from contextvars import ContextVar
+ from concurrent.futures import Future, ProcessPoolExecutor, ThreadPoolExecutor, wait
+ from contextlib import contextmanager
+ from dataclasses import dataclass, field
+@@ -36,6 +37,42 @@
+ _U = TypeVar("_U")
+ 
+ 
++_CURRENT_DENSITY_WORKER_LEASE: ContextVar["DensityWorkerLease | None"] = ContextVar(
++    "mdstats_current_density_worker_lease", default=None
++)
++
++
++def current_density_worker_lease() -> "DensityWorkerLease | None":
++    """Return the active PAR-DENS task lease for this execution context.
++
++    Low-level PAR-DENS3 kernels use the live lease only for execution choices
++    (chunk concurrency and FFT worker counts).  Scientific planning, field
++    identity, and cache keys must remain independent of this value.
++    """
++
++    return _CURRENT_DENSITY_WORKER_LEASE.get()
++
++
++def current_density_worker_count(*, default: int = 1) -> int:
++    """Return the live task worker allocation, or ``default`` outside a task."""
++
++    lease = current_density_worker_lease()
++    return max(1, int(default if lease is None else lease.workers))
++
++
++@contextmanager
++def density_worker_lease_scope(lease: "DensityWorkerLease") -> Iterator["DensityWorkerLease"]:
++    """Bind one live worker lease to the current task context."""
++
++    if not isinstance(lease, DensityWorkerLease):
++        raise TypeError("lease must be DensityWorkerLease.")
++    token = _CURRENT_DENSITY_WORKER_LEASE.set(lease)
++    try:
++        yield lease
++    finally:
++        _CURRENT_DENSITY_WORKER_LEASE.reset(token)
++
++
+ def _positive_int(value: Any, *, name: str) -> int:
+     if isinstance(value, bool) or not isinstance(value, (int, np.integer)):
+         raise GraphStyleError(f"{name} must be a positive integer.")
+@@ -493,8 +530,11 @@
+ 
+         def task_runner(index: int, lease: DensityWorkerLease) -> Any:
+             # Nested low-level resource resolution sees this exact task allocation.
+-            with lease.budget_scope():
+-                return scheduled[index].function(lease)
++            # The live lease is also context-bound so chunked PAR-DENS3 kernels
++            # can observe CPU tokens returned by completed sibling fields.
++            with density_worker_lease_scope(lease):
++                with lease.budget_scope():
++                    return scheduled[index].function(lease)
+ 
+         with ThreadPoolExecutor(
+             max_workers=parallel_limit,
+@@ -619,8 +659,9 @@
+         workers = min(resources.preferred_workers, self.budget.max_threads)
+         workers = max(resources.minimum_workers, workers)
+         lease = DensityWorkerLease(resources, self.budget, workers)
+-        with lease.budget_scope():
+-            yield lease
++        with density_worker_lease_scope(lease):
++            with lease.budget_scope():
++                yield lease
+         self._last_report = DensitySchedulerReport(
+             max_threads=self.budget.max_threads,
+             max_memory_bytes=self.budget.max_memory_bytes,
+@@ -695,5 +736,8 @@
+     "DensityTaskReport",
+     "DensityTaskResources",
+     "DensityWorkerLease",
++    "current_density_worker_count",
++    "current_density_worker_lease",
++    "density_worker_lease_scope",
+     "task_resources_from_phase_b_plan",
+ ]
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_141_orig/mdstats-0.20.141a0-complete-source-package/mdstats/plotting/density_support_atlas.py /mnt/data/mdstats_141_work/mdstats-0.20.141a0-complete-source-package/mdstats/plotting/density_support_atlas.py
+--- /mnt/data/mdstats_141_orig/mdstats-0.20.141a0-complete-source-package/mdstats/plotting/density_support_atlas.py	2026-08-05 18:20:00.000000000 +0000
++++ /mnt/data/mdstats_141_work/mdstats-0.20.141a0-complete-source-package/mdstats/plotting/density_support_atlas.py	2026-08-10 19:26:18.145456442 +0000
+@@ -19,12 +19,14 @@
+ from __future__ import annotations
+ 
+ import hashlib
++from concurrent.futures import ThreadPoolExecutor
+ from collections import deque
+ from collections.abc import Iterator, Mapping
+ from dataclasses import dataclass, field
+ from typing import Any, Literal
+ 
+ import numpy as np
++from scipy.fft import set_workers
+ from scipy.signal import fftconvolve
+ from numpy.typing import NDArray
+ 
+@@ -55,6 +57,7 @@
+ from .density_sparse_reference import SparseCICNodeMasses3D
+ from .graph_errors import GraphAdapterError, GraphComplexityError, GraphStyleError
+ from .runtime_resources import resolve_density_resource_limits
++from .density_scheduler import current_density_worker_count, current_density_worker_lease
+ 
+ FloatArray = NDArray[np.float64]
+ IntArray = NDArray[np.int64]
+@@ -927,10 +930,12 @@
+         int(source_extent[axis] + binary_kernel.shape[axis] - 1)
+         for axis in range(3)
+     )
+-    # scipy.signal.fftconvolve owns and releases the complete transform
+-    # workspace per source block.  Deliberately avoiding cross-block spectrum
+-    # retention keeps sequential multi-field atlas construction stable.
+-    convolution = fftconvolve(source_dense, binary_kernel, mode="full")
++    # scipy.signal.fftconvolve is backed by scipy.fft.  PAR-DENS3 binds its
++    # default worker pool to the live scene lease instead of allowing an
++    # unconstrained per-field transform.  Cross-block spectra are deliberately
++    # not retained, preserving the existing bounded-workspace contract.
++    with set_workers(max(1, int(fft_workers))):
++        convolution = fftconvolve(source_dense, binary_kernel, mode="full")
+     rounded = np.rint(convolution)
+     maximum_roundoff = float(np.max(np.abs(convolution - rounded)))
+     if maximum_roundoff > 1.0e-6:
+@@ -974,11 +979,17 @@
+     if dilation_backend not in {"auto", "bitset", "fft"}:
+         raise GraphStyleError("dilation_backend must be auto, bitset, or fft.")
+     budget, _model, _derived = resolve_density_resource_limits()
+-    workers = (
++    worker_cap = (
+         budget.max_threads
+         if fft_workers is None
+         else min(budget.max_threads, _positive_int(fft_workers, name="fft_workers"))
+     )
++
++    def live_workers() -> int:
++        return min(
++            worker_cap,
++            current_density_worker_count(default=budget.max_threads),
++        )
+     resolved_backend: SupportDilationBackend = dilation_backend
+     if resolved_backend == "auto":
+         resolved_backend = (
+@@ -999,7 +1010,8 @@
+     signed_minimum: NDArray[np.int64] | None = None
+     if resolved_backend == "fft":
+         binary_kernel, signed_minimum = _binary_stencil_kernel(routing)
+-    for source_row, source_block in enumerate(source_field.source_block_indices):
++    def dilate_row(source_row: int) -> tuple[int, IntArray, UInt64Array, int, int]:
++        source_block = source_field.source_block_indices[source_row]
+         if resolved_backend == "fft":
+             assert binary_kernel is not None and signed_minimum is not None
+             local_flats, local_words, brick_nodes, transient_bytes = _dilate_source_block_fft(
+@@ -1008,23 +1020,71 @@
+                 routing,
+                 binary_kernel=binary_kernel,
+                 signed_minimum=signed_minimum,
+-                fft_workers=workers,
++                fft_workers=live_workers(),
+             )
+         else:
+             local_flats, local_words, brick_nodes, transient_bytes = _dilate_source_block_bitset(
+                 source_field.occupancy_bitsets[source_row], source_block, routing
+             )
+-        bitset_shift_operations += routing.stencil_offset_count
+-        maximum_lifted_brick_nodes = max(maximum_lifted_brick_nodes, brick_nodes)
+-        maximum_lifted_transient_bytes = max(
+-            maximum_lifted_transient_bytes, transient_bytes
+-        )
+-        if local_flats.size:
+-            source_edge_parts.append(
+-                np.full(local_flats.size, source_row, dtype=np.int32)
++        return source_row, local_flats, local_words, brick_nodes, transient_bytes
++
++    # Bitset source blocks are independent.  Run bounded groups concurrently
++    # only when the enclosing field task has enough transient-memory slack for
++    # more than the one lifted brick already priced by the S1 plan.  FFT
++    # dilation remains one block at a time and spends the lease inside scipy.fft.
++    # This keeps aggregate task memory within the PAR-DENS2 field declaration.
++    lease = current_density_worker_lease()
++    # During Phase-B planning there is no field lease yet, so the global LD10
++    # memory ceiling is authoritative.  During realization/preflight nested in
++    # PAR-DENS2/3, use the task's declared transient allowance instead.  This
++    # enables bounded source-block planning parallelism without escaping the one
++    # scene-level memory authority.
++    transient_ceiling = (
++        int(budget.max_memory_bytes)
++        if lease is None
++        else int(lease.resources.transient_bytes)
++    )
++    extra_transient = max(
++        0, transient_ceiling - int(plan.transient_bytes_upper)
++    )
++    per_parallel_block_bytes = max(1, int(plan.maximum_lifted_transient_bytes))
++    memory_parallel_cap = 1 + extra_transient // per_parallel_block_bytes
++    source_count = int(source_field.source_block_count)
++    cursor = 0
++    while cursor < source_count:
++        available = live_workers()
++        group_workers = 1
++        if resolved_backend == "bitset":
++            group_workers = max(
++                1,
++                min(available, memory_parallel_cap, source_count - cursor),
++            )
++        # Small bounded groups let a long field observe lease growth after
++        # sibling fields finish without creating more live workspaces than the
++        # declared transient-memory slack permits.
++        group_size = max(1, min(source_count - cursor, 4 * group_workers))
++        rows = tuple(range(cursor, cursor + group_size))
++        if group_workers == 1:
++            realized_group = tuple(dilate_row(row) for row in rows)
++        else:
++            with ThreadPoolExecutor(
++                max_workers=group_workers,
++                thread_name_prefix="mdstats-density-atlas",
++            ) as pool:
++                realized_group = tuple(pool.map(dilate_row, rows))
++        for source_row, local_flats, local_words, brick_nodes, transient_bytes in realized_group:
++            bitset_shift_operations += routing.stencil_offset_count
++            maximum_lifted_brick_nodes = max(maximum_lifted_brick_nodes, brick_nodes)
++            maximum_lifted_transient_bytes = max(
++                maximum_lifted_transient_bytes, transient_bytes
+             )
+-            target_flat_parts.append(local_flats)
+-            target_word_parts.append(local_words)
++            if local_flats.size:
++                source_edge_parts.append(
++                    np.full(local_flats.size, source_row, dtype=np.int32)
++                )
++                target_flat_parts.append(local_flats)
++                target_word_parts.append(local_words)
++        cursor += group_size
+     if not target_flat_parts:
+         raise GraphAdapterError("Positive source support produced an empty target atlas.")
+ 
+@@ -1117,7 +1177,7 @@
+             ),
+             "dilation_backend": resolved_backend,
+             "requested_dilation_backend": dilation_backend,
+-            "fft_workers": workers if resolved_backend == "fft" else 0,
++            "fft_worker_policy": ("bounded_scheduler_or_explicit_cap" if resolved_backend == "fft" else "not_applicable"),
+             "fft_kernel_transform_count": (
+                 source_field.source_block_count if resolved_backend == "fft" else 0
+             ),
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_141_orig/mdstats-0.20.141a0-complete-source-package/mdstats/plotting/density_tiled_fft.py /mnt/data/mdstats_141_work/mdstats-0.20.141a0-complete-source-package/mdstats/plotting/density_tiled_fft.py
+--- /mnt/data/mdstats_141_orig/mdstats-0.20.141a0-complete-source-package/mdstats/plotting/density_tiled_fft.py	2026-08-10 18:47:13.000000000 +0000
++++ /mnt/data/mdstats_141_work/mdstats-0.20.141a0-complete-source-package/mdstats/plotting/density_tiled_fft.py	2026-08-10 19:17:48.951339512 +0000
+@@ -40,6 +40,7 @@
+ from .density_support_atlas import DensitySupportAtlas, PeriodicPackedCICSourceField3D
+ from .graph_errors import GraphAdapterError, GraphComplexityError, GraphStyleError
+ from .runtime_resources import resolve_density_resource_limits
++from .density_scheduler import current_density_worker_count
+ 
+ FloatArray = NDArray[np.float64]
+ IntArray = NDArray[np.int64]
+@@ -941,6 +942,35 @@
+     return int(problematic.size)
+ 
+ 
++def _accumulate_grouped(
++    accumulator: FloatArray, indices: IntArray, values: FloatArray
++) -> None:
++    """Add values by destination with a stable grouped reduction.
++
++    The helper avoids repeated ``np.add.at`` scatter into the complete packed
++    field.  Stable destination sorting preserves contribution order within each
++    destination; only distinct destinations are updated after reduction.
++    """
++
++    mapped = np.asarray(indices, dtype=np.int64)
++    contributions = np.asarray(values, dtype=np.float64)
++    if mapped.size == 0:
++        return
++    if mapped.shape != contributions.shape:
++        raise GraphAdapterError("Grouped density accumulation arrays are misaligned.")
++    order = np.argsort(mapped, kind="stable")
++    sorted_indices = mapped[order]
++    sorted_values = contributions[order]
++    starts = np.concatenate(
++        (
++            np.asarray([0], dtype=np.int64),
++            np.flatnonzero(sorted_indices[1:] != sorted_indices[:-1]).astype(np.int64) + 1,
++        )
++    )
++    reduced = np.add.reduceat(sorted_values, starts)
++    accumulator[sorted_indices[starts]] += reduced
++
++
+ def realize_density_hybrid_tiled(
+     source_field: PeriodicPackedCICSourceField3D,
+     stencil: PeriodicGaussianStencilSupport,
+@@ -977,6 +1007,13 @@
+         plan = approved_plan
+ 
+     source_coordinates, source_values = _source_coordinate_table(source_field)
++    fft_worker_source = str(plan.options.metadata.get("fft_worker_source", "explicit"))
++
++    def live_fft_workers() -> int:
++        live = current_density_worker_count(default=plan.options.fft_workers)
++        if fft_worker_source == "runtime_thread_budget":
++            return max(1, live)
++        return max(1, min(int(plan.options.fft_workers), live))
+     tile_shape = np.asarray(plan.compute_tile_shape, dtype=np.int64)
+     logical = np.asarray(source_field.logical_grid_shape, dtype=np.int64)
+     tile_grid = tuple(int((logical[axis] + tile_shape[axis] - 1) // tile_shape[axis]) for axis in range(3))
+@@ -1042,7 +1079,7 @@
+                     if not np.all(valid):
+                         raise GraphAdapterError("Direct tile generated a node outside the exact support atlas.")
+                     contributions = (current_values[:, None] * chosen_weights[None, :]).reshape(-1)
+-                    np.add.at(node_masses, mapped, contributions)
++                    _accumulate_grouped(node_masses, mapped, contributions)
+                     current_pairs = int(contributions.size)
+                     direct_pair_count += current_pairs
+                     peak_pair_count = max(peak_pair_count, current_pairs)
+@@ -1052,18 +1089,19 @@
+             origin = np.asarray(tile.origin, dtype=np.int64)
+             local = coords - origin[None, :]
+             source_dense = np.zeros(tile.extent, dtype=np.float64)
+-            np.add.at(source_dense, (local[:, 0], local[:, 1], local[:, 2]), values)
++            source_dense[local[:, 0], local[:, 1], local[:, 2]] = values
+             padded_shape = tile.fft_padded_shape
+-            spectrum = rfftn(source_dense, padded_shape, workers=plan.options.fft_workers)
++            fft_workers = live_fft_workers()
++            spectrum = rfftn(source_dense, padded_shape, workers=fft_workers)
+             if tile.cache_kernel_spectrum and padded_shape in kernel_spectra:
+                 kernel_spectrum = kernel_spectra[padded_shape]
+             else:
+-                kernel_spectrum = rfftn(kernel, padded_shape, workers=plan.options.fft_workers)
++                kernel_spectrum = rfftn(kernel, padded_shape, workers=fft_workers)
+                 fft_kernel_transform_count += 1
+                 if tile.cache_kernel_spectrum:
+                     kernel_spectra[padded_shape] = kernel_spectrum
+             spectrum *= kernel_spectrum
+-            inverse = irfftn(spectrum, padded_shape, workers=plan.options.fft_workers)
++            inverse = irfftn(spectrum, padded_shape, workers=fft_workers)
+             full = inverse[
+                 : tile.full_convolution_shape[0],
+                 : tile.full_convolution_shape[1],
+@@ -1080,7 +1118,7 @@
+             mapped, valid = _map_flats_to_packed(flat, sorted_target_flats, sorted_target_positions)
+             values_flat = full.reshape(-1)
+             if np.any(valid):
+-                np.add.at(node_masses, mapped[valid], values_flat[valid])
++                _accumulate_grouped(node_masses, mapped[valid], values_flat[valid])
+             ignored_fft_output_nodes += int(valid.size - np.count_nonzero(valid))
+             fft_tile_count += 1
+             peak_fft_padded_nodes = max(peak_fft_padded_nodes, tile.fft_padded_node_count)
+@@ -1173,6 +1211,11 @@
+             "fft_library": "scipy.fft",
+             "scipy_version": scipy_version,
+             "fft_workers": plan.options.fft_workers,
++            "fft_worker_execution_policy": (
++                "scheduler_dynamic"
++                if fft_worker_source == "runtime_thread_budget"
++                else "explicit_cap"
++            ),
+             "raw_measure_before_final_normalization": raw_measure,
+             "final_normalization_factor": float(normalization_factor),
+             "mass_correction_index": correction_index,
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_141_orig/mdstats-0.20.141a0-complete-source-package/mdstats/plotting/framework_dynamics.py /mnt/data/mdstats_141_work/mdstats-0.20.141a0-complete-source-package/mdstats/plotting/framework_dynamics.py
+--- /mnt/data/mdstats_141_orig/mdstats-0.20.141a0-complete-source-package/mdstats/plotting/framework_dynamics.py	2026-08-10 18:51:25.000000000 +0000
++++ /mnt/data/mdstats_141_work/mdstats-0.20.141a0-complete-source-package/mdstats/plotting/framework_dynamics.py	2026-08-10 19:15:21.703438754 +0000
+@@ -52,6 +52,7 @@
+     resolve_density_numerics,
+ )
+ from .framework_density import (
++    FRAMEWORK_DENSITY_SCHEMA,
+     FrameworkDensity3DRenderOptions,
+     FrameworkDensityFields,
+     FrameworkDensityOptions,
+@@ -116,7 +117,9 @@
+     DensityMeshExecutionReport,
+ )
+ from .density_scheduler import (
++    DensityScheduledTask,
+     DensitySceneScheduler,
++    DensitySchedulerTaskError,
+     DensityTaskExecutionMode,
+     DensityTaskResources,
+     task_resources_from_phase_b_plan,
+@@ -3574,11 +3577,11 @@
+             )
+         }
+ 
+-        # PAR-DENS2: establish one scene-level CPU/RAM authority before any
+-        # density realization.  Per-field contracts are validated now but remain
+-        # serial until PAR-DENS3 authorizes concurrent field execution.  Worker
+-        # counts are execution-only and are never injected into scientific field
+-        # metadata, cache identities, or density-plan approval IDs.
++        # PAR-DENS3: execute the exact Phase-B field plan through the one
++        # PAR-DENS2 scene scheduler.  Each field keeps its planned scientific
++        # identity and memory contract; only execution order/concurrency and
++        # worker allocation change.  Deterministic scheduler collation restores
++        # construction order before the realized fields are authenticated.
+         density_scheduler = DensitySceneScheduler(resources.runtime_budget)
+         field_task_resources = tuple(
+             task_resources_from_phase_b_plan(
+@@ -3587,107 +3590,248 @@
+             for field_plan in planning_record.phase_b_fields
+         )
+         density_scheduler.validate_resources(field_task_resources)
+-        scene_realization_resources = DensityTaskResources(
+-            task_id="density-scene-realization",
+-            retained_bytes=int(planning_record.retained_bytes),
+-            transient_bytes=max(
+-                0,
+-                int(planning_record.estimated_peak_bytes)
+-                - int(planning_record.retained_bytes),
+-            ),
+-            minimum_workers=1,
+-            preferred_workers=int(resources.max_threads),
+-            execution_mode=DensityTaskExecutionMode.NATIVE_THREADS,
+-            backend="mixed_density_scene",
+-            construction_order=0,
+-            metadata={
+-                "phase_b_field_count": len(field_task_resources),
+-                "parallel_field_realization_enabled": False,
+-                "next_parallelization_gate": "PAR-DENS3",
+-            },
+-        )
+-        density_scheduler_policy = "par_dens2_global_resource_scheduler_v1"
++        task_resources_by_key = {item.task_id: item for item in field_task_resources}
++
++        atomic_plan_count = sum(
++            1 for item in planning_record.phase_b_fields
++            if item.source_kind == "atomic_occupancy"
++        )
++        framework_plan_count = len(planning_record.phase_b_fields) - atomic_plan_count
++        atomic_per_field_voxel_budget = (
++            int(resources.max_density_voxels)
++            if atomic_plan_count == 0
++            else max(1, int(resources.max_density_voxels) // atomic_plan_count)
++        )
++        atomic_dense_voxels = sum(
++            int(item.logical_node_count)
++            for item in planning_record.phase_b_fields
++            if item.source_kind == "atomic_occupancy"
++            and str(item.metadata.get("backend", DENSE_BACKEND)) == DENSE_BACKEND
++        )
++        framework_remaining_voxels = max(
++            1, int(resources.max_density_voxels) - atomic_dense_voxels
++        )
++        framework_per_field_voxel_budget = (
++            framework_remaining_voxels
++            if framework_plan_count == 0
++            else max(1, framework_remaining_voxels // framework_plan_count)
++        )
++
++        scheduled_density_tasks: list[DensityScheduledTask[ScalarField3D]] = []
++        atomic_selection_by_key = {
++            f"atomic-density-{index}": (index, selection)
++            for index, selection in enumerate(atomic_selections)
++        }
++
++        for field_plan in planning_record.phase_b_fields:
++            field_key = field_plan.field_key
++            task_resources = task_resources_by_key[field_key]
++            if field_plan.source_kind == "atomic_occupancy":
++                try:
++                    atomic_index, atomic_selection = atomic_selection_by_key[field_key]
++                except KeyError as exc:
++                    raise GraphAdapterError(
++                        f"Phase-B atomic field {field_key!r} has no matching selection."
++                    ) from exc
++
++                def realize_atomic(
++                    lease: Any,
++                    *,
++                    selection: AtomicDensitySelection = atomic_selection,
++                    field_index: int = atomic_index,
++                ) -> ScalarField3D:
++                    # Refresh the nested budget at field entry.  Chunked kernels
++                    # query the live lease directly and may consume CPUs returned
++                    # by shorter sibling fields later in the realization.
++                    with lease.budget_scope():
++                        fields = prepare_atomic_density_fields(
++                            collection,
++                            frame_indices=frames,
++                            frame_weights=weights,
++                            display_cell=display_cell,
++                            registration_mode=options.registration_mode.value,
++                            framework_drift=np.zeros((len(frames), 3), dtype=np.float64),
++                            registration_view=registration_view,
++                            selections=(selection,),
++                            options=atomic_options,
++                            max_fields=1,
++                            max_total_voxels=atomic_per_field_voxel_budget,
++                            max_samples=resources.max_density_samples,
++                            planning_metadata_by_field=planning_metadata_by_field,
++                            max_nonzero_nodes=limits.max_density_nonzero_nodes,
++                            max_stored_block_values=limits.max_density_stored_block_values,
++                            max_blocks=limits.max_density_blocks,
++                            max_kernel_pairs=limits.max_density_kernel_pairs,
++                            max_planning_bytes=limits.max_density_planning_bytes,
++                            max_workspace_bytes=limits.max_density_total_peak_bytes,
++                            max_cic_contributions=8 * limits.max_density_samples,
++                            field_index_offset=field_index,
++                            progress=progress_port,
++                        )
++                    if len(fields) != 1 or fields[0].field_key != f"atomic-density-{field_index}":
++                        raise GraphAdapterError(
++                            "Parallel atomic realization changed the planned field identity."
++                        )
++                    return fields[0]
++
++                scheduled_density_tasks.append(
++                    DensityScheduledTask(task_resources, realize_atomic)
++                )
++                continue
++
++            if framework_density_options is None:
++                raise GraphAdapterError(
++                    f"Phase-B framework field {field_key!r} exists without framework options."
++                )
++            assert projected_display_fractional is not None
++            assert edge_segments is not None
++            if field_plan.source_kind == "framework_vertex_occupancy":
++                channel_options = replace(
++                    framework_density_options,
++                    include_vertex_density=True,
++                    include_edge_density=False,
++                )
++                expected_key = "framework-vertex-density"
++            elif field_plan.source_kind == "framework_edge_length":
++                channel_options = replace(
++                    framework_density_options,
++                    include_vertex_density=False,
++                    include_edge_density=True,
++                )
++                expected_key = "framework-edge-length-density"
++            else:
++                raise GraphAdapterError(
++                    f"Unsupported Phase-B density source kind {field_plan.source_kind!r}."
++                )
++            if field_key != expected_key:
++                raise GraphAdapterError(
++                    f"Phase-B framework field key {field_key!r} disagrees with {expected_key!r}."
++                )
++
++            def realize_framework_channel(
++                lease: Any,
++                *,
++                local_options: FrameworkDensityOptions = channel_options,
++                planned_key: str = field_key,
++            ) -> ScalarField3D:
++                with lease.budget_scope():
++                    bundle = prepare_framework_density_fields(
++                        vertex_fractional_by_frame=projected_display_fractional,
++                        vertex_atom_indices=tuple(int(v) for v in topology.vertex_atom_indices),
++                        edge_segments_fractional_by_frame=edge_segments,
++                        edge_atom_indices=edge_atoms,
++                        frame_weights=weights,
++                        display_cell=display_cell,
++                        registration_mode=options.registration_mode.value,
++                        options=local_options,
++                        max_fields=1,
++                        consumer_registration_signature=registration_view.signature,
++                        scientific_drift_owner="mdstats.coordinates.consumer_adapters",
++                        max_total_voxels=framework_per_field_voxel_budget,
++                        max_samples=resources.max_density_samples,
++                        planning_metadata_by_field=planning_metadata_by_field,
++                        vertex_source_keys=tuple(projected_views[0].node_keys),
++                        edge_source_keys=tuple(edge_view.edge_keys),
++                        max_nonzero_nodes=limits.max_density_nonzero_nodes,
++                        max_stored_block_values=limits.max_density_stored_block_values,
++                        max_blocks=limits.max_density_blocks,
++                        max_kernel_pairs=limits.max_density_kernel_pairs,
++                        max_planning_bytes=limits.max_density_planning_bytes,
++                        max_workspace_bytes=limits.max_density_total_peak_bytes,
++                        max_cic_contributions=8 * limits.max_density_samples,
++                        progress=progress_port,
++                    )
++                fields = bundle.fields
++                if len(fields) != 1 or fields[0].field_key != planned_key:
++                    raise GraphAdapterError(
++                        "Parallel framework realization changed the planned field identity."
++                    )
++                return fields[0]
++
++            scheduled_density_tasks.append(
++                DensityScheduledTask(task_resources, realize_framework_channel)
++            )
+ 
+         reporter.started(
+             "density_realization",
+-            "constructing atomic density fields",
++            "constructing independent density fields through the PAR-DENS3 scheduler",
+             current=0,
+-            total=len(atomic_selections),
++            total=len(scheduled_density_tasks),
+             unit="fields",
++            metadata={
++                "parallel_field_realization_enabled": True,
++                "scheduler_policy": "par_dens3_parallel_field_realization_v1",
++            },
++        )
++        try:
++            realized_fields = density_scheduler.run(tuple(scheduled_density_tasks))
++        except DensitySchedulerTaskError as exc:
++            # Preserve the public plotting facade's historical exception type.
++            # Scheduler wrappers are execution detail and remain available to
++            # callers that invoke DensitySceneScheduler directly.
++            raise exc.original from exc
++        scheduler_report = density_scheduler.last_report
++        if scheduler_report is None:
++            raise GraphAdapterError("PAR-DENS3 scheduler completed without an execution report.")
++        reporter.completed(
++            "density_realization",
++            "completed parallel density field realization",
++            current=len(realized_fields),
++            total=len(realized_fields),
++            unit="fields",
++            metadata={
++                "maximum_concurrent_tasks": scheduler_report.maximum_concurrent_tasks,
++                "peak_reserved_bytes": scheduler_report.peak_reserved_bytes,
++            },
+         )
+-        with density_scheduler.task_scope(scene_realization_resources):
+-            density_fields = prepare_atomic_density_fields(
+-                collection,
+-                frame_indices=frames,
+-                frame_weights=weights,
+-                display_cell=display_cell,
+-                registration_mode=options.registration_mode.value,
+-                framework_drift=np.zeros((len(frames), 3), dtype=np.float64),
+-                registration_view=registration_view,
+-                selections=atomic_selections,
+-                options=atomic_options,
+-                max_fields=resources.max_density_fields,
+-                max_total_voxels=resources.max_density_voxels,
+-                max_samples=resources.max_density_samples,
+-                planning_metadata_by_field=planning_metadata_by_field,
+-                max_nonzero_nodes=limits.max_density_nonzero_nodes,
+-                max_stored_block_values=limits.max_density_stored_block_values,
+-                max_blocks=limits.max_density_blocks,
+-                max_kernel_pairs=limits.max_density_kernel_pairs,
+-                max_planning_bytes=limits.max_density_planning_bytes,
+-                max_workspace_bytes=limits.max_density_total_peak_bytes,
+-                max_cic_contributions=8 * limits.max_density_samples,
+-                progress=progress_port,
+-            )
+ 
+-            if framework_density_options is not None:
+-                reporter.started(
+-                    "framework_density_realization",
+-                    "constructing framework vertex and edge fields",
+-                    current=0,
+-                    total=2,
+-                    unit="fields",
+-                )
+-                assert projected_display_fractional is not None
+-                assert edge_segments is not None
+-                used_fields = len(density_fields)
+-                used_voxels = sum(
+-                    field.storage_summary().stored_value_count
+-                    for field in density_fields
+-                    if field.storage_backend == "dense"
+-                )
+-                framework_densities = prepare_framework_density_fields(
+-                    vertex_fractional_by_frame=projected_display_fractional,
+-                    vertex_atom_indices=tuple(int(v) for v in topology.vertex_atom_indices),
+-                    edge_segments_fractional_by_frame=edge_segments,
+-                    edge_atom_indices=edge_atoms,
+-                    frame_weights=weights,
+-                    display_cell=display_cell,
+-                    registration_mode=options.registration_mode.value,
+-                    options=framework_density_options,
+-                    max_fields=resources.max_density_fields - used_fields,
+-                    consumer_registration_signature=registration_view.signature,
+-                    scientific_drift_owner="mdstats.coordinates.consumer_adapters",
+-                    max_total_voxels=resources.max_density_voxels - used_voxels,
+-                    max_samples=resources.max_density_samples,
+-                    planning_metadata_by_field=planning_metadata_by_field,
+-                    vertex_source_keys=tuple(projected_views[0].node_keys),
+-                    edge_source_keys=tuple(edge_view.edge_keys),
+-                    max_nonzero_nodes=limits.max_density_nonzero_nodes,
+-                    max_stored_block_values=limits.max_density_stored_block_values,
+-                    max_blocks=limits.max_density_blocks,
+-                    max_kernel_pairs=limits.max_density_kernel_pairs,
+-                    max_planning_bytes=limits.max_density_planning_bytes,
+-                    max_workspace_bytes=limits.max_density_total_peak_bytes,
+-                    max_cic_contributions=8 * limits.max_density_samples,
+-                    progress=progress_port,
+-                )
+-            realized_fields: tuple[ScalarField3D, ...] = density_fields + (
+-                () if framework_densities is None else framework_densities.fields
++        density_fields = tuple(
++            field
++            for plan, field in zip(
++                planning_record.phase_b_fields, realized_fields, strict=True
+             )
+-            realization_metadata = validate_realized_fields(
+-                planning_record, realized_fields
++            if plan.source_kind == "atomic_occupancy"
++        )
++        framework_vertex_field = next(
++            (
++                field
++                for plan, field in zip(
++                    planning_record.phase_b_fields, realized_fields, strict=True
++                )
++                if plan.source_kind == "framework_vertex_occupancy"
++            ),
++            None,
++        )
++        framework_edge_field = next(
++            (
++                field
++                for plan, field in zip(
++                    planning_record.phase_b_fields, realized_fields, strict=True
++                )
++                if plan.source_kind == "framework_edge_length"
++            ),
++            None,
++        )
++        if framework_vertex_field is None and framework_edge_field is None:
++            framework_densities = None
++        else:
++            assert framework_density_options is not None
++            framework_densities = FrameworkDensityFields(
++                vertex_density=framework_vertex_field,
++                edge_length_density=framework_edge_field,
++                edge_source=framework_density_options.edge_source,
++                metadata={
++                    "schema_version": FRAMEWORK_DENSITY_SCHEMA,
++                    "channels_are_dimensionally_distinct": True,
++                    "consumer_registration_signature": registration_view.signature,
++                    "scientific_drift_owner": "mdstats.coordinates.consumer_adapters",
++                    "consumer_migration_stage": "C0B",
++                },
+             )
++        realization_metadata = validate_realized_fields(
++            planning_record, realized_fields
++        )
++        density_scheduler_policy = "par_dens3_parallel_field_realization_v1"
+ 
+     preparation_wall_seconds = time.perf_counter() - preparation_started
+     reporter.completed(
+@@ -3740,6 +3884,11 @@
+             ),
+             "density_realization_summary": dict(realization_metadata),
+             "density_scheduler_policy": density_scheduler_policy,
++            "density_scheduler_summary": (
++                {}
++                if planning_record is None or density_scheduler.last_report is None
++                else density_scheduler.last_report.to_json_dict()
++            ),
+             "density_scheduler_field_contract_schema": (
+                 None
+                 if planning_record is None
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_141_orig/mdstats-0.20.141a0-complete-source-package/pyproject.toml /mnt/data/mdstats_141_work/mdstats-0.20.141a0-complete-source-package/pyproject.toml
+--- /mnt/data/mdstats_141_orig/mdstats-0.20.141a0-complete-source-package/pyproject.toml	2026-08-10 19:02:53.000000000 +0000
++++ /mnt/data/mdstats_141_work/mdstats-0.20.141a0-complete-source-package/pyproject.toml	2026-08-10 19:29:28.191883554 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.141a0"
++version = "0.20.142a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_141_orig/mdstats-0.20.141a0-complete-source-package/release/par_dens3_na_lta_qualification.json /mnt/data/mdstats_141_work/mdstats-0.20.141a0-complete-source-package/release/par_dens3_na_lta_qualification.json
+--- /mnt/data/mdstats_141_orig/mdstats-0.20.141a0-complete-source-package/release/par_dens3_na_lta_qualification.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats_141_work/mdstats-0.20.141a0-complete-source-package/release/par_dens3_na_lta_qualification.json	2026-08-10 19:32:55.162298884 +0000
+@@ -0,0 +1,71 @@
++{
++  "schema": "mdstats.par-dens3-na-lta-qualification.v1",
++  "package_version": "0.20.142a0",
++  "qualified_on": "2026-08-10",
++  "input": {
++    "basename": "dump.prod.Na_lta_300K.old.lammpstrj",
++    "sha256": "81c86cc40f5a11031f80817213eb558c02348494d1c6cad9b4775a5bc3c9f9cd",
++    "bytes": 183385600,
++    "full_frames": 10001,
++    "atoms_per_frame": 168,
++    "na_atoms": 24,
++    "type_map": {"1": "Si", "2": "Al", "3": "O", "4": "Na"}
++  },
++  "bounded_parallel_qualification": {
++    "stride": 100,
++    "selected_frames": 101,
++    "density_selections": ["Na", "Si", "O"],
++    "grid_shape": [64, 64, 64],
++    "gaussian_bandwidth_angstrom": 0.5,
++    "grid_backend": "local_sparse",
++    "storage_block_shape": [8, 8, 8],
++    "max_memory": "4GiB",
++    "worker_counts": [1, 4],
++    "scene_seconds": [9.208529379000083, 8.304266394000024],
++    "measured_scene_speedup": 1.1088913748785088,
++    "maximum_concurrent_tasks": [1, 3],
++    "max_absolute_density_difference_by_field": {
++      "Na": 0.0,
++      "Si": 0.0,
++      "O": 0.0
++    },
++    "content_identity_equal_by_field": {"Na": true, "Si": true, "O": true},
++    "scientific_approval_id": "e784acf9a3d6575741cb59154815e5b1103c8b6d80899e836e1b333f769ccdd2",
++    "scientific_approval_id_equal": true,
++    "execution_plan_id_equal": false,
++    "integrals": {
++      "Na": 23.999999999999996,
++      "Si": 24.0,
++      "O": 95.99999999999999
++    },
++    "hdr_thresholds": {
++      "Na": [0.135355021706656, 0.043569451580927954, 0.008924842403607136],
++      "Si": [0.13014872580682013, 0.04220835910862328, 0.00867867702766571],
++      "O": [0.1280795525626793, 0.04288460605853464, 0.012718827334177379]
++    },
++    "hdr_mass_fractions": [0.5, 0.8, 0.95],
++    "scheduler_policy": "par_dens3_parallel_field_realization_v1",
++    "scene_plan_schema": "mdstats.density-scene-plan.v3"
++  },
++  "acceptance": {
++    "synthetic_dense_and_sparse_worker_matrix": "tests/test_density_par_dens3_parallel.py",
++    "scalar_fields_equal": true,
++    "integrated_measure_equal": true,
++    "periodic_support_equal": true,
++    "hdr_levels_equal": true,
++    "meshes_equal": true,
++    "density_focused_test_result": "351 passed, 1 skipped (optional mdstats[interactive])"
++  },
++  "interpretation": {
++    "purpose": "PAR-DENS3 concurrency, worker-invariance, and bounded real-data throughput qualification",
++    "production_scientific_reference": "release/par_dens0_na_lta_qualification.json",
++    "timing_scope": "scene preparation only; trajectory parsing and connectivity excluded",
++    "small_scene_note": "The prior 21-frame smoke is scheduler-overhead dominated; the 101-frame result is retained as bounded throughput evidence, not a universal speedup guarantee.",
++    "par_dens4_next": true
++  },
++  "environment": {
++    "python": "3.13.5",
++    "numpy": "2.3.5",
++    "scipy": "1.17.0"
++  }
++}
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_141_orig/mdstats-0.20.141a0-complete-source-package/tests/test_density_par_dens3_parallel.py /mnt/data/mdstats_141_work/mdstats-0.20.141a0-complete-source-package/tests/test_density_par_dens3_parallel.py
+--- /mnt/data/mdstats_141_orig/mdstats-0.20.141a0-complete-source-package/tests/test_density_par_dens3_parallel.py	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats_141_work/mdstats-0.20.141a0-complete-source-package/tests/test_density_par_dens3_parallel.py	2026-08-10 19:25:49.915259503 +0000
+@@ -0,0 +1,160 @@
++from __future__ import annotations
++
++import warnings
++
++import numpy as np
++
++from mdstats import (
++    AtomisticFrameCollection,
++    DENSE_BACKEND,
++    DISCRETE_PERIODIZED_OPERATOR,
++    DensityKernelOptions,
++    DensityStorageOptions,
++    DistanceConnectivity,
++    FrameCollectionProvenance,
++    FrameSemantics,
++    FrameworkAtomRole,
++    FrameworkDensityOptions,
++    FrameworkDynamicsResources,
++    FrameworkMapping,
++    FrameworkPathRule,
++    PairCutoffRegistry,
++    build_framework_topology,
++    compute_atomic_connectivity,
++    prepare_framework_dynamics_scene,
++)
++from mdstats.plotting.density_sparse_mesh import prepare_sparse_density_mesh
++
++
++def _collection(n_frames: int = 6) -> AtomisticFrameCollection:
++    base = np.asarray(
++        [[0.10, 0.10, 0.10], [0.20, 0.20, 0.10], [0.30, 0.10, 0.10], [0.70, 0.50, 0.50]],
++        dtype=float,
++    )
++    frac = np.repeat(base[None, :, :], n_frames, axis=0)
++    # Small deterministic motion keeps adaptive diagnostics finite without
++    # changing topology.
++    frac[:, 0, 2] += np.linspace(-0.003, 0.003, n_frames)
++    frac[:, 1, 1] += np.linspace(0.002, -0.002, n_frames)
++    return AtomisticFrameCollection(
++        frame_semantics=FrameSemantics.TRAJECTORY,
++        frame_ids=np.arange(n_frames, dtype=np.int64),
++        atomic_numbers=np.asarray([14, 8, 13, 11], dtype=np.int32),
++        masses=np.ones(4),
++        pbc=np.ones(3, dtype=bool),
++        steps=np.arange(n_frames, dtype=np.int64),
++        times=np.arange(n_frames, dtype=float),
++        cells=np.repeat((np.eye(3) * 10.0)[None, :, :], n_frames, axis=0),
++        origins=np.zeros((n_frames, 3)),
++        fractional_positions=frac,
++        velocities=np.zeros((n_frames, 4, 3)),
++        provenance=FrameCollectionProvenance(
++            source_format="par-dens3-synthetic",
++            source_files=("synthetic",),
++            velocity_source="synthetic",
++            coordinate_normalization="time_unwrapped_fractional",
++            stress_source=None,
++            units_source="synthetic",
++        ),
++    )
++
++
++def _topology(collection: AtomisticFrameCollection):
++    definition = DistanceConnectivity(
++        cutoffs=PairCutoffRegistry.from_mapping({("Si", "O"): 2.0, ("Al", "O"): 2.0})
++    )
++    state = compute_atomic_connectivity(collection, definition).states[0]
++    mapping = FrameworkMapping.from_symbol_roles(
++        {
++            "Si": FrameworkAtomRole.VERTEX,
++            "Al": FrameworkAtomRole.VERTEX,
++            "O": FrameworkAtomRole.LINKER,
++            "Na": FrameworkAtomRole.SPECTATOR,
++        },
++        path_rules=(FrameworkPathRule.from_symbols("T-O-T", ("O",), edge_kind="oxygen_bridge"),),
++    )
++    return build_framework_topology(state, mapping)
++
++
++def _scene(*, workers: int, sparse: bool):
++    collection = _collection()
++    storage = DensityStorageOptions(
++        grid_backend="local_sparse" if sparse else DENSE_BACKEND,
++        local_block_shape=(4, 4, 4),
++    )
++    options = FrameworkDensityOptions(
++        grid_shape=(24, 24, 24),
++        gaussian_bandwidth=0.40,
++        adaptive_smearing=False,
++        edge_sample_spacing=0.15,
++        edge_sample_spacing_mode="explicit",
++        kernel_options=DensityKernelOptions(smoothing_operator=DISCRETE_PERIODIZED_OPERATOR),
++        storage_options=storage,
++    )
++    with warnings.catch_warnings():
++        warnings.simplefilter("ignore")
++        return prepare_framework_dynamics_scene(
++            collection,
++            _topology(collection),
++            framework_density_options=options,
++            resources=FrameworkDynamicsResources(
++                max_threads=workers,
++                max_memory_bytes="2GiB",
++                max_density_voxels=500_000,
++            ),
++        )
++
++
++def test_par_dens3_dense_fields_execute_concurrently_without_changing_science() -> None:
++    serial = _scene(workers=1, sparse=False)
++    parallel = _scene(workers=4, sparse=False)
++    assert serial.planning_record is not None and parallel.planning_record is not None
++    assert serial.planning_record.approval_id == parallel.planning_record.approval_id
++    assert serial.planning_record.schema_version == "mdstats.density-scene-plan.v3"
++    assert parallel.metadata["density_scheduler_policy"] == "par_dens3_parallel_field_realization_v1"
++    assert serial.metadata["density_scheduler_summary"]["maximum_concurrent_tasks"] == 1
++    assert parallel.metadata["density_scheduler_summary"]["maximum_concurrent_tasks"] >= 2
++    assert serial.framework_density_fields is not None
++    assert parallel.framework_density_fields is not None
++    for left, right in zip(serial.framework_density_fields.fields, parallel.framework_density_fields.fields, strict=True):
++        np.testing.assert_array_equal(left.values, right.values)
++        assert left.integral == right.integral
++        for fraction in (0.50, 0.80, 0.95):
++            assert left.threshold_for_mass_fraction(fraction) == right.threshold_for_mass_fraction(fraction)
++
++
++def test_par_dens3_sparse_worker_counts_preserve_field_support_hdr_and_mesh() -> None:
++    serial = _scene(workers=1, sparse=True)
++    parallel = _scene(workers=4, sparse=True)
++    assert serial.planning_record is not None and parallel.planning_record is not None
++    assert serial.planning_record.approval_id == parallel.planning_record.approval_id
++    # The execution plan is allowed to differ because FFT worker/cost evidence is
++    # intentionally separate from the scientific authority.
++    assert serial.planning_record.execution_plan_id != parallel.planning_record.execution_plan_id
++    assert serial.framework_density_fields is not None
++    assert parallel.framework_density_fields is not None
++    for left, right in zip(serial.framework_density_fields.fields, parallel.framework_density_fields.fields, strict=True):
++        assert left.content_identity == right.content_identity
++        np.testing.assert_array_equal(left.active_block_indices, right.active_block_indices)
++        np.testing.assert_array_equal(left.occupancy_bitsets, right.occupancy_bitsets)
++        np.testing.assert_array_equal(left.packed_values, right.packed_values)
++        assert left.integral == right.integral
++        for fraction in (0.50, 0.80, 0.95):
++            assert left.threshold_for_mass_fraction(fraction) == right.threshold_for_mass_fraction(fraction)
++        surface_left = prepare_sparse_density_mesh(
++            left, 0.80, max_faces=200_000, max_candidate_cells=200_000,
++            max_raw_faces=500_000, max_raw_vertices=1_500_000,
++            max_workspace_bytes=512_000_000, max_dense_fallback_nodes=1_000_000,
++            allow_cloud_fallback=False,
++        )
++        surface_right = prepare_sparse_density_mesh(
++            right, 0.80, max_faces=200_000, max_candidate_cells=200_000,
++            max_raw_faces=500_000, max_raw_vertices=1_500_000,
++            max_workspace_bytes=512_000_000, max_dense_fallback_nodes=1_000_000,
++            allow_cloud_fallback=False,
++        )
++        assert surface_left.mesh is not None and surface_right.mesh is not None
++        np.testing.assert_array_equal(surface_left.mesh.vertices_fractional, surface_right.mesh.vertices_fractional)
++        np.testing.assert_array_equal(surface_left.mesh.faces, surface_right.mesh.faces)
++        assert surface_left.mesh.scientific_hdr_threshold == surface_right.mesh.scientific_hdr_threshold
++        assert surface_left.mesh.topology.to_json_dict() == surface_right.mesh.topology.to_json_dict()
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_141_orig/mdstats-0.20.141a0-complete-source-package/tests/test_density_par_dens3_qualification.py /mnt/data/mdstats_141_work/mdstats-0.20.141a0-complete-source-package/tests/test_density_par_dens3_qualification.py
+--- /mnt/data/mdstats_141_orig/mdstats-0.20.141a0-complete-source-package/tests/test_density_par_dens3_qualification.py	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats_141_work/mdstats-0.20.141a0-complete-source-package/tests/test_density_par_dens3_qualification.py	2026-08-10 19:29:28.334061596 +0000
+@@ -0,0 +1,27 @@
++from __future__ import annotations
++
++import json
++from pathlib import Path
++
++ROOT = Path(__file__).resolve().parents[1]
++PAR0 = ROOT / "release" / "par_dens0_na_lta_qualification.json"
++PAR3 = ROOT / "release" / "par_dens3_na_lta_qualification.json"
++
++
++def test_par_dens3_na_lta_qualification_is_bound_to_reference_and_invariant() -> None:
++    par0 = json.loads(PAR0.read_text(encoding="utf-8"))
++    par3 = json.loads(PAR3.read_text(encoding="utf-8"))
++    assert par3["package_version"] == "0.20.142a0"
++    assert par3["input"]["sha256"] == par0["input"]["sha256"]
++    assert par3["input"]["full_frames"] == par0["input"]["frames"] == 10001
++    q = par3["bounded_parallel_qualification"]
++    assert q["worker_counts"] == [1, 4]
++    assert q["maximum_concurrent_tasks"][0] == 1
++    assert q["maximum_concurrent_tasks"][1] >= 3
++    assert q["scientific_approval_id_equal"] is True
++    assert q["execution_plan_id_equal"] is False
++    assert q["scene_plan_schema"] == "mdstats.density-scene-plan.v3"
++    assert all(value == 0.0 for value in q["max_absolute_density_difference_by_field"].values())
++    assert all(q["content_identity_equal_by_field"].values())
++    assert par3["acceptance"]["periodic_support_equal"] is True
++    assert par3["acceptance"]["meshes_equal"] is True
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_141_orig/mdstats-0.20.141a0-complete-source-package/tests/test_density_par_dens_architecture_plan.py /mnt/data/mdstats_141_work/mdstats-0.20.141a0-complete-source-package/tests/test_density_par_dens_architecture_plan.py
+--- /mnt/data/mdstats_141_orig/mdstats-0.20.141a0-complete-source-package/tests/test_density_par_dens_architecture_plan.py	2026-08-10 19:02:53.000000000 +0000
++++ /mnt/data/mdstats_141_work/mdstats-0.20.141a0-complete-source-package/tests/test_density_par_dens_architecture_plan.py	2026-08-10 19:29:48.849155230 +0000
+@@ -8,15 +8,17 @@
+ MANUAL = ROOT / "docs/arch_manuals/mdstats_dynamical_framework_density_architecture_standard.md"
+ 
+ 
+-def test_par_dens0_to_2_are_completed_and_par_dens3_is_next() -> None:
+-    assert mdstats.__version__ == "0.20.141a0"
++def test_par_dens0_to_3_are_completed_and_par_dens4_is_next() -> None:
++    assert mdstats.__version__ == "0.20.142a0"
+     text = MANUAL.read_text(encoding="utf-8")
+     assert "PAR-DENS0 is `completed` in `mdstats 0.20.120a0`" in text
+     assert "PAR-DENS2 are `completed` in `mdstats 0.20.141a0`" in text
+-    assert "PAR-DENS3 is the next" in text
++    assert "PAR-DENS3 is `completed` in" in text
++    assert "`mdstats 0.20.142a0`; PAR-DENS4 is the next" in text
+     assert "### PAR-DENS0 implementation record (0.20.120a0)" in text
+     assert "### PAR-DENS1 implementation record (0.20.141a0)" in text
+     assert "### PAR-DENS2 implementation record (0.20.141a0)" in text
++    assert "### PAR-DENS3 implementation record (0.20.142a0)" in text
+ 
+ 
+ def test_par_dens_gates_are_present_in_normative_order() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' /mnt/data/mdstats_141_orig/mdstats-0.20.141a0-complete-source-package/tests/test_density_planning.py /mnt/data/mdstats_141_work/mdstats-0.20.141a0-complete-source-package/tests/test_density_planning.py
+--- /mnt/data/mdstats_141_orig/mdstats-0.20.141a0-complete-source-package/tests/test_density_planning.py	2026-08-10 19:01:03.000000000 +0000
++++ /mnt/data/mdstats_141_work/mdstats-0.20.141a0-complete-source-package/tests/test_density_planning.py	2026-08-10 19:24:34.553250893 +0000
+@@ -525,7 +525,7 @@
+     assert plan.metadata["wall_time_budget_exceeded"] is True
+ 
+ 
+-def test_par_dens2_scene_approval_is_worker_and_backend_neutral() -> None:
++def test_par_dens3_scene_approval_is_worker_storage_and_executor_neutral() -> None:
+     scientific_metadata = {
+         "operator": "discrete_periodized_v1",
+         "gaussian_bandwidth": 0.5,
+@@ -543,6 +543,10 @@
+             "hybrid_estimated_wall_seconds": 9.0,
+             "direct_pair_count": 123,
+             "exact_contribution_count": 456,
++            "hybrid_plan_identity": "a" * 64,
++            "hybrid_predicted_peak_bytes": 123456,
++            "fft_workers": 4,
++            "block_shape": [8, 8, 8],
+         },
+     )
+     limits_one = replace(permissive_limits(), max_density_threads=1)
+@@ -558,7 +562,7 @@
+     assert plan_one.approval_id == plan_four.approval_id
+     assert plan_one.execution_plan_id != plan_four.execution_plan_id
+     assert plan_one.to_json_dict()["approval_identity_semantics"] == (
+-        "worker_backend_neutral_scientific_plan_v1"
++        "worker_storage_executor_neutral_scientific_plan_v2"
+     )
+ 
+ 
+@@ -575,3 +579,56 @@
+     restored = type(legacy).from_json_dict(payload)
+     assert restored.schema_version == "mdstats.density-scene-plan.v1"
+     assert restored.approval_id == legacy.approval_id
++
++
++def test_legacy_v2_scene_plan_preserves_par_dens2_scientific_digest_semantics() -> None:
++    scientific_metadata = {
++        "operator": "discrete_periodized_v1",
++        "gaussian_bandwidth": 0.5,
++        "consumer_registration_signature": "same-registration",
++    }
++    base = plan_density_scene(
++        phase_a_fields=(phase_a(stored_block_count_upper=1),),
++        phase_b_fields=(
++            phase_b(
++                stored_value_count=32,
++                stored_block_count=1,
++                metadata={
++                    **scientific_metadata,
++                    "backend": "local_sparse",
++                    "hybrid_plan_identity": "a" * 64,
++                    "hybrid_predicted_peak_bytes": 1000,
++                    "fft_workers": 1,
++                },
++            ),
++        ),
++        limits=replace(permissive_limits(), max_density_threads=1),
++    )
++    legacy = replace(base, schema_version="mdstats.density-scene-plan.v2")
++    changed_execution = replace(
++        base,
++        schema_version="mdstats.density-scene-plan.v2",
++        phase_b_fields=(
++            phase_b(
++                stored_value_count=32,
++                stored_block_count=1,
++                metadata={
++                    **scientific_metadata,
++                    "backend": "local_sparse",
++                    "hybrid_plan_identity": "b" * 64,
++                    "hybrid_predicted_peak_bytes": 2000,
++                    "fft_workers": 4,
++                },
++            ),
++        ),
++    )
++    # v2 remains frozen at the PAR-DENS2 projection; fields that were not
++    # excluded there remain digest-significant for historical compatibility.
++    assert legacy.approval_id != changed_execution.approval_id
++    payload = legacy.to_json_dict(include_indices=True)
++    assert payload["approval_identity_semantics"] == (
++        "worker_backend_neutral_scientific_plan_v1"
++    )
++    restored = type(legacy).from_json_dict(payload)
++    assert restored.schema_version == "mdstats.density-scene-plan.v2"
++    assert restored.approval_id == legacy.approval_id

@@ -1,0 +1,30 @@
+{
+  "acceptance": {
+    "browser_budget_failure_is_explicit": true,
+    "mock_fifth_layer_requires_no_result_schema_change": true,
+    "periodic_replication_is_scene_wide": true,
+    "prepared_builtin_layers_have_no_source_scene_renderer_reference": true,
+    "render_priority_is_render_only": true,
+    "renderer_has_no_builtin_layer_family_dispatch": true,
+    "view_changes_preserve_scientific_identity": true
+  },
+  "date": "2026-08-11",
+  "failed": 0,
+  "gate": "GFX3D-5",
+  "mdstats_version": "0.20.150a0",
+  "passed": 83,
+  "pytest_output": "release/gfx3d5_focused_pytest.txt",
+  "schema_version": "mdstats.graphics3d.gfx3d5-focused-test-record.v1",
+  "skipped": 0,
+  "tests": [
+    "tests/test_graphics3d_contracts.py",
+    "tests/test_graphics3d_layers.py",
+    "tests/test_graphics3d_gfx4_dependencies.py",
+    "tests/test_graphics3d_gfx5_rendering.py",
+    "tests/test_graphics3d_cli.py",
+    "tests/test_framework_dynamics.py",
+    "tests/test_graph_3d.py"
+  ],
+  "warning_scope": "existing legacy equal-aspect/orientation diagnostics",
+  "warnings": 13
+}

@@ -1,0 +1,2602 @@
+{
+  "schema": "mdstats.par-dens6-na-lta-qualification.v3",
+  "package_version": "0.20.145a0",
+  "qualified_on": "2026-08-10",
+  "methodology": {
+    "benchmark_process_isolation": "each timed leg executed in a fresh Python process",
+    "trajectory_text_parse_excluded_from_density_timing": true,
+    "parsed_cache_path_is_execution_only": true,
+    "long_repeat_count": 2,
+    "speedup_statistic": "ratio of serial median total wall time to auto median total wall time",
+    "material_gain_criterion": "gain >= max(5%, 2*max(relative_MAD_auto, relative_MAD_serial))"
+  },
+  "input": {
+    "basename": "dump.prod.Na_lta_300K.old(1).lammpstrj",
+    "sha256": "81c86cc40f5a11031f80817213eb558c02348494d1c6cad9b4775a5bc3c9f9cd",
+    "bytes": 183385600,
+    "frames": 10001,
+    "atoms_per_frame": 168,
+    "type_map": {
+      "1": "Si",
+      "2": "Al",
+      "3": "O",
+      "4": "Na"
+    }
+  },
+  "scientific_operator": {
+    "selections": [
+      "Na",
+      "Si",
+      "O"
+    ],
+    "grid_shape": [
+      64,
+      64,
+      64
+    ],
+    "gaussian_bandwidth_angstrom": 0.5,
+    "storage_backend": "local_sparse",
+    "storage_block_shape": [
+      8,
+      8,
+      8
+    ],
+    "smoothing_operator": "discrete_periodized_v1",
+    "resolution_changed_by_autotune": false,
+    "operator_identity_changed_by_autotune": false
+  },
+  "runtime_resource_authority": {
+    "post_run_snapshot": {
+      "schema_version": "mdstats.runtime-resource-snapshot.v1",
+      "logical_cpu_count": 5,
+      "affinity_cpu_count": 5,
+      "cgroup_cpu_quota": 4.0,
+      "scheduler_cpu_count": null,
+      "available_cpu_count": 4,
+      "host_memory_available_bytes": 5363212288,
+      "cgroup_memory_limit_bytes": 4294967296,
+      "cgroup_memory_current_bytes": 2589138944,
+      "scheduler_memory_limit_bytes": null,
+      "rlimit_as_bytes": null,
+      "process_rss_bytes": 292614144,
+      "process_virtual_memory_bytes": 854245376,
+      "available_memory_bytes": 1705828352,
+      "metadata": {
+        "cpu_affinity_source": "sched_getaffinity",
+        "cgroup_cpu_source": "cgroup_v2",
+        "scheduler_cpu_source": null,
+        "cgroup_memory_source": "cgroup_v2",
+        "scheduler_memory_source": null
+      }
+    },
+    "post_run_budget": {
+      "schema_version": "mdstats.runtime-resource-budget.v1",
+      "max_memory_bytes": 1364662681,
+      "max_threads": 3,
+      "max_wall_time_seconds": 1200.0,
+      "memory_fraction": 0.8,
+      "thread_fraction": 0.9,
+      "memory_override_source": "runtime_fraction",
+      "thread_override_source": "runtime_fraction",
+      "wall_time_override_source": "default_20_minutes",
+      "memory_override_clamped": false,
+      "thread_override_clamped": false,
+      "snapshot": {
+        "schema_version": "mdstats.runtime-resource-snapshot.v1",
+        "logical_cpu_count": 5,
+        "affinity_cpu_count": 5,
+        "cgroup_cpu_quota": 4.0,
+        "scheduler_cpu_count": null,
+        "available_cpu_count": 4,
+        "host_memory_available_bytes": 5363212288,
+        "cgroup_memory_limit_bytes": 4294967296,
+        "cgroup_memory_current_bytes": 2589138944,
+        "scheduler_memory_limit_bytes": null,
+        "rlimit_as_bytes": null,
+        "process_rss_bytes": 292614144,
+        "process_virtual_memory_bytes": 854245376,
+        "available_memory_bytes": 1705828352,
+        "metadata": {
+          "cpu_affinity_source": "sched_getaffinity",
+          "cgroup_cpu_source": "cgroup_v2",
+          "scheduler_cpu_source": null,
+          "cgroup_memory_source": "cgroup_v2",
+          "scheduler_memory_source": null
+        }
+      }
+    },
+    "benchmark_leg_budgets": [
+      {
+        "selected_frames": 101,
+        "mode": "auto",
+        "max_threads": 3,
+        "max_memory_bytes": 1357896089
+      },
+      {
+        "selected_frames": 101,
+        "mode": "auto",
+        "max_threads": 3,
+        "max_memory_bytes": 1353560883
+      },
+      {
+        "selected_frames": 1001,
+        "mode": "auto",
+        "max_threads": 3,
+        "max_memory_bytes": 1349877760
+      },
+      {
+        "selected_frames": 10001,
+        "mode": "auto",
+        "max_threads": 3,
+        "max_memory_bytes": 1346007859
+      },
+      {
+        "selected_frames": 10001,
+        "mode": "auto",
+        "max_threads": 3,
+        "max_memory_bytes": 1338002636
+      },
+      {
+        "selected_frames": 10001,
+        "mode": "off",
+        "max_threads": 1,
+        "max_memory_bytes": 1341784064
+      },
+      {
+        "selected_frames": 10001,
+        "mode": "off",
+        "max_threads": 1,
+        "max_memory_bytes": 1334021324
+      }
+    ]
+  },
+  "basin_aware_spread_evidence": {
+    "reused_evidence": "release/par_dens0_na_lta_qualification.json",
+    "same_trajectory_sha256": true,
+    "results_angstrom": {
+      "global_all_reference": 0.07466881461664253,
+      "basin_aware_all_reference": 0.07466881461664253,
+      "production_512_reference": 0.07468598798979899,
+      "production_relative_error": 0.000229994802138834,
+      "two_basin_na_global": 0.1958590101491643,
+      "two_basin_na_full_within_basin": 0.07960089886380832,
+      "two_basin_na_production_within_basin": 0.07878657624907114
+    },
+    "production_convergence": {
+      "sample_size_per_random_replicate": 128,
+      "requested_random_replicates": 4,
+      "maximum_random_replicates": 8,
+      "effective_anchor_samples": 512,
+      "progressive_reference_standard_deviations_angstrom": [
+        0.07429682685468678,
+        0.07468598798979899
+      ],
+      "relative_anchor_change": 0.005210631144966118,
+      "converged_at_relative_tolerance": 0.01,
+      "random_replicate_reference_standard_deviations_angstrom": [
+        0.07237689946999794,
+        0.07281497801371803,
+        0.07614512250840047,
+        0.07221314352979685
+      ],
+      "reference_standard_error_angstrom": 0.0009279318342786089,
+      "confidence_level": 0.95,
+      "confidence_interval_angstrom": [
+        0.0717328947522439,
+        0.07763908122735408
+      ],
+      "relative_confidence_half_width": 0.039540124152316794,
+      "escalation_occurred": false
+    }
+  },
+  "three_scale_atomic_density_benchmark": [
+    {
+      "selected_frames": 101,
+      "mode": "auto",
+      "scene_preplanning_wall_seconds": 2.0177895220003847,
+      "preparation_wall_seconds": 7.9584989439999845,
+      "contouring_wall_seconds": 1.1205323370004407,
+      "total_wall_seconds": 9.079050418999941,
+      "cold_total_wall_seconds_including_calibration": 9.470209524999518,
+      "cpu_seconds": 10.228255668,
+      "normalized_cpu_utilization": 0.4283996994898648,
+      "rss_baseline_bytes": 339255296,
+      "rss_peak_bytes": 693415936,
+      "rss_peak_delta_bytes": 198205440,
+      "planning_rss_peak_delta_bytes": 198205440,
+      "realization_rss_peak_delta_bytes": 155955200,
+      "autotune_profile": {
+        "schema_version": "mdstats.density-autotune-profile.v1",
+        "mode": "auto",
+        "max_parallel_tasks": 3,
+        "group_size_multiplier": 4,
+        "fft_worker_cap": 3,
+        "direct_fft_selection": "par_dens1_calibrated_time_model",
+        "cpu_gpu_selection": "par_dens5_transfer_vram_cost_model",
+        "calibration_wall_seconds": 0.39115910599957715,
+        "runtime_signature": "f080e242455e0ab9f9dddaa8ec9f82ea8aa3fbbc8be3cf2704189325b41b7050",
+        "field_concurrency_selection": "bounded_up_to_three_fields_v1",
+        "group_selection": "par_dens3_qualified_baseline_after_probe_v1",
+        "fft_selection": "par_dens3_live_worker_fail_safe_v1",
+        "fft_seconds_by_workers": {
+          "1": 0.023927168499994877,
+          "2": 0.05291876000001139,
+          "3": 0.015093278500444285
+        },
+        "group_seconds_by_multiplier": {
+          "1": 0.004105411500404443,
+          "2": 0.0034588075004649,
+          "4": 0.0024671829996805172,
+          "8": 0.0018144120003853459
+        },
+        "scientific_identity_includes_profile": false
+      },
+      "scheduler": {
+        "schema_version": "mdstats.density-scheduler-report.v2",
+        "max_threads": 3,
+        "max_memory_bytes": 1357896089,
+        "peak_reserved_bytes": 57790464,
+        "maximum_concurrent_tasks": 3,
+        "wall_seconds": 5.931880193999859,
+        "execution_policy": "par_dens2_global_resource_scheduler_v1",
+        "cpu_budget_obeyed": true,
+        "memory_budget_obeyed": true,
+        "tasks": [
+          {
+            "task_id": "atomic-density-0",
+            "construction_order": 0,
+            "initial_workers": 1,
+            "maximum_workers": 1,
+            "worker_allocation_history": [
+              1
+            ],
+            "wall_seconds": 2.8702344710000034,
+            "retained_bytes": 16777216,
+            "transient_bytes": 1245184,
+            "execution_mode": "native_threads",
+            "backend": "local_sparse",
+            "schema_version": "mdstats.density-task-report.v2"
+          },
+          {
+            "task_id": "atomic-density-1",
+            "construction_order": 1,
+            "initial_workers": 1,
+            "maximum_workers": 2,
+            "worker_allocation_history": [
+              1,
+              2,
+              1,
+              2,
+              1,
+              2
+            ],
+            "wall_seconds": 2.8822396119994664,
+            "retained_bytes": 16777216,
+            "transient_bytes": 1245184,
+            "execution_mode": "native_threads",
+            "backend": "local_sparse",
+            "schema_version": "mdstats.density-task-report.v2"
+          },
+          {
+            "task_id": "atomic-density-2",
+            "construction_order": 2,
+            "initial_workers": 1,
+            "maximum_workers": 3,
+            "worker_allocation_history": [
+              1,
+              2,
+              3,
+              1,
+              2,
+              3,
+              1,
+              2,
+              3
+            ],
+            "wall_seconds": 5.92821550500048,
+            "retained_bytes": 16777216,
+            "transient_bytes": 4968448,
+            "execution_mode": "native_threads",
+            "backend": "local_sparse",
+            "schema_version": "mdstats.density-task-report.v2"
+          }
+        ]
+      },
+      "memory_contract": "shared_sparse_cic_workspace_estimator_v1",
+      "hybrid_execution_plan_authority": "scene_preplanned_before_worker_admission_v1",
+      "hybrid_execution_plans": {
+        "Na": {
+          "content_identity": "1e407edd5e8ca0914c8b2078d7bad372945dbf86134965ddc0d5e3e18ecd138e",
+          "direct_tile_count": 6,
+          "fft_tile_count": 0,
+          "direct_pair_count": 6846042
+        },
+        "Si": {
+          "content_identity": "b49e994fc9cb80f013b6899b1792a32d43bf0f9ee1714613575cade4f716c3b5",
+          "direct_tile_count": 6,
+          "fft_tile_count": 0,
+          "direct_pair_count": 7618525
+        },
+        "O": {
+          "content_identity": "4d83f9f8489f36b0f714d9854bfec6d341f8a8f6937c23f1287a3ed2fe281eac",
+          "direct_tile_count": 8,
+          "fft_tile_count": 0,
+          "direct_pair_count": 38758803
+        }
+      },
+      "execution_journal": {
+        "schema_version": "mdstats.density-execution-journal.v1",
+        "timings": [
+          {
+            "field_key": "atomic-density-1",
+            "stage": "preprocessing",
+            "wall_seconds": 0.006942463000086718,
+            "metadata": {
+              "frame_count": 101,
+              "atom_count": 24
+            }
+          },
+          {
+            "field_key": "atomic-density-2",
+            "stage": "preprocessing",
+            "wall_seconds": 0.0005146749999767053,
+            "metadata": {
+              "frame_count": 101,
+              "atom_count": 96
+            }
+          },
+          {
+            "field_key": "atomic-density-0",
+            "stage": "preprocessing",
+            "wall_seconds": 0.00046838700018270174,
+            "metadata": {
+              "frame_count": 101,
+              "atom_count": 24
+            }
+          },
+          {
+            "field_key": "atomic-density-0",
+            "stage": "planning",
+            "wall_seconds": 0.9750330710003254,
+            "metadata": {
+              "backend": "local_sparse",
+              "grid_shape": [
+                64,
+                64,
+                64
+              ]
+            }
+          },
+          {
+            "field_key": "atomic-density-1",
+            "stage": "planning",
+            "wall_seconds": 1.1440216720002354,
+            "metadata": {
+              "backend": "local_sparse",
+              "grid_shape": [
+                64,
+                64,
+                64
+              ]
+            }
+          },
+          {
+            "field_key": "atomic-density-2",
+            "stage": "planning",
+            "wall_seconds": 2.2407841470003405,
+            "metadata": {
+              "backend": "local_sparse",
+              "grid_shape": [
+                64,
+                64,
+                64
+              ]
+            }
+          },
+          {
+            "field_key": "atomic-density-0",
+            "stage": "realization",
+            "wall_seconds": 1.5962230089999139,
+            "metadata": {
+              "backend": "local_sparse",
+              "hybrid_execution_plan_authority": "phase_b_approved_execution_plan",
+              "hybrid_execution_plan_identity": "1e407edd5e8ca0914c8b2078d7bad372945dbf86134965ddc0d5e3e18ecd138e"
+            }
+          },
+          {
+            "field_key": "atomic-density-1",
+            "stage": "realization",
+            "wall_seconds": 1.5456586219997916,
+            "metadata": {
+              "backend": "local_sparse",
+              "hybrid_execution_plan_authority": "phase_b_approved_execution_plan",
+              "hybrid_execution_plan_identity": "b49e994fc9cb80f013b6899b1792a32d43bf0f9ee1714613575cade4f716c3b5"
+            }
+          },
+          {
+            "field_key": "atomic-density-2",
+            "stage": "realization",
+            "wall_seconds": 3.4280551940000805,
+            "metadata": {
+              "backend": "local_sparse",
+              "hybrid_execution_plan_authority": "phase_b_approved_execution_plan",
+              "hybrid_execution_plan_identity": "4d83f9f8489f36b0f714d9854bfec6d341f8a8f6937c23f1287a3ed2fe281eac"
+            }
+          }
+        ],
+        "stage_totals_seconds": {
+          "planning": 4.359838890000901,
+          "preprocessing": 0.007925525000246125,
+          "realization": 6.569936824999786
+        }
+      },
+      "fields": {
+        "Na": {
+          "content_identity": "26d885fd5e1156b75ac89a10d89d428010f2a91ff0c92b87c0200b4d042d99b1",
+          "integral": 24.0,
+          "hdr": [
+            0.13535502170665586,
+            0.04356945158092796,
+            0.008924842403607133
+          ],
+          "mesh_counts": [
+            8914,
+            17684
+          ]
+        },
+        "Si": {
+          "content_identity": "ed83dec28b2f071151321577bfe54bbfa352c0cfc4e5bf422db4c668570a0ee3",
+          "integral": 24.0,
+          "hdr": [
+            0.13014872580682016,
+            0.04220835910862338,
+            0.008678677027665721
+          ],
+          "mesh_counts": [
+            9126,
+            18072
+          ]
+        },
+        "O": {
+          "content_identity": "32bcf7e677940d59d64db5e206399ace68ef18a6489b25e24909f9ae75d7219b",
+          "integral": 95.99999999999999,
+          "hdr": [
+            0.12807955256267922,
+            0.042884606058534634,
+            0.012718827334177382
+          ],
+          "mesh_counts": [
+            37021,
+            72614
+          ]
+        }
+      }
+    },
+    {
+      "selected_frames": 1001,
+      "mode": "auto",
+      "scene_preplanning_wall_seconds": 2.079403337000258,
+      "preparation_wall_seconds": 11.173375651999777,
+      "contouring_wall_seconds": 1.1217591209997408,
+      "total_wall_seconds": 12.295152309000514,
+      "cold_total_wall_seconds_including_calibration": 12.608016822000536,
+      "cpu_seconds": 14.432638507000002,
+      "normalized_cpu_utilization": 0.43056634379533254,
+      "rss_baseline_bytes": 339456000,
+      "rss_peak_bytes": 702943232,
+      "rss_peak_delta_bytes": 234045440,
+      "planning_rss_peak_delta_bytes": 234045440,
+      "realization_rss_peak_delta_bytes": 156176384,
+      "autotune_profile": {
+        "schema_version": "mdstats.density-autotune-profile.v1",
+        "mode": "auto",
+        "max_parallel_tasks": 3,
+        "group_size_multiplier": 4,
+        "fft_worker_cap": 3,
+        "direct_fft_selection": "par_dens1_calibrated_time_model",
+        "cpu_gpu_selection": "par_dens5_transfer_vram_cost_model",
+        "calibration_wall_seconds": 0.31286451300002227,
+        "runtime_signature": "27a554cd5d93df2b98ef55eddfa37e658cf044437bc36dcc5d083650864bb340",
+        "field_concurrency_selection": "bounded_up_to_three_fields_v1",
+        "group_selection": "par_dens3_qualified_baseline_after_probe_v1",
+        "fft_selection": "par_dens3_live_worker_fail_safe_v1",
+        "fft_seconds_by_workers": {
+          "1": 0.02466002050005045,
+          "2": 0.03910340599986739,
+          "3": 0.012503340500188642
+        },
+        "group_seconds_by_multiplier": {
+          "1": 0.0037935704999654263,
+          "2": 0.003428297000027669,
+          "4": 0.0024059274996943714,
+          "8": 0.0017177944996547012
+        },
+        "scientific_identity_includes_profile": false
+      },
+      "scheduler": {
+        "schema_version": "mdstats.density-scheduler-report.v2",
+        "max_threads": 3,
+        "max_memory_bytes": 1349877760,
+        "peak_reserved_bytes": 124145664,
+        "maximum_concurrent_tasks": 3,
+        "wall_seconds": 9.08341364700027,
+        "execution_policy": "par_dens2_global_resource_scheduler_v1",
+        "cpu_budget_obeyed": true,
+        "memory_budget_obeyed": true,
+        "tasks": [
+          {
+            "task_id": "atomic-density-0",
+            "construction_order": 0,
+            "initial_workers": 1,
+            "maximum_workers": 2,
+            "worker_allocation_history": [
+              1,
+              2,
+              1,
+              2,
+              1,
+              2
+            ],
+            "wall_seconds": 4.778413879999789,
+            "retained_bytes": 16777216,
+            "transient_bytes": 12304384,
+            "execution_mode": "native_threads",
+            "backend": "local_sparse",
+            "schema_version": "mdstats.density-task-report.v2"
+          },
+          {
+            "task_id": "atomic-density-1",
+            "construction_order": 1,
+            "initial_workers": 1,
+            "maximum_workers": 1,
+            "worker_allocation_history": [
+              1
+            ],
+            "wall_seconds": 4.387049959000251,
+            "retained_bytes": 16777216,
+            "transient_bytes": 12304384,
+            "execution_mode": "native_threads",
+            "backend": "local_sparse",
+            "schema_version": "mdstats.density-task-report.v2"
+          },
+          {
+            "task_id": "atomic-density-2",
+            "construction_order": 2,
+            "initial_workers": 1,
+            "maximum_workers": 3,
+            "worker_allocation_history": [
+              1,
+              2,
+              3,
+              1,
+              2,
+              3,
+              1,
+              2,
+              3
+            ],
+            "wall_seconds": 9.08149896499981,
+            "retained_bytes": 16777216,
+            "transient_bytes": 49205248,
+            "execution_mode": "native_threads",
+            "backend": "local_sparse",
+            "schema_version": "mdstats.density-task-report.v2"
+          }
+        ]
+      },
+      "memory_contract": "shared_sparse_cic_workspace_estimator_v1",
+      "hybrid_execution_plan_authority": "scene_preplanned_before_worker_admission_v1",
+      "hybrid_execution_plans": {
+        "Na": {
+          "content_identity": "81920686c9ab3fed7cea75403975257a520125a823afea567b3d47b951f771f0",
+          "direct_tile_count": 6,
+          "fft_tile_count": 0,
+          "direct_pair_count": 9454058
+        },
+        "Si": {
+          "content_identity": "c1fc7c3523ffc8fa79da384201a87d5a2e3091b3d0e339ed7e12332b2d2e3ef3",
+          "direct_tile_count": 6,
+          "fft_tile_count": 0,
+          "direct_pair_count": 10736805
+        },
+        "O": {
+          "content_identity": "98efcb59e5eadf0268d96b56a0fcfb9a8043a904ecd6fb9da754f358025fa43a",
+          "direct_tile_count": 8,
+          "fft_tile_count": 0,
+          "direct_pair_count": 56894436
+        }
+      },
+      "execution_journal": {
+        "schema_version": "mdstats.density-execution-journal.v1",
+        "timings": [
+          {
+            "field_key": "atomic-density-2",
+            "stage": "preprocessing",
+            "wall_seconds": 0.006489728999440558,
+            "metadata": {
+              "frame_count": 1001,
+              "atom_count": 96
+            }
+          },
+          {
+            "field_key": "atomic-density-1",
+            "stage": "preprocessing",
+            "wall_seconds": 0.007767599000544578,
+            "metadata": {
+              "frame_count": 1001,
+              "atom_count": 24
+            }
+          },
+          {
+            "field_key": "atomic-density-0",
+            "stage": "preprocessing",
+            "wall_seconds": 0.0006215539997356245,
+            "metadata": {
+              "frame_count": 1001,
+              "atom_count": 24
+            }
+          },
+          {
+            "field_key": "atomic-density-1",
+            "stage": "planning",
+            "wall_seconds": 1.9760062559998914,
+            "metadata": {
+              "backend": "local_sparse",
+              "grid_shape": [
+                64,
+                64,
+                64
+              ]
+            }
+          },
+          {
+            "field_key": "atomic-density-0",
+            "stage": "planning",
+            "wall_seconds": 3.085120880999966,
+            "metadata": {
+              "backend": "local_sparse",
+              "grid_shape": [
+                64,
+                64,
+                64
+              ]
+            }
+          },
+          {
+            "field_key": "atomic-density-1",
+            "stage": "realization",
+            "wall_seconds": 2.175291503999688,
+            "metadata": {
+              "backend": "local_sparse",
+              "hybrid_execution_plan_authority": "phase_b_approved_execution_plan",
+              "hybrid_execution_plan_identity": "c1fc7c3523ffc8fa79da384201a87d5a2e3091b3d0e339ed7e12332b2d2e3ef3"
+            }
+          },
+          {
+            "field_key": "atomic-density-2",
+            "stage": "planning",
+            "wall_seconds": 4.3764208190004865,
+            "metadata": {
+              "backend": "local_sparse",
+              "grid_shape": [
+                64,
+                64,
+                64
+              ]
+            }
+          },
+          {
+            "field_key": "atomic-density-0",
+            "stage": "realization",
+            "wall_seconds": 1.4302024409998921,
+            "metadata": {
+              "backend": "local_sparse",
+              "hybrid_execution_plan_authority": "phase_b_approved_execution_plan",
+              "hybrid_execution_plan_identity": "81920686c9ab3fed7cea75403975257a520125a823afea567b3d47b951f771f0"
+            }
+          },
+          {
+            "field_key": "atomic-density-2",
+            "stage": "realization",
+            "wall_seconds": 4.4685136530006275,
+            "metadata": {
+              "backend": "local_sparse",
+              "hybrid_execution_plan_authority": "phase_b_approved_execution_plan",
+              "hybrid_execution_plan_identity": "98efcb59e5eadf0268d96b56a0fcfb9a8043a904ecd6fb9da754f358025fa43a"
+            }
+          }
+        ],
+        "stage_totals_seconds": {
+          "planning": 9.437547956000344,
+          "preprocessing": 0.014878881999720761,
+          "realization": 8.074007598000208
+        }
+      },
+      "fields": {
+        "Na": {
+          "content_identity": "0afa4d24b730d135170fe2b839bdf8b4ad8fa5f3e262356c6e63fba4908b2b40",
+          "integral": 24.0,
+          "hdr": [
+            0.13513431116637561,
+            0.04360239118984809,
+            0.008930928732163484
+          ],
+          "mesh_counts": [
+            8898,
+            17656
+          ]
+        },
+        "Si": {
+          "content_identity": "a367480c2f101bde835a4e22b9d9e12b7d1d14a01a21f527ebea68341c6ac00e",
+          "integral": 24.0,
+          "hdr": [
+            0.13048945161355913,
+            0.04232589558515969,
+            0.008658333026632709
+          ],
+          "mesh_counts": [
+            9119,
+            18054
+          ]
+        },
+        "O": {
+          "content_identity": "fbb4668245430569ae2b68e3fa9eea33e28b64ef9deb060aa2eb96ac1bdb0b33",
+          "integral": 96.0,
+          "hdr": [
+            0.1278368923758253,
+            0.042863424722379556,
+            0.012727932049722623
+          ],
+          "mesh_counts": [
+            37075,
+            72726
+          ]
+        }
+      }
+    },
+    {
+      "selected_frames": 10001,
+      "mode": "auto",
+      "scene_preplanning_wall_seconds": 4.072882006999862,
+      "preparation_wall_seconds": 16.74000899800012,
+      "contouring_wall_seconds": 1.0505546410004172,
+      "total_wall_seconds": 17.79058001300018,
+      "cold_total_wall_seconds_including_calibration": 18.17890592600088,
+      "cpu_seconds": 21.415832396,
+      "normalized_cpu_utilization": 0.4264400813356489,
+      "rss_baseline_bytes": 339578880,
+      "rss_peak_bytes": 1144643584,
+      "rss_peak_delta_bytes": 637562880,
+      "planning_rss_peak_delta_bytes": 637562880,
+      "realization_rss_peak_delta_bytes": 587960320,
+      "autotune_profile": {
+        "schema_version": "mdstats.density-autotune-profile.v1",
+        "mode": "auto",
+        "max_parallel_tasks": 3,
+        "group_size_multiplier": 4,
+        "fft_worker_cap": 3,
+        "direct_fft_selection": "par_dens1_calibrated_time_model",
+        "cpu_gpu_selection": "par_dens5_transfer_vram_cost_model",
+        "calibration_wall_seconds": 0.3883259130006991,
+        "runtime_signature": "eb1fbfcaf06a7d106f7610c53ea6c311ce96afb97468cb646e1f1d332c6fdaa9",
+        "field_concurrency_selection": "bounded_up_to_three_fields_v1",
+        "group_selection": "par_dens3_qualified_baseline_after_probe_v1",
+        "fft_selection": "par_dens3_live_worker_fail_safe_v1",
+        "fft_seconds_by_workers": {
+          "1": 0.02514469600009761,
+          "2": 0.0337562334998438,
+          "3": 0.018835057499927643
+        },
+        "group_seconds_by_multiplier": {
+          "1": 0.00383352000017112,
+          "2": 0.0034107464998669457,
+          "4": 0.002416227500361856,
+          "8": 0.0017331865001324331
+        },
+        "scientific_identity_includes_profile": false
+      },
+      "scheduler": {
+        "schema_version": "mdstats.density-scheduler-report.v2",
+        "max_threads": 3,
+        "max_memory_bytes": 1346007859,
+        "peak_reserved_bytes": 787697664,
+        "maximum_concurrent_tasks": 3,
+        "wall_seconds": 12.664587085000676,
+        "execution_policy": "par_dens2_global_resource_scheduler_v1",
+        "cpu_budget_obeyed": true,
+        "memory_budget_obeyed": true,
+        "tasks": [
+          {
+            "task_id": "atomic-density-0",
+            "construction_order": 0,
+            "initial_workers": 1,
+            "maximum_workers": 1,
+            "worker_allocation_history": [
+              1
+            ],
+            "wall_seconds": 4.353853865999554,
+            "retained_bytes": 16777216,
+            "transient_bytes": 122896384,
+            "execution_mode": "native_threads",
+            "backend": "local_sparse",
+            "schema_version": "mdstats.density-task-report.v2"
+          },
+          {
+            "task_id": "atomic-density-1",
+            "construction_order": 1,
+            "initial_workers": 1,
+            "maximum_workers": 2,
+            "worker_allocation_history": [
+              1,
+              2,
+              1,
+              2,
+              1,
+              2
+            ],
+            "wall_seconds": 5.657453156999509,
+            "retained_bytes": 16777216,
+            "transient_bytes": 122896384,
+            "execution_mode": "native_threads",
+            "backend": "local_sparse",
+            "schema_version": "mdstats.density-task-report.v2"
+          },
+          {
+            "task_id": "atomic-density-2",
+            "construction_order": 2,
+            "initial_workers": 1,
+            "maximum_workers": 3,
+            "worker_allocation_history": [
+              1,
+              2,
+              3,
+              1,
+              2,
+              3,
+              1,
+              2,
+              3
+            ],
+            "wall_seconds": 12.660963461999927,
+            "retained_bytes": 16777216,
+            "transient_bytes": 491573248,
+            "execution_mode": "native_threads",
+            "backend": "local_sparse",
+            "schema_version": "mdstats.density-task-report.v2"
+          }
+        ]
+      },
+      "memory_contract": "shared_sparse_cic_workspace_estimator_v1",
+      "hybrid_execution_plan_authority": "scene_preplanned_before_worker_admission_v1",
+      "hybrid_execution_plans": {
+        "Na": {
+          "content_identity": "8329c8fad03bd07f9ca3c5b19e13cc7d221e4b19846fc61049c80ee7f1c6552b",
+          "direct_tile_count": 6,
+          "fft_tile_count": 0,
+          "direct_pair_count": 11452592
+        },
+        "Si": {
+          "content_identity": "417ae568705cbfa796f5fd711a97019943d65a3c9715ab5d743ee660bc0db64a",
+          "direct_tile_count": 6,
+          "fft_tile_count": 0,
+          "direct_pair_count": 13110950
+        },
+        "O": {
+          "content_identity": "f2c655430b1f28ba1a465a9ff911d6b9aa6f05955cb5a151dc56f3a3c05cd751",
+          "direct_tile_count": 6,
+          "fft_tile_count": 2,
+          "direct_pair_count": 42585783
+        }
+      },
+      "execution_journal": {
+        "schema_version": "mdstats.density-execution-journal.v1",
+        "timings": [
+          {
+            "field_key": "atomic-density-2",
+            "stage": "preprocessing",
+            "wall_seconds": 0.014420190000237199,
+            "metadata": {
+              "frame_count": 10001,
+              "atom_count": 96
+            }
+          },
+          {
+            "field_key": "atomic-density-1",
+            "stage": "preprocessing",
+            "wall_seconds": 0.005577238000114448,
+            "metadata": {
+              "frame_count": 10001,
+              "atom_count": 24
+            }
+          },
+          {
+            "field_key": "atomic-density-0",
+            "stage": "preprocessing",
+            "wall_seconds": 0.013453153000227758,
+            "metadata": {
+              "frame_count": 10001,
+              "atom_count": 24
+            }
+          },
+          {
+            "field_key": "atomic-density-0",
+            "stage": "planning",
+            "wall_seconds": 1.7770235479993062,
+            "metadata": {
+              "backend": "local_sparse",
+              "grid_shape": [
+                64,
+                64,
+                64
+              ]
+            }
+          },
+          {
+            "field_key": "atomic-density-1",
+            "stage": "planning",
+            "wall_seconds": 3.414664585000537,
+            "metadata": {
+              "backend": "local_sparse",
+              "grid_shape": [
+                64,
+                64,
+                64
+              ]
+            }
+          },
+          {
+            "field_key": "atomic-density-0",
+            "stage": "realization",
+            "wall_seconds": 2.3440844839997226,
+            "metadata": {
+              "backend": "local_sparse",
+              "hybrid_execution_plan_authority": "phase_b_approved_execution_plan",
+              "hybrid_execution_plan_identity": "8329c8fad03bd07f9ca3c5b19e13cc7d221e4b19846fc61049c80ee7f1c6552b"
+            }
+          },
+          {
+            "field_key": "atomic-density-1",
+            "stage": "realization",
+            "wall_seconds": 2.016616757999145,
+            "metadata": {
+              "backend": "local_sparse",
+              "hybrid_execution_plan_authority": "phase_b_approved_execution_plan",
+              "hybrid_execution_plan_identity": "417ae568705cbfa796f5fd711a97019943d65a3c9715ab5d743ee660bc0db64a"
+            }
+          },
+          {
+            "field_key": "atomic-density-2",
+            "stage": "planning",
+            "wall_seconds": 7.1169945499996174,
+            "metadata": {
+              "backend": "local_sparse",
+              "grid_shape": [
+                64,
+                64,
+                64
+              ]
+            }
+          },
+          {
+            "field_key": "atomic-density-2",
+            "stage": "realization",
+            "wall_seconds": 5.355519370000366,
+            "metadata": {
+              "backend": "local_sparse",
+              "hybrid_execution_plan_authority": "phase_b_approved_execution_plan",
+              "hybrid_execution_plan_identity": "f2c655430b1f28ba1a465a9ff911d6b9aa6f05955cb5a151dc56f3a3c05cd751"
+            }
+          }
+        ],
+        "stage_totals_seconds": {
+          "planning": 12.30868268299946,
+          "preprocessing": 0.033450581000579405,
+          "realization": 9.716220611999233
+        }
+      },
+      "fields": {
+        "Na": {
+          "content_identity": "c7235020b81826ba06a52975aa1a10f0e3eaa507336527e94b2a5e03f4468af2",
+          "integral": 24.0,
+          "hdr": [
+            0.13505804188746803,
+            0.04354916582574185,
+            0.008952990015735874
+          ],
+          "mesh_counts": [
+            8893,
+            17646
+          ]
+        },
+        "Si": {
+          "content_identity": "f98de4aecf6b1c3dbaa027c0bd0449719948061c521e092372cbf7f2e3212623",
+          "integral": 24.0,
+          "hdr": [
+            0.13051344285329888,
+            0.04230308311877027,
+            0.008670453954772488
+          ],
+          "mesh_counts": [
+            9116,
+            18048
+          ]
+        },
+        "O": {
+          "content_identity": "525a8d705bf2df31bd1a5b11fae9c7a4a0ecf5acb5f4084a8bd2396dda845bde",
+          "integral": 96.0,
+          "hdr": [
+            0.12773151441195138,
+            0.04286168086809876,
+            0.012725281185094585
+          ],
+          "mesh_counts": [
+            37083,
+            72734
+          ]
+        }
+      }
+    }
+  ],
+  "small_scale_deterministic_repeat": {
+    "selected_frames": 101,
+    "mode": "auto",
+    "scene_preplanning_wall_seconds": 2.051027385999987,
+    "preparation_wall_seconds": 7.924868764999701,
+    "contouring_wall_seconds": 1.140320268999858,
+    "total_wall_seconds": 9.065290183999423,
+    "cold_total_wall_seconds_including_calibration": 9.336771952999698,
+    "cpu_seconds": 10.003337761000001,
+    "normalized_cpu_utilization": 0.4207572414397527,
+    "rss_baseline_bytes": 339374080,
+    "rss_peak_bytes": 693350400,
+    "rss_peak_delta_bytes": 198086656,
+    "planning_rss_peak_delta_bytes": 198086656,
+    "realization_rss_peak_delta_bytes": 155893760,
+    "autotune_profile": {
+      "schema_version": "mdstats.density-autotune-profile.v1",
+      "mode": "auto",
+      "max_parallel_tasks": 3,
+      "group_size_multiplier": 4,
+      "fft_worker_cap": 3,
+      "direct_fft_selection": "par_dens1_calibrated_time_model",
+      "cpu_gpu_selection": "par_dens5_transfer_vram_cost_model",
+      "calibration_wall_seconds": 0.27148176900027465,
+      "runtime_signature": "4f0e2eb2e78305f15c70afea89a588d962c6fa09913e8a57fcd4c072ddc01c22",
+      "field_concurrency_selection": "bounded_up_to_three_fields_v1",
+      "group_selection": "par_dens3_qualified_baseline_after_probe_v1",
+      "fft_selection": "par_dens3_live_worker_fail_safe_v1",
+      "fft_seconds_by_workers": {
+        "1": 0.021567788000083965,
+        "2": 0.032636601000376686,
+        "3": 0.018676379000226007
+      },
+      "group_seconds_by_multiplier": {
+        "1": 0.006300038000517816,
+        "2": 0.005974595999759913,
+        "4": 0.003876208000292536,
+        "8": 0.0019500045000313548
+      },
+      "scientific_identity_includes_profile": false
+    },
+    "scheduler": {
+      "schema_version": "mdstats.density-scheduler-report.v2",
+      "max_threads": 3,
+      "max_memory_bytes": 1353560883,
+      "peak_reserved_bytes": 57790464,
+      "maximum_concurrent_tasks": 3,
+      "wall_seconds": 5.862451734000388,
+      "execution_policy": "par_dens2_global_resource_scheduler_v1",
+      "cpu_budget_obeyed": true,
+      "memory_budget_obeyed": true,
+      "tasks": [
+        {
+          "task_id": "atomic-density-0",
+          "construction_order": 0,
+          "initial_workers": 1,
+          "maximum_workers": 2,
+          "worker_allocation_history": [
+            1,
+            2,
+            1,
+            2,
+            1,
+            2
+          ],
+          "wall_seconds": 2.7951793810007075,
+          "retained_bytes": 16777216,
+          "transient_bytes": 1245184,
+          "execution_mode": "native_threads",
+          "backend": "local_sparse",
+          "schema_version": "mdstats.density-task-report.v2"
+        },
+        {
+          "task_id": "atomic-density-1",
+          "construction_order": 1,
+          "initial_workers": 1,
+          "maximum_workers": 1,
+          "worker_allocation_history": [
+            1
+          ],
+          "wall_seconds": 2.784456993999811,
+          "retained_bytes": 16777216,
+          "transient_bytes": 1245184,
+          "execution_mode": "native_threads",
+          "backend": "local_sparse",
+          "schema_version": "mdstats.density-task-report.v2"
+        },
+        {
+          "task_id": "atomic-density-2",
+          "construction_order": 2,
+          "initial_workers": 1,
+          "maximum_workers": 3,
+          "worker_allocation_history": [
+            1,
+            2,
+            3,
+            1,
+            2,
+            3,
+            1,
+            2,
+            3
+          ],
+          "wall_seconds": 5.860951523999574,
+          "retained_bytes": 16777216,
+          "transient_bytes": 4968448,
+          "execution_mode": "native_threads",
+          "backend": "local_sparse",
+          "schema_version": "mdstats.density-task-report.v2"
+        }
+      ]
+    },
+    "memory_contract": "shared_sparse_cic_workspace_estimator_v1",
+    "hybrid_execution_plan_authority": "scene_preplanned_before_worker_admission_v1",
+    "hybrid_execution_plans": {
+      "Na": {
+        "content_identity": "2b8aa37c51e309d3e98f4187667512f5d069ded70857efc621b3c777b88decbd",
+        "direct_tile_count": 6,
+        "fft_tile_count": 0,
+        "direct_pair_count": 6846042
+      },
+      "Si": {
+        "content_identity": "a2624e61a46aa5fa17eef53de5a2ee6b4101c094878178b3b7f0fc1b6fcd9ceb",
+        "direct_tile_count": 6,
+        "fft_tile_count": 0,
+        "direct_pair_count": 7618525
+      },
+      "O": {
+        "content_identity": "b91674a82560507ac2e50def7499670bde06403cfe8bc2b4e70339a3280d2407",
+        "direct_tile_count": 8,
+        "fft_tile_count": 0,
+        "direct_pair_count": 38758803
+      }
+    },
+    "execution_journal": {
+      "schema_version": "mdstats.density-execution-journal.v1",
+      "timings": [
+        {
+          "field_key": "atomic-density-1",
+          "stage": "preprocessing",
+          "wall_seconds": 0.0018818480002664728,
+          "metadata": {
+            "frame_count": 101,
+            "atom_count": 24
+          }
+        },
+        {
+          "field_key": "atomic-density-0",
+          "stage": "preprocessing",
+          "wall_seconds": 0.00046702400049980497,
+          "metadata": {
+            "frame_count": 101,
+            "atom_count": 24
+          }
+        },
+        {
+          "field_key": "atomic-density-2",
+          "stage": "preprocessing",
+          "wall_seconds": 0.0004474750003282679,
+          "metadata": {
+            "frame_count": 101,
+            "atom_count": 96
+          }
+        },
+        {
+          "field_key": "atomic-density-0",
+          "stage": "planning",
+          "wall_seconds": 0.996234068999911,
+          "metadata": {
+            "backend": "local_sparse",
+            "grid_shape": [
+              64,
+              64,
+              64
+            ]
+          }
+        },
+        {
+          "field_key": "atomic-density-1",
+          "stage": "planning",
+          "wall_seconds": 1.1722975439997754,
+          "metadata": {
+            "backend": "local_sparse",
+            "grid_shape": [
+              64,
+              64,
+              64
+            ]
+          }
+        },
+        {
+          "field_key": "atomic-density-2",
+          "stage": "planning",
+          "wall_seconds": 2.187870492000002,
+          "metadata": {
+            "backend": "local_sparse",
+            "grid_shape": [
+              64,
+              64,
+              64
+            ]
+          }
+        },
+        {
+          "field_key": "atomic-density-1",
+          "stage": "realization",
+          "wall_seconds": 1.4570961230001558,
+          "metadata": {
+            "backend": "local_sparse",
+            "hybrid_execution_plan_authority": "phase_b_approved_execution_plan",
+            "hybrid_execution_plan_identity": "a2624e61a46aa5fa17eef53de5a2ee6b4101c094878178b3b7f0fc1b6fcd9ceb"
+          }
+        },
+        {
+          "field_key": "atomic-density-0",
+          "stage": "realization",
+          "wall_seconds": 1.5372010969995245,
+          "metadata": {
+            "backend": "local_sparse",
+            "hybrid_execution_plan_authority": "phase_b_approved_execution_plan",
+            "hybrid_execution_plan_identity": "2b8aa37c51e309d3e98f4187667512f5d069ded70857efc621b3c777b88decbd"
+          }
+        },
+        {
+          "field_key": "atomic-density-2",
+          "stage": "realization",
+          "wall_seconds": 3.389397199999621,
+          "metadata": {
+            "backend": "local_sparse",
+            "hybrid_execution_plan_authority": "phase_b_approved_execution_plan",
+            "hybrid_execution_plan_identity": "b91674a82560507ac2e50def7499670bde06403cfe8bc2b4e70339a3280d2407"
+          }
+        }
+      ],
+      "stage_totals_seconds": {
+        "planning": 4.356402104999688,
+        "preprocessing": 0.0027963470010945457,
+        "realization": 6.383694419999301
+      }
+    },
+    "fields": {
+      "Na": {
+        "content_identity": "26d885fd5e1156b75ac89a10d89d428010f2a91ff0c92b87c0200b4d042d99b1",
+        "integral": 24.0,
+        "hdr": [
+          0.13535502170665586,
+          0.04356945158092796,
+          0.008924842403607133
+        ],
+        "mesh_counts": [
+          8914,
+          17684
+        ]
+      },
+      "Si": {
+        "content_identity": "ed83dec28b2f071151321577bfe54bbfa352c0cfc4e5bf422db4c668570a0ee3",
+        "integral": 24.0,
+        "hdr": [
+          0.13014872580682016,
+          0.04220835910862338,
+          0.008678677027665721
+        ],
+        "mesh_counts": [
+          9126,
+          18072
+        ]
+      },
+      "O": {
+        "content_identity": "32bcf7e677940d59d64db5e206399ace68ef18a6489b25e24909f9ae75d7219b",
+        "integral": 95.99999999999999,
+        "hdr": [
+          0.12807955256267922,
+          0.042884606058534634,
+          0.012718827334177382
+        ],
+        "mesh_counts": [
+          37021,
+          72614
+        ]
+      }
+    }
+  },
+  "long_trajectory_auto_repeats": [
+    {
+      "selected_frames": 10001,
+      "mode": "auto",
+      "scene_preplanning_wall_seconds": 4.072882006999862,
+      "preparation_wall_seconds": 16.74000899800012,
+      "contouring_wall_seconds": 1.0505546410004172,
+      "total_wall_seconds": 17.79058001300018,
+      "cold_total_wall_seconds_including_calibration": 18.17890592600088,
+      "cpu_seconds": 21.415832396,
+      "normalized_cpu_utilization": 0.4264400813356489,
+      "rss_baseline_bytes": 339578880,
+      "rss_peak_bytes": 1144643584,
+      "rss_peak_delta_bytes": 637562880,
+      "planning_rss_peak_delta_bytes": 637562880,
+      "realization_rss_peak_delta_bytes": 587960320,
+      "autotune_profile": {
+        "schema_version": "mdstats.density-autotune-profile.v1",
+        "mode": "auto",
+        "max_parallel_tasks": 3,
+        "group_size_multiplier": 4,
+        "fft_worker_cap": 3,
+        "direct_fft_selection": "par_dens1_calibrated_time_model",
+        "cpu_gpu_selection": "par_dens5_transfer_vram_cost_model",
+        "calibration_wall_seconds": 0.3883259130006991,
+        "runtime_signature": "eb1fbfcaf06a7d106f7610c53ea6c311ce96afb97468cb646e1f1d332c6fdaa9",
+        "field_concurrency_selection": "bounded_up_to_three_fields_v1",
+        "group_selection": "par_dens3_qualified_baseline_after_probe_v1",
+        "fft_selection": "par_dens3_live_worker_fail_safe_v1",
+        "fft_seconds_by_workers": {
+          "1": 0.02514469600009761,
+          "2": 0.0337562334998438,
+          "3": 0.018835057499927643
+        },
+        "group_seconds_by_multiplier": {
+          "1": 0.00383352000017112,
+          "2": 0.0034107464998669457,
+          "4": 0.002416227500361856,
+          "8": 0.0017331865001324331
+        },
+        "scientific_identity_includes_profile": false
+      },
+      "scheduler": {
+        "schema_version": "mdstats.density-scheduler-report.v2",
+        "max_threads": 3,
+        "max_memory_bytes": 1346007859,
+        "peak_reserved_bytes": 787697664,
+        "maximum_concurrent_tasks": 3,
+        "wall_seconds": 12.664587085000676,
+        "execution_policy": "par_dens2_global_resource_scheduler_v1",
+        "cpu_budget_obeyed": true,
+        "memory_budget_obeyed": true,
+        "tasks": [
+          {
+            "task_id": "atomic-density-0",
+            "construction_order": 0,
+            "initial_workers": 1,
+            "maximum_workers": 1,
+            "worker_allocation_history": [
+              1
+            ],
+            "wall_seconds": 4.353853865999554,
+            "retained_bytes": 16777216,
+            "transient_bytes": 122896384,
+            "execution_mode": "native_threads",
+            "backend": "local_sparse",
+            "schema_version": "mdstats.density-task-report.v2"
+          },
+          {
+            "task_id": "atomic-density-1",
+            "construction_order": 1,
+            "initial_workers": 1,
+            "maximum_workers": 2,
+            "worker_allocation_history": [
+              1,
+              2,
+              1,
+              2,
+              1,
+              2
+            ],
+            "wall_seconds": 5.657453156999509,
+            "retained_bytes": 16777216,
+            "transient_bytes": 122896384,
+            "execution_mode": "native_threads",
+            "backend": "local_sparse",
+            "schema_version": "mdstats.density-task-report.v2"
+          },
+          {
+            "task_id": "atomic-density-2",
+            "construction_order": 2,
+            "initial_workers": 1,
+            "maximum_workers": 3,
+            "worker_allocation_history": [
+              1,
+              2,
+              3,
+              1,
+              2,
+              3,
+              1,
+              2,
+              3
+            ],
+            "wall_seconds": 12.660963461999927,
+            "retained_bytes": 16777216,
+            "transient_bytes": 491573248,
+            "execution_mode": "native_threads",
+            "backend": "local_sparse",
+            "schema_version": "mdstats.density-task-report.v2"
+          }
+        ]
+      },
+      "memory_contract": "shared_sparse_cic_workspace_estimator_v1",
+      "hybrid_execution_plan_authority": "scene_preplanned_before_worker_admission_v1",
+      "hybrid_execution_plans": {
+        "Na": {
+          "content_identity": "8329c8fad03bd07f9ca3c5b19e13cc7d221e4b19846fc61049c80ee7f1c6552b",
+          "direct_tile_count": 6,
+          "fft_tile_count": 0,
+          "direct_pair_count": 11452592
+        },
+        "Si": {
+          "content_identity": "417ae568705cbfa796f5fd711a97019943d65a3c9715ab5d743ee660bc0db64a",
+          "direct_tile_count": 6,
+          "fft_tile_count": 0,
+          "direct_pair_count": 13110950
+        },
+        "O": {
+          "content_identity": "f2c655430b1f28ba1a465a9ff911d6b9aa6f05955cb5a151dc56f3a3c05cd751",
+          "direct_tile_count": 6,
+          "fft_tile_count": 2,
+          "direct_pair_count": 42585783
+        }
+      },
+      "execution_journal": {
+        "schema_version": "mdstats.density-execution-journal.v1",
+        "timings": [
+          {
+            "field_key": "atomic-density-2",
+            "stage": "preprocessing",
+            "wall_seconds": 0.014420190000237199,
+            "metadata": {
+              "frame_count": 10001,
+              "atom_count": 96
+            }
+          },
+          {
+            "field_key": "atomic-density-1",
+            "stage": "preprocessing",
+            "wall_seconds": 0.005577238000114448,
+            "metadata": {
+              "frame_count": 10001,
+              "atom_count": 24
+            }
+          },
+          {
+            "field_key": "atomic-density-0",
+            "stage": "preprocessing",
+            "wall_seconds": 0.013453153000227758,
+            "metadata": {
+              "frame_count": 10001,
+              "atom_count": 24
+            }
+          },
+          {
+            "field_key": "atomic-density-0",
+            "stage": "planning",
+            "wall_seconds": 1.7770235479993062,
+            "metadata": {
+              "backend": "local_sparse",
+              "grid_shape": [
+                64,
+                64,
+                64
+              ]
+            }
+          },
+          {
+            "field_key": "atomic-density-1",
+            "stage": "planning",
+            "wall_seconds": 3.414664585000537,
+            "metadata": {
+              "backend": "local_sparse",
+              "grid_shape": [
+                64,
+                64,
+                64
+              ]
+            }
+          },
+          {
+            "field_key": "atomic-density-0",
+            "stage": "realization",
+            "wall_seconds": 2.3440844839997226,
+            "metadata": {
+              "backend": "local_sparse",
+              "hybrid_execution_plan_authority": "phase_b_approved_execution_plan",
+              "hybrid_execution_plan_identity": "8329c8fad03bd07f9ca3c5b19e13cc7d221e4b19846fc61049c80ee7f1c6552b"
+            }
+          },
+          {
+            "field_key": "atomic-density-1",
+            "stage": "realization",
+            "wall_seconds": 2.016616757999145,
+            "metadata": {
+              "backend": "local_sparse",
+              "hybrid_execution_plan_authority": "phase_b_approved_execution_plan",
+              "hybrid_execution_plan_identity": "417ae568705cbfa796f5fd711a97019943d65a3c9715ab5d743ee660bc0db64a"
+            }
+          },
+          {
+            "field_key": "atomic-density-2",
+            "stage": "planning",
+            "wall_seconds": 7.1169945499996174,
+            "metadata": {
+              "backend": "local_sparse",
+              "grid_shape": [
+                64,
+                64,
+                64
+              ]
+            }
+          },
+          {
+            "field_key": "atomic-density-2",
+            "stage": "realization",
+            "wall_seconds": 5.355519370000366,
+            "metadata": {
+              "backend": "local_sparse",
+              "hybrid_execution_plan_authority": "phase_b_approved_execution_plan",
+              "hybrid_execution_plan_identity": "f2c655430b1f28ba1a465a9ff911d6b9aa6f05955cb5a151dc56f3a3c05cd751"
+            }
+          }
+        ],
+        "stage_totals_seconds": {
+          "planning": 12.30868268299946,
+          "preprocessing": 0.033450581000579405,
+          "realization": 9.716220611999233
+        }
+      },
+      "fields": {
+        "Na": {
+          "content_identity": "c7235020b81826ba06a52975aa1a10f0e3eaa507336527e94b2a5e03f4468af2",
+          "integral": 24.0,
+          "hdr": [
+            0.13505804188746803,
+            0.04354916582574185,
+            0.008952990015735874
+          ],
+          "mesh_counts": [
+            8893,
+            17646
+          ]
+        },
+        "Si": {
+          "content_identity": "f98de4aecf6b1c3dbaa027c0bd0449719948061c521e092372cbf7f2e3212623",
+          "integral": 24.0,
+          "hdr": [
+            0.13051344285329888,
+            0.04230308311877027,
+            0.008670453954772488
+          ],
+          "mesh_counts": [
+            9116,
+            18048
+          ]
+        },
+        "O": {
+          "content_identity": "525a8d705bf2df31bd1a5b11fae9c7a4a0ecf5acb5f4084a8bd2396dda845bde",
+          "integral": 96.0,
+          "hdr": [
+            0.12773151441195138,
+            0.04286168086809876,
+            0.012725281185094585
+          ],
+          "mesh_counts": [
+            37083,
+            72734
+          ]
+        }
+      }
+    },
+    {
+      "selected_frames": 10001,
+      "mode": "auto",
+      "scene_preplanning_wall_seconds": 4.08132879599998,
+      "preparation_wall_seconds": 16.921480689999953,
+      "contouring_wall_seconds": 1.1155175700005202,
+      "total_wall_seconds": 18.037013893999756,
+      "cold_total_wall_seconds_including_calibration": 18.455445179999515,
+      "cpu_seconds": 21.542348834000002,
+      "normalized_cpu_utilization": 0.4243590189427263,
+      "rss_baseline_bytes": 339800064,
+      "rss_peak_bytes": 1149939712,
+      "rss_peak_delta_bytes": 630448128,
+      "planning_rss_peak_delta_bytes": 630448128,
+      "realization_rss_peak_delta_bytes": 532967424,
+      "autotune_profile": {
+        "schema_version": "mdstats.density-autotune-profile.v1",
+        "mode": "auto",
+        "max_parallel_tasks": 3,
+        "group_size_multiplier": 4,
+        "fft_worker_cap": 3,
+        "direct_fft_selection": "par_dens1_calibrated_time_model",
+        "cpu_gpu_selection": "par_dens5_transfer_vram_cost_model",
+        "calibration_wall_seconds": 0.418431285999759,
+        "runtime_signature": "b0a7ca7545314e22413c10f04b1f610e308bf2ad5335a890288b4a9adfdd35f0",
+        "field_concurrency_selection": "bounded_up_to_three_fields_v1",
+        "group_selection": "par_dens3_qualified_baseline_after_probe_v1",
+        "fft_selection": "par_dens3_live_worker_fail_safe_v1",
+        "fft_seconds_by_workers": {
+          "1": 0.024706339499971364,
+          "2": 0.054246936999788886,
+          "3": 0.018882255500102474
+        },
+        "group_seconds_by_multiplier": {
+          "1": 0.006016325500240782,
+          "2": 0.010328703000141104,
+          "4": 0.0036583595001502545,
+          "8": 0.0023851914997976564
+        },
+        "scientific_identity_includes_profile": false
+      },
+      "scheduler": {
+        "schema_version": "mdstats.density-scheduler-report.v2",
+        "max_threads": 3,
+        "max_memory_bytes": 1338002636,
+        "peak_reserved_bytes": 787697664,
+        "maximum_concurrent_tasks": 3,
+        "wall_seconds": 12.837689752999722,
+        "execution_policy": "par_dens2_global_resource_scheduler_v1",
+        "cpu_budget_obeyed": true,
+        "memory_budget_obeyed": true,
+        "tasks": [
+          {
+            "task_id": "atomic-density-0",
+            "construction_order": 0,
+            "initial_workers": 1,
+            "maximum_workers": 1,
+            "worker_allocation_history": [
+              1
+            ],
+            "wall_seconds": 4.6767280880003455,
+            "retained_bytes": 16777216,
+            "transient_bytes": 122896384,
+            "execution_mode": "native_threads",
+            "backend": "local_sparse",
+            "schema_version": "mdstats.density-task-report.v2"
+          },
+          {
+            "task_id": "atomic-density-1",
+            "construction_order": 1,
+            "initial_workers": 1,
+            "maximum_workers": 2,
+            "worker_allocation_history": [
+              1,
+              2,
+              1,
+              2,
+              1,
+              2
+            ],
+            "wall_seconds": 5.9765046040001835,
+            "retained_bytes": 16777216,
+            "transient_bytes": 122896384,
+            "execution_mode": "native_threads",
+            "backend": "local_sparse",
+            "schema_version": "mdstats.density-task-report.v2"
+          },
+          {
+            "task_id": "atomic-density-2",
+            "construction_order": 2,
+            "initial_workers": 1,
+            "maximum_workers": 3,
+            "worker_allocation_history": [
+              1,
+              2,
+              3,
+              1,
+              2,
+              3,
+              1,
+              2,
+              3
+            ],
+            "wall_seconds": 12.835189305000313,
+            "retained_bytes": 16777216,
+            "transient_bytes": 491573248,
+            "execution_mode": "native_threads",
+            "backend": "local_sparse",
+            "schema_version": "mdstats.density-task-report.v2"
+          }
+        ]
+      },
+      "memory_contract": "shared_sparse_cic_workspace_estimator_v1",
+      "hybrid_execution_plan_authority": "scene_preplanned_before_worker_admission_v1",
+      "hybrid_execution_plans": {
+        "Na": {
+          "content_identity": "3bceb7e00631796089804fd674efc27d3065810a804601586029572474b4bfd4",
+          "direct_tile_count": 6,
+          "fft_tile_count": 0,
+          "direct_pair_count": 11452592
+        },
+        "Si": {
+          "content_identity": "976490147264f0e6de6e4fdc9d10efdc30ee8f36f9157538bd0546bf7394d193",
+          "direct_tile_count": 6,
+          "fft_tile_count": 0,
+          "direct_pair_count": 13110950
+        },
+        "O": {
+          "content_identity": "0136f8680b09d77ee4bac21c231e72fff6be58bf8e5d8c050beeaf82a4346ac7",
+          "direct_tile_count": 6,
+          "fft_tile_count": 2,
+          "direct_pair_count": 42585783
+        }
+      },
+      "execution_journal": {
+        "schema_version": "mdstats.density-execution-journal.v1",
+        "timings": [
+          {
+            "field_key": "atomic-density-0",
+            "stage": "preprocessing",
+            "wall_seconds": 0.006953498000257241,
+            "metadata": {
+              "frame_count": 10001,
+              "atom_count": 24
+            }
+          },
+          {
+            "field_key": "atomic-density-1",
+            "stage": "preprocessing",
+            "wall_seconds": 0.0057499790000292705,
+            "metadata": {
+              "frame_count": 10001,
+              "atom_count": 24
+            }
+          },
+          {
+            "field_key": "atomic-density-2",
+            "stage": "preprocessing",
+            "wall_seconds": 0.013360976000512892,
+            "metadata": {
+              "frame_count": 10001,
+              "atom_count": 96
+            }
+          },
+          {
+            "field_key": "atomic-density-0",
+            "stage": "planning",
+            "wall_seconds": 2.0706647889992382,
+            "metadata": {
+              "backend": "local_sparse",
+              "grid_shape": [
+                64,
+                64,
+                64
+              ]
+            }
+          },
+          {
+            "field_key": "atomic-density-1",
+            "stage": "planning",
+            "wall_seconds": 3.8053548030002275,
+            "metadata": {
+              "backend": "local_sparse",
+              "grid_shape": [
+                64,
+                64,
+                64
+              ]
+            }
+          },
+          {
+            "field_key": "atomic-density-0",
+            "stage": "realization",
+            "wall_seconds": 2.4464685040002223,
+            "metadata": {
+              "backend": "local_sparse",
+              "hybrid_execution_plan_authority": "phase_b_approved_execution_plan",
+              "hybrid_execution_plan_identity": "3bceb7e00631796089804fd674efc27d3065810a804601586029572474b4bfd4"
+            }
+          },
+          {
+            "field_key": "atomic-density-1",
+            "stage": "realization",
+            "wall_seconds": 1.9653159460003735,
+            "metadata": {
+              "backend": "local_sparse",
+              "hybrid_execution_plan_authority": "phase_b_approved_execution_plan",
+              "hybrid_execution_plan_identity": "976490147264f0e6de6e4fdc9d10efdc30ee8f36f9157538bd0546bf7394d193"
+            }
+          },
+          {
+            "field_key": "atomic-density-2",
+            "stage": "planning",
+            "wall_seconds": 7.3103518139996595,
+            "metadata": {
+              "backend": "local_sparse",
+              "grid_shape": [
+                64,
+                64,
+                64
+              ]
+            }
+          },
+          {
+            "field_key": "atomic-density-2",
+            "stage": "realization",
+            "wall_seconds": 5.308486029000051,
+            "metadata": {
+              "backend": "local_sparse",
+              "hybrid_execution_plan_authority": "phase_b_approved_execution_plan",
+              "hybrid_execution_plan_identity": "0136f8680b09d77ee4bac21c231e72fff6be58bf8e5d8c050beeaf82a4346ac7"
+            }
+          }
+        ],
+        "stage_totals_seconds": {
+          "planning": 13.186371405999125,
+          "preprocessing": 0.026064453000799404,
+          "realization": 9.720270479000646
+        }
+      },
+      "fields": {
+        "Na": {
+          "content_identity": "c7235020b81826ba06a52975aa1a10f0e3eaa507336527e94b2a5e03f4468af2",
+          "integral": 24.0,
+          "hdr": [
+            0.13505804188746803,
+            0.04354916582574185,
+            0.008952990015735874
+          ],
+          "mesh_counts": [
+            8893,
+            17646
+          ]
+        },
+        "Si": {
+          "content_identity": "f98de4aecf6b1c3dbaa027c0bd0449719948061c521e092372cbf7f2e3212623",
+          "integral": 24.0,
+          "hdr": [
+            0.13051344285329888,
+            0.04230308311877027,
+            0.008670453954772488
+          ],
+          "mesh_counts": [
+            9116,
+            18048
+          ]
+        },
+        "O": {
+          "content_identity": "525a8d705bf2df31bd1a5b11fae9c7a4a0ecf5acb5f4084a8bd2396dda845bde",
+          "integral": 96.0,
+          "hdr": [
+            0.12773151441195138,
+            0.04286168086809876,
+            0.012725281185094585
+          ],
+          "mesh_counts": [
+            37083,
+            72734
+          ]
+        }
+      }
+    }
+  ],
+  "long_trajectory_serial_repeats": [
+    {
+      "selected_frames": 10001,
+      "mode": "off",
+      "scene_preplanning_wall_seconds": 4.170223205000184,
+      "preparation_wall_seconds": 18.23674934199971,
+      "contouring_wall_seconds": 1.1529823660002876,
+      "total_wall_seconds": 19.389747621000424,
+      "cold_total_wall_seconds_including_calibration": 19.389747621000424,
+      "cpu_seconds": 18.776275714999997,
+      "normalized_cpu_utilization": 1.0295845692059682,
+      "rss_baseline_bytes": 337031168,
+      "rss_peak_bytes": 993722368,
+      "rss_peak_delta_bytes": 633200640,
+      "planning_rss_peak_delta_bytes": 633200640,
+      "realization_rss_peak_delta_bytes": 376766464,
+      "autotune_profile": {
+        "schema_version": "mdstats.density-autotune-profile.v1",
+        "mode": "off",
+        "max_parallel_tasks": null,
+        "group_size_multiplier": 4,
+        "fft_worker_cap": 1,
+        "direct_fft_selection": "par_dens1_calibrated_time_model",
+        "cpu_gpu_selection": "par_dens5_policy_no_autotune_override",
+        "calibration_wall_seconds": 0.0,
+        "runtime_signature": "25269ac2711859d203628b29cfc6a4c71ad164279cb51e1d2bcb47cacb19f4c3",
+        "field_concurrency_selection": "bounded_up_to_three_fields_v1",
+        "group_selection": "par_dens3_qualified_baseline_v1",
+        "fft_selection": "calibrated_with_single_worker_guard_v1",
+        "fft_seconds_by_workers": {},
+        "group_seconds_by_multiplier": {},
+        "scientific_identity_includes_profile": false
+      },
+      "scheduler": {
+        "schema_version": "mdstats.density-scheduler-report.v2",
+        "max_threads": 1,
+        "max_memory_bytes": 1341784064,
+        "peak_reserved_bytes": 508350464,
+        "maximum_concurrent_tasks": 1,
+        "wall_seconds": 14.061781071999576,
+        "execution_policy": "par_dens2_global_resource_scheduler_v1",
+        "cpu_budget_obeyed": true,
+        "memory_budget_obeyed": true,
+        "tasks": [
+          {
+            "task_id": "atomic-density-0",
+            "construction_order": 0,
+            "initial_workers": 1,
+            "maximum_workers": 1,
+            "worker_allocation_history": [
+              1
+            ],
+            "wall_seconds": 1.7352668559997255,
+            "retained_bytes": 16777216,
+            "transient_bytes": 122896384,
+            "execution_mode": "native_threads",
+            "backend": "local_sparse",
+            "schema_version": "mdstats.density-task-report.v2"
+          },
+          {
+            "task_id": "atomic-density-1",
+            "construction_order": 1,
+            "initial_workers": 1,
+            "maximum_workers": 1,
+            "worker_allocation_history": [
+              1
+            ],
+            "wall_seconds": 2.3315682500006005,
+            "retained_bytes": 16777216,
+            "transient_bytes": 122896384,
+            "execution_mode": "native_threads",
+            "backend": "local_sparse",
+            "schema_version": "mdstats.density-task-report.v2"
+          },
+          {
+            "task_id": "atomic-density-2",
+            "construction_order": 2,
+            "initial_workers": 1,
+            "maximum_workers": 1,
+            "worker_allocation_history": [
+              1
+            ],
+            "wall_seconds": 9.992344753999532,
+            "retained_bytes": 16777216,
+            "transient_bytes": 491573248,
+            "execution_mode": "native_threads",
+            "backend": "local_sparse",
+            "schema_version": "mdstats.density-task-report.v2"
+          }
+        ]
+      },
+      "memory_contract": "shared_sparse_cic_workspace_estimator_v1",
+      "hybrid_execution_plan_authority": "scene_preplanned_before_worker_admission_v1",
+      "hybrid_execution_plans": {
+        "Na": {
+          "content_identity": "1df8227522d22d009b55e06939c51d4870c2268ac090ada53f7956fa6fea5bcd",
+          "direct_tile_count": 6,
+          "fft_tile_count": 0,
+          "direct_pair_count": 11452592
+        },
+        "Si": {
+          "content_identity": "3882c748956753261e22e8c4497242376f843dd09bfe76fac56c66add042cc6a",
+          "direct_tile_count": 6,
+          "fft_tile_count": 0,
+          "direct_pair_count": 13110950
+        },
+        "O": {
+          "content_identity": "03f30cee4ed3b66981fc50fe13a02e84ab7cccccfd6e1c5e8a87ad07d0873c4b",
+          "direct_tile_count": 6,
+          "fft_tile_count": 2,
+          "direct_pair_count": 42585783
+        }
+      },
+      "execution_journal": {
+        "schema_version": "mdstats.density-execution-journal.v1",
+        "timings": [
+          {
+            "field_key": "atomic-density-2",
+            "stage": "preprocessing",
+            "wall_seconds": 0.014113565000116068,
+            "metadata": {
+              "frame_count": 10001,
+              "atom_count": 96
+            }
+          },
+          {
+            "field_key": "atomic-density-2",
+            "stage": "planning",
+            "wall_seconds": 4.609013585999492,
+            "metadata": {
+              "backend": "local_sparse",
+              "grid_shape": [
+                64,
+                64,
+                64
+              ]
+            }
+          },
+          {
+            "field_key": "atomic-density-2",
+            "stage": "realization",
+            "wall_seconds": 5.266770408999946,
+            "metadata": {
+              "backend": "local_sparse",
+              "hybrid_execution_plan_authority": "phase_b_approved_execution_plan",
+              "hybrid_execution_plan_identity": "03f30cee4ed3b66981fc50fe13a02e84ab7cccccfd6e1c5e8a87ad07d0873c4b"
+            }
+          },
+          {
+            "field_key": "atomic-density-0",
+            "stage": "preprocessing",
+            "wall_seconds": 0.0128424949998589,
+            "metadata": {
+              "frame_count": 10001,
+              "atom_count": 24
+            }
+          },
+          {
+            "field_key": "atomic-density-0",
+            "stage": "planning",
+            "wall_seconds": 0.5947973060001459,
+            "metadata": {
+              "backend": "local_sparse",
+              "grid_shape": [
+                64,
+                64,
+                64
+              ]
+            }
+          },
+          {
+            "field_key": "atomic-density-0",
+            "stage": "realization",
+            "wall_seconds": 1.1245741059992724,
+            "metadata": {
+              "backend": "local_sparse",
+              "hybrid_execution_plan_authority": "phase_b_approved_execution_plan",
+              "hybrid_execution_plan_identity": "1df8227522d22d009b55e06939c51d4870c2268ac090ada53f7956fa6fea5bcd"
+            }
+          },
+          {
+            "field_key": "atomic-density-1",
+            "stage": "preprocessing",
+            "wall_seconds": 0.004956149000463483,
+            "metadata": {
+              "frame_count": 10001,
+              "atom_count": 24
+            }
+          },
+          {
+            "field_key": "atomic-density-1",
+            "stage": "planning",
+            "wall_seconds": 1.0811356900003375,
+            "metadata": {
+              "backend": "local_sparse",
+              "grid_shape": [
+                64,
+                64,
+                64
+              ]
+            }
+          },
+          {
+            "field_key": "atomic-density-1",
+            "stage": "realization",
+            "wall_seconds": 1.2444480909998674,
+            "metadata": {
+              "backend": "local_sparse",
+              "hybrid_execution_plan_authority": "phase_b_approved_execution_plan",
+              "hybrid_execution_plan_identity": "3882c748956753261e22e8c4497242376f843dd09bfe76fac56c66add042cc6a"
+            }
+          }
+        ],
+        "stage_totals_seconds": {
+          "planning": 6.284946581999975,
+          "preprocessing": 0.03191220900043845,
+          "realization": 7.635792605999086
+        }
+      },
+      "fields": {
+        "Na": {
+          "content_identity": "c7235020b81826ba06a52975aa1a10f0e3eaa507336527e94b2a5e03f4468af2",
+          "integral": 24.0,
+          "hdr": [
+            0.13505804188746803,
+            0.04354916582574185,
+            0.008952990015735874
+          ],
+          "mesh_counts": [
+            8893,
+            17646
+          ]
+        },
+        "Si": {
+          "content_identity": "f98de4aecf6b1c3dbaa027c0bd0449719948061c521e092372cbf7f2e3212623",
+          "integral": 24.0,
+          "hdr": [
+            0.13051344285329888,
+            0.04230308311877027,
+            0.008670453954772488
+          ],
+          "mesh_counts": [
+            9116,
+            18048
+          ]
+        },
+        "O": {
+          "content_identity": "525a8d705bf2df31bd1a5b11fae9c7a4a0ecf5acb5f4084a8bd2396dda845bde",
+          "integral": 96.0,
+          "hdr": [
+            0.12773151441195138,
+            0.04286168086809876,
+            0.012725281185094585
+          ],
+          "mesh_counts": [
+            37083,
+            72734
+          ]
+        }
+      }
+    },
+    {
+      "selected_frames": 10001,
+      "mode": "off",
+      "scene_preplanning_wall_seconds": 4.90493212399997,
+      "preparation_wall_seconds": 19.425076439000804,
+      "contouring_wall_seconds": 1.0825207150001006,
+      "total_wall_seconds": 20.50761464000061,
+      "cold_total_wall_seconds_including_calibration": 20.50761464000061,
+      "cpu_seconds": 20.047227689,
+      "normalized_cpu_utilization": 1.0320282523444833,
+      "rss_baseline_bytes": 336404480,
+      "rss_peak_bytes": 979013632,
+      "rss_peak_delta_bytes": 640335872,
+      "planning_rss_peak_delta_bytes": 640335872,
+      "realization_rss_peak_delta_bytes": 422731776,
+      "autotune_profile": {
+        "schema_version": "mdstats.density-autotune-profile.v1",
+        "mode": "off",
+        "max_parallel_tasks": null,
+        "group_size_multiplier": 4,
+        "fft_worker_cap": 1,
+        "direct_fft_selection": "par_dens1_calibrated_time_model",
+        "cpu_gpu_selection": "par_dens5_policy_no_autotune_override",
+        "calibration_wall_seconds": 0.0,
+        "runtime_signature": "aab67724be75f8f9ebe077b37099af2ffc0bf58634968ed3f4211f4be90322da",
+        "field_concurrency_selection": "bounded_up_to_three_fields_v1",
+        "group_selection": "par_dens3_qualified_baseline_v1",
+        "fft_selection": "calibrated_with_single_worker_guard_v1",
+        "fft_seconds_by_workers": {},
+        "group_seconds_by_multiplier": {},
+        "scientific_identity_includes_profile": false
+      },
+      "scheduler": {
+        "schema_version": "mdstats.density-scheduler-report.v2",
+        "max_threads": 1,
+        "max_memory_bytes": 1334021324,
+        "peak_reserved_bytes": 508350464,
+        "maximum_concurrent_tasks": 1,
+        "wall_seconds": 14.507879649999268,
+        "execution_policy": "par_dens2_global_resource_scheduler_v1",
+        "cpu_budget_obeyed": true,
+        "memory_budget_obeyed": true,
+        "tasks": [
+          {
+            "task_id": "atomic-density-0",
+            "construction_order": 0,
+            "initial_workers": 1,
+            "maximum_workers": 1,
+            "worker_allocation_history": [
+              1
+            ],
+            "wall_seconds": 1.8768798199998855,
+            "retained_bytes": 16777216,
+            "transient_bytes": 122896384,
+            "execution_mode": "native_threads",
+            "backend": "local_sparse",
+            "schema_version": "mdstats.density-task-report.v2"
+          },
+          {
+            "task_id": "atomic-density-1",
+            "construction_order": 1,
+            "initial_workers": 1,
+            "maximum_workers": 1,
+            "worker_allocation_history": [
+              1
+            ],
+            "wall_seconds": 2.4624035819997516,
+            "retained_bytes": 16777216,
+            "transient_bytes": 122896384,
+            "execution_mode": "native_threads",
+            "backend": "local_sparse",
+            "schema_version": "mdstats.density-task-report.v2"
+          },
+          {
+            "task_id": "atomic-density-2",
+            "construction_order": 2,
+            "initial_workers": 1,
+            "maximum_workers": 1,
+            "worker_allocation_history": [
+              1
+            ],
+            "wall_seconds": 10.163989073000266,
+            "retained_bytes": 16777216,
+            "transient_bytes": 491573248,
+            "execution_mode": "native_threads",
+            "backend": "local_sparse",
+            "schema_version": "mdstats.density-task-report.v2"
+          }
+        ]
+      },
+      "memory_contract": "shared_sparse_cic_workspace_estimator_v1",
+      "hybrid_execution_plan_authority": "scene_preplanned_before_worker_admission_v1",
+      "hybrid_execution_plans": {
+        "Na": {
+          "content_identity": "baea4b47a696ea0f58803b5e1928c4134915e634e3f9d135bd4bc731bf89a6e6",
+          "direct_tile_count": 6,
+          "fft_tile_count": 0,
+          "direct_pair_count": 11452592
+        },
+        "Si": {
+          "content_identity": "471e3e6716b391ff079f30b718a36648602002d11958363e8eea1fc2bedf688a",
+          "direct_tile_count": 6,
+          "fft_tile_count": 0,
+          "direct_pair_count": 13110950
+        },
+        "O": {
+          "content_identity": "e5ed60c87d90acd51edbed9acb150403f0ecaa338284d3facdc23342b7d44850",
+          "direct_tile_count": 6,
+          "fft_tile_count": 2,
+          "direct_pair_count": 42585783
+        }
+      },
+      "execution_journal": {
+        "schema_version": "mdstats.density-execution-journal.v1",
+        "timings": [
+          {
+            "field_key": "atomic-density-2",
+            "stage": "preprocessing",
+            "wall_seconds": 0.017946183999811183,
+            "metadata": {
+              "frame_count": 10001,
+              "atom_count": 96
+            }
+          },
+          {
+            "field_key": "atomic-density-2",
+            "stage": "planning",
+            "wall_seconds": 4.732573055999637,
+            "metadata": {
+              "backend": "local_sparse",
+              "grid_shape": [
+                64,
+                64,
+                64
+              ]
+            }
+          },
+          {
+            "field_key": "atomic-density-2",
+            "stage": "realization",
+            "wall_seconds": 5.306897066000602,
+            "metadata": {
+              "backend": "local_sparse",
+              "hybrid_execution_plan_authority": "phase_b_approved_execution_plan",
+              "hybrid_execution_plan_identity": "e5ed60c87d90acd51edbed9acb150403f0ecaa338284d3facdc23342b7d44850"
+            }
+          },
+          {
+            "field_key": "atomic-density-0",
+            "stage": "preprocessing",
+            "wall_seconds": 0.012737047999507922,
+            "metadata": {
+              "frame_count": 10001,
+              "atom_count": 24
+            }
+          },
+          {
+            "field_key": "atomic-density-0",
+            "stage": "planning",
+            "wall_seconds": 0.6491440820000207,
+            "metadata": {
+              "backend": "local_sparse",
+              "grid_shape": [
+                64,
+                64,
+                64
+              ]
+            }
+          },
+          {
+            "field_key": "atomic-density-0",
+            "stage": "realization",
+            "wall_seconds": 1.211914403999799,
+            "metadata": {
+              "backend": "local_sparse",
+              "hybrid_execution_plan_authority": "phase_b_approved_execution_plan",
+              "hybrid_execution_plan_identity": "baea4b47a696ea0f58803b5e1928c4134915e634e3f9d135bd4bc731bf89a6e6"
+            }
+          },
+          {
+            "field_key": "atomic-density-1",
+            "stage": "preprocessing",
+            "wall_seconds": 0.005280121000396321,
+            "metadata": {
+              "frame_count": 10001,
+              "atom_count": 24
+            }
+          },
+          {
+            "field_key": "atomic-density-1",
+            "stage": "planning",
+            "wall_seconds": 1.1271232810004221,
+            "metadata": {
+              "backend": "local_sparse",
+              "grid_shape": [
+                64,
+                64,
+                64
+              ]
+            }
+          },
+          {
+            "field_key": "atomic-density-1",
+            "stage": "realization",
+            "wall_seconds": 1.32788674800031,
+            "metadata": {
+              "backend": "local_sparse",
+              "hybrid_execution_plan_authority": "phase_b_approved_execution_plan",
+              "hybrid_execution_plan_identity": "471e3e6716b391ff079f30b718a36648602002d11958363e8eea1fc2bedf688a"
+            }
+          }
+        ],
+        "stage_totals_seconds": {
+          "planning": 6.50884041900008,
+          "preprocessing": 0.035963352999715426,
+          "realization": 7.846698218000711
+        }
+      },
+      "fields": {
+        "Na": {
+          "content_identity": "c7235020b81826ba06a52975aa1a10f0e3eaa507336527e94b2a5e03f4468af2",
+          "integral": 24.0,
+          "hdr": [
+            0.13505804188746803,
+            0.04354916582574185,
+            0.008952990015735874
+          ],
+          "mesh_counts": [
+            8893,
+            17646
+          ]
+        },
+        "Si": {
+          "content_identity": "f98de4aecf6b1c3dbaa027c0bd0449719948061c521e092372cbf7f2e3212623",
+          "integral": 24.0,
+          "hdr": [
+            0.13051344285329888,
+            0.04230308311877027,
+            0.008670453954772488
+          ],
+          "mesh_counts": [
+            9116,
+            18048
+          ]
+        },
+        "O": {
+          "content_identity": "525a8d705bf2df31bd1a5b11fae9c7a4a0ecf5acb5f4084a8bd2396dda845bde",
+          "integral": 96.0,
+          "hdr": [
+            0.12773151441195138,
+            0.04286168086809876,
+            0.012725281185094585
+          ],
+          "mesh_counts": [
+            37083,
+            72734
+          ]
+        }
+      }
+    }
+  ],
+  "long_trajectory_speedup_vs_single_worker_median": 1.1135931250243951,
+  "long_trajectory_speedup_classification": {
+    "auto_total_wall_seconds": [
+      17.79058001300018,
+      18.037013893999756
+    ],
+    "serial_total_wall_seconds": [
+      19.389747621000424,
+      20.50761464000061
+    ],
+    "auto_median_total_wall_seconds": 17.91379695349997,
+    "serial_median_total_wall_seconds": 19.948681130500518,
+    "auto_relative_mad": 0.006878326287812125,
+    "serial_relative_mad": 0.028018569540695724,
+    "gain_fraction": 0.11359312502439511,
+    "material_gain_floor": 0.05603713908139145,
+    "material": true
+  },
+  "long_trajectory_scientific_comparison": {
+    "max_absolute_pointwise_difference": {
+      "Na": 0.0,
+      "Si": 0.0,
+      "O": 0.0
+    },
+    "content_identity_equal": {
+      "Na": true,
+      "Si": true,
+      "O": true
+    },
+    "integrals_equal": {
+      "Na": true,
+      "Si": true,
+      "O": true
+    },
+    "hdr_50_80_95_equal": {
+      "Na": true,
+      "Si": true,
+      "O": true
+    },
+    "executor_partition_equal": {
+      "Na": true,
+      "Si": true,
+      "O": true
+    },
+    "auto_repeat_equal": {
+      "Na": true,
+      "Si": true,
+      "O": true
+    },
+    "serial_repeat_equal": {
+      "Na": true,
+      "Si": true,
+      "O": true
+    }
+  },
+  "deterministic_repeat_at_small_scale": {
+    "Na": true,
+    "Si": true,
+    "O": true
+  },
+  "bounded_full_framework_planner_audit": {
+    "selected_frames": 101,
+    "topology_digest": "e44dba385d87275bfd89804e9a55a30f43fe391ec0abf94dbb802dbc50d0b259",
+    "planning_approval_id": "85667438390535a92a7fd2b757e03a5098f48d3a4873a53c80171ecfe74f1194",
+    "predicted_scene_peak_bytes": 37639428,
+    "scheduler": {
+      "schema_version": "mdstats.density-scheduler-report.v2",
+      "max_threads": 3,
+      "max_memory_bytes": 1363758284,
+      "peak_reserved_bytes": 101067878,
+      "maximum_concurrent_tasks": 3,
+      "wall_seconds": 5.982325212999967,
+      "execution_policy": "par_dens2_global_resource_scheduler_v1",
+      "cpu_budget_obeyed": true,
+      "memory_budget_obeyed": true,
+      "tasks": [
+        {
+          "task_id": "atomic-density-0",
+          "construction_order": 0,
+          "initial_workers": 1,
+          "maximum_workers": 1,
+          "worker_allocation_history": [
+            1
+          ],
+          "wall_seconds": 3.025522046000333,
+          "retained_bytes": 1528628,
+          "transient_bytes": 31590734,
+          "execution_mode": "native_threads",
+          "backend": "local_sparse",
+          "schema_version": "mdstats.density-task-report.v2"
+        },
+        {
+          "task_id": "atomic-density-1",
+          "construction_order": 1,
+          "initial_workers": 1,
+          "maximum_workers": 2,
+          "worker_allocation_history": [
+            1,
+            2,
+            1,
+            2,
+            1,
+            2
+          ],
+          "wall_seconds": 3.047344958999929,
+          "retained_bytes": 1489112,
+          "transient_bytes": 31436310,
+          "execution_mode": "native_threads",
+          "backend": "local_sparse",
+          "schema_version": "mdstats.density-task-report.v2"
+        },
+        {
+          "task_id": "atomic-density-2",
+          "construction_order": 2,
+          "initial_workers": 1,
+          "maximum_workers": 3,
+          "worker_allocation_history": [
+            1,
+            2,
+            3,
+            1,
+            2,
+            3,
+            1,
+            2,
+            3
+          ],
+          "wall_seconds": 5.9781332259999544,
+          "retained_bytes": 1865156,
+          "transient_bytes": 33157938,
+          "execution_mode": "native_threads",
+          "backend": "local_sparse",
+          "schema_version": "mdstats.density-task-report.v2"
+        }
+      ]
+    },
+    "stage_wall_seconds": {
+      "preprocessing": 4.225564203999966,
+      "planning": 3.269350958999894,
+      "realization": 5.982563267999467,
+      "total_preparation": 13.478139472999828
+    },
+    "predicted_vs_observed": {
+      "atomic-density-0": {
+        "predicted_wall_seconds": 0.18084493483313482,
+        "observed_realization_wall_seconds": 1.6017798550001316,
+        "observed_over_predicted": 8.857200542985016,
+        "direct_tile_count": 6,
+        "fft_tile_count": 0,
+        "direct_pair_count": 6846042,
+        "fft_padded_node_count": 0
+      },
+      "atomic-density-1": {
+        "predicted_wall_seconds": 0.20125083327703927,
+        "observed_realization_wall_seconds": 1.584169111999472,
+        "observed_over_predicted": 7.871615169010136,
+        "direct_tile_count": 6,
+        "fft_tile_count": 0,
+        "direct_pair_count": 7618525,
+        "fft_padded_node_count": 0
+      },
+      "atomic-density-2": {
+        "predicted_wall_seconds": 1.0238519136670956,
+        "observed_realization_wall_seconds": 3.302225104000172,
+        "observed_over_predicted": 3.2252956310573317,
+        "direct_tile_count": 8,
+        "fft_tile_count": 0,
+        "direct_pair_count": 38758803,
+        "fft_padded_node_count": 0
+      }
+    }
+  },
+  "gpu": null,
+  "gpu_performance_authorized_on_this_host": false,
+  "acceptance": {
+    "cpu_budget_obeyed": true,
+    "declared_memory_budget_obeyed": true,
+    "measured_rss_budget_obeyed": true,
+    "memory_budget_obeyed": true,
+    "pointwise_reference_equal": true,
+    "content_identity_equal": true,
+    "integral_and_hdr_equal": true,
+    "executor_partition_equal": true,
+    "deterministic_repeat_equal": true,
+    "material_long_trajectory_speedup_observed": true,
+    "production_cpu_path_authorized": true
+  },
+  "environment": {
+    "python": "3.13.5",
+    "numpy": "2.3.5",
+    "platform": "Linux-6.18.35-x86_64-with-glibc2.41"
+  }
+}

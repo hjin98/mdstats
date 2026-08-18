@@ -1,0 +1,126 @@
+{
+  "adversarial_checks": [
+    "probe construction is deterministic and purchases semantic mode diversity before redundant motifs",
+    "wrong/reversed restoring-force direction is rejected despite finite/static predictions",
+    "same restoring direction with approximately twofold wrong curvature is rejected",
+    "reversed strain-stress increments are rejected",
+    "reference geometry drift is rejected",
+    "stress labels are required and round-trip for strain requests",
+    "partial-mode qualification is unsupported/fails policy construction in v1",
+    "failed candidate evidence survives campaign-record serialization",
+    "foundation head identity is persisted in campaign authority",
+    "changed DEPLOY policy/model/ML-IAP/LAMMPS executable authority invalidates downstream PES reuse"
+  ],
+  "date": "2026-08-13",
+  "gate": "PES-VERIFY1",
+  "qualification": {
+    "expected_skips": [
+      "tests/test_mlff_campaign_cli.py:337 real LTA training root not supplied"
+    ],
+    "focused_and_regression_pytest": {
+      "failed": 0,
+      "passed": 277,
+      "skipped": 1
+    },
+    "historical_test_debt": [
+      "tests/test_mlff_opt_verify1_specification.py exact-pins package version 0.20.140a0",
+      "tests/test_mlff_data9a5_deployment_specification.py exact-pins pyproject version 0.20.140a0"
+    ],
+    "pdf": {
+      "full_compare_dpi": 30,
+      "inspection_dpi": 120,
+      "no_clipping_overlap_or_broken_glyphs": true,
+      "pages_after": 130,
+      "pages_before": 128,
+      "render_compare_changed_pages": 49,
+      "result": "passed",
+      "visually_inspected_pages": [
+        123,
+        124,
+        125,
+        126
+      ]
+    },
+    "public_import": "mdstats 0.20.173a0 / mdstats.pes-verify1.2026-08.v1",
+    "python_compileall": "passed",
+    "real_dft_execution": "not fabricated in this container; campaign-time gate writes the exact request and waits for authenticated fixed-geometry labels"
+  },
+  "schema": "mdstats.mlff-pes-verify1-qualification.v1",
+  "scientific_contract": {
+    "all_generated_modes_required": true,
+    "atomistic_displacement_angstrom": 0.04,
+    "auto_vasp_protocol_rule": "identical INCAR/KPOINTS/POTCAR bytes across every probe; POTCAR contents not copied",
+    "base_selection": "first DEPLOY-VERIFY1 correlation-block-round-robin probes; one block before repeat when available",
+    "candidate_membership_authority": "absolute DFT qualification; failed candidates cannot enter RELAX-VERIFY1",
+    "centered_about_matched_q0": true,
+    "dft_geometry_rule": "fixed geometry/cell matching the requested probe within 1e-6 A",
+    "energy_curvature_tolerance": {
+      "atol_ev_per_angstrom2": 0.5,
+      "rtol": 0.3
+    },
+    "force_stiffness_tolerance": {
+      "atol_ev_per_angstrom2": 0.5,
+      "rtol": 0.3
+    },
+    "foundation_baseline_authority": "diagnostic matched baseline; candidate need not beat foundation mode-by-mode",
+    "maximum_base_configurations": 4,
+    "maximum_modes_per_base": 4,
+    "mode_types": [
+      "bond_stretch",
+      "angle_bend",
+      "coordination_breathing",
+      "strain"
+    ],
+    "projected_force_tolerance": {
+      "atol_ev_per_angstrom": 0.05,
+      "rtol": 0.25
+    },
+    "strain_amplitude": 0.01,
+    "strain_energy_curvature_tolerance": {
+      "atol_ev_per_atom": 1.0,
+      "rtol": 0.3
+    },
+    "strain_stress_tolerance": {
+      "atol_ev_per_angstrom3": 0.01,
+      "rtol": 0.3
+    },
+    "verify_stage_after_pass": "WAITING for RELAX-VERIFY1"
+  },
+  "scope": {
+    "implemented": [
+      "immutable PES policy/mode/probe/request/reference/model/run/campaign records",
+      "candidate-independent DEPLOY correlation-balanced base selection",
+      "generic bond-stretch, angle-bend, coordination-breathing, and strain finite-displacement discovery",
+      "symmetric q=+/- displacement plus matched q=0 base requests",
+      "restartable fixed-geometry DFT ExtXYZ/manifest/VASP POSCAR request workflow",
+      "identical-input VASP auto-collection and explicit-protocol external ExtXYZ ingestion",
+      "centered projected-force/restoring-direction, force-stiffness, energy-curvature, and strain stress/curvature qualification",
+      "matched untouched-foundation diagnostic on the exact candidate probe set",
+      "TRAIN2 verify progression DEPLOY -> PES -> WAITING for RELAX"
+    ],
+    "intentionally_deferred": [
+      "RELAX-VERIFY1 zero-K topology/geometry qualification",
+      "DYN-VERIFY2 short structural dynamical qualification",
+      "SELECT2 physical production publication"
+    ]
+  },
+  "sha256": {
+    "CHANGELOG.md": "bf86ad642782dcdde97a07a256e1e410145fff43f3fb9ce70b9348d3fbf5ec06",
+    "PKG-INFO": "7fa6f6802dab8f36898ae358587263d8c06dc6cd4acd841758f298ccf4ea900c",
+    "README.md": "5b63c1ef18467539598c83e8f0ff6aa35c1269f4be52305eb146f4d173522625",
+    "campaign.toml.example": "4b99f121367aef92db8714162b89f4dec9e7ec3fe484467c955fe8d327c078a8",
+    "docs/arch_manuals/mlff_training_data_architecture.md": "78aefd56429b9260217f8073c957bb4147df977ad07edc57ae1c0b5a972d702c",
+    "docs/arch_manuals/mlff_training_data_architecture.pdf": "dc1abc4ea92c31ba6535da9474da25a6b488311be1c19c8a92e08fc88fcd233c",
+    "mdstats/__init__.py": "ee1110424bf5c3c572d871811d22ad7617a3d0ad4c5d70d413ac63a17dc761d9",
+    "mdstats/_version.py": "1e8db2ed08ef18ef033f30abf159ba49726922558fb1132656240d4a6fcaaf2f",
+    "mdstats/training_data/__init__.py": "3590eef88451cf85fc9310dd307da4af33b8cd5c35eb166992416d4f5c3cda7e",
+    "mdstats/training_data/campaign_cli.py": "e2257c330b8746988a629c1022394e3a6984c9a5fe9ab18f2778d89aafae8152",
+    "mdstats/training_data/pes_verify.py": "30bab483548f1c73f67d4a006004312d1bd10d7c897b5bb916d7e7f044d14c2f",
+    "pyproject.toml": "3d7ac7c4c41cd342f851c7363d379a6c191f54b3049e61a3a782c006418da3cf",
+    "release/PATCH_NOTES_0.20.173a0.md": "c1ea0190b51ad8b8b37b339e80355d88520f2d7e338ede96d9ccfe3d6f611716",
+    "tests/test_mlff_deploy_verify1_specification.py": "10895163e546c40634e4dd3d76fc352cd8cd14b65b5a1052b921896e8f479e3e",
+    "tests/test_mlff_eval2_specification.py": "4ff31d2f164d2e331a433da860323d4c4a9c6c11aefbdab30507a275e17eb51e",
+    "tests/test_mlff_pes_verify1.py": "19966199b7c840c2a23158f4755f3b695baf1cee8b56d614c062c94bc2239c7a",
+    "tests/test_mlff_pes_verify1_specification.py": "3ac9e2bde91b8b0a4214c8888f5846071f268ed1d758ec7364225d857816f1e7"
+  }
+}

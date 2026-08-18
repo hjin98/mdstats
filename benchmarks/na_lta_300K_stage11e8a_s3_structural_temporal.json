@@ -1,0 +1,92 @@
+{
+  "analysis_seconds": 22.414868668000054,
+  "atom_count": 168,
+  "best_association_distance_max_angstrom": 2.1423960448435873,
+  "best_association_distance_median_angstrom": 0.4194514545443675,
+  "best_candidate_ring_size_counts": {
+    "4": 2,
+    "6": 16,
+    "8": 6
+  },
+  "circle_or_ellipse_substitution": false,
+  "core_visit_count": 29,
+  "evidence_pattern": "excursions_only",
+  "force_shape": [
+    1500,
+    168,
+    3
+  ],
+  "frame_count": 1500,
+  "mapping_status_counts": {
+    "unique": 24
+  },
+  "max_ring_planarity_rms_angstrom": 0.2076520371286512,
+  "maximum_framework_bond_angstrom": 1.7941573002400535,
+  "mean_framework_bond_angstrom": 1.6851575737110362,
+  "membership_class_counts": {
+    "basin": 396,
+    "core": 28221,
+    "core_overlap": 0,
+    "evidence_excluded": 0,
+    "numerically_unresolved": 0,
+    "supported_background": 0,
+    "transition_region": 7383,
+    "unsupported_unknown": 0
+  },
+  "minimum_framework_bond_angstrom": 1.5938252225349987,
+  "minimum_unique_margin_angstrom": 0.3594638300501596,
+  "missing_required_evidence": [
+    "force_density_agreement",
+    "transition_paths"
+  ],
+  "package_version": "0.20.13a0",
+  "parse_seconds": 2.646695082000406,
+  "partition_transfer_identity": "exact_registered_coordinate_identity",
+  "partition_transfer_performed": true,
+  "passage_count": 8,
+  "passage_outcome_counts": {
+    "return_excursion": 5,
+    "right_censored_exit": 3
+  },
+  "report_signature": "ef8de8822646e271b3571b20b9ed5c8b824ac41942bce9508ee30c9d9e57aaa5",
+  "report_status": "blocked_missing_required_evidence",
+  "reported_s3_wall_seconds": 22.402617858999292,
+  "represented_duration_ps": 1.499,
+  "residence_count": 26,
+  "ring_count": 82,
+  "ring_size_counts": {
+    "4": 36,
+    "6": 40,
+    "8": 6
+  },
+  "s2_grid_refinement_status": "unstable",
+  "s2_scale_status": "scale_ambiguous",
+  "sample_count": 36000,
+  "serrated_polygon_mapping": true,
+  "stage": "11E8a-S3",
+  "stride_factors": [
+    1,
+    2,
+    4
+  ],
+  "stride_jump_counts": [
+    0,
+    0,
+    0
+  ],
+  "stride_return_excursion_counts": [
+    5,
+    5,
+    5
+  ],
+  "stride_sensitive": false,
+  "structural_evidence_status": "partial",
+  "structural_mapping_signature": "23234df4e3325b7c77f85cdd1a6703bee27fc429803b05692befb0e1f5e96e58",
+  "structural_spatial_hypothesis_authoritative": false,
+  "temporal_assignment_signature": "7e7fe98677dccb9f8ca157fea5664e4f3fe139663d97b312ae27d5281a9bd03e",
+  "temporal_evidence_status": "partial",
+  "temporal_support_status": "persistent",
+  "total_seconds": 25.06156375000046,
+  "trajectory_path": "/mnt/data/vasprun(1).xml",
+  "trajectory_sha256": "ad54b98c5d927d722ac1cb8a4a3b1fe472a50603a6e8ece5497b06e55a8679eb"
+}

@@ -1,0 +1,82 @@
+{
+  "content_digest": "9723c726edb8315fe57731a739ec7ab745fc62f8748c7a102a6e35d260462379",
+  "contracts": {
+    "candidate_heads": [
+      "target_head",
+      "pt_head"
+    ],
+    "canonical_execution_authority": "FoundationInferenceIdentity.content_digest",
+    "canonical_source_head_authority": "FoundationPotentialIdentity.foundation_head",
+    "data6_baseline_reuse": "exact potential + inference identity required",
+    "persistent_candidate_cache": "historical key v1 retained",
+    "persistent_foundation_cache": "foundation inference digest bound in key v2",
+    "pes_foundation_authority": "foundation audit potential + inference identities",
+    "pseudolabel_baseline_reuse": "v4 generator identity must equal exact FoundationInferenceIdentity digest",
+    "target_first_eval2": "scientifically unchanged",
+    "theory_metadata": "reporting-only; does not enter scientific identity"
+  },
+  "date": "2026-08-14",
+  "gate": "MH1-EVAL1",
+  "modified_files": {
+    "mdstats/training_data/campaign_cli.py": "6477aa396f1dc848801740e55981cf712e5a5d14e731ea8b4e3c3192d901e252",
+    "mdstats/training_data/campaign_execution.py": "2d2f0101bc88c125c88a04d2527c4ba88d8d13c92036ffdd5d689604275f4547",
+    "mdstats/training_data/deploy_verify.py": "eb3fbf91f37bb86f4cbcc5602a391b886731f8bb7e3638a800643a5e69ddb3a8",
+    "mdstats/training_data/evaluation_predictions.py": "0b38d706ccbe438280dfdebf7a2aebf6a1862e459630d754e21c31c886bf4e07",
+    "mdstats/training_data/foundation_audit.py": "2bfa512b5cc2264317f4805f5033cb15f591dfd140675e7eccd89f11961f9ee2",
+    "mdstats/training_data/pes_verify.py": "0f6000dd406f42cbca2b216a662e5233db8c0c1194cd7531a4cf94b3d24a3298",
+    "tests/test_mlff_mh1_eval1_foundation_identity.py": "dc9e856dac34408bfb4602325c2cb628371ac5d752451615417cdeb80473d5f0"
+  },
+  "predecessor_package": {
+    "path": "mdstats-0.20.177a0-complete-source-package-mh1-train1.zip",
+    "sha256": "772fd5f6dc4876ddb0fef6e005007b1fcf787c2aba69c3a65f2f3f2ecdc5ea95"
+  },
+  "prior_gate_evidence": {
+    "accel1": "fe96fe97fde0728f4db2ad374921d151fd9eab8fad5238ab48522cb3d36451cd",
+    "lineage1": "356750755fd4e73224493e47f0570dbfc23ac8c71969b731c6bcb0d9463b7480",
+    "train1": "6f174165cf20bb56731c88774b8a8c68e208e9fa37057de1816cd6dbc2be7168"
+  },
+  "reporting": {
+    "foundation_fields": [
+      "family",
+      "head",
+      "checkpoint sha256",
+      "backend",
+      "kernel mode",
+      "dtype"
+    ],
+    "source_head_metadata": [
+      "descriptive domain",
+      "descriptive theory/reference"
+    ],
+    "target_reference_protocol": "unique electronic_structure.core_label_digest values from target source catalog"
+  },
+  "schema": "mdstats.mh1-eval1-evidence.v1",
+  "schemas": {
+    "candidate_prediction_key": "mdstats.evaluation-prediction-key.v1",
+    "checkpoint_evaluation_policy": "mdstats.checkpoint-evaluation-policy.v7",
+    "foundation_prediction_key": "mdstats.evaluation-prediction-key.v2",
+    "foundation_target_audit": "mdstats.foundation-target-audit.v2",
+    "pes_campaign_record": "mdstats.pes-verify-campaign.v2"
+  },
+  "status": "complete_e3nn_reference_canonical_foundation_evaluation",
+  "tests": {
+    "additional_mlcv_mf2": {
+      "deselected_preexisting_stale_spec": 1,
+      "failed": 0,
+      "passed": 29
+    },
+    "campaign_eval_pes_legacy_combined": {
+      "failed": 0,
+      "passed": 121,
+      "skipped": 2
+    },
+    "focused_eval1": {
+      "failed": 0,
+      "passed": 6
+    },
+    "known_environment_limits": [
+      "real MACE/CuEq tests not available in this isolated ASE-only unit environment"
+    ],
+    "known_preexisting_specification_failure": "test_mlff_eval_mf2_guard_reporting.py::test_mf2_remains_historical_while_new_configs_default_to_mlcv_nested_cv; predecessor TRAIN1 source also lacks the asserted literal"
+  }
+}

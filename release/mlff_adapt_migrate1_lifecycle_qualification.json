@@ -1,0 +1,97 @@
+{
+  "schema": "mdstats.mlff-adapt-migrate1-qualification.v1",
+  "package_version": "0.20.128a0",
+  "gate": "ADAPT-MIGRATE1",
+  "date": "2026-08-09",
+  "status": "qualified",
+  "revision_status": "ADAPT-PREC1 through ADAPT-MIGRATE1 implemented; seven-gate adaptive revision complete",
+  "migration_contract": {
+    "protocol_freeze_authority_schema": "mdstats.protocol-freeze-authority.v1",
+    "adaptive_migration_record_schema": "mdstats.adaptive-migration-record.v1",
+    "historical_scientific_freeze_rewritten": false,
+    "adaptive_scientific_freeze_rewritten": false,
+    "020127_adaptive_generic_alias_reconciled_idempotently": true,
+    "ambiguous_dual_historical_adaptive_authority": "fail_closed",
+    "adaptive_campaign_historical_evaluator_reactivation": "prohibited",
+    "historical_campaign_adaptive_topk_reinterpretation": "prohibited_without_new_campaign_identity",
+    "post_freeze_adaptive_evaluation": "authenticate_and_reuse_frozen_EVAL1_only",
+    "storage_authority_requires_schema_validation": true,
+    "storage_report_sqlite_mode": "read_only",
+    "storage_deletion_authority_broadened": false,
+    "historical_eval_mf_committee_refine_evidence_preserved": true
+  },
+  "precision_and_scientific_arithmetic": {
+    "single_model_inference_dtype": "float32",
+    "double_model_inference_dtype": "float64",
+    "scientific_analysis_dtype": "float64",
+    "new_refine_or_mixed_model_mode": false
+  },
+  "monitor_rationale_evidence": {
+    "target_default_configurations": 256,
+    "target_sampling": "common condition/trajectory/time-balanced systematic",
+    "target_force_rmse_95pct_resampling_half_width_mev_per_angstrom": 0.325,
+    "replay_default_configurations": 512,
+    "replay_labels": "TRUE_DFT",
+    "replay_force_rmse_95pct_random_subset_half_width_mev_per_angstrom": 2.704,
+    "provenance": "2026-08-09 fixed-checkpoint validation-size regression recorded in the adaptive architecture rationale"
+  },
+  "adaptive_policy_defaults": {
+    "maximum_target_force_rmse_ev_per_angstrom": 0.03,
+    "target_stop_fraction": 0.8,
+    "replay_stop_multiplier": 1.2,
+    "target_score_weight": 1.0,
+    "replay_score_weight": 1.0,
+    "default_derived_replay_force_rmse_ev_per_angstrom": 0.03,
+    "default_target_stop_force_rmse_ev_per_angstrom": 0.024,
+    "default_replay_stop_force_rmse_ev_per_angstrom": 0.036,
+    "max_num_epochs": 30,
+    "finalist_count": 5,
+    "finalist_rescue_batch_size": 5,
+    "checkpoint_strategy": "adaptive_topk"
+  },
+  "qualification": [
+    {
+      "scope": "complete adaptive lifecycle + historical EVAL-MF/refine + restart + STOR1-STOR5 + campaign CLI",
+      "result": "161 passed, 1 skipped",
+      "skip": "real LTA training root not supplied"
+    },
+    {
+      "scope": "MLFF specification/version/schema sweep",
+      "result": "146 passed, 1 deselected",
+      "deselection": "pre-existing release/mlff_data9a9a_real_mpa0_restart_smoke.json fixture absent from supplied source package"
+    },
+    {
+      "scope": "ADAPT-MIGRATE1 authority/reconciliation/storage-read-only focused runtime",
+      "result": "9 passed"
+    }
+  ],
+  "required_outcome_coverage": {
+    "binary_single_double_dtype": true,
+    "target_stop": true,
+    "replay_stop": true,
+    "max_epoch_stop": true,
+    "no_admissible_checkpoint": true,
+    "weight_ratio_1_to_1": true,
+    "weight_ratio_2_to_1": true,
+    "weight_ratio_1_to_2": true,
+    "champion_before_terminal_epoch": true,
+    "top_five_and_next_five_rescue": true,
+    "training_stop_restart": true,
+    "full_evaluation_restart_reuse": true,
+    "verification_score_ordered_fallback": true,
+    "first_passing_model_exact_bytes_published": true,
+    "historical_eval_mf_readable": true,
+    "historical_refine_readable_but_not_new_production": true,
+    "storage_authority_and_ownership_safety": true,
+    "020127_alias_migration_idempotent": true
+  },
+  "known_external_evidence_gap": {
+    "description": "The inherited DATA9A9A real-MPA0 restart-smoke release JSON is absent from the supplied source tree. The test has been the same known pre-existing gap throughout the adaptive releases and is not fabricated by MIGRATE1.",
+    "gate_impact": "none; unrelated to adaptive schema/restart/storage migration"
+  },
+  "pdf_verification": {
+    "mlff_adaptive_migration_spec.pdf": "5 pages rendered at 160 dpi and visually inspected",
+    "mlff_training_data_architecture.pdf": "89 pages; changed ADAPT-MIGRATE1/completion pages 87-89 rendered and visually inspected",
+    "mlff_campaign_cli_user_guide.pdf": "13 pages; changed migration/verification pages 8-9 rendered and visually inspected"
+  }
+}

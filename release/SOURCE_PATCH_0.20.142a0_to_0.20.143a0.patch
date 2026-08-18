@@ -1,0 +1,1806 @@
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats_par4/original142/mdstats-0.20.142a0-complete-source-package/CHANGELOG.md ./CHANGELOG.md
+--- /mnt/data/mdstats_par4/original142/mdstats-0.20.142a0-complete-source-package/CHANGELOG.md	2026-08-10 19:32:55.000000000 +0000
++++ ./CHANGELOG.md	2026-08-10 23:16:01.351424624 +0000
+@@ -1,3 +1,11 @@
++## 0.20.143a0 - 2026-08-10
++
++- Implement PAR-DENS4 parallel trajectory preprocessing: framework graph reconstruction/lifting and periodic atomic-mean calculations run through bounded scheduler leases with deterministic frame/item-order validation and collation.
++- Split hysteretic connectivity into frame-parallel stateless geometric candidate generation plus a deterministic collection-frame-order hysteresis fold; serial and parallel paths preserve exact connectivity-state and transition identities.
++- Add an execution-only `AtomicConnectivityGeometryCache` so compatible framework-only and full atomic-connectivity passes reuse exact periodic neighbor requests without changing scientific identity or provenance.
++- Hoist trajectory-wide connectivity state lookup and reusable framework geometry outside topology-category loops; independent topology-category scene preparation is admitted concurrently through the single PAR-DENS2 CPU/RAM authority.
++- Requalify the supplied 300 K Na-LTA source on 101 stride-100 frames: warm framework-to-full neighbor-geometry reuse reduces the broader connectivity pass from 1.730 s to 1.024 s versus a cold full pass (1.689x) with identical states. Four-worker hysteretic candidate generation remains exact but is overhead-dominated for this small 168-atom/frame case, so parallelism is bounded/optional rather than treated as a universal speedup. PAR-DENS5 is now the next density gate.
++
+ ## 0.20.142a0 - 2026-08-10
+ 
+ - Implement PAR-DENS3 concurrent density realization through the PAR-DENS2 global scheduler: independent atomic/framework fields execute concurrently only when aggregate CPU/RAM admission permits, with deterministic construction-order collation and dynamic CPU return to surviving fields.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats_par4/original142/mdstats-0.20.142a0-complete-source-package/PATCH_NOTES_0.20.143a0.md ./PATCH_NOTES_0.20.143a0.md
+--- /mnt/data/mdstats_par4/original142/mdstats-0.20.142a0-complete-source-package/PATCH_NOTES_0.20.143a0.md	1970-01-01 00:00:00.000000000 +0000
++++ ./PATCH_NOTES_0.20.143a0.md	2026-08-10 23:16:01.351646219 +0000
+@@ -0,0 +1,22 @@
++# mdstats 0.20.143a0 patch notes
++
++## PAR-DENS4: parallel trajectory preprocessing and geometry reuse
++
++- Split hysteretic connectivity into a frame-local geometric candidate phase and an authoritative deterministic hysteresis fold. `parallel_frame_workers` enables bounded candidate preparation without changing state/transition identity.
++- Add `AtomicConnectivityGeometryCache`, an execution-only exact-request cache that reuses compatible periodic neighbor geometry across framework-only and broader atomic-connectivity passes. Cache state is explicitly excluded from scientific identity.
++- Parallelize independent framework graph reconstruction/lifting over scene frames under PAR-DENS2 scheduler leases, then validate graph keys and residual winding deterministically in frame order.
++- Parallelize independent periodic atomic-mean calculations while preserving authoritative floating occupancy accumulation order.
++- Hoist frame-to-connectivity-state lookup and framework geometry caches out of partitioned topology-category loops. Independent category scenes now share the global CPU/RAM scheduler and reusable geometry instead of repeating trajectory-wide work.
++- Keep nested numerical/resource ownership single-authority: nested preprocessing reuses the active scheduler lease instead of creating another unconstrained worker pool.
++- Advance the framework-dynamics scene schema to `mdstats.framework-dynamics-scene.v15` for the new preprocessing provenance.
++
++## Qualification
++
++The supplied 300 K Na-LTA MLFF dump (SHA-256 `81c86cc40f5a11031f80817213eb558c02348494d1c6cad9b4775a5bc3c9f9cd`, 10,001 frames x 168 atoms) was sampled at stride 100 (101 frames).
++
++- Serial and four-worker hysteretic connectivity produced identical frame-state IDs, state digests, and transition records (94 observed states in this bounded sample).
++- A shared neighbor-geometry cache populated by framework-only connectivity gave 202 exact cache hits when the broader framework+Na-O connectivity was evaluated. The warm full pass measured 1.024 s versus 1.730 s cold in the qualification environment, approximately 1.689x faster, with identical scientific connectivity.
++- Four-worker geometric candidate generation measured slower than serial for this small dense 168-atom/frame workload because task/thread overhead exceeds the per-frame kernel cost. This is recorded as a granularity result, not hidden; PAR-DENS4 exposes bounded parallelism but does not claim it is always profitable.
++- Density/framework/connectivity regression chunks covering the complete relevant surface pass; the only skip is the existing optional `mdstats[interactive]` mesh-simplification dependency.
++
++PAR-DENS4 is closed. PAR-DENS5 (optional GPU density execution under an explicit VRAM budget) is the next gate.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats_par4/original142/mdstats-0.20.142a0-complete-source-package/docs/arch_manuals/mdstats_dynamical_framework_density_architecture_standard.md ./docs/arch_manuals/mdstats_dynamical_framework_density_architecture_standard.md
+--- /mnt/data/mdstats_par4/original142/mdstats-0.20.142a0-complete-source-package/docs/arch_manuals/mdstats_dynamical_framework_density_architecture_standard.md	2026-08-10 19:32:55.000000000 +0000
++++ ./docs/arch_manuals/mdstats_dynamical_framework_density_architecture_standard.md	2026-08-10 23:16:18.155483414 +0000
+@@ -2208,7 +2208,7 @@
+ 
+ On the 1,300-frame Na-LTA acceptance trajectory, all-frame Na, Si, Al, and O density preparation completes under a 4 GiB workspace limit in approximately 125 seconds total on the validation runtime. The four fields process approximately 978 million cumulative kernel pairs while retaining exact integrated measures of 24, 24, 24, and 96 atoms.
+ 
+-The framework-dynamics scene schema is `mdstats.framework-dynamics-scene.v14`.
++The framework-dynamics scene schema at the LD7 milestone was `mdstats.framework-dynamics-scene.v14`; PAR-DENS4 advances the current scene schema to `mdstats.framework-dynamics-scene.v15`.
+ 
+ ## 2026-07-21 - LD7 implementation update
+ 
+@@ -4588,7 +4588,8 @@
+ 
+ **Status:** PAR-DENS0 is `completed` in `mdstats 0.20.120a0`; PAR-DENS1 and
+ PAR-DENS2 are `completed` in `mdstats 0.20.141a0`; PAR-DENS3 is `completed` in
+-`mdstats 0.20.142a0`; PAR-DENS4 is the next implementation gate. The remaining
++`mdstats 0.20.142a0`; PAR-DENS4 is `completed` in `mdstats 0.20.143a0`; PAR-DENS5
++is the next implementation gate. The remaining
+ gates stay ordered and inactive until their predecessors qualify.
+ 
+ The trigger for this plan is the long-trajectory LTA density workflow. The current
+@@ -5025,8 +5026,7 @@
+ 
+ ## PAR-DENS4 - parallel trajectory preprocessing and geometry reuse
+ 
+-**Status:** `not_started`; depends on PAR-DENS2 and may proceed after PAR-DENS3
+-contracts are stable.
++**Status:** `completed` in `mdstats 0.20.143a0`; depends on PAR-DENS2 and follows PAR-DENS3.
+ 
+ This gate removes secondary long-trajectory bottlenecks outside density convolution.
+ 
+@@ -5048,10 +5048,60 @@
+ LAMMPS text parsing, small graph bookkeeping, and lightweight Plotly object assembly
+ are not priority GPU or high-thread targets unless profiling later proves otherwise.
+ 
++### PAR-DENS4 implementation record (0.20.143a0)
++
++Hysteretic atomic connectivity is now explicitly two-stage. The geometric outer/inner
++candidate sets for independent frames may be generated in bounded worker threads with
++stateless exact neighbor searches, while the bond-retention/formation state machine is
++folded once in authoritative collection-frame order. The parallel candidate path uses
++contiguous frame chunks to amortize executor/diagnostic setup. State canonicalization,
++frame-state IDs, transition records, and edge-image shifts are unchanged by worker
++count.
++
++`AtomicConnectivityGeometryCache` provides an execution-only cache keyed by exact
++collection identity, frame, center/candidate atom sets, cutoff, pair-counting policy,
++block size, and neighbor-search options. Compatible framework-only and broader
++atomic-connectivity passes therefore reuse the same periodic minimum-image/candidate
++work instead of rebuilding it. Cache state and hit/miss counters are diagnostic only
++and are excluded from scientific connectivity identity.
++
++Framework scene preprocessing now owns a reusable frame-geometry cache for projected
++framework graph views and lifted fractional coordinates. Independent frames are
++prepared under a PAR-DENS2 scheduler lease and then graph-key consistency and residual
++winding are validated in deterministic frame order. Independent periodic atomic means
++are likewise prepared in bounded threads. Floating occupancy accumulation remains in
++canonical frame order so parallel preprocessing cannot alter threshold decisions by
++changing summation order.
++
++Partitioned topology scenes hoist the frame-to-connectivity-state map and framework
++geometry cache outside category loops. Independent category preparation is admitted as
++separate scheduler tasks under the same global CPU/RAM authority and nested work
++inherits its active lease. This prevents topology concurrency from multiplying worker
++budgets or recomputing trajectory-wide geometry.
++
++The framework-dynamics scene schema advances to
++`mdstats.framework-dynamics-scene.v15` and records the preprocessing policy, scheduler
++summary, cache statistics, and trajectory-wide-state reuse evidence. These execution
++records do not redefine density, topology, registration, or graph scientific
++semantics.
++
++The supplied 10,001-frame 300 K Na-LTA trajectory was requalified on a stride-100
++101-frame sample. Serial and four-worker hysteretic preparation produced identical
++frame-state IDs, 94 canonical state digests, and transition records. The small
++168-atom/frame dense neighbor problem is thread-overhead dominated in the qualification
++environment, so four-worker candidate generation is not claimed as a speedup. The
++geometry-reuse path is materially beneficial: after framework-only connectivity
++populated the shared cache, broader framework+Na-O connectivity reused 202 exact
++neighbor requests and measured 1.024 s versus 1.730 s for a cold full pass, about
++1.689x, with identical connectivity. Parallelism therefore remains bounded and
++resource-aware rather than mandatory at unfavorable task granularity.
++
++PAR-DENS4 is closed. PAR-DENS5 may add an optional GPU density backend, but the CPU
++reference path and all PAR-DENS0--PAR-DENS4 scientific invariants remain authoritative.
++
+ ## PAR-DENS5 - optional GPU density backend
+ 
+-**Status:** `deferred` until PAR-DENS0--PAR-DENS4 establish a correct and efficient CPU
+-baseline.
++**Status:** `next`; PAR-DENS0--PAR-DENS4 now establish the qualified CPU baseline.
+ 
+ GPU work is an acceleration backend, not a scientific mode. Candidate kernels are CIC
+ deposition, finite-support Gaussian accumulation, support-mask dilation, grouped sparse
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats_par4/original142/mdstats-0.20.142a0-complete-source-package/mdstats/__init__.py ./mdstats/__init__.py
+--- /mnt/data/mdstats_par4/original142/mdstats-0.20.142a0-complete-source-package/mdstats/__init__.py	2026-08-10 18:49:07.000000000 +0000
++++ ./mdstats/__init__.py	2026-08-10 23:04:15.736077281 +0000
+@@ -276,6 +276,7 @@
+     compute_scalar_summary,
+     expand_state_values_to_frames,
+     topology_statistics_payload_digest,
++    AtomicConnectivityGeometryCache,
+     AtomicConnectivityResult,
+     CANONICAL_TOPOLOGY_CATALOG_SCHEMA,
+     TOPOLOGY_CATALOG_DIGEST_ALGORITHM,
+@@ -1737,6 +1738,7 @@
+     "compute_scalar_summary",
+     "expand_state_values_to_frames",
+     "topology_statistics_payload_digest",
++    "AtomicConnectivityGeometryCache",
+     "AtomicConnectivityResult",
+     "CANONICAL_TOPOLOGY_CATALOG_SCHEMA",
+     "TOPOLOGY_CATALOG_DIGEST_ALGORITHM",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats_par4/original142/mdstats-0.20.142a0-complete-source-package/mdstats/_version.py ./mdstats/_version.py
+--- /mnt/data/mdstats_par4/original142/mdstats-0.20.142a0-complete-source-package/mdstats/_version.py	2026-08-10 19:29:28.000000000 +0000
++++ ./mdstats/_version.py	2026-08-10 23:16:01.350255313 +0000
+@@ -1,3 +1,3 @@
+ """Package version."""
+ 
+-__version__ = "0.20.142a0"
++__version__ = "0.20.143a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats_par4/original142/mdstats-0.20.142a0-complete-source-package/mdstats/analysis/__init__.py ./mdstats/analysis/__init__.py
+--- /mnt/data/mdstats_par4/original142/mdstats-0.20.142a0-complete-source-package/mdstats/analysis/__init__.py	2026-08-05 18:20:00.000000000 +0000
++++ ./mdstats/analysis/__init__.py	2026-08-10 23:04:15.735464196 +0000
+@@ -16,6 +16,7 @@
+ from .atomic_connectivity import (
+     AtomicConnectivityDefinition,
+     AtomicConnectivityError,
++    AtomicConnectivityGeometryCache,
+     AtomicConnectivityResult,
+     AtomicConnectivityState,
+     AtomicEdgeKey,
+@@ -1436,6 +1437,7 @@
+     "VerletPairCache",
+     "AtomicConnectivityDefinition",
+     "AtomicConnectivityError",
++    "AtomicConnectivityGeometryCache",
+     "AtomicConnectivityResult",
+     "AtomicConnectivityState",
+     "AtomicEdgeKey",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats_par4/original142/mdstats-0.20.142a0-complete-source-package/mdstats/analysis/atomic_connectivity.py ./mdstats/analysis/atomic_connectivity.py
+--- /mnt/data/mdstats_par4/original142/mdstats-0.20.142a0-complete-source-package/mdstats/analysis/atomic_connectivity.py	2026-08-05 18:20:00.000000000 +0000
++++ ./mdstats/analysis/atomic_connectivity.py	2026-08-10 23:09:03.988802728 +0000
+@@ -15,9 +15,11 @@
+ 
+ import hashlib
+ import json
+-from collections import deque
++import threading
++from concurrent.futures import ThreadPoolExecutor
++from collections import Counter, deque
+ from collections.abc import Mapping, Sequence
+-from dataclasses import asdict, dataclass, field
++from dataclasses import asdict, dataclass, field, replace
+ from enum import Enum
+ from types import MappingProxyType
+ from typing import Any, Literal, TypeAlias
+@@ -39,6 +41,111 @@
+ 
+ CANONICAL_CONNECTIVITY_SCHEMA = "mdstats.atomic-connectivity.v1"
+ CONNECTIVITY_DIGEST_ALGORITHM = "sha256"
++ATOMIC_CONNECTIVITY_GEOMETRY_CACHE_SCHEMA = "mdstats.atomic-connectivity-geometry-cache.v1"
++
++
++class AtomicConnectivityGeometryCache:
++    """Thread-safe cache of exact per-frame neighbor geometry requests.
++
++    The cache is intentionally execution-local and stores only exact neighbor
++    list results for identical collection/frame/species-index/cutoff requests.
++    This is sufficient to reuse the expensive Si--O/Al--O geometry shared by
++    framework-only and broader atomic-connectivity evaluations without making
++    cache state part of canonical connectivity digests.
++    """
++
++    def __init__(self) -> None:
++        self._lock = threading.RLock()
++        self._items: dict[tuple[Any, ...], Any] = {}
++        self._hits = 0
++        self._misses = 0
++
++    @staticmethod
++    def _request_key(
++        collection: AtomisticFrameCollection,
++        *,
++        frame_index: int,
++        center_indices: ArrayLike,
++        candidate_neighbor_indices: ArrayLike,
++        cutoff: Any,
++        pair_counting: PairCounting,
++        atom_block_size: int,
++        neighbor_search: _NeighborSearchExecutor,
++    ) -> tuple[Any, ...]:
++        centers = np.ascontiguousarray(np.asarray(center_indices, dtype=np.int64))
++        candidates = np.ascontiguousarray(
++            np.asarray(candidate_neighbor_indices, dtype=np.int64)
++        )
++        radius = float(getattr(cutoff, "radius", cutoff))
++        options_json = json.dumps(
++            neighbor_search.options.to_dict(), sort_keys=True, separators=(",", ":")
++        )
++        return (
++            id(collection),
++            int(frame_index),
++            centers.shape,
++            centers.tobytes(),
++            candidates.shape,
++            candidates.tobytes(),
++            radius,
++            PairCounting(pair_counting).value,
++            int(atom_block_size),
++            hashlib.sha256(options_json.encode("utf-8")).hexdigest(),
++        )
++
++    def get_or_build(
++        self,
++        collection: AtomisticFrameCollection,
++        *,
++        frame_index: int,
++        center_indices: ArrayLike,
++        candidate_neighbor_indices: ArrayLike,
++        cutoff: Any,
++        pair_counting: PairCounting,
++        atom_block_size: int,
++        neighbor_search: _NeighborSearchExecutor,
++    ) -> Any:
++        key = self._request_key(
++            collection,
++            frame_index=frame_index,
++            center_indices=center_indices,
++            candidate_neighbor_indices=candidate_neighbor_indices,
++            cutoff=cutoff,
++            pair_counting=pair_counting,
++            atom_block_size=atom_block_size,
++            neighbor_search=neighbor_search,
++        )
++        with self._lock:
++            cached = self._items.get(key)
++            if cached is not None:
++                self._hits += 1
++                return cached
++        result = neighbor_search.build_neighbor_list(
++            frame_index=frame_index,
++            center_indices=center_indices,
++            candidate_neighbor_indices=candidate_neighbor_indices,
++            cutoff=cutoff,
++            pair_counting=pair_counting,
++            block_size=atom_block_size,
++        )
++        with self._lock:
++            existing = self._items.get(key)
++            if existing is not None:
++                self._hits += 1
++                return existing
++            self._items[key] = result
++            self._misses += 1
++        return result
++
++    def to_dict(self) -> dict[str, Any]:
++        with self._lock:
++            return {
++                "schema": ATOMIC_CONNECTIVITY_GEOMETRY_CACHE_SCHEMA,
++                "entries": len(self._items),
++                "hits": int(self._hits),
++                "misses": int(self._misses),
++                "scientific_identity_includes_cache_state": False,
++            }
+ 
+ 
+ class AtomicConnectivityError(ValueError):
+@@ -1008,6 +1115,162 @@
+     )
+ 
+ 
++
++def _merge_frame_parallel_neighbor_diagnostics(
++    diagnostics: Sequence[Mapping[str, Any]],
++    *,
++    options: NeighborSearchOptions,
++    selected_frame_count: int,
++    workers: int,
++) -> dict[str, Any]:
++    """Merge stateless frame-local neighbor diagnostics deterministically."""
++
++    backend_counts: Counter[str] = Counter()
++    fallback_events: Counter[str] = Counter()
++    resolution_reasons: Counter[str] = Counter()
++    request_digests: list[str] = []
++    requests: list[Mapping[str, Any]] = []
++    candidates = accepted = evaluations = 0
++    backend_policy_values: set[str] = set()
++    backend_selected_values: set[str] = set()
++    for item in diagnostics:
++        backend_counts.update(dict(item.get("backend_counts", {})))
++        fallback_events.update(dict(item.get("fallback_events", {})))
++        resolution_reasons.update(dict(item.get("cache_resolution_reasons", {})))
++        request_digests.extend(str(v) for v in item.get("request_digests", ()))
++        requests.extend(item.get("requests", ()))
++        candidates += int(item.get("candidate_pair_evaluations", 0))
++        accepted += int(item.get("accepted_pairs", 0))
++        evaluations += int(item.get("evaluations", 0))
++        policy = str(item.get("backend_policy", "none"))
++        selected = str(item.get("backend_selected", "none"))
++        if policy != "none":
++            backend_policy_values.add(policy)
++        if selected != "none":
++            backend_selected_values.add(selected)
++    backend_policy = (
++        next(iter(backend_policy_values))
++        if len(backend_policy_values) == 1
++        else ("mixed" if backend_policy_values else "none")
++    )
++    backend_selected = (
++        next(iter(backend_selected_values))
++        if len(backend_selected_values) == 1
++        else ("mixed" if backend_selected_values else "none")
++    )
++    return {
++        "schema": "mdstats.periodic-neighbor-search.v2",
++        "frame_semantics": "trajectory",
++        "backend_requested": options.backend,
++        "backend_policy": backend_policy,
++        "backend_selected": backend_selected,
++        "cache_mode_requested": options.cache_mode,
++        "cache_mode_selected": "none",
++        "cache_resolution_reasons": dict(sorted(resolution_reasons.items())),
++        "cache_disabled_during_run": False,
++        "cache_disable_reasons": {},
++        "zero_reuse_rebuild_limit": options.max_consecutive_zero_reuse_rebuilds,
++        "skin": options.skin,
++        "selected_frame_count": int(selected_frame_count),
++        "evaluations": evaluations,
++        "request_digests": request_digests,
++        "backend_counts": dict(sorted(backend_counts.items())),
++        "candidate_pair_evaluations": candidates,
++        "accepted_pairs": accepted,
++        "candidate_efficiency": 0.0 if candidates == 0 else accepted / candidates,
++        "fallback_events": dict(sorted(fallback_events.items())),
++        "options": options.to_dict(),
++        "requests": list(requests),
++        "cache_statistics": None,
++        "cell_list_rebuild_count": 0,
++        "cache_reuse_frame_count": 0,
++        "mean_frames_per_rebuild": 0.0,
++        "median_frames_per_rebuild": 0.0,
++        "rebuild_reason_counts": {},
++        "minimum_safety_margin_by_rebuild_interval": [],
++        "minimum_singular_value_by_rebuild_interval": [],
++        "par_dens4_frame_parallel_geometry": True,
++        "par_dens4_parallel_workers": int(workers),
++        "par_dens4_hysteresis_fold": "deterministic_collection_frame_order_v1",
++    }
++
++
++def _prepare_hysteretic_geometry_parallel(
++    collection: AtomisticFrameCollection,
++    *,
++    frames: IntArray,
++    resolved_scope: ResolvedConnectivityScope,
++    breaking_cutoffs: PairCutoffRegistry,
++    formation_cutoffs: PairCutoffRegistry,
++    atom_block_size: int,
++    options: NeighborSearchOptions | None,
++    geometry_cache: AtomicConnectivityGeometryCache | None,
++    workers: int,
++) -> tuple[
++    tuple[tuple[dict[tuple[int, int], AtomicEdgeKey], dict[tuple[int, int], AtomicEdgeKey], bool], ...],
++    Mapping[str, Any],
++]:
++    """Compute independent outer/inner candidate geometry before hysteresis."""
++
++    base_options = NeighborSearchOptions() if options is None else options
++    # Stateful Verlet reuse is sequential by construction.  The PAR-DENS4
++    # geometric stage instead uses exact stateless requests on independent
++    # frames, then applies hysteresis once in authoritative frame order.
++    stateless = replace(base_options, cache_mode="none")
++
++    frame_values = [int(frame) for frame in frames]
++    actual_workers = max(1, min(int(workers), len(frame_values)))
++
++    # Amortize executor construction and diagnostics bookkeeping across a
++    # contiguous frame chunk.  Each chunk remains stateless with respect to
++    # Verlet reuse, while its output order is exactly the input frame order.
++    # Contiguous chunks also make deterministic reassembly trivial.
++    chunk_arrays = np.array_split(np.asarray(frame_values, dtype=np.int64), actual_workers)
++    chunks = [tuple(int(value) for value in chunk) for chunk in chunk_arrays if chunk.size]
++
++    def evaluate_chunk(chunk: tuple[int, ...]):
++        executor = _NeighborSearchExecutor(
++            collection,
++            options=stateless,
++            selected_frame_count=len(chunk),
++        )
++        values = []
++        for frame in chunk:
++            outer, inner, eligible = _enumerate_nested_distance_edges(
++                collection,
++                frame_index=frame,
++                resolved_scope=resolved_scope,
++                outer_cutoffs=breaking_cutoffs,
++                inner_cutoffs=formation_cutoffs,
++                atom_block_size=atom_block_size,
++                neighbor_search=executor,
++                geometry_cache=geometry_cache,
++            )
++            values.append((outer, inner, eligible))
++        return tuple(values), executor.diagnostics().to_dict()
++
++    if actual_workers <= 1:
++        evaluated_chunks = [evaluate_chunk(chunks[0])]
++    else:
++        with ThreadPoolExecutor(
++            max_workers=actual_workers,
++            thread_name_prefix="mdstats-connectivity-geometry",
++        ) as pool:
++            evaluated_chunks = list(pool.map(evaluate_chunk, chunks))
++    candidates = tuple(
++        candidate
++        for chunk_candidates, _diagnostics in evaluated_chunks
++        for candidate in chunk_candidates
++    )
++    neighbor_diagnostics = _merge_frame_parallel_neighbor_diagnostics(
++        [item[1] for item in evaluated_chunks],
++        options=stateless,
++        selected_frame_count=len(frame_values),
++        workers=actual_workers,
++    )
++    return candidates, neighbor_diagnostics
++
++
+ def compute_atomic_connectivity(
+     collection: AtomisticFrameCollection,
+     definition: AtomicConnectivityDefinition,
+@@ -1017,6 +1280,8 @@
+     atom_block_size: int = 256,
+     neighbor_search_options: NeighborSearchOptions | None = None,
+     verlet_cache_options: VerletCacheOptions | None = None,
++    geometry_cache: AtomicConnectivityGeometryCache | None = None,
++    parallel_frame_workers: int = 1,
+ ) -> AtomicConnectivityResult:
+     """Evaluate an atomic connectivity definition over selected frames."""
+     if not isinstance(
+@@ -1031,6 +1296,13 @@
+         raise TypeError("definition is not a supported atomic connectivity definition.")
+     frames = _validated_frames(collection, frame_indices)
+     block = _validated_block_size(atom_block_size)
++    parallel_workers = _coerce_int(parallel_frame_workers, name="parallel_frame_workers")
++    if parallel_workers <= 0:
++        raise ValueError("parallel_frame_workers must be positive.")
++    if geometry_cache is not None and not isinstance(
++        geometry_cache, AtomicConnectivityGeometryCache
++    ):
++        raise TypeError("geometry_cache must be AtomicConnectivityGeometryCache or None.")
+     if state_mode not in {"catalog", "per_frame"}:
+         raise ValueError("state_mode must be 'catalog' or 'per_frame'.")
+     resolved = _resolve_connectivity_scope(collection, definition.scope)
+@@ -1082,6 +1354,7 @@
+                 cutoffs=definition.cutoffs,
+                 atom_block_size=block,
+                 neighbor_search=neighbor_search,
++                geometry_cache=geometry_cache,
+             )
+             eligible_any |= eligible
+             frame_states.append(
+@@ -1109,49 +1382,96 @@
+             )
+         _validate_registry_for_frames(definition.formation_cutoffs, collection, frames)
+         _validate_registry_for_frames(definition.breaking_cutoffs, collection, frames)
+-        if definition.initial_state == "formation_cutoff":
+-            _, forming, eligible = _enumerate_nested_distance_edges(
++        parallel_neighbor_diagnostics: Mapping[str, Any] | None = None
++        if parallel_workers > 1 and frames.size > 1:
++            candidates, parallel_neighbor_diagnostics = _prepare_hysteretic_geometry_parallel(
+                 collection,
+-                frame_index=int(frames[0]),
++                frames=frames,
+                 resolved_scope=resolved,
+-                outer_cutoffs=definition.breaking_cutoffs,
+-                inner_cutoffs=definition.formation_cutoffs,
++                breaking_cutoffs=definition.breaking_cutoffs,
++                formation_cutoffs=definition.formation_cutoffs,
+                 atom_block_size=block,
+-                neighbor_search=neighbor_search,
+-            )
+-            if not eligible:
+-                raise ConnectivityDefinitionError(
+-                    "No hysteretic cutoff pair has eligible atoms in the resolved scope."
++                options=effective_neighbor_options,
++                geometry_cache=geometry_cache,
++                workers=parallel_workers,
++            )
++            if definition.initial_state == "formation_cutoff":
++                _breaking0, forming, eligible = candidates[0]
++                if not eligible:
++                    raise ConnectivityDefinitionError(
++                        "No hysteretic cutoff pair has eligible atoms in the resolved scope."
++                    )
++                current = forming
++            else:
++                assert definition.initial_edges is not None
++                _validate_edges_against_scope(
++                    definition.initial_edges, resolved, collection
+                 )
+-            current = forming
+-        else:
+-            assert definition.initial_edges is not None
+-            _validate_edges_against_scope(
+-                definition.initial_edges, resolved, collection
+-            )
+-            _validate_edges_against_registry(
+-                definition.initial_edges, definition.formation_cutoffs, collection
+-            )
+-            current = {edge.pair: edge for edge in definition.initial_edges}
+-        frame_states = [_build_state(collection, resolved, tuple(current.values()))]
+-        for frame in frames[1:]:
+-            breaking, forming, _ = _enumerate_nested_distance_edges(
+-                collection,
+-                frame_index=int(frame),
+-                resolved_scope=resolved,
+-                outer_cutoffs=definition.breaking_cutoffs,
+-                inner_cutoffs=definition.formation_cutoffs,
+-                atom_block_size=block,
+-                neighbor_search=neighbor_search,
+-            )
+-            retained = {pair: breaking[pair] for pair in current if pair in breaking}
+-            for pair, edge in forming.items():
+-                if pair not in current:
+-                    retained[pair] = edge
+-            current = retained
+-            frame_states.append(
+-                _build_state(collection, resolved, tuple(current.values()))
++                _validate_edges_against_registry(
++                    definition.initial_edges, definition.formation_cutoffs, collection
++                )
++                current = {edge.pair: edge for edge in definition.initial_edges}
++            frame_states = [_build_state(collection, resolved, tuple(current.values()))]
++            for breaking, forming, _eligible in candidates[1:]:
++                retained = {pair: breaking[pair] for pair in current if pair in breaking}
++                for pair, edge in forming.items():
++                    if pair not in current:
++                        retained[pair] = edge
++                current = retained
++                frame_states.append(
++                    _build_state(collection, resolved, tuple(current.values()))
++                )
++            diagnostics.append(
++                "PAR-DENS4 evaluated hysteretic geometric candidates in frame-parallel "
++                "stateless workers and applied the stateful hysteresis fold in deterministic "
++                "collection-frame order."
+             )
++        else:
++            if definition.initial_state == "formation_cutoff":
++                _, forming, eligible = _enumerate_nested_distance_edges(
++                    collection,
++                    frame_index=int(frames[0]),
++                    resolved_scope=resolved,
++                    outer_cutoffs=definition.breaking_cutoffs,
++                    inner_cutoffs=definition.formation_cutoffs,
++                    atom_block_size=block,
++                    neighbor_search=neighbor_search,
++                    geometry_cache=geometry_cache,
++                )
++                if not eligible:
++                    raise ConnectivityDefinitionError(
++                        "No hysteretic cutoff pair has eligible atoms in the resolved scope."
++                    )
++                current = forming
++            else:
++                assert definition.initial_edges is not None
++                _validate_edges_against_scope(
++                    definition.initial_edges, resolved, collection
++                )
++                _validate_edges_against_registry(
++                    definition.initial_edges, definition.formation_cutoffs, collection
++                )
++                current = {edge.pair: edge for edge in definition.initial_edges}
++            frame_states = [_build_state(collection, resolved, tuple(current.values()))]
++            for frame in frames[1:]:
++                breaking, forming, _ = _enumerate_nested_distance_edges(
++                    collection,
++                    frame_index=int(frame),
++                    resolved_scope=resolved,
++                    outer_cutoffs=definition.breaking_cutoffs,
++                    inner_cutoffs=definition.formation_cutoffs,
++                    atom_block_size=block,
++                    neighbor_search=neighbor_search,
++                    geometry_cache=geometry_cache,
++                )
++                retained = {pair: breaking[pair] for pair in current if pair in breaking}
++                for pair, edge in forming.items():
++                    if pair not in current:
++                        retained[pair] = edge
++                current = retained
++                frame_states.append(
++                    _build_state(collection, resolved, tuple(current.values()))
++                )
+ 
+     else:
+         assert isinstance(definition, ReferenceDistanceConnectivity)
+@@ -1176,6 +1496,7 @@
+             inner_cutoffs=definition.discovery_cutoffs,
+             atom_block_size=block,
+             neighbor_search=neighbor_search,
++            geometry_cache=geometry_cache,
+         )
+         if not eligible:
+             raise ConnectivityDefinitionError(
+@@ -1192,6 +1513,7 @@
+                 inner_cutoffs=definition.formation_cutoffs,
+                 atom_block_size=block,
+                 neighbor_search=neighbor_search,
++                geometry_cache=geometry_cache,
+             )
+             selected = {
+                 pair: retention[pair] for pair in reference_pairs if pair in retention
+@@ -1203,6 +1525,21 @@
+                 _build_state(collection, resolved, tuple(selected.values()))
+             )
+ 
++    if (
++        isinstance(definition, HystereticDistanceConnectivity)
++        and "parallel_neighbor_diagnostics" in locals()
++        and parallel_neighbor_diagnostics is not None
++    ):
++        neighbor_diagnostics = dict(parallel_neighbor_diagnostics)
++    else:
++        neighbor_diagnostics = neighbor_search.diagnostics().to_dict()
++    if geometry_cache is not None:
++        neighbor_diagnostics = {
++            **dict(neighbor_diagnostics),
++            "geometry_cache": geometry_cache.to_dict(),
++        }
++    neighbor_diagnostics["par_dens4_parallel_frame_workers"] = int(parallel_workers)
++
+     return _assemble_result(
+         collection,
+         definition,
+@@ -1212,7 +1549,7 @@
+         state_mode=state_mode,
+         atom_block_size=block,
+         diagnostics=diagnostics,
+-        neighbor_search_diagnostics=neighbor_search.diagnostics().to_dict(),
++        neighbor_search_diagnostics=neighbor_diagnostics,
+     )
+ 
+ 
+@@ -1346,7 +1683,19 @@
+     pair_counting: PairCounting,
+     atom_block_size: int,
+     neighbor_search: _NeighborSearchExecutor,
++    geometry_cache: AtomicConnectivityGeometryCache | None = None,
+ ):
++    if geometry_cache is not None:
++        return geometry_cache.get_or_build(
++            collection,
++            frame_index=frame_index,
++            center_indices=center_indices,
++            candidate_neighbor_indices=candidate_neighbor_indices,
++            cutoff=cutoff,
++            pair_counting=pair_counting,
++            atom_block_size=atom_block_size,
++            neighbor_search=neighbor_search,
++        )
+     return neighbor_search.build_neighbor_list(
+         frame_index=frame_index,
+         center_indices=center_indices,
+@@ -1366,6 +1715,7 @@
+     inner_cutoffs: PairCutoffRegistry,
+     atom_block_size: int,
+     neighbor_search: _NeighborSearchExecutor,
++    geometry_cache: AtomicConnectivityGeometryCache | None = None,
+ ) -> tuple[
+     dict[tuple[int, int], AtomicEdgeKey],
+     dict[tuple[int, int], AtomicEdgeKey],
+@@ -1395,6 +1745,7 @@
+                 pair_counting=PairCounting.UNORDERED_IDENTICAL,
+                 atom_block_size=atom_block_size,
+                 neighbor_search=neighbor_search,
++                geometry_cache=geometry_cache,
+             )
+         else:
+             if indices_a.size == 0 or indices_b.size == 0:
+@@ -1409,6 +1760,7 @@
+                 pair_counting=PairCounting.DIRECTED,
+                 atom_block_size=atom_block_size,
+                 neighbor_search=neighbor_search,
++                geometry_cache=geometry_cache,
+             )
+         centers = np.repeat(result.center_indices, result.coordination_counts)
+         for center, neighbor, shift, distance in zip(
+@@ -1440,6 +1792,7 @@
+     cutoffs: PairCutoffRegistry,
+     atom_block_size: int,
+     neighbor_search: _NeighborSearchExecutor,
++    geometry_cache: AtomicConnectivityGeometryCache | None = None,
+ ) -> tuple[dict[tuple[int, int], AtomicEdgeKey], bool]:
+     scoped_numbers = resolved_scope.atomic_numbers
+     scoped_indices = resolved_scope.atom_indices
+@@ -1462,6 +1815,7 @@
+                 pair_counting=PairCounting.UNORDERED_IDENTICAL,
+                 atom_block_size=atom_block_size,
+                 neighbor_search=neighbor_search,
++                geometry_cache=geometry_cache,
+             )
+         else:
+             if indices_a.size == 0 or indices_b.size == 0:
+@@ -1476,6 +1830,7 @@
+                 pair_counting=PairCounting.DIRECTED,
+                 atom_block_size=atom_block_size,
+                 neighbor_search=neighbor_search,
++                geometry_cache=geometry_cache,
+             )
+         centers = np.repeat(result.center_indices, result.coordination_counts)
+         for center, neighbor, shift in zip(
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats_par4/original142/mdstats-0.20.142a0-complete-source-package/mdstats/plotting/density_scheduler.py ./mdstats/plotting/density_scheduler.py
+--- /mnt/data/mdstats_par4/original142/mdstats-0.20.142a0-complete-source-package/mdstats/plotting/density_scheduler.py	2026-08-10 19:13:38.000000000 +0000
++++ ./mdstats/plotting/density_scheduler.py	2026-08-10 23:01:21.252079978 +0000
+@@ -300,7 +300,9 @@
+         if not items:
+             return []
+         workers = min(self.workers, len(items))
+-        with ThreadPoolExecutor(max_workers=max(1, workers), thread_name_prefix="mdstats-density") as pool:
++        if workers <= 1:
++            return [function(item) for item in items]
++        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="mdstats-density") as pool:
+             return list(pool.map(function, items))
+ 
+     def process_map(
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats_par4/original142/mdstats-0.20.142a0-complete-source-package/mdstats/plotting/framework_dynamics.py ./mdstats/plotting/framework_dynamics.py
+--- /mnt/data/mdstats_par4/original142/mdstats-0.20.142a0-complete-source-package/mdstats/plotting/framework_dynamics.py	2026-08-10 19:15:21.000000000 +0000
++++ ./mdstats/plotting/framework_dynamics.py	2026-08-10 23:04:51.195388434 +0000
+@@ -11,6 +11,7 @@
+ 
+ import os
+ import subprocess
++import threading
+ import time
+ from concurrent.futures import Future, ThreadPoolExecutor
+ import sys
+@@ -122,6 +123,8 @@
+     DensitySchedulerTaskError,
+     DensityTaskExecutionMode,
+     DensityTaskResources,
++    DensityWorkerLease,
++    current_density_worker_lease,
+     task_resources_from_phase_b_plan,
+ )
+ from .density_render_budget import (
+@@ -196,7 +199,7 @@
+ IntArray = NDArray[np.int64]
+ BoolArray = NDArray[np.bool_]
+ 
+-FRAMEWORK_DYNAMICS_SCENE_SCHEMA = "mdstats.framework-dynamics-scene.v14"
++FRAMEWORK_DYNAMICS_SCENE_SCHEMA = "mdstats.framework-dynamics-scene.v15"
+ 
+ 
+ def _prepare_sparse_density_mesh_isolated(
+@@ -1312,6 +1315,189 @@
+     return lifted, residual
+ 
+ 
++
++
++@dataclass(frozen=True, slots=True)
++class _PreparedFrameworkFrame:
++    """One frame-local framework graph plus its normalized periodic lift."""
++
++    view: DecoratedGraphView
++    lifted_fractional: FloatArray
++    residual_shifts: IntArray
++
++
++class _FrameworkGeometryCache:
++    """Thread-safe in-process cache for frame-local framework display geometry.
++
++    PAR-DENS4 intentionally keeps this cache execution-local.  Its keys are
++    scientific frame/topology/display-mode identities and never contain worker
++    counts, executor choices, or timing measurements.  The cache therefore
++    removes repeated projected/path reconstruction across global and
++    topology-conditioned scene preparation without changing provenance.
++    """
++
++    def __init__(self) -> None:
++        self._lock = threading.RLock()
++        self._items: dict[tuple[str, int, str], _PreparedFrameworkFrame] = {}
++        self.hits = 0
++        self.misses = 0
++
++    def get_or_build(
++        self,
++        collection: AtomisticFrameCollection,
++        topology: FrameworkTopology,
++        *,
++        frame_index: int,
++        display_mode: FrameworkGraphDisplayMode | str,
++    ) -> _PreparedFrameworkFrame:
++        mode = FrameworkGraphDisplayMode(display_mode)
++        key = (str(topology.digest), int(frame_index), mode.value)
++        with self._lock:
++            cached = self._items.get(key)
++            if cached is not None:
++                self.hits += 1
++                return cached
++        view = graph_view_from_framework_topology(
++            collection,
++            topology,
++            frame_index=int(frame_index),
++            display_mode=mode,
++        )
++        lifted, residual = _lifted_fractional_graph(collection, int(frame_index), view)
++        prepared = _PreparedFrameworkFrame(
++            view=view,
++            lifted_fractional=np.asarray(lifted, dtype=np.float64),
++            residual_shifts=np.asarray(residual, dtype=np.int64),
++        )
++        with self._lock:
++            existing = self._items.get(key)
++            if existing is not None:
++                self.hits += 1
++                return existing
++            self._items[key] = prepared
++            self.misses += 1
++        return prepared
++
++    def summary(self) -> dict[str, int | str]:
++        with self._lock:
++            return {
++                "policy": "par_dens4_frame_geometry_cache_v1",
++                "entries": len(self._items),
++                "hits": int(self.hits),
++                "misses": int(self.misses),
++            }
++
++
++def _preprocessing_resource_estimate(
++    *,
++    task_id: str,
++    frame_count: int,
++    item_count: int,
++    max_threads: int,
++    construction_order: int = 0,
++    retained: bool = False,
++    backend: str = "trajectory_preprocessing",
++) -> DensityTaskResources:
++    """Return a conservative PAR-DENS2 contract for CPU-side geometry work."""
++
++    frames = max(1, int(frame_count))
++    items = max(1, int(item_count))
++    # Coordinates, integer shifts, temporary graph arrays and modest Python
++    # object overhead.  This is deliberately conservative without pretending
++    # that opaque DecoratedGraphView object memory is scientifically exact.
++    payload = frames * items * (3 * 8 * 4 + 3 * 8 * 2 + 64)
++    retained_bytes = payload if retained else 0
++    transient_bytes = max(1 << 20, payload * 2)
++    workers = max(1, min(int(max_threads), frames))
++    return DensityTaskResources(
++        task_id=task_id,
++        retained_bytes=retained_bytes,
++        transient_bytes=transient_bytes,
++        minimum_workers=1,
++        preferred_workers=workers,
++        execution_mode=DensityTaskExecutionMode.PYTHON_THREADS,
++        backend=backend,
++        construction_order=int(construction_order),
++        metadata={
++            "par_dens_gate": "PAR-DENS4",
++            "scientific_identity_includes_worker_count": False,
++            "frame_count": frames,
++            "item_count": items,
++        },
++    )
++
++
++def _run_preprocessing_task(
++    scheduler: DensitySceneScheduler,
++    resources: DensityTaskResources,
++    function: Callable[[DensityWorkerLease], Any],
++) -> Any:
++    """Run one preprocessing task under the current or scene scheduler lease."""
++
++    active = current_density_worker_lease()
++    if active is not None:
++        return function(active)
++    return scheduler.run((DensityScheduledTask(resources=resources, function=function),))[0]
++
++
++def _prepare_registered_framework_frames(
++    collection: AtomisticFrameCollection,
++    topology: FrameworkTopology,
++    *,
++    frames: tuple[int, ...],
++    display_mode: FrameworkGraphDisplayMode | str,
++    geometry_cache: _FrameworkGeometryCache,
++    scheduler: DensitySceneScheduler,
++    max_threads: int,
++    task_id: str,
++) -> tuple[list[DecoratedGraphView], list[FloatArray], IntArray]:
++    """Prepare independent frame geometry in parallel, then validate in order."""
++
++    mode = FrameworkGraphDisplayMode(display_mode)
++    resources = _preprocessing_resource_estimate(
++        task_id=task_id,
++        frame_count=len(frames),
++        item_count=max(1, topology.n_vertices + topology.n_edges),
++        max_threads=max_threads,
++        retained=True,
++        backend=f"framework_registration:{mode.value}",
++    )
++
++    def build_one(frame: int) -> _PreparedFrameworkFrame:
++        return geometry_cache.get_or_build(
++            collection,
++            topology,
++            frame_index=int(frame),
++            display_mode=mode,
++        )
++
++    prepared = _run_preprocessing_task(
++        scheduler,
++        resources,
++        lambda lease: lease.thread_map(build_one, frames),
++    )
++    assert prepared
++    reference = prepared[0]
++    for position, current in enumerate(prepared[1:], start=1):
++        if (
++            current.view.node_keys != reference.view.node_keys
++            or current.view.edge_keys != reference.view.edge_keys
++        ):
++            raise GraphAdapterError(
++                "Selected frames do not preserve framework graph identity "
++                f"(first mismatch at collection frame {frames[position]})."
++            )
++        if not np.array_equal(current.residual_shifts, reference.residual_shifts):
++            raise GraphAdapterError(
++                "Selected frames do not preserve normalized periodic edge winding "
++                f"(first mismatch at collection frame {frames[position]})."
++            )
++    return (
++        [item.view for item in prepared],
++        [np.asarray(item.lifted_fractional, dtype=np.float64) for item in prepared],
++        np.asarray(reference.residual_shifts, dtype=np.int64),
++    )
++
+ def _display_cell(
+     collection: AtomisticFrameCollection,
+     frames: tuple[int, ...],
+@@ -1432,6 +1618,38 @@
+     return states
+ 
+ 
++def _connectivity_state_map(
++    connectivity: AtomicConnectivityState | AtomicConnectivityResult | None,
++    frames: tuple[int, ...],
++) -> Mapping[int, AtomicConnectivityState] | None:
++    """Hoist trajectory-wide connectivity frame lookup out of category loops."""
++
++    if connectivity is None:
++        return None
++    if isinstance(connectivity, AtomicConnectivityState):
++        return MappingProxyType({int(frame): connectivity for frame in frames})
++    if not isinstance(connectivity, AtomicConnectivityResult):
++        raise TypeError(
++            "atomic_connectivity must be an AtomicConnectivityState or AtomicConnectivityResult."
++        )
++    position_by_frame = {
++        int(frame): position for position, frame in enumerate(connectivity.frame_indices)
++    }
++    missing = [int(frame) for frame in frames if int(frame) not in position_by_frame]
++    if missing:
++        raise GraphAdapterError(
++            "atomic_connectivity does not cover all selected scene frames."
++        )
++    return MappingProxyType(
++        {
++            int(frame): connectivity.states[
++                int(connectivity.frame_state_ids[position_by_frame[int(frame)]])
++            ]
++            for frame in frames
++        }
++    )
++
++
+ def _registered_atomic_display_fractional(
+     *,
+     frames: tuple[int, ...],
+@@ -1477,8 +1695,14 @@
+     registration_view: ConsumerCoordinateView,
+     atomic_connectivity: AtomicConnectivityState | AtomicConnectivityResult,
+     options: AtomicMeanGraphOptions,
++    worker_lease: DensityWorkerLease | None = None,
++    state_by_frame: Mapping[int, AtomicConnectivityState] | None = None,
+ ) -> AtomicMeanGraph:
+-    states = _states_for_atomic_mean_graph(collection, atomic_connectivity, frames)
++    states = (
++        [state_by_frame[int(frame)] for frame in frames]
++        if state_by_frame is not None
++        else _states_for_atomic_mean_graph(collection, atomic_connectivity, frames)
++    )
+     reference = states[0]
+     atom_indices = tuple(int(v) for v in reference.active_atom_indices.tolist())
+     atomic_numbers = np.asarray(reference.active_atomic_numbers, dtype=np.int64)
+@@ -1504,25 +1728,40 @@
+         atom_indices=atom_indices,
+         registration_view=registration_view,
+     )
+-    mean_diagnostics = tuple(
+-        periodic_frechet_mean_diagnostic(
+-            display_fractional[:, local, :],
++    def solve_mean(local: int):
++        return periodic_frechet_mean_diagnostic(
++            display_fractional[:, int(local), :],
+             weights=weights,
+             cell=display_cell,
+             pbc=pbc,
+         )
+-        for local in range(len(atom_indices))
++
++    mean_indices = tuple(range(len(atom_indices)))
++    mean_diagnostics = tuple(
++        worker_lease.thread_map(solve_mean, mean_indices)
++        if worker_lease is not None and len(mean_indices) > 1
++        else [solve_mean(local) for local in mean_indices]
+     )
+     mean_positions = np.asarray(
+         [diagnostic.mean_cartesian for diagnostic in mean_diagnostics],
+         dtype=np.float64,
+     )
+ 
++    def frame_pair_set(state: AtomicConnectivityState) -> set[tuple[int, int]]:
++        return {(int(pair[0]), int(pair[1])) for pair in state.edge_atom_indices}
++
++    frame_pair_sets = (
++        worker_lease.thread_map(frame_pair_set, states)
++        if worker_lease is not None and len(states) > 1
++        else [frame_pair_set(state) for state in states]
++    )
+     pair_occupancy: dict[tuple[int, int], float] = {}
+     pair_presence_count: dict[tuple[int, int], int] = {}
+-    for local, state in enumerate(states):
+-        frame_pairs = {(int(pair[0]), int(pair[1])) for pair in state.edge_atom_indices}
+-        for pair in frame_pairs:
++    # Geometric/set extraction is parallel, but the floating accumulation stays
++    # in authoritative frame order so worker count cannot perturb an occupancy
++    # threshold through roundoff regrouping.
++    for local, frame_pairs in enumerate(frame_pair_sets):
++        for pair in sorted(frame_pairs):
+             pair_occupancy[pair] = pair_occupancy.get(pair, 0.0) + float(weights[local])
+             pair_presence_count[pair] = pair_presence_count.get(pair, 0) + 1
+ 
+@@ -1546,13 +1785,14 @@
+         if kept_pairs
+         else np.empty((0, 2), dtype=np.int64)
+     )
+-    edge_shifts = np.empty((len(kept_pairs), 3), dtype=np.int64)
+-    for edge_index, (source, target) in enumerate(edge_endpoints):
+-        raw = mean_positions[int(target)] - mean_positions[int(source)]
+-        _vector, _distance, shift = minimum_image_geometry(
++    if len(kept_pairs):
++        raw = mean_positions[edge_endpoints[:, 1]] - mean_positions[edge_endpoints[:, 0]]
++        _vectors, _distances, edge_shifts_raw = minimum_image_geometry(
+             raw, cell=display_cell, pbc=pbc
+         )
+-        edge_shifts[edge_index] = np.asarray(shift, dtype=np.int64)
++        edge_shifts = np.asarray(edge_shifts_raw, dtype=np.int64).reshape((-1, 3))
++    else:
++        edge_shifts = np.empty((0, 3), dtype=np.int64)
+     occupancies_array = (
+         np.asarray(occupancies, dtype=np.float64)
+         if occupancies
+@@ -2926,6 +3166,9 @@
+     used_ids = tuple(int(value) for value in np.flatnonzero(counts))
+     dominant_id = min(used_ids, key=lambda value: (-int(counts[value]), value))
+     base_options = options or FrameworkDynamicsOptions()
++    geometry_cache = _FrameworkGeometryCache()
++    preprocessing_scheduler = DensitySceneScheduler(resources.runtime_budget)
++    state_by_frame = _connectivity_state_map(atomic_connectivity, frames)
+     base_scene = _prepare_framework_dynamics_scene_impl(
+         collection,
+         catalog.topologies[dominant_id],
+@@ -2941,34 +3184,19 @@
+         resources=resources,
+         progress=progress,
+         progress_callback=progress_callback,
++        _geometry_cache=geometry_cache,
++        _preprocessing_scheduler=preprocessing_scheduler,
++        _state_by_frame=state_by_frame,
+     )
+     layers: list[FrameworkTopologyCategoryLayer] = []
+     total = len(frames)
++    category_specs: list[tuple[int, tuple[int, ...], tuple[Any, ...], FrameworkDynamicsOptions]] = []
+     for topology_id in used_ids:
+         category_frames = tuple(
+             int(frame) for frame, assigned in zip(frames, topology_ids, strict=True)
+             if int(assigned) == topology_id
+         )
+-        category_options = replace(base_options, reference_frame=category_frames[0])
+-        category_scene = _prepare_framework_dynamics_scene_impl(
+-            collection,
+-            catalog.topologies[topology_id],
+-            frame_indices=category_frames,
+-            display_mode=display_mode,
+-            trajectory_selection=None,
+-            atomic_connectivity=atomic_connectivity,
+-            atomic_mean_graph_options=atomic_mean_graph_options,
+-            atomic_density_selections=None,
+-            atomic_density_options=None,
+-            framework_density_options=None,
+-            options=category_options,
+-            resources=resources,
+-            progress=None,
+-            progress_callback=None,
+-        )
+-        relevant_positions = {
+-            catalog_position[frame] for frame in category_frames
+-        }
++        relevant_positions = {catalog_position[frame] for frame in category_frames}
+         segments = tuple(
+             item for item in (catalog.segments or ())
+             if item.topology_id == topology_id
+@@ -2977,6 +3205,72 @@
+                 for position in range(item.result_position_start, item.result_position_stop)
+             )
+         )
++        category_specs.append(
++            (
++                topology_id,
++                category_frames,
++                segments,
++                replace(base_options, reference_frame=category_frames[0]),
++            )
++        )
++
++    # PAR-DENS4: topology categories are independent once the global density
++    # fields and trajectory-wide lookup tables have been prepared.  Run the
++    # category graph reductions through one bounded scheduler; each nested
++    # registration/mean calculation observes the live category lease rather
++    # than creating an independent CPU authority.
++    category_scheduler = DensitySceneScheduler(resources.runtime_budget)
++    category_tasks: list[DensityScheduledTask[FrameworkDynamicsScene]] = []
++    for construction_order, (topology_id, category_frames, _segments, category_options) in enumerate(category_specs):
++        topology = catalog.topologies[topology_id]
++        contract = _preprocessing_resource_estimate(
++            task_id=f"topology-category:{topology_id}",
++            frame_count=len(category_frames),
++            item_count=max(1, topology.n_vertices + topology.n_edges),
++            max_threads=int(resources.max_threads),
++            construction_order=construction_order,
++            retained=True,
++            backend="topology_category_scene",
++        )
++
++        def prepare_category(
++            lease: DensityWorkerLease,
++            *,
++            _topology_id: int = topology_id,
++            _category_frames: tuple[int, ...] = category_frames,
++            _category_options: FrameworkDynamicsOptions = category_options,
++        ) -> FrameworkDynamicsScene:
++            del lease  # the active lease is context-bound by DensitySceneScheduler
++            return _prepare_framework_dynamics_scene_impl(
++                collection,
++                catalog.topologies[_topology_id],
++                frame_indices=_category_frames,
++                display_mode=display_mode,
++                trajectory_selection=None,
++                atomic_connectivity=atomic_connectivity,
++                atomic_mean_graph_options=atomic_mean_graph_options,
++                atomic_density_selections=None,
++                atomic_density_options=None,
++                framework_density_options=None,
++                options=_category_options,
++                resources=resources,
++                progress=None,
++                progress_callback=None,
++                _geometry_cache=geometry_cache,
++                _preprocessing_scheduler=preprocessing_scheduler,
++                _state_by_frame=state_by_frame,
++            )
++
++        category_tasks.append(DensityScheduledTask(resources=contract, function=prepare_category))
++
++    try:
++        category_scenes = category_scheduler.run(tuple(category_tasks))
++    except DensitySchedulerTaskError as error:
++        raise error.original from error
++
++    for (topology_id, category_frames, segments, _category_options), category_scene in zip(
++        category_specs, category_scenes, strict=True
++    ):
+         layers.append(
+             FrameworkTopologyCategoryLayer(
+                 topology_id=topology_id,
+@@ -2998,6 +3292,7 @@
+                     "catalog_digest": catalog.digest,
+                     "category_frame_count": len(category_frames),
+                     "category_probability": len(category_frames) / total,
++                    "trajectory_wide_state_lookup_reused": state_by_frame is not None,
+                 },
+             )
+         )
+@@ -3017,7 +3312,7 @@
+             "topology_consistency": catalog.consistency.value,
+             "topology_category_count": len(layers),
+             "dominant_topology_id": dominant_id,
+-            "topology_category_policy": "partitioned_global_density_category_graphs_v1",
++            "topology_category_policy": "par_dens4_parallel_partitioned_category_graphs_v2",
+             "partitioned_wall_seconds": float(partitioned_wall_seconds),
+             "wall_time_admission_enforced": False,
+             "partitioned_wall_time_budget_exceeded": bool(
+@@ -3025,6 +3320,13 @@
+             ),
+             "preparation_wall_seconds": float(partitioned_wall_seconds),
+             "partitioned_category_preparation_wall_seconds": float(partitioned_wall_seconds),
++            "topology_category_scheduler_summary": (
++                {}
++                if category_scheduler.last_report is None
++                else category_scheduler.last_report.to_json_dict()
++            ),
++            "framework_geometry_cache": geometry_cache.summary(),
++            "trajectory_wide_state_lookup_hoisted": state_by_frame is not None,
+         },
+     )
+ 
+@@ -3115,6 +3417,9 @@
+     resources: FrameworkDynamicsResources | None = None,
+     progress: ProgressPortLike | None = None,
+     progress_callback: Callable[[str], None] | None = None,
++    _geometry_cache: _FrameworkGeometryCache | None = None,
++    _preprocessing_scheduler: DensitySceneScheduler | None = None,
++    _state_by_frame: Mapping[int, AtomicConnectivityState] | None = None,
+ ) -> FrameworkDynamicsScene:
+     """Prepare registered mean-framework geometry and selected atomic paths.
+ 
+@@ -3144,6 +3449,16 @@
+     )
+     options = options or FrameworkDynamicsOptions()
+     resources = resources or FrameworkDynamicsResources()
++    geometry_cache = _FrameworkGeometryCache() if _geometry_cache is None else _geometry_cache
++    preprocessing_scheduler = (
++        DensitySceneScheduler(resources.runtime_budget)
++        if _preprocessing_scheduler is None
++        else _preprocessing_scheduler
++    )
++    if not isinstance(geometry_cache, _FrameworkGeometryCache):
++        raise TypeError("_geometry_cache must be _FrameworkGeometryCache or None.")
++    if not isinstance(preprocessing_scheduler, DensitySceneScheduler):
++        raise TypeError("_preprocessing_scheduler must be DensitySceneScheduler or None.")
+     frames = _selected_frames(collection, frame_indices)
+     if len(frames) > resources.max_frames:
+         raise GraphComplexityError(
+@@ -3179,51 +3494,23 @@
+             field_context="framework-dynamics density scene",
+         )
+ 
+-    frame_views: list[DecoratedGraphView] = []
+-    lifted_frames: list[FloatArray] = []
+-    residual_reference: IntArray | None = None
+     reporter.started(
+         "framework_registration",
+-        "processing registered framework frames",
++        "processing registered framework frames in bounded parallel batches",
+         current=0,
+         total=len(frames),
+         unit="frames",
+     )
+-    frame_progress_step = max(1, len(frames) // 10)
+-    for frame_position, frame in enumerate(frames, start=1):
+-        view = graph_view_from_framework_topology(
+-            collection,
+-            topology,
+-            frame_index=frame,
+-            display_mode=display_mode,
+-        )
+-        lifted, residual = _lifted_fractional_graph(collection, frame, view)
+-        if frame_views:
+-            if (
+-                view.node_keys != frame_views[0].node_keys
+-                or view.edge_keys != frame_views[0].edge_keys
+-            ):
+-                raise GraphAdapterError(
+-                    "Selected frames do not preserve framework graph identity."
+-                )
+-            assert residual_reference is not None
+-            if not np.array_equal(residual, residual_reference):
+-                raise GraphAdapterError(
+-                    "Selected frames do not preserve normalized periodic edge winding."
+-                )
+-        else:
+-            residual_reference = residual
+-        frame_views.append(view)
+-        lifted_frames.append(lifted)
+-        if frame_position == len(frames) or frame_position % frame_progress_step == 0:
+-
+-            reporter.update(
+-                "framework_registration",
+-                "processing registered framework frames",
+-                current=frame_position,
+-                total=len(frames),
+-                unit="frames",
+-            )
++    frame_views, lifted_frames, residual_reference = _prepare_registered_framework_frames(
++        collection,
++        topology,
++        frames=frames,
++        display_mode=display_mode,
++        geometry_cache=geometry_cache,
++        scheduler=preprocessing_scheduler,
++        max_threads=int(resources.max_threads),
++        task_id=f"framework-registration:{topology.digest[:16]}:{FrameworkGraphDisplayMode(display_mode).value}",
++    )
+ 
+     reporter.completed(
+         "framework_registration",
+@@ -3373,14 +3660,37 @@
+             raise GraphAdapterError(
+                 "atomic_connectivity must be provided when atomic_mean_graph_options are requested."
+             )
+-        atomic_mean_graph = _prepare_atomic_mean_graph(
+-            collection,
+-            frames=frames,
+-            weights=weights,
+-            display_cell=display_cell,
+-            registration_view=registration_view,
+-            atomic_connectivity=atomic_connectivity,
+-            options=atomic_mean_graph_options,
++        state_map = (
++            _state_by_frame
++            if _state_by_frame is not None
++            else _connectivity_state_map(atomic_connectivity, frames)
++        )
++        assert state_map is not None
++        first_state = state_map[int(frames[0])]
++        mean_resources = _preprocessing_resource_estimate(
++            task_id=f"atomic-mean-graph:{topology.digest[:16]}",
++            frame_count=len(frames),
++            item_count=max(1, int(first_state.active_atom_indices.size)),
++            max_threads=int(resources.max_threads),
++            retained=True,
++            backend="periodic_atomic_mean_and_connectivity_reduction",
++        )
++
++        def build_atomic_mean(lease: DensityWorkerLease) -> AtomicMeanGraph:
++            return _prepare_atomic_mean_graph(
++                collection,
++                frames=frames,
++                weights=weights,
++                display_cell=display_cell,
++                registration_view=registration_view,
++                atomic_connectivity=atomic_connectivity,
++                options=atomic_mean_graph_options,
++                worker_lease=lease,
++                state_by_frame=state_map,
++            )
++
++        atomic_mean_graph = _run_preprocessing_task(
++            preprocessing_scheduler, mean_resources, build_atomic_mean
+         )
+ 
+     framework_densities: FrameworkDensityFields | None = None
+@@ -3403,32 +3713,18 @@
+             projected_lifted = lifted_frames
+             projected_residual = residual_reference
+         else:
+-            for frame in frames:
+-                projected_view = graph_view_from_framework_topology(
++            projected_views, projected_lifted, projected_residual = (
++                _prepare_registered_framework_frames(
+                     collection,
+                     topology,
+-                    frame_index=frame,
++                    frames=frames,
+                     display_mode=FrameworkGraphDisplayMode.PROJECTED,
++                    geometry_cache=geometry_cache,
++                    scheduler=preprocessing_scheduler,
++                    max_threads=int(resources.max_threads),
++                    task_id=f"framework-projected:{topology.digest[:16]}",
+                 )
+-                lifted, residual = _lifted_fractional_graph(
+-                    collection, frame, projected_view
+-                )
+-                if projected_views and (
+-                    projected_view.node_keys != projected_views[0].node_keys
+-                    or projected_view.edge_keys != projected_views[0].edge_keys
+-                ):
+-                    raise GraphAdapterError(
+-                        "Projected framework identity changed across density frames."
+-                    )
+-                if projected_residual is not None and not np.array_equal(
+-                    residual, projected_residual
+-                ):
+-                    raise GraphAdapterError(
+-                        "Projected framework winding changed across density frames."
+-                    )
+-                projected_views.append(projected_view)
+-                projected_lifted.append(lifted)
+-                projected_residual = residual
++            )
+         assert projected_residual is not None
+         projected_display_fractional = _display_fractional_coordinates(
+             np.asarray(projected_lifted, dtype=np.float64),
+@@ -3441,36 +3737,16 @@
+         edge_residual = projected_residual
+         edge_atoms = tuple(int(v) for v in topology.vertex_atom_indices)
+         if framework_density_options.edge_source == "atomic_paths":
+-            path_views: list[DecoratedGraphView] = []
+-            path_lifted: list[FloatArray] = []
+-            path_residual: IntArray | None = None
+-            for frame in frames:
+-                path_view = graph_view_from_framework_topology(
+-                    collection,
+-                    topology,
+-                    frame_index=frame,
+-                    display_mode=FrameworkGraphDisplayMode.ATOMIC_PATHS,
+-                )
+-                lifted, residual = _lifted_fractional_graph(
+-                    collection, frame, path_view
+-                )
+-                if path_views and (
+-                    path_view.node_keys != path_views[0].node_keys
+-                    or path_view.edge_keys != path_views[0].edge_keys
+-                ):
+-                    raise GraphAdapterError(
+-                        "Atomic-path framework identity changed across density frames."
+-                    )
+-                if path_residual is not None and not np.array_equal(
+-                    residual, path_residual
+-                ):
+-                    raise GraphAdapterError(
+-                        "Atomic-path segment winding changed across density frames."
+-                    )
+-                path_views.append(path_view)
+-                path_lifted.append(lifted)
+-                path_residual = residual
+-            assert path_residual is not None
++            path_views, path_lifted, path_residual = _prepare_registered_framework_frames(
++                collection,
++                topology,
++                frames=frames,
++                display_mode=FrameworkGraphDisplayMode.ATOMIC_PATHS,
++                geometry_cache=geometry_cache,
++                scheduler=preprocessing_scheduler,
++                max_threads=int(resources.max_threads),
++                task_id=f"framework-atomic-paths:{topology.digest[:16]}",
++            )
+             edge_view = path_views[0]
+             edge_display_fractional = _display_fractional_coordinates(
+                 np.asarray(path_lifted, dtype=np.float64),
+@@ -3894,6 +4170,13 @@
+                 if planning_record is None
+                 else "mdstats.density-task-resources.v1"
+             ),
++            "trajectory_preprocessing_policy": "par_dens4_parallel_geometry_reuse_v1",
++            "trajectory_preprocessing_scheduler_summary": (
++                {}
++                if preprocessing_scheduler.last_report is None
++                else preprocessing_scheduler.last_report.to_json_dict()
++            ),
++            "framework_geometry_cache": geometry_cache.summary(),
+             "resource_policy": resources.to_json_dict(),
+             "preparation_wall_seconds": preparation_wall_seconds,
+         },
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats_par4/original142/mdstats-0.20.142a0-complete-source-package/pyproject.toml ./pyproject.toml
+--- /mnt/data/mdstats_par4/original142/mdstats-0.20.142a0-complete-source-package/pyproject.toml	2026-08-10 19:29:28.000000000 +0000
++++ ./pyproject.toml	2026-08-10 23:16:01.350038204 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.142a0"
++version = "0.20.143a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats_par4/original142/mdstats-0.20.142a0-complete-source-package/release/par_dens4_na_lta_qualification.json ./release/par_dens4_na_lta_qualification.json
+--- /mnt/data/mdstats_par4/original142/mdstats-0.20.142a0-complete-source-package/release/par_dens4_na_lta_qualification.json	1970-01-01 00:00:00.000000000 +0000
++++ ./release/par_dens4_na_lta_qualification.json	2026-08-10 23:16:43.166095709 +0000
+@@ -0,0 +1,75 @@
++{
++  "schema": "mdstats.par-dens4-na-lta-qualification.v1",
++  "package_version": "0.20.143a0",
++  "qualified_on": "2026-08-10",
++  "input": {
++    "basename": "dump.prod.Na_lta_300K.old.lammpstrj",
++    "sha256": "81c86cc40f5a11031f80817213eb558c02348494d1c6cad9b4775a5bc3c9f9cd",
++    "bytes": 183385600,
++    "full_frames": 10001,
++    "atoms_per_frame": 168,
++    "na_atoms": 24,
++    "type_map": {
++      "1": "Si",
++      "2": "Al",
++      "3": "O",
++      "4": "Na"
++    }
++  },
++  "bounded_preprocessing_qualification": {
++    "stride": 100,
++    "selected_frames": 101,
++    "hysteretic_worker_counts": [
++      1,
++      4
++    ],
++    "hysteretic_seconds": [
++      1.0340949019999925,
++      1.4802314129999559
++    ],
++    "hysteretic_parallel_speedup": 0.698603537878049,
++    "observed_connectivity_states": [
++      94,
++      94
++    ],
++    "frame_state_ids_equal": true,
++    "state_digests_equal": true,
++    "transitions_equal": true,
++    "parallel_hysteresis_fold": "deterministic_collection_frame_order_v1",
++    "parallel_granularity_interpretation": "overhead_dominated_for_168_atom_dense_per_frame_workload",
++    "geometry_reuse": {
++      "framework_only_seconds": 1.023328130999971,
++      "full_after_framework_warm_seconds": 1.0243384720000677,
++      "full_cold_seconds": 1.729917118000003,
++      "warm_vs_cold_full_speedup": 1.6888139665615223,
++      "cache_entries_after_framework": 202,
++      "cache_hits_after_framework": 0,
++      "cache_entries_after_warm_full": 303,
++      "cache_hits_after_warm_full": 202,
++      "cold_full_cache_hits": 0,
++      "warm_and_cold_full_connectivity_equal": true,
++      "cache_schema": "mdstats.atomic-connectivity-geometry-cache.v1"
++    },
++    "framework_scene_schema": "mdstats.framework-dynamics-scene.v15"
++  },
++  "acceptance": {
++    "synthetic_preprocessing_matrix": "tests/test_density_par_dens4_preprocessing.py",
++    "serial_parallel_hysteresis_identity": true,
++    "geometry_cache_reuse_identity": true,
++    "partitioned_category_scheduler_identity": true,
++    "relevant_regression_chunks": "all selected density/framework/connectivity files passed; optional mdstats[interactive] mesh simplification skipped"
++  },
++  "interpretation": {
++    "purpose": "PAR-DENS4 preprocessing worker-invariance, geometry reuse, and bounded real-data throughput qualification",
++    "production_scientific_reference": "release/par_dens0_na_lta_qualification.json",
++    "timing_scope": "connectivity preprocessing only; trajectory parsing excluded",
++    "parallel_granularity_note": "Four-worker frame candidate generation is exact but slower on this small dense per-frame problem; worker parallelism is therefore capability/resource bounded rather than a universal speed claim.",
++    "geometry_reuse_note": "The measured warm-pass improvement is the material PAR-DENS4 gain on this Na-LTA sample because framework Si/Al-O neighbor requests are exactly reusable by the broader framework+Na-O pass.",
++    "par_dens5_next": true
++  },
++  "environment": {
++    "python": "3.13.5",
++    "numpy": "2.3.5",
++    "scipy": "1.17.0"
++  }
++}
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats_par4/original142/mdstats-0.20.142a0-complete-source-package/tests/test_density_par_dens4_preprocessing.py ./tests/test_density_par_dens4_preprocessing.py
+--- /mnt/data/mdstats_par4/original142/mdstats-0.20.142a0-complete-source-package/tests/test_density_par_dens4_preprocessing.py	1970-01-01 00:00:00.000000000 +0000
++++ ./tests/test_density_par_dens4_preprocessing.py	2026-08-10 23:05:18.947869615 +0000
+@@ -0,0 +1,151 @@
++from __future__ import annotations
++
++import numpy as np
++
++from mdstats import (
++    AtomisticFrameCollection,
++    AtomicConnectivityGeometryCache,
++    ConnectivityScope,
++    DistanceConnectivity,
++    ExplicitConnectivity,
++    FrameCollectionProvenance,
++    FrameSemantics,
++    FrameworkDynamicsResources,
++    FrameworkMapping,
++    FrameworkPathRule,
++    HystereticDistanceConnectivity,
++    PairCutoffRegistry,
++    build_framework_topology,
++    build_topology_catalog,
++    compute_atomic_connectivity,
++    prepare_framework_dynamics_scene,
++)
++from mdstats.analysis.atomic_connectivity import AtomicEdgeKey
++
++
++def _trajectory(fractional: np.ndarray, atomic_numbers: np.ndarray) -> AtomisticFrameCollection:
++    fractional = np.asarray(fractional, dtype=float)
++    n_frames, n_atoms, _ = fractional.shape
++    return AtomisticFrameCollection(
++        frame_semantics=FrameSemantics.TRAJECTORY,
++        frame_ids=np.arange(n_frames, dtype=np.int64),
++        atomic_numbers=np.asarray(atomic_numbers, dtype=np.int32),
++        masses=np.ones(n_atoms),
++        pbc=np.ones(3, dtype=bool),
++        steps=np.arange(n_frames, dtype=np.int64),
++        times=np.arange(n_frames, dtype=float),
++        cells=np.repeat((np.eye(3) * 10.0)[None, :, :], n_frames, axis=0),
++        origins=np.zeros((n_frames, 3)),
++        fractional_positions=fractional,
++        velocities=np.zeros((n_frames, n_atoms, 3)),
++        provenance=FrameCollectionProvenance(
++            source_format="par-dens4-synthetic",
++            source_files=("synthetic",),
++            velocity_source="synthetic",
++            coordinate_normalization="time_unwrapped_fractional",
++            stress_source=None,
++            units_source="synthetic",
++        ),
++    )
++
++
++def test_hysteretic_frame_parallel_geometry_matches_serial_fold_exactly() -> None:
++    distances = np.asarray([1.0, 1.3, 1.7, 1.4, 1.1, 1.8, 1.0])
++    frac = np.zeros((len(distances), 2, 3), dtype=float)
++    frac[:, 0, :] = [0.10, 0.10, 0.10]
++    frac[:, 1, :] = [0.20, 0.10, 0.10]
++    frac[:, 1, 0] = 0.10 + distances / 10.0
++    collection = _trajectory(frac, np.asarray([14, 8]))
++    definition = HystereticDistanceConnectivity(
++        formation_cutoffs=PairCutoffRegistry.from_mapping({("Si", "O"): 1.2}),
++        breaking_cutoffs=PairCutoffRegistry.from_mapping({("Si", "O"): 1.6}),
++        initial_state="formation_cutoff",
++    )
++    serial = compute_atomic_connectivity(collection, definition, parallel_frame_workers=1)
++    parallel = compute_atomic_connectivity(collection, definition, parallel_frame_workers=4)
++    np.testing.assert_array_equal(serial.frame_state_ids, parallel.frame_state_ids)
++    assert [state.digest for state in serial.states] == [state.digest for state in parallel.states]
++    assert [transition.to_dict() if hasattr(transition, "to_dict") else transition.transition_id for transition in serial.transitions] == [transition.to_dict() if hasattr(transition, "to_dict") else transition.transition_id for transition in parallel.transitions]
++    diagnostics = parallel.metadata["neighbor_search"]
++    assert diagnostics["par_dens4_frame_parallel_geometry"] is True
++    assert diagnostics["par_dens4_parallel_workers"] == 4
++    assert diagnostics["par_dens4_hysteresis_fold"] == "deterministic_collection_frame_order_v1"
++
++
++def test_atomic_connectivity_geometry_cache_reuses_framework_pair_requests() -> None:
++    base = np.asarray(
++        [[0.10, 0.10, 0.10], [0.30, 0.10, 0.10], [0.20, 0.10, 0.10], [0.20, 0.20, 0.10]],
++        dtype=float,
++    )
++    frac = np.repeat(base[None, :, :], 4, axis=0)
++    collection = _trajectory(frac, np.asarray([14, 13, 8, 11]))
++    shared = {("Si", "O"): 1.2, ("Al", "O"): 1.2}
++    cache = AtomicConnectivityGeometryCache()
++    framework = DistanceConnectivity(
++        PairCutoffRegistry.from_mapping(shared),
++        scope=ConnectivityScope.from_selection(included_species=("Si", "Al", "O")),
++    )
++    full = DistanceConnectivity(
++        PairCutoffRegistry.from_mapping({**shared, ("Na", "O"): 1.2})
++    )
++    first = compute_atomic_connectivity(collection, framework, geometry_cache=cache)
++    second = compute_atomic_connectivity(collection, full, geometry_cache=cache)
++    first_cache = first.metadata["neighbor_search"]["geometry_cache"]
++    second_cache = second.metadata["neighbor_search"]["geometry_cache"]
++    assert first_cache["hits"] == 0
++    assert second_cache["hits"] >= 2 * collection.n_frames
++    assert second_cache["scientific_identity_includes_cache_state"] is False
++
++
++def _partitioned_fixture():
++    n_frames = 8
++    atomic_numbers = np.asarray([14, 13, 8, 8], dtype=np.int32)
++    base = np.asarray(
++        [[0.10, 0.10, 0.10], [0.30, 0.10, 0.10], [0.20, 0.10, 0.10], [0.20, 0.20, 0.10]],
++        dtype=float,
++    )
++    frac = np.repeat(base[None, :, :], n_frames, axis=0)
++    frac[:, :, 2] += np.linspace(-0.004, 0.004, n_frames)[:, None]
++    collection = _trajectory(frac, atomic_numbers)
++    frame_edges = {
++        frame: (
++            (AtomicEdgeKey(0, 2), AtomicEdgeKey(2, 1))
++            if frame < 4
++            else (AtomicEdgeKey(0, 3), AtomicEdgeKey(3, 1))
++        )
++        for frame in range(n_frames)
++    }
++    connectivity = compute_atomic_connectivity(
++        collection, ExplicitConnectivity(frame_edges=frame_edges)
++    )
++    mapping = FrameworkMapping.from_symbol_roles(
++        {"Si": "vertex", "Al": "vertex", "O": "linker"},
++        path_rules=(FrameworkPathRule.from_symbols("T-O-T", ("O",)),),
++    )
++    return collection, build_topology_catalog(collection, connectivity, mapping)
++
++
++def test_topology_categories_parallelize_and_reuse_frame_geometry() -> None:
++    collection, catalog = _partitioned_fixture()
++    serial = prepare_framework_dynamics_scene(
++        collection,
++        catalog,
++        resources=FrameworkDynamicsResources(max_threads=1, max_memory_bytes="1GiB"),
++    )
++    parallel = prepare_framework_dynamics_scene(
++        collection,
++        catalog,
++        resources=FrameworkDynamicsResources(max_threads=4, max_memory_bytes="1GiB"),
++    )
++    assert len(serial.topology_categories) == len(parallel.topology_categories) == 2
++    assert serial.dominant_topology_id == parallel.dominant_topology_id
++    for left, right in zip(serial.topology_categories, parallel.topology_categories, strict=True):
++        assert left.topology_id == right.topology_id
++        np.testing.assert_array_equal(left.mean_framework.node_positions_3d, right.mean_framework.node_positions_3d)
++        np.testing.assert_array_equal(left.mean_framework.edge_image_shifts, right.mean_framework.edge_image_shifts)
++    summary = parallel.metadata["topology_category_scheduler_summary"]
++    assert summary["maximum_concurrent_tasks"] >= 2
++    cache = parallel.metadata["framework_geometry_cache"]
++    assert cache["policy"] == "par_dens4_frame_geometry_cache_v1"
++    assert cache["hits"] > 0
++    assert parallel.metadata["topology_category_policy"] == "par_dens4_parallel_partitioned_category_graphs_v2"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats_par4/original142/mdstats-0.20.142a0-complete-source-package/tests/test_density_par_dens4_qualification.py ./tests/test_density_par_dens4_qualification.py
+--- /mnt/data/mdstats_par4/original142/mdstats-0.20.142a0-complete-source-package/tests/test_density_par_dens4_qualification.py	1970-01-01 00:00:00.000000000 +0000
++++ ./tests/test_density_par_dens4_qualification.py	2026-08-10 23:16:43.294715287 +0000
+@@ -0,0 +1,27 @@
++from __future__ import annotations
++
++import json
++from pathlib import Path
++
++ROOT = Path(__file__).resolve().parents[1]
++PAR0 = ROOT / "release" / "par_dens0_na_lta_qualification.json"
++PAR4 = ROOT / "release" / "par_dens4_na_lta_qualification.json"
++
++
++def test_par_dens4_na_lta_qualification_is_bound_and_preserves_identity() -> None:
++    par0 = json.loads(PAR0.read_text(encoding="utf-8"))
++    par4 = json.loads(PAR4.read_text(encoding="utf-8"))
++    assert par4["package_version"] == "0.20.143a0"
++    assert par4["input"]["sha256"] == par0["input"]["sha256"]
++    assert par4["input"]["full_frames"] == par0["input"]["frames"] == 10001
++    q = par4["bounded_preprocessing_qualification"]
++    assert q["hysteretic_worker_counts"] == [1, 4]
++    assert q["frame_state_ids_equal"] is True
++    assert q["state_digests_equal"] is True
++    assert q["transitions_equal"] is True
++    reuse = q["geometry_reuse"]
++    assert reuse["cache_hits_after_warm_full"] == 202
++    assert reuse["warm_and_cold_full_connectivity_equal"] is True
++    assert reuse["warm_vs_cold_full_speedup"] > 1.0
++    assert q["framework_scene_schema"] == "mdstats.framework-dynamics-scene.v15"
++    assert par4["interpretation"]["par_dens5_next"] is True
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_*' /mnt/data/mdstats_par4/original142/mdstats-0.20.142a0-complete-source-package/tests/test_density_par_dens_architecture_plan.py ./tests/test_density_par_dens_architecture_plan.py
+--- /mnt/data/mdstats_par4/original142/mdstats-0.20.142a0-complete-source-package/tests/test_density_par_dens_architecture_plan.py	2026-08-10 19:29:48.000000000 +0000
++++ ./tests/test_density_par_dens_architecture_plan.py	2026-08-10 23:16:18.834259648 +0000
+@@ -8,17 +8,19 @@
+ MANUAL = ROOT / "docs/arch_manuals/mdstats_dynamical_framework_density_architecture_standard.md"
+ 
+ 
+-def test_par_dens0_to_3_are_completed_and_par_dens4_is_next() -> None:
+-    assert mdstats.__version__ == "0.20.142a0"
++def test_par_dens0_to_4_are_completed_and_par_dens5_is_next() -> None:
++    assert mdstats.__version__ == "0.20.143a0"
+     text = MANUAL.read_text(encoding="utf-8")
+     assert "PAR-DENS0 is `completed` in `mdstats 0.20.120a0`" in text
+     assert "PAR-DENS2 are `completed` in `mdstats 0.20.141a0`" in text
+     assert "PAR-DENS3 is `completed` in" in text
+-    assert "`mdstats 0.20.142a0`; PAR-DENS4 is the next" in text
++    assert "`mdstats 0.20.142a0`; PAR-DENS4 is `completed` in `mdstats 0.20.143a0`; PAR-DENS5" in text
++    assert "is the next implementation gate" in text
+     assert "### PAR-DENS0 implementation record (0.20.120a0)" in text
+     assert "### PAR-DENS1 implementation record (0.20.141a0)" in text
+     assert "### PAR-DENS2 implementation record (0.20.141a0)" in text
+     assert "### PAR-DENS3 implementation record (0.20.142a0)" in text
++    assert "### PAR-DENS4 implementation record (0.20.143a0)" in text
+ 
+ 
+ def test_par_dens_gates_are_present_in_normative_order() -> None:

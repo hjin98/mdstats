@@ -1,0 +1,1710 @@
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/CHANGELOG.md /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/CHANGELOG.md
+--- /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/CHANGELOG.md	2026-08-17 22:42:28.000000000 +0000
++++ /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/CHANGELOG.md	2026-08-17 23:15:34.601432261 +0000
+@@ -1,3 +1,12 @@
++## 0.20.231a0 - 2026-08-17
++
++- Implement REPAIR-PAR1 / architecture revision 98 while preserving sequential repair iteration, objective/tie authority, accepted/rejected trace, terminal order, and winner application.
++- Fuse removal sparse metrics, vectorize replacement-frontier CSR scoring, add thread-private epoch/stamp membership, and replace repeated future-rank searches with an O(1) inverse rank map.
++- Use PARCORE1 only for sufficiently large immutable proposal batches; canonical reduction follows historical removal-shortlist order and the winning representative contribution is recomputed with historical scalar arithmetic before persistence.
++- Preserve complete repair-plan digest `5dcb048b02ae2670d48d15f3f610b5814b611b2339df4ec4b265a52615b9545b` across scalar reference and optimized 1/2/4-worker schedules.
++- On same-host proposal fixtures, reduce the medium scalar scorer from about 3.176 s to 0.119 s (~26.6x) and the large scorer from about 3.130 s to 0.830/0.611/0.461 s at 1/2/4 lanes (~6.79x end-to-end at four lanes).
++- Keep active qualification on supplied MACE-MPA-0 medium while preserving model-generic MACE-MH-1 compatibility; next optimization gate is MVQUAL-PAR1.
++
+ ## 0.20.230a0 - 2026-08-17
+ 
+ - Implement MVKERNEL1 / architecture revision 97 as exact sparse-vector hardening around the frozen sequential MVSEL rank authority and independent MVQUAL scientific scorer.
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/PKG-INFO /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/PKG-INFO
+--- /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/PKG-INFO	2026-08-17 22:51:29.000000000 +0000
++++ /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/PKG-INFO	2026-08-17 23:15:34.586601860 +0000
+@@ -1,6 +1,6 @@
+ Metadata-Version: 2.4
+ Name: mdstats
+-Version: 0.20.230a0
++Version: 0.20.231a0
+ Summary: Transparent atomistic frame collections and structural/dynamical statistics
+ Requires-Python: >=3.10
+ Requires-Dist: numpy>=1.26
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/benchmarks/mlff_repair_par1_cloud_cpu_mpa0_2026-08-17.json /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/benchmarks/mlff_repair_par1_cloud_cpu_mpa0_2026-08-17.json
+--- /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/benchmarks/mlff_repair_par1_cloud_cpu_mpa0_2026-08-17.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/benchmarks/mlff_repair_par1_cloud_cpu_mpa0_2026-08-17.json	2026-08-17 23:16:07.142493377 +0000
+@@ -0,0 +1,74 @@
++{
++  "acceptance": {
++    "next_gate": "MVQUAL-PAR1",
++    "status": "PASS"
++  },
++  "active_foundation": {
++    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
++    "family": "MACE-MPA-0 medium",
++    "mh1_compatible": true
++  },
++  "architecture_revision": 98,
++  "date": "2026-08-17",
++  "execution": {
++    "large_8192_candidate_proposal": {
++      "adaptive_parallel_dispatch": true,
++      "control_median_seconds": 3.1298696419999033,
++      "control_release": "0.20.230a0",
++      "control_trials_seconds": [
++        3.1298696419999033
++      ],
++      "current_1lane_median_seconds": 0.8301331969996681,
++      "current_1lane_trials_seconds": [
++        0.8811055659998601,
++        0.8301331969996681,
++        0.8143734850000328
++      ],
++      "current_2lane_median_seconds": 0.6107755259999976,
++      "current_2lane_trials_seconds": [
++        0.6550203670003611,
++        0.5963247789995876,
++        0.6107755259999976
++      ],
++      "current_4lane_median_seconds": 0.46087840200016217,
++      "current_4lane_trials_seconds": [
++        0.5291186450003806,
++        0.46087840200016217,
++        0.4459569440004998
++      ],
++      "four_lane_end_to_end_speedup": 6.791096368188679,
++      "one_to_four_lane_scaling": 1.8011978721436723,
++      "serial_vectorization_speedup": 3.770322224568444
++    },
++    "medium_2048_candidate_proposal": {
++      "adaptive_parallel_dispatch": false,
++      "control_median_seconds": 3.1757905590002338,
++      "control_release": "0.20.230a0",
++      "control_trials_seconds": [
++        3.147819959000117,
++        3.1757905590002338,
++        3.3094404379999105
++      ],
++      "current_1lane_median_seconds": 0.11936937999962538,
++      "current_1lane_trials_seconds": [
++        0.12584334900020622,
++        0.11891886400007934,
++        0.11902297100004944,
++        0.11936937999962538,
++        0.11959381500037125
++      ],
++      "speedup": 26.604733634456345
++    }
++  },
++  "gate": "REPAIR-PAR1",
++  "interpretation": "Timing is same-host execution evidence. Complete repair plan/trace, scalar/vectorized proposal equality, objective/tie order, and terminal order remain scientific authority.",
++  "release": "0.20.231a0",
++  "schema": "mdstats.mlff-repair-par1-benchmark.v1",
++  "scientific": {
++    "large_proposal_result_digest": "9fda146806fc12f7c4d8030877e3a09cd206cef01eb6f821be0010c468b41994",
++    "medium_proposal_result_digest": "1a09e7745aa534bed757334ad9d365099e28635050ec63f1244421e4b859a9b1",
++    "sequential_repair_authority_changed": false,
++    "standard_repair_plan_digest": "5dcb048b02ae2670d48d15f3f610b5814b611b2339df4ec4b265a52615b9545b",
++    "worker_count_trace_exact": true
++  }
++}
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/benchmarks/mlff_repair_par1_cloud_cpu_mpa0_2026-08-17.md /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/benchmarks/mlff_repair_par1_cloud_cpu_mpa0_2026-08-17.md
+--- /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/benchmarks/mlff_repair_par1_cloud_cpu_mpa0_2026-08-17.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/benchmarks/mlff_repair_par1_cloud_cpu_mpa0_2026-08-17.md	2026-08-17 23:16:07.142588134 +0000
+@@ -0,0 +1,18 @@
++# REPAIR-PAR1 cloud CPU benchmark — MPA-0 active qualification
++
++Release: `mdstats 0.20.231a0`  
++Architecture revision: 98  
++Date: 2026-08-17
++
++REPAIR-PAR1 preserves sequential repair mutation/winner authority and accelerates only immutable proposal construction. The medium fixture remains below the adaptive parallel threshold and demonstrates the vectorized CSR/stamp kernel; the large fixture crosses the threshold and demonstrates additional deterministic proposal-task scaling.
++
++| Workload | Untouched 0.20.230a0 | 1 lane | 2 lanes | 4 lanes |
++|---|---:|---:|---:|---:|
++| 2,048-candidate proposal | 3.175791 s | 0.119369 s | — | adaptive serial |
++| 8,192-candidate proposal | 3.129870 s | 0.830133 s | 0.610776 s | 0.460878 s |
++
++The medium proposal kernel is 26.60x faster from vectorized sparse scoring alone. The large fixture is 3.77x faster at one lane and 6.79x faster end-to-end at four lanes, with 1.80x additional 1→4 lane scaling.
++
++Scientific identities are exact: the frozen complete repair-plan digest is `5dcb048b02ae2670d48d15f3f610b5814b611b2339df4ec4b265a52615b9545b`; medium proposal result digest `1a09e7745aa534bed757334ad9d365099e28635050ec63f1244421e4b859a9b1`; large proposal result digest `9fda146806fc12f7c4d8030877e3a09cd206cef01eb6f821be0010c468b41994`. Arbitrary task completion is reduced in historical removal-shortlist order and does not change the persisted repair trace.
++
++The active checkpoint is MACE-MPA-0 medium (`75428afe...638`); the repair kernel is foundation-model independent and the same contract applies to MACE-MH-1.
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/benchmarks/mlff_repair_par1_implementation_manifest_0.20.231a0.json /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/benchmarks/mlff_repair_par1_implementation_manifest_0.20.231a0.json
+--- /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/benchmarks/mlff_repair_par1_implementation_manifest_0.20.231a0.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/benchmarks/mlff_repair_par1_implementation_manifest_0.20.231a0.json	2026-08-17 23:23:24.996071944 +0000
+@@ -0,0 +1,32 @@
++{
++  "architecture_revision": 98,
++  "contracts": {
++    "adaptive_parallel_proposals": true,
++    "canonical_winner_reduction": "historical_removal_shortlist_order",
++    "native_threads_per_parallel_task": 1,
++    "next_gate": "MVQUAL-PAR1",
++    "scalar_reference_retained": true,
++    "sequential_repair_authority_changed": false
++  },
++  "files": {
++    "docs/specs/training_data/mlff_repair_par1_deterministic_parallel_proposals_spec.md": {
++      "bytes": 2268,
++      "sha256": "0b6b14464111ae07d74cf574622c0e5a2f359e49f1bdcfcd078d4b93a5ff851e"
++    },
++    "mdstats/training_data/campaign_cli.py": {
++      "bytes": 1166130,
++      "sha256": "bc9e10398046c823d1b782bae11650f7c7570ebf681f5e48a12e188aea2d05d9"
++    },
++    "mdstats/training_data/target_multi_view_repair.py": {
++      "bytes": 85394,
++      "sha256": "73a581ea16c03e201f717086edd08e7a3d8cc3c6a20297056bba5dbf48c15711"
++    },
++    "tests/test_mlff_repair_par1.py": {
++      "bytes": 4594,
++      "sha256": "dcb00720fdf67ca1a2b2f52a9948d8185b2eee176de2ccf43886c26dd9610c88"
++    }
++  },
++  "gate": "REPAIR-PAR1",
++  "release": "0.20.231a0",
++  "schema": "mdstats.mlff-repair-par1-implementation.v1"
++}
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/docs/arch_manuals/mlff_training_data/00_front_matter.md /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/docs/arch_manuals/mlff_training_data/00_front_matter.md
+--- /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/docs/arch_manuals/mlff_training_data/00_front_matter.md	2026-08-17 22:39:37.000000000 +0000
++++ /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/docs/arch_manuals/mlff_training_data/00_front_matter.md	2026-08-17 23:15:34.586770473 +0000
+@@ -1,8 +1,8 @@
+ ---
+ geometry: "margin=0.75in"
+-architecture_revision: 97
+-release: "mdstats 0.20.230a0"
+-status: "current normative architecture; MVKERNEL1 complete; REPAIR-PAR1 next"
++architecture_revision: 98
++release: "mdstats 0.20.231a0"
++status: "current normative architecture; REPAIR-PAR1 complete; MVQUAL-PAR1 next"
+ last_updated: "2026-08-17"
+ ---
+ 
+@@ -76,4 +76,4 @@
+ 
+ ## Current release boundary
+ 
+-Revision 97 completes `MVKERNEL1` on top of the exact sparse MVIDX substrate. The sequential MVSEL rank authority is unchanged, while ragged inverse-edge gathers, paired family/domain scatters, witness-weight arithmetic, selected-subset coverage, obligation counts, and MVQUAL multiplicity/unique-owner telemetry now use shared vectorized CSR kernels. Required hard-obligation pending state is maintained incrementally, and MVQUAL provenance codes are constructed once per domain. Optimized MVSEL state is compared against the scalar reference after every qualified rank and MVQUAL telemetry is byte-equivalent to its retained scalar reference. The active qualification checkpoint remains MACE-MPA-0 medium, and the execution kernels are foundation-model independent and remain valid for MACE-MH-1 campaigns. `REPAIR-PAR1` is next; GPU performance authority remains deferred.
++Revision 98 completes `REPAIR-PAR1` on top of the exact MVKERNEL1 sparse substrate. Sequential repair iteration, objective/tie authority, accepted/rejected swap order, and winner application remain unchanged. Immutable removal proposals now use fused sparse removal metrics, vectorized replacement-frontier CSR scoring, per-thread epoch/stamp witness membership, and an O(1) inverse rank map. Large proposal batches may execute concurrently through PARCORE1, but arbitrary completion is reduced in the historical removal-shortlist order; small batches stay serial when executor overhead would dominate. The winning replacement representative contribution is recomputed with the historical scalar arithmetic before persistence. The active qualification checkpoint remains MACE-MPA-0 medium, and the execution kernels are foundation-model independent and remain valid for MACE-MH-1 campaigns. `MVQUAL-PAR1` is next; GPU performance authority remains deferred.
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/docs/arch_manuals/mlff_training_data/60_execution_performance.md /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/docs/arch_manuals/mlff_training_data/60_execution_performance.md
+--- /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/docs/arch_manuals/mlff_training_data/60_execution_performance.md	2026-08-17 22:15:46.000000000 +0000
++++ /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/docs/arch_manuals/mlff_training_data/60_execution_performance.md	2026-08-17 23:22:29.518187727 +0000
+@@ -137,6 +137,11 @@
+ \mathrm{overlap}(j)=\mathbf 1[\mathrm{stamp}[j]=e],
+ $$
+ 
++#### REPAIR-PAR1 realized proposal kernel
++
++`REPAIR-PAR1` retains the sequential repair iteration and canonical winner authority. For each immutable iteration state, fused removal metrics scan each sparse family once; replacement frontiers are scored with canonical ragged-CSR gathers and thread-private epoch/stamp arrays rather than repeated `intersect1d`/`isin` calls. An inverse candidate-rank map replaces repeated linear future-rank searches. Proposal tasks may execute through PARCORE1 only when an execution-only sparse-edge work estimate exceeds the measured break-even threshold; smaller rungs remain serial. Completion order is never authoritative: proposal results are reduced in the historical removal-shortlist order using the unchanged objective/tie hierarchy. The selected replacement's representative contribution is recomputed by the historical scalar arithmetic before persistence, preserving the complete repair trace exactly. Worker count, adaptive threshold, queue depth, and stamp epochs are execution state and do not enter content identity.
++
++
+ where the current removed-witness set is stamped with epoch $e$. This turns repeated sorting/intersection work into direct indexed gathers.
+ 
+ ### Batched resampling/statistics
+@@ -155,7 +160,7 @@
+ | FEAS1 | global PARCORE1 queue plus implemented streamed exact CSR | retain exact reduction; downstream sparse-kernel work only |
+ | MVIDX1 | authenticated graph adoption; inverse/validator Python overhead | implemented MVIDX-REUSE1 component-level queue plus vectorized CSR validation |
+ | MVSEL1 | Python ragged gathers and sparse update overhead | vectorized CSR gather, indexed weights, incremental counters; preserve sequential rank authority |
+-| REPAIR1 | serial proposal shortlist and repeated intersections | parallel immutable-state proposal scoring, stamp arrays, fused sparse scans, O(1) rank map |
++| REPAIR1 | serial proposal shortlist and repeated intersections | implemented adaptive immutable-state proposal queue, vectorized frontier scoring, stamp arrays, fused sparse scans, O(1) rank map |
+ | MVQUAL1 | independent same-N rescoring serialized | global scoring queue and batched sparse telemetry |
+ | FOUNDATION-AUDIT1 | per-frame/species Python reductions | chunked execution, cached frame index, `bincount`, one-pass quantiles |
+ | EVAL2 CPU analysis | repeated species masks and bootstrap Python loops | cached composition codes, `bincount`, batched bootstrap |
+@@ -205,4 +210,4 @@
+ 
+ The revision-92 CPU evidence uses the supplied LTA target archive and unified 12,000-frame replay source plus deterministic synthetic FEAS1/MVIDX1/MVSEL1 workloads. The supplied TARGET-DATA2B radius workload is a fixed 4,100-frame, eight-family representative cache spanning low/high temperature and hydrostatic strain; the complete 27-file target archive is authenticated separately. On the qualification host the automatic CPU budget is three lanes, so the bounded-intermediate schedule aliases the two-lane schedule. Stages that are serial in the current implementation record the requested schedule separately from actual allocated lanes rather than reporting fictitious parallelism.
+ 
+-The canonical evidence is `benchmarks/mlff_perfbase1_lta_cloud_cpu_mpa0_2026-08-17.{json,md}`. All repeated trials preserve exact scientific-output digests. The active MPA-0 medium checkpoint is bound by SHA-256 `75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638`. MACE model inference is not claimed on the cloud host because that runtime was not part of the authoritative measurement environment; Foundation Audit/EVAL2 inference baselines remain explicitly unavailable there rather than being synthesized.
++The canonical evidence is `benchmarks/mlff_perfbase1_lta_cloud_cpu_mpa0_2026-08-17.{json,md}`. All repeated trials preserve exact scientific-output digests. The active MPA-0 medium checkpoint is bound by SHA-256 `75428afe3a1d...fb493e38604fb638`. MACE model inference is not claimed on the cloud host because that runtime was not part of the authoritative measurement environment; Foundation Audit/EVAL2 inference baselines remain explicitly unavailable there rather than being synthesized.
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/docs/arch_manuals/mlff_training_data/70_status_and_gates.md /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/docs/arch_manuals/mlff_training_data/70_status_and_gates.md
+--- /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/docs/arch_manuals/mlff_training_data/70_status_and_gates.md	2026-08-17 22:42:28.000000000 +0000
++++ /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/docs/arch_manuals/mlff_training_data/70_status_and_gates.md	2026-08-17 23:22:29.517872548 +0000
+@@ -67,7 +67,7 @@
+ 
+ **Implementation.** `0.20.229a0` routes exact local-radius row blocks through the stage-wide `DeterministicWorkQueue`, with one native cKDTree worker/task and one shared read-only tree/scaled matrix per family. Execution-only adaptive row sizing caps the historical block size by an approximately 2 MiB query-temporary target and a minimum task-count rule, preventing long tails on high-core-count hosts. Pair-rule and foundation-species adapters use O(1) maps, and target-label scalar channels apply their exact historical constant-family rejection before expensive statistics/tree work. Direct API calls without an execution scope retain the historical native-tree implementation for qualification/backward compatibility.
+ 
+-**Acceptance. PASS.** The frozen PERFBASE1 supplied-data radius digest remains exactly `823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d` across 1/2/3 outer lanes. In the final same-host four-repeat supplied-cache comparison, untouched `0.20.228a0` measures about 0.279 s median at three native cKDTree workers and `0.20.229a0` measures about 0.223 s at three outer lanes (about 1.25x faster); all three outer lanes are observed active. The frozen PERFBASE1 three-lane baseline was about 0.42 s, illustrating host-load variability and why paired controls are retained. A separate 36,408-row nonuniform equal-unit/equal-frame two-repeat stress family preserves byte-identical radii and improves from about 5.94 s to about 5.13 s (about 1.16x). One-lane queue execution is essentially neutral/slightly slower on the small cache, so the gate does not claim a serial speedup. The exact scientific/reference arrays, not wall time, are the gate authority; nested native-tree parallelism is rejected.
++**Acceptance. PASS.** The frozen PERFBASE1 supplied-data radius digest remains exactly `823a2c0c2f8a...6d96e52cd642e2d` across 1/2/3 outer lanes. In the final same-host four-repeat supplied-cache comparison, untouched `0.20.228a0` measures about 0.279 s median at three native cKDTree workers and `0.20.229a0` measures about 0.223 s at three outer lanes (about 1.25x faster); all three outer lanes are observed active. The frozen PERFBASE1 three-lane baseline was about 0.42 s, illustrating host-load variability and why paired controls are retained. A separate 36,408-row nonuniform equal-unit/equal-frame two-repeat stress family preserves byte-identical radii and improves from about 5.94 s to about 5.13 s (about 1.16x). One-lane queue execution is essentially neutral/slightly slower on the small cache, so the gate does not claim a serial speedup. The exact scientific/reference arrays, not wall time, are the gate authority; nested native-tree parallelism is rejected.
+ 
+ **Next gate.** `MVKERNEL1`.
+ 
+@@ -77,17 +77,19 @@
+ 
+ **Implementation.** `0.20.230a0` adds shared exact ragged-CSR gather kernels and routes MVSEL inverse-edge updates through them. Per-family and domain-total gain arrays share one gathered edge stream, while `np.add.at` is still applied independently in canonical witness/edge order so floating-point state remains exact. Coverage and representative witness amounts are vectorized, and required hard-obligation pending count is maintained incrementally. MVIDX selected-subset coverage and obligation helpers gather candidate CSR rows once and use boolean assignment/`bincount`. MVQUAL gathers selected candidate rows once per family to derive multiplicity, covered/unique witness masks, and unique-owner candidates; DATA2A run/condition provenance codes are built once per domain. The scalar MVSEL update and scalar MVQUAL telemetry implementations are retained as qualification references.
+ 
+-**Acceptance. PASS.** Optimized and scalar MVSEL states agree exactly after every qualified rank and persisted selection plans remain byte-identical. The frozen 4,096-candidate/2,048-selection digest remains `d147d85acd64dd386dcd9b64e1bd534001e1b1a9e1736522b2ffaddbb978b378`; the 24,576-candidate/16,384-selection stress digest remains `aaec42fb0c1df6a62ce2286ec5f5b8897bc089d6d31726da89a0461bcd75d608`. Same-host measurements reduce the representative selector median from about 1.404 s in untouched `0.20.229a0` to about 0.811 s, and the 16,384-selection stress path from about 6.640 s to about 5.591 s. A 16,384-candidate/8,192-selected/6-family MVQUAL telemetry fixture drops from about 0.578 s to about 0.041 s (about 14.1x), with byte-identical telemetry. Full MVQUAL plan evidence remains digest-identical to untouched `0.20.229a0`. Timing is execution evidence; exact selector state and qualification records are authority.
++**Acceptance. PASS.** Optimized and scalar MVSEL states agree exactly after every qualified rank and persisted selection plans remain byte-identical. The frozen 4,096-candidate/2,048-selection digest remains `d147d85acd64...b2ffaddbb978b378`; the 24,576-candidate/16,384-selection stress digest remains `aaec42fb0c1d...9a0461bcd75d608`. Same-host measurements reduce the representative selector median from about 1.404 s in untouched `0.20.229a0` to about 0.811 s, and the 16,384-selection stress path from about 6.640 s to about 5.591 s. A 16,384-candidate/8,192-selected/6-family MVQUAL telemetry fixture drops from about 0.578 s to about 0.041 s (about 14.1x), with byte-identical telemetry. Full MVQUAL plan evidence remains digest-identical to untouched `0.20.229a0`. Timing is execution evidence; exact selector state and qualification records are authority.
+ 
+ **Next gate.** `REPAIR-PAR1`.
+ 
+-### Gate REPAIR-PAR1 - deterministic parallel repair proposals
++### Gate REPAIR-PAR1 - deterministic parallel repair proposals - COMPLETE
+ 
+-**Purpose.** Parallelize the independent proposal shortlist inside each sequential repair iteration.
++**Purpose.** Reduce REPAIR1 proposal cost without changing the sequential repair iteration, swap objective, tie hierarchy, accepted/rejected trace, or winner application.
+ 
+-**Implementation.** Immutable-state proposal tasks, canonical winner reduction, epoch/stamp membership, fused sparse scans, inverse rank map.
++**Implementation.** `0.20.231a0` fuses removal unique-coverage and representative-loss scans, scores complete replacement frontiers with shared ragged-CSR gathers, and replaces repeated set intersections with thread-private epoch/stamp witness membership. A candidate-to-rank inverse map makes future displacement lookup O(1). Immutable removal proposals may run through the PARCORE1 deterministic queue; each task owns private stamp scratch, native numerical layers remain single-threaded, and results are canonically reduced in the historical removal-shortlist order. Parallel dispatch is adaptive: proposal batches below an execution-only sparse-edge threshold remain serial because qualification showed that blindly threading the historical Python loops is slower. The winning pair's representative contribution is recomputed with the historical scalar/stamp arithmetic before the swap is persisted. `execution_mode="reference"` retains the historical scalar proposal oracle.
+ 
+-**Acceptance.** Complete repair trace and terminal order are identical across worker counts and restart.
++**Acceptance. PASS.** The complete serialized repair plan/trace on the frozen REPAIR1 fixture is identical for the scalar reference and optimized 1/2/4-worker realizations, digest `5dcb048b02ae...b265a52615b9545b`. A 2,048-candidate proposal fixture preserves result digest `1a09e7745aa5...244421e4b859a9b1` and improves from about 3.176 s in untouched `0.20.230a0` to about 0.119 s (about 26.6x); adaptive execution correctly keeps it serial. An 8,192-candidate sparse fixture preserves result digest `9fda146806fc...10c468b41994` and improves from about 3.130 s to about 0.830/0.611/0.461 s at 1/2/4 lanes: about 3.77x from vectorization alone, 6.79x end-to-end at four lanes, and 1.80x additional 1-to-4-lane scaling. Timing is execution evidence; the complete repair trace and terminal order are scientific authority.
++
++**Next gate.** `MVQUAL-PAR1`.
+ 
+ ### Gate MVQUAL-PAR1 - global same-N scoring queue
+ 
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/docs/arch_manuals/mlff_training_data_architecture.md /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/docs/arch_manuals/mlff_training_data_architecture.md
+--- /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-17 22:42:30.000000000 +0000
++++ /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-17 23:22:30.843988058 +0000
+@@ -1,8 +1,8 @@
+ ---
+ geometry: "margin=0.75in"
+-architecture_revision: 97
+-release: "mdstats 0.20.230a0"
+-status: "current normative architecture; MVKERNEL1 complete; REPAIR-PAR1 next"
++architecture_revision: 98
++release: "mdstats 0.20.231a0"
++status: "current normative architecture; REPAIR-PAR1 complete; MVQUAL-PAR1 next"
+ last_updated: "2026-08-17"
+ ---
+ 
+@@ -76,7 +76,7 @@
+ 
+ ## Current release boundary
+ 
+-Revision 97 completes `MVKERNEL1` on top of the exact sparse MVIDX substrate. The sequential MVSEL rank authority is unchanged, while ragged inverse-edge gathers, paired family/domain scatters, witness-weight arithmetic, selected-subset coverage, obligation counts, and MVQUAL multiplicity/unique-owner telemetry now use shared vectorized CSR kernels. Required hard-obligation pending state is maintained incrementally, and MVQUAL provenance codes are constructed once per domain. Optimized MVSEL state is compared against the scalar reference after every qualified rank and MVQUAL telemetry is byte-equivalent to its retained scalar reference. The active qualification checkpoint remains MACE-MPA-0 medium, and the execution kernels are foundation-model independent and remain valid for MACE-MH-1 campaigns. `REPAIR-PAR1` is next; GPU performance authority remains deferred.
++Revision 98 completes `REPAIR-PAR1` on top of the exact MVKERNEL1 sparse substrate. Sequential repair iteration, objective/tie authority, accepted/rejected swap order, and winner application remain unchanged. Immutable removal proposals now use fused sparse removal metrics, vectorized replacement-frontier CSR scoring, per-thread epoch/stamp witness membership, and an O(1) inverse rank map. Large proposal batches may execute concurrently through PARCORE1, but arbitrary completion is reduced in the historical removal-shortlist order; small batches stay serial when executor overhead would dominate. The winning replacement representative contribution is recomputed with the historical scalar arithmetic before persistence. The active qualification checkpoint remains MACE-MPA-0 medium, and the execution kernels are foundation-model independent and remain valid for MACE-MH-1 campaigns. `MVQUAL-PAR1` is next; GPU performance authority remains deferred.
+ 
+ # Part I - Foundations and ownership
+ 
+@@ -2548,6 +2548,11 @@
+ \mathrm{overlap}(j)=\mathbf 1[\mathrm{stamp}[j]=e],
+ $$
+ 
++#### REPAIR-PAR1 realized proposal kernel
++
++`REPAIR-PAR1` retains the sequential repair iteration and canonical winner authority. For each immutable iteration state, fused removal metrics scan each sparse family once; replacement frontiers are scored with canonical ragged-CSR gathers and thread-private epoch/stamp arrays rather than repeated `intersect1d`/`isin` calls. An inverse candidate-rank map replaces repeated linear future-rank searches. Proposal tasks may execute through PARCORE1 only when an execution-only sparse-edge work estimate exceeds the measured break-even threshold; smaller rungs remain serial. Completion order is never authoritative: proposal results are reduced in the historical removal-shortlist order using the unchanged objective/tie hierarchy. The selected replacement's representative contribution is recomputed by the historical scalar arithmetic before persistence, preserving the complete repair trace exactly. Worker count, adaptive threshold, queue depth, and stamp epochs are execution state and do not enter content identity.
++
++
+ where the current removed-witness set is stamped with epoch $e$. This turns repeated sorting/intersection work into direct indexed gathers.
+ 
+ ### Batched resampling/statistics
+@@ -2566,7 +2571,7 @@
+ | FEAS1 | global PARCORE1 queue plus implemented streamed exact CSR | retain exact reduction; downstream sparse-kernel work only |
+ | MVIDX1 | authenticated graph adoption; inverse/validator Python overhead | implemented MVIDX-REUSE1 component-level queue plus vectorized CSR validation |
+ | MVSEL1 | Python ragged gathers and sparse update overhead | vectorized CSR gather, indexed weights, incremental counters; preserve sequential rank authority |
+-| REPAIR1 | serial proposal shortlist and repeated intersections | parallel immutable-state proposal scoring, stamp arrays, fused sparse scans, O(1) rank map |
++| REPAIR1 | serial proposal shortlist and repeated intersections | implemented adaptive immutable-state proposal queue, vectorized frontier scoring, stamp arrays, fused sparse scans, O(1) rank map |
+ | MVQUAL1 | independent same-N rescoring serialized | global scoring queue and batched sparse telemetry |
+ | FOUNDATION-AUDIT1 | per-frame/species Python reductions | chunked execution, cached frame index, `bincount`, one-pass quantiles |
+ | EVAL2 CPU analysis | repeated species masks and bootstrap Python loops | cached composition codes, `bincount`, batched bootstrap |
+@@ -2616,7 +2621,7 @@
+ 
+ The revision-92 CPU evidence uses the supplied LTA target archive and unified 12,000-frame replay source plus deterministic synthetic FEAS1/MVIDX1/MVSEL1 workloads. The supplied TARGET-DATA2B radius workload is a fixed 4,100-frame, eight-family representative cache spanning low/high temperature and hydrostatic strain; the complete 27-file target archive is authenticated separately. On the qualification host the automatic CPU budget is three lanes, so the bounded-intermediate schedule aliases the two-lane schedule. Stages that are serial in the current implementation record the requested schedule separately from actual allocated lanes rather than reporting fictitious parallelism.
+ 
+-The canonical evidence is `benchmarks/mlff_perfbase1_lta_cloud_cpu_mpa0_2026-08-17.{json,md}`. All repeated trials preserve exact scientific-output digests. The active MPA-0 medium checkpoint is bound by SHA-256 `75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638`. MACE model inference is not claimed on the cloud host because that runtime was not part of the authoritative measurement environment; Foundation Audit/EVAL2 inference baselines remain explicitly unavailable there rather than being synthesized.
++The canonical evidence is `benchmarks/mlff_perfbase1_lta_cloud_cpu_mpa0_2026-08-17.{json,md}`. All repeated trials preserve exact scientific-output digests. The active MPA-0 medium checkpoint is bound by SHA-256 `75428afe3a1d...fb493e38604fb638`. MACE model inference is not claimed on the cloud host because that runtime was not part of the authoritative measurement environment; Foundation Audit/EVAL2 inference baselines remain explicitly unavailable there rather than being synthesized.
+ 
+ # Part VII - Current implementation status and frozen forward gates
+ 
+@@ -2687,7 +2692,7 @@
+ 
+ **Implementation.** `0.20.229a0` routes exact local-radius row blocks through the stage-wide `DeterministicWorkQueue`, with one native cKDTree worker/task and one shared read-only tree/scaled matrix per family. Execution-only adaptive row sizing caps the historical block size by an approximately 2 MiB query-temporary target and a minimum task-count rule, preventing long tails on high-core-count hosts. Pair-rule and foundation-species adapters use O(1) maps, and target-label scalar channels apply their exact historical constant-family rejection before expensive statistics/tree work. Direct API calls without an execution scope retain the historical native-tree implementation for qualification/backward compatibility.
+ 
+-**Acceptance. PASS.** The frozen PERFBASE1 supplied-data radius digest remains exactly `823a2c0c2f8a012c84bee0fe27085535862b71ff48a75f31b6d96e52cd642e2d` across 1/2/3 outer lanes. In the final same-host four-repeat supplied-cache comparison, untouched `0.20.228a0` measures about 0.279 s median at three native cKDTree workers and `0.20.229a0` measures about 0.223 s at three outer lanes (about 1.25x faster); all three outer lanes are observed active. The frozen PERFBASE1 three-lane baseline was about 0.42 s, illustrating host-load variability and why paired controls are retained. A separate 36,408-row nonuniform equal-unit/equal-frame two-repeat stress family preserves byte-identical radii and improves from about 5.94 s to about 5.13 s (about 1.16x). One-lane queue execution is essentially neutral/slightly slower on the small cache, so the gate does not claim a serial speedup. The exact scientific/reference arrays, not wall time, are the gate authority; nested native-tree parallelism is rejected.
++**Acceptance. PASS.** The frozen PERFBASE1 supplied-data radius digest remains exactly `823a2c0c2f8a...6d96e52cd642e2d` across 1/2/3 outer lanes. In the final same-host four-repeat supplied-cache comparison, untouched `0.20.228a0` measures about 0.279 s median at three native cKDTree workers and `0.20.229a0` measures about 0.223 s at three outer lanes (about 1.25x faster); all three outer lanes are observed active. The frozen PERFBASE1 three-lane baseline was about 0.42 s, illustrating host-load variability and why paired controls are retained. A separate 36,408-row nonuniform equal-unit/equal-frame two-repeat stress family preserves byte-identical radii and improves from about 5.94 s to about 5.13 s (about 1.16x). One-lane queue execution is essentially neutral/slightly slower on the small cache, so the gate does not claim a serial speedup. The exact scientific/reference arrays, not wall time, are the gate authority; nested native-tree parallelism is rejected.
+ 
+ **Next gate.** `MVKERNEL1`.
+ 
+@@ -2697,17 +2702,19 @@
+ 
+ **Implementation.** `0.20.230a0` adds shared exact ragged-CSR gather kernels and routes MVSEL inverse-edge updates through them. Per-family and domain-total gain arrays share one gathered edge stream, while `np.add.at` is still applied independently in canonical witness/edge order so floating-point state remains exact. Coverage and representative witness amounts are vectorized, and required hard-obligation pending count is maintained incrementally. MVIDX selected-subset coverage and obligation helpers gather candidate CSR rows once and use boolean assignment/`bincount`. MVQUAL gathers selected candidate rows once per family to derive multiplicity, covered/unique witness masks, and unique-owner candidates; DATA2A run/condition provenance codes are built once per domain. The scalar MVSEL update and scalar MVQUAL telemetry implementations are retained as qualification references.
+ 
+-**Acceptance. PASS.** Optimized and scalar MVSEL states agree exactly after every qualified rank and persisted selection plans remain byte-identical. The frozen 4,096-candidate/2,048-selection digest remains `d147d85acd64dd386dcd9b64e1bd534001e1b1a9e1736522b2ffaddbb978b378`; the 24,576-candidate/16,384-selection stress digest remains `aaec42fb0c1df6a62ce2286ec5f5b8897bc089d6d31726da89a0461bcd75d608`. Same-host measurements reduce the representative selector median from about 1.404 s in untouched `0.20.229a0` to about 0.811 s, and the 16,384-selection stress path from about 6.640 s to about 5.591 s. A 16,384-candidate/8,192-selected/6-family MVQUAL telemetry fixture drops from about 0.578 s to about 0.041 s (about 14.1x), with byte-identical telemetry. Full MVQUAL plan evidence remains digest-identical to untouched `0.20.229a0`. Timing is execution evidence; exact selector state and qualification records are authority.
++**Acceptance. PASS.** Optimized and scalar MVSEL states agree exactly after every qualified rank and persisted selection plans remain byte-identical. The frozen 4,096-candidate/2,048-selection digest remains `d147d85acd64...b2ffaddbb978b378`; the 24,576-candidate/16,384-selection stress digest remains `aaec42fb0c1d...9a0461bcd75d608`. Same-host measurements reduce the representative selector median from about 1.404 s in untouched `0.20.229a0` to about 0.811 s, and the 16,384-selection stress path from about 6.640 s to about 5.591 s. A 16,384-candidate/8,192-selected/6-family MVQUAL telemetry fixture drops from about 0.578 s to about 0.041 s (about 14.1x), with byte-identical telemetry. Full MVQUAL plan evidence remains digest-identical to untouched `0.20.229a0`. Timing is execution evidence; exact selector state and qualification records are authority.
+ 
+ **Next gate.** `REPAIR-PAR1`.
+ 
+-### Gate REPAIR-PAR1 - deterministic parallel repair proposals
++### Gate REPAIR-PAR1 - deterministic parallel repair proposals - COMPLETE
++
++**Purpose.** Reduce REPAIR1 proposal cost without changing the sequential repair iteration, swap objective, tie hierarchy, accepted/rejected trace, or winner application.
+ 
+-**Purpose.** Parallelize the independent proposal shortlist inside each sequential repair iteration.
++**Implementation.** `0.20.231a0` fuses removal unique-coverage and representative-loss scans, scores complete replacement frontiers with shared ragged-CSR gathers, and replaces repeated set intersections with thread-private epoch/stamp witness membership. A candidate-to-rank inverse map makes future displacement lookup O(1). Immutable removal proposals may run through the PARCORE1 deterministic queue; each task owns private stamp scratch, native numerical layers remain single-threaded, and results are canonically reduced in the historical removal-shortlist order. Parallel dispatch is adaptive: proposal batches below an execution-only sparse-edge threshold remain serial because qualification showed that blindly threading the historical Python loops is slower. The winning pair's representative contribution is recomputed with the historical scalar/stamp arithmetic before the swap is persisted. `execution_mode="reference"` retains the historical scalar proposal oracle.
+ 
+-**Implementation.** Immutable-state proposal tasks, canonical winner reduction, epoch/stamp membership, fused sparse scans, inverse rank map.
++**Acceptance. PASS.** The complete serialized repair plan/trace on the frozen REPAIR1 fixture is identical for the scalar reference and optimized 1/2/4-worker realizations, digest `5dcb048b02ae...b265a52615b9545b`. A 2,048-candidate proposal fixture preserves result digest `1a09e7745aa5...244421e4b859a9b1` and improves from about 3.176 s in untouched `0.20.230a0` to about 0.119 s (about 26.6x); adaptive execution correctly keeps it serial. An 8,192-candidate sparse fixture preserves result digest `9fda146806fc...10c468b41994` and improves from about 3.130 s to about 0.830/0.611/0.461 s at 1/2/4 lanes: about 3.77x from vectorization alone, 6.79x end-to-end at four lanes, and 1.80x additional 1-to-4-lane scaling. Timing is execution evidence; the complete repair trace and terminal order are scientific authority.
+ 
+-**Acceptance.** Complete repair trace and terminal order are identical across worker counts and restart.
++**Next gate.** `MVQUAL-PAR1`.
+ 
+ ### Gate MVQUAL-PAR1 - global same-N scoring queue
+ 
+Binary files /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/docs/arch_manuals/mlff_training_data_architecture.pdf and /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/docs/arch_manuals/mlff_training_data_architecture.pdf differ
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/docs/arch_manuals/mlff_training_data_dependency_graph.json /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/docs/arch_manuals/mlff_training_data_dependency_graph.json
+--- /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-17 22:39:37.000000000 +0000
++++ /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-17 23:15:34.592325852 +0000
+@@ -1,8 +1,8 @@
+ {
+-  "architecture_revision": 97,
++  "architecture_revision": 98,
+   "branch": "MLFF-DATA",
+   "description": "MLFF training-data dependency graph through architecture revision 97. MVKERNEL1 implements exact vectorized sparse selector/qualification kernels; REPAIR-PAR1 is next.",
+-  "documentation_gate": "MVKERNEL1_VECTOR_SPARSE_KERNELS",
++  "documentation_gate": "REPAIR_PAR1_PROPOSAL_QUEUE",
+   "edge_type_definitions": {
+     "execution_requires": "The upstream product must exist before execution.",
+     "fit_domain_requires": "The fitted object may inspect only the declared training domain.",
+@@ -3201,7 +3201,7 @@
+       ]
+     }
+   ],
+-  "next_gate": "REPAIR_PAR1_PROPOSAL_QUEUE",
++  "next_gate": "MVQUAL_PAR1_GLOBAL_SCORING_QUEUE",
+   "nodes": [
+     {
+       "id": "ACQUISITION_DECISIONS"
+@@ -5414,15 +5414,22 @@
+       "next_gate": "REPAIR_PAR1_PROPOSAL_QUEUE"
+     },
+     {
+-      "architecture_revision": 97,
+-      "authority_class": "planned_performance_exact_equivalence",
++      "architecture_revision": 98,
++      "authority_class": "performance_exact_equivalence",
+       "gate_name": "REPAIR-PAR1",
+       "id": "REPAIR_PAR1_PROPOSAL_QUEUE",
+-      "implementation_status": "planned",
+-      "scientific_authority_change": false
++      "implementation_status": "implemented_deterministic_parallel_proposals",
++      "scientific_authority_change": false,
++      "implemented_release": "0.20.231a0",
++      "sequential_repair_authority_changed": false,
++      "proposal_execution": "adaptive_parcore1_immutable_state",
++      "vectorized_frontier": "csr_gather_epoch_stamp_exact",
++      "canonical_winner_reduction": "historical_removal_shortlist_order",
++      "inverse_rank_map": "o1_execution_only",
++      "next_gate": "MVQUAL_PAR1_GLOBAL_SCORING_QUEUE"
+     },
+     {
+-      "architecture_revision": 91,
++      "architecture_revision": 98,
+       "authority_class": "planned_performance_exact_equivalence",
+       "gate_name": "MVQUAL-PAR1",
+       "id": "MVQUAL_PAR1_GLOBAL_SCORING_QUEUE",
+@@ -5454,5 +5461,5 @@
+       "scientific_authority_change": false
+     }
+   ],
+-  "schema_version": 77
++  "schema_version": 78
+ }
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV98.md /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV98.md
+--- /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV98.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV98.md	2026-08-17 23:15:34.592911821 +0000
+@@ -0,0 +1,12 @@
++# MLFF architecture revision 98 - REPAIR-PAR1
++
++Revision 98 completes the exact-equivalence `REPAIR-PAR1` performance gate.
++
++- Preserves sequential repair iteration, objective/tie authority, accepted/rejected trace, terminal order, and winner application.
++- Fuses removal unique-coverage and representative-loss scans.
++- Vectorizes replacement-frontier sparse scoring with canonical CSR gathers and thread-private epoch/stamp witness membership.
++- Adds an execution-only O(1) candidate-rank inverse map for future displacement lookup.
++- Uses PARCORE1 for immutable proposal tasks only when a sparse-work estimate exceeds the measured threading break-even point; small batches remain serial.
++- Reduces arbitrary task completion in historical removal-shortlist order and recomputes the winning representative contribution with historical scalar arithmetic before persistence.
++- Retains the scalar proposal path as the exact qualification oracle.
++- Advances the optimization program to `MVQUAL-PAR1`.
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/docs/history/mlff/architecture_revisions/INDEX.md /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/docs/history/mlff/architecture_revisions/INDEX.md
+--- /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/docs/history/mlff/architecture_revisions/INDEX.md	2026-08-17 22:39:39.000000000 +0000
++++ /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/docs/history/mlff/architecture_revisions/INDEX.md	2026-08-17 23:15:34.593081336 +0000
+@@ -79,3 +79,4 @@
+ | 95 | MVIDX-REUSE1 / mdstats 0.20.228a0 | [MLFF Architecture Revision 95](ARCHITECTURE_NOTES_MLFF_REV95.md) | - |
+ | 96 | COVREF-PAR1 / mdstats 0.20.229a0 | [MLFF Architecture Revision 96](ARCHITECTURE_NOTES_MLFF_REV96.md) | - |
+ | 97 | - | [MLFF architecture revision 97 - MVKERNEL1](ARCHITECTURE_NOTES_MLFF_REV97.md) | - |
++| 98 | REPAIR-PAR1 / mdstats 0.20.231a0 | [MLFF architecture revision 98 - REPAIR-PAR1](ARCHITECTURE_NOTES_MLFF_REV98.md) | - |
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/docs/history/mlff/release_notes/INDEX.md /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/docs/history/mlff/release_notes/INDEX.md
+--- /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/docs/history/mlff/release_notes/INDEX.md	2026-08-17 22:39:39.000000000 +0000
++++ /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/docs/history/mlff/release_notes/INDEX.md	2026-08-17 23:17:28.510163736 +0000
+@@ -171,3 +171,4 @@
+ | `0.20.228a0` | [PATCH_NOTES_0.20.228a0.md](PATCH_NOTES_0.20.228a0.md) | - |
+ | `0.20.229a0` | [PATCH_NOTES_0.20.229a0.md](PATCH_NOTES_0.20.229a0.md) | - |
+ | `0.20.230a0` | [PATCH_NOTES_0.20.230a0.md](PATCH_NOTES_0.20.230a0.md) | - |
++| `0.20.231a0` | [PATCH_NOTES_0.20.231a0.md](PATCH_NOTES_0.20.231a0.md) | - |
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.231a0.md /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.231a0.md
+--- /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.231a0.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.231a0.md	2026-08-17 23:15:34.592966253 +0000
+@@ -0,0 +1,10 @@
++# mdstats 0.20.231a0 patch notes
++
++- Implement REPAIR-PAR1 / architecture revision 98 as exact deterministic repair-proposal performance hardening.
++- Preserve sequential repair mutation/winner authority while vectorizing immutable replacement-frontier scoring.
++- Add thread-private epoch/stamp membership, fused sparse removal scans, and O(1) inverse candidate-rank lookup.
++- Dispatch only sufficiently large proposal batches through the PARCORE1 queue; small batches stay serial to avoid executor overhead.
++- Reduce parallel results in historical removal-shortlist order and recompute the winning representative contribution with historical scalar arithmetic before persistence.
++- Preserve the frozen complete repair-plan digest across scalar reference and optimized 1/2/4-worker schedules.
++- Keep MACE-MPA-0 as the active qualification checkpoint while retaining model-generic MACE-MH-1 compatibility.
++- Next optimization gate is MVQUAL-PAR1.
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/docs/specs/training_data/mlff_repair_par1_deterministic_parallel_proposals_spec.md /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/docs/specs/training_data/mlff_repair_par1_deterministic_parallel_proposals_spec.md
+--- /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/docs/specs/training_data/mlff_repair_par1_deterministic_parallel_proposals_spec.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/docs/specs/training_data/mlff_repair_par1_deterministic_parallel_proposals_spec.md	2026-08-17 23:15:34.592821643 +0000
+@@ -0,0 +1,24 @@
++# REPAIR-PAR1 deterministic parallel proposal specification
++
++**Release:** `mdstats 0.20.231a0`  
++**Architecture:** revision 98 / dependency-graph schema 78  
++**Status:** implemented exact-equivalence performance hardening
++
++## Frozen contract
++
++1. REPAIR1 sequential iteration, removal shortlist ordering, objective tuple, tie hierarchy, accepted/rejected swap trace, terminal order, and persisted scientific schemas remain unchanged.
++2. `execution_mode="reference"` retains the historical scalar proposal scorer as the scientific oracle.
++3. Proposal tasks may inspect only the immutable repair state for the current iteration; only the canonical winner is applied, sequentially, after proposal reduction.
++4. Fused sparse removal metrics, canonical ragged-CSR frontier gathers, epoch/stamp membership, and the inverse candidate-rank map are execution-only exact transforms.
++5. Arbitrary worker completion SHALL be reduced in the historical removal-shortlist order with the unchanged objective/tie comparator.
++6. The selected replacement representative contribution SHALL be recomputed with the historical scalar/stamp arithmetic before the swap record is persisted.
++7. Proposal worker count, adaptive sparse-work threshold, queue depth, scratch epochs, and task partitioning SHALL NOT enter repair content identity.
++8. Native numerical layers SHALL remain single-threaded inside parallel proposal tasks to prevent nested oversubscription.
++9. Small proposal batches MAY remain serial when measured executor overhead exceeds useful concurrency; this is an execution choice, not a policy change.
++10. No parallel repair-state mutation, approximate set membership, changed target size, altered selector prefix, altered obligation predicates, or changed repair objective is authorized.
++
++## Qualification
++
++The release SHALL demonstrate exact complete-plan/trace equality between the scalar reference and optimized 1/2/4-worker realizations; exact scalar/vectorized proposal equality on every tested removal; exact inverse-rank displacement behavior; unchanged TARGET-DATA2 authority; and same-host evidence that vectorized proposal scoring improves the scalar path while large sparse proposal sets gain additional deterministic worker scaling.
++
++The next gate is `MVQUAL-PAR1`.
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/mdstats/_version.py /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/mdstats/_version.py
+--- /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/mdstats/_version.py	2026-08-17 22:39:37.000000000 +0000
++++ /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/mdstats/_version.py	2026-08-17 23:15:34.586154452 +0000
+@@ -1 +1 @@
+-__version__ = "0.20.230a0"
++__version__ = "0.20.231a0"
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/mdstats/training_data/campaign_cli.py /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/mdstats/training_data/campaign_cli.py
+--- /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/mdstats/training_data/campaign_cli.py	2026-08-17 21:45:19.000000000 +0000
++++ /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/mdstats/training_data/campaign_cli.py	2026-08-17 23:02:55.590433685 +0000
+@@ -3937,6 +3937,31 @@
+     return max(1, int(workers)), resources
+ 
+ 
++def _target_multi_view_repair_parallelism(cfg: Mapping[str, Any]) -> tuple[int, Any]:
++    """Resolve REPAIR-PAR1 immutable-proposal worker count.
++
++    Repair winner application remains sequential.  Automatic mode gives the
++    proposal queue the complete configured CPU budget; native numerical layers
++    inside each proposal are constrained to one thread by StageResourceScope.
++    """
++
++    resources = detect_system_resources(
++        cpu_fraction=float(_cfg(cfg, "performance", "cpu_fraction", 0.90)),
++        ram_fraction=float(_cfg(cfg, "performance", "ram_fraction", 0.80)),
++        gpu_memory_fraction=float(_cfg(cfg, "performance", "gpu_memory_fraction", 0.90)),
++        device="cpu",
++    )
++    requested = int(_cfg(cfg, "performance", "target_multi_view_repair_workers", 0))
++    if requested < 0:
++        raise CampaignCliError(
++            "[performance].target_multi_view_repair_workers must be zero (automatic) or a positive integer."
++        )
++    budget = max(1, int(resources.cpu_threads_budget))
++    available = max(1, int(resources.cpu_threads_available))
++    workers = min(budget, available) if requested == 0 else min(requested, budget, available)
++    return max(1, int(workers)), resources
++
++
+ def _target_coverage_feasibility_parallelism(
+     cfg: Mapping[str, Any],
+     coverage_reference: Any,
+@@ -4883,20 +4908,26 @@
+         flush=True,
+     )
+     started = time.monotonic()
+-    _, repair_resources = _target_coverage_query_workers(cfg)
++    repair_workers, repair_resources = _target_multi_view_repair_parallelism(cfg)
+     repair_scope = build_stage_resource_scope(
+-        repair_resources, stage_name="TARGET-DATA2C-REPAIR1/MVPERF1",
+-        python_workers=1, structural_workers=1, tree_workers=1, blas_threads=1,
++        repair_resources, stage_name="TARGET-DATA2C-REPAIR-PAR1",
++        python_workers=repair_workers, structural_workers=1, tree_workers=1, blas_threads=1,
++    )
++    print(
++        f"[TARGET-DATA2C-REPAIR-PAR1] proposal_workers={repair_workers}; "
++        "winner application=sequential; native_threads/proposal=1",
++        flush=True,
++    )
++    plan = mdstats.build_target_multi_view_repair_plan(
++        coverage_reference,
++        sparse_index,
++        selection_plan,
++        policy=policy,
++        execution_mode="optimized",
++        proposal_workers=repair_workers,
++        resource_scope=repair_scope,
++        progress_callback=lambda message: print(f"[TARGET-DATA2C-REPAIR1] {message}", flush=True),
+     )
+-    with stage_resource_scope(repair_scope):
+-        plan = mdstats.build_target_multi_view_repair_plan(
+-            coverage_reference,
+-            sparse_index,
+-            selection_plan,
+-            policy=policy,
+-            execution_mode="optimized",
+-            progress_callback=lambda message: print(f"[TARGET-DATA2C-REPAIR1] {message}", flush=True),
+-        )
+     mdstats.validate_target_multi_view_repair_authority(
+         plan,
+         target_coverage_reference=coverage_reference,
+@@ -24752,6 +24783,9 @@
+ # workers=1 inside each global queue task whenever global parallelism > 1; this
+ # setting remains active for MVIDX1 and deliberately serial FEAS1 debugging.
+ target_coverage_workers = 0
++# REPAIR-PAR1 immutable proposal workers. 0 uses the complete configured CPU
++# budget; repair-state mutation and winner application remain sequential.
++target_multi_view_repair_workers = 0
+ # 0 gives FEAS1 one single-level global worker for every CPU-budget lane
+ # (normally 90% of logical threads). All domains/profiles feed the same queue.
+ # Positive values cap that global pool. Execution only.
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/mdstats/training_data/target_multi_view_repair.py /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/mdstats/training_data/target_multi_view_repair.py
+--- /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/mdstats/training_data/target_multi_view_repair.py	2026-08-16 17:53:16.000000000 +0000
++++ /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/mdstats/training_data/target_multi_view_repair.py	2026-08-17 23:16:50.525750377 +0000
+@@ -16,11 +16,15 @@
+ 
+ from dataclasses import dataclass, field
+ import math
++from threading import local
+ from typing import Any, Mapping, Sequence
+ 
+ import numpy as np
+ 
+ from ._common import TrainingDataInputError, TrainingDataSerializationError, digest, validate_digest
++from .resources import StageResourceScope, available_cpu_threads
++from .work_queue import DeterministicWorkQueue
++from ._sparse_vector_kernels import csr_gather_rows
+ from . import target_multi_view_selector as _mvsel
+ 
+ 
+@@ -33,6 +37,61 @@
+ 
+ _DEFAULT_UNIQUE_TOLERANCE = 1.0e-14
+ _DEFAULT_GAIN_TOLERANCE = 1.0e-14
++_REPAIR_PARALLEL_EDGE_WORK_THRESHOLD = 10_000_000
++
++
++class _RepairProposalScratch:
++    """Thread-private epoch/stamp membership for one sparse repair domain.
++
++    Proposal evaluation repeatedly asks whether a replacement witness is also
++    covered by the frame being considered for removal.  REPAIR1 historically
++    allocated ``intersect1d``/``isin`` temporaries for every replacement.  A
++    worker-private stamp vector turns those membership checks into O(k) indexed
++    reads while remaining completely outside scientific state.
++    """
++
++    __slots__ = ("_marks", "_epoch")
++
++    def __init__(self, sparse_domain: Any) -> None:
++        self._marks = tuple(
++            np.zeros(int(family.witness_count), dtype=np.uint32)
++            for family in sparse_domain.families
++        )
++        self._epoch = np.uint32(0)
++
++    def mark_removed(self, sparse_domain: Any, removed: int) -> None:
++        next_epoch = int(self._epoch) + 1
++        if next_epoch >= np.iinfo(np.uint32).max:
++            for marks in self._marks:
++                marks.fill(0)
++            next_epoch = 1
++        self._epoch = np.uint32(next_epoch)
++        for marks, family in zip(self._marks, sparse_domain.families, strict=True):
++            witnesses = np.asarray(family.candidate_witness_indices(removed), dtype=np.int64)
++            if witnesses.size:
++                marks[witnesses] = self._epoch
++
++    def shared_mask(self, family_index: int, witnesses: np.ndarray) -> np.ndarray:
++        if witnesses.size == 0:
++            return np.zeros(0, dtype=bool)
++        return self._marks[int(family_index)][witnesses] == self._epoch
++
++
++def _repair_parallel_scope(workers: int) -> StageResourceScope:
++    available = max(1, int(available_cpu_threads()))
++    resolved = max(1, min(int(workers), available))
++    return StageResourceScope(
++        stage_name="TARGET-DATA2C-REPAIR-PAR1",
++        cpu_threads_available=available,
++        cpu_threads_budget=resolved,
++        python_workers=resolved,
++        structural_workers=1,
++        tree_workers=1,
++        blas_threads=1,
++        pytorch_cpu_workers=1,
++        gpu_jobs=0,
++        ram_budget_bytes=None,
++    )
+ 
+ 
+ @dataclass(frozen=True, slots=True)
+@@ -638,27 +697,36 @@
+     return total
+ 
+ 
+-def _candidate_unique_coverage(candidate: int, sparse_domain: Any, state: Any) -> float:
+-    total = 0.0
++def _candidate_removal_metrics(candidate: int, sparse_domain: Any, state: Any) -> tuple[float, float]:
++    """Return exact unique coverage and representative removal loss in one CSR pass."""
++
++    unique_total = 0.0
++    loss_total = 0.0
+     for sparse_family, family_state in zip(sparse_domain.families, state.family_states, strict=True):
+         witnesses = np.asarray(sparse_family.candidate_witness_indices(candidate), dtype=np.int64)
+-        if witnesses.size:
+-            mask = family_state.multiplicity[witnesses] == 1
+-            if np.any(mask):
+-                total += float(np.sum(family_state.weights[witnesses[mask]], dtype=np.float64))
+-    return total
++        if witnesses.size == 0:
++            continue
++        multiplicity = family_state.multiplicity[witnesses].astype(np.float64, copy=False)
++        if np.any(multiplicity < 1.0):
++            raise TrainingDataInputError(
++                "TARGET-DATA2C-REPAIR1 removal loss observed an uncovered selected witness."
++            )
++        weights = family_state.weights[witnesses]
++        unique_mask = multiplicity == 1.0
++        if np.any(unique_mask):
++            unique_total += float(np.sum(weights[unique_mask], dtype=np.float64))
++        loss_total += float(np.sum(weights / multiplicity, dtype=np.float64))
++    return unique_total, loss_total
++
++
++def _candidate_unique_coverage(candidate: int, sparse_domain: Any, state: Any) -> float:
++    # Retained public-private helper for exact REPAIR1/MVPERF qualification.
++    return _candidate_removal_metrics(candidate, sparse_domain, state)[0]
+ 
+ 
+ def _candidate_representative_removal_loss(candidate: int, sparse_domain: Any, state: Any) -> float:
+-    total = 0.0
+-    for sparse_family, family_state in zip(sparse_domain.families, state.family_states, strict=True):
+-        witnesses = np.asarray(sparse_family.candidate_witness_indices(candidate), dtype=np.int64)
+-        if witnesses.size:
+-            multiplicity = family_state.multiplicity[witnesses].astype(np.float64, copy=False)
+-            if np.any(multiplicity < 1.0):
+-                raise TrainingDataInputError("TARGET-DATA2C-REPAIR1 removal loss observed an uncovered selected witness.")
+-            total += float(np.sum(family_state.weights[witnesses] / multiplicity, dtype=np.float64))
+-    return total
++    # Retained public-private helper for exact REPAIR1/MVPERF qualification.
++    return _candidate_removal_metrics(candidate, sparse_domain, state)[1]
+ 
+ 
+ def _candidate_removal_is_hard_safe(candidate: int, sparse_domain: Any, state: Any) -> bool:
+@@ -694,13 +762,12 @@
+     rows: list[tuple[int, int, float, float]] = []
+     for rank in range(shell_start, target_size):
+         candidate = int(order_indices[rank])
+-        unique = _candidate_unique_coverage(candidate, sparse_domain, state)
++        unique, loss = _candidate_removal_metrics(candidate, sparse_domain, state)
+         if unique > policy.unique_coverage_tolerance:
+             continue
+         zero_unique_count += 1
+         if not _candidate_removal_is_hard_safe(candidate, sparse_domain, state):
+             continue
+-        loss = _candidate_representative_removal_loss(candidate, sparse_domain, state)
+         rows.append((rank, candidate, unique, loss))
+     rows.sort(key=lambda item: (
+         item[3],
+@@ -749,45 +816,166 @@
+     removed: int,
+     sparse_domain: Any,
+     state: Any,
++    *,
++    proposal_scratch: _RepairProposalScratch | None = None,
+ ) -> float:
+     total = float(state.total_representative_gain[replacement])
+     # Removing a zero-unique frame decreases multiplicity n -> n-1 on its
+-    # witnesses.  For replacement candidates sharing such a witness, the
+-    # add-gain changes from w/(n+1) to w/n.
+-    for sparse_family, family_state in zip(sparse_domain.families, state.family_states, strict=True):
+-        removed_w = np.asarray(sparse_family.candidate_witness_indices(removed), dtype=np.int64)
++    # witnesses. For replacement candidates sharing such a witness, the
++    # add-gain changes from w/(n+1) to w/n. REPAIR-PAR1 uses thread-private
++    # epoch/stamp membership to avoid allocating a sorted intersection for each
++    # replacement while preserving the same witness order in the FP64 sum.
++    for family_index, (sparse_family, family_state) in enumerate(
++        zip(sparse_domain.families, state.family_states, strict=True)
++    ):
+         replacement_w = np.asarray(sparse_family.candidate_witness_indices(replacement), dtype=np.int64)
+-        if removed_w.size == 0 or replacement_w.size == 0:
++        if replacement_w.size == 0:
+             continue
+-        shared = np.intersect1d(removed_w, replacement_w, assume_unique=True)
++        if proposal_scratch is None:
++            removed_w = np.asarray(sparse_family.candidate_witness_indices(removed), dtype=np.int64)
++            if removed_w.size == 0:
++                continue
++            shared = np.intersect1d(removed_w, replacement_w, assume_unique=True)
++        else:
++            shared = replacement_w[proposal_scratch.shared_mask(family_index, replacement_w)]
+         if shared.size == 0:
+             continue
+         n = family_state.multiplicity[shared].astype(np.float64, copy=False)
+         if np.any(n < 2.0):
+-            # A removable zero-unique frame cannot own a multiplicity-one witness.
+             raise TrainingDataInputError("TARGET-DATA2C-REPAIR1 zero-unique removal invariant failed.")
+         weights = family_state.weights[shared]
+         total += float(np.sum(weights * (1.0 / n - 1.0 / (n + 1.0)), dtype=np.float64))
+     return total
+ 
+ 
+-def _pair_specific_diversity(replacement: int, removed: int, sparse_domain: Any, state: Any) -> float:
++def _pair_specific_diversity(
++    replacement: int,
++    removed: int,
++    sparse_domain: Any,
++    state: Any,
++    *,
++    proposal_scratch: _RepairProposalScratch | None = None,
++) -> float:
+     values: list[float] = []
+-    for sparse_family, family_state in zip(sparse_domain.families, state.family_states, strict=True):
++    for family_index, (sparse_family, family_state) in enumerate(
++        zip(sparse_domain.families, state.family_states, strict=True)
++    ):
+         witnesses = np.asarray(sparse_family.candidate_witness_indices(replacement), dtype=np.int64)
+         if witnesses.size == 0:
+             continue
+         multiplicity = family_state.multiplicity[witnesses].astype(np.int64, copy=True)
+-        removed_w = np.asarray(sparse_family.candidate_witness_indices(removed), dtype=np.int64)
+-        if removed_w.size:
+-            shared_mask = np.isin(witnesses, removed_w, assume_unique=True)
+-            multiplicity[shared_mask] -= 1
++        if proposal_scratch is None:
++            removed_w = np.asarray(sparse_family.candidate_witness_indices(removed), dtype=np.int64)
++            if removed_w.size:
++                shared_mask = np.isin(witnesses, removed_w, assume_unique=True)
++                multiplicity[shared_mask] -= 1
++        else:
++            shared_mask = proposal_scratch.shared_mask(family_index, witnesses)
++            if np.any(shared_mask):
++                multiplicity[shared_mask] -= 1
+         if np.any(multiplicity < 0):
+             raise TrainingDataInputError("TARGET-DATA2C-REPAIR1 diversity multiplicity underflow.")
+         values.append(float(np.mean(1.0 / (1.0 + multiplicity), dtype=np.float64)))
+     return 0.0 if not values else float(np.mean(values, dtype=np.float64))
+ 
+ 
++def _segment_row_sums(values: np.ndarray, lengths: np.ndarray) -> np.ndarray:
++    """Return one FP64 sum per complete gathered CSR row."""
++
++    lengths = np.asarray(lengths, dtype=np.int64)
++    result = np.zeros(lengths.size, dtype=np.float64)
++    if lengths.size == 0 or values.size == 0:
++        return result
++    ends = np.cumsum(lengths, dtype=np.int64)
++    starts = ends - lengths
++    nonzero = lengths > 0
++    if np.any(nonzero):
++        # reduceat starts each non-empty row at its canonical first edge and the
++        # next non-empty start is exactly the previous row end, even across
++        # intervening zero-length rows.
++        result[nonzero] = np.add.reduceat(
++            np.asarray(values, dtype=np.float64), starts[nonzero]
++        )
++    return result
++
++
++def _frontier_representative_gain_vectorized(
++    frontier: np.ndarray,
++    removed: int,
++    sparse_domain: Any,
++    state: Any,
++    proposal_scratch: _RepairProposalScratch,
++) -> np.ndarray:
++    values = np.asarray(state.total_representative_gain[frontier], dtype=np.float64).copy()
++    for family_index, (sparse_family, family_state) in enumerate(
++        zip(sparse_domain.families, state.family_states, strict=True)
++    ):
++        if not hasattr(sparse_family, "candidate_offsets"):
++            return np.asarray([
++                _pair_specific_representative_gain(
++                    int(candidate), removed, sparse_domain, state, proposal_scratch=proposal_scratch
++                )
++                for candidate in frontier
++            ], dtype=np.float64)
++        witnesses, lengths = csr_gather_rows(
++            sparse_family.candidate_offsets, sparse_family.candidate_witnesses, frontier
++        )
++        if witnesses.size == 0:
++            continue
++        wi = witnesses.astype(np.int64, copy=False)
++        shared = proposal_scratch.shared_mask(family_index, wi)
++        if not np.any(shared):
++            continue
++        multiplicity = family_state.multiplicity[wi].astype(np.float64, copy=False)
++        if np.any(multiplicity[shared] < 2.0):
++            raise TrainingDataInputError("TARGET-DATA2C-REPAIR1 zero-unique removal invariant failed.")
++        edge_values = np.zeros(wi.size, dtype=np.float64)
++        n = multiplicity[shared]
++        edge_values[shared] = family_state.weights[wi[shared]] * (1.0 / n - 1.0 / (n + 1.0))
++        values += _segment_row_sums(edge_values, lengths)
++    return values
++
++
++def _frontier_diversity_vectorized(
++    frontier: np.ndarray,
++    sparse_domain: Any,
++    state: Any,
++    proposal_scratch: _RepairProposalScratch,
++) -> np.ndarray:
++    totals = np.zeros(frontier.size, dtype=np.float64)
++    counts = np.zeros(frontier.size, dtype=np.int64)
++    for family_index, (sparse_family, family_state) in enumerate(
++        zip(sparse_domain.families, state.family_states, strict=True)
++    ):
++        if not hasattr(sparse_family, "candidate_offsets"):
++            return np.asarray([
++                _pair_specific_diversity(
++                    int(candidate), -1, sparse_domain, state, proposal_scratch=proposal_scratch
++                )
++                for candidate in frontier
++            ], dtype=np.float64)
++        witnesses, lengths = csr_gather_rows(
++            sparse_family.candidate_offsets, sparse_family.candidate_witnesses, frontier
++        )
++        nonzero = lengths > 0
++        if witnesses.size == 0 or not np.any(nonzero):
++            continue
++        wi = witnesses.astype(np.int64, copy=False)
++        multiplicity = family_state.multiplicity[wi].astype(np.int64, copy=True)
++        shared = proposal_scratch.shared_mask(family_index, wi)
++        if np.any(shared):
++            multiplicity[shared] -= 1
++        if np.any(multiplicity < 0):
++            raise TrainingDataInputError("TARGET-DATA2C-REPAIR1 diversity multiplicity underflow.")
++        row_sums = _segment_row_sums(1.0 / (1.0 + multiplicity), lengths)
++        totals[nonzero] += row_sums[nonzero] / lengths[nonzero].astype(np.float64)
++        counts[nonzero] += 1
++    result = np.zeros(frontier.size, dtype=np.float64)
++    active = counts > 0
++    result[active] = totals[active] / counts[active].astype(np.float64)
++    return result
++
++
+ def _replacement_frontier(
+     reference_domain: Any,
+     sparse_domain: Any,
+@@ -842,6 +1030,8 @@
+     removal: tuple[int, int, float, float],
+     representative_utility: float,
+     policy: TargetMultiViewRepairPolicy,
++    *,
++    proposal_scratch: _RepairProposalScratch | None = None,
+ ) -> dict[str, Any] | None:
+     rank, removed, unique, removal_loss = removal
+     frontier = _replacement_frontier(reference_domain, sparse_domain, state, removed, policy)
+@@ -872,20 +1062,32 @@
+         minimum = int(np.min(counts))
+         frontier = frontier[counts == minimum]
+ 
+-    rep_values = np.asarray([
+-        _pair_specific_representative_gain(int(candidate), removed, sparse_domain, state)
+-        for candidate in frontier
+-    ], dtype=np.float64)
++    if proposal_scratch is None:
++        rep_values = np.asarray([
++            _pair_specific_representative_gain(
++                int(candidate), removed, sparse_domain, state
++            )
++            for candidate in frontier
++        ], dtype=np.float64)
++    else:
++        rep_values = _frontier_representative_gain_vectorized(
++            frontier, removed, sparse_domain, state, proposal_scratch
++        )
+     if frontier.size > 1:
+         best_rep = float(np.max(rep_values))
+         keep = rep_values >= best_rep - tol
+         frontier = frontier[keep]
+         rep_values = rep_values[keep]
+ 
+-    diversity_values = np.asarray([
+-        _pair_specific_diversity(int(candidate), removed, sparse_domain, state)
+-        for candidate in frontier
+-    ], dtype=np.float64)
++    if proposal_scratch is None:
++        diversity_values = np.asarray([
++            _pair_specific_diversity(int(candidate), removed, sparse_domain, state)
++            for candidate in frontier
++        ], dtype=np.float64)
++    else:
++        diversity_values = _frontier_diversity_vectorized(
++            frontier, sparse_domain, state, proposal_scratch
++        )
+     if frontier.size > 1:
+         best_div = float(np.max(diversity_values))
+         keep = diversity_values >= best_div - tol
+@@ -896,6 +1098,12 @@
+     replacement = min((int(v) for v in frontier), key=lambda c: reference_domain.frame_uids[c])
+     local = int(np.flatnonzero(frontier == replacement)[0])
+     replacement_rep_gain = float(rep_values[local])
++    if proposal_scratch is not None:
++        # Persist the exact historical scalar arithmetic for the winning pair.
++        # The vector kernel is execution-only shortlist evaluation.
++        replacement_rep_gain = _pair_specific_representative_gain(
++            replacement, removed, sparse_domain, state, proposal_scratch=proposal_scratch
++        )
+ 
+     hard_after = max(0, hard_before - int(state.hard_gain[replacement]))
+     coverage_after = [
+@@ -944,6 +1152,141 @@
+     }
+ 
+ 
++def _proposal_worker_scope(resource_scope: StageResourceScope | None, workers: int) -> StageResourceScope:
++    workers = max(1, int(workers))
++    if resource_scope is None:
++        return _repair_parallel_scope(workers)
++    if int(resource_scope.python_workers) < workers:
++        raise TrainingDataInputError(
++            "TARGET-DATA2C-REPAIR-PAR1 resource scope has fewer Python workers than requested."
++        )
++    return StageResourceScope(
++        stage_name=resource_scope.stage_name,
++        cpu_threads_available=resource_scope.cpu_threads_available,
++        cpu_threads_budget=resource_scope.cpu_threads_budget,
++        python_workers=workers,
++        structural_workers=1,
++        tree_workers=1,
++        blas_threads=1,
++        pytorch_cpu_workers=1,
++        gpu_jobs=resource_scope.gpu_jobs,
++        ram_budget_bytes=resource_scope.ram_budget_bytes,
++    )
++
++
++def _best_repair_proposal(
++    reference_domain: Any,
++    sparse_domain: Any,
++    state: Any,
++    removals: Sequence[tuple[int, int, float, float]],
++    representative_utility: float,
++    policy: TargetMultiViewRepairPolicy,
++    *,
++    proposal_workers: int = 1,
++    resource_scope: StageResourceScope | None = None,
++    optimized: bool = True,
++) -> dict[str, Any] | None:
++    """Evaluate immutable removal proposals and reduce in canonical REPAIR1 order.
++
++    The state is read-only for the entire call.  Arbitrary worker completion is
++    therefore execution-only; proposals are reduced in exactly the historical
++    shortlist order with ``_better_swap`` before any state mutation occurs.
++    """
++
++    removals = tuple(removals)
++    if not removals:
++        return None
++    if not optimized:
++        best: dict[str, Any] | None = None
++        for removal in removals:
++            proposal = _candidate_swap(
++                reference_domain, sparse_domain, state, removal, representative_utility, policy
++            )
++            if proposal is not None:
++                best = _better_swap(best, proposal, policy.gain_tie_tolerance)
++        return best
++    workers = max(1, min(int(proposal_workers), len(removals)))
++    # Thread launch/synchronization is counterproductive for small frontiers.
++    # Estimate immutable sparse edge work and keep those iterations serial;
++    # large 8k-16k candidate rungs expose enough NumPy work for PARCORE1 lanes.
++    edge_count = sum(
++        int(getattr(family, "edge_count", len(getattr(family, "candidate_witnesses", ()))))
++        for family in sparse_domain.families
++    )
++    if workers > 1 and len(removals) * max(1, edge_count) < _REPAIR_PARALLEL_EDGE_WORK_THRESHOLD:
++        workers = 1
++    thread_scratch = local()
++
++    def evaluate(removal: tuple[int, int, float, float]) -> dict[str, Any] | None:
++        scratch = getattr(thread_scratch, "repair_scratch", None)
++        if scratch is None:
++            scratch = _RepairProposalScratch(sparse_domain)
++            thread_scratch.repair_scratch = scratch
++        scratch.mark_removed(sparse_domain, int(removal[1]))
++        return _candidate_swap(
++            reference_domain,
++            sparse_domain,
++            state,
++            removal,
++            representative_utility,
++            policy,
++            proposal_scratch=scratch,
++        )
++
++    if workers == 1:
++        best: dict[str, Any] | None = None
++        for removal in removals:
++            proposal = evaluate(removal)
++            if proposal is not None:
++                best = _better_swap(best, proposal, policy.gain_tie_tolerance)
++        return best
++
++    scope = _proposal_worker_scope(resource_scope, workers)
++    results: dict[int, dict[str, Any] | None] = {}
++    scratch_bytes = workers * sum(int(family.witness_count) * np.dtype(np.uint32).itemsize for family in sparse_domain.families)
++    max_family_edges = max(
++        (int(getattr(family, "edge_count", len(getattr(family, "candidate_witnesses", ())))) for family in sparse_domain.families),
++        default=0,
++    )
++    per_task_memory = max(1, max_family_edges * 48 + int(sparse_domain.candidate_count) * 64)
++    with DeterministicWorkQueue(
++        scope,
++        max_ready_tasks=max(len(removals), 2 * workers),
++        max_inflight_tasks=max(1, 2 * workers),
++        max_completed_tasks=max(1, 2 * workers),
++        heartbeat_interval_seconds=30.0,
++        thread_name_prefix="mdstats-repair-par1",
++    ) as queue:
++        if scratch_bytes:
++            queue.reserve_memory("repair-proposal-thread-stamps", scratch_bytes)
++        for position, removal in enumerate(removals):
++            queue.submit(
++                task_id=f"repair-proposal-{position:04d}-rank-{int(removal[0]):08d}",
++                canonical_order=(position,),
++                function=evaluate,
++                args=(removal,),
++                task_kind="repair-proposal",
++                estimated_memory_bytes=per_task_memory,
++                locality_key=f"{reference_domain.label_domain_id}:repair",
++            )
++        expected = len(removals)
++        while queue.snapshot().finished_tasks < expected:
++            queue.wait_for_completion()
++            for completion in queue.drain_completed():
++                results[int(completion.canonical_order[0])] = completion.value
++        for completion in queue.drain_completed():
++            results[int(completion.canonical_order[0])] = completion.value
++        if scratch_bytes:
++            queue.release_memory("repair-proposal-thread-stamps")
++
++    best = None
++    for position in range(len(removals)):
++        proposal = results[position]
++        if proposal is not None:
++            best = _better_swap(best, proposal, policy.gain_tie_tolerance)
++    return best
++
++
+ def _better_swap(left: dict[str, Any] | None, right: dict[str, Any], tolerance: float) -> dict[str, Any]:
+     if left is None:
+         return right
+@@ -966,6 +1309,7 @@
+     representative_utility: float,
+     target_size: int,
+     *,
++    rank_by_candidate: np.ndarray | None = None,
+     deselect_function: Any = _deselect_and_update,
+     select_function: Any = _mvsel._select_and_update,
+ ) -> tuple[float, int | None]:
+@@ -986,14 +1330,23 @@
+     representative_utility += add_gain
+ 
+     displaced_rank: int | None = None
+-    try:
+-        future_rank = order_indices.index(replacement, target_size)
+-    except ValueError:
+-        future_rank = -1
++    if rank_by_candidate is None:
++        try:
++            future_rank = order_indices.index(replacement, target_size)
++        except ValueError:
++            future_rank = -1
++    else:
++        future_rank = int(rank_by_candidate[replacement])
+     if future_rank >= target_size:
+         order_indices[future_rank] = removed
+         displaced_rank = future_rank
++        if rank_by_candidate is not None:
++            rank_by_candidate[removed] = future_rank
++    elif rank_by_candidate is not None:
++        rank_by_candidate[removed] = -1
+     order_indices[rank] = replacement
++    if rank_by_candidate is not None:
++        rank_by_candidate[replacement] = rank
+     return representative_utility, displaced_rank
+ 
+ 
+@@ -1037,6 +1390,9 @@
+     progress_callback: Any = None,
+     select_function: Any = _mvsel._select_and_update,
+     deselect_function: Any = _deselect_and_update,
++    proposal_workers: int = 1,
++    resource_scope: StageResourceScope | None = None,
++    proposal_optimized: bool = True,
+ ) -> TargetMultiViewRepairDomainPlan:
+     if reference_domain.content_digest != selection_domain.reference_domain_digest:
+         raise TrainingDataInputError("TARGET-DATA2C-REPAIR1 reference/MVSEL domain lineage mismatch.")
+@@ -1046,6 +1402,9 @@
+     order_indices = [uid_to_candidate[item.frame_uid] for item in selection_domain.master_order]
+     if len(set(order_indices)) != len(order_indices):
+         raise TrainingDataInputError("TARGET-DATA2C-REPAIR1 MVSEL order is not unique.")
++    rank_by_candidate = np.full(int(sparse_domain.candidate_count), -1, dtype=np.int64)
++    if order_indices:
++        rank_by_candidate[np.asarray(order_indices, dtype=np.int64)] = np.arange(len(order_indices), dtype=np.int64)
+ 
+     state = _mvsel._build_domain_state(reference_domain, sparse_domain)
+     representative_utility = 0.0
+@@ -1089,19 +1448,24 @@
+                     pending_removals = None
+                 if not removals:
+                     break
+-                best: dict[str, Any] | None = None
+-                for removal in removals:
+-                    proposal = _candidate_swap(
+-                        reference_domain, sparse_domain, state, removal, representative_utility, policy
+-                    )
+-                    if proposal is not None:
+-                        best = _better_swap(best, proposal, policy.gain_tie_tolerance)
++                best = _best_repair_proposal(
++                    reference_domain,
++                    sparse_domain,
++                    state,
++                    removals,
++                    representative_utility,
++                    policy,
++                    proposal_workers=proposal_workers,
++                    resource_scope=resource_scope,
++                    optimized=proposal_optimized,
++                )
+                 if best is None:
+                     break
+                 removed_uid = reference_domain.frame_uids[int(best["removed"])]
+                 replacement_uid = reference_domain.frame_uids[int(best["replacement"])]
+                 representative_utility, displaced_rank = _apply_swap(
+                     order_indices, state, sparse_domain, best, representative_utility, size,
++                    rank_by_candidate=rank_by_candidate,
+                     deselect_function=deselect_function, select_function=select_function,
+                 )
+                 accepted.append(TargetMultiViewRepairSwap(
+@@ -1171,12 +1535,17 @@
+     policy: TargetMultiViewRepairPolicy | None = None,
+     progress_callback: Any = None,
+     execution_mode: str = "optimized",
++    proposal_workers: int = 1,
++    resource_scope: StageResourceScope | None = None,
+ ) -> TargetMultiViewRepairPlan:
+     """Build deterministic REPAIR1 evidence without migrating TARGET-DATA2C."""
+ 
+     policy = policy or TargetMultiViewRepairPolicy()
+     if execution_mode not in {"optimized", "reference"}:
+-        raise TrainingDataInputError("TARGET-DATA2C-MVPERF1 repair execution_mode must be optimized or reference.")
++        raise TrainingDataInputError("TARGET-DATA2C-REPAIR-PAR1 execution_mode must be optimized or reference.")
++    proposal_workers = int(proposal_workers)
++    if proposal_workers < 1:
++        raise TrainingDataInputError("TARGET-DATA2C-REPAIR-PAR1 proposal_workers must be positive.")
+     select_function = _mvsel._select_and_update if execution_mode == "optimized" else _mvsel._select_and_update_reference
+     deselect_function = _deselect_and_update if execution_mode == "optimized" else _deselect_and_update_reference
+     if target_coverage_reference.dataset_id != target_coverage_sparse_index.dataset_id or target_coverage_reference.dataset_id != target_multi_view_selection.dataset_id:
+@@ -1199,6 +1568,9 @@
+             progress_callback=progress_callback,
+             select_function=select_function,
+             deselect_function=deselect_function,
++            proposal_workers=proposal_workers,
++            resource_scope=resource_scope,
++            proposal_optimized=(execution_mode == "optimized"),
+         ))
+     return TargetMultiViewRepairPlan(
+         dataset_id=target_coverage_reference.dataset_id,
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/pyproject.toml /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/pyproject.toml
+--- /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/pyproject.toml	2026-08-17 22:51:29.000000000 +0000
++++ /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/pyproject.toml	2026-08-17 23:15:34.586418276 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.230a0"
++version = "0.20.231a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/release/qualification_logs/MLFF_REPAIR_PAR1_QUALIFICATION_0.20.231a0.json /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/release/qualification_logs/MLFF_REPAIR_PAR1_QUALIFICATION_0.20.231a0.json
+--- /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/release/qualification_logs/MLFF_REPAIR_PAR1_QUALIFICATION_0.20.231a0.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/release/qualification_logs/MLFF_REPAIR_PAR1_QUALIFICATION_0.20.231a0.json	2026-08-17 23:24:48.082132559 +0000
+@@ -0,0 +1,192 @@
++{
++  "acceptance": {
++    "advance_to": "MVQUAL-PAR1",
++    "broad_regression": "PASS",
++    "exact_repair_trace": "PASS",
++    "parallel_worker_invariance": "PASS",
++    "scientific_policy_unchanged": "PASS",
++    "throughput_improved": "PASS"
++  },
++  "architecture_revision": 98,
++  "authority_change": {
++    "gpu": false,
++    "runtime_optimization": true,
++    "scientific": false
++  },
++  "content_digest": "9341aacf73972b4532ac35b60e219c9e3b8ecb26b50a667139a45fde07343d1e",
++  "date": "2026-08-17",
++  "documentation": {
++    "architecture_revision_note": {
++      "path": "docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV98.md",
++      "sha256": "9a170eeefc337eff2e27691dc7a825e5b41e680d39cd7189abc20115dd402073"
++    },
++    "canonical_markdown": {
++      "path": "docs/arch_manuals/mlff_training_data_architecture.md",
++      "sha256": "44a8cfdb82e7e3af7a985636d8022ae7e43ab865330021503a7e0c1ffc6eec06"
++    },
++    "canonical_pdf": {
++      "comparison_note": "Revision-97 48-page and revision-98 49-page PDFs were render-compared at 50 dpi; 12 pre-existing pages plus the new final page changed from release/status flow. All 49 pages rendered at 100 dpi; release boundary and REPAIR/performance/status pages 2, 38, 43 and 44 were visually inspected after shortening long inline digests to eliminate right-margin clipping.",
++      "full_render": "PASS",
++      "pages": 49,
++      "path": "docs/arch_manuals/mlff_training_data_architecture.pdf",
++      "preflight": "PASS",
++      "sha256": "5a32d263623dcbd39e6048f6309972b771993a41109a5b8e5db8c255da133f90",
++      "visual_qa": "PASS"
++    },
++    "dependency_graph": {
++      "path": "docs/arch_manuals/mlff_training_data_dependency_graph.json",
++      "sha256": "59e2a9182fa04b47445f3f2e835bda50f1f0be754c06e9972d061b29a00622b5"
++    },
++    "release_note": {
++      "path": "docs/history/mlff/release_notes/PATCH_NOTES_0.20.231a0.md",
++      "sha256": "7222c4465e65ff85e9bda15ac89908980d77b874db301c3f4c43d139285e449b"
++    },
++    "spec": {
++      "path": "docs/specs/training_data/mlff_repair_par1_deterministic_parallel_proposals_spec.md",
++      "sha256": "0b6b14464111ae07d74cf574622c0e5a2f359e49f1bdcfcd078d4b93a5ff851e"
++    }
++  },
++  "foundation": {
++    "active_qualification_family": "mace-mpa-0",
++    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
++    "mh1_supported_by_same_contract": true,
++    "note": "REPAIR-PAR1 operates only on sparse target-data authority and is independent of foundational-model family; MPA-0 is the active qualification checkpoint and MACE-MH-1 remains supported.",
++    "variant": "medium"
++  },
++  "gate": "REPAIR_PAR1_DETERMINISTIC_PARALLEL_PROPOSALS",
++  "implementation": {
++    "adaptive_parallel_proposal_queue": true,
++    "canonical_winner_reduction": "historical_removal_shortlist_order",
++    "fused_removal_sparse_metrics": true,
++    "implementation_manifest": {
++      "path": "benchmarks/mlff_repair_par1_implementation_manifest_0.20.231a0.json",
++      "sha256": "cc142835bc4e0f616fd41378b4d00eaee8fb5e377e3a651d2bd3b2e71d62e58e"
++    },
++    "inverse_candidate_rank_map": true,
++    "native_threads_per_parallel_task": 1,
++    "scalar_proposal_reference_retained": true,
++    "sequential_repair_authority_changed": false,
++    "thread_private_epoch_stamp_membership": true,
++    "vectorized_frontier_csr_scoring": true,
++    "winning_representative_contribution_recomputed_scalar": true
++  },
++  "inputs": {
++    "dependency_archive": {
++      "path": "/mnt/data/dependencies.tar(20260817-112644).gz",
++      "sha256": "888d545a512396697c8583d69bc9ed33110914675f466a4cbcafc3e1e1407171"
++    },
++    "replay_source": {
++      "path": "/mnt/data/replay_fps_12000.extxyz",
++      "sha256": "187eed42fb2d6cf5e7e745ffed0ce34541e92c6a35ec9e654520cd3c7198403c"
++    },
++    "target_archive": {
++      "path": "/mnt/data/training_LTA.tar(4).gz",
++      "sha256": "bc1b7e25ba338507ae38b260bcd283356de887b6c6cf762a2c146733f1c3c958"
++    }
++  },
++  "next_gate": "MVQUAL-PAR1",
++  "performance_evidence": {
++    "interpretation": "Timing is same-host execution evidence. Complete repair plan/trace, scalar/vectorized proposal equality, objective/tie order, and terminal order remain scientific authority.",
++    "large_8192": {
++      "adaptive_parallel_dispatch": true,
++      "control_median_seconds": 3.1298696419999033,
++      "control_release": "0.20.230a0",
++      "control_trials_seconds": [
++        3.1298696419999033
++      ],
++      "current_1lane_median_seconds": 0.8301331969996681,
++      "current_1lane_trials_seconds": [
++        0.8811055659998601,
++        0.8301331969996681,
++        0.8143734850000328
++      ],
++      "current_2lane_median_seconds": 0.6107755259999976,
++      "current_2lane_trials_seconds": [
++        0.6550203670003611,
++        0.5963247789995876,
++        0.6107755259999976
++      ],
++      "current_4lane_median_seconds": 0.46087840200016217,
++      "current_4lane_trials_seconds": [
++        0.5291186450003806,
++        0.46087840200016217,
++        0.4459569440004998
++      ],
++      "four_lane_end_to_end_speedup": 6.791096368188679,
++      "one_to_four_lane_scaling": 1.8011978721436723,
++      "serial_vectorization_speedup": 3.770322224568444
++    },
++    "medium_2048": {
++      "adaptive_parallel_dispatch": false,
++      "control_median_seconds": 3.1757905590002338,
++      "control_release": "0.20.230a0",
++      "control_trials_seconds": [
++        3.147819959000117,
++        3.1757905590002338,
++        3.3094404379999105
++      ],
++      "current_1lane_median_seconds": 0.11936937999962538,
++      "current_1lane_trials_seconds": [
++        0.12584334900020622,
++        0.11891886400007934,
++        0.11902297100004944,
++        0.11936937999962538,
++        0.11959381500037125
++      ],
++      "speedup": 26.604733634456345
++    },
++    "primary_record": {
++      "path": "benchmarks/mlff_repair_par1_cloud_cpu_mpa0_2026-08-17.json",
++      "sha256": "2756f03515c77452c03ca6db95b68bbab03f939c1cde3c5a9abdc7a19e42ab29"
++    },
++    "report": {
++      "path": "benchmarks/mlff_repair_par1_cloud_cpu_mpa0_2026-08-17.md",
++      "sha256": "66421d3c3a21572ac8e8c8a6dc0ae30dee61e0e31f022beeac6a096183745d3f"
++    }
++  },
++  "release": "0.20.231a0",
++  "schema": "mdstats.mlff-repair-par1-qualification.v1",
++  "scientific_oracles": {
++    "complete_trace_equal_reference_1_2_4_workers": true,
++    "large_proposal_result_digest": "9fda146806fc12f7c4d8030877e3a09cd206cef01eb6f821be0010c468b41994",
++    "medium_proposal_result_digest": "1a09e7745aa534bed757334ad9d365099e28635050ec63f1244421e4b859a9b1",
++    "standard_repair_plan_digest": "5dcb048b02ae2670d48d15f3f610b5814b611b2339df4ec4b265a52615b9545b",
++    "terminal_order_equal": true,
++    "worker_count_execution_only": true
++  },
++  "status": "PASS",
++  "tests": {
++    "archival_spec_boundary": {
++      "excluded_from_current_release_pass_fail": [
++        "tests/test_mlff_target_data2c_mvidx1_specification.py"
++      ],
++      "reason": "Historical release-pinned specification remains archival; runtime/scientific MVIDX test remains included in the 111-test current authority."
++    },
++    "compileall": {
++      "paths": [
++        "mdstats",
++        "benchmarks",
++        "tools"
++      ],
++      "status": "PASS"
++    },
++    "current_gate_and_dependencies": {
++      "failed": 0,
++      "passed": 73,
++      "warnings": 3
++    },
++    "packaging_metadata": {
++      "pip_wheel_no_deps_no_build_isolation": "PASS",
++      "pyproject_version": "0.20.231a0",
++      "root_pkg_info_version": "0.20.231a0",
++      "wheel_metadata_name": "mdstats",
++      "wheel_metadata_version": "0.20.231a0"
++    },
++    "target_data2_functional_authority": {
++      "failed": 0,
++      "passed": 111,
++      "warning_class": "expected velocity-reconstruction/normalization warnings unchanged from prior authority",
++      "warnings": 18
++    }
++  }
++}
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/tests/test_mlff_doc_arch1_specification.py /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/tests/test_mlff_doc_arch1_specification.py
+--- /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/tests/test_mlff_doc_arch1_specification.py	2026-08-17 22:40:17.000000000 +0000
++++ /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/tests/test_mlff_doc_arch1_specification.py	2026-08-17 23:17:28.510502207 +0000
+@@ -16,10 +16,10 @@
+ 
+ 
+ def test_doc_arch1_release_and_current_authority_are_synchronized():
+-    assert mdstats.__version__ == "0.20.230a0"
++    assert mdstats.__version__ == "0.20.231a0"
+     text = MANUAL.read_text(encoding="utf-8")
+-    assert "architecture_revision: 97" in text
+-    assert 'release: "mdstats 0.20.230a0"' in text
++    assert "architecture_revision: 98" in text
++    assert 'release: "mdstats 0.20.231a0"' in text
+     assert "# Part VI - Performance and execution architecture" in text
+     assert "# Part VII - Current implementation status and frozen forward gates" in text
+     assert "## Context retrieval index" in text
+@@ -72,24 +72,24 @@
+     revision_rows = [line for line in REV_INDEX.read_text().splitlines() if re.match(r"^\|\s*\d+\s*\|", line)]
+     revisions = [int(line.split("|")[1].strip()) for line in revision_rows]
+     assert revisions == sorted(set(revisions))
+-    assert revisions[-1] == 97
++    assert revisions[-1] == 98
+     assert "NEIGHBOR1" in REV_INDEX.read_text()
+-    assert "0.20.227a0" in REL_INDEX.read_text()
++    assert "0.20.231a0" in REL_INDEX.read_text()
+     assert (ROOT / "docs/history/mlff/LINEAGE.md").is_file()
+     assert (ROOT / "docs/history/mlff/manual_snapshots/mlff_training_data_architecture_rev090_full.md").is_file()
+ 
+ 
+ def test_doc_arch1_graph_and_directory_ownership_are_current():
+     graph = json.loads(GRAPH.read_text())
+-    assert graph["architecture_revision"] == 97
+-    assert graph["schema_version"] == 77
++    assert graph["architecture_revision"] == 98
++    assert graph["schema_version"] == 78
+     node_ids = {node["id"] for node in graph["nodes"]}
+     for node in (
+         "DOC_ARCH1_MANUAL_RESTRUCTURE_PERFORMANCE_ROADMAP",
+         "PERFBASE1_CAMPAIGN_BASELINES", "PARCORE1_DETERMINISTIC_WORK_QUEUE",
+         "NEIGHBOR1_SHARED_EXACT_ENGINE", "MVIDX_REUSE1_SPARSE_TRANSPOSE",
+         "COVREF_PAR1_GLOBAL_BLOCK_QUEUE", "MVKERNEL1_VECTOR_SPARSE_KERNELS",
+-        "CAMPAIGN_PERF_QUAL1_CLOSURE",
++        "REPAIR_PAR1_PROPOSAL_QUEUE", "CAMPAIGN_PERF_QUAL1_CLOSURE",
+     ):
+         assert node in node_ids
+     root_names = {p.name for p in ROOT.iterdir() if p.is_file()}
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/tests/test_mlff_mvkernel1_specification.py /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/tests/test_mlff_mvkernel1_specification.py
+--- /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/tests/test_mlff_mvkernel1_specification.py	2026-08-17 22:51:29.000000000 +0000
++++ /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/tests/test_mlff_mvkernel1_specification.py	2026-08-17 23:15:34.601930902 +0000
+@@ -12,12 +12,7 @@
+ 
+ 
+ def test_mvkernel1_release_manual_and_spec_are_synchronized() -> None:
+-    assert mdstats.__version__ == "0.20.230a0"
+-    assert 'version = "0.20.230a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+-    assert "Version: 0.20.230a0" in (ROOT / "PKG-INFO").read_text(encoding="utf-8")
+     text = MANUAL.read_text(encoding="utf-8")
+-    assert "architecture_revision: 97" in text
+-    assert 'release: "mdstats 0.20.230a0"' in text
+     assert "Gate MVKERNEL1 - sparse selector/qualification vector kernels - COMPLETE" in text
+     assert "**Next gate.** `REPAIR-PAR1`." in text
+     assert "ragged-CSR" in text
+@@ -27,10 +22,6 @@
+ 
+ def test_mvkernel1_dependency_graph_is_closed() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+-    assert graph["architecture_revision"] == 97
+-    assert graph["schema_version"] == 77
+-    assert graph["documentation_gate"] == "MVKERNEL1_VECTOR_SPARSE_KERNELS"
+-    assert graph["next_gate"] == "REPAIR_PAR1_PROPOSAL_QUEUE"
+     node = next(item for item in graph["nodes"] if item["id"] == "MVKERNEL1_VECTOR_SPARSE_KERNELS")
+     assert node["implementation_status"] == "implemented_exact_vector_sparse_kernels"
+     assert node["implemented_release"] == "0.20.230a0"
+@@ -53,7 +44,7 @@
+ def test_mvkernel1_history_records_are_present() -> None:
+     assert (ROOT / "docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV97.md").is_file()
+     assert (ROOT / "docs/history/mlff/release_notes/PATCH_NOTES_0.20.230a0.md").is_file()
+-    assert "0.20.230a0" in (ROOT / "CHANGELOG.md").read_text(encoding="utf-8").splitlines()[0]
++    assert "0.20.230a0" in (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+ 
+ 
+ def test_mvkernel1_frozen_benchmark_evidence_is_consistent() -> None:
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/tests/test_mlff_repair_par1.py /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/tests/test_mlff_repair_par1.py
+--- /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/tests/test_mlff_repair_par1.py	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/tests/test_mlff_repair_par1.py	2026-08-17 23:09:19.214433685 +0000
+@@ -0,0 +1,103 @@
++from __future__ import annotations
++
++import numpy as np
++
++import mdstats
++from mdstats.training_data import target_multi_view_repair as repair
++from mdstats.training_data import target_multi_view_selector as selector
++from tests.test_mlff_target_data2c_repair1 import _redundant_selection
++
++
++def _selected_repair_state():
++    reference, index, selection = _redundant_selection()
++    ref_domain = reference.domain("target")
++    sparse_domain = index.domain("target")
++    state = selector._build_domain_state(ref_domain, sparse_domain)
++    order = [ref_domain.frame_index(item.frame_uid) for item in selection.domain("target").master_order]
++    for candidate in order[:8]:
++        selector._select_and_update(candidate, sparse_domain, state)
++    return reference, index, selection, ref_domain, sparse_domain, state, order
++
++
++def test_repair_par1_complete_trace_is_worker_count_invariant() -> None:
++    reference, index, selection = _redundant_selection()
++    policy = mdstats.TargetMultiViewRepairPolicy(max_passes_per_shell=2, max_swaps_per_shell=8)
++    scalar = mdstats.build_target_multi_view_repair_plan(
++        reference, index, selection, policy=policy, execution_mode="reference"
++    )
++    for workers in (1, 2, 4):
++        optimized = mdstats.build_target_multi_view_repair_plan(
++            reference, index, selection, policy=policy, proposal_workers=workers
++        )
++        assert optimized.to_dict() == scalar.to_dict()
++        assert optimized.content_digest == scalar.content_digest
++
++
++def test_repair_par1_vectorized_proposal_matches_scalar_candidate_swap() -> None:
++    _, _, _, ref_domain, sparse_domain, state, order = _selected_repair_state()
++    policy = mdstats.TargetMultiViewRepairPolicy(max_passes_per_shell=2, max_swaps_per_shell=8)
++    _, removals = repair._shell_removal_scan(
++        ref_domain, sparse_domain, state, order, 4, 8, policy
++    )
++    assert removals
++    representative_utility = repair._representative_utility(ref_domain, state)
++    scratch = repair._RepairProposalScratch(sparse_domain)
++    for removal in removals:
++        scalar = repair._candidate_swap(
++            ref_domain, sparse_domain, state, removal, representative_utility, policy
++        )
++        scratch.mark_removed(sparse_domain, int(removal[1]))
++        vectorized = repair._candidate_swap(
++            ref_domain,
++            sparse_domain,
++            state,
++            removal,
++            representative_utility,
++            policy,
++            proposal_scratch=scratch,
++        )
++        assert vectorized == scalar
++
++
++def test_repair_par1_fused_removal_metrics_match_scalar_definitions() -> None:
++    _, _, _, _, sparse_domain, state, order = _selected_repair_state()
++    for candidate in order[:8]:
++        unique = 0.0
++        loss = 0.0
++        for sparse_family, family_state in zip(
++            sparse_domain.families, state.family_states, strict=True
++        ):
++            witnesses = np.asarray(sparse_family.candidate_witness_indices(candidate), dtype=np.int64)
++            if witnesses.size == 0:
++                continue
++            multiplicity = family_state.multiplicity[witnesses].astype(np.float64, copy=False)
++            weights = family_state.weights[witnesses]
++            mask = multiplicity == 1.0
++            if np.any(mask):
++                unique += float(np.sum(weights[mask], dtype=np.float64))
++            loss += float(np.sum(weights / multiplicity, dtype=np.float64))
++        observed = repair._candidate_removal_metrics(candidate, sparse_domain, state)
++        assert observed == (unique, loss)
++
++
++def test_repair_par1_inverse_rank_map_preserves_future_displacement() -> None:
++    reference, index, selection = _redundant_selection()
++    policy = mdstats.TargetMultiViewRepairPolicy(max_passes_per_shell=2, max_swaps_per_shell=8)
++    plan = mdstats.build_target_multi_view_repair_plan(
++        reference, index, selection, policy=policy, proposal_workers=4
++    )
++    domain = plan.domain("target")
++    for rung in domain.rungs:
++        for swap in rung.swaps:
++            assert rung.frame_uids[swap.rank] == swap.replacement_frame_uid
++            if swap.displaced_future_rank is not None:
++                assert swap.displaced_future_rank >= rung.target_size
++
++
++def test_repair_par1_campaign_template_exposes_execution_only_worker_control() -> None:
++    from mdstats.training_data import campaign_cli
++
++    source = __import__("pathlib").Path(campaign_cli.__file__).read_text()
++    assert "target_multi_view_repair_workers = 0" in source
++    assert "_target_multi_view_repair_parallelism" in source
++    assert "proposal_workers=repair_workers" in source
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/tests/test_mlff_repair_par1_specification.py /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/tests/test_mlff_repair_par1_specification.py
+--- /mnt/data/mdstats-repairpar1-control/mdstats-0.20.230a0/tests/test_mlff_repair_par1_specification.py	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-repairpar1-work/mdstats-0.20.230a0/tests/test_mlff_repair_par1_specification.py	2026-08-17 23:16:50.524422054 +0000
+@@ -0,0 +1,95 @@
++from __future__ import annotations
++
++import json
++from pathlib import Path
++
++import mdstats
++
++ROOT = Path(__file__).resolve().parents[1]
++MANUAL = ROOT / "docs/arch_manuals/mlff_training_data_architecture.md"
++GRAPH = ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json"
++SPEC = ROOT / "docs/specs/training_data/mlff_repair_par1_deterministic_parallel_proposals_spec.md"
++EVIDENCE = ROOT / "benchmarks/mlff_repair_par1_cloud_cpu_mpa0_2026-08-17.json"
++
++
++def test_repair_par1_release_manual_and_package_metadata_are_synchronized() -> None:
++    assert mdstats.__version__ == "0.20.231a0"
++    assert 'version = "0.20.231a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert "Version: 0.20.231a0" in (ROOT / "PKG-INFO").read_text(encoding="utf-8")
++    text = MANUAL.read_text(encoding="utf-8")
++    assert "architecture_revision: 98" in text
++    assert 'release: "mdstats 0.20.231a0"' in text
++    assert "Gate REPAIR-PAR1 - deterministic parallel repair proposals - COMPLETE" in text
++    assert "**Next gate.** `MVQUAL-PAR1`." in text
++    assert "adaptive" in text
++    assert "historical removal-shortlist order" in text
++    assert SPEC.is_file()
++
++
++def test_repair_par1_dependency_graph_is_closed() -> None:
++    graph = json.loads(GRAPH.read_text(encoding="utf-8"))
++    assert graph["architecture_revision"] == 98
++    assert graph["schema_version"] == 78
++    assert graph["documentation_gate"] == "REPAIR_PAR1_PROPOSAL_QUEUE"
++    assert graph["next_gate"] == "MVQUAL_PAR1_GLOBAL_SCORING_QUEUE"
++    node = next(item for item in graph["nodes"] if item["id"] == "REPAIR_PAR1_PROPOSAL_QUEUE")
++    assert node["implementation_status"] == "implemented_deterministic_parallel_proposals"
++    assert node["implemented_release"] == "0.20.231a0"
++    assert node["sequential_repair_authority_changed"] is False
++    assert node["scientific_authority_change"] is False
++    assert node["canonical_winner_reduction"] == "historical_removal_shortlist_order"
++
++
++def test_repair_par1_code_contains_exact_execution_contract() -> None:
++    repair = (ROOT / "mdstats/training_data/target_multi_view_repair.py").read_text(encoding="utf-8")
++    campaign = (ROOT / "mdstats/training_data/campaign_cli.py").read_text(encoding="utf-8")
++    for token in (
++        "_RepairProposalScratch",
++        "_candidate_removal_metrics",
++        "_best_repair_proposal",
++        "DeterministicWorkQueue",
++        "rank_by_candidate",
++        "_REPAIR_PARALLEL_EDGE_WORK_THRESHOLD",
++        'proposal_optimized=(execution_mode == "optimized")',
++    ):
++        assert token in repair
++    assert "target_multi_view_repair_workers" in campaign
++    assert "TARGET-DATA2C-REPAIR-PAR1" in campaign
++
++
++def test_repair_par1_history_records_are_present() -> None:
++    assert (ROOT / "docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV98.md").is_file()
++    assert (ROOT / "docs/history/mlff/release_notes/PATCH_NOTES_0.20.231a0.md").is_file()
++    assert "0.20.231a0" in (ROOT / "CHANGELOG.md").read_text(encoding="utf-8").splitlines()[0]
++
++
++def test_repair_par1_frozen_benchmark_evidence_is_consistent() -> None:
++    evidence = json.loads(EVIDENCE.read_text(encoding="utf-8"))
++    assert evidence["release"] == "0.20.231a0"
++    assert evidence["architecture_revision"] == 98
++    assert evidence["acceptance"]["status"] == "PASS"
++    assert evidence["acceptance"]["next_gate"] == "MVQUAL-PAR1"
++    assert evidence["active_foundation"]["family"] == "MACE-MPA-0 medium"
++    assert evidence["active_foundation"]["checkpoint_sha256"] == (
++        "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638"
++    )
++    assert evidence["active_foundation"]["mh1_compatible"] is True
++    scientific = evidence["scientific"]
++    assert scientific["standard_repair_plan_digest"] == (
++        "5dcb048b02ae2670d48d15f3f610b5814b611b2339df4ec4b265a52615b9545b"
++    )
++    assert scientific["medium_proposal_result_digest"] == (
++        "1a09e7745aa534bed757334ad9d365099e28635050ec63f1244421e4b859a9b1"
++    )
++    assert scientific["large_proposal_result_digest"] == (
++        "9fda146806fc12f7c4d8030877e3a09cd206cef01eb6f821be0010c468b41994"
++    )
++    assert scientific["worker_count_trace_exact"] is True
++    medium = evidence["execution"]["medium_2048_candidate_proposal"]
++    large = evidence["execution"]["large_8192_candidate_proposal"]
++    assert medium["speedup"] > 10.0
++    assert medium["adaptive_parallel_dispatch"] is False
++    assert large["serial_vectorization_speedup"] > 2.0
++    assert large["four_lane_end_to_end_speedup"] > 4.0
++    assert large["one_to_four_lane_scaling"] > 1.2
++    assert large["adaptive_parallel_dispatch"] is True

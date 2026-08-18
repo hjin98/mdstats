@@ -1,0 +1,89 @@
+{
+  "schema": "mdstats.mlff-target-data2c-rescue1-qualification.v1",
+  "version": "0.20.197a0",
+  "architecture_revision": 64,
+  "dependency_graph_schema": 46,
+  "gate": "TARGET-DATA2C-RESCUE1",
+  "status": "implemented_control_plane_scientific_ceiling_correction",
+  "trigger_evidence": {
+    "workstation_failure": "TARGET-DATA2D hard coverage found fewer than 3 qualified rungs",
+    "base_rungs": {
+      "128": "FAIL",
+      "256": "FAIL",
+      "512": "FAIL",
+      "1024": "FAIL",
+      "2048": "FAIL",
+      "4096": "FAIL",
+      "8192": "FAIL"
+    },
+    "interpretation": "fixed 8192 candidate ceiling under-qualified the full production TARGET-DATA2B coverage authority; failure reasons remain subject to the frozen coverage records"
+  },
+  "authority": {
+    "target_data_ladder_version": "mdstats.target-data2c.ladder.2026-08.v4",
+    "target_data_ladder_plan_schema": "mdstats.target-data-ladder-plan.v4",
+    "base_candidate_sizes": [
+      128,
+      256,
+      512,
+      1024,
+      2048,
+      4096,
+      8192
+    ],
+    "rescue_trigger": "base qualified rung count < TARGET-DATA2D min_coverage_qualifiers",
+    "rescue_fractions": [
+      "3/8",
+      "4/8",
+      "5/8",
+      "6/8",
+      "7/8"
+    ],
+    "alignment": "smallest base target size",
+    "maximum_training_pool_fraction": "7/8",
+    "minimum_eval2_complement_fraction": "1/8",
+    "coverage_threshold_changed": false,
+    "extent_policy_changed": false,
+    "stratum_policy_changed": false,
+    "mandatory_reservation_policy_changed": false,
+    "coverage_remains_admissibility_only": true,
+    "source_backend_policy_changed": false,
+    "training_backend_policy_changed": false
+  },
+  "restart": {
+    "pre_v4_target_data_ladder": "stale_rebuild",
+    "upstream_target_data2a_target_data2b_reusable_when_valid": true,
+    "minimum_coverage_qualifiers_bound_to_ladder": true
+  },
+  "validation": {
+    "functional_target_data2c_target_data2d": {
+      "passed": 29,
+      "failed": 0
+    },
+    "perf_p2_perf_p2r_adjacent": {
+      "passed": 15,
+      "failed": 0
+    },
+    "target_data2a_target_data2b_target_data2e_adjacent": {
+      "passed": 26,
+      "failed": 0
+    },
+    "campaign_defaults_foundation_adjacent": {
+      "passed": 72,
+      "skipped": 1,
+      "failed": 0,
+      "skip_reason": "real LTA training root not supplied"
+    },
+    "current_specification_guards": {
+      "passed": 30,
+      "failed": 0
+    },
+    "unique_current_adjacent_total": {
+      "passed": 172,
+      "skipped": 1,
+      "failed": 0
+    },
+    "compileall": "pass",
+    "pdf_preflight": "pass",
+    "pdf_visual_qa": "pass"
+  }
+}

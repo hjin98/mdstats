@@ -1,0 +1,2788 @@
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/CHANGELOG.md mdstats106_work/CHANGELOG.md
+--- mdstats106_pristine/CHANGELOG.md	2026-08-08 11:57:58.000000000 +0000
++++ mdstats106_work/CHANGELOG.md	2026-08-08 12:26:51.735260269 +0000
+@@ -1,3 +1,11 @@
++## 0.20.107a0
++
++- Complete MLFF gate EVAL-MF2: conservative paired source/temporal-block survivor guards, true-label replay-compatible reserve, and rank-instability expansion on top of EVAL-MF1 nested target/replay evaluation.
++- Add comprehensive per-epoch JSON/CSV/Markdown evaluation reporting that merges MACE training history with partial/full independent metrics, survivor reasons, replay degradation, final admissibility, and selected status.
++- Qualify the default 10% -> 33% -> 100% policy against a representative 30-checkpoint exhaustive case: winner agreement is exact and nested candidate inference is 10.89 versus 30 full-checkpoint equivalents (63.7% less in that case). Supplied MACE 0.3.16 restoration/graph-cache regressions pass separately.
++- Make `checkpoint_strategy = "multi_fidelity"` the generated production default while preserving `bounded` for legacy configs/explicit fast use and `exhaustive` for audit/reference evaluation.
++- Advance the MLFF architecture dependency graph to revision 26. Partial screening remains non-authoritative and gains no checkpoint-deletion authority; frozen DATA8/training scientific identities are unchanged. `PREC1` is next.
++
+ ## 0.20.106a0
+ 
+ - Implement MLFF gate EVAL-MF1 as an opt-in deterministic nested multi-fidelity checkpoint-evaluation strategy. All saved checkpoints enter round 1; target and true-replay monitors use the same configured fractions; only full-fidelity finalists publish authoritative checkpoint-evaluation records.
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/PATCH_NOTES_0.20.107a0.md mdstats106_work/PATCH_NOTES_0.20.107a0.md
+--- mdstats106_pristine/PATCH_NOTES_0.20.107a0.md	1970-01-01 00:00:00.000000000 +0000
++++ mdstats106_work/PATCH_NOTES_0.20.107a0.md	2026-08-08 12:26:51.250452820 +0000
+@@ -0,0 +1,16 @@
++# mdstats 0.20.107a0 patch notes
++
++## MLFF EVAL-MF2
++
++This release completes the second nested multi-fidelity checkpoint-evaluation gate.
++
++- Add conservative source/temporal-block survivor guards. The nominal one-third survivor fraction is a resource target rather than a hard cap; candidates statistically unresolved from the cutoff are retained using the frozen paired 2%-plus-2-SE rule.
++- Preserve plausible true-label replay-retaining checkpoints through a minimum-finalist reserve so target-only ranking cannot prematurely eliminate all replay-compatible candidates.
++- Expand rather than force-prune when common-candidate rankings invert substantially between partial rounds.
++- Add normative per-epoch JSON evaluation reports plus CSV and Markdown derivatives combining MACE training history, every independent evaluation round, replay degradation, survivor reasons, full-fidelity admissibility, and selected status.
++- Qualify the default 10% -> 33% -> 100% strategy against a representative 30-checkpoint exhaustive reference. The qualified case selects the same epoch and uses 10.89 versus 30 full-checkpoint-equivalent candidate inference (63.7% reduction in that case).
++- Re-run supplied MACE 0.3.16 checkpoint-restoration and monitor-graph/cache regressions.
++- Make `checkpoint_strategy = "multi_fidelity"` the generated campaign default. Existing configs that omit the field retain `bounded` behavior for restart compatibility; `bounded` and `exhaustive` remain explicit modes.
++- Keep partial evidence non-authoritative and preserve existing checkpoint-retention/deletion authority for the later STOR gates.
++
++The MLFF dependency graph advances to architecture revision 26. Frozen DATA8/training scientific identities remain unchanged. `PREC1` is the next implementation gate.
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/campaign.toml.example mdstats106_work/campaign.toml.example
+--- mdstats106_pristine/campaign.toml.example	2026-08-08 11:59:25.000000000 +0000
++++ mdstats106_work/campaign.toml.example	2026-08-08 12:20:00.606082602 +0000
+@@ -287,14 +287,24 @@
+ [evaluation]
+ device = "cuda"
+ dtype = "float32"
+-# EVAL-MF1 is opt-in until EVAL-MF2 statistical guard-band qualification is complete.
+-# Allowed values: "bounded", "exhaustive", "multi_fidelity".
+-checkpoint_strategy = "bounded"
++# EVAL-MF2 qualified production default. Allowed values: "bounded", "exhaustive",
++# or "multi_fidelity". Legacy configs that omit this field retain bounded behavior.
++checkpoint_strategy = "multi_fidelity"
+ # Nested multi-fidelity defaults: every saved epoch sees 10% of both target and
+ # replay labels, survivors see a nested 33%, and finalists receive 100% of both.
+ multi_fidelity_round_fractions = [0.10, 0.33, 1.0]
+ multi_fidelity_survival_fraction = 0.3333333333333333
+ multi_fidelity_minimum_finalists = 4
++# EVAL-MF2 conservative cutoff guard. The paired comparison operates on
++# source/trajectory-aware temporal blocks, not individual correlated MD frames.
++multi_fidelity_guard_band_enabled = true
++multi_fidelity_guard_standard_error_multiplier = 2.0
++multi_fidelity_guard_relative_margin = 0.02
++multi_fidelity_guard_minimum_blocks = 4
++# If surviving checkpoint ranks are unstable between successive rounds, retain a
++# larger fraction for the next round rather than forcing an unsafe elimination.
++multi_fidelity_instability_inversion_fraction = 0.25
++multi_fidelity_instability_survival_fraction = 0.50
+ # Permit checkpoint evaluation after any run completes. Incomplete campaigns are
+ # labeled interim and cannot create a production protocol freeze.
+ allow_partial_campaign = true
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/docs/README.md mdstats106_work/docs/README.md
+--- mdstats106_pristine/docs/README.md	2026-08-08 11:58:18.000000000 +0000
++++ mdstats106_work/docs/README.md	2026-08-08 12:26:32.443974762 +0000
+@@ -18,7 +18,7 @@
+   selectable and critical precision, production qualification, campaign
+   freezing, checkpoint inventory, and constrained selection.
+ - `arch_manuals/mlff_training_data_dependency_graph.json` is schema 26,
+-  architecture revision 25. LTA/ring/site features remain optional enrichment
++  architecture revision 26. LTA/ring/site features remain optional enrichment
+   rather than generic-core assumptions.
+ - `specs/training_data/mlff_data_stage_plan_spec.{md,pdf}` defines the gated
+   implementation order. DATA9A9a-c and DATA9B1-B3A are implemented; the real production corpus
+@@ -32,7 +32,7 @@
+   exact LTA geometry verification, conservative rejection, and manifest approval.
+ - `specs/training_data/mlff_eval_mf_successive_halving_spec.{md,pdf}` defines the
+   EVAL-MF1/MF2 nested multi-fidelity checkpoint evaluator; EVAL-MF1 is implemented
+-  in 0.20.106a0 and EVAL-MF2 remains planned: equal-fraction target/replay
++  in 0.20.106a0 and EVAL-MF2 in 0.20.107a0: equal-fraction target/replay
+   monitor ladders, incremental prediction reuse, conservative survivor control, full
+   finalist evaluation, and comprehensive epoch reporting.
+ - `specs/training_data/mlff_staged_precision_profiles_spec.{md,pdf}` defines the planned
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/docs/arch_manuals/README.md mdstats106_work/docs/arch_manuals/README.md
+--- mdstats106_pristine/docs/arch_manuals/README.md	2026-08-08 11:57:58.000000000 +0000
++++ mdstats106_work/docs/arch_manuals/README.md	2026-08-08 12:26:32.444070504 +0000
+@@ -49,13 +49,13 @@
+   execution-optimization line, the 0.20.104a0 source-tool/package-integrity repair,
+   and the 0.20.105a0 progress-timing correctness repair. It records the completed
+   post-first-campaign roadmap (`OPT-EVAL1` through `OPT-CTRL1`) and the planned
+-  post-0.20.105 evaluation/precision/storage roadmap. `EVAL-MF1` is implemented in 0.20.106a0; `EVAL-MF2`, `PREC1`--`PREC3`, and `STOR1`--`STOR5` remain staged future gates.
++  post-0.20.105 evaluation/precision/storage roadmap. `EVAL-MF1` is implemented in 0.20.106a0 and `EVAL-MF2` in 0.20.107a0; `PREC1`--`PREC3` and `STOR1`--`STOR5` remain staged future gates.
+   The generic core owns provenance, eligibility,
+   partitioning, leakage control, selection orchestration, replay, precision,
+   training-backend calls, deployment, and validation policy. Physical
+   observables remain analysis-owned. LTA/ring/site semantics are an optional
+   profile extensions. DATA9A7a declarative contracts, DATA9A7b universal structural providers, DATA9A7c phase/geometry profiles, DATA9A7d optional-extension/LTA migration, and DATA9A7e cross-system qualification, DATA9A8 observable comparison, and DATA9A9a restartable production model sweeps are implemented.
+ - `mlff_training_data_dependency_graph.json`: machine-readable schema-26,
+-  architecture-revision-25 dependency graph. It separates generic material
++  architecture-revision-26 dependency graph. It separates generic material
+   profiles and observable validation from optional LTA enrichment and freezes
+-  holdout/protocol-exclusion dependencies. Revision 25 records EVAL-MF1 runtime completion while preserving the staged precision and storage dependencies introduced in revision 24; earlier DATA2A and scientific identities remain unchanged.
++  holdout/protocol-exclusion dependencies. Revision 26 records EVAL-MF2 conservative survivor/reporting completion and production-default migration while preserving the staged precision and storage dependencies; earlier DATA2A and scientific identities remain unchanged.
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/docs/arch_manuals/mlff_training_data_architecture.md mdstats106_work/docs/arch_manuals/mlff_training_data_architecture.md
+--- mdstats106_pristine/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-08 12:01:56.000000000 +0000
++++ mdstats106_work/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-08 12:26:32.443441420 +0000
+@@ -33,7 +33,7 @@
+ blocks, deterministic balanced assignment, and purged folds. Existing Stage 11
+ STAT1 and SAMP0 workflows consume those primitives without changing their
+ serialized evidence. MLFF-DATA2 is implemented in `0.20.30a0`: deterministic source manifests, VASP source catalogs, named energy selection, decomposed label domains, and per-label-domain structural atomic-reference identifiability are public runtime contracts. MLFF-DATA3 is implemented in `0.20.31a0`: manifest-bound frame occurrences, geometry and label identities, duplicate/restart detection, post-DFT eligibility, temperature conditions, reference-cell resolution, and rotation-separated finite strain are public runtime contracts. MLFF-DATA4 is implemented in `0.20.32a0` and generalized through DATA9A7d: partition-independent raw physical features, optional profile-extension states, protected event bursts, deterministic feature caches, and partition-role budget requests are public runtime contracts. MLFF-DATA5 is implemented in `0.20.33a0`: autocorrelation-aware partition units, role feasibility, deterministic outer evidence roles, independence grades, nested cross-validation monitors, blinding boundaries, and fail-closed leakage audits are public runtime contracts. MLFF-DATA6 is implemented in `0.20.34a0` and generalized through DATA9A7d: profile-aware universal and optional extension descriptors, optional checkpoint-bound MACE atomic descriptor sidecars, training-domain-only foundation residuals, blinded non-training predictions, and sealed locked-test prediction records are public runtime contracts. MLFF-DATA7 is implemented in `0.20.35a0`: canonical final/fold training domains, fold-local fitted metrics, domain-local atomic-reference fits, explicit objective and checkpoint policies, deterministic quota-interleaved selection ladders, and coverage reports are public runtime contracts. MLFF-DATA8 is implemented in `0.20.36a0`: verified MACE-readable extended-XYZ artifacts, explicit E0 mappings, replay train/monitor plans, a v0.3.16 source compatibility lock, complete training-protocol identities, loader dry-run exposure records, independent final/fold job bundles, and sealed locked-test metadata are public runtime contracts. MLFF-DATA9A hardening began in `0.20.37a0`, its offline runtime bootstrap is implemented in `0.20.38a0`, and DATA9A2 real-MACE realization is implemented in `0.20.39a0`: checkpoint-residual E0 fits, relocatable bundles, strict replay/XYZ audits, source-declared dependency manifests, isolated local-artifact installation, installed-environment qualification, v0.3.16 scalar-literal serialization, fixed-file target/replay weight realization, genuine parser/loader dry runs, bounded training, checkpoint/head inventory, target-head extraction, and finite evaluation round trips are public contracts. The supplied dependency bundle and MPA-0 checkpoint pass executable qualification. DATA9A3 in 0.20.40a0 qualifies the complete 27-source, 37,632-frame bulk-LTA target corpus through DATA5 with a passing leakage audit. DATA9A production execution remains open for checkpoint-bound production DATA6/DATA7 evidence, DATA8 job materialization, exact replay-corpus identity, and later protocol-matched training and freeze. DATA9A4 in 0.20.41a0 adds a protocol-bound selectable precision contract: the float64 MPA-0 checkpoint may initialize either a float32 or float64 fine-tuned model, and actual serialized parameter/buffer dtypes are immutable execution evidence rather than inferred from CLI text. DATA9A5a/9A5b in 0.20.42a0-0.20.43a0 close Python/ASE critical precision and deployment-artifact semantics. DATA9A6 in 0.20.44a0 introduces the analysis-owned observable-call bridge. DATA9A6b in 0.20.45a0 closes recipe dependency safety, collection and model lineage, runtime-duration/warning evidence, capability requirement schemas, documentation conflicts, and the thermomechanical/energetic analysis ownership plan. DATA9A6c in 0.20.46a0 verifies supplied identities against the actual collections, requires symmetric reference/candidate generation lineage for production evidence, binds analysis-owned result digests, freezes observable evidence roles and comparison-policy identity before locked evaluation, and corrects runtime/package identity and dependency ordering. DATA9A7a in 0.20.47a0 introduces user-declared compositional material profiles, phase components, atom-group catalogs, condition axes, independence axes, a declarative provider protocol, and DATA4 schema-v2 profile threading without changing existing feature or selection behavior. DATA9A7b in 0.20.48a0 adds an analysis-owned universal local-structure kernel, profile/atom-group-aware DATA6 structural catalogs, generic structural events, a DATA7 universal feature block, and generic per-species environment coverage without importing LTA. DATA9A7c in 0.20.49a0 derives immutable phase/geometry selection plans, profile-specific feature/event activation, geometry-aware atom-group priorities, DATA6-v3 plan lineage, and compositional observable-call recommendations. DATA9A7d in 0.20.50a0 migrates LTA behind generic optional profile-extension catalogs, advances DATA4/DATA6 canonical schemas, and replaces generic-core cation/site assumptions with focus groups, structural realizations, and extension coverage. DATA9A7e in 0.20.51a0 qualifies bounded crystal, amorphous, liquid, interface, and LTA DATA4-DATA7 paths, adds immutable qualification evidence, and makes MLFF LTA implementation imports lazy so generic workflows neither import nor serialize LTA-specific evidence. DATA9A8 in 0.20.52a0 adds frozen profile-aware observable comparison and acceptance policies. DATA9A9a in 0.20.53a0 adds the exact DATA5-authorized checkpoint-bound descriptor/prediction plan, per-frame restart sidecars, atomic checkpoints, corruption recovery, and DATA6 reuse without repeated foundation-model inference. DATA9A9b in 0.20.54a0 adds restartable final/fold DATA7 materialization, exact replay binding, complete DATA8 job-tree evidence, corruption-driven downstream invalidation, and a relocatable production materialization record. DATA9A9c in 0.20.55a0 adds the immutable production-corpus plan, evidence-derived foundation and residual-E0 qualification, numerical replay-label identity, content-addressed DATA8 generation promotion, self-verifying loaders, and generic optional-extension gate requirements. DATA9B1 in 0.20.56a0 adds passed-gate campaign-matrix freezing, protocol-family and seed-variant identities, content-addressed checkpoint catalogs, external metric records, deterministic hard-constraint admissibility, and fail-closed checkpoint selection. DATA9B2 in 0.20.57a0 adds supervised/restartable MACE execution, automatic target/replay checkpoint evaluation, fold/seed aggregation, learning curves, deterministic protocol comparison, target-head committee export, protocol freeze, and sealed-evaluation activation. DATA9B3 in 0.20.58a0 adds the unified source-checkout campaign CLI, one-database orchestration state, manifest approval, production preparation/training/evaluation commands, source-local precision-wrapper shims, and bounded NVE deployment verification. DATA9B3A in 0.20.59a0 makes the MACE acceleration backend a frozen campaign policy, auto-selects cuEquivariance at initialization when qualified, and propagates it through DATA6, DATA8, preflight, production training, checkpoint evaluation, and bounded verification without silent fallback. DATA2A in 0.20.60a0 adds XML-backed review-manifest metadata, percentage-aware filename strain candidates, exact LTA fixed-cell geometry verification, and fail-safe promotion before manual manifest approval. DATA2 interrupted-stream hardening in 0.20.61a0 adds EOF-qualified interrupted `vasprun.xml` recovery across ENS0, DATA2 source audit, and normalized trajectory loading while preserving strict rejection of ambiguous or mid-file corruption.
+-The first post-0.20.105 evaluation/storage cycle begins in 0.20.106a0 with EVAL-MF1: deterministic nested equal-fraction target/replay checkpoint screening, delta-only prediction reuse, explicit screening evidence, and full-fidelity finalist publication are implemented as an opt-in evaluation strategy.
++The post-0.20.105 evaluation/storage cycle implements EVAL-MF1 in 0.20.106a0 and EVAL-MF2 in 0.20.107a0: deterministic nested equal-fraction target/replay checkpoint screening, delta-only prediction reuse, conservative source/block-aware survivor guards, comprehensive epoch reporting, and full-fidelity finalist publication are now the generated production evaluation strategy.
+ 
+ The central architectural rule is:
+ 
+@@ -4164,8 +4164,9 @@
+ The implemented gate adds a public `MultiFidelityEvaluationPolicy`, deterministic
+ `MultiFidelityMonitorLadder` construction, explicit partial-round records, and
+ persistent prediction-coverage composition. The campaign evaluator accepts the
+-opt-in `checkpoint_strategy = "multi_fidelity"` while retaining `bounded` as the
+-generated default until EVAL-MF2 qualification. All saved checkpoints enter round 1.
++`checkpoint_strategy = "multi_fidelity"`. In 0.20.106a0 this remained opt-in; after
++EVAL-MF2 qualification in 0.20.107a0 it becomes the generated default. Legacy configs
++that omit the strategy retain the historical bounded fallback. All saved checkpoints enter round 1.
+ Target and true-replay monitors use the same declared round fractions, with
+ independent deterministic stratification/source/temporal orders. Later rounds infer
+ only newly added configuration identities and compose cumulative metrics from
+@@ -4187,44 +4188,49 @@
+ responsible for guard-band survivor statistics, comprehensive epoch reporting,
+ exhaustive-comparison qualification, and migration to the generated default.
+ 
+-## EVAL-MF2 - conservative survivor control, diagnostics, and default migration - planned
++## EVAL-MF2 - conservative survivor control, diagnostics, and default migration - implemented in 0.20.107a0
+ 
+-EVAL-MF2 hardens EVAL-MF1 before it becomes the default production policy.
+-A rigid `keep exactly one third` rule is not sufficient when several checkpoints are
+-statistically indistinguishable on a small correlated monitor subset.
+-
+-The survivor controller therefore shall:
+-
+-- treat one third as the **nominal** survival fraction rather than a hard cap;
+-- retain a configured minimum finalist count;
+-- use paired comparisons because checkpoints are evaluated on the same configurations;
+-- estimate ambiguity at the source/trajectory or decorrelated-block level rather than
+-  bootstrap individual correlated MD frames as iid observations;
+-- retain candidates in a deterministic guard band around a cutoff when the available
+-  evidence does not clearly separate them; and
+-- expand a later round rather than forcing an unsafe elimination when a boundary audit
+-  reveals ranking instability.
+-
+-The exact uncertainty method and guard criterion must be frozen in an execution-policy
+-record and validated on synthetic ranking inversions plus representative MACE histories.
+-The policy is not allowed to claim a mathematical global-minimum guarantee unless every
+-saved checkpoint receives full-monitor evaluation. Its claim is instead a conservative,
+-resource-adaptive screen followed by exact full-fidelity selection among retained
+-finalists.
+-
+-EVAL-MF2 also owns the comprehensive epoch report requested for campaign diagnosis.
+-For every saved epoch it shall expose available training-history metrics plus each
+-independent evaluation round, including target energy error, target force RMSE,
+-focus-group metrics, replay error/degradation where applicable, round fidelity,
+-survival/elimination reason, and final selection status. Machine-readable JSON/CSV and
+-human-readable/plot-friendly summaries should be generated without making plotting a
+-scientific dependency.
+-
+-After benchmark qualification against exhaustive 30-checkpoint evaluation on
+-representative completed runs, the multi-fidelity strategy may become the generated
+-production default. The old fixed `max_checkpoints_per_run = 4` behavior remains an
+-explicit fast/exploratory compatibility mode, and exhaustive full evaluation remains
+-an explicit audit mode.
++EVAL-MF2 hardens the EVAL-MF1 nested evaluator and makes it the generated production
++checkpoint strategy. The nominal one-third survivor fraction remains a resource target,
++not a hard scientific cap. The implemented survivor controller uses paired source/temporal-
++block evidence because every checkpoint is evaluated on the same configurations. At a
++cutoff, a below-cutoff candidate is retained when its paired mean primary-metric excess is
++no larger than a frozen guard equal to a 2% relative margin plus two standard errors over
++at least four common blocks. With insufficient block evidence, the deterministic 2%
++relative margin is used rather than pretending adjacent frames are iid samples.
++
++For true-label replay campaigns, the controller additionally reserves up to the declared
++minimum-finalist count of provisionally replay-compatible candidates, ranked by the same
++frozen target primary metric. This prevents target-only screening from eliminating every
++plausible replay-retaining checkpoint. Between partial rounds, pairwise rank inversion is
++measured over common survivors; an inversion fraction of at least 25% expands the next
++round to at least 50% of the current candidates rather than forcing an unstable one-third
++prune. All thresholds are explicit `MultiFidelityEvaluationPolicy` fields and therefore
++content-digested execution policy.
++
++EVAL-MF2 also implements the comprehensive per-epoch campaign report. For every saved
++epoch it merges MACE training-history target/replay metrics with every independent
++multi-fidelity round, realized target/replay counts, energy/force/focus/worst-condition
++metrics when available, replay degradation, survivor or elimination reasons, final
++admissibility, and selected status. Normative JSON plus CSV and Markdown derivatives are
++written under `results/<run-id>-epoch-evaluation.*`.
++
++Qualification includes deterministic noisy-cutoff/rank-inversion/replay-rescue tests, a
++representative 30-checkpoint exhaustive comparison, and supplied MACE 0.3.16 restoration/
++graph-cache regressions. The representative 30-checkpoint case selects the same
++true-replay-admissible epoch as exhaustive evaluation while purchasing 10.89 full-
++checkpoint-equivalent nested candidate inference instead of 30, a 63.7% reduction for
++that case. This is representative evidence, not a claim that every campaign receives the
++same reduction or that the screen mathematically guarantees the global full-monitor
++minimum over eliminated epochs.
++
++With this gate closed, newly generated campaign TOML uses
++`checkpoint_strategy = "multi_fidelity"`. The old `bounded` strategy remains an explicit
++fast/compatibility mode, `exhaustive` remains the audit/reference mode, and legacy configs
++that omit `checkpoint_strategy` retain bounded behavior for restart compatibility.
++Partial-round evidence remains structurally incapable of authorizing final admissibility,
++selection, protocol freeze, or checkpoint deletion; only full-fidelity finalist records
++enter the existing DATA9B scientific selection path.
+ 
+ 
+ ## PREC1 - precision profiles, explicit staged schedule, and init realization - planned
+@@ -4672,8 +4678,8 @@
+ 8. **capability loss is explicit** - any manual higher-tier reclamation states exactly
+    what can no longer be restarted, recomputed, or re-evaluated cheaply.
+ 
+-`EVAL-MF1` is implemented in 0.20.106a0. `EVAL-MF2` is the next implementation gate. The remaining required implementation sequence is
+-`EVAL-MF2 -> PREC1 -> PREC2 -> PREC3 -> STOR1 -> STOR2 -> STOR3 -> STOR4 -> STOR5`.
++`EVAL-MF1` is implemented in 0.20.106a0 and `EVAL-MF2` is implemented in 0.20.107a0. `PREC1` is the next implementation gate. The remaining required implementation sequence is
++`PREC1 -> PREC2 -> PREC3 -> STOR1 -> STOR2 -> STOR3 -> STOR4 -> STOR5`.
+ Storage implementation does not begin until EVAL-MF and staged-precision work establish
+ the checkpoint, prediction, optimizer-state, and dtype lifetimes that storage policy
+ must respect.
+@@ -4705,5 +4711,5 @@
+ The staged optimization roadmap **OPT-EVAL1 through OPT-CTRL1 is complete**. The
+ post-0.20.105 multi-fidelity-evaluation/staged-precision/storage roadmap above is a
+ separate cycle opened by new production-scale profiling, FP64-training, and storage
+-evidence. `EVAL-MF1` is implemented in 0.20.106a0; its next implementation gate is `EVAL-MF2`.
++evidence. `EVAL-MF1` and `EVAL-MF2` are implemented through 0.20.107a0; the next implementation gate is `PREC1`.
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/docs/arch_manuals/mlff_training_data_dependency_graph.json mdstats106_work/docs/arch_manuals/mlff_training_data_dependency_graph.json
+--- mdstats106_pristine/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-08 11:57:58.000000000 +0000
++++ mdstats106_work/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-08 12:25:58.680419033 +0000
+@@ -1,9 +1,9 @@
+ {
+   "schema_version": 26,
+-  "architecture_revision": 25,
++  "architecture_revision": 26,
+   "branch": "MLFF-DATA",
+   "documentation_gate": "MLFF-DATA0",
+-  "description": "MLFF training-data dependency graph through DATA2A automatic review-manifest inference, DATA9B3A frozen e3nn/cuEquivariance campaigns, MLFF-PERF2 resource-aware process/GPU execution, and revision 23 planned nested multi-fidelity checkpoint evaluation plus ownership-scoped storage management; scientific DATA9 identity remains unchanged.",
++  "description": "MLFF training-data dependency graph through DATA2A automatic review-manifest inference, DATA9B3A frozen e3nn/cuEquivariance campaigns, MLFF-PERF2 resource-aware process/GPU execution, EVAL-MF1 nested prediction reuse, and EVAL-MF2 conservative multi-fidelity survivor control/reporting; staged precision and ownership-scoped storage management remain planned. Scientific DATA9 identity remains unchanged.",
+   "edge_type_definitions": {
+     "source_identity_requires": "Exact source or checkpoint identity is required.",
+     "execution_requires": "The upstream product must exist before execution.",
+@@ -125,6 +125,9 @@
+       "id": "CHECKPOINT_SELECTION_RECORD"
+     },
+     {
++      "id": "CHECKPOINT_SURVIVOR_GUARD_EVIDENCE"
++    },
++    {
+       "id": "CHECKPOINT_SURVIVOR_RECORD"
+     },
+     {
+@@ -3267,6 +3270,21 @@
+       "from": "VERIFIED_STRAIN_RELATIONSHIP",
+       "to": "REVIEW_MANIFEST_INFERENCE_RESULT",
+       "type": "promotion_requires"
++    },
++    {
++      "from": "CHECKPOINT_SCREENING_ROUND_RECORD",
++      "to": "CHECKPOINT_SURVIVOR_GUARD_EVIDENCE",
++      "type": "execution_requires"
++    },
++    {
++      "from": "CHECKPOINT_SURVIVOR_GUARD_EVIDENCE",
++      "to": "CHECKPOINT_SURVIVOR_RECORD",
++      "type": "execution_requires"
++    },
++    {
++      "from": "NESTED_CHECKPOINT_EVALUATION_PLAN",
++      "to": "CHECKPOINT_SURVIVOR_GUARD_EVIDENCE",
++      "type": "source_identity_requires"
+     }
+   ],
+   "forbidden_dependencies": [
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/docs/guides/mlff_campaign_cli_user_guide.md mdstats106_work/docs/guides/mlff_campaign_cli_user_guide.md
+--- mdstats106_pristine/docs/guides/mlff_campaign_cli_user_guide.md	2026-08-07 07:06:20.000000000 +0000
++++ mdstats106_work/docs/guides/mlff_campaign_cli_user_guide.md	2026-08-08 12:30:04.072049304 +0000
+@@ -255,8 +255,15 @@
+ python tools/mdstats-mlff-campaign.py --config campaign.toml evaluate
+ ```
+ 
+-Every completed run checkpoint is evaluated on the DFT target monitor. With
+-`replay_true_labels` configured, both the frozen foundation and the fine-tuned
++By default, every saved epoch enters the nested multi-fidelity evaluator. Round 1
++evaluates the same nominal 10% fraction of the DFT target monitor and, when present,
++the independent true-label replay monitor; conservative survivors expand to a nested
++33% fraction, and only full-fidelity finalists receive complete target/replay
++evaluation and final scientific admissibility. Partial-round records are screening
++evidence only. The legacy `bounded` strategy and exhaustive full-monitor evaluation
++remain explicit configuration choices.
++
++With `replay_true_labels` configured, both the frozen foundation and the fine-tuned
+ candidate are evaluated on both the target monitor and the independent true-label
+ replay monitor. This produces the complete foundation/candidate × target/replay
+ comparison while keeping pseudo-label replay available for training. Only
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/docs/specs/training_data/mlff_eval_mf_successive_halving_spec.md mdstats106_work/docs/specs/training_data/mlff_eval_mf_successive_halving_spec.md
+--- mdstats106_pristine/docs/specs/training_data/mlff_eval_mf_successive_halving_spec.md	2026-08-08 11:57:58.000000000 +0000
++++ mdstats106_work/docs/specs/training_data/mlff_eval_mf_successive_halving_spec.md	2026-08-08 12:29:01.707303011 +0000
+@@ -1,10 +1,10 @@
+ # MLFF EVAL-MF1/MF2 multi-fidelity checkpoint-evaluation specification
+ 
+-Status: EVAL-MF1 implemented in mdstats 0.20.106a0; EVAL-MF2 planned next.
++Status: EVAL-MF1 implemented in mdstats 0.20.106a0; EVAL-MF2 implemented in mdstats 0.20.107a0. PREC1 is the next MLFF implementation gate.
+ 
+ ## Purpose
+ 
+-This specification defines the planned replacement for the current production
++This specification defines the production replacement for the historical
+ four-checkpoint screening default. The evaluator spends a small, equal fraction
+ of target and replay monitor labels on every saved epoch, progressively increases
+ fidelity for survivors, and performs final scientific selection only on complete
+@@ -31,10 +31,31 @@
+ class and survivor records persist deterministic rank/outcome/reason data. Only the
+ 100% round publishes the ordinary authoritative checkpoint-evaluation record.
+ 
+-The implemented EVAL-MF1 survivor rule is deliberately deterministic and simple; the
+-statistical ambiguity/guard-band behavior described below belongs to EVAL-MF2. The
+-generated campaign TOML therefore continues to default to `checkpoint_strategy =
+-"bounded"` until EVAL-MF2 completes its exhaustive-comparison qualification.
++The 0.20.106a0 EVAL-MF1 survivor rule was deliberately deterministic and simple.
++EVAL-MF2 in 0.20.107a0 implements the statistical ambiguity/guard-band behavior below
++and advances newly generated campaign TOML to `checkpoint_strategy = "multi_fidelity"`.
++Legacy configs that omit the strategy continue to resolve to `bounded` for restart
++compatibility.
++
++## EVAL-MF2 implementation record
++
++mdstats 0.20.107a0 implements conservative source/temporal-block survivor evidence and
++comprehensive epoch reporting on top of EVAL-MF1. The default guard retains a candidate
++when the paired mean primary-metric difference from the nominal cutoff is no larger than
++a 2% relative allowance plus 2 standard errors over at least 4 common blocks. If fewer
++blocks are available, only the deterministic 2% relative allowance is used. True-label
++replay campaigns reserve provisionally replay-compatible candidates up to the minimum-
++finalist floor, and a pairwise rank-inversion fraction >=25% expands the subsequent round
++to at least 50% of current candidates. These numbers are explicit policy fields, not
++hidden constants.
++
++Every run receives normative JSON plus CSV/Markdown epoch-evaluation reports that combine
++MACE training history with partial/full independent metrics, survivor reasons, final
++admissibility, and selected status. A representative deterministic 30-checkpoint
++qualification selects the same true-replay-admissible winner as exhaustive evaluation
++while purchasing 10.89 rather than 30 full-checkpoint-equivalent candidate inference,
++a 63.7% reduction for that case. Supplied MACE 0.3.16 restoration and monitor-graph cache
++regressions separately qualify the real-model inference substrate.
+ 
+ ## Binding invariants
+ 
+@@ -100,7 +121,7 @@
+ checkpoint policy, but partial threshold outcomes are not final admissibility records.
+ A nominal one-third survivor fraction is a resource target, not a hard scientific cap.
+ 
+-EVAL-MF2 adds paired, block-aware ambiguity handling. Because checkpoints are evaluated
++EVAL-MF2 implements paired, block-aware ambiguity handling. Because checkpoints are evaluated
+ on the same configurations, comparisons should use paired loss/error differences where
+ possible. Uncertainty estimation shall operate on trajectory/source or decorrelated
+ blocks rather than treating individual adjacent MD frames as independent samples.
+@@ -128,7 +149,7 @@
+ 
+ ## Comprehensive epoch report
+ 
+-EVAL-MF2 shall produce a machine-readable and human-readable summary for every epoch,
++EVAL-MF2 produces a machine-readable and human-readable summary for every epoch,
+ including when available:
+ 
+ - MACE training-history target/replay metrics;
+@@ -144,8 +165,7 @@
+ 
+ ## Qualification
+ 
+-Before the new strategy becomes the generated production default, tests and bounded
+-real-MACE qualification must demonstrate:
++The production-default qualification completed in 0.20.107a0 demonstrates:
+ 
+ 1. deterministic nested equal-fraction target/replay subsets;
+ 2. label-independent subset construction;
+@@ -162,3 +182,18 @@
+ The current fixed `max_checkpoints_per_run` mode remains available as an explicit fast
+ or compatibility strategy. Exhaustive full-monitor evaluation remains available as an
+ audit/reference strategy.
++
++
++### 0.20.107a0 qualification evidence
++
++- representative exhaustive comparison: 30 saved checkpoints, exhaustive winner epoch 16,
++  multi-fidelity winner epoch 16;
++- nested candidate counts in that case: 30 -> 11 -> 8;
++- incremental candidate-inference cost: 10.89 full-checkpoint equivalents versus 30
++  exhaustive, or 63.7% less candidate inference;
++- real-MACE qualification: supplied MACE 0.3.16 direct checkpoint restoration and
++  persistent monitor-graph/cache regressions pass; and
++- partial screening remains non-authoritative and acquires no checkpoint-deletion
++  authority.
++
++The measured reduction is case-specific and is not a universal performance guarantee.
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/mdstats/__init__.py mdstats106_work/mdstats/__init__.py
+--- mdstats106_pristine/mdstats/__init__.py	2026-08-08 11:46:13.000000000 +0000
++++ mdstats106_work/mdstats/__init__.py	2026-08-08 12:18:17.910862658 +0000
+@@ -4638,23 +4638,35 @@
+     MULTI_FIDELITY_EVALUATION_POLICY_SCHEMA,
+     MULTI_FIDELITY_MONITOR_LADDER_SCHEMA,
+     MULTI_FIDELITY_ROUND_RECORD_SCHEMA,
++    MULTI_FIDELITY_SURVIVOR_DECISION_SCHEMA,
+     MultiFidelityEvaluationPolicy,
+     MultiFidelityMonitorLadder,
+     MultiFidelityCheckpointRoundRecord,
++    MultiFidelitySurvivorDecision,
+     deterministic_balanced_order,
++    deterministic_block_labels,
+     build_monitor_ladder,
++    target_primary_block_values,
++    replay_degradation_block_values,
+     provisional_ranking_key,
+     survivor_count,
++    conservative_survivor_decision,
+ )
+ __all__ += [
+     "MULTI_FIDELITY_EVALUATION_POLICY_SCHEMA",
+     "MULTI_FIDELITY_MONITOR_LADDER_SCHEMA",
+     "MULTI_FIDELITY_ROUND_RECORD_SCHEMA",
++    "MULTI_FIDELITY_SURVIVOR_DECISION_SCHEMA",
+     "MultiFidelityEvaluationPolicy",
+     "MultiFidelityMonitorLadder",
+     "MultiFidelityCheckpointRoundRecord",
++    "MultiFidelitySurvivorDecision",
+     "deterministic_balanced_order",
++    "deterministic_block_labels",
+     "build_monitor_ladder",
++    "target_primary_block_values",
++    "replay_degradation_block_values",
+     "provisional_ranking_key",
+     "survivor_count",
++    "conservative_survivor_decision",
+ ]
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/mdstats/_version.py mdstats106_work/mdstats/_version.py
+--- mdstats106_pristine/mdstats/_version.py	2026-08-08 11:57:58.000000000 +0000
++++ mdstats106_work/mdstats/_version.py	2026-08-08 12:25:58.670584041 +0000
+@@ -1,3 +1,3 @@
+ """Package version."""
+ 
+-__version__ = "0.20.106a0"
++__version__ = "0.20.107a0"
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/mdstats/data/observable_owner_manuals.json mdstats106_work/mdstats/data/observable_owner_manuals.json
+--- mdstats106_pristine/mdstats/data/observable_owner_manuals.json	2026-08-08 11:57:58.000000000 +0000
++++ mdstats106_work/mdstats/data/observable_owner_manuals.json	2026-08-08 12:25:58.670678451 +0000
+@@ -17,6 +17,6 @@
+       "uri": "mdstats-doc://vacf-dynamics-architecture/0.20.53a0"
+     }
+   },
+-  "package_version": "0.20.106a0",
++  "package_version": "0.20.107a0",
+   "schema": "mdstats.observable-owner-manual-index.v1"
+ }
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/mdstats/training_data/__init__.py mdstats106_work/mdstats/training_data/__init__.py
+--- mdstats106_pristine/mdstats/training_data/__init__.py	2026-08-08 11:46:02.000000000 +0000
++++ mdstats106_work/mdstats/training_data/__init__.py	2026-08-08 12:16:09.841477982 +0000
+@@ -995,11 +995,17 @@
+     MULTI_FIDELITY_EVALUATION_POLICY_SCHEMA,
+     MULTI_FIDELITY_MONITOR_LADDER_SCHEMA,
+     MULTI_FIDELITY_ROUND_RECORD_SCHEMA,
++    MULTI_FIDELITY_SURVIVOR_DECISION_SCHEMA,
+     MultiFidelityEvaluationPolicy,
+     MultiFidelityMonitorLadder,
+     MultiFidelityCheckpointRoundRecord,
++    MultiFidelitySurvivorDecision,
+     deterministic_balanced_order,
++    deterministic_block_labels,
+     build_monitor_ladder,
++    target_primary_block_values,
++    replay_degradation_block_values,
+     provisional_ranking_key,
+     survivor_count,
++    conservative_survivor_decision,
+ )
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/mdstats/training_data/campaign_cli.py mdstats106_work/mdstats/training_data/campaign_cli.py
+--- mdstats106_pristine/mdstats/training_data/campaign_cli.py	2026-08-08 11:58:18.000000000 +0000
++++ mdstats106_work/mdstats/training_data/campaign_cli.py	2026-08-08 12:27:05.562700635 +0000
+@@ -14,6 +14,7 @@
+ from enum import Enum
+ import argparse
+ import ast
++import csv
+ import gc
+ import hashlib
+ import json
+@@ -67,7 +68,8 @@
+ # topology, 0.20.102a0 changes bounded-verification execution/scaling, and
+ # 0.20.103a0 changes only orchestration/telemetry/control-plane execution,
+ # 0.20.104a0 repairs source packaging, 0.20.105a0 repairs progress timing,
+-# and 0.20.106a0 implements EVAL-MF1 nested multi-fidelity checkpoint evaluation.
++# 0.20.106a0 implements EVAL-MF1 nested multi-fidelity checkpoint evaluation,
++# and 0.20.107a0 implements EVAL-MF2 conservative survivor/reporting/default migration.
+ # None changes the frozen MLFF scientific/materialization identity, so existing
+ # 0.20.99a0 campaign state and prediction caches remain reusable.
+ MLFF_DATA9B3_VERSION = "0.20.99a0"
+@@ -8293,6 +8295,24 @@
+         minimum_finalists=int(
+             _cfg(cfg, "evaluation", "multi_fidelity_minimum_finalists", 4)
+         ),
++        guard_band_enabled=bool(
++            _cfg(cfg, "evaluation", "multi_fidelity_guard_band_enabled", True)
++        ),
++        guard_standard_error_multiplier=float(
++            _cfg(cfg, "evaluation", "multi_fidelity_guard_standard_error_multiplier", 2.0)
++        ),
++        guard_relative_margin=float(
++            _cfg(cfg, "evaluation", "multi_fidelity_guard_relative_margin", 0.02)
++        ),
++        guard_minimum_blocks=int(
++            _cfg(cfg, "evaluation", "multi_fidelity_guard_minimum_blocks", 4)
++        ),
++        instability_inversion_fraction=float(
++            _cfg(cfg, "evaluation", "multi_fidelity_instability_inversion_fraction", 0.25)
++        ),
++        instability_survival_fraction=float(
++            _cfg(cfg, "evaluation", "multi_fidelity_instability_survival_fraction", 0.50)
++        ),
+     )
+ 
+ 
+@@ -8391,8 +8411,11 @@
+                 ladder.monitor_artifact_digest == monitor_artifact_digest
+                 and ladder.round_fractions == policy.round_fractions
+                 and ladder.geometry_identities == tuple(str(value) for value in geometry_identities)
++                and getattr(ladder, "metadata_version", 1) >= 2
++                and len(getattr(ladder, "block_labels", ())) == len(tuple(geometry_identities))
+             ):
+                 return ladder
++            store.delete_record(key)
+         except Exception:
+             store.delete_record(key)
+     strata, sources, temporal = _monitor_order_metadata(
+@@ -8526,6 +8549,7 @@
+ 
+     survivors = list(original_catalog.checkpoints)
+     reasons: dict[int, list[str]] = {item.epoch: ["multifidelity_round1_entry"] for item in survivors}
++    previous_ranking_sha256s: tuple[str, ...] = ()
+     config_path = (root / job.config_relative_path).resolve()
+     checkpoint_model_cache = paths.runs / run.run_id / "checkpoint-model-cache"
+ 
+@@ -8665,6 +8689,8 @@
+                     )
+                 ):
+                     cumulative = delta_result
++                    evidence_prepared = prepared
++                    evidence_bundle = predictions
+                 else:
+                     cumulative_prepared = mdstats.prepare_mace_checkpoint_evaluation(
+                         run,
+@@ -8704,6 +8730,51 @@
+                         else cumulative_prepared.replay_monitor_artifact.label_mode,
+                         training_replay_monitor_artifact_digest=run.replay_monitor_artifact_digest,
+                     )
++                    evidence_prepared = cumulative_prepared
++                    evidence_bundle = cumulative_bundle
++
++                target_blocks = tuple(
++                    target_ladder.block_labels[index] for index in active_target_indices
++                )
++                target_block_values = mdstats.target_primary_block_values(
++                    evidence_prepared.target_view,
++                    evidence_bundle.target_candidate_predictions,
++                    target_blocks,
++                    primary_metric=metric_policy.primary_metric,
++                    combined_energy_weight=evaluation_policy.combined_energy_weight,
++                    combined_force_weight=evaluation_policy.combined_force_weight,
++                    combined_stress_weight=evaluation_policy.combined_stress_weight,
++                )
++                replay_block_values = ()
++                if (
++                    replay_ladder is not None
++                    and active_replay_indices is not None
++                    and evidence_prepared.replay_view is not None
++                    and evidence_bundle.replay_candidate_predictions is not None
++                    and evidence_bundle.replay_foundation_predictions is not None
++                    and evaluation_replay_artifact is not None
++                    and evaluation_replay_artifact.label_mode
++                    is not mdstats.ReplayLabelMode.FOUNDATION_PSEUDOLABEL
++                ):
++                    replay_blocks = tuple(
++                        replay_ladder.block_labels[index] for index in active_replay_indices
++                    )
++                    replay_metric_name = (
++                        "euclidean_bundle"
++                        if evaluation_policy.replay_metric == "energy_force_stress"
++                        else evaluation_policy.replay_metric
++                    )
++                    replay_block_values = mdstats.replay_degradation_block_values(
++                        evidence_prepared.replay_view,
++                        evidence_bundle.replay_candidate_predictions,
++                        evidence_bundle.replay_foundation_predictions,
++                        replay_blocks,
++                        replay_metric=replay_metric_name,
++                        replay_baseline_floor=evaluation_policy.replay_baseline_floor,
++                        combined_energy_weight=evaluation_policy.combined_energy_weight,
++                        combined_force_weight=evaluation_policy.combined_force_weight,
++                        combined_stress_weight=evaluation_policy.combined_stress_weight,
++                    )
+                 return mdstats.MultiFidelityCheckpointRoundRecord(
+                     run_plan_digest=run.content_digest,
+                     checkpoint_sha256=active_checkpoint.sha256,
+@@ -8715,6 +8786,8 @@
+                     replay_configuration_count=0 if active_replay_indices is None else len(active_replay_indices),
+                     evaluation_record=cumulative,
+                     full_fidelity=is_final,
++                    target_primary_block_values=target_block_values,
++                    replay_degradation_block_values=replay_block_values,
+                 )
+ 
+             def commit_round(result, *, active_sha=checkpoint.sha256, active_key=record_key):
+@@ -8763,22 +8836,44 @@
+                 metric_policy,
+             ),
+         )
+-        keep_count = mdstats.survivor_count(
+-            len(ranked),
+-            mf_policy,
+-            next_round_is_final=(round_index + 1 == len(mf_policy.round_fractions) - 1),
+-        )
+-        retained = ranked[:keep_count]
+-        retained_sha = {item.sha256 for item in retained}
++        next_round_is_final = round_index + 1 == len(mf_policy.round_fractions) - 1
++        decision = mdstats.conservative_survivor_decision(
++            tuple(item.sha256 for item in ranked),
++            round_records,
++            metric_policy=metric_policy,
++            policy=mf_policy,
++            next_round_is_final=next_round_is_final,
++            previous_ranking_sha256s=previous_ranking_sha256s,
++            maximum_replay_degradation_fraction=metric_policy.maximum_replay_degradation_fraction,
++        )
++        retained_sha = set(decision.retained_checkpoint_sha256s)
++        guard_sha = set(decision.guard_retained_checkpoint_sha256s)
++        replay_rescue_sha = set(decision.replay_rescued_checkpoint_sha256s)
++        retained = [item for item in ranked if item.sha256 in retained_sha]
+         for item in survivors:
+             if item.sha256 in retained_sha:
+                 reasons.setdefault(item.epoch, []).append(
+                     f"multifidelity_round{round_index + 1}_survivor"
+                 )
++                if item.sha256 in guard_sha:
++                    reasons[item.epoch].append(
++                        f"multifidelity_round{round_index + 1}_guard_retained"
++                    )
++                if item.sha256 in replay_rescue_sha:
++                    reasons[item.epoch].append(
++                        f"multifidelity_round{round_index + 1}_replay_rescued"
++                    )
++                if decision.instability_expanded:
++                    nominal_sha = {value.sha256 for value in ranked[: decision.nominal_keep_count]}
++                    if item.sha256 not in nominal_sha and item.sha256 not in guard_sha and item.sha256 not in replay_rescue_sha:
++                        reasons[item.epoch].append(
++                            f"multifidelity_round{round_index + 1}_instability_expanded"
++                        )
+             else:
+                 reasons.setdefault(item.epoch, []).append(
+                     f"multifidelity_round{round_index + 1}_screened_out"
+                 )
++        diagnostic_by_sha = {sha: dict(values) for sha, values in decision.candidate_diagnostics}
+         ranking_payload = []
+         for rank, item in enumerate(ranked, start=1):
+             record = round_records[item.sha256]
+@@ -8786,6 +8881,16 @@
+             key = mdstats.provisional_ranking_key(
+                 metric_record, item.epoch, item.sha256, metric_policy
+             )
++            if item.sha256 not in retained_sha:
++                reason_code = f"multifidelity_round{round_index + 1}_screened_out"
++            elif item.sha256 in guard_sha:
++                reason_code = f"multifidelity_round{round_index + 1}_guard_retained"
++            elif item.sha256 in replay_rescue_sha:
++                reason_code = f"multifidelity_round{round_index + 1}_replay_rescued"
++            elif rank > decision.nominal_keep_count and decision.instability_expanded:
++                reason_code = f"multifidelity_round{round_index + 1}_instability_expanded"
++            else:
++                reason_code = f"multifidelity_round{round_index + 1}_survivor"
+             ranking_payload.append(
+                 {
+                     "rank": rank,
+@@ -8796,27 +8901,32 @@
+                         None if key[1] == float("inf") else float(key[1])
+                     ),
+                     "outcome": "retained" if item.sha256 in retained_sha else "screened_out",
+-                    "reason_code": (
+-                        f"multifidelity_round{round_index + 1}_survivor"
+-                        if item.sha256 in retained_sha
+-                        else f"multifidelity_round{round_index + 1}_screened_out"
+-                    ),
++                    "reason_code": reason_code,
++                    "guard_diagnostics": diagnostic_by_sha.get(item.sha256, {}),
+                 }
+             )
+         store.put_record(
+             f"multifidelity_survivors:{run.run_id}:{mf_policy.policy_digest}:{round_index}",
+             {
+-                "schema": "mdstats.mlff-multi-fidelity-survivors.v1",
++                "schema": "mdstats.mlff-multi-fidelity-survivors.v2",
+                 "run_plan_digest": run.content_digest,
+                 "round_index": round_index,
+                 "round_fraction": fraction,
+                 "candidate_checkpoint_sha256s": [item.sha256 for item in survivors],
+                 "survivor_checkpoint_sha256s": [item.sha256 for item in retained],
+                 "survivor_epochs": [item.epoch for item in retained],
++                "nominal_keep_count": decision.nominal_keep_count,
++                "guard_retained_checkpoint_sha256s": list(decision.guard_retained_checkpoint_sha256s),
++                "replay_rescued_checkpoint_sha256s": list(decision.replay_rescued_checkpoint_sha256s),
++                "instability_expanded": decision.instability_expanded,
++                "inversion_fraction": decision.inversion_fraction,
++                "cutoff_checkpoint_sha256": decision.cutoff_checkpoint_sha256,
++                "survivor_decision": decision.to_dict(),
+                 "ranking": ranking_payload,
+                 "screening_evidence_only": True,
+             },
+         )
++        previous_ranking_sha256s = tuple(item.sha256 for item in ranked)
+         survivors = retained
+ 
+     finalist_catalog = mdstats.CandidateCheckpointCatalog(
+@@ -8841,6 +8951,272 @@
+         strategy="multi_fidelity",
+     )
+ 
++
++def _write_multi_fidelity_epoch_report(
++    *,
++    paths: CampaignPaths,
++    store: CampaignStore,
++    run: Any,
++    original_catalog: Any,
++    policy: Any,
++    evaluation_policy: Any,
++    metric_policy: Any,
++    selection: Any | None = None,
++    selection_failure: Mapping[str, Any] | None = None,
++) -> tuple[Path, Path, Path]:
++    """Write the EVAL-MF2 comprehensive per-epoch JSON/CSV/Markdown report."""
++
++    import mdstats
++
++    history, history_files = _read_mace_validation_history(
++        paths.runs / run.run_id / "results"
++    )
++    heads = {head for _, head in history}
++    target_head = evaluation_policy.target_head_name
++    if target_head not in heads:
++        non_replay = sorted(
++            head
++            for head in heads
++            if head not in {evaluation_policy.replay_head_name, "replay_head", "pt_head"}
++        )
++        if non_replay:
++            target_head = non_replay[0]
++    replay_head = next(
++        (
++            head
++            for head in (
++                evaluation_policy.replay_head_name,
++                "replay_head",
++                "pt_head",
++            )
++            if head in heads
++        ),
++        None,
++    )
++
++    survivor_payloads: dict[int, Mapping[str, Any]] = {}
++    for round_index in range(len(policy.round_fractions) - 1):
++        key = f"multifidelity_survivors:{run.run_id}:{policy.policy_digest}:{round_index}"
++        if store.has_record(key):
++            survivor_payloads[round_index] = store.get_payload(key)
++
++    selection_failure_by_sha: dict[str, Mapping[str, Any]] = {}
++    if selection_failure is not None:
++        selection_failure_by_sha = {
++            str(item.get("checkpoint_sha256", "")): item
++            for item in selection_failure.get("candidates", ())
++            if isinstance(item, Mapping)
++        }
++
++    selected_sha = None if selection is None else str(selection.selected_checkpoint_sha256)
++    rows: list[dict[str, Any]] = []
++    for checkpoint in sorted(original_catalog.checkpoints, key=lambda item: (item.epoch, item.sha256)):
++        target_history = history.get((checkpoint.epoch, target_head))
++        replay_history = None if replay_head is None else history.get((checkpoint.epoch, replay_head))
++        rounds: list[dict[str, Any]] = []
++        last_outcome = "not_evaluated"
++        last_reason = ""
++        full_metric = None
++        full_decision = None
++        for round_index, fraction in enumerate(policy.round_fractions):
++            key = (
++                f"multifidelity_round:{run.run_id}:{policy.policy_digest}:"
++                f"{round_index}:{checkpoint.sha256}"
++            )
++            if not store.has_record(key):
++                continue
++            payload = store.get_payload(key)
++            record = mdstats.MultiFidelityCheckpointRoundRecord.from_dict(payload)
++            metric = record.metric_record
++            target_metrics = record.evaluation_record.target_candidate_metrics
++            replay_metrics = record.evaluation_record.replay_candidate_metrics
++            block_target = dict(record.target_primary_block_values)
++            block_replay = dict(record.replay_degradation_block_values)
++            rounds.append(
++                {
++                    "round_index": round_index,
++                    "fraction": float(fraction),
++                    "full_fidelity": bool(record.full_fidelity),
++                    "target_configuration_count": record.target_configuration_count,
++                    "replay_configuration_count": record.replay_configuration_count,
++                    "target_energy_mae_ev_per_atom": (
++                        metric.energy_mae_ev_per_atom
++                        if target_metrics is None
++                        else target_metrics.energy_mae_ev_per_atom
++                    ),
++                    "target_force_rmse_ev_per_angstrom": (
++                        metric.force_component_rmse_ev_per_angstrom
++                        if target_metrics is None
++                        else target_metrics.force_component_rmse_ev_per_angstrom
++                    ),
++                    "target_focus_force_rmse_ev_per_angstrom": dict(
++                        metric.focus_force_rmse_ev_per_angstrom
++                        if target_metrics is None
++                        else target_metrics.focus_force_rmse_ev_per_angstrom
++                    ),
++                    "target_worst_condition_force_rmse_ev_per_angstrom": (
++                        metric.worst_condition_force_rmse_ev_per_angstrom
++                        if target_metrics is None
++                        else target_metrics.worst_condition_force_rmse_ev_per_angstrom
++                    ),
++                    "target_combined_loss": metric.target_combined_loss,
++                    "replay_candidate_metric": metric.replay_candidate_metric,
++                    "replay_baseline_metric": metric.replay_baseline_metric,
++                    "replay_degradation_fraction": metric.replay_degradation_fraction,
++                    "replay_force_rmse_ev_per_angstrom": (
++                        None if replay_metrics is None else replay_metrics.force_component_rmse_ev_per_angstrom
++                    ),
++                    "target_primary_block_values": block_target,
++                    "replay_degradation_block_values": block_replay,
++                }
++            )
++            if record.full_fidelity:
++                full_metric = metric
++                try:
++                    full_decision = mdstats.assess_checkpoint_admissibility(
++                        run, checkpoint, metric, metric_policy
++                    )
++                except Exception:
++                    full_decision = None
++
++        for round_index, payload in survivor_payloads.items():
++            for item in payload.get("ranking", ()):
++                if str(item.get("checkpoint_sha256", "")) == checkpoint.sha256:
++                    last_outcome = str(item.get("outcome", last_outcome))
++                    last_reason = str(item.get("reason_code", last_reason))
++        if full_metric is not None:
++            last_outcome = "full_fidelity"
++            last_reason = "multifidelity_full_fidelity_finalist"
++        if checkpoint.sha256 == selected_sha:
++            last_outcome = "selected"
++            last_reason = "selected_production_checkpoint"
++        failure_item = selection_failure_by_sha.get(checkpoint.sha256)
++        if failure_item is not None:
++            last_outcome = "full_fidelity_rejected"
++            last_reason = ",".join(str(v) for v in failure_item.get("rejection_reasons", ()))
++
++        rows.append(
++            {
++                "epoch": checkpoint.epoch,
++                "checkpoint_sha256": checkpoint.sha256,
++                "mace_target_head": target_head if target_history is not None else None,
++                "mace_target_rmse_f_ev_per_angstrom": _finite_history_metric(target_history, "rmse_f"),
++                "mace_target_rmse_e_per_atom_ev": _finite_history_metric(target_history, "rmse_e_per_atom"),
++                "mace_target_loss": _finite_history_metric(target_history, "loss"),
++                "mace_replay_head": replay_head if replay_history is not None else None,
++                "mace_replay_rmse_f_ev_per_angstrom": _finite_history_metric(replay_history, "rmse_f"),
++                "mace_replay_rmse_e_per_atom_ev": _finite_history_metric(replay_history, "rmse_e_per_atom"),
++                "mace_replay_loss": _finite_history_metric(replay_history, "loss"),
++                "rounds": rounds,
++                "final_admissibility": (
++                    None
++                    if full_decision is None
++                    else full_decision.outcome.value
++                ),
++                "final_rejection_reasons": (
++                    []
++                    if full_decision is None
++                    else list(full_decision.rejection_reasons)
++                ),
++                "outcome": last_outcome,
++                "reason": last_reason,
++                "selected": checkpoint.sha256 == selected_sha,
++            }
++        )
++
++    payload = {
++        "schema": "mdstats.mlff-multi-fidelity-epoch-report.v1",
++        "run_id": run.run_id,
++        "run_plan_digest": run.content_digest,
++        "multi_fidelity_policy": policy.to_dict(),
++        "evaluation_policy_digest": evaluation_policy.policy_digest,
++        "checkpoint_metric_policy_digest": metric_policy.policy_digest,
++        "history_files": list(history_files),
++        "selected_checkpoint_sha256": selected_sha,
++        "selected_checkpoint_epoch": None if selection is None else selection.selected_checkpoint_epoch,
++        "selection_failure": None if selection_failure is None else dict(selection_failure),
++        "epochs": rows,
++        "created_at_utc": _utc_now(),
++    }
++    payload["content_digest"] = digest(payload)
++    json_path = paths.results / f"{run.run_id}-epoch-evaluation.json"
++    csv_path = paths.results / f"{run.run_id}-epoch-evaluation.csv"
++    md_path = paths.results / f"{run.run_id}-epoch-evaluation.md"
++    _atomic_json(json_path, payload)
++
++    flat_rows: list[dict[str, Any]] = []
++    for row in rows:
++        flat = {
++            "epoch": row["epoch"],
++            "checkpoint_sha256": row["checkpoint_sha256"],
++            "mace_target_rmse_f_ev_per_angstrom": row["mace_target_rmse_f_ev_per_angstrom"],
++            "mace_target_rmse_e_per_atom_ev": row["mace_target_rmse_e_per_atom_ev"],
++            "mace_replay_rmse_f_ev_per_angstrom": row["mace_replay_rmse_f_ev_per_angstrom"],
++            "outcome": row["outcome"],
++            "reason": row["reason"],
++            "selected": row["selected"],
++        }
++        for round_data in row["rounds"]:
++            prefix = f"round{int(round_data['round_index']) + 1}"
++            flat[f"{prefix}_fraction"] = round_data["fraction"]
++            flat[f"{prefix}_target_count"] = round_data["target_configuration_count"]
++            flat[f"{prefix}_replay_count"] = round_data["replay_configuration_count"]
++            flat[f"{prefix}_target_energy_mae_ev_per_atom"] = round_data["target_energy_mae_ev_per_atom"]
++            flat[f"{prefix}_target_force_rmse_ev_per_angstrom"] = round_data["target_force_rmse_ev_per_angstrom"]
++            flat[f"{prefix}_replay_degradation_fraction"] = round_data["replay_degradation_fraction"]
++        flat_rows.append(flat)
++    fieldnames = sorted({key for row in flat_rows for key in row})
++    csv_path.parent.mkdir(parents=True, exist_ok=True)
++    temporary_csv = csv_path.with_name(f".{csv_path.name}.tmp-{os.getpid()}-{time.time_ns()}")
++    with temporary_csv.open("w", encoding="utf-8", newline="") as handle:
++        writer = csv.DictWriter(handle, fieldnames=fieldnames)
++        writer.writeheader()
++        writer.writerows(flat_rows)
++        handle.flush()
++        os.fsync(handle.fileno())
++    os.replace(temporary_csv, csv_path)
++
++    def _fmt(value: Any, scale: float = 1.0) -> str:
++        if value is None:
++            return "-"
++        return f"{float(value) * scale:.3f}"
++
++    round_headers = [f"R{i + 1} F RMSE (meV/A)" for i in range(len(policy.round_fractions))]
++    lines = [
++        f"# Checkpoint evaluation history: {run.run_id}",
++        "",
++        "Partial rounds are screening evidence only. Final admissibility and selection use the 100% round.",
++        "",
++        "| Epoch | MACE val F (meV/A) | " + " | ".join(round_headers) + " | Outcome |",
++        "|---:|---:|" + "---:|" * len(round_headers) + "---|",
++    ]
++    for row in rows:
++        round_map = {int(value["round_index"]): value for value in row["rounds"]}
++        round_cells = [
++            _fmt(
++                None if index not in round_map else round_map[index]["target_force_rmse_ev_per_angstrom"],
++                1000.0,
++            )
++            for index in range(len(policy.round_fractions))
++        ]
++        lines.append(
++            f"| {row['epoch']} | {_fmt(row['mace_target_rmse_f_ev_per_angstrom'], 1000.0)} | "
++            + " | ".join(round_cells)
++            + f" | {row['outcome']} |"
++        )
++    lines.extend(
++        [
++            "",
++            f"Selected epoch: {payload['selected_checkpoint_epoch'] if payload['selected_checkpoint_epoch'] is not None else 'not yet selected'}",
++            "",
++        ]
++    )
++    temporary_md = md_path.with_name(f".{md_path.name}.tmp-{os.getpid()}-{time.time_ns()}")
++    temporary_md.write_text("\n".join(lines), encoding="utf-8")
++    os.replace(temporary_md, md_path)
++    return json_path, csv_path, md_path
++
++
+ def _available_checkpoint_refresh_shortlist(
+     run: Any,
+     shortlist: _CheckpointShortlist,
+@@ -9366,6 +9742,16 @@
+         total_checkpoints += len(shortlist.catalog.checkpoints)
+         total_original_checkpoints += shortlist.original_count
+         store.put_record(f"checkpoint_shortlist:{run.run_id}", shortlist.to_dict())
++        if checkpoint_strategy == "multi_fidelity":
++            _write_multi_fidelity_epoch_report(
++                paths=paths,
++                store=store,
++                run=run,
++                original_catalog=original_catalog,
++                policy=_multi_fidelity_policy(cfg),
++                evaluation_policy=evaluation_policy,
++                metric_policy=metric_policy,
++            )
+     checkpoint_progress = _ProgressReporter("EVAL", total_checkpoints)
+     if checkpoint_strategy == "multi_fidelity":
+         _ok(
+@@ -9535,6 +9921,17 @@
+                         "this run is excluded from the current verification set. Set "
+                         "[evaluation].max_checkpoints_per_run = 0 only when exhaustive rescue is worth the cost."
+                     )
++            if checkpoint_strategy == "multi_fidelity":
++                _write_multi_fidelity_epoch_report(
++                    paths=paths,
++                    store=store,
++                    run=run,
++                    original_catalog=context["original_catalog"],
++                    policy=_multi_fidelity_policy(cfg),
++                    evaluation_policy=evaluation_policy,
++                    metric_policy=metric_policy,
++                    selection_failure=selection_failure,
++                )
+             context["selection_finalized"] = True
+             return
+ 
+@@ -9571,6 +9968,17 @@
+         # action.  If it fails, leave ``selection`` durable and the reconstruction
+         # cache intact; rerunning ``evaluate`` will retry publication immediately.
+         publish_evaluated_model(context, selection)
++        if checkpoint_strategy == "multi_fidelity":
++            _write_multi_fidelity_epoch_report(
++                paths=paths,
++                store=store,
++                run=run,
++                original_catalog=context["original_catalog"],
++                policy=_multi_fidelity_policy(cfg),
++                evaluation_policy=evaluation_policy,
++                metric_policy=metric_policy,
++                selection=selection,
++            )
+         context["selection_finalized"] = True
+ 
+     for run in runs_to_evaluate:
+@@ -9696,6 +10104,7 @@
+         context: dict[str, Any] = {
+             "run": run,
+             "shortlist": shortlist,
++            "original_catalog": _evaluation_checkpoint_catalog(store, run.run_id, execution),
+             "evaluation_catalog": evaluation_catalog,
+             "evaluations_by_sha": evaluations_by_sha,
+             "job_root": job_root,
+@@ -11455,14 +11864,24 @@
+ [evaluation]
+ device = "{default_device}"
+ dtype = "float32"
+-# EVAL-MF1 is opt-in until EVAL-MF2 statistical guard-band qualification is complete.
+-# Allowed values: "bounded", "exhaustive", "multi_fidelity".
+-checkpoint_strategy = "bounded"
++# EVAL-MF2 qualified production default. Allowed values: "bounded", "exhaustive",
++# or "multi_fidelity". Legacy configs that omit this field retain bounded behavior.
++checkpoint_strategy = "multi_fidelity"
+ # Nested multi-fidelity defaults: every saved epoch sees 10% of both target and
+ # replay labels, survivors see a nested 33%, and finalists receive 100% of both.
+ multi_fidelity_round_fractions = [0.10, 0.33, 1.0]
+ multi_fidelity_survival_fraction = 0.3333333333333333
+ multi_fidelity_minimum_finalists = 4
++# EVAL-MF2 conservative cutoff guard. The paired comparison operates on
++# source/trajectory-aware temporal blocks, not individual correlated MD frames.
++multi_fidelity_guard_band_enabled = true
++multi_fidelity_guard_standard_error_multiplier = 2.0
++multi_fidelity_guard_relative_margin = 0.02
++multi_fidelity_guard_minimum_blocks = 4
++# If surviving checkpoint ranks are unstable between successive rounds, retain a
++# larger fraction for the next round rather than forcing an unsafe elimination.
++multi_fidelity_instability_inversion_fraction = 0.25
++multi_fidelity_instability_survival_fraction = 0.50
+ # Permit checkpoint evaluation after any run completes. Incomplete campaigns are
+ # labeled interim and cannot create a production protocol freeze.
+ allow_partial_campaign = true
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/mdstats/training_data/multi_fidelity_evaluation.py mdstats106_work/mdstats/training_data/multi_fidelity_evaluation.py
+--- mdstats106_pristine/mdstats/training_data/multi_fidelity_evaluation.py	2026-08-08 11:45:06.000000000 +0000
++++ mdstats106_work/mdstats/training_data/multi_fidelity_evaluation.py	2026-08-08 12:15:53.395864155 +0000
+@@ -1,9 +1,10 @@
+ """Deterministic nested multi-fidelity checkpoint evaluation contracts.
+ 
+ EVAL-MF1 keeps partial monitor results strictly separate from authoritative
+-full-fidelity checkpoint evaluation records.  It also defines deterministic,
+-label-independent nested monitor orders suitable for incremental prediction
+-reuse across successive-halving rounds.
++full-fidelity checkpoint evaluation records and provides nested prediction
++coverage.  EVAL-MF2 adds conservative paired/block-aware survivor guards and
++ranking-instability expansion without changing the authoritative full-monitor
++checkpoint selection policy.
+ """
+ 
+ from __future__ import annotations
+@@ -13,13 +14,20 @@
+ import math
+ from typing import Any, Mapping, Sequence
+ 
++import numpy as np
++from ase.stress import full_3x3_to_voigt_6_stress
++
+ from ._common import TrainingDataInputError, TrainingDataSerializationError, digest, validate_digest
+ from .campaign_control import CheckpointMetricRecord
+ from .campaign_execution import CheckpointEvaluationRecord
+ 
+-MULTI_FIDELITY_EVALUATION_POLICY_SCHEMA = "mdstats.mlff-multi-fidelity-evaluation-policy.v1"
+-MULTI_FIDELITY_MONITOR_LADDER_SCHEMA = "mdstats.mlff-multi-fidelity-monitor-ladder.v1"
+-MULTI_FIDELITY_ROUND_RECORD_SCHEMA = "mdstats.mlff-multi-fidelity-round-record.v1"
++MULTI_FIDELITY_EVALUATION_POLICY_LEGACY_SCHEMA = "mdstats.mlff-multi-fidelity-evaluation-policy.v1"
++MULTI_FIDELITY_EVALUATION_POLICY_SCHEMA = "mdstats.mlff-multi-fidelity-evaluation-policy.v2"
++MULTI_FIDELITY_MONITOR_LADDER_LEGACY_SCHEMA = "mdstats.mlff-multi-fidelity-monitor-ladder.v1"
++MULTI_FIDELITY_MONITOR_LADDER_SCHEMA = "mdstats.mlff-multi-fidelity-monitor-ladder.v2"
++MULTI_FIDELITY_ROUND_RECORD_LEGACY_SCHEMA = "mdstats.mlff-multi-fidelity-round-record.v1"
++MULTI_FIDELITY_ROUND_RECORD_SCHEMA = "mdstats.mlff-multi-fidelity-round-record.v2"
++MULTI_FIDELITY_SURVIVOR_DECISION_SCHEMA = "mdstats.mlff-multi-fidelity-survivor-decision.v1"
+ MULTI_FIDELITY_RUN_STATE_SCHEMA = "mdstats.mlff-multi-fidelity-run-state.v1"
+ 
+ 
+@@ -28,6 +36,12 @@
+     round_fractions: tuple[float, ...] = (0.10, 0.33, 1.0)
+     survival_fraction: float = 1.0 / 3.0
+     minimum_finalists: int = 4
++    guard_band_enabled: bool = True
++    guard_standard_error_multiplier: float = 2.0
++    guard_relative_margin: float = 0.02
++    guard_minimum_blocks: int = 4
++    instability_inversion_fraction: float = 0.25
++    instability_survival_fraction: float = 0.50
+ 
+     def __post_init__(self) -> None:
+         values = tuple(float(v) for v in self.round_fractions)
+@@ -43,8 +57,22 @@
+             raise TrainingDataInputError("Multi-fidelity survival_fraction must be in (0, 1).")
+         if int(self.minimum_finalists) <= 0:
+             raise TrainingDataInputError("Multi-fidelity minimum_finalists must be positive.")
++        if not math.isfinite(self.guard_standard_error_multiplier) or self.guard_standard_error_multiplier < 0.0:
++            raise TrainingDataInputError("guard_standard_error_multiplier must be finite and nonnegative.")
++        if not math.isfinite(self.guard_relative_margin) or not 0.0 <= self.guard_relative_margin < 1.0:
++            raise TrainingDataInputError("guard_relative_margin must be finite in [0, 1).")
++        if int(self.guard_minimum_blocks) < 2:
++            raise TrainingDataInputError("guard_minimum_blocks must be at least two.")
++        if not math.isfinite(self.instability_inversion_fraction) or not 0.0 <= self.instability_inversion_fraction <= 1.0:
++            raise TrainingDataInputError("instability_inversion_fraction must be in [0, 1].")
++        if not math.isfinite(self.instability_survival_fraction) or not 0.0 < self.instability_survival_fraction <= 1.0:
++            raise TrainingDataInputError("instability_survival_fraction must be in (0, 1].")
++        if self.instability_survival_fraction < self.survival_fraction:
++            raise TrainingDataInputError("instability_survival_fraction cannot be smaller than survival_fraction.")
+         object.__setattr__(self, "round_fractions", values)
+         object.__setattr__(self, "minimum_finalists", int(self.minimum_finalists))
++        object.__setattr__(self, "guard_band_enabled", bool(self.guard_band_enabled))
++        object.__setattr__(self, "guard_minimum_blocks", int(self.guard_minimum_blocks))
+ 
+     def _payload(self) -> dict[str, Any]:
+         return {
+@@ -52,6 +80,12 @@
+             "round_fractions": list(self.round_fractions),
+             "survival_fraction": self.survival_fraction,
+             "minimum_finalists": self.minimum_finalists,
++            "guard_band_enabled": self.guard_band_enabled,
++            "guard_standard_error_multiplier": self.guard_standard_error_multiplier,
++            "guard_relative_margin": self.guard_relative_margin,
++            "guard_minimum_blocks": self.guard_minimum_blocks,
++            "instability_inversion_fraction": self.instability_inversion_fraction,
++            "instability_survival_fraction": self.instability_survival_fraction,
+         }
+ 
+     @property
+@@ -63,14 +97,27 @@
+ 
+     @classmethod
+     def from_dict(cls, payload: Mapping[str, Any]) -> "MultiFidelityEvaluationPolicy":
+-        if payload.get("schema") != MULTI_FIDELITY_EVALUATION_POLICY_SCHEMA:
++        schema = payload.get("schema")
++        if schema not in (MULTI_FIDELITY_EVALUATION_POLICY_SCHEMA, MULTI_FIDELITY_EVALUATION_POLICY_LEGACY_SCHEMA):
+             raise TrainingDataSerializationError("Unsupported multi-fidelity evaluation policy schema.")
+         result = cls(
+             round_fractions=tuple(float(v) for v in payload["round_fractions"]),
+             survival_fraction=float(payload["survival_fraction"]),
+             minimum_finalists=int(payload["minimum_finalists"]),
++            guard_band_enabled=bool(payload.get("guard_band_enabled", True)),
++            guard_standard_error_multiplier=float(payload.get("guard_standard_error_multiplier", 2.0)),
++            guard_relative_margin=float(payload.get("guard_relative_margin", 0.02)),
++            guard_minimum_blocks=int(payload.get("guard_minimum_blocks", 4)),
++            instability_inversion_fraction=float(payload.get("instability_inversion_fraction", 0.25)),
++            instability_survival_fraction=float(payload.get("instability_survival_fraction", 0.50)),
+         )
+-        if payload.get("policy_digest") not in (None, result.policy_digest):
++        if schema == MULTI_FIDELITY_EVALUATION_POLICY_LEGACY_SCHEMA:
++            legacy_payload = dict(payload)
++            legacy_payload.pop("policy_digest", None)
++            expected = digest(legacy_payload)
++        else:
++            expected = result.policy_digest
++        if payload.get("policy_digest") not in (None, expected):
+             raise TrainingDataSerializationError("Multi-fidelity evaluation policy digest mismatch.")
+         return result
+ 
+@@ -80,9 +127,6 @@
+ 
+     if count <= 0:
+         return ()
+-    # Intervals are represented by excluded sentinels (left, right).  Selecting
+-    # their midpoint recursively produces well-separated early prefixes in
+-    # O(N log N) time without looking at labels.
+     heap: list[tuple[int, int, int]] = []
+     heapq.heappush(heap, (-count, -1, count))
+     result: list[int] = []
+@@ -145,6 +189,46 @@
+     return tuple(result)
+ 
+ 
++def deterministic_block_labels(
++    geometry_identities: Sequence[str],
++    *,
++    source_labels: Sequence[str] | None = None,
++    temporal_indices: Sequence[int] | None = None,
++) -> tuple[str, ...]:
++    """Create source/trajectory-aware decorrelated blocks for paired MF2 guards.
++
++    Existing source/trajectory identities are primary.  When there are too few
++    sources to estimate dispersion, each source is split into deterministic,
++    contiguous temporal chunks.  No reference or model labels participate.
++    """
++
++    identities = tuple(str(v) for v in geometry_identities)
++    count = len(identities)
++    if count <= 0:
++        raise TrainingDataInputError("Cannot build uncertainty blocks for an empty monitor.")
++    sources = tuple("all" for _ in identities) if source_labels is None else tuple(str(v) for v in source_labels)
++    temporal = tuple(range(count)) if temporal_indices is None else tuple(int(v) for v in temporal_indices)
++    if len(sources) != count or len(temporal) != count:
++        raise TrainingDataInputError("Block metadata must match the monitor size.")
++    groups: dict[str, list[int]] = {}
++    for index, source in enumerate(sources):
++        groups.setdefault(source or "all", []).append(index)
++    # Aim for enough independent-ish blocks for a useful paired standard error,
++    # while keeping each temporal chunk large enough to absorb frame correlation.
++    target_blocks = min(12, max(4, int(round(math.sqrt(count)))))
++    labels = ["" for _ in range(count)]
++    for source in sorted(groups):
++        members = sorted(groups[source], key=lambda i: (temporal[i], identities[i], i))
++        proportional = max(1, int(round(target_blocks * len(members) / count)))
++        chunk_count = min(len(members), proportional)
++        for local_pos, index in enumerate(members):
++            chunk = min(chunk_count - 1, (local_pos * chunk_count) // len(members))
++            labels[index] = f"source:{source}|block:{chunk:03d}"
++    if any(not value for value in labels):
++        raise RuntimeError("Internal uncertainty-block construction failed.")
++    return tuple(labels)
++
++
+ @dataclass(frozen=True, slots=True)
+ class MultiFidelityMonitorLadder:
+     domain: str
+@@ -154,6 +238,11 @@
+     round_fractions: tuple[float, ...]
+     round_indices: tuple[tuple[int, ...], ...]
+     round_delta_indices: tuple[tuple[int, ...], ...]
++    stratum_labels: tuple[str, ...] = ()
++    source_labels: tuple[str, ...] = ()
++    temporal_indices: tuple[int, ...] = ()
++    block_labels: tuple[str, ...] = ()
++    metadata_version: int = 2
+     _content_digest_cache: str = field(default="", init=False, repr=False, compare=False)
+ 
+     def __post_init__(self) -> None:
+@@ -161,6 +250,12 @@
+         count = len(self.geometry_identities)
+         if count <= 0 or sorted(self.ordered_indices) != list(range(count)):
+             raise TrainingDataInputError("Multi-fidelity monitor order must be a permutation of the monitor.")
++        for name in ("stratum_labels", "source_labels", "temporal_indices", "block_labels"):
++            values = getattr(self, name)
++            if values and len(values) != count:
++                raise TrainingDataInputError(f"Multi-fidelity ladder {name} must match the monitor size.")
++        if self.block_labels and any(not str(value) for value in self.block_labels):
++            raise TrainingDataInputError("Multi-fidelity uncertainty block labels must be non-empty.")
+         if len(self.round_fractions) != len(self.round_indices) or len(self.round_indices) != len(self.round_delta_indices):
+             raise TrainingDataInputError("Multi-fidelity ladder round counts are inconsistent.")
+         previous: tuple[int, ...] = ()
+@@ -186,6 +281,11 @@
+             "round_fractions": list(self.round_fractions),
+             "round_indices": [list(v) for v in self.round_indices],
+             "round_delta_indices": [list(v) for v in self.round_delta_indices],
++            "stratum_labels": list(self.stratum_labels),
++            "source_labels": list(self.source_labels),
++            "temporal_indices": list(self.temporal_indices),
++            "block_labels": list(self.block_labels),
++            "metadata_version": int(self.metadata_version),
+         }
+ 
+     @property
+@@ -201,18 +301,31 @@
+ 
+     @classmethod
+     def from_dict(cls, payload: Mapping[str, Any]) -> "MultiFidelityMonitorLadder":
+-        if payload.get("schema") != MULTI_FIDELITY_MONITOR_LADDER_SCHEMA:
++        schema = payload.get("schema")
++        if schema not in (MULTI_FIDELITY_MONITOR_LADDER_SCHEMA, MULTI_FIDELITY_MONITOR_LADDER_LEGACY_SCHEMA):
+             raise TrainingDataSerializationError("Unsupported multi-fidelity monitor ladder schema.")
++        identities = tuple(str(v) for v in payload["geometry_identities"])
+         result = cls(
+             domain=str(payload["domain"]),
+             monitor_artifact_digest=str(payload["monitor_artifact_digest"]),
+-            geometry_identities=tuple(str(v) for v in payload["geometry_identities"]),
++            geometry_identities=identities,
+             ordered_indices=tuple(int(v) for v in payload["ordered_indices"]),
+             round_fractions=tuple(float(v) for v in payload["round_fractions"]),
+             round_indices=tuple(tuple(int(v) for v in values) for values in payload["round_indices"]),
+             round_delta_indices=tuple(tuple(int(v) for v in values) for values in payload["round_delta_indices"]),
++            stratum_labels=tuple(str(v) for v in payload.get("stratum_labels", ())),
++            source_labels=tuple(str(v) for v in payload.get("source_labels", ())),
++            temporal_indices=tuple(int(v) for v in payload.get("temporal_indices", ())),
++            block_labels=tuple(str(v) for v in payload.get("block_labels", ())),
++            metadata_version=int(payload.get("metadata_version", 1 if schema == MULTI_FIDELITY_MONITOR_LADDER_LEGACY_SCHEMA else 2)),
+         )
+-        if payload.get("content_digest") not in (None, result.content_digest):
++        if schema == MULTI_FIDELITY_MONITOR_LADDER_LEGACY_SCHEMA:
++            legacy_payload = dict(payload)
++            legacy_payload.pop("content_digest", None)
++            expected = digest(legacy_payload)
++        else:
++            expected = result.content_digest
++        if payload.get("content_digest") not in (None, expected):
+             raise TrainingDataSerializationError("Multi-fidelity monitor ladder digest mismatch.")
+         return result
+ 
+@@ -228,13 +341,21 @@
+     temporal_indices: Sequence[int] | None = None,
+ ) -> MultiFidelityMonitorLadder:
+     identities = tuple(str(v) for v in geometry_identities)
++    count = len(identities)
++    strata = tuple("all" for _ in identities) if stratum_labels is None else tuple(str(v) for v in stratum_labels)
++    sources = tuple("all" for _ in identities) if source_labels is None else tuple(str(v) for v in source_labels)
++    temporal = tuple(range(count)) if temporal_indices is None else tuple(int(v) for v in temporal_indices)
++    if not (len(strata) == len(sources) == len(temporal) == count):
++        raise TrainingDataInputError("Monitor ladder metadata must match the geometry count.")
+     order = deterministic_balanced_order(
+         identities,
+-        stratum_labels=stratum_labels,
+-        source_labels=source_labels,
+-        temporal_indices=temporal_indices,
++        stratum_labels=strata,
++        source_labels=sources,
++        temporal_indices=temporal,
++    )
++    blocks = deterministic_block_labels(
++        identities, source_labels=sources, temporal_indices=temporal
+     )
+-    count = len(order)
+     rounds: list[tuple[int, ...]] = []
+     deltas: list[tuple[int, ...]] = []
+     previous_size = 0
+@@ -254,6 +375,142 @@
+         round_fractions=policy.round_fractions,
+         round_indices=tuple(rounds),
+         round_delta_indices=tuple(deltas),
++        stratum_labels=strata,
++        source_labels=sources,
++        temporal_indices=temporal,
++        block_labels=blocks,
++        metadata_version=2,
++    )
++
++
++def _block_metric_scalars(
++    view: Any,
++    predictions: Sequence[Any],
++    block_labels: Sequence[str],
++    *,
++    metric_name: str,
++    combined_energy_weight: float,
++    combined_force_weight: float,
++    combined_stress_weight: float,
++) -> tuple[tuple[str, float], ...]:
++    if len(predictions) != int(view.configuration_count) or len(block_labels) != int(view.configuration_count):
++        raise TrainingDataInputError("Block metric inputs must match the evaluation subset size.")
++    stats: dict[str, list[float]] = {}
++    # values: configurations, energy_abs_sum, force_sse, force_components,
++    # stress_sse, stress_components
++    for index, (prediction, raw_block) in enumerate(zip(predictions, block_labels)):
++        block = str(raw_block)
++        values = stats.setdefault(block, [0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
++        atom_count = int(view.atom_counts[index])
++        start = int(view.force_offsets[index])
++        stop = int(view.force_offsets[index + 1])
++        energy_error = abs(float(prediction.energy_ev) - float(view.reference_energies[index])) / atom_count
++        force = np.asarray(prediction.forces_ev_per_angstrom, dtype=np.float64)
++        if force.shape != (atom_count, 3) or np.any(~np.isfinite(force)):
++            raise TrainingDataInputError("Invalid prediction while building multi-fidelity block metrics.")
++        force_error = force - view.reference_forces[start:stop]
++        values[0] += 1.0
++        values[1] += energy_error
++        values[2] += float(np.sum(force_error * force_error, dtype=np.float64))
++        values[3] += float(force_error.size)
++        if bool(view.stress_present[index]):
++            if prediction.stress_ev_per_angstrom3 is None:
++                raise TrainingDataInputError("Stress-labelled block is missing a predicted stress.")
++            stress = full_3x3_to_voigt_6_stress(
++                np.asarray(prediction.stress_ev_per_angstrom3, dtype=np.float64)
++            ).reshape(-1)
++            stress_error = stress - view.reference_stresses[index]
++            values[4] += float(np.sum(stress_error * stress_error, dtype=np.float64))
++            values[5] += float(stress_error.size)
++    result: list[tuple[str, float]] = []
++    for block, values in sorted(stats.items()):
++        configuration_count, energy_abs_sum, force_sse, force_components, stress_sse, stress_components = values
++        energy_mae = energy_abs_sum / configuration_count
++        force_rmse = math.sqrt(force_sse / force_components)
++        stress_rmse = 0.0 if stress_components <= 0 else math.sqrt(stress_sse / stress_components)
++        if metric_name in ("target_force_component_rmse", "force_rmse"):
++            scalar = force_rmse
++        elif metric_name == "target_energy_mae_per_atom":
++            scalar = energy_mae
++        elif metric_name in ("target_combined_loss", "combined_loss"):
++            scalar = (
++                combined_energy_weight * energy_mae
++                + combined_force_weight * force_rmse
++                + combined_stress_weight * stress_rmse
++            )
++        elif metric_name == "euclidean_bundle":
++            scalar = math.sqrt(energy_mae * energy_mae + force_rmse * force_rmse + stress_rmse * stress_rmse)
++        else:
++            raise TrainingDataInputError(f"Unsupported multi-fidelity block metric {metric_name!r}.")
++        if not math.isfinite(scalar) or scalar < 0.0:
++            raise TrainingDataInputError("Multi-fidelity block metric must be finite and nonnegative.")
++        result.append((block, float(scalar)))
++    return tuple(result)
++
++
++def target_primary_block_values(
++    view: Any,
++    predictions: Sequence[Any],
++    block_labels: Sequence[str],
++    *,
++    primary_metric: str,
++    combined_energy_weight: float,
++    combined_force_weight: float,
++    combined_stress_weight: float,
++) -> tuple[tuple[str, float], ...]:
++    return _block_metric_scalars(
++        view,
++        predictions,
++        block_labels,
++        metric_name=primary_metric,
++        combined_energy_weight=combined_energy_weight,
++        combined_force_weight=combined_force_weight,
++        combined_stress_weight=combined_stress_weight,
++    )
++
++
++def replay_degradation_block_values(
++    view: Any,
++    candidate_predictions: Sequence[Any],
++    baseline_predictions: Sequence[Any],
++    block_labels: Sequence[str],
++    *,
++    replay_metric: str,
++    replay_baseline_floor: float,
++    combined_energy_weight: float,
++    combined_force_weight: float,
++    combined_stress_weight: float,
++) -> tuple[tuple[str, float], ...]:
++    candidate = dict(
++        _block_metric_scalars(
++            view,
++            candidate_predictions,
++            block_labels,
++            metric_name=replay_metric,
++            combined_energy_weight=combined_energy_weight,
++            combined_force_weight=combined_force_weight,
++            combined_stress_weight=combined_stress_weight,
++        )
++    )
++    baseline = dict(
++        _block_metric_scalars(
++            view,
++            baseline_predictions,
++            block_labels,
++            metric_name=replay_metric,
++            combined_energy_weight=combined_energy_weight,
++            combined_force_weight=combined_force_weight,
++            combined_stress_weight=combined_stress_weight,
++        )
++    )
++    if set(candidate) != set(baseline):
++        raise TrainingDataInputError("Candidate and baseline replay blocks do not match.")
++    return tuple(
++        (
++            block,
++            max(0.0, candidate[block] - baseline[block]) / max(baseline[block], float(replay_baseline_floor)),
++        )
++        for block in sorted(candidate)
+     )
+ 
+ 
+@@ -269,6 +526,8 @@
+     replay_configuration_count: int
+     evaluation_record: CheckpointEvaluationRecord
+     full_fidelity: bool
++    target_primary_block_values: tuple[tuple[str, float], ...] = ()
++    replay_degradation_block_values: tuple[tuple[str, float], ...] = ()
+ 
+     def __post_init__(self) -> None:
+         for name in ("run_plan_digest", "checkpoint_sha256", "target_ladder_digest"):
+@@ -285,6 +544,11 @@
+             raise TrainingDataInputError("Invalid multi-fidelity round identity.")
+         if self.full_fidelity != math.isclose(float(self.round_fraction), 1.0, rel_tol=0.0, abs_tol=0.0):
+             raise TrainingDataInputError("Only the complete 1.0 round may be marked full fidelity.")
++        for name in ("target_primary_block_values", "replay_degradation_block_values"):
++            values = tuple(sorted((str(k), float(v)) for k, v in getattr(self, name)))
++            if len({key for key, _ in values}) != len(values) or any(not key or not math.isfinite(value) or value < 0.0 for key, value in values):
++                raise TrainingDataInputError(f"Invalid {name} evidence.")
++            object.__setattr__(self, name, values)
+ 
+     @property
+     def metric_record(self) -> CheckpointMetricRecord:
+@@ -303,6 +567,8 @@
+             "replay_configuration_count": self.replay_configuration_count,
+             "full_fidelity": self.full_fidelity,
+             "evidence_class": "authoritative_full" if self.full_fidelity else "screening_partial",
++            "target_primary_block_values": dict(self.target_primary_block_values),
++            "replay_degradation_block_values": dict(self.replay_degradation_block_values),
+             "evaluation_record": self.evaluation_record.to_dict(),
+         }
+ 
+@@ -315,7 +581,8 @@
+ 
+     @classmethod
+     def from_dict(cls, payload: Mapping[str, Any]) -> "MultiFidelityCheckpointRoundRecord":
+-        if payload.get("schema") != MULTI_FIDELITY_ROUND_RECORD_SCHEMA:
++        schema = payload.get("schema")
++        if schema not in (MULTI_FIDELITY_ROUND_RECORD_SCHEMA, MULTI_FIDELITY_ROUND_RECORD_LEGACY_SCHEMA):
+             raise TrainingDataSerializationError("Unsupported multi-fidelity round record schema.")
+         result = cls(
+             run_plan_digest=str(payload["run_plan_digest"]),
+@@ -328,8 +595,16 @@
+             replay_configuration_count=int(payload["replay_configuration_count"]),
+             evaluation_record=CheckpointEvaluationRecord.from_dict(payload["evaluation_record"]),
+             full_fidelity=bool(payload["full_fidelity"]),
++            target_primary_block_values=tuple((str(k), float(v)) for k, v in payload.get("target_primary_block_values", {}).items()),
++            replay_degradation_block_values=tuple((str(k), float(v)) for k, v in payload.get("replay_degradation_block_values", {}).items()),
+         )
+-        if payload.get("content_digest") not in (None, result.content_digest):
++        if schema == MULTI_FIDELITY_ROUND_RECORD_LEGACY_SCHEMA:
++            legacy_payload = dict(payload)
++            legacy_payload.pop("content_digest", None)
++            expected = digest(legacy_payload)
++        else:
++            expected = result.content_digest
++        if payload.get("content_digest") not in (None, expected):
+             raise TrainingDataSerializationError("Multi-fidelity round record digest mismatch.")
+         return result
+ 
+@@ -354,16 +629,201 @@
+     return min(candidate_count, nominal)
+ 
+ 
++def _pairwise_inversion_fraction(previous: Sequence[str], current: Sequence[str]) -> float:
++    common = [value for value in previous if value in set(current)]
++    if len(common) < 2:
++        return 0.0
++    current_rank = {value: index for index, value in enumerate(current)}
++    discordant = 0
++    total = 0
++    for left in range(len(common)):
++        for right in range(left + 1, len(common)):
++            total += 1
++            if current_rank[common[left]] > current_rank[common[right]]:
++                discordant += 1
++    return 0.0 if total == 0 else discordant / total
++
++
++def _paired_primary_ambiguous(
++    candidate: MultiFidelityCheckpointRoundRecord,
++    cutoff: MultiFidelityCheckpointRoundRecord,
++    *,
++    candidate_primary: float,
++    cutoff_primary: float,
++    policy: MultiFidelityEvaluationPolicy,
++) -> tuple[bool, int, float | None, float | None]:
++    relative_allowance = policy.guard_relative_margin * max(abs(cutoff_primary), 1.0e-12)
++    candidate_blocks = dict(candidate.target_primary_block_values)
++    cutoff_blocks = dict(cutoff.target_primary_block_values)
++    common = sorted(set(candidate_blocks) & set(cutoff_blocks))
++    if len(common) >= policy.guard_minimum_blocks:
++        differences = np.asarray([candidate_blocks[key] - cutoff_blocks[key] for key in common], dtype=np.float64)
++        mean_difference = float(np.mean(differences))
++        standard_error = float(np.std(differences, ddof=1) / math.sqrt(len(differences))) if len(differences) > 1 else 0.0
++        allowance = relative_allowance + policy.guard_standard_error_multiplier * standard_error
++        return mean_difference <= allowance, len(common), mean_difference, standard_error
++    return candidate_primary <= cutoff_primary + relative_allowance, len(common), None, None
++
++
++@dataclass(frozen=True, slots=True)
++class MultiFidelitySurvivorDecision:
++    nominal_keep_count: int
++    retained_checkpoint_sha256s: tuple[str, ...]
++    guard_retained_checkpoint_sha256s: tuple[str, ...] = ()
++    replay_rescued_checkpoint_sha256s: tuple[str, ...] = ()
++    instability_expanded: bool = False
++    inversion_fraction: float = 0.0
++    cutoff_checkpoint_sha256: str | None = None
++    candidate_diagnostics: tuple[tuple[str, Mapping[str, Any]], ...] = ()
++
++    def __post_init__(self) -> None:
++        if self.nominal_keep_count < 0:
++            raise TrainingDataInputError("nominal_keep_count cannot be negative.")
++        for name in ("retained_checkpoint_sha256s", "guard_retained_checkpoint_sha256s", "replay_rescued_checkpoint_sha256s"):
++            values = tuple(validate_digest(value, name="checkpoint_sha256") for value in getattr(self, name))
++            if len(set(values)) != len(values):
++                raise TrainingDataInputError(f"{name} contains duplicate checkpoints.")
++            object.__setattr__(self, name, values)
++        if self.cutoff_checkpoint_sha256 is not None:
++            object.__setattr__(self, "cutoff_checkpoint_sha256", validate_digest(self.cutoff_checkpoint_sha256, name="cutoff_checkpoint_sha256"))
++        if not 0.0 <= float(self.inversion_fraction) <= 1.0:
++            raise TrainingDataInputError("inversion_fraction must be in [0, 1].")
++
++    def to_dict(self) -> dict[str, Any]:
++        payload = {
++            "schema": MULTI_FIDELITY_SURVIVOR_DECISION_SCHEMA,
++            "nominal_keep_count": self.nominal_keep_count,
++            "retained_checkpoint_sha256s": list(self.retained_checkpoint_sha256s),
++            "guard_retained_checkpoint_sha256s": list(self.guard_retained_checkpoint_sha256s),
++            "replay_rescued_checkpoint_sha256s": list(self.replay_rescued_checkpoint_sha256s),
++            "instability_expanded": self.instability_expanded,
++            "inversion_fraction": self.inversion_fraction,
++            "cutoff_checkpoint_sha256": self.cutoff_checkpoint_sha256,
++            "candidate_diagnostics": {key: dict(value) for key, value in self.candidate_diagnostics},
++        }
++        return {**payload, "content_digest": digest(payload)}
++
++
++def conservative_survivor_decision(
++    ranked_checkpoint_sha256s: Sequence[str],
++    round_records: Mapping[str, MultiFidelityCheckpointRoundRecord],
++    *,
++    metric_policy: Any,
++    policy: MultiFidelityEvaluationPolicy,
++    next_round_is_final: bool,
++    previous_ranking_sha256s: Sequence[str] = (),
++    maximum_replay_degradation_fraction: float | None = None,
++) -> MultiFidelitySurvivorDecision:
++    """Return a conservative MF2 survivor set for one partial evaluation round.
++
++    The nominal top fraction is always retained.  Candidates just below the
++    cutoff are retained when paired source/block evidence cannot separate them
++    from the cutoff by more than the frozen two-SE-plus-relative-margin guard.
++    For true-label replay, a small reserve of provisionally replay-admissible
++    checkpoints is also retained so target-only ranking cannot eliminate every
++    plausible replay-retaining solution.  Large round-to-round rank inversions
++    expand the next round deterministically.
++    """
++
++    ranked = tuple(validate_digest(value, name="checkpoint_sha256") for value in ranked_checkpoint_sha256s)
++    if not ranked:
++        return MultiFidelitySurvivorDecision(0, ())
++    if set(ranked) != set(round_records):
++        raise TrainingDataInputError("Survivor decision requires one round record per ranked checkpoint.")
++    nominal = survivor_count(len(ranked), policy, next_round_is_final=next_round_is_final)
++    retained = set(ranked[:nominal])
++    cutoff_sha = ranked[nominal - 1]
++    cutoff_record = round_records[cutoff_sha]
++    cutoff_primary_raw = cutoff_record.metric_record.primary_metric_value(metric_policy)
++    cutoff_primary = float("inf") if cutoff_primary_raw is None else float(cutoff_primary_raw)
++    guard_retained: list[str] = []
++    diagnostics: dict[str, dict[str, Any]] = {}
++
++    if policy.guard_band_enabled and math.isfinite(cutoff_primary):
++        for sha in ranked[nominal:]:
++            record = round_records[sha]
++            primary_raw = record.metric_record.primary_metric_value(metric_policy)
++            primary = float("inf") if primary_raw is None else float(primary_raw)
++            ambiguous, common_blocks, mean_difference, standard_error = _paired_primary_ambiguous(
++                record,
++                cutoff_record,
++                candidate_primary=primary,
++                cutoff_primary=cutoff_primary,
++                policy=policy,
++            )
++            diagnostics[sha] = {
++                "primary_metric_value": primary,
++                "paired_common_block_count": common_blocks,
++                "paired_mean_difference": mean_difference,
++                "paired_standard_error": standard_error,
++                "guard_ambiguous_with_cutoff": bool(ambiguous),
++            }
++            if ambiguous:
++                retained.add(sha)
++                guard_retained.append(sha)
++
++    replay_rescued: list[str] = []
++    if maximum_replay_degradation_fraction is not None:
++        threshold = float(maximum_replay_degradation_fraction)
++        if math.isfinite(threshold) and threshold >= 0.0:
++            replay_candidates = []
++            for sha in ranked:
++                degradation = round_records[sha].metric_record.replay_degradation_fraction
++                if degradation is None:
++                    continue
++                if degradation <= threshold * (1.0 + policy.guard_relative_margin):
++                    primary = round_records[sha].metric_record.primary_metric_value(metric_policy)
++                    replay_candidates.append((float("inf") if primary is None else float(primary), float(degradation), sha))
++            reserve_count = min(len(ranked), policy.minimum_finalists)
++            for _, _, sha in sorted(replay_candidates)[:reserve_count]:
++                if sha not in retained:
++                    retained.add(sha)
++                    replay_rescued.append(sha)
++
++    inversion_fraction = _pairwise_inversion_fraction(previous_ranking_sha256s, ranked)
++    instability_expanded = False
++    if (
++        previous_ranking_sha256s
++        and inversion_fraction >= policy.instability_inversion_fraction
++        and len(ranked) > len(retained)
++    ):
++        expanded_count = max(
++            nominal,
++            int(math.ceil(len(ranked) * policy.instability_survival_fraction)),
++        )
++        before = len(retained)
++        retained.update(ranked[:expanded_count])
++        instability_expanded = len(retained) > before
++
++    ordered_retained = tuple(sha for sha in ranked if sha in retained)
++    return MultiFidelitySurvivorDecision(
++        nominal_keep_count=nominal,
++        retained_checkpoint_sha256s=ordered_retained,
++        guard_retained_checkpoint_sha256s=tuple(sha for sha in ranked if sha in set(guard_retained)),
++        replay_rescued_checkpoint_sha256s=tuple(sha for sha in ranked if sha in set(replay_rescued)),
++        instability_expanded=instability_expanded,
++        inversion_fraction=float(inversion_fraction),
++        cutoff_checkpoint_sha256=cutoff_sha,
++        candidate_diagnostics=tuple((sha, diagnostics[sha]) for sha in ranked if sha in diagnostics),
++    )
++
++
+ __all__ = [
+     "MULTI_FIDELITY_EVALUATION_POLICY_SCHEMA",
+     "MULTI_FIDELITY_MONITOR_LADDER_SCHEMA",
+     "MULTI_FIDELITY_ROUND_RECORD_SCHEMA",
++    "MULTI_FIDELITY_SURVIVOR_DECISION_SCHEMA",
+     "MULTI_FIDELITY_RUN_STATE_SCHEMA",
+     "MultiFidelityEvaluationPolicy",
+     "MultiFidelityMonitorLadder",
+     "MultiFidelityCheckpointRoundRecord",
++    "MultiFidelitySurvivorDecision",
+     "deterministic_balanced_order",
++    "deterministic_block_labels",
+     "build_monitor_ladder",
++    "target_primary_block_values",
++    "replay_degradation_block_values",
+     "provisional_ranking_key",
+     "survivor_count",
++    "conservative_survivor_decision",
+ ]
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/pyproject.toml mdstats106_work/pyproject.toml
+--- mdstats106_pristine/pyproject.toml	2026-08-08 11:57:58.000000000 +0000
++++ mdstats106_work/pyproject.toml	2026-08-08 12:25:58.670174854 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.106a0"
++version = "0.20.107a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/release/mlff_eval_mf2_exhaustive_30_checkpoint_qualification.json mdstats106_work/release/mlff_eval_mf2_exhaustive_30_checkpoint_qualification.json
+--- mdstats106_pristine/release/mlff_eval_mf2_exhaustive_30_checkpoint_qualification.json	1970-01-01 00:00:00.000000000 +0000
++++ mdstats106_work/release/mlff_eval_mf2_exhaustive_30_checkpoint_qualification.json	2026-08-08 12:26:50.742459368 +0000
+@@ -0,0 +1,53 @@
++{
++  "schema": "mdstats.mlff-eval-mf2-exhaustive-qualification.v1",
++  "runtime_version": "0.20.107a0",
++  "architecture_revision": 26,
++  "evidence_class": "synthetic_representative_exhaustive_comparison",
++  "policy": {
++    "schema": "mdstats.mlff-multi-fidelity-evaluation-policy.v2",
++    "round_fractions": [
++      0.1,
++      0.33,
++      1.0
++    ],
++    "survival_fraction": 0.3333333333333333,
++    "minimum_finalists": 4,
++    "guard_band_enabled": true,
++    "guard_standard_error_multiplier": 2.0,
++    "guard_relative_margin": 0.02,
++    "guard_minimum_blocks": 4,
++    "instability_inversion_fraction": 0.25,
++    "instability_survival_fraction": 0.5,
++    "policy_digest": "6e47f887678969be94bd191a01eb02fc33df0d587c2196b36daba9a4f9307272"
++  },
++  "saved_checkpoint_count": 30,
++  "round_fractions": [
++    0.1,
++    0.33,
++    1.0
++  ],
++  "round_candidate_counts": [
++    30,
++    11,
++    8
++  ],
++  "target_and_replay_use_same_fraction": true,
++  "exhaustive_selected_epoch": 16,
++  "multi_fidelity_selected_epoch": 16,
++  "winner_agreement": true,
++  "candidate_inference_full_checkpoint_equivalents": 10.89,
++  "exhaustive_full_checkpoint_equivalents": 30.0,
++  "candidate_inference_fraction_of_exhaustive": 0.363,
++  "candidate_inference_reduction_fraction": 0.637,
++  "real_mace_qualification": {
++    "mace_version": "0.3.16",
++    "scope": "direct checkpoint restoration plus persistent monitor graph/cache regression substrate",
++    "test_files": [
++      "tests/test_mlff_checkpoint_model_materialization.py",
++      "tests/test_mlff_opt_eval3_monitor_graph_view_cache.py"
++    ],
++    "result": "passed",
++    "note": "This real-MACE evidence qualifies the inference/cache substrate; the 30-checkpoint exhaustive-comparison case is explicitly synthetic representative evidence."
++  },
++  "scientific_claim": "Exact frozen checkpoint selection is applied only among full-fidelity finalists retained by the declared conservative screening policy; no global-minimum guarantee is claimed over eliminated epochs."
++}
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/tests/test_mlff_data0_architecture_specification.py mdstats106_work/tests/test_mlff_data0_architecture_specification.py
+--- mdstats106_pristine/tests/test_mlff_data0_architecture_specification.py	2026-08-08 12:00:06.000000000 +0000
++++ mdstats106_work/tests/test_mlff_data0_architecture_specification.py	2026-08-08 12:25:58.677609331 +0000
+@@ -78,7 +78,7 @@
+ def test_mlff_data0_dependency_graph_is_acyclic_and_has_forbidden_edges() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["branch"] == "MLFF-DATA"
+-    assert graph["architecture_revision"] == 25
++    assert graph["architecture_revision"] == 26
+     assert graph["documentation_gate"] == "MLFF-DATA0"
+     assert graph["schema_version"] == 26
+ 
+@@ -263,4 +263,4 @@
+ def test_mlff_data0_pdf_and_version_artifacts_exist() -> None:
+     assert MANUAL_PDF.stat().st_size > 10_000
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.106a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.107a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/tests/test_mlff_data1_specification.py mdstats106_work/tests/test_mlff_data1_specification.py
+--- mdstats106_pristine/tests/test_mlff_data1_specification.py	2026-08-08 11:58:18.000000000 +0000
++++ mdstats106_work/tests/test_mlff_data1_specification.py	2026-08-08 12:25:58.672397904 +0000
+@@ -49,4 +49,4 @@
+     assert callable(mdstats.assign_balanced_round_robin)
+     assert callable(mdstats.build_complete_frame_block_plan)
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.106a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.107a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/tests/test_mlff_data2a_manifest_inference_specification.py mdstats106_work/tests/test_mlff_data2a_manifest_inference_specification.py
+--- mdstats106_pristine/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-08 12:00:06.000000000 +0000
++++ mdstats106_work/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-08 12:25:58.672665612 +0000
+@@ -15,7 +15,7 @@
+ 
+ 
+ def test_data2a_version_public_api_and_documented_contract() -> None:
+-    assert mdstats.__version__ == "0.20.106a0"
++    assert mdstats.__version__ == "0.20.107a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert callable(mdstats.infer_training_manifest_metadata)
+     policy = mdstats.ManifestInferencePolicy()
+@@ -39,7 +39,7 @@
+ def test_data2a_dependency_graph_requires_verified_promotion_before_approval() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 25
++    assert graph["architecture_revision"] == 26
+     nodes = {node["id"] for node in graph["nodes"]}
+     assert {
+         "FILENAME_STRAIN_CANDIDATE",
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/tests/test_mlff_data9a2_specification.py mdstats106_work/tests/test_mlff_data9a2_specification.py
+--- mdstats106_pristine/tests/test_mlff_data9a2_specification.py	2026-08-08 11:58:18.000000000 +0000
++++ mdstats106_work/tests/test_mlff_data9a2_specification.py	2026-08-08 12:25:58.677731232 +0000
+@@ -23,7 +23,7 @@
+         "finite energy, force, and stress",
+     ):
+         assert required in text
+-    assert 'version = "0.20.106a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.107a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "DATA9A2 real-MACE realization is implemented in `0.20.39a0`" in ARCH.read_text()
+ 
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/tests/test_mlff_data9a3_specification.py mdstats106_work/tests/test_mlff_data9a3_specification.py
+--- mdstats106_pristine/tests/test_mlff_data9a3_specification.py	2026-08-08 11:58:18.000000000 +0000
++++ mdstats106_work/tests/test_mlff_data9a3_specification.py	2026-08-08 12:25:58.673795649 +0000
+@@ -9,5 +9,5 @@
+     assert "37,632" in text
+     assert "supported_with_temporal_blocks_only" in text
+     assert "production_replay_corpus_not_bound" in text
+-    assert 'version = "0.20.106a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.107a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "MLFF-DATA9A3 production qualification" in ARCH.read_text()
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/tests/test_mlff_data9a4_precision_specification.py mdstats106_work/tests/test_mlff_data9a4_precision_specification.py
+--- mdstats106_pristine/tests/test_mlff_data9a4_precision_specification.py	2026-08-08 11:58:18.000000000 +0000
++++ mdstats106_work/tests/test_mlff_data9a4_precision_specification.py	2026-08-08 12:25:58.672454698 +0000
+@@ -9,7 +9,7 @@
+     assert "float32" in text and "float64" in text
+     assert "MaceModelPrecisionRecord" in text
+     assert "MacePrecisionTransitionRecord" in text
+-    assert "version = \"0.20.106a0\"" in (ROOT / "pyproject.toml").read_text()
++    assert "version = \"0.20.107a0\"" in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_bind_precision_to_protocol() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/tests/test_mlff_data9a5_critical_fp64_specification.py mdstats106_work/tests/test_mlff_data9a5_critical_fp64_specification.py
+--- mdstats106_pristine/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-08 11:58:18.000000000 +0000
++++ mdstats106_work/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-08 12:25:58.673141138 +0000
+@@ -14,7 +14,7 @@
+     assert 'version: "0.20.42a0"' in text
+     assert "training_force_jacobian_dtype = model" in text
+     assert "Python/ASE" in text
+-    assert 'version = "0.20.106a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.107a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_data9a5_architecture_declares_scope_and_limits() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/tests/test_mlff_data9a5_deployment_specification.py mdstats106_work/tests/test_mlff_data9a5_deployment_specification.py
+--- mdstats106_pristine/tests/test_mlff_data9a5_deployment_specification.py	2026-08-08 11:58:18.000000000 +0000
++++ mdstats106_work/tests/test_mlff_data9a5_deployment_specification.py	2026-08-08 12:25:58.676284895 +0000
+@@ -13,7 +13,7 @@
+     assert 'version: "0.20.43a0"' in text
+     assert "downstream runtime owns" in text
+     assert "float32-to-float64 promotion does not restore" in text
+-    assert 'version = "0.20.106a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.107a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_keep_lammps_outside_mdstats_scope() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/tests/test_mlff_data9a6b_architecture_consistency_specification.py mdstats106_work/tests/test_mlff_data9a6b_architecture_consistency_specification.py
+--- mdstats106_pristine/tests/test_mlff_data9a6b_architecture_consistency_specification.py	2026-08-08 12:00:06.000000000 +0000
++++ mdstats106_work/tests/test_mlff_data9a6b_architecture_consistency_specification.py	2026-08-08 12:25:58.674584640 +0000
+@@ -61,7 +61,7 @@
+ def test_dependency_graph_treats_lta_as_optional() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 25
++    assert graph["architecture_revision"] == 26
+     nodes = {node["id"] for node in graph["nodes"]}
+     assert "MATERIAL_PROFILE_IDENTITY" in nodes
+     assert "LTA_PROFILE_EXTENSION" in nodes
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/tests/test_mlff_data9a6c_observable_evidence_specification.py mdstats106_work/tests/test_mlff_data9a6c_observable_evidence_specification.py
+--- mdstats106_pristine/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-08 12:00:06.000000000 +0000
++++ mdstats106_work/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-08 12:25:58.676412785 +0000
+@@ -38,7 +38,7 @@
+ def test_dependency_graph_places_policy_before_evidence_and_forbids_reverse_edge() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 25
++    assert graph["architecture_revision"] == 26
+     edges = {(e["from"], e["to"]) for e in graph["edges"]}
+     assert ("OBSERVABLE_COMPARISON_POLICY", "OBSERVABLE_VALIDATION_ACTIVATION_RECORD") in edges
+     assert ("OBSERVABLE_VALIDATION_ACTIVATION_RECORD", "OBSERVABLE_VALIDATION_EVIDENCE") in edges
+@@ -74,5 +74,5 @@
+ 
+ def test_packaged_owner_manual_index_is_valid() -> None:
+     payload = json.loads(MANUAL_INDEX.read_text(encoding="utf-8"))
+-    assert payload["package_version"] == "0.20.106a0"
++    assert payload["package_version"] == "0.20.107a0"
+     assert "structural-observables-architecture" in payload["manuals"]
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/tests/test_mlff_data9a7a_material_profile_specification.py mdstats106_work/tests/test_mlff_data9a7a_material_profile_specification.py
+--- mdstats106_pristine/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-08 12:00:06.000000000 +0000
++++ mdstats106_work/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-08 12:25:58.677533809 +0000
+@@ -41,7 +41,7 @@
+ def test_data9a7a_dependency_graph_contains_contract_chain() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 25
++    assert graph["architecture_revision"] == 26
+     nodes = {item["id"] for item in graph["nodes"]}
+     required = {
+         "MATERIAL_PROFILE_PROVIDER_IDENTITY",
+@@ -64,4 +64,4 @@
+ 
+ 
+ def test_release_version_is_data9a7a() -> None:
+-    assert 'version = "0.20.106a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert 'version = "0.20.107a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/tests/test_mlff_data9a7b_specification.py mdstats106_work/tests/test_mlff_data9a7b_specification.py
+--- mdstats106_pristine/tests/test_mlff_data9a7b_specification.py	2026-08-08 12:00:06.000000000 +0000
++++ mdstats106_work/tests/test_mlff_data9a7b_specification.py	2026-08-08 12:25:58.674753281 +0000
+@@ -44,7 +44,7 @@
+ def test_data9a7b_dependency_graph_has_analysis_to_selection_chain() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 25
++    assert graph["architecture_revision"] == 26
+     nodes = {item["id"] for item in graph["nodes"]}
+     assert {
+         "ANALYSIS_LOCAL_STRUCTURE_FEATURES",
+@@ -69,7 +69,7 @@
+ 
+ 
+ def test_data9a7b_public_exports_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.106a0"
++    assert mdstats.__version__ == "0.20.107a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert callable(mdstats.compute_local_structure_features)
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/tests/test_mlff_data9a7c_specification.py mdstats106_work/tests/test_mlff_data9a7c_specification.py
+--- mdstats106_pristine/tests/test_mlff_data9a7c_specification.py	2026-08-08 12:00:06.000000000 +0000
++++ mdstats106_work/tests/test_mlff_data9a7c_specification.py	2026-08-08 12:25:58.678961789 +0000
+@@ -34,7 +34,7 @@
+ def test_dependency_graph_contains_phase_geometry_contracts() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 25
++    assert graph["architecture_revision"] == 26
+     nodes = {node["id"] for node in graph["nodes"]}
+     assert {
+         "PHASE_GEOMETRY_SELECTION_PLAN",
+@@ -47,7 +47,7 @@
+ 
+ 
+ def test_public_api_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.106a0"
++    assert mdstats.__version__ == "0.20.107a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert mdstats.MLFF_DATA9A7C_PARSER_VERSION == "0.20.49a0"
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/tests/test_mlff_data9a7d_specification.py mdstats106_work/tests/test_mlff_data9a7d_specification.py
+--- mdstats106_pristine/tests/test_mlff_data9a7d_specification.py	2026-08-08 12:00:06.000000000 +0000
++++ mdstats106_work/tests/test_mlff_data9a7d_specification.py	2026-08-08 12:25:58.673631125 +0000
+@@ -21,7 +21,7 @@
+ def test_data9a7d_dependency_graph_contract() -> None:
+     graph = json.loads((ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json").read_text())
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 25
++    assert graph["architecture_revision"] == 26
+     nodes = {item["id"] for item in graph["nodes"]}
+     assert {
+         "OPTIONAL_PROFILE_EXTENSION_PROVIDER",
+@@ -39,6 +39,6 @@
+ 
+ 
+ def test_data9a7d_runtime_versions() -> None:
+-    assert mdstats.__version__ == "0.20.106a0"
++    assert mdstats.__version__ == "0.20.107a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7D_PARSER_VERSION == "0.20.50a0"
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/tests/test_mlff_data9a7e_specification.py mdstats106_work/tests/test_mlff_data9a7e_specification.py
+--- mdstats106_pristine/tests/test_mlff_data9a7e_specification.py	2026-08-08 12:00:06.000000000 +0000
++++ mdstats106_work/tests/test_mlff_data9a7e_specification.py	2026-08-08 12:25:58.672607846 +0000
+@@ -31,7 +31,7 @@
+ def test_data9a7e_dependency_graph_and_public_api() -> None:
+     graph = json.loads((ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json").read_text())
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 25
++    assert graph["architecture_revision"] == 26
+     nodes = {item["id"] for item in graph["nodes"]}
+     assert {
+         "CROSS_SYSTEM_QUALIFICATION_POLICY",
+@@ -39,7 +39,7 @@
+         "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
+         "CROSS_SYSTEM_QUALIFICATION_SUITE",
+     } <= nodes
+-    assert mdstats.__version__ == "0.20.106a0"
++    assert mdstats.__version__ == "0.20.107a0"
+     assert mdstats.MLFF_DATA9A7E_PARSER_VERSION == "0.20.51a0"
+     assert callable(mdstats.qualify_cross_system_case)
+     assert callable(mdstats.build_cross_system_qualification_suite)
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/tests/test_mlff_data9a8_specification.py mdstats106_work/tests/test_mlff_data9a8_specification.py
+--- mdstats106_pristine/tests/test_mlff_data9a8_specification.py	2026-08-08 12:00:06.000000000 +0000
++++ mdstats106_work/tests/test_mlff_data9a8_specification.py	2026-08-08 12:25:58.675316297 +0000
+@@ -44,7 +44,7 @@
+ def test_dependency_graph_places_policy_upstream_and_forbids_posthoc_thresholds() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 25
++    assert graph["architecture_revision"] == 26
+     nodes = {node["id"] for node in graph["nodes"]}
+     for node in (
+         "OBSERVABLE_COMPARISON_RULES",
+@@ -66,7 +66,7 @@
+ 
+ 
+ def test_public_runtime_exposes_data9a8_without_removed_aliases() -> None:
+-    assert mdstats.__version__ == "0.20.106a0"
++    assert mdstats.__version__ == "0.20.107a0"
+     assert mdstats.MLFF_DATA9A8_PARSER_VERSION == "0.20.52a0"
+     assert mdstats.ObservableComparisonPolicy
+     assert mdstats.compare_mlff_observable_validation
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/tests/test_mlff_data9a9a_specification.py mdstats106_work/tests/test_mlff_data9a9a_specification.py
+--- mdstats106_pristine/tests/test_mlff_data9a9a_specification.py	2026-08-08 12:00:06.000000000 +0000
++++ mdstats106_work/tests/test_mlff_data9a9a_specification.py	2026-08-08 12:25:58.677897158 +0000
+@@ -47,7 +47,7 @@
+ def test_dependency_graph_contains_restartable_model_sweep_chain() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 25
++    assert graph["architecture_revision"] == 26
+     nodes = {node["id"] for node in graph["nodes"]}
+     required = {
+         "DATA6_MODEL_SWEEP_EXECUTION_POLICY",
+@@ -65,7 +65,7 @@
+ 
+ 
+ def test_public_runtime_exports_data9a9a_contracts() -> None:
+-    assert mdstats.__version__ == "0.20.106a0"
++    assert mdstats.__version__ == "0.20.107a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A9A_VERSION
+     assert mdstats.Data6ModelSweepPlan
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/tests/test_mlff_data9a9b_specification.py mdstats106_work/tests/test_mlff_data9a9b_specification.py
+--- mdstats106_pristine/tests/test_mlff_data9a9b_specification.py	2026-08-08 12:00:06.000000000 +0000
++++ mdstats106_work/tests/test_mlff_data9a9b_specification.py	2026-08-08 12:25:58.674384984 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9b_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.106a0"
++    assert mdstats.__version__ == "0.20.107a0"
+     for name in (
+         "ProductionMaterializationPlan",
+         "ProductionMaterializationCheckpoint",
+@@ -40,7 +40,7 @@
+ def test_dependency_graph_contains_data9a9b_chain() -> None:
+     graph = json.loads((ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json").read_text())
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 25
++    assert graph["architecture_revision"] == 26
+     nodes = {item["id"] for item in graph["nodes"]}
+     required = {
+         "PRODUCTION_MATERIALIZATION_PLAN",
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/tests/test_mlff_data9a9c_specification.py mdstats106_work/tests/test_mlff_data9a9c_specification.py
+--- mdstats106_pristine/tests/test_mlff_data9a9c_specification.py	2026-08-08 12:00:06.000000000 +0000
++++ mdstats106_work/tests/test_mlff_data9a9c_specification.py	2026-08-08 12:25:58.675011825 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9c_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.106a0"
++    assert mdstats.__version__ == "0.20.107a0"
+     for name in (
+         "ProductionCorpusPlan", "ProductionExpectedRun",
+         "ProfileExtensionEvidenceRequirement", "ProductionCorpusQualificationRecord",
+@@ -38,7 +38,7 @@
+ def test_dependency_graph_contains_integrity_gate_chain() -> None:
+     graph = json.loads((ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json").read_text())
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 25
++    assert graph["architecture_revision"] == 26
+     nodes = {item["id"] for item in graph["nodes"]}
+     assert {"PRODUCTION_CORPUS_PLAN", "REPLAY_LABEL_PAYLOAD_IDENTITY",
+             "DATA8_ATOMIC_PROMOTION", "PRODUCTION_GATE_INTEGRITY_EVIDENCE"} <= nodes
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/tests/test_mlff_data9a_specification.py mdstats106_work/tests/test_mlff_data9a_specification.py
+--- mdstats106_pristine/tests/test_mlff_data9a_specification.py	2026-08-08 11:58:18.000000000 +0000
++++ mdstats106_work/tests/test_mlff_data9a_specification.py	2026-08-08 12:25:58.677068999 +0000
+@@ -14,7 +14,7 @@
+ 
+ 
+ def test_data9a_runtime_specification_is_canonical() -> None:
+-    assert 'version = "0.20.106a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.107a0"' in (ROOT / "pyproject.toml").read_text()
+     architecture = ARCH.read_text()
+     stage = STAGE.read_text()
+     specification = SPEC.read_text()
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/tests/test_mlff_data9b1_specification.py mdstats106_work/tests/test_mlff_data9b1_specification.py
+--- mdstats106_pristine/tests/test_mlff_data9b1_specification.py	2026-08-08 12:00:06.000000000 +0000
++++ mdstats106_work/tests/test_mlff_data9b1_specification.py	2026-08-08 12:25:58.678500865 +0000
+@@ -18,8 +18,8 @@
+     assert "TrainingCampaignPlan" in text
+     assert "CheckpointSelectionRecord" in text
+     assert "mdstats-mace-train" in text
+-    assert mdstats.__version__ == "0.20.106a0"
+-    assert 'version = "0.20.106a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert mdstats.__version__ == "0.20.107a0"
++    assert 'version = "0.20.107a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+ 
+ 
+ def test_data9b1_is_integrated_into_manual_and_stage_plan() -> None:
+@@ -33,7 +33,7 @@
+ 
+ def test_data9b1_dependency_graph_nodes_and_gates() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+-    assert graph["architecture_revision"] == 25
++    assert graph["architecture_revision"] == 26
+     nodes = {item["id"] for item in graph["nodes"]}
+     for node in (
+         "TRAINING_CAMPAIGN_POLICY",
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/tests/test_mlff_data9b2_specification.py mdstats106_work/tests/test_mlff_data9b2_specification.py
+--- mdstats106_pristine/tests/test_mlff_data9b2_specification.py	2026-08-08 12:00:06.000000000 +0000
++++ mdstats106_work/tests/test_mlff_data9b2_specification.py	2026-08-08 12:25:58.673858122 +0000
+@@ -23,7 +23,7 @@
+         'mdstats-mace-select-head',
+     ):
+         assert token in text
+-    assert mdstats.__version__ == '0.20.106a0'
++    assert mdstats.__version__ == '0.20.107a0'
+     assert mdstats.MLFF_DATA9B2_VERSION == '0.20.57a0'
+ 
+ 
+@@ -37,7 +37,7 @@
+ 
+ def test_data9b2_dependency_graph_records_and_edges() -> None:
+     graph = json.loads(GRAPH.read_text(encoding='utf-8'))
+-    assert graph['architecture_revision'] == 25
++    assert graph['architecture_revision'] == 26
+     assert graph['schema_version'] == 26
+     nodes = {v['id'] for v in graph['nodes']}
+     for node in (
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/tests/test_mlff_data9b3_campaign_cli_specification.py mdstats106_work/tests/test_mlff_data9b3_campaign_cli_specification.py
+--- mdstats106_pristine/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-08 12:00:06.000000000 +0000
++++ mdstats106_work/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-08 12:25:58.673200265 +0000
+@@ -16,7 +16,7 @@
+ 
+ 
+ def test_data9b3_version_and_user_surface() -> None:
+-    assert mdstats.__version__ == "0.20.106a0"
++    assert mdstats.__version__ == "0.20.107a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert TOOL.is_file()
+     assert TOOL.stat().st_mode & 0o111
+@@ -55,7 +55,7 @@
+ def test_data9b3_dependency_graph_contract() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 25
++    assert graph["architecture_revision"] == 26
+     nodes = {node["id"] for node in graph["nodes"]}
+     required = {
+         "CAMPAIGN_CLI_CONFIGURATION",
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/tests/test_mlff_data9b3a_cueq_specification.py mdstats106_work/tests/test_mlff_data9b3a_cueq_specification.py
+--- mdstats106_pristine/tests/test_mlff_data9b3a_cueq_specification.py	2026-08-08 12:00:06.000000000 +0000
++++ mdstats106_work/tests/test_mlff_data9b3a_cueq_specification.py	2026-08-08 12:25:58.675379691 +0000
+@@ -42,7 +42,7 @@
+ def test_data9b3a_dependency_graph_contract() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 25
++    assert graph["architecture_revision"] == 26
+     nodes = {node["id"] for node in graph["nodes"]}
+     assert {"MACE_ACCELERATION_POLICY", "MACE_ACCELERATION_PROBE"} <= nodes
+     edges = {(edge["from"], edge["to"], edge["type"]) for edge in graph["edges"]}
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/tests/test_mlff_eval_mf2_guard_reporting.py mdstats106_work/tests/test_mlff_eval_mf2_guard_reporting.py
+--- mdstats106_pristine/tests/test_mlff_eval_mf2_guard_reporting.py	1970-01-01 00:00:00.000000000 +0000
++++ mdstats106_work/tests/test_mlff_eval_mf2_guard_reporting.py	2026-08-08 12:30:04.071716310 +0000
+@@ -0,0 +1,444 @@
++from __future__ import annotations
++
++import hashlib
++import json
++import math
++from pathlib import Path
++from types import SimpleNamespace
++
++import pytest
++
++import mdstats
++from mdstats.training_data import campaign_cli
++
++QUALIFICATION = Path(__file__).resolve().parents[1] / "release" / "mlff_eval_mf2_exhaustive_30_checkpoint_qualification.json"
++
++
++def _h(text: str) -> str:
++    return hashlib.sha256(text.encode()).hexdigest()
++
++
++def _metric(sha: str, primary: float, *, replay: float | None = None) -> mdstats.CheckpointMetricRecord:
++    kwargs = {}
++    if replay is not None:
++        kwargs = {
++            "replay_monitor_artifact_digest": _h("replay"),
++            "replay_baseline_metric": 1.0,
++            "replay_candidate_metric": 1.0 + replay,
++            "replay_degradation_fraction": replay,
++            "replay_label_mode": mdstats.ReplayLabelMode.TRUE_DFT,
++        }
++    return mdstats.CheckpointMetricRecord(
++        run_plan_digest=_h("run"),
++        checkpoint_sha256=sha,
++        target_monitor_artifact_digest=_h("target"),
++        energy_mae_ev_per_atom=primary,
++        force_component_rmse_ev_per_angstrom=primary,
++        target_combined_loss=primary,
++        **kwargs,
++    )
++
++
++def _round(sha: str, primary: float, blocks: tuple[float, ...], *, replay: float | None = None):
++    return SimpleNamespace(
++        metric_record=_metric(sha, primary, replay=replay),
++        target_primary_block_values=tuple((f"b{i}", value) for i, value in enumerate(blocks)),
++    )
++
++
++def test_mf2_paired_guard_retains_candidate_indistinguishable_from_cutoff() -> None:
++    shas = tuple(_h(f"cp-{i}") for i in range(6))
++    records = {
++        shas[0]: _round(shas[0], 0.90, (0.90, 0.90, 0.90, 0.90)),
++        shas[1]: _round(shas[1], 1.00, (1.00, 1.00, 1.00, 1.00)),
++        # Aggregate metric is slightly worse than the nominal cutoff, but paired
++        # block differences straddle zero and therefore remain ambiguous.
++        shas[2]: _round(shas[2], 1.01, (1.03, 0.98, 1.02, 0.99)),
++        shas[3]: _round(shas[3], 1.20, (1.20, 1.20, 1.20, 1.20)),
++        shas[4]: _round(shas[4], 1.30, (1.30, 1.30, 1.30, 1.30)),
++        shas[5]: _round(shas[5], 1.40, (1.40, 1.40, 1.40, 1.40)),
++    }
++    policy = mdstats.MultiFidelityEvaluationPolicy(
++        survival_fraction=1 / 3,
++        minimum_finalists=2,
++        guard_standard_error_multiplier=2.0,
++        guard_relative_margin=0.0,
++        guard_minimum_blocks=4,
++    )
++    decision = mdstats.conservative_survivor_decision(
++        shas,
++        records,
++        metric_policy=mdstats.CheckpointMetricPolicy(),
++        policy=policy,
++        next_round_is_final=False,
++    )
++    assert decision.nominal_keep_count == 2
++    assert decision.retained_checkpoint_sha256s == shas[:3]
++    assert decision.guard_retained_checkpoint_sha256s == (shas[2],)
++
++
++def test_mf2_true_replay_reserve_prevents_target_only_elimination() -> None:
++    shas = tuple(_h(f"rp-{i}") for i in range(6))
++    records = {
++        shas[0]: _round(shas[0], 0.80, (0.8, 0.8, 0.8, 0.8), replay=0.40),
++        shas[1]: _round(shas[1], 0.90, (0.9, 0.9, 0.9, 0.9), replay=0.35),
++        shas[2]: _round(shas[2], 1.00, (1.0, 1.0, 1.0, 1.0), replay=0.10),
++        shas[3]: _round(shas[3], 1.10, (1.1, 1.1, 1.1, 1.1), replay=0.12),
++        shas[4]: _round(shas[4], 1.20, (1.2, 1.2, 1.2, 1.2), replay=0.50),
++        shas[5]: _round(shas[5], 1.30, (1.3, 1.3, 1.3, 1.3), replay=0.60),
++    }
++    policy = mdstats.MultiFidelityEvaluationPolicy(
++        survival_fraction=1 / 3,
++        minimum_finalists=2,
++        guard_band_enabled=False,
++    )
++    decision = mdstats.conservative_survivor_decision(
++        shas,
++        records,
++        metric_policy=mdstats.CheckpointMetricPolicy(maximum_replay_degradation_fraction=0.20),
++        policy=policy,
++        next_round_is_final=False,
++        maximum_replay_degradation_fraction=0.20,
++    )
++    assert set(decision.retained_checkpoint_sha256s) == {shas[0], shas[1], shas[2], shas[3]}
++    assert set(decision.replay_rescued_checkpoint_sha256s) == {shas[2], shas[3]}
++
++
++def test_mf2_rank_instability_expands_next_round() -> None:
++    shas = tuple(_h(f"inv-{i}") for i in range(8))
++    records = {
++        sha: _round(sha, 0.5 + 0.1 * i, (0.5 + 0.1 * i,) * 4)
++        for i, sha in enumerate(shas)
++    }
++    policy = mdstats.MultiFidelityEvaluationPolicy(
++        survival_fraction=0.25,
++        minimum_finalists=2,
++        guard_band_enabled=False,
++        instability_inversion_fraction=0.20,
++        instability_survival_fraction=0.50,
++    )
++    previous = tuple(reversed(shas))
++    decision = mdstats.conservative_survivor_decision(
++        shas,
++        records,
++        metric_policy=mdstats.CheckpointMetricPolicy(),
++        policy=policy,
++        next_round_is_final=False,
++        previous_ranking_sha256s=previous,
++    )
++    assert decision.nominal_keep_count == 2
++    assert decision.instability_expanded
++    assert decision.inversion_fraction == pytest.approx(1.0)
++    assert decision.retained_checkpoint_sha256s == shas[:4]
++
++
++def test_mf2_generated_config_uses_multi_fidelity_default_and_guard_controls(tmp_path: Path) -> None:
++    text = Path(campaign_cli.__file__).read_text(encoding="utf-8")
++    assert 'checkpoint_strategy = "multi_fidelity"' in text
++    assert "multi_fidelity_guard_band_enabled = true" in text
++    assert "multi_fidelity_guard_standard_error_multiplier = 2.0" in text
++    assert "multi_fidelity_instability_survival_fraction = 0.50" in text
++    example = (Path(campaign_cli.__file__).parents[2] / "campaign.toml.example").read_text(encoding="utf-8")
++    assert 'checkpoint_strategy = "multi_fidelity"' in example
++
++
++def test_mf2_report_writes_all_epochs_and_round_metrics(tmp_path: Path) -> None:
++    # Exercise report generation against durable round/survivor records without
++    # requiring MACE inference; the report is a pure campaign-state projection.
++    cfg_file = tmp_path / "campaign.toml"
++    cfg_file.write_text("", encoding="utf-8")
++    cfg = {"campaign": {"workspace": str(tmp_path / "workspace")}}
++    paths = campaign_cli.CampaignPaths.from_config(cfg_file, cfg)
++    paths.ensure()
++    store = campaign_cli.CampaignStore(paths.state_db)
++    metric_policy = mdstats.CheckpointMetricPolicy()
++    run = mdstats.TrainingCampaignRunPlan(
++        run_id="mf2-report",
++        data8_bundle_digest=_h("d8"),
++        mace_job_artifact_digest=_h("job"),
++        job_id="job",
++        kind=mdstats.MaceJobKind.FINAL_DEVELOPMENT,
++        fold_index=None,
++        training_mode=mdstats.TrainingMode.NAIVE_FINE_TUNING,
++        selection_size=1,
++        seed=1,
++        protocol_family_digest=_h("family"),
++        protocol_variant_digest=_h("variant"),
++        protocol_digest=_h("protocol"),
++        checkpoint_metric_policy_digest=metric_policy.policy_digest,
++        target_monitor_artifact_digest=_h("target-artifact"),
++        replay_monitor_artifact_digest=None,
++        relative_output_directory="run",
++    )
++    checkpoint_root = tmp_path / "checkpoints"
++    checkpoint_root.mkdir()
++    checkpoints = []
++    for epoch in range(3):
++        path = checkpoint_root / f"epoch-{epoch}.pt"
++        path.write_bytes(f"cp-{epoch}".encode())
++        checkpoints.append(
++            mdstats.CheckpointFileRecord(
++                run_plan_digest=run.content_digest,
++                candidate_id=f"cp-{epoch}",
++                epoch=epoch,
++                relative_path=path.name,
++                sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
++                size_bytes=path.stat().st_size,
++            )
++        )
++    catalog = mdstats.CandidateCheckpointCatalog(
++        run_plan_digest=run.content_digest,
++        root_directory=str(checkpoint_root),
++        checkpoints=tuple(checkpoints),
++        pattern="*.pt",
++    )
++    policy = mdstats.MultiFidelityEvaluationPolicy(round_fractions=(0.5, 1.0), minimum_finalists=1)
++    evaluation_policy = mdstats.CheckpointEvaluationPolicy(condition_keys=())
++    for checkpoint in checkpoints[:2]:
++        metric = mdstats.CheckpointMetricRecord(
++            run_plan_digest=run.content_digest,
++            checkpoint_sha256=checkpoint.sha256,
++            target_monitor_artifact_digest=run.target_monitor_artifact_digest,
++            energy_mae_ev_per_atom=0.01,
++            force_component_rmse_ev_per_angstrom=0.02 + 0.01 * checkpoint.epoch,
++            target_combined_loss=0.03,
++        )
++        # Minimal full CheckpointEvaluationRecord accepted by the round record.
++        evaluation = mdstats.CheckpointEvaluationRecord(
++            run_plan_digest=run.content_digest,
++            checkpoint_sha256=checkpoint.sha256,
++            evaluation_policy_digest=evaluation_policy.policy_digest,
++            target_monitor_artifact_digest=_h("target-eval-artifact"),
++            target_monitor_sha256=_h("target-file"),
++            replay_monitor_artifact_digest=None,
++            replay_monitor_sha256=None,
++            candidate_model_path=str(checkpoint_root / checkpoint.relative_path),
++            candidate_model_sha256=checkpoint.sha256,
++            replay_baseline_model_path=None,
++            replay_baseline_model_sha256=None,
++            target_configuration_count=1,
++            replay_configuration_count=0,
++            condition_force_rmse_ev_per_angstrom=(),
++            metric_record=metric,
++        )
++        round_record = mdstats.MultiFidelityCheckpointRoundRecord(
++            run_plan_digest=run.content_digest,
++            checkpoint_sha256=checkpoint.sha256,
++            round_index=0,
++            round_fraction=0.5,
++            target_ladder_digest=_h("ladder"),
++            replay_ladder_digest=None,
++            target_configuration_count=1,
++            replay_configuration_count=0,
++            evaluation_record=evaluation,
++            full_fidelity=False,
++            target_primary_block_values=(("b0", metric.force_component_rmse_ev_per_angstrom),),
++        )
++        store.put_record(
++            f"multifidelity_round:{run.run_id}:{policy.policy_digest}:0:{checkpoint.sha256}",
++            round_record,
++        )
++    store.put_record(
++        f"multifidelity_survivors:{run.run_id}:{policy.policy_digest}:0",
++        {
++            "schema": "mdstats.mlff-multi-fidelity-survivors.v2",
++            "ranking": [
++                {
++                    "checkpoint_sha256": checkpoints[0].sha256,
++                    "outcome": "retained",
++                    "reason_code": "multifidelity_round1_survivor",
++                },
++                {
++                    "checkpoint_sha256": checkpoints[1].sha256,
++                    "outcome": "screened_out",
++                    "reason_code": "multifidelity_round1_screened_out",
++                },
++            ],
++        },
++    )
++    json_path, csv_path, md_path = campaign_cli._write_multi_fidelity_epoch_report(
++        paths=paths,
++        store=store,
++        run=run,
++        original_catalog=catalog,
++        policy=policy,
++        evaluation_policy=evaluation_policy,
++        metric_policy=metric_policy,
++    )
++    payload = json.loads(json_path.read_text(encoding="utf-8"))
++    assert [item["epoch"] for item in payload["epochs"]] == [0, 1, 2]
++    assert payload["epochs"][0]["rounds"][0]["fraction"] == 0.5
++    assert payload["epochs"][1]["outcome"] == "screened_out"
++    assert csv_path.is_file()
++    assert "Checkpoint evaluation history" in md_path.read_text(encoding="utf-8")
++    store.close()
++
++
++def test_mf2_representative_30_checkpoint_matches_exhaustive_with_cost_reduction(tmp_path: Path) -> None:
++    """Representative EVAL-MF2 qualification against exhaustive 30-epoch selection.
++
++    The synthetic history deliberately places the unconstrained target optimum in a
++    true-replay-inadmissible region.  The multi-fidelity path must therefore preserve
++    the best replay-admissible checkpoint while buying only nested incremental monitor
++    coverage.  This is the deterministic exhaustive-comparison qualification case
++    recorded in the 0.20.107a0 release evidence.
++    """
++
++    metric_policy = mdstats.CheckpointMetricPolicy(
++        maximum_replay_degradation_fraction=0.20,
++    )
++    mf_policy = mdstats.MultiFidelityEvaluationPolicy()
++    run = mdstats.TrainingCampaignRunPlan(
++        run_id="mf2-exhaustive-30",
++        data8_bundle_digest=_h("d8-mf2-exhaustive"),
++        mace_job_artifact_digest=_h("job-mf2-exhaustive"),
++        job_id="job-mf2-exhaustive",
++        kind=mdstats.MaceJobKind.FINAL_DEVELOPMENT,
++        fold_index=None,
++        training_mode=mdstats.TrainingMode.MULTIHEAD_REPLAY,
++        selection_size=512,
++        seed=1,
++        protocol_family_digest=_h("family-mf2-exhaustive"),
++        protocol_variant_digest=_h("variant-mf2-exhaustive"),
++        protocol_digest=_h("protocol-mf2-exhaustive"),
++        checkpoint_metric_policy_digest=metric_policy.policy_digest,
++        target_monitor_artifact_digest=_h("target-mf2-exhaustive"),
++        replay_monitor_artifact_digest=_h("replay-mf2-exhaustive"),
++        relative_output_directory="mf2-exhaustive-30",
++    )
++    checkpoint_root = tmp_path / "checkpoints"
++    checkpoint_root.mkdir()
++    checkpoints = []
++    for epoch in range(30):
++        path = checkpoint_root / f"epoch-{epoch}.pt"
++        path.write_bytes(f"mf2-checkpoint-{epoch}".encode())
++        checkpoints.append(
++            mdstats.CheckpointFileRecord(
++                run_plan_digest=run.content_digest,
++                candidate_id=f"epoch-{epoch}",
++                epoch=epoch,
++                relative_path=path.name,
++                sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
++                size_bytes=path.stat().st_size,
++            )
++        )
++    catalog = mdstats.CandidateCheckpointCatalog(
++        run_plan_digest=run.content_digest,
++        root_directory=str(checkpoint_root),
++        checkpoints=tuple(checkpoints),
++        pattern="*.pt",
++    )
++
++    def metric(epoch: int, round_index: int) -> mdstats.CheckpointMetricRecord:
++        # Full target optimum is epoch 14, but epochs <= 15 deliberately violate
++        # the replay-retention threshold.  The exhaustive admissible winner is 16.
++        target_full = 0.020 + 0.00012 * (epoch - 14) ** 2
++        target_noise = (
++            0.00045 * math.sin(1.7 * epoch)
++            + 0.00018 * math.cos(0.37 * epoch),
++            0.00018 * math.sin(1.3 * epoch)
++            - 0.00008 * math.cos(0.51 * epoch),
++            0.0,
++        )[round_index]
++        target = target_full + target_noise
++        replay_full = 0.32 if epoch <= 15 else 0.10 + 0.003 * abs(epoch - 20)
++        replay_noise = (
++            0.025 * math.sin(0.9 * epoch),
++            0.010 * math.cos(0.7 * epoch),
++            0.0,
++        )[round_index]
++        replay = replay_full + replay_noise
++        return mdstats.CheckpointMetricRecord(
++            run_plan_digest=run.content_digest,
++            checkpoint_sha256=checkpoints[epoch].sha256,
++            target_monitor_artifact_digest=run.target_monitor_artifact_digest,
++            energy_mae_ev_per_atom=target,
++            force_component_rmse_ev_per_angstrom=target,
++            target_combined_loss=target,
++            replay_monitor_artifact_digest=run.replay_monitor_artifact_digest,
++            replay_baseline_metric=1.0,
++            replay_candidate_metric=1.0 + replay,
++            replay_degradation_fraction=replay,
++            replay_label_mode=mdstats.ReplayLabelMode.TRUE_DFT,
++        )
++
++    full_metrics = tuple(metric(epoch, 2) for epoch in range(30))
++    exhaustive = mdstats.select_checkpoint(run, catalog, full_metrics, metric_policy)
++    assert exhaustive.selected_checkpoint_epoch == 16
++
++    surviving_epochs = list(range(30))
++    previous_ranking: tuple[str, ...] = ()
++    previous_fraction = 0.0
++    full_checkpoint_equivalents = 0.0
++    round_candidate_counts: list[int] = []
++    for round_index, fraction in enumerate(mf_policy.round_fractions):
++        round_candidate_counts.append(len(surviving_epochs))
++        full_checkpoint_equivalents += len(surviving_epochs) * (fraction - previous_fraction)
++        records = {}
++        for epoch in surviving_epochs:
++            round_metric = metric(epoch, round_index)
++            blocks = tuple(
++                (
++                    f"source-block-{block}",
++                    round_metric.force_component_rmse_ev_per_angstrom
++                    + 0.00015 * math.sin(block * 1.1 + epoch * 0.2),
++                )
++                for block in range(8)
++            )
++            records[checkpoints[epoch].sha256] = SimpleNamespace(
++                metric_record=round_metric,
++                target_primary_block_values=blocks,
++            )
++        ranked_epochs = sorted(
++            surviving_epochs,
++            key=lambda epoch: mdstats.provisional_ranking_key(
++                records[checkpoints[epoch].sha256].metric_record,
++                epoch,
++                checkpoints[epoch].sha256,
++                metric_policy,
++            ),
++        )
++        if fraction == 1.0:
++            finalist_catalog = mdstats.CandidateCheckpointCatalog(
++                run_plan_digest=run.content_digest,
++                root_directory=str(checkpoint_root),
++                checkpoints=tuple(checkpoints[epoch] for epoch in ranked_epochs),
++                pattern="*.pt",
++            )
++            finalist_metrics = tuple(metric(epoch, 2) for epoch in ranked_epochs)
++            staged = mdstats.select_checkpoint(run, finalist_catalog, finalist_metrics, metric_policy)
++            break
++        decision = mdstats.conservative_survivor_decision(
++            tuple(checkpoints[epoch].sha256 for epoch in ranked_epochs),
++            records,
++            metric_policy=metric_policy,
++            policy=mf_policy,
++            next_round_is_final=(round_index + 1 == len(mf_policy.round_fractions) - 1),
++            previous_ranking_sha256s=previous_ranking,
++            maximum_replay_degradation_fraction=metric_policy.maximum_replay_degradation_fraction,
++        )
++        retained = set(decision.retained_checkpoint_sha256s)
++        previous_ranking = tuple(checkpoints[epoch].sha256 for epoch in ranked_epochs)
++        surviving_epochs = [epoch for epoch in ranked_epochs if checkpoints[epoch].sha256 in retained]
++        previous_fraction = fraction
++
++    assert staged.selected_checkpoint_epoch == exhaustive.selected_checkpoint_epoch == 16
++    assert round_candidate_counts == [30, 11, 8]
++    assert full_checkpoint_equivalents == pytest.approx(10.89)
++    assert full_checkpoint_equivalents / 30.0 == pytest.approx(0.363)
++    assert 1.0 - full_checkpoint_equivalents / 30.0 == pytest.approx(0.637)
++
++
++def test_mf2_release_qualification_evidence_is_explicit_and_bounded() -> None:
++    payload = json.loads(QUALIFICATION.read_text(encoding="utf-8"))
++    assert payload["schema"] == "mdstats.mlff-eval-mf2-exhaustive-qualification.v1"
++    assert payload["runtime_version"] == "0.20.107a0"
++    assert payload["architecture_revision"] == 26
++    assert payload["evidence_class"] == "synthetic_representative_exhaustive_comparison"
++    assert payload["target_and_replay_use_same_fraction"] is True
++    assert payload["winner_agreement"] is True
++    assert payload["round_candidate_counts"] == [30, 11, 8]
++    assert payload["candidate_inference_full_checkpoint_equivalents"] == pytest.approx(10.89)
++    assert payload["candidate_inference_reduction_fraction"] == pytest.approx(0.637)
++    assert payload["real_mace_qualification"]["mace_version"] == "0.3.16"
++    assert "synthetic" in payload["real_mace_qualification"]["note"].lower()
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/tests/test_mlff_eval_storage_roadmap_specification.py mdstats106_work/tests/test_mlff_eval_storage_roadmap_specification.py
+--- mdstats106_pristine/tests/test_mlff_eval_storage_roadmap_specification.py	2026-08-08 11:57:58.000000000 +0000
++++ mdstats106_work/tests/test_mlff_eval_storage_roadmap_specification.py	2026-08-08 12:25:58.679298659 +0000
+@@ -27,7 +27,8 @@
+         "STOR5",
+     )]
+     assert positions == sorted(positions)
+-    assert "`EVAL-MF2` is the next implementation gate" in text
++    assert "`EVAL-MF2` is implemented in 0.20.107a0" in text
++    assert "`PREC1` is the next implementation gate" in text
+ 
+ 
+ def test_multifidelity_plan_preserves_equal_target_replay_fidelity_and_full_final() -> None:
+@@ -73,10 +74,10 @@
+         assert token in text
+ 
+ 
+-def test_dependency_graph_revision_25_contains_eval_precision_storage_nodes() -> None:
++def test_dependency_graph_revision_26_contains_eval_precision_storage_nodes() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 25
++    assert graph["architecture_revision"] == 26
+     nodes = {node["id"] for node in graph["nodes"]}
+     for node in (
+         "NESTED_CHECKPOINT_EVALUATION_PLAN",
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/tests/test_mlff_opt_ctrl1_specification.py mdstats106_work/tests/test_mlff_opt_ctrl1_specification.py
+--- mdstats106_pristine/tests/test_mlff_opt_ctrl1_specification.py	2026-08-08 11:58:18.000000000 +0000
++++ mdstats106_work/tests/test_mlff_opt_ctrl1_specification.py	2026-08-08 12:25:58.678673461 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_ctrl1_release_identity_preserves_scientific_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.106a0"
++    assert mdstats.__version__ == "0.20.107a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.106a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.107a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_ctrl1_architecture_and_spec_close_roadmap() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/tests/test_mlff_opt_eval4_specification.py mdstats106_work/tests/test_mlff_opt_eval4_specification.py
+--- mdstats106_pristine/tests/test_mlff_opt_eval4_specification.py	2026-08-08 11:58:18.000000000 +0000
++++ mdstats106_work/tests/test_mlff_opt_eval4_specification.py	2026-08-08 12:25:58.671313785 +0000
+@@ -11,9 +11,9 @@
+ 
+ 
+ def test_opt_eval4_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.106a0"
++    assert mdstats.__version__ == "0.20.107a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+-    assert 'version = "0.20.106a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.107a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_eval4_architecture_and_spec_record_pipeline_contract() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/tests/test_mlff_opt_verify1_specification.py mdstats106_work/tests/test_mlff_opt_verify1_specification.py
+--- mdstats106_pristine/tests/test_mlff_opt_verify1_specification.py	2026-08-08 11:58:18.000000000 +0000
++++ mdstats106_work/tests/test_mlff_opt_verify1_specification.py	2026-08-08 12:25:58.678610057 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_verify1_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.106a0"
++    assert mdstats.__version__ == "0.20.107a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.106a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.107a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_verify1_architecture_and_spec_record_contract() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=*.egg-info' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.106a0_to_0.20.107a0.patch' mdstats106_pristine/tests/test_mlff_perf2_parallel_acceleration_specification.py mdstats106_work/tests/test_mlff_perf2_parallel_acceleration_specification.py
+--- mdstats106_pristine/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-08 12:00:06.000000000 +0000
++++ mdstats106_work/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-08 12:25:58.675563764 +0000
+@@ -10,7 +10,7 @@
+ 
+ 
+ def test_perf2_release_and_configuration_contract() -> None:
+-    assert mdstats.__version__ == "0.20.106a0"
++    assert mdstats.__version__ == "0.20.107a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     template = campaign_cli._config_template(
+         workspace="workspace",
+@@ -43,7 +43,7 @@
+         .read_text(encoding="utf-8")
+     )
+     assert graph["schema_version"] == 26
+-    assert graph["architecture_revision"] == 25
++    assert graph["architecture_revision"] == 26
+     nodes = {item["id"] for item in graph["nodes"]}
+     assert {
+         "SYSTEM_RESOURCE_SNAPSHOT",

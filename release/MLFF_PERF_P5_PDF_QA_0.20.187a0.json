@@ -1,0 +1,69 @@
+{
+  "architecture_revision": 54,
+  "documents": {
+    "ARCHITECTURE_NOTES_MLFF_REV54.pdf": {
+      "pages": 2,
+      "preflight": "pass",
+      "render_dpi": 180,
+      "visual_review": "pass"
+    },
+    "PATCH_NOTES_0.20.187a0.pdf": {
+      "pages": 1,
+      "preflight": "pass",
+      "render_dpi": 180,
+      "visual_review": "pass"
+    },
+    "mlff_final_gpu1_deferred_qualification_spec.pdf": {
+      "pages": 3,
+      "preflight": "pass",
+      "render_dpi": 160,
+      "visual_review": "pass"
+    },
+    "mlff_perf_p5_cloud_cpu_2026-08-15.pdf": {
+      "pages": 1,
+      "preflight": "pass",
+      "render_dpi": 180,
+      "visual_review": "pass"
+    },
+    "mlff_perf_p5_train_eval_persistence_spec.pdf": {
+      "pages": 3,
+      "preflight": "pass",
+      "render_dpi": 180,
+      "visual_review": "pass"
+    }
+  },
+  "issues_corrected": [
+    "benchmark_report_sparse_two_page_layout_tightened_to_one_page"
+  ],
+  "manual": {
+    "blank_like_pages": 0,
+    "fonts_embedded": true,
+    "pages": 195,
+    "preflight": "pass",
+    "render_diff_against_0.20.186a0_changed_pages": [
+      1,
+      10,
+      11,
+      12,
+      13,
+      14,
+      178,
+      190,
+      191,
+      192,
+      193,
+      194,
+      195
+    ],
+    "targeted_high_resolution_pages": [
+      190,
+      191,
+      192,
+      193
+    ],
+    "whole_document_render_dpi": 70
+  },
+  "release": "0.20.187a0",
+  "remaining_gate_local_layout_issues": [],
+  "schema": "mdstats.mlff-perf-p5-pdf-qa.v1"
+}

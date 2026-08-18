@@ -1,0 +1,113 @@
+{
+  "architecture_revision": 58,
+  "authority_class": "end_to_end_release_certification",
+  "authorization_boundary": {
+    "generated_default_change_authorized": false,
+    "phase_separated_acceleration_profile_recommended": false,
+    "positive_gpu_claim_authorized": false
+  },
+  "control_plane_acceptance": "pass",
+  "date": "2026-08-15",
+  "dependency_graph_schema": 40,
+  "final_gpu_preflight_v5": {
+    "blocking_requirements": [
+      "torch_cuda_available",
+      "cueq_dep1_runtime_freeze"
+    ],
+    "foundation_models": [
+      {
+        "expected_sha256": "ec00a2705854622fbbd898ccfb7701072fcd674709102d009fb919c1b8cc5dde",
+        "identity_passed": true,
+        "label": "MACE-MH-1",
+        "required_head": "omat_pbe",
+        "sha256": "ec00a2705854622fbbd898ccfb7701072fcd674709102d009fb919c1b8cc5dde",
+        "size_bytes": 59208715
+      },
+      {
+        "expected_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
+        "identity_passed": true,
+        "label": "MACE-MPA-0-medium",
+        "required_head": "default",
+        "sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
+        "size_bytes": 79462305
+      }
+    ],
+    "perf_cert1_blocking_reasons": [
+      "authoritative_e3nn_baseline_missing",
+      "accelerated_profile_evidence_missing",
+      "CUEQ_PHASE1_TRAINING_QUALIFICATION"
+    ],
+    "qualification_state": "deferred_not_executed",
+    "schema": "mdstats.mlff-final-gpu1.preflight.2026-08.v5"
+  },
+  "final_validation": {
+    "compileall": "pass",
+    "positive_gpu_execution_performed": false,
+    "pytest_expected_skips": 2,
+    "pytest_failed": 0,
+    "pytest_note": "Counts are from split current-gate/adjacent suites plus two separately mounted supplied-foundation tests; historical version-pinned specification files are not rewritten.",
+    "pytest_passed": 60
+  },
+  "focused_regression": {
+    "adjacent_specification_files": {
+      "failed": 0,
+      "passed": 13
+    },
+    "cueq_final_gpu_adjacent": {
+      "expected_skips": 1,
+      "failed": 0,
+      "passed": 21
+    },
+    "perf_cert1_specification": {
+      "failed": 0,
+      "passed": 2
+    },
+    "perf_cert1_unit": {
+      "failed": 0,
+      "passed": 7
+    },
+    "perf_p5_vram_adjacent": {
+      "expected_skips": 1,
+      "failed": 0,
+      "passed": 15
+    },
+    "supplied_foundation_identity_test": {
+      "failed": 0,
+      "passed": 1
+    },
+    "supplied_foundation_prepared_direct_batch_test": {
+      "failed": 0,
+      "passed": 1
+    }
+  },
+  "frozen_policy": {
+    "authoritative_baseline": "optimized_mace_mh_1_omat_pbe_e3nn",
+    "cueq_phase2_optional": true,
+    "exact_hard_decision_identity_required": true,
+    "generated_default_change_authorized": false,
+    "minimum_total_speedup": 1.0,
+    "strict_positive_speedup_required": true
+  },
+  "gate": "PERF-CERT1",
+  "gpu_qualification": "deferred_to_FINAL_GPU1",
+  "implementation_status": "implemented_control_plane_deferred_final_gpu_end_to_end_profiles",
+  "next_gate_gpu_execution": "FINAL-GPU1",
+  "next_policy_action_after_positive_perf_cert1": "separate_explicit_generated_default_policy_revision_if_recommended",
+  "pdf_qa": {
+    "record": "release/MLFF_PERF_CERT1_PDF_QA_0.20.191a0.json",
+    "result": "pass"
+  },
+  "perf_cert1_deferred_record": {
+    "blocking_reasons": [
+      "authoritative_e3nn_baseline_missing",
+      "accelerated_profile_evidence_missing",
+      "CUEQ_PHASE1_TRAINING_QUALIFICATION"
+    ],
+    "content_digest": "03fa0009d6b8b0878387f8d7b8a64ff7573bdca384e3bb9f02399adeae246f18",
+    "passed": false,
+    "schema": "mdstats.perf-cert1-qualification.v1"
+  },
+  "positive_profile_certification": "deferred_not_executed",
+  "release": "0.20.191a0",
+  "schema": "mdstats.mlff-perf-cert1-qualification-release.v1"
+}

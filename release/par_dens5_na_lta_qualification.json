@@ -1,0 +1,111 @@
+{
+  "schema": "mdstats.par-dens5-na-lta-qualification.v1",
+  "package_version": "0.20.144a0",
+  "qualified_on": "2026-08-10",
+  "input": {
+    "basename": "dump.prod.Na_lta_300K.old.lammpstrj",
+    "sha256": "81c86cc40f5a11031f80817213eb558c02348494d1c6cad9b4775a5bc3c9f9cd",
+    "bytes": 183385600,
+    "full_frames": 10001,
+    "atoms_per_frame": 168,
+    "na_atoms": 24,
+    "type_map": {"1": "Si", "2": "Al", "3": "O", "4": "Na"}
+  },
+  "bounded_gpu_fallback_qualification": {
+    "stride": 100,
+    "selected_frames": 101,
+    "frame_semantics": "ensemble_for_density_only",
+    "lammps_units": "metal",
+    "supplied_timestep_ps": 0.001,
+    "density_selections": ["Na", "Si", "O"],
+    "registration_mode": "material",
+    "grid_shape": [64, 64, 64],
+    "gaussian_bandwidth_angstrom": 0.5,
+    "grid_backend": "local_sparse",
+    "storage_block_shape": [8, 8, 8],
+    "max_workspace_bytes": 4294967296,
+    "modes": ["off", "auto"],
+    "scene_seconds": [10.236071966999589, 7.979629222999847],
+    "timing_interpretation": "Both executions used the CPU reference path on a no-CUDA host; timing variation is not a GPU speedup measurement.",
+    "gpu_reports": {
+      "off": {
+        "attempt_count": 327,
+        "gpu_selected_count": 0,
+        "cpu_fallback_count": 327,
+        "reason_counts": {"gpu_disabled": 327},
+        "kernel_counts": {"support_binary_fft_dilation": 327}
+      },
+      "auto": {
+        "attempt_count": 327,
+        "gpu_selected_count": 0,
+        "cpu_fallback_count": 327,
+        "reason_counts": {"cuda_unavailable": 327},
+        "kernel_counts": {"support_binary_fft_dilation": 327}
+      }
+    },
+    "max_absolute_density_difference_by_field": {
+      "Na": 0.0,
+      "Si": 0.0,
+      "O": 0.0
+    },
+    "content_identity_equal_by_field": {"Na": true, "Si": true, "O": true},
+    "integrals": {
+      "Na": 24.0,
+      "Si": 24.0,
+      "O": 95.99999999999999
+    },
+    "hdr_mass_fractions": [0.5, 0.8, 0.95],
+    "hdr_thresholds": {
+      "Na": [0.13535502170665586, 0.04356945158092796, 0.008924842403607133],
+      "Si": [0.13014872580682016, 0.04220835910862338, 0.008678677027665721],
+      "O": [0.12807955256267922, 0.042884606058534634, 0.012718827334177382]
+    },
+    "hdr_thresholds_equal": true
+  },
+  "gpu_policy": {
+    "schema": "mdstats.density-gpu-policy.v1",
+    "default_mode": "auto",
+    "usable_vram_fraction": 0.8,
+    "usable_vram_basis": "currently_free_device_memory",
+    "host_staging_bound_by_active_par_dens2_budget": true,
+    "one_major_density_job_per_gpu_per_process": true,
+    "scientific_precision": "fp64_only",
+    "automatic_cpu_fallback": true,
+    "transfer_and_setup_cost_in_selection": true
+  },
+  "implemented_cuda_kernels": [
+    "dense_cic_deposition_fp64_segmented_reduction",
+    "periodic_circular_fft_convolution_fp64",
+    "legacy_spectral_gaussian_filter_fp64",
+    "binary_support_linear_fft_dilation_fp64",
+    "hybrid_sparse_tile_linear_fft_convolution_fp64"
+  ],
+  "deliberate_cpu_kernels": [
+    "target_owned_grouped_direct_sparse_accumulation"
+  ],
+  "acceptance": {
+    "logic_and_cpu_fallback_tests": "tests/test_density_par_dens5.py",
+    "real_cuda_fft_equivalence_test_present": true,
+    "real_cuda_cic_equivalence_test_present": true,
+    "real_cuda_tests_executed_on_packaging_host": false,
+    "real_cuda_skip_reason": "CUDA runtime unavailable on packaging host",
+    "real_trajectory_cpu_fallback_bit_identical": true,
+    "gpu_scientific_identity_neutral": true,
+    "gpu_speedup_claimed": false
+  },
+  "environment": {
+    "python": "3.13.5",
+    "numpy": "2.3.5",
+    "scipy": "1.17.0",
+    "torch": "2.10.0+cpu",
+    "torch_cuda_available": false,
+    "torch_cuda_device_count": 0
+  },
+  "interpretation": {
+    "purpose": "PAR-DENS5 optional-GPU policy, complete-fallback, precision-path, and real-trajectory execution-neutrality qualification",
+    "production_scientific_reference": "release/par_dens0_na_lta_qualification.json",
+    "prior_parallel_reference": "release/par_dens3_na_lta_qualification.json",
+    "hardware_gpu_performance_authorization": "deferred to PAR-DENS6 because the packaging host has no CUDA device",
+    "par_dens6_next": true
+  }
+}

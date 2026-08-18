@@ -1,0 +1,18 @@
+{
+  "schema": "mdstats.mlff.pdf-qa.v1",
+  "release": "0.20.198a0",
+  "gate": "TARGET-DATA2-MVPLAN1",
+  "documents": {
+    "mlff_training_data_architecture.pdf": {"pages": 204, "preflight": "pass", "visual_review_pages": "199-204"},
+    "ARCHITECTURE_NOTES_MLFF_REV65.pdf": {"pages": 1, "preflight": "pass", "visual_review_pages": "1"},
+    "PATCH_NOTES_0.20.198a0.pdf": {"pages": 1, "preflight": "pass", "visual_review_pages": "1"},
+    "docs/specs/training_data/mlff_target_data2_mvplan1_multi_view_coverage_roadmap_spec.pdf": {"pages": 1, "preflight": "pass", "visual_review_pages": "1"}
+  },
+  "comparison": {
+    "scope": "canonical manual pages 1-5 against 0.20.197a0",
+    "changed_pages": [1],
+    "unchanged_pages": [2, 3, 4, 5],
+    "interpretation": "expected revision/date front-matter change only"
+  },
+  "result": "pass"
+}

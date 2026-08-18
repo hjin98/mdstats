@@ -1,0 +1,51 @@
+{
+  "architecture_revision": 57,
+  "dependency_graph_schema": 39,
+  "documents": {
+    "ARCHITECTURE_NOTES_MLFF_REV57.pdf": {
+      "pages": 1,
+      "preflight": "pass",
+      "render_dpi": 160,
+      "visual_review": "pass"
+    },
+    "PATCH_NOTES_0.20.190a0.pdf": {
+      "pages": 1,
+      "preflight": "pass",
+      "render_dpi": 160,
+      "visual_review": "pass"
+    },
+    "mlff_cueq_phase2_selected_head_source_qualification_spec.pdf": {
+      "pages": 3,
+      "preflight": "pass",
+      "render_dpi": 160,
+      "visual_review": "pass"
+    },
+    "mlff_final_gpu1_deferred_qualification_spec.pdf": {
+      "pages": 4,
+      "preflight": "pass",
+      "render_dpi": 160,
+      "visual_review": "pass"
+    },
+    "mlff_cueq_phase2_development_host_2026-08-15.pdf": {
+      "pages": 2,
+      "preflight": "pass",
+      "render_dpi": 160,
+      "visual_review": "pass"
+    }
+  },
+  "issues_corrected": [
+    "development_host_full_digest_table_overflow_replaced_with_prefix_table_and_wrapped_full_values",
+    "architecture_notes_two_page_orphan_next_gate_condensed_to_one_page"
+  ],
+  "manual": {
+    "pages": 197,
+    "preflight": "pass",
+    "targeted_pages": [1, 194, 195, 196, 197],
+    "targeted_render_dpi": 160,
+    "visual_review": "pass",
+    "whole_document_render": "not_repeated_gate_local_change"
+  },
+  "release": "0.20.190a0",
+  "remaining_gate_local_layout_issues": [],
+  "schema": "mdstats.mlff-cueq-phase2-pdf-qa.v1"
+}

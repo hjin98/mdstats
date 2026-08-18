@@ -1,0 +1,82 @@
+{
+  "schema": "mdstats.mlff.target-data2b-feas1-perf3.qualification.v1",
+  "release": "0.20.223a0",
+  "date": "2026-08-17",
+  "gate": "TARGET-DATA2B-FEAS1-PERF3",
+  "architecture_revision": 90,
+  "dependency_graph_schema": 72,
+  "status": "PASS",
+  "scientific_authority": {
+    "schema_changed": false,
+    "digest_semantics_changed": false,
+    "coverage_metric_changed": false,
+    "local_radius_changed": false,
+    "candidate_ceiling_changed": false,
+    "target_data2c_selector_changed": false,
+    "gpu_neighborhood_authority_changed": false,
+    "deterministic_per_profile_witness_order_reduction": true,
+    "serial_parallel_report_dictionary_equivalence": true
+  },
+  "execution": {
+    "scheduler": "single_level_global_work_queue",
+    "automatic_worker_policy": "one global executor worker per cpu_threads_budget lane",
+    "parallel_ckdtree_workers_per_task": 1,
+    "pending_future_bound": "2 * global_workers",
+    "pending_plus_ready_bound": "4 * global_workers",
+    "profile_preparation_shared_executor": true,
+    "cross_domain_profile_block_work_stealing": true,
+    "new_config": "performance.target_coverage_feasibility_global_workers",
+    "legacy_aliases": [
+      "performance.target_coverage_feasibility_block_workers",
+      "performance.target_coverage_feasibility_family_workers"
+    ]
+  },
+  "progress": {
+    "campaign_wide_profile_total": true,
+    "profile_completed_total": true,
+    "profile_manifest_ordinal": true,
+    "prepared_profile_total": true,
+    "active_profile_count": true,
+    "global_block_total": true,
+    "global_witness_total": true,
+    "executor_busy_lane_sample": true,
+    "pending_and_queued_tasks": true,
+    "elapsed_rate_eta": true,
+    "heartbeat_interval_control": "performance.progress_interval_seconds"
+  },
+  "tests": {
+    "focused_perf3_feas1": "13 passed",
+    "target_data2_functional": "111 passed",
+    "python_compile": "PASS"
+  },
+  "benchmark": {
+    "host_logical_threads_available": 9,
+    "cpu_fraction_equivalent": 0.90,
+    "assigned_global_workers": 8,
+    "profiles": 8,
+    "witnesses_per_profile": 25033,
+    "descriptor_dimensions": 8,
+    "query_block_size": 512,
+    "edge_count_total": 5934376,
+    "baseline": {
+      "schedule": "serial_profiles_native_tree_8",
+      "wall_seconds": 7.792861027000072,
+      "process_cpu_seconds": 23.878431911
+    },
+    "perf3": {
+      "schedule": "global_8_tree_1",
+      "wall_seconds": 3.810730230000445,
+      "process_cpu_seconds": 29.177808344999995,
+      "average_cpu_cores": 7.65675,
+      "assigned_lane_occupancy_percent": 95.7094
+    },
+    "wall_speedup": 2.04498,
+    "assessment": "PASS: sustained global FEAS1 evaluator occupancy is approximately 95.7% of the eight assigned CPU lanes while preserving exact reports."
+  },
+  "pdf_qa": {
+    "manual_pages": 239,
+    "preflight": "PASS",
+    "rendered_pages_review_set": [1, 13, 14, 15],
+    "render_status": "PASS"
+  }
+}

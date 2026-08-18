@@ -1,0 +1,1868 @@
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/CHANGELOG.md /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/CHANGELOG.md
+--- /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/CHANGELOG.md	2026-08-18 01:29:04.000000000 +0000
++++ /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/CHANGELOG.md	2026-08-18 02:02:32.022433685 +0000
+@@ -1,3 +1,12 @@
++## 0.20.235a0 - 2026-08-17
++
++- Complete CAMPAIGN-PERF-QUAL1 / architecture revision 102 as the integrated exact-equivalence CPU optimization closure review; runtime scientific algorithms remain unchanged from 0.20.234a0.
++- On a common 8,192-candidate/six-family target-data chain, preserve exact FEAS1/MVIDX1/MVSEL1/REPAIR1/MVQUAL1 authority while reducing wall time from about 27.26 s in the PERFBASE1-era 0.20.225a0 control to about 11.95 s at four lanes (~2.28x).
++- Requalify replay indexed restart, EVAL2/bootstrap, Foundation Audit, worker scaling, and representative memory behavior.
++- Reprofile the shifted target-data tail and identify duplicated MVSEL sparse-state reconstruction inside REPAIR as the dominant exact-reuse opportunity.
++- Keep the CPU optimization program open for MVSTATE-REUSE1 rather than falsely declaring total closure; final GPU qualification remains deferred.
++- Keep active qualification on supplied MACE-MPA-0 medium while preserving model-generic MACE-MH-1 compatibility.
++
+ ## 0.20.234a0 - 2026-08-17
+ 
+ - Implement REPLAY-PERF1 / architecture revision 101 as exact replay-source indexing and indexed materialization over the unified immutable replay corpus.
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/PKG-INFO /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/PKG-INFO
+--- /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/PKG-INFO	2026-08-18 01:29:04.000000000 +0000
++++ /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/PKG-INFO	2026-08-18 02:02:32.012211435 +0000
+@@ -1,6 +1,6 @@
+ Metadata-Version: 2.4
+ Name: mdstats
+-Version: 0.20.234a0
++Version: 0.20.235a0
+ Summary: Transparent atomistic frame collections and structural/dynamical statistics
+ Requires-Python: >=3.10
+ Requires-Dist: numpy>=1.26
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/benchmarks/benchmark_mlff_campaign_perf_qual1.py /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/benchmarks/benchmark_mlff_campaign_perf_qual1.py
+--- /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/benchmarks/benchmark_mlff_campaign_perf_qual1.py	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/benchmarks/benchmark_mlff_campaign_perf_qual1.py	2026-08-18 02:08:19.849026151 +0000
+@@ -0,0 +1,129 @@
++"""Reproduce the CAMPAIGN-PERF-QUAL1 integrated target-data CPU fixture.
++
++Usage:
++    python benchmark_mlff_campaign_perf_qual1.py MODE SOURCE_ROOT [WORKERS]
++
++MODE is an evidence label (for example ``control`` or ``current``). SOURCE_ROOT
++must be the mdstats source tree to benchmark. The script writes one JSON record
++to stdout and deliberately excludes model inference/GPU work.
++"""
++from __future__ import annotations
++from dataclasses import dataclass
++import hashlib, json, os, resource, statistics, sys, time
++from pathlib import Path
++
++mode=sys.argv[1]
++root=Path(sys.argv[2]).resolve()
++workers=int(sys.argv[3]) if len(sys.argv)>3 else 4
++# ensure source tree + benchmark helper
++sys.path.insert(0,str(root))
++sys.path.insert(0,str(root/'benchmarks'))
++import mdstats
++import benchmark_mlff_perfbase1 as pb
++
++@dataclass
++class Rung:
++    target_size:int
++    frame_uids:tuple[str,...]
++    materializable:bool=True
++@dataclass
++class Dom:
++    label_domain_id:str
++    content_digest:str
++    rungs:tuple
++@dataclass
++class Legacy:
++    dataset_id:str
++    target_coverage_reference_digest:str
++    content_digest:str
++    dom:Dom
++    def domain(self,label):
++        if label!=self.dom.label_domain_id: raise KeyError(label)
++        return self.dom
++
++reference, role = pb._synthetic_reference(n=8192, family_count=6)
++sizes=(128,256,512,1024,2048,4096)
++policy=mdstats.TargetMultiViewSelectorPolicy(target_sizes=sizes)
++
++# Freeze reference identity separately from timed chain.
++ref_digest=reference.content_digest
++role_digest=role.content_digest
++
++stages=[]
++def run(name,fn):
++    rss0=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
++    c0=time.process_time(); t0=time.perf_counter()
++    obj=fn()
++    wall=time.perf_counter()-t0; cpu=time.process_time()-c0
++    rss1=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
++    stages.append({'name':name,'wall_seconds':wall,'cpu_seconds':cpu,'maxrss_kib':rss1,'rss_peak_delta_kib':max(0,rss1-rss0)})
++    return obj
++
++if hasattr(mdstats,'StageResourceScope'):
++    av=max(workers,4)
++    def scope(name,w=workers):
++        return mdstats.StageResourceScope(stage_name=name,cpu_threads_available=av,cpu_threads_budget=w,python_workers=w,structural_workers=1,tree_workers=1,blas_threads=1,pytorch_cpu_workers=1,ram_budget_bytes=None)
++else:
++    scope=None
++
++# FEAS + exact neighborhoods (current) or FEAS alone (baseline).
++if hasattr(mdstats,'build_target_coverage_feasibility_artifacts'):
++    def do_feas():
++        return mdstats.build_target_coverage_feasibility_artifacts(reference,role,query_workers=1,query_block_size=512,block_workers=workers,resource_scope=scope('closure-feas'))
++    feasibility, neighborhoods = run('feas_neighbor', do_feas)
++else:
++    feasibility = run('feas_neighbor', lambda: mdstats.build_target_coverage_feasibility_report(reference,role,query_workers=1,query_block_size=512,block_workers=workers))
++    neighborhoods=None
++
++# MVIDX, reusing exact graph when API supports it.
++def do_mvidx():
++    kwargs=dict(query_workers=1 if neighborhoods is not None else workers,query_block_size=512)
++    if neighborhoods is not None:
++        kwargs.update(exact_neighborhood_store=neighborhoods,global_workers=workers,resource_scope=scope('closure-mvidx'))
++    return mdstats.build_target_coverage_sparse_index(reference,role,feasibility,**kwargs)
++index=run('mvidx',do_mvidx)
++selection=run('mvsel',lambda:mdstats.build_target_multi_view_selection_plan(reference,index,policy=policy,execution_mode='optimized'))
++
++# Repair exact optimized path; current may parallelize immutable proposals.
++def do_repair():
++    kwargs={'execution_mode':'optimized'}
++    if 'proposal_workers' in __import__('inspect').signature(mdstats.build_target_multi_view_repair_plan).parameters:
++        kwargs.update(proposal_workers=workers,resource_scope=scope('closure-repair'))
++    return mdstats.build_target_multi_view_repair_plan(reference,index,selection,**kwargs)
++repair=run('repair',do_repair)
++
++# Legacy ladder uses the same natural prefix to create the same-N comparison set.
++d=reference.domain('target'); u=d.frame_uids
++legacy=Legacy(reference.dataset_id,reference.content_digest,'4'*64,Dom('target','1'*64,tuple(Rung(s,tuple(u[:s])) for s in sizes)))
++qpol=mdstats.TargetMultiViewQualificationPolicy(coverage_threshold=reference.policy.coverage_threshold,capacity_ceiling=16384)
++def do_mvqual():
++    kwargs={'policy':qpol}
++    sig=__import__('inspect').signature(mdstats.build_target_multi_view_qualification_plan).parameters
++    if 'scoring_workers' in sig:
++        kwargs.update(coverage_query_workers=1,scoring_workers=workers,resource_scope=scope('closure-mvqual'))
++    else:
++        kwargs.update(coverage_query_workers=workers)
++    return mdstats.build_target_multi_view_qualification_plan(reference,index,feasibility,role,legacy,repair,**kwargs)
++qual=run('mvqual',do_mvqual)
++
++scientific={
++ 'reference':ref_digest,
++ 'role':role_digest,
++ 'feasibility':feasibility.content_digest,
++ 'mvidx':index.content_digest,
++ 'selection':selection.content_digest,
++ 'repair':repair.content_digest,
++ 'qualification':qual.content_digest,
++}
++if neighborhoods is not None: scientific['neighborhoods']=neighborhoods.content_digest
++payload={
++ 'mode':mode,'version':mdstats.__version__,'workers':workers,
++ 'scientific':scientific,'stages':stages,
++ 'total_wall_seconds':sum(x['wall_seconds'] for x in stages),
++ 'total_cpu_seconds':sum(x['cpu_seconds'] for x in stages),
++ 'peak_maxrss_kib':resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
++ 'master_order_count':len(selection.domain('target').master_order),
++ 'repair_swaps':repair.domain('target').total_swaps,
++ 'qualification_domains':len(qual.domains),
++}
++print(json.dumps(payload,indent=2,sort_keys=True))
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/benchmarks/mlff_campaign_perf_qual1_cloud_cpu_mpa0_2026-08-17.json /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/benchmarks/mlff_campaign_perf_qual1_cloud_cpu_mpa0_2026-08-17.json
+--- /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/benchmarks/mlff_campaign_perf_qual1_cloud_cpu_mpa0_2026-08-17.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/benchmarks/mlff_campaign_perf_qual1_cloud_cpu_mpa0_2026-08-17.json	2026-08-18 02:00:12.001133309 +0000
+@@ -0,0 +1,188 @@
++{
++  "acceptance": {
++    "final_gpu_qualification_ready": false,
++    "followup_reason": "Integrated profiling shows REPAIR replaying MVSEL terminal sparse state is now the dominant duplicated reconstructible cost; exact state handoff can remove it without changing selector or repair authority.",
++    "followup_required": true,
++    "memory_ceiling_pass": true,
++    "next_gate": "MVSTATE-REUSE1",
++    "optimization_program_closed": false,
++    "restart_behavior_exact": true,
++    "scaling_qualified": true,
++    "scientific_outputs_exact": true,
++    "status": "PASS_FOLLOWUP_REQUIRED"
++  },
++  "active_foundation": {
++    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
++    "family": "MACE-MPA-0 medium",
++    "mh1_compatible": true,
++    "model_inference_timed_in_closure": false
++  },
++  "architecture_revision": 102,
++  "authority_change": {
++    "classification": "integration_measurement_and_forward-gate_decision_only",
++    "gpu_numerical": false,
++    "runtime_algorithm": false,
++    "scientific": false
++  },
++  "content_digest": "d169137cca79709841f4ac9e531306324247a5420964018de2239d3f4e0f5539",
++  "execution": {
++    "eval2": {
++      "bootstrap_median_seconds": 0.015309499998693354,
++      "frozen_0_20_232_control_bootstrap_seconds": 0.05117,
++      "frozen_0_20_232_control_metric_seconds": 0.8621,
++      "metric_reduce_median_seconds": 0.4710217569991073
++    },
++    "foundation_audit": {
++      "frozen_0_20_232_control_seconds": 0.05803,
++      "median_seconds": 0.054020721499909996,
++      "model_provider_calls": [
++        44,
++        44
++      ]
++    },
++    "replay_restart": {
++      "closure_speedup_vs_control": 3.313696767259975,
++      "frozen_0_20_233_control_monitor_seconds": 9.13893,
++      "index_build_seconds": 0.41147491599986097,
++      "index_hit_seconds": 0.06988775699937833,
++      "monitor_only_materialization_seconds": 2.7579258580008172,
++      "peak_maxrss_kib": 280732
++    },
++    "target_chain": {
++      "control": {
++        "cpu_seconds": 28.220660382,
++        "note": "paired control completed once; a later repeated control was invalidated by unrelated shared-host timeout and is not used",
++        "peak_maxrss_kib": 313240,
++        "release": "0.20.225a0",
++        "repeat_count": 1,
++        "stage_wall_seconds": {
++          "feas_neighbor": 0.788001320001058,
++          "mvidx": 2.2042533550011285,
++          "mvqual": 2.0616274479980348,
++          "mvsel": 11.220217990998208,
++          "repair": 10.981256697999925
++        },
++        "wall_seconds": 27.255356811998354,
++        "workers_requested": 4
++      },
++      "current": {
++        "queue_backpressure_observed": false,
++        "release": "0.20.234a0",
++        "rss_ratio_vs_control_at_4_lanes": 1.1227684842293448,
++        "speedup_vs_control_at_4_lanes": 2.2811202967246227,
++        "worker_schedules": {
++          "1": {
++            "cpu_seconds": 13.031388508999996,
++            "peak_maxrss_kib": 320612,
++            "wall_seconds": 12.913599085004535
++          },
++          "2": {
++            "cpu_seconds": 13.232284265,
++            "peak_maxrss_kib": 334636,
++            "wall_seconds": 12.073693564001587
++          },
++          "4": {
++            "cpu_seconds_median": 13.688461302499999,
++            "peak_maxrss_kib_median": 351696.0,
++            "stage_wall_seconds_median": {
++              "feas_neighbor": 1.0333280395007023,
++              "mvidx": 0.08946929749981791,
++              "mvqual": 0.5325609709998389,
++              "mvsel": 4.873324781499832,
++              "repair": 5.419549913000083
++            },
++            "wall_seconds_median": 11.948233002500274,
++            "wall_seconds_samples": [
++              11.823693664005987,
++              12.072772340994561
++            ]
++          }
++        }
++      }
++    }
++  },
++  "gate": "CAMPAIGN-PERF-QUAL1",
++  "host": {
++    "cgroup_cpu_max": "400000 100000",
++    "cgroup_memory_current_bytes_at_record_creation": "4075847680",
++    "cgroup_memory_max_bytes": "4294967296",
++    "cpu_affinity_count": 5,
++    "timings_are_execution_evidence_only": true
++  },
++  "hotspot_reprofile": {
++    "mvsel_profile": {
++      "_choose_candidate_calls": 4096,
++      "_choose_candidate_cumulative_seconds": 0.9,
++      "_scatter_decrement_pair_exact_calls": 26319,
++      "_scatter_decrement_pair_exact_cumulative_seconds": 4.565,
++      "_select_and_update_calls": 4096,
++      "_select_and_update_cumulative_seconds": 5.197,
++      "finding": "exact sparse state mutation dominates residual selector time; rank choice is no longer dominant",
++      "profile_total_seconds_approx": 6.57
++    },
++    "repair_profile": {
++      "_best_repair_proposal_cumulative_seconds": 0.729,
++      "_shell_removal_scan_cumulative_seconds": 0.977,
++      "finding": "REPAIR reconstructs selector sparse state by replaying essentially the whole selected order before proposal work; this is exact reconstructible execution state and is now the dominant duplicated cost",
++      "profile_total_seconds_approx": 7.576,
++      "selector_state_replay__scatter_decrement_pair_exact_calls": 26331,
++      "selector_state_replay__scatter_decrement_pair_exact_cumulative_seconds": 4.671,
++      "selector_state_replay__select_and_update_calls": 4098,
++      "selector_state_replay__select_and_update_cumulative_seconds": 5.336,
++      "thread_executor_shutdown_cumulative_seconds": 0.699
++    },
++    "target_chain_current_4_lane_stage_fraction": {
++      "feas_neighbor": 0.0864837536466245,
++      "mvidx": 0.0074880777334268315,
++      "mvqual": 0.04457236236424213,
++      "mvsel": 0.4078699151983432,
++      "repair": 0.45358589105736336
++    }
++  },
++  "inputs": {
++    "replay_source_sha256": "187eed42fb2d6cf5e7e745ffed0ce34541e92c6a35ec9e654520cd3c7198403c",
++    "target_archive_sha256": "bc1b7e25ba338507ae38b260bcd283356de887b6c6cf762a2c146733f1c3c958",
++    "target_chain_control_release": "0.20.225a0",
++    "target_chain_current_runtime_release": "0.20.234a0",
++    "target_chain_fixture": {
++      "candidate_count": 8192,
++      "family_count": 6,
++      "master_selection_count": 4096,
++      "qualification_domains": 1,
++      "repair_swaps": 2
++    }
++  },
++  "measurement_date": "2026-08-17",
++  "release": "0.20.235a0",
++  "restart_and_memory": {
++    "memory_ceiling_violation": false,
++    "mvidx_zero_second_geometry_reuse_contract_retained": true,
++    "replay_authenticated_index_restart_exact": true,
++    "scientific_cache_or_restart_identity_change": false,
++    "target_chain_peak_rss_kib_control": 313240,
++    "target_chain_peak_rss_kib_current_4_lane_median": 351696.0,
++    "target_neighborhood_reuse_contract_retained": true
++  },
++  "schema": "mdstats.mlff-campaign-perf-qual1-evidence.v1",
++  "scientific": {
++    "eval2_bootstrap_digest": "9664354fd2d871e67113ff5b9ef28118c9414a59f29a5fd4114acb729590397e",
++    "eval2_metric_digest": "d9dd9db2c2d47e2d6f034e0b58f094c04c516d5a0dc4f0089d3f15762d434658",
++    "feasibility_digest": "937214c70d1f2baae883993082f1ceb25bea6007a5a2be0beee045262f5c0613",
++    "foundation_audit_digest": "39b8b207c741798f5a8555b41ceb0c746948935612d84d45961ba87b0e8c94e5",
++    "foundation_model_provider_calls": [
++      44,
++      44
++    ],
++    "mvidx_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
++    "neighborhood_digest": "0220c89084fe957e85eb1e1c87a581eaa44869f11cb98bee7f7bd8cdafd3d74e",
++    "qualification_digest": "c19f2f9c3a328c7003e169bd9584277b21e72a6720caa588cf3879bd1cac1b25",
++    "reference_digest": "a66b12eb0bdb604cce053b4ab5df7aec58a8d985143eb7f791ff8360217fc57f",
++    "repair_digest": "ab7dc752555114bcd756913187e1d0eb7069c2e9a093f2a8a41130f485cdc33f",
++    "replay_monitor_extxyz_sha256": "cc0f9b308becd5c027a2adc64fc251808323e19c217412d82ea3d50b3deab2cf",
++    "replay_monitor_logical_digest": "633aae8a6deb1a3d857880f3eecd9bb40dbaedba8357a13944184c1bafbf1114",
++    "replay_source_index_digest": "ce6c678ad556cff63be8ee75754d87cba2b3d08e80f544c5983fe4498dc0c5e1",
++    "role_digest": "6666666666666666666666666666666666666666666666666666666666666666",
++    "selection_digest": "c179df6cfbb3b052c866d17bcf54aa5088ebc1998b35259afd3bd0ca163e8b8d",
++    "target_chain_exact": true
++  }
++}
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/benchmarks/mlff_campaign_perf_qual1_cloud_cpu_mpa0_2026-08-17.md /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/benchmarks/mlff_campaign_perf_qual1_cloud_cpu_mpa0_2026-08-17.md
+--- /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/benchmarks/mlff_campaign_perf_qual1_cloud_cpu_mpa0_2026-08-17.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/benchmarks/mlff_campaign_perf_qual1_cloud_cpu_mpa0_2026-08-17.md	2026-08-18 02:01:39.152247321 +0000
+@@ -0,0 +1,57 @@
++# CAMPAIGN-PERF-QUAL1 CPU closure evidence
++
++Release: mdstats 0.20.235a0  
++Architecture revision: 102  
++Active qualification foundation: MACE-MPA-0 medium (`75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638`)  
++MACE-MH-1 compatibility: retained by the same execution/scientific contracts.
++
++## Scope
++
++This gate re-profiles the accumulated CPU optimization program. It is measurement/integration authority only: it does not change scientific algorithms, runtime model inference, or GPU numerical authority. Timing is execution evidence. Exact persisted/scientific digests remain the authority.
++
++The target-data chain uses one deterministic 8,192-candidate / six-family fixture and executes FEAS1 -> exact neighborhoods -> MVIDX1 -> MVSEL1 -> REPAIR1 -> MVQUAL1 as an actual chain. The control is an untouched 0.20.225a0 PERFBASE1-era tree. Replay, EVAL2/bootstrap, and Foundation Audit are rechecked on their production-scale or frozen CPU fixtures.
++
++## Integrated target-data chain
++
++| Realization | Wall (s) | Peak RSS (MiB) | FEAS+neighbor | MVIDX | MVSEL | REPAIR | MVQUAL |
++|---|---:|---:|---:|---:|---:|---:|---:|
++| untouched 0.20.225a0, 4 requested workers | 27.255 | 305.9 | 0.788 | 2.204 | 11.220 | 10.981 | 2.062 |
++| current optimized realization, 4 lanes median | 11.948 | 343.5 | 1.033 | 0.089 | 4.873 | 5.420 | 0.533 |
++
++End-to-end target-data speedup: **2.28x**. Scientific reference/role/FEAS/MVIDX/MVSEL/REPAIR/MVQUAL digests are exact between control and current realizations. The current neighborhood cache adds its authenticated execution digest without changing FEAS/MVIDX authority.
++
++Current worker scaling is 12.914 s at one lane, 12.074 s at two lanes, and 11.948 s median at four lanes. Scaling now saturates because the remaining wall time is dominated by sequential-authority sparse state updates rather than starved parallel kernels.
++
++## Shifted hotspot
++
++The integrated profile changes the optimization conclusion. Current four-lane stage fractions are approximately:
++
++- REPAIR1: 45.4%
++- MVSEL1: 40.8%
++- FEAS1 + neighborhood cache: 8.6%
++- MVQUAL1: 4.5%
++- MVIDX1: 0.7%
++
++MVSEL profiling attributes about 5.197 s cumulative to 4,096 `_select_and_update` calls, including about 4.565 s in exact paired sparse decrements; `_choose_candidate` is only about 0.900 s. The rank decision itself is therefore no longer the dominant selector cost.
++
++More importantly, REPAIR profiling shows **4,098 additional `_select_and_update` calls** before/around repair, about 5.336 s cumulative, because REPAIR reconstructs essentially the complete selector sparse state from the ordered selection. This is duplicated reconstructible execution work. Proposal scoring itself is much smaller (`_shell_removal_scan` about 0.977 s cumulative and `_best_repair_proposal` about 0.729 s). Per-iteration executor shutdown also contributes about 0.699 s cumulative.
++
++Therefore CAMPAIGN-PERF-QUAL1 does **not** close the CPU optimization program. It opens one exact-equivalence follow-up, `MVSTATE-REUSE1`, to authenticate and hand terminal selector sparse state into REPAIR and to keep reusable repair proposal execution resources alive where appropriate. The sequential selector rank decision, repair objective/tie authority, and full repair trace remain unchanged.
++
++## Replay restart
++
++The supplied 12,000-frame replay corpus retains source-index digest `ce6c678ad556cff63be8ee75754d87cba2b3d08e80f544c5983fe4498dc0c5e1`. A fresh index build takes about 0.411 s, authenticated restart hit about 0.070 s, and monitor-only exact materialization about 2.758 s. Monitor logical digest and ExtXYZ bytes remain exact.
++
++## EVAL2 and Foundation Audit
++
++The current repeated EVAL2 reduction re-runs at about 0.471 s median with exact metric digest `d9dd9db2c2d47e2d6f034e0b58f094c04c516d5a0dc4f0089d3f15762d434658`. The 2,000-replicate paired bootstrap is about 0.0153 s with exact bootstrap digest `9664354fd2d871e67113ff5b9ef28118c9414a59f29a5fd4114acb729590397e`. Foundation Audit is about 0.0540 s median and keeps model-provider call counts exactly [44, 44].
++
++## Memory and restart acceptance
++
++The integrated target chain peaks near 343.5 MiB versus 305.9 MiB in the PERFBASE-era control. The increase reflects retained authenticated sparse execution state and remains far below the qualification cgroup ceiling; no scheduler backpressure or memory-ceiling violation was observed. NEIGHBOR1/MVIDX zero-repeat-geometry and REPLAY-PERF1 authenticated restart contracts remain qualified.
++
++## Decision
++
++**CAMPAIGN-PERF-QUAL1: PASS, FOLLOW-UP REQUIRED.**
++
++The cumulative optimization program has produced a large integrated speedup and preserves exact authority, but the integrated profile exposes a new dominant duplicated state-reconstruction cost. The next gate is **MVSTATE-REUSE1**. Final CPU optimization closure and FINAL-GPU1/PERF-CERT1 remain deferred until that follow-up is qualified.
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/benchmarks/mlff_campaign_perf_qual1_implementation_manifest_0.20.235a0.json /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/benchmarks/mlff_campaign_perf_qual1_implementation_manifest_0.20.235a0.json
+--- /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/benchmarks/mlff_campaign_perf_qual1_implementation_manifest_0.20.235a0.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/benchmarks/mlff_campaign_perf_qual1_implementation_manifest_0.20.235a0.json	2026-08-18 02:01:39.152392912 +0000
+@@ -0,0 +1,28 @@
++{
++  "active_foundation": {
++    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
++    "family": "MACE-MPA-0 medium",
++    "mh1_compatible": true
++  },
++  "architecture_revision": 102,
++  "decision": {
++    "next_gate": "MVSTATE-REUSE1",
++    "reason": "REPAIR reconstructs MVSEL sparse terminal state by replaying selected-order updates; integrated profiling shows this duplicated exact state work dominates the residual target-data chain.",
++    "status": "PASS_FOLLOWUP_REQUIRED"
++  },
++  "evidence": "benchmarks/mlff_campaign_perf_qual1_cloud_cpu_mpa0_2026-08-17.json",
++  "gate": "CAMPAIGN-PERF-QUAL1",
++  "gpu_authority_change": false,
++  "qualified_branches": [
++    "target-data integrated chain",
++    "TARGET-DATA2B supplied-family radius authority",
++    "replay indexed restart",
++    "EVAL2 reduction/bootstrap",
++    "Foundation Audit CPU reduction"
++  ],
++  "release": "0.20.235a0",
++  "report": "benchmarks/mlff_campaign_perf_qual1_cloud_cpu_mpa0_2026-08-17.md",
++  "runtime_code_change": false,
++  "schema": "mdstats.mlff-campaign-perf-qual1-implementation-manifest.v1",
++  "scientific_authority_change": false
++}
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/arch_manuals/mlff_training_data/00_front_matter.md /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/arch_manuals/mlff_training_data/00_front_matter.md
+--- /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/arch_manuals/mlff_training_data/00_front_matter.md	2026-08-18 01:29:04.000000000 +0000
++++ /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/arch_manuals/mlff_training_data/00_front_matter.md	2026-08-18 02:02:32.012385005 +0000
+@@ -1,8 +1,8 @@
+ ---
+ geometry: "margin=0.75in"
+-architecture_revision: 101
+-release: "mdstats 0.20.234a0"
+-status: "current normative architecture; REPLAY-PERF1 complete; CAMPAIGN-PERF-QUAL1 next"
++architecture_revision: 102
++release: "mdstats 0.20.235a0"
++status: "current normative architecture; CAMPAIGN-PERF-QUAL1 complete with follow-up required; MVSTATE-REUSE1 next"
+ last_updated: "2026-08-17"
+ ---
+ 
+@@ -76,6 +76,8 @@
+ 
+ ## Current release boundary
+ 
++Revision 102 completes `CAMPAIGN-PERF-QUAL1` as an integration/measurement gate without changing scientific or runtime algorithm authority. On a common 8,192-candidate/six-family target-data chain, the accumulated CPU optimization sequence reduces end-to-end FEAS1 -> MVIDX1 -> MVSEL1 -> REPAIR1 -> MVQUAL1 wall time from about 27.26 s in the PERFBASE1-era 0.20.225a0 control to a 4-lane median of about 11.95 s (~2.28x) while preserving exact reference, feasibility, sparse-index, selection, repair, and qualification digests. Replay indexed restart and EVAL2/bootstrap reductions reproduce their frozen exact records, and representative memory remains within the declared campaign ceiling. The reprofile also establishes that the dominant cost has shifted: MVSEL exact sparse state mutation and, especially, REPAIR replay of the already-computed selector state now dominate the target-data tail. Because REPAIR reconstructs essentially the complete selected-order state before proposal work, the CPU optimization program is not declared closed. `MVSTATE-REUSE1` is next to authenticate and hand terminal selector sparse state into REPAIR without changing selection or repair authority. Final GPU qualification remains deferred.
++
+ Revision 101 completes `REPLAY-PERF1` without changing REPLAY-UNIFY1 scientific authority. The immutable selected replay ExtXYZ now has a reconstructible source-SHA-bound byte-offset/natoms index under the internal replay cache. Indexed materialization seeks only requested source frames, reuses the authenticated source-order geometry identities instead of recomputing them after every parse, and feeds the existing true-label, pseudo-label, and foundation-prediction paths through deterministic bounded contiguous chunks. ASE parsing itself remains serial because qualification showed Python-threaded ExtXYZ parsing is slower on the available CPU. On the supplied 12,000-frame replay corpus, monitor-only true-label reconstruction improves from about 9.14 s to 3.01 s (~3.03x) with byte-identical output; a full-source parse/identity pass improves from about 7.64 s to 6.42 s (~1.19x), and full train+monitor materialization improves more modestly from about 15.68 s to 14.35 s (~1.09x) because all frames must still be parsed and written. The active qualification checkpoint remains MACE-MPA-0 medium, while the replay index/materialization contract is foundation-model independent and valid for MACE-MH-1. `CAMPAIGN-PERF-QUAL1` is next.
+ 
+ Revision 100 completes `AUDIT-EVAL-PERF1` without changing model inference or GPU numerical authority. EVAL2 now caches immutable species/composition/focus/block indexing metadata per evaluation view, preallocates force-tail storage, and uses a memory-bounded batched paired bootstrap while preserving the deterministic RNG stream and exact persisted metric/bootstrap records on qualification fixtures. FOUNDATION-AUDIT1 now shares its DATA3 frame index and per-run species membership across domains, reuses force-square work, and batches tail quantiles while continuing to consume the already-authenticated DATA6 prediction sweep with zero additional model-provider calls. Same-host paired evidence shows about 1.92x faster repeated EVAL2 target reduction, 3.38x faster 2,000-replicate paired bootstrap, and a smaller ~1.06x foundation-audit CPU reduction on the available no-inference fixture. The active qualification checkpoint remains MACE-MPA-0 medium, while these CPU reducers remain foundation-model independent and valid for MACE-MH-1 campaigns. `REPLAY-PERF1` is next; GPU performance authority remains deferred.
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/arch_manuals/mlff_training_data/60_execution_performance.md /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/arch_manuals/mlff_training_data/60_execution_performance.md
+--- /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/arch_manuals/mlff_training_data/60_execution_performance.md	2026-08-18 01:29:04.000000000 +0000
++++ /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/arch_manuals/mlff_training_data/60_execution_performance.md	2026-08-18 02:02:32.012856391 +0000
+@@ -176,6 +176,16 @@
+ 
+ ASE ExtXYZ parsing remains serial. REPLAY-PERF1 qualification explicitly tested thread-parallel chunk parsing and found it slower on the available CPU, so concurrency is not introduced merely to increase worker count. Future campaign-level parallelism MAY overlap independent higher-level consumers only if a later profile shows a net gain without changing persisted replay bytes or prediction authority.
+ 
++## CAMPAIGN-PERF-QUAL1 integrated reprofile and shifted bottleneck
++
++The revision-102 closure profile validates cumulative behavior instead of inferring campaign speed from isolated kernel benchmarks. On a common 8,192-candidate/six-family target-data chain, untouched `0.20.225a0` completes FEAS1 -> MVIDX1 -> MVSEL1 -> REPAIR1 -> MVQUAL1 in about 27.26 s. The optimized realization through `0.20.234a0` completes the same scientific chain in a four-lane median of about 11.95 s (~2.28x faster) with exact output digests. Current one/two/four-lane wall times are about 12.91/12.07/11.95 s, so additional outer lanes no longer provide material end-to-end scaling on the qualification CPU.
++
++The remaining four-lane wall-time composition is approximately 45% REPAIR1, 41% MVSEL1, 9% FEAS1 plus neighborhood production, 4% MVQUAL1, and less than 1% MVIDX1. Profiling shows the selector rank-choice routine itself is no longer dominant: 4,096 `_choose_candidate` calls consume about 0.90 s cumulative, while 4,096 exact `_select_and_update` calls consume about 5.20 s, including about 4.57 s in ordered paired sparse decrements.
++
++REPAIR1 exposes a stronger exact-reuse opportunity. On the same fixture it executes about 4,098 additional `_select_and_update` calls (about 5.34 s cumulative in the profile) to reconstruct the already-known selector sparse state before and during repair preparation. Proposal work is materially smaller. This reconstruction is not a new scientific decision; it is deterministic state derivable from the MVIDX authority plus the ordered MVSEL selection. `MVSTATE-REUSE1` therefore becomes the next exact-equivalence gate: persist/authenticate enough terminal selector execution state for REPAIR1 to start from that state directly, while retaining the historical replay path as the qualification oracle.
++
++The closure accepts a modest representative peak-RSS increase (about 306 MiB -> 343 MiB) because it is caused by reusable authenticated sparse execution state, remains far below the explicit campaign budget, and produces no observed queue backpressure. Performance evidence never overrides scientific digests.
++
+ ## Progress and observability contract
+ 
+ Every stage expected to run long enough to appear stalled SHALL expose three layers:
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/arch_manuals/mlff_training_data/70_status_and_gates.md /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/arch_manuals/mlff_training_data/70_status_and_gates.md
+--- /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/arch_manuals/mlff_training_data/70_status_and_gates.md	2026-08-18 01:29:04.000000000 +0000
++++ /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/arch_manuals/mlff_training_data/70_status_and_gates.md	2026-08-18 02:02:32.012573223 +0000
+@@ -123,11 +123,23 @@
+ 
+ **Next gate.** `CAMPAIGN-PERF-QUAL1`.
+ 
+-### Gate CAMPAIGN-PERF-QUAL1 - end-to-end optimization closure
++### Gate CAMPAIGN-PERF-QUAL1 - end-to-end optimization closure - COMPLETE
+ 
+-**Purpose.** Reprofile after the preceding changes, because the dominant hotspot will have shifted.
++**Purpose.** Reprofile the accumulated CPU optimization program as an integrated campaign rather than summing isolated microbenchmarks, while preserving all scientific and GPU numerical authority.
+ 
+-**Acceptance.** Whole-campaign exact scientific outputs, restart behavior, memory ceiling, and scaling are qualified. A final optimization review decides whether any new hotspot warrants another exact-equivalence gate before final GPU qualification.
++**Implementation.** `0.20.235a0` is a measurement/documentation release: runtime scientific algorithms are unchanged from `0.20.234a0`. The closure runs a common 8,192-candidate/six-family FEAS1 -> NEIGHBOR1 -> MVIDX1 -> MVSEL1 -> REPAIR1 -> MVQUAL1 chain against an untouched `0.20.225a0` PERFBASE1-era control, rechecks the supplied 12,000-frame replay restart path, and reproduces EVAL2/bootstrap and Foundation Audit CPU records. Exact output digests, restart/cache identities, worker scaling, process CPU, and peak RSS are recorded in `benchmarks/mlff_campaign_perf_qual1_cloud_cpu_mpa0_2026-08-17.json`.
++
++**Acceptance. PASS, FOLLOW-UP REQUIRED.** The integrated target-data chain improves from about 27.26 s to a four-lane median of about 11.95 s (~2.28x) with exact FEAS1/MVIDX1/MVSEL1/REPAIR1/MVQUAL1 scientific digests. The current one/two/four-lane chain is about 12.91/12.07/11.95 s, showing that the remaining tail is no longer parallel-starved. Peak RSS rises from about 306 MiB to about 343 MiB because authenticated sparse execution state is retained, but remains far below the campaign memory ceiling with no observed backpressure. Replay monitor reconstruction reproduces exact bytes with an authenticated index hit near 0.07 s; EVAL2 and paired-bootstrap closure reruns reproduce their frozen digests. Reprofiling shows MVSEL exact sparse state mutation consumes most selector time, while REPAIR performs approximately 4,098 additional `_select_and_update` calls to reconstruct the already-computed selected-order state and spends several seconds on that replay before/around proposal scoring. This is duplicated reconstructible execution work, so total CPU optimization closure is deferred one targeted gate.
++
++**Next gate.** `MVSTATE-REUSE1`.
++
++### Gate MVSTATE-REUSE1 - selector-to-repair sparse-state reuse - PLANNED
++
++**Purpose.** Eliminate REPAIR1 replay of the MVSEL1 terminal sparse state while preserving every selector rank decision, target rung, repair objective/tie decision, accepted/rejected swap, and MVQUAL scientific record.
++
++**Planned realization.** MVSEL1 emits an authenticated reconstructible terminal selection-state cache bound to MVIDX authority, ordered master-selection digest, selector policy, and sparse-kernel schema. REPAIR1 authenticates and consumes that state instead of replaying thousands of exact sparse updates; cache miss/corruption falls back to the existing replay oracle. Smaller repair rungs may use exact inverse/deselection state transforms or authenticated checkpoints if every state array is proven equivalent. A repair proposal executor may also be retained across iterations if profiling confirms a gain. Worker count, cache location, checkpoint frequency, and executor lifetime remain execution state.
++
++**Acceptance.** Compare the complete selector state required by repair, the entire accepted/rejected repair trace, terminal order, MVQUAL plan, cold-rebuild and restart paths, memory overhead, and integrated target-chain wall time. Scientific identity must remain exact.
+ 
+ ## Explicit non-goals
+ 
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/arch_manuals/mlff_training_data_architecture.md /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/arch_manuals/mlff_training_data_architecture.md
+--- /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-18 01:30:56.000000000 +0000
++++ /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-18 02:05:56.832348798 +0000
+@@ -1,8 +1,8 @@
+ ---
+ geometry: "margin=0.75in"
+-architecture_revision: 101
+-release: "mdstats 0.20.234a0"
+-status: "current normative architecture; REPLAY-PERF1 complete; CAMPAIGN-PERF-QUAL1 next"
++architecture_revision: 102
++release: "mdstats 0.20.235a0"
++status: "current normative architecture; CAMPAIGN-PERF-QUAL1 complete with follow-up required; MVSTATE-REUSE1 next"
+ last_updated: "2026-08-17"
+ ---
+ 
+@@ -76,6 +76,8 @@
+ 
+ ## Current release boundary
+ 
++Revision 102 completes `CAMPAIGN-PERF-QUAL1` as an integration/measurement gate without changing scientific or runtime algorithm authority. On a common 8,192-candidate/six-family target-data chain, the accumulated CPU optimization sequence reduces end-to-end FEAS1 -> MVIDX1 -> MVSEL1 -> REPAIR1 -> MVQUAL1 wall time from about 27.26 s in the PERFBASE1-era 0.20.225a0 control to a 4-lane median of about 11.95 s (~2.28x) while preserving exact reference, feasibility, sparse-index, selection, repair, and qualification digests. Replay indexed restart and EVAL2/bootstrap reductions reproduce their frozen exact records, and representative memory remains within the declared campaign ceiling. The reprofile also establishes that the dominant cost has shifted: MVSEL exact sparse state mutation and, especially, REPAIR replay of the already-computed selector state now dominate the target-data tail. Because REPAIR reconstructs essentially the complete selected-order state before proposal work, the CPU optimization program is not declared closed. `MVSTATE-REUSE1` is next to authenticate and hand terminal selector sparse state into REPAIR without changing selection or repair authority. Final GPU qualification remains deferred.
++
+ Revision 101 completes `REPLAY-PERF1` without changing REPLAY-UNIFY1 scientific authority. The immutable selected replay ExtXYZ now has a reconstructible source-SHA-bound byte-offset/natoms index under the internal replay cache. Indexed materialization seeks only requested source frames, reuses the authenticated source-order geometry identities instead of recomputing them after every parse, and feeds the existing true-label, pseudo-label, and foundation-prediction paths through deterministic bounded contiguous chunks. ASE parsing itself remains serial because qualification showed Python-threaded ExtXYZ parsing is slower on the available CPU. On the supplied 12,000-frame replay corpus, monitor-only true-label reconstruction improves from about 9.14 s to 3.01 s (~3.03x) with byte-identical output; a full-source parse/identity pass improves from about 7.64 s to 6.42 s (~1.19x), and full train+monitor materialization improves more modestly from about 15.68 s to 14.35 s (~1.09x) because all frames must still be parsed and written. The active qualification checkpoint remains MACE-MPA-0 medium, while the replay index/materialization contract is foundation-model independent and valid for MACE-MH-1. `CAMPAIGN-PERF-QUAL1` is next.
+ 
+ Revision 100 completes `AUDIT-EVAL-PERF1` without changing model inference or GPU numerical authority. EVAL2 now caches immutable species/composition/focus/block indexing metadata per evaluation view, preallocates force-tail storage, and uses a memory-bounded batched paired bootstrap while preserving the deterministic RNG stream and exact persisted metric/bootstrap records on qualification fixtures. FOUNDATION-AUDIT1 now shares its DATA3 frame index and per-run species membership across domains, reuses force-square work, and batches tail quantiles while continuing to consume the already-authenticated DATA6 prediction sweep with zero additional model-provider calls. Same-host paired evidence shows about 1.92x faster repeated EVAL2 target reduction, 3.38x faster 2,000-replicate paired bootstrap, and a smaller ~1.06x foundation-audit CPU reduction on the available no-inference fixture. The active qualification checkpoint remains MACE-MPA-0 medium, while these CPU reducers remain foundation-model independent and valid for MACE-MH-1 campaigns. `REPLAY-PERF1` is next; GPU performance authority remains deferred.
+@@ -2589,6 +2591,16 @@
+ 
+ ASE ExtXYZ parsing remains serial. REPLAY-PERF1 qualification explicitly tested thread-parallel chunk parsing and found it slower on the available CPU, so concurrency is not introduced merely to increase worker count. Future campaign-level parallelism MAY overlap independent higher-level consumers only if a later profile shows a net gain without changing persisted replay bytes or prediction authority.
+ 
++## CAMPAIGN-PERF-QUAL1 integrated reprofile and shifted bottleneck
++
++The revision-102 closure profile validates cumulative behavior instead of inferring campaign speed from isolated kernel benchmarks. On a common 8,192-candidate/six-family target-data chain, untouched `0.20.225a0` completes FEAS1 -> MVIDX1 -> MVSEL1 -> REPAIR1 -> MVQUAL1 in about 27.26 s. The optimized realization through `0.20.234a0` completes the same scientific chain in a four-lane median of about 11.95 s (~2.28x faster) with exact output digests. Current one/two/four-lane wall times are about 12.91/12.07/11.95 s, so additional outer lanes no longer provide material end-to-end scaling on the qualification CPU.
++
++The remaining four-lane wall-time composition is approximately 45% REPAIR1, 41% MVSEL1, 9% FEAS1 plus neighborhood production, 4% MVQUAL1, and less than 1% MVIDX1. Profiling shows the selector rank-choice routine itself is no longer dominant: 4,096 `_choose_candidate` calls consume about 0.90 s cumulative, while 4,096 exact `_select_and_update` calls consume about 5.20 s, including about 4.57 s in ordered paired sparse decrements.
++
++REPAIR1 exposes a stronger exact-reuse opportunity. On the same fixture it executes about 4,098 additional `_select_and_update` calls (about 5.34 s cumulative in the profile) to reconstruct the already-known selector sparse state before and during repair preparation. Proposal work is materially smaller. This reconstruction is not a new scientific decision; it is deterministic state derivable from the MVIDX authority plus the ordered MVSEL selection. `MVSTATE-REUSE1` therefore becomes the next exact-equivalence gate: persist/authenticate enough terminal selector execution state for REPAIR1 to start from that state directly, while retaining the historical replay path as the qualification oracle.
++
++The closure accepts a modest representative peak-RSS increase (about 306 MiB -> 343 MiB) because it is caused by reusable authenticated sparse execution state, remains far below the explicit campaign budget, and produces no observed queue backpressure. Performance evidence never overrides scientific digests.
++
+ ## Progress and observability contract
+ 
+ Every stage expected to run long enough to appear stalled SHALL expose three layers:
+@@ -2758,11 +2770,23 @@
+ 
+ **Next gate.** `CAMPAIGN-PERF-QUAL1`.
+ 
+-### Gate CAMPAIGN-PERF-QUAL1 - end-to-end optimization closure
++### Gate CAMPAIGN-PERF-QUAL1 - end-to-end optimization closure - COMPLETE
++
++**Purpose.** Reprofile the accumulated CPU optimization program as an integrated campaign rather than summing isolated microbenchmarks, while preserving all scientific and GPU numerical authority.
++
++**Implementation.** `0.20.235a0` is a measurement/documentation release: runtime scientific algorithms are unchanged from `0.20.234a0`. The closure runs a common 8,192-candidate/six-family FEAS1 -> NEIGHBOR1 -> MVIDX1 -> MVSEL1 -> REPAIR1 -> MVQUAL1 chain against an untouched `0.20.225a0` PERFBASE1-era control, rechecks the supplied 12,000-frame replay restart path, and reproduces EVAL2/bootstrap and Foundation Audit CPU records. Exact output digests, restart/cache identities, worker scaling, process CPU, and peak RSS are recorded in `benchmarks/mlff_campaign_perf_qual1_cloud_cpu_mpa0_2026-08-17.json`.
++
++**Acceptance. PASS, FOLLOW-UP REQUIRED.** The integrated target-data chain improves from about 27.26 s to a four-lane median of about 11.95 s (~2.28x) with exact FEAS1/MVIDX1/MVSEL1/REPAIR1/MVQUAL1 scientific digests. The current one/two/four-lane chain is about 12.91/12.07/11.95 s, showing that the remaining tail is no longer parallel-starved. Peak RSS rises from about 306 MiB to about 343 MiB because authenticated sparse execution state is retained, but remains far below the campaign memory ceiling with no observed backpressure. Replay monitor reconstruction reproduces exact bytes with an authenticated index hit near 0.07 s; EVAL2 and paired-bootstrap closure reruns reproduce their frozen digests. Reprofiling shows MVSEL exact sparse state mutation consumes most selector time, while REPAIR performs approximately 4,098 additional `_select_and_update` calls to reconstruct the already-computed selected-order state and spends several seconds on that replay before/around proposal scoring. This is duplicated reconstructible execution work, so total CPU optimization closure is deferred one targeted gate.
++
++**Next gate.** `MVSTATE-REUSE1`.
++
++### Gate MVSTATE-REUSE1 - selector-to-repair sparse-state reuse - PLANNED
++
++**Purpose.** Eliminate REPAIR1 replay of the MVSEL1 terminal sparse state while preserving every selector rank decision, target rung, repair objective/tie decision, accepted/rejected swap, and MVQUAL scientific record.
+ 
+-**Purpose.** Reprofile after the preceding changes, because the dominant hotspot will have shifted.
++**Planned realization.** MVSEL1 emits an authenticated reconstructible terminal selection-state cache bound to MVIDX authority, ordered master-selection digest, selector policy, and sparse-kernel schema. REPAIR1 authenticates and consumes that state instead of replaying thousands of exact sparse updates; cache miss/corruption falls back to the existing replay oracle. Smaller repair rungs may use exact inverse/deselection state transforms or authenticated checkpoints if every state array is proven equivalent. A repair proposal executor may also be retained across iterations if profiling confirms a gain. Worker count, cache location, checkpoint frequency, and executor lifetime remain execution state.
+ 
+-**Acceptance.** Whole-campaign exact scientific outputs, restart behavior, memory ceiling, and scaling are qualified. A final optimization review decides whether any new hotspot warrants another exact-equivalence gate before final GPU qualification.
++**Acceptance.** Compare the complete selector state required by repair, the entire accepted/rejected repair trace, terminal order, MVQUAL plan, cold-rebuild and restart paths, memory overhead, and integrated target-chain wall time. Scientific identity must remain exact.
+ 
+ ## Explicit non-goals
+ 
+Binary files /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/arch_manuals/mlff_training_data_architecture.pdf and /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/arch_manuals/mlff_training_data_architecture.pdf differ
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/arch_manuals/mlff_training_data_dependency_graph.json /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/arch_manuals/mlff_training_data_dependency_graph.json
+--- /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-18 01:29:04.000000000 +0000
++++ /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-18 02:02:32.018279106 +0000
+@@ -1,8 +1,8 @@
+ {
+-  "architecture_revision": 101,
++  "architecture_revision": 102,
+   "branch": "MLFF-DATA",
+-  "description": "MLFF training-data dependency graph through architecture revision 101. REPLAY-PERF1 adds exact source-bound replay indexing and indexed materialization without changing REPLAY-UNIFY1 scientific authority; CAMPAIGN-PERF-QUAL1 is next.",
+-  "documentation_gate": "REPLAY_PERF1_INDEX_CACHE",
++  "description": "MLFF training-data dependency graph through architecture revision 102. CAMPAIGN-PERF-QUAL1 qualifies the accumulated CPU optimization chain under exact scientific equivalence and opens MVSTATE-REUSE1 because integrated profiling identifies duplicated MVSEL-to-REPAIR sparse-state reconstruction as the new dominant exact-reuse opportunity.",
++  "documentation_gate": "CAMPAIGN_PERF_QUAL1_CLOSURE",
+   "edge_type_definitions": {
+     "execution_requires": "The upstream product must exist before execution.",
+     "fit_domain_requires": "The fitted object may inspect only the declared training domain.",
+@@ -3030,6 +3030,11 @@
+       "from": "REPLAY_PERF1_INDEX_CACHE",
+       "to": "CAMPAIGN_PERF_QUAL1_CLOSURE",
+       "type": "implementation_requires"
++    },
++    {
++      "from": "CAMPAIGN_PERF_QUAL1_CLOSURE",
++      "to": "MVSTATE_REUSE1_SELECTOR_REPAIR_HANDOFF",
++      "type": "implementation_requires"
+     }
+   ],
+   "forbidden_dependencies": [
+@@ -3201,7 +3206,7 @@
+       ]
+     }
+   ],
+-  "next_gate": "CAMPAIGN_PERF_QUAL1_CLOSURE",
++  "next_gate": "MVSTATE_REUSE1_SELECTOR_REPAIR_HANDOFF",
+   "nodes": [
+     {
+       "id": "ACQUISITION_DECISIONS"
+@@ -5481,13 +5486,35 @@
+       "next_gate": "CAMPAIGN_PERF_QUAL1_CLOSURE"
+     },
+     {
+-      "architecture_revision": 101,
+-      "authority_class": "planned_performance_qualification",
++      "architecture_revision": 102,
++      "authority_class": "performance_integration_exact_equivalence",
+       "gate_name": "CAMPAIGN-PERF-QUAL1",
+       "id": "CAMPAIGN_PERF_QUAL1_CLOSURE",
++      "implementation_status": "implemented_pass_followup_required",
++      "implemented_release": "0.20.235a0",
++      "scientific_authority_change": false,
++      "runtime_algorithm_change": false,
++      "gpu_authority_change": false,
++      "target_chain_speedup_approx": 2.28,
++      "target_chain_exact_scientific_outputs": true,
++      "restart_behavior_qualified": true,
++      "memory_ceiling_qualified": true,
++      "scaling_qualified": true,
++      "optimization_program_closed": false,
++      "shifted_hotspot": "MVSEL exact sparse state mutation plus REPAIR duplicate selected-state replay",
++      "next_gate": "MVSTATE_REUSE1_SELECTOR_REPAIR_HANDOFF"
++    },
++    {
++      "architecture_revision": 102,
++      "authority_class": "planned_performance_exact_equivalence",
++      "gate_name": "MVSTATE-REUSE1",
++      "id": "MVSTATE_REUSE1_SELECTOR_REPAIR_HANDOFF",
+       "implementation_status": "planned",
+-      "scientific_authority_change": false
++      "scientific_authority_change": false,
++      "selector_rank_authority_change": false,
++      "repair_objective_authority_change": false,
++      "purpose": "authenticate and reuse MVSEL terminal sparse execution state in REPAIR instead of replaying the selected order"
+     }
+   ],
+-  "schema_version": 81
++  "schema_version": 82
+ }
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV102.md /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV102.md
+--- /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV102.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV102.md	2026-08-18 02:02:32.018530318 +0000
+@@ -0,0 +1,12 @@
++# MLFF architecture revision 102 - CAMPAIGN-PERF-QUAL1
++
++Release: mdstats 0.20.235a0  
++Date: 2026-08-17
++
++CAMPAIGN-PERF-QUAL1 qualifies the accumulated CPU optimization program as an integrated exact-equivalence chain. It is a measurement/documentation release and does not change scientific algorithms or GPU numerical authority.
++
++On the common 8,192-candidate/six-family target-data closure fixture, the PERFBASE1-era 0.20.225a0 control completes the FEAS1 -> MVIDX1 -> MVSEL1 -> REPAIR1 -> MVQUAL1 chain in about 27.26 s. The optimized realization through 0.20.234a0 completes it in a four-lane median of about 11.95 s (~2.28x) with exact reference, feasibility, sparse-index, selection, repair, and qualification digests. Replay restart and EVAL2/bootstrap records also reproduce exactly, and representative memory remains within the campaign ceiling.
++
++The reprofile changes the forward optimization plan. MVSEL rank choice is no longer the dominant selector cost; exact sparse state mutation is. More importantly, REPAIR reconstructs essentially the complete selected-order state by replaying thousands of MVSEL updates, duplicating state that already existed at the selector boundary. The architecture therefore does not falsely declare CPU optimization complete.
++
++Next gate: MVSTATE-REUSE1, an exact selector-to-repair sparse-state handoff with the old replay path retained as oracle. Final GPU qualification remains deferred.
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/history/mlff/architecture_revisions/INDEX.md /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/history/mlff/architecture_revisions/INDEX.md
+--- /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/history/mlff/architecture_revisions/INDEX.md	2026-08-18 01:30:03.000000000 +0000
++++ /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/history/mlff/architecture_revisions/INDEX.md	2026-08-18 02:02:32.018708366 +0000
+@@ -83,3 +83,4 @@
+ | 99 | MVQUAL-PAR1 / mdstats 0.20.232a0 | [MLFF architecture revision 99 - MVQUAL-PAR1](ARCHITECTURE_NOTES_MLFF_REV99.md) | - |
+ | 100 | AUDIT-EVAL-PERF1 / mdstats 0.20.233a0 | [MLFF architecture revision 100 - AUDIT-EVAL-PERF1](ARCHITECTURE_NOTES_MLFF_REV100.md) | - |
+ | 101 | REPLAY-PERF1 / mdstats 0.20.234a0 | [MLFF architecture revision 101 - REPLAY-PERF1](ARCHITECTURE_NOTES_MLFF_REV101.md) | - |
++| 102 | CAMPAIGN-PERF-QUAL1 / mdstats 0.20.235a0 | [MLFF architecture revision 102 - CAMPAIGN-PERF-QUAL1](ARCHITECTURE_NOTES_MLFF_REV102.md) | - |
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/history/mlff/release_notes/INDEX.md /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/history/mlff/release_notes/INDEX.md
+--- /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/history/mlff/release_notes/INDEX.md	2026-08-18 01:30:03.000000000 +0000
++++ /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/history/mlff/release_notes/INDEX.md	2026-08-18 02:02:32.018810347 +0000
+@@ -175,3 +175,4 @@
+ | `0.20.232a0` | [PATCH_NOTES_0.20.232a0.md](PATCH_NOTES_0.20.232a0.md) | - |
+ | `0.20.233a0` | [PATCH_NOTES_0.20.233a0.md](PATCH_NOTES_0.20.233a0.md) | - |
+ | `0.20.234a0` | [PATCH_NOTES_0.20.234a0.md](PATCH_NOTES_0.20.234a0.md) | - |
++| `0.20.235a0` | [PATCH_NOTES_0.20.235a0.md](PATCH_NOTES_0.20.235a0.md) | - |
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.235a0.md /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.235a0.md
+--- /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.235a0.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.235a0.md	2026-08-18 02:02:32.018591132 +0000
+@@ -0,0 +1,9 @@
++# mdstats 0.20.235a0 - CAMPAIGN-PERF-QUAL1
++
++- Close the integration/measurement CAMPAIGN-PERF-QUAL1 gate without changing runtime scientific algorithms.
++- Run a common end-to-end target-data chain against an untouched PERFBASE1-era 0.20.225a0 control; preserve exact FEAS/MVIDX/MVSEL/REPAIR/MVQUAL outputs while reducing wall time from about 27.26 s to about 11.95 s at four lanes (~2.28x).
++- Recheck authenticated replay restart, EVAL2/bootstrap, Foundation Audit, worker scaling, and representative memory behavior.
++- Identify the shifted dominant CPU cost: exact MVSEL sparse state mutation and REPAIR replay of that already-computed selector state.
++- Keep the CPU optimization program open for one targeted exact-equivalence follow-up, MVSTATE-REUSE1, instead of falsely declaring closure.
++- Preserve active MACE-MPA-0 medium qualification and the same model-generic execution contracts for MACE-MH-1.
++- Final GPU qualification remains deferred.
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/specs/training_data/mlff_campaign_perf_qual1_closure_spec.md /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/specs/training_data/mlff_campaign_perf_qual1_closure_spec.md
+--- /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/specs/training_data/mlff_campaign_perf_qual1_closure_spec.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/specs/training_data/mlff_campaign_perf_qual1_closure_spec.md	2026-08-18 02:01:39.152457653 +0000
+@@ -0,0 +1,46 @@
++# CAMPAIGN-PERF-QUAL1 end-to-end optimization closure specification
++
++## Status
++
++Implemented in mdstats 0.20.235a0 / MLFF architecture revision 102. The gate passes integrated qualification but opens one targeted exact-equivalence follow-up, `MVSTATE-REUSE1`; therefore the complete CPU optimization program is not yet closed.
++
++## Authority boundary
++
++CAMPAIGN-PERF-QUAL1 is a measurement/integration gate. It MUST NOT change scientific algorithms, target-data authority, replay source/split/label authority, model predictions, checkpoint selection, or GPU numerical authority. Performance telemetry, profiling, worker schedules, and the decision to open a later exact-equivalence gate are execution/documentation state.
++
++The active CPU qualification uses the supplied MACE-MPA-0 medium checkpoint identity. The closure record is foundation-model generic and MUST remain valid for the supported MACE-MH-1 path because no foundation inference semantics are changed by this gate.
++
++## Integrated target-data qualification
++
++The canonical closure fixture contains 8,192 candidates, six exact neighborhood families, a 4,096-frame master selection, two repair swaps, and one same-N qualification domain. The actual chain is FEAS1 -> NEIGHBOR1 -> MVIDX1 -> MVSEL1 -> REPAIR1 -> MVQUAL1.
++
++An untouched 0.20.225a0 PERFBASE1-era source tree is the chain control. Current execution uses the complete optimization sequence through 0.20.234a0. Exact reference, role, feasibility, sparse-index, selection, repair, and qualification digests MUST match. The current realization MAY additionally persist the NEIGHBOR1 execution-cache digest.
++
++The qualification evidence records approximately 27.255 s for the completed control and a 4-lane current median of approximately 11.948 s, about 2.28x faster end-to-end. Timing is execution evidence only.
++
++## Restart and memory qualification
++
++The closure MUST retain:
++
++- authenticated NEIGHBOR1 reuse with no second MVIDX geometry sweep;
++- exact replay source-index restart reuse and exact monitor reconstruction;
++- no scientific identity dependence on worker count or cache location;
++- bounded resource admission under explicit campaign scopes.
++
++The representative target chain peaks at roughly 343 MiB RSS at four lanes versus roughly 306 MiB for the old control. This retained-state increase is accepted because it remains comfortably below the qualification memory ceiling and no backpressure/memory-ceiling violation occurs.
++
++## Reprofile decision
++
++The gate MUST profile the new dominant target-data tail instead of assuming the previous gate order remains representative. The revision-102 profile establishes:
++
++- MVSEL rank choice is not the primary residual selector cost; exact sparse `_select_and_update` state mutation dominates it.
++- REPAIR repeats essentially the complete selected-order sparse state construction, producing 4,098 additional `_select_and_update` calls on the closure fixture and consuming several seconds before/around proposal scoring.
++- This repeated state reconstruction is reconstructible execution work rather than a scientific decision.
++
++Therefore the optimization program MUST remain open for `MVSTATE-REUSE1`.
++
++## Acceptance
++
++CAMPAIGN-PERF-QUAL1 passes when integrated scientific digests, restart behavior, memory ceiling, and worker scaling are qualified. Its final state is `PASS_FOLLOWUP_REQUIRED`, not a false claim of total optimization closure.
++
++Next gate: `MVSTATE-REUSE1`.
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/specs/training_data/mlff_mvstate_reuse1_selector_repair_handoff_spec.md /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/specs/training_data/mlff_mvstate_reuse1_selector_repair_handoff_spec.md
+--- /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/specs/training_data/mlff_mvstate_reuse1_selector_repair_handoff_spec.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/specs/training_data/mlff_mvstate_reuse1_selector_repair_handoff_spec.md	2026-08-18 02:01:39.152502020 +0000
+@@ -0,0 +1,31 @@
++# MVSTATE-REUSE1 selector-to-repair state handoff specification
++
++## Status
++
++Planned after CAMPAIGN-PERF-QUAL1 / architecture revision 102.
++
++## Purpose
++
++Remove duplicated exact sparse-state reconstruction between MVSEL1 and REPAIR1 without changing selector rank authority, target sizes, repair objective/tie semantics, accepted/rejected swaps, or final qualification authority.
++
++## Required realization
++
++MVSEL1 SHALL be able to emit an authenticated reconstructible `TargetMultiViewSelectionStateCache` (name may be refined during implementation) that contains enough terminal sparse execution state for REPAIR1 to begin from the exact selected master order without replaying thousands of `_select_and_update` operations. Its identity MUST bind the MVIDX authority, ordered selection/master-order digest, selector policy identity, and sparse-kernel schema, while excluding worker count, queue depth, storage location, and other execution knobs.
++
++REPAIR1 SHALL authenticate the state cache before use. Missing, stale, incompatible, or corrupt cache state MUST rebuild through the existing exact selector-state replay rather than silently weaken authority. The old replay path remains an exact oracle for qualification.
++
++For smaller repair rungs derived from the master order, the implementation MAY use exact inverse/deselection updates or cached checkpoints if byte/state equivalence is proven after every required rung. It MUST NOT alter rank decisions or repair inputs.
++
++A repair proposal executor MAY be retained/reused across iterations if profiling confirms a gain; task completion order remains non-authoritative and winner reduction remains canonical.
++
++## Acceptance
++
++Qualification MUST compare:
++
++- every selector state array required by repair, not only final selected IDs;
++- every accepted/rejected repair swap and terminal order;
++- MVQUAL plan/digest after repair;
++- cold rebuild and authenticated restart paths;
++- memory overhead and cumulative target-chain wall time.
++
++The gate is successful only if state handoff removes material duplicated work on the integrated closure fixture without changing any scientific record.
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/mdstats/_version.py /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/mdstats/_version.py
+--- /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/mdstats/_version.py	2026-08-18 01:29:04.000000000 +0000
++++ /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/mdstats/_version.py	2026-08-18 02:02:32.011578655 +0000
+@@ -1 +1 @@
+-__version__ = "0.20.234a0"
++__version__ = "0.20.235a0"
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/pyproject.toml /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/pyproject.toml
+--- /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/pyproject.toml	2026-08-18 01:29:04.000000000 +0000
++++ /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/pyproject.toml	2026-08-18 02:02:32.011984325 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.234a0"
++version = "0.20.235a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/release/SOURCE_PATCH_0.20.234a0_to_0.20.235a0.patch /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/release/SOURCE_PATCH_0.20.234a0_to_0.20.235a0.patch
+--- /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/release/SOURCE_PATCH_0.20.234a0_to_0.20.235a0.patch	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/release/SOURCE_PATCH_0.20.234a0_to_0.20.235a0.patch	2026-08-18 02:09:20.562433685 +0000
+@@ -0,0 +1,812 @@
++diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/CHANGELOG.md /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/CHANGELOG.md
++--- /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/CHANGELOG.md	2026-08-18 01:29:04.000000000 +0000
+++++ /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/CHANGELOG.md	2026-08-18 02:02:32.022433685 +0000
++@@ -1,3 +1,12 @@
+++## 0.20.235a0 - 2026-08-17
+++
+++- Complete CAMPAIGN-PERF-QUAL1 / architecture revision 102 as the integrated exact-equivalence CPU optimization closure review; runtime scientific algorithms remain unchanged from 0.20.234a0.
+++- On a common 8,192-candidate/six-family target-data chain, preserve exact FEAS1/MVIDX1/MVSEL1/REPAIR1/MVQUAL1 authority while reducing wall time from about 27.26 s in the PERFBASE1-era 0.20.225a0 control to about 11.95 s at four lanes (~2.28x).
+++- Requalify replay indexed restart, EVAL2/bootstrap, Foundation Audit, worker scaling, and representative memory behavior.
+++- Reprofile the shifted target-data tail and identify duplicated MVSEL sparse-state reconstruction inside REPAIR as the dominant exact-reuse opportunity.
+++- Keep the CPU optimization program open for MVSTATE-REUSE1 rather than falsely declaring total closure; final GPU qualification remains deferred.
+++- Keep active qualification on supplied MACE-MPA-0 medium while preserving model-generic MACE-MH-1 compatibility.
+++
++ ## 0.20.234a0 - 2026-08-17
++ 
++ - Implement REPLAY-PERF1 / architecture revision 101 as exact replay-source indexing and indexed materialization over the unified immutable replay corpus.
++diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/PKG-INFO /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/PKG-INFO
++--- /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/PKG-INFO	2026-08-18 01:29:04.000000000 +0000
+++++ /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/PKG-INFO	2026-08-18 02:02:32.012211435 +0000
++@@ -1,6 +1,6 @@
++ Metadata-Version: 2.4
++ Name: mdstats
++-Version: 0.20.234a0
+++Version: 0.20.235a0
++ Summary: Transparent atomistic frame collections and structural/dynamical statistics
++ Requires-Python: >=3.10
++ Requires-Dist: numpy>=1.26
++diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/benchmarks/benchmark_mlff_campaign_perf_qual1.py /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/benchmarks/benchmark_mlff_campaign_perf_qual1.py
++--- /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/benchmarks/benchmark_mlff_campaign_perf_qual1.py	1970-01-01 00:00:00.000000000 +0000
+++++ /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/benchmarks/benchmark_mlff_campaign_perf_qual1.py	2026-08-18 02:08:19.849026151 +0000
++@@ -0,0 +1,129 @@
+++"""Reproduce the CAMPAIGN-PERF-QUAL1 integrated target-data CPU fixture.
+++
+++Usage:
+++    python benchmark_mlff_campaign_perf_qual1.py MODE SOURCE_ROOT [WORKERS]
+++
+++MODE is an evidence label (for example ``control`` or ``current``). SOURCE_ROOT
+++must be the mdstats source tree to benchmark. The script writes one JSON record
+++to stdout and deliberately excludes model inference/GPU work.
+++"""
+++from __future__ import annotations
+++from dataclasses import dataclass
+++import hashlib, json, os, resource, statistics, sys, time
+++from pathlib import Path
+++
+++mode=sys.argv[1]
+++root=Path(sys.argv[2]).resolve()
+++workers=int(sys.argv[3]) if len(sys.argv)>3 else 4
+++# ensure source tree + benchmark helper
+++sys.path.insert(0,str(root))
+++sys.path.insert(0,str(root/'benchmarks'))
+++import mdstats
+++import benchmark_mlff_perfbase1 as pb
+++
+++@dataclass
+++class Rung:
+++    target_size:int
+++    frame_uids:tuple[str,...]
+++    materializable:bool=True
+++@dataclass
+++class Dom:
+++    label_domain_id:str
+++    content_digest:str
+++    rungs:tuple
+++@dataclass
+++class Legacy:
+++    dataset_id:str
+++    target_coverage_reference_digest:str
+++    content_digest:str
+++    dom:Dom
+++    def domain(self,label):
+++        if label!=self.dom.label_domain_id: raise KeyError(label)
+++        return self.dom
+++
+++reference, role = pb._synthetic_reference(n=8192, family_count=6)
+++sizes=(128,256,512,1024,2048,4096)
+++policy=mdstats.TargetMultiViewSelectorPolicy(target_sizes=sizes)
+++
+++# Freeze reference identity separately from timed chain.
+++ref_digest=reference.content_digest
+++role_digest=role.content_digest
+++
+++stages=[]
+++def run(name,fn):
+++    rss0=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+++    c0=time.process_time(); t0=time.perf_counter()
+++    obj=fn()
+++    wall=time.perf_counter()-t0; cpu=time.process_time()-c0
+++    rss1=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+++    stages.append({'name':name,'wall_seconds':wall,'cpu_seconds':cpu,'maxrss_kib':rss1,'rss_peak_delta_kib':max(0,rss1-rss0)})
+++    return obj
+++
+++if hasattr(mdstats,'StageResourceScope'):
+++    av=max(workers,4)
+++    def scope(name,w=workers):
+++        return mdstats.StageResourceScope(stage_name=name,cpu_threads_available=av,cpu_threads_budget=w,python_workers=w,structural_workers=1,tree_workers=1,blas_threads=1,pytorch_cpu_workers=1,ram_budget_bytes=None)
+++else:
+++    scope=None
+++
+++# FEAS + exact neighborhoods (current) or FEAS alone (baseline).
+++if hasattr(mdstats,'build_target_coverage_feasibility_artifacts'):
+++    def do_feas():
+++        return mdstats.build_target_coverage_feasibility_artifacts(reference,role,query_workers=1,query_block_size=512,block_workers=workers,resource_scope=scope('closure-feas'))
+++    feasibility, neighborhoods = run('feas_neighbor', do_feas)
+++else:
+++    feasibility = run('feas_neighbor', lambda: mdstats.build_target_coverage_feasibility_report(reference,role,query_workers=1,query_block_size=512,block_workers=workers))
+++    neighborhoods=None
+++
+++# MVIDX, reusing exact graph when API supports it.
+++def do_mvidx():
+++    kwargs=dict(query_workers=1 if neighborhoods is not None else workers,query_block_size=512)
+++    if neighborhoods is not None:
+++        kwargs.update(exact_neighborhood_store=neighborhoods,global_workers=workers,resource_scope=scope('closure-mvidx'))
+++    return mdstats.build_target_coverage_sparse_index(reference,role,feasibility,**kwargs)
+++index=run('mvidx',do_mvidx)
+++selection=run('mvsel',lambda:mdstats.build_target_multi_view_selection_plan(reference,index,policy=policy,execution_mode='optimized'))
+++
+++# Repair exact optimized path; current may parallelize immutable proposals.
+++def do_repair():
+++    kwargs={'execution_mode':'optimized'}
+++    if 'proposal_workers' in __import__('inspect').signature(mdstats.build_target_multi_view_repair_plan).parameters:
+++        kwargs.update(proposal_workers=workers,resource_scope=scope('closure-repair'))
+++    return mdstats.build_target_multi_view_repair_plan(reference,index,selection,**kwargs)
+++repair=run('repair',do_repair)
+++
+++# Legacy ladder uses the same natural prefix to create the same-N comparison set.
+++d=reference.domain('target'); u=d.frame_uids
+++legacy=Legacy(reference.dataset_id,reference.content_digest,'4'*64,Dom('target','1'*64,tuple(Rung(s,tuple(u[:s])) for s in sizes)))
+++qpol=mdstats.TargetMultiViewQualificationPolicy(coverage_threshold=reference.policy.coverage_threshold,capacity_ceiling=16384)
+++def do_mvqual():
+++    kwargs={'policy':qpol}
+++    sig=__import__('inspect').signature(mdstats.build_target_multi_view_qualification_plan).parameters
+++    if 'scoring_workers' in sig:
+++        kwargs.update(coverage_query_workers=1,scoring_workers=workers,resource_scope=scope('closure-mvqual'))
+++    else:
+++        kwargs.update(coverage_query_workers=workers)
+++    return mdstats.build_target_multi_view_qualification_plan(reference,index,feasibility,role,legacy,repair,**kwargs)
+++qual=run('mvqual',do_mvqual)
+++
+++scientific={
+++ 'reference':ref_digest,
+++ 'role':role_digest,
+++ 'feasibility':feasibility.content_digest,
+++ 'mvidx':index.content_digest,
+++ 'selection':selection.content_digest,
+++ 'repair':repair.content_digest,
+++ 'qualification':qual.content_digest,
+++}
+++if neighborhoods is not None: scientific['neighborhoods']=neighborhoods.content_digest
+++payload={
+++ 'mode':mode,'version':mdstats.__version__,'workers':workers,
+++ 'scientific':scientific,'stages':stages,
+++ 'total_wall_seconds':sum(x['wall_seconds'] for x in stages),
+++ 'total_cpu_seconds':sum(x['cpu_seconds'] for x in stages),
+++ 'peak_maxrss_kib':resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
+++ 'master_order_count':len(selection.domain('target').master_order),
+++ 'repair_swaps':repair.domain('target').total_swaps,
+++ 'qualification_domains':len(qual.domains),
+++}
+++print(json.dumps(payload,indent=2,sort_keys=True))
++diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/benchmarks/mlff_campaign_perf_qual1_cloud_cpu_mpa0_2026-08-17.json /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/benchmarks/mlff_campaign_perf_qual1_cloud_cpu_mpa0_2026-08-17.json
++--- /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/benchmarks/mlff_campaign_perf_qual1_cloud_cpu_mpa0_2026-08-17.json	1970-01-01 00:00:00.000000000 +0000
+++++ /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/benchmarks/mlff_campaign_perf_qual1_cloud_cpu_mpa0_2026-08-17.json	2026-08-18 02:00:12.001133309 +0000
++@@ -0,0 +1,188 @@
+++{
+++  "acceptance": {
+++    "final_gpu_qualification_ready": false,
+++    "followup_reason": "Integrated profiling shows REPAIR replaying MVSEL terminal sparse state is now the dominant duplicated reconstructible cost; exact state handoff can remove it without changing selector or repair authority.",
+++    "followup_required": true,
+++    "memory_ceiling_pass": true,
+++    "next_gate": "MVSTATE-REUSE1",
+++    "optimization_program_closed": false,
+++    "restart_behavior_exact": true,
+++    "scaling_qualified": true,
+++    "scientific_outputs_exact": true,
+++    "status": "PASS_FOLLOWUP_REQUIRED"
+++  },
+++  "active_foundation": {
+++    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
+++    "family": "MACE-MPA-0 medium",
+++    "mh1_compatible": true,
+++    "model_inference_timed_in_closure": false
+++  },
+++  "architecture_revision": 102,
+++  "authority_change": {
+++    "classification": "integration_measurement_and_forward-gate_decision_only",
+++    "gpu_numerical": false,
+++    "runtime_algorithm": false,
+++    "scientific": false
+++  },
+++  "content_digest": "d169137cca79709841f4ac9e531306324247a5420964018de2239d3f4e0f5539",
+++  "execution": {
+++    "eval2": {
+++      "bootstrap_median_seconds": 0.015309499998693354,
+++      "frozen_0_20_232_control_bootstrap_seconds": 0.05117,
+++      "frozen_0_20_232_control_metric_seconds": 0.8621,
+++      "metric_reduce_median_seconds": 0.4710217569991073
+++    },
+++    "foundation_audit": {
+++      "frozen_0_20_232_control_seconds": 0.05803,
+++      "median_seconds": 0.054020721499909996,
+++      "model_provider_calls": [
+++        44,
+++        44
+++      ]
+++    },
+++    "replay_restart": {
+++      "closure_speedup_vs_control": 3.313696767259975,
+++      "frozen_0_20_233_control_monitor_seconds": 9.13893,
+++      "index_build_seconds": 0.41147491599986097,
+++      "index_hit_seconds": 0.06988775699937833,
+++      "monitor_only_materialization_seconds": 2.7579258580008172,
+++      "peak_maxrss_kib": 280732
+++    },
+++    "target_chain": {
+++      "control": {
+++        "cpu_seconds": 28.220660382,
+++        "note": "paired control completed once; a later repeated control was invalidated by unrelated shared-host timeout and is not used",
+++        "peak_maxrss_kib": 313240,
+++        "release": "0.20.225a0",
+++        "repeat_count": 1,
+++        "stage_wall_seconds": {
+++          "feas_neighbor": 0.788001320001058,
+++          "mvidx": 2.2042533550011285,
+++          "mvqual": 2.0616274479980348,
+++          "mvsel": 11.220217990998208,
+++          "repair": 10.981256697999925
+++        },
+++        "wall_seconds": 27.255356811998354,
+++        "workers_requested": 4
+++      },
+++      "current": {
+++        "queue_backpressure_observed": false,
+++        "release": "0.20.234a0",
+++        "rss_ratio_vs_control_at_4_lanes": 1.1227684842293448,
+++        "speedup_vs_control_at_4_lanes": 2.2811202967246227,
+++        "worker_schedules": {
+++          "1": {
+++            "cpu_seconds": 13.031388508999996,
+++            "peak_maxrss_kib": 320612,
+++            "wall_seconds": 12.913599085004535
+++          },
+++          "2": {
+++            "cpu_seconds": 13.232284265,
+++            "peak_maxrss_kib": 334636,
+++            "wall_seconds": 12.073693564001587
+++          },
+++          "4": {
+++            "cpu_seconds_median": 13.688461302499999,
+++            "peak_maxrss_kib_median": 351696.0,
+++            "stage_wall_seconds_median": {
+++              "feas_neighbor": 1.0333280395007023,
+++              "mvidx": 0.08946929749981791,
+++              "mvqual": 0.5325609709998389,
+++              "mvsel": 4.873324781499832,
+++              "repair": 5.419549913000083
+++            },
+++            "wall_seconds_median": 11.948233002500274,
+++            "wall_seconds_samples": [
+++              11.823693664005987,
+++              12.072772340994561
+++            ]
+++          }
+++        }
+++      }
+++    }
+++  },
+++  "gate": "CAMPAIGN-PERF-QUAL1",
+++  "host": {
+++    "cgroup_cpu_max": "400000 100000",
+++    "cgroup_memory_current_bytes_at_record_creation": "4075847680",
+++    "cgroup_memory_max_bytes": "4294967296",
+++    "cpu_affinity_count": 5,
+++    "timings_are_execution_evidence_only": true
+++  },
+++  "hotspot_reprofile": {
+++    "mvsel_profile": {
+++      "_choose_candidate_calls": 4096,
+++      "_choose_candidate_cumulative_seconds": 0.9,
+++      "_scatter_decrement_pair_exact_calls": 26319,
+++      "_scatter_decrement_pair_exact_cumulative_seconds": 4.565,
+++      "_select_and_update_calls": 4096,
+++      "_select_and_update_cumulative_seconds": 5.197,
+++      "finding": "exact sparse state mutation dominates residual selector time; rank choice is no longer dominant",
+++      "profile_total_seconds_approx": 6.57
+++    },
+++    "repair_profile": {
+++      "_best_repair_proposal_cumulative_seconds": 0.729,
+++      "_shell_removal_scan_cumulative_seconds": 0.977,
+++      "finding": "REPAIR reconstructs selector sparse state by replaying essentially the whole selected order before proposal work; this is exact reconstructible execution state and is now the dominant duplicated cost",
+++      "profile_total_seconds_approx": 7.576,
+++      "selector_state_replay__scatter_decrement_pair_exact_calls": 26331,
+++      "selector_state_replay__scatter_decrement_pair_exact_cumulative_seconds": 4.671,
+++      "selector_state_replay__select_and_update_calls": 4098,
+++      "selector_state_replay__select_and_update_cumulative_seconds": 5.336,
+++      "thread_executor_shutdown_cumulative_seconds": 0.699
+++    },
+++    "target_chain_current_4_lane_stage_fraction": {
+++      "feas_neighbor": 0.0864837536466245,
+++      "mvidx": 0.0074880777334268315,
+++      "mvqual": 0.04457236236424213,
+++      "mvsel": 0.4078699151983432,
+++      "repair": 0.45358589105736336
+++    }
+++  },
+++  "inputs": {
+++    "replay_source_sha256": "187eed42fb2d6cf5e7e745ffed0ce34541e92c6a35ec9e654520cd3c7198403c",
+++    "target_archive_sha256": "bc1b7e25ba338507ae38b260bcd283356de887b6c6cf762a2c146733f1c3c958",
+++    "target_chain_control_release": "0.20.225a0",
+++    "target_chain_current_runtime_release": "0.20.234a0",
+++    "target_chain_fixture": {
+++      "candidate_count": 8192,
+++      "family_count": 6,
+++      "master_selection_count": 4096,
+++      "qualification_domains": 1,
+++      "repair_swaps": 2
+++    }
+++  },
+++  "measurement_date": "2026-08-17",
+++  "release": "0.20.235a0",
+++  "restart_and_memory": {
+++    "memory_ceiling_violation": false,
+++    "mvidx_zero_second_geometry_reuse_contract_retained": true,
+++    "replay_authenticated_index_restart_exact": true,
+++    "scientific_cache_or_restart_identity_change": false,
+++    "target_chain_peak_rss_kib_control": 313240,
+++    "target_chain_peak_rss_kib_current_4_lane_median": 351696.0,
+++    "target_neighborhood_reuse_contract_retained": true
+++  },
+++  "schema": "mdstats.mlff-campaign-perf-qual1-evidence.v1",
+++  "scientific": {
+++    "eval2_bootstrap_digest": "9664354fd2d871e67113ff5b9ef28118c9414a59f29a5fd4114acb729590397e",
+++    "eval2_metric_digest": "d9dd9db2c2d47e2d6f034e0b58f094c04c516d5a0dc4f0089d3f15762d434658",
+++    "feasibility_digest": "937214c70d1f2baae883993082f1ceb25bea6007a5a2be0beee045262f5c0613",
+++    "foundation_audit_digest": "39b8b207c741798f5a8555b41ceb0c746948935612d84d45961ba87b0e8c94e5",
+++    "foundation_model_provider_calls": [
+++      44,
+++      44
+++    ],
+++    "mvidx_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
+++    "neighborhood_digest": "0220c89084fe957e85eb1e1c87a581eaa44869f11cb98bee7f7bd8cdafd3d74e",
+++    "qualification_digest": "c19f2f9c3a328c7003e169bd9584277b21e72a6720caa588cf3879bd1cac1b25",
+++    "reference_digest": "a66b12eb0bdb604cce053b4ab5df7aec58a8d985143eb7f791ff8360217fc57f",
+++    "repair_digest": "ab7dc752555114bcd756913187e1d0eb7069c2e9a093f2a8a41130f485cdc33f",
+++    "replay_monitor_extxyz_sha256": "cc0f9b308becd5c027a2adc64fc251808323e19c217412d82ea3d50b3deab2cf",
+++    "replay_monitor_logical_digest": "633aae8a6deb1a3d857880f3eecd9bb40dbaedba8357a13944184c1bafbf1114",
+++    "replay_source_index_digest": "ce6c678ad556cff63be8ee75754d87cba2b3d08e80f544c5983fe4498dc0c5e1",
+++    "role_digest": "6666666666666666666666666666666666666666666666666666666666666666",
+++    "selection_digest": "c179df6cfbb3b052c866d17bcf54aa5088ebc1998b35259afd3bd0ca163e8b8d",
+++    "target_chain_exact": true
+++  }
+++}
++diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/benchmarks/mlff_campaign_perf_qual1_cloud_cpu_mpa0_2026-08-17.md /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/benchmarks/mlff_campaign_perf_qual1_cloud_cpu_mpa0_2026-08-17.md
++--- /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/benchmarks/mlff_campaign_perf_qual1_cloud_cpu_mpa0_2026-08-17.md	1970-01-01 00:00:00.000000000 +0000
+++++ /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/benchmarks/mlff_campaign_perf_qual1_cloud_cpu_mpa0_2026-08-17.md	2026-08-18 02:01:39.152247321 +0000
++@@ -0,0 +1,57 @@
+++# CAMPAIGN-PERF-QUAL1 CPU closure evidence
+++
+++Release: mdstats 0.20.235a0  
+++Architecture revision: 102  
+++Active qualification foundation: MACE-MPA-0 medium (`75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638`)  
+++MACE-MH-1 compatibility: retained by the same execution/scientific contracts.
+++
+++## Scope
+++
+++This gate re-profiles the accumulated CPU optimization program. It is measurement/integration authority only: it does not change scientific algorithms, runtime model inference, or GPU numerical authority. Timing is execution evidence. Exact persisted/scientific digests remain the authority.
+++
+++The target-data chain uses one deterministic 8,192-candidate / six-family fixture and executes FEAS1 -> exact neighborhoods -> MVIDX1 -> MVSEL1 -> REPAIR1 -> MVQUAL1 as an actual chain. The control is an untouched 0.20.225a0 PERFBASE1-era tree. Replay, EVAL2/bootstrap, and Foundation Audit are rechecked on their production-scale or frozen CPU fixtures.
+++
+++## Integrated target-data chain
+++
+++| Realization | Wall (s) | Peak RSS (MiB) | FEAS+neighbor | MVIDX | MVSEL | REPAIR | MVQUAL |
+++|---|---:|---:|---:|---:|---:|---:|---:|
+++| untouched 0.20.225a0, 4 requested workers | 27.255 | 305.9 | 0.788 | 2.204 | 11.220 | 10.981 | 2.062 |
+++| current optimized realization, 4 lanes median | 11.948 | 343.5 | 1.033 | 0.089 | 4.873 | 5.420 | 0.533 |
+++
+++End-to-end target-data speedup: **2.28x**. Scientific reference/role/FEAS/MVIDX/MVSEL/REPAIR/MVQUAL digests are exact between control and current realizations. The current neighborhood cache adds its authenticated execution digest without changing FEAS/MVIDX authority.
+++
+++Current worker scaling is 12.914 s at one lane, 12.074 s at two lanes, and 11.948 s median at four lanes. Scaling now saturates because the remaining wall time is dominated by sequential-authority sparse state updates rather than starved parallel kernels.
+++
+++## Shifted hotspot
+++
+++The integrated profile changes the optimization conclusion. Current four-lane stage fractions are approximately:
+++
+++- REPAIR1: 45.4%
+++- MVSEL1: 40.8%
+++- FEAS1 + neighborhood cache: 8.6%
+++- MVQUAL1: 4.5%
+++- MVIDX1: 0.7%
+++
+++MVSEL profiling attributes about 5.197 s cumulative to 4,096 `_select_and_update` calls, including about 4.565 s in exact paired sparse decrements; `_choose_candidate` is only about 0.900 s. The rank decision itself is therefore no longer the dominant selector cost.
+++
+++More importantly, REPAIR profiling shows **4,098 additional `_select_and_update` calls** before/around repair, about 5.336 s cumulative, because REPAIR reconstructs essentially the complete selector sparse state from the ordered selection. This is duplicated reconstructible execution work. Proposal scoring itself is much smaller (`_shell_removal_scan` about 0.977 s cumulative and `_best_repair_proposal` about 0.729 s). Per-iteration executor shutdown also contributes about 0.699 s cumulative.
+++
+++Therefore CAMPAIGN-PERF-QUAL1 does **not** close the CPU optimization program. It opens one exact-equivalence follow-up, `MVSTATE-REUSE1`, to authenticate and hand terminal selector sparse state into REPAIR and to keep reusable repair proposal execution resources alive where appropriate. The sequential selector rank decision, repair objective/tie authority, and full repair trace remain unchanged.
+++
+++## Replay restart
+++
+++The supplied 12,000-frame replay corpus retains source-index digest `ce6c678ad556cff63be8ee75754d87cba2b3d08e80f544c5983fe4498dc0c5e1`. A fresh index build takes about 0.411 s, authenticated restart hit about 0.070 s, and monitor-only exact materialization about 2.758 s. Monitor logical digest and ExtXYZ bytes remain exact.
+++
+++## EVAL2 and Foundation Audit
+++
+++The current repeated EVAL2 reduction re-runs at about 0.471 s median with exact metric digest `d9dd9db2c2d47e2d6f034e0b58f094c04c516d5a0dc4f0089d3f15762d434658`. The 2,000-replicate paired bootstrap is about 0.0153 s with exact bootstrap digest `9664354fd2d871e67113ff5b9ef28118c9414a59f29a5fd4114acb729590397e`. Foundation Audit is about 0.0540 s median and keeps model-provider call counts exactly [44, 44].
+++
+++## Memory and restart acceptance
+++
+++The integrated target chain peaks near 343.5 MiB versus 305.9 MiB in the PERFBASE-era control. The increase reflects retained authenticated sparse execution state and remains far below the qualification cgroup ceiling; no scheduler backpressure or memory-ceiling violation was observed. NEIGHBOR1/MVIDX zero-repeat-geometry and REPLAY-PERF1 authenticated restart contracts remain qualified.
+++
+++## Decision
+++
+++**CAMPAIGN-PERF-QUAL1: PASS, FOLLOW-UP REQUIRED.**
+++
+++The cumulative optimization program has produced a large integrated speedup and preserves exact authority, but the integrated profile exposes a new dominant duplicated state-reconstruction cost. The next gate is **MVSTATE-REUSE1**. Final CPU optimization closure and FINAL-GPU1/PERF-CERT1 remain deferred until that follow-up is qualified.
++diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/benchmarks/mlff_campaign_perf_qual1_implementation_manifest_0.20.235a0.json /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/benchmarks/mlff_campaign_perf_qual1_implementation_manifest_0.20.235a0.json
++--- /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/benchmarks/mlff_campaign_perf_qual1_implementation_manifest_0.20.235a0.json	1970-01-01 00:00:00.000000000 +0000
+++++ /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/benchmarks/mlff_campaign_perf_qual1_implementation_manifest_0.20.235a0.json	2026-08-18 02:01:39.152392912 +0000
++@@ -0,0 +1,28 @@
+++{
+++  "active_foundation": {
+++    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
+++    "family": "MACE-MPA-0 medium",
+++    "mh1_compatible": true
+++  },
+++  "architecture_revision": 102,
+++  "decision": {
+++    "next_gate": "MVSTATE-REUSE1",
+++    "reason": "REPAIR reconstructs MVSEL sparse terminal state by replaying selected-order updates; integrated profiling shows this duplicated exact state work dominates the residual target-data chain.",
+++    "status": "PASS_FOLLOWUP_REQUIRED"
+++  },
+++  "evidence": "benchmarks/mlff_campaign_perf_qual1_cloud_cpu_mpa0_2026-08-17.json",
+++  "gate": "CAMPAIGN-PERF-QUAL1",
+++  "gpu_authority_change": false,
+++  "qualified_branches": [
+++    "target-data integrated chain",
+++    "TARGET-DATA2B supplied-family radius authority",
+++    "replay indexed restart",
+++    "EVAL2 reduction/bootstrap",
+++    "Foundation Audit CPU reduction"
+++  ],
+++  "release": "0.20.235a0",
+++  "report": "benchmarks/mlff_campaign_perf_qual1_cloud_cpu_mpa0_2026-08-17.md",
+++  "runtime_code_change": false,
+++  "schema": "mdstats.mlff-campaign-perf-qual1-implementation-manifest.v1",
+++  "scientific_authority_change": false
+++}
++diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/arch_manuals/mlff_training_data/00_front_matter.md /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/arch_manuals/mlff_training_data/00_front_matter.md
++--- /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/arch_manuals/mlff_training_data/00_front_matter.md	2026-08-18 01:29:04.000000000 +0000
+++++ /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/arch_manuals/mlff_training_data/00_front_matter.md	2026-08-18 02:02:32.012385005 +0000
++@@ -1,8 +1,8 @@
++ ---
++ geometry: "margin=0.75in"
++-architecture_revision: 101
++-release: "mdstats 0.20.234a0"
++-status: "current normative architecture; REPLAY-PERF1 complete; CAMPAIGN-PERF-QUAL1 next"
+++architecture_revision: 102
+++release: "mdstats 0.20.235a0"
+++status: "current normative architecture; CAMPAIGN-PERF-QUAL1 complete with follow-up required; MVSTATE-REUSE1 next"
++ last_updated: "2026-08-17"
++ ---
++ 
++@@ -76,6 +76,8 @@
++ 
++ ## Current release boundary
++ 
+++Revision 102 completes `CAMPAIGN-PERF-QUAL1` as an integration/measurement gate without changing scientific or runtime algorithm authority. On a common 8,192-candidate/six-family target-data chain, the accumulated CPU optimization sequence reduces end-to-end FEAS1 -> MVIDX1 -> MVSEL1 -> REPAIR1 -> MVQUAL1 wall time from about 27.26 s in the PERFBASE1-era 0.20.225a0 control to a 4-lane median of about 11.95 s (~2.28x) while preserving exact reference, feasibility, sparse-index, selection, repair, and qualification digests. Replay indexed restart and EVAL2/bootstrap reductions reproduce their frozen exact records, and representative memory remains within the declared campaign ceiling. The reprofile also establishes that the dominant cost has shifted: MVSEL exact sparse state mutation and, especially, REPAIR replay of the already-computed selector state now dominate the target-data tail. Because REPAIR reconstructs essentially the complete selected-order state before proposal work, the CPU optimization program is not declared closed. `MVSTATE-REUSE1` is next to authenticate and hand terminal selector sparse state into REPAIR without changing selection or repair authority. Final GPU qualification remains deferred.
+++
++ Revision 101 completes `REPLAY-PERF1` without changing REPLAY-UNIFY1 scientific authority. The immutable selected replay ExtXYZ now has a reconstructible source-SHA-bound byte-offset/natoms index under the internal replay cache. Indexed materialization seeks only requested source frames, reuses the authenticated source-order geometry identities instead of recomputing them after every parse, and feeds the existing true-label, pseudo-label, and foundation-prediction paths through deterministic bounded contiguous chunks. ASE parsing itself remains serial because qualification showed Python-threaded ExtXYZ parsing is slower on the available CPU. On the supplied 12,000-frame replay corpus, monitor-only true-label reconstruction improves from about 9.14 s to 3.01 s (~3.03x) with byte-identical output; a full-source parse/identity pass improves from about 7.64 s to 6.42 s (~1.19x), and full train+monitor materialization improves more modestly from about 15.68 s to 14.35 s (~1.09x) because all frames must still be parsed and written. The active qualification checkpoint remains MACE-MPA-0 medium, while the replay index/materialization contract is foundation-model independent and valid for MACE-MH-1. `CAMPAIGN-PERF-QUAL1` is next.
++ 
++ Revision 100 completes `AUDIT-EVAL-PERF1` without changing model inference or GPU numerical authority. EVAL2 now caches immutable species/composition/focus/block indexing metadata per evaluation view, preallocates force-tail storage, and uses a memory-bounded batched paired bootstrap while preserving the deterministic RNG stream and exact persisted metric/bootstrap records on qualification fixtures. FOUNDATION-AUDIT1 now shares its DATA3 frame index and per-run species membership across domains, reuses force-square work, and batches tail quantiles while continuing to consume the already-authenticated DATA6 prediction sweep with zero additional model-provider calls. Same-host paired evidence shows about 1.92x faster repeated EVAL2 target reduction, 3.38x faster 2,000-replicate paired bootstrap, and a smaller ~1.06x foundation-audit CPU reduction on the available no-inference fixture. The active qualification checkpoint remains MACE-MPA-0 medium, while these CPU reducers remain foundation-model independent and valid for MACE-MH-1 campaigns. `REPLAY-PERF1` is next; GPU performance authority remains deferred.
++diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/arch_manuals/mlff_training_data/60_execution_performance.md /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/arch_manuals/mlff_training_data/60_execution_performance.md
++--- /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/arch_manuals/mlff_training_data/60_execution_performance.md	2026-08-18 01:29:04.000000000 +0000
+++++ /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/arch_manuals/mlff_training_data/60_execution_performance.md	2026-08-18 02:02:32.012856391 +0000
++@@ -176,6 +176,16 @@
++ 
++ ASE ExtXYZ parsing remains serial. REPLAY-PERF1 qualification explicitly tested thread-parallel chunk parsing and found it slower on the available CPU, so concurrency is not introduced merely to increase worker count. Future campaign-level parallelism MAY overlap independent higher-level consumers only if a later profile shows a net gain without changing persisted replay bytes or prediction authority.
++ 
+++## CAMPAIGN-PERF-QUAL1 integrated reprofile and shifted bottleneck
+++
+++The revision-102 closure profile validates cumulative behavior instead of inferring campaign speed from isolated kernel benchmarks. On a common 8,192-candidate/six-family target-data chain, untouched `0.20.225a0` completes FEAS1 -> MVIDX1 -> MVSEL1 -> REPAIR1 -> MVQUAL1 in about 27.26 s. The optimized realization through `0.20.234a0` completes the same scientific chain in a four-lane median of about 11.95 s (~2.28x faster) with exact output digests. Current one/two/four-lane wall times are about 12.91/12.07/11.95 s, so additional outer lanes no longer provide material end-to-end scaling on the qualification CPU.
+++
+++The remaining four-lane wall-time composition is approximately 45% REPAIR1, 41% MVSEL1, 9% FEAS1 plus neighborhood production, 4% MVQUAL1, and less than 1% MVIDX1. Profiling shows the selector rank-choice routine itself is no longer dominant: 4,096 `_choose_candidate` calls consume about 0.90 s cumulative, while 4,096 exact `_select_and_update` calls consume about 5.20 s, including about 4.57 s in ordered paired sparse decrements.
+++
+++REPAIR1 exposes a stronger exact-reuse opportunity. On the same fixture it executes about 4,098 additional `_select_and_update` calls (about 5.34 s cumulative in the profile) to reconstruct the already-known selector sparse state before and during repair preparation. Proposal work is materially smaller. This reconstruction is not a new scientific decision; it is deterministic state derivable from the MVIDX authority plus the ordered MVSEL selection. `MVSTATE-REUSE1` therefore becomes the next exact-equivalence gate: persist/authenticate enough terminal selector execution state for REPAIR1 to start from that state directly, while retaining the historical replay path as the qualification oracle.
+++
+++The closure accepts a modest representative peak-RSS increase (about 306 MiB -> 343 MiB) because it is caused by reusable authenticated sparse execution state, remains far below the explicit campaign budget, and produces no observed queue backpressure. Performance evidence never overrides scientific digests.
+++
++ ## Progress and observability contract
++ 
++ Every stage expected to run long enough to appear stalled SHALL expose three layers:
++diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/arch_manuals/mlff_training_data/70_status_and_gates.md /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/arch_manuals/mlff_training_data/70_status_and_gates.md
++--- /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/arch_manuals/mlff_training_data/70_status_and_gates.md	2026-08-18 01:29:04.000000000 +0000
+++++ /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/arch_manuals/mlff_training_data/70_status_and_gates.md	2026-08-18 02:02:32.012573223 +0000
++@@ -123,11 +123,23 @@
++ 
++ **Next gate.** `CAMPAIGN-PERF-QUAL1`.
++ 
++-### Gate CAMPAIGN-PERF-QUAL1 - end-to-end optimization closure
+++### Gate CAMPAIGN-PERF-QUAL1 - end-to-end optimization closure - COMPLETE
++ 
++-**Purpose.** Reprofile after the preceding changes, because the dominant hotspot will have shifted.
+++**Purpose.** Reprofile the accumulated CPU optimization program as an integrated campaign rather than summing isolated microbenchmarks, while preserving all scientific and GPU numerical authority.
++ 
++-**Acceptance.** Whole-campaign exact scientific outputs, restart behavior, memory ceiling, and scaling are qualified. A final optimization review decides whether any new hotspot warrants another exact-equivalence gate before final GPU qualification.
+++**Implementation.** `0.20.235a0` is a measurement/documentation release: runtime scientific algorithms are unchanged from `0.20.234a0`. The closure runs a common 8,192-candidate/six-family FEAS1 -> NEIGHBOR1 -> MVIDX1 -> MVSEL1 -> REPAIR1 -> MVQUAL1 chain against an untouched `0.20.225a0` PERFBASE1-era control, rechecks the supplied 12,000-frame replay restart path, and reproduces EVAL2/bootstrap and Foundation Audit CPU records. Exact output digests, restart/cache identities, worker scaling, process CPU, and peak RSS are recorded in `benchmarks/mlff_campaign_perf_qual1_cloud_cpu_mpa0_2026-08-17.json`.
+++
+++**Acceptance. PASS, FOLLOW-UP REQUIRED.** The integrated target-data chain improves from about 27.26 s to a four-lane median of about 11.95 s (~2.28x) with exact FEAS1/MVIDX1/MVSEL1/REPAIR1/MVQUAL1 scientific digests. The current one/two/four-lane chain is about 12.91/12.07/11.95 s, showing that the remaining tail is no longer parallel-starved. Peak RSS rises from about 306 MiB to about 343 MiB because authenticated sparse execution state is retained, but remains far below the campaign memory ceiling with no observed backpressure. Replay monitor reconstruction reproduces exact bytes with an authenticated index hit near 0.07 s; EVAL2 and paired-bootstrap closure reruns reproduce their frozen digests. Reprofiling shows MVSEL exact sparse state mutation consumes most selector time, while REPAIR performs approximately 4,098 additional `_select_and_update` calls to reconstruct the already-computed selected-order state and spends several seconds on that replay before/around proposal scoring. This is duplicated reconstructible execution work, so total CPU optimization closure is deferred one targeted gate.
+++
+++**Next gate.** `MVSTATE-REUSE1`.
+++
+++### Gate MVSTATE-REUSE1 - selector-to-repair sparse-state reuse - PLANNED
+++
+++**Purpose.** Eliminate REPAIR1 replay of the MVSEL1 terminal sparse state while preserving every selector rank decision, target rung, repair objective/tie decision, accepted/rejected swap, and MVQUAL scientific record.
+++
+++**Planned realization.** MVSEL1 emits an authenticated reconstructible terminal selection-state cache bound to MVIDX authority, ordered master-selection digest, selector policy, and sparse-kernel schema. REPAIR1 authenticates and consumes that state instead of replaying thousands of exact sparse updates; cache miss/corruption falls back to the existing replay oracle. Smaller repair rungs may use exact inverse/deselection state transforms or authenticated checkpoints if every state array is proven equivalent. A repair proposal executor may also be retained across iterations if profiling confirms a gain. Worker count, cache location, checkpoint frequency, and executor lifetime remain execution state.
+++
+++**Acceptance.** Compare the complete selector state required by repair, the entire accepted/rejected repair trace, terminal order, MVQUAL plan, cold-rebuild and restart paths, memory overhead, and integrated target-chain wall time. Scientific identity must remain exact.
++ 
++ ## Explicit non-goals
++ 
++diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/arch_manuals/mlff_training_data_architecture.md /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/arch_manuals/mlff_training_data_architecture.md
++--- /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-18 01:30:56.000000000 +0000
+++++ /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-18 02:05:56.832348798 +0000
++@@ -1,8 +1,8 @@
++ ---
++ geometry: "margin=0.75in"
++-architecture_revision: 101
++-release: "mdstats 0.20.234a0"
++-status: "current normative architecture; REPLAY-PERF1 complete; CAMPAIGN-PERF-QUAL1 next"
+++architecture_revision: 102
+++release: "mdstats 0.20.235a0"
+++status: "current normative architecture; CAMPAIGN-PERF-QUAL1 complete with follow-up required; MVSTATE-REUSE1 next"
++ last_updated: "2026-08-17"
++ ---
++ 
++@@ -76,6 +76,8 @@
++ 
++ ## Current release boundary
++ 
+++Revision 102 completes `CAMPAIGN-PERF-QUAL1` as an integration/measurement gate without changing scientific or runtime algorithm authority. On a common 8,192-candidate/six-family target-data chain, the accumulated CPU optimization sequence reduces end-to-end FEAS1 -> MVIDX1 -> MVSEL1 -> REPAIR1 -> MVQUAL1 wall time from about 27.26 s in the PERFBASE1-era 0.20.225a0 control to a 4-lane median of about 11.95 s (~2.28x) while preserving exact reference, feasibility, sparse-index, selection, repair, and qualification digests. Replay indexed restart and EVAL2/bootstrap reductions reproduce their frozen exact records, and representative memory remains within the declared campaign ceiling. The reprofile also establishes that the dominant cost has shifted: MVSEL exact sparse state mutation and, especially, REPAIR replay of the already-computed selector state now dominate the target-data tail. Because REPAIR reconstructs essentially the complete selected-order state before proposal work, the CPU optimization program is not declared closed. `MVSTATE-REUSE1` is next to authenticate and hand terminal selector sparse state into REPAIR without changing selection or repair authority. Final GPU qualification remains deferred.
+++
++ Revision 101 completes `REPLAY-PERF1` without changing REPLAY-UNIFY1 scientific authority. The immutable selected replay ExtXYZ now has a reconstructible source-SHA-bound byte-offset/natoms index under the internal replay cache. Indexed materialization seeks only requested source frames, reuses the authenticated source-order geometry identities instead of recomputing them after every parse, and feeds the existing true-label, pseudo-label, and foundation-prediction paths through deterministic bounded contiguous chunks. ASE parsing itself remains serial because qualification showed Python-threaded ExtXYZ parsing is slower on the available CPU. On the supplied 12,000-frame replay corpus, monitor-only true-label reconstruction improves from about 9.14 s to 3.01 s (~3.03x) with byte-identical output; a full-source parse/identity pass improves from about 7.64 s to 6.42 s (~1.19x), and full train+monitor materialization improves more modestly from about 15.68 s to 14.35 s (~1.09x) because all frames must still be parsed and written. The active qualification checkpoint remains MACE-MPA-0 medium, while the replay index/materialization contract is foundation-model independent and valid for MACE-MH-1. `CAMPAIGN-PERF-QUAL1` is next.
++ 
++ Revision 100 completes `AUDIT-EVAL-PERF1` without changing model inference or GPU numerical authority. EVAL2 now caches immutable species/composition/focus/block indexing metadata per evaluation view, preallocates force-tail storage, and uses a memory-bounded batched paired bootstrap while preserving the deterministic RNG stream and exact persisted metric/bootstrap records on qualification fixtures. FOUNDATION-AUDIT1 now shares its DATA3 frame index and per-run species membership across domains, reuses force-square work, and batches tail quantiles while continuing to consume the already-authenticated DATA6 prediction sweep with zero additional model-provider calls. Same-host paired evidence shows about 1.92x faster repeated EVAL2 target reduction, 3.38x faster 2,000-replicate paired bootstrap, and a smaller ~1.06x foundation-audit CPU reduction on the available no-inference fixture. The active qualification checkpoint remains MACE-MPA-0 medium, while these CPU reducers remain foundation-model independent and valid for MACE-MH-1 campaigns. `REPLAY-PERF1` is next; GPU performance authority remains deferred.
++@@ -2589,6 +2591,16 @@
++ 
++ ASE ExtXYZ parsing remains serial. REPLAY-PERF1 qualification explicitly tested thread-parallel chunk parsing and found it slower on the available CPU, so concurrency is not introduced merely to increase worker count. Future campaign-level parallelism MAY overlap independent higher-level consumers only if a later profile shows a net gain without changing persisted replay bytes or prediction authority.
++ 
+++## CAMPAIGN-PERF-QUAL1 integrated reprofile and shifted bottleneck
+++
+++The revision-102 closure profile validates cumulative behavior instead of inferring campaign speed from isolated kernel benchmarks. On a common 8,192-candidate/six-family target-data chain, untouched `0.20.225a0` completes FEAS1 -> MVIDX1 -> MVSEL1 -> REPAIR1 -> MVQUAL1 in about 27.26 s. The optimized realization through `0.20.234a0` completes the same scientific chain in a four-lane median of about 11.95 s (~2.28x faster) with exact output digests. Current one/two/four-lane wall times are about 12.91/12.07/11.95 s, so additional outer lanes no longer provide material end-to-end scaling on the qualification CPU.
+++
+++The remaining four-lane wall-time composition is approximately 45% REPAIR1, 41% MVSEL1, 9% FEAS1 plus neighborhood production, 4% MVQUAL1, and less than 1% MVIDX1. Profiling shows the selector rank-choice routine itself is no longer dominant: 4,096 `_choose_candidate` calls consume about 0.90 s cumulative, while 4,096 exact `_select_and_update` calls consume about 5.20 s, including about 4.57 s in ordered paired sparse decrements.
+++
+++REPAIR1 exposes a stronger exact-reuse opportunity. On the same fixture it executes about 4,098 additional `_select_and_update` calls (about 5.34 s cumulative in the profile) to reconstruct the already-known selector sparse state before and during repair preparation. Proposal work is materially smaller. This reconstruction is not a new scientific decision; it is deterministic state derivable from the MVIDX authority plus the ordered MVSEL selection. `MVSTATE-REUSE1` therefore becomes the next exact-equivalence gate: persist/authenticate enough terminal selector execution state for REPAIR1 to start from that state directly, while retaining the historical replay path as the qualification oracle.
+++
+++The closure accepts a modest representative peak-RSS increase (about 306 MiB -> 343 MiB) because it is caused by reusable authenticated sparse execution state, remains far below the explicit campaign budget, and produces no observed queue backpressure. Performance evidence never overrides scientific digests.
+++
++ ## Progress and observability contract
++ 
++ Every stage expected to run long enough to appear stalled SHALL expose three layers:
++@@ -2758,11 +2770,23 @@
++ 
++ **Next gate.** `CAMPAIGN-PERF-QUAL1`.
++ 
++-### Gate CAMPAIGN-PERF-QUAL1 - end-to-end optimization closure
+++### Gate CAMPAIGN-PERF-QUAL1 - end-to-end optimization closure - COMPLETE
+++
+++**Purpose.** Reprofile the accumulated CPU optimization program as an integrated campaign rather than summing isolated microbenchmarks, while preserving all scientific and GPU numerical authority.
+++
+++**Implementation.** `0.20.235a0` is a measurement/documentation release: runtime scientific algorithms are unchanged from `0.20.234a0`. The closure runs a common 8,192-candidate/six-family FEAS1 -> NEIGHBOR1 -> MVIDX1 -> MVSEL1 -> REPAIR1 -> MVQUAL1 chain against an untouched `0.20.225a0` PERFBASE1-era control, rechecks the supplied 12,000-frame replay restart path, and reproduces EVAL2/bootstrap and Foundation Audit CPU records. Exact output digests, restart/cache identities, worker scaling, process CPU, and peak RSS are recorded in `benchmarks/mlff_campaign_perf_qual1_cloud_cpu_mpa0_2026-08-17.json`.
+++
+++**Acceptance. PASS, FOLLOW-UP REQUIRED.** The integrated target-data chain improves from about 27.26 s to a four-lane median of about 11.95 s (~2.28x) with exact FEAS1/MVIDX1/MVSEL1/REPAIR1/MVQUAL1 scientific digests. The current one/two/four-lane chain is about 12.91/12.07/11.95 s, showing that the remaining tail is no longer parallel-starved. Peak RSS rises from about 306 MiB to about 343 MiB because authenticated sparse execution state is retained, but remains far below the campaign memory ceiling with no observed backpressure. Replay monitor reconstruction reproduces exact bytes with an authenticated index hit near 0.07 s; EVAL2 and paired-bootstrap closure reruns reproduce their frozen digests. Reprofiling shows MVSEL exact sparse state mutation consumes most selector time, while REPAIR performs approximately 4,098 additional `_select_and_update` calls to reconstruct the already-computed selected-order state and spends several seconds on that replay before/around proposal scoring. This is duplicated reconstructible execution work, so total CPU optimization closure is deferred one targeted gate.
+++
+++**Next gate.** `MVSTATE-REUSE1`.
+++
+++### Gate MVSTATE-REUSE1 - selector-to-repair sparse-state reuse - PLANNED
+++
+++**Purpose.** Eliminate REPAIR1 replay of the MVSEL1 terminal sparse state while preserving every selector rank decision, target rung, repair objective/tie decision, accepted/rejected swap, and MVQUAL scientific record.
++ 
++-**Purpose.** Reprofile after the preceding changes, because the dominant hotspot will have shifted.
+++**Planned realization.** MVSEL1 emits an authenticated reconstructible terminal selection-state cache bound to MVIDX authority, ordered master-selection digest, selector policy, and sparse-kernel schema. REPAIR1 authenticates and consumes that state instead of replaying thousands of exact sparse updates; cache miss/corruption falls back to the existing replay oracle. Smaller repair rungs may use exact inverse/deselection state transforms or authenticated checkpoints if every state array is proven equivalent. A repair proposal executor may also be retained across iterations if profiling confirms a gain. Worker count, cache location, checkpoint frequency, and executor lifetime remain execution state.
++ 
++-**Acceptance.** Whole-campaign exact scientific outputs, restart behavior, memory ceiling, and scaling are qualified. A final optimization review decides whether any new hotspot warrants another exact-equivalence gate before final GPU qualification.
+++**Acceptance.** Compare the complete selector state required by repair, the entire accepted/rejected repair trace, terminal order, MVQUAL plan, cold-rebuild and restart paths, memory overhead, and integrated target-chain wall time. Scientific identity must remain exact.
++ 
++ ## Explicit non-goals
++ 
++Binary files /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/arch_manuals/mlff_training_data_architecture.pdf and /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/arch_manuals/mlff_training_data_architecture.pdf differ
++diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/arch_manuals/mlff_training_data_dependency_graph.json /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/arch_manuals/mlff_training_data_dependency_graph.json
++--- /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-18 01:29:04.000000000 +0000
+++++ /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-18 02:02:32.018279106 +0000
++@@ -1,8 +1,8 @@
++ {
++-  "architecture_revision": 101,
+++  "architecture_revision": 102,
++   "branch": "MLFF-DATA",
++-  "description": "MLFF training-data dependency graph through architecture revision 101. REPLAY-PERF1 adds exact source-bound replay indexing and indexed materialization without changing REPLAY-UNIFY1 scientific authority; CAMPAIGN-PERF-QUAL1 is next.",
++-  "documentation_gate": "REPLAY_PERF1_INDEX_CACHE",
+++  "description": "MLFF training-data dependency graph through architecture revision 102. CAMPAIGN-PERF-QUAL1 qualifies the accumulated CPU optimization chain under exact scientific equivalence and opens MVSTATE-REUSE1 because integrated profiling identifies duplicated MVSEL-to-REPAIR sparse-state reconstruction as the new dominant exact-reuse opportunity.",
+++  "documentation_gate": "CAMPAIGN_PERF_QUAL1_CLOSURE",
++   "edge_type_definitions": {
++     "execution_requires": "The upstream product must exist before execution.",
++     "fit_domain_requires": "The fitted object may inspect only the declared training domain.",
++@@ -3030,6 +3030,11 @@
++       "from": "REPLAY_PERF1_INDEX_CACHE",
++       "to": "CAMPAIGN_PERF_QUAL1_CLOSURE",
++       "type": "implementation_requires"
+++    },
+++    {
+++      "from": "CAMPAIGN_PERF_QUAL1_CLOSURE",
+++      "to": "MVSTATE_REUSE1_SELECTOR_REPAIR_HANDOFF",
+++      "type": "implementation_requires"
++     }
++   ],
++   "forbidden_dependencies": [
++@@ -3201,7 +3206,7 @@
++       ]
++     }
++   ],
++-  "next_gate": "CAMPAIGN_PERF_QUAL1_CLOSURE",
+++  "next_gate": "MVSTATE_REUSE1_SELECTOR_REPAIR_HANDOFF",
++   "nodes": [
++     {
++       "id": "ACQUISITION_DECISIONS"
++@@ -5481,13 +5486,35 @@
++       "next_gate": "CAMPAIGN_PERF_QUAL1_CLOSURE"
++     },
++     {
++-      "architecture_revision": 101,
++-      "authority_class": "planned_performance_qualification",
+++      "architecture_revision": 102,
+++      "authority_class": "performance_integration_exact_equivalence",
++       "gate_name": "CAMPAIGN-PERF-QUAL1",
++       "id": "CAMPAIGN_PERF_QUAL1_CLOSURE",
+++      "implementation_status": "implemented_pass_followup_required",
+++      "implemented_release": "0.20.235a0",
+++      "scientific_authority_change": false,
+++      "runtime_algorithm_change": false,
+++      "gpu_authority_change": false,
+++      "target_chain_speedup_approx": 2.28,
+++      "target_chain_exact_scientific_outputs": true,
+++      "restart_behavior_qualified": true,
+++      "memory_ceiling_qualified": true,
+++      "scaling_qualified": true,
+++      "optimization_program_closed": false,
+++      "shifted_hotspot": "MVSEL exact sparse state mutation plus REPAIR duplicate selected-state replay",
+++      "next_gate": "MVSTATE_REUSE1_SELECTOR_REPAIR_HANDOFF"
+++    },
+++    {
+++      "architecture_revision": 102,
+++      "authority_class": "planned_performance_exact_equivalence",
+++      "gate_name": "MVSTATE-REUSE1",
+++      "id": "MVSTATE_REUSE1_SELECTOR_REPAIR_HANDOFF",
++       "implementation_status": "planned",
++-      "scientific_authority_change": false
+++      "scientific_authority_change": false,
+++      "selector_rank_authority_change": false,
+++      "repair_objective_authority_change": false,
+++      "purpose": "authenticate and reuse MVSEL terminal sparse execution state in REPAIR instead of replaying the selected order"
++     }
++   ],
++-  "schema_version": 81
+++  "schema_version": 82
++ }
++diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV102.md /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV102.md
++--- /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV102.md	1970-01-01 00:00:00.000000000 +0000
+++++ /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV102.md	2026-08-18 02:02:32.018530318 +0000
++@@ -0,0 +1,12 @@
+++# MLFF architecture revision 102 - CAMPAIGN-PERF-QUAL1
+++
+++Release: mdstats 0.20.235a0  
+++Date: 2026-08-17
+++
+++CAMPAIGN-PERF-QUAL1 qualifies the accumulated CPU optimization program as an integrated exact-equivalence chain. It is a measurement/documentation release and does not change scientific algorithms or GPU numerical authority.
+++
+++On the common 8,192-candidate/six-family target-data closure fixture, the PERFBASE1-era 0.20.225a0 control completes the FEAS1 -> MVIDX1 -> MVSEL1 -> REPAIR1 -> MVQUAL1 chain in about 27.26 s. The optimized realization through 0.20.234a0 completes it in a four-lane median of about 11.95 s (~2.28x) with exact reference, feasibility, sparse-index, selection, repair, and qualification digests. Replay restart and EVAL2/bootstrap records also reproduce exactly, and representative memory remains within the campaign ceiling.
+++
+++The reprofile changes the forward optimization plan. MVSEL rank choice is no longer the dominant selector cost; exact sparse state mutation is. More importantly, REPAIR reconstructs essentially the complete selected-order state by replaying thousands of MVSEL updates, duplicating state that already existed at the selector boundary. The architecture therefore does not falsely declare CPU optimization complete.
+++
+++Next gate: MVSTATE-REUSE1, an exact selector-to-repair sparse-state handoff with the old replay path retained as oracle. Final GPU qualification remains deferred.
++diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/history/mlff/architecture_revisions/INDEX.md /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/history/mlff/architecture_revisions/INDEX.md
++--- /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/history/mlff/architecture_revisions/INDEX.md	2026-08-18 01:30:03.000000000 +0000
+++++ /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/history/mlff/architecture_revisions/INDEX.md	2026-08-18 02:02:32.018708366 +0000
++@@ -83,3 +83,4 @@
++ | 99 | MVQUAL-PAR1 / mdstats 0.20.232a0 | [MLFF architecture revision 99 - MVQUAL-PAR1](ARCHITECTURE_NOTES_MLFF_REV99.md) | - |
++ | 100 | AUDIT-EVAL-PERF1 / mdstats 0.20.233a0 | [MLFF architecture revision 100 - AUDIT-EVAL-PERF1](ARCHITECTURE_NOTES_MLFF_REV100.md) | - |
++ | 101 | REPLAY-PERF1 / mdstats 0.20.234a0 | [MLFF architecture revision 101 - REPLAY-PERF1](ARCHITECTURE_NOTES_MLFF_REV101.md) | - |
+++| 102 | CAMPAIGN-PERF-QUAL1 / mdstats 0.20.235a0 | [MLFF architecture revision 102 - CAMPAIGN-PERF-QUAL1](ARCHITECTURE_NOTES_MLFF_REV102.md) | - |
++diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/history/mlff/release_notes/INDEX.md /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/history/mlff/release_notes/INDEX.md
++--- /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/history/mlff/release_notes/INDEX.md	2026-08-18 01:30:03.000000000 +0000
+++++ /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/history/mlff/release_notes/INDEX.md	2026-08-18 02:02:32.018810347 +0000
++@@ -175,3 +175,4 @@
++ | `0.20.232a0` | [PATCH_NOTES_0.20.232a0.md](PATCH_NOTES_0.20.232a0.md) | - |
++ | `0.20.233a0` | [PATCH_NOTES_0.20.233a0.md](PATCH_NOTES_0.20.233a0.md) | - |
++ | `0.20.234a0` | [PATCH_NOTES_0.20.234a0.md](PATCH_NOTES_0.20.234a0.md) | - |
+++| `0.20.235a0` | [PATCH_NOTES_0.20.235a0.md](PATCH_NOTES_0.20.235a0.md) | - |
++diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.235a0.md /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.235a0.md
++--- /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.235a0.md	1970-01-01 00:00:00.000000000 +0000
+++++ /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.235a0.md	2026-08-18 02:02:32.018591132 +0000
++@@ -0,0 +1,9 @@
+++# mdstats 0.20.235a0 - CAMPAIGN-PERF-QUAL1
+++
+++- Close the integration/measurement CAMPAIGN-PERF-QUAL1 gate without changing runtime scientific algorithms.
+++- Run a common end-to-end target-data chain against an untouched PERFBASE1-era 0.20.225a0 control; preserve exact FEAS/MVIDX/MVSEL/REPAIR/MVQUAL outputs while reducing wall time from about 27.26 s to about 11.95 s at four lanes (~2.28x).
+++- Recheck authenticated replay restart, EVAL2/bootstrap, Foundation Audit, worker scaling, and representative memory behavior.
+++- Identify the shifted dominant CPU cost: exact MVSEL sparse state mutation and REPAIR replay of that already-computed selector state.
+++- Keep the CPU optimization program open for one targeted exact-equivalence follow-up, MVSTATE-REUSE1, instead of falsely declaring closure.
+++- Preserve active MACE-MPA-0 medium qualification and the same model-generic execution contracts for MACE-MH-1.
+++- Final GPU qualification remains deferred.
++diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/specs/training_data/mlff_campaign_perf_qual1_closure_spec.md /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/specs/training_data/mlff_campaign_perf_qual1_closure_spec.md
++--- /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/specs/training_data/mlff_campaign_perf_qual1_closure_spec.md	1970-01-01 00:00:00.000000000 +0000
+++++ /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/specs/training_data/mlff_campaign_perf_qual1_closure_spec.md	2026-08-18 02:01:39.152457653 +0000
++@@ -0,0 +1,46 @@
+++# CAMPAIGN-PERF-QUAL1 end-to-end optimization closure specification
+++
+++## Status
+++
+++Implemented in mdstats 0.20.235a0 / MLFF architecture revision 102. The gate passes integrated qualification but opens one targeted exact-equivalence follow-up, `MVSTATE-REUSE1`; therefore the complete CPU optimization program is not yet closed.
+++
+++## Authority boundary
+++
+++CAMPAIGN-PERF-QUAL1 is a measurement/integration gate. It MUST NOT change scientific algorithms, target-data authority, replay source/split/label authority, model predictions, checkpoint selection, or GPU numerical authority. Performance telemetry, profiling, worker schedules, and the decision to open a later exact-equivalence gate are execution/documentation state.
+++
+++The active CPU qualification uses the supplied MACE-MPA-0 medium checkpoint identity. The closure record is foundation-model generic and MUST remain valid for the supported MACE-MH-1 path because no foundation inference semantics are changed by this gate.
+++
+++## Integrated target-data qualification
+++
+++The canonical closure fixture contains 8,192 candidates, six exact neighborhood families, a 4,096-frame master selection, two repair swaps, and one same-N qualification domain. The actual chain is FEAS1 -> NEIGHBOR1 -> MVIDX1 -> MVSEL1 -> REPAIR1 -> MVQUAL1.
+++
+++An untouched 0.20.225a0 PERFBASE1-era source tree is the chain control. Current execution uses the complete optimization sequence through 0.20.234a0. Exact reference, role, feasibility, sparse-index, selection, repair, and qualification digests MUST match. The current realization MAY additionally persist the NEIGHBOR1 execution-cache digest.
+++
+++The qualification evidence records approximately 27.255 s for the completed control and a 4-lane current median of approximately 11.948 s, about 2.28x faster end-to-end. Timing is execution evidence only.
+++
+++## Restart and memory qualification
+++
+++The closure MUST retain:
+++
+++- authenticated NEIGHBOR1 reuse with no second MVIDX geometry sweep;
+++- exact replay source-index restart reuse and exact monitor reconstruction;
+++- no scientific identity dependence on worker count or cache location;
+++- bounded resource admission under explicit campaign scopes.
+++
+++The representative target chain peaks at roughly 343 MiB RSS at four lanes versus roughly 306 MiB for the old control. This retained-state increase is accepted because it remains comfortably below the qualification memory ceiling and no backpressure/memory-ceiling violation occurs.
+++
+++## Reprofile decision
+++
+++The gate MUST profile the new dominant target-data tail instead of assuming the previous gate order remains representative. The revision-102 profile establishes:
+++
+++- MVSEL rank choice is not the primary residual selector cost; exact sparse `_select_and_update` state mutation dominates it.
+++- REPAIR repeats essentially the complete selected-order sparse state construction, producing 4,098 additional `_select_and_update` calls on the closure fixture and consuming several seconds before/around proposal scoring.
+++- This repeated state reconstruction is reconstructible execution work rather than a scientific decision.
+++
+++Therefore the optimization program MUST remain open for `MVSTATE-REUSE1`.
+++
+++## Acceptance
+++
+++CAMPAIGN-PERF-QUAL1 passes when integrated scientific digests, restart behavior, memory ceiling, and worker scaling are qualified. Its final state is `PASS_FOLLOWUP_REQUIRED`, not a false claim of total optimization closure.
+++
+++Next gate: `MVSTATE-REUSE1`.
++diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/specs/training_data/mlff_mvstate_reuse1_selector_repair_handoff_spec.md /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/specs/training_data/mlff_mvstate_reuse1_selector_repair_handoff_spec.md
++--- /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/docs/specs/training_data/mlff_mvstate_reuse1_selector_repair_handoff_spec.md	1970-01-01 00:00:00.000000000 +0000
+++++ /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/docs/specs/training_data/mlff_mvstate_reuse1_selector_repair_handoff_spec.md	2026-08-18 02:01:39.152502020 +0000
++@@ -0,0 +1,31 @@
+++# MVSTATE-REUSE1 selector-to-repair state handoff specification
+++
+++## Status
+++
+++Planned after CAMPAIGN-PERF-QUAL1 / architecture revision 102.
+++
+++## Purpose
+++
+++Remove duplicated exact sparse-state reconstruction between MVSEL1 and REPAIR1 without changing selector rank authority, target sizes, repair objective/tie semantics, accepted/rejected swaps, or final qualification authority.
+++
+++## Required realization
+++
+++MVSEL1 SHALL be able to emit an authenticated reconstructible `TargetMultiViewSelectionStateCache` (name may be refined during implementation) that contains enough terminal sparse execution state for REPAIR1 to begin from the exact selected master order without replaying thousands of `_select_and_update` operations. Its identity MUST bind the MVIDX authority, ordered selection/master-order digest, selector policy identity, and sparse-kernel schema, while excluding worker count, queue depth, storage location, and other execution knobs.
+++
+++REPAIR1 SHALL authenticate the state cache before use. Missing, stale, incompatible, or corrupt cache state MUST rebuild through the existing exact selector-state replay rather than silently weaken authority. The old replay path remains an exact oracle for qualification.
+++
+++For smaller repair rungs derived from the master order, the implementation MAY use exact inverse/deselection updates or cached checkpoints if byte/state equivalence is proven after every required rung. It MUST NOT alter rank decisions or repair inputs.
+++
+++A repair proposal executor MAY be retained/reused across iterations if profiling confirms a gain; task completion order remains non-authoritative and winner reduction remains canonical.
+++
+++## Acceptance
+++
+++Qualification MUST compare:
+++
+++- every selector state array required by repair, not only final selected IDs;
+++- every accepted/rejected repair swap and terminal order;
+++- MVQUAL plan/digest after repair;
+++- cold rebuild and authenticated restart paths;
+++- memory overhead and cumulative target-chain wall time.
+++
+++The gate is successful only if state handoff removes material duplicated work on the integrated closure fixture without changing any scientific record.
++diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/mdstats/_version.py /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/mdstats/_version.py
++--- /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/mdstats/_version.py	2026-08-18 01:29:04.000000000 +0000
+++++ /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/mdstats/_version.py	2026-08-18 02:02:32.011578655 +0000
++@@ -1 +1 @@
++-__version__ = "0.20.234a0"
+++__version__ = "0.20.235a0"
++diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/pyproject.toml /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/pyproject.toml
++--- /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/pyproject.toml	2026-08-18 01:29:04.000000000 +0000
+++++ /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/pyproject.toml	2026-08-18 02:02:32.011984325 +0000
++@@ -4,7 +4,7 @@
++ 
++ [project]
++ name = "mdstats"
++-version = "0.20.234a0"
+++version = "0.20.235a0"
++ description = "Transparent atomistic frame collections and structural/dynamical statistics"
++ requires-python = ">=3.10"
++ dependencies = [
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/release/qualification_logs/MLFF_CAMPAIGN_PERF_QUAL1_QUALIFICATION_0.20.235a0.json /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/release/qualification_logs/MLFF_CAMPAIGN_PERF_QUAL1_QUALIFICATION_0.20.235a0.json
+--- /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/release/qualification_logs/MLFF_CAMPAIGN_PERF_QUAL1_QUALIFICATION_0.20.235a0.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/release/qualification_logs/MLFF_CAMPAIGN_PERF_QUAL1_QUALIFICATION_0.20.235a0.json	2026-08-18 02:08:36.346301971 +0000
+@@ -0,0 +1,69 @@
++{
++  "active_foundation": {
++    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
++    "family": "MACE-MPA-0 medium",
++    "mh1_compatible": true
++  },
++  "architecture_revision": 102,
++  "build": {
++    "compileall": "PASS",
++    "wheel_version": "0.20.235a0"
++  },
++  "closure_decision": {
++    "final_gpu_qualification_deferred": true,
++    "next_gate": "MVSTATE_REUSE1_SELECTOR_REPAIR_HANDOFF",
++    "optimization_program_closed": false,
++    "reason": "Integrated profiling identifies duplicated reconstruction of MVSEL sparse terminal state inside REPAIR as the dominant exact-reuse opportunity."
++  },
++  "content_digest": "fff6b4d7057f2371218ead60e1dc82286def972701c99a803f137c29ce7f946c",
++  "dependency_graph_schema": 82,
++  "documentation": {
++    "manual_markdown_sha256": "b7bc33b7ab7f3a3bda54d698c87eb9999b735f93a243ff62fd0db6b9a05141eb",
++    "manual_pdf_pages": 52,
++    "manual_pdf_sha256": "87cfc54f8d5ff93037547681423dae90e20399a96717eb1d6da4920291f48bc6",
++    "pdf_preflight": "PASS",
++    "pdf_visual_qa": "PASS"
++  },
++  "evidence": {
++    "content_digest": "d169137cca79709841f4ac9e531306324247a5420964018de2239d3f4e0f5539",
++    "path": "benchmarks/mlff_campaign_perf_qual1_cloud_cpu_mpa0_2026-08-17.json",
++    "sha256": "1781ba7fdee32f48ec8becc308637e7fa3a14f615b921f3dd4dc8d61dca76b85"
++  },
++  "gate": "CAMPAIGN-PERF-QUAL1",
++  "gpu_authority_change": false,
++  "performance": {
++    "bootstrap_seconds": 0.015309499998693354,
++    "eval2_metric_seconds": 0.4710217569991073,
++    "replay_monitor_seconds": 2.7579258580008172,
++    "target_chain_current_4_lane_median_seconds": 11.948233002500274,
++    "target_chain_speedup_vs_0_20_225_control": 2.2811202967246227
++  },
++  "release": "0.20.235a0",
++  "runtime_algorithm_change": false,
++  "schema": "mdstats.mlff-campaign-perf-qual1-qualification.v1",
++  "scientific": {
++    "eval2_exact": true,
++    "feasibility_digest": "937214c70d1f2baae883993082f1ceb25bea6007a5a2be0beee045262f5c0613",
++    "foundation_audit_exact": true,
++    "mvidx_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
++    "qualification_digest": "c19f2f9c3a328c7003e169bd9584277b21e72a6720caa588cf3879bd1cac1b25",
++    "repair_digest": "ab7dc752555114bcd756913187e1d0eb7069c2e9a093f2a8a41130f485cdc33f",
++    "replay_monitor_exact": true,
++    "selection_digest": "c179df6cfbb3b052c866d17bcf54aa5088ebc1998b35259afd3bd0ca163e8b8d",
++    "target_chain_exact": true
++  },
++  "scientific_authority_change": false,
++  "status": "PASS_FOLLOWUP_REQUIRED",
++  "tests": {
++    "current_optimization_documentation": {
++      "failed": 0,
++      "passed": 106,
++      "warnings": 3
++    },
++    "target_data2_scientific_authority": {
++      "failed": 0,
++      "passed": 111,
++      "warnings": 18
++    }
++  }
++}
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/tests/test_mlff_campaign_perf_qual1_specification.py /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/tests/test_mlff_campaign_perf_qual1_specification.py
+--- /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/tests/test_mlff_campaign_perf_qual1_specification.py	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/tests/test_mlff_campaign_perf_qual1_specification.py	2026-08-18 02:03:20.642201037 +0000
+@@ -0,0 +1,69 @@
++from __future__ import annotations
++
++import json
++from pathlib import Path
++
++import mdstats
++
++ROOT = Path(__file__).resolve().parents[1]
++MANUAL = ROOT / "docs/arch_manuals/mlff_training_data_architecture.md"
++GRAPH = ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json"
++EVIDENCE = ROOT / "benchmarks/mlff_campaign_perf_qual1_cloud_cpu_mpa0_2026-08-17.json"
++SPEC = ROOT / "docs/specs/training_data/mlff_campaign_perf_qual1_closure_spec.md"
++NEXT_SPEC = ROOT / "docs/specs/training_data/mlff_mvstate_reuse1_selector_repair_handoff_spec.md"
++
++
++def test_campaign_perf_qual1_release_and_manual_are_current() -> None:
++    assert mdstats.__version__ == "0.20.235a0"
++    assert 'version = "0.20.235a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert "Version: 0.20.235a0" in (ROOT / "PKG-INFO").read_text(encoding="utf-8")
++    text = MANUAL.read_text(encoding="utf-8")
++    assert "architecture_revision: 102" in text
++    assert 'release: "mdstats 0.20.235a0"' in text
++    assert "Gate CAMPAIGN-PERF-QUAL1 - end-to-end optimization closure - COMPLETE" in text
++    assert "Gate MVSTATE-REUSE1 - selector-to-repair sparse-state reuse - PLANNED" in text
++    assert SPEC.is_file() and NEXT_SPEC.is_file()
++
++
++def test_campaign_perf_qual1_graph_closes_gate_and_opens_followup() -> None:
++    graph = json.loads(GRAPH.read_text(encoding="utf-8"))
++    assert graph["architecture_revision"] == 102
++    assert graph["schema_version"] == 82
++    assert graph["documentation_gate"] == "CAMPAIGN_PERF_QUAL1_CLOSURE"
++    assert graph["next_gate"] == "MVSTATE_REUSE1_SELECTOR_REPAIR_HANDOFF"
++    nodes = {node["id"]: node for node in graph["nodes"]}
++    current = nodes["CAMPAIGN_PERF_QUAL1_CLOSURE"]
++    assert current["implemented_release"] == "0.20.235a0"
++    assert current["implementation_status"] == "implemented_pass_followup_required"
++    assert current["scientific_authority_change"] is False
++    assert current["runtime_algorithm_change"] is False
++    assert current["optimization_program_closed"] is False
++    nxt = nodes["MVSTATE_REUSE1_SELECTOR_REPAIR_HANDOFF"]
++    assert nxt["implementation_status"] == "planned"
++    assert nxt["selector_rank_authority_change"] is False
++    assert nxt["repair_objective_authority_change"] is False
++
++
++def test_campaign_perf_qual1_frozen_evidence_is_exact_and_identifies_shifted_hotspot() -> None:
++    ev = json.loads(EVIDENCE.read_text(encoding="utf-8"))
++    assert ev["release"] == "0.20.235a0"
++    assert ev["architecture_revision"] == 102
++    assert ev["acceptance"]["status"] == "PASS_FOLLOWUP_REQUIRED"
++    assert ev["acceptance"]["next_gate"] == "MVSTATE-REUSE1"
++    assert ev["acceptance"]["scientific_outputs_exact"] is True
++    assert ev["acceptance"]["optimization_program_closed"] is False
++    assert ev["active_foundation"]["checkpoint_sha256"] == "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638"
++    assert ev["active_foundation"]["mh1_compatible"] is True
++    assert ev["execution"]["target_chain"]["current"]["speedup_vs_control_at_4_lanes"] > 2.0
++    assert ev["scientific"]["feasibility_digest"] == "937214c70d1f2baae883993082f1ceb25bea6007a5a2be0beee045262f5c0613"
++    assert ev["scientific"]["mvidx_digest"] == "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c"
++    assert ev["hotspot_reprofile"]["repair_profile"]["selector_state_replay__select_and_update_calls"] >= 4096
++    assert "duplicated" in ev["hotspot_reprofile"]["repair_profile"]["finding"]
++    assert ev["restart_and_memory"]["memory_ceiling_violation"] is False
++
++
++def test_campaign_perf_qual1_history_and_release_records_exist() -> None:
++    assert (ROOT / "docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV102.md").is_file()
++    assert (ROOT / "docs/history/mlff/release_notes/PATCH_NOTES_0.20.235a0.md").is_file()
++    assert "0.20.235a0" in (ROOT / "CHANGELOG.md").read_text(encoding="utf-8").splitlines()[0]
++    assert (ROOT / "benchmarks/mlff_campaign_perf_qual1_implementation_manifest_0.20.235a0.json").is_file()
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/tests/test_mlff_doc_arch1_specification.py /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/tests/test_mlff_doc_arch1_specification.py
+--- /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/tests/test_mlff_doc_arch1_specification.py	2026-08-18 01:30:55.000000000 +0000
++++ /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/tests/test_mlff_doc_arch1_specification.py	2026-08-18 02:03:20.641872848 +0000
+@@ -16,10 +16,10 @@
+ 
+ 
+ def test_doc_arch1_release_and_current_authority_are_synchronized():
+-    assert mdstats.__version__ == "0.20.234a0"
++    assert mdstats.__version__ == "0.20.235a0"
+     text = MANUAL.read_text(encoding="utf-8")
+-    assert "architecture_revision: 101" in text
+-    assert 'release: "mdstats 0.20.234a0"' in text
++    assert "architecture_revision: 102" in text
++    assert 'release: "mdstats 0.20.235a0"' in text
+     assert "# Part VI - Performance and execution architecture" in text
+     assert "# Part VII - Current implementation status and frozen forward gates" in text
+     assert "## Context retrieval index" in text
+@@ -45,7 +45,7 @@
+     for gate in (
+         "PERFBASE1", "PARCORE1", "NEIGHBOR1", "MVIDX-REUSE1", "COVREF-PAR1",
+         "MVKERNEL1", "REPAIR-PAR1", "MVQUAL-PAR1", "AUDIT-EVAL-PERF1",
+-        "REPLAY-PERF1", "CAMPAIGN-PERF-QUAL1",
++        "REPLAY-PERF1", "CAMPAIGN-PERF-QUAL1", "MVSTATE-REUSE1",
+     ):
+         assert gate in text
+     assert "ExactNeighborhoodEngine" in text
+@@ -72,17 +72,17 @@
+     revision_rows = [line for line in REV_INDEX.read_text().splitlines() if re.match(r"^\|\s*\d+\s*\|", line)]
+     revisions = [int(line.split("|")[1].strip()) for line in revision_rows]
+     assert revisions == sorted(set(revisions))
+-    assert revisions[-1] == 101
++    assert revisions[-1] == 102
+     assert "NEIGHBOR1" in REV_INDEX.read_text()
+-    assert "0.20.234a0" in REL_INDEX.read_text()
++    assert "0.20.235a0" in REL_INDEX.read_text()
+     assert (ROOT / "docs/history/mlff/LINEAGE.md").is_file()
+     assert (ROOT / "docs/history/mlff/manual_snapshots/mlff_training_data_architecture_rev090_full.md").is_file()
+ 
+ 
+ def test_doc_arch1_graph_and_directory_ownership_are_current():
+     graph = json.loads(GRAPH.read_text())
+-    assert graph["architecture_revision"] == 101
+-    assert graph["schema_version"] == 81
++    assert graph["architecture_revision"] == 102
++    assert graph["schema_version"] == 82
+     node_ids = {node["id"] for node in graph["nodes"]}
+     for node in (
+         "DOC_ARCH1_MANUAL_RESTRUCTURE_PERFORMANCE_ROADMAP",
+@@ -91,6 +91,7 @@
+         "COVREF_PAR1_GLOBAL_BLOCK_QUEUE", "MVKERNEL1_VECTOR_SPARSE_KERNELS",
+         "REPAIR_PAR1_PROPOSAL_QUEUE", "MVQUAL_PAR1_GLOBAL_SCORING_QUEUE",
+         "AUDIT_EVAL_PERF1_CPU_KERNELS", "REPLAY_PERF1_INDEX_CACHE", "CAMPAIGN_PERF_QUAL1_CLOSURE",
++        "MVSTATE_REUSE1_SELECTOR_REPAIR_HANDOFF",
+     ):
+         assert node in node_ids
+     root_names = {p.name for p in ROOT.iterdir() if p.is_file()}
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/tests/test_mlff_replay_perf1_specification.py /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/tests/test_mlff_replay_perf1_specification.py
+--- /mnt/data/mdstats-campaignperf-work/prev234/mdstats-0.20.234a0/tests/test_mlff_replay_perf1_specification.py	2026-08-18 01:30:54.000000000 +0000
++++ /mnt/data/mdstats-campaignperf-work/mdstats-0.20.235a0/tests/test_mlff_replay_perf1_specification.py	2026-08-18 02:03:20.642101622 +0000
+@@ -16,24 +16,16 @@
+ EVIDENCE = ROOT / "benchmarks/mlff_replay_perf1_cloud_cpu_mpa0_2026-08-17.json"
+ 
+ 
+-def test_replay_perf1_release_metadata_and_manual_are_synchronized() -> None:
+-    assert mdstats.__version__ == "0.20.234a0"
+-    assert 'version = "0.20.234a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+-    assert "Version: 0.20.234a0" in (ROOT / "PKG-INFO").read_text(encoding="utf-8")
++def test_replay_perf1_historical_release_record_and_current_manual_are_synchronized() -> None:
+     text = MANUAL.read_text(encoding="utf-8")
+-    assert "architecture_revision: 101" in text
+-    assert 'release: "mdstats 0.20.234a0"' in text
+     assert "Gate REPLAY-PERF1 - replay index/cache and chunk materialization - COMPLETE" in text
+-    assert "**Next gate.** `CAMPAIGN-PERF-QUAL1`." in text
+     assert SPEC.is_file()
++    assert (ROOT / "docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV101.md").is_file()
++    assert (ROOT / "docs/history/mlff/release_notes/PATCH_NOTES_0.20.234a0.md").is_file()
+ 
+ 
+ def test_replay_perf1_dependency_graph_is_closed() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+-    assert graph["architecture_revision"] == 101
+-    assert graph["schema_version"] == 81
+-    assert graph["documentation_gate"] == "REPLAY_PERF1_INDEX_CACHE"
+-    assert graph["next_gate"] == "CAMPAIGN_PERF_QUAL1_CLOSURE"
+     node = next(item for item in graph["nodes"] if item["id"] == "REPLAY_PERF1_INDEX_CACHE")
+     assert node["implemented_release"] == "0.20.234a0"
+     assert node["implementation_status"] == "implemented_source_index_indexed_materialization"
+@@ -89,5 +81,5 @@
+ def test_replay_perf1_history_records_are_present() -> None:
+     assert (ROOT / "docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV101.md").is_file()
+     assert (ROOT / "docs/history/mlff/release_notes/PATCH_NOTES_0.20.234a0.md").is_file()
+-    assert "0.20.234a0" in (ROOT / "CHANGELOG.md").read_text(encoding="utf-8").splitlines()[0]
++    assert "0.20.234a0" in (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+     assert "0.20.234a0" in (ROOT / "docs/history/mlff/release_notes/INDEX.md").read_text(encoding="utf-8")

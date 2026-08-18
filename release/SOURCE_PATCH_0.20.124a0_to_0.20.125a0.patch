@@ -1,0 +1,1801 @@
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/ARCHITECTURE_NOTES_MLFF_REV24.md b/ARCHITECTURE_NOTES_MLFF_REV24.md
+--- a/ARCHITECTURE_NOTES_MLFF_REV24.md	2026-08-09 14:33:32.000000000 +0000
++++ b/ARCHITECTURE_NOTES_MLFF_REV24.md	2026-08-09 21:36:37.242141585 +0000
+@@ -1,6 +1,6 @@
+ # MLFF architecture revision 24 planning notes
+ 
+-This source-tree planning update records the adaptive-training and evaluation-simplification revision opened after mdstats 0.20.120a0. It does **not** claim runtime implementation.
++This source-tree note records the adaptive-training and evaluation-simplification revision opened after mdstats 0.20.120a0. The original seven-gate plan is preserved below; implementation has now closed ADAPT-PREC1 (0.20.122a0), ADAPT-MON1 (0.20.123a0), ADAPT-STOP1 (0.20.124a0), and ADAPT-RANK1 (0.20.125a0). ADAPT-EVAL1 through ADAPT-MIGRATE1 remain pending.
+ 
+ Ordered gates:
+ 
+@@ -25,4 +25,4 @@
+ - initial full-evaluation finalists: 5;
+ - rescue batch size: 5.
+ 
+-The canonical details are in `docs/arch_manuals/mlff_training_data_architecture.md`. Until `ADAPT-MIGRATE1` closes, the currently implemented EVAL-MF/PREC behavior remains runtime-authoritative.
++The canonical details are in `docs/arch_manuals/mlff_training_data_architecture.md`. Binary precision, common monitors, adaptive stopping, and run-local lightweight ranking now follow the ADAPT contracts above. EVAL-MF remains runtime-authoritative only for campaign-wide evaluation until ADAPT-EVAL1 closes; historical staged-precision/EVAL-MF evidence remains readable.
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/ARCHITECTURE_NOTES_MLFF_REV28.md b/ARCHITECTURE_NOTES_MLFF_REV28.md
+--- a/ARCHITECTURE_NOTES_MLFF_REV28.md	1970-01-01 00:00:00.000000000 +0000
++++ b/ARCHITECTURE_NOTES_MLFF_REV28.md	2026-08-09 21:42:01.478420389 +0000
+@@ -0,0 +1,26 @@
++# MLFF architecture revision 28 - ADAPT-RANK1 implementation
++
++This release implements `ADAPT-RANK1` on top of the common online monitors and adaptive training
++stop evidence established by ADAPT-MON1/ADAPT-STOP1.
++
++Implemented contract:
++
++- no new MACE inference and no checkpoint-model deserialization during lightweight ranking;
++- hard target/replay candidate boundaries are reapplied before weighted scoring;
++- replay-enabled score is `(w_T*T_mon + w_R*R_mon)/(w_T + w_R)`; target-only score is `T_mon`;
++- default 1:1 target:replay weighting is the simple arithmetic mean;
++- exactly one run-local champion is selected when at least one admissible epoch exists;
++- deterministic ordering uses weighted score, target RMSE, replay RMSE, earlier epoch, then
++  checkpoint SHA-256;
++- mathematically equal scores are canonicalized only at a sub-femtoscale comparison tolerance so
++  binary FP64 representation noise cannot bypass the documented tie breakers;
++- runs with no admissible epoch persist an explicit no-champion outcome;
++- `lightweight_run_champion.json` binds run, protocol, STOP1 policy/state, checkpoint catalog, and
++  common ADAPT-MON1 monitor identities;
++- reconciliation regenerates the same artifact from persisted evidence without opening model
++  checkpoints and fails closed on mismatch.
++
++The canonical contract is documented in
++`docs/specs/training_data/mlff_lightweight_ranking_spec.{md,pdf}` and the MLFF architecture manual.
++ADAPT-EVAL1 remains the next gate; EVAL-MF is still runtime-authoritative for campaign-wide
++checkpoint evaluation in 0.20.125a0.
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/CHANGELOG.md b/CHANGELOG.md
+--- a/CHANGELOG.md	2026-08-09 21:20:15.143013998 +0000
++++ b/CHANGELOG.md	2026-08-09 21:36:37.241952624 +0000
+@@ -1,3 +1,11 @@
++## 0.20.125a0 - 2026-08-09
++
++- Implemented ADAPT-RANK1 zero-new-inference lightweight ranking from persisted ADAPT-STOP1 epoch metrics and the frozen checkpoint catalog.
++- Added weighted target/replay force-RMSE scoring with hard target/replay candidate boundaries applied before ranking; default 1:1 scoring is the arithmetic mean.
++- Freeze exactly one `lightweight_run_champion.json` per run with admissible epochs, using deterministic target/replay/epoch/SHA tie breakers; runs with no admissible epoch persist an explicit no-champion outcome.
++- Bind lightweight ranking evidence to run/protocol/stop-state/catalog/common-monitor lineage and support exact reconciliation without opening or deserializing checkpoint models.
++- ADAPT-EVAL1 remains pending; EVAL-MF is still the production evaluator until the next gate retires successive halving.
++
+ ## 0.20.124a0 - 2026-08-09
+ 
+ - Implemented ADAPT-STOP1 criterion-driven MLFF training termination using the fixed common
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/PATCH_NOTES_0.20.125a0.md b/PATCH_NOTES_0.20.125a0.md
+--- a/PATCH_NOTES_0.20.125a0.md	1970-01-01 00:00:00.000000000 +0000
++++ b/PATCH_NOTES_0.20.125a0.md	2026-08-09 21:36:36.829681396 +0000
+@@ -0,0 +1,31 @@
++# mdstats 0.20.125a0 patch notes
++
++## ADAPT-RANK1 — zero-new-inference lightweight run champions
++
++This release implements the fourth gate of the post-0.20.120 adaptive MLFF revision.
++
++### One champion per admissible run
++
++After adaptive training completes, mdstats consumes only the persisted ADAPT-STOP1 epoch history
++and the already-frozen checkpoint catalog. Epochs outside the target/replay candidate rectangle are
++rejected before scoring. Eligible epochs use the configured weighted target/replay force-RMSE score;
++the default 1:1 score is the arithmetic mean.
++
++Each run with at least one admissible epoch freezes exactly one
++`lightweight_run_champion.json`. Deterministic ties prefer lower target RMSE, then lower replay RMSE,
++then earlier epoch and checkpoint SHA-256. A run that never entered the admissible region records an
++explicit no-champion outcome instead of selecting its final epoch.
++
++### Zero inference and exact reconciliation
++
++ADAPT-RANK1 accepts frozen evidence objects rather than checkpoint paths. It launches no MACE
++inference and does not deserialize model checkpoints. The ranking artifact is bound to the run plan,
++training protocol, adaptive-stop state/policy, checkpoint catalog, and common ADAPT-MON1 target and
++true-replay monitor identities. Missing ranking evidence can therefore be reconstructed exactly after
++an interrupted parent process without reopening model bytes; changed ranking evidence fails closed.
++
++### Gate boundary
++
++ADAPT-EVAL1 remains pending. The current EVAL-MF evaluator is still runtime-authoritative in
++0.20.125a0; the next gate will replace successive halving with campaign-wide top-K screening over
++these run champions followed by authoritative full target/true-replay evaluation.
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/docs/arch_manuals/mlff_training_data_architecture.md b/docs/arch_manuals/mlff_training_data_architecture.md
+--- a/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-09 21:23:56.017559895 +0000
++++ b/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-09 21:34:45.693860041 +0000
+@@ -34,7 +34,7 @@
+ STAT1 and SAMP0 workflows consume those primitives without changing their
+ serialized evidence. MLFF-DATA2 is implemented in `0.20.30a0`: deterministic source manifests, VASP source catalogs, named energy selection, decomposed label domains, and per-label-domain structural atomic-reference identifiability are public runtime contracts. MLFF-DATA3 is implemented in `0.20.31a0`: manifest-bound frame occurrences, geometry and label identities, duplicate/restart detection, post-DFT eligibility, temperature conditions, reference-cell resolution, and rotation-separated finite strain are public runtime contracts. MLFF-DATA4 is implemented in `0.20.32a0` and generalized through DATA9A7d: partition-independent raw physical features, optional profile-extension states, protected event bursts, deterministic feature caches, and partition-role budget requests are public runtime contracts. MLFF-DATA5 is implemented in `0.20.33a0`: autocorrelation-aware partition units, role feasibility, deterministic outer evidence roles, independence grades, nested cross-validation monitors, blinding boundaries, and fail-closed leakage audits are public runtime contracts. MLFF-DATA6 is implemented in `0.20.34a0` and generalized through DATA9A7d: profile-aware universal and optional extension descriptors, optional checkpoint-bound MACE atomic descriptor sidecars, training-domain-only foundation residuals, blinded non-training predictions, and sealed locked-test prediction records are public runtime contracts. MLFF-DATA7 is implemented in `0.20.35a0`: canonical final/fold training domains, fold-local fitted metrics, domain-local atomic-reference fits, explicit objective and checkpoint policies, deterministic quota-interleaved selection ladders, and coverage reports are public runtime contracts. MLFF-DATA8 is implemented in `0.20.36a0`: verified MACE-readable extended-XYZ artifacts, explicit E0 mappings, replay train/monitor plans, a v0.3.16 source compatibility lock, complete training-protocol identities, loader dry-run exposure records, independent final/fold job bundles, and sealed locked-test metadata are public runtime contracts. MLFF-DATA9A hardening began in `0.20.37a0`, its offline runtime bootstrap is implemented in `0.20.38a0`, and DATA9A2 real-MACE realization is implemented in `0.20.39a0`: checkpoint-residual E0 fits, relocatable bundles, strict replay/XYZ audits, source-declared dependency manifests, isolated local-artifact installation, installed-environment qualification, v0.3.16 scalar-literal serialization, fixed-file target/replay weight realization, genuine parser/loader dry runs, bounded training, checkpoint/head inventory, target-head extraction, and finite evaluation round trips are public contracts. The supplied dependency bundle and MPA-0 checkpoint pass executable qualification. DATA9A3 in 0.20.40a0 qualifies the complete 27-source, 37,632-frame bulk-LTA target corpus through DATA5 with a passing leakage audit. DATA9A production execution remains open for checkpoint-bound production DATA6/DATA7 evidence, DATA8 job materialization, exact replay-corpus identity, and later protocol-matched training and freeze. DATA9A4 in 0.20.41a0 adds a protocol-bound selectable precision contract: the float64 MPA-0 checkpoint may initialize either a float32 or float64 fine-tuned model, and actual serialized parameter/buffer dtypes are immutable execution evidence rather than inferred from CLI text. DATA9A5a/9A5b in 0.20.42a0-0.20.43a0 close Python/ASE critical precision and deployment-artifact semantics. DATA9A6 in 0.20.44a0 introduces the analysis-owned observable-call bridge. DATA9A6b in 0.20.45a0 closes recipe dependency safety, collection and model lineage, runtime-duration/warning evidence, capability requirement schemas, documentation conflicts, and the thermomechanical/energetic analysis ownership plan. DATA9A6c in 0.20.46a0 verifies supplied identities against the actual collections, requires symmetric reference/candidate generation lineage for production evidence, binds analysis-owned result digests, freezes observable evidence roles and comparison-policy identity before locked evaluation, and corrects runtime/package identity and dependency ordering. DATA9A7a in 0.20.47a0 introduces user-declared compositional material profiles, phase components, atom-group catalogs, condition axes, independence axes, a declarative provider protocol, and DATA4 schema-v2 profile threading without changing existing feature or selection behavior. DATA9A7b in 0.20.48a0 adds an analysis-owned universal local-structure kernel, profile/atom-group-aware DATA6 structural catalogs, generic structural events, a DATA7 universal feature block, and generic per-species environment coverage without importing LTA. DATA9A7c in 0.20.49a0 derives immutable phase/geometry selection plans, profile-specific feature/event activation, geometry-aware atom-group priorities, DATA6-v3 plan lineage, and compositional observable-call recommendations. DATA9A7d in 0.20.50a0 migrates LTA behind generic optional profile-extension catalogs, advances DATA4/DATA6 canonical schemas, and replaces generic-core cation/site assumptions with focus groups, structural realizations, and extension coverage. DATA9A7e in 0.20.51a0 qualifies bounded crystal, amorphous, liquid, interface, and LTA DATA4-DATA7 paths, adds immutable qualification evidence, and makes MLFF LTA implementation imports lazy so generic workflows neither import nor serialize LTA-specific evidence. DATA9A8 in 0.20.52a0 adds frozen profile-aware observable comparison and acceptance policies. DATA9A9a in 0.20.53a0 adds the exact DATA5-authorized checkpoint-bound descriptor/prediction plan, per-frame restart sidecars, atomic checkpoints, corruption recovery, and DATA6 reuse without repeated foundation-model inference. DATA9A9b in 0.20.54a0 adds restartable final/fold DATA7 materialization, exact replay binding, complete DATA8 job-tree evidence, corruption-driven downstream invalidation, and a relocatable production materialization record. DATA9A9c in 0.20.55a0 adds the immutable production-corpus plan, evidence-derived foundation and residual-E0 qualification, numerical replay-label identity, content-addressed DATA8 generation promotion, self-verifying loaders, and generic optional-extension gate requirements. DATA9B1 in 0.20.56a0 adds passed-gate campaign-matrix freezing, protocol-family and seed-variant identities, content-addressed checkpoint catalogs, external metric records, deterministic hard-constraint admissibility, and fail-closed checkpoint selection. DATA9B2 in 0.20.57a0 adds supervised/restartable MACE execution, automatic target/replay checkpoint evaluation, fold/seed aggregation, learning curves, deterministic protocol comparison, target-head committee export, protocol freeze, and sealed-evaluation activation. DATA9B3 in 0.20.58a0 adds the unified source-checkout campaign CLI, one-database orchestration state, manifest approval, production preparation/training/evaluation commands, source-local precision-wrapper shims, and bounded NVE deployment verification. DATA9B3A in 0.20.59a0 makes the MACE acceleration backend a frozen campaign policy, auto-selects cuEquivariance at initialization when qualified, and propagates it through DATA6, DATA8, preflight, production training, checkpoint evaluation, and bounded verification without silent fallback. DATA2A in 0.20.60a0 adds XML-backed review-manifest metadata, percentage-aware filename strain candidates, exact LTA fixed-cell geometry verification, and fail-safe promotion before manual manifest approval. DATA2 interrupted-stream hardening in 0.20.61a0 adds EOF-qualified interrupted `vasprun.xml` recovery across ENS0, DATA2 source audit, and normalized trajectory loading while preserving strict rejection of ambiguous or mid-file corruption.
+ The post-0.20.105 evaluation/storage cycle implements EVAL-MF1 in 0.20.106a0 and EVAL-MF2 in 0.20.107a0: deterministic nested equal-fraction target/replay checkpoint screening, delta-only prediction reuse, conservative source/block-aware survivor guards, comprehensive epoch reporting, and full-fidelity finalist publication are now the generated production evaluation strategy.
+-The post-0.20.120 adaptive-training revision was recorded as architecture-only planning in 0.20.121a0. **ADAPT-PREC1 is implemented in 0.20.122a0**, **ADAPT-MON1 in 0.20.123a0**, and **ADAPT-STOP1 in 0.20.124a0**: new campaigns use binary `single|double` learned-model precision, fixed common target/true-replay online monitors, and criterion-driven epoch termination. Lightweight ranking and the simplified finalist evaluator remain pending; EVAL-MF remains runtime-authoritative until ADAPT-EVAL1 closes.
++The post-0.20.120 adaptive-training revision was recorded as architecture-only planning in 0.20.121a0. **ADAPT-PREC1 is implemented in 0.20.122a0**, **ADAPT-MON1 in 0.20.123a0**, **ADAPT-STOP1 in 0.20.124a0**, and **ADAPT-RANK1 in 0.20.125a0**: new campaigns use binary `single|double` learned-model precision, fixed common target/true-replay online monitors, criterion-driven epoch termination, and zero-new-inference one-champion-per-run screening. The simplified finalist evaluator remains pending; EVAL-MF remains runtime-authoritative until ADAPT-EVAL1 closes.
+ 
+ The central architectural rule is:
+ 
+@@ -4805,8 +4805,9 @@
+ # Post-0.20.120 adaptive-training, binary-precision, and evaluation-simplification roadmap
+ 
+ **Status:** architecture recorded in `mdstats 0.20.121a0`; `ADAPT-PREC1` is implemented
+-in `mdstats 0.20.122a0`, `ADAPT-MON1` in `mdstats 0.20.123a0`, and `ADAPT-STOP1` in
+-`mdstats 0.20.124a0`. `ADAPT-RANK1` through `ADAPT-MIGRATE1` remain `not_started`.
++in `mdstats 0.20.122a0`, `ADAPT-MON1` in `mdstats 0.20.123a0`, `ADAPT-STOP1` in
++`mdstats 0.20.124a0`, and `ADAPT-RANK1` in `mdstats 0.20.125a0`. `ADAPT-EVAL1` through
++`ADAPT-MIGRATE1` remain `not_started`.
+ Binary learned-model precision, fixed common online monitors, and criterion-driven
+ training termination now supersede the corresponding legacy production semantics for
+ new campaigns. EVAL-MF remains runtime-authoritative until ADAPT-EVAL1 closes.
+@@ -5253,7 +5254,7 @@
+ 
+ ## ADAPT-RANK1 - zero-new-inference lightweight ranking and one champion per run
+ 
+-**Status:** `not_started`.
++**Status:** implemented in `mdstats 0.20.125a0`.
+ 
+ Training already paid for $T_{\mathrm{mon}}$ and $R_{\mathrm{mon}}$ at every epoch.
+ ADAPT-RANK1 therefore performs no new model inference. For every lightweight-admissible
+@@ -5290,13 +5291,37 @@
+ 
+ 1. lightweight ranking performs zero additional MACE inference;
+ 2. only epochs satisfying both monitor boundaries are score-eligible;
+-3. one and only one champion is emitted per independent run;
++3. one and only one champion is emitted per independent run that has at least one admissible epoch; a run with no admissible epoch emits an explicit no-champion outcome;
+ 4. ties are deterministic;
+ 5. scores from different runs are comparable because they share common monitor
+    identities; and
+ 6. restart/reconciliation can regenerate the same champion from persisted epoch metrics
+    without opening model checkpoints.
+ 
++### ADAPT-RANK1 implementation record (`0.20.125a0`)
++
++Successful adaptive training now derives `lightweight_run_champion.json` directly from the
++terminal ADAPT-STOP1 state and the already-frozen checkpoint catalog. The ranking function accepts
++no model path and performs no inference or checkpoint deserialization. It rechecks the target/replay
++candidate boundaries under the frozen stop policy, requires exact stop-history/catalog epoch
++coverage, and binds the common ADAPT-MON1 target/replay monitor identities into the ranking record.
++
++Eligible checkpoints are ordered by weighted target/replay force-RMSE score, then target RMSE,
++replay RMSE, earlier epoch, and checkpoint SHA-256. A canonical score comparison removes only
++sub-femtoscale binary-representation noise before tie breaking. The full unrounded FP64 score is
++retained in evidence. Runs with no admissible epoch persist
++`no_lightweight_admissible_checkpoint` rather than selecting the terminal epoch.
++
++The ranking artifact is immutable and content-addressed against the run plan, training protocol,
++adaptive-stop policy/state, checkpoint catalog, and common monitor records. If a parent process
++was interrupted after training completion, rerunning `train` or entering evaluation reconciles the
++same artifact from persisted JSON/catalog evidence without reopening checkpoint models. Existing
++ranking evidence must match the re-derived content digest exactly or the campaign fails closed.
++
++ADAPT-RANK1 still does not choose campaign finalists. EVAL-MF remains the production evaluator in
++0.20.125a0 until ADAPT-EVAL1 replaces it with campaign-wide top-K champion screening and
++full-fidelity evaluation.
++
+ ## ADAPT-EVAL1 - top-K authoritative full evaluation and retirement of EVAL-MF screening
+ 
+ **Status:** `not_started`.
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/docs/guides/mlff_campaign_cli_user_guide.md b/docs/guides/mlff_campaign_cli_user_guide.md
+--- a/docs/guides/mlff_campaign_cli_user_guide.md	2026-08-09 21:19:41.722525175 +0000
++++ b/docs/guides/mlff_campaign_cli_user_guide.md	2026-08-09 21:34:53.153557989 +0000
+@@ -314,9 +314,13 @@
+ ceiling is 30 meV/A, replay exhaustion stops training at 36 meV/A, and 30 epochs remains the hard
+ ceiling. The replay ceiling is derived as `(target_weight / replay_weight) * target_threshold`.
+ 
+-Do not choose the last epoch manually. A model can improve the target while
+-forgetting replay chemistry, or can have a good global force error while Li/Na/K
+-forces remain poor.
++Beginning in 0.20.125a0, do not choose the last epoch manually. ADAPT-RANK1 scores only
++epochs that satisfy both lightweight target/replay boundaries and freezes exactly one
++`lightweight_run_champion.json` per independent run when an admissible epoch exists. The default
++1:1 score is the arithmetic mean of target and replay force RMSE; deterministic ties prefer lower
++target RMSE, then lower replay RMSE, then earlier epoch and checkpoint SHA. A run that never enters
++the admissible rectangle records an explicit no-champion outcome rather than falling back to its
++last epoch.
+ 
+ ## 6. Evaluate completed models and freeze the full result when ready
+ 
+@@ -332,13 +336,14 @@
+ evidence only. The legacy `bounded` strategy and exhaustive full-monitor evaluation
+ remain explicit configuration choices.
+ 
+-**0.20.124a0 behavior:** ADAPT-MON1 supplies the common training-time monitor artifacts and
+-ADAPT-STOP1 consumes their force RMSE after each durable epoch checkpoint. The run-local
+-`adaptive_training_stop.json` records the foundation replay baseline, per-epoch monitor metrics,
+-candidate eligibility, and terminal reason. ADAPT-RANK1/ADAPT-EVAL1 are still pending, so the
+-current multi-fidelity evaluator remains runtime-authoritative. Those later gates will reuse the
+-already-computed monitor metrics for zero-new-inference screening and then replace successive
+-halving with top-finalist full evaluation.
++**0.20.125a0 behavior:** ADAPT-MON1 supplies the common training-time monitor artifacts,
++ADAPT-STOP1 consumes their force RMSE after each durable epoch checkpoint, and ADAPT-RANK1 derives
++one run-local lightweight champion using zero additional inference. `adaptive_training_stop.json`
++remains the immutable training trajectory; `lightweight_run_champion.json` is a separate derived
++ranking artifact bound to the stop-state digest, checkpoint catalog, score weights, and common
++monitor identities. ADAPT-EVAL1 is still pending, so the current multi-fidelity evaluator remains
++runtime-authoritative in this release. The next gate will use only these run champions for
++campaign-wide finalist screening before authoritative full evaluation.
+ 
+ With `replay_true_labels` configured, both the frozen foundation and the fine-tuned
+ candidate are evaluated on both the target monitor and the independent true-label
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/docs/specs/training_data/mlff_adaptive_training_stop_spec.md b/docs/specs/training_data/mlff_adaptive_training_stop_spec.md
+--- a/docs/specs/training_data/mlff_adaptive_training_stop_spec.md	2026-08-09 21:22:29.883788295 +0000
++++ b/docs/specs/training_data/mlff_adaptive_training_stop_spec.md	2026-08-09 21:36:37.242212020 +0000
+@@ -121,7 +121,7 @@
+ 
+ ADAPT-STOP1 deliberately does not select among admissible epochs. ADAPT-RANK1 will later compute
+ the weight-coupled lightweight score and freeze exactly one champion per independent run.
+-EVAL-MF remains the production evaluator in 0.20.124a0 until ADAPT-EVAL1 is implemented.
++EVAL-MF remains the production evaluator in 0.20.125a0 until ADAPT-EVAL1 is implemented. ADAPT-RANK1 now derives the run-local champion from this state without changing STOP1 evidence.
+ 
+ ## Generated configuration
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/docs/specs/training_data/mlff_lightweight_ranking_spec.md b/docs/specs/training_data/mlff_lightweight_ranking_spec.md
+--- a/docs/specs/training_data/mlff_lightweight_ranking_spec.md	1970-01-01 00:00:00.000000000 +0000
++++ b/docs/specs/training_data/mlff_lightweight_ranking_spec.md	2026-08-09 21:38:59.395171285 +0000
+@@ -0,0 +1,123 @@
++# MLFF ADAPT-RANK1 lightweight run-champion specification
++
++Status: implemented in mdstats 0.20.125a0 (`ADAPT-RANK1`)
++
++## Scope
++
++ADAPT-RANK1 converts the already-paid ADAPT-STOP1 epoch monitor history into one deterministic
++run-local lightweight champion. It launches no MACE inference, does not deserialize checkpoint
++models, and does not replace authoritative full evaluation. Campaign-wide top-K finalist selection
++belongs to ADAPT-EVAL1.
++
++## Inputs and lineage
++
++A new adaptive run must provide all of the following immutable evidence:
++
++- terminal `adaptive_training_stop.json` evidence;
++- the frozen `CandidateCheckpointCatalog` already created at successful training completion;
++- the ADAPT-STOP1 policy digest and score weights;
++- the common ADAPT-MON1 online-monitor policy digest;
++- the exact common target-online-monitor record digest; and
++- the exact common true-replay-online-monitor record digest.
++
++The stop-state epoch set and checkpoint-catalog epoch set must match exactly. Ranking is refused if
++candidate eligibility recomputed from the frozen policy disagrees with the eligibility bit stored by
++ADAPT-STOP1. This prevents stale or manually edited stop evidence from being silently ranked.
++
++## Admissible region
++
++An epoch can enter the ranking only when ADAPT-STOP1's hard candidate boundaries both pass:
++
++$$
++T_{\rm mon}\le T_{\max}
++$$
++
++and, for replay-enabled training,
++
++$$
++R_{\rm mon}\le R_{\max},\qquad
++R_{\max}=\frac{w_T}{w_R}T_{\max}.
++$$
++
++The weighted score never compensates for a failed hard boundary.
++
++## Lightweight score
++
++For replay-enabled training,
++
++$$
++S_{\rm light}=\frac{w_TT_{\rm mon}+w_RR_{\rm mon}}{w_T+w_R}.
++$$
++
++For target-only training, `S_light = T_mon`. The default 1:1 replay policy is therefore the simple
++arithmetic mean of target and replay force RMSE.
++
++All score arithmetic uses ordinary Python/NumPy double-precision scalar semantics after MACE
++inference. A sub-femtoscale canonicalization of the score is used only in the ranking key so two
++mathematically identical decimal weighted averages cannot be misordered by binary representation
++noise. This tolerance is many orders of magnitude below any campaign scientific threshold.
++
++## Deterministic ranking
++
++Eligible checkpoints are ordered by:
++
++1. lower weighted score;
++2. lower target force RMSE;
++3. lower replay force RMSE when replay is enabled;
++4. earlier epoch; and
++5. stable checkpoint SHA-256 identity.
++
++The rank-one eligible checkpoint is the run champion. Adjacent epochs from one training trajectory
++therefore cannot occupy multiple campaign finalist slots once ADAPT-EVAL1 consumes one champion per
++run.
++
++A run with no eligible epoch receives an explicit
++`no_lightweight_admissible_checkpoint` ranking record with no selected checkpoint. No fallback to
++the final epoch is permitted.
++
++## Durable artifact
++
++Each adaptive run owns:
++
++```text
++lightweight_run_champion.json
++```
++
++The record binds:
++
++- run-plan digest;
++- training-protocol digest;
++- ADAPT-STOP1 policy and state digests;
++- checkpoint-catalog digest;
++- common target/replay monitor identities;
++- every eligible checkpoint in deterministic ranking order;
++- selected checkpoint epoch/SHA and weighted score, when one exists; and
++- explicit ranking outcome.
++
++A later full-evaluation rejection never rewrites this artifact because it records a training-time
++screening fact, not final scientific acceptance.
++
++## Zero-new-inference and restart contract
++
++`rank_lightweight_run_champion(...)` accepts frozen Python evidence objects, not checkpoint paths.
++The catalog root may be unavailable and ranking must still succeed. Reconciliation regenerates the
++same record from persisted STOP1 state plus the persisted catalog without opening or deserializing
++model checkpoints.
++
++If `lightweight_run_champion.json` already exists, mdstats derives the expected record again and
++requires the content digest to match exactly. Mismatched or malformed ranking evidence fails closed.
++This also allows a parent interrupted after training completion but before the ranking record was
++committed to reconstruct the record without inference.
++
++## Gate boundary
++
++ADAPT-RANK1 does **not**:
++
++- choose the campaign-wide top five;
++- launch target/replay full evaluation;
++- retire EVAL-MF runtime behavior; or
++- select the final verified production model.
++
++Those responsibilities remain ADAPT-EVAL1 and ADAPT-VERIFY1. In mdstats 0.20.125a0, the current
++EVAL-MF evaluator remains runtime-authoritative even though each new completed adaptive run now has
++one frozen lightweight champion.
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/mdstats/__init__.py b/mdstats/__init__.py
+--- a/mdstats/__init__.py	2026-08-09 21:19:26.451244060 +0000
++++ b/mdstats/__init__.py	2026-08-09 21:31:42.541472993 +0000
+@@ -4788,6 +4788,11 @@
+     validate_adaptive_stop_foundation_baseline,
+     adaptive_training_stop_already_terminal,
+     adaptive_training_stop_requested,
++    LIGHTWEIGHT_CHECKPOINT_SCORE_SCHEMA,
++    LIGHTWEIGHT_RUN_CHAMPION_SCHEMA,
++    LightweightCheckpointScore,
++    LightweightRunChampionRecord,
++    rank_lightweight_run_champion,
+ )
+ __all__ += [
+     "ADAPTIVE_STOP_POLICY_SCHEMA",
+@@ -4801,4 +4806,9 @@
+     "validate_adaptive_stop_foundation_baseline",
+     "adaptive_training_stop_already_terminal",
+     "adaptive_training_stop_requested",
++    "LIGHTWEIGHT_CHECKPOINT_SCORE_SCHEMA",
++    "LIGHTWEIGHT_RUN_CHAMPION_SCHEMA",
++    "LightweightCheckpointScore",
++    "LightweightRunChampionRecord",
++    "rank_lightweight_run_champion",
+ ]
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/mdstats/_version.py b/mdstats/_version.py
+--- a/mdstats/_version.py	2026-08-09 21:19:26.450490298 +0000
++++ b/mdstats/_version.py	2026-08-09 21:30:38.927637036 +0000
+@@ -1,3 +1,3 @@
+ """Package version."""
+ 
+-__version__ = "0.20.124a0"
++__version__ = "0.20.125a0"
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/mdstats/data/observable_owner_manuals.json b/mdstats/data/observable_owner_manuals.json
+--- a/mdstats/data/observable_owner_manuals.json	2026-08-09 21:19:26.450650126 +0000
++++ b/mdstats/data/observable_owner_manuals.json	2026-08-09 21:30:38.927682754 +0000
+@@ -17,6 +17,6 @@
+       "uri": "mdstats-doc://vacf-dynamics-architecture/0.20.53a0"
+     }
+   },
+-  "package_version": "0.20.124a0",
++  "package_version": "0.20.125a0",
+   "schema": "mdstats.observable-owner-manual-index.v1"
+ }
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/mdstats/training_data/__init__.py b/mdstats/training_data/__init__.py
+--- a/mdstats/training_data/__init__.py	2026-08-09 21:19:26.450834681 +0000
++++ b/mdstats/training_data/__init__.py	2026-08-09 21:31:42.541116692 +0000
+@@ -1100,4 +1100,12 @@
+     adaptive_training_stop_requested,
+ )
+ 
++from .lightweight_rank import (
++    LIGHTWEIGHT_CHECKPOINT_SCORE_SCHEMA,
++    LIGHTWEIGHT_RUN_CHAMPION_SCHEMA,
++    LightweightCheckpointScore,
++    LightweightRunChampionRecord,
++    rank_lightweight_run_champion,
++)
++
+ __all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/mdstats/training_data/campaign_cli.py b/mdstats/training_data/campaign_cli.py
+--- a/mdstats/training_data/campaign_cli.py	2026-08-09 21:12:59.830963939 +0000
++++ b/mdstats/training_data/campaign_cli.py	2026-08-09 21:36:22.820224639 +0000
+@@ -7670,6 +7670,61 @@
+     return state
+ 
+ 
++def _reconcile_lightweight_run_champion(
++    run: Any,
++    job: Any,
++    run_root: Path,
++    adaptive_state: Any | None,
++    checkpoint_catalog: Any | None,
++) -> Any | None:
++    """Create or verify the ADAPT-RANK1 run-local decision artifact.
++
++    This is a pure transformation of persisted STOP1 history plus the frozen
++    checkpoint catalog. It never opens checkpoint bytes and launches no inference.
++    """
++
++    import mdstats
++
++    if job.protocol.adaptive_stop_policy is None:
++        return None
++    if adaptive_state is None:
++        raise CampaignCliError(
++            f"ADAPT-RANK1 requires adaptive-stop evidence for {run.run_id}."
++        )
++    if checkpoint_catalog is None:
++        raise CampaignCliError(
++            f"ADAPT-RANK1 requires the frozen checkpoint catalog for {run.run_id}."
++        )
++    try:
++        derived = mdstats.rank_lightweight_run_champion(
++            run, job.protocol, adaptive_state, checkpoint_catalog
++        )
++    except Exception as exc:
++        raise CampaignCliError(
++            f"Could not derive ADAPT-RANK1 evidence for {run.run_id}: "
++            f"{type(exc).__name__}: {exc}"
++        ) from exc
++    path = run_root / "lightweight_run_champion.json"
++    if path.is_file():
++        try:
++            existing = mdstats.LightweightRunChampionRecord.from_dict(
++                json.loads(path.read_text(encoding="utf-8"))
++            )
++        except Exception as exc:
++            raise CampaignCliError(
++                f"Invalid ADAPT-RANK1 evidence for {run.run_id}: "
++                f"{type(exc).__name__}: {exc}"
++            ) from exc
++        if existing.content_digest != derived.content_digest:
++            raise CampaignCliError(
++                f"ADAPT-RANK1 evidence for {run.run_id} disagrees with the persisted "
++                "stop history or checkpoint catalog; reconciliation is fail-closed."
++            )
++        return existing
++    _atomic_json(path, derived.to_dict())
++    return derived
++
++
+ def _completed_model_path(job: Any, run_root: Path, config_path: Path) -> Path | None:
+     try:
+         import yaml
+@@ -7865,6 +7920,16 @@
+                     f"recovered completed MACE artifacts for {run.run_id} before partial evaluation",
+                 )
+         if record is not None and record.state is mdstats.TrainingRunState.SUCCEEDED:
++            adaptive_state = _load_adaptive_stop_state(
++                run_root, job, require_terminal=True
++            )
++            if adaptive_state is not None:
++                store.put_record(f"adaptive_stop:{run.run_id}", adaptive_state)
++            lightweight_rank = _reconcile_lightweight_run_champion(
++                run, job, run_root, adaptive_state, record.checkpoint_catalog
++            )
++            if lightweight_rank is not None:
++                store.put_record(f"lightweight_rank:{run.run_id}", lightweight_rank)
+             result[run.content_digest] = record
+     return result
+ 
+@@ -8095,6 +8160,11 @@
+                 raise CampaignCliError(
+                     f"Completed training run {run.run_id} is missing its frozen checkpoint catalog."
+                 )
++            lightweight_rank = _reconcile_lightweight_run_champion(
++                run, job, run_root, adaptive_state, previous.checkpoint_catalog
++            )
++            if lightweight_rank is not None:
++                store.put_record(f"lightweight_rank:{run.run_id}", lightweight_rank)
+             storage_ok, storage_detail = _completed_checkpoint_storage_matches(
+                 paths, store, run.run_id, previous.checkpoint_catalog
+             )
+@@ -8106,8 +8176,16 @@
+                     "the run directory."
+                 )
+             completed_progress += 1
++            rank_detail = ""
++            if lightweight_rank is not None:
++                rank_detail = (
++                    f"; champion=epoch{lightweight_rank.selected_checkpoint_epoch} "
++                    f"score={lightweight_rank.selected_score_ev_per_angstrom * 1e3:.2f} meV/A"
++                    if lightweight_rank.outcome == "champion_selected"
++                    else "; champion=none (no admissible epoch)"
++                )
+             training_progress.item_done(
+-                completed_progress, run.run_id, f"already complete; {storage_detail}"
++                completed_progress, run.run_id, f"already complete; {storage_detail}{rank_detail}"
+             )
+             continue
+ 
+@@ -8123,20 +8201,34 @@
+             adaptive_state = _load_adaptive_stop_state(
+                 run_root, job, require_terminal=True
+             )
++            lightweight_rank = _reconcile_lightweight_run_champion(
++                run, job, run_root, adaptive_state, recovered.checkpoint_catalog
++            )
+             store.put_record(key, recovered)
+             store.put_record(
+                 f"checkpoint_catalog:{run.run_id}", recovered.checkpoint_catalog
+             )
+             if adaptive_state is not None:
+                 store.put_record(f"adaptive_stop:{run.run_id}", adaptive_state)
++            if lightweight_rank is not None:
++                store.put_record(f"lightweight_rank:{run.run_id}", lightweight_rank)
+             store.event(
+                 "warning",
+                 "train",
+                 f"recovered completed MACE artifacts for {run.run_id} after parent interruption",
+             )
+             completed_progress += 1
++            rank_detail = ""
++            if lightweight_rank is not None:
++                rank_detail = (
++                    f"; champion=epoch{lightweight_rank.selected_checkpoint_epoch} "
++                    f"score={lightweight_rank.selected_score_ev_per_angstrom * 1e3:.2f} meV/A"
++                    if lightweight_rank.outcome == "champion_selected"
++                    else "; champion=none (no admissible epoch)"
++                )
+             training_progress.item_done(
+-                completed_progress, run.run_id, "recovered completed child; no epochs repeated"
++                completed_progress, run.run_id,
++                f"recovered completed child; no epochs repeated{rank_detail}"
+             )
+             continue
+ 
+@@ -8379,12 +8471,18 @@
+ 
+                 records_to_commit = {task.state_key: record}
+                 adaptive_state = None
++                lightweight_rank = None
+                 if record.state is mdstats.TrainingRunState.SUCCEEDED:
+                     adaptive_state = _load_adaptive_stop_state(
+                         task.run_root, task.job, require_terminal=True
+                     )
+                     if adaptive_state is not None:
+                         records_to_commit[f"adaptive_stop:{task.run.run_id}"] = adaptive_state
++                    lightweight_rank = _reconcile_lightweight_run_champion(
++                        task.run, task.job, task.run_root, adaptive_state, record.checkpoint_catalog
++                    )
++                    if lightweight_rank is not None:
++                        records_to_commit[f"lightweight_rank:{task.run.run_id}"] = lightweight_rank
+                 if record.checkpoint_catalog is not None:
+                     records_to_commit[
+                         f"checkpoint_catalog:{task.run.run_id}"
+@@ -8407,11 +8505,20 @@
+                             f"(target={metric.target_force_rmse_ev_per_angstrom * 1e3:.2f} meV/A"
+                             f"{replay_text}); outcome={adaptive_state.run_outcome}"
+                         )
++                    rank_detail = ""
++                    if lightweight_rank is not None:
++                        if lightweight_rank.outcome == "champion_selected":
++                            rank_detail = (
++                                f"; champion=epoch{lightweight_rank.selected_checkpoint_epoch}"
++                                f" score={lightweight_rank.selected_score_ev_per_angstrom * 1e3:.2f} meV/A"
++                            )
++                        else:
++                            rank_detail = "; champion=none (no admissible epoch)"
+                     training_progress.item_done(
+                         completed_progress,
+                         task.run.run_id,
+                         f"{len(record.checkpoint_catalog.checkpoints)} checkpoints; "
+-                        f"run wall={_ProgressReporter._duration(run_wall)}{stop_detail}",
++                        f"run wall={_ProgressReporter._duration(run_wall)}{stop_detail}{rank_detail}",
+                     )
+                 elif record.state is mdstats.TrainingRunState.INTERRUPTED:
+                     _warn(
+@@ -14008,6 +14115,10 @@
+ fixed 512-configuration TRUE_DFT replay monitor while replay gradient labels remain independent.
+ ADAPT-STOP1 is active in 0.20.124a0: the common per-epoch force-RMSE monitor metrics now
+ terminate training at the target-success margin, replay-exhaustion margin, or max_num_epochs.
++ADAPT-RANK1 is active in 0.20.125a0: every completed adaptive run derives one immutable
++zero-new-inference lightweight champion from its admissible epoch history, or records an explicit
++no-champion outcome when no epoch satisfied both monitor boundaries. EVAL-MF remains the production
++evaluator until ADAPT-EVAL1.
+ 
+ Precision is explicit at initialization. Plain `init` generates `single` (FP32 learned-model
+ training/inference); use `init --precision double` for FP64 learned-model training/inference.
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/mdstats/training_data/lightweight_rank.py b/mdstats/training_data/lightweight_rank.py
+--- a/mdstats/training_data/lightweight_rank.py	1970-01-01 00:00:00.000000000 +0000
++++ b/mdstats/training_data/lightweight_rank.py	2026-08-09 21:33:38.093721814 +0000
+@@ -0,0 +1,430 @@
++"""ADAPT-RANK1 zero-inference ranking of adaptive-training checkpoints.
++
++The ranking layer is deliberately a pure evidence transformation.  It consumes
++ADAPT-STOP1's immutable epoch metrics plus the already-frozen checkpoint catalog;
++it never opens a model checkpoint and never launches MACE inference.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++import math
++from typing import Any, Mapping
++
++from ._common import TrainingDataInputError, TrainingDataSerializationError, digest, validate_digest
++from .adaptive_stop import AdaptiveTrainingStopState, AdaptiveTrainingStopPolicy
++
++LIGHTWEIGHT_CHECKPOINT_SCORE_SCHEMA = "mdstats.lightweight-checkpoint-score.v1"
++LIGHTWEIGHT_RUN_CHAMPION_SCHEMA = "mdstats.lightweight-run-champion.v1"
++
++
++@dataclass(frozen=True, slots=True)
++class LightweightCheckpointScore:
++    """One score-eligible checkpoint, using only already-paid monitor metrics."""
++
++    epoch: int
++    checkpoint_sha256: str
++    target_force_rmse_ev_per_angstrom: float
++    replay_force_rmse_ev_per_angstrom: float | None
++    weighted_score_ev_per_angstrom: float
++
++    def __post_init__(self) -> None:
++        if int(self.epoch) < 0:
++            raise TrainingDataInputError("Lightweight-ranking epoch must be nonnegative.")
++        object.__setattr__(
++            self,
++            "checkpoint_sha256",
++            validate_digest(self.checkpoint_sha256, name="checkpoint_sha256"),
++        )
++        for name in (
++            "target_force_rmse_ev_per_angstrom",
++            "replay_force_rmse_ev_per_angstrom",
++            "weighted_score_ev_per_angstrom",
++        ):
++            value = getattr(self, name)
++            if value is not None and (not math.isfinite(float(value)) or float(value) < 0.0):
++                raise TrainingDataInputError(
++                    f"Lightweight-ranking {name} must be finite and nonnegative."
++                )
++
++    def _payload(self) -> dict[str, Any]:
++        return {
++            "schema": LIGHTWEIGHT_CHECKPOINT_SCORE_SCHEMA,
++            "epoch": int(self.epoch),
++            "checkpoint_sha256": self.checkpoint_sha256,
++            "target_force_rmse_ev_per_angstrom": float(
++                self.target_force_rmse_ev_per_angstrom
++            ),
++            "replay_force_rmse_ev_per_angstrom": (
++                None
++                if self.replay_force_rmse_ev_per_angstrom is None
++                else float(self.replay_force_rmse_ev_per_angstrom)
++            ),
++            "weighted_score_ev_per_angstrom": float(self.weighted_score_ev_per_angstrom),
++        }
++
++    @property
++    def content_digest(self) -> str:
++        return digest(self._payload())
++
++    def to_dict(self) -> dict[str, Any]:
++        return {**self._payload(), "content_digest": self.content_digest}
++
++    @classmethod
++    def from_dict(cls, payload: Mapping[str, Any]) -> "LightweightCheckpointScore":
++        if payload.get("schema") != LIGHTWEIGHT_CHECKPOINT_SCORE_SCHEMA:
++            raise TrainingDataSerializationError(
++                "Unsupported lightweight-checkpoint-score schema."
++            )
++        result = cls(
++            epoch=int(payload["epoch"]),
++            checkpoint_sha256=str(payload["checkpoint_sha256"]),
++            target_force_rmse_ev_per_angstrom=float(
++                payload["target_force_rmse_ev_per_angstrom"]
++            ),
++            replay_force_rmse_ev_per_angstrom=(
++                None
++                if payload.get("replay_force_rmse_ev_per_angstrom") is None
++                else float(payload["replay_force_rmse_ev_per_angstrom"])
++            ),
++            weighted_score_ev_per_angstrom=float(
++                payload["weighted_score_ev_per_angstrom"]
++            ),
++        )
++        if payload.get("content_digest") not in (None, result.content_digest):
++            raise TrainingDataSerializationError(
++                "Lightweight-checkpoint-score digest mismatch."
++            )
++        return result
++
++
++@dataclass(frozen=True, slots=True)
++class LightweightRunChampionRecord:
++    """Immutable ADAPT-RANK1 result for one independent training run.
++
++    ``eligible_candidates`` is stored in deterministic ranking order.  A run
++    that never entered the admissible rectangle still receives a record, but it
++    explicitly carries ``no_lightweight_admissible_checkpoint`` and no selected
++    checkpoint rather than inventing a champion.
++    """
++
++    run_plan_digest: str
++    training_protocol_digest: str
++    adaptive_stop_policy_digest: str
++    adaptive_stop_state_digest: str
++    checkpoint_catalog_digest: str
++    online_monitor_policy_digest: str
++    target_online_monitor_record_digest: str
++    replay_online_monitor_record_digest: str
++    outcome: str
++    eligible_candidates: tuple[LightweightCheckpointScore, ...] = ()
++    selected_checkpoint_sha256: str | None = None
++    selected_checkpoint_epoch: int | None = None
++    selected_score_ev_per_angstrom: float | None = None
++    ranking_order: tuple[str, ...] = (
++        "weighted_score",
++        "target_force_rmse",
++        "replay_force_rmse",
++        "epoch",
++        "checkpoint_sha256",
++    )
++
++    def __post_init__(self) -> None:
++        for name in (
++            "run_plan_digest",
++            "training_protocol_digest",
++            "adaptive_stop_policy_digest",
++            "adaptive_stop_state_digest",
++            "checkpoint_catalog_digest",
++            "online_monitor_policy_digest",
++            "target_online_monitor_record_digest",
++            "replay_online_monitor_record_digest",
++        ):
++            object.__setattr__(self, name, validate_digest(getattr(self, name), name=name))
++        allowed = {"champion_selected", "no_lightweight_admissible_checkpoint"}
++        if self.outcome not in allowed:
++            raise TrainingDataInputError("Unsupported lightweight-ranking outcome.")
++        candidates = tuple(self.eligible_candidates)
++        if len({item.epoch for item in candidates}) != len(candidates):
++            raise TrainingDataInputError("Lightweight ranking contains duplicate epochs.")
++        if len({item.checkpoint_sha256 for item in candidates}) != len(candidates):
++            raise TrainingDataInputError("Lightweight ranking contains duplicate checkpoints.")
++        object.__setattr__(self, "eligible_candidates", candidates)
++        object.__setattr__(self, "ranking_order", tuple(str(v) for v in self.ranking_order))
++        if self.outcome == "champion_selected":
++            if not candidates:
++                raise TrainingDataInputError("Champion-selected ranking has no eligible candidates.")
++            if self.selected_checkpoint_sha256 is None or self.selected_checkpoint_epoch is None:
++                raise TrainingDataInputError("Champion-selected ranking lacks checkpoint identity.")
++            selected_sha = validate_digest(
++                self.selected_checkpoint_sha256, name="selected_checkpoint_sha256"
++            )
++            object.__setattr__(self, "selected_checkpoint_sha256", selected_sha)
++            selected = [
++                item
++                for item in candidates
++                if item.checkpoint_sha256 == selected_sha
++                and item.epoch == int(self.selected_checkpoint_epoch)
++            ]
++            if len(selected) != 1:
++                raise TrainingDataInputError("Selected lightweight champion is absent from candidates.")
++            score = self.selected_score_ev_per_angstrom
++            if score is None or not math.isfinite(float(score)) or float(score) < 0.0:
++                raise TrainingDataInputError("Selected lightweight champion score is invalid.")
++            if not math.isclose(
++                float(score),
++                selected[0].weighted_score_ev_per_angstrom,
++                rel_tol=0.0,
++                abs_tol=1e-15,
++            ):
++                raise TrainingDataInputError("Selected lightweight champion score mismatch.")
++            # The record contract stores candidates in exact ranking order.
++            if candidates[0] != selected[0]:
++                raise TrainingDataInputError("Selected lightweight champion is not rank one.")
++        else:
++            if candidates:
++                raise TrainingDataInputError(
++                    "No-admissible lightweight ranking cannot contain eligible candidates."
++                )
++            if any(
++                value is not None
++                for value in (
++                    self.selected_checkpoint_sha256,
++                    self.selected_checkpoint_epoch,
++                    self.selected_score_ev_per_angstrom,
++                )
++            ):
++                raise TrainingDataInputError(
++                    "No-admissible lightweight ranking cannot select a checkpoint."
++                )
++
++    def _payload(self) -> dict[str, Any]:
++        return {
++            "schema": LIGHTWEIGHT_RUN_CHAMPION_SCHEMA,
++            "run_plan_digest": self.run_plan_digest,
++            "training_protocol_digest": self.training_protocol_digest,
++            "adaptive_stop_policy_digest": self.adaptive_stop_policy_digest,
++            "adaptive_stop_state_digest": self.adaptive_stop_state_digest,
++            "checkpoint_catalog_digest": self.checkpoint_catalog_digest,
++            "online_monitor_policy_digest": self.online_monitor_policy_digest,
++            "target_online_monitor_record_digest": self.target_online_monitor_record_digest,
++            "replay_online_monitor_record_digest": self.replay_online_monitor_record_digest,
++            "outcome": self.outcome,
++            "eligible_candidates": [item.to_dict() for item in self.eligible_candidates],
++            "selected_checkpoint_sha256": self.selected_checkpoint_sha256,
++            "selected_checkpoint_epoch": self.selected_checkpoint_epoch,
++            "selected_score_ev_per_angstrom": self.selected_score_ev_per_angstrom,
++            "ranking_order": list(self.ranking_order),
++        }
++
++    @property
++    def content_digest(self) -> str:
++        return digest(self._payload())
++
++    def to_dict(self) -> dict[str, Any]:
++        return {**self._payload(), "content_digest": self.content_digest}
++
++    @classmethod
++    def from_dict(cls, payload: Mapping[str, Any]) -> "LightweightRunChampionRecord":
++        if payload.get("schema") != LIGHTWEIGHT_RUN_CHAMPION_SCHEMA:
++            raise TrainingDataSerializationError("Unsupported lightweight-run-champion schema.")
++        result = cls(
++            run_plan_digest=str(payload["run_plan_digest"]),
++            training_protocol_digest=str(payload["training_protocol_digest"]),
++            adaptive_stop_policy_digest=str(payload["adaptive_stop_policy_digest"]),
++            adaptive_stop_state_digest=str(payload["adaptive_stop_state_digest"]),
++            checkpoint_catalog_digest=str(payload["checkpoint_catalog_digest"]),
++            online_monitor_policy_digest=str(payload["online_monitor_policy_digest"]),
++            target_online_monitor_record_digest=str(
++                payload["target_online_monitor_record_digest"]
++            ),
++            replay_online_monitor_record_digest=str(
++                payload["replay_online_monitor_record_digest"]
++            ),
++            outcome=str(payload["outcome"]),
++            eligible_candidates=tuple(
++                LightweightCheckpointScore.from_dict(item)
++                for item in payload.get("eligible_candidates", ())
++            ),
++            selected_checkpoint_sha256=(
++                None
++                if payload.get("selected_checkpoint_sha256") is None
++                else str(payload["selected_checkpoint_sha256"])
++            ),
++            selected_checkpoint_epoch=(
++                None
++                if payload.get("selected_checkpoint_epoch") is None
++                else int(payload["selected_checkpoint_epoch"])
++            ),
++            selected_score_ev_per_angstrom=(
++                None
++                if payload.get("selected_score_ev_per_angstrom") is None
++                else float(payload["selected_score_ev_per_angstrom"])
++            ),
++            ranking_order=tuple(str(v) for v in payload.get("ranking_order", ())),
++        )
++        if payload.get("content_digest") not in (None, result.content_digest):
++            raise TrainingDataSerializationError("Lightweight-run-champion digest mismatch.")
++        return result
++
++
++def _weighted_score(
++    policy: AdaptiveTrainingStopPolicy,
++    *,
++    target_rmse: float,
++    replay_rmse: float | None,
++) -> float:
++    target_weight = float(policy.target_score_weight)
++    if not policy.replay_enabled:
++        return float(target_rmse)
++    if replay_rmse is None:
++        raise TrainingDataInputError(
++            "Replay-enabled lightweight ranking requires true-label replay RMSE."
++        )
++    replay_weight = float(policy.replay_score_weight)
++    return (
++        target_weight * float(target_rmse) + replay_weight * float(replay_rmse)
++    ) / (target_weight + replay_weight)
++
++
++def _ranking_key(
++    item: LightweightCheckpointScore,
++    *,
++    replay_enabled: bool,
++) -> tuple[float, float, float, int, str]:
++    replay = (
++        0.0
++        if not replay_enabled
++        else (
++            float("inf")
++            if item.replay_force_rmse_ev_per_angstrom is None
++            else float(item.replay_force_rmse_ev_per_angstrom)
++        )
++    )
++    # JSON-decimal monitor values can acquire ~1e-18 binary representation
++    # differences in otherwise mathematically identical weighted averages.
++    # Canonicalize the score far below any scientific resolution so an exact
++    # conceptual tie reaches the documented target/replay/epoch tie-breakers.
++    canonical_score = round(float(item.weighted_score_ev_per_angstrom), 15)
++    return (
++        canonical_score,
++        float(item.target_force_rmse_ev_per_angstrom),
++        replay,
++        int(item.epoch),
++        item.checkpoint_sha256,
++    )
++
++
++def rank_lightweight_run_champion(
++    run_plan: Any,
++    protocol: Any,
++    stop_state: AdaptiveTrainingStopState,
++    checkpoint_catalog: Any,
++) -> LightweightRunChampionRecord:
++    """Derive one run-local champion without inference or checkpoint reads.
++
++    The function deliberately accepts the frozen catalog rather than a checkpoint
++    directory.  Reconciliation therefore depends only on persisted JSON evidence
++    and never needs to deserialize model bytes.
++    """
++
++    run_digest = str(run_plan.content_digest)
++    if checkpoint_catalog.run_plan_digest != run_digest:
++        raise TrainingDataInputError("Lightweight ranking checkpoint catalog belongs to another run.")
++    if str(getattr(protocol, "content_digest")) == "":  # pragma: no cover - defensive
++        raise TrainingDataInputError("Lightweight ranking protocol identity is missing.")
++    policy = getattr(protocol, "adaptive_stop_policy", None)
++    if policy is None:
++        raise TrainingDataInputError("ADAPT-RANK1 requires an ADAPT-STOP1 protocol.")
++    if stop_state.policy_digest != policy.policy_digest:
++        raise TrainingDataInputError("Lightweight ranking stop state belongs to another policy.")
++    if stop_state.stop_reason is None or stop_state.stop_epoch is None:
++        raise TrainingDataInputError("ADAPT-RANK1 requires terminal ADAPT-STOP1 evidence.")
++    monitor_fields = {
++        "online_monitor_policy_digest": getattr(protocol, "online_monitor_policy_digest", None),
++        "target_online_monitor_record_digest": getattr(
++            protocol, "target_online_monitor_record_digest", None
++        ),
++        "replay_online_monitor_record_digest": getattr(
++            protocol, "replay_online_monitor_record_digest", None
++        ),
++    }
++    if any(value is None for value in monitor_fields.values()):
++        raise TrainingDataInputError("ADAPT-RANK1 requires complete common-monitor lineage.")
++
++    by_epoch = {item.epoch: item for item in checkpoint_catalog.checkpoints}
++    state_epochs = {item.epoch for item in stop_state.epochs}
++    catalog_epochs = set(by_epoch)
++    if state_epochs != catalog_epochs:
++        raise TrainingDataInputError(
++            "ADAPT-RANK1 requires exact epoch coverage between stop history and frozen checkpoint catalog; "
++            f"state_only={sorted(state_epochs - catalog_epochs)}, "
++            f"catalog_only={sorted(catalog_epochs - state_epochs)}."
++        )
++
++    scored: list[LightweightCheckpointScore] = []
++    for metric in stop_state.epochs:
++        recomputed_eligible = policy.candidate_eligible(
++            metric.target_force_rmse_ev_per_angstrom,
++            metric.replay_force_rmse_ev_per_angstrom,
++        )
++        if recomputed_eligible != metric.candidate_eligible:
++            raise TrainingDataInputError(
++                f"Adaptive-stop candidate eligibility changed for epoch {metric.epoch}."
++            )
++        if not recomputed_eligible:
++            continue
++        checkpoint = by_epoch[metric.epoch]
++        scored.append(
++            LightweightCheckpointScore(
++                epoch=metric.epoch,
++                checkpoint_sha256=checkpoint.sha256,
++                target_force_rmse_ev_per_angstrom=metric.target_force_rmse_ev_per_angstrom,
++                replay_force_rmse_ev_per_angstrom=metric.replay_force_rmse_ev_per_angstrom,
++                weighted_score_ev_per_angstrom=_weighted_score(
++                    policy,
++                    target_rmse=metric.target_force_rmse_ev_per_angstrom,
++                    replay_rmse=metric.replay_force_rmse_ev_per_angstrom,
++                ),
++            )
++        )
++    ranked = tuple(
++        sorted(scored, key=lambda item: _ranking_key(item, replay_enabled=policy.replay_enabled))
++    )
++
++    common = dict(
++        run_plan_digest=run_digest,
++        training_protocol_digest=protocol.content_digest,
++        adaptive_stop_policy_digest=policy.policy_digest,
++        adaptive_stop_state_digest=stop_state.content_digest,
++        checkpoint_catalog_digest=checkpoint_catalog.content_digest,
++        online_monitor_policy_digest=str(monitor_fields["online_monitor_policy_digest"]),
++        target_online_monitor_record_digest=str(
++            monitor_fields["target_online_monitor_record_digest"]
++        ),
++        replay_online_monitor_record_digest=str(
++            monitor_fields["replay_online_monitor_record_digest"]
++        ),
++    )
++    if not ranked:
++        if stop_state.run_outcome != "no_lightweight_admissible_checkpoint":
++            raise TrainingDataInputError(
++                "ADAPT-STOP1 reported an admissible checkpoint, but ADAPT-RANK1 found none."
++            )
++        return LightweightRunChampionRecord(
++            **common,
++            outcome="no_lightweight_admissible_checkpoint",
++        )
++    if stop_state.run_outcome != "admissible_checkpoint_available":
++        raise TrainingDataInputError(
++            "ADAPT-STOP1 reported no admissible checkpoint, but ADAPT-RANK1 found candidates."
++        )
++    selected = ranked[0]
++    return LightweightRunChampionRecord(
++        **common,
++        outcome="champion_selected",
++        eligible_candidates=ranked,
++        selected_checkpoint_sha256=selected.checkpoint_sha256,
++        selected_checkpoint_epoch=selected.epoch,
++        selected_score_ev_per_angstrom=selected.weighted_score_ev_per_angstrom,
++    )
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/pyproject.toml b/pyproject.toml
+--- a/pyproject.toml	2026-08-09 21:19:26.450371251 +0000
++++ b/pyproject.toml	2026-08-09 21:30:38.927511889 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.124a0"
++version = "0.20.125a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/release/mlff_adapt_rank1_lightweight_ranking_qualification.json b/release/mlff_adapt_rank1_lightweight_ranking_qualification.json
+--- a/release/mlff_adapt_rank1_lightweight_ranking_qualification.json	1970-01-01 00:00:00.000000000 +0000
++++ b/release/mlff_adapt_rank1_lightweight_ranking_qualification.json	2026-08-09 21:43:51.105612464 +0000
+@@ -0,0 +1,50 @@
++{
++  "schema": "mdstats.mlff-adapt-rank1-qualification.v1",
++  "package_version": "0.20.125a0",
++  "gate": "ADAPT-RANK1",
++  "date": "2026-08-09",
++  "status": "qualified",
++  "behavior": {
++    "new_inference_required": false,
++    "checkpoint_model_open_required": false,
++    "hard_target_replay_boundaries_precede_ranking": true,
++    "weighted_lightweight_score": true,
++    "one_champion_per_independent_run": true,
++    "explicit_no_champion_outcome": true,
++    "deterministic_tie_breaking": [
++      "weighted_score",
++      "target_force_rmse",
++      "replay_force_rmse",
++      "epoch",
++      "checkpoint_sha256"
++    ],
++    "restart_reconciliation_from_stop_state_and_catalog": true,
++    "campaign_wide_top_k_full_evaluation": "pending ADAPT-EVAL1",
++    "current_evaluator": "historical EVAL-MF remains runtime-authoritative until ADAPT-EVAL1"
++  },
++  "tests": [
++    {
++      "scope": "adaptive/campaign runtime",
++      "result": "91 passed, 1 skipped",
++      "note": "skip requires external real LTA training root"
++    },
++    {
++      "scope": "checkpoint/execution/storage",
++      "result": "41 passed"
++    },
++    {
++      "scope": "MLFF specification/schema",
++      "result": "137 passed, 1 deselected",
++      "note": "deselected pre-existing missing release/mlff_data9a9a_real_mpa0_restart_smoke.json fixture"
++    },
++    {
++      "scope": "ADAPT-RANK1 focused",
++      "result": "7 passed"
++    }
++  ],
++  "numerical_policy": {
++    "score_storage": "unrounded FP64",
++    "rank_key_score_canonicalization_decimals": 15,
++    "reason": "prevent sub-scientific binary representation noise from bypassing deterministic tie-breakers"
++  }
++}
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/tests/test_mlff_adapt_mon1_specification.py b/tests/test_mlff_adapt_mon1_specification.py
+--- a/tests/test_mlff_adapt_mon1_specification.py	2026-08-09 21:24:39.735491930 +0000
++++ b/tests/test_mlff_adapt_mon1_specification.py	2026-08-09 21:35:38.268447186 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_adapt_mon1_release_and_normative_defaults():
+-    assert mdstats.__version__ == "0.20.124a0"
++    assert mdstats.__version__ == "0.20.125a0"
+     text = SPEC.read_text(encoding="utf-8")
+     assert "Status: implemented in mdstats 0.20.123a0" in text
+     assert "256 configurations" in text
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/tests/test_mlff_adapt_prec1_specification.py b/tests/test_mlff_adapt_prec1_specification.py
+--- a/tests/test_mlff_adapt_prec1_specification.py	2026-08-09 21:24:27.845554338 +0000
++++ b/tests/test_mlff_adapt_prec1_specification.py	2026-08-09 21:35:38.271197932 +0000
+@@ -8,7 +8,7 @@
+ 
+ 
+ def test_adapt_prec1_release_and_spec_contract():
+-    assert mdstats.__version__ == "0.20.124a0"
++    assert mdstats.__version__ == "0.20.125a0"
+     text = SPEC.read_text(encoding="utf-8")
+     assert "Status: implemented in mdstats 0.20.122a0" in text
+     assert "`single`: learned-model" in text
+@@ -26,8 +26,9 @@
+     assert "**Status:** `implemented` in `mdstats 0.20.123a0`." in text[mon_start : mon_start + 1400]
+     stop_start = text.index("## ADAPT-STOP1")
+     assert "**Status:** implemented in `mdstats 0.20.124a0`." in text[stop_start : stop_start + 1000]
++    rank_start = text.index("## ADAPT-RANK1")
++    assert "**Status:** implemented in `mdstats 0.20.125a0`." in text[rank_start : rank_start + 1000]
+     for heading in [
+-        "## ADAPT-RANK1",
+         "## ADAPT-EVAL1",
+         "## ADAPT-VERIFY1",
+         "## ADAPT-MIGRATE1",
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/tests/test_mlff_adapt_rank1_lightweight_ranking.py b/tests/test_mlff_adapt_rank1_lightweight_ranking.py
+--- a/tests/test_mlff_adapt_rank1_lightweight_ranking.py	1970-01-01 00:00:00.000000000 +0000
++++ b/tests/test_mlff_adapt_rank1_lightweight_ranking.py	2026-08-09 21:42:22.539232332 +0000
+@@ -0,0 +1,248 @@
++from __future__ import annotations
++
++import json
++from pathlib import Path
++from types import SimpleNamespace
++
++import pytest
++
++import mdstats
++from mdstats.training_data.campaign_cli import _reconcile_lightweight_run_champion
++
++
++def _sha(text: str) -> str:
++    import hashlib
++    return hashlib.sha256(text.encode()).hexdigest()
++
++
++def _protocol(policy: mdstats.AdaptiveTrainingStopPolicy):
++    return SimpleNamespace(
++        adaptive_stop_policy=policy,
++        online_monitor_policy_digest=_sha("online-policy"),
++        target_online_monitor_record_digest=_sha("target-monitor"),
++        replay_online_monitor_record_digest=_sha("replay-monitor"),
++        content_digest=_sha("protocol"),
++    )
++
++
++def _run():
++    return SimpleNamespace(content_digest=_sha("run"), run_id="run-a")
++
++
++def _catalog(epochs: tuple[int, ...]):
++    run_digest = _run().content_digest
++    records = []
++    for epoch in epochs:
++        records.append(
++            mdstats.CheckpointFileRecord(
++                run_plan_digest=run_digest,
++                candidate_id=f"run-a:epoch-{epoch}",
++                epoch=epoch,
++                relative_path=f"model_epoch-{epoch}.pt",
++                sha256=_sha(f"checkpoint-{epoch}"),
++                size_bytes=123 + epoch,
++            )
++        )
++    return mdstats.CandidateCheckpointCatalog(
++        run_plan_digest=run_digest,
++        root_directory="/does/not/need/to/exist",
++        checkpoints=tuple(records),
++        pattern="*epoch*.pt",
++    )
++
++
++def _state(policy, rows, *, stop_epoch: int, stop_reason: str, outcome: str):
++    metrics = tuple(
++        mdstats.AdaptiveTrainingEpochMetric(
++            epoch=epoch,
++            target_force_rmse_ev_per_angstrom=target,
++            replay_force_rmse_ev_per_angstrom=replay,
++            candidate_eligible=policy.candidate_eligible(target, replay),
++            stop_reason=stop_reason if epoch == stop_epoch else None,
++        )
++        for epoch, target, replay in rows
++    )
++    return mdstats.AdaptiveTrainingStopState(
++        policy_digest=policy.policy_digest,
++        foundation_replay_force_rmse_ev_per_angstrom=0.020,
++        foundation_replay_threshold_feasible=True,
++        epochs=metrics,
++        stop_epoch=stop_epoch,
++        stop_reason=stop_reason,
++        run_outcome=outcome,
++    )
++
++
++def test_default_one_to_one_ranking_selects_weighted_compromise_without_checkpoint_reads() -> None:
++    policy = mdstats.AdaptiveTrainingStopPolicy()
++    state = _state(
++        policy,
++        (
++            (0, 0.029, 0.025),  # 27.0 meV/A
++            (1, 0.024, 0.029),  # 26.5 meV/A -> champion
++        ),
++        stop_epoch=1,
++        stop_reason="target_success",
++        outcome="admissible_checkpoint_available",
++    )
++    # The catalog's root deliberately does not exist. RANK1 must use only the
++    # frozen records and therefore cannot open model checkpoints.
++    result = mdstats.rank_lightweight_run_champion(
++        _run(), _protocol(policy), state, _catalog((0, 1))
++    )
++    assert result.outcome == "champion_selected"
++    assert result.selected_checkpoint_epoch == 1
++    assert result.selected_score_ev_per_angstrom == pytest.approx(0.0265)
++    assert [item.epoch for item in result.eligible_candidates] == [1, 0]
++
++
++def test_weight_ratio_changes_score_but_hard_boundaries_still_precede_ranking() -> None:
++    policy = mdstats.AdaptiveTrainingStopPolicy(
++        target_score_weight=2.0,
++        replay_score_weight=1.0,
++    )
++    # R_max = 60 meV/A. Epoch 2 is excluded by the target boundary even though
++    # its weighted average could otherwise compete.
++    state = _state(
++        policy,
++        (
++            (0, 0.029, 0.040),
++            (1, 0.026, 0.050),
++            (2, 0.031, 0.010),
++        ),
++        stop_epoch=2,
++        stop_reason="max_epochs_reached",
++        outcome="admissible_checkpoint_available",
++    )
++    result = mdstats.rank_lightweight_run_champion(
++        _run(), _protocol(policy), state, _catalog((0, 1, 2))
++    )
++    assert [item.epoch for item in result.eligible_candidates] == [0, 1]
++    assert result.selected_checkpoint_epoch == 0
++    assert result.eligible_candidates[0].weighted_score_ev_per_angstrom == pytest.approx(
++        (2 * 0.029 + 0.040) / 3
++    )
++
++
++def test_deterministic_ties_use_target_then_replay_then_epoch_then_sha() -> None:
++    policy = mdstats.AdaptiveTrainingStopPolicy()
++    state = _state(
++        policy,
++        (
++            (0, 0.026, 0.028),  # score 0.027
++            (1, 0.025, 0.029),  # score 0.027; lower target wins
++            (2, 0.025, 0.029),  # exact metric tie; earlier epoch 1 wins
++        ),
++        stop_epoch=2,
++        stop_reason="max_epochs_reached",
++        outcome="admissible_checkpoint_available",
++    )
++    result = mdstats.rank_lightweight_run_champion(
++        _run(), _protocol(policy), state, _catalog((0, 1, 2))
++    )
++    assert [item.epoch for item in result.eligible_candidates] == [1, 2, 0]
++    assert result.selected_checkpoint_epoch == 1
++
++
++def test_no_admissible_epoch_emits_explicit_no_champion_record() -> None:
++    policy = mdstats.AdaptiveTrainingStopPolicy(max_num_epochs=2)
++    state = _state(
++        policy,
++        ((0, 0.031, 0.025), (1, 0.032, 0.026)),
++        stop_epoch=1,
++        stop_reason="max_epochs_reached",
++        outcome="no_lightweight_admissible_checkpoint",
++    )
++    result = mdstats.rank_lightweight_run_champion(
++        _run(), _protocol(policy), state, _catalog((0, 1))
++    )
++    assert result.outcome == "no_lightweight_admissible_checkpoint"
++    assert result.selected_checkpoint_epoch is None
++    assert result.eligible_candidates == ()
++
++
++def test_ranking_requires_exact_epoch_and_common_monitor_lineage() -> None:
++    policy = mdstats.AdaptiveTrainingStopPolicy()
++    state = _state(
++        policy,
++        ((0, 0.029, 0.025),),
++        stop_epoch=0,
++        stop_reason="max_epochs_reached",
++        outcome="admissible_checkpoint_available",
++    )
++    with pytest.raises(mdstats.TrainingDataInputError, match="exact epoch coverage"):
++        mdstats.rank_lightweight_run_champion(
++            _run(), _protocol(policy), state, _catalog((0, 1))
++        )
++    broken_protocol = _protocol(policy)
++    broken_protocol.target_online_monitor_record_digest = None
++    with pytest.raises(mdstats.TrainingDataInputError, match="common-monitor lineage"):
++        mdstats.rank_lightweight_run_champion(
++            _run(), broken_protocol, state, _catalog((0,))
++        )
++
++
++def test_record_roundtrip_and_run_local_reconciliation_are_idempotent(tmp_path: Path) -> None:
++    policy = mdstats.AdaptiveTrainingStopPolicy()
++    protocol = _protocol(policy)
++    run = _run()
++    catalog = _catalog((0, 1))
++    state = _state(
++        policy,
++        ((0, 0.029, 0.025), (1, 0.024, 0.029)),
++        stop_epoch=1,
++        stop_reason="target_success",
++        outcome="admissible_checkpoint_available",
++    )
++    first = _reconcile_lightweight_run_champion(
++        run, SimpleNamespace(protocol=protocol), tmp_path, state, catalog
++    )
++    assert first is not None
++    path = tmp_path / "lightweight_run_champion.json"
++    assert path.is_file()
++    restored = mdstats.LightweightRunChampionRecord.from_dict(json.loads(path.read_text()))
++    assert restored == first
++    second = _reconcile_lightweight_run_champion(
++        run, SimpleNamespace(protocol=protocol), tmp_path, state, catalog
++    )
++    assert second == first
++
++    payload = json.loads(path.read_text())
++    payload["selected_checkpoint_epoch"] = 0
++    path.write_text(json.dumps(payload), encoding="utf-8")
++    with pytest.raises(Exception, match="Invalid ADAPT-RANK1 evidence|disagrees"):
++        _reconcile_lightweight_run_champion(
++            run, SimpleNamespace(protocol=protocol), tmp_path, state, catalog
++        )
++
++
++def test_target_only_run_ranks_by_target_rmse_without_replay_metric() -> None:
++    policy = mdstats.AdaptiveTrainingStopPolicy(replay_enabled=False)
++    metrics = (
++        mdstats.AdaptiveTrainingEpochMetric(
++            epoch=0,
++            target_force_rmse_ev_per_angstrom=0.029,
++            replay_force_rmse_ev_per_angstrom=None,
++            candidate_eligible=True,
++        ),
++        mdstats.AdaptiveTrainingEpochMetric(
++            epoch=1,
++            target_force_rmse_ev_per_angstrom=0.023,
++            replay_force_rmse_ev_per_angstrom=None,
++            candidate_eligible=True,
++            stop_reason="target_success",
++        ),
++    )
++    state = mdstats.AdaptiveTrainingStopState(
++        policy_digest=policy.policy_digest,
++        epochs=metrics,
++        stop_epoch=1,
++        stop_reason="target_success",
++        run_outcome="admissible_checkpoint_available",
++    )
++    result = mdstats.rank_lightweight_run_champion(
++        _run(), _protocol(policy), state, _catalog((0, 1))
++    )
++    assert result.selected_checkpoint_epoch == 1
++    assert result.selected_score_ev_per_angstrom == pytest.approx(0.023)
++    assert result.eligible_candidates[0].replay_force_rmse_ev_per_angstrom is None
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/tests/test_mlff_adapt_rank1_specification.py b/tests/test_mlff_adapt_rank1_specification.py
+--- a/tests/test_mlff_adapt_rank1_specification.py	1970-01-01 00:00:00.000000000 +0000
++++ b/tests/test_mlff_adapt_rank1_specification.py	2026-08-09 21:35:38.387071398 +0000
+@@ -0,0 +1,38 @@
++from pathlib import Path
++
++import mdstats
++
++ROOT = Path(__file__).resolve().parents[1]
++SPEC = ROOT / "docs" / "specs" / "training_data" / "mlff_lightweight_ranking_spec.md"
++MANUAL = ROOT / "docs" / "arch_manuals" / "mlff_training_data_architecture.md"
++GUIDE = ROOT / "docs" / "guides" / "mlff_campaign_cli_user_guide.md"
++
++
++def test_adapt_rank1_release_and_spec_contract() -> None:
++    assert mdstats.__version__ == "0.20.125a0"
++    text = SPEC.read_text(encoding="utf-8")
++    assert "Status: implemented in mdstats 0.20.125a0" in text
++    assert "zero" in text.lower() and "inference" in text.lower()
++    assert "lightweight_run_champion.json" in text
++    assert "weighted score" in text.lower()
++    assert "lower target force RMSE" in text
++    assert "earlier epoch" in text
++    assert "no_lightweight_admissible_checkpoint" in text
++
++
++def test_adapt_rank1_manual_closed_and_eval_still_open() -> None:
++    text = MANUAL.read_text(encoding="utf-8")
++    rank = text.split("## ADAPT-RANK1", 1)[1].split("## ADAPT-EVAL1", 1)[0]
++    evaluation = text.split("## ADAPT-EVAL1", 1)[1].split("## ADAPT-VERIFY1", 1)[0]
++    assert "**Status:** implemented in `mdstats 0.20.125a0`." in rank
++    assert "lightweight_run_champion.json" in rank
++    assert "performs no inference" in rank
++    assert "**Status:** `not_started`." in evaluation
++
++
++def test_user_guide_states_current_rank1_boundary() -> None:
++    text = GUIDE.read_text(encoding="utf-8")
++    assert "0.20.125a0" in text
++    assert "lightweight_run_champion.json" in text
++    assert "ADAPT-EVAL1 is still pending" in text
++    assert "multi-fidelity evaluator remains" in text
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/tests/test_mlff_adapt_stop1_specification.py b/tests/test_mlff_adapt_stop1_specification.py
+--- a/tests/test_mlff_adapt_stop1_specification.py	2026-08-09 21:24:27.837024986 +0000
++++ b/tests/test_mlff_adapt_stop1_specification.py	2026-08-09 21:35:38.271140387 +0000
+@@ -49,9 +49,9 @@
+     assert "foundation replay baseline" in spec
+ 
+ 
+-def test_rank_and_eval_gates_remain_pending() -> None:
++def test_rank_closed_and_eval_gate_remains_pending() -> None:
+     architecture = (ROOT / "docs/arch_manuals/mlff_training_data_architecture.md").read_text()
+     rank = architecture.split("## ADAPT-RANK1", 1)[1].split("## ADAPT-EVAL1", 1)[0]
+     evaluation = architecture.split("## ADAPT-EVAL1", 1)[1].split("## ADAPT-VERIFY1", 1)[0]
+-    assert "**Status:** `not_started`." in rank
++    assert "**Status:** implemented in `mdstats 0.20.125a0`." in rank
+     assert "**Status:** `not_started`." in evaluation
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/tests/test_mlff_adaptive_training_revision_plan.py b/tests/test_mlff_adaptive_training_revision_plan.py
+--- a/tests/test_mlff_adaptive_training_revision_plan.py	2026-08-09 21:24:39.735706920 +0000
++++ b/tests/test_mlff_adaptive_training_revision_plan.py	2026-08-09 21:35:38.262733938 +0000
+@@ -6,7 +6,7 @@
+ 
+ def test_adaptive_revision_gate_order_and_defaults():
+     version_text = (ROOT / "mdstats" / "_version.py").read_text(encoding="utf-8")
+-    assert '__version__ = "0.20.124a0"' in version_text
++    assert '__version__ = "0.20.125a0"' in version_text
+     text = MANUAL.read_text(encoding="utf-8")
+     headings = [
+         "## ADAPT-PREC1",
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/tests/test_mlff_data0_architecture_specification.py b/tests/test_mlff_data0_architecture_specification.py
+--- a/tests/test_mlff_data0_architecture_specification.py	2026-08-09 21:24:27.841587681 +0000
++++ b/tests/test_mlff_data0_architecture_specification.py	2026-08-09 21:35:38.270009052 +0000
+@@ -263,4 +263,4 @@
+ def test_mlff_data0_pdf_and_version_artifacts_exist() -> None:
+     assert MANUAL_PDF.stat().st_size > 10_000
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.124a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.125a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/tests/test_mlff_data1_specification.py b/tests/test_mlff_data1_specification.py
+--- a/tests/test_mlff_data1_specification.py	2026-08-09 21:24:27.837692510 +0000
++++ b/tests/test_mlff_data1_specification.py	2026-08-09 21:35:38.261384619 +0000
+@@ -49,4 +49,4 @@
+     assert callable(mdstats.assign_balanced_round_robin)
+     assert callable(mdstats.build_complete_frame_block_plan)
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.124a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.125a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/tests/test_mlff_data2a_manifest_inference_specification.py b/tests/test_mlff_data2a_manifest_inference_specification.py
+--- a/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-09 21:24:27.841219863 +0000
++++ b/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-09 21:35:38.269167369 +0000
+@@ -15,7 +15,7 @@
+ 
+ 
+ def test_data2a_version_public_api_and_documented_contract() -> None:
+-    assert mdstats.__version__ == "0.20.124a0"
++    assert mdstats.__version__ == "0.20.125a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert callable(mdstats.infer_training_manifest_metadata)
+     policy = mdstats.ManifestInferencePolicy()
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/tests/test_mlff_data9a2_specification.py b/tests/test_mlff_data9a2_specification.py
+--- a/tests/test_mlff_data9a2_specification.py	2026-08-09 21:24:27.837626402 +0000
++++ b/tests/test_mlff_data9a2_specification.py	2026-08-09 21:35:38.261251971 +0000
+@@ -23,7 +23,7 @@
+         "finite energy, force, and stress",
+     ):
+         assert required in text
+-    assert 'version = "0.20.124a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.125a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "DATA9A2 real-MACE realization is implemented in `0.20.39a0`" in ARCH.read_text()
+ 
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/tests/test_mlff_data9a3_specification.py b/tests/test_mlff_data9a3_specification.py
+--- a/tests/test_mlff_data9a3_specification.py	2026-08-09 21:24:27.839997803 +0000
++++ b/tests/test_mlff_data9a3_specification.py	2026-08-09 21:35:38.266272618 +0000
+@@ -9,5 +9,5 @@
+     assert "37,632" in text
+     assert "supported_with_temporal_blocks_only" in text
+     assert "production_replay_corpus_not_bound" in text
+-    assert 'version = "0.20.124a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.125a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "MLFF-DATA9A3 production qualification" in ARCH.read_text()
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/tests/test_mlff_data9a4_precision_specification.py b/tests/test_mlff_data9a4_precision_specification.py
+--- a/tests/test_mlff_data9a4_precision_specification.py	2026-08-09 21:24:27.840406081 +0000
++++ b/tests/test_mlff_data9a4_precision_specification.py	2026-08-09 21:35:59.122026326 +0000
+@@ -9,7 +9,7 @@
+     assert "float32" in text and "float64" in text
+     assert "MaceModelPrecisionRecord" in text
+     assert "MacePrecisionTransitionRecord" in text
+-    assert "version = \"0.20.124a0\"" in (ROOT / "pyproject.toml").read_text()
++    assert "version = \"0.20.125a0\"" in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_bind_precision_to_protocol() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/tests/test_mlff_data9a5_critical_fp64_specification.py b/tests/test_mlff_data9a5_critical_fp64_specification.py
+--- a/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-09 21:24:27.840084933 +0000
++++ b/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-09 21:35:38.266516791 +0000
+@@ -14,7 +14,7 @@
+     assert 'version: "0.20.42a0"' in text
+     assert "training_force_jacobian_dtype = model" in text
+     assert "Python/ASE" in text
+-    assert 'version = "0.20.124a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.125a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_data9a5_architecture_declares_scope_and_limits() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/tests/test_mlff_data9a5_deployment_specification.py b/tests/test_mlff_data9a5_deployment_specification.py
+--- a/tests/test_mlff_data9a5_deployment_specification.py	2026-08-09 21:24:27.841853396 +0000
++++ b/tests/test_mlff_data9a5_deployment_specification.py	2026-08-09 21:35:38.270883855 +0000
+@@ -13,7 +13,7 @@
+     assert 'version: "0.20.43a0"' in text
+     assert "downstream runtime owns" in text
+     assert "float32-to-float64 promotion does not restore" in text
+-    assert 'version = "0.20.124a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.125a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_keep_lammps_outside_mdstats_scope() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/tests/test_mlff_data9a6c_observable_evidence_specification.py b/tests/test_mlff_data9a6c_observable_evidence_specification.py
+--- a/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-09 21:24:27.841332781 +0000
++++ b/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-09 21:35:38.269456619 +0000
+@@ -74,5 +74,5 @@
+ 
+ def test_packaged_owner_manual_index_is_valid() -> None:
+     payload = json.loads(MANUAL_INDEX.read_text(encoding="utf-8"))
+-    assert payload["package_version"] == "0.20.124a0"
++    assert payload["package_version"] == "0.20.125a0"
+     assert "structural-observables-architecture" in payload["manuals"]
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/tests/test_mlff_data9a7a_material_profile_specification.py b/tests/test_mlff_data9a7a_material_profile_specification.py
+--- a/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-09 21:24:27.841451268 +0000
++++ b/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-09 21:35:38.269773231 +0000
+@@ -64,4 +64,4 @@
+ 
+ 
+ def test_release_version_is_data9a7a() -> None:
+-    assert 'version = "0.20.124a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert 'version = "0.20.125a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/tests/test_mlff_data9a7b_specification.py b/tests/test_mlff_data9a7b_specification.py
+--- a/tests/test_mlff_data9a7b_specification.py	2026-08-09 21:24:27.841621741 +0000
++++ b/tests/test_mlff_data9a7b_specification.py	2026-08-09 21:35:38.270065937 +0000
+@@ -69,7 +69,7 @@
+ 
+ 
+ def test_data9a7b_public_exports_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.124a0"
++    assert mdstats.__version__ == "0.20.125a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert callable(mdstats.compute_local_structure_features)
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/tests/test_mlff_data9a7c_specification.py b/tests/test_mlff_data9a7c_specification.py
+--- a/tests/test_mlff_data9a7c_specification.py	2026-08-09 21:24:27.841363757 +0000
++++ b/tests/test_mlff_data9a7c_specification.py	2026-08-09 21:35:38.269508547 +0000
+@@ -47,7 +47,7 @@
+ 
+ 
+ def test_public_api_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.124a0"
++    assert mdstats.__version__ == "0.20.125a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert mdstats.MLFF_DATA9A7C_PARSER_VERSION == "0.20.49a0"
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/tests/test_mlff_data9a7d_specification.py b/tests/test_mlff_data9a7d_specification.py
+--- a/tests/test_mlff_data9a7d_specification.py	2026-08-09 21:24:27.839935420 +0000
++++ b/tests/test_mlff_data9a7d_specification.py	2026-08-09 21:35:38.266113140 +0000
+@@ -39,6 +39,6 @@
+ 
+ 
+ def test_data9a7d_runtime_versions() -> None:
+-    assert mdstats.__version__ == "0.20.124a0"
++    assert mdstats.__version__ == "0.20.125a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7D_PARSER_VERSION == "0.20.50a0"
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/tests/test_mlff_data9a7e_specification.py b/tests/test_mlff_data9a7e_specification.py
+--- a/tests/test_mlff_data9a7e_specification.py	2026-08-09 21:24:27.840627170 +0000
++++ b/tests/test_mlff_data9a7e_specification.py	2026-08-09 21:35:38.268044076 +0000
+@@ -39,7 +39,7 @@
+         "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
+         "CROSS_SYSTEM_QUALIFICATION_SUITE",
+     } <= nodes
+-    assert mdstats.__version__ == "0.20.124a0"
++    assert mdstats.__version__ == "0.20.125a0"
+     assert mdstats.MLFF_DATA9A7E_PARSER_VERSION == "0.20.51a0"
+     assert callable(mdstats.qualify_cross_system_case)
+     assert callable(mdstats.build_cross_system_qualification_suite)
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/tests/test_mlff_data9a8_specification.py b/tests/test_mlff_data9a8_specification.py
+--- a/tests/test_mlff_data9a8_specification.py	2026-08-09 21:24:27.835736708 +0000
++++ b/tests/test_mlff_data9a8_specification.py	2026-08-09 21:35:38.257365884 +0000
+@@ -66,7 +66,7 @@
+ 
+ 
+ def test_public_runtime_exposes_data9a8_without_removed_aliases() -> None:
+-    assert mdstats.__version__ == "0.20.124a0"
++    assert mdstats.__version__ == "0.20.125a0"
+     assert mdstats.MLFF_DATA9A8_PARSER_VERSION == "0.20.52a0"
+     assert mdstats.ObservableComparisonPolicy
+     assert mdstats.compare_mlff_observable_validation
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/tests/test_mlff_data9a9a_specification.py b/tests/test_mlff_data9a9a_specification.py
+--- a/tests/test_mlff_data9a9a_specification.py	2026-08-09 21:24:27.839819838 +0000
++++ b/tests/test_mlff_data9a9a_specification.py	2026-08-09 21:35:38.265890238 +0000
+@@ -65,7 +65,7 @@
+ 
+ 
+ def test_public_runtime_exports_data9a9a_contracts() -> None:
+-    assert mdstats.__version__ == "0.20.124a0"
++    assert mdstats.__version__ == "0.20.125a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A9A_VERSION
+     assert mdstats.Data6ModelSweepPlan
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/tests/test_mlff_data9a9b_specification.py b/tests/test_mlff_data9a9b_specification.py
+--- a/tests/test_mlff_data9a9b_specification.py	2026-08-09 21:24:27.836337552 +0000
++++ b/tests/test_mlff_data9a9b_specification.py	2026-08-09 21:35:38.259032296 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9b_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.124a0"
++    assert mdstats.__version__ == "0.20.125a0"
+     for name in (
+         "ProductionMaterializationPlan",
+         "ProductionMaterializationCheckpoint",
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/tests/test_mlff_data9a9c_specification.py b/tests/test_mlff_data9a9c_specification.py
+--- a/tests/test_mlff_data9a9c_specification.py	2026-08-09 21:24:27.840541342 +0000
++++ b/tests/test_mlff_data9a9c_specification.py	2026-08-09 21:35:38.267888344 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9c_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.124a0"
++    assert mdstats.__version__ == "0.20.125a0"
+     for name in (
+         "ProductionCorpusPlan", "ProductionExpectedRun",
+         "ProfileExtensionEvidenceRequirement", "ProductionCorpusQualificationRecord",
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/tests/test_mlff_data9a_specification.py b/tests/test_mlff_data9a_specification.py
+--- a/tests/test_mlff_data9a_specification.py	2026-08-09 21:24:27.840296428 +0000
++++ b/tests/test_mlff_data9a_specification.py	2026-08-09 21:35:38.267060872 +0000
+@@ -14,7 +14,7 @@
+ 
+ 
+ def test_data9a_runtime_specification_is_canonical() -> None:
+-    assert 'version = "0.20.124a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.125a0"' in (ROOT / "pyproject.toml").read_text()
+     architecture = ARCH.read_text()
+     stage = STAGE.read_text()
+     specification = SPEC.read_text()
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/tests/test_mlff_data9b1_specification.py b/tests/test_mlff_data9b1_specification.py
+--- a/tests/test_mlff_data9b1_specification.py	2026-08-09 21:24:27.839964203 +0000
++++ b/tests/test_mlff_data9b1_specification.py	2026-08-09 21:35:38.266165769 +0000
+@@ -18,8 +18,8 @@
+     assert "TrainingCampaignPlan" in text
+     assert "CheckpointSelectionRecord" in text
+     assert "mdstats-mace-train" in text
+-    assert mdstats.__version__ == "0.20.124a0"
+-    assert 'version = "0.20.124a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert mdstats.__version__ == "0.20.125a0"
++    assert 'version = "0.20.125a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+ 
+ 
+ def test_data9b1_is_integrated_into_manual_and_stage_plan() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/tests/test_mlff_data9b2_specification.py b/tests/test_mlff_data9b2_specification.py
+--- a/tests/test_mlff_data9b2_specification.py	2026-08-09 21:24:27.840028018 +0000
++++ b/tests/test_mlff_data9b2_specification.py	2026-08-09 21:35:38.266325456 +0000
+@@ -23,7 +23,7 @@
+         'mdstats-mace-select-head',
+     ):
+         assert token in text
+-    assert mdstats.__version__ == '0.20.124a0'
++    assert mdstats.__version__ == '0.20.125a0'
+     assert mdstats.MLFF_DATA9B2_VERSION == '0.20.57a0'
+ 
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/tests/test_mlff_data9b3_campaign_cli_specification.py b/tests/test_mlff_data9b3_campaign_cli_specification.py
+--- a/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-09 21:24:27.838289239 +0000
++++ b/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-09 21:35:38.262467682 +0000
+@@ -16,7 +16,7 @@
+ 
+ 
+ def test_data9b3_version_and_user_surface() -> None:
+-    assert mdstats.__version__ == "0.20.124a0"
++    assert mdstats.__version__ == "0.20.125a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert TOOL.is_file()
+     assert TOOL.stat().st_mode & 0o111
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/tests/test_mlff_opt_ctrl1_specification.py b/tests/test_mlff_opt_ctrl1_specification.py
+--- a/tests/test_mlff_opt_ctrl1_specification.py	2026-08-09 21:24:27.841539339 +0000
++++ b/tests/test_mlff_opt_ctrl1_specification.py	2026-08-09 21:35:38.269923925 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_ctrl1_release_identity_preserves_scientific_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.124a0"
++    assert mdstats.__version__ == "0.20.125a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.124a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.125a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_ctrl1_architecture_and_spec_close_roadmap() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/tests/test_mlff_opt_eval4_specification.py b/tests/test_mlff_opt_eval4_specification.py
+--- a/tests/test_mlff_opt_eval4_specification.py	2026-08-09 21:24:27.839461965 +0000
++++ b/tests/test_mlff_opt_eval4_specification.py	2026-08-09 21:35:38.264741808 +0000
+@@ -11,9 +11,9 @@
+ 
+ 
+ def test_opt_eval4_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.124a0"
++    assert mdstats.__version__ == "0.20.125a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+-    assert 'version = "0.20.124a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.125a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_eval4_architecture_and_spec_record_pipeline_contract() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/tests/test_mlff_opt_verify1_specification.py b/tests/test_mlff_opt_verify1_specification.py
+--- a/tests/test_mlff_opt_verify1_specification.py	2026-08-09 21:24:27.841392540 +0000
++++ b/tests/test_mlff_opt_verify1_specification.py	2026-08-09 21:35:38.269635786 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_verify1_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.124a0"
++    assert mdstats.__version__ == "0.20.125a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.124a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.125a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_verify1_architecture_and_spec_record_contract() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/tests/test_mlff_perf2_parallel_acceleration_specification.py b/tests/test_mlff_perf2_parallel_acceleration_specification.py
+--- a/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-09 21:24:27.840057822 +0000
++++ b/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-09 21:35:38.266469321 +0000
+@@ -10,7 +10,7 @@
+ 
+ 
+ def test_perf2_release_and_configuration_contract() -> None:
+-    assert mdstats.__version__ == "0.20.124a0"
++    assert mdstats.__version__ == "0.20.125a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     template = campaign_cli._config_template(
+         workspace="workspace",
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/tests/test_mlff_prec1_specification.py b/tests/test_mlff_prec1_specification.py
+--- a/tests/test_mlff_prec1_specification.py	2026-08-09 21:24:27.835808514 +0000
++++ b/tests/test_mlff_prec1_specification.py	2026-08-09 21:35:38.257515186 +0000
+@@ -12,7 +12,7 @@
+ 
+ 
+ def test_prec1_release_and_architecture_status() -> None:
+-    assert mdstats.__version__ == "0.20.124a0"
++    assert mdstats.__version__ == "0.20.125a0"
+     manual = MANUAL.read_text(encoding="utf-8")
+     spec = SPEC.read_text(encoding="utf-8")
+     assert "PREC1 - precision profiles, explicit staged schedule, and init realization - implemented in 0.20.108a0" in manual
+diff -ruN '--exclude=*.pdf' '--exclude=SOURCE_PATCH_0.20.124a0_to_0.20.125a0.patch' a/tests/test_mlff_prec3_specification.py b/tests/test_mlff_prec3_specification.py
+--- a/tests/test_mlff_prec3_specification.py	2026-08-09 21:24:27.841421313 +0000
++++ b/tests/test_mlff_prec3_specification.py	2026-08-09 21:35:38.269684849 +0000
+@@ -16,7 +16,7 @@
+     manual = MANUAL.read_text(encoding="utf-8")
+     spec = SPEC.read_text(encoding="utf-8")
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+-    assert mdstats.__version__ == "0.20.124a0"
++    assert mdstats.__version__ == "0.20.125a0"
+     assert "PREC3 - campaign integration, qualification, and profile activation - implemented in 0.20.110a0" in manual
+     assert "PREC3 implementation closure (0.20.110a0)" in manual
+     assert "PREC3 implemented in mdstats 0.20.110a0" in spec

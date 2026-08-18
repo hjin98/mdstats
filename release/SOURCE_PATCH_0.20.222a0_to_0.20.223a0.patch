@@ -1,0 +1,1656 @@
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.222a0_to_0.20.223a0.patch' /mnt/data/mdstats_base222/mdstats-0.20.222a0/ARCHITECTURE_NOTES_MLFF_REV90.md /mnt/data/mdstats_feas3/mdstats-0.20.223a0/ARCHITECTURE_NOTES_MLFF_REV90.md
+--- /mnt/data/mdstats_base222/mdstats-0.20.222a0/ARCHITECTURE_NOTES_MLFF_REV90.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats_feas3/mdstats-0.20.223a0/ARCHITECTURE_NOTES_MLFF_REV90.md	2026-08-17 10:05:54.068211114 +0000
+@@ -0,0 +1,8 @@
++# MLFF Architecture Revision 90
++
++**Gate:** `TARGET-DATA2B-FEAS1-PERF3`  
++**Release:** `mdstats 0.20.223a0`
++
++Revision 90 replaces PERF2's profile-local nested block/tree execution with a campaign-wide, single-level FEAS1 executor. Automatic mode consumes the full CPU thread budget (default 90% of available logical threads) as independent work-queue lanes; parallel cKDTree blocks use one native worker each. All domain/profile preparations and witness blocks share the queue, while exact candidate-gain reduction remains deterministic within each profile.
++
++The progress authority is upgraded from profile-local block counters to campaign totals: completed/total profiles, prepared and active profiles, global block and witness progress, sampled busy executor lanes, queue depth, elapsed time, throughput, and ETA. Scientific FEAS1, MVIDX1, TARGET-DATA2C, and deferred GPU authority are unchanged.
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.222a0_to_0.20.223a0.patch' /mnt/data/mdstats_base222/mdstats-0.20.222a0/CHANGELOG.md /mnt/data/mdstats_feas3/mdstats-0.20.223a0/CHANGELOG.md
+--- /mnt/data/mdstats_base222/mdstats-0.20.222a0/CHANGELOG.md	2026-08-17 09:22:53.000000000 +0000
++++ /mnt/data/mdstats_feas3/mdstats-0.20.223a0/CHANGELOG.md	2026-08-17 10:07:45.567844087 +0000
+@@ -1,3 +1,14 @@
++## 0.20.223a0 - 2026-08-17
++
++- Implement TARGET-DATA2B-FEAS1-PERF3 after workstation evidence showed PERF2 profile-local block threading still underutilized the CPU and its progress output omitted the total profile count.
++- Replace nested block-thread/native-cKDTree factorization with one campaign-wide single-level FEAS1 work queue: automatic mode allocates one executor lane per configured CPU-budget thread and every parallel cKDTree block uses `workers=1`.
++- Feed profile preparation and witness blocks from every domain/profile into the same bounded queue so completed/profile-tail work immediately yields its lane to another profile rather than stranding CPU capacity.
++- Preserve deterministic per-profile witness-order reduction, exact row-major/candidate-major FP64 accumulation, all FEAS1 scientific schemas/digests, the 16,384 ceiling, and downstream TARGET-DATA2C semantics.
++- Upgrade FEAS1 progress to campaign-wide totals: profiles completed/total, profiles prepared, active profiles, blocks, witnesses, executor busy lanes, pending/queued tasks, throughput, elapsed time, and global ETA.
++- Add `[performance].target_coverage_feasibility_global_workers`; automatic `0` uses the full CPU budget (normally 90% of logical threads). PERF2/PERF1 block/family controls remain compatibility aliases.
++- On the 8-lane qualification workload (8 x 25,033-witness profiles), global single-level scheduling reduced FEAS1 evaluation wall time from 7.793 s to 3.811 s while averaging 7.66 CPU cores, about 95.7% of the assigned worker lanes.
++- Advance MLFF architecture to revision 90 and dependency-graph schema 72.
++
+ ## 0.20.222a0 - 2026-08-17
+ 
+ - Implement TARGET-DATA2B-FEAS1-PERF2 after workstation evidence still showed only about 200-500% CPU utilization during long FEAS1 execution.
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.222a0_to_0.20.223a0.patch' /mnt/data/mdstats_base222/mdstats-0.20.222a0/PATCH_NOTES_0.20.223a0.md /mnt/data/mdstats_feas3/mdstats-0.20.223a0/PATCH_NOTES_0.20.223a0.md
+--- /mnt/data/mdstats_base222/mdstats-0.20.222a0/PATCH_NOTES_0.20.223a0.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats_feas3/mdstats-0.20.223a0/PATCH_NOTES_0.20.223a0.md	2026-08-17 10:07:45.568563754 +0000
+@@ -0,0 +1,50 @@
++# mdstats 0.20.223a0 patch notes
++
++## TARGET-DATA2B-FEAS1-PERF3
++
++This release replaces PERF2's profile-local nested block/tree factorization with a campaign-wide single-level exact-neighborhood scheduler. It is an execution/observability hardening release; FEAS1 scientific authority is unchanged.
++
++### Global single-level parallelism
++
++- One `ThreadPoolExecutor` spans every FEAS1 domain/profile and witness block.
++- Automatic mode allocates one executor worker per `StageResourceScope` CPU-budget lane (normally 90% of logical CPU threads).
++- In parallel mode each exact `cKDTree.query_ball_point` task runs with `workers=1`; nested cKDTree thread pools are eliminated.
++- Profile/tree preparation tasks use the same executor, allowing later-profile preparation to overlap active neighborhood work.
++- A bounded central queue (`2 x workers` pending, `4 x workers` pending+ready cap) prevents unbounded ragged-neighborhood buffering while keeping enough runnable work to avoid profile-tail starvation.
++- Completed blocks may arrive in any order globally, but each profile is reduced strictly in witness order, retaining the exact historical FP64 update sequence.
++
++### Campaign-wide progress
++
++FEAS1 now pre-counts the complete workload and reports:
++
++- profiles completed / total,
++- profiles prepared / total and currently active profiles,
++- global blocks completed / total,
++- global witnesses completed / total and percentage,
++- sampled executor busy lanes / configured lanes,
++- pending and queued tasks,
++- elapsed time, witness throughput, and global ETA.
++
++Profile completion lines use the completion count as the primary fraction and include the deterministic manifest ordinal separately, so `profile 17/68 complete` always means seventeen profiles have completed.
++
++### Configuration
++
++- New: `[performance].target_coverage_feasibility_global_workers = 0`.
++- `0` uses the complete configured CPU budget.
++- `target_coverage_feasibility_block_workers` and `target_coverage_feasibility_family_workers` remain compatibility aliases and must agree with the new setting if explicitly positive.
++- `target_coverage_workers` remains relevant to MVIDX1 and deliberately serial FEAS1 debugging; parallel FEAS1 always uses one native tree worker per global task.
++
++### Qualification evidence
++
++On the available 9-thread host, an eight-profile workload with 25,033 witnesses/profile, eight descriptor dimensions, and 512-witness blocks was timed inside the FEAS1 evaluator:
++
++- profile-serial / native-tree-8: 7.793 s wall, 23.878 s process CPU,
++- global-8 / tree-1: 3.811 s wall, 29.178 s process CPU,
++- wall-time speedup: 2.04x,
++- average global CPU occupancy: 7.61 cores = 95.7% of the eight assigned FEAS1 lanes.
++
++Scientific family reports remain exact/dictionary-identical to serial execution.
++
++### Scientific authority
++
++No scientific schema, coverage metric, local radius, support definition, candidate ceiling, report digest semantics, TARGET-DATA2C selector behavior, or GPU authority changes. GPU neighborhood authority remains unapproved and FINAL-GPU1 remains deferred.
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.222a0_to_0.20.223a0.patch' /mnt/data/mdstats_base222/mdstats-0.20.222a0/docs/arch_manuals/ARCHITECTURE_NOTES_MLFF_REV90.md /mnt/data/mdstats_feas3/mdstats-0.20.223a0/docs/arch_manuals/ARCHITECTURE_NOTES_MLFF_REV90.md
+--- /mnt/data/mdstats_base222/mdstats-0.20.222a0/docs/arch_manuals/ARCHITECTURE_NOTES_MLFF_REV90.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats_feas3/mdstats-0.20.223a0/docs/arch_manuals/ARCHITECTURE_NOTES_MLFF_REV90.md	2026-08-17 10:02:24.336813209 +0000
+@@ -0,0 +1,8 @@
++# MLFF Architecture Revision 90
++
++**Gate:** `TARGET-DATA2B-FEAS1-PERF3`  
++**Release:** `mdstats 0.20.223a0`
++
++Revision 90 replaces PERF2's profile-local nested block/tree execution with a campaign-wide, single-level FEAS1 executor. Automatic mode consumes the full CPU thread budget (default 90% of available logical threads) as independent work-queue lanes; parallel cKDTree blocks use one native worker each. All domain/profile preparations and witness blocks share the queue, while exact candidate-gain reduction remains deterministic within each profile.
++
++The progress authority is upgraded from profile-local block counters to campaign totals: completed/total profiles, prepared and active profiles, global block and witness progress, sampled busy executor lanes, queue depth, elapsed time, throughput, and ETA. Scientific FEAS1, MVIDX1, TARGET-DATA2C, and deferred GPU authority are unchanged.
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.222a0_to_0.20.223a0.patch' /mnt/data/mdstats_base222/mdstats-0.20.222a0/docs/arch_manuals/mlff_training_data_architecture.md /mnt/data/mdstats_feas3/mdstats-0.20.223a0/docs/arch_manuals/mlff_training_data_architecture.md
+--- /mnt/data/mdstats_base222/mdstats-0.20.222a0/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-17 09:25:57.000000000 +0000
++++ /mnt/data/mdstats_feas3/mdstats-0.20.223a0/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-17 10:07:45.596802387 +0000
+@@ -2,7 +2,7 @@
+ title: "mdstats MLFF Training-Data Architecture"
+ subtitle: "Canonical architecture and staged implementation"
+ author: "mdstats project"
+-date: "2026-08-17 (revision 89: TARGET-DATA2B-FEAS1-PERF2 block parallelism and progress)"
++date: "2026-08-17 (revision 90: TARGET-DATA2B-FEAS1-PERF3 global single-level scheduling)"
+ geometry: margin=0.78in
+ toc: true
+ toc-depth: 3
+@@ -19,7 +19,39 @@
+     \usepackage{xurl}
+ ---
+ 
+-# Revision 89 current gate: TARGET-DATA2B-FEAS1-PERF2 block parallelism and long-wall progress
++# Revision 90 current gate: TARGET-DATA2B-FEAS1-PERF3 global single-level scheduling and campaign progress
++
++`mdstats 0.20.223a0` replaces PERF2 after workstation observation showed that profile-local block threading still left substantial CPU capacity unused and that progress lines such as `family ... blocks=47/49` did not state how many profiles remained. The scientific FEAS1 authority is unchanged.
++
++PERF3 removes nested parallelism from production FEAS1. Instead of factoring the CPU budget as Python block threads x native cKDTree workers inside one profile, the stage creates one campaign-wide queue spanning every label domain, profile/family, and witness block. Automatic mode assigns one executor worker to each CPU-budget lane and every parallel `query_ball_point` task uses `workers=1`. On a 32-logical-thread workstation with the frozen 90% CPU fraction, this means 28 independent FEAS1 executor lanes. A lane finishing a block or an entire profile immediately consumes the next queued block from any other active profile, eliminating the profile-tail starvation inherent to PERF2.
++
++Profile/tree preparation is also submitted to the same executor, so later-profile cKDTree construction can overlap ongoing query/compression work. The scheduler keeps up to `2 x workers` futures pending and bounds pending plus completed-but-not-reduced block results at `4 x workers`; this gives the executor enough ready work to maintain occupancy without allowing ragged neighbor arrays to grow without bound.
++
++Scientific reduction is still profile-local and deterministic. Blocks may complete globally out of order, but candidate-gain updates are delayed until each profile's next contiguous witness block is available. The PERF1 canonical row-major/candidate-major compressor and historical FP64 `np.add.at` order are unchanged, so report dictionaries and digests remain invariant to the new schedule.
++
++Progress is now campaign-wide. FEAS1 pre-counts profiles, blocks, and witnesses before expensive work starts. Periodic output reports profiles completed/total, profiles prepared/total, active profiles, global block/witness completion, sampled busy executor lanes, pending/queued work, elapsed time, throughput, and global ETA. A profile-completion line uses completion count as the leading fraction and lists the deterministic manifest ordinal separately.
++
++## Frozen revision-90 execution contract
++
++| Item | Value |
++|---|---|
++| FEAS1 scientific schema/digest | unchanged |
++| Parallel topology | one global single-level queue across all domains/profiles/blocks |
++| Automatic global workers | full `StageResourceScope` CPU budget |
++| Parallel cKDTree workers/task | exactly 1 |
++| Default 32-thread workstation budget | 28 global FEAS1 workers at `cpu_fraction=0.90` |
++| Pending future bound | `2 x global_workers` |
++| Pending + ready result bound | `4 x global_workers` |
++| New execution override | `target_coverage_feasibility_global_workers` |
++| PERF2/PERF1 worker settings | compatibility aliases |
++| Deterministic reduction | per-profile contiguous witness order |
++| Global progress | profiles, blocks, witnesses, busy lanes, queue, elapsed, rate, ETA |
++| GPU neighborhood authority | unchanged; not authorized |
++| TARGET-DATA2C scientific selection | unchanged |
++
++On the qualification host, eight profiles of 25,033 witnesses each (eight-dimensional exact neighborhoods, 512-witness blocks) improved from 7.793 s with serial-profile/native-tree-8 execution to 3.811 s with the global-8/tree-1 queue, a 2.04x wall-time speedup. The global evaluator consumed 29.178 s of process CPU in 3.811 s wall time, corresponding to 7.66 average cores or 95.7% of its eight assigned lanes. Exact family-report dictionaries were identical. This is execution evidence only.
++
++# Revision 89 historical gate: TARGET-DATA2B-FEAS1-PERF2 block parallelism and long-wall progress
+ 
+ `mdstats 0.20.222a0` revises the PERF1 execution schedule after direct workstation observation still showed only about 200-500% aggregate CPU during a long FEAS1 run. The PERF1 vectorized exact neighborhood kernel remains authoritative; this revision changes only how independent witness blocks are scheduled and how long-wall progress is reported.
+ 
+Binary files /mnt/data/mdstats_base222/mdstats-0.20.222a0/docs/arch_manuals/mlff_training_data_architecture.pdf and /mnt/data/mdstats_feas3/mdstats-0.20.223a0/docs/arch_manuals/mlff_training_data_architecture.pdf differ
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.222a0_to_0.20.223a0.patch' /mnt/data/mdstats_base222/mdstats-0.20.222a0/docs/arch_manuals/mlff_training_data_dependency_graph.json /mnt/data/mdstats_feas3/mdstats-0.20.223a0/docs/arch_manuals/mlff_training_data_dependency_graph.json
+--- /mnt/data/mdstats_base222/mdstats-0.20.222a0/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-17 09:22:44.000000000 +0000
++++ /mnt/data/mdstats_feas3/mdstats-0.20.223a0/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-17 10:02:02.799468217 +0000
+@@ -1,8 +1,8 @@
+ {
+-  "architecture_revision": 89,
++  "architecture_revision": 90,
+   "branch": "MLFF-DATA",
+-  "description": "MLFF training-data dependency graph through architecture revision 89. TARGET-DATA2B-FEAS1-PERF2 adds shared-tree witness-block CPU parallelism and long-wall progress while preserving exact FEAS1/MVIDX1 scientific authority.",
+-  "documentation_gate": "TARGET_DATA2B_FEAS1_PERF2_BLOCK_PARALLEL_PROGRESS",
++  "description": "MLFF training-data dependency graph through architecture revision 90. TARGET-DATA2B-FEAS1-PERF3 adds a campaign-wide single-level CPU work queue and global progress while preserving exact FEAS1/MVIDX1 scientific authority.",
++  "documentation_gate": "TARGET_DATA2B_FEAS1_PERF3_GLOBAL_QUEUE",
+   "edge_type_definitions": {
+     "execution_requires": "The upstream product must exist before execution.",
+     "fit_domain_requires": "The fitted object may inspect only the declared training domain.",
+@@ -5201,7 +5201,31 @@
+       "gpu_neighborhood_backend_authorized": false,
+       "final_gpu1_qualification_deferred": true,
+       "runtime_selector_changed": false
++    },
++    {
++      "id": "TARGET_DATA2B_FEAS1_PERF3_GLOBAL_QUEUE",
++      "gate_name": "TARGET-DATA2B-FEAS1-PERF3",
++      "architecture_revision": 90,
++      "authority_class": "performance_exact_equivalence",
++      "implementation_status": "implemented_global_single_level_scheduler",
++      "implemented_release": "0.20.223a0",
++      "scientific_schema_changed": false,
++      "scientific_digest_changed": false,
++      "coverage_metric_changed": false,
++      "candidate_ceiling_changed": false,
++      "global_cross_profile_work_queue": true,
++      "parallel_tree_workers_per_task": 1,
++      "automatic_global_workers": "full_cpu_threads_budget",
++      "default_cpu_fraction": 0.9,
++      "pending_future_bound_per_worker": 2,
++      "total_buffered_block_bound_per_worker": 4,
++      "deterministic_per_profile_witness_order_reduction": true,
++      "campaign_wide_profile_progress": true,
++      "executor_busy_lane_telemetry": true,
++      "gpu_neighborhood_backend_authorized": false,
++      "final_gpu1_qualification_deferred": true,
++      "runtime_selector_changed": false
+     }
+   ],
+-  "schema_version": 71
++  "schema_version": 72
+ }
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.222a0_to_0.20.223a0.patch' /mnt/data/mdstats_base222/mdstats-0.20.222a0/docs/specs/training_data/mlff_target_data2b_feas1_perf3_spec.md /mnt/data/mdstats_feas3/mdstats-0.20.223a0/docs/specs/training_data/mlff_target_data2b_feas1_perf3_spec.md
+--- /mnt/data/mdstats_base222/mdstats-0.20.222a0/docs/specs/training_data/mlff_target_data2b_feas1_perf3_spec.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats_feas3/mdstats-0.20.223a0/docs/specs/training_data/mlff_target_data2b_feas1_perf3_spec.md	2026-08-17 10:07:45.568675595 +0000
+@@ -0,0 +1,33 @@
++# TARGET-DATA2B-FEAS1-PERF3 global single-level scheduler and campaign progress
++
++**Release:** `mdstats 0.20.223a0`  
++**Architecture revision:** 90  
++**Scientific authority:** unchanged exact TARGET-DATA2B-FEAS1 v1
++
++## Motivation
++
++Workstation observation of PERF2 showed two defects: the profile-local reporter did not expose how many profiles remained, and nested Python-block x cKDTree-worker scheduling still produced low sustained CPU utilization. The execution scheduler, not the scientific neighborhood definition, is therefore replaced.
++
++## Execution contract
++
++1. FEAS1 builds one deterministic manifest containing every `(domain, family/profile, witness block)` workload.
++2. Parallel automatic mode uses one single-level global work queue implemented by a `ThreadPoolExecutor`, with one worker per configured CPU-budget lane.
++3. Every parallel exact `cKDTree.query_ball_point` block uses `workers=1`; native-tree nesting is forbidden when global workers > 1.
++4. Profile preparation and query blocks share the same executor. Work from all profiles/domains enters one bounded central queue.
++5. Queue workers may execute blocks in arbitrary completion order, but each profile buffers results until contiguous witness order is available and performs `np.add.at` reduction only in that order.
++6. The canonical packed `(witness,candidate)` reduction remains row-major/candidate-major. FP64 candidate-gain arithmetic order is therefore unchanged.
++7. Pending futures are bounded to `2 * global_workers`; pending plus completed-not-yet-reduced blocks are bounded to `4 * global_workers`.
++8. Automatic `[performance].target_coverage_feasibility_global_workers = 0` resolves to the complete `cpu_threads_budget`; with the default `cpu_fraction=0.90`, a 32-logical-thread host receives 28 global FEAS1 lanes.
++9. PERF2 `target_coverage_feasibility_block_workers` and PERF1 `target_coverage_feasibility_family_workers` are compatibility aliases only. Positive aliases must agree.
++
++## Progress contract
++
++Before expensive execution, FEAS1 must report total profiles, total blocks, total witnesses, global workers, tree workers/task, and queue depth. Interval/milestone reports must include profiles completed/total, profiles prepared/total, active profile count, blocks completed/total, witnesses completed/total, percentage, sampled busy executor lanes, pending/queued task counts, elapsed time, throughput, and global ETA. Every profile completion line must include both completed-profile count/total and the profile's deterministic manifest ordinal.
++
++## Qualification target
++
++The execution objective is a non-starved global queue, not a particular number of Python processes. On the qualification host, 8 global workers over 8 x 25,033-witness profiles achieved 3.811 s evaluator wall time and 29.178 s process CPU time, or 7.66 average cores (95.7% of the eight assigned lanes), versus 7.793 s for serial-profile/native-tree-8 execution.
++
++## Invariants
++
++FEAS1 schemas/digests, exact cKDTree neighborhood relation, support degrees, correlation-unit exclusion, 16,384 ceiling, extent obligations, deterministic output ordering, TARGET-DATA2C scientific selection, and GPU authority are unchanged.
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.222a0_to_0.20.223a0.patch' /mnt/data/mdstats_base222/mdstats-0.20.222a0/mdstats/_version.py /mnt/data/mdstats_feas3/mdstats-0.20.223a0/mdstats/_version.py
+--- /mnt/data/mdstats_base222/mdstats-0.20.222a0/mdstats/_version.py	2026-08-17 09:17:19.000000000 +0000
++++ /mnt/data/mdstats_feas3/mdstats-0.20.223a0/mdstats/_version.py	2026-08-17 10:02:02.744366398 +0000
+@@ -1 +1 @@
+-__version__ = "0.20.222a0"
++__version__ = "0.20.223a0"
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.222a0_to_0.20.223a0.patch' /mnt/data/mdstats_base222/mdstats-0.20.222a0/mdstats/training_data/campaign_cli.py /mnt/data/mdstats_feas3/mdstats-0.20.223a0/mdstats/training_data/campaign_cli.py
+--- /mnt/data/mdstats_base222/mdstats-0.20.222a0/mdstats/training_data/campaign_cli.py	2026-08-17 09:21:07.000000000 +0000
++++ /mnt/data/mdstats_feas3/mdstats-0.20.223a0/mdstats/training_data/campaign_cli.py	2026-08-17 10:00:53.112816282 +0000
+@@ -3891,17 +3891,14 @@
+     *,
+     query_block_size: int,
+ ) -> tuple[int, int, Any]:
+-    """Resolve bounded FEAS1 block-thread/native-tree parallelism.
++    """Resolve FEAS1 single-level global work-queue parallelism.
+ 
+-    FEAS1 query blocks share one read-only cKDTree and descriptor matrix.
+-    Automatic mode therefore factors the configured CPU budget across a small
+-    pool of concurrent witness-block threads and the native cKDTree workers
+-    used inside each block. This avoids both the serialized single-block driver
+-    and the IPC/copy overhead of process workers.
+-
+-    ``target_coverage_feasibility_family_workers`` is retained as a backwards-
+-    compatible alias for the new block-worker control because it is execution-
+-    only and was introduced in the immediately preceding release.
++    Automatic FEAS1 no longer nests Python block workers around multi-threaded
++    cKDTree calls. Every CPU-budget lane is one independent global executor
++    worker and each exact cKDTree query uses ``workers=1``. Blocks from every
++    domain/profile share the queue, so profile tails cannot strand the other
++    lanes. The historical block/family control remains an execution-only
++    override for the global executor size.
+     """
+ 
+     resources = detect_system_resources(
+@@ -3911,7 +3908,10 @@
+         device="cpu",
+     )
+     requested_tree = int(_cfg(cfg, "performance", "target_coverage_workers", 0))
+-    requested_block = int(
++    requested_global = int(
++        _cfg(cfg, "performance", "target_coverage_feasibility_global_workers", 0)
++    )
++    compatibility_block = int(
+         _cfg(cfg, "performance", "target_coverage_feasibility_block_workers", 0)
+     )
+     compatibility_family = int(
+@@ -3921,73 +3921,54 @@
+         raise CampaignCliError(
+             "[performance].target_coverage_workers must be zero (automatic) or a positive integer."
+         )
+-    if requested_block < 0 or compatibility_family < 0:
++    if requested_global < 0 or compatibility_block < 0 or compatibility_family < 0:
+         raise CampaignCliError(
+-            "TARGET-DATA2B-FEAS1 block/family worker controls must be zero (automatic) or positive integers."
++            "TARGET-DATA2B-FEAS1 global/block/family worker controls must be zero (automatic) or positive integers."
+         )
+-    if requested_block > 0 and compatibility_family > 0 and requested_block != compatibility_family:
++    explicit_worker_values = {
++        value for value in (requested_global, compatibility_block, compatibility_family) if value > 0
++    }
++    if len(explicit_worker_values) > 1:
+         raise CampaignCliError(
+-            "[performance].target_coverage_feasibility_block_workers and the compatibility "
+-            "target_coverage_feasibility_family_workers alias disagree."
++            "TARGET-DATA2B-FEAS1 global/block/family worker controls disagree; "
++            "set only target_coverage_feasibility_global_workers for new campaigns."
+         )
+-    if requested_block == 0:
+-        requested_block = compatibility_family
++    if requested_global == 0 and explicit_worker_values:
++        requested_global = next(iter(explicit_worker_values))
+ 
+     block = max(1, int(query_block_size))
+-    max_blocks = max(
+-        (math.ceil(len(family.values) / block)
+-         for domain in coverage_reference.domains
+-         for family in domain.families),
+-        default=1,
++    total_blocks = sum(
++        math.ceil(len(family.values) / block)
++        for domain in coverage_reference.domains
++        for family in domain.families
+     )
+     budget = max(1, int(resources.cpu_threads_budget))
+     available = max(1, int(resources.cpu_threads_available))
+ 
+-    if requested_block > 0:
+-        block_workers = min(requested_block, max_blocks, budget, available)
+-        if requested_tree > 0:
+-            tree_workers = min(requested_tree, available, max(1, budget // block_workers))
+-        else:
+-            tree_cap = 16 if block_workers == 1 else 4
+-            tree_workers = min(tree_cap, max(1, budget // block_workers))
+-    elif requested_tree > 0:
+-        tree_workers = min(requested_tree, available, budget)
+-        block_workers = min(8, max_blocks, max(1, budget // max(1, tree_workers)))
+-    elif max_blocks <= 1 or budget < 4:
+-        block_workers = min(max_blocks, budget)
+-        tree_workers = min(16, max(1, budget // max(1, block_workers)))
++    if requested_global > 0:
++        global_workers = min(requested_global, budget, available)
+     else:
+-        # cKDTree scaling becomes less reliable at high native-thread counts for
+-        # small object-returning query blocks. Require at least two native tree
+-        # lanes and search a bounded block-thread factorization instead. Among
+-        # equal lane products, prefer about four block workers, which balances
+-        # query and NumPy compression concurrency on workstation CPUs.
+-        maximum_blocks = min(8, max_blocks, max(2, budget // 2))
+-        best: tuple[int, int] | None = None
+-        best_score: tuple[int, int] | None = None
+-        for candidate_blocks in range(2, maximum_blocks + 1):
+-            candidate_tree = min(4, max(1, budget // candidate_blocks))
+-            if candidate_tree < 2:
+-                continue
+-            score = (
+-                candidate_blocks * candidate_tree,
+-                -abs(candidate_blocks - 4),
+-            )
+-            if best_score is None or score > best_score:
+-                best = (candidate_blocks, candidate_tree)
+-                best_score = score
+-        if best is None:
+-            block_workers = 1
+-            tree_workers = min(16, budget)
+-        else:
+-            block_workers, tree_workers = best
++        # Use the entire configured CPU budget. ThreadPoolExecutor creates
++        # workers lazily, so a small workload does not pay for idle OS threads;
++        # a normal FEAS1 campaign has many more blocks than lanes.
++        global_workers = min(budget, available)
++
++    # Production parallel FEAS1 is deliberately single-level. A serial global
++    # override may still use an explicitly requested native cKDTree width for
++    # debugging/backwards-compatible direct tuning.
++    if global_workers == 1 and requested_tree > 0:
++        tree_workers = min(requested_tree, budget, available)
++    else:
++        tree_workers = 1
+ 
+-    if block_workers * tree_workers > budget:
++    if global_workers > budget:
+         raise CampaignCliError(
+-            "TARGET-DATA2B-FEAS1 worker factorization exceeds the configured CPU budget: "
+-            f"{block_workers}x{tree_workers} > {budget}."
++            "TARGET-DATA2B-FEAS1 global worker count exceeds the configured CPU budget: "
++            f"{global_workers} > {budget}."
+         )
+-    return int(tree_workers), int(block_workers), resources
++    if total_blocks <= 0:
++        raise CampaignCliError("TARGET-DATA2B-FEAS1 coverage reference contains no query blocks.")
++    return int(tree_workers), int(global_workers), resources
+ 
+ 
+ def _target_coverage_policy(cfg: Mapping[str, Any]) -> Any:
+@@ -4195,11 +4176,22 @@
+     progress_interval = float(_cfg(cfg, "performance", "progress_interval_seconds", 30.0))
+     if progress_interval <= 0.0:
+         raise CampaignCliError("[performance].progress_interval_seconds must be positive.")
++    total_profiles = sum(len(domain.families) for domain in coverage_reference.domains)
++    total_witnesses = sum(
++        len(family.values)
++        for domain in coverage_reference.domains
++        for family in domain.families
++    )
++    total_blocks = sum(
++        math.ceil(len(family.values) / block_size)
++        for domain in coverage_reference.domains
++        for family in domain.families
++    )
+     print(
+-        f"[TARGET-DATA2B-FEAS1] exact neighborhood block-workers={block_workers}; "
+-        f"tree-workers/block={coverage_workers}; query block={block_size}; "
+-        f"cpu lanes<={block_workers * coverage_workers}/{coverage_resources.cpu_threads_budget}; "
+-        f"progress={progress_interval:g}s; "
++        f"[TARGET-DATA2B-FEAS1] exact global work queue: workers={block_workers}/"
++        f"{coverage_resources.cpu_threads_budget} CPU-budget lanes; tree-workers/task={coverage_workers}; "
++        f"profiles={total_profiles}; blocks={total_blocks}; witnesses={total_witnesses}; "
++        f"query block={block_size}; progress={progress_interval:g}s; "
+         f"hard ceiling={policy.maximum_candidate_size}",
+         flush=True,
+     )
+@@ -24632,15 +24624,17 @@
+ # still clipped by available CPU threads and the RAM budget.
+ source_workers = 0
+ feature_workers = 0
+-# Exact TARGET-DATA2B/MVIDX1 cKDTree queries use native threads. For FEAS1 this
+-# is the native tree-thread count *inside each query-block process*. 0 selects
+-# the stage-specific automatic CPU-budgeted factorization. Execution only.
++# Exact TARGET-DATA2B/MVIDX1 cKDTree worker override. FEAS1-PERF3 uses
++# workers=1 inside each global queue task whenever global parallelism > 1; this
++# setting remains active for MVIDX1 and deliberately serial FEAS1 debugging.
+ target_coverage_workers = 0
+-# 0 lets FEAS1 choose bounded concurrent witness-block threads sharing one
+-# read-only cKDTree. Positive values explicitly cap block workers. Execution only.
++# 0 gives FEAS1 one single-level global worker for every CPU-budget lane
++# (normally 90% of logical threads). All domains/profiles feed the same queue.
++# Positive values cap that global pool. Execution only.
++target_coverage_feasibility_global_workers = 0
++# Compatibility aliases from PERF2/PERF1. Leave at 0 for new campaigns. If a
++# legacy alias is positive it must agree with the new global-worker setting.
+ target_coverage_feasibility_block_workers = 0
+-# Compatibility alias retained from 0.20.221a0. Leave at 0 for new campaigns;
+-# if positive it is interpreted as the FEAS1 block-worker request.
+ target_coverage_feasibility_family_workers = 0
+ # Bounded cKDTree witness-query block. Scientific results are block invariant.
+ target_coverage_feasibility_block_size = 512
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.222a0_to_0.20.223a0.patch' /mnt/data/mdstats_base222/mdstats-0.20.222a0/mdstats/training_data/target_coverage_feasibility.py /mnt/data/mdstats_feas3/mdstats-0.20.223a0/mdstats/training_data/target_coverage_feasibility.py
+--- /mnt/data/mdstats_base222/mdstats-0.20.222a0/mdstats/training_data/target_coverage_feasibility.py	2026-08-17 09:24:49.000000000 +0000
++++ /mnt/data/mdstats_feas3/mdstats-0.20.223a0/mdstats/training_data/target_coverage_feasibility.py	2026-08-17 09:58:40.869255663 +0000
+@@ -20,9 +20,10 @@
+ from __future__ import annotations
+ 
+ from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+-from dataclasses import dataclass
++from dataclasses import dataclass, field
+ import math
+ import time
++from threading import Lock
+ from typing import Any, Callable, Mapping, Sequence
+ 
+ import numpy as np
+@@ -51,31 +52,36 @@
+ }
+ 
+ 
+-class _FamilyProgress:
+-    """Rate-limited FEAS1 family progress/heartbeat formatter."""
++class _GlobalFeasibilityProgress:
++    """Campaign-wide FEAS1 progress and worker-occupancy reporter."""
+ 
+     __slots__ = (
+-        "callback", "completed_blocks", "completed_witnesses", "family_id",
+-        "interval", "last_emit", "started", "total_blocks", "total_witnesses",
++        "activity", "callback", "completed_blocks", "completed_profiles",
++        "completed_witnesses", "interval", "last_emit", "prepared_profiles",
++        "started", "total_blocks", "total_profiles", "total_witnesses",
+     )
+ 
+     def __init__(
+         self,
+-        family_id: str,
+         *,
++        total_profiles: int,
+         total_blocks: int,
+         total_witnesses: int,
+         interval_seconds: float,
+         callback: Callable[[str], None] | None,
++        activity: "_WorkerActivity",
+     ) -> None:
++        self.activity = activity
+         self.callback = callback
+         self.completed_blocks = 0
++        self.completed_profiles = 0
+         self.completed_witnesses = 0
+-        self.family_id = str(family_id)
+         self.interval = max(0.1, float(interval_seconds))
+-        self.started = time.monotonic()
+-        self.last_emit = self.started
++        self.last_emit = time.monotonic()
++        self.prepared_profiles = 0
++        self.started = self.last_emit
+         self.total_blocks = max(1, int(total_blocks))
++        self.total_profiles = max(1, int(total_profiles))
+         self.total_witnesses = max(1, int(total_witnesses))
+ 
+     @staticmethod
+@@ -89,7 +95,14 @@
+             return f"{minutes:d}m{secs:02d}s"
+         return f"{secs:d}s"
+ 
+-    def _message(self, *, heartbeat: bool) -> str:
++    def _message(
++        self,
++        *,
++        kind: str,
++        active_profiles: int,
++        pending_tasks: int,
++        queued_tasks: int,
++    ) -> str:
+         now = time.monotonic()
+         elapsed = max(0.0, now - self.started)
+         rate = self.completed_witnesses / elapsed if elapsed > 0.0 else 0.0
+@@ -97,46 +110,120 @@
+         eta = remaining / rate if rate > 0.0 else None
+         percent = 100.0 * self.completed_witnesses / self.total_witnesses
+         eta_text = "estimating" if eta is None else self._duration(eta)
+-        kind = "heartbeat" if heartbeat else "progress"
++        busy, capacity = self.activity.snapshot()
+         return (
+-            f"family {self.family_id}: {kind} "
++            f"global {kind}: profiles={self.completed_profiles}/{self.total_profiles} complete; "
++            f"prepared={self.prepared_profiles}/{self.total_profiles}; active={active_profiles}; "
+             f"blocks={self.completed_blocks}/{self.total_blocks}; "
+-            f"witnesses={self.completed_witnesses}/{self.total_witnesses} "
+-            f"({percent:.1f}%); elapsed={self._duration(elapsed)}; "
+-            f"rate={rate:.1f} witness/s; eta={eta_text}"
++            f"witnesses={self.completed_witnesses}/{self.total_witnesses} ({percent:.1f}%); "
++            f"workers-busy={busy}/{capacity}; pending={pending_tasks}; queued={queued_tasks}; "
++            f"elapsed={self._duration(elapsed)}; rate={rate:.1f} witness/s; eta={eta_text}"
+         )
+ 
+-    def start(self, *, block_workers: int, tree_workers: int, backend: str) -> None:
++    def start(self, *, global_workers: int, tree_workers: int, queue_depth: int) -> None:
+         if self.callback is not None:
+             self.callback(
+-                f"family {self.family_id}: start; witnesses={self.total_witnesses}; "
+-                f"blocks={self.total_blocks}; backend={backend}; "
+-                f"block-workers={block_workers}; tree-workers/block={tree_workers}"
++                f"global start: profiles={self.total_profiles}; blocks={self.total_blocks}; "
++                f"witnesses={self.total_witnesses}; global-workers={global_workers}; "
++                f"block-workers={global_workers}; tree-workers/task={tree_workers}; queue-depth={queue_depth}; "
++                "backend=single-level-global-work-stealing"
+             )
+ 
+-    def block_done(self, witness_count: int) -> None:
++    def profile_prepared(self) -> None:
++        self.prepared_profiles += 1
++
++    def block_done(
++        self,
++        witness_count: int,
++        *,
++        active_profiles: int,
++        pending_tasks: int,
++        queued_tasks: int,
++    ) -> None:
++        previous_bucket = self.completed_blocks * 20 // self.total_blocks
+         self.completed_blocks += 1
+         self.completed_witnesses += int(witness_count)
+         now = time.monotonic()
+         milestone = (
+             self.completed_blocks == self.total_blocks
+             or self.completed_blocks == 1
+-            or self.completed_blocks * 20 // self.total_blocks
+-            > (self.completed_blocks - 1) * 20 // self.total_blocks
++            or self.completed_blocks * 20 // self.total_blocks > previous_bucket
+         )
+         if self.callback is not None and (milestone or now - self.last_emit >= self.interval):
+-            self.callback(self._message(heartbeat=False))
++            self.callback(
++                self._message(
++                    kind="progress",
++                    active_profiles=active_profiles,
++                    pending_tasks=pending_tasks,
++                    queued_tasks=queued_tasks,
++                )
++            )
+             self.last_emit = now
+ 
+-    def heartbeat_due(self) -> bool:
+-        return time.monotonic() - self.last_emit >= self.interval
++    def profile_done(
++        self,
++        *,
++        domain_id: str,
++        family_id: str,
++        profile_index: int,
++        active_profiles: int,
++        pending_tasks: int,
++        queued_tasks: int,
++    ) -> None:
++        self.completed_profiles += 1
++        if self.callback is not None:
++            self.callback(
++                f"profile {self.completed_profiles}/{self.total_profiles} complete: "
++                f"{domain_id}/{family_id} (manifest={profile_index}/{self.total_profiles}); "
++                f"global profiles={self.completed_profiles}/{self.total_profiles}; "
++                f"blocks={self.completed_blocks}/{self.total_blocks}; "
++                f"witnesses={self.completed_witnesses}/{self.total_witnesses}; "
++                f"active={active_profiles}; pending={pending_tasks}; queued={queued_tasks}"
++            )
++            self.last_emit = time.monotonic()
+ 
+-    def heartbeat(self) -> None:
++    def heartbeat(
++        self,
++        *,
++        active_profiles: int,
++        pending_tasks: int,
++        queued_tasks: int,
++    ) -> None:
+         if self.callback is not None:
+-            self.callback(self._message(heartbeat=True))
++            self.callback(
++                self._message(
++                    kind="heartbeat",
++                    active_profiles=active_profiles,
++                    pending_tasks=pending_tasks,
++                    queued_tasks=queued_tasks,
++                )
++            )
+             self.last_emit = time.monotonic()
+ 
+ 
++class _WorkerActivity:
++    """Small synchronized counter used only for progress telemetry."""
++
++    __slots__ = ("_busy", "_capacity", "_lock")
++
++    def __init__(self, capacity: int) -> None:
++        self._busy = 0
++        self._capacity = max(1, int(capacity))
++        self._lock = Lock()
++
++    def enter(self) -> None:
++        with self._lock:
++            self._busy += 1
++
++    def leave(self) -> None:
++        with self._lock:
++            self._busy -= 1
++
++    def snapshot(self) -> tuple[int, int]:
++        with self._lock:
++            return int(self._busy), int(self._capacity)
++
++
+ def _validate_state_tuple(values: Sequence[str]) -> tuple[str, ...]:
+     states = tuple(str(v) for v in values)
+     if not states or len(states) != len(set(states)) or any(v not in _ALLOWED_STATES for v in states):
+@@ -632,168 +719,140 @@
+     return index + 1
+ 
+ 
+-def _family_feasibility(
+-    family: Any,
+-    *,
+-    domain_candidate_count: int,
+-    unit_code_by_frame_index: np.ndarray,
+-    threshold: float,
+-    policy: TargetCoverageFeasibilityPolicy,
+-    query_workers: int,
+-    query_block_size: int,
+-    block_workers: int,
+-    progress_interval_seconds: float,
+-    progress_callback: Callable[[str], None] | None,
+-) -> tuple[TargetCoverageFamilyFeasibilityReport, list[tuple[np.ndarray, int]]]:
++@dataclass(frozen=True)
++class _FamilyFeasibilityJob:
++    job_index: int
++    profile_index: int
++    domain_id: str
++    family: Any
++    domain_candidate_count: int
++    unit_code_by_frame_index: np.ndarray
++    threshold: float
++    policy: TargetCoverageFeasibilityPolicy
++    query_block_size: int
++
++
++@dataclass
++class _FamilyFeasibilityState:
++    job: _FamilyFeasibilityJob
++    values: np.ndarray
++    frame_indices: np.ndarray
++    weights: np.ndarray
++    radii: np.ndarray
++    scaled: np.ndarray
++    tree: cKDTree
++    candidate_gain: np.ndarray
++    self_degree_by_witness: np.ndarray
++    correlation_degree_by_witness: np.ndarray
++    blocks: tuple[tuple[int, int], ...]
++    edge_count: int = 0
++    next_submit_index: int = 0
++    next_reduce_start: int = 0
++    inflight_blocks: int = 0
++    ready: dict[int, tuple[int, int, np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = field(default_factory=dict)
++
++
++def _prepare_family_feasibility_state(job: _FamilyFeasibilityJob) -> _FamilyFeasibilityState:
++    family = job.family
+     values = np.asarray(family.values, dtype=np.float64)
+     scales = np.asarray(family.scales, dtype=np.float64)
+     frame_indices = np.asarray(family.frame_indices, dtype=np.int64)
+     weights = np.asarray(family.weights, dtype=np.float64)
+     radii = np.asarray(family.local_radii, dtype=np.float64)
+-    if np.any(frame_indices < 0) or np.any(frame_indices >= domain_candidate_count):
+-        raise TrainingDataInputError(f"TARGET-DATA2B-FEAS1 family {family.family_id!r} has out-of-domain frame indices.")
++    if np.any(frame_indices < 0) or np.any(frame_indices >= job.domain_candidate_count):
++        raise TrainingDataInputError(
++            f"TARGET-DATA2B-FEAS1 family {family.family_id!r} has out-of-domain frame indices."
++        )
+     scaled = values / scales[None, :]
+-    tree = cKDTree(scaled)
+-    radius_scale = math.sqrt(float(scaled.shape[1]))
+-    candidate_gain = np.zeros(domain_candidate_count, dtype=np.float64)
+-    self_degree_by_witness = np.empty(len(scaled), dtype=np.int64)
+-    correlation_degree_by_witness = np.empty(len(scaled), dtype=np.int64)
+-    edge_count = 0
+-    tolerance = 1.0e-12
+-    block_size = max(1, int(query_block_size))
+-    context = f"TARGET-DATA2B-FEAS1 family {family.family_id!r}"
++    block_size = max(1, int(job.query_block_size))
+     blocks = tuple(
+         (start, min(len(scaled), start + block_size))
+         for start in range(0, len(scaled), block_size)
+     )
+-    requested_blocks = max(1, min(int(block_workers), len(blocks)))
+-    progress = _FamilyProgress(
+-        family.family_id,
+-        total_blocks=len(blocks),
+-        total_witnesses=len(scaled),
+-        interval_seconds=progress_interval_seconds,
+-        callback=progress_callback,
++    return _FamilyFeasibilityState(
++        job=job,
++        values=values,
++        frame_indices=frame_indices,
++        weights=weights,
++        radii=radii,
++        scaled=scaled,
++        tree=cKDTree(scaled),
++        candidate_gain=np.zeros(job.domain_candidate_count, dtype=np.float64),
++        self_degree_by_witness=np.empty(len(scaled), dtype=np.int64),
++        correlation_degree_by_witness=np.empty(len(scaled), dtype=np.int64),
++        blocks=blocks,
+     )
+ 
+-    def query_block(
+-        task: tuple[int, int]
+-    ) -> tuple[int, int, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+-        start, stop = task
+-        raw = tree.query_ball_point(
+-            scaled[start:stop],
+-            r=(radii[start:stop] + tolerance * np.maximum(1.0, radii[start:stop])) * radius_scale,
+-            workers=int(query_workers),
+-            return_sorted=True,
+-        )
+-        local_rows, candidate_frames, unique_counts = compress_unique_candidate_block(
+-            raw,
+-            frame_indices=frame_indices,
+-            row_start=start,
+-            candidate_count=domain_candidate_count,
+-            context=context,
+-        )
+-        self_degrees = unique_counts - 1
+-        if policy.exclude_own_correlation_unit:
+-            own_frames = frame_indices[start:stop]
+-            own_units = unit_code_by_frame_index[own_frames]
+-            cross_unit = unit_code_by_frame_index[candidate_frames] != own_units[local_rows]
+-            correlation_degrees = np.bincount(
+-                local_rows[cross_unit], minlength=stop - start
+-            ).astype(np.int64, copy=False)
+-        else:
+-            correlation_degrees = self_degrees.copy()
+-        return start, stop, local_rows, candidate_frames, self_degrees, correlation_degrees
+ 
+-    def reduce_block(
+-        result: tuple[int, int, np.ndarray, np.ndarray, np.ndarray, np.ndarray]
+-    ) -> None:
+-        nonlocal edge_count
+-        start, stop, local_rows, candidate_frames, self_degrees, correlation_degrees = result
+-        edge_count += int(candidate_frames.size)
+-        # Query/compression may complete out of order, but reduction remains in
+-        # witness-block order. Within each block unique pairs are row-major /
+-        # candidate-major, exactly preserving the historical FP64 scatter order.
+-        np.add.at(candidate_gain, candidate_frames, weights[start + local_rows])
+-        self_degree_by_witness[start:stop] = self_degrees
+-        correlation_degree_by_witness[start:stop] = correlation_degrees
+-
+-    if requested_blocks > 1:
+-        progress.start(
+-            block_workers=requested_blocks,
+-            tree_workers=int(query_workers),
+-            backend="shared-tree-thread-blocks",
++def _query_family_feasibility_block(
++    state: _FamilyFeasibilityState,
++    task: tuple[int, int],
++    *,
++    tree_workers: int,
++) -> tuple[int, int, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
++    start, stop = task
++    family = state.job.family
++    radius_scale = math.sqrt(float(state.scaled.shape[1]))
++    tolerance = 1.0e-12
++    raw = state.tree.query_ball_point(
++        state.scaled[start:stop],
++        r=(
++            state.radii[start:stop]
++            + tolerance * np.maximum(1.0, state.radii[start:stop])
++        ) * radius_scale,
++        workers=int(tree_workers),
++        return_sorted=True,
++    )
++    context = f"TARGET-DATA2B-FEAS1 family {family.family_id!r}"
++    local_rows, candidate_frames, unique_counts = compress_unique_candidate_block(
++        raw,
++        frame_indices=state.frame_indices,
++        row_start=start,
++        candidate_count=state.job.domain_candidate_count,
++        context=context,
++    )
++    self_degrees = unique_counts - 1
++    if state.job.policy.exclude_own_correlation_unit:
++        own_frames = state.frame_indices[start:stop]
++        own_units = state.job.unit_code_by_frame_index[own_frames]
++        cross_unit = (
++            state.job.unit_code_by_frame_index[candidate_frames]
++            != own_units[local_rows]
+         )
+-        executor = ThreadPoolExecutor(max_workers=requested_blocks)
+-        try:
+-            tasks = iter(blocks)
+-            pending: dict[Any, tuple[int, int]] = {}
+-            max_inflight = 2 * requested_blocks
+-            ready: dict[int, tuple[int, int, np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = {}
+-            next_start = 0
+-
+-            def submit_until_full() -> None:
+-                # Count completed-but-not-yet-reducible blocks against the
+-                # same window as running futures.  This prevents one slow early
+-                # block from allowing all later ragged neighborhoods to pile up
+-                # in RAM while deterministic witness-order reduction waits.
+-                while len(pending) + len(ready) < max_inflight:
+-                    try:
+-                        task = next(tasks)
+-                    except StopIteration:
+-                        return
+-                    pending[executor.submit(query_block, task)] = task
+-
+-            submit_until_full()
+-            while pending:
+-                timeout = max(0.05, progress.interval - (time.monotonic() - progress.last_emit))
+-                done, _ = wait(tuple(pending), timeout=timeout, return_when=FIRST_COMPLETED)
+-                if not done:
+-                    progress.heartbeat()
+-                    continue
+-                for future in done:
+-                    start, stop = pending.pop(future)
+-                    result = future.result()
+-                    ready[start] = result
+-                    progress.block_done(stop - start)
+-
+-                while next_start in ready:
+-                    result = ready.pop(next_start)
+-                    reduce_block(result)
+-                    next_start = int(result[1])
+-                submit_until_full()
+-
+-            if ready:
+-                for start in sorted(ready):
+-                    result = ready[start]
+-                    if start != next_start:
+-                        raise TrainingDataInputError(
+-                            f"{context} threaded reduction lost witness-block ordering."
+-                        )
+-                    reduce_block(result)
+-                    next_start = int(result[1])
+-            if next_start != len(scaled):
+-                raise TrainingDataInputError(
+-                    f"{context} threaded reduction did not cover every witness."
+-                )
+-        finally:
+-            executor.shutdown(wait=True, cancel_futures=True)
++        correlation_degrees = np.bincount(
++            local_rows[cross_unit], minlength=stop - start
++        ).astype(np.int64, copy=False)
+     else:
+-        progress.start(
+-            block_workers=1,
+-            tree_workers=int(query_workers),
+-            backend="serial-blocks/native-tree",
+-        )
+-        for task in blocks:
+-            result = query_block(task)
+-            reduce_block(result)
+-            progress.block_done(int(result[1]) - int(result[0]))
++        correlation_degrees = self_degrees.copy()
++    return start, stop, local_rows, candidate_frames, self_degrees, correlation_degrees
++
++
++def _reduce_family_feasibility_block(
++    state: _FamilyFeasibilityState,
++    result: tuple[int, int, np.ndarray, np.ndarray, np.ndarray, np.ndarray],
++) -> None:
++    start, stop, local_rows, candidate_frames, self_degrees, correlation_degrees = result
++    state.edge_count += int(candidate_frames.size)
++    # Results can complete globally and across profiles in any order, but each
++    # profile reduces strictly in witness-block order. Within a block the
++    # canonical compressor is row-major/candidate-major, preserving the exact
++    # historical FP64 np.add.at arithmetic order and therefore FEAS1 digests.
++    np.add.at(state.candidate_gain, candidate_frames, state.weights[start + local_rows])
++    state.self_degree_by_witness[start:stop] = self_degrees
++    state.correlation_degree_by_witness[start:stop] = correlation_degrees
+ 
++
++def _finalize_family_feasibility_state(
++    state: _FamilyFeasibilityState,
++) -> tuple[TargetCoverageFamilyFeasibilityReport, list[tuple[np.ndarray, int]]]:
++    family = state.job.family
++    policy = state.job.policy
+     self_support = _SupportAccumulator(policy.support_degree_bins)
+     correlation_support = _SupportAccumulator(policy.support_degree_bins)
+-    self_support.add_many(self_degree_by_witness, weights)
+-    correlation_support.add_many(correlation_degree_by_witness, weights)
++    self_support.add_many(state.self_degree_by_witness, state.weights)
++    correlation_support.add_many(state.correlation_degree_by_witness, state.weights)
+ 
+-    coverage_lb = _coverage_cardinality_lower_bound(candidate_gain, threshold)
++    coverage_lb = _coverage_cardinality_lower_bound(state.candidate_gain, state.job.threshold)
+     if coverage_lb == int(np.iinfo(np.int32).max):
+         raise TrainingDataInputError(
+             f"TARGET-DATA2B-FEAS1 family {family.family_id!r} cannot reach its own coverage threshold even under optimistic singleton summation."
+@@ -801,11 +860,15 @@
+ 
+     extent_obligations: list[tuple[np.ndarray, int]] = []
+     for channel in family.extent_channels:
+-        column = values[:, int(channel.feature_index)]
+-        lower_rows = np.flatnonzero(column <= float(channel.lower_reference_quantile) + 1.0e-12)
+-        upper_rows = np.flatnonzero(column >= float(channel.upper_reference_quantile) - 1.0e-12)
+-        lower_frames = np.unique(frame_indices[lower_rows])
+-        upper_frames = np.unique(frame_indices[upper_rows])
++        column = state.values[:, int(channel.feature_index)]
++        lower_rows = np.flatnonzero(
++            column <= float(channel.lower_reference_quantile) + 1.0e-12
++        )
++        upper_rows = np.flatnonzero(
++            column >= float(channel.upper_reference_quantile) - 1.0e-12
++        )
++        lower_frames = np.unique(state.frame_indices[lower_rows])
++        upper_frames = np.unique(state.frame_indices[upper_rows])
+         if lower_frames.size == 0 or upper_frames.size == 0:
+             raise TrainingDataInputError(
+                 f"TARGET-DATA2B-FEAS1 extent obligation {family.family_id}:{channel.feature_name} has no candidate support."
+@@ -824,12 +887,12 @@
+             family_id=family.family_id,
+             family_digest=family.content_digest,
+             required=bool(family.required),
+-            witness_count=len(values),
+-            candidate_frame_count=int(np.count_nonzero(candidate_gain > 0.0)),
+-            neighborhood_edge_count=edge_count,
++            witness_count=len(state.values),
++            candidate_frame_count=int(np.count_nonzero(state.candidate_gain > 0.0)),
++            neighborhood_edge_count=state.edge_count,
+             self_excluded_support=self_report,
+             correlation_excluded_support=correlation_report,
+-            optimistic_max_singleton_gain=float(np.max(candidate_gain)),
++            optimistic_max_singleton_gain=float(np.max(state.candidate_gain)),
+             coverage_cardinality_lower_bound=coverage_lb,
+             hard_extent_obligation_count=len(extent_obligations),
+             cross_support_fragile=fragile,
+@@ -838,6 +901,277 @@
+     )
+ 
+ 
++def _evaluate_family_jobs_global(
++    jobs: Sequence[_FamilyFeasibilityJob],
++    *,
++    global_workers: int,
++    query_workers: int,
++    progress_interval_seconds: float,
++    progress_callback: Callable[[str], None] | None,
++) -> list[tuple[TargetCoverageFamilyFeasibilityReport, list[tuple[np.ndarray, int]]]]:
++    """Evaluate every FEAS1 profile through one single-level work queue.
++
++    In parallel mode each executor lane owns one independent profile-prepare or
++    witness-block task and every cKDTree query is single-threaded. This removes
++    nested ThreadPoolExecutor/cKDTree scheduling and lets idle lanes steal work
++    from any active profile. Only per-profile deterministic reduction remains
++    serialized in the coordinator thread.
++    """
++
++    if not jobs:
++        return []
++    worker_count = max(1, int(global_workers))
++    # Nested native-tree parallelism is used only for a deliberately serial
++    # caller. In the production global pool every task has one native tree lane.
++    tree_workers = max(1, int(query_workers)) if worker_count == 1 else 1
++    total_profiles = len(jobs)
++    total_blocks = sum(
++        math.ceil(len(job.family.values) / max(1, int(job.query_block_size)))
++        for job in jobs
++    )
++    total_witnesses = sum(len(job.family.values) for job in jobs)
++    activity = _WorkerActivity(worker_count)
++    progress = _GlobalFeasibilityProgress(
++        total_profiles=total_profiles,
++        total_blocks=total_blocks,
++        total_witnesses=total_witnesses,
++        interval_seconds=progress_interval_seconds,
++        callback=progress_callback,
++        activity=activity,
++    )
++    max_pending = max(worker_count, 2 * worker_count)
++    max_buffered = max_pending + 2 * worker_count
++    progress.start(
++        global_workers=worker_count,
++        tree_workers=tree_workers,
++        queue_depth=max_pending,
++    )
++    results: list[
++        tuple[TargetCoverageFamilyFeasibilityReport, list[tuple[np.ndarray, int]]] | None
++    ] = [None] * total_profiles
++
++    def prepare_task(job: _FamilyFeasibilityJob) -> _FamilyFeasibilityState:
++        activity.enter()
++        try:
++            return _prepare_family_feasibility_state(job)
++        finally:
++            activity.leave()
++
++    def block_task(
++        state: _FamilyFeasibilityState,
++        task: tuple[int, int],
++    ) -> tuple[int, int, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
++        activity.enter()
++        try:
++            return _query_family_feasibility_block(
++                state, task, tree_workers=tree_workers
++            )
++        finally:
++            activity.leave()
++
++    if worker_count == 1:
++        for job in jobs:
++            state = prepare_task(job)
++            progress.profile_prepared()
++            for task in state.blocks:
++                result = block_task(state, task)
++                _reduce_family_feasibility_block(state, result)
++                progress.block_done(
++                    int(result[1]) - int(result[0]),
++                    active_profiles=1,
++                    pending_tasks=0,
++                    queued_tasks=0,
++                )
++            results[job.job_index] = _finalize_family_feasibility_state(state)
++            progress.profile_done(
++                domain_id=job.domain_id,
++                family_id=job.family.family_id,
++                profile_index=job.profile_index,
++                active_profiles=0,
++                pending_tasks=0,
++                queued_tasks=0,
++            )
++        return [item for item in results if item is not None]
++
++    # Parallel coordinator. A bounded future queue supplies one independent
++    # task per CPU lane. Profile preparation and witness blocks share the same
++    # executor so tree construction for later profiles overlaps ongoing query
++    # work instead of creating a serial low-utilization phase.
++    executor = ThreadPoolExecutor(
++        max_workers=worker_count,
++        thread_name_prefix="mdstats-feas1-global",
++    )
++    pending: dict[Any, tuple[str, Any, Any]] = {}
++    active: dict[int, _FamilyFeasibilityState] = {}
++    next_job_to_prepare = 0
++    preparing = 0
++    rr_cursor = 0
++
++    def ready_buffer_count() -> int:
++        return sum(len(state.ready) for state in active.values())
++
++    def queued_count() -> int:
++        busy, _ = activity.snapshot()
++        return max(0, len(pending) - busy)
++
++    def submit_prepare(job: _FamilyFeasibilityJob) -> None:
++        nonlocal preparing
++        future = executor.submit(prepare_task, job)
++        pending[future] = ("prepare", job, None)
++        preparing += 1
++
++    def submit_block(state: _FamilyFeasibilityState) -> bool:
++        if state.next_submit_index >= len(state.blocks):
++            return False
++        task = state.blocks[state.next_submit_index]
++        state.next_submit_index += 1
++        state.inflight_blocks += 1
++        future = executor.submit(block_task, state, task)
++        pending[future] = ("block", state, task)
++        return True
++
++    def refill() -> None:
++        nonlocal next_job_to_prepare, rr_cursor
++        buffered = len(pending) + ready_buffer_count()
++        if buffered >= max_buffered:
++            return
++
++        # Keep a small preparation stream in front of the query queue. At
++        # startup all lanes may prepare distinct profiles; once query work is
++        # available, at most ~12.5% of lanes are reserved to stage future
++        # profiles while the rest stay on exact neighborhood blocks.
++        if not active:
++            prep_target = min(worker_count, total_profiles - next_job_to_prepare + preparing)
++        else:
++            prep_target = min(
++                max(1, worker_count // 8),
++                total_profiles - next_job_to_prepare + preparing,
++            )
++        while (
++            next_job_to_prepare < total_profiles
++            and preparing < prep_target
++            and len(pending) < max_pending
++            and len(pending) + ready_buffer_count() < max_buffered
++        ):
++            submit_prepare(jobs[next_job_to_prepare])
++            next_job_to_prepare += 1
++
++        while (
++            active
++            and len(pending) < max_pending
++            and len(pending) + ready_buffer_count() < max_buffered
++        ):
++            states = sorted(active.values(), key=lambda item: item.job.job_index)
++            if not states:
++                break
++            scheduled = False
++            count = len(states)
++            for offset in range(count):
++                index = (rr_cursor + offset) % count
++                state = states[index]
++                if submit_block(state):
++                    rr_cursor = (index + 1) % count
++                    scheduled = True
++                    break
++            if not scheduled:
++                break
++
++        # If the queue still has spare lanes and there are not yet active
++        # profiles with blocks to feed them, use those lanes for additional
++        # profile preparation rather than leaving executor threads idle.
++        while (
++            next_job_to_prepare < total_profiles
++            and len(pending) < max_pending
++            and len(pending) + ready_buffer_count() < max_buffered
++            and not any(
++                state.next_submit_index < len(state.blocks)
++                for state in active.values()
++            )
++        ):
++            submit_prepare(jobs[next_job_to_prepare])
++            next_job_to_prepare += 1
++
++    try:
++        # Prime all lanes with independent profile setup when enough profiles
++        # exist. This is the only phase where a single-profile campaign cannot
++        # expose enough independent work before its tree has been constructed.
++        while next_job_to_prepare < total_profiles and len(pending) < worker_count:
++            submit_prepare(jobs[next_job_to_prepare])
++            next_job_to_prepare += 1
++
++        while any(item is None for item in results):
++            refill()
++            if not pending:
++                raise TrainingDataInputError(
++                    "TARGET-DATA2B-FEAS1 global scheduler exhausted work before every profile completed."
++                )
++            timeout = max(
++                0.05,
++                progress.interval - (time.monotonic() - progress.last_emit),
++            )
++            done, _ = wait(
++                tuple(pending), timeout=timeout, return_when=FIRST_COMPLETED
++            )
++            if not done:
++                progress.heartbeat(
++                    active_profiles=len(active),
++                    pending_tasks=len(pending),
++                    queued_tasks=queued_count(),
++                )
++                continue
++
++            for future in done:
++                kind, owner, task = pending.pop(future)
++                if kind == "prepare":
++                    preparing -= 1
++                    state = future.result()
++                    active[state.job.job_index] = state
++                    progress.profile_prepared()
++                    continue
++
++                state = owner
++                state.inflight_blocks -= 1
++                result = future.result()
++                state.ready[int(result[0])] = result
++                progress.block_done(
++                    int(result[1]) - int(result[0]),
++                    active_profiles=len(active),
++                    pending_tasks=len(pending),
++                    queued_tasks=queued_count(),
++                )
++
++                while state.next_reduce_start in state.ready:
++                    ordered = state.ready.pop(state.next_reduce_start)
++                    _reduce_family_feasibility_block(state, ordered)
++                    state.next_reduce_start = int(ordered[1])
++
++                if (
++                    state.next_reduce_start == len(state.scaled)
++                    and state.next_submit_index == len(state.blocks)
++                    and state.inflight_blocks == 0
++                    and not state.ready
++                ):
++                    results[state.job.job_index] = _finalize_family_feasibility_state(state)
++                    del active[state.job.job_index]
++                    progress.profile_done(
++                        domain_id=state.job.domain_id,
++                        family_id=state.job.family.family_id,
++                        profile_index=state.job.profile_index,
++                        active_profiles=len(active),
++                        pending_tasks=len(pending),
++                        queued_tasks=queued_count(),
++                    )
++            refill()
++    finally:
++        executor.shutdown(wait=True, cancel_futures=True)
++
++    if any(item is None for item in results):
++        raise TrainingDataInputError(
++            "TARGET-DATA2B-FEAS1 global scheduler did not finalize every profile."
++        )
++    return [item for item in results if item is not None]
++
++
+ def _hard_obligation_lower_bound(
+     domain: Any,
+     role_domain: Any,
+@@ -919,10 +1253,12 @@
+     """Build the exact TARGET-DATA2B-FEAS1 diagnostic authority.
+ 
+     ``query_workers``, ``query_block_size``, ``family_workers`` /
+-    ``block_workers``, and progress settings are execution-only.  They are not
+-    serialized and cannot change the scientific digest. ``family_workers`` is
+-    retained as a compatibility alias for block-level parallelism; new callers
+-    should pass ``block_workers``.
++    ``block_workers``, and progress settings are execution-only. They are not
++    serialized and cannot change the scientific digest. In parallel mode,
++    ``block_workers`` is the size of one campaign-wide single-level FEAS1 work
++    queue and cKDTree queries run with one native worker per queue lane.
++    ``family_workers`` remains a compatibility alias for this global worker
++    count.
+     """
+ 
+     active = TargetCoverageFeasibilityPolicy() if policy is None else policy
+@@ -940,41 +1276,53 @@
+         raise TrainingDataInputError("TARGET-DATA2B-FEAS1 TARGET-DATA2A lineage mismatch.")
+ 
+     domain_reports: list[TargetCoverageDomainFeasibilityReport] = []
++    domain_inputs: list[tuple[Any, Any, tuple[Any, ...], tuple[int, ...]]] = []
++    jobs: list[_FamilyFeasibilityJob] = []
++    profile_index = 1
++    threshold = float(target_coverage_reference.policy.coverage_threshold)
++
++    # Build a complete deterministic job manifest before starting expensive
++    # work. This gives the reporter true campaign-wide profile/block/witness
++    # totals and lets all domains/families feed one shared executor queue.
+     for domain in target_coverage_reference.domains:
+         role_domain = target_data_role_freeze.domain(domain.label_domain_id)
+         if set(domain.frame_uids) != set(role_domain.size_development_frame_uids):
+             raise TrainingDataInputError("TARGET-DATA2B-FEAS1 coverage/role frame-domain mismatch.")
+         unit_codes = _role_domain_frame_units(role_domain, domain.frame_uids)
+-        ordered_families = sorted(domain.families, key=lambda item: item.family_id)
+-
+-        def evaluate_family(family: Any) -> tuple[TargetCoverageFamilyFeasibilityReport, list[tuple[np.ndarray, int]]]:
+-            callback = None
+-            if progress_callback is not None:
+-                callback = lambda message: progress_callback(
+-                    f"{domain.label_domain_id}: {message}"
++        ordered_families = tuple(sorted(domain.families, key=lambda item: item.family_id))
++        job_indices: list[int] = []
++        for family in ordered_families:
++            job_index = len(jobs)
++            job_indices.append(job_index)
++            jobs.append(
++                _FamilyFeasibilityJob(
++                    job_index=job_index,
++                    profile_index=profile_index,
++                    domain_id=domain.label_domain_id,
++                    family=family,
++                    domain_candidate_count=len(domain.frame_uids),
++                    unit_code_by_frame_index=unit_codes,
++                    threshold=threshold,
++                    policy=active,
++                    query_block_size=block,
+                 )
+-            return _family_feasibility(
+-                family,
+-                domain_candidate_count=len(domain.frame_uids),
+-                unit_code_by_frame_index=unit_codes,
+-                threshold=float(target_coverage_reference.policy.coverage_threshold),
+-                policy=active,
+-                query_workers=workers,
+-                query_block_size=block,
+-                block_workers=block_parallelism,
+-                progress_interval_seconds=interval,
+-                progress_callback=callback,
+-            )
+-
+-        # Families are intentionally visited in deterministic order while each
+-        # expensive family fans out over witness blocks sharing one cKDTree.
+-        # This avoids both serialized per-family work and inter-process copies
+-        # of ragged neighborhood arrays.
+-        family_results = [evaluate_family(family) for family in ordered_families]
++            )
++            profile_index += 1
++        domain_inputs.append((domain, role_domain, ordered_families, tuple(job_indices)))
++
++    family_results = _evaluate_family_jobs_global(
++        jobs,
++        global_workers=block_parallelism,
++        query_workers=workers,
++        progress_interval_seconds=interval,
++        progress_callback=progress_callback,
++    )
+ 
++    for domain, role_domain, ordered_families, job_indices in domain_inputs:
+         family_reports: list[TargetCoverageFamilyFeasibilityReport] = []
+         extent_obligations: list[tuple[np.ndarray, int]] = []
+-        for family, (family_report, family_extents) in zip(ordered_families, family_results, strict=True):
++        for family, job_index in zip(ordered_families, job_indices, strict=True):
++            family_report, family_extents = family_results[job_index]
+             family_reports.append(family_report)
+             if family.required:
+                 extent_obligations.extend(family_extents)
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.222a0_to_0.20.223a0.patch' /mnt/data/mdstats_base222/mdstats-0.20.222a0/mlff_training_data_architecture.md /mnt/data/mdstats_feas3/mdstats-0.20.223a0/mlff_training_data_architecture.md
+--- /mnt/data/mdstats_base222/mdstats-0.20.222a0/mlff_training_data_architecture.md	2026-08-17 09:25:57.000000000 +0000
++++ /mnt/data/mdstats_feas3/mdstats-0.20.223a0/mlff_training_data_architecture.md	2026-08-17 10:07:45.617697560 +0000
+@@ -2,7 +2,7 @@
+ title: "mdstats MLFF Training-Data Architecture"
+ subtitle: "Canonical architecture and staged implementation"
+ author: "mdstats project"
+-date: "2026-08-17 (revision 89: TARGET-DATA2B-FEAS1-PERF2 block parallelism and progress)"
++date: "2026-08-17 (revision 90: TARGET-DATA2B-FEAS1-PERF3 global single-level scheduling)"
+ geometry: margin=0.78in
+ toc: true
+ toc-depth: 3
+@@ -19,7 +19,39 @@
+     \usepackage{xurl}
+ ---
+ 
+-# Revision 89 current gate: TARGET-DATA2B-FEAS1-PERF2 block parallelism and long-wall progress
++# Revision 90 current gate: TARGET-DATA2B-FEAS1-PERF3 global single-level scheduling and campaign progress
++
++`mdstats 0.20.223a0` replaces PERF2 after workstation observation showed that profile-local block threading still left substantial CPU capacity unused and that progress lines such as `family ... blocks=47/49` did not state how many profiles remained. The scientific FEAS1 authority is unchanged.
++
++PERF3 removes nested parallelism from production FEAS1. Instead of factoring the CPU budget as Python block threads x native cKDTree workers inside one profile, the stage creates one campaign-wide queue spanning every label domain, profile/family, and witness block. Automatic mode assigns one executor worker to each CPU-budget lane and every parallel `query_ball_point` task uses `workers=1`. On a 32-logical-thread workstation with the frozen 90% CPU fraction, this means 28 independent FEAS1 executor lanes. A lane finishing a block or an entire profile immediately consumes the next queued block from any other active profile, eliminating the profile-tail starvation inherent to PERF2.
++
++Profile/tree preparation is also submitted to the same executor, so later-profile cKDTree construction can overlap ongoing query/compression work. The scheduler keeps up to `2 x workers` futures pending and bounds pending plus completed-but-not-reduced block results at `4 x workers`; this gives the executor enough ready work to maintain occupancy without allowing ragged neighbor arrays to grow without bound.
++
++Scientific reduction is still profile-local and deterministic. Blocks may complete globally out of order, but candidate-gain updates are delayed until each profile's next contiguous witness block is available. The PERF1 canonical row-major/candidate-major compressor and historical FP64 `np.add.at` order are unchanged, so report dictionaries and digests remain invariant to the new schedule.
++
++Progress is now campaign-wide. FEAS1 pre-counts profiles, blocks, and witnesses before expensive work starts. Periodic output reports profiles completed/total, profiles prepared/total, active profiles, global block/witness completion, sampled busy executor lanes, pending/queued work, elapsed time, throughput, and global ETA. A profile-completion line uses completion count as the leading fraction and lists the deterministic manifest ordinal separately.
++
++## Frozen revision-90 execution contract
++
++| Item | Value |
++|---|---|
++| FEAS1 scientific schema/digest | unchanged |
++| Parallel topology | one global single-level queue across all domains/profiles/blocks |
++| Automatic global workers | full `StageResourceScope` CPU budget |
++| Parallel cKDTree workers/task | exactly 1 |
++| Default 32-thread workstation budget | 28 global FEAS1 workers at `cpu_fraction=0.90` |
++| Pending future bound | `2 x global_workers` |
++| Pending + ready result bound | `4 x global_workers` |
++| New execution override | `target_coverage_feasibility_global_workers` |
++| PERF2/PERF1 worker settings | compatibility aliases |
++| Deterministic reduction | per-profile contiguous witness order |
++| Global progress | profiles, blocks, witnesses, busy lanes, queue, elapsed, rate, ETA |
++| GPU neighborhood authority | unchanged; not authorized |
++| TARGET-DATA2C scientific selection | unchanged |
++
++On the qualification host, eight profiles of 25,033 witnesses each (eight-dimensional exact neighborhoods, 512-witness blocks) improved from 7.793 s with serial-profile/native-tree-8 execution to 3.811 s with the global-8/tree-1 queue, a 2.04x wall-time speedup. The global evaluator consumed 29.178 s of process CPU in 3.811 s wall time, corresponding to 7.66 average cores or 95.7% of its eight assigned lanes. Exact family-report dictionaries were identical. This is execution evidence only.
++
++# Revision 89 historical gate: TARGET-DATA2B-FEAS1-PERF2 block parallelism and long-wall progress
+ 
+ `mdstats 0.20.222a0` revises the PERF1 execution schedule after direct workstation observation still showed only about 200-500% aggregate CPU during a long FEAS1 run. The PERF1 vectorized exact neighborhood kernel remains authoritative; this revision changes only how independent witness blocks are scheduled and how long-wall progress is reported.
+ 
+Binary files /mnt/data/mdstats_base222/mdstats-0.20.222a0/mlff_training_data_architecture.pdf and /mnt/data/mdstats_feas3/mdstats-0.20.223a0/mlff_training_data_architecture.pdf differ
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.222a0_to_0.20.223a0.patch' /mnt/data/mdstats_base222/mdstats-0.20.222a0/pyproject.toml /mnt/data/mdstats_feas3/mdstats-0.20.223a0/pyproject.toml
+--- /mnt/data/mdstats_base222/mdstats-0.20.222a0/pyproject.toml	2026-08-17 09:17:19.000000000 +0000
++++ /mnt/data/mdstats_feas3/mdstats-0.20.223a0/pyproject.toml	2026-08-17 10:02:02.744240182 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.222a0"
++version = "0.20.223a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.222a0_to_0.20.223a0.patch' /mnt/data/mdstats_base222/mdstats-0.20.222a0/release/MLFF_TARGET_DATA2B_FEAS1_PERF3_PDF_QA_0.20.223a0.json /mnt/data/mdstats_feas3/mdstats-0.20.223a0/release/MLFF_TARGET_DATA2B_FEAS1_PERF3_PDF_QA_0.20.223a0.json
+--- /mnt/data/mdstats_base222/mdstats-0.20.222a0/release/MLFF_TARGET_DATA2B_FEAS1_PERF3_PDF_QA_0.20.223a0.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats_feas3/mdstats-0.20.223a0/release/MLFF_TARGET_DATA2B_FEAS1_PERF3_PDF_QA_0.20.223a0.json	2026-08-17 10:08:28.392800946 +0000
+@@ -0,0 +1,16 @@
++{
++  "schema": "mdstats.mlff.target-data2b-feas1-perf3.pdf-qa.v1",
++  "release": "0.20.223a0",
++  "date": "2026-08-17",
++  "gate": "TARGET-DATA2B-FEAS1-PERF3",
++  "status": "PASS",
++  "documents": [
++    {
++      "path": "docs/arch_manuals/mlff_training_data_architecture.pdf",
++      "pages": 239,
++      "preflight": "PASS",
++      "rendered_pages": [1, 13, 14, 15],
++      "render_status": "PASS"
++    }
++  ]
++}
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.222a0_to_0.20.223a0.patch' /mnt/data/mdstats_base222/mdstats-0.20.222a0/release/MLFF_TARGET_DATA2B_FEAS1_PERF3_QUALIFICATION_0.20.223a0.json /mnt/data/mdstats_feas3/mdstats-0.20.223a0/release/MLFF_TARGET_DATA2B_FEAS1_PERF3_QUALIFICATION_0.20.223a0.json
+--- /mnt/data/mdstats_base222/mdstats-0.20.222a0/release/MLFF_TARGET_DATA2B_FEAS1_PERF3_QUALIFICATION_0.20.223a0.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats_feas3/mdstats-0.20.223a0/release/MLFF_TARGET_DATA2B_FEAS1_PERF3_QUALIFICATION_0.20.223a0.json	2026-08-17 10:08:28.384800946 +0000
+@@ -0,0 +1,82 @@
++{
++  "schema": "mdstats.mlff.target-data2b-feas1-perf3.qualification.v1",
++  "release": "0.20.223a0",
++  "date": "2026-08-17",
++  "gate": "TARGET-DATA2B-FEAS1-PERF3",
++  "architecture_revision": 90,
++  "dependency_graph_schema": 72,
++  "status": "PASS",
++  "scientific_authority": {
++    "schema_changed": false,
++    "digest_semantics_changed": false,
++    "coverage_metric_changed": false,
++    "local_radius_changed": false,
++    "candidate_ceiling_changed": false,
++    "target_data2c_selector_changed": false,
++    "gpu_neighborhood_authority_changed": false,
++    "deterministic_per_profile_witness_order_reduction": true,
++    "serial_parallel_report_dictionary_equivalence": true
++  },
++  "execution": {
++    "scheduler": "single_level_global_work_queue",
++    "automatic_worker_policy": "one global executor worker per cpu_threads_budget lane",
++    "parallel_ckdtree_workers_per_task": 1,
++    "pending_future_bound": "2 * global_workers",
++    "pending_plus_ready_bound": "4 * global_workers",
++    "profile_preparation_shared_executor": true,
++    "cross_domain_profile_block_work_stealing": true,
++    "new_config": "performance.target_coverage_feasibility_global_workers",
++    "legacy_aliases": [
++      "performance.target_coverage_feasibility_block_workers",
++      "performance.target_coverage_feasibility_family_workers"
++    ]
++  },
++  "progress": {
++    "campaign_wide_profile_total": true,
++    "profile_completed_total": true,
++    "profile_manifest_ordinal": true,
++    "prepared_profile_total": true,
++    "active_profile_count": true,
++    "global_block_total": true,
++    "global_witness_total": true,
++    "executor_busy_lane_sample": true,
++    "pending_and_queued_tasks": true,
++    "elapsed_rate_eta": true,
++    "heartbeat_interval_control": "performance.progress_interval_seconds"
++  },
++  "tests": {
++    "focused_perf3_feas1": "13 passed",
++    "target_data2_functional": "111 passed",
++    "python_compile": "PASS"
++  },
++  "benchmark": {
++    "host_logical_threads_available": 9,
++    "cpu_fraction_equivalent": 0.90,
++    "assigned_global_workers": 8,
++    "profiles": 8,
++    "witnesses_per_profile": 25033,
++    "descriptor_dimensions": 8,
++    "query_block_size": 512,
++    "edge_count_total": 5934376,
++    "baseline": {
++      "schedule": "serial_profiles_native_tree_8",
++      "wall_seconds": 7.792861027000072,
++      "process_cpu_seconds": 23.878431911
++    },
++    "perf3": {
++      "schedule": "global_8_tree_1",
++      "wall_seconds": 3.810730230000445,
++      "process_cpu_seconds": 29.177808344999995,
++      "average_cpu_cores": 7.65675,
++      "assigned_lane_occupancy_percent": 95.7094
++    },
++    "wall_speedup": 2.04498,
++    "assessment": "PASS: sustained global FEAS1 evaluator occupancy is approximately 95.7% of the eight assigned CPU lanes while preserving exact reports."
++  },
++  "pdf_qa": {
++    "manual_pages": 239,
++    "preflight": "PASS",
++    "rendered_pages_review_set": [1, 13, 14, 15],
++    "render_status": "PASS"
++  }
++}
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.222a0_to_0.20.223a0.patch' /mnt/data/mdstats_base222/mdstats-0.20.222a0/tests/test_mlff_target_data2b_feas1.py /mnt/data/mdstats_feas3/mdstats-0.20.223a0/tests/test_mlff_target_data2b_feas1.py
+--- /mnt/data/mdstats_base222/mdstats-0.20.222a0/tests/test_mlff_target_data2b_feas1.py	2026-08-17 09:21:13.000000000 +0000
++++ /mnt/data/mdstats_feas3/mdstats-0.20.223a0/tests/test_mlff_target_data2b_feas1.py	2026-08-17 10:02:24.329998422 +0000
+@@ -267,9 +267,11 @@
+     )
+     assert parallel.to_dict() == baseline.to_dict()
+     assert parallel.content_digest == baseline.content_digest
+-    assert any("block-workers=3" in message for message in messages)
+-    assert any("blocks=" in message and "witnesses=" in message for message in messages)
++    assert any("global-workers=3" in message for message in messages)
++    assert any("tree-workers/task=1" in message for message in messages)
++    assert any("profiles=1" in message and "blocks=" in message and "witnesses=" in message for message in messages)
+     assert any("eta=" in message and "rate=" in message for message in messages)
++    assert any("profile 1/1 complete" in message for message in messages)
+ 
+ 
+ def test_feas1_cli_parallelism_uses_block_workers_when_budget_allows() -> None:
+@@ -292,4 +294,80 @@
+     )
+     assert block_workers * tree_workers <= resources.cpu_threads_budget
+     if resources.cpu_threads_budget >= 2:
+-        assert block_workers >= 2
++        assert tree_workers == 1
++        assert block_workers == resources.cpu_threads_budget
++
++
++def test_feas1_global_progress_counts_all_profiles_not_only_current_family() -> None:
++    reference, role = _reference_and_role(split_units=True)
++    first_family = reference.domains[0].families[0]
++    families = tuple(
++        replace(first_family, family_id=f"target_label:profile-{index:02d}")
++        for index in range(6)
++    )
++    reference = replace(
++        reference,
++        domains=(replace(reference.domains[0], families=families),),
++    )
++    messages: list[str] = []
++    parallel = mdstats.build_target_coverage_feasibility_report(
++        reference,
++        role,
++        query_workers=8,
++        query_block_size=2,
++        block_workers=4,
++        progress_interval_seconds=0.01,
++        progress_callback=messages.append,
++    )
++    serial = mdstats.build_target_coverage_feasibility_report(
++        reference,
++        role,
++        query_workers=1,
++        query_block_size=2,
++        block_workers=1,
++    )
++    assert parallel.to_dict() == serial.to_dict()
++    assert any("global start: profiles=6" in message for message in messages)
++    completion = [message for message in messages if message.startswith("profile ")]
++    assert len(completion) == 6
++    assert any("profile 6/6 complete" in message and "global profiles=6/6" in message for message in completion)
++    assert all("manifest=" in message for message in completion)
++
++
++def test_feas1_global_worker_setting_and_legacy_aliases_must_agree() -> None:
++    from mdstats.training_data import campaign_cli
++
++    reference, _ = _reference_and_role(split_units=True)
++    tree_workers, global_workers, resources = campaign_cli._target_coverage_feasibility_parallelism(
++        {
++            "performance": {
++                "cpu_fraction": 0.90,
++                "ram_fraction": 0.80,
++                "gpu_memory_fraction": 0.90,
++                "target_coverage_workers": 8,
++                "target_coverage_feasibility_global_workers": 3,
++                "target_coverage_feasibility_block_workers": 3,
++                "target_coverage_feasibility_family_workers": 0,
++            }
++        },
++        reference,
++        query_block_size=2,
++    )
++    assert global_workers == min(3, resources.cpu_threads_budget, resources.cpu_threads_available)
++    if global_workers > 1:
++        assert tree_workers == 1
++
++    with pytest.raises(campaign_cli.CampaignCliError, match="worker controls disagree"):
++        campaign_cli._target_coverage_feasibility_parallelism(
++            {
++                "performance": {
++                    "cpu_fraction": 0.90,
++                    "ram_fraction": 0.80,
++                    "gpu_memory_fraction": 0.90,
++                    "target_coverage_feasibility_global_workers": 4,
++                    "target_coverage_feasibility_block_workers": 3,
++                }
++            },
++            reference,
++            query_block_size=2,
++        )
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' '--exclude=.pytest_cache' '--exclude=SOURCE_PATCH_0.20.222a0_to_0.20.223a0.patch' /mnt/data/mdstats_base222/mdstats-0.20.222a0/tests/test_mlff_target_data2b_feas1_perf3_specification.py /mnt/data/mdstats_feas3/mdstats-0.20.223a0/tests/test_mlff_target_data2b_feas1_perf3_specification.py
+--- /mnt/data/mdstats_base222/mdstats-0.20.222a0/tests/test_mlff_target_data2b_feas1_perf3_specification.py	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats_feas3/mdstats-0.20.223a0/tests/test_mlff_target_data2b_feas1_perf3_specification.py	2026-08-17 10:02:24.330198287 +0000
+@@ -0,0 +1,29 @@
++from __future__ import annotations
++
++import json
++from pathlib import Path
++
++import mdstats
++
++
++def test_rev90_perf3_release_manual_graph_and_spec_are_synchronized() -> None:
++    root = Path(__file__).resolve().parents[1]
++    assert mdstats.__version__ == "0.20.223a0"
++    manual = (root / "docs/arch_manuals/mlff_training_data_architecture.md").read_text()
++    spec = (root / "docs/specs/training_data/mlff_target_data2b_feas1_perf3_spec.md").read_text()
++    note = (root / "PATCH_NOTES_0.20.223a0.md").read_text()
++    graph = json.loads((root / "docs/arch_manuals/mlff_training_data_dependency_graph.json").read_text())
++
++    assert "Revision 90 current gate: TARGET-DATA2B-FEAS1-PERF3" in manual
++    assert "single-level global work queue" in spec
++    assert "target_coverage_feasibility_global_workers" in spec
++    assert "profiles completed/total" in spec
++    assert "0.20.223a0" in note
++    assert graph["architecture_revision"] == 90
++    assert graph["schema_version"] == 72
++    assert graph["documentation_gate"] == "TARGET_DATA2B_FEAS1_PERF3_GLOBAL_QUEUE"
++    nodes = {node["id"]: node for node in graph["nodes"]}
++    gate = nodes["TARGET_DATA2B_FEAS1_PERF3_GLOBAL_QUEUE"]
++    assert gate["parallel_tree_workers_per_task"] == 1
++    assert gate["campaign_wide_profile_progress"] is True
++    assert gate["scientific_digest_changed"] is False

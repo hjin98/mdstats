@@ -1,0 +1,271 @@
+{
+  "decision": {
+    "adoption_case_count": 0,
+    "broad_profile_count": 1,
+    "field_keys": [
+      "atomic_localized",
+      "framework_vertices_separated",
+      "oxygen_clouds_overlapping",
+      "na_multimodal_hopping",
+      "framework_edges_projected",
+      "framework_paths_atomic",
+      "mobile_ion_broad"
+    ],
+    "insufficient_profile_count": 1,
+    "localized_profile_count": 6,
+    "metadata": {
+      "decision_policy": "ld6_evidence_gate_v1",
+      "production_multilevel_implemented": false,
+      "single_level_architecture_status": "complete_through_ld5"
+    },
+    "options": {
+      "block_shapes": [
+        [
+          4,
+          4,
+          4
+        ],
+        [
+          8,
+          8,
+          8
+        ],
+        [
+          16,
+          16,
+          16
+        ]
+      ],
+      "broad_active_fraction": 0.5,
+      "coarsening_factors": [
+        2,
+        4
+      ],
+      "fine_mass_fractions": [
+        0.9,
+        0.95,
+        0.99
+      ],
+      "hdr_fractions": [
+        0.5,
+        0.8,
+        0.95
+      ],
+      "localized_active_fraction": 0.2,
+      "max_hdr_mass_fraction_error": 0.001,
+      "max_phase_evaluations": 2000,
+      "max_profile_nodes": 4000000,
+      "max_relative_hdr_threshold_error": 0.01,
+      "max_relative_l1_error": 0.002,
+      "max_relative_linf_error": 0.01,
+      "max_workspace_bytes": 512000000,
+      "metadata": {},
+      "minimum_adoption_cases": 2,
+      "minimum_incremental_storage_reduction": 2.0,
+      "schema_version": "mdstats.density-multilevel-research-options.v1"
+    },
+    "outcome": "retain_single_level",
+    "profile_count": 7,
+    "qualifying_candidate_count": 1,
+    "rationale": [
+      "No required number of insufficient single-level cases shows a phase-robust multilevel gain large enough to justify transfer and contouring complexity.",
+      "Some optimistic coarse/fine surrogates pass numerical tolerances, but they do not establish a production need beyond the completed backend selector.",
+      "True multilevel transfer, HDR integration, and crack-free coarse/fine meshing remain unimplemented and must not be inferred from this research profiler."
+    ],
+    "schema_version": "mdstats.density-multilevel-research-decision.v1"
+  },
+  "notes": [
+    "The coarse/fine candidate is an optimistic research surrogate, not a production field.",
+    "Every dyadic coarse-grid phase is evaluated; all phases must pass scientific tolerances.",
+    "Single-level alternatives include 4^3, 8^3, and 16^3 block shapes."
+  ],
+  "options": {
+    "block_shapes": [
+      [
+        4,
+        4,
+        4
+      ],
+      [
+        8,
+        8,
+        8
+      ],
+      [
+        16,
+        16,
+        16
+      ]
+    ],
+    "broad_active_fraction": 0.5,
+    "coarsening_factors": [
+      2,
+      4
+    ],
+    "fine_mass_fractions": [
+      0.9,
+      0.95,
+      0.99
+    ],
+    "hdr_fractions": [
+      0.5,
+      0.8,
+      0.95
+    ],
+    "localized_active_fraction": 0.2,
+    "max_hdr_mass_fraction_error": 0.001,
+    "max_phase_evaluations": 2000,
+    "max_profile_nodes": 4000000,
+    "max_relative_hdr_threshold_error": 0.01,
+    "max_relative_l1_error": 0.002,
+    "max_relative_linf_error": 0.01,
+    "max_workspace_bytes": 512000000,
+    "metadata": {},
+    "minimum_adoption_cases": 2,
+    "minimum_incremental_storage_reduction": 2.0,
+    "schema_version": "mdstats.density-multilevel-research-options.v1"
+  },
+  "profiles": [
+    {
+      "active_fraction": 0.013608579282407407,
+      "best_candidate_all_phases_pass": null,
+      "best_candidate_factor": null,
+      "best_candidate_fine_mass_fraction": null,
+      "best_candidate_worst_incremental_reduction": null,
+      "best_candidate_worst_relative_l1": null,
+      "best_candidate_worst_relative_linf": null,
+      "best_single_level_value_count": 3136,
+      "candidate_count": 6,
+      "current_stored_value_count": 16384,
+      "field_key": "atomic_localized",
+      "logical_node_count": 110592,
+      "nonzero_node_count": 1505,
+      "profile_seconds": 0.09916763000001083,
+      "single_level_sufficient": true,
+      "storage_backend": "local_sparse",
+      "stored_fraction": 0.14814814814814814,
+      "support_regime": "localized"
+    },
+    {
+      "active_fraction": 0.03209092881944445,
+      "best_candidate_all_phases_pass": null,
+      "best_candidate_factor": null,
+      "best_candidate_fine_mass_fraction": null,
+      "best_candidate_worst_incremental_reduction": null,
+      "best_candidate_worst_relative_l1": null,
+      "best_candidate_worst_relative_linf": null,
+      "best_single_level_value_count": 8192,
+      "candidate_count": 6,
+      "current_stored_value_count": 53248,
+      "field_key": "framework_vertices_separated",
+      "logical_node_count": 110592,
+      "nonzero_node_count": 3549,
+      "profile_seconds": 0.16635873100040044,
+      "single_level_sufficient": true,
+      "storage_backend": "local_sparse",
+      "stored_fraction": 0.48148148148148145,
+      "support_regime": "localized"
+    },
+    {
+      "active_fraction": 0.029984085648148147,
+      "best_candidate_all_phases_pass": null,
+      "best_candidate_factor": null,
+      "best_candidate_fine_mass_fraction": null,
+      "best_candidate_worst_incremental_reduction": null,
+      "best_candidate_worst_relative_l1": null,
+      "best_candidate_worst_relative_linf": null,
+      "best_single_level_value_count": 6400,
+      "candidate_count": 6,
+      "current_stored_value_count": 20480,
+      "field_key": "oxygen_clouds_overlapping",
+      "logical_node_count": 110592,
+      "nonzero_node_count": 3316,
+      "profile_seconds": 0.1363925420000669,
+      "single_level_sufficient": true,
+      "storage_backend": "local_sparse",
+      "stored_fraction": 0.18518518518518517,
+      "support_regime": "localized"
+    },
+    {
+      "active_fraction": 0.04382776331018518,
+      "best_candidate_all_phases_pass": null,
+      "best_candidate_factor": null,
+      "best_candidate_fine_mass_fraction": null,
+      "best_candidate_worst_incremental_reduction": null,
+      "best_candidate_worst_relative_l1": null,
+      "best_candidate_worst_relative_linf": null,
+      "best_single_level_value_count": 9280,
+      "candidate_count": 6,
+      "current_stored_value_count": 16384,
+      "field_key": "na_multimodal_hopping",
+      "logical_node_count": 110592,
+      "nonzero_node_count": 4847,
+      "profile_seconds": 0.1836304379999092,
+      "single_level_sufficient": true,
+      "storage_backend": "local_sparse",
+      "stored_fraction": 0.14814814814814814,
+      "support_regime": "localized"
+    },
+    {
+      "active_fraction": 0.10092954282407407,
+      "best_candidate_all_phases_pass": null,
+      "best_candidate_factor": null,
+      "best_candidate_fine_mass_fraction": null,
+      "best_candidate_worst_incremental_reduction": null,
+      "best_candidate_worst_relative_l1": null,
+      "best_candidate_worst_relative_linf": null,
+      "best_single_level_value_count": 23360,
+      "candidate_count": 6,
+      "current_stored_value_count": 77824,
+      "field_key": "framework_edges_projected",
+      "logical_node_count": 110592,
+      "nonzero_node_count": 11162,
+      "profile_seconds": 0.4135254719999466,
+      "single_level_sufficient": false,
+      "storage_backend": "local_sparse",
+      "stored_fraction": 0.7037037037037037,
+      "support_regime": "localized"
+    },
+    {
+      "active_fraction": 0.11481843171296297,
+      "best_candidate_all_phases_pass": true,
+      "best_candidate_factor": 4,
+      "best_candidate_fine_mass_fraction": 0.99,
+      "best_candidate_worst_incremental_reduction": 2.900276643393492,
+      "best_candidate_worst_relative_l1": 0.0016620785543853002,
+      "best_candidate_worst_relative_linf": 0.008104864279378933,
+      "best_single_level_value_count": 22016,
+      "candidate_count": 6,
+      "current_stored_value_count": 77824,
+      "field_key": "framework_paths_atomic",
+      "logical_node_count": 110592,
+      "nonzero_node_count": 12698,
+      "profile_seconds": 0.46402440100018794,
+      "single_level_sufficient": true,
+      "storage_backend": "local_sparse",
+      "stored_fraction": 0.7037037037037037,
+      "support_regime": "localized"
+    },
+    {
+      "active_fraction": 1.0,
+      "best_candidate_all_phases_pass": true,
+      "best_candidate_factor": 2,
+      "best_candidate_fine_mass_fraction": 0.9,
+      "best_candidate_worst_incremental_reduction": 1.090113356333169,
+      "best_candidate_worst_relative_l1": 0.0002744954076629148,
+      "best_candidate_worst_relative_linf": 0.007027755522484866,
+      "best_single_level_value_count": 110592,
+      "candidate_count": 6,
+      "current_stored_value_count": 110592,
+      "field_key": "mobile_ion_broad",
+      "logical_node_count": 110592,
+      "nonzero_node_count": 110592,
+      "profile_seconds": 5.5791948090000005,
+      "single_level_sufficient": true,
+      "storage_backend": "dense",
+      "stored_fraction": 1.0,
+      "support_regime": "broad"
+    }
+  ],
+  "schema_version": "mdstats.density-multilevel-research-benchmark.v1"
+}

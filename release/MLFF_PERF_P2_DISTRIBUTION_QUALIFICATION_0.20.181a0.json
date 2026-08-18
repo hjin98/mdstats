@@ -1,0 +1,51 @@
+{
+  "artifacts": {
+    "sdist": {
+      "bytes": 30763091,
+      "filename": "mdstats-0.20.181a0.tar.gz",
+      "sha256": "8fd803e482cce7d87985d07b7c9937cd1f94aea292663d22a5d94fe0be2f41a6"
+    },
+    "wheel": {
+      "bytes": 2703639,
+      "filename": "mdstats-0.20.181a0-py3-none-any.whl",
+      "sha256": "83025987f17390f432729c886113e44de6480abb95281699e3419d84cdd2160c"
+    }
+  },
+  "complete_source_smoke": {
+    "note": "Executed from the clean complete-source staging tree before archive creation.",
+    "passed": 10,
+    "result": "pass",
+    "tests": [
+      "tests/test_mlff_perf_p2.py",
+      "tests/test_mlff_perf_p2_specification.py"
+    ]
+  },
+  "gate": "PERF-P2",
+  "release": "0.20.181a0",
+  "result": "pass",
+  "schema": "mdstats.mlff-perf-p2-distribution-qualification.v1",
+  "sdist_smoke": {
+    "checked_paths": [
+      "docs/arch_manuals/mlff_training_data_architecture.md",
+      "docs/arch_manuals/mlff_training_data_architecture.pdf",
+      "docs/specs/training_data/mlff_perf_p2_lazy_target_ladder_spec.md",
+      "docs/specs/training_data/mlff_perf_p2_lazy_target_ladder_spec.pdf",
+      "audits/analysis/mlff_perf_p2_lta_cloud_cpu_2026-08-15.json",
+      "release/MLFF_PERF_P2_QUALIFICATION_0.20.181a0.json",
+      "release/MLFF_PERF_P2_PDF_QA_0.20.181a0.json"
+    ],
+    "evidence_presence": "pass",
+    "import_version": "0.20.181a0",
+    "passed": 8,
+    "result": "pass",
+    "test": "tests/test_mlff_perf_p2.py from independently extracted sdist"
+  },
+  "wheel_smoke": {
+    "authority_version": "mdstats.target-data2c.ladder.2026-08.v2",
+    "import_version": "0.20.181a0",
+    "installed_import_path": "/mnt/data/mdstats_perf_p2_smoke/wheel_target/mdstats/__init__.py",
+    "passed": 8,
+    "result": "pass",
+    "test": "tests/test_mlff_perf_p2.py copied outside source tree"
+  }
+}

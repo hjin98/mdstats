@@ -1,0 +1,9 @@
+descriptor,value,frequency,probability
+vertex_count,48,2000,1.0
+edge_count,96,2000,1.0
+component_count,1,2000,1.0
+isolated_vertex_count,0,2000,1.0
+self_image_edge_count,0,2000,1.0
+parallel_endpoint_pair_count,0,2000,1.0
+parallel_edge_excess_count,0,2000,1.0
+cycle_rank,49,2000,1.0

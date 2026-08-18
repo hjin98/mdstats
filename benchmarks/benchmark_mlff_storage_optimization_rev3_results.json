@@ -1,0 +1,37 @@
+{
+  "data6_file_count": {
+    "legacy_descriptor_plus_prediction_sidecars": 73518,
+    "reduction_factor": 127.63541666666667,
+    "sharded_descriptor_plus_prediction_files": 576
+  },
+  "data7_universal_matrix_memory": {
+    "estimated_peak_reduction_mib": 392.62847900390625,
+    "legacy_three_value_matrix_copies_plus_mask_mib": 1226.963996887207,
+    "missing_mask_mib": 49.07855987548828,
+    "preallocated_two_value_matrices_plus_mask_upper_bound_mib": 834.3355178833008,
+    "values_matrix_mib": 392.62847900390625
+  },
+  "one_pass_npy_write": {
+    "array_mib": 32.0,
+    "byte_identical": true,
+    "legacy_write_then_reread_hash_median_seconds": 0.10674924699924304,
+    "speedup": 0.9928910175814774,
+    "write_and_hash_once_median_seconds": 0.10751355899992632
+  },
+  "production_profile": {
+    "artifact_shard_size": 128,
+    "atom_count": 168,
+    "descriptor_dimension": 256,
+    "frames": 36759
+  },
+  "schema": "mdstats.mlff-storage-optimization-benchmark.v1",
+  "selective_descriptor_shard_read": {
+    "legacy_all_member_materialized_mib": 22.12661361694336,
+    "legacy_all_member_seconds": 0.009793102002731757,
+    "materialized_byte_reduction_factor": 19.657103061234864,
+    "shard_file_mib": 22.128459930419922,
+    "single_run_speedup": 12.828270845662562,
+    "summary_only_materialized_mib": 1.1256294250488281,
+    "summary_only_seconds": 0.0007634000030520838
+  }
+}

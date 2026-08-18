@@ -1,0 +1,61 @@
+{
+  "schema": "mdstats.replay-unify1b-cpu-qualification.v1",
+  "release": "0.20.211a0",
+  "architecture_revision": 78,
+  "gate": "REPLAY-UNIFY1B",
+  "host": {
+    "cpu_model": "INTEL(R) XEON(R) PLATINUM 8573C",
+    "visible_cpu_count": 9,
+    "accelerator_required": false
+  },
+  "source": {
+    "logical_name": "LTA_replay/mp_replay_selected.extxyz",
+    "sha256": "671aa55f740e9ce890a740f47bda8ab1d02ca7458994005441682d5276d95ddc",
+    "configuration_count": 12000,
+    "complete_true_label_count": 12000,
+    "stress_present_count": 12000,
+    "geometry_set_digest": "13975290b0851948e54536f4dee9375ef0675ed1398a342eea4462a7ddb45532",
+    "true_label_cache_digest": "4ac49d22402a0f9683e249ea23054f7275dce390379097b6df3c65313e3e4783"
+  },
+  "split": {
+    "ratio": [
+      5,
+      1
+    ],
+    "seed": 42,
+    "train_count": 10000,
+    "monitor_count": 2000,
+    "split_manifest_digest": "0dd8994c1b7c3faa156ab552bd6df845567791ac4bf4acec199f188cb8ee1717"
+  },
+  "materialized_views": {
+    "train": {
+      "logical_digest": "5f92b9beac071f35cb2b88c4efeab2744d45070eb9471c66de7c922020e462d7",
+      "sha256": "dae789b6e6b2459e068c6d201dbb3de63077de1b62698e9838bdada844e5f777"
+    },
+    "monitor": {
+      "logical_digest": "ec0e8acee71ac23e7b1ff6a895076e16f41b99a3065cb86f850103ad39ab7e70",
+      "sha256": "9aec3e5c5745218c62be0762d0a28b0fe9e322ead4b493c8aceb72af7d57b124"
+    }
+  },
+  "timings_seconds": {
+    "source_inspection": 9.36,
+    "cold_monitor_including_source_inspection": 15.81,
+    "cold_train_and_monitor_including_source_inspection": 20.26,
+    "authenticated_train_and_monitor_cache_hit_excluding_source_inspection": 0.2273
+  },
+  "cold_dual_role_peak_rss_kb": 277704,
+  "observations": [
+    "Cold train+monitor generation streams the source once and materializes both requested roles.",
+    "Authenticated cache-hit path does not parse the replay source.",
+    "An initial quadratic implementation that recomputed whole-corpus cache/split digests per frame was removed before release qualification.",
+    "Timings are development-host evidence and are not cross-machine performance guarantees."
+  ],
+  "verification": {
+    "train_unique_geometry_count": 10000,
+    "monitor_unique_geometry_count": 2000,
+    "train_membership_matches_split_manifest": true,
+    "monitor_membership_matches_split_manifest": true,
+    "train_monitor_overlap_count": 0,
+    "materialized_true_label_identities_match_cache": true
+  }
+}

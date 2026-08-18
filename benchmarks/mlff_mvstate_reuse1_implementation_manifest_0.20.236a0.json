@@ -1,0 +1,29 @@
+{
+  "architecture_revision": 103,
+  "content_digest": "668c479f5f152e37d83a10d17295a71b278f1d7f4c0886c98b4296b6b7de0ffb",
+  "evidence": "benchmarks/mlff_mvstate_reuse1_cloud_cpu_mpa0_2026-08-17.json",
+  "features": [
+    "authenticated_rung_state_checkpoints",
+    "exact_state_replay_validator",
+    "single_npz_authenticated_native_bundle",
+    "pre_divergence_checkpoint_handoff",
+    "post_divergence_historical_state_carry",
+    "bounded_exact_batched_replay_gather",
+    "persistent_repair_proposal_queue",
+    "campaign_in_memory_selection_to_repair_handoff",
+    "cache_miss_tamper_stale_fallback"
+  ],
+  "gate": "MVSTATE-REUSE1",
+  "modules": [
+    "mdstats/training_data/target_multi_view_selection_state.py",
+    "mdstats/training_data/target_multi_view_selection_state_store.py",
+    "mdstats/training_data/target_multi_view_selector.py",
+    "mdstats/training_data/target_multi_view_repair.py",
+    "mdstats/training_data/campaign_cli.py"
+  ],
+  "next_gate": "FINAL_GPU1_DEFERRED_RELEASE_QUALIFICATION",
+  "release": "0.20.236a0",
+  "schema": "mdstats.mlff-mvstate-reuse1-implementation-manifest.v1",
+  "scientific_authority_change": false,
+  "status": "implemented_exact_state_handoff_cpu_closure"
+}

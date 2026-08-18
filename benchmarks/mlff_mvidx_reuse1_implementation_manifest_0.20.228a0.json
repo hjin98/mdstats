@@ -1,0 +1,40 @@
+{
+  "active_foundation": {
+    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
+    "family": "mace-mpa-0",
+    "foundation_specific_logic_in_gate": false,
+    "mh1_supported_by_same_contract": true,
+    "variant": "medium"
+  },
+  "architecture_revision": 95,
+  "authority_change": {
+    "gpu": false,
+    "runtime_optimization": true,
+    "scientific": false
+  },
+  "content_digest": "c3bf8538159a7fe249309e196efe4f92e3e258d1dc151d33accbaa44b92b3897",
+  "date": "2026-08-17",
+  "files": {
+    "benchmarks/mlff_mvidx_reuse1_cloud_cpu_mpa0_2026-08-17.json": "2b8d37608d1438a18c05c6d4e93c14078c85984e2836b06e821cfc6e64522f55",
+    "benchmarks/mlff_mvidx_reuse1_cloud_cpu_mpa0_2026-08-17.md": "1474a30eab322c32224a16f85d62074209d0361c6c07ba9635683ac775562c87",
+    "docs/arch_manuals/mlff_training_data/00_front_matter.md": "a1f76305efdc4b72388ea8c977aad9eb038d81de2f9dd02d5b0044443e13172e",
+    "docs/arch_manuals/mlff_training_data/60_execution_performance.md": "ac2b189ed8eecf413d154f187235462f3320c6779bbf9cd9b2ca695f58016af7",
+    "docs/arch_manuals/mlff_training_data/70_status_and_gates.md": "a193b9b4d556e38073ae39f3861e3741600627c2f1a85a66735216768888825a",
+    "docs/arch_manuals/mlff_training_data_dependency_graph.json": "494bb8deb9b9d97ebde251c34c92b39b8ac9c1f17cd8904aac5c8c07ebbc564f",
+    "docs/specs/training_data/mlff_mvidx_reuse1_sparse_inversion_spec.md": "c72dd77bf68e217d7519ecaafbbe3d0c4e06b3ab919e8c99f54efc592513c32c",
+    "mdstats/training_data/campaign_cli.py": "4180038270d4f7897600e02fa85cc1377b293d20bffdb103294ac4fad6efa49f",
+    "mdstats/training_data/target_coverage_sparse_index.py": "f78ab9f5cb3c460d4d1bc541d91e28bbcc1dea60afca2cb52fd6513086f8747e",
+    "tests/test_mlff_mvidx_reuse1_specification.py": "bc59a18a250dac847917f685cee2bd5fafa8c243e802b6b3382f6e619a69b55b"
+  },
+  "gate": "MVIDX-REUSE1",
+  "implementation": {
+    "parallelism": "independent family inversions and hard-obligation construction via DeterministicWorkQueue",
+    "per_component_transpose": "deterministic compiled SciPy CSR-to-CSC counting transpose",
+    "rejected_prototype": "Python-threaded intra-family disjoint range fill; exact but slower on qualification hardware",
+    "validator": "vectorized boundary-aware sorted/unique CSR-row predicate"
+  },
+  "next_gate": "COVREF-PAR1",
+  "release": "0.20.228a0",
+  "schema": "mdstats.mlff-mvidx-reuse1-implementation-manifest.v1",
+  "scientific_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c"
+}

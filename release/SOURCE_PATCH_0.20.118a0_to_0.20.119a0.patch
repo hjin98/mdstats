@@ -1,0 +1,879 @@
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.118a0_to_0.20.119a0.patch' /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/CHANGELOG.md /mnt/data/mdstats-0.20.119a0-complete-source-package/CHANGELOG.md
+--- /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/CHANGELOG.md	2026-08-09 04:15:00.000000000 +0000
++++ /mnt/data/mdstats-0.20.119a0-complete-source-package/CHANGELOG.md	2026-08-09 04:25:44.361609638 +0000
+@@ -1,3 +1,11 @@
++## 0.20.119a0 - 2026-08-08
++
++- Add the normative PAR-DENS0--PAR-DENS6 architecture sequence for long-trajectory atomic/framework density work. The sequence orders basin-aware vibrational-spread correctness before execution cost calibration, CPU/RAM scheduling, parallel density kernels, preprocessing parallelism, optional GPU acceleration, and end-to-end qualification.
++- Freeze basin-aware spread semantics: transition/passage/ambiguous/unknown/conflict samples are excluded; multiple occupied basins contribute only within-basin covariance weighted by represented residence time. Existing Stage-11E and explicit site-assignment semantics are reused, with a density-independent provisional prepass only when final density-derived membership would be circular.
++- Record the 10,001-frame Na-LTA convergence benchmark and adopt approximately 512 effective stratified frames as the initial coverage candidate, implemented through bounded replicated stratified estimates rather than one large quadratic periodic-medoid solve.
++- Freeze performance safeguards for the planned implementation: 90% of scheduler/cgroup-visible CPUs, 80% of available host memory, optional 80% of available GPU VRAM, and no scientific-grid coarsening or precision weakening as an optimization shortcut. Wall-time remains advisory rather than a hard feasibility bound.
++- This release is architecture/documentation only; no PAR-DENS runtime behavior is enabled yet.
++
+ ## 0.20.118a0 - 2026-08-08
+ 
+ - Fix DATA8 canonical `refine` preparation for small target-only workloads such as the default `n512` naive fine-tuning jobs: the replay-calibrated 15,000-update reference floor no longer makes an otherwise valid 30-epoch 80/20 schedule mathematically impossible.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.118a0_to_0.20.119a0.patch' /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/PATCH_NOTES_0.20.119a0.md /mnt/data/mdstats-0.20.119a0-complete-source-package/PATCH_NOTES_0.20.119a0.md
+--- /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/PATCH_NOTES_0.20.119a0.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-0.20.119a0-complete-source-package/PATCH_NOTES_0.20.119a0.md	2026-08-09 04:25:44.361735203 +0000
+@@ -0,0 +1,17 @@
++# mdstats 0.20.119a0 patch notes
++
++## PAR-DENS architecture plan
++
++This release records the next long-trajectory density implementation sequence in the normative dynamical-framework/density architecture manual. It does **not** implement the new runtime behavior yet.
++
++Ordered gates:
++
++1. `PAR-DENS0` - basin-aware, convergence-qualified vibrational spread estimation;
++2. `PAR-DENS1` - execution-faithful direct/FFT cost calibration;
++3. `PAR-DENS2` - one global 90%-CPU / 80%-host-memory density scheduler;
++4. `PAR-DENS3` - parallel density planning and realization;
++5. `PAR-DENS4` - parallel trajectory preprocessing and geometry reuse;
++6. `PAR-DENS5` - optional GPU density execution under an 80%-available-VRAM safeguard;
++7. `PAR-DENS6` - end-to-end qualification and auto-tuning.
++
++The plan reuses existing Stage-11E and explicit site-assignment basin/transition semantics, excludes passage motion from adaptive vibrational SD, and records the 10,001-frame Na-LTA convergence evidence discussed during design. It explicitly forbids speedups obtained by silently coarsening the scientific grid, broadening the Gaussian, weakening precision, or reinstating wall-time as a hard density feasibility bound.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.118a0_to_0.20.119a0.patch' /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/PKG-INFO /mnt/data/mdstats-0.20.119a0-complete-source-package/PKG-INFO
+--- /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/PKG-INFO	2026-08-09 04:15:10.000000000 +0000
++++ /mnt/data/mdstats-0.20.119a0-complete-source-package/PKG-INFO	2026-08-09 04:25:44.354474037 +0000
+@@ -1,6 +1,6 @@
+ Metadata-Version: 2.4
+ Name: mdstats
+-Version: 0.20.118a0
++Version: 0.20.119a0
+ Summary: Transparent atomistic frame collections and structural/dynamical statistics
+ Requires-Python: >=3.10
+ Requires-Dist: numpy>=1.26
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.118a0_to_0.20.119a0.patch' /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/docs/arch_manuals/mdstats_dynamical_framework_density_architecture_standard.md /mnt/data/mdstats-0.20.119a0-complete-source-package/docs/arch_manuals/mdstats_dynamical_framework_density_architecture_standard.md
+--- /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/docs/arch_manuals/mdstats_dynamical_framework_density_architecture_standard.md	2026-08-07 03:25:30.000000000 +0000
++++ /mnt/data/mdstats-0.20.119a0-complete-source-package/docs/arch_manuals/mdstats_dynamical_framework_density_architecture_standard.md	2026-08-09 04:25:22.070799359 +0000
+@@ -1,8 +1,8 @@
+ ---
+ title: "mdstats Dynamical Framework and Density Plotting Architecture Standard"
+-subtitle: "Normative architecture for registered periodic density fields, runtime-derived host resources, and hard-budget browser visualization"
++subtitle: "Normative architecture for registered periodic density fields, basin-resolved adaptive widths, resource-aware parallel execution, and hard-budget browser visualization"
+ author: "mdstats architecture manual"
+-date: "2026-07-22"
++date: "2026-08-08"
+ geometry: margin=0.76in
+ fontsize: 10pt
+ toc: true
+@@ -42,6 +42,7 @@
+ - the implemented LD11 canonical-operator and automatic-backend default policy;
+ - the implemented LD17 separation of raw density-mesh work, scene visual targets,
+   and standalone terminal limits;
++- the planned PAR-DENS0--PAR-DENS6 long-trajectory density refinement sequence, beginning with basin-aware vibrational spread estimation and continuing through CPU/GPU resource-aware parallel execution;
+ - validation, migration, resource, and failure policies.
+ 
+ The former standalone local-sparse roadmap is superseded. Future planning changes
+@@ -50,7 +51,7 @@
+ The document distinguishes three statuses:
+ 
+ `current baseline`
+-: behavior implemented through `mdstats 0.19.75a0`;
++: behavior implemented through `mdstats 0.20.118a0`;
+ 
+ `normative target`
+ : behavior required by the architecture but not yet fully implemented;
+@@ -4581,3 +4582,380 @@
+ 
+ Chronological revision specifications are temporary implementation aids and are removed
+ after their contracts are absorbed into these owners.
++
++
++# PAR-DENS long-trajectory density refinement and parallel-execution plan
++
++**Status:** `not_started` as a runtime implementation in `mdstats 0.20.119a0`.
++This section freezes the next ordered implementation sequence. It does not claim that
++any PAR-DENS gate is already active in production.
++
++The trigger for this plan is the long-trajectory LTA density workflow. The current
++plotting stack already owns a scheduler/cgroup-aware runtime budget through LD10 and
++already defaults to 90% of available CPUs and 80% of available host memory, but much
++of density preparation remains serial Python orchestration or single-worker numerical
++execution. At the same time, LD7 adaptive spread estimation uses a bounded
++stratified-random temporal sample without distinguishing within-basin vibration from
++inter-site motion. Correct scientific width estimation must therefore precede
++aggressive execution optimization.
++
++The implementation order is normative:
++
++1. PAR-DENS0 - basin-aware and convergence-qualified vibrational spread estimation;
++2. PAR-DENS1 - execution-faithful direct/FFT cost calibration;
++3. PAR-DENS2 - one global resource-aware density scheduler;
++4. PAR-DENS3 - parallel density planning and realization kernels;
++5. PAR-DENS4 - parallel trajectory preprocessing and reuse of expensive geometry;
++6. PAR-DENS5 - optional GPU density execution under an explicit VRAM budget;
++7. PAR-DENS6 - end-to-end qualification, auto-tuning, and production authorization.
++
++A later gate may depend on all earlier gates. Performance work may not bypass
++PAR-DENS0 by coarsening the scientific grid, broadening a Gaussian, changing a density
++operator, or redefining a transition as vibration.
++
++## Planning benchmark and regression evidence
++
++The reference stress case is the supplied 300 K Na-LTA production trajectory:
++
++- 10,001 frames;
++- 168 atoms per frame;
++- 24 Na ions;
++- current LD7 spread default `sample_size=128` with temporal-stratified random
++  sampling and deterministic seed 0.
++
++The full-trajectory current-definition Na reference spread is approximately
++`0.0746688 Angstrom`; the basin-aware reference is approximately
++`0.0746753 Angstrom`. Their near equality is important: the very fine Na adaptive
++resolution is not primarily an artifact of the single observed basin change. The
++current 10th-percentile species reference is robust for this particular trajectory,
++but the per-ion estimator is not semantically correct for mobile ions.
++
++One Na ion provides the required transition-contamination regression case. Its two
++persistent basin centers are separated by approximately `0.618 Angstrom`, with one
++long-lived residence on each side of a state change near the midpoint of the
++trajectory. The current single-global-mean definition gives an apparent spread of
++approximately `0.19586 Angstrom`, whereas the pooled within-basin vibrational spread
++is approximately `0.07977 Angstrom`. The new estimator must recover the latter class
++of quantity and must not include the between-basin displacement in the vibrational
++variance.
++
++Temporal-stratified sample-size regression against the 10,001-frame reference gave
++approximately:
++
++| Effective frames | Mean reference SD (Angstrom) | Approximate 95% sampling interval (Angstrom) | Mean bias versus full trajectory |
++|---:|---:|---:|---:|
++| 32 | 0.07159 | 0.06744--0.07653 | -4.12% |
++| 64 | 0.07240 | 0.06883--0.07560 | -3.04% |
++| 128 | 0.07343 | 0.07084--0.07624 | -1.66% |
++| 256 | 0.07402 | 0.07210--0.07577 | -0.87% |
++| 512 | 0.07419 | 0.07293--0.07550 | -0.65% |
++| 1,024 | 0.07445 | 0.07352--0.07525 | -0.30% |
++| 2,048 | 0.07459 | 0.07409--0.07505 | -0.10% |
++| 4,096 | 0.07466 | 0.07443--0.07490 | -0.014% |
++| 10,001 | 0.0746688 | full reference | reference |
++
++The production seed-0 128-frame estimate happened to be much closer to the full
++reference than the ensemble-average 128-frame bias, so one deterministic seed must
++not be mistaken for a convergence proof. A target effective coverage near 512 frames
++is the initial production candidate because it materially reduces sampling error
++without requiring one large quadratic periodic-medoid solve.
++
++## Scientific invariants for all PAR-DENS gates
++
++The following contracts are fixed throughout the sequence.
++
++1. The scientific density measure, CIC deposition semantics, Gaussian/operator
++   identity, physical grid-resolution rule, HDR definition, periodic wrapping,
++   framework registration, and mesh contour level are unchanged unless a separate
++   scientific specification explicitly revises them.
++2. Adaptive spread means **within-basin vibrational spread**. Between-basin
++   displacement, passage frames, transition-region frames, ambiguous membership,
++   unsupported/unknown samples, and conflict samples do not contribute to the
++   vibrational variance.
++3. If one atom occupies multiple qualified basins, every qualified basin may
++   contribute its own within-basin covariance, weighted by represented residence
++   time. The variance of the basin centers about one global mean is never added.
++4. Performance optimization must not silently coarsen an adaptive grid or inflate a
++   Gaussian bandwidth. A faster backend must realize the same approved scientific
++   field within the declared floating-point tolerance.
++5. Host CPU and host-memory bounds are hard resource constraints. Wall-time models
++   remain advisory for backend ranking and progress diagnostics and are not a
++   feasibility veto.
++6. Deterministic ordering, cache identity, provenance, and error semantics remain
++   stable across worker-count changes.
++7. GPU acceleration is optional. CPU execution remains a complete reference path.
++
++For atom `i` and qualified basin/residence `b`, the target spread is conceptually
++
++$$
++\sigma_i^2 =
++\frac{\sum_b W_{ib}\,\langle\lVert \mathbf r-\boldsymbol\mu_{ib}\rVert^2\rangle_b}
++{3\sum_b W_{ib}},
++$$
++
++where `W_ib` is represented residence weight and `mu_ib` is that basin's periodic
++mean. This is a within-basin pooled second moment, not a global mixture variance.
++
++## Basin and transition ownership
++
++PAR-DENS0 must reuse existing mdstats state semantics instead of inventing a second
++incompatible transition classifier.
++
++The preferred evidence order is:
++
++1. If final Stage-11E membership/segmentation is already available, consume the
++   authoritative `CORE`/`BASIN` membership and `FinalResidenceInterval` lineage from
++   `mdstats.analysis.density.temporal_assignment` and
++   `mdstats.analysis.density.final_segmentation`. Passage samples represented by
++   `FinalPassageInterval` and samples labeled transition/unknown/conflict are excluded.
++2. If an explicit geometry-based site assignment is available independently of the
++   high-resolution density, use the corresponding assigned basin classes from
++   `mdstats.analysis.site_assignment` and exclude `TRANSITION_REGION`, ambiguous, and
++   unassigned samples.
++3. If neither source is available and the final Stage-11 density-attractor analysis
++   would be circular because it depends on the adaptive density being planned, run a
++   **provisional density-independent coarse residence prepass**. That prepass exists
++   only to separate persistent basins from passage motion for spread estimation. Its
++   labels must not be reused as final kinetic evidence.
++
++A `FinalResidenceInterval.sample_indices` array alone is not sufficient because a
++residence can include retained excursions. The spread estimator must use the
++membership class associated with each sample and include only samples whose final
++classification represents the basin/core vibrational population.
++
++## PAR-DENS0 - basin-aware, convergence-qualified spread estimation
++
++**Status:** `not_started`.
++
++PAR-DENS0 is the scientific-correctness gate and must be completed before any
++performance gate changes automatic density planning.
++
++Required work:
++
++- introduce a basin-aware spread diagnostic record carrying per-item and per-basin
++  means, second moments, represented weights, accepted/rejected sample counts,
++  transition/passages excluded, reference quantile, and convergence evidence;
++- preserve temporal stratification, but stratify within or across qualified residence
++  intervals according to represented time rather than sampling transition frames as
++  if they were vibrations;
++- replace one large `O(N_sample^2)` periodic-medoid problem with bounded compact-basin
++  estimators and/or replicated small stratified solves; a deterministic fallback to
++  the existing periodic Frechet/Karcher diagnostic remains required when compactness
++  cannot be certified;
++- use replicated stratified coverage as the initial production strategy. The first
++  candidate is four independent 128-stratum replicates (effective coverage about 512
++  frames) combined by the law of total second moments rather than concatenated into
++  one quadratic medoid solve;
++- expose replicate dispersion and convergence diagnostics. Automatic escalation may
++  increase effective coverage when the reference changes materially between levels or
++  uncertainty remains too large;
++- retain `numpy.quantile(method="linear")` and the existing validity-filtered species
++  reference unless a separate scientific change is approved.
++
++Minimum acceptance:
++
++- synthetic one-basin trajectories agree with the current estimator within numerical
++  tolerance;
++- synthetic two-basin trajectories recover the known within-basin width rather than
++  the mixture width;
++- the Na-LTA benchmark keeps the species reference near `0.074675 Angstrom` while the
++  identified two-basin Na ion moves from the approximately `0.196 Angstrom` global
++  mixture spread to approximately `0.080 Angstrom` within-basin spread;
++- effective coverage near 512 frames is within 1% of the full-trajectory reference on
++  the Na-LTA benchmark, with the uncertainty estimate reported rather than hidden;
++- increasing sample coverage cannot reintroduce the current quadratic runtime growth
++  as the normal compact-basin path.
++
++## PAR-DENS1 - execution-faithful direct/FFT cost calibration
++
++**Status:** `not_started`; depends on PAR-DENS0.
++
++The current hybrid planner may substantially underprice direct sparse realization
++because a contiguous arithmetic calibration is not representative of irregular
++scatter/reduction work. PAR-DENS1 must calibrate the operations that the production
++executor actually performs.
++
++Required work:
++
++- benchmark destination-index generation, irregular direct accumulation, segmented or
++  block-local reduction, support-atlas operations, and FFT overlap-add at realistic
++  tile sizes;
++- calibrate FFT throughput with the same `scipy.fft` worker semantics that production
++  will use;
++- record calibration thread count, array dtype, tile shape, source occupancy,
++  contribution count, and temporary-memory footprint;
++- separate advisory wall-time ranking from hard memory/thread feasibility;
++- retain nominal all-direct contribution counts only as diagnostics; automatic backend
++  selection must rank the actual planned direct/FFT mixture.
++
++Acceptance requires the planner to choose the faster measured route on representative
++sparse, intermediate, and dense tiles and to avoid the order-of-magnitude
++underestimation observed in the long-trajectory Na case.
++
++## PAR-DENS2 - global resource-aware density scheduler
++
++**Status:** `not_started`; depends on PAR-DENS1.
++
++PAR-DENS2 introduces one scene-level execution scheduler analogous in philosophy to
++the MLFF campaign concurrency controller, but specialized for density work.
++
++The scheduler inherits the LD10 host snapshot and enforces
++
++$$
++N_{\rm CPU,max}=\max\left(1,\left\lfloor0.90N_{\rm available}\right\rfloor\right)
++$$
++
++and
++
++$$
++M_{\rm host,max}=0.80M_{\rm available},
++$$
++
++where `available` is affinity-, cgroup-, and scheduler-aware rather than raw machine
++capacity.
++
++Every schedulable task must expose estimated retained bytes, transient bytes, minimum
++and preferred worker counts, numerical backend, and parent/child ownership. Admission
++must satisfy the aggregate peak-memory budget before launch. Native library threads
++count against the same global CPU pool as Python worker threads/processes; concurrent
++fields may not each inherit the full scene thread count.
++
++The scheduler must dynamically return CPUs from completed short tasks to remaining
++heavy tasks. It must support:
++
++- native-thread numerical work for NumPy/SciPy kernels;
++- bounded Python threads where the underlying kernel releases the GIL;
++- bounded worker processes for genuinely Python-heavy graph/object work;
++- deterministic task completion collation independent of completion order.
++
++No worker-count choice may alter scientific output, cache identity, or provenance.
++
++## PAR-DENS3 - parallel density planning and realization
++
++**Status:** `not_started`; depends on PAR-DENS2.
++
++This is the primary CPU-performance gate.
++
++Required work:
++
++- schedule independent atomic/framework density fields concurrently when aggregate
++  memory admission permits;
++- parallelize support-atlas/source-block construction over independent bounded block
++  groups;
++- partition direct sparse realization by destination ownership so workers do not
++  contend for the same output block;
++- replace repeated hot `np.add.at` scatter where practical with grouped/segmented
++  reductions such as destination sorting plus `bincount` or equivalent compiled
++  reductions;
++- standardize production FFT execution on worker-aware `scipy.fft` calls and allocate
++  FFT workers from the global scheduler rather than from a per-field unconstrained
++  maximum;
++- allow a single dominant field to consume CPUs released by short fields rather than
++  statically assigning one quarter of the machine to each species;
++- preserve exact finite-support, packed-field, normalization, and supported-node
++  repair contracts from LD8.
++
++The acceptance suite must compare scalar fields, total integrated measure, HDR levels,
++periodic support, and resulting meshes against the serial/reference path under
++multiple worker counts.
++
++## PAR-DENS4 - parallel trajectory preprocessing and geometry reuse
++
++**Status:** `not_started`; depends on PAR-DENS2 and may proceed after PAR-DENS3
++contracts are stable.
++
++This gate removes secondary long-trajectory bottlenecks outside density convolution.
++
++Required work:
++
++- split hysteretic connectivity into a frame-parallel geometric candidate stage and a
++  deterministic ordered hysteresis fold;
++- reuse compatible per-frame neighbor geometry between framework-only and full atomic
++  connectivity instead of repeating minimum-image/candidate work;
++- parallelize framework registration/lifting over independent frames, followed by
++  deterministic consistency validation;
++- parallelize independent periodic atomic-mean calculations and other per-item
++  reductions;
++- parallelize topology-category scene preparation when categories are independent and
++  aggregate memory admission permits;
++- hoist trajectory-wide quantities out of topology-category loops so parallelism does
++  not amplify redundant work.
++
++LAMMPS text parsing, small graph bookkeeping, and lightweight Plotly object assembly
++are not priority GPU or high-thread targets unless profiling later proves otherwise.
++
++## PAR-DENS5 - optional GPU density backend
++
++**Status:** `deferred` until PAR-DENS0--PAR-DENS4 establish a correct and efficient CPU
++baseline.
++
++GPU work is an acceleration backend, not a scientific mode. Candidate kernels are CIC
++deposition, finite-support Gaussian accumulation, support-mask dilation, grouped sparse
++reduction, and sufficiently large 3-D FFT tiles.
++
++GPU admission must auto-detect device availability and free/usable memory and enforce
++
++$$
++M_{\rm GPU,max}=0.80M_{\rm GPU,available}.
++$$
++
++The first implementation should permit at most one major density job per GPU and batch
++its tiles internally rather than launch competing species jobs that cause VRAM churn.
++Host staging buffers remain subject to the 80% host-memory budget.
++
++FP64 scientific accumulation remains the reference contract. FP32 or mixed-precision
++density accumulation is not authorized by this gate and would require separate
++numerical-error qualification. CPU fallback must remain automatic and complete.
++
++Automatic GPU selection must include host-device transfer and setup cost; a kernel is
++not selected merely because a GPU exists.
++
++## PAR-DENS6 - end-to-end qualification and auto-tuning
++
++**Status:** `not_started`; final gate.
++
++PAR-DENS6 turns the previous gates into a production policy rather than a collection of
++local optimizations.
++
++Required qualification uses at least three trajectory scales, including approximately
++100, 1,000, and 10,000+ frames, and records:
++
++- basin-aware spread estimate and its convergence/uncertainty diagnostics;
++- preprocessing, planning, realization, contouring, and total wall time;
++- CPU utilization, scheduler-resolved CPU ceiling, worker allocation history, and
++  oversubscription checks;
++- measured and predicted peak host memory versus the 80% budget;
++- direct/FFT tile choices and predicted-versus-observed timing;
++- GPU utilization and VRAM peak when GPU execution is enabled;
++- field-integral, pointwise/fidelity, HDR, mesh, and deterministic-repeat comparisons
++  against the approved reference path.
++
++Auto-tuning may choose field-level concurrency, tile-group size, direct versus FFT,
++FFT worker count, and CPU versus GPU execution. It may **not** tune scientific
++resolution or operator identity for speed.
++
++Production authorization requires that the 90% CPU and 80% host-memory safeguards are
++obeyed under scheduler/cgroup restrictions, that optional GPU execution obeys the 80%
++VRAM safeguard, and that the long-trajectory benchmark shows material speedup without
++scientific regression. No fixed speedup factor is architecture-mandated before
++measurement; the qualification record must report the achieved factor honestly.
++
++## Planned ownership boundaries
++
++The permanent implementation should extend existing owners rather than create a
++parallel density subsystem:
++
++| Responsibility | Owning or expected module family |
++|---|---|
++| basin-aware spread diagnostics and stratified convergence | `mdstats.analysis.density.diagnostics` |
++| explicit geometry-based site membership | `mdstats.analysis.site_assignment` |
++| Stage-11 temporal membership/residence evidence | `mdstats.analysis.density.temporal_assignment`, `mdstats.analysis.density.final_segmentation` |
++| scene resource snapshot and hard CPU/RAM admission | `mdstats.plotting.runtime_resources` |
++| atomic density planning/realization | `mdstats.plotting.atomic_density` and existing density execution helpers |
++| framework density planning/realization | `mdstats.plotting.framework_density` and existing density execution helpers |
++| framework registration and scene preparation | `mdstats.plotting.framework_dynamics` |
++| optional GPU execution policy | new density execution helper(s), subordinate to `runtime_resources` rather than a second resource manager |
++
++A gate-specific specification may refine low-level APIs, but this section owns the
++ordering, scientific invariants, and resource ceilings for the complete PAR-DENS
++program.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.118a0_to_0.20.119a0.patch' /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/mdstats/_version.py /mnt/data/mdstats-0.20.119a0-complete-source-package/mdstats/_version.py
+--- /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/mdstats/_version.py	2026-08-09 04:15:10.000000000 +0000
++++ /mnt/data/mdstats-0.20.119a0-complete-source-package/mdstats/_version.py	2026-08-09 04:25:44.354424984 +0000
+@@ -1,3 +1,3 @@
+ """Package version."""
+ 
+-__version__ = "0.20.118a0"
++__version__ = "0.20.119a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.118a0_to_0.20.119a0.patch' /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/mdstats/data/observable_owner_manuals.json /mnt/data/mdstats-0.20.119a0-complete-source-package/mdstats/data/observable_owner_manuals.json
+--- /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/mdstats/data/observable_owner_manuals.json	2026-08-09 04:15:10.000000000 +0000
++++ /mnt/data/mdstats-0.20.119a0-complete-source-package/mdstats/data/observable_owner_manuals.json	2026-08-09 04:25:44.354518673 +0000
+@@ -17,6 +17,6 @@
+       "uri": "mdstats-doc://vacf-dynamics-architecture/0.20.53a0"
+     }
+   },
+-  "package_version": "0.20.118a0",
++  "package_version": "0.20.119a0",
+   "schema": "mdstats.observable-owner-manual-index.v1"
+ }
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.118a0_to_0.20.119a0.patch' /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/pyproject.toml /mnt/data/mdstats-0.20.119a0-complete-source-package/pyproject.toml
+--- /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/pyproject.toml	2026-08-09 04:15:10.000000000 +0000
++++ /mnt/data/mdstats-0.20.119a0-complete-source-package/pyproject.toml	2026-08-09 04:25:44.354283314 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.118a0"
++version = "0.20.119a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.118a0_to_0.20.119a0.patch' /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_density_par_dens_architecture_plan.py /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_density_par_dens_architecture_plan.py
+--- /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_density_par_dens_architecture_plan.py	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_density_par_dens_architecture_plan.py	2026-08-09 04:29:05.839105927 +0000
+@@ -0,0 +1,50 @@
++from __future__ import annotations
++
++from pathlib import Path
++
++import mdstats
++
++ROOT = Path(__file__).resolve().parents[1]
++MANUAL = ROOT / "docs/arch_manuals/mdstats_dynamical_framework_density_architecture_standard.md"
++
++
++def test_par_dens_release_is_plan_only_and_versioned() -> None:
++    assert mdstats.__version__ == "0.20.119a0"
++    text = MANUAL.read_text(encoding="utf-8")
++    assert "not_started` as a runtime implementation in `mdstats 0.20.119a0`" in text
++    assert "This section freezes the next ordered implementation sequence" in text
++
++
++def test_par_dens_gates_are_present_in_normative_order() -> None:
++    text = MANUAL.read_text(encoding="utf-8")
++    headings = [
++        "## PAR-DENS0 - basin-aware, convergence-qualified spread estimation",
++        "## PAR-DENS1 - execution-faithful direct/FFT cost calibration",
++        "## PAR-DENS2 - global resource-aware density scheduler",
++        "## PAR-DENS3 - parallel density planning and realization",
++        "## PAR-DENS4 - parallel trajectory preprocessing and geometry reuse",
++        "## PAR-DENS5 - optional GPU density backend",
++        "## PAR-DENS6 - end-to-end qualification and auto-tuning",
++    ]
++    offsets = [text.index(heading) for heading in headings]
++    assert offsets == sorted(offsets)
++
++
++def test_par_dens_plan_locks_scientific_and_resource_invariants() -> None:
++    text = MANUAL.read_text(encoding="utf-8")
++    for token in (
++        "within-basin vibrational spread",
++        "FinalResidenceInterval.sample_indices",
++        "FinalPassageInterval",
++        "four independent 128-stratum replicates",
++        "0.0746753 Angstrom",
++        "0.19586 Angstrom",
++        "0.07977 Angstrom",
++        "0.90N_{\\rm available}",
++        "0.80M_{\\rm available}",
++        "0.80M_{\\rm GPU,available}",
++        "Wall-time models",
++        "remain advisory for backend ranking",
++        "must not silently coarsen an adaptive grid",
++    ):
++        assert token in text
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.118a0_to_0.20.119a0.patch' /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data0_architecture_specification.py /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data0_architecture_specification.py
+--- /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data0_architecture_specification.py	2026-08-09 04:15:10.000000000 +0000
++++ /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data0_architecture_specification.py	2026-08-09 04:25:44.358623067 +0000
+@@ -263,4 +263,4 @@
+ def test_mlff_data0_pdf_and_version_artifacts_exist() -> None:
+     assert MANUAL_PDF.stat().st_size > 10_000
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.118a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.119a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.118a0_to_0.20.119a0.patch' /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data1_specification.py /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data1_specification.py
+--- /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data1_specification.py	2026-08-09 04:15:10.000000000 +0000
++++ /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data1_specification.py	2026-08-09 04:25:44.360139422 +0000
+@@ -49,4 +49,4 @@
+     assert callable(mdstats.assign_balanced_round_robin)
+     assert callable(mdstats.build_complete_frame_block_plan)
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.118a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.119a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.118a0_to_0.20.119a0.patch' /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data2a_manifest_inference_specification.py /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data2a_manifest_inference_specification.py
+--- /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-09 04:15:10.000000000 +0000
++++ /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-09 04:25:44.360467297 +0000
+@@ -15,7 +15,7 @@
+ 
+ 
+ def test_data2a_version_public_api_and_documented_contract() -> None:
+-    assert mdstats.__version__ == "0.20.118a0"
++    assert mdstats.__version__ == "0.20.119a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert callable(mdstats.infer_training_manifest_metadata)
+     policy = mdstats.ManifestInferencePolicy()
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.118a0_to_0.20.119a0.patch' /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data9a2_specification.py /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a2_specification.py
+--- /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data9a2_specification.py	2026-08-09 04:15:10.000000000 +0000
++++ /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a2_specification.py	2026-08-09 04:25:44.358105381 +0000
+@@ -23,7 +23,7 @@
+         "finite energy, force, and stress",
+     ):
+         assert required in text
+-    assert 'version = "0.20.118a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.119a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "DATA9A2 real-MACE realization is implemented in `0.20.39a0`" in ARCH.read_text()
+ 
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.118a0_to_0.20.119a0.patch' /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data9a3_specification.py /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a3_specification.py
+--- /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data9a3_specification.py	2026-08-09 04:15:10.000000000 +0000
++++ /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a3_specification.py	2026-08-09 04:25:44.355278607 +0000
+@@ -9,5 +9,5 @@
+     assert "37,632" in text
+     assert "supported_with_temporal_blocks_only" in text
+     assert "production_replay_corpus_not_bound" in text
+-    assert 'version = "0.20.118a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.119a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "MLFF-DATA9A3 production qualification" in ARCH.read_text()
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.118a0_to_0.20.119a0.patch' /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data9a4_precision_specification.py /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a4_precision_specification.py
+--- /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data9a4_precision_specification.py	2026-08-09 04:15:10.000000000 +0000
++++ /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a4_precision_specification.py	2026-08-09 04:25:44.355693021 +0000
+@@ -9,7 +9,7 @@
+     assert "float32" in text and "float64" in text
+     assert "MaceModelPrecisionRecord" in text
+     assert "MacePrecisionTransitionRecord" in text
+-    assert "version = \"0.20.118a0\"" in (ROOT / "pyproject.toml").read_text()
++    assert "version = \"0.20.119a0\"" in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_bind_precision_to_protocol() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.118a0_to_0.20.119a0.patch' /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data9a5_critical_fp64_specification.py /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a5_critical_fp64_specification.py
+--- /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-09 04:15:10.000000000 +0000
++++ /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-09 04:25:44.355533485 +0000
+@@ -14,7 +14,7 @@
+     assert 'version: "0.20.42a0"' in text
+     assert "training_force_jacobian_dtype = model" in text
+     assert "Python/ASE" in text
+-    assert 'version = "0.20.118a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.119a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_data9a5_architecture_declares_scope_and_limits() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.118a0_to_0.20.119a0.patch' /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data9a5_deployment_specification.py /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a5_deployment_specification.py
+--- /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data9a5_deployment_specification.py	2026-08-09 04:15:10.000000000 +0000
++++ /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a5_deployment_specification.py	2026-08-09 04:25:44.358870413 +0000
+@@ -13,7 +13,7 @@
+     assert 'version: "0.20.43a0"' in text
+     assert "downstream runtime owns" in text
+     assert "float32-to-float64 promotion does not restore" in text
+-    assert 'version = "0.20.118a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.119a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_keep_lammps_outside_mdstats_scope() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.118a0_to_0.20.119a0.patch' /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data9a6c_observable_evidence_specification.py /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a6c_observable_evidence_specification.py
+--- /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-09 04:15:10.000000000 +0000
++++ /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-09 04:25:44.358274141 +0000
+@@ -74,5 +74,5 @@
+ 
+ def test_packaged_owner_manual_index_is_valid() -> None:
+     payload = json.loads(MANUAL_INDEX.read_text(encoding="utf-8"))
+-    assert payload["package_version"] == "0.20.118a0"
++    assert payload["package_version"] == "0.20.119a0"
+     assert "structural-observables-architecture" in payload["manuals"]
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.118a0_to_0.20.119a0.patch' /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data9a7a_material_profile_specification.py /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a7a_material_profile_specification.py
+--- /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-09 04:15:10.000000000 +0000
++++ /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-09 04:25:44.358943271 +0000
+@@ -64,4 +64,4 @@
+ 
+ 
+ def test_release_version_is_data9a7a() -> None:
+-    assert 'version = "0.20.118a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert 'version = "0.20.119a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.118a0_to_0.20.119a0.patch' /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data9a7b_specification.py /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a7b_specification.py
+--- /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data9a7b_specification.py	2026-08-09 04:15:10.000000000 +0000
++++ /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a7b_specification.py	2026-08-09 04:25:44.360639902 +0000
+@@ -69,7 +69,7 @@
+ 
+ 
+ def test_data9a7b_public_exports_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.118a0"
++    assert mdstats.__version__ == "0.20.119a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert callable(mdstats.compute_local_structure_features)
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.118a0_to_0.20.119a0.patch' /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data9a7c_specification.py /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a7c_specification.py
+--- /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data9a7c_specification.py	2026-08-09 04:15:10.000000000 +0000
++++ /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a7c_specification.py	2026-08-09 04:25:44.359530851 +0000
+@@ -47,7 +47,7 @@
+ 
+ 
+ def test_public_api_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.118a0"
++    assert mdstats.__version__ == "0.20.119a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert mdstats.MLFF_DATA9A7C_PARSER_VERSION == "0.20.49a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.118a0_to_0.20.119a0.patch' /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data9a7d_specification.py /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a7d_specification.py
+--- /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data9a7d_specification.py	2026-08-09 04:15:10.000000000 +0000
++++ /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a7d_specification.py	2026-08-09 04:25:44.358993065 +0000
+@@ -39,6 +39,6 @@
+ 
+ 
+ def test_data9a7d_runtime_versions() -> None:
+-    assert mdstats.__version__ == "0.20.118a0"
++    assert mdstats.__version__ == "0.20.119a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7D_PARSER_VERSION == "0.20.50a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.118a0_to_0.20.119a0.patch' /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data9a7e_specification.py /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a7e_specification.py
+--- /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data9a7e_specification.py	2026-08-09 04:15:10.000000000 +0000
++++ /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a7e_specification.py	2026-08-09 04:25:44.357781742 +0000
+@@ -39,7 +39,7 @@
+         "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
+         "CROSS_SYSTEM_QUALIFICATION_SUITE",
+     } <= nodes
+-    assert mdstats.__version__ == "0.20.118a0"
++    assert mdstats.__version__ == "0.20.119a0"
+     assert mdstats.MLFF_DATA9A7E_PARSER_VERSION == "0.20.51a0"
+     assert callable(mdstats.qualify_cross_system_case)
+     assert callable(mdstats.build_cross_system_qualification_suite)
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.118a0_to_0.20.119a0.patch' /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data9a8_specification.py /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a8_specification.py
+--- /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data9a8_specification.py	2026-08-09 04:15:10.000000000 +0000
++++ /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a8_specification.py	2026-08-09 04:25:44.356979445 +0000
+@@ -66,7 +66,7 @@
+ 
+ 
+ def test_public_runtime_exposes_data9a8_without_removed_aliases() -> None:
+-    assert mdstats.__version__ == "0.20.118a0"
++    assert mdstats.__version__ == "0.20.119a0"
+     assert mdstats.MLFF_DATA9A8_PARSER_VERSION == "0.20.52a0"
+     assert mdstats.ObservableComparisonPolicy
+     assert mdstats.compare_mlff_observable_validation
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.118a0_to_0.20.119a0.patch' /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data9a9a_specification.py /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a9a_specification.py
+--- /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data9a9a_specification.py	2026-08-09 04:15:10.000000000 +0000
++++ /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a9a_specification.py	2026-08-09 04:25:44.359304105 +0000
+@@ -65,7 +65,7 @@
+ 
+ 
+ def test_public_runtime_exports_data9a9a_contracts() -> None:
+-    assert mdstats.__version__ == "0.20.118a0"
++    assert mdstats.__version__ == "0.20.119a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A9A_VERSION
+     assert mdstats.Data6ModelSweepPlan
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.118a0_to_0.20.119a0.patch' /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data9a9b_specification.py /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a9b_specification.py
+--- /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data9a9b_specification.py	2026-08-09 04:15:10.000000000 +0000
++++ /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a9b_specification.py	2026-08-09 04:25:44.357648014 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9b_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.118a0"
++    assert mdstats.__version__ == "0.20.119a0"
+     for name in (
+         "ProductionMaterializationPlan",
+         "ProductionMaterializationCheckpoint",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.118a0_to_0.20.119a0.patch' /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data9a9c_specification.py /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a9c_specification.py
+--- /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data9a9c_specification.py	2026-08-09 04:15:10.000000000 +0000
++++ /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a9c_specification.py	2026-08-09 04:25:44.358914088 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9c_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.118a0"
++    assert mdstats.__version__ == "0.20.119a0"
+     for name in (
+         "ProductionCorpusPlan", "ProductionExpectedRun",
+         "ProfileExtensionEvidenceRequirement", "ProductionCorpusQualificationRecord",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.118a0_to_0.20.119a0.patch' /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data9a_specification.py /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a_specification.py
+--- /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data9a_specification.py	2026-08-09 04:15:10.000000000 +0000
++++ /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9a_specification.py	2026-08-09 04:25:44.355971923 +0000
+@@ -14,7 +14,7 @@
+ 
+ 
+ def test_data9a_runtime_specification_is_canonical() -> None:
+-    assert 'version = "0.20.118a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.119a0"' in (ROOT / "pyproject.toml").read_text()
+     architecture = ARCH.read_text()
+     stage = STAGE.read_text()
+     specification = SPEC.read_text()
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.118a0_to_0.20.119a0.patch' /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data9b1_specification.py /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9b1_specification.py
+--- /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data9b1_specification.py	2026-08-09 04:15:10.000000000 +0000
++++ /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9b1_specification.py	2026-08-09 04:25:44.358461128 +0000
+@@ -18,8 +18,8 @@
+     assert "TrainingCampaignPlan" in text
+     assert "CheckpointSelectionRecord" in text
+     assert "mdstats-mace-train" in text
+-    assert mdstats.__version__ == "0.20.118a0"
+-    assert 'version = "0.20.118a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert mdstats.__version__ == "0.20.119a0"
++    assert 'version = "0.20.119a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+ 
+ 
+ def test_data9b1_is_integrated_into_manual_and_stage_plan() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.118a0_to_0.20.119a0.patch' /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data9b2_specification.py /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9b2_specification.py
+--- /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data9b2_specification.py	2026-08-09 04:15:10.000000000 +0000
++++ /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9b2_specification.py	2026-08-09 04:25:44.359840790 +0000
+@@ -23,7 +23,7 @@
+         'mdstats-mace-select-head',
+     ):
+         assert token in text
+-    assert mdstats.__version__ == '0.20.118a0'
++    assert mdstats.__version__ == '0.20.119a0'
+     assert mdstats.MLFF_DATA9B2_VERSION == '0.20.57a0'
+ 
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.118a0_to_0.20.119a0.patch' /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data9b3_campaign_cli_specification.py /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9b3_campaign_cli_specification.py
+--- /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-09 04:15:10.000000000 +0000
++++ /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-09 04:25:44.359413818 +0000
+@@ -16,7 +16,7 @@
+ 
+ 
+ def test_data9b3_version_and_user_surface() -> None:
+-    assert mdstats.__version__ == "0.20.118a0"
++    assert mdstats.__version__ == "0.20.119a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert TOOL.is_file()
+     assert TOOL.stat().st_mode & 0o111
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.118a0_to_0.20.119a0.patch' /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_opt_ctrl1_specification.py /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_opt_ctrl1_specification.py
+--- /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_opt_ctrl1_specification.py	2026-08-09 04:15:10.000000000 +0000
++++ /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_opt_ctrl1_specification.py	2026-08-09 04:25:44.355462439 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_ctrl1_release_identity_preserves_scientific_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.118a0"
++    assert mdstats.__version__ == "0.20.119a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.118a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.119a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_ctrl1_architecture_and_spec_close_roadmap() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.118a0_to_0.20.119a0.patch' /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_opt_eval4_specification.py /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_opt_eval4_specification.py
+--- /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_opt_eval4_specification.py	2026-08-09 04:15:10.000000000 +0000
++++ /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_opt_eval4_specification.py	2026-08-09 04:25:44.358734673 +0000
+@@ -11,9 +11,9 @@
+ 
+ 
+ def test_opt_eval4_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.118a0"
++    assert mdstats.__version__ == "0.20.119a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+-    assert 'version = "0.20.118a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.119a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_eval4_architecture_and_spec_record_pipeline_contract() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.118a0_to_0.20.119a0.patch' /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_opt_verify1_specification.py /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_opt_verify1_specification.py
+--- /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_opt_verify1_specification.py	2026-08-09 04:15:10.000000000 +0000
++++ /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_opt_verify1_specification.py	2026-08-09 04:25:44.360753761 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_verify1_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.118a0"
++    assert mdstats.__version__ == "0.20.119a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.118a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.119a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_verify1_architecture_and_spec_record_contract() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.118a0_to_0.20.119a0.patch' /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_perf2_parallel_acceleration_specification.py /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_perf2_parallel_acceleration_specification.py
+--- /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-09 04:15:10.000000000 +0000
++++ /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-09 04:25:44.357559333 +0000
+@@ -10,7 +10,7 @@
+ 
+ 
+ def test_perf2_release_and_configuration_contract() -> None:
+-    assert mdstats.__version__ == "0.20.118a0"
++    assert mdstats.__version__ == "0.20.119a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     template = campaign_cli._config_template(
+         workspace="workspace",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.118a0_to_0.20.119a0.patch' /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_prec1_specification.py /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_prec1_specification.py
+--- /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_prec1_specification.py	2026-08-09 04:15:10.000000000 +0000
++++ /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_prec1_specification.py	2026-08-09 04:25:44.356766720 +0000
+@@ -12,7 +12,7 @@
+ 
+ 
+ def test_prec1_release_and_architecture_status() -> None:
+-    assert mdstats.__version__ == "0.20.118a0"
++    assert mdstats.__version__ == "0.20.119a0"
+     manual = MANUAL.read_text(encoding="utf-8")
+     spec = SPEC.read_text(encoding="utf-8")
+     assert "PREC1 - precision profiles, explicit staged schedule, and init realization - implemented in 0.20.108a0" in manual
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.118a0_to_0.20.119a0.patch' /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_prec3_specification.py /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_prec3_specification.py
+--- /mnt/data/mdstats_020118_work/mdstats-0.20.118a0-complete-source-package/tests/test_mlff_prec3_specification.py	2026-08-09 04:15:10.000000000 +0000
++++ /mnt/data/mdstats-0.20.119a0-complete-source-package/tests/test_mlff_prec3_specification.py	2026-08-09 04:25:44.356415981 +0000
+@@ -16,7 +16,7 @@
+     manual = MANUAL.read_text(encoding="utf-8")
+     spec = SPEC.read_text(encoding="utf-8")
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+-    assert mdstats.__version__ == "0.20.118a0"
++    assert mdstats.__version__ == "0.20.119a0"
+     assert "PREC3 - campaign integration, qualification, and profile activation - implemented in 0.20.110a0" in manual
+     assert "PREC3 implementation closure (0.20.110a0)" in manual
+     assert "PREC3 implemented in mdstats 0.20.110a0" in spec

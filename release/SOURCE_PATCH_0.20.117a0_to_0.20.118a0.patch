@@ -1,0 +1,699 @@
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.117a0_to_0.20.118a0.patch' mdstats_orig/mdstats-0.20.117a0-complete-source-package/CHANGELOG.md mdstats_src/mdstats-0.20.117a0-complete-source-package/CHANGELOG.md
+--- mdstats_orig/mdstats-0.20.117a0-complete-source-package/CHANGELOG.md	2026-08-09 03:01:48.000000000 +0000
++++ mdstats_src/mdstats-0.20.117a0-complete-source-package/CHANGELOG.md	2026-08-09 04:15:00.991186315 +0000
+@@ -1,3 +1,11 @@
++## 0.20.118a0 - 2026-08-08
++
++- Fix DATA8 canonical `refine` preparation for small target-only workloads such as the default `n512` naive fine-tuning jobs: the replay-calibrated 15,000-update reference floor no longer makes an otherwise valid 30-epoch 80/20 schedule mathematically impossible.
++- Keep the three-FP64-epoch floor hard. When the exact canonical 80/20 refine profile already satisfies that epoch floor but 15,000 FP64 updates exceed the entire feasible staged budget, preserve the nominal FP32/FP64 split and bind the achievable FP64 update floor into the resolved training protocol.
++- Keep custom staged schedules fail-closed when their configured update floor is infeasible; no general weakening of user-edited precision contracts is introduced.
++- Fix `PrecisionSchedulePolicy.resolve(..., require_update_floor=False)` so supplying `updates_per_epoch` no longer accidentally enforces the update floor.
++- Add resolver and DATA8 regressions covering the default n512/batch-2 failure, canonical replay-sized behavior, strict custom failure, and update-floor opt-out semantics.
++
+ ## 0.20.117a0 - 2026-08-08
+ 
+ - Consolidate the MLFF campaign storage-management CLI under one top-level `storage` command: `storage report`, `storage cleanup`, `storage deduplicate`, and `storage archive create|verify|restore`.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.117a0_to_0.20.118a0.patch' mdstats_orig/mdstats-0.20.117a0-complete-source-package/PATCH_NOTES_0.20.118a0.md mdstats_src/mdstats-0.20.117a0-complete-source-package/PATCH_NOTES_0.20.118a0.md
+--- mdstats_orig/mdstats-0.20.117a0-complete-source-package/PATCH_NOTES_0.20.118a0.md	1970-01-01 00:00:00.000000000 +0000
++++ mdstats_src/mdstats-0.20.117a0-complete-source-package/PATCH_NOTES_0.20.118a0.md	2026-08-09 04:15:01.010327258 +0000
+@@ -0,0 +1,21 @@
++# mdstats 0.20.118a0 patch notes
++
++## DATA8 canonical refine floor portability fix
++
++The canonical `refine` profile still uses the user-visible 80% FP32 -> 20% FP64 schedule,
++FP64 learning-rate scale 0.5, a hard three-epoch FP64 floor, and the configured 15,000
++gradient-update reference floor. The previous resolver treated 15,000 updates as an
++unconditional per-job hard floor. That is impossible for default n512 target-only naive
++fine tuning: with batch size 2, a 30-epoch job contains only about 7,680 optimizer steps
++before fold-size effects. DATA8 therefore failed even though the nominal six-epoch FP64
++tail was valid.
++
++0.20.118a0 preserves strict custom contracts but makes the exact canonical reference
++profile portable across workload sizes. If 15,000 FP64 updates cannot fit anywhere in the
++staged epoch budget and the nominal 20% tail already meets the hard three-epoch floor,
++the resolver keeps the nominal split and binds the actually achievable update floor into
++the resolved schedule. Replay-sized jobs that can satisfy 15,000 updates retain the
++existing behavior.
++
++The release also fixes `require_update_floor=False`: update-count enforcement is now
++actually disabled even when `updates_per_epoch` is supplied.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.117a0_to_0.20.118a0.patch' mdstats_orig/mdstats-0.20.117a0-complete-source-package/PKG-INFO mdstats_src/mdstats-0.20.117a0-complete-source-package/PKG-INFO
+--- mdstats_orig/mdstats-0.20.117a0-complete-source-package/PKG-INFO	2026-08-09 03:02:54.000000000 +0000
++++ mdstats_src/mdstats-0.20.117a0-complete-source-package/PKG-INFO	2026-08-09 04:15:10.329882405 +0000
+@@ -1,6 +1,6 @@
+ Metadata-Version: 2.4
+ Name: mdstats
+-Version: 0.20.117a0
++Version: 0.20.118a0
+ Summary: Transparent atomistic frame collections and structural/dynamical statistics
+ Requires-Python: >=3.10
+ Requires-Dist: numpy>=1.26
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.117a0_to_0.20.118a0.patch' mdstats_orig/mdstats-0.20.117a0-complete-source-package/README.md mdstats_src/mdstats-0.20.117a0-complete-source-package/README.md
+--- mdstats_orig/mdstats-0.20.117a0-complete-source-package/README.md	2026-08-09 03:01:46.000000000 +0000
++++ mdstats_src/mdstats-0.20.117a0-complete-source-package/README.md	2026-08-09 04:15:00.997232017 +0000
+@@ -15,7 +15,7 @@
+ 
+ ## Explicit precision profiles in 0.20.108a0
+ 
+-`mdstats-mlff-campaign init` now accepts `--precision single|double|refine`; plain init is canonical `single`. The generated TOML exposes the complete precision schedule rather than hiding it behind a profile name. `refine` defaults to 80% FP32 then 20% FP64 training, with a 0.5 learning-rate scale at the refinement boundary, a three-FP64-epoch floor, and a 15,000-gradient-update reference floor. DATA8 resolves epoch/update boundaries after loader exposure and binds the resolved schedule into training-protocol identity. PREC1 freezes configuration/identity, PREC2 implements the live FP32→FP64 transition and exact restart state, and PREC3 activates the profiles end to end. Canonical `single` now uses native FP32 profile-controlled critical operations; `refine` evaluates/verifies/exports in FP64 and publishes a verified FP64 artifact even when an FP32-stage checkpoint wins.
++`mdstats-mlff-campaign init` now accepts `--precision single|double|refine`; plain init is canonical `single`. The generated TOML exposes the complete precision schedule rather than hiding it behind a profile name. `refine` defaults to 80% FP32 then 20% FP64 training, with a 0.5 learning-rate scale at the refinement boundary, a hard three-FP64-epoch floor, and a 15,000-gradient-update reference floor calibrated for replay-sized exposure. DATA8 resolves epoch/update boundaries after loader exposure and binds the resolved schedule into training-protocol identity. If that reference update floor is mathematically impossible for the exact canonical profile (for example a default n512 target-only job) while the nominal FP64 tail already satisfies the hard epoch floor, DATA8 preserves the explicit 80/20 schedule and binds the achievable update floor; custom schedules remain strict. PREC1 freezes configuration/identity, PREC2 implements the live FP32→FP64 transition and exact restart state, and PREC3 activates the profiles end to end. Canonical `single` now uses native FP32 profile-controlled critical operations; `refine` evaluates/verifies/exports in FP64 and publishes a verified FP64 artifact even when an FP32-stage checkpoint wins.
+ 
+ ## Guarded multi-fidelity checkpoint evaluation in 0.20.107a0
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.117a0_to_0.20.118a0.patch' mdstats_orig/mdstats-0.20.117a0-complete-source-package/docs/arch_manuals/mlff_training_data_architecture.md mdstats_src/mdstats-0.20.117a0-complete-source-package/docs/arch_manuals/mlff_training_data_architecture.md
+--- mdstats_orig/mdstats-0.20.117a0-complete-source-package/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-09 03:02:10.000000000 +0000
++++ mdstats_src/mdstats-0.20.117a0-complete-source-package/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-09 04:15:01.007186315 +0000
+@@ -4330,13 +4330,15 @@
+ rounding residue is assigned deterministically so stage epochs sum exactly to the frozen
+ epoch budget.
+ 
+-For the canonical `refine` profile, the final FP64 stage must satisfy both the declared
+-fraction and a minimum refinement floor. The reference defaults are three full FP64
+-epochs and 15,000 gradient updates. If the 20% tail is too short, the resolver extends
+-the final FP64 stage until the configured floor is met while retaining at least one FP32
+-stage. If the requested total training budget cannot satisfy the staged contract, the
+-campaign fails closed rather than silently degrading `refine` into a token one-epoch
+-promotion or into full FP64.
++For the canonical `refine` profile, the final FP64 stage must satisfy the declared
++fraction plus a hard minimum of three full FP64 epochs. The 15,000-gradient-update value
++is retained as a replay-calibrated reference floor. If it can be satisfied by extending
++the final stage while retaining an earlier FP32 stage, the resolver does so. If it is
++mathematically impossible for the exact canonical 80/20 profile but the nominal FP64
++tail already satisfies the hard epoch floor (the default n512 target-only case), the
++resolver preserves the explicit 80/20 split and records the achievable FP64 update floor
++in the resolved protocol instead of collapsing nearly the whole run into FP64 or failing
++DATA8. User-edited/custom schedules keep strict fail-closed update-floor semantics.
+ 
+ The 80/20 split and 0.5 refinement learning-rate scale are defaults, not scientific
+ constants. They remain editable and are part of protocol identity.
+@@ -4403,6 +4405,18 @@
+ critical-FP32 execution, preventing either from being silently executed under the legacy
+ one-stage/critical-FP64 runtime.
+ 
++### 0.20.118a0 DATA8 refinement-floor correction
++
++Production qualification exposed a scale-dependence hidden by replay-sized tests: the
++15,000-update reference floor exceeds the *entire* 30-epoch optimizer-step budget of a
++default n512 target-only naive fine-tuning job. DATA8 therefore failed after loader
++exposure even though the explicit 24-FP32/6-FP64 schedule already exceeded the hard
++three-epoch refinement floor. The resolver now treats only that exact canonical reference
++case adaptively: impossible reference-update enforcement preserves the nominal split and
++binds the achievable update floor. Custom schedules remain strict. This release also
++corrects `require_update_floor=False`, which previously still enforced the update floor
++whenever `updates_per_epoch` happened to be supplied.
++
+ ## PREC2 - in-process staged precision execution and restart correctness - implemented in 0.20.109a0
+ 
+ PREC2 implements the risky runtime boundary only after PREC1 freezes configuration and
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.117a0_to_0.20.118a0.patch' mdstats_orig/mdstats-0.20.117a0-complete-source-package/docs/specs/training_data/mlff_staged_precision_profiles_spec.md mdstats_src/mdstats-0.20.117a0-complete-source-package/docs/specs/training_data/mlff_staged_precision_profiles_spec.md
+--- mdstats_orig/mdstats-0.20.117a0-complete-source-package/docs/specs/training_data/mlff_staged_precision_profiles_spec.md	2026-08-08 23:27:07.000000000 +0000
++++ mdstats_src/mdstats-0.20.117a0-complete-source-package/docs/specs/training_data/mlff_staged_precision_profiles_spec.md	2026-08-09 04:15:00.997550922 +0000
+@@ -65,8 +65,13 @@
+ 
+ If the nominal 20% final stage does not satisfy configured minimum refinement floors,
+ the final stage expands until they are satisfied while preserving at least one FP32
+-epoch. If the total training budget cannot satisfy the staged contract, configuration
+-fails closed.
++epoch. The three-epoch floor is always hard. The canonical 15,000-update value is a
++reference floor calibrated on replay-sized exposure rather than a portable absolute
++optimizer-step requirement: when the exact canonical 80/20 profile already satisfies
++the hard epoch floor but 15,000 FP64 updates are mathematically impossible within the
++whole staged budget, the resolver preserves the nominal split and binds the achievable
++FP64 update floor into the resolved protocol. User-edited/custom schedules retain strict
++fail-closed update-floor semantics.
+ 
+ The generalized schema should support more than two explicit stages for advanced
+ manual configurations, although the canonical generated profiles use one stage
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.117a0_to_0.20.118a0.patch' mdstats_orig/mdstats-0.20.117a0-complete-source-package/mdstats/_version.py mdstats_src/mdstats-0.20.117a0-complete-source-package/mdstats/_version.py
+--- mdstats_orig/mdstats-0.20.117a0-complete-source-package/mdstats/_version.py	2026-08-09 03:01:48.000000000 +0000
++++ mdstats_src/mdstats-0.20.117a0-complete-source-package/mdstats/_version.py	2026-08-09 04:15:10.329732059 +0000
+@@ -1,3 +1,3 @@
+ """Package version."""
+ 
+-__version__ = "0.20.117a0"
++__version__ = "0.20.118a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.117a0_to_0.20.118a0.patch' mdstats_orig/mdstats-0.20.117a0-complete-source-package/mdstats/data/observable_owner_manuals.json mdstats_src/mdstats-0.20.117a0-complete-source-package/mdstats/data/observable_owner_manuals.json
+--- mdstats_orig/mdstats-0.20.117a0-complete-source-package/mdstats/data/observable_owner_manuals.json	2026-08-09 03:01:48.000000000 +0000
++++ mdstats_src/mdstats-0.20.117a0-complete-source-package/mdstats/data/observable_owner_manuals.json	2026-08-09 04:15:10.329816741 +0000
+@@ -17,6 +17,6 @@
+       "uri": "mdstats-doc://vacf-dynamics-architecture/0.20.53a0"
+     }
+   },
+-  "package_version": "0.20.117a0",
++  "package_version": "0.20.118a0",
+   "schema": "mdstats.observable-owner-manual-index.v1"
+ }
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.117a0_to_0.20.118a0.patch' mdstats_orig/mdstats-0.20.117a0-complete-source-package/mdstats/training_data/precision_schedule.py mdstats_src/mdstats-0.20.117a0-complete-source-package/mdstats/training_data/precision_schedule.py
+--- mdstats_orig/mdstats-0.20.117a0-complete-source-package/mdstats/training_data/precision_schedule.py	2026-08-08 13:27:05.000000000 +0000
++++ mdstats_src/mdstats-0.20.117a0-complete-source-package/mdstats/training_data/precision_schedule.py	2026-08-09 04:12:56.708441583 +0000
+@@ -328,13 +328,11 @@
+                 "The epoch budget is too small to assign at least one epoch to every precision stage."
+             )
+ 
+-        required_final = max(1, self.minimum_final_stage_epochs)
+-        if updates_per_epoch is not None and self.minimum_final_stage_gradient_updates > 0:
+-            required_final = max(
+-                required_final,
+-                int(math.ceil(self.minimum_final_stage_gradient_updates / updates_per_epoch)),
+-            )
+-        if counts[-1] < required_final:
++        nominal_final_count = counts[-1]
++
++        def _expand_final_stage(required_final: int) -> bool:
++            if counts[-1] >= required_final:
++                return True
+             need = required_final - counts[-1]
+             for index in range(len(counts) - 2, -1, -1):
+                 transferable = max(0, counts[index] - 1)
+@@ -343,12 +341,68 @@
+                 counts[-1] += moved
+                 need -= moved
+                 if need == 0:
+-                    break
+-            if need:
+-                raise TrainingDataInputError(
+-                    "The epoch budget cannot satisfy the precision refinement floor while retaining "
+-                    "at least one epoch in every earlier stage."
+-                )
++                    return True
++            return False
++
++        # The epoch floor is always a hard staged-training contract.  Resolve it
++        # independently of the optional update floor so require_update_floor=False
++        # really does disable update-count enforcement.
++        required_final_epochs = max(1, self.minimum_final_stage_epochs)
++        if not _expand_final_stage(required_final_epochs):
++            raise TrainingDataInputError(
++                "The epoch budget cannot satisfy the precision refinement epoch floor while retaining "
++                "at least one epoch in every earlier stage."
++            )
++
++        effective_minimum_final_stage_gradient_updates = self.minimum_final_stage_gradient_updates
++        if (
++            require_update_floor
++            and updates_per_epoch is not None
++            and self.minimum_final_stage_gradient_updates > 0
++        ):
++            required_by_updates = int(
++                math.ceil(self.minimum_final_stage_gradient_updates / updates_per_epoch)
++            )
++            if counts[-1] < required_by_updates:
++                snapshot = list(counts)
++                if not _expand_final_stage(required_by_updates):
++                    # The original 15k reference floor was calibrated on replay-sized
++                    # exposure.  For the exact canonical 80/20 refine profile, a small
++                    # target-only DATA8 job (notably n512 naive fine tuning) can have
++                    # fewer than 15k optimizer steps in the entire 30-epoch budget.
++                    # Failing here makes the canonical profile unusable for the package's
++                    # default selection size.  When the nominal 20% tail already meets
++                    # the hard epoch floor, preserve that scientifically explicit split
++                    # rather than collapsing almost the whole run into FP64.  Custom
++                    # schedules remain strict and fail closed.
++                    canonical_reference_refine = (
++                        self.requested_profile == PrecisionProfile.REFINE.value
++                        and len(self.stages) == 2
++                        and self.stages[0].dtype == "float32"
++                        and self.stages[1].dtype == "float64"
++                        and abs(self.stages[0].fraction - 0.80) <= _FRACTION_TOLERANCE
++                        and abs(self.stages[1].fraction - 0.20) <= _FRACTION_TOLERANCE
++                        and abs(self.stages[0].learning_rate_scale - 1.0) <= _FRACTION_TOLERANCE
++                        and abs(self.stages[1].learning_rate_scale - 0.5) <= _FRACTION_TOLERANCE
++                        and self.minimum_final_stage_epochs == 3
++                        and self.minimum_final_stage_gradient_updates == 15_000
++                    )
++                    if canonical_reference_refine and nominal_final_count >= required_final_epochs:
++                        counts[:] = snapshot
++                        effective_minimum_final_stage_gradient_updates = min(
++                            self.minimum_final_stage_gradient_updates,
++                            counts[-1] * updates_per_epoch,
++                        )
++                    else:
++                        max_final_epochs = max_num_epochs - (len(counts) - 1)
++                        max_final_updates = max_final_epochs * updates_per_epoch
++                        raise TrainingDataInputError(
++                            "The epoch budget cannot satisfy the precision refinement update floor while "
++                            "retaining at least one epoch in every earlier stage: "
++                            f"requested={self.minimum_final_stage_gradient_updates} updates, "
++                            f"updates_per_epoch={updates_per_epoch}, "
++                            f"maximum_feasible_final_stage_updates={max_final_updates}."
++                        )
+ 
+         resolved: list[ResolvedPrecisionStage] = []
+         epoch_cursor = 0
+@@ -385,7 +439,7 @@
+             max_num_epochs=max_num_epochs,
+             updates_per_epoch=updates_per_epoch,
+             minimum_final_stage_epochs=self.minimum_final_stage_epochs,
+-            minimum_final_stage_gradient_updates=self.minimum_final_stage_gradient_updates,
++            minimum_final_stage_gradient_updates=effective_minimum_final_stage_gradient_updates,
+         )
+ 
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.117a0_to_0.20.118a0.patch' mdstats_orig/mdstats-0.20.117a0-complete-source-package/pyproject.toml mdstats_src/mdstats-0.20.117a0-complete-source-package/pyproject.toml
+--- mdstats_orig/mdstats-0.20.117a0-complete-source-package/pyproject.toml	2026-08-09 03:01:48.000000000 +0000
++++ mdstats_src/mdstats-0.20.117a0-complete-source-package/pyproject.toml	2026-08-09 04:15:10.329537762 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.117a0"
++version = "0.20.118a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.117a0_to_0.20.118a0.patch' mdstats_orig/mdstats-0.20.117a0-complete-source-package/release/mlff_prec_refinement_floor_portability_qualification.json mdstats_src/mdstats-0.20.117a0-complete-source-package/release/mlff_prec_refinement_floor_portability_qualification.json
+--- mdstats_orig/mdstats-0.20.117a0-complete-source-package/release/mlff_prec_refinement_floor_portability_qualification.json	1970-01-01 00:00:00.000000000 +0000
++++ mdstats_src/mdstats-0.20.117a0-complete-source-package/release/mlff_prec_refinement_floor_portability_qualification.json	2026-08-09 04:16:02.424770312 +0000
+@@ -0,0 +1,19 @@
++{
++  "schema": "mdstats.mlff-precision-floor-portability-qualification.v1",
++  "package_version": "0.20.118a0",
++  "date": "2026-08-08",
++  "qualified_behaviors": [
++    "canonical_refine_n512_small_exposure_preserves_24_6_schedule",
++    "canonical_refine_replay_sized_exposure_enforces_15000_update_reference_floor",
++    "hard_three_epoch_floor_remains_enforced",
++    "custom_infeasible_update_floor_fails_closed",
++    "require_update_floor_false_disables_update_enforcement",
++    "data8_binds_achievable_effective_floor_into_resolved_protocol"
++  ],
++  "focused_test_result": {
++    "passed": 42,
++    "skipped": 1,
++    "skip_reason": "torch_ema not installed in qualification sandbox; runtime continuation test dependency only"
++  },
++  "scientific_contract_note": "The exact canonical 15,000-update value is treated as a replay-calibrated reference floor only when it is mathematically impossible within the entire staged budget and the nominal canonical FP64 tail already satisfies the hard three-epoch floor. Custom schedules remain strict."
++}
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.117a0_to_0.20.118a0.patch' mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data0_architecture_specification.py mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data0_architecture_specification.py
+--- mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data0_architecture_specification.py	2026-08-09 03:02:26.000000000 +0000
++++ mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data0_architecture_specification.py	2026-08-09 04:15:10.338365392 +0000
+@@ -263,4 +263,4 @@
+ def test_mlff_data0_pdf_and_version_artifacts_exist() -> None:
+     assert MANUAL_PDF.stat().st_size > 10_000
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.117a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.118a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.117a0_to_0.20.118a0.patch' mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data1_specification.py mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data1_specification.py
+--- mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data1_specification.py	2026-08-09 03:02:26.000000000 +0000
++++ mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data1_specification.py	2026-08-09 04:15:10.333210079 +0000
+@@ -49,4 +49,4 @@
+     assert callable(mdstats.assign_balanced_round_robin)
+     assert callable(mdstats.build_complete_frame_block_plan)
+     assert SPEC_PDF.stat().st_size > 5_000
+-    assert 'version = "0.20.117a0"' in PYPROJECT.read_text(encoding="utf-8")
++    assert 'version = "0.20.118a0"' in PYPROJECT.read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.117a0_to_0.20.118a0.patch' mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data2a_manifest_inference_specification.py mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data2a_manifest_inference_specification.py
+--- mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-09 03:02:26.000000000 +0000
++++ mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data2a_manifest_inference_specification.py	2026-08-09 04:15:10.334001218 +0000
+@@ -15,7 +15,7 @@
+ 
+ 
+ def test_data2a_version_public_api_and_documented_contract() -> None:
+-    assert mdstats.__version__ == "0.20.117a0"
++    assert mdstats.__version__ == "0.20.118a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert callable(mdstats.infer_training_manifest_metadata)
+     policy = mdstats.ManifestInferencePolicy()
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.117a0_to_0.20.118a0.patch' mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a2_specification.py mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a2_specification.py
+--- mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a2_specification.py	2026-08-09 03:02:26.000000000 +0000
++++ mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a2_specification.py	2026-08-09 04:15:10.342342653 +0000
+@@ -23,7 +23,7 @@
+         "finite energy, force, and stress",
+     ):
+         assert required in text
+-    assert 'version = "0.20.117a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.118a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "DATA9A2 real-MACE realization is implemented in `0.20.39a0`" in ARCH.read_text()
+ 
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.117a0_to_0.20.118a0.patch' mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a3_specification.py mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a3_specification.py
+--- mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a3_specification.py	2026-08-09 03:02:26.000000000 +0000
++++ mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a3_specification.py	2026-08-09 04:15:10.336916856 +0000
+@@ -9,5 +9,5 @@
+     assert "37,632" in text
+     assert "supported_with_temporal_blocks_only" in text
+     assert "production_replay_corpus_not_bound" in text
+-    assert 'version = "0.20.117a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.118a0"' in (ROOT / "pyproject.toml").read_text()
+     assert "MLFF-DATA9A3 production qualification" in ARCH.read_text()
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.117a0_to_0.20.118a0.patch' mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a4_precision_specification.py mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a4_precision_specification.py
+--- mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a4_precision_specification.py	2026-08-09 03:02:26.000000000 +0000
++++ mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a4_precision_specification.py	2026-08-09 04:15:10.341972553 +0000
+@@ -9,7 +9,7 @@
+     assert "float32" in text and "float64" in text
+     assert "MaceModelPrecisionRecord" in text
+     assert "MacePrecisionTransitionRecord" in text
+-    assert "version = \"0.20.117a0\"" in (ROOT / "pyproject.toml").read_text()
++    assert "version = \"0.20.118a0\"" in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_bind_precision_to_protocol() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.117a0_to_0.20.118a0.patch' mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a5_critical_fp64_specification.py mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a5_critical_fp64_specification.py
+--- mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-09 03:02:26.000000000 +0000
++++ mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a5_critical_fp64_specification.py	2026-08-09 04:15:10.342691204 +0000
+@@ -14,7 +14,7 @@
+     assert 'version: "0.20.42a0"' in text
+     assert "training_force_jacobian_dtype = model" in text
+     assert "Python/ASE" in text
+-    assert 'version = "0.20.117a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.118a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_data9a5_architecture_declares_scope_and_limits() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.117a0_to_0.20.118a0.patch' mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a5_deployment_specification.py mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a5_deployment_specification.py
+--- mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a5_deployment_specification.py	2026-08-09 03:02:26.000000000 +0000
++++ mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a5_deployment_specification.py	2026-08-09 04:15:10.342883805 +0000
+@@ -13,7 +13,7 @@
+     assert 'version: "0.20.43a0"' in text
+     assert "downstream runtime owns" in text
+     assert "float32-to-float64 promotion does not restore" in text
+-    assert 'version = "0.20.117a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.118a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_architecture_and_stage_plan_keep_lammps_outside_mdstats_scope() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.117a0_to_0.20.118a0.patch' mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a6c_observable_evidence_specification.py mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a6c_observable_evidence_specification.py
+--- mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-09 03:02:26.000000000 +0000
++++ mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a6c_observable_evidence_specification.py	2026-08-09 04:15:10.337951832 +0000
+@@ -74,5 +74,5 @@
+ 
+ def test_packaged_owner_manual_index_is_valid() -> None:
+     payload = json.loads(MANUAL_INDEX.read_text(encoding="utf-8"))
+-    assert payload["package_version"] == "0.20.117a0"
++    assert payload["package_version"] == "0.20.118a0"
+     assert "structural-observables-architecture" in payload["manuals"]
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.117a0_to_0.20.118a0.patch' mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a7a_material_profile_specification.py mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a7a_material_profile_specification.py
+--- mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-09 03:02:26.000000000 +0000
++++ mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a7a_material_profile_specification.py	2026-08-09 04:15:10.340962929 +0000
+@@ -64,4 +64,4 @@
+ 
+ 
+ def test_release_version_is_data9a7a() -> None:
+-    assert 'version = "0.20.117a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert 'version = "0.20.118a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.117a0_to_0.20.118a0.patch' mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a7b_specification.py mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a7b_specification.py
+--- mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a7b_specification.py	2026-08-09 03:02:26.000000000 +0000
++++ mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a7b_specification.py	2026-08-09 04:15:10.336548917 +0000
+@@ -69,7 +69,7 @@
+ 
+ 
+ def test_data9a7b_public_exports_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.117a0"
++    assert mdstats.__version__ == "0.20.118a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert callable(mdstats.compute_local_structure_features)
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.117a0_to_0.20.118a0.patch' mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a7c_specification.py mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a7c_specification.py
+--- mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a7c_specification.py	2026-08-09 03:02:26.000000000 +0000
++++ mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a7c_specification.py	2026-08-09 04:15:10.336835047 +0000
+@@ -47,7 +47,7 @@
+ 
+ 
+ def test_public_api_and_release_version() -> None:
+-    assert mdstats.__version__ == "0.20.117a0"
++    assert mdstats.__version__ == "0.20.118a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7B_PARSER_VERSION == "0.20.49a0"
+     assert mdstats.MLFF_DATA9A7C_PARSER_VERSION == "0.20.49a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.117a0_to_0.20.118a0.patch' mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a7d_specification.py mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a7d_specification.py
+--- mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a7d_specification.py	2026-08-09 03:02:26.000000000 +0000
++++ mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a7d_specification.py	2026-08-09 04:15:10.331808138 +0000
+@@ -39,6 +39,6 @@
+ 
+ 
+ def test_data9a7d_runtime_versions() -> None:
+-    assert mdstats.__version__ == "0.20.117a0"
++    assert mdstats.__version__ == "0.20.118a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A7D_PARSER_VERSION == "0.20.50a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.117a0_to_0.20.118a0.patch' mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a7e_specification.py mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a7e_specification.py
+--- mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a7e_specification.py	2026-08-09 03:02:26.000000000 +0000
++++ mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a7e_specification.py	2026-08-09 04:15:10.332161473 +0000
+@@ -39,7 +39,7 @@
+         "CROSS_SYSTEM_CASE_QUALIFICATION_EVIDENCE",
+         "CROSS_SYSTEM_QUALIFICATION_SUITE",
+     } <= nodes
+-    assert mdstats.__version__ == "0.20.117a0"
++    assert mdstats.__version__ == "0.20.118a0"
+     assert mdstats.MLFF_DATA9A7E_PARSER_VERSION == "0.20.51a0"
+     assert callable(mdstats.qualify_cross_system_case)
+     assert callable(mdstats.build_cross_system_qualification_suite)
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.117a0_to_0.20.118a0.patch' mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a8_specification.py mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a8_specification.py
+--- mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a8_specification.py	2026-08-09 03:02:26.000000000 +0000
++++ mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a8_specification.py	2026-08-09 04:15:10.332755260 +0000
+@@ -66,7 +66,7 @@
+ 
+ 
+ def test_public_runtime_exposes_data9a8_without_removed_aliases() -> None:
+-    assert mdstats.__version__ == "0.20.117a0"
++    assert mdstats.__version__ == "0.20.118a0"
+     assert mdstats.MLFF_DATA9A8_PARSER_VERSION == "0.20.52a0"
+     assert mdstats.ObservableComparisonPolicy
+     assert mdstats.compare_mlff_observable_validation
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.117a0_to_0.20.118a0.patch' mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a9a_specification.py mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a9a_specification.py
+--- mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a9a_specification.py	2026-08-09 03:02:26.000000000 +0000
++++ mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a9a_specification.py	2026-08-09 04:15:10.332253742 +0000
+@@ -65,7 +65,7 @@
+ 
+ 
+ def test_public_runtime_exports_data9a9a_contracts() -> None:
+-    assert mdstats.__version__ == "0.20.117a0"
++    assert mdstats.__version__ == "0.20.118a0"
+     assert mdstats.MLFF_DATA6_PARSER_VERSION == "0.20.53a0"
+     assert mdstats.MLFF_DATA9A9A_VERSION
+     assert mdstats.Data6ModelSweepPlan
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.117a0_to_0.20.118a0.patch' mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a9b_specification.py mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a9b_specification.py
+--- mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a9b_specification.py	2026-08-09 03:02:26.000000000 +0000
++++ mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a9b_specification.py	2026-08-09 04:15:10.337745843 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9b_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.117a0"
++    assert mdstats.__version__ == "0.20.118a0"
+     for name in (
+         "ProductionMaterializationPlan",
+         "ProductionMaterializationCheckpoint",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.117a0_to_0.20.118a0.patch' mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a9c_specification.py mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a9c_specification.py
+--- mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a9c_specification.py	2026-08-09 03:02:26.000000000 +0000
++++ mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a9c_specification.py	2026-08-09 04:15:10.334296914 +0000
+@@ -9,7 +9,7 @@
+ 
+ 
+ def test_data9a9c_public_contracts_and_version() -> None:
+-    assert mdstats.__version__ == "0.20.117a0"
++    assert mdstats.__version__ == "0.20.118a0"
+     for name in (
+         "ProductionCorpusPlan", "ProductionExpectedRun",
+         "ProfileExtensionEvidenceRequirement", "ProductionCorpusQualificationRecord",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.117a0_to_0.20.118a0.patch' mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a_specification.py mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a_specification.py
+--- mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a_specification.py	2026-08-09 03:02:26.000000000 +0000
++++ mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9a_specification.py	2026-08-09 04:15:10.341493225 +0000
+@@ -14,7 +14,7 @@
+ 
+ 
+ def test_data9a_runtime_specification_is_canonical() -> None:
+-    assert 'version = "0.20.117a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.118a0"' in (ROOT / "pyproject.toml").read_text()
+     architecture = ARCH.read_text()
+     stage = STAGE.read_text()
+     specification = SPEC.read_text()
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.117a0_to_0.20.118a0.patch' mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9b1_specification.py mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9b1_specification.py
+--- mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9b1_specification.py	2026-08-09 03:02:26.000000000 +0000
++++ mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9b1_specification.py	2026-08-09 04:15:10.333870863 +0000
+@@ -18,8 +18,8 @@
+     assert "TrainingCampaignPlan" in text
+     assert "CheckpointSelectionRecord" in text
+     assert "mdstats-mace-train" in text
+-    assert mdstats.__version__ == "0.20.117a0"
+-    assert 'version = "0.20.117a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert mdstats.__version__ == "0.20.118a0"
++    assert 'version = "0.20.118a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+ 
+ 
+ def test_data9b1_is_integrated_into_manual_and_stage_plan() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.117a0_to_0.20.118a0.patch' mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9b2_specification.py mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9b2_specification.py
+--- mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9b2_specification.py	2026-08-09 03:02:26.000000000 +0000
++++ mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9b2_specification.py	2026-08-09 04:15:10.338245483 +0000
+@@ -23,7 +23,7 @@
+         'mdstats-mace-select-head',
+     ):
+         assert token in text
+-    assert mdstats.__version__ == '0.20.117a0'
++    assert mdstats.__version__ == '0.20.118a0'
+     assert mdstats.MLFF_DATA9B2_VERSION == '0.20.57a0'
+ 
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.117a0_to_0.20.118a0.patch' mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9b3_campaign_cli_specification.py mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9b3_campaign_cli_specification.py
+--- mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-09 03:02:26.000000000 +0000
++++ mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_data9b3_campaign_cli_specification.py	2026-08-09 04:15:10.337170855 +0000
+@@ -16,7 +16,7 @@
+ 
+ 
+ def test_data9b3_version_and_user_surface() -> None:
+-    assert mdstats.__version__ == "0.20.117a0"
++    assert mdstats.__version__ == "0.20.118a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert TOOL.is_file()
+     assert TOOL.stat().st_mode & 0o111
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.117a0_to_0.20.118a0.patch' mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_opt_ctrl1_specification.py mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_opt_ctrl1_specification.py
+--- mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_opt_ctrl1_specification.py	2026-08-09 03:02:26.000000000 +0000
++++ mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_opt_ctrl1_specification.py	2026-08-09 04:15:10.334952450 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_ctrl1_release_identity_preserves_scientific_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.117a0"
++    assert mdstats.__version__ == "0.20.118a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.117a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.118a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_ctrl1_architecture_and_spec_close_roadmap() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.117a0_to_0.20.118a0.patch' mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_opt_eval4_specification.py mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_opt_eval4_specification.py
+--- mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_opt_eval4_specification.py	2026-08-09 03:02:26.000000000 +0000
++++ mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_opt_eval4_specification.py	2026-08-09 04:15:10.341671688 +0000
+@@ -11,9 +11,9 @@
+ 
+ 
+ def test_opt_eval4_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.117a0"
++    assert mdstats.__version__ == "0.20.118a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+-    assert 'version = "0.20.117a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.118a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_eval4_architecture_and_spec_record_pipeline_contract() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.117a0_to_0.20.118a0.patch' mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_opt_verify1_specification.py mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_opt_verify1_specification.py
+--- mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_opt_verify1_specification.py	2026-08-09 03:02:26.000000000 +0000
++++ mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_opt_verify1_specification.py	2026-08-09 04:15:10.339077898 +0000
+@@ -10,10 +10,10 @@
+ 
+ 
+ def test_opt_verify1_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.117a0"
++    assert mdstats.__version__ == "0.20.118a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
+-    assert 'version = "0.20.117a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.118a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_verify1_architecture_and_spec_record_contract() -> None:
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.117a0_to_0.20.118a0.patch' mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_perf2_parallel_acceleration_specification.py mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_perf2_parallel_acceleration_specification.py
+--- mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-09 03:02:26.000000000 +0000
++++ mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_perf2_parallel_acceleration_specification.py	2026-08-09 04:15:10.337654006 +0000
+@@ -10,7 +10,7 @@
+ 
+ 
+ def test_perf2_release_and_configuration_contract() -> None:
+-    assert mdstats.__version__ == "0.20.117a0"
++    assert mdstats.__version__ == "0.20.118a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     template = campaign_cli._config_template(
+         workspace="workspace",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.117a0_to_0.20.118a0.patch' mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_prec1_precision_profiles.py mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_prec1_precision_profiles.py
+--- mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_prec1_precision_profiles.py	2026-08-08 23:31:06.000000000 +0000
++++ mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_prec1_precision_profiles.py	2026-08-09 04:14:21.855656727 +0000
+@@ -116,6 +116,46 @@
+         policy.resolve(max_num_epochs=30, require_update_floor=True)
+ 
+ 
++def test_canonical_refine_small_exposure_preserves_nominal_tail_when_reference_update_floor_is_impossible() -> None:
++    policy = mdstats.canonical_precision_schedule_policy("refine")
++    # Default n512 target-only fine tuning with batch_size=2 has about 256
++    # updates/epoch.  The entire 30-epoch budget therefore contains fewer than
++    # 15k updates, so the replay-calibrated reference floor cannot be literal.
++    # The canonical profile must remain usable and retain its explicit 24/6
++    # schedule because the nominal FP64 tail already exceeds the hard 3-epoch
++    # floor.  The resolved contract records the achievable effective floor.
++    resolved = policy.resolve(max_num_epochs=30, updates_per_epoch=256, require_update_floor=True)
++    assert [stage.epoch_count for stage in resolved.stages] == [24, 6]
++    assert resolved.stages[-1].update_count == 1536
++    assert resolved.minimum_final_stage_gradient_updates == 1536
++    assert policy.minimum_final_stage_gradient_updates == 15000
++
++
++def test_require_update_floor_false_really_disables_update_floor() -> None:
++    policy = mdstats.canonical_precision_schedule_policy("refine")
++    resolved = policy.resolve(max_num_epochs=30, updates_per_epoch=1000, require_update_floor=False)
++    assert [stage.epoch_count for stage in resolved.stages] == [24, 6]
++
++
++def test_custom_infeasible_update_floor_remains_fail_closed() -> None:
++    policy = mdstats.PrecisionSchedulePolicy(
++        requested_profile="custom",
++        stages=(
++            mdstats.PrecisionStage("float32", 0.80, 1.0),
++            mdstats.PrecisionStage("float64", 0.20, 0.5),
++        ),
++        minimum_final_stage_epochs=3,
++        minimum_final_stage_gradient_updates=15000,
++        model_dtype="float64",
++        critical_operation_dtype="float64",
++        evaluation_dtype="float64",
++        verification_dtype="float64",
++        export_dtype="float64",
++    )
++    with pytest.raises(mdstats.TrainingDataInputError, match="maximum_feasible_final_stage_updates"):
++        policy.resolve(max_num_epochs=30, updates_per_epoch=256, require_update_floor=True)
++
++
+ def _protocol(schedule: mdstats.PrecisionSchedulePolicy) -> mdstats.TrainingProtocolIdentity:
+     optimizer = mdstats.MaceOptimizerPolicy(
+         max_num_epochs=30,
+@@ -197,20 +237,7 @@
+     from tests.test_mlff_data8_mace_artifacts import _data7_bundles, _foundation, _probe
+ 
+     sources, frames, frame_data, _, data5, _, bundles = _data7_bundles(tmp_path)
+-    policy = mdstats.PrecisionSchedulePolicy(
+-        requested_profile="refine",
+-        stages=(
+-            mdstats.PrecisionStage("float32", 0.80, 1.0),
+-            mdstats.PrecisionStage("float64", 0.20, 0.5),
+-        ),
+-        minimum_final_stage_epochs=3,
+-        minimum_final_stage_gradient_updates=0,
+-        model_dtype="float64",
+-        critical_operation_dtype="float64",
+-        evaluation_dtype="float64",
+-        verification_dtype="float64",
+-        export_dtype="float64",
+-    )
++    policy = mdstats.canonical_precision_schedule_policy("refine")
+     bundle = mdstats.build_data8_preparation_bundle(
+         sources,
+         frames,
+@@ -235,3 +262,4 @@
+         assert [stage.epoch_count for stage in resolved.stages] == [24, 6]
+         assert resolved.updates_per_epoch is not None
+         assert resolved.stages[-1].stop_update == resolved.updates_per_epoch * 30
++        assert resolved.minimum_final_stage_gradient_updates <= policy.minimum_final_stage_gradient_updates
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.117a0_to_0.20.118a0.patch' mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_prec1_specification.py mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_prec1_specification.py
+--- mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_prec1_specification.py	2026-08-09 03:02:26.000000000 +0000
++++ mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_prec1_specification.py	2026-08-09 04:15:10.335061082 +0000
+@@ -12,7 +12,7 @@
+ 
+ 
+ def test_prec1_release_and_architecture_status() -> None:
+-    assert mdstats.__version__ == "0.20.117a0"
++    assert mdstats.__version__ == "0.20.118a0"
+     manual = MANUAL.read_text(encoding="utf-8")
+     spec = SPEC.read_text(encoding="utf-8")
+     assert "PREC1 - precision profiles, explicit staged schedule, and init realization - implemented in 0.20.108a0" in manual
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=*.egg-info' '--exclude=build' '--exclude=dist' '--exclude=SOURCE_PATCH_0.20.117a0_to_0.20.118a0.patch' mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_prec3_specification.py mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_prec3_specification.py
+--- mdstats_orig/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_prec3_specification.py	2026-08-09 03:02:26.000000000 +0000
++++ mdstats_src/mdstats-0.20.117a0-complete-source-package/tests/test_mlff_prec3_specification.py	2026-08-09 04:15:10.333013128 +0000
+@@ -16,7 +16,7 @@
+     manual = MANUAL.read_text(encoding="utf-8")
+     spec = SPEC.read_text(encoding="utf-8")
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+-    assert mdstats.__version__ == "0.20.117a0"
++    assert mdstats.__version__ == "0.20.118a0"
+     assert "PREC3 - campaign integration, qualification, and profile activation - implemented in 0.20.110a0" in manual
+     assert "PREC3 implementation closure (0.20.110a0)" in manual
+     assert "PREC3 implemented in mdstats 0.20.110a0" in spec

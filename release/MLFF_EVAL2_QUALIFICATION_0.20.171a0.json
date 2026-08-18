@@ -1,0 +1,115 @@
+{
+  "adversarial_checks": [
+    "final-development target-size ranking cannot use the protected outer monitor",
+    "development complement is reconstructed in exact requested frame order and byte-authenticated before cache reuse",
+    "lightweight replay cannot alter the 3+2 shortlist",
+    "replay-admissible candidates cannot be reordered by extra replay margin",
+    "Stage-B target hard-threshold failure does not remove an otherwise numerically valid 10-of-30 candidate",
+    "bootstrap cannot reverse a materially better raw target point estimate",
+    "fewer than 10 independent blocks removes bootstrap decision authority and falls back to the 1 meV/A rule",
+    "composition-centered relative energy does not compare arbitrary offsets across different compositions",
+    "focus/nonfocus target-group diagnostics are preserved when applicable",
+    "TRAIN2 evaluate cannot fall through to replay-weighted historical MLCV/ADAPT selection"
+  ],
+  "date": "2026-08-13",
+  "gate": "EVAL2",
+  "qualification": {
+    "expected_skips": [
+      "tests/test_mlff_campaign_cli.py:337 real LTA training root not supplied",
+      "tests/test_mlff_data9b2_real_mace_evaluation.py:58 supplied MACE smoke package not available"
+    ],
+    "focused_and_regression_pytest": {
+      "failed": 0,
+      "passed": 274,
+      "skipped": 2
+    },
+    "historical_test_debt": "older *_specification.py tests still exact-pin package version 0.20.140a0; not EVAL2 qualification evidence",
+    "pdf": {
+      "full_compare_dpi": 50,
+      "inspection_dpi": 140,
+      "no_clipping_overlap_or_broken_glyphs": true,
+      "pages_after": 128,
+      "pages_before": 127,
+      "render_compare_changed_pages": 26,
+      "result": "passed",
+      "visually_inspected_pages": [
+        121,
+        122
+      ]
+    },
+    "public_import": "mdstats 0.20.171a0 / mdstats.eval2-run-record.v1",
+    "python_compileall": "passed"
+  },
+  "schema": "mdstats.mlff-eval2-qualification.v1",
+  "scientific_contract": {
+    "bootstrap": {
+      "confidence": 0.95,
+      "interval": "percentile",
+      "material_direction_rule": "raw >1 meV/A point improvement and CI must favor the same candidate",
+      "minimum_independent_blocks": 10,
+      "paired_correlation_blocks": true,
+      "replicates": 2000,
+      "seed": "deterministic evaluation-plan digest derivation"
+    },
+    "generated_rescue_cap": 5,
+    "initial_full_evaluation_shortlist": "3 best overall + 2 best refinement, max 5 unique",
+    "maximum_full_checkpoint_evaluations_per_run": 10,
+    "physical_qualification": "absent from EVAL2 and required later",
+    "practical_equivalence_mev_per_a": 1.0,
+    "primary_ranking_authority": "full target score only",
+    "relative_energy": "composition-group-centered signed per-atom energy error; singleton composition groups non-applicable",
+    "replay_full_evaluation_authority": "hard foundation-relative admissibility only",
+    "replay_ranking_credit": 0,
+    "stage_b_checkpoint": "exact epoch-10 endpoint on the frozen 30-epoch trajectory",
+    "stage_b_removal_authority": "numerical_or_operational_failure_only",
+    "stage_b_replay_authority": "diagnostic_only",
+    "stage_b_target_threshold_authority": false,
+    "target_secondary_order": [
+      "worst_applicable_stratum_rmse",
+      "species_macro_rmse",
+      "p95",
+      "p99",
+      "later_lower_lr_refinement_maturity",
+      "stable_identity"
+    ]
+  },
+  "scope": {
+    "implemented": [
+      "immutable EVAL2 target roles, plans, trajectory/checkpoint/metric/bootstrap/run records",
+      "leakage-safe CV monitor and target-size development-complement target roles",
+      "target-only 3+2 full-evaluation shortlist and bounded target-ranked rescue",
+      "full target metric suite including composition-centered relative energy and focus/nonfocus groups",
+      "TRUE_DFT replay hard admissibility with zero ranking credit",
+      "paired correlation-block bootstrap and target-only uncertainty-aware lexicographic ordering",
+      "TRAIN2 evaluate dispatch for exact Stage-B endpoint and completed Stage-C trajectories",
+      "TARGET-DATA2D Stage-B numerical-failure-only eligibility correction"
+    ],
+    "intentionally_deferred": [
+      "DEPLOY/PES/RELAX/DYN physical qualification",
+      "physical completion of TARGET-DATA2D Stage C and final TARGET-DATA2E materialization",
+      "SELECT2 production publication"
+    ]
+  },
+  "sha256": {
+    "CHANGELOG.md": "82853a4d5d83fcf4d8fb1e1404d2dbe2c33661a66941c0319e7fd4cca3428093",
+    "PKG-INFO": "e0a8440ead24cd88173ba99b9ace184e30616068aa40f7805f3951c779a01b35",
+    "campaign.toml.example": "8a4976aa4d82ca9e28360b901763541c0ce9b738edb1dea7f58fbe99b4310e34",
+    "docs/arch_manuals/mlff_training_data_architecture.md": "6ed9914af26f0b54a65de6b17bb11e7e696f9c535f43b2a7828a70c38da179ab",
+    "docs/arch_manuals/mlff_training_data_architecture.pdf": "23375d2f236c0bc9dc2600be4bc6d6a75b361ea59d504ff2624fd6b4a75c876e",
+    "mdstats/__init__.py": "f0395e2f6ae600bc86723aeeeb5a0bfb04935a810b14c39fe2beee16b4d878d6",
+    "mdstats/_version.py": "cfaa655e8a31b0244b316b1bbd12755c78218f6797c6ba37347cc89d8dca70aa",
+    "mdstats/training_data/__init__.py": "f53d7fe830de0e6f7d98cadbe7f7cc6032156c9aad34eeaabc4fe34390200fe3",
+    "mdstats/training_data/campaign_cli.py": "2b725a33267ee9cd5b9f3d9018e99e7fe994d07faf9684f6075ca3b73fbfb0fe",
+    "mdstats/training_data/eval2.py": "1e96949bbbfdb61c3c7cdeb92e5bccc46b96b884f84f34b211eb2a75843cb577",
+    "mdstats/training_data/target_size_convergence.py": "c1987b5ca999ed2737291b723f1134731facdf56f3e4599c61071d460e5ba82c",
+    "pyproject.toml": "24e2aabe7cd5737faf3b16745266e8fa909b3c22c11a707506db1bf0802d9297",
+    "release/PATCH_NOTES_0.20.171a0.md": "65ce49c2dd85e5b356e50d2332f5751ff2de4235a938ae5b82ced614752676e3",
+    "tests/test_mlff_eval2.py": "7be088b9ae619bb3a145de3528bce83c0404d7829aeabb3ef37193640ffb0e30",
+    "tests/test_mlff_eval2_specification.py": "b138618c6a5b047a2935d54cda95f0160ce062304e0ef79b797c102fa013ee8f",
+    "tests/test_mlff_evaluation_verification_cost_policy.py": "06f199b93f0c82451baf85fe60790b05fcbfd8a9410e7d3972a8a8648382ad79",
+    "tests/test_mlff_target_data2d_convergence.py": "0ab86227bb87d4db44220ec31c8735990704faf6866de023b62ba6d9dcc5c6b6",
+    "tests/test_mlff_train2b_specification.py": "033a2e9c5ef63377f6faea11da19cd7c1bab4ef75754cc55c88a21147261f370",
+    "tests/test_mlff_true_label_replay_evaluation.py": "1a4267c52405db809b117a6528d4d5615b74b21217f24787e41ec44d0ebd7409"
+  },
+  "version": "0.20.171a0"
+}

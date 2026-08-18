@@ -1,0 +1,225 @@
+{
+  "authority_class": "E",
+  "date": "2026-08-15",
+  "foundation_audit": {
+    "exact_digest": "a618301c7f8dad6f5cd8cfec4d39edea9303b5c2f1c52bf46b81507677808f9f",
+    "fixture": "deterministic 600-frame x 1500-atom exact force-tail reduction (900,000 atoms)",
+    "forced_mmap": {
+      "atoms_per_frame": 1500,
+      "cpu_s": 0.12911820400000007,
+      "digest": "a618301c7f8dad6f5cd8cfec4d39edea9303b5c2f1c52bf46b81507677808f9f",
+      "force_rmse": 0.0019979155804654707,
+      "frames": 600,
+      "maxrss_kib": 326104,
+      "mode": "mmap",
+      "tails": [
+        {
+          "component_abs_error_ev_per_angstrom": 0.0030000000000000027,
+          "content_digest": "2258529f3be4954300d8e1f6f2327547fa3fc8a6174f294f9958c8112eab5bb2",
+          "quantile": 0.9,
+          "schema": "mdstats.target-model-force-tail.v1",
+          "vector_error_ev_per_angstrom": 0.005196152422706636
+        },
+        {
+          "component_abs_error_ev_per_angstrom": 0.0030000000000000027,
+          "content_digest": "eca313aa728f12d3654bad5ab03b29ad204c3619cd85f343d0a1a7106996bef3",
+          "quantile": 0.95,
+          "schema": "mdstats.target-model-force-tail.v1",
+          "vector_error_ev_per_angstrom": 0.005196152422706636
+        },
+        {
+          "component_abs_error_ev_per_angstrom": 0.0030000000000000027,
+          "content_digest": "702858f53c0e4030b7a14bdaa0b4faa95df4d465f074bc042e2f832df79f6293",
+          "quantile": 0.99,
+          "schema": "mdstats.target-model-force-tail.v1",
+          "vector_error_ev_per_angstrom": 0.005196152422706636
+        }
+      ],
+      "total_atoms": 900000,
+      "wall_s": 0.2060374970005796
+    },
+    "interpretation": "memory-hardening authority; no speedup claim for audit reduction",
+    "old": {
+      "atoms_per_frame": 1500,
+      "cpu_s": 0.15714867899999962,
+      "digest": "a618301c7f8dad6f5cd8cfec4d39edea9303b5c2f1c52bf46b81507677808f9f",
+      "force_rmse": 0.0019979155804654707,
+      "frames": 600,
+      "maxrss_kib": 354492,
+      "mode": "old",
+      "tails": [
+        {
+          "component_abs_error_ev_per_angstrom": 0.0030000000000000027,
+          "content_digest": "2258529f3be4954300d8e1f6f2327547fa3fc8a6174f294f9958c8112eab5bb2",
+          "quantile": 0.9,
+          "schema": "mdstats.target-model-force-tail.v1",
+          "vector_error_ev_per_angstrom": 0.005196152422706636
+        },
+        {
+          "component_abs_error_ev_per_angstrom": 0.0030000000000000027,
+          "content_digest": "eca313aa728f12d3654bad5ab03b29ad204c3619cd85f343d0a1a7106996bef3",
+          "quantile": 0.95,
+          "schema": "mdstats.target-model-force-tail.v1",
+          "vector_error_ev_per_angstrom": 0.005196152422706636
+        },
+        {
+          "component_abs_error_ev_per_angstrom": 0.0030000000000000027,
+          "content_digest": "702858f53c0e4030b7a14bdaa0b4faa95df4d465f074bc042e2f832df79f6293",
+          "quantile": 0.99,
+          "schema": "mdstats.target-model-force-tail.v1",
+          "vector_error_ev_per_angstrom": 0.005196152422706636
+        }
+      ],
+      "total_atoms": 900000,
+      "wall_s": 0.15714817699972627
+    },
+    "preallocated_memory": {
+      "atoms_per_frame": 1500,
+      "cpu_s": 0.1920163069999994,
+      "digest": "a618301c7f8dad6f5cd8cfec4d39edea9303b5c2f1c52bf46b81507677808f9f",
+      "force_rmse": 0.0019979155804654707,
+      "frames": 600,
+      "maxrss_kib": 326056,
+      "mode": "memory",
+      "tails": [
+        {
+          "component_abs_error_ev_per_angstrom": 0.0030000000000000027,
+          "content_digest": "2258529f3be4954300d8e1f6f2327547fa3fc8a6174f294f9958c8112eab5bb2",
+          "quantile": 0.9,
+          "schema": "mdstats.target-model-force-tail.v1",
+          "vector_error_ev_per_angstrom": 0.005196152422706636
+        },
+        {
+          "component_abs_error_ev_per_angstrom": 0.0030000000000000027,
+          "content_digest": "eca313aa728f12d3654bad5ab03b29ad204c3619cd85f343d0a1a7106996bef3",
+          "quantile": 0.95,
+          "schema": "mdstats.target-model-force-tail.v1",
+          "vector_error_ev_per_angstrom": 0.005196152422706636
+        },
+        {
+          "component_abs_error_ev_per_angstrom": 0.0030000000000000027,
+          "content_digest": "702858f53c0e4030b7a14bdaa0b4faa95df4d465f074bc042e2f832df79f6293",
+          "quantile": 0.99,
+          "schema": "mdstats.target-model-force-tail.v1",
+          "vector_error_ev_per_angstrom": 0.005196152422706636
+        }
+      ],
+      "total_atoms": 900000,
+      "wall_s": 0.19206125999971846
+    },
+    "preallocated_peak_rss_reduction_fraction": 0.08021619669837401,
+    "preallocated_wall_change_fraction": 0.2221666433970341,
+    "total_atoms": 900000
+  },
+  "host": {
+    "cgroup_cpu_quota_cores": 8.0,
+    "cgroup_memory_limit_bytes": 4294967296,
+    "cpu_model": "AMD EPYC 9V74 80-Core Processor",
+    "gpu_qualification": "deferred_to_FINAL-GPU1",
+    "logical_cpus_visible": 9
+  },
+  "rejected_optimizations": [
+    {
+      "candidate": "dense reusable pair/radial scratch",
+      "reason": "increased RSS and reduced throughput on bounded LTA-like workload",
+      "result": "rejected"
+    },
+    {
+      "candidate": "chunked radial-channel evaluation",
+      "reason": "changed FP64 radial values by approximately 1e-16 to 8.9e-16; violates Class-E exactness",
+      "result": "rejected"
+    }
+  ],
+  "release": "0.20.185a0",
+  "schema": "mdstats.mlff-perf-p3.cpu-benchmark.2026-08.v1",
+  "scientific_claim": "structural output bytes and foundation-audit scientific digest are unchanged; execution/resource state is non-scientific",
+  "structural_kernel": {
+    "exact_digest": "5786409f8f622b3e2d1183bcca9ef9859e3cfd7717970339f421d4f630d6ac4c",
+    "fixture": "deterministic triclinic LTA-like fixed-topology workload sized to 168 atoms, 300 frames; one native thread per fresh process",
+    "new_median_peak_rss_kib": 276820,
+    "new_median_wall_s": 3.2020541969995975,
+    "new_release": "0.20.185a0",
+    "new_samples": [
+      {
+        "atoms": 168,
+        "cpu_s": 3.2019491860000002,
+        "digest": "5786409f8f622b3e2d1183bcca9ef9859e3cfd7717970339f421d4f630d6ac4c",
+        "effective_cores": 0.9999672051148617,
+        "frames": 300,
+        "maxrss_kib": 276820,
+        "mode": "new",
+        "sum": 2760709.3381340085,
+        "sum_sq": 20055445.09291925,
+        "wall_s": 3.2020541969995975
+      },
+      {
+        "atoms": 168,
+        "cpu_s": 3.390302313,
+        "digest": "5786409f8f622b3e2d1183bcca9ef9859e3cfd7717970339f421d4f630d6ac4c",
+        "effective_cores": 0.9999747223620983,
+        "frames": 300,
+        "maxrss_kib": 276820,
+        "mode": "new",
+        "sum": 2760709.3381340085,
+        "sum_sq": 20055445.09291925,
+        "wall_s": 3.390388014000564
+      },
+      {
+        "atoms": 168,
+        "cpu_s": 3.1885967899999996,
+        "digest": "5786409f8f622b3e2d1183bcca9ef9859e3cfd7717970339f421d4f630d6ac4c",
+        "effective_cores": 0.9984924958936608,
+        "frames": 300,
+        "maxrss_kib": 276516,
+        "mode": "new",
+        "sum": 2760709.3381340085,
+        "sum_sq": 20055445.09291925,
+        "wall_s": 3.1934108699997523
+      }
+    ],
+    "old_median_peak_rss_kib": 276836,
+    "old_median_wall_s": 3.4587920719995964,
+    "old_release": "0.20.184a0",
+    "old_samples": [
+      {
+        "atoms": 168,
+        "cpu_s": 3.4584232540000004,
+        "digest": "5786409f8f622b3e2d1183bcca9ef9859e3cfd7717970339f421d4f630d6ac4c",
+        "effective_cores": 0.9998933679758949,
+        "frames": 300,
+        "maxrss_kib": 276712,
+        "mode": "old",
+        "sum": 2760709.3381340085,
+        "sum_sq": 20055445.09291925,
+        "wall_s": 3.4587920719995964
+      },
+      {
+        "atoms": 168,
+        "cpu_s": 3.670274032,
+        "digest": "5786409f8f622b3e2d1183bcca9ef9859e3cfd7717970339f421d4f630d6ac4c",
+        "effective_cores": 0.998430456652651,
+        "frames": 300,
+        "maxrss_kib": 276836,
+        "mode": "old",
+        "sum": 2760709.3381340085,
+        "sum_sq": 20055445.09291925,
+        "wall_s": 3.6760437419998198
+      },
+      {
+        "atoms": 168,
+        "cpu_s": 3.3295500360000005,
+        "digest": "5786409f8f622b3e2d1183bcca9ef9859e3cfd7717970339f421d4f630d6ac4c",
+        "effective_cores": 0.9992952152847948,
+        "frames": 300,
+        "maxrss_kib": 278072,
+        "mode": "old",
+        "sum": 2760709.3381340085,
+        "sum_sq": 20055445.09291925,
+        "wall_s": 3.331898306999392
+      }
+    ],
+    "peak_rss_reduction_fraction": 5.779595139360488e-05,
+    "repetitions_per_path": 3,
+    "wall_reduction_fraction": 0.07422761173717321
+  }
+}

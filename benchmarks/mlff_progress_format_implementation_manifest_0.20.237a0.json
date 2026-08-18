@@ -1,0 +1,56 @@
+{
+  "architecture_revision": 103,
+  "canonical_fields": [
+    "status",
+    "progress",
+    "elapsed",
+    "eta",
+    "recent/current rate",
+    "average rate",
+    "stage-specific telemetry"
+  ],
+  "content_digest": "9c7c61c4e2a214cbca986d025fa2ead11ea32a22ca93f372b164b3eb63e78348",
+  "dependency_graph_schema": 83,
+  "next_gate": "FINAL-GPU1",
+  "qualification_record": "release/qualification_logs/MLFF_PROGRESS_FORMAT_QUALIFICATION_0.20.237a0.json",
+  "release": "0.20.237a0",
+  "runtime_algorithm_change": false,
+  "schema": "mdstats.mlff-progress-format-implementation-manifest.v1",
+  "scientific_authority_change": false,
+  "scope": "presentation_only_mlff_progress_and_heartbeat_formatting",
+  "shared_helpers": [
+    "format_progress_time",
+    "format_progress_fraction",
+    "format_progress_rate",
+    "format_progress_timing_fields"
+  ],
+  "source_files": [
+    "mdstats/training_data/campaign_cli.py",
+    "mdstats/training_data/data4_sharded_store.py",
+    "mdstats/training_data/data6_bundle.py",
+    "mdstats/training_data/data6_sharded_store.py",
+    "mdstats/training_data/data7_bundle.py",
+    "mdstats/training_data/events.py",
+    "mdstats/training_data/feature_metric.py",
+    "mdstats/training_data/frame_catalog.py",
+    "mdstats/training_data/lta_profile.py",
+    "mdstats/training_data/lta_selection.py",
+    "mdstats/training_data/production_materialization.py",
+    "mdstats/training_data/progress_timing.py",
+    "mdstats/training_data/raw_features.py",
+    "mdstats/training_data/structural_selection.py",
+    "mdstats/training_data/target_coverage.py",
+    "mdstats/training_data/target_coverage_exact_neighborhood.py",
+    "mdstats/training_data/target_coverage_feasibility.py",
+    "mdstats/training_data/target_coverage_sparse_index.py",
+    "mdstats/training_data/target_multi_view_qualification.py",
+    "mdstats/training_data/target_multi_view_repair.py",
+    "mdstats/training_data/target_multi_view_selector.py"
+  ],
+  "specification": "docs/specs/training_data/mlff_progress_reporting_format_spec.md",
+  "time_contract": {
+    "elapsed": "HH:MM:SS",
+    "eta_known": "HH:MM:SS",
+    "eta_unknown": "--:--:--"
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "schema": "mdstats.pdf-qa.target-data2-mvplan2.2026-08.v1",
+  "release": "0.20.199a0",
+  "architecture_revision": 66,
+  "status": "pass",
+  "artifacts": {
+    "ARCHITECTURE_NOTES_MLFF_REV66.pdf": {
+      "pages": 1,
+      "preflight": "pass",
+      "visual_review_pages": [
+        1
+      ]
+    },
+    "PATCH_NOTES_0.20.199a0.pdf": {
+      "pages": 1,
+      "preflight": "pass",
+      "visual_review_pages": [
+        1
+      ]
+    },
+    "mlff_target_data2_mvplan2_optimized_multi_view_coverage_roadmap_spec.pdf": {
+      "pages": 1,
+      "preflight": "pass",
+      "visual_review_pages": [
+        1
+      ]
+    },
+    "mlff_training_data_architecture.pdf": {
+      "pages": 209,
+      "preflight": "pass",
+      "visual_review_pages": [
+        1,
+        205,
+        206,
+        207,
+        208,
+        209
+      ]
+    }
+  },
+  "first_page_visual_diff_vs_revision65": {
+    "changed": true,
+    "pct_changed": 0.007685680332739156,
+    "assessment": "expected revision/date metadata only"
+  },
+  "layout_findings": [
+    "No clipping/overflow observed on revision-66 appendix pages.",
+    "Normative roadmap condensed from two pages to one to remove a one-line spill page."
+  ]
+}

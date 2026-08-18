@@ -1,0 +1,240 @@
+{
+  "artifacts": [
+    {
+      "artifact_id": "raw_trajectory",
+      "byte_count": 37529184,
+      "metadata": {
+        "absolute_path_recorded": false,
+        "collection_source_path_match": "exact_path",
+        "source_format": "vasp-vasprun-xml"
+      },
+      "relative_path": "vasprun(1).xml",
+      "role": "raw 300 K Na-LTA trajectory",
+      "schema": "mdstats.pilot-artifact-record.v1",
+      "sha256": "ad54b98c5d927d722ac1cb8a4a3b1fe472a50603a6e8ece5497b06e55a8679eb",
+      "signature": "d247bfb9eac033a7562904fa60b11abec8c1168afbffa6bbeed10b5674e1c9c0",
+      "source_kind": "raw"
+    }
+  ],
+  "blockers": [
+    "Required Stage-11E8a evidence records are missing."
+  ],
+  "dataset": {
+    "atom_count": 168,
+    "duration_ps": 1.499,
+    "frame_count": 1500,
+    "frame_semantics": "trajectory",
+    "material": "Na-LTA",
+    "metadata": {
+      "collection_source_path_match": "exact_path",
+      "fixed_source_cell": true,
+      "force_available": true,
+      "source_bootstrap_stage": "11E8a-S0",
+      "source_format": "vasp-vasprun-xml",
+      "trajectory_filename": "vasprun(1).xml",
+      "velocity_available": true
+    },
+    "mobile_species": "Na",
+    "registration_signature": "efb2acc2cab2225732518617cea51da04a828ce9030b14f24ba9d40e9520df35",
+    "schema": "mdstats.na-lta-300k-pilot-dataset.v1",
+    "signature": "fbe8480bb00119b2409a5d066d47b2aa6c4628207f2822dc4824af7d50c3dbf3",
+    "species_counts": {
+      "Al": 24,
+      "Na": 24,
+      "O": 96,
+      "Si": 24
+    },
+    "temperature_kelvin": 300.0,
+    "trajectory_available": true,
+    "trajectory_digest": "ad54b98c5d927d722ac1cb8a4a3b1fe472a50603a6e8ece5497b06e55a8679eb"
+  },
+  "evidence": [
+    {
+      "accepted_fraction": 1.0,
+      "artifact_ids": [
+        "raw_trajectory"
+      ],
+      "evidence_id": "registration",
+      "messages": [],
+      "metrics": {
+        "collection_source_path_match": "exact_path",
+        "maximum_cell_identity_error": 0.0,
+        "maximum_force_work_error": 0.0,
+        "maximum_position_round_trip_error": 1.1234667099445444e-14,
+        "na_compact_sample_count": 36000,
+        "na_sample_catalog_signature": "4c6071cdddc7d530f31b1a55a8543d2578eff1a9bc52004f5680e1e0254d7723",
+        "reference_atom_count": 0,
+        "registered_cell_fixed": true,
+        "registration_policy_signature": "b28eb7caff60bcd8d15a521a964213ece67c13c7c7786acd91372d3ae4bcc927",
+        "registration_signature": "efb2acc2cab2225732518617cea51da04a828ce9030b14f24ba9d40e9520df35",
+        "source_contract_signature": "88dbc8c46bb9e9002dd63544778a15284c7923344ee5aad82ab26c4a69d723ae",
+        "spatial_policy": "physical",
+        "translation_mode": "none"
+      },
+      "schema": "mdstats.pilot-evidence-record.v1",
+      "signature": "821b01638dc552c217964cf965318b9022f5e1d17cd00d87b356a296649b00b5",
+      "source_digest": "ad54b98c5d927d722ac1cb8a4a3b1fe472a50603a6e8ece5497b06e55a8679eb",
+      "stage_id": "C0A1-C0A3",
+      "status": "resolved",
+      "unresolved_fraction": 0.0
+    },
+    {
+      "accepted_fraction": 0.0,
+      "artifact_ids": [],
+      "evidence_id": "stationarity",
+      "messages": [
+        "Stationarity has not yet been tested on the real trajectory."
+      ],
+      "metrics": {
+        "equilibrium_status": "unknown",
+        "stationarity_status": "unknown",
+        "temporal_weight_units": "ps"
+      },
+      "schema": "mdstats.pilot-evidence-record.v1",
+      "signature": "962b87d6f75eae3c47962a8bcf559b355810ec3a27d49d742a31ad2b44b7206d",
+      "source_digest": "ad54b98c5d927d722ac1cb8a4a3b1fe472a50603a6e8ece5497b06e55a8679eb",
+      "stage_id": "11E0b/E8a",
+      "status": "partial",
+      "unresolved_fraction": 1.0
+    },
+    {
+      "accepted_fraction": 1.0,
+      "artifact_ids": [
+        "raw_trajectory"
+      ],
+      "evidence_id": "force_availability",
+      "messages": [],
+      "metrics": {
+        "force_fraction": 1.0,
+        "force_transform_status": "exact_external_affine_covector",
+        "joint_position_force_fraction": 1.0,
+        "pmf_force_status": "pmf_force_provenance_unknown",
+        "registered_forces_present": true,
+        "source_forces_present": true
+      },
+      "schema": "mdstats.pilot-evidence-record.v1",
+      "signature": "a0c7379751636e9fb9d6644809c3ef774d58f9432a1d93ee20808264cdc801c1",
+      "source_digest": "ad54b98c5d927d722ac1cb8a4a3b1fe472a50603a6e8ece5497b06e55a8679eb",
+      "stage_id": "11E0b/11E3",
+      "status": "resolved",
+      "unresolved_fraction": 0.0
+    },
+    {
+      "accepted_fraction": 1.0,
+      "artifact_ids": [],
+      "evidence_id": "unresolved_fraction",
+      "messages": [],
+      "metrics": {
+        "downstream_site_evidence_executed": false,
+        "source_force_fraction": 1.0,
+        "source_joint_fraction": 1.0,
+        "source_position_fraction": 1.0
+      },
+      "schema": "mdstats.pilot-evidence-record.v1",
+      "signature": "feabfd7fd591c4033a89ccac0cd3e0624ddba77dd9ce43e58c55661fcd4efd4b",
+      "source_digest": "ad54b98c5d927d722ac1cb8a4a3b1fe472a50603a6e8ece5497b06e55a8679eb",
+      "stage_id": "11E8a-S0",
+      "status": "partial",
+      "unresolved_fraction": 0.0
+    },
+    {
+      "accepted_fraction": 1.0,
+      "artifact_ids": [],
+      "evidence_id": "cost",
+      "messages": [],
+      "metrics": {
+        "source_bootstrap_wall_seconds": 0.2767653479997989
+      },
+      "schema": "mdstats.pilot-evidence-record.v1",
+      "signature": "e0305bb19e7829c7dae1e435c6fbd3d5fba69546a529790ea55bcc60184d957c",
+      "source_digest": "ad54b98c5d927d722ac1cb8a4a3b1fe472a50603a6e8ece5497b06e55a8679eb",
+      "stage_id": "11E8a-S0",
+      "status": "resolved",
+      "unresolved_fraction": 0.0
+    },
+    {
+      "accepted_fraction": 1.0,
+      "artifact_ids": [],
+      "evidence_id": "memory",
+      "messages": [],
+      "metrics": {
+        "measurement_kind": "deduplicated ndarray payload estimate",
+        "resident_numerical_payload_bytes": 47846019
+      },
+      "schema": "mdstats.pilot-evidence-record.v1",
+      "signature": "b1bd7737ac88efd2c1ba66c27cca360b7764b504adf441ed048a400fe5ae08c8",
+      "source_digest": "ad54b98c5d927d722ac1cb8a4a3b1fe472a50603a6e8ece5497b06e55a8679eb",
+      "stage_id": "11E8a-S0",
+      "status": "resolved",
+      "unresolved_fraction": 0.0
+    }
+  ],
+  "metadata": {
+    "audit_kind": "real_trajectory_source_bootstrap",
+    "legacy_summaries_replace_raw_trajectory": false,
+    "next_execution_boundary": "11E8a-S1 density and attractor pilot gauge",
+    "rates_inferred": false,
+    "required_evidence_ids": [
+      "registration",
+      "structural_mapping",
+      "stationarity",
+      "kernel_metric_periodization",
+      "reference_cell_sensitivity",
+      "field_certificate",
+      "topology_certificate",
+      "attractor_lineage",
+      "provisional_cores",
+      "temporal_support",
+      "force_availability",
+      "force_density_agreement",
+      "transition_paths",
+      "unresolved_fraction",
+      "cost",
+      "memory"
+    ],
+    "source_bootstrap_complete": true,
+    "source_mismatch": false
+  },
+  "missing_required_evidence": [
+    "structural_mapping",
+    "kernel_metric_periodization",
+    "reference_cell_sensitivity",
+    "field_certificate",
+    "topology_certificate",
+    "attractor_lineage",
+    "provisional_cores",
+    "temporal_support",
+    "force_density_agreement",
+    "transition_paths"
+  ],
+  "outcome": {
+    "conclusions": [
+      "The raw trajectory bytes, C0 registration, and E0b Na position/force samples are source-bound.",
+      "Density, attractor, temporal, transition-path, and observed-network evidence has not yet been executed."
+    ],
+    "global_pmf_status": "unsupported",
+    "observed_connection_count": null,
+    "rate_status": "not_evaluated",
+    "schema": "mdstats.pilot-scientific-outcome.v1",
+    "signature": "5d3a5041523e7339d17b6df9222238bf3cf9ee38949cf3f017a79af6b699f495",
+    "site_center_count": null,
+    "supported_basin_count": null,
+    "transition_path_ensemble_count": null,
+    "undersampled_path_ensemble_count": null
+  },
+  "overall_status": "blocked_missing_required_evidence",
+  "resources": {
+    "metadata": {
+      "memory_measurement_kind": "deduplicated ndarray payload estimate",
+      "scope": "C0 registration plus E0b Na sample catalog"
+    },
+    "output_bytes": 37529184,
+    "peak_memory_bytes": 47846019,
+    "schema": "mdstats.pilot-resource-usage.v1",
+    "signature": "d36141ec4c915f2412909917bcc5b0256cb81e31497f0d60957cfc28157cfbe5",
+    "wall_seconds": 0.2767653479997989,
+    "worker_count": 1
+  },
+  "schema": "mdstats.na-lta-300k-pilot-report.v1",
+  "signature": "a11c6f31e09c1499c028c11a97d5cd5930cac1d6001c1515175e3cee9ee856c2"
+}

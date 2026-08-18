@@ -1,0 +1,40 @@
+{
+  "assessments": [],
+  "authority_version": "mdstats.cueq-phase2.selected-head-source.2026-08.v1",
+  "authorization": {
+    "data6_cueq_execution_authorized": false,
+    "generated_default_change_authorized": false,
+    "original_six_head_cueq_execution_authorized": false,
+    "pseudolabel_cueq_execution_authorized": false,
+    "selected_head_source_cueq_execution_authorized": false,
+    "source_evaluation_cueq_execution_authorized": false
+  },
+  "blocking_reasons": [
+    "CUEQ_DEP1_RUNTIME_FREEZE",
+    "development_path_assessment_missing"
+  ],
+  "content_digest": "d43d3bb04feb52d8ac339065ec7a1e5f279e448f9aafbae4bce9e189f863bd65",
+  "cueq_dep1_passed": false,
+  "cueq_dep1_runtime_digest": "0e59a5c702db7e981cae4d8d451d0b2896e1a0b2c139ed0f4498a5869a2ab497",
+  "passed": false,
+  "policy": {
+    "authority_version": "mdstats.cueq-phase2.selected-head-source.2026-08.v1",
+    "candidate_source_kernel_mode": "cueq_pure",
+    "content_digest": "ab6aaa2ca3e41765e779112e5ca40be5c2d686a1b4b5a14c17864cfe0ca117f2",
+    "minimum_development_assessments": 1,
+    "reference_source_kernel_mode": "e3nn",
+    "require_data6_selection_identity": true,
+    "require_data7_selection_identity": true,
+    "require_difficulty_parity": true,
+    "require_existing_acceleration_parity": true,
+    "require_frozen_transform_pca_fps_parity": true,
+    "require_pseudolabel_lineage_if_requested": true,
+    "schema": "mdstats.cueq-phase2-policy.v1",
+    "selected_head_checkpoint_sha256": "7b6f3cce6d2086164082f1cb5739098de2db990d6a49f0d60e66a3a0f1ae545e",
+    "selected_head_qualification_digest": "0f49db0ff9da291fbb4d70430c71189552a531d0239d92c06d0ca4024b05e365",
+    "source_checkpoint_sha256": "ec00a2705854622fbbd898ccfb7701072fcd674709102d009fb919c1b8cc5dde",
+    "source_head": "omat_pbe",
+    "source_potential_digest": "06bf87891d6addebd3ea300fa23fd6401f0b74897f5676394e99507d03c8fc59"
+  },
+  "schema": "mdstats.cueq-phase2-qualification.v1"
+}

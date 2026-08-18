@@ -1,0 +1,56 @@
+{
+  "schema_version": "mdstats.gfx3d3-focused-qualification.v1",
+  "mdstats_version": "0.20.148a0",
+  "gate": "GFX3D-3",
+  "focused_tests": {
+    "passed": 83,
+    "failed": 0,
+    "skipped": 0,
+    "test_files": [
+      "tests/test_graphics3d_cli.py",
+      "tests/test_graphics3d_contracts.py",
+      "tests/test_graphics3d_layers.py",
+      "tests/test_framework_dynamics.py",
+      "tests/test_graph_3d.py",
+      "tests/test_lta_example_trajectory_input.py"
+    ]
+  },
+  "real_na_lta_smoke": {
+    "source_path": "/mnt/data/dump.prod.Na_lta_300K.old(1).lammpstrj",
+    "source_sha256": "81c86cc40f5a11031f80817213eb558c02348494d1c6cad9b4775a5bc3c9f9cd",
+    "stride": 500,
+    "resolved_frames": 21,
+    "atoms": 168,
+    "present_species": [
+      "Si",
+      "Al",
+      "O",
+      "Na"
+    ],
+    "layers": [
+      [
+        "framework",
+        "framework"
+      ],
+      [
+        "trajectory:Na",
+        "trajectory"
+      ],
+      [
+        "density:Na",
+        "density"
+      ]
+    ],
+    "density_grid_interval_angstrom": 0.35,
+    "density_adaptive_smearing": false,
+    "browser_profile": "compact",
+    "html_size_bytes": 6766660,
+    "manifest_schema": "mdstats.graphics3d.scene-manifest.v1",
+    "result": "pass"
+  },
+  "environment": {
+    "python": "3.13.5",
+    "platform": "Linux-6.18.35-x86_64-with-glibc2.41"
+  },
+  "next_gate": "GFX3D-4"
+}

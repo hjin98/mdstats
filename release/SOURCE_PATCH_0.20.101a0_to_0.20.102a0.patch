@@ -1,0 +1,828 @@
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=dist' '--exclude=build' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_*' old/CHANGELOG.md new/CHANGELOG.md
+--- old/CHANGELOG.md	2026-08-08 00:22:55.090140800 +0000
++++ new/CHANGELOG.md	2026-08-08 01:01:11.606951097 +0000
+@@ -1,3 +1,11 @@
++## 0.20.102a0
++
++- Implement OPT-VERIFY1 bounded-verification optimization.
++- Parse verification structures once into immutable templates and reuse them across cases.
++- Reuse one private MACE calculator per adaptive verification worker/model identity.
++- Replace sampled dense periodic `N x N` minimum-distance matrices with an exact adaptive periodic neighbor-list search.
++- Preserve the 0.20.99a0 MLFF scientific compatibility identity and existing verification-case cache identity.
++
+ # Changelog
+ 
+ ## 0.20.101a0
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=dist' '--exclude=build' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_*' old/PATCH_NOTES_0.20.102a0.md new/PATCH_NOTES_0.20.102a0.md
+--- old/PATCH_NOTES_0.20.102a0.md	1970-01-01 00:00:00.000000000 +0000
++++ new/PATCH_NOTES_0.20.102a0.md	2026-08-08 01:01:11.610703639 +0000
+@@ -0,0 +1,11 @@
++# mdstats 0.20.102a0 patch notes
++
++This release implements MLFF roadmap stage **OPT-VERIFY1**.
++
++- verification structures are parsed once and copied per independent NVE case;
++- each adaptive worker retains at most one private calculator and reuses it for adjacent cases on the same model/runtime identity;
++- minimum pair distance uses an exact adaptive periodic neighbor list instead of allocating a full `N x N` MIC matrix at each sample;
++- orthorhombic/triclinic/sparse-cell equivalence tests preserve the former numerical result;
++- package runtime advances to 0.20.102a0 while the frozen MLFF scientific compatibility token remains 0.20.99a0.
++
++No verification threshold, NVE integration setting, model identity, selection policy, or scientific acceptance rule changes.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=dist' '--exclude=build' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_*' old/docs/arch_manuals/README.md new/docs/arch_manuals/README.md
+--- old/docs/arch_manuals/README.md	2026-08-08 00:26:54.568181651 +0000
++++ new/docs/arch_manuals/README.md	2026-08-08 01:01:25.621570261 +0000
+@@ -45,7 +45,7 @@
+ ## MLFF architecture
+ 
+ - `mlff_training_data_architecture.{md,pdf}`: canonical MLFF-DATA architecture
+-  through the frozen 0.20.99a0 scientific campaign identity and the 0.20.101a0
++  through the frozen 0.20.99a0 scientific campaign identity and the 0.20.102a0
+   execution-optimization line, including the recorded post-first-campaign staged
+   optimization roadmap (`OPT-EVAL1` through `OPT-CTRL1`). The generic core owns provenance, eligibility,
+   partitioning, leakage control, selection orchestration, replay, precision,
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=dist' '--exclude=build' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_*' old/docs/arch_manuals/mlff_training_data_architecture.md new/docs/arch_manuals/mlff_training_data_architecture.md
+--- old/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-08 00:51:15.454951097 +0000
++++ new/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-08 01:04:48.897327835 +0000
+@@ -3875,12 +3875,16 @@
+ included; CPU preparation and metric/persistence finalization are excluded. The hard
+ live VRAM safeguard remains.
+ 
+-CPU stage concurrency and backpressure are bounded by
+-`parallel_evaluation_prepare_jobs`, `parallel_evaluation_finalize_jobs`, and
+-`evaluation_pipeline_buffer_jobs`; zero selects conservative automatic values. A full
+-finalization backlog applies backpressure to inference so fresh prediction arrays cannot
+-accumulate without bound. Completed accelerator slots are refilled before parent-side
+-selection/model-publication callbacks run.
++CPU stage concurrency and backpressure are controlled by three bounded settings:
++
++- `parallel_evaluation_prepare_jobs`;
++- `parallel_evaluation_finalize_jobs`;
++- `evaluation_pipeline_buffer_jobs`.
++
++Zero selects conservative automatic values. A full finalization backlog applies
++backpressure to inference so fresh prediction arrays cannot accumulate without bound.
++Completed accelerator slots are refilled before parent-side selection/model-publication
++callbacks run.
+ 
+ Per-checkpoint progress reports total wall time plus prepare/inference/finalization stage
+ time. These timings are diagnostic only and do not change prediction, graph, metric, or
+@@ -3890,19 +3894,32 @@
+ 
+ ## OPT-VERIFY1 - verification reuse and nearest-pair scaling
+ 
+-Bounded verification should reuse one private calculator per active worker/model
+-rather than reconstructing a calculator independently for every
+-model--structure--temperature case.  Structures should be parsed once into immutable
+-templates and copied for independent dynamics cases.
+-
+-The current minimum-distance safety monitor must be migrated away from a full
+-periodic `N x N` distance matrix.  Verification requires only the nearest pair, so
+-it should use the existing periodic cell-list/neighbor-list infrastructure or an
+-exact equivalent.  This removes the remaining avoidable `O(A^2)` memory/time path
+-for large replicated MD cells while preserving the exact minimum-distance result.
+-
+-Acceptance requires identical verification decisions on bounded reference cases and
+-separate regression coverage for periodic/triclinic cells.
++`OPT-VERIFY1` is implemented in mdstats 0.20.102a0. Bounded verification now parses
++each authenticated structure file at most once into a calculator-free ASE template;
++independent NVE cases copy that template before velocity initialization and dynamics.
++If every case is already present in the durable verification cache, structures are
++not parsed at all.
++
++Each adaptive verification worker retains at most one private MACE calculator keyed
++by model path, device, dtype, and acceleration-policy digest. Adjacent cases on the
++same worker/model therefore reuse model deserialization and accelerator transfer. A
++worker that moves to another model replaces its cached calculator, bounding resident
++model state by scheduler concurrency. Mutable calculators are never shared between
++threads.
++
++The minimum-distance safety monitor no longer calls the full periodic `N x N`
++distance matrix. It uses an adaptive periodic neighbor-list search beginning at a
++local 2 angstrom radius and expands only when no distinct pair is found. The first
++nonempty search yields the exact global nearest pair because every omitted pair lies
++at or beyond the active radius. A wrapped-position bounding-box diagonal provides a
++guaranteed terminal radius without allocating quadratic storage. Orthorhombic and
++fully triclinic regression cases match the former dense minimum-image oracle.
++
++A release-host 1000-atom microbenchmark measured approximately 4.76 s for the old
++dense matrix versus 0.17 s for the adaptive neighbor-list diagnostic (~28x faster
++for that sampled frame). This is diagnostic evidence, not a promised end-to-end NVE
++speedup. Detailed ownership and equivalence requirements are recorded in
++`docs/specs/training_data/mlff_opt_verify1_verification_reuse_neighbor_scaling_spec.md`.
+ 
+ ## OPT-CTRL1 - control-plane and telemetry cleanup
+ 
+@@ -3946,5 +3963,5 @@
+ 5. representative timing evidence demonstrates the intended improvement; and
+ 6. the legacy fallback, when retained, remains fail-closed and clearly reported.
+ 
+-The next implementation follow-up from this roadmap is **`OPT-VERIFY1`**.
++The next implementation follow-up from this roadmap is **`OPT-CTRL1`**.
+ 
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=dist' '--exclude=build' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_*' old/docs/specs/training_data/mlff_opt_verify1_verification_reuse_neighbor_scaling_spec.md new/docs/specs/training_data/mlff_opt_verify1_verification_reuse_neighbor_scaling_spec.md
+--- old/docs/specs/training_data/mlff_opt_verify1_verification_reuse_neighbor_scaling_spec.md	1970-01-01 00:00:00.000000000 +0000
++++ new/docs/specs/training_data/mlff_opt_verify1_verification_reuse_neighbor_scaling_spec.md	2026-08-08 01:01:00.234951097 +0000
+@@ -0,0 +1,99 @@
++# OPT-VERIFY1 verification reuse and nearest-pair scaling
++
++Status: implemented in mdstats 0.20.102a0.
++
++## Scope
++
++OPT-VERIFY1 changes only bounded verification execution. It does not change model
++weights, verification case identities, thresholds, NVE integration parameters,
++checkpoint/model selection, or scientific acceptance policy.
++
++The stage removes three repeated-work paths:
++
++1. verification structures are parsed once into immutable ASE templates and copied
++   for independent NVE cases;
++2. each adaptive verification worker retains at most one private MACE calculator,
++   reusing model deserialization/device transfer for adjacent cases on the same
++   model while never sharing mutable calculator state between threads;
++3. sampled minimum pair distance no longer constructs a full periodic `N x N`
++   distance matrix.
++
++## Private calculator ownership
++
++A calculator cache is thread-local. Its identity contains the absolute model path,
++device, dtype, and acceleration-policy digest. A cache hit therefore requires the
++same deployed model and numerical runtime policy.
++
++Only one calculator is retained per worker. Moving to another model replaces the
++worker's previous calculator. Resident model multiplicity is therefore bounded by
++the adaptive scheduler worker count rather than by the number of
++model--structure--temperature cases.
++
++Explicit calculators supplied to `_nve_verify` remain supported for tests and
++external/internal compatibility.
++
++## Structure template reuse
++
++Verification structure files are still SHA-256 authenticated exactly as before.
++If every verification case is already cached, structure files are not parsed at all.
++Otherwise each configured structure is parsed once in the parent process and stored
++as a calculator-free immutable template. Every NVE case receives an independent
++`Atoms.copy()` before velocity initialization or dynamics.
++
++## Exact nearest-pair search
++
++The former implementation called `Atoms.get_all_distances(mic=True)`, materializing
++an `N x N` matrix at every diagnostic sample.
++
++The replacement uses ASE's periodic neighbor-list search with an adaptive radius.
++The radius begins at 2 angstrom or the guaranteed search bound, whichever is
++smaller. If no distinct atom pair is present, the radius grows geometrically.
++
++As soon as a distinct pair is found, the reported minimum is globally exact: every
++pair omitted by the neighbor list lies at or beyond the active radius, while at
++least one returned pair lies within it.
++
++The final guaranteed radius is slightly larger than the Cartesian bounding-box
++diagonal of wrapped positions. The direct displacement of every distinct pair is
++bounded by this diagonal, while the minimum-image distance cannot exceed a valid
++direct displacement. Thus a result is guaranteed for any configuration containing
++at least two atoms.
++
++The common condensed-phase path therefore uses a local neighbor-list stencil and
++avoids quadratic memory. Sparse pathological cells may expand to a large cutoff,
++but no dense `N x N` matrix is constructed.
++
++## Compatibility
++
++The package runtime version advances to 0.20.102a0. The frozen MLFF scientific
++compatibility token remains 0.20.99a0 and the verification runtime compatibility
++token remains 0.20.85a0 because the numerical verification case definition is
++unchanged.
++
++Existing completed verification-case caches remain valid. Newly executed cases add
++three diagnostic fields only:
++
++- `calculator_reused`;
++- `structure_template_reused`;
++- `minimum_distance_backend = periodic_neighbor_list_adaptive_v1`.
++
++## Acceptance gates
++
++The implementation is accepted only if:
++
++1. orthorhombic periodic nearest-pair values match the prior dense MIC oracle;
++2. fully triclinic periodic nearest-pair values match the prior dense MIC oracle;
++3. sparse-cell radius expansion remains exact;
++4. the new implementation executes when `get_all_distances` is forbidden;
++5. repeated NVE cases on one worker/model instantiate the calculator once;
++6. structure templates eliminate repeated structure parsing;
++7. existing bounded-NVE pass/fail logic is unchanged;
++8. broader campaign/checkpoint/restart/evaluation tests remain green.
++
++## Performance evidence
++
++On the release host, a 1000-atom periodic simple lattice with 2.2 angstrom nearest
++spacing required approximately 4.76 s for the former dense MIC matrix and 0.17 s
++for the adaptive neighbor-list search, about 28x faster for one sampled diagnostic
++frame. This is a host-specific microbenchmark, not a promised total verification
++speedup. Model inference and NVE integration may still dominate total wall time.
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=dist' '--exclude=build' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_*' old/mdstats/_version.py new/mdstats/_version.py
+--- old/mdstats/_version.py	2026-08-08 00:22:55.077919838 +0000
++++ new/mdstats/_version.py	2026-08-08 01:00:32.875350482 +0000
+@@ -1,3 +1,3 @@
+ """Package version."""
+ 
+-__version__ = "0.20.101a0"
++__version__ = "0.20.102a0"
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=dist' '--exclude=build' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_*' old/mdstats/data/observable_owner_manuals.json new/mdstats/data/observable_owner_manuals.json
+--- old/mdstats/data/observable_owner_manuals.json	2026-08-08 00:22:55.078005823 +0000
++++ new/mdstats/data/observable_owner_manuals.json	2026-08-08 01:00:32.875434786 +0000
+@@ -1,6 +1,6 @@
+ {
+   "schema": "mdstats.observable-owner-manual-index.v1",
+-  "package_version": "0.20.101a0",
++  "package_version": "0.20.102a0",
+   "manuals": {
+     "structural-observables-architecture": {
+       "source_path": "docs/arch_manuals/structural_observables_architecture.md",
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=dist' '--exclude=build' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_*' old/mdstats/training_data/campaign_cli.py new/mdstats/training_data/campaign_cli.py
+--- old/mdstats/training_data/campaign_cli.py	2026-08-08 00:22:55.087751695 +0000
++++ new/mdstats/training_data/campaign_cli.py	2026-08-08 01:00:32.885452651 +0000
+@@ -56,9 +56,10 @@
+     report_inference_worker_phase,
+ )
+ 
+-# 0.20.100a0 changes plotting policy and 0.20.101a0 changes only evaluation
+-# execution topology. Neither changes the frozen MLFF scientific/materialization
+-# identity, so existing 0.20.99a0 campaign state and prediction caches remain reusable.
++# 0.20.100a0 changes plotting policy, 0.20.101a0 changes evaluation execution
++# topology, and 0.20.102a0 changes only bounded-verification execution/scaling.
++# None changes the frozen MLFF scientific/materialization identity, so existing
++# 0.20.99a0 campaign state and prediction caches remain reusable.
+ MLFF_DATA9B3_VERSION = "0.20.99a0"
+ # Parallel scheduling does not change the scientific NVE case identity. Keep
+ # the 0.20.85a0 runtime token so completed verification caches remain reusable.
+@@ -9467,11 +9468,129 @@
+     return 0
+ 
+ 
++_VERIFICATION_WORKER_LOCAL = threading.local()
++
++
+ def _minimum_distance(atoms: Any) -> float:
++    """Return the exact nearest distinct-atom distance without an N x N matrix.
++
++    The search uses ASE's periodic neighbor-list implementation with an
++    adaptive radius.  As soon as at least one distinct pair is found, the
++    minimum returned distance is globally exact: every omitted pair lies at or
++    beyond the active search radius.  The final radius is bounded by the
++    Cartesian bounding-box diagonal of wrapped positions, which always contains
++    the direct displacement of every distinct pair and therefore guarantees a
++    result for ``len(atoms) >= 2``.
++
++    This keeps the common condensed-phase path near linear in atom count and
++    removes verification's former dense periodic distance matrix.
++    """
+     import numpy as np
+-    distances = atoms.get_all_distances(mic=True)
+-    mask = ~np.eye(len(atoms), dtype=bool)
+-    return float(np.min(distances[mask]))
++    from ase.neighborlist import neighbor_list
++
++    n_atoms = len(atoms)
++    if n_atoms < 2:
++        raise ValueError("Minimum pair distance requires at least two atoms.")
++    positions = np.asarray(atoms.get_positions(wrap=True), dtype=float)
++    if positions.shape != (n_atoms, 3) or np.any(~np.isfinite(positions)):
++        raise ValueError("Verification positions must be finite with shape (n_atoms, 3).")
++
++    extent = np.ptp(positions, axis=0)
++    guaranteed_radius = float(np.linalg.norm(extent))
++    scale = max(1.0, guaranteed_radius, float(np.max(np.abs(positions), initial=0.0)))
++    epsilon = max(1.0e-10, np.finfo(float).eps * scale * 256.0)
++    guaranteed_radius = max(guaranteed_radius + epsilon, epsilon)
++
++    # Most condensed-matter verification cells have a nearest pair below 2 A.
++    # Starting there keeps the cell-list stencil local even for very large
++    # replicated cells.  Sparse/pathological cells expand geometrically until
++    # the guaranteed direct-displacement radius is reached.
++    cutoff = min(2.0, guaranteed_radius)
++    while True:
++        first, second, distances = neighbor_list(
++            "ijd", atoms, cutoff, self_interaction=False
++        )
++        first = np.asarray(first, dtype=np.int64)
++        second = np.asarray(second, dtype=np.int64)
++        distances = np.asarray(distances, dtype=float)
++        distinct = first != second
++        if np.any(distinct):
++            accepted = distances[distinct]
++            if np.any(~np.isfinite(accepted)):
++                raise ValueError("Neighbor-list distance search produced non-finite values.")
++            return float(np.min(accepted))
++        if cutoff >= guaranteed_radius:
++            # The direct Cartesian separation of every pair is <= the wrapped
++            # bounding-box diagonal. Reaching this branch for n>=2 therefore
++            # indicates a neighbor-list/runtime inconsistency rather than a
++            # legitimate no-pair configuration.
++            raise RuntimeError(
++                "Periodic neighbor-list search did not return a distinct atom pair "
++                "within the guaranteed direct-displacement radius."
++            )
++        cutoff = min(guaranteed_radius, max(cutoff * 2.0, cutoff + epsilon))
++
++
++def _verification_calculator_cache_key(
++    model_path: Path,
++    *,
++    device: str,
++    dtype: str,
++    acceleration_policy: Any,
++) -> tuple[str, str, str, str]:
++    return (
++        str(model_path.resolve()),
++        str(device),
++        str(dtype),
++        str(getattr(acceleration_policy, "policy_digest", repr(acceleration_policy))),
++    )
++
++
++def _worker_cached_nve_calculator(
++    model_path: Path,
++    *,
++    device: str,
++    dtype: str,
++    acceleration_policy: Any,
++) -> tuple[Any, bool]:
++    """Return one private calculator cached on the current verification worker.
++
++    Only one calculator is retained per worker thread.  This bounds resident
++    model state by the scheduler's worker count while reusing model
++    deserialization/device transfer across adjacent structure/temperature cases.
++    No mutable ASE/MACE calculator is shared between threads.
++    """
++    key = _verification_calculator_cache_key(
++        model_path,
++        device=device,
++        dtype=dtype,
++        acceleration_policy=acceleration_policy,
++    )
++    cached = getattr(_VERIFICATION_WORKER_LOCAL, "nve_calculator", None)
++    if cached is not None and cached[0] == key:
++        return cached[1], True
++    calculator = _nve_calculator(
++        model_path,
++        device=device,
++        dtype=dtype,
++        acceleration_policy=acceleration_policy,
++    )
++    _VERIFICATION_WORKER_LOCAL.nve_calculator = (key, calculator)
++    return calculator, False
++
++
++def _load_verification_structure_templates(
++    structures: Sequence[Path],
++) -> dict[str, Any]:
++    """Parse immutable verification structures once in the parent thread."""
++    from ase.io import read
++
++    templates: dict[str, Any] = {}
++    for structure in structures:
++        atoms = read(structure)
++        atoms.calc = None
++        templates[str(structure)] = atoms
++    return templates
+ 
+ 
+ @mace_runtime_warning_handled("bounded MACE NVE calculator construction")
+@@ -9509,6 +9628,8 @@
+     velocity_seed: int,
+     sample_interval_steps: int = 10,
+     calculator: Any | None = None,
++    structure_atoms: Any | None = None,
++    reuse_worker_calculator: bool = False,
+ ) -> dict[str, Any]:
+     import numpy as np
+     from ase import units
+@@ -9516,21 +9637,32 @@
+     from ase.md.velocitydistribution import MaxwellBoltzmannDistribution, Stationary, ZeroRotation
+     from ase.md.verlet import VelocityVerlet
+     report_inference_worker_phase("loading verification structure")
+-    atoms = read(structure)
++    atoms = read(structure) if structure_atoms is None else structure_atoms.copy()
++    atoms.calc = None
+     active_calculator = calculator
++    calculator_reused = calculator is not None
+     if active_calculator is None:
+         # Model deserialization/device transfer dominates many short bounded-NVE
+         # cases, so begin mixed-stage telemetry here rather than at the later
+         # first force evaluation.
+         mark_inference_workload_started("loading verification MACE model")
+-        active_calculator = _nve_calculator(
+-            model_path,
+-            device=device,
+-            dtype=dtype,
+-            acceleration_policy=acceleration_policy,
+-        )
++        if reuse_worker_calculator:
++            active_calculator, calculator_reused = _worker_cached_nve_calculator(
++                model_path,
++                device=device,
++                dtype=dtype,
++                acceleration_policy=acceleration_policy,
++            )
++        else:
++            active_calculator = _nve_calculator(
++                model_path,
++                device=device,
++                dtype=dtype,
++                acceleration_policy=acceleration_policy,
++            )
++            calculator_reused = False
+     atoms.calc = active_calculator
+-    if calculator is not None:
++    if calculator is not None or calculator_reused:
+         mark_inference_workload_started("initializing verification dynamics")
+     report_inference_worker_phase("initializing verification dynamics")
+     rng = np.random.default_rng(int(velocity_seed))
+@@ -9567,6 +9699,9 @@
+         "sample_interval_steps": interval,
+         "sample_count": len(sample_steps),
+         "acceleration_backend": acceleration_policy.backend.value,
++        "calculator_reused": bool(calculator_reused),
++        "structure_template_reused": bool(structure_atoms is not None),
++        "minimum_distance_backend": "periodic_neighbor_list_adaptive_v1",
+         "energy_drift_ev_per_atom_per_ps": slope,
+         "absolute_energy_drift_ev_per_atom_per_ps": abs(slope),
+         "minimum_pair_distance_angstrom": min(min_distances),
+@@ -9734,6 +9869,8 @@
+     structure_sha256_by_path = {
+         str(path): _sha256(path) for path in resolved_structures
+     }
++    # Parsed only if at least one NVE case is not already cached.
++    structure_templates: dict[str, Any] = {}
+ 
+     cases: list[tuple[str, Any, Path, float, int]] = []
+     for member in members:
+@@ -9818,15 +9955,23 @@
+             )
+             continue
+ 
++        if not structure_templates:
++            structure_templates = _load_verification_structure_templates(resolved_structures)
++            _ok(
++                f"verification structures parsed once: {len(structure_templates)} template(s)"
++            )
++
+         def execute_case(
+             *,
+             active_model: Path = model,
+             active_structure: Path = structure,
++            active_structure_atoms: Any = structure_templates[str(structure)],
+             active_temperature: float = temperature,
+             active_steps: int = case_steps,
+         ) -> dict[str, Any]:
+-            # Each active job owns its calculator. Sharing a mutable ASE/MACE
+-            # calculator between threads would corrupt model/head/atoms state.
++            # OPT-VERIFY1 keeps one calculator private to each scheduler worker.
++            # Adjacent cases on the same worker/model reuse deserialization and
++            # device transfer, while no mutable calculator crosses threads.
+             return _nve_verify(
+                 active_model,
+                 active_structure,
+@@ -9839,6 +9984,8 @@
+                 velocity_seed=velocity_seed,
+                 sample_interval_steps=sample_interval_steps,
+                 calculator=None,
++                structure_atoms=active_structure_atoms,
++                reuse_worker_calculator=True,
+             )
+ 
+         pending_verification_tasks.append(
+@@ -9851,6 +9998,7 @@
+                 done_detail=lambda value, wall: (
+                     f"drift={value['absolute_energy_drift_ev_per_atom_per_ps']*1000:.2f} meV/atom/ps, "
+                     f"r_min={value['minimum_pair_distance_angstrom']:.2f} A, "
++                    f"calculator={'reused' if value.get('calculator_reused') else 'loaded'}, "
+                     f"wall={_ProgressReporter._duration(wall)}"
+                 ),
+                 on_success=lambda value, active_cache_key=cache_key,
+@@ -9964,6 +10112,12 @@
+             "full_steps": steps,
+             "sample_interval_steps": sample_interval_steps,
+             "cached_cases_reused": reused_cases,
++            "calculator_reuse_enabled": True,
++            "calculator_reused_cases": sum(
++                bool(v.get("calculator_reused", False)) for v in results
++            ),
++            "structure_templates_parsed": len(structure_templates),
++            "minimum_distance_backend": "periodic_neighbor_list_adaptive_v1",
+         },
+         "thresholds": {
+             "maximum_energy_drift_ev_per_atom_per_ps": drift_limit,
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=dist' '--exclude=build' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_*' old/pyproject.toml new/pyproject.toml
+--- old/pyproject.toml	2026-08-08 00:22:55.077734724 +0000
++++ new/pyproject.toml	2026-08-08 01:00:32.875155445 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.101a0"
++version = "0.20.102a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=dist' '--exclude=build' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_*' old/tests/test_mlff_data9b3a_cueq_specification.py new/tests/test_mlff_data9b3a_cueq_specification.py
+--- old/tests/test_mlff_data9b3a_cueq_specification.py	2026-08-07 21:18:11.000000000 +0000
++++ new/tests/test_mlff_data9b3a_cueq_specification.py	2026-08-08 01:01:11.611234390 +0000
+@@ -16,7 +16,6 @@
+ 
+ 
+ def test_data9b3a_version_and_documented_surface() -> None:
+-    assert mdstats.__version__ == "0.20.99a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+     text = "\n".join(
+         path.read_text(encoding="utf-8")
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=dist' '--exclude=build' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_*' old/tests/test_mlff_opt_eval4_specification.py new/tests/test_mlff_opt_eval4_specification.py
+--- old/tests/test_mlff_opt_eval4_specification.py	2026-08-08 00:28:28.387158367 +0000
++++ new/tests/test_mlff_opt_eval4_specification.py	2026-08-08 01:02:11.225282477 +0000
+@@ -11,9 +11,9 @@
+ 
+ 
+ def test_opt_eval4_release_identity_preserves_mlff_compatibility() -> None:
+-    assert mdstats.__version__ == "0.20.101a0"
++    assert mdstats.__version__ == "0.20.102a0"
+     assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
+-    assert 'version = "0.20.101a0"' in (ROOT / "pyproject.toml").read_text()
++    assert 'version = "0.20.102a0"' in (ROOT / "pyproject.toml").read_text()
+ 
+ 
+ def test_opt_eval4_architecture_and_spec_record_pipeline_contract() -> None:
+@@ -24,7 +24,7 @@
+     ).read_text()
+     assert "OPT-EVAL4 - staged evaluation pipeline" in manual
+     assert "implemented in mdstats 0.20.101a0" in manual
+-    assert "next implementation follow-up from this roadmap is **`OPT-VERIFY1`**" in manual
++    assert "next implementation follow-up from this roadmap is **`OPT-CTRL1`**" in manual
+     assert "CPU monitor/cache preparation" in manual
+     assert "accelerator-admitted checkpoint materialization" in manual
+     assert "Status: implemented in mdstats 0.20.101a0." in spec
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=dist' '--exclude=build' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_*' old/tests/test_mlff_opt_verify1.py new/tests/test_mlff_opt_verify1.py
+--- old/tests/test_mlff_opt_verify1.py	1970-01-01 00:00:00.000000000 +0000
++++ new/tests/test_mlff_opt_verify1.py	2026-08-08 00:59:57.570951097 +0000
+@@ -0,0 +1,213 @@
++from __future__ import annotations
++
++from pathlib import Path
++from types import SimpleNamespace
++
++import numpy as np
++import pytest
++
++from mdstats.training_data import campaign_cli
++
++
++def _dense_minimum(atoms) -> float:
++    distances = atoms.get_all_distances(mic=True)
++    mask = ~np.eye(len(atoms), dtype=bool)
++    return float(np.min(distances[mask]))
++
++
++def test_neighbor_minimum_matches_dense_orthorhombic() -> None:
++    from ase import Atoms
++
++    rng = np.random.default_rng(1234)
++    atoms = Atoms(
++        "Li32",
++        positions=rng.uniform(0.0, 12.0, size=(32, 3)),
++        cell=[12.0, 13.0, 14.0],
++        pbc=True,
++    )
++    assert campaign_cli._minimum_distance(atoms) == pytest.approx(
++        _dense_minimum(atoms), rel=1e-12, abs=1e-12
++    )
++
++
++def test_neighbor_minimum_matches_dense_triclinic() -> None:
++    from ase import Atoms
++
++    rng = np.random.default_rng(4321)
++    cell = np.array(
++        [[10.0, 0.0, 0.0], [3.1, 9.7, 0.0], [1.8, 2.4, 11.2]], dtype=float
++    )
++    scaled = rng.uniform(0.0, 1.0, size=(40, 3))
++    atoms = Atoms("Na40", scaled_positions=scaled, cell=cell, pbc=True)
++    assert campaign_cli._minimum_distance(atoms) == pytest.approx(
++        _dense_minimum(atoms), rel=1e-12, abs=1e-12
++    )
++
++
++def test_neighbor_minimum_does_not_call_dense_matrix(monkeypatch) -> None:
++    from ase import Atoms
++
++    atoms = Atoms(
++        "Li4",
++        positions=[[0, 0, 0], [1.5, 0, 0], [0, 2.0, 0], [0, 0, 2.5]],
++        cell=[20, 20, 20],
++        pbc=True,
++    )
++
++    def forbidden(*args, **kwargs):
++        raise AssertionError("dense distance matrix must not be used")
++
++    monkeypatch.setattr(atoms, "get_all_distances", forbidden)
++    assert campaign_cli._minimum_distance(atoms) == pytest.approx(1.5)
++
++
++def test_neighbor_minimum_expands_for_sparse_cell() -> None:
++    from ase import Atoms
++
++    atoms = Atoms(
++        "Li2",
++        positions=[[0, 0, 0], [7.0, 0, 0]],
++        cell=[30, 30, 30],
++        pbc=True,
++    )
++    assert campaign_cli._minimum_distance(atoms) == pytest.approx(7.0)
++
++
++def test_worker_calculator_cache_reuses_only_same_identity(monkeypatch, tmp_path: Path) -> None:
++    calls: list[str] = []
++
++    def fake_calculator(model_path, *, device, dtype, acceleration_policy):
++        calls.append(str(model_path))
++        return object()
++
++    monkeypatch.setattr(campaign_cli, "_nve_calculator", fake_calculator)
++    campaign_cli._VERIFICATION_WORKER_LOCAL.__dict__.clear()
++    policy = SimpleNamespace(policy_digest="policy")
++    model_a = tmp_path / "a.model"
++    model_b = tmp_path / "b.model"
++
++    first, reused = campaign_cli._worker_cached_nve_calculator(
++        model_a, device="cpu", dtype="float32", acceleration_policy=policy
++    )
++    assert reused is False
++    second, reused = campaign_cli._worker_cached_nve_calculator(
++        model_a, device="cpu", dtype="float32", acceleration_policy=policy
++    )
++    assert reused is True
++    assert second is first
++    third, reused = campaign_cli._worker_cached_nve_calculator(
++        model_b, device="cpu", dtype="float32", acceleration_policy=policy
++    )
++    assert reused is False
++    assert third is not first
++    assert calls == [str(model_a), str(model_b)]
++
++
++def test_verification_structure_templates_parse_once(monkeypatch, tmp_path: Path) -> None:
++    from ase import Atoms
++    import ase.io
++
++    paths = [tmp_path / "a.xyz", tmp_path / "b.xyz"]
++    calls: list[Path] = []
++
++    def fake_read(path):
++        calls.append(Path(path))
++        return Atoms("Li2", positions=[[0, 0, 0], [2, 0, 0]], cell=[10, 10, 10], pbc=True)
++
++    monkeypatch.setattr(ase.io, "read", fake_read)
++    templates = campaign_cli._load_verification_structure_templates(paths)
++    assert calls == paths
++    assert set(templates) == {str(path) for path in paths}
++    assert all(value.calc is None for value in templates.values())
++
++
++def test_nve_verify_uses_structure_template_without_reparse(tmp_path: Path, monkeypatch) -> None:
++    from ase import Atoms
++    from ase.calculators.calculator import Calculator, all_changes
++    import ase.io
++
++    class ZeroCalculator(Calculator):
++        implemented_properties = ["energy", "forces"]
++
++        def calculate(self, atoms=None, properties=("energy",), system_changes=all_changes):
++            super().calculate(atoms, properties, system_changes)
++            self.results["energy"] = 0.0
++            self.results["forces"] = np.zeros((len(atoms), 3), dtype=float)
++
++    def forbidden_read(*args, **kwargs):
++        raise AssertionError("structure template should avoid ase.io.read")
++
++    monkeypatch.setattr(ase.io, "read", forbidden_read)
++    template = Atoms(
++        "Li3",
++        positions=[[0, 0, 0], [2, 0, 0], [0, 2, 0]],
++        cell=[20, 20, 20],
++        pbc=True,
++    )
++    acceleration = SimpleNamespace(backend=SimpleNamespace(value="e3nn"))
++    result = campaign_cli._nve_verify(
++        tmp_path / "unused.model",
++        tmp_path / "unused.xyz",
++        device="cpu",
++        dtype="float32",
++        acceleration_policy=acceleration,
++        temperature=10.0,
++        timestep_fs=0.1,
++        steps=5,
++        velocity_seed=7,
++        sample_interval_steps=5,
++        calculator=ZeroCalculator(),
++        structure_atoms=template,
++    )
++    assert result["structure_template_reused"] is True
++    assert result["minimum_distance_backend"] == "periodic_neighbor_list_adaptive_v1"
++
++
++def test_nve_worker_reuses_calculator_across_cases(monkeypatch, tmp_path: Path) -> None:
++    from ase import Atoms
++    from ase.calculators.calculator import Calculator, all_changes
++
++    class ZeroCalculator(Calculator):
++        implemented_properties = ["energy", "forces"]
++
++        def calculate(self, atoms=None, properties=("energy",), system_changes=all_changes):
++            super().calculate(atoms, properties, system_changes)
++            self.results["energy"] = 0.0
++            self.results["forces"] = np.zeros((len(atoms), 3), dtype=float)
++
++    calls = 0
++
++    def fake_calculator(*args, **kwargs):
++        nonlocal calls
++        calls += 1
++        return ZeroCalculator()
++
++    monkeypatch.setattr(campaign_cli, "_nve_calculator", fake_calculator)
++    campaign_cli._VERIFICATION_WORKER_LOCAL.__dict__.clear()
++    template = Atoms(
++        "Li3",
++        positions=[[0, 0, 0], [2, 0, 0], [0, 2, 0]],
++        cell=[20, 20, 20],
++        pbc=True,
++    )
++    acceleration = SimpleNamespace(
++        backend=SimpleNamespace(value="e3nn"), policy_digest="same-policy"
++    )
++    kwargs = dict(
++        model_path=tmp_path / "model.model",
++        structure=tmp_path / "unused.xyz",
++        device="cpu",
++        dtype="float32",
++        acceleration_policy=acceleration,
++        timestep_fs=0.1,
++        steps=2,
++        velocity_seed=7,
++        sample_interval_steps=2,
++        structure_atoms=template,
++        reuse_worker_calculator=True,
++    )
++    first = campaign_cli._nve_verify(temperature=10.0, **kwargs)
++    second = campaign_cli._nve_verify(temperature=20.0, **kwargs)
++    assert first["calculator_reused"] is False
++    assert second["calculator_reused"] is True
++    assert calls == 1
+diff -ruN '--exclude=*.pdf' '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=dist' '--exclude=build' '--exclude=*.egg-info' '--exclude=SOURCE_PATCH_*' old/tests/test_mlff_opt_verify1_specification.py new/tests/test_mlff_opt_verify1_specification.py
+--- old/tests/test_mlff_opt_verify1_specification.py	1970-01-01 00:00:00.000000000 +0000
++++ new/tests/test_mlff_opt_verify1_specification.py	2026-08-08 01:01:54.546951097 +0000
+@@ -0,0 +1,42 @@
++from __future__ import annotations
++
++from pathlib import Path
++import inspect
++
++import mdstats
++from mdstats.training_data import campaign_cli
++
++ROOT = Path(__file__).resolve().parents[1]
++
++
++def test_opt_verify1_release_identity_preserves_mlff_compatibility() -> None:
++    assert mdstats.__version__ == "0.20.102a0"
++    assert campaign_cli.MLFF_DATA9B3_VERSION == "0.20.99a0"
++    assert campaign_cli.VERIFICATION_RUNTIME_COMPATIBILITY_VERSION == "0.20.85a0"
++    assert 'version = "0.20.102a0"' in (ROOT / "pyproject.toml").read_text()
++
++
++def test_opt_verify1_architecture_and_spec_record_contract() -> None:
++    manual = (ROOT / "docs/arch_manuals/mlff_training_data_architecture.md").read_text()
++    spec = (
++        ROOT
++        / "docs/specs/training_data/mlff_opt_verify1_verification_reuse_neighbor_scaling_spec.md"
++    ).read_text()
++    assert "OPT-VERIFY1 - verification reuse and nearest-pair scaling" in manual
++    assert "implemented in mdstats 0.20.102a0" in manual
++    assert "next implementation follow-up from this roadmap is **`OPT-CTRL1`**" in manual
++    assert "Status: implemented in mdstats 0.20.102a0." in spec
++    assert "thread-local" in spec.lower()
++    assert "neighbor-list" in spec.lower()
++    assert "triclinic" in spec.lower()
++
++
++def test_opt_verify1_verify_path_uses_templates_and_worker_cache() -> None:
++    source = inspect.getsource(campaign_cli.command_verify)
++    assert "_load_verification_structure_templates" in source
++    assert "reuse_worker_calculator=True" in source
++    nve = inspect.getsource(campaign_cli._nve_verify)
++    assert "_worker_cached_nve_calculator" in nve
++    minimum = inspect.getsource(campaign_cli._minimum_distance)
++    assert "neighbor_list" in minimum
++    assert "get_all_distances" not in minimum

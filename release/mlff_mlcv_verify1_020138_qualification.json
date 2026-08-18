@@ -1,0 +1,82 @@
+{
+  "authority": {
+    "committee_preserved_separately": true,
+    "first_physical_passer_frozen": true,
+    "fold_models_production_eligible": false,
+    "locked_test_E_activation": "only after physical candidate freeze",
+    "locked_test_E_fallback_permitted": false,
+    "locked_test_E_target_only": true,
+    "physical_candidates": "qualified FINAL1 final-development representatives only, in deterministic FINAL1 order",
+    "physical_fallback": "next already-qualified final seed only when fallback_to_next_qualified_final_seed=true",
+    "production_publish_requirement": "same frozen candidate passes physical verification and locked E"
+  },
+  "content_digest": "9ae61305e0a66a1f8cd39cbffd90b3dbbbe6c2d1f87d90813c9312a3815ce24e",
+  "default_campaign": {
+    "cross_validation_folds": 3,
+    "final_runs_per_seed": 1,
+    "method": "multihead_replay",
+    "seeds": [
+      1,
+      2,
+      3
+    ],
+    "total_training_runs": 12
+  },
+  "documents": {
+    "architecture_pdf": {
+      "pages": 103,
+      "path": "docs/arch_manuals/mlff_training_data_architecture.pdf",
+      "preflight": "pass",
+      "visual_review": "pass"
+    },
+    "cli_guide_pdf": {
+      "pages": 15,
+      "path": "docs/guides/mlff_campaign_cli_user_guide.pdf",
+      "preflight": "pass",
+      "visual_review": "pass"
+    },
+    "verify1_spec_pdf": {
+      "pages": 2,
+      "path": "docs/specs/training_data/mlff_mlcv_verification_spec.pdf",
+      "preflight": "pass",
+      "visual_review": "pass"
+    }
+  },
+  "gate": "MLCV-VERIFY1",
+  "next_gate": "MLCV-MIGRATE1",
+  "package_version": "0.20.138a0",
+  "qualification_date": "2026-08-10",
+  "schema": "mdstats.mlff-mlcv-verify1-qualification.v1",
+  "stop1_reminder": {
+    "factors_toml_configurable": true,
+    "replay_stop_multiplier_default": 1.2,
+    "target_stop_fraction_default": 0.8,
+    "thresholds_derived_from_full_criteria": true
+  },
+  "tests": {
+    "broad_segmented_mlff": {
+      "failed_gate_regressions": 0,
+      "passed": 766,
+      "skipped": 32
+    },
+    "final_focused_after_freeze": {
+      "failed": 0,
+      "passed": 47,
+      "skip_reason": "optional MACE runtime absent",
+      "skipped": 1
+    },
+    "known_historical_missing_fixture": {
+      "path": "release/mlff_data9a9a_real_mpa0_restart_smoke.json",
+      "status": "absent in supplied historical source archive; unrelated to VERIFY1"
+    }
+  },
+  "verification_policy_defaults": {
+    "fallback_to_next_qualified_final_seed": true,
+    "maximum_energy_drift_ev_per_atom_per_ps": 0.026,
+    "maximum_force_ev_per_angstrom": 100.0,
+    "maximum_target_force_rmse_ev_per_angstrom": 0.03,
+    "minimum_pair_distance_angstrom": 0.8,
+    "model_inference_dtype": "float32",
+    "scientific_analysis_dtype": "float64"
+  }
+}

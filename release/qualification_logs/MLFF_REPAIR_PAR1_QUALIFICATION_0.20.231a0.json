@@ -1,0 +1,192 @@
+{
+  "acceptance": {
+    "advance_to": "MVQUAL-PAR1",
+    "broad_regression": "PASS",
+    "exact_repair_trace": "PASS",
+    "parallel_worker_invariance": "PASS",
+    "scientific_policy_unchanged": "PASS",
+    "throughput_improved": "PASS"
+  },
+  "architecture_revision": 98,
+  "authority_change": {
+    "gpu": false,
+    "runtime_optimization": true,
+    "scientific": false
+  },
+  "content_digest": "9341aacf73972b4532ac35b60e219c9e3b8ecb26b50a667139a45fde07343d1e",
+  "date": "2026-08-17",
+  "documentation": {
+    "architecture_revision_note": {
+      "path": "docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV98.md",
+      "sha256": "9a170eeefc337eff2e27691dc7a825e5b41e680d39cd7189abc20115dd402073"
+    },
+    "canonical_markdown": {
+      "path": "docs/arch_manuals/mlff_training_data_architecture.md",
+      "sha256": "44a8cfdb82e7e3af7a985636d8022ae7e43ab865330021503a7e0c1ffc6eec06"
+    },
+    "canonical_pdf": {
+      "comparison_note": "Revision-97 48-page and revision-98 49-page PDFs were render-compared at 50 dpi; 12 pre-existing pages plus the new final page changed from release/status flow. All 49 pages rendered at 100 dpi; release boundary and REPAIR/performance/status pages 2, 38, 43 and 44 were visually inspected after shortening long inline digests to eliminate right-margin clipping.",
+      "full_render": "PASS",
+      "pages": 49,
+      "path": "docs/arch_manuals/mlff_training_data_architecture.pdf",
+      "preflight": "PASS",
+      "sha256": "5a32d263623dcbd39e6048f6309972b771993a41109a5b8e5db8c255da133f90",
+      "visual_qa": "PASS"
+    },
+    "dependency_graph": {
+      "path": "docs/arch_manuals/mlff_training_data_dependency_graph.json",
+      "sha256": "59e2a9182fa04b47445f3f2e835bda50f1f0be754c06e9972d061b29a00622b5"
+    },
+    "release_note": {
+      "path": "docs/history/mlff/release_notes/PATCH_NOTES_0.20.231a0.md",
+      "sha256": "7222c4465e65ff85e9bda15ac89908980d77b874db301c3f4c43d139285e449b"
+    },
+    "spec": {
+      "path": "docs/specs/training_data/mlff_repair_par1_deterministic_parallel_proposals_spec.md",
+      "sha256": "0b6b14464111ae07d74cf574622c0e5a2f359e49f1bdcfcd078d4b93a5ff851e"
+    }
+  },
+  "foundation": {
+    "active_qualification_family": "mace-mpa-0",
+    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
+    "mh1_supported_by_same_contract": true,
+    "note": "REPAIR-PAR1 operates only on sparse target-data authority and is independent of foundational-model family; MPA-0 is the active qualification checkpoint and MACE-MH-1 remains supported.",
+    "variant": "medium"
+  },
+  "gate": "REPAIR_PAR1_DETERMINISTIC_PARALLEL_PROPOSALS",
+  "implementation": {
+    "adaptive_parallel_proposal_queue": true,
+    "canonical_winner_reduction": "historical_removal_shortlist_order",
+    "fused_removal_sparse_metrics": true,
+    "implementation_manifest": {
+      "path": "benchmarks/mlff_repair_par1_implementation_manifest_0.20.231a0.json",
+      "sha256": "cc142835bc4e0f616fd41378b4d00eaee8fb5e377e3a651d2bd3b2e71d62e58e"
+    },
+    "inverse_candidate_rank_map": true,
+    "native_threads_per_parallel_task": 1,
+    "scalar_proposal_reference_retained": true,
+    "sequential_repair_authority_changed": false,
+    "thread_private_epoch_stamp_membership": true,
+    "vectorized_frontier_csr_scoring": true,
+    "winning_representative_contribution_recomputed_scalar": true
+  },
+  "inputs": {
+    "dependency_archive": {
+      "path": "/mnt/data/dependencies.tar(20260817-112644).gz",
+      "sha256": "888d545a512396697c8583d69bc9ed33110914675f466a4cbcafc3e1e1407171"
+    },
+    "replay_source": {
+      "path": "/mnt/data/replay_fps_12000.extxyz",
+      "sha256": "187eed42fb2d6cf5e7e745ffed0ce34541e92c6a35ec9e654520cd3c7198403c"
+    },
+    "target_archive": {
+      "path": "/mnt/data/training_LTA.tar(4).gz",
+      "sha256": "bc1b7e25ba338507ae38b260bcd283356de887b6c6cf762a2c146733f1c3c958"
+    }
+  },
+  "next_gate": "MVQUAL-PAR1",
+  "performance_evidence": {
+    "interpretation": "Timing is same-host execution evidence. Complete repair plan/trace, scalar/vectorized proposal equality, objective/tie order, and terminal order remain scientific authority.",
+    "large_8192": {
+      "adaptive_parallel_dispatch": true,
+      "control_median_seconds": 3.1298696419999033,
+      "control_release": "0.20.230a0",
+      "control_trials_seconds": [
+        3.1298696419999033
+      ],
+      "current_1lane_median_seconds": 0.8301331969996681,
+      "current_1lane_trials_seconds": [
+        0.8811055659998601,
+        0.8301331969996681,
+        0.8143734850000328
+      ],
+      "current_2lane_median_seconds": 0.6107755259999976,
+      "current_2lane_trials_seconds": [
+        0.6550203670003611,
+        0.5963247789995876,
+        0.6107755259999976
+      ],
+      "current_4lane_median_seconds": 0.46087840200016217,
+      "current_4lane_trials_seconds": [
+        0.5291186450003806,
+        0.46087840200016217,
+        0.4459569440004998
+      ],
+      "four_lane_end_to_end_speedup": 6.791096368188679,
+      "one_to_four_lane_scaling": 1.8011978721436723,
+      "serial_vectorization_speedup": 3.770322224568444
+    },
+    "medium_2048": {
+      "adaptive_parallel_dispatch": false,
+      "control_median_seconds": 3.1757905590002338,
+      "control_release": "0.20.230a0",
+      "control_trials_seconds": [
+        3.147819959000117,
+        3.1757905590002338,
+        3.3094404379999105
+      ],
+      "current_1lane_median_seconds": 0.11936937999962538,
+      "current_1lane_trials_seconds": [
+        0.12584334900020622,
+        0.11891886400007934,
+        0.11902297100004944,
+        0.11936937999962538,
+        0.11959381500037125
+      ],
+      "speedup": 26.604733634456345
+    },
+    "primary_record": {
+      "path": "benchmarks/mlff_repair_par1_cloud_cpu_mpa0_2026-08-17.json",
+      "sha256": "2756f03515c77452c03ca6db95b68bbab03f939c1cde3c5a9abdc7a19e42ab29"
+    },
+    "report": {
+      "path": "benchmarks/mlff_repair_par1_cloud_cpu_mpa0_2026-08-17.md",
+      "sha256": "66421d3c3a21572ac8e8c8a6dc0ae30dee61e0e31f022beeac6a096183745d3f"
+    }
+  },
+  "release": "0.20.231a0",
+  "schema": "mdstats.mlff-repair-par1-qualification.v1",
+  "scientific_oracles": {
+    "complete_trace_equal_reference_1_2_4_workers": true,
+    "large_proposal_result_digest": "9fda146806fc12f7c4d8030877e3a09cd206cef01eb6f821be0010c468b41994",
+    "medium_proposal_result_digest": "1a09e7745aa534bed757334ad9d365099e28635050ec63f1244421e4b859a9b1",
+    "standard_repair_plan_digest": "5dcb048b02ae2670d48d15f3f610b5814b611b2339df4ec4b265a52615b9545b",
+    "terminal_order_equal": true,
+    "worker_count_execution_only": true
+  },
+  "status": "PASS",
+  "tests": {
+    "archival_spec_boundary": {
+      "excluded_from_current_release_pass_fail": [
+        "tests/test_mlff_target_data2c_mvidx1_specification.py"
+      ],
+      "reason": "Historical release-pinned specification remains archival; runtime/scientific MVIDX test remains included in the 111-test current authority."
+    },
+    "compileall": {
+      "paths": [
+        "mdstats",
+        "benchmarks",
+        "tools"
+      ],
+      "status": "PASS"
+    },
+    "current_gate_and_dependencies": {
+      "failed": 0,
+      "passed": 73,
+      "warnings": 3
+    },
+    "packaging_metadata": {
+      "pip_wheel_no_deps_no_build_isolation": "PASS",
+      "pyproject_version": "0.20.231a0",
+      "root_pkg_info_version": "0.20.231a0",
+      "wheel_metadata_name": "mdstats",
+      "wheel_metadata_version": "0.20.231a0"
+    },
+    "target_data2_functional_authority": {
+      "failed": 0,
+      "passed": 111,
+      "warning_class": "expected velocity-reconstruction/normalization warnings unchanged from prior authority",
+      "warnings": 18
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "active_foundation_qualification": "MACE-MPA-0 medium",
+  "architecture_revision": 96,
+  "mh1_supported_by_same_contract": true,
+  "modules": [
+    "mdstats/training_data/target_coverage.py",
+    "mdstats/training_data/campaign_cli.py",
+    "mdstats/training_data/work_queue.py"
+  ],
+  "realization": {
+    "direct_api_native_worker_path_retained": true,
+    "native_tree_workers_per_task": 1,
+    "outer_scheduler": "DeterministicWorkQueue",
+    "pair_rule_lookup": "O(1) map",
+    "parallel_block_size": "adaptive <= configured block; ~2 MiB query temporary target; >=4 tasks/lane when possible",
+    "scalar_constant_rejection": "historical np.allclose before radius construction",
+    "species_residual_lookup": "O(1) map"
+  },
+  "release": "0.20.229a0",
+  "schema": "mdstats.mlff-covref-par1-implementation-manifest.v1",
+  "scientific_authority_change": false
+}

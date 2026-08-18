@@ -1,0 +1,1629 @@
+diff -ruN '--exclude=SOURCE_PATCH_0.20.232a0_to_0.20.233a0.patch' '--exclude=SHA256SUMS_0.20.233a0.txt' /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/CHANGELOG.md /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/CHANGELOG.md
+--- /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/CHANGELOG.md	2026-08-17 23:59:59.000000000 +0000
++++ /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/CHANGELOG.md	2026-08-18 00:41:12.390433685 +0000
+@@ -1,3 +1,12 @@
++## 0.20.233a0 - 2026-08-17
++
++- Implement AUDIT-EVAL-PERF1 / architecture revision 100 as exact CPU hardening around already materialized Foundation Audit and EVAL2 predictions.
++- Cache immutable EVAL2 composition/species/focus/block reduction metadata, preallocate force-tail storage, and batch paired bootstrap draws under a 32 MiB temporary target while preserving the exact seeded RNG stream.
++- Share FOUNDATION-AUDIT1 frame/species indexing across domains, reuse force-square work, and batch configured tail quantiles without adding model inference.
++- Preserve exact qualification metric digest `d9dd9db2c2d47e2d6f034e0b58f094c04c516d5a0dc4f0089d3f15762d434658`, bootstrap digest `9664354fd2d871e67113ff5b9ef28118c9414a59f29a5fd4114acb729590397e`, and foundation-audit digest `39b8b207c741798f5a8555b41ceb0c746948935612d84d45961ba87b0e8c94e5`.
++- Same-host medians improve from about 0.862 to 0.449 s for repeated EVAL2 target reduction (~1.92x), 0.0512 to 0.0152 s for the paired bootstrap (~3.36x), and 0.0580 to 0.0545 s for the available no-inference Foundation Audit fixture (~1.06x).
++- Keep active qualification on supplied MACE-MPA-0 medium while preserving model-generic MACE-MH-1 compatibility; next optimization gate is REPLAY-PERF1.
++
+ ## 0.20.232a0 - 2026-08-17
+ 
+ - Implement MVQUAL-PAR1 / architecture revision 99 as a global deterministic queue over independent domain/selector/target-size same-N qualification jobs.
+diff -ruN '--exclude=SOURCE_PATCH_0.20.232a0_to_0.20.233a0.patch' '--exclude=SHA256SUMS_0.20.233a0.txt' /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/PKG-INFO /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/PKG-INFO
+--- /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/PKG-INFO	2026-08-17 23:58:05.000000000 +0000
++++ /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/PKG-INFO	2026-08-18 00:37:24.043637612 +0000
+@@ -1,6 +1,6 @@
+ Metadata-Version: 2.4
+ Name: mdstats
+-Version: 0.20.232a0
++Version: 0.20.233a0
+ Summary: Transparent atomistic frame collections and structural/dynamical statistics
+ Requires-Python: >=3.10
+ Requires-Dist: numpy>=1.26
+diff -ruN '--exclude=SOURCE_PATCH_0.20.232a0_to_0.20.233a0.patch' '--exclude=SHA256SUMS_0.20.233a0.txt' /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/benchmarks/mlff_audit_eval_perf1_cloud_cpu_mpa0_2026-08-17.json /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/benchmarks/mlff_audit_eval_perf1_cloud_cpu_mpa0_2026-08-17.json
+--- /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/benchmarks/mlff_audit_eval_perf1_cloud_cpu_mpa0_2026-08-17.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/benchmarks/mlff_audit_eval_perf1_cloud_cpu_mpa0_2026-08-17.json	2026-08-18 00:40:55.754984976 +0000
+@@ -0,0 +1,142 @@
++{
++  "acceptance": {
++    "exact_persisted_records": true,
++    "next_gate": "REPLAY-PERF1",
++    "no_additional_model_inference": true,
++    "status": "PASS"
++  },
++  "active_foundation": {
++    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
++    "family": "MACE-MPA-0 medium",
++    "mh1_compatible": true,
++    "note": "No model inference is benchmarked or changed by AUDIT-EVAL-PERF1; the CPU reducer contract is model-family independent."
++  },
++  "architecture_revision": 100,
++  "date": "2026-08-17",
++  "execution": {
++    "eval2_target_reduction": {
++      "control_median_seconds": 0.8620806569997512,
++      "control_release": "0.20.232a0",
++      "control_trials_seconds": [
++        0.8805155099998956,
++        0.8620806569997512,
++        0.8436900140004582,
++        0.8451415589988756,
++        0.8803862600016146
++      ],
++      "current_median_seconds": 0.4492151720005495,
++      "current_release": "0.20.233a0",
++      "current_trials_seconds": [
++        0.4483586890000879,
++        0.42524889200103644,
++        0.4711016430010204,
++        0.4492151720005495,
++        0.45711893100087764
++      ],
++      "fixture": {
++        "atoms_per_configuration": 72,
++        "condition_labels": 4,
++        "configurations": 4096,
++        "correlation_blocks": 1024,
++        "species": 7,
++        "total_atoms": 294912
++      },
++      "speedup": 1.9190817913841447
++    },
++    "foundation_audit": {
++      "control_median_seconds": 0.05802883449996443,
++      "control_release": "0.20.232a0",
++      "control_trials_seconds": [
++        0.05625449000035587,
++        0.05786490600075922,
++        0.06055170899890072,
++        0.058192762999169645,
++        0.05716437999944901,
++        0.06886131899955217,
++        0.055295766000199364,
++        0.055960374000278534,
++        0.06001738899976772,
++        0.07102104799923836,
++        0.055224420999365975,
++        0.05867118300011498
++      ],
++      "current_median_seconds": 0.054530274500393716,
++      "current_release": "0.20.233a0",
++      "current_trials_seconds": [
++        0.05879009499949461,
++        0.0595901380002033,
++        0.05691509300049802,
++        0.062403240001003724,
++        0.08098496200000227,
++        0.05421437699988019,
++        0.05261046800114855,
++        0.052358159999130294,
++        0.05283807900013926,
++        0.05354960399927222,
++        0.05374002899952757,
++        0.054846172000907245
++      ],
++      "fixture": "existing FOUNDATION-AUDIT1 no-inference production-model-sweep test fixture",
++      "interpretation": "The small fixture is already dominated by authenticated prediction-sidecar and structural-conditioning work; the measured gain is intentionally reported as modest.",
++      "speedup": 1.064158121917128
++    },
++    "paired_bootstrap": {
++      "control_median_seconds": 0.051166544000807335,
++      "control_trials_seconds": [
++        0.05037951099984639,
++        0.05053229399891279,
++        0.051166544000807335,
++        0.06685078400005295,
++        0.051615476000733906
++      ],
++      "current_median_seconds": 0.015222844000163605,
++      "current_trials_seconds": [
++        0.015046501999677275,
++        0.015030470000056084,
++        0.01602976300091541,
++        0.015222844000163605,
++        0.015565231000437052
++      ],
++      "fixture": {
++        "bootstrap_replicates": 2000,
++        "independent_blocks": 768,
++        "temporary_target_mib": 32
++      },
++      "speedup": 3.3611685175422825
++    }
++  },
++  "implementation": {
++    "eval2_bootstrap_memory_bounded_batching": true,
++    "eval2_force_tail_preallocation": true,
++    "eval2_static_metadata_cache": true,
++    "foundation_batched_tail_quantiles": true,
++    "foundation_reuses_delta_squared": true,
++    "foundation_shared_frame_index": true,
++    "foundation_shared_species_membership": true
++  },
++  "inputs": {
++    "dependency_archive_sha256": "888d545a512396697c8583d69bc9ed33110914675f466a4cbcafc3e1e1407171",
++    "replay_source_sha256": "187eed42fb2d6cf5e7e745ffed0ce34541e92c6a35ec9e654520cd3c7198403c",
++    "target_archive_sha256": "bc1b7e25ba338507ae38b260bcd283356de887b6c6cf762a2c146733f1c3c958"
++  },
++  "release": "0.20.233a0",
++  "schema": "mdstats.mlff-audit-eval-perf1-benchmark.v1",
++  "scientific": {
++    "additional_model_inference": false,
++    "bootstrap_comparison_digest": "9664354fd2d871e67113ff5b9ef28118c9414a59f29a5fd4114acb729590397e",
++    "bootstrap_control_exact": true,
++    "eval2_metric_control_exact": true,
++    "eval2_metric_digest": "d9dd9db2c2d47e2d6f034e0b58f094c04c516d5a0dc4f0089d3f15762d434658",
++    "foundation_audit_digest": "39b8b207c741798f5a8555b41ceb0c746948935612d84d45961ba87b0e8c94e5",
++    "foundation_control_exact": true,
++    "foundation_model_provider_calls_control": [
++      44,
++      44
++    ],
++    "foundation_model_provider_calls_current": [
++      44,
++      44
++    ],
++    "gpu_authority_change": false
++  }
++}
+diff -ruN '--exclude=SOURCE_PATCH_0.20.232a0_to_0.20.233a0.patch' '--exclude=SHA256SUMS_0.20.233a0.txt' /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/benchmarks/mlff_audit_eval_perf1_cloud_cpu_mpa0_2026-08-17.md /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/benchmarks/mlff_audit_eval_perf1_cloud_cpu_mpa0_2026-08-17.md
+--- /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/benchmarks/mlff_audit_eval_perf1_cloud_cpu_mpa0_2026-08-17.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/benchmarks/mlff_audit_eval_perf1_cloud_cpu_mpa0_2026-08-17.md	2026-08-18 00:40:55.755085304 +0000
+@@ -0,0 +1,24 @@
++# AUDIT-EVAL-PERF1 cloud CPU benchmark
++
++Release: mdstats 0.20.233a0 / architecture revision 100  
++Active qualification foundation: MACE-MPA-0 medium (`75428afe3a1d...fb493e38604fb638`)  
++MACE-MH-1 compatibility: yes; no model inference path is changed or benchmarked here.
++
++## Exactness
++
++- EVAL2 target metric digest: `d9dd9db2c2d47e2d6f034e0b58f094c04c516d5a0dc4f0089d3f15762d434658` (identical to untouched 0.20.232a0).
++- Paired-bootstrap comparison digest: `9664354fd2d871e67113ff5b9ef28118c9414a59f29a5fd4114acb729590397e` (identical to untouched 0.20.232a0).
++- FOUNDATION-AUDIT1 digest: `39b8b207c741798f5a8555b41ceb0c746948935612d84d45961ba87b0e8c94e5` (identical to untouched 0.20.232a0).
++- Foundation model-provider call counts remain 44 descriptor / 44 prediction calls; AUDIT-EVAL-PERF1 performs no extra inference.
++
++## Same-host medians
++
++| CPU reduction | 0.20.232a0 | 0.20.233a0 | speedup |
++|---|---:|---:|---:|
++| EVAL2 target metrics, 4,096 configurations / 294,912 atoms | 0.862081 s | 0.449215 s | 1.92x |
++| Paired bootstrap, 768 blocks / 2,000 replicates | 0.051167 s | 0.015223 s | 3.36x |
++| FOUNDATION-AUDIT1 no-inference fixture | 0.058029 s | 0.054530 s | 1.06x |
++
++The Foundation Audit fixture is intentionally described as a modest gain: prediction-sidecar authentication and structural-conditioned evidence remain necessary work. EVAL2 benefits much more because repeated checkpoint reductions now reuse immutable indexing metadata and the bootstrap no longer pays one Python iteration per replicate.
++
++Timing is execution evidence only. Persisted audit/metric/bootstrap records remain scientific authority.
+diff -ruN '--exclude=SOURCE_PATCH_0.20.232a0_to_0.20.233a0.patch' '--exclude=SHA256SUMS_0.20.233a0.txt' /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/benchmarks/mlff_audit_eval_perf1_implementation_manifest_0.20.233a0.json /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/benchmarks/mlff_audit_eval_perf1_implementation_manifest_0.20.233a0.json
+--- /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/benchmarks/mlff_audit_eval_perf1_implementation_manifest_0.20.233a0.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/benchmarks/mlff_audit_eval_perf1_implementation_manifest_0.20.233a0.json	2026-08-18 00:40:55.756238976 +0000
+@@ -0,0 +1,22 @@
++{
++  "architecture_revision": 100,
++  "files": [
++    {
++      "bytes": 82049,
++      "path": "mdstats/training_data/eval2.py",
++      "sha256": "2a33e845e0fd1f44caa7d022d3940f7b2d774c6bec812eb5537fb3e9aab7f27d"
++    },
++    {
++      "bytes": 58879,
++      "path": "mdstats/training_data/foundation_audit.py",
++      "sha256": "d6128399de575351478e59d53341a06c449fca90ffa9c37369a20d5adc972151"
++    },
++    {
++      "bytes": 6982,
++      "path": "tests/test_mlff_audit_eval_perf1.py",
++      "sha256": "d178d9f4ca8580ca203d7d12badbb933069848a9b2c35d21a4f298ca3d78ce2f"
++    }
++  ],
++  "release": "0.20.233a0",
++  "schema": "mdstats.mlff-audit-eval-perf1-implementation-manifest.v1"
++}
+diff -ruN '--exclude=SOURCE_PATCH_0.20.232a0_to_0.20.233a0.patch' '--exclude=SHA256SUMS_0.20.233a0.txt' /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/docs/arch_manuals/mlff_training_data/00_front_matter.md /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/docs/arch_manuals/mlff_training_data/00_front_matter.md
+--- /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/docs/arch_manuals/mlff_training_data/00_front_matter.md	2026-08-17 23:59:59.000000000 +0000
++++ /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/docs/arch_manuals/mlff_training_data/00_front_matter.md	2026-08-18 00:41:12.379093707 +0000
+@@ -1,8 +1,8 @@
+ ---
+ geometry: "margin=0.75in"
+-architecture_revision: 99
+-release: "mdstats 0.20.232a0"
+-status: "current normative architecture; MVQUAL-PAR1 complete; AUDIT-EVAL-PERF1 next"
++architecture_revision: 100
++release: "mdstats 0.20.233a0"
++status: "current normative architecture; AUDIT-EVAL-PERF1 complete; REPLAY-PERF1 next"
+ last_updated: "2026-08-17"
+ ---
+ 
+@@ -76,4 +76,4 @@
+ 
+ ## Current release boundary
+ 
+-Revision 99 completes `MVQUAL-PAR1` on top of the exact MVKERNEL1 telemetry substrate and PARCORE1 scheduler. Independent domain/selector/target-size same-N qualification jobs now share one global deterministic queue, while each job retains the immutable TARGET-DATA2B scorer, MVIDX covered-mass cross-check, hard-obligation authority, and existing telemetry. Campaign execution constrains nested cKDTree/BLAS work to one native lane/job and reconstructs comparisons/progress in the historical domain/size order after arbitrary task completion. Direct API calls without an explicit resource scope retain their historical native-thread environment, avoiding a 1e-16 Wasserstein digest shift caused solely by process-wide BLAS limiting. Automatic campaign scoring is conservatively capped at four outer lanes because these jobs are memory-bandwidth heavy; explicit larger values remain available for qualified high-bandwidth hosts. The active qualification checkpoint remains MACE-MPA-0 medium, and the execution contract remains foundation-model independent and valid for MACE-MH-1 campaigns. `AUDIT-EVAL-PERF1` is next; GPU performance authority remains deferred.
++Revision 100 completes `AUDIT-EVAL-PERF1` without changing model inference or GPU numerical authority. EVAL2 now caches immutable species/composition/focus/block indexing metadata per evaluation view, preallocates force-tail storage, and uses a memory-bounded batched paired bootstrap while preserving the deterministic RNG stream and exact persisted metric/bootstrap records on qualification fixtures. FOUNDATION-AUDIT1 now shares its DATA3 frame index and per-run species membership across domains, reuses force-square work, and batches tail quantiles while continuing to consume the already-authenticated DATA6 prediction sweep with zero additional model-provider calls. Same-host paired evidence shows about 1.92x faster repeated EVAL2 target reduction, 3.38x faster 2,000-replicate paired bootstrap, and a smaller ~1.06x foundation-audit CPU reduction on the available no-inference fixture. The active qualification checkpoint remains MACE-MPA-0 medium, while these CPU reducers remain foundation-model independent and valid for MACE-MH-1 campaigns. `REPLAY-PERF1` is next; GPU performance authority remains deferred.
+diff -ruN '--exclude=SOURCE_PATCH_0.20.232a0_to_0.20.233a0.patch' '--exclude=SHA256SUMS_0.20.233a0.txt' /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/docs/arch_manuals/mlff_training_data/60_execution_performance.md /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/docs/arch_manuals/mlff_training_data/60_execution_performance.md
+--- /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/docs/arch_manuals/mlff_training_data/60_execution_performance.md	2026-08-17 23:58:05.000000000 +0000
++++ /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/docs/arch_manuals/mlff_training_data/60_execution_performance.md	2026-08-18 00:37:57.038231828 +0000
+@@ -148,6 +148,8 @@
+ 
+ Independent bootstrap replicates and repeated quantiles SHOULD be processed in bounded vectorized batches. Static composition/species codes and other invariant indexing metadata are computed once per dataset/checkpoint domain and reused.
+ 
++`AUDIT-EVAL-PERF1` applies this contract to EVAL2 with an execution-only bounded metadata cache keyed by the in-memory immutable evaluation view plus ordered correlation-block IDs. The cache stores precomputed composition keys, per-frame species membership, focus masks, and block codes; it does not enter target-role or prediction scientific identity. Paired bootstrap preserves the exact seeded draw stream while grouping draws into a temporary-memory-bounded matrix batch. FOUNDATION-AUDIT1 similarly shares one immutable DATA3 frame index and per-run species-membership map across audit domains and continues to read/authenticate the existing prediction sweep rather than invoking the foundation model.
++
+ ### Lookup and allocation hygiene
+ 
+ Hot loops SHALL avoid repeated linear `next(...)` searches, rebuilding immutable dictionaries/maps, repeated full-array scaling, unnecessary `concatenate`, and materializing Python objects when contiguous typed arrays suffice. Optimization reviews explicitly look for these patterns.
+@@ -162,8 +164,8 @@
+ | MVSEL1 | Python ragged gathers and sparse update overhead | vectorized CSR gather, indexed weights, incremental counters; preserve sequential rank authority |
+ | REPAIR1 | serial proposal shortlist and repeated intersections | implemented adaptive immutable-state proposal queue, vectorized frontier scoring, stamp arrays, fused sparse scans, O(1) rank map |
+ | MVQUAL1 | independent same-N rescoring globally queued | PARCORE1 same-N jobs + batched sparse telemetry; canonical post-queue reduction |
+-| FOUNDATION-AUDIT1 | per-frame/species Python reductions | chunked execution, cached frame index, `bincount`, one-pass quantiles |
+-| EVAL2 CPU analysis | repeated species masks and bootstrap Python loops | cached composition codes, `bincount`, batched bootstrap |
++| FOUNDATION-AUDIT1 | per-frame/species Python reductions | implemented shared frame/species metadata, reused squared-error work, batched tail quantiles; no new inference |
++| EVAL2 CPU analysis | repeated species/composition/focus reconstruction and bootstrap Python loops | implemented cached static reduction metadata, preallocated tails, memory-bounded batched bootstrap |
+ | REPLAY-UNIFY1 | repeated serial ExtXYZ parsing/materialization | content-addressed byte-offset geometry/index cache; deterministic chunk parsing |
+ 
+ Existing DATA6 GPU inference, training orchestration, structural FPS/GEMM kernels, and independent trajectory verification are not rewritten merely to increase thread count; they are changed only if runtime profiling identifies a new dominant hotspot.
+diff -ruN '--exclude=SOURCE_PATCH_0.20.232a0_to_0.20.233a0.patch' '--exclude=SHA256SUMS_0.20.233a0.txt' /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/docs/arch_manuals/mlff_training_data/70_status_and_gates.md /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/docs/arch_manuals/mlff_training_data/70_status_and_gates.md
+--- /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/docs/arch_manuals/mlff_training_data/70_status_and_gates.md	2026-08-18 00:01:56.000000000 +0000
++++ /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/docs/arch_manuals/mlff_training_data/70_status_and_gates.md	2026-08-18 00:41:12.379732784 +0000
+@@ -103,13 +103,15 @@
+ 
+ **Next gate.** `AUDIT-EVAL-PERF1`.
+ 
+-### Gate AUDIT-EVAL-PERF1 - Foundation Audit and EVAL2 CPU hardening
++### Gate AUDIT-EVAL-PERF1 - Foundation Audit and EVAL2 CPU hardening - COMPLETE
+ 
+-**Purpose.** Remove repeated Python frame/species/statistics loops surrounding already optimized model inference.
++**Purpose.** Remove repeated Python frame/species/statistics loops surrounding already optimized model inference without changing any prediction, checkpoint-selection, or GPU numerical authority.
+ 
+-**Implementation.** Cached static metadata, chunk reduction, bounded integer `bincount`, batched quantiles/bootstrap, campaign-standard progress.
++**Implementation.** `0.20.233a0` adds an execution-only EVAL2 static-reduction cache keyed by the immutable evaluation-view object and ordered correlation-block IDs. It precomputes composition keys, per-frame species membership, focus masks, and compact block codes once, then reuses them across checkpoint reductions. Force-tail vector storage is preallocated rather than accumulated as ragged per-frame arrays and concatenated. Paired block bootstrap preserves the exact seeded NumPy RNG stream but draws in bounded vector batches sized from a 32 MiB temporary target, eliminating the 2,000-replicate Python loop without unbounded allocation. FOUNDATION-AUDIT1 now builds the DATA3 frame-array index once for the whole audit, shares immutable per-run species membership across audit domains, reuses `delta*delta` work for total/species reductions, and evaluates all configured force-tail quantiles in one call. Prediction-manifest authentication and conditioned-feature semantics are unchanged; no new model inference is introduced.
+ 
+-**Acceptance.** Metric equality within existing numerical authority; no additional model inference; restart and warning-domain behavior unchanged.
++**Acceptance. PASS.** On a 4,096-frame / 294,912-atom repeated EVAL2 fixture, untouched `0.20.232a0` and `0.20.233a0` preserve exact metric digest `d9dd9db2c2d4...9d3f15762d434658`; same-host median reduction time improves from about 0.862 s to 0.449 s (about 1.92x). On a 768-block, 2,000-replicate paired bootstrap, the exact comparison digest `9664354fd2d8...14acb729590397e` is preserved while median time improves from about 0.0512 s to 0.0152 s (about 3.36x). The available no-inference FOUNDATION-AUDIT1 fixture preserves audit digest `39b8b207c741...61ba87b0e8c94e5`, keeps model-provider descriptor/prediction call counts fixed at 44/44, and improves median audit reduction from about 0.0580 s to 0.0545 s (about 1.06x). Timing is execution evidence; persisted metric/audit/bootstrap records remain scientific authority.
++
++**Next gate.** `REPLAY-PERF1`.
+ 
+ ### Gate REPLAY-PERF1 - replay index/cache and chunk materialization
+ 
+diff -ruN '--exclude=SOURCE_PATCH_0.20.232a0_to_0.20.233a0.patch' '--exclude=SHA256SUMS_0.20.233a0.txt' /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/docs/arch_manuals/mlff_training_data_architecture.md /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/docs/arch_manuals/mlff_training_data_architecture.md
+--- /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-18 00:07:49.000000000 +0000
++++ /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-18 00:41:13.836641752 +0000
+@@ -1,8 +1,8 @@
+ ---
+ geometry: "margin=0.75in"
+-architecture_revision: 99
+-release: "mdstats 0.20.232a0"
+-status: "current normative architecture; MVQUAL-PAR1 complete; AUDIT-EVAL-PERF1 next"
++architecture_revision: 100
++release: "mdstats 0.20.233a0"
++status: "current normative architecture; AUDIT-EVAL-PERF1 complete; REPLAY-PERF1 next"
+ last_updated: "2026-08-17"
+ ---
+ 
+@@ -76,7 +76,7 @@
+ 
+ ## Current release boundary
+ 
+-Revision 99 completes `MVQUAL-PAR1` on top of the exact MVKERNEL1 telemetry substrate and PARCORE1 scheduler. Independent domain/selector/target-size same-N qualification jobs now share one global deterministic queue, while each job retains the immutable TARGET-DATA2B scorer, MVIDX covered-mass cross-check, hard-obligation authority, and existing telemetry. Campaign execution constrains nested cKDTree/BLAS work to one native lane/job and reconstructs comparisons/progress in the historical domain/size order after arbitrary task completion. Direct API calls without an explicit resource scope retain their historical native-thread environment, avoiding a 1e-16 Wasserstein digest shift caused solely by process-wide BLAS limiting. Automatic campaign scoring is conservatively capped at four outer lanes because these jobs are memory-bandwidth heavy; explicit larger values remain available for qualified high-bandwidth hosts. The active qualification checkpoint remains MACE-MPA-0 medium, and the execution contract remains foundation-model independent and valid for MACE-MH-1 campaigns. `AUDIT-EVAL-PERF1` is next; GPU performance authority remains deferred.
++Revision 100 completes `AUDIT-EVAL-PERF1` without changing model inference or GPU numerical authority. EVAL2 now caches immutable species/composition/focus/block indexing metadata per evaluation view, preallocates force-tail storage, and uses a memory-bounded batched paired bootstrap while preserving the deterministic RNG stream and exact persisted metric/bootstrap records on qualification fixtures. FOUNDATION-AUDIT1 now shares its DATA3 frame index and per-run species membership across domains, reuses force-square work, and batches tail quantiles while continuing to consume the already-authenticated DATA6 prediction sweep with zero additional model-provider calls. Same-host paired evidence shows about 1.92x faster repeated EVAL2 target reduction, 3.38x faster 2,000-replicate paired bootstrap, and a smaller ~1.06x foundation-audit CPU reduction on the available no-inference fixture. The active qualification checkpoint remains MACE-MPA-0 medium, while these CPU reducers remain foundation-model independent and valid for MACE-MH-1 campaigns. `REPLAY-PERF1` is next; GPU performance authority remains deferred.
+ 
+ # Part I - Foundations and ownership
+ 
+@@ -2559,6 +2559,8 @@
+ 
+ Independent bootstrap replicates and repeated quantiles SHOULD be processed in bounded vectorized batches. Static composition/species codes and other invariant indexing metadata are computed once per dataset/checkpoint domain and reused.
+ 
++`AUDIT-EVAL-PERF1` applies this contract to EVAL2 with an execution-only bounded metadata cache keyed by the in-memory immutable evaluation view plus ordered correlation-block IDs. The cache stores precomputed composition keys, per-frame species membership, focus masks, and block codes; it does not enter target-role or prediction scientific identity. Paired bootstrap preserves the exact seeded draw stream while grouping draws into a temporary-memory-bounded matrix batch. FOUNDATION-AUDIT1 similarly shares one immutable DATA3 frame index and per-run species-membership map across audit domains and continues to read/authenticate the existing prediction sweep rather than invoking the foundation model.
++
+ ### Lookup and allocation hygiene
+ 
+ Hot loops SHALL avoid repeated linear `next(...)` searches, rebuilding immutable dictionaries/maps, repeated full-array scaling, unnecessary `concatenate`, and materializing Python objects when contiguous typed arrays suffice. Optimization reviews explicitly look for these patterns.
+@@ -2573,8 +2575,8 @@
+ | MVSEL1 | Python ragged gathers and sparse update overhead | vectorized CSR gather, indexed weights, incremental counters; preserve sequential rank authority |
+ | REPAIR1 | serial proposal shortlist and repeated intersections | implemented adaptive immutable-state proposal queue, vectorized frontier scoring, stamp arrays, fused sparse scans, O(1) rank map |
+ | MVQUAL1 | independent same-N rescoring globally queued | PARCORE1 same-N jobs + batched sparse telemetry; canonical post-queue reduction |
+-| FOUNDATION-AUDIT1 | per-frame/species Python reductions | chunked execution, cached frame index, `bincount`, one-pass quantiles |
+-| EVAL2 CPU analysis | repeated species masks and bootstrap Python loops | cached composition codes, `bincount`, batched bootstrap |
++| FOUNDATION-AUDIT1 | per-frame/species Python reductions | implemented shared frame/species metadata, reused squared-error work, batched tail quantiles; no new inference |
++| EVAL2 CPU analysis | repeated species/composition/focus reconstruction and bootstrap Python loops | implemented cached static reduction metadata, preallocated tails, memory-bounded batched bootstrap |
+ | REPLAY-UNIFY1 | repeated serial ExtXYZ parsing/materialization | content-addressed byte-offset geometry/index cache; deterministic chunk parsing |
+ 
+ Existing DATA6 GPU inference, training orchestration, structural FPS/GEMM kernels, and independent trajectory verification are not rewritten merely to increase thread count; they are changed only if runtime profiling identifies a new dominant hotspot.
+@@ -2728,13 +2730,15 @@
+ 
+ **Next gate.** `AUDIT-EVAL-PERF1`.
+ 
+-### Gate AUDIT-EVAL-PERF1 - Foundation Audit and EVAL2 CPU hardening
++### Gate AUDIT-EVAL-PERF1 - Foundation Audit and EVAL2 CPU hardening - COMPLETE
++
++**Purpose.** Remove repeated Python frame/species/statistics loops surrounding already optimized model inference without changing any prediction, checkpoint-selection, or GPU numerical authority.
+ 
+-**Purpose.** Remove repeated Python frame/species/statistics loops surrounding already optimized model inference.
++**Implementation.** `0.20.233a0` adds an execution-only EVAL2 static-reduction cache keyed by the immutable evaluation-view object and ordered correlation-block IDs. It precomputes composition keys, per-frame species membership, focus masks, and compact block codes once, then reuses them across checkpoint reductions. Force-tail vector storage is preallocated rather than accumulated as ragged per-frame arrays and concatenated. Paired block bootstrap preserves the exact seeded NumPy RNG stream but draws in bounded vector batches sized from a 32 MiB temporary target, eliminating the 2,000-replicate Python loop without unbounded allocation. FOUNDATION-AUDIT1 now builds the DATA3 frame-array index once for the whole audit, shares immutable per-run species membership across audit domains, reuses `delta*delta` work for total/species reductions, and evaluates all configured force-tail quantiles in one call. Prediction-manifest authentication and conditioned-feature semantics are unchanged; no new model inference is introduced.
+ 
+-**Implementation.** Cached static metadata, chunk reduction, bounded integer `bincount`, batched quantiles/bootstrap, campaign-standard progress.
++**Acceptance. PASS.** On a 4,096-frame / 294,912-atom repeated EVAL2 fixture, untouched `0.20.232a0` and `0.20.233a0` preserve exact metric digest `d9dd9db2c2d4...9d3f15762d434658`; same-host median reduction time improves from about 0.862 s to 0.449 s (about 1.92x). On a 768-block, 2,000-replicate paired bootstrap, the exact comparison digest `9664354fd2d8...14acb729590397e` is preserved while median time improves from about 0.0512 s to 0.0152 s (about 3.36x). The available no-inference FOUNDATION-AUDIT1 fixture preserves audit digest `39b8b207c741...61ba87b0e8c94e5`, keeps model-provider descriptor/prediction call counts fixed at 44/44, and improves median audit reduction from about 0.0580 s to 0.0545 s (about 1.06x). Timing is execution evidence; persisted metric/audit/bootstrap records remain scientific authority.
+ 
+-**Acceptance.** Metric equality within existing numerical authority; no additional model inference; restart and warning-domain behavior unchanged.
++**Next gate.** `REPLAY-PERF1`.
+ 
+ ### Gate REPLAY-PERF1 - replay index/cache and chunk materialization
+ 
+Binary files /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/docs/arch_manuals/mlff_training_data_architecture.pdf and /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/docs/arch_manuals/mlff_training_data_architecture.pdf differ
+diff -ruN '--exclude=SOURCE_PATCH_0.20.232a0_to_0.20.233a0.patch' '--exclude=SHA256SUMS_0.20.233a0.txt' /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/docs/arch_manuals/mlff_training_data_dependency_graph.json /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/docs/arch_manuals/mlff_training_data_dependency_graph.json
+--- /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-17 23:59:59.000000000 +0000
++++ /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-18 00:38:14.952647068 +0000
+@@ -1,8 +1,8 @@
+ {
+-  "architecture_revision": 99,
++  "architecture_revision": 100,
+   "branch": "MLFF-DATA",
+-  "description": "MLFF training-data dependency graph through architecture revision 99. MVQUAL-PAR1 globally schedules exact same-N scoring jobs while preserving qualification authority; AUDIT-EVAL-PERF1 is next.",
+-  "documentation_gate": "MVQUAL_PAR1_GLOBAL_SCORING_QUEUE",
++  "description": "MLFF training-data dependency graph through architecture revision 100. AUDIT-EVAL-PERF1 hardens Foundation Audit and EVAL2 CPU reductions without changing inference/scientific authority; REPLAY-PERF1 is next.",
++  "documentation_gate": "AUDIT_EVAL_PERF1_CPU_KERNELS",
+   "edge_type_definitions": {
+     "execution_requires": "The upstream product must exist before execution.",
+     "fit_domain_requires": "The fitted object may inspect only the declared training domain.",
+@@ -3201,7 +3201,7 @@
+       ]
+     }
+   ],
+-  "next_gate": "AUDIT_EVAL_PERF1_CPU_KERNELS",
++  "next_gate": "REPLAY_PERF1_INDEX_CACHE",
+   "nodes": [
+     {
+       "id": "ACQUISITION_DECISIONS"
+@@ -5444,15 +5444,26 @@
+       "next_gate": "AUDIT_EVAL_PERF1_CPU_KERNELS"
+     },
+     {
+-      "architecture_revision": 91,
+-      "authority_class": "planned_performance_exact_equivalence",
++      "architecture_revision": 100,
++      "authority_class": "performance_exact_equivalence",
+       "gate_name": "AUDIT-EVAL-PERF1",
+       "id": "AUDIT_EVAL_PERF1_CPU_KERNELS",
+-      "implementation_status": "planned",
+-      "scientific_authority_change": false
++      "implementation_status": "implemented_cached_metadata_batched_reducers",
++      "scientific_authority_change": false,
++      "implemented_release": "0.20.233a0",
++      "model_inference_change": false,
++      "gpu_authority_change": false,
++      "eval2_static_metadata_cache": true,
++      "eval2_force_tail_preallocation": true,
++      "eval2_bootstrap_batched": true,
++      "eval2_bootstrap_temporary_target_mib": 32,
++      "foundation_shared_frame_index": true,
++      "foundation_shared_species_membership": true,
++      "foundation_additional_model_inference": false,
++      "next_gate": "REPLAY_PERF1_INDEX_CACHE"
+     },
+     {
+-      "architecture_revision": 91,
++      "architecture_revision": 100,
+       "authority_class": "planned_performance_exact_equivalence",
+       "gate_name": "REPLAY-PERF1",
+       "id": "REPLAY_PERF1_INDEX_CACHE",
+@@ -5468,5 +5479,5 @@
+       "scientific_authority_change": false
+     }
+   ],
+-  "schema_version": 79
++  "schema_version": 80
+ }
+diff -ruN '--exclude=SOURCE_PATCH_0.20.232a0_to_0.20.233a0.patch' '--exclude=SHA256SUMS_0.20.233a0.txt' /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV100.md /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV100.md
+--- /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV100.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV100.md	2026-08-18 00:41:12.380018578 +0000
+@@ -0,0 +1,22 @@
++# MLFF architecture revision 100 - AUDIT-EVAL-PERF1
++
++Release: mdstats 0.20.233a0  
++Date: 2026-08-17
++
++Revision 100 closes the Foundation Audit / EVAL2 CPU-hardening gate without changing model inference or scientific authority.
++
++## Implemented
++
++- EVAL2 repeated checkpoint reductions now reuse bounded execution-only static metadata for composition, species, focus groups, and correlation-block coding.
++- Force-vector tails use exact preallocation rather than ragged list accumulation plus concatenation.
++- Paired block bootstrap preserves the existing deterministic RNG stream while processing draws in memory-bounded vector batches.
++- FOUNDATION-AUDIT1 shares one DATA3 frame index and per-run species-membership metadata across domains, reuses squared-error work, and batches configured tail quantiles.
++- No extra DATA6/MACE prediction call is introduced.
++
++## Qualification result
++
++Exact control/current metric, bootstrap, and foundation-audit digests are preserved on the frozen CPU fixtures. Repeated EVAL2 target reduction improves by about 1.92x, paired bootstrap by about 3.36x, and the available small Foundation Audit fixture by about 1.06x. The latter is intentionally reported as a modest CPU reduction rather than overstated because prediction-sidecar authentication and structural conditioning remain necessary work.
++
++The active qualification foundation is MACE-MPA-0 medium. The reducer contracts are model-family independent and remain valid for MACE-MH-1.
++
++Next gate: REPLAY-PERF1.
+diff -ruN '--exclude=SOURCE_PATCH_0.20.232a0_to_0.20.233a0.patch' '--exclude=SHA256SUMS_0.20.233a0.txt' /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/docs/history/mlff/architecture_revisions/INDEX.md /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/docs/history/mlff/architecture_revisions/INDEX.md
+--- /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/docs/history/mlff/architecture_revisions/INDEX.md	2026-08-17 23:58:36.000000000 +0000
++++ /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/docs/history/mlff/architecture_revisions/INDEX.md	2026-08-18 00:38:52.453330880 +0000
+@@ -81,3 +81,4 @@
+ | 97 | - | [MLFF architecture revision 97 - MVKERNEL1](ARCHITECTURE_NOTES_MLFF_REV97.md) | - |
+ | 98 | REPAIR-PAR1 / mdstats 0.20.231a0 | [MLFF architecture revision 98 - REPAIR-PAR1](ARCHITECTURE_NOTES_MLFF_REV98.md) | - |
+ | 99 | MVQUAL-PAR1 / mdstats 0.20.232a0 | [MLFF architecture revision 99 - MVQUAL-PAR1](ARCHITECTURE_NOTES_MLFF_REV99.md) | - |
++| 100 | AUDIT-EVAL-PERF1 / mdstats 0.20.233a0 | [MLFF architecture revision 100 - AUDIT-EVAL-PERF1](ARCHITECTURE_NOTES_MLFF_REV100.md) | - |
+diff -ruN '--exclude=SOURCE_PATCH_0.20.232a0_to_0.20.233a0.patch' '--exclude=SHA256SUMS_0.20.233a0.txt' /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/docs/history/mlff/release_notes/INDEX.md /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/docs/history/mlff/release_notes/INDEX.md
+--- /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/docs/history/mlff/release_notes/INDEX.md	2026-08-18 00:01:56.000000000 +0000
++++ /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/docs/history/mlff/release_notes/INDEX.md	2026-08-18 00:38:52.453448701 +0000
+@@ -173,3 +173,4 @@
+ | `0.20.230a0` | [PATCH_NOTES_0.20.230a0.md](PATCH_NOTES_0.20.230a0.md) | - |
+ | `0.20.231a0` | [PATCH_NOTES_0.20.231a0.md](PATCH_NOTES_0.20.231a0.md) | - |
+ | `0.20.232a0` | [PATCH_NOTES_0.20.232a0.md](PATCH_NOTES_0.20.232a0.md) | - |
++| `0.20.233a0` | [PATCH_NOTES_0.20.233a0.md](PATCH_NOTES_0.20.233a0.md) | - |
+diff -ruN '--exclude=SOURCE_PATCH_0.20.232a0_to_0.20.233a0.patch' '--exclude=SHA256SUMS_0.20.233a0.txt' /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.233a0.md /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.233a0.md
+--- /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.233a0.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.233a0.md	2026-08-18 00:41:12.380096054 +0000
+@@ -0,0 +1,10 @@
++# mdstats 0.20.233a0 - AUDIT-EVAL-PERF1
++
++- Complete MLFF architecture revision 100 / AUDIT-EVAL-PERF1.
++- Cache reconstructible EVAL2 species/composition/focus/block indexing metadata across repeated checkpoint reductions.
++- Preallocate EVAL2 force-tail storage and replace the 2,000-replicate Python paired-bootstrap loop with deterministic, memory-bounded vector batches.
++- Share the FOUNDATION-AUDIT1 DATA3 frame index and per-run species membership across domains; reuse force-square work and batch tail quantiles.
++- Preserve exact persisted metric/bootstrap/audit records on qualification fixtures and introduce no additional model inference.
++- Same-host evidence: ~1.92x repeated EVAL2 target reduction, ~3.36x paired bootstrap, and ~1.06x Foundation Audit reduction on the available no-inference fixture.
++- Keep MACE-MPA-0 medium as active qualification while retaining the same CPU contract for MACE-MH-1.
++- Advance the next optimization gate to REPLAY-PERF1.
+diff -ruN '--exclude=SOURCE_PATCH_0.20.232a0_to_0.20.233a0.patch' '--exclude=SHA256SUMS_0.20.233a0.txt' /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/docs/specs/training_data/mlff_audit_eval_perf1_cpu_kernels_spec.md /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/docs/specs/training_data/mlff_audit_eval_perf1_cpu_kernels_spec.md
+--- /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/docs/specs/training_data/mlff_audit_eval_perf1_cpu_kernels_spec.md	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/docs/specs/training_data/mlff_audit_eval_perf1_cpu_kernels_spec.md	2026-08-18 00:41:12.379923061 +0000
+@@ -0,0 +1,60 @@
++# AUDIT-EVAL-PERF1 Foundation Audit and EVAL2 CPU-kernel specification
++
++## Status
++
++Implemented in mdstats 0.20.233a0 / MLFF architecture revision 100.
++
++## Scientific invariants
++
++AUDIT-EVAL-PERF1 is an exact-equivalence execution gate. It MUST NOT change:
++
++- foundation-model checkpoint/head identity, prediction bytes, or DATA6 prediction-manifest authentication;
++- FOUNDATION-AUDIT1 development-domain membership, metric semantics, conditioned structural channels, probe contracts, or persisted audit schema;
++- EVAL2 target-role membership, checkpoint shortlist/admissibility/ranking authority, target metric definitions, block identity, bootstrap seed material, or persisted record schemas;
++- replay hard-admissibility semantics;
++- MACE-MPA-0 versus MACE-MH-1 model-family behavior;
++- GPU inference/training numerical authority.
++
++No model inference is authorized by this gate. FOUNDATION-AUDIT1 MUST continue to reduce the already completed DATA6 prediction sweep, and EVAL2 CPU changes begin only after prediction objects/artifacts already exist.
++
++## EVAL2 static-reduction metadata
++
++Repeated checkpoint evaluations over the same immutable `EvaluationDatasetView` MAY cache execution-only metadata keyed by the in-memory view identity and ordered correlation-block IDs. The cache contains only reconstructible indexing state:
++
++- per-frame composition keys;
++- sorted species inventory and per-frame species local indices;
++- per-frame focus/non-focus masks;
++- sorted block labels and compact per-frame block codes.
++
++The cache MUST NOT enter target-role, prediction, checkpoint, or metric scientific identity. Cache eviction or disabled caching MUST reproduce the same persisted metric record.
++
++Force-vector tail storage is preallocated from the immutable view atom count. Species, condition, group, block, stress, and global SSE accumulation preserve historical frame order and scalar update order where those values feed persisted authority.
++
++## Paired bootstrap
++
++The paired EVAL2 block bootstrap MUST preserve:
++
++- the existing seed derivation;
++- NumPy `default_rng` draw stream;
++- identical paired block draws for both candidates;
++- current confidence-interval and practical-equivalence decision semantics.
++
++Replicates MAY be generated in bounded 2-D batches. Batch size is an execution choice derived from block count and a 32 MiB temporary-memory target, capped at 256 replicates. Changing batch size MUST NOT change the persisted `Eval2BootstrapComparison` record.
++
++## FOUNDATION-AUDIT1 reduction
++
++One `build_foundation_target_audit` call SHOULD construct the DATA3 frame-array index once and reuse it across all audit domains. Per-run atomic-number membership MAY likewise be pre-indexed once and shared across domains. These caches are execution-only.
++
++The reducer MAY reuse an already computed `delta * delta` array for global and per-species SSE and MAY evaluate configured force-tail quantiles in one NumPy call. Prediction-sidecar verification, force/stress shape checks, memmap spill behavior, structural conditioning, and warning behavior remain unchanged.
++
++## Acceptance authority
++
++Same-host paired evidence against untouched 0.20.232a0 records:
++
++- EVAL2 target metric reduction, 4,096 configurations / 294,912 atoms: approximately 0.862 s -> 0.449 s median (~1.92x) with exact metric digest `d9dd9db2c2d47e2d6f034e0b58f094c04c516d5a0dc4f0089d3f15762d434658`;
++- paired bootstrap, 768 independent blocks / 2,000 replicates: approximately 0.0512 s -> 0.0152 s (~3.36x) with exact comparison digest `9664354fd2d871e67113ff5b9ef28118c9414a59f29a5fd4114acb729590397e`;
++- available no-inference FOUNDATION-AUDIT1 fixture: approximately 0.0580 s -> 0.0545 s (~1.06x), exact audit digest `39b8b207c741798f5a8555b41ceb0c746948935612d84d45961ba87b0e8c94e5`, and unchanged model-provider call counts 44 descriptor / 44 prediction calls.
++
++Timing is execution evidence. Exact persisted records and no-additional-inference behavior remain scientific authority.
++
++The next optimization gate is `REPLAY-PERF1`.
+diff -ruN '--exclude=SOURCE_PATCH_0.20.232a0_to_0.20.233a0.patch' '--exclude=SHA256SUMS_0.20.233a0.txt' /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/mdstats/_version.py /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/mdstats/_version.py
+--- /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/mdstats/_version.py	2026-08-17 23:58:05.000000000 +0000
++++ /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/mdstats/_version.py	2026-08-18 00:37:24.043360772 +0000
+@@ -1 +1 @@
+-__version__ = "0.20.232a0"
++__version__ = "0.20.233a0"
+diff -ruN '--exclude=SOURCE_PATCH_0.20.232a0_to_0.20.233a0.patch' '--exclude=SHA256SUMS_0.20.233a0.txt' /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/mdstats/training_data/eval2.py /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/mdstats/training_data/eval2.py
+--- /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/mdstats/training_data/eval2.py	2026-08-15 21:40:16.000000000 +0000
++++ /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/mdstats/training_data/eval2.py	2026-08-18 00:34:37.184158466 +0000
+@@ -7,10 +7,13 @@
+ 
+ from __future__ import annotations
+ 
++from collections import OrderedDict
+ from dataclasses import dataclass, field
+ import json
+ import math
++import os
+ from pathlib import Path
++from threading import RLock
+ from typing import Any, Mapping, Sequence
+ 
+ import numpy as np
+@@ -30,6 +33,120 @@
+ EVAL2_TARGET_ROLE_SCHEMA = "mdstats.eval2-target-role.v1"
+ 
+ 
++# AUDIT-EVAL-PERF1 execution-only cache.  The authoritative target-role and
++# prediction digests remain the scientific identity; this cache only retains
++# immutable indexing metadata that is otherwise rebuilt for every checkpoint.
++@dataclass(frozen=True, slots=True)
++class _Eval2StaticReductionMetadata:
++    view: Any
++    block_ids: tuple[str, ...]
++    composition_keys: tuple[tuple[tuple[int, int], ...], ...]
++    species_atomic_numbers: tuple[int, ...]
++    species_groups_per_frame: tuple[tuple[tuple[int, np.ndarray], ...], ...]
++    focus_masks_per_frame: tuple[np.ndarray | None, ...]
++    block_labels: tuple[str, ...]
++    block_codes: np.ndarray
++    resident_bytes: int
++
++
++_EVAL2_STATIC_CACHE: "OrderedDict[tuple[int, tuple[str, ...]], _Eval2StaticReductionMetadata]" = OrderedDict()
++_EVAL2_STATIC_CACHE_LOCK = RLock()
++_EVAL2_STATIC_CACHE_MAX_BYTES = max(
++    0, int(os.environ.get("MDSTATS_MLFF_EVAL2_STATIC_CACHE_BYTES", str(256 * 1024**2)))
++)
++_EVAL2_STATIC_CACHE_BYTES = 0
++
++
++def _build_eval2_static_reduction_metadata(
++    view: Any, block_ids: Sequence[str]
++) -> _Eval2StaticReductionMetadata:
++    count = int(view.configuration_count)
++    blocks = tuple(str(value) for value in block_ids)
++    if len(blocks) != count:
++        raise TrainingDataInputError("EVAL2 target block IDs do not match the target role.")
++    block_labels = tuple(sorted(set(blocks)))
++    block_index = {value: index for index, value in enumerate(block_labels)}
++    block_codes = np.asarray([block_index[value] for value in blocks], dtype=np.int32)
++    block_codes.setflags(write=False)
++
++    all_species = tuple(int(value) for value in np.unique(np.asarray(view.atomic_numbers, dtype=np.int64)))
++    species_index = {value: index for index, value in enumerate(all_species)}
++    composition_keys: list[tuple[tuple[int, int], ...]] = []
++    species_groups: list[tuple[tuple[int, np.ndarray], ...]] = []
++    focus_masks: list[np.ndarray | None] = []
++    focus_numbers = np.asarray(tuple(int(v) for v in getattr(view, "focus_atomic_numbers", ())), dtype=np.int64)
++    resident_bytes = int(block_codes.nbytes)
++
++    for frame_index in range(count):
++        start = int(view.force_offsets[frame_index])
++        stop = int(view.force_offsets[frame_index + 1])
++        numbers = np.asarray(view.atomic_numbers[start:stop], dtype=np.int64)
++        unique_z, unique_counts = np.unique(numbers, return_counts=True)
++        composition_keys.append(tuple((int(z), int(n)) for z, n in zip(unique_z, unique_counts)))
++        frame_groups: list[tuple[int, np.ndarray]] = []
++        for z in unique_z:
++            local = np.flatnonzero(numbers == int(z)).astype(np.int32, copy=False)
++            local.setflags(write=False)
++            resident_bytes += int(local.nbytes)
++            frame_groups.append((species_index[int(z)], local))
++        species_groups.append(tuple(frame_groups))
++        if focus_numbers.size:
++            mask = np.isin(numbers, focus_numbers)
++            mask.setflags(write=False)
++            resident_bytes += int(mask.nbytes)
++            focus_masks.append(mask)
++        else:
++            focus_masks.append(None)
++
++    return _Eval2StaticReductionMetadata(
++        view=view,
++        block_ids=blocks,
++        composition_keys=tuple(composition_keys),
++        species_atomic_numbers=all_species,
++        species_groups_per_frame=tuple(species_groups),
++        focus_masks_per_frame=tuple(focus_masks),
++        block_labels=block_labels,
++        block_codes=block_codes,
++        resident_bytes=max(1, resident_bytes),
++    )
++
++
++def _eval2_static_reduction_metadata(
++    view: Any, block_ids: Sequence[str]
++) -> _Eval2StaticReductionMetadata:
++    """Return immutable EVAL2 indexing metadata without changing authority."""
++
++    global _EVAL2_STATIC_CACHE_BYTES
++    blocks = tuple(str(value) for value in block_ids)
++    key = (id(view), blocks)
++    with _EVAL2_STATIC_CACHE_LOCK:
++        cached = _EVAL2_STATIC_CACHE.get(key)
++        if cached is not None and cached.view is view:
++            _EVAL2_STATIC_CACHE.move_to_end(key)
++            return cached
++    built = _build_eval2_static_reduction_metadata(view, blocks)
++    with _EVAL2_STATIC_CACHE_LOCK:
++        cached = _EVAL2_STATIC_CACHE.get(key)
++        if cached is not None and cached.view is view:
++            _EVAL2_STATIC_CACHE.move_to_end(key)
++            return cached
++        if _EVAL2_STATIC_CACHE_MAX_BYTES <= 0 or built.resident_bytes > _EVAL2_STATIC_CACHE_MAX_BYTES:
++            return built
++        _EVAL2_STATIC_CACHE[key] = built
++        _EVAL2_STATIC_CACHE_BYTES += built.resident_bytes
++        while _EVAL2_STATIC_CACHE and _EVAL2_STATIC_CACHE_BYTES > _EVAL2_STATIC_CACHE_MAX_BYTES:
++            _, removed = _EVAL2_STATIC_CACHE.popitem(last=False)
++            _EVAL2_STATIC_CACHE_BYTES -= removed.resident_bytes
++        return built
++
++
++def clear_eval2_static_reduction_cache() -> None:
++    global _EVAL2_STATIC_CACHE_BYTES
++    with _EVAL2_STATIC_CACHE_LOCK:
++        _EVAL2_STATIC_CACHE.clear()
++        _EVAL2_STATIC_CACHE_BYTES = 0
++
++
+ def _finite_nonnegative(value: float, *, name: str) -> float:
+     value = float(value)
+     if not math.isfinite(value) or value < 0.0:
+@@ -951,27 +1068,35 @@
+     target_role_digest: str,
+     prediction_digest: str,
+ ) -> Eval2TargetMetricRecord:
+-    """Reduce full target predictions into the EVAL2 metric/tie-break evidence."""
++    """Reduce full target predictions into the EVAL2 metric/tie-break evidence.
++
++    AUDIT-EVAL-PERF1 keeps all scalar reduction order that contributes to the
++    persisted authority, but caches static dataset metadata and preallocates the
++    force-tail buffer so repeated checkpoint evaluations avoid Python metadata
++    reconstruction and ragged list concatenation.
++    """
+ 
+     if len(predictions) != int(view.configuration_count) or len(block_ids) != int(view.configuration_count):
+         raise TrainingDataInputError("EVAL2 target predictions/block IDs do not match the target role.")
+     if any(not str(v).strip() for v in block_ids):
+         raise TrainingDataInputError("EVAL2 target block IDs must be non-empty.")
++    metadata = _eval2_static_reduction_metadata(view, block_ids)
+ 
++    count = int(view.configuration_count)
+     force_sse = 0.0
+     force_count = 0
+-    energy_abs_per_atom: list[float] = []
++    energy_abs_per_atom = np.empty(count, dtype=np.float64)
+     energy_signed_per_atom_by_composition: dict[tuple[tuple[int, int], ...], list[float]] = {}
+-    vector_errors: list[np.ndarray] = []
+-    species_sse: dict[int, float] = {}
+-    species_count: dict[int, int] = {}
+-    condition_sse: dict[str, float] = {}
+-    condition_count: dict[str, int] = {}
+-    group_sse: dict[str, float] = {}
+-    group_count: dict[str, int] = {}
+-    block_sse: dict[str, float] = {}
+-    block_count: dict[str, int] = {}
+-    block_configs: dict[str, int] = {}
++    vector = np.empty(int(view.total_atom_count), dtype=np.float64)
++    species_sse = np.zeros(len(metadata.species_atomic_numbers), dtype=np.float64)
++    species_count = np.zeros(len(metadata.species_atomic_numbers), dtype=np.int64)
++    condition_sse = np.zeros(len(getattr(view, "condition_labels", ())), dtype=np.float64)
++    condition_count = np.zeros(len(getattr(view, "condition_labels", ())), dtype=np.int64)
++    group_sse = np.zeros(2, dtype=np.float64)
++    group_count = np.zeros(2, dtype=np.int64)
++    block_sse = np.zeros(len(metadata.block_labels), dtype=np.float64)
++    block_count = np.zeros(len(metadata.block_labels), dtype=np.int64)
++    block_configs = np.zeros(len(metadata.block_labels), dtype=np.int64)
+     stress_sse = 0.0
+     stress_count = 0
+ 
+@@ -983,11 +1108,10 @@
+         if not math.isfinite(pred_e):
+             raise TrainingDataInputError("EVAL2 predicted energy is non-finite.")
+         signed_energy_error_per_atom = (pred_e - float(view.reference_energies[index])) / natoms
+-        energy_abs_per_atom.append(abs(signed_energy_error_per_atom))
+-        composition_numbers = np.asarray(view.atomic_numbers[start:stop], dtype=np.int64)
+-        unique_z, unique_counts = np.unique(composition_numbers, return_counts=True)
+-        composition_key = tuple((int(z), int(count)) for z, count in zip(unique_z, unique_counts))
++        energy_abs_per_atom[index] = abs(signed_energy_error_per_atom)
++        composition_key = metadata.composition_keys[index]
+         energy_signed_per_atom_by_composition.setdefault(composition_key, []).append(signed_energy_error_per_atom)
++
+         pred_f = np.asarray(prediction.forces_ev_per_angstrom, dtype=np.float64)
+         if pred_f.shape != (natoms, 3) or np.any(~np.isfinite(pred_f)):
+             raise TrainingDataInputError("EVAL2 predicted force shape/value is invalid.")
+@@ -996,31 +1120,32 @@
+         components = int(delta.size)
+         force_sse += sse
+         force_count += components
+-        vector_errors.append(np.linalg.norm(delta, axis=1))
+-        numbers = view.atomic_numbers[start:stop]
+-        for z in np.unique(numbers):
+-            selected = delta[numbers == z]
+-            zi = int(z)
+-            species_sse[zi] = species_sse.get(zi, 0.0) + float(np.sum(selected * selected, dtype=np.float64))
+-            species_count[zi] = species_count.get(zi, 0) + int(selected.size)
+-        focus_numbers = tuple(int(v) for v in getattr(view, "focus_atomic_numbers", ()))
+-        if focus_numbers:
+-            focus_mask = np.isin(numbers, np.asarray(focus_numbers, dtype=numbers.dtype))
+-            for group_name, mask in (("focus", focus_mask), ("nonfocus", ~focus_mask)):
++        vector[start:stop] = np.linalg.norm(delta, axis=1)
++
++        for species_code, local_indices in metadata.species_groups_per_frame[index]:
++            selected = delta[local_indices]
++            species_sse[species_code] += float(np.sum(selected * selected, dtype=np.float64))
++            species_count[species_code] += int(selected.size)
++
++        focus_mask = metadata.focus_masks_per_frame[index]
++        if focus_mask is not None:
++            for group_code, mask in ((0, focus_mask), (1, ~focus_mask)):
+                 if np.any(mask):
+                     group_delta = delta[mask]
+-                    group_sse[group_name] = group_sse.get(group_name, 0.0) + float(np.sum(group_delta * group_delta, dtype=np.float64))
+-                    group_count[group_name] = group_count.get(group_name, 0) + int(group_delta.size)
++                    group_sse[group_code] += float(np.sum(group_delta * group_delta, dtype=np.float64))
++                    group_count[group_code] += int(group_delta.size)
++
+         if getattr(view, "condition_labels", ()):
+             cid = int(view.condition_ids[index])
+             if cid >= 0:
+-                label = str(view.condition_labels[cid])
+-                condition_sse[label] = condition_sse.get(label, 0.0) + sse
+-                condition_count[label] = condition_count.get(label, 0) + components
+-        block = str(block_ids[index])
+-        block_sse[block] = block_sse.get(block, 0.0) + sse
+-        block_count[block] = block_count.get(block, 0) + components
+-        block_configs[block] = block_configs.get(block, 0) + 1
++                condition_sse[cid] += sse
++                condition_count[cid] += components
++
++        block_code = int(metadata.block_codes[index])
++        block_sse[block_code] += sse
++        block_count[block_code] += components
++        block_configs[block_code] += 1
++
+         if bool(view.stress_present[index]):
+             if prediction.stress_ev_per_angstrom3 is None:
+                 raise TrainingDataInputError("EVAL2 target has stress labels but prediction omitted stress.")
+@@ -1034,22 +1159,26 @@
+     if force_count <= 0:
+         raise TrainingDataInputError("EVAL2 target role contains no force components.")
+     species = tuple(
+-        (chemical_symbols[z], math.sqrt(species_sse[z] / species_count[z]))
+-        for z in sorted(species_sse)
++        (chemical_symbols[z], math.sqrt(species_sse[code] / species_count[code]))
++        for code, z in enumerate(metadata.species_atomic_numbers)
++        if int(species_count[code]) > 0
+     )
+     species_macro = float(np.mean([value for _, value in species]))
+     conditions = tuple(
+-        (f"condition:{label}", math.sqrt(condition_sse[label] / condition_count[label]))
+-        for label in sorted(condition_sse)
++        (f"condition:{label}", math.sqrt(condition_sse[code] / condition_count[code]))
++        for code, label in enumerate(getattr(view, "condition_labels", ()))
++        if int(condition_count[code]) > 0
+     )
+     species_strata = tuple((f"species:{symbol}", value) for symbol, value in species)
++    group_names = ("focus", "nonfocus")
+     group_strata = tuple(
+-        (f"group:{name}", math.sqrt(group_sse[name] / group_count[name]))
+-        for name in sorted(group_sse)
++        (f"group:{group_names[code]}", math.sqrt(group_sse[code] / group_count[code]))
++        for code in range(2)
++        if int(group_count[code]) > 0
+     )
+     strata = tuple(sorted((*conditions, *group_strata, *species_strata)))
+     worst = None if not strata else max(value for _, value in strata)
+-    vector = np.concatenate(vector_errors)
++
+     relative_energy_residuals: list[float] = []
+     for values in energy_signed_per_atom_by_composition.values():
+         if len(values) < 2:
+@@ -1065,16 +1194,16 @@
+     block_metrics = tuple(
+         Eval2TargetBlockMetric(
+             block_id=block,
+-            force_squared_error_sum=block_sse[block],
+-            force_component_count=block_count[block],
+-            configuration_count=block_configs[block],
++            force_squared_error_sum=float(block_sse[code]),
++            force_component_count=int(block_count[code]),
++            configuration_count=int(block_configs[code]),
+         )
+-        for block in sorted(block_sse)
++        for code, block in enumerate(metadata.block_labels)
+     )
+     return Eval2TargetMetricRecord(
+-        configuration_count=int(view.configuration_count),
++        configuration_count=count,
+         atom_count=int(view.total_atom_count),
+-        energy_mae_ev_per_atom=float(np.mean(np.asarray(energy_abs_per_atom, dtype=np.float64))),
++        energy_mae_ev_per_atom=float(np.mean(energy_abs_per_atom)),
+         relative_energy_rmse_ev_per_atom=relative_energy_rmse,
+         force_component_rmse_ev_per_angstrom=math.sqrt(force_sse / force_count),
+         species_macro_force_rmse_ev_per_angstrom=species_macro,
+@@ -1193,14 +1322,26 @@
+     first_sse = np.asarray([first_map[key].force_squared_error_sum for key in blocks], dtype=np.float64)
+     second_sse = np.asarray([second_map[key].force_squared_error_sum for key in blocks], dtype=np.float64)
+     components = np.asarray([first_map[key].force_component_count for key in blocks], dtype=np.float64)
+-    for index in range(replicates.size):
+-        draw = rng.integers(0, count, size=count)
+-        denom = float(np.sum(components[draw]))
+-        if denom <= 0.0:
++    # AUDIT-EVAL-PERF1 preserves the exact RNG stream but amortizes Python
++    # overhead over bounded batches.  Each row remains one canonical block draw.
++    # The cap bounds temporary integer and gather arrays independently of the
++    # configured bootstrap replicate count.
++    bootstrap_target_temporary_bytes = 32 * 1024**2
++    bytes_per_draw_entry = 2 * np.dtype(np.int64).itemsize  # draw + one gathered float64 array
++    memory_bounded_batch = max(1, bootstrap_target_temporary_bytes // max(1, count * bytes_per_draw_entry))
++    bootstrap_batch = max(1, min(256, replicates.size, int(memory_bounded_batch)))
++    cursor = 0
++    while cursor < replicates.size:
++        batch = min(bootstrap_batch, replicates.size - cursor)
++        draws = rng.integers(0, count, size=(batch, count))
++        sampled_components = components[draws]
++        denom = np.sum(sampled_components, axis=1, dtype=np.float64)
++        if np.any(denom <= 0.0):
+             raise TrainingDataInputError("EVAL2 bootstrap sampled a zero-component block set.")
+-        first_rmse = math.sqrt(float(np.sum(first_sse[draw])) / denom)
+-        second_rmse = math.sqrt(float(np.sum(second_sse[draw])) / denom)
+-        replicates[index] = first_rmse - second_rmse
++        first_sum = np.sum(first_sse[draws], axis=1, dtype=np.float64)
++        second_sum = np.sum(second_sse[draws], axis=1, dtype=np.float64)
++        replicates[cursor : cursor + batch] = np.sqrt(first_sum / denom) - np.sqrt(second_sum / denom)
++        cursor += batch
+     alpha = (1.0 - float(policy.bootstrap_confidence)) / 2.0
+     low, high = (float(v) for v in np.quantile(replicates, [alpha, 1.0 - alpha]))
+     # A material decision requires agreement between the unrounded point
+diff -ruN '--exclude=SOURCE_PATCH_0.20.232a0_to_0.20.233a0.patch' '--exclude=SHA256SUMS_0.20.233a0.txt' /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/mdstats/training_data/foundation_audit.py /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/mdstats/training_data/foundation_audit.py
+--- /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/mdstats/training_data/foundation_audit.py	2026-08-16 00:51:16.000000000 +0000
++++ /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/mdstats/training_data/foundation_audit.py	2026-08-18 00:31:40.410120714 +0000
+@@ -782,8 +782,17 @@
+     policy: TargetModelAuditPolicy,
+     temporary_memory_threshold_bytes: int | None = None,
+     temporary_directory: str | None = None,
++    frame_array_index: Mapping[str, Any] | None = None,
++    species_groups_by_frame_data: Mapping[int, tuple[tuple[int, np.ndarray], ...]] | None = None,
+ ) -> TargetModelAuditMetrics:
+-    index = build_frame_array_index(frame_catalog, frame_data_by_run)
++    # AUDIT-EVAL-PERF1 lets all domains share the immutable DATA3 frame index and
++    # per-run species membership.  Direct callers retain the historical local
++    # construction path when these execution-only caches are omitted.
++    index = (
++        build_frame_array_index(frame_catalog, frame_data_by_run)
++        if frame_array_index is None
++        else frame_array_index
++    )
+     frame_uids_tuple = tuple(str(value) for value in frame_uids)
+     if not frame_uids_tuple:
+         raise TrainingDataInputError("FOUNDATION-AUDIT1 domain is empty.")
+@@ -847,9 +856,10 @@
+         total_atoms += natoms
+         energy_abs_per_atom[frame_position] = abs(float(prediction.energy_ev) - reference_energy) / natoms
+         delta = predicted_forces - reference_forces
+-        mse = float(np.mean(delta * delta))
++        delta_sq = delta * delta
++        mse = float(np.mean(delta_sq))
+         frame_mse[frame_position] = mse
+-        force_sq_sum += float(np.sum(delta * delta))
++        force_sq_sum += float(np.sum(delta_sq))
+         force_component_count += int(delta.size)
+         vector[vector_cursor : vector_cursor + natoms] = np.linalg.norm(delta, axis=1)
+         vector_cursor += natoms
+@@ -859,12 +869,17 @@
+         numbers = np.asarray(frame_data.atomic_numbers, dtype=np.int32)
+         if numbers.shape != (natoms,):
+             raise TrainingDataInputError("Foundation-audit atomic-number array is misaligned.")
+-        for atomic_number in np.unique(numbers):
+-            selected = delta[numbers == atomic_number]
+-            z = int(atomic_number)
+-            species_sq_sum[z] = species_sq_sum.get(z, 0.0) + float(np.sum(selected * selected))
+-            species_component_count[z] = species_component_count.get(z, 0) + int(selected.size)
+-            species_atom_count[z] = species_atom_count.get(z, 0) + int(selected.shape[0])
++        groups = None if species_groups_by_frame_data is None else species_groups_by_frame_data.get(id(frame_data))
++        if groups is None:
++            groups = tuple(
++                (int(atomic_number), np.flatnonzero(numbers == atomic_number).astype(np.int32, copy=False))
++                for atomic_number in np.unique(numbers)
++            )
++        for z, local_indices in groups:
++            selected_sq = delta_sq[local_indices]
++            species_sq_sum[z] = species_sq_sum.get(z, 0.0) + float(np.sum(selected_sq))
++            species_component_count[z] = species_component_count.get(z, 0) + int(selected_sq.size)
++            species_atom_count[z] = species_atom_count.get(z, 0) + int(local_indices.size)
+         if frame_data.stresses_ev_per_angstrom3 is not None and prediction.stress_ev_per_angstrom3 is not None:
+             reference_stress = np.asarray(frame_data.stresses_ev_per_angstrom3[local_index], dtype=np.float64)
+             predicted_stress = np.asarray(prediction.stress_ev_per_angstrom3, dtype=np.float64)
+@@ -888,13 +903,16 @@
+         )
+         for atomic_number in sorted(species_sq_sum)
+     )
++    tail_quantiles = np.asarray(policy.force_tail_quantiles, dtype=np.float64)
++    vector_tail_values = np.quantile(vector, tail_quantiles)
++    component_tail_values = np.quantile(component_abs, tail_quantiles)
+     tails = tuple(
+         TargetModelForceTailMetric(
+             quantile=q,
+-            vector_error_ev_per_angstrom=float(np.quantile(vector, q)),
+-            component_abs_error_ev_per_angstrom=float(np.quantile(component_abs, q)),
++            vector_error_ev_per_angstrom=float(vector_tail_values[index]),
++            component_abs_error_ev_per_angstrom=float(component_tail_values[index]),
+         )
+-        for q in policy.force_tail_quantiles
++        for index, q in enumerate(policy.force_tail_quantiles)
+     )
+     conditioned = _conditioned_summaries(
+         frame_uids=frame_uids,
+@@ -978,6 +996,20 @@
+             difficulty_by_label[catalog.domain.label_domain_id] = catalog
+ 
+     structural_catalogs = tuple(data6_bundle.universal_structural_features)
++    # AUDIT-EVAL-PERF1 static execution metadata.  Building these once avoids
++    # re-indexing DATA3 and re-discovering identical per-run species membership
++    # for every audit domain/frame; neither cache participates in authority.
++    shared_frame_array_index = build_frame_array_index(frame_catalog, frame_data_by_run)
++    species_groups_by_frame_data: dict[int, tuple[tuple[int, np.ndarray], ...]] = {}
++    for frame_data in frame_data_by_run.values():
++        numbers = np.asarray(frame_data.atomic_numbers, dtype=np.int32)
++        groups: list[tuple[int, np.ndarray]] = []
++        for atomic_number in np.unique(numbers):
++            local = np.flatnonzero(numbers == atomic_number).astype(np.int32, copy=False)
++            local.setflags(write=False)
++            groups.append((int(atomic_number), local))
++        species_groups_by_frame_data[id(frame_data)] = tuple(groups)
++
+     domain_records: list[FoundationAuditDomainRecord] = []
+     for frozen in target_data_role_freeze.domains:
+         difficulty = difficulty_by_label.get(frozen.label_domain_id)
+@@ -1009,6 +1041,8 @@
+             policy=active,
+             temporary_memory_threshold_bytes=temporary_memory_threshold_bytes,
+             temporary_directory=temporary_directory,
++            frame_array_index=shared_frame_array_index,
++            species_groups_by_frame_data=species_groups_by_frame_data,
+         )
+         domain_records.append(
+             FoundationAuditDomainRecord(
+diff -ruN '--exclude=SOURCE_PATCH_0.20.232a0_to_0.20.233a0.patch' '--exclude=SHA256SUMS_0.20.233a0.txt' /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/pyproject.toml /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/pyproject.toml
+--- /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/pyproject.toml	2026-08-17 23:58:05.000000000 +0000
++++ /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/pyproject.toml	2026-08-18 00:37:24.043552358 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.232a0"
++version = "0.20.233a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=SOURCE_PATCH_0.20.232a0_to_0.20.233a0.patch' '--exclude=SHA256SUMS_0.20.233a0.txt' /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/release/qualification_logs/MLFF_AUDIT_EVAL_PERF1_QUALIFICATION_0.20.233a0.json /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/release/qualification_logs/MLFF_AUDIT_EVAL_PERF1_QUALIFICATION_0.20.233a0.json
+--- /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/release/qualification_logs/MLFF_AUDIT_EVAL_PERF1_QUALIFICATION_0.20.233a0.json	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/release/qualification_logs/MLFF_AUDIT_EVAL_PERF1_QUALIFICATION_0.20.233a0.json	2026-08-18 00:53:11.230901392 +0000
+@@ -0,0 +1,169 @@
++{
++  "acceptance": {
++    "advance_to": "REPLAY-PERF1",
++    "broad_regression": "PASS",
++    "exact_bootstrap_record": "PASS",
++    "exact_eval2_metrics": "PASS",
++    "exact_foundation_audit": "PASS",
++    "gpu_authority_unchanged": "PASS",
++    "no_additional_inference": "PASS",
++    "throughput_improved": "PASS"
++  },
++  "architecture_revision": 100,
++  "authority_change": {
++    "gpu": false,
++    "model_inference": false,
++    "runtime_optimization": true,
++    "scientific": false
++  },
++  "content_digest": "0aceda624e8fe744707b3cc910de4ad4f1acc11b929e210de2b695c62101fa17",
++  "date": "2026-08-17",
++  "dependency_graph_schema": 80,
++  "documentation": {
++    "architecture_revision_note": {
++      "path": "docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV100.md",
++      "sha256": "cd0327c90b70488731dac1da909eda17dc1c6acfa175007730dc2e9924023542"
++    },
++    "canonical_markdown": {
++      "path": "docs/arch_manuals/mlff_training_data_architecture.md",
++      "sha256": "14190e37c5b7a5299a8d8883c6f2e5ac283fa1c74fe8e1023fd420f150ae90bd"
++    },
++    "canonical_pdf": {
++      "comparison_note": "Revision-99 49-page PDF and revision-100 50-page PDF compared at 40 dpi; 13 pages changed including the expected new final page. All 50 final pages rendered at 120 dpi; front matter and changed performance/status/reference region were visually inspected with no clipping or overlap.",
++      "full_render": "PASS",
++      "pages": 50,
++      "path": "docs/arch_manuals/mlff_training_data_architecture.pdf",
++      "preflight": "PASS",
++      "sha256": "01eba9363f24d7017af2852df66074ead938fcdb37962dfd887251f36874b87b",
++      "visual_qa": "PASS"
++    },
++    "dependency_graph": {
++      "path": "docs/arch_manuals/mlff_training_data_dependency_graph.json",
++      "sha256": "fced14410e9d1cdded995b0a31a9d3ee6ccf688bb2b7a117db60fb0bff1050aa"
++    },
++    "release_note": {
++      "path": "docs/history/mlff/release_notes/PATCH_NOTES_0.20.233a0.md",
++      "sha256": "513e1690e21203b24896f3697e3a47342237291e3f152afeeb29feb3d626c0a8"
++    },
++    "spec": {
++      "path": "docs/specs/training_data/mlff_audit_eval_perf1_cpu_kernels_spec.md",
++      "sha256": "4c82b367523e603b1836a40fc1570813caf6fc5d0583fa800d162167ba94c4c6"
++    }
++  },
++  "foundation": {
++    "active_qualification_family": "mace-mpa-0",
++    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
++    "mh1_supported_by_same_contract": true,
++    "note": "AUDIT-EVAL-PERF1 changes CPU reduction/statistics only. MACE-MPA-0 medium is the active qualification checkpoint; MACE-MH-1 uses the same post-inference reduction contract.",
++    "variant": "medium"
++  },
++  "gate": "AUDIT_EVAL_PERF1_CPU_KERNELS",
++  "implementation": {
++    "additional_model_inference": false,
++    "bootstrap_temporary_target_mib": 32,
++    "eval2_memory_bounded_batched_bootstrap": true,
++    "eval2_preallocated_force_tail_buffer": true,
++    "eval2_static_reduction_metadata_cache": true,
++    "foundation_batched_tail_quantiles": true,
++    "foundation_delta_squared_reuse": true,
++    "foundation_shared_frame_array_index": true,
++    "foundation_shared_species_membership": true,
++    "gpu_numerical_authority_changed": false,
++    "implementation_manifest": {
++      "path": "benchmarks/mlff_audit_eval_perf1_implementation_manifest_0.20.233a0.json",
++      "sha256": "89bfefe034590b35af1bb1ec6d12a5b084ffa3162c512d4dc6082284d3dc1355"
++    }
++  },
++  "inputs": {
++    "dependency_archive": {
++      "path": "/mnt/data/dependencies.tar(20260817-112644).gz",
++      "sha256": "888d545a512396697c8583d69bc9ed33110914675f466a4cbcafc3e1e1407171"
++    },
++    "replay_source": {
++      "path": "/mnt/data/replay_fps_12000.extxyz",
++      "sha256": "187eed42fb2d6cf5e7e745ffed0ce34541e92c6a35ec9e654520cd3c7198403c"
++    },
++    "target_archive": {
++      "path": "/mnt/data/training_LTA.tar(4).gz",
++      "sha256": "bc1b7e25ba338507ae38b260bcd283356de887b6c6cf762a2c146733f1c3c958"
++    }
++  },
++  "next_gate": "REPLAY-PERF1",
++  "performance_evidence": {
++    "eval2_target_reduction": {
++      "control_median_seconds": 0.8620806569997512,
++      "current_median_seconds": 0.4492151720005495,
++      "speedup": 1.9190817913841447
++    },
++    "foundation_audit": {
++      "control_median_seconds": 0.05802883449996443,
++      "current_median_seconds": 0.054530274500393716,
++      "interpretation": "Available no-inference audit fixture is already dominated by authenticated sidecar/conditioning work; major gate payoff is repeated EVAL2 reduction and bootstrap.",
++      "speedup": 1.064158121917128
++    },
++    "paired_bootstrap": {
++      "control_median_seconds": 0.051166544000807335,
++      "current_median_seconds": 0.015222844000163605,
++      "speedup": 3.3611685175422825
++    },
++    "primary_record": {
++      "path": "benchmarks/mlff_audit_eval_perf1_cloud_cpu_mpa0_2026-08-17.json",
++      "sha256": "22ea2ea6ae4358a129256401ed49df88822a56908f118fe69be9c198727389fa"
++    },
++    "report": {
++      "path": "benchmarks/mlff_audit_eval_perf1_cloud_cpu_mpa0_2026-08-17.md",
++      "sha256": "f47976c29abe32256dca0e1b9839b364e932cbb82b7a097fc2627427aa9cb638"
++    }
++  },
++  "release": "0.20.233a0",
++  "schema": "mdstats.mlff-audit-eval-perf1-qualification.v1",
++  "scientific_oracles": {
++    "bootstrap_comparison_digest": "9664354fd2d871e67113ff5b9ef28118c9414a59f29a5fd4114acb729590397e",
++    "eval2_metric_digest": "d9dd9db2c2d47e2d6f034e0b58f094c04c516d5a0dc4f0089d3f15762d434658",
++    "exact_persisted_records": true,
++    "foundation_audit_digest": "39b8b207c741798f5a8555b41ceb0c746948935612d84d45961ba87b0e8c94e5",
++    "foundation_model_provider_calls_control": [
++      44,
++      44
++    ],
++    "foundation_model_provider_calls_current": [
++      44,
++      44
++    ]
++  },
++  "status": "PASS",
++  "tests": {
++    "archival_spec_boundary": {
++      "excluded_from_current_release_pass_fail": [
++        "tests/test_mlff_target_data2c_mvidx1_specification.py"
++      ],
++      "reason": "Historical release-pinned MVIDX specification remains archival; current functional/scientific MVIDX authority is included in the 111-test regression."
++    },
++    "compileall": {
++      "paths": [
++        "mdstats",
++        "benchmarks",
++        "tools"
++      ],
++      "status": "PASS"
++    },
++    "current_gate_and_dependencies": {
++      "failed": 0,
++      "passed": 119,
++      "warnings": 8
++    },
++    "packaging_metadata": {
++      "pip_wheel_no_deps_no_build_isolation": "PASS",
++      "pyproject_version": "0.20.233a0",
++      "root_pkg_info_version": "0.20.233a0",
++      "wheel_metadata_name": "mdstats",
++      "wheel_metadata_version": "0.20.233a0"
++    },
++    "target_data2_functional_authority": {
++      "failed": 0,
++      "passed": 111,
++      "warning_class": "expected velocity-reconstruction/normalization warnings unchanged from prior authority",
++      "warnings": 18
++    }
++  }
++}
+diff -ruN '--exclude=SOURCE_PATCH_0.20.232a0_to_0.20.233a0.patch' '--exclude=SHA256SUMS_0.20.233a0.txt' /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/release/qualification_logs/audit_eval_perf1_perf_infra_group1.log /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/release/qualification_logs/audit_eval_perf1_perf_infra_group1.log
+--- /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/release/qualification_logs/audit_eval_perf1_perf_infra_group1.log	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/release/qualification_logs/audit_eval_perf1_perf_infra_group1.log	2026-08-18 00:48:05.254433685 +0000
+@@ -0,0 +1,10 @@
++..............................................                           [100%]
++=============================== warnings summary ===============================
++tests/test_mlff_parcore1.py::test_feas1_implicit_scope_is_not_bound_to_transient_host_free_ram
++tests/test_mlff_covref_par1.py::test_covref_par1_full_reference_is_scientifically_identical
++tests/test_mlff_covref_par1.py::test_covref_par1_rejects_nested_native_tree_parallelism
++  /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/mdstats/io/vasp.py:406: VelocityReconstructionWarning: Velocities were reconstructed from unwrapped Cartesian positions. High-frequency velocity spectra may be distorted.
++    collection = normalize_raw_frame_collection(
++
++-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
++46 passed, 3 warnings in 9.44s
+diff -ruN '--exclude=SOURCE_PATCH_0.20.232a0_to_0.20.233a0.patch' '--exclude=SHA256SUMS_0.20.233a0.txt' /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/release/qualification_logs/audit_eval_perf1_perf_infra_group2.log /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/release/qualification_logs/audit_eval_perf1_perf_infra_group2.log
+--- /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/release/qualification_logs/audit_eval_perf1_perf_infra_group2.log	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/release/qualification_logs/audit_eval_perf1_perf_infra_group2.log	2026-08-18 00:48:35.658433685 +0000
+@@ -0,0 +1,13 @@
++........................................................................ [ 98%]
++.                                                                        [100%]
++=============================== warnings summary ===============================
++tests/test_mlff_foundation_audit1.py::test_foundation_audit1_uses_exact_target_data2a_development_domains
++tests/test_mlff_foundation_audit1.py::test_foundation_audit1_metric_arithmetic_and_force_tails_match_cached_predictions
++tests/test_mlff_foundation_audit1.py::test_foundation_audit1_is_deterministic_round_trip_and_does_not_reinfer
++tests/test_mlff_foundation_audit1.py::test_foundation_audit1_probe_contracts_are_frozen_but_not_fabricated_as_passes
++tests/test_mlff_foundation_audit1.py::test_foundation_audit1_authority_fails_closed_on_live_lineage_change
++  /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/mdstats/io/vasp.py:406: VelocityReconstructionWarning: Velocities were reconstructed from unwrapped Cartesian positions. High-frequency velocity spectra may be distorted.
++    collection = normalize_raw_frame_collection(
++
++-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
++73 passed, 5 warnings in 14.40s
+diff -ruN '--exclude=SOURCE_PATCH_0.20.232a0_to_0.20.233a0.patch' '--exclude=SHA256SUMS_0.20.233a0.txt' /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/release/qualification_logs/audit_eval_perf1_target_data_group1.log /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/release/qualification_logs/audit_eval_perf1_target_data_group1.log
+--- /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/release/qualification_logs/audit_eval_perf1_target_data_group1.log	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/release/qualification_logs/audit_eval_perf1_target_data_group1.log	2026-08-18 00:46:42.410433685 +0000
+@@ -0,0 +1,15 @@
++.................................................                        [100%]
++=============================== warnings summary ===============================
++tests/test_mlff_target_data2a_role_freeze.py: 6 warnings
++tests/test_mlff_target_data2b_coverage.py: 5 warnings
++tests/test_mlff_target_data2b_feas1.py: 1 warning
++tests/test_mlff_target_data2c_ladder.py: 3 warnings
++  /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/mdstats/io/vasp.py:406: VelocityReconstructionWarning: Velocities were reconstructed from unwrapped Cartesian positions. High-frequency velocity spectra may be distorted.
++    collection = normalize_raw_frame_collection(
++
++tests/test_mlff_target_data2b_coverage.py::test_target_data2b_consumes_profile_features_and_environment_classes_through_generic_adapter
++  /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/mdstats/preprocess/normalize.py:151: VelocityReconstructionWarning: Only two frames are available; assigning the same first-order finite-difference velocity to both frames.
++    velocities = reconstruct_velocities(cartesian, raw.times)
++
++-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
++49 passed, 16 warnings in 17.91s
+diff -ruN '--exclude=SOURCE_PATCH_0.20.232a0_to_0.20.233a0.patch' '--exclude=SHA256SUMS_0.20.233a0.txt' /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/release/qualification_logs/audit_eval_perf1_target_data_group2.log /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/release/qualification_logs/audit_eval_perf1_target_data_group2.log
+--- /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/release/qualification_logs/audit_eval_perf1_target_data_group2.log	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/release/qualification_logs/audit_eval_perf1_target_data_group2.log	2026-08-18 00:47:00.774433685 +0000
+@@ -0,0 +1,8 @@
++...........................                                              [100%]
++=============================== warnings summary ===============================
++tests/test_mlff_target_data2c_mvidx1.py::test_mvidx1_accepts_production_style_target_data2b_reference
++  /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/mdstats/io/vasp.py:406: VelocityReconstructionWarning: Velocities were reconstructed from unwrapped Cartesian positions. High-frequency velocity spectra may be distorted.
++    collection = normalize_raw_frame_collection(
++
++-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
++27 passed, 1 warning in 7.48s
+diff -ruN '--exclude=SOURCE_PATCH_0.20.232a0_to_0.20.233a0.patch' '--exclude=SHA256SUMS_0.20.233a0.txt' /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/release/qualification_logs/audit_eval_perf1_target_data_group3.log /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/release/qualification_logs/audit_eval_perf1_target_data_group3.log
+--- /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/release/qualification_logs/audit_eval_perf1_target_data_group3.log	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/release/qualification_logs/audit_eval_perf1_target_data_group3.log	2026-08-18 00:47:11.990433685 +0000
+@@ -0,0 +1,8 @@
++...................................                                      [100%]
++=============================== warnings summary ===============================
++tests/test_mlff_target_data2c_repair1.py::test_repair1_accepts_production_style_multifamily_target_data2b
++  /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/mdstats/io/vasp.py:406: VelocityReconstructionWarning: Velocities were reconstructed from unwrapped Cartesian positions. High-frequency velocity spectra may be distorted.
++    collection = normalize_raw_frame_collection(
++
++-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
++35 passed, 1 warning in 6.58s
+diff -ruN '--exclude=SOURCE_PATCH_0.20.232a0_to_0.20.233a0.patch' '--exclude=SHA256SUMS_0.20.233a0.txt' /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/tests/test_mlff_audit_eval_perf1.py /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/tests/test_mlff_audit_eval_perf1.py
+--- /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/tests/test_mlff_audit_eval_perf1.py	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/tests/test_mlff_audit_eval_perf1.py	2026-08-18 00:35:42.746433685 +0000
+@@ -0,0 +1,181 @@
++from __future__ import annotations
++
++import math
++from types import SimpleNamespace
++
++import numpy as np
++
++import mdstats
++from mdstats.training_data import eval2 as eval2_module
++from mdstats.training_data.model_features import AtomicModelPrediction
++
++D1 = "1" * 64
++D2 = "2" * 64
++D3 = "3" * 64
++D4 = "4" * 64
++D5 = "5" * 64
++
++
++def _view_and_predictions():
++    view = SimpleNamespace(
++        configuration_count=4,
++        total_atom_count=12,
++        atom_counts=np.asarray([3, 3, 3, 3]),
++        force_offsets=np.asarray([0, 3, 6, 9, 12]),
++        reference_energies=np.asarray([0.0, 1.0, 2.0, 3.0]),
++        reference_forces=np.zeros((12, 3)),
++        atomic_numbers=np.asarray([11, 8, 19] * 4),
++        focus_atomic_numbers=(11, 19),
++        condition_labels=("cold", "hot"),
++        condition_ids=np.asarray([0, 1, 0, 1]),
++        stress_present=np.asarray([False, False, False, False]),
++        reference_stresses=np.zeros((4, 6)),
++    )
++    predictions = tuple(
++        AtomicModelPrediction(
++            energy_ev=float(i) + 0.01 * (i - 1),
++            forces_ev_per_angstrom=np.asarray(
++                [
++                    [0.01 + 0.001 * i, 0.0, 0.0],
++                    [0.0, 0.02 + 0.001 * i, 0.0],
++                    [0.0, 0.0, 0.03 + 0.001 * i],
++                ]
++            ),
++            stress_ev_per_angstrom3=None,
++        )
++        for i in range(4)
++    )
++    return view, predictions
++
++
++def test_eval2_static_metadata_is_reused_for_repeated_checkpoint_reduction(monkeypatch) -> None:
++    view, predictions = _view_and_predictions()
++    blocks = ("a", "a", "b", "b")
++    eval2_module.clear_eval2_static_reduction_cache()
++    calls = 0
++    original = eval2_module._build_eval2_static_reduction_metadata
++
++    def wrapped(*args, **kwargs):
++        nonlocal calls
++        calls += 1
++        return original(*args, **kwargs)
++
++    monkeypatch.setattr(eval2_module, "_build_eval2_static_reduction_metadata", wrapped)
++    first = mdstats.eval2_target_metrics_from_prediction_view(
++        view, predictions, block_ids=blocks, target_role_digest=D1, prediction_digest=D2
++    )
++    second = mdstats.eval2_target_metrics_from_prediction_view(
++        view, predictions, block_ids=blocks, target_role_digest=D1, prediction_digest=D2
++    )
++    assert calls == 1
++    assert first.to_dict() == second.to_dict()
++
++
++def _target_metric(scale: float, digest_char: str, *, blocks: int = 96):
++    component_count = 30
++    block_metrics = tuple(
++        mdstats.Eval2TargetBlockMetric(
++            block_id=f"block-{i:03d}",
++            force_squared_error_sum=(scale * (1.0 + 0.15 * math.sin(i * 0.19))) ** 2 * component_count,
++            force_component_count=component_count,
++            configuration_count=1,
++        )
++        for i in range(blocks)
++    )
++    rmse = math.sqrt(
++        sum(item.force_squared_error_sum for item in block_metrics)
++        / sum(item.force_component_count for item in block_metrics)
++    )
++    return mdstats.Eval2TargetMetricRecord(
++        configuration_count=blocks,
++        atom_count=blocks * 10,
++        energy_mae_ev_per_atom=0.001,
++        relative_energy_rmse_ev_per_atom=0.0005,
++        force_component_rmse_ev_per_angstrom=rmse,
++        species_macro_force_rmse_ev_per_angstrom=rmse,
++        species_force_rmse_ev_per_angstrom=(("Na", rmse),),
++        force_error_p90_ev_per_angstrom=rmse,
++        force_error_p95_ev_per_angstrom=rmse,
++        force_error_p99_ev_per_angstrom=rmse,
++        worst_stratum_force_rmse_ev_per_angstrom=rmse,
++        stratum_force_rmse_ev_per_angstrom=(("species:Na", rmse),),
++        stress_rmse_ev_per_angstrom3=None,
++        block_metrics=block_metrics,
++        target_role_digest=D1,
++        prediction_digest=digest_char * 64,
++    )
++
++
++def _checkpoint(epoch: int, metric):
++    point = mdstats.Eval2TrajectoryPoint(
++        epoch=epoch,
++        checkpoint_sha256=f"{epoch + 1:064x}",
++        lightweight_target_score_ev_per_angstrom=metric.force_component_rmse_ev_per_angstrom,
++        normalized_schedule_progress=0.8,
++        instantaneous_learning_rate=1e-5,
++        phase="refinement",
++        runtime_summary_digest=D2,
++        stable_candidate_identity=f"candidate-{epoch}",
++    )
++    return mdstats.assess_eval2_checkpoint(
++        point,
++        evaluation_record_digest=D3,
++        target_metrics=metric,
++        admissibility_policy=mdstats.CheckpointAdmissibilityPolicy(),
++        replay_candidate_force_rmse_ev_per_angstrom=0.020,
++        replay_foundation_force_rmse_ev_per_angstrom=0.020,
++        replay_label_mode="true_dft",
++    )
++
++
++def test_eval2_batched_bootstrap_preserves_scalar_rng_and_reduction_authority() -> None:
++    policy = mdstats.CheckpointSelectionPolicy(
++        bootstrap_replicates=700,
++        bootstrap_min_independent_blocks=10,
++        practical_equivalence_ev_per_angstrom=1e-5,
++    )
++    first = _checkpoint(20, _target_metric(0.020, "6"))
++    second = _checkpoint(21, _target_metric(0.021, "7"))
++    optimized = mdstats.paired_block_bootstrap_compare(
++        first, second, policy=policy, seed_material_digest=D5
++    )
++
++    first_map = first.target_metrics.block_map()
++    second_map = second.target_metrics.block_map()
++    blocks = tuple(sorted(first_map))
++    seed = eval2_module._seed_from_digest(
++        eval2_module.digest(
++            {
++                "schema": "mdstats.eval2-bootstrap-seed.v1",
++                "seed_material_digest": D5,
++                "first": first.stable_candidate_identity,
++                "second": second.stable_candidate_identity,
++                "blocks": list(blocks),
++            }
++        )
++    )
++    rng = np.random.default_rng(seed)
++    count = len(blocks)
++    first_sse = np.asarray([first_map[key].force_squared_error_sum for key in blocks], dtype=np.float64)
++    second_sse = np.asarray([second_map[key].force_squared_error_sum for key in blocks], dtype=np.float64)
++    components = np.asarray([first_map[key].force_component_count for key in blocks], dtype=np.float64)
++    reference = np.empty(policy.bootstrap_replicates, dtype=np.float64)
++    for i in range(reference.size):
++        draw = rng.integers(0, count, size=count)
++        denom = float(np.sum(components[draw]))
++        reference[i] = math.sqrt(float(np.sum(first_sse[draw])) / denom) - math.sqrt(
++            float(np.sum(second_sse[draw])) / denom
++        )
++    alpha = (1.0 - policy.bootstrap_confidence) / 2.0
++    low, high = (float(v) for v in np.quantile(reference, [alpha, 1.0 - alpha]))
++    assert optimized.seed == seed
++    assert optimized.confidence_low_ev_per_angstrom == low
++    assert optimized.confidence_high_ev_per_angstrom == high
++
++
++def test_eval2_bootstrap_batch_is_memory_bounded_for_large_block_inventory() -> None:
++    # The implementation must derive batch size from block count rather than
++    # allocating 256 x N blocks unconditionally.
++    source = (eval2_module.Path(eval2_module.__file__).read_text(encoding="utf-8"))
++    assert "bootstrap_target_temporary_bytes = 32 * 1024**2" in source
++    assert "memory_bounded_batch" in source
+diff -ruN '--exclude=SOURCE_PATCH_0.20.232a0_to_0.20.233a0.patch' '--exclude=SHA256SUMS_0.20.233a0.txt' /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/tests/test_mlff_audit_eval_perf1_specification.py /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/tests/test_mlff_audit_eval_perf1_specification.py
+--- /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/tests/test_mlff_audit_eval_perf1_specification.py	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/tests/test_mlff_audit_eval_perf1_specification.py	2026-08-18 00:41:46.900030533 +0000
+@@ -0,0 +1,89 @@
++from __future__ import annotations
++
++import json
++from pathlib import Path
++
++import mdstats
++
++ROOT = Path(__file__).resolve().parents[1]
++MANUAL = ROOT / "docs/arch_manuals/mlff_training_data_architecture.md"
++GRAPH = ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json"
++SPEC = ROOT / "docs/specs/training_data/mlff_audit_eval_perf1_cpu_kernels_spec.md"
++EVIDENCE = ROOT / "benchmarks/mlff_audit_eval_perf1_cloud_cpu_mpa0_2026-08-17.json"
++
++
++def test_audit_eval_perf1_release_metadata_and_manual_are_synchronized() -> None:
++    assert mdstats.__version__ == "0.20.233a0"
++    assert 'version = "0.20.233a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert "Version: 0.20.233a0" in (ROOT / "PKG-INFO").read_text(encoding="utf-8")
++    text = MANUAL.read_text(encoding="utf-8")
++    assert "architecture_revision: 100" in text
++    assert 'release: "mdstats 0.20.233a0"' in text
++    assert "Gate AUDIT-EVAL-PERF1 - Foundation Audit and EVAL2 CPU hardening - COMPLETE" in text
++    assert "**Next gate.** `REPLAY-PERF1`." in text
++    assert SPEC.is_file()
++
++
++def test_audit_eval_perf1_dependency_graph_is_closed() -> None:
++    graph = json.loads(GRAPH.read_text(encoding="utf-8"))
++    assert graph["architecture_revision"] == 100
++    assert graph["schema_version"] == 80
++    assert graph["documentation_gate"] == "AUDIT_EVAL_PERF1_CPU_KERNELS"
++    assert graph["next_gate"] == "REPLAY_PERF1_INDEX_CACHE"
++    node = next(item for item in graph["nodes"] if item["id"] == "AUDIT_EVAL_PERF1_CPU_KERNELS")
++    assert node["implemented_release"] == "0.20.233a0"
++    assert node["implementation_status"] == "implemented_cached_metadata_batched_reducers"
++    assert node["scientific_authority_change"] is False
++    assert node["model_inference_change"] is False
++    assert node["gpu_authority_change"] is False
++    assert node["eval2_bootstrap_temporary_target_mib"] == 32
++    assert node["foundation_additional_model_inference"] is False
++
++
++def test_audit_eval_perf1_code_contains_exact_execution_contract() -> None:
++    eval2 = (ROOT / "mdstats/training_data/eval2.py").read_text(encoding="utf-8")
++    audit = (ROOT / "mdstats/training_data/foundation_audit.py").read_text(encoding="utf-8")
++    for token in (
++        "_Eval2StaticReductionMetadata",
++        "_eval2_static_reduction_metadata",
++        "bootstrap_target_temporary_bytes = 32 * 1024**2",
++        "memory_bounded_batch",
++        "vector = np.empty(int(view.total_atom_count)",
++    ):
++        assert token in eval2
++    for token in (
++        "shared_frame_array_index",
++        "species_groups_by_frame_data",
++        "delta_sq = delta * delta",
++        "vector_tail_values = np.quantile",
++    ):
++        assert token in audit
++
++
++def test_audit_eval_perf1_frozen_benchmark_evidence_is_consistent() -> None:
++    evidence = json.loads(EVIDENCE.read_text(encoding="utf-8"))
++    assert evidence["release"] == "0.20.233a0"
++    assert evidence["architecture_revision"] == 100
++    assert evidence["acceptance"]["status"] == "PASS"
++    assert evidence["acceptance"]["next_gate"] == "REPLAY-PERF1"
++    assert evidence["active_foundation"]["family"] == "MACE-MPA-0 medium"
++    assert evidence["active_foundation"]["checkpoint_sha256"] == (
++        "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638"
++    )
++    assert evidence["active_foundation"]["mh1_compatible"] is True
++    scientific = evidence["scientific"]
++    assert scientific["eval2_metric_control_exact"] is True
++    assert scientific["bootstrap_control_exact"] is True
++    assert scientific["foundation_control_exact"] is True
++    assert scientific["additional_model_inference"] is False
++    assert scientific["foundation_model_provider_calls_control"] == scientific["foundation_model_provider_calls_current"]
++    assert evidence["execution"]["eval2_target_reduction"]["speedup"] > 1.5
++    assert evidence["execution"]["paired_bootstrap"]["speedup"] > 2.0
++    assert evidence["execution"]["foundation_audit"]["speedup"] > 1.0
++
++
++def test_audit_eval_perf1_history_records_are_present() -> None:
++    assert (ROOT / "docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV100.md").is_file()
++    assert (ROOT / "docs/history/mlff/release_notes/PATCH_NOTES_0.20.233a0.md").is_file()
++    assert "0.20.233a0" in (ROOT / "CHANGELOG.md").read_text(encoding="utf-8").splitlines()[0]
++    assert "0.20.233a0" in (ROOT / "docs/history/mlff/release_notes/INDEX.md").read_text(encoding="utf-8")
+diff -ruN '--exclude=SOURCE_PATCH_0.20.232a0_to_0.20.233a0.patch' '--exclude=SHA256SUMS_0.20.233a0.txt' /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/tests/test_mlff_doc_arch1_specification.py /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/tests/test_mlff_doc_arch1_specification.py
+--- /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/tests/test_mlff_doc_arch1_specification.py	2026-08-18 00:02:29.000000000 +0000
++++ /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/tests/test_mlff_doc_arch1_specification.py	2026-08-18 00:41:46.665283942 +0000
+@@ -16,10 +16,10 @@
+ 
+ 
+ def test_doc_arch1_release_and_current_authority_are_synchronized():
+-    assert mdstats.__version__ == "0.20.232a0"
++    assert mdstats.__version__ == "0.20.233a0"
+     text = MANUAL.read_text(encoding="utf-8")
+-    assert "architecture_revision: 99" in text
+-    assert 'release: "mdstats 0.20.232a0"' in text
++    assert "architecture_revision: 100" in text
++    assert 'release: "mdstats 0.20.233a0"' in text
+     assert "# Part VI - Performance and execution architecture" in text
+     assert "# Part VII - Current implementation status and frozen forward gates" in text
+     assert "## Context retrieval index" in text
+@@ -72,17 +72,17 @@
+     revision_rows = [line for line in REV_INDEX.read_text().splitlines() if re.match(r"^\|\s*\d+\s*\|", line)]
+     revisions = [int(line.split("|")[1].strip()) for line in revision_rows]
+     assert revisions == sorted(set(revisions))
+-    assert revisions[-1] == 99
++    assert revisions[-1] == 100
+     assert "NEIGHBOR1" in REV_INDEX.read_text()
+-    assert "0.20.232a0" in REL_INDEX.read_text()
++    assert "0.20.233a0" in REL_INDEX.read_text()
+     assert (ROOT / "docs/history/mlff/LINEAGE.md").is_file()
+     assert (ROOT / "docs/history/mlff/manual_snapshots/mlff_training_data_architecture_rev090_full.md").is_file()
+ 
+ 
+ def test_doc_arch1_graph_and_directory_ownership_are_current():
+     graph = json.loads(GRAPH.read_text())
+-    assert graph["architecture_revision"] == 99
+-    assert graph["schema_version"] == 79
++    assert graph["architecture_revision"] == 100
++    assert graph["schema_version"] == 80
+     node_ids = {node["id"] for node in graph["nodes"]}
+     for node in (
+         "DOC_ARCH1_MANUAL_RESTRUCTURE_PERFORMANCE_ROADMAP",
+@@ -90,7 +90,7 @@
+         "NEIGHBOR1_SHARED_EXACT_ENGINE", "MVIDX_REUSE1_SPARSE_TRANSPOSE",
+         "COVREF_PAR1_GLOBAL_BLOCK_QUEUE", "MVKERNEL1_VECTOR_SPARSE_KERNELS",
+         "REPAIR_PAR1_PROPOSAL_QUEUE", "MVQUAL_PAR1_GLOBAL_SCORING_QUEUE",
+-        "CAMPAIGN_PERF_QUAL1_CLOSURE",
++        "AUDIT_EVAL_PERF1_CPU_KERNELS", "CAMPAIGN_PERF_QUAL1_CLOSURE",
+     ):
+         assert node in node_ids
+     root_names = {p.name for p in ROOT.iterdir() if p.is_file()}
+diff -ruN '--exclude=SOURCE_PATCH_0.20.232a0_to_0.20.233a0.patch' '--exclude=SHA256SUMS_0.20.233a0.txt' /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/tests/test_mlff_mvqual_par1_specification.py /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/tests/test_mlff_mvqual_par1_specification.py
+--- /mnt/data/mdstats-auditeval-work/control-0.20.232a0/mdstats-0.20.232a0/tests/test_mlff_mvqual_par1_specification.py	2026-08-18 00:03:19.000000000 +0000
++++ /mnt/data/mdstats-auditeval-work/mdstats-0.20.232a0/tests/test_mlff_mvqual_par1_specification.py	2026-08-18 00:41:46.665526554 +0000
+@@ -12,25 +12,17 @@
+ EVIDENCE = ROOT / "benchmarks/mlff_mvqual_par1_cloud_cpu_mpa0_2026-08-17.json"
+ 
+ 
+-def test_mvqual_par1_release_manual_and_package_metadata_are_synchronized() -> None:
+-    assert mdstats.__version__ == "0.20.232a0"
+-    assert 'version = "0.20.232a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+-    assert "Version: 0.20.232a0" in (ROOT / "PKG-INFO").read_text(encoding="utf-8")
++def test_mvqual_par1_historical_release_and_current_manual_retain_gate_contract() -> None:
+     text = MANUAL.read_text(encoding="utf-8")
+-    assert "architecture_revision: 99" in text
+-    assert 'release: "mdstats 0.20.232a0"' in text
+     assert "Gate MVQUAL-PAR1 - global same-N scoring queue - COMPLETE" in text
+-    assert "`AUDIT-EVAL-PERF1` is next" in text or "**Next gate.** `AUDIT-EVAL-PERF1`." in text
+-    assert "four outer" in text
+     assert SPEC.is_file()
++    assert "Implemented in mdstats 0.20.232a0 / MLFF architecture revision 99" in SPEC.read_text(encoding="utf-8")
+ 
+ 
+ def test_mvqual_par1_dependency_graph_is_closed() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+-    assert graph["architecture_revision"] == 99
+-    assert graph["schema_version"] == 79
+-    assert graph["documentation_gate"] == "MVQUAL_PAR1_GLOBAL_SCORING_QUEUE"
+-    assert graph["next_gate"] == "AUDIT_EVAL_PERF1_CPU_KERNELS"
++    assert graph["architecture_revision"] >= 99
++    assert graph["schema_version"] >= 79
+     node = next(item for item in graph["nodes"] if item["id"] == "MVQUAL_PAR1_GLOBAL_SCORING_QUEUE")
+     assert node["implemented_release"] == "0.20.232a0"
+     assert node["implementation_status"] == "implemented_global_same_n_scoring_queue"
+@@ -61,7 +53,7 @@
+ def test_mvqual_par1_history_records_are_present() -> None:
+     assert (ROOT / "docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV99.md").is_file()
+     assert (ROOT / "docs/history/mlff/release_notes/PATCH_NOTES_0.20.232a0.md").is_file()
+-    assert "0.20.232a0" in (ROOT / "CHANGELOG.md").read_text(encoding="utf-8").splitlines()[0]
++    assert "## 0.20.232a0" in (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+     assert "0.20.232a0" in (ROOT / "docs/history/mlff/release_notes/INDEX.md").read_text(encoding="utf-8")
+ 
+ 

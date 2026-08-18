@@ -1,0 +1,81 @@
+{
+  "architecture_revision": 48,
+  "authority_class": "C",
+  "authority_versions": {
+    "target_data2c": "mdstats.target-data2c.ladder.2026-08.v3",
+    "target_data2d": "mdstats.target-data2d.size-convergence.2026-08.v2",
+    "target_data2e": "mdstats.target-data2e.production-corpus.2026-08.v2",
+    "training_evidence": "mdstats.target-size-training-evidence.v3"
+  },
+  "dependency_graph_schema": 30,
+  "environment": {
+    "authorizing_gpu_available": false,
+    "authorizing_mace_runtime_available": false,
+    "cgroup_cpu_max": "800000 100000",
+    "cgroup_memory_max": "4294967296",
+    "cpu_model": "AMD EPYC 9V74 80-Core Processor",
+    "logical_cpus": 9
+  },
+  "gate": "SIZE-HALVE1",
+  "limitations": [
+    "The 3-epoch low-fidelity screen is implemented but not empirically certified against exhaustive 30-epoch MACE trajectories in this environment.",
+    "The 256-frame coarse monitor and 1.0 meV/A coarse equivalence width remain provisional until SIZE-FIDELITY1.",
+    "No GPU/MACE whole-funnel timing, VRAM, utilization, or pause/resume throughput claim is made."
+  ],
+  "next_gates": [
+    "SIZE-FIDELITY1",
+    "PERF-P2R",
+    "PERF-P3"
+  ],
+  "performance_evaluation": {
+    "all_seven_best_reduction_percent": 85.66929133858268,
+    "all_seven_worst_reduction_percent": 17.559055118110233,
+    "exposure_analysis_content_digest": "6d8b7541168d1523c43e48c5b96456cf1dbe405cd848f23c73c1380d87893cc6",
+    "wall_time_claim": "none_without_MACE_GPU"
+  },
+  "qualification": {
+    "broader_mlff_run": {
+      "last_progress_percent": 31,
+      "note": "Timed out before summary; first isolated failure is an unrelated historical release-literal assertion expecting mdstats 0.20.140a0.",
+      "status": "non_qualifying_incomplete"
+    },
+    "compileall": "pass",
+    "focused_authority_suite": {
+      "failed": 0,
+      "passed": 133,
+      "warnings": 14
+    },
+    "package_collection": {
+      "collection_skips": 3,
+      "skip_reasons": [
+        "mdstats[interactive] unavailable",
+        "MACE unavailable: PREC2 real-MACE",
+        "MACE unavailable: PREC3 real-MACE"
+      ],
+      "tests_collected": 2989
+    },
+    "sdist_corrected_gate_smoke": {
+      "failed": 0,
+      "passed": 27
+    },
+    "wheel_public_api_smoke": "pass"
+  },
+  "release": "0.20.182a0",
+  "schema": "mdstats.mlff-size-halve1-qualification.v1",
+  "scientific_correction": {
+    "coarse_equivalence_status": "provisional_pending_SIZE-FIDELITY1",
+    "coarse_monitor_configurations_default": 256,
+    "coarse_monitor_status": "provisional_pending_SIZE-FIDELITY1",
+    "coarse_practical_equivalence_mev_per_a_default": 1.0,
+    "coverage_role": "hard_admission_only",
+    "funnel": {
+      "epoch10_finalists": 2,
+      "epoch30_selected": 1,
+      "epoch3_max_survivors": 4
+    },
+    "historical_perf_p2_status": "archival_superseded_for_generated_campaigns",
+    "minimum_hard_coverage_qualifiers": 3,
+    "retain_all_hard_coverage_qualifiers": true
+  },
+  "status": "structurally_qualified_pending_SIZE-FIDELITY1"
+}

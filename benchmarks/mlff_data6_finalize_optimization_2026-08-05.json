@@ -1,0 +1,33 @@
+{
+  "schema": "mdstats.mlff-performance-benchmark.v1",
+  "date": "2026-08-05",
+  "workload": {
+    "description": "12 synthetic frames, 180 atoms, fixed triclinic LTA-like cell, 22 local-structure features per atom",
+    "frames": 12,
+    "atoms_per_frame": 180,
+    "cell_angstrom": [[17.363, 0.0, 0.0], [8.6815, 15.0368, 0.0], [8.6815, 5.0123, 14.1768]],
+    "repetitions": 3
+  },
+  "baseline_seconds": [1.5307239120002123, 1.6287953539995215, 1.5396905910001806],
+  "optimized_seconds": [0.40813615400020353, 0.45520467899950745, 0.42083140300019295],
+  "median_speedup": 3.658733,
+  "numerical_identity": {
+    "sum": 192761.905146819,
+    "sum_of_squares": 2916243.1241037687,
+    "shape": [12, 180, 22],
+    "baseline_and_optimized_equal": true
+  },
+  "real_mace_combined_batch": {
+    "mace_version": "0.3.16",
+    "structures_per_batch": 2,
+    "separate_descriptor_plus_prediction_seconds": [0.011074979999648349, 0.011021641000297677, 0.011015912999937427, 0.011126495999633335, 0.011247785999330517],
+    "combined_seconds": [0.00675852800031862, 0.006786560000364261, 0.006758118000107061, 0.0070537849996981095, 0.019585261999964132],
+    "median_speedup": 1.631899,
+    "single_forward": true,
+    "serial_equivalent_descriptors_energies_forces_stresses": true
+  },
+  "notes": [
+    "Synthetic timings are machine- and load-dependent and are intended as regression evidence, not a wall-time prediction for the full campaign.",
+    "The optimized structural kernel evaluates exact triclinic minimum-image geometry only for i<j when all atoms are centers and skips unused integer image-shift reconstruction."
+  ]
+}

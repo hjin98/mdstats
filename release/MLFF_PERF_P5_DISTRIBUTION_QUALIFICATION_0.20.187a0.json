@@ -1,0 +1,34 @@
+{
+  "date": "2026-08-15",
+  "gate": "PERF-P5",
+  "gpu_qualification": "not_executed_deferred_to_FINAL-GPU1",
+  "release": "0.20.187a0",
+  "schema": "mdstats.mlff-perf-p5-distribution-qualification.v1",
+  "sdist": {
+    "path": "mdstats-0.20.187a0.tar.gz",
+    "sha256": "4c08c0365b6053b67809262d6b42ab0c13bdb3a3445d365ec3e77f103cd6feb1",
+    "smoke": {
+      "failed": 0,
+      "passed": 19,
+      "warnings": 112
+    }
+  },
+  "sdist_contains": [
+    "mlff_training_data_architecture.md",
+    "mlff_training_data_architecture.pdf",
+    "docs/specs/training_data/mlff_perf_p5_train_eval_persistence_spec.md",
+    "docs/specs/training_data/mlff_perf_p5_train_eval_persistence_spec.pdf",
+    "benchmarks/mlff_perf_p5_cloud_cpu_2026-08-15.json",
+    "benchmarks/mlff_perf_p5_cloud_cpu_2026-08-15.md",
+    "benchmarks/mlff_perf_p5_cloud_cpu_2026-08-15.pdf",
+    "release/MLFF_PERF_P5_QUALIFICATION_0.20.187a0.json",
+    "release/MLFF_PERF_P5_PDF_QA_0.20.187a0.json"
+  ],
+  "wheel": {
+    "compatible_model_state_reload_api": true,
+    "import_version": "0.20.187a0",
+    "path": "mdstats-0.20.187a0-py3-none-any.whl",
+    "sha256": "e4f273053f121c632c5914a759eac77414eef35934c29ee63701f49dbce1d252",
+    "tensor_hash_chunk_bytes": 8388608
+  }
+}

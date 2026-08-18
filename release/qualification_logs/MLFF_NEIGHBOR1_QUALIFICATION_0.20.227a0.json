@@ -1,0 +1,173 @@
+{
+  "acceptance": {
+    "advance_to": "MVIDX-REUSE1",
+    "broad_regression": "PASS",
+    "duplicate_mvidx_geometry_eliminated_on_cache_hit": "PASS",
+    "exact_scientific_equivalence": "PASS",
+    "material_end_to_end_improvement": "PASS",
+    "ram_admission_before_final_csr_materialization": "PASS",
+    "reconstructible_cache_authenticated": "PASS"
+  },
+  "architecture_revision": 94,
+  "authority_change": {
+    "gpu": false,
+    "runtime_optimization": true,
+    "scientific": false
+  },
+  "content_digest": "fefb8ef3c50486488215cd40cf32657a0b29b96faa37e866aa3a31ea72a9d221",
+  "date": "2026-08-17",
+  "dependency_graph_schema": 76,
+  "documentation": {
+    "architecture_revision_note": {
+      "path": "docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV94.md",
+      "sha256": "918cb3bcf4eb5d3f16ba1bf446344582409eb232cac6233ab1ea8f165a2ec9d4"
+    },
+    "canonical_markdown": {
+      "path": "docs/arch_manuals/mlff_training_data_architecture.md",
+      "sha256": "d9024ca5c7da75890c4d75450cc4c289af697dc6cd6e6b8bd827ac505f9e35a8"
+    },
+    "canonical_pdf": {
+      "pages": 47,
+      "path": "docs/arch_manuals/mlff_training_data_architecture.pdf",
+      "preflight": "PASS",
+      "sha256": "1aa35c286bc7a3131673ab28921f06918f71535cb806bfddd1dbab3c9dee10e6",
+      "visual_qa": "PASS"
+    },
+    "dependency_graph": {
+      "path": "docs/arch_manuals/mlff_training_data_dependency_graph.json",
+      "sha256": "865c809ab81d9f09f2a0149ee89c34b9d01f72d5817da02207a3515952b84f59"
+    },
+    "pdf_diff_vs_0_20_226a0": {
+      "changed_pages": [
+        2,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47
+      ],
+      "comparison_dpi": 72,
+      "page_count_unchanged": true,
+      "render_dpi_review": 150
+    },
+    "release_note": {
+      "path": "docs/history/mlff/release_notes/PATCH_NOTES_0.20.227a0.md",
+      "sha256": "f68a5111f97e5ec854c034b98cc616cc63503750802b9dae0e30d2d44b88869d"
+    },
+    "spec": {
+      "path": "docs/specs/training_data/mlff_neighbor1_exact_neighborhood_spec.md",
+      "sha256": "719d6fd9bf076108c1b92109e8215936a29e98ba79735523ddd5f0d9dd51d860"
+    }
+  },
+  "foundation": {
+    "active_qualification_family": "mace-mpa-0",
+    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
+    "mh1_supported_by_same_contract": true,
+    "note": "NEIGHBOR1 contains no foundation-model-specific neighborhood semantics; MPA-0 is the active campaign checkpoint for this qualification.",
+    "variant": "medium"
+  },
+  "gate": "NEIGHBOR1_SHARED_EXACT_ENGINE",
+  "implementation": {
+    "authenticated_native_store": "mdstats/training_data/target_coverage_exact_neighborhood_store.py",
+    "cache_miss_rebuilds_via_same_global_engine": true,
+    "feas1_emits_forward_csr": true,
+    "final_csr_ram_admitted_before_materialization": true,
+    "implementation_manifest": {
+      "content_digest": "9c9830c5205b5c58a78cd4c496e7812bb41eab44224b6fdcae18b220fc91f571",
+      "path": "benchmarks/mlff_neighbor1_implementation_manifest_0.20.227a0.json",
+      "sha256": "979b853dfb5c8d7b9f7d7e89aba792b6945124d641795fee6618b7f03c38385d"
+    },
+    "mvidx_cache_hit_second_geometry_sweep": false,
+    "mvidx_csr_to_csc_inversion_changed": false,
+    "shared_engine": "mdstats/training_data/target_coverage_exact_neighborhood.py"
+  },
+  "inputs": {
+    "dependency_archive": {
+      "path": "/mnt/data/dependencies.tar(20260817-112644).gz",
+      "sha256": "888d545a512396697c8583d69bc9ed33110914675f466a4cbcafc3e1e1407171"
+    },
+    "replay_source": {
+      "path": "/mnt/data/replay_fps_12000.extxyz",
+      "sha256": "187eed42fb2d6cf5e7e745ffed0ce34541e92c6a35ec9e654520cd3c7198403c"
+    },
+    "target_archive": {
+      "path": "/mnt/data/training_LTA.tar(4).gz",
+      "sha256": "bc1b7e25ba338507ae38b260bcd283356de887b6c6cf762a2c146733f1c3c958"
+    }
+  },
+  "next_gate": "MVIDX-REUSE1",
+  "performance_evidence": {
+    "independent_current_repro_three_workers_total_seconds": 1.5262674000000516,
+    "independent_current_reproduction": {
+      "path": "benchmarks/mlff_neighbor1_current_repro_0.20.227a0.json",
+      "sha256": "22a9c9e4799c1752f200ae939591d3d62cf11e0b6c4fcb954f9ecd16fbb0df3b"
+    },
+    "interpretation": "Timing is execution evidence only. Same-host scheduling was noisy, so both paired control and independent release-tagged reproduction are retained; scientific digest identity is authoritative.",
+    "paired_control": {
+      "one_worker": {
+        "control_total_seconds": 2.2016725994999433,
+        "neighbor1_total_seconds": 1.2758278645000019,
+        "speedup": 1.7256815443224238
+      },
+      "three_workers": {
+        "control_total_seconds": 2.773704031500074,
+        "neighbor1_total_seconds": 1.0346223215000236,
+        "speedup": 2.680885550080422
+      }
+    },
+    "primary_record": {
+      "content_digest": "09ccfd3f610bc0821310e2160dc419e2f0c34b39adeaa7a9e5d034b5d081441c",
+      "path": "benchmarks/mlff_neighbor1_feas_mvidx_cloud_cpu_mpa0_2026-08-17.json",
+      "sha256": "537e7a20401bfac9f16145879154fd17c0a1dff25b8ece3e12a1a9ce19fadc6d"
+    },
+    "report": {
+      "path": "benchmarks/mlff_neighbor1_feas_mvidx_cloud_cpu_mpa0_2026-08-17.md",
+      "sha256": "ccf18dff72841c5a558edaa2e4f7b2f487539f7fafd7aeb45521ef28ea02c31d"
+    }
+  },
+  "release": "0.20.227a0",
+  "schema": "mdstats.mlff-neighbor1-qualification.v1",
+  "scientific_oracles": {
+    "cache_hit_zero_second_geometric_queries": "PASS via fail-fast ExactNeighborhoodEngine.query_block sentinel",
+    "feas1_digest": "937214c70d1f2baae883993082f1ceb25bea6007a5a2be0beee045262f5c0613",
+    "mvidx1_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
+    "native_array_roundtrip_and_tamper_detection": "PASS",
+    "neighbor1_store_digest": "0220c89084fe957e85eb1e1c87a581eaa44869f11cb98bee7f7bd8cdafd3d74e",
+    "worker_and_block_invariant": true,
+    "workload": {
+      "exact_edges": 3194880,
+      "families": 6,
+      "query_block_size": 512,
+      "witnesses": 49152
+    }
+  },
+  "status": "PASS",
+  "tests": {
+    "compileall": {
+      "paths": [
+        "mdstats",
+        "benchmarks",
+        "tools"
+      ],
+      "status": "PASS"
+    },
+    "neighbor1_current_authority": {
+      "failed": 0,
+      "passed": 49,
+      "warnings": 2
+    },
+    "target_data2_functional_authority": {
+      "failed": 0,
+      "passed": 111,
+      "warning_class": "expected velocity-reconstruction/normalization warnings unchanged from prior authority",
+      "warnings": 18
+    }
+  }
+}

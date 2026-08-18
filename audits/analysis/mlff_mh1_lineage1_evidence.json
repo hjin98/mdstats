@@ -1,0 +1,92 @@
+{
+  "content_digest": "356750755fd4e73224493e47f0570dbfc23ac8c71969b731c6bcb0d9463b7480",
+  "date": "2026-08-14",
+  "deferred_safe_optimization": "campaign_execution pseudolabel-as-persisted-baseline reuse remains legacy-only; v4 canonical pseudolabels recompute exact head-qualified baseline until MH1-EVAL1.",
+  "foundation_evidence": {
+    "legacy_raw_sha_matches_inspected_mh1": false,
+    "legacy_raw_sha_matches_inspected_singleton_mpa0": true,
+    "mh1_omat_pbe": {
+      "canonical_identity_digest": "06bf87891d6addebd3ea300fa23fd6401f0b74897f5676394e99507d03c8fc59",
+      "head": "omat_pbe",
+      "head_count": 6,
+      "sha256": "ec00a2705854622fbbd898ccfb7701072fcd674709102d009fb919c1b8cc5dde"
+    },
+    "mh1_omol": {
+      "canonical_identity_digest": "77f92d39608f9875aae1dc4ba589c74ea6944fe9c88f5883a5e5867bf6067a0d",
+      "head": "omol",
+      "head_count": 6,
+      "sha256": "ec00a2705854622fbbd898ccfb7701072fcd674709102d009fb919c1b8cc5dde"
+    },
+    "mpa0_default": {
+      "canonical_identity_digest": "e6f6001827be216a9a8e8cb1829f2e2b996c846492f6f3975b6e6759064880dd",
+      "head": "default",
+      "head_count": 1,
+      "sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638"
+    },
+    "same_mh1_bytes_different_head_identity": true
+  },
+  "gate": "MH1-LINEAGE1",
+  "generator_evidence": {
+    "backend_changes_generator_identity": true,
+    "mh1_omat_pbe_cueq_pure_fp32": "f9ef007101c461db3748932d6553a2534b049ae6e739a3e179987b59d86c04a0",
+    "mh1_omat_pbe_e3nn_fp32": "fa91af1a4423422da683c388c1af3a4297e4c56edd60367725d32261386301c9",
+    "real_cueq_numerical_qualification": "environment-blocked; inherited from MH1-ACCEL1"
+  },
+  "legacy_readers": {
+    "atomic_reference_fit_record": "v2/v1 retained",
+    "production_materialization_plan": "v6 and older retained under existing reader policy",
+    "raw_sha_rule": "accepted for legacy schema, explicitly uninspected lightweight identity, or inspected singleton only; rejected for inspected multi-head foundations",
+    "replay_file_artifact": "v3 retained",
+    "replay_preparation_plan": "v3/v1 retained",
+    "target_size_training_evidence": "v1 retained"
+  },
+  "production_changes": [
+    "mdstats/training_data/foundation.py",
+    "mdstats/training_data/replay.py",
+    "mdstats/training_data/reference_fit.py",
+    "mdstats/training_data/data7_bundle.py",
+    "mdstats/training_data/data8_bundle.py",
+    "mdstats/training_data/target_size_convergence.py",
+    "mdstats/training_data/production_materialization.py",
+    "mdstats/training_data/production_qualification.py",
+    "mdstats/training_data/campaign_cli.py",
+    "mdstats/training_data/__init__.py",
+    "mdstats/__init__.py"
+  ],
+  "schema": "mdstats.mh1-lineage1-evidence.v1",
+  "schema_advancements": {
+    "atomic_reference_fit_record": "mdstats.atomic-reference-fit-record.v3",
+    "production_materialization_plan": "mdstats.production-materialization-plan.v7",
+    "replay_file_artifact": "mdstats.replay-file-artifact.v4",
+    "replay_preparation_plan": "mdstats.replay-preparation-plan.v4",
+    "target_size_training_evidence": "mdstats.target-size-training-evidence.v2"
+  },
+  "scientific_policy_changes": [],
+  "status": "complete",
+  "test_evidence": {
+    "campaign_cli": {
+      "passed": 43,
+      "skip_reason": "real LTA training root not supplied",
+      "skipped": 1
+    },
+    "focused_lineage": {
+      "passed": 5
+    },
+    "legacy_materialization_qualification": {
+      "passed": 28
+    },
+    "prior_gate_non_slow_regression": {
+      "deselected_slow": 6,
+      "passed": 58
+    },
+    "production_materialization": {
+      "passed": 15
+    },
+    "production_qualification": {
+      "passed": 4
+    },
+    "replay_data7_data8_target_size_slice": {
+      "passed": 57
+    }
+  }
+}

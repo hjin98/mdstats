@@ -1,0 +1,2969 @@
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.236a0.txt' /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/CHANGELOG.md ./CHANGELOG.md
+--- /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/CHANGELOG.md	2026-08-18 02:02:32.000000000 +0000
++++ ./CHANGELOG.md	2026-08-18 02:52:48.365359956 +0000
+@@ -1,3 +1,13 @@
++## 0.20.236a0 - 2026-08-17
++
++- Complete MVSTATE-REUSE1 / architecture revision 103 and close the exact-equivalence CPU optimization program.
++- Persist authenticated exact MVSEL rung-state checkpoints and pass them directly to REPAIR on fresh campaign execution while retaining exact replay as the fallback/oracle.
++- Reject post-divergence checkpoint reconciliation because it perturbs FP64 representative-gain state; carry historical repair state after the first accepted swap.
++- Bundle the ~7 MiB state artifact in one authenticated NPZ, reducing observed write cost from the exploratory per-array realization to about 0.18 s median.
++- On the common 8,192-candidate closure fixture, reduce REPAIR from about 5.37 s to 4.27 s and fresh integrated target-chain time from about 12.00 s to 11.19 s including cache persistence, with exact scientific digests.
++- Close CPU optimization at about 2.44x cumulative fresh-chain speedup versus PERFBASE1-era 0.20.225a0; next gate is FINAL-GPU1.
++- Keep active qualification on supplied MACE-MPA-0 medium while preserving MACE-MH-1 compatibility.
++
+ ## 0.20.235a0 - 2026-08-17
+ 
+ - Complete CAMPAIGN-PERF-QUAL1 / architecture revision 102 as the integrated exact-equivalence CPU optimization closure review; runtime scientific algorithms remain unchanged from 0.20.234a0.
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.236a0.txt' /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/PKG-INFO ./PKG-INFO
+--- /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/PKG-INFO	2026-08-18 02:02:32.000000000 +0000
++++ ./PKG-INFO	2026-08-18 02:50:34.944346186 +0000
+@@ -1,6 +1,6 @@
+ Metadata-Version: 2.4
+ Name: mdstats
+-Version: 0.20.235a0
++Version: 0.20.236a0
+ Summary: Transparent atomistic frame collections and structural/dynamical statistics
+ Requires-Python: >=3.10
+ Requires-Dist: numpy>=1.26
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.236a0.txt' /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/benchmarks/mlff_mvstate_reuse1_cloud_cpu_mpa0_2026-08-17.json ./benchmarks/mlff_mvstate_reuse1_cloud_cpu_mpa0_2026-08-17.json
+--- /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/benchmarks/mlff_mvstate_reuse1_cloud_cpu_mpa0_2026-08-17.json	1970-01-01 00:00:00.000000000 +0000
++++ ./benchmarks/mlff_mvstate_reuse1_cloud_cpu_mpa0_2026-08-17.json	2026-08-18 02:51:17.017062557 +0000
+@@ -0,0 +1,159 @@
++{
++  "acceptance": {
++    "authenticated_restart_exact": true,
++    "closure_reason": "remaining MVSEL/REPAIR tail is dominated by the exact sequential sparse-state arithmetic itself; no further material duplicated reconstructible CPU state was found under the exact-equivalence constraint",
++    "cold_rebuild_exact": true,
++    "cpu_optimization_program_closed": true,
++    "material_integrated_speedup": true,
++    "memory_ceiling_pass": true,
++    "next_gate": "FINAL-GPU1",
++    "scientific_outputs_exact": true,
++    "stale_lineage_rejected": true,
++    "status": "PASS_CPU_OPTIMIZATION_CLOSED",
++    "tamper_rejected": true
++  },
++  "active_foundation": {
++    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
++    "family": "MACE-MPA-0 medium",
++    "mh1_compatible": true,
++    "model_inference_timed_in_gate": false
++  },
++  "architecture_revision": 103,
++  "authority_change": {
++    "classification": "reconstructible_execution_state_reuse_only",
++    "gpu_numerical": false,
++    "repair_objective_or_tie_authority": false,
++    "scientific": false,
++    "selector_rank_authority": false
++  },
++  "content_digest": "6574082019480b5ea3cbe82e9cee2295db477bb74685123dfd569ab08aa320ac",
++  "exactness_decisions": {
++    "accepted_rule": "checkpoint jumps are allowed only before the first accepted repair swap; after divergence REPAIR carries the historical mutable state forward",
++    "batched_sparse_gather_rule": "gather preparation may be batched, but all candidate-major FP64 mutations retain historical order and are exact-state qualified",
++    "observed_max_abs_representative_gain_difference": 8.24e-17,
++    "pure_checkpoint_reconciliation_after_repair_divergence": "rejected",
++    "reason": "set-difference deselect/select reconstruction changed FP64 representative-gain entries by order 1e-17 to 1e-16 despite identical selected IDs"
++  },
++  "execution": {
++    "cumulative_vs_perfbase1_0_20_225": {
++      "perfbase_chain_seconds": 27.255356811998354,
++      "speedup_fresh_including_mvstate_cache_write": 2.4351176667259553
++    },
++    "proposal_replay_ab": {
++      "batch_median_seconds": 4.372909009498471,
++      "batch_samples_seconds": [
++        4.379347834998043,
++        4.366470183998899
++      ],
++      "scalar_median_seconds": 4.647443332500188,
++      "scalar_samples_seconds": [
++        4.505145471001015,
++        4.789741193999362
++      ],
++      "scientific_repair_digest_exact": true
++    },
++    "target_chain_control": {
++      "peak_maxrss_kib_median": 347618.0,
++      "peak_maxrss_kib_samples": [
++        350460,
++        344776
++      ],
++      "stage_medians": {
++        "feas_neighbor": 1.0699625194993132,
++        "mvidx": 0.0945726995014411,
++        "mvqual": 0.564510178501223,
++        "mvsel_state": 4.904170957499446,
++        "repair": 5.365011229499942
++      },
++      "total": {
++        "median_seconds": 11.998227584501365,
++        "samples_seconds": [
++          11.938603915004933,
++          12.057851253997796
++        ]
++      }
++    },
++    "target_chain_mvstate": {
++      "fresh_total_including_cache_write_seconds": 11.192624153001816,
++      "mvsel_checkpoint_capture_ratio_vs_control": 1.0247720592439775,
++      "peak_maxrss_kib_median": 367086.0,
++      "peak_maxrss_kib_samples": [
++        370316,
++        363856
++      ],
++      "peak_rss_ratio_vs_control": 1.0560040043956296,
++      "repair_speedup": 1.255786355491611,
++      "speedup_vs_control_excluding_persistence": 1.089099656975305,
++      "speedup_vs_control_fresh_including_cache_write": 1.0719762783496567,
++      "stage_medians": {
++        "feas_neighbor": 1.0730596550001792,
++        "mvidx": 0.09201727750041755,
++        "mvqual": 0.5536812619993725,
++        "mvsel_state": 5.025657371001216,
++        "repair": 4.272232458999497
++      },
++      "total_excluding_persistence": {
++        "median_seconds": 11.016648024500682,
++        "samples_seconds": [
++          10.948049785001785,
++          11.08524626399958
++        ]
++      }
++    }
++  },
++  "gate": "MVSTATE-REUSE1",
++  "inputs": {
++    "candidate_count": 8192,
++    "control_release": "0.20.235a0",
++    "family_count": 6,
++    "master_selection_count": 4096,
++    "repair_swaps": 2,
++    "target_sizes": [
++      128,
++      256,
++      512,
++      1024,
++      2048,
++      4096
++    ]
++  },
++  "measurement_date": "2026-08-17",
++  "release": "0.20.236a0",
++  "schema": "mdstats.mlff-mvstate-reuse1-evidence.v1",
++  "scientific": {
++    "all_control_current_digests_exact": true,
++    "batch_replay_state_arrays_exact": true,
++    "feasibility_digest": "937214c70d1f2baae883993082f1ceb25bea6007a5a2be0beee045262f5c0613",
++    "mvidx_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
++    "neighborhoods_digest": "0220c89084fe957e85eb1e1c87a581eaa44869f11cb98bee7f7bd8cdafd3d74e",
++    "qualification_digest": "c19f2f9c3a328c7003e169bd9584277b21e72a6720caa588cf3879bd1cac1b25",
++    "reference_digest": "a66b12eb0bdb604cce053b4ab5df7aec58a8d985143eb7f791ff8360217fc57f",
++    "repair_digest": "ab7dc752555114bcd756913187e1d0eb7069c2e9a093f2a8a41130f485cdc33f",
++    "repair_plan_exact": true,
++    "repair_swaps": 2,
++    "selection_digest": "c179df6cfbb3b052c866d17bcf54aa5088ebc1998b35259afd3bd0ca163e8b8d",
++    "selector_state_replay_exact_at_cached_rungs": true
++  },
++  "state_cache": {
++    "bundle_format": "uncompressed_npz_single_authenticated_bundle",
++    "bytes_median": 7358387.0,
++    "bytes_samples": [
++      7358387,
++      7358387
++    ],
++    "cache_identity_excludes_execution_knobs": true,
++    "content_digest": "9904a0c96c83f4fdfe47558dc115d59664ab1a5a5456e687b9d7d3c75c1912db",
++    "persistence_schema": "mdstats.target-multi-view-selection-state-native-manifest.v1",
++    "read_seconds_median": 0.12541601300108596,
++    "read_seconds_samples": [
++      0.1306144400004996,
++      0.12021758600167232
++    ],
++    "restart_restored_digest_exact": true,
++    "write_seconds_median": 0.17597612850113364,
++    "write_seconds_samples": [
++      0.13013942100224085,
++      0.22181283600002644
++    ]
++  }
++}
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.236a0.txt' /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/benchmarks/mlff_mvstate_reuse1_cloud_cpu_mpa0_2026-08-17.md ./benchmarks/mlff_mvstate_reuse1_cloud_cpu_mpa0_2026-08-17.md
+--- /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/benchmarks/mlff_mvstate_reuse1_cloud_cpu_mpa0_2026-08-17.md	1970-01-01 00:00:00.000000000 +0000
++++ ./benchmarks/mlff_mvstate_reuse1_cloud_cpu_mpa0_2026-08-17.md	2026-08-18 02:51:17.017180413 +0000
+@@ -0,0 +1,19 @@
++# MVSTATE-REUSE1 CPU qualification
++
++Release: mdstats 0.20.236a0  
++Architecture revision: 103  
++Status: **PASS - CPU optimization program closed; FINAL-GPU1 next**
++
++MVSTATE-REUSE1 persists authenticated MVSEL sparse-state checkpoints and allows REPAIR to start from the exact cached rung state until the first accepted repair swap. After repair diverges, the historical mutable state is carried forward; pure checkpoint reconciliation was rejected because it perturbed FP64 representative-gain arrays at the 1e-17--1e-16 level. Batched CSR gather preparation is permitted only while candidate-major arithmetic remains in the historical exact order.
++
++## Integrated result
++
++The untouched 0.20.235a0 chain median is 11.998 s. MVSTATE-REUSE1 is 11.017 s excluding persistence and 11.193 s including the one-time authenticated cache write, a fresh-chain speedup of 1.072x. REPAIR improves from 5.365 s to 4.272 s (1.256x). Cache write/read medians are 0.176/0.125 s for ~7.02 MiB. Peak RSS changes from 339.5 MiB to 358.5 MiB.
++
++All FEAS/NEIGHBOR/MVIDX/MVSEL/REPAIR/MVQUAL digests are identical between control and current runs. The repair digest is `ab7dc752555114bcd756913187e1d0eb7069c2e9a093f2a8a41130f485cdc33f` and state-cache digest is `9904a0c96c83f4fdfe47558dc115d59664ab1a5a5456e687b9d7d3c75c1912db`.
++
++Cumulative fresh-chain speedup versus the PERFBASE1-era 0.20.225a0 target-chain authority is 2.435x. The remaining target-chain cost is dominated by exact sequential sparse-state mutation; no additional material duplicated reconstructible state remains that justifies another CPU-only gate.
++
++Active qualification uses MACE-MPA-0 medium checkpoint SHA-256 `75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638`; the state-cache architecture is foundation-model independent and remains compatible with MACE-MH-1.
++
++Evidence content digest: `6574082019480b5ea3cbe82e9cee2295db477bb74685123dfd569ab08aa320ac`.
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.236a0.txt' /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/benchmarks/mlff_mvstate_reuse1_implementation_manifest_0.20.236a0.json ./benchmarks/mlff_mvstate_reuse1_implementation_manifest_0.20.236a0.json
+--- /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/benchmarks/mlff_mvstate_reuse1_implementation_manifest_0.20.236a0.json	1970-01-01 00:00:00.000000000 +0000
++++ ./benchmarks/mlff_mvstate_reuse1_implementation_manifest_0.20.236a0.json	2026-08-18 02:51:17.017317075 +0000
+@@ -0,0 +1,29 @@
++{
++  "architecture_revision": 103,
++  "content_digest": "668c479f5f152e37d83a10d17295a71b278f1d7f4c0886c98b4296b6b7de0ffb",
++  "evidence": "benchmarks/mlff_mvstate_reuse1_cloud_cpu_mpa0_2026-08-17.json",
++  "features": [
++    "authenticated_rung_state_checkpoints",
++    "exact_state_replay_validator",
++    "single_npz_authenticated_native_bundle",
++    "pre_divergence_checkpoint_handoff",
++    "post_divergence_historical_state_carry",
++    "bounded_exact_batched_replay_gather",
++    "persistent_repair_proposal_queue",
++    "campaign_in_memory_selection_to_repair_handoff",
++    "cache_miss_tamper_stale_fallback"
++  ],
++  "gate": "MVSTATE-REUSE1",
++  "modules": [
++    "mdstats/training_data/target_multi_view_selection_state.py",
++    "mdstats/training_data/target_multi_view_selection_state_store.py",
++    "mdstats/training_data/target_multi_view_selector.py",
++    "mdstats/training_data/target_multi_view_repair.py",
++    "mdstats/training_data/campaign_cli.py"
++  ],
++  "next_gate": "FINAL_GPU1_DEFERRED_RELEASE_QUALIFICATION",
++  "release": "0.20.236a0",
++  "schema": "mdstats.mlff-mvstate-reuse1-implementation-manifest.v1",
++  "scientific_authority_change": false,
++  "status": "implemented_exact_state_handoff_cpu_closure"
++}
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.236a0.txt' /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/docs/arch_manuals/mlff_training_data/00_front_matter.md ./docs/arch_manuals/mlff_training_data/00_front_matter.md
+--- /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/docs/arch_manuals/mlff_training_data/00_front_matter.md	2026-08-18 02:02:32.000000000 +0000
++++ ./docs/arch_manuals/mlff_training_data/00_front_matter.md	2026-08-18 02:59:28.828926001 +0000
+@@ -1,8 +1,8 @@
+ ---
+ geometry: "margin=0.75in"
+-architecture_revision: 102
+-release: "mdstats 0.20.235a0"
+-status: "current normative architecture; CAMPAIGN-PERF-QUAL1 complete with follow-up required; MVSTATE-REUSE1 next"
++architecture_revision: 103
++release: "mdstats 0.20.236a0"
++status: "current normative architecture; MVSTATE-REUSE1 complete; exact-equivalence CPU optimization closed; FINAL-GPU1 next"
+ last_updated: "2026-08-17"
+ ---
+ 
+@@ -59,7 +59,7 @@
+ | replay, MACE, checkpoint, evaluation, active learning, determinism | `40_training_evaluation.md` |
+ | FEAS1, MVIDX1, MVSEL1, REPAIR1, MVQUAL1, target rungs | `50_target_multiview.md` |
+ | scheduler, utilization, CSR/CSC, vectorization, NUMA, progress | `60_execution_performance.md` |
+-| `PERFBASE1` through `CAMPAIGN-PERF-QUAL1`, current status | `70_status_and_gates.md` |
++| `PERFBASE1` through `MVSTATE-REUSE1`, current status | `70_status_and_gates.md` |
+ | ownership or current design decision | `80_ownership_and_decisions.md` |
+ | provenance for an algorithmic/scientific idea | `90_references.md` |
+ | why/when a historical decision changed | MLFF revision index under `docs/history/` |
+@@ -76,8 +76,5 @@
+ 
+ ## Current release boundary
+ 
+-Revision 102 completes `CAMPAIGN-PERF-QUAL1` as an integration/measurement gate without changing scientific or runtime algorithm authority. On a common 8,192-candidate/six-family target-data chain, the accumulated CPU optimization sequence reduces end-to-end FEAS1 -> MVIDX1 -> MVSEL1 -> REPAIR1 -> MVQUAL1 wall time from about 27.26 s in the PERFBASE1-era 0.20.225a0 control to a 4-lane median of about 11.95 s (~2.28x) while preserving exact reference, feasibility, sparse-index, selection, repair, and qualification digests. Replay indexed restart and EVAL2/bootstrap reductions reproduce their frozen exact records, and representative memory remains within the declared campaign ceiling. The reprofile also establishes that the dominant cost has shifted: MVSEL exact sparse state mutation and, especially, REPAIR replay of the already-computed selector state now dominate the target-data tail. Because REPAIR reconstructs essentially the complete selected-order state before proposal work, the CPU optimization program is not declared closed. `MVSTATE-REUSE1` is next to authenticate and hand terminal selector sparse state into REPAIR without changing selection or repair authority. Final GPU qualification remains deferred.
++Revision 103 completes `MVSTATE-REUSE1` and closes the exact-equivalence CPU optimization program. MVSEL now emits authenticated exact sparse-state checkpoints at materializable target rungs; REPAIR consumes those checkpoints only while its state is still identical to MVSEL and falls back to the historical carried-forward arithmetic after the first accepted repair swap. Pure checkpoint reconciliation after repair divergence was rejected because it perturbed FP64 representative-gain arrays at the 1e-17--1e-16 level. On the common 8,192-candidate/six-family closure fixture, untouched 0.20.235a0 takes about 12.00 s while 0.20.236a0 takes about 11.02 s excluding persistence; including the one-time ~0.18 s authenticated cache write, the fresh chain is about 11.19 s. REPAIR itself improves from about 5.37 s to 4.27 s with exact selection/repair/qualification digests. Cumulative fresh-chain speedup versus the PERFBASE1-era 0.20.225a0 authority is about 2.44x. Remaining target-chain cost is dominated by the exact sequential sparse-state arithmetic itself, so no further CPU-only gate is justified under the exact-equivalence policy. `FINAL-GPU1` is next; positive accelerator qualification remains deferred to that workstation gate.
+ 
+-Revision 101 completes `REPLAY-PERF1` without changing REPLAY-UNIFY1 scientific authority. The immutable selected replay ExtXYZ now has a reconstructible source-SHA-bound byte-offset/natoms index under the internal replay cache. Indexed materialization seeks only requested source frames, reuses the authenticated source-order geometry identities instead of recomputing them after every parse, and feeds the existing true-label, pseudo-label, and foundation-prediction paths through deterministic bounded contiguous chunks. ASE parsing itself remains serial because qualification showed Python-threaded ExtXYZ parsing is slower on the available CPU. On the supplied 12,000-frame replay corpus, monitor-only true-label reconstruction improves from about 9.14 s to 3.01 s (~3.03x) with byte-identical output; a full-source parse/identity pass improves from about 7.64 s to 6.42 s (~1.19x), and full train+monitor materialization improves more modestly from about 15.68 s to 14.35 s (~1.09x) because all frames must still be parsed and written. The active qualification checkpoint remains MACE-MPA-0 medium, while the replay index/materialization contract is foundation-model independent and valid for MACE-MH-1. `CAMPAIGN-PERF-QUAL1` is next.
+-
+-Revision 100 completes `AUDIT-EVAL-PERF1` without changing model inference or GPU numerical authority. EVAL2 now caches immutable species/composition/focus/block indexing metadata per evaluation view, preallocates force-tail storage, and uses a memory-bounded batched paired bootstrap while preserving the deterministic RNG stream and exact persisted metric/bootstrap records on qualification fixtures. FOUNDATION-AUDIT1 now shares its DATA3 frame index and per-run species membership across domains, reuses force-square work, and batches tail quantiles while continuing to consume the already-authenticated DATA6 prediction sweep with zero additional model-provider calls. Same-host paired evidence shows about 1.92x faster repeated EVAL2 target reduction, 3.38x faster 2,000-replicate paired bootstrap, and a smaller ~1.06x foundation-audit CPU reduction on the available no-inference fixture. The active qualification checkpoint remains MACE-MPA-0 medium, while these CPU reducers remain foundation-model independent and valid for MACE-MH-1 campaigns. `REPLAY-PERF1` is next; GPU performance authority remains deferred.
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.236a0.txt' /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/docs/arch_manuals/mlff_training_data/60_execution_performance.md ./docs/arch_manuals/mlff_training_data/60_execution_performance.md
+--- /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/docs/arch_manuals/mlff_training_data/60_execution_performance.md	2026-08-18 02:02:32.000000000 +0000
++++ ./docs/arch_manuals/mlff_training_data/60_execution_performance.md	2026-08-18 02:52:15.934545662 +0000
+@@ -186,6 +186,16 @@
+ 
+ The closure accepts a modest representative peak-RSS increase (about 306 MiB -> 343 MiB) because it is caused by reusable authenticated sparse execution state, remains far below the explicit campaign budget, and produces no observed queue backpressure. Performance evidence never overrides scientific digests.
+ 
++## MVSTATE-REUSE1 exact selector-state handoff and CPU closure
++
++Revision 103 implements an authenticated `TargetMultiViewSelectionStateCache` at the MVSEL/REPAIR boundary. MVSEL snapshots the exact mutable selector state at every materializable rung. REPAIR may restore such a checkpoint only while repair has not diverged from the pure selector order. After the first accepted repair swap, the historical mutable repair state is carried forward. This restriction is normative: reconstructing a later repaired state from a pure MVSEL checkpoint plus selected-set differences changed FP64 representative-gain entries by about `1e-17`--`1e-16`, so that shortcut is rejected even though selected IDs were identical.
++
++The cache is reconstructible execution state. Identity binds the reference/MVIDX/MVSEL/policy/sparse-kernel lineage and excludes worker/storage choices. Persistence uses one authenticated uncompressed NPZ array bundle plus a canonical manifest. A fresh campaign passes the in-memory cache directly from MVSEL to REPAIR and persists the same cache for restart; stale, missing, corrupt, or incompatible state falls back to exact historical replay. Post-divergence predetermined additions may batch CSR gather preparation, but candidate-major FP64 mutations remain in the historical order and are state-array qualified.
++
++On the 8,192-candidate/six-family integrated fixture, untouched 0.20.235a0 has a target-chain median near 12.00 s and REPAIR near 5.37 s. MVSTATE-REUSE1 gives about 11.02 s excluding persistence and 4.27 s for REPAIR. The one-time state-cache write is about 0.18 s, yielding a fresh-chain time near 11.19 s and a cumulative speedup of about 2.44x relative to the 27.26 s PERFBASE1-era chain. Peak RSS increases about 5.6% because exact rung state is retained, while remaining far below campaign limits.
++
++The post-gate reprofile finds no further material duplicated reconstructible CPU state: MVSEL and REPAIR are now dominated by the exact sequential sparse-state update arithmetic itself. The CPU optimization program is therefore closed. Further accelerator/runtime qualification belongs to `FINAL-GPU1`.
++
+ ## Progress and observability contract
+ 
+ Every stage expected to run long enough to appear stalled SHALL expose three layers:
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.236a0.txt' /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/docs/arch_manuals/mlff_training_data/70_status_and_gates.md ./docs/arch_manuals/mlff_training_data/70_status_and_gates.md
+--- /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/docs/arch_manuals/mlff_training_data/70_status_and_gates.md	2026-08-18 02:02:32.000000000 +0000
++++ ./docs/arch_manuals/mlff_training_data/70_status_and_gates.md	2026-08-18 02:52:15.934874581 +0000
+@@ -133,13 +133,15 @@
+ 
+ **Next gate.** `MVSTATE-REUSE1`.
+ 
+-### Gate MVSTATE-REUSE1 - selector-to-repair sparse-state reuse - PLANNED
++### Gate MVSTATE-REUSE1 - selector-to-repair sparse-state reuse - COMPLETE
+ 
+-**Purpose.** Eliminate REPAIR1 replay of the MVSEL1 terminal sparse state while preserving every selector rank decision, target rung, repair objective/tie decision, accepted/rejected swap, and MVQUAL scientific record.
++**Purpose.** Remove duplicated selector-state reconstruction inside REPAIR while preserving every selector rank, target rung, repair objective/tie decision, swap, terminal order, and MVQUAL record.
+ 
+-**Planned realization.** MVSEL1 emits an authenticated reconstructible terminal selection-state cache bound to MVIDX authority, ordered master-selection digest, selector policy, and sparse-kernel schema. REPAIR1 authenticates and consumes that state instead of replaying thousands of exact sparse updates; cache miss/corruption falls back to the existing replay oracle. Smaller repair rungs may use exact inverse/deselection state transforms or authenticated checkpoints if every state array is proven equivalent. A repair proposal executor may also be retained across iterations if profiling confirms a gain. Worker count, cache location, checkpoint frequency, and executor lifetime remain execution state.
++**Implementation.** `0.20.236a0` adds authenticated exact MVSEL state checkpoints at each materializable rung and a native bundled-array store. REPAIR restores a checkpoint only before its first accepted repair swap; after repair diverges, it carries the historical mutable state forward. Pure checkpoint reconciliation after divergence was measured and rejected because it changed FP64 representative-gain entries at roughly `1e-17`--`1e-16`. Bounded post-divergence CSR gather batching changes preparation only; all state mutations remain candidate-major in the historical arithmetic order. Fresh campaign execution passes the just-built cache directly from MVSEL to REPAIR while persisting it for restart. Invalid cache state fails safely to exact replay.
+ 
+-**Acceptance.** Compare the complete selector state required by repair, the entire accepted/rejected repair trace, terminal order, MVQUAL plan, cold-rebuild and restart paths, memory overhead, and integrated target-chain wall time. Scientific identity must remain exact.
++**Acceptance. PASS; CPU OPTIMIZATION CLOSED.** On the common 8,192-candidate/six-family fixture, the untouched 0.20.235a0 chain median is about 12.00 s. MVSTATE-REUSE1 is about 11.02 s excluding persistence and about 11.19 s including the one-time cache write (~1.07x fresh-chain speedup); REPAIR improves about 5.37 s -> 4.27 s (~1.26x). All FEAS1/NEIGHBOR1/MVIDX1/MVSEL1/REPAIR1/MVQUAL1 digests remain exact, cache restart/tamper/stale-lineage behavior is qualified, and peak RSS remains within budget. Relative to the PERFBASE1-era 27.26 s chain, the fresh accumulated CPU realization is about 2.44x faster. The residual tail is exact sequential sparse-state arithmetic rather than another material duplicate execution artifact.
++
++**Next gate.** `FINAL-GPU1` workstation qualification.
+ 
+ ## Explicit non-goals
+ 
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.236a0.txt' /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/docs/arch_manuals/mlff_training_data_architecture.md ./docs/arch_manuals/mlff_training_data_architecture.md
+--- /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/docs/arch_manuals/mlff_training_data_architecture.md	2026-08-18 02:05:56.000000000 +0000
++++ ./docs/arch_manuals/mlff_training_data_architecture.md	2026-08-18 02:59:30.284719822 +0000
+@@ -1,8 +1,8 @@
+ ---
+ geometry: "margin=0.75in"
+-architecture_revision: 102
+-release: "mdstats 0.20.235a0"
+-status: "current normative architecture; CAMPAIGN-PERF-QUAL1 complete with follow-up required; MVSTATE-REUSE1 next"
++architecture_revision: 103
++release: "mdstats 0.20.236a0"
++status: "current normative architecture; MVSTATE-REUSE1 complete; exact-equivalence CPU optimization closed; FINAL-GPU1 next"
+ last_updated: "2026-08-17"
+ ---
+ 
+@@ -59,7 +59,7 @@
+ | replay, MACE, checkpoint, evaluation, active learning, determinism | `40_training_evaluation.md` |
+ | FEAS1, MVIDX1, MVSEL1, REPAIR1, MVQUAL1, target rungs | `50_target_multiview.md` |
+ | scheduler, utilization, CSR/CSC, vectorization, NUMA, progress | `60_execution_performance.md` |
+-| `PERFBASE1` through `CAMPAIGN-PERF-QUAL1`, current status | `70_status_and_gates.md` |
++| `PERFBASE1` through `MVSTATE-REUSE1`, current status | `70_status_and_gates.md` |
+ | ownership or current design decision | `80_ownership_and_decisions.md` |
+ | provenance for an algorithmic/scientific idea | `90_references.md` |
+ | why/when a historical decision changed | MLFF revision index under `docs/history/` |
+@@ -76,11 +76,7 @@
+ 
+ ## Current release boundary
+ 
+-Revision 102 completes `CAMPAIGN-PERF-QUAL1` as an integration/measurement gate without changing scientific or runtime algorithm authority. On a common 8,192-candidate/six-family target-data chain, the accumulated CPU optimization sequence reduces end-to-end FEAS1 -> MVIDX1 -> MVSEL1 -> REPAIR1 -> MVQUAL1 wall time from about 27.26 s in the PERFBASE1-era 0.20.225a0 control to a 4-lane median of about 11.95 s (~2.28x) while preserving exact reference, feasibility, sparse-index, selection, repair, and qualification digests. Replay indexed restart and EVAL2/bootstrap reductions reproduce their frozen exact records, and representative memory remains within the declared campaign ceiling. The reprofile also establishes that the dominant cost has shifted: MVSEL exact sparse state mutation and, especially, REPAIR replay of the already-computed selector state now dominate the target-data tail. Because REPAIR reconstructs essentially the complete selected-order state before proposal work, the CPU optimization program is not declared closed. `MVSTATE-REUSE1` is next to authenticate and hand terminal selector sparse state into REPAIR without changing selection or repair authority. Final GPU qualification remains deferred.
+-
+-Revision 101 completes `REPLAY-PERF1` without changing REPLAY-UNIFY1 scientific authority. The immutable selected replay ExtXYZ now has a reconstructible source-SHA-bound byte-offset/natoms index under the internal replay cache. Indexed materialization seeks only requested source frames, reuses the authenticated source-order geometry identities instead of recomputing them after every parse, and feeds the existing true-label, pseudo-label, and foundation-prediction paths through deterministic bounded contiguous chunks. ASE parsing itself remains serial because qualification showed Python-threaded ExtXYZ parsing is slower on the available CPU. On the supplied 12,000-frame replay corpus, monitor-only true-label reconstruction improves from about 9.14 s to 3.01 s (~3.03x) with byte-identical output; a full-source parse/identity pass improves from about 7.64 s to 6.42 s (~1.19x), and full train+monitor materialization improves more modestly from about 15.68 s to 14.35 s (~1.09x) because all frames must still be parsed and written. The active qualification checkpoint remains MACE-MPA-0 medium, while the replay index/materialization contract is foundation-model independent and valid for MACE-MH-1. `CAMPAIGN-PERF-QUAL1` is next.
+-
+-Revision 100 completes `AUDIT-EVAL-PERF1` without changing model inference or GPU numerical authority. EVAL2 now caches immutable species/composition/focus/block indexing metadata per evaluation view, preallocates force-tail storage, and uses a memory-bounded batched paired bootstrap while preserving the deterministic RNG stream and exact persisted metric/bootstrap records on qualification fixtures. FOUNDATION-AUDIT1 now shares its DATA3 frame index and per-run species membership across domains, reuses force-square work, and batches tail quantiles while continuing to consume the already-authenticated DATA6 prediction sweep with zero additional model-provider calls. Same-host paired evidence shows about 1.92x faster repeated EVAL2 target reduction, 3.38x faster 2,000-replicate paired bootstrap, and a smaller ~1.06x foundation-audit CPU reduction on the available no-inference fixture. The active qualification checkpoint remains MACE-MPA-0 medium, while these CPU reducers remain foundation-model independent and valid for MACE-MH-1 campaigns. `REPLAY-PERF1` is next; GPU performance authority remains deferred.
++Revision 103 completes `MVSTATE-REUSE1` and closes the exact-equivalence CPU optimization program. MVSEL now emits authenticated exact sparse-state checkpoints at materializable target rungs; REPAIR consumes those checkpoints only while its state is still identical to MVSEL and falls back to the historical carried-forward arithmetic after the first accepted repair swap. Pure checkpoint reconciliation after repair divergence was rejected because it perturbed FP64 representative-gain arrays at the 1e-17--1e-16 level. On the common 8,192-candidate/six-family closure fixture, untouched 0.20.235a0 takes about 12.00 s while 0.20.236a0 takes about 11.02 s excluding persistence; including the one-time ~0.18 s authenticated cache write, the fresh chain is about 11.19 s. REPAIR itself improves from about 5.37 s to 4.27 s with exact selection/repair/qualification digests. Cumulative fresh-chain speedup versus the PERFBASE1-era 0.20.225a0 authority is about 2.44x. Remaining target-chain cost is dominated by the exact sequential sparse-state arithmetic itself, so no further CPU-only gate is justified under the exact-equivalence policy. `FINAL-GPU1` is next; positive accelerator qualification remains deferred to that workstation gate.
+ 
+ # Part I - Foundations and ownership
+ 
+@@ -2601,6 +2597,16 @@
+ 
+ The closure accepts a modest representative peak-RSS increase (about 306 MiB -> 343 MiB) because it is caused by reusable authenticated sparse execution state, remains far below the explicit campaign budget, and produces no observed queue backpressure. Performance evidence never overrides scientific digests.
+ 
++## MVSTATE-REUSE1 exact selector-state handoff and CPU closure
++
++Revision 103 implements an authenticated `TargetMultiViewSelectionStateCache` at the MVSEL/REPAIR boundary. MVSEL snapshots the exact mutable selector state at every materializable rung. REPAIR may restore such a checkpoint only while repair has not diverged from the pure selector order. After the first accepted repair swap, the historical mutable repair state is carried forward. This restriction is normative: reconstructing a later repaired state from a pure MVSEL checkpoint plus selected-set differences changed FP64 representative-gain entries by about `1e-17`--`1e-16`, so that shortcut is rejected even though selected IDs were identical.
++
++The cache is reconstructible execution state. Identity binds the reference/MVIDX/MVSEL/policy/sparse-kernel lineage and excludes worker/storage choices. Persistence uses one authenticated uncompressed NPZ array bundle plus a canonical manifest. A fresh campaign passes the in-memory cache directly from MVSEL to REPAIR and persists the same cache for restart; stale, missing, corrupt, or incompatible state falls back to exact historical replay. Post-divergence predetermined additions may batch CSR gather preparation, but candidate-major FP64 mutations remain in the historical order and are state-array qualified.
++
++On the 8,192-candidate/six-family integrated fixture, untouched 0.20.235a0 has a target-chain median near 12.00 s and REPAIR near 5.37 s. MVSTATE-REUSE1 gives about 11.02 s excluding persistence and 4.27 s for REPAIR. The one-time state-cache write is about 0.18 s, yielding a fresh-chain time near 11.19 s and a cumulative speedup of about 2.44x relative to the 27.26 s PERFBASE1-era chain. Peak RSS increases about 5.6% because exact rung state is retained, while remaining far below campaign limits.
++
++The post-gate reprofile finds no further material duplicated reconstructible CPU state: MVSEL and REPAIR are now dominated by the exact sequential sparse-state update arithmetic itself. The CPU optimization program is therefore closed. Further accelerator/runtime qualification belongs to `FINAL-GPU1`.
++
+ ## Progress and observability contract
+ 
+ Every stage expected to run long enough to appear stalled SHALL expose three layers:
+@@ -2780,13 +2786,15 @@
+ 
+ **Next gate.** `MVSTATE-REUSE1`.
+ 
+-### Gate MVSTATE-REUSE1 - selector-to-repair sparse-state reuse - PLANNED
++### Gate MVSTATE-REUSE1 - selector-to-repair sparse-state reuse - COMPLETE
++
++**Purpose.** Remove duplicated selector-state reconstruction inside REPAIR while preserving every selector rank, target rung, repair objective/tie decision, swap, terminal order, and MVQUAL record.
+ 
+-**Purpose.** Eliminate REPAIR1 replay of the MVSEL1 terminal sparse state while preserving every selector rank decision, target rung, repair objective/tie decision, accepted/rejected swap, and MVQUAL scientific record.
++**Implementation.** `0.20.236a0` adds authenticated exact MVSEL state checkpoints at each materializable rung and a native bundled-array store. REPAIR restores a checkpoint only before its first accepted repair swap; after repair diverges, it carries the historical mutable state forward. Pure checkpoint reconciliation after divergence was measured and rejected because it changed FP64 representative-gain entries at roughly `1e-17`--`1e-16`. Bounded post-divergence CSR gather batching changes preparation only; all state mutations remain candidate-major in the historical arithmetic order. Fresh campaign execution passes the just-built cache directly from MVSEL to REPAIR while persisting it for restart. Invalid cache state fails safely to exact replay.
+ 
+-**Planned realization.** MVSEL1 emits an authenticated reconstructible terminal selection-state cache bound to MVIDX authority, ordered master-selection digest, selector policy, and sparse-kernel schema. REPAIR1 authenticates and consumes that state instead of replaying thousands of exact sparse updates; cache miss/corruption falls back to the existing replay oracle. Smaller repair rungs may use exact inverse/deselection state transforms or authenticated checkpoints if every state array is proven equivalent. A repair proposal executor may also be retained across iterations if profiling confirms a gain. Worker count, cache location, checkpoint frequency, and executor lifetime remain execution state.
++**Acceptance. PASS; CPU OPTIMIZATION CLOSED.** On the common 8,192-candidate/six-family fixture, the untouched 0.20.235a0 chain median is about 12.00 s. MVSTATE-REUSE1 is about 11.02 s excluding persistence and about 11.19 s including the one-time cache write (~1.07x fresh-chain speedup); REPAIR improves about 5.37 s -> 4.27 s (~1.26x). All FEAS1/NEIGHBOR1/MVIDX1/MVSEL1/REPAIR1/MVQUAL1 digests remain exact, cache restart/tamper/stale-lineage behavior is qualified, and peak RSS remains within budget. Relative to the PERFBASE1-era 27.26 s chain, the fresh accumulated CPU realization is about 2.44x faster. The residual tail is exact sequential sparse-state arithmetic rather than another material duplicate execution artifact.
+ 
+-**Acceptance.** Compare the complete selector state required by repair, the entire accepted/rejected repair trace, terminal order, MVQUAL plan, cold-rebuild and restart paths, memory overhead, and integrated target-chain wall time. Scientific identity must remain exact.
++**Next gate.** `FINAL-GPU1` workstation qualification.
+ 
+ ## Explicit non-goals
+ 
+Binary files /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/docs/arch_manuals/mlff_training_data_architecture.pdf and ./docs/arch_manuals/mlff_training_data_architecture.pdf differ
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.236a0.txt' /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/docs/arch_manuals/mlff_training_data_dependency_graph.json ./docs/arch_manuals/mlff_training_data_dependency_graph.json
+--- /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-18 02:02:32.000000000 +0000
++++ ./docs/arch_manuals/mlff_training_data_dependency_graph.json	2026-08-18 02:52:46.880625998 +0000
+@@ -1,8 +1,8 @@
+ {
+-  "architecture_revision": 102,
++  "architecture_revision": 103,
+   "branch": "MLFF-DATA",
+-  "description": "MLFF training-data dependency graph through architecture revision 102. CAMPAIGN-PERF-QUAL1 qualifies the accumulated CPU optimization chain under exact scientific equivalence and opens MVSTATE-REUSE1 because integrated profiling identifies duplicated MVSEL-to-REPAIR sparse-state reconstruction as the new dominant exact-reuse opportunity.",
+-  "documentation_gate": "CAMPAIGN_PERF_QUAL1_CLOSURE",
++  "description": "MLFF training-data dependency graph through architecture revision 103. MVSTATE-REUSE1 closes the exact-equivalence CPU optimization program by authenticating MVSEL sparse-state checkpoints for exact REPAIR reuse; FINAL-GPU1 is the next release qualification gate.",
++  "documentation_gate": "MVSTATE_REUSE1_SELECTOR_REPAIR_HANDOFF",
+   "edge_type_definitions": {
+     "execution_requires": "The upstream product must exist before execution.",
+     "fit_domain_requires": "The fitted object may inspect only the declared training domain.",
+@@ -3035,6 +3035,11 @@
+       "from": "CAMPAIGN_PERF_QUAL1_CLOSURE",
+       "to": "MVSTATE_REUSE1_SELECTOR_REPAIR_HANDOFF",
+       "type": "implementation_requires"
++    },
++    {
++      "from": "MVSTATE_REUSE1_SELECTOR_REPAIR_HANDOFF",
++      "to": "FINAL_GPU1_DEFERRED_RELEASE_QUALIFICATION",
++      "type": "release_qualification_requires"
+     }
+   ],
+   "forbidden_dependencies": [
+@@ -3206,7 +3211,7 @@
+       ]
+     }
+   ],
+-  "next_gate": "MVSTATE_REUSE1_SELECTOR_REPAIR_HANDOFF",
++  "next_gate": "FINAL_GPU1_DEFERRED_RELEASE_QUALIFICATION",
+   "nodes": [
+     {
+       "id": "ACQUISITION_DECISIONS"
+@@ -5407,65 +5412,65 @@
+       "architecture_revision": 97,
+       "authority_class": "performance_exact_equivalence",
+       "gate_name": "MVKERNEL1",
++      "hard_obligation_pending_count": "incremental",
+       "id": "MVKERNEL1_VECTOR_SPARSE_KERNELS",
+       "implementation_status": "implemented_exact_vector_sparse_kernels",
+-      "scientific_authority_change": false,
+       "implemented_release": "0.20.230a0",
+-      "selector_rank_authority_changed": false,
+-      "ragged_csr_gather": "vectorized_canonical_order",
+-      "paired_gain_scatter": "single_gather_independent_ordered_add_at",
+-      "hard_obligation_pending_count": "incremental",
+       "mvqual_telemetry": "csr_gather_bincount_exact",
+-      "next_gate": "REPAIR_PAR1_PROPOSAL_QUEUE"
++      "next_gate": "REPAIR_PAR1_PROPOSAL_QUEUE",
++      "paired_gain_scatter": "single_gather_independent_ordered_add_at",
++      "ragged_csr_gather": "vectorized_canonical_order",
++      "scientific_authority_change": false,
++      "selector_rank_authority_changed": false
+     },
+     {
+       "architecture_revision": 98,
+       "authority_class": "performance_exact_equivalence",
++      "canonical_winner_reduction": "historical_removal_shortlist_order",
+       "gate_name": "REPAIR-PAR1",
+       "id": "REPAIR_PAR1_PROPOSAL_QUEUE",
+       "implementation_status": "implemented_deterministic_parallel_proposals",
+-      "scientific_authority_change": false,
+       "implemented_release": "0.20.231a0",
+-      "sequential_repair_authority_changed": false,
+-      "proposal_execution": "adaptive_parcore1_immutable_state",
+-      "vectorized_frontier": "csr_gather_epoch_stamp_exact",
+-      "canonical_winner_reduction": "historical_removal_shortlist_order",
+       "inverse_rank_map": "o1_execution_only",
+-      "next_gate": "MVQUAL_PAR1_GLOBAL_SCORING_QUEUE"
++      "next_gate": "MVQUAL_PAR1_GLOBAL_SCORING_QUEUE",
++      "proposal_execution": "adaptive_parcore1_immutable_state",
++      "scientific_authority_change": false,
++      "sequential_repair_authority_changed": false,
++      "vectorized_frontier": "csr_gather_epoch_stamp_exact"
+     },
+     {
+       "architecture_revision": 99,
+       "authority_class": "performance_exact_equivalence",
++      "automatic_worker_ceiling": 4,
++      "blas_threads_per_task": 1,
++      "canonical_reduction": "historical_domain_size_order",
+       "gate_name": "MVQUAL-PAR1",
+       "id": "MVQUAL_PAR1_GLOBAL_SCORING_QUEUE",
+       "implementation_status": "implemented_global_same_n_scoring_queue",
+-      "scientific_authority_change": false,
+       "implemented_release": "0.20.232a0",
+-      "parallel_granularity": "domain_selector_target_size_score",
+       "native_tree_workers_per_task": 1,
+-      "blas_threads_per_task": 1,
+-      "canonical_reduction": "historical_domain_size_order",
+-      "automatic_worker_ceiling": 4,
+-      "next_gate": "AUDIT_EVAL_PERF1_CPU_KERNELS"
++      "next_gate": "AUDIT_EVAL_PERF1_CPU_KERNELS",
++      "parallel_granularity": "domain_selector_target_size_score",
++      "scientific_authority_change": false
+     },
+     {
+       "architecture_revision": 100,
+       "authority_class": "performance_exact_equivalence",
++      "eval2_bootstrap_batched": true,
++      "eval2_bootstrap_temporary_target_mib": 32,
++      "eval2_force_tail_preallocation": true,
++      "eval2_static_metadata_cache": true,
++      "foundation_additional_model_inference": false,
++      "foundation_shared_frame_index": true,
++      "foundation_shared_species_membership": true,
+       "gate_name": "AUDIT-EVAL-PERF1",
++      "gpu_authority_change": false,
+       "id": "AUDIT_EVAL_PERF1_CPU_KERNELS",
+       "implementation_status": "implemented_cached_metadata_batched_reducers",
+-      "scientific_authority_change": false,
+       "implemented_release": "0.20.233a0",
+       "model_inference_change": false,
+-      "gpu_authority_change": false,
+-      "eval2_static_metadata_cache": true,
+-      "eval2_force_tail_preallocation": true,
+-      "eval2_bootstrap_batched": true,
+-      "eval2_bootstrap_temporary_target_mib": 32,
+-      "foundation_shared_frame_index": true,
+-      "foundation_shared_species_membership": true,
+-      "foundation_additional_model_inference": false,
+-      "next_gate": "REPLAY_PERF1_INDEX_CACHE"
++      "next_gate": "REPLAY_PERF1_INDEX_CACHE",
++      "scientific_authority_change": false
+     },
+     {
+       "architecture_revision": 101,
+@@ -5473,48 +5478,56 @@
+       "gate_name": "REPLAY-PERF1",
+       "id": "REPLAY_PERF1_INDEX_CACHE",
+       "implementation_status": "implemented_source_index_indexed_materialization",
+-      "scientific_authority_change": false,
+       "implemented_release": "0.20.234a0",
+-      "source_index_schema": "mdstats.replay-source-index.v1",
++      "next_gate": "CAMPAIGN_PERF_QUAL1_CLOSURE",
++      "parser_parallelism": "serial_measured_authority",
++      "prediction_authority_changed": false,
++      "pseudolabel_authority_changed": false,
++      "scientific_authority_change": false,
+       "source_index_receipt_schema": "mdstats.replay-source-index-receipt.v1",
++      "source_index_schema": "mdstats.replay-source-index.v1",
+       "source_sha_bound": true,
+       "sparse_direct_seek": true,
+-      "parser_parallelism": "serial_measured_authority",
+-      "true_label_authority_changed": false,
+-      "pseudolabel_authority_changed": false,
+-      "prediction_authority_changed": false,
+-      "next_gate": "CAMPAIGN_PERF_QUAL1_CLOSURE"
++      "true_label_authority_changed": false
+     },
+     {
+       "architecture_revision": 102,
+       "authority_class": "performance_integration_exact_equivalence",
+       "gate_name": "CAMPAIGN-PERF-QUAL1",
++      "gpu_authority_change": false,
+       "id": "CAMPAIGN_PERF_QUAL1_CLOSURE",
+       "implementation_status": "implemented_pass_followup_required",
+       "implemented_release": "0.20.235a0",
+-      "scientific_authority_change": false,
+-      "runtime_algorithm_change": false,
+-      "gpu_authority_change": false,
+-      "target_chain_speedup_approx": 2.28,
+-      "target_chain_exact_scientific_outputs": true,
+-      "restart_behavior_qualified": true,
+       "memory_ceiling_qualified": true,
+-      "scaling_qualified": true,
++      "next_gate": "MVSTATE_REUSE1_SELECTOR_REPAIR_HANDOFF",
+       "optimization_program_closed": false,
++      "restart_behavior_qualified": true,
++      "runtime_algorithm_change": false,
++      "scaling_qualified": true,
++      "scientific_authority_change": false,
+       "shifted_hotspot": "MVSEL exact sparse state mutation plus REPAIR duplicate selected-state replay",
+-      "next_gate": "MVSTATE_REUSE1_SELECTOR_REPAIR_HANDOFF"
++      "target_chain_exact_scientific_outputs": true,
++      "target_chain_speedup_approx": 2.28
+     },
+     {
+-      "architecture_revision": 102,
+-      "authority_class": "planned_performance_exact_equivalence",
++      "architecture_revision": 103,
++      "authority_class": "performance_exact_equivalence",
++      "checkpoint_rule": "only_before_first_repair_divergence",
++      "cumulative_fresh_speedup_vs_perfbase1": 2.4351176667259553,
+       "gate_name": "MVSTATE-REUSE1",
+       "id": "MVSTATE_REUSE1_SELECTOR_REPAIR_HANDOFF",
+-      "implementation_status": "planned",
++      "implementation_status": "implemented_cpu_optimization_closed",
++      "implemented_release": "0.20.236a0",
++      "integrated_fresh_speedup_vs_0_20_235": 1.0719762783496567,
++      "next_gate": "FINAL_GPU1_DEFERRED_RELEASE_QUALIFICATION",
++      "optimization_program_closed": true,
++      "persistence_schema": "mdstats.target-multi-view-selection-state-native-manifest.v1",
++      "pure_checkpoint_reconciliation_after_divergence": "rejected_fp64_state_difference",
++      "repair_objective_authority_change": false,
+       "scientific_authority_change": false,
+       "selector_rank_authority_change": false,
+-      "repair_objective_authority_change": false,
+-      "purpose": "authenticate and reuse MVSEL terminal sparse execution state in REPAIR instead of replaying the selected order"
++      "state_cache_schema": "mdstats.target-multi-view-selection-state-cache.v1"
+     }
+   ],
+-  "schema_version": 82
++  "schema_version": 83
+ }
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.236a0.txt' /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV103.md ./docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV103.md
+--- /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV103.md	1970-01-01 00:00:00.000000000 +0000
++++ ./docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV103.md	2026-08-18 02:52:47.114433685 +0000
+@@ -0,0 +1,12 @@
++# MLFF architecture revision 103 - MVSTATE-REUSE1
++
++Release: mdstats 0.20.236a0  
++Date: 2026-08-17
++
++MVSTATE-REUSE1 closes the exact-equivalence CPU optimization program by handing authenticated exact MVSEL sparse-state checkpoints into REPAIR. REPAIR may jump to a pure selector checkpoint only while no repair swap has been accepted; after divergence it carries the historical mutable state forward. A proposed pure-checkpoint reconciliation after divergence was rejected because it changed FP64 representative-gain entries by roughly 1e-17--1e-16 despite identical selected IDs.
++
++The cache is reconstructible execution state, persisted as one authenticated uncompressed NPZ bundle plus canonical manifest. Fresh campaign execution passes the in-memory cache directly from MVSEL to REPAIR and persists it for restart. Missing, stale, corrupt, or incompatible state falls back to exact selector replay. Bounded CSR gather preparation may be batched only while candidate-major FP64 mutations remain in historical order.
++
++On the common 8,192-candidate/six-family fixture, untouched 0.20.235a0 takes about 12.00 s and MVSTATE-REUSE1 about 11.19 s including the one-time cache write. REPAIR improves about 5.37 s to 4.27 s, with exact FEAS/MVIDX/MVSEL/REPAIR/MVQUAL digests. Cumulative fresh-chain speedup versus PERFBASE1-era 0.20.225a0 is about 2.44x. Remaining target-chain time is dominated by exact sequential sparse-state arithmetic rather than duplicated reconstructible work.
++
++The CPU optimization program is therefore closed. Next gate: FINAL-GPU1 workstation qualification. Positive accelerator evidence remains deferred.
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.236a0.txt' /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/docs/history/mlff/architecture_revisions/INDEX.md ./docs/history/mlff/architecture_revisions/INDEX.md
+--- /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/docs/history/mlff/architecture_revisions/INDEX.md	2026-08-18 02:02:32.000000000 +0000
++++ ./docs/history/mlff/architecture_revisions/INDEX.md	2026-08-18 02:52:48.355230391 +0000
+@@ -84,3 +84,4 @@
+ | 100 | AUDIT-EVAL-PERF1 / mdstats 0.20.233a0 | [MLFF architecture revision 100 - AUDIT-EVAL-PERF1](ARCHITECTURE_NOTES_MLFF_REV100.md) | - |
+ | 101 | REPLAY-PERF1 / mdstats 0.20.234a0 | [MLFF architecture revision 101 - REPLAY-PERF1](ARCHITECTURE_NOTES_MLFF_REV101.md) | - |
+ | 102 | CAMPAIGN-PERF-QUAL1 / mdstats 0.20.235a0 | [MLFF architecture revision 102 - CAMPAIGN-PERF-QUAL1](ARCHITECTURE_NOTES_MLFF_REV102.md) | - |
++| 103 | MVSTATE-REUSE1 / mdstats 0.20.236a0 | [MLFF architecture revision 103 - MVSTATE-REUSE1](ARCHITECTURE_NOTES_MLFF_REV103.md) | - |
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.236a0.txt' /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/docs/history/mlff/release_notes/INDEX.md ./docs/history/mlff/release_notes/INDEX.md
+--- /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/docs/history/mlff/release_notes/INDEX.md	2026-08-18 02:02:32.000000000 +0000
++++ ./docs/history/mlff/release_notes/INDEX.md	2026-08-18 02:52:48.355469469 +0000
+@@ -176,3 +176,4 @@
+ | `0.20.233a0` | [PATCH_NOTES_0.20.233a0.md](PATCH_NOTES_0.20.233a0.md) | - |
+ | `0.20.234a0` | [PATCH_NOTES_0.20.234a0.md](PATCH_NOTES_0.20.234a0.md) | - |
+ | `0.20.235a0` | [PATCH_NOTES_0.20.235a0.md](PATCH_NOTES_0.20.235a0.md) | - |
++- [mdstats 0.20.236a0 - MVSTATE-REUSE1](PATCH_NOTES_0.20.236a0.md)
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.236a0.txt' /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.236a0.md ./docs/history/mlff/release_notes/PATCH_NOTES_0.20.236a0.md
+--- /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/docs/history/mlff/release_notes/PATCH_NOTES_0.20.236a0.md	1970-01-01 00:00:00.000000000 +0000
++++ ./docs/history/mlff/release_notes/PATCH_NOTES_0.20.236a0.md	2026-08-18 02:52:47.122433685 +0000
+@@ -0,0 +1,9 @@
++# mdstats 0.20.236a0 - MVSTATE-REUSE1
++
++- Complete MVSTATE-REUSE1 / architecture revision 103 and close the exact-equivalence CPU optimization program.
++- Add authenticated exact MVSEL rung-state checkpoints and bundled native persistence for selector-to-repair execution-state reuse.
++- Allow REPAIR checkpoint jumps only before its first accepted swap; reject post-divergence pure-checkpoint reconciliation because it changes FP64 arithmetic history.
++- Keep historical exact replay as fallback/oracle for missing, stale, corrupt, or incompatible cache state.
++- Batch only deterministic CSR gather preparation for predetermined replay additions; preserve candidate-major FP64 state mutation order.
++- Reduce integrated 8,192-candidate target-chain time from about 12.00 s in untouched 0.20.235a0 to about 11.19 s including the one-time cache write; reduce REPAIR from about 5.37 s to 4.27 s with exact scientific digests.
++- Preserve active MACE-MPA-0 qualification and model-generic MACE-MH-1 compatibility; next gate is FINAL-GPU1.
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.236a0.txt' /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/docs/specs/training_data/README.md ./docs/specs/training_data/README.md
+--- /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/docs/specs/training_data/README.md	2026-08-16 02:38:20.000000000 +0000
++++ ./docs/specs/training_data/README.md	2026-08-18 02:52:48.365765583 +0000
+@@ -154,3 +154,4 @@
+   `mlff_adaptive_migration_spec.{md,pdf}`. The seven-gate adaptive revision is complete.
+ 
+ - `mlff_cueq_dep1_runtime_freeze_spec.{md,pdf}`: current `0.20.188a0` CUEQ-DEP1 authority for content-addressed CuEq core/Torch/CUDA-ops distributions, CUDA/determinism provenance, fail-closed runtime capture, and FINAL-GPU1 integration. Positive accelerator evidence remains deferred to the final release workstation run.
++- `mlff_mvstate_reuse1_selector_repair_handoff_spec.md`: current 0.20.236a0 exact MVSEL-to-REPAIR sparse-state checkpoint handoff, authenticated bundled persistence, post-divergence exactness boundary, and CPU optimization closure.
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.236a0.txt' /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/docs/specs/training_data/mlff_mvstate_reuse1_selector_repair_handoff_spec.md ./docs/specs/training_data/mlff_mvstate_reuse1_selector_repair_handoff_spec.md
+--- /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/docs/specs/training_data/mlff_mvstate_reuse1_selector_repair_handoff_spec.md	2026-08-18 02:01:39.000000000 +0000
++++ ./docs/specs/training_data/mlff_mvstate_reuse1_selector_repair_handoff_spec.md	2026-08-18 02:51:44.910433685 +0000
+@@ -2,30 +2,48 @@
+ 
+ ## Status
+ 
+-Planned after CAMPAIGN-PERF-QUAL1 / architecture revision 102.
++Implemented in mdstats 0.20.236a0 / MLFF architecture revision 103. The gate closes the exact-equivalence CPU optimization program and hands the release to `FINAL-GPU1` for the already-deferred accelerator qualification matrix.
+ 
+ ## Purpose
+ 
+-Remove duplicated exact sparse-state reconstruction between MVSEL1 and REPAIR1 without changing selector rank authority, target sizes, repair objective/tie semantics, accepted/rejected swaps, or final qualification authority.
++Remove duplicated exact sparse-state reconstruction between MVSEL1 and REPAIR1 without changing selector rank authority, target sizes, repair objective/tie semantics, accepted/rejected swaps, terminal order, or MVQUAL authority.
+ 
+-## Required realization
++## Implemented realization
+ 
+-MVSEL1 SHALL be able to emit an authenticated reconstructible `TargetMultiViewSelectionStateCache` (name may be refined during implementation) that contains enough terminal sparse execution state for REPAIR1 to begin from the exact selected master order without replaying thousands of `_select_and_update` operations. Its identity MUST bind the MVIDX authority, ordered selection/master-order digest, selector policy identity, and sparse-kernel schema, while excluding worker count, queue depth, storage location, and other execution knobs.
++MVSEL1 can emit an authenticated reconstructible `TargetMultiViewSelectionStateCache`. The cache contains exact mutable selector-state checkpoints at each materializable target rung: availability, per-family covered/multiplicity/coverage/representative arrays and coverage mass, domain-total gain arrays, hard-obligation state, correlation-unit counts, and the exact accumulated representative utility. Cache identity binds the TARGET-DATA2B reference, MVIDX authority, MVSEL authority/master-order lineage, selector policy, and sparse-kernel schema. Worker count, executor topology, storage location, and persistence layout remain execution state.
+ 
+-REPAIR1 SHALL authenticate the state cache before use. Missing, stale, incompatible, or corrupt cache state MUST rebuild through the existing exact selector-state replay rather than silently weaken authority. The old replay path remains an exact oracle for qualification.
++REPAIR1 validates the cache before use. On a valid checkpoint, REPAIR starts directly from the exact state at that rung rather than replaying the already-computed MVSEL prefix. The historical replay path remains the exact fallback/oracle for missing, stale, corrupt, or incompatible cache state.
+ 
+-For smaller repair rungs derived from the master order, the implementation MAY use exact inverse/deselection updates or cached checkpoints if byte/state equivalence is proven after every required rung. It MUST NOT alter rank decisions or repair inputs.
++### Exactness boundary after repair divergence
+ 
+-A repair proposal executor MAY be retained/reused across iterations if profiling confirms a gain; task completion order remains non-authoritative and winner reduction remains canonical.
++An apparently attractive shortcut was explicitly rejected. After an accepted repair swap, reconstructing a later state from a pure MVSEL checkpoint plus only the selected-set differences changes thousands of FP64 representative-gain entries by roughly `1e-17`--`1e-16` (observed maximum about `8.24e-17`) because the arithmetic history differs. MVSTATE-REUSE1 therefore permits checkpoint jumps **only while repair has not diverged from MVSEL**. After the first accepted swap, REPAIR carries the historical mutable state forward exactly.
+ 
+-## Acceptance
++For predetermined post-divergence additions, CSR gather preparation may be batched in bounded candidate blocks. This batching changes only sparse-index lookup preparation: every candidate-major FP64 `np.add.at`, clamp, multiplicity, obligation, unit-count, and representative-utility mutation remains in the historical order. Exact state-array qualification is required.
+ 
+-Qualification MUST compare:
++### Persistence and campaign handoff
+ 
+-- every selector state array required by repair, not only final selected IDs;
+-- every accepted/rejected repair swap and terminal order;
+-- MVQUAL plan/digest after repair;
+-- cold rebuild and authenticated restart paths;
+-- memory overhead and cumulative target-chain wall time.
++The state cache is stored as one uncompressed authenticated NPZ bundle plus a canonical manifest. The bundle SHA-256 and per-array scientific array references are checked on restore. This avoids the per-array fsync overhead of an exploratory one-file-per-array realization. On a fresh prepare, campaign code passes the just-built in-memory state cache directly from MVSEL to REPAIR while also persisting it for restart; it does not immediately read back the file it just wrote.
+ 
+-The gate is successful only if state handoff removes material duplicated work on the integrated closure fixture without changing any scientific record.
++REPAIR-PAR1 may keep one proposal queue alive across repair iterations. Completion order remains non-authoritative and winner reduction remains canonical.
++
++## Qualification and measured result
++
++The common 8,192-candidate/six-family closure fixture preserves the exact FEAS1, NEIGHBOR1, MVIDX1, MVSEL1, REPAIR1, and MVQUAL1 digests. The frozen repair digest is `ab7dc752555114bcd756913187e1d0eb7069c2e9a093f2a8a41130f485cdc33f`; the MVSTATE cache digest is `9904a0c96c83f4fdfe47558dc115d59664ab1a5a5456e687b9d7d3c75c1912db`.
++
++Same-host paired medians against untouched 0.20.235a0 are approximately:
++
++- target chain excluding persistence: `11.998 s -> 11.017 s` (~1.09x);
++- REPAIR: `5.365 s -> 4.272 s` (~1.26x);
++- one-time state-cache write/read: about `0.176 / 0.125 s` for ~7.0 MiB;
++- fresh target chain including the cache write: about `11.193 s` (~1.07x faster than 0.20.235a0);
++- cumulative fresh-chain speedup versus PERFBASE1-era 0.20.225a0: about `2.44x`.
++
++Peak RSS rises by about 5.6% on the paired fixture because exact rung state is deliberately retained, remaining far below the campaign memory ceiling.
++
++The complete selector-state arrays are compared against exact replay at cached rungs. Native-store tampering and stale selection lineage are rejected. Cache miss or invalidation falls back to exact selector replay. Cache-backed and replay-oracle REPAIR plans are byte/dictionary identical, including all swaps and terminal order; MVQUAL remains unchanged.
++
++## Closure decision
++
++MVSTATE-REUSE1 is successful. Integrated reprofiling shows that the remaining MVSEL/REPAIR tail is dominated by the exact sequential sparse-state arithmetic itself rather than another material duplicated reconstructible CPU artifact. Further CPU-only decomposition would either target small constant factors or risk changing arithmetic history without a compelling campaign-level payoff.
++
++Therefore the exact-equivalence CPU optimization program is **closed** at revision 103. The next release gate is `FINAL-GPU1`; no positive GPU/CuEquivariance performance claim is made by MVSTATE-REUSE1.
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.236a0.txt' /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/mdstats/__init__.py ./mdstats/__init__.py
+--- /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/mdstats/__init__.py	2026-08-18 01:20:11.000000000 +0000
++++ ./mdstats/__init__.py	2026-08-18 02:25:27.280792903 +0000
+@@ -5880,6 +5880,53 @@
+     "indexed_obligation_selected_counts",
+ ]
+ 
++from .training_data.target_multi_view_selection_state import (
++    TARGET_MULTI_VIEW_SELECTION_STATE_FAMILY_SCHEMA,
++    TARGET_MULTI_VIEW_SELECTION_STATE_CHECKPOINT_SCHEMA,
++    TARGET_MULTI_VIEW_SELECTION_STATE_DOMAIN_SCHEMA,
++    TARGET_MULTI_VIEW_SELECTION_STATE_CACHE_SCHEMA,
++    TARGET_MULTI_VIEW_SELECTION_STATE_CACHE_VERSION,
++    TARGET_MULTI_VIEW_SELECTION_STATE_PERSISTENCE_VERSION,
++    TARGET_MULTI_VIEW_SELECTION_STATE_KERNEL_SCHEMA,
++    TargetMultiViewSelectionFamilyStateCheckpoint,
++    TargetMultiViewSelectionStateCheckpoint,
++    TargetMultiViewSelectionDomainStateCache,
++    TargetMultiViewSelectionStateCache,
++    selected_prefix_digest,
++    restore_domain_state,
++    validate_target_multi_view_selection_state_cache,
++)
++from .training_data.target_multi_view_selection_state_store import (
++    TARGET_MULTI_VIEW_SELECTION_STATE_NATIVE_MANIFEST_SCHEMA,
++    TARGET_MULTI_VIEW_SELECTION_STATE_NATIVE_POINTER_SCHEMA,
++    TargetMultiViewSelectionStateNativeStoreError,
++    write_target_multi_view_selection_state_native_record,
++    read_target_multi_view_selection_state_native_record,
++)
++for _name in (
++    "TARGET_MULTI_VIEW_SELECTION_STATE_FAMILY_SCHEMA",
++    "TARGET_MULTI_VIEW_SELECTION_STATE_CHECKPOINT_SCHEMA",
++    "TARGET_MULTI_VIEW_SELECTION_STATE_DOMAIN_SCHEMA",
++    "TARGET_MULTI_VIEW_SELECTION_STATE_CACHE_SCHEMA",
++    "TARGET_MULTI_VIEW_SELECTION_STATE_CACHE_VERSION",
++    "TARGET_MULTI_VIEW_SELECTION_STATE_PERSISTENCE_VERSION",
++    "TARGET_MULTI_VIEW_SELECTION_STATE_KERNEL_SCHEMA",
++    "TargetMultiViewSelectionFamilyStateCheckpoint",
++    "TargetMultiViewSelectionStateCheckpoint",
++    "TargetMultiViewSelectionDomainStateCache",
++    "TargetMultiViewSelectionStateCache",
++    "selected_prefix_digest",
++    "restore_domain_state",
++    "validate_target_multi_view_selection_state_cache",
++    "TARGET_MULTI_VIEW_SELECTION_STATE_NATIVE_MANIFEST_SCHEMA",
++    "TARGET_MULTI_VIEW_SELECTION_STATE_NATIVE_POINTER_SCHEMA",
++    "TargetMultiViewSelectionStateNativeStoreError",
++    "write_target_multi_view_selection_state_native_record",
++    "read_target_multi_view_selection_state_native_record",
++):
++    if _name not in __all__:
++        __all__.append(_name)
++
+ from .training_data.target_multi_view_selector import (
+     TARGET_MULTI_VIEW_SELECTOR_POLICY_SCHEMA,
+     TARGET_MULTI_VIEW_SELECTION_ENTRY_SCHEMA,
+@@ -5893,6 +5940,7 @@
+     TargetMultiViewSelectionDomainPlan,
+     TargetMultiViewSelectionPlan,
+     build_target_multi_view_selection_plan,
++    build_target_multi_view_selection_artifacts,
+     validate_target_multi_view_selection_authority,
+ )
+ 
+@@ -5909,6 +5957,7 @@
+     "TargetMultiViewSelectionDomainPlan",
+     "TargetMultiViewSelectionPlan",
+     "build_target_multi_view_selection_plan",
++    "build_target_multi_view_selection_artifacts",
+     "validate_target_multi_view_selection_authority",
+ ):
+     if _name not in __all__:
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.236a0.txt' /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/mdstats/_version.py ./mdstats/_version.py
+--- /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/mdstats/_version.py	2026-08-18 02:02:32.000000000 +0000
++++ ./mdstats/_version.py	2026-08-18 02:50:34.943916834 +0000
+@@ -1 +1 @@
+-__version__ = "0.20.235a0"
++__version__ = "0.20.236a0"
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.236a0.txt' /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/mdstats/training_data/__init__.py ./mdstats/training_data/__init__.py
+--- /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/mdstats/training_data/__init__.py	2026-08-18 01:19:03.000000000 +0000
++++ ./mdstats/training_data/__init__.py	2026-08-18 02:25:27.277963888 +0000
+@@ -510,6 +510,31 @@
+     indexed_obligation_selected_counts,
+ )
+ 
++from .target_multi_view_selection_state import (
++    TARGET_MULTI_VIEW_SELECTION_STATE_FAMILY_SCHEMA,
++    TARGET_MULTI_VIEW_SELECTION_STATE_CHECKPOINT_SCHEMA,
++    TARGET_MULTI_VIEW_SELECTION_STATE_DOMAIN_SCHEMA,
++    TARGET_MULTI_VIEW_SELECTION_STATE_CACHE_SCHEMA,
++    TARGET_MULTI_VIEW_SELECTION_STATE_CACHE_VERSION,
++    TARGET_MULTI_VIEW_SELECTION_STATE_PERSISTENCE_VERSION,
++    TARGET_MULTI_VIEW_SELECTION_STATE_KERNEL_SCHEMA,
++    TargetMultiViewSelectionFamilyStateCheckpoint,
++    TargetMultiViewSelectionStateCheckpoint,
++    TargetMultiViewSelectionDomainStateCache,
++    TargetMultiViewSelectionStateCache,
++    selected_prefix_digest,
++    restore_domain_state,
++    validate_target_multi_view_selection_state_cache,
++)
++
++from .target_multi_view_selection_state_store import (
++    TARGET_MULTI_VIEW_SELECTION_STATE_NATIVE_MANIFEST_SCHEMA,
++    TARGET_MULTI_VIEW_SELECTION_STATE_NATIVE_POINTER_SCHEMA,
++    TargetMultiViewSelectionStateNativeStoreError,
++    write_target_multi_view_selection_state_native_record,
++    read_target_multi_view_selection_state_native_record,
++)
++
+ from .target_multi_view_selector import (
+     TARGET_MULTI_VIEW_SELECTOR_POLICY_SCHEMA,
+     TARGET_MULTI_VIEW_SELECTION_ENTRY_SCHEMA,
+@@ -523,6 +548,7 @@
+     TargetMultiViewSelectionDomainPlan,
+     TargetMultiViewSelectionPlan,
+     build_target_multi_view_selection_plan,
++    build_target_multi_view_selection_artifacts,
+     validate_target_multi_view_selection_authority,
+ )
+ 
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.236a0.txt' /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/mdstats/training_data/campaign_cli.py ./mdstats/training_data/campaign_cli.py
+--- /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/mdstats/training_data/campaign_cli.py	2026-08-18 01:19:01.000000000 +0000
++++ ./mdstats/training_data/campaign_cli.py	2026-08-18 02:42:57.117619441 +0000
+@@ -494,6 +494,8 @@
+         from .target_coverage_exact_neighborhood_store import write_target_coverage_exact_neighborhood_native_record
+         from .target_coverage_sparse_index import TargetCoverageSparseIndex
+         from .target_coverage_sparse_index_store import write_target_coverage_sparse_index_native_record
++        from .target_multi_view_selection_state import TargetMultiViewSelectionStateCache
++        from .target_multi_view_selection_state_store import write_target_multi_view_selection_state_native_record
+ 
+         if isinstance(record, Data4FeatureBundle):
+             pointer = write_data4_sharded_record(
+@@ -525,6 +527,12 @@
+             )
+             encoded = json.dumps(pointer, sort_keys=True, separators=(",", ":"))
+             return type(record).__name__, record.content_digest, encoded
++        if isinstance(record, TargetMultiViewSelectionStateCache):
++            pointer = write_target_multi_view_selection_state_native_record(
++                record, self.external_record_directory, record_key=key
++            )
++            encoded = json.dumps(pointer, sort_keys=True, separators=(",", ":"))
++            return type(record).__name__, record.content_digest, encoded
+ 
+         payload = record.to_dict() if hasattr(record, "to_dict") else record
+         if not isinstance(payload, Mapping):
+@@ -625,12 +633,14 @@
+         from .target_coverage_store import TARGET_COVERAGE_NATIVE_POINTER_SCHEMA
+         from .target_coverage_exact_neighborhood_store import TARGET_COVERAGE_EXACT_NEIGHBORHOOD_NATIVE_POINTER_SCHEMA
+         from .target_coverage_sparse_index_store import TARGET_COVERAGE_SPARSE_INDEX_NATIVE_POINTER_SCHEMA
++        from .target_multi_view_selection_state_store import TARGET_MULTI_VIEW_SELECTION_STATE_NATIVE_POINTER_SCHEMA
+         if payload.get("schema") in {
+             DATA4_SHARDED_POINTER_SCHEMA,
+             DATA6_SHARDED_POINTER_SCHEMA,
+             TARGET_COVERAGE_NATIVE_POINTER_SCHEMA,
+             TARGET_COVERAGE_EXACT_NEIGHBORHOOD_NATIVE_POINTER_SCHEMA,
+             TARGET_COVERAGE_SPARSE_INDEX_NATIVE_POINTER_SCHEMA,
++            TARGET_MULTI_VIEW_SELECTION_STATE_NATIVE_POINTER_SCHEMA,
+         }:
+             raise CampaignCliError(
+                 f"Record {key!r} uses memory-bounded scientific shards; request it with get_record()."
+@@ -704,12 +714,24 @@
+                 return read_target_coverage_sparse_index_native_record(payload, self.path.parent)
+             except TargetCoverageSparseIndexNativeStoreError as exc:
+                 raise CampaignCliError(str(exc)) from exc
++        from .target_multi_view_selection_state import TargetMultiViewSelectionStateCache
++        from .target_multi_view_selection_state_store import (
++            TARGET_MULTI_VIEW_SELECTION_STATE_NATIVE_POINTER_SCHEMA,
++            TargetMultiViewSelectionStateNativeStoreError,
++            read_target_multi_view_selection_state_native_record,
++        )
++        if cls is TargetMultiViewSelectionStateCache and isinstance(payload, Mapping) and payload.get("schema") == TARGET_MULTI_VIEW_SELECTION_STATE_NATIVE_POINTER_SCHEMA:
++            try:
++                return read_target_multi_view_selection_state_native_record(payload, self.path.parent)
++            except TargetMultiViewSelectionStateNativeStoreError as exc:
++                raise CampaignCliError(str(exc)) from exc
+         if payload.get("schema") in {
+             DATA4_SHARDED_POINTER_SCHEMA,
+             DATA6_SHARDED_POINTER_SCHEMA,
+             TARGET_COVERAGE_NATIVE_POINTER_SCHEMA,
+             TARGET_COVERAGE_EXACT_NEIGHBORHOOD_NATIVE_POINTER_SCHEMA,
+             TARGET_COVERAGE_SPARSE_INDEX_NATIVE_POINTER_SCHEMA,
++            TARGET_MULTI_VIEW_SELECTION_STATE_NATIVE_POINTER_SCHEMA,
+         }:
+             raise CampaignCliError(
+                 f"Record {key!r} uses memory-bounded scientific shards but was requested as {cls.__name__}."
+@@ -769,6 +791,7 @@
+         from .target_coverage_store import TARGET_COVERAGE_NATIVE_POINTER_SCHEMA
+         from .target_coverage_exact_neighborhood_store import TARGET_COVERAGE_EXACT_NEIGHBORHOOD_NATIVE_POINTER_SCHEMA
+         from .target_coverage_sparse_index_store import TARGET_COVERAGE_SPARSE_INDEX_NATIVE_POINTER_SCHEMA
++        from .target_multi_view_selection_state_store import TARGET_MULTI_VIEW_SELECTION_STATE_NATIVE_POINTER_SCHEMA
+ 
+         references: set[Path] = set()
+         with self._connect() as db:
+@@ -789,6 +812,7 @@
+                 TARGET_COVERAGE_NATIVE_POINTER_SCHEMA,
+                 TARGET_COVERAGE_EXACT_NEIGHBORHOOD_NATIVE_POINTER_SCHEMA,
+                 TARGET_COVERAGE_SPARSE_INDEX_NATIVE_POINTER_SCHEMA,
++                TARGET_MULTI_VIEW_SELECTION_STATE_NATIVE_POINTER_SCHEMA,
+             }:
+                 continue
+             relative = Path(str(payload.get("relative_path", "")))
+@@ -804,6 +828,7 @@
+                 TARGET_COVERAGE_NATIVE_POINTER_SCHEMA,
+                 TARGET_COVERAGE_EXACT_NEIGHBORHOOD_NATIVE_POINTER_SCHEMA,
+                 TARGET_COVERAGE_SPARSE_INDEX_NATIVE_POINTER_SCHEMA,
++                TARGET_MULTI_VIEW_SELECTION_STATE_NATIVE_POINTER_SCHEMA,
+             }:
+                 references.add(candidate.parent)
+         return tuple(sorted(references))
+@@ -4806,11 +4831,12 @@
+     coverage_reference: Any,
+     sparse_index: Any,
+ ) -> Any:
+-    """Build/reuse TARGET-DATA2C-MVSEL1 without migrating DATA2C v4."""
++    """Build/reuse TARGET-DATA2C-MVSEL1 plus reconstructible MVSTATE cache."""
+ 
+     import mdstats
+ 
+     policy = mdstats.TargetMultiViewSelectorPolicy()
++    existing = None
+     try:
+         existing = store.get_record_optional(
+             "target_multi_view_selection", mdstats.TargetMultiViewSelectionPlan
+@@ -4820,7 +4846,6 @@
+             f"[TARGET-DATA2C-MVSEL1 restart] stored selector evidence cannot be restored ({exc}); rebuilding",
+             flush=True,
+         )
+-        existing = None
+     if existing is not None:
+         try:
+             mdstats.validate_target_multi_view_selection_authority(
+@@ -4834,29 +4859,65 @@
+                 f"[TARGET-DATA2C-MVSEL1 restart] stored authority is stale ({exc}); rebuilding",
+                 flush=True,
+             )
++            existing = None
+         else:
++            try:
++                state_cache = store.get_record_optional(
++                    "target_multi_view_selection_state_cache", mdstats.TargetMultiViewSelectionStateCache
++                )
++                if state_cache is None:
++                    raise CampaignCliError("MVSTATE-REUSE1 cache is missing")
++                mdstats.validate_target_multi_view_selection_state_cache(
++                    state_cache,
++                    target_coverage_reference=coverage_reference,
++                    target_coverage_sparse_index=sparse_index,
++                    target_multi_view_selection=existing,
++                )
++            except Exception as exc:
++                print(
++                    f"[TARGET-DATA2C-MVSTATE-REUSE1 restart] selector authority is reusable but state cache is unavailable ({exc}); rebuilding exact execution cache",
++                    flush=True,
++                )
++                _, selector_resources = _target_coverage_query_workers(cfg)
++                selector_scope = build_stage_resource_scope(
++                    selector_resources, stage_name="TARGET-DATA2C-MVSEL1/MVSTATE-REUSE1",
++                    python_workers=1, structural_workers=1, tree_workers=1, blas_threads=1,
++                )
++                with stage_resource_scope(selector_scope):
++                    rebuilt, state_cache = mdstats.build_target_multi_view_selection_artifacts(
++                        coverage_reference, sparse_index, policy=policy, execution_mode="optimized"
++                    )
++                if rebuilt.content_digest != existing.content_digest:
++                    raise CampaignCliError("MVSTATE-REUSE1 cache rebuild changed MVSEL scientific authority.")
++                mdstats.validate_target_multi_view_selection_state_cache(
++                    state_cache,
++                    target_coverage_reference=coverage_reference,
++                    target_coverage_sparse_index=sparse_index,
++                    target_multi_view_selection=existing,
++                )
++                store.put_record("target_multi_view_selection_state_cache", state_cache)
+             _ok(
+                 "TARGET-DATA2C-MVSEL1 reused: "
+                 f"domains={len(existing.domains)}; digest={existing.content_digest[:12]}...; "
+-                "TARGET-DATA2C v4 remains active"
++                f"MVSTATE={state_cache.content_digest[:12]}...; TARGET-DATA2C v4 remains active"
+             )
+-            return existing
++            return existing, state_cache
+ 
+     _print_header("TARGET-DATA2C-MVSEL1 deterministic progressive multi-view selector")
+     print(
+         "[TARGET-DATA2C-MVSEL1] phases=hard-obligation/worst-view coverage -> "
+         "harmonic density-aware representative fill; FP64 deterministic gains; ceiling=16384; "
+-        "diagnostic only",
++        "MVSTATE rung checkpoints=on; diagnostic only",
+         flush=True,
+     )
+     started = time.monotonic()
+     _, selector_resources = _target_coverage_query_workers(cfg)
+     selector_scope = build_stage_resource_scope(
+-        selector_resources, stage_name="TARGET-DATA2C-MVSEL1/MVPERF1",
++        selector_resources, stage_name="TARGET-DATA2C-MVSEL1/MVSTATE-REUSE1",
+         python_workers=1, structural_workers=1, tree_workers=1, blas_threads=1,
+     )
+     with stage_resource_scope(selector_scope):
+-        plan = mdstats.build_target_multi_view_selection_plan(
++        plan, state_cache = mdstats.build_target_multi_view_selection_artifacts(
+             coverage_reference,
+             sparse_index,
+             policy=policy,
+@@ -4869,7 +4930,16 @@
+         target_coverage_sparse_index=sparse_index,
+         policy=policy,
+     )
+-    store.put_record("target_multi_view_selection", plan)
++    mdstats.validate_target_multi_view_selection_state_cache(
++        state_cache,
++        target_coverage_reference=coverage_reference,
++        target_coverage_sparse_index=sparse_index,
++        target_multi_view_selection=plan,
++    )
++    store.put_records({
++        "target_multi_view_selection": plan,
++        "target_multi_view_selection_state_cache": state_cache,
++    })
+     for domain in plan.domains:
+         qualified = [rung.target_size for rung in domain.rungs if rung.materializable and rung.hard_coverage_qualified]
+         _ok(
+@@ -4878,12 +4948,11 @@
+             f"qualified_rungs={qualified or 'none'}"
+         )
+     _ok(
+-        "TARGET-DATA2C-MVSEL1 frozen as diagnostic selector evidence; "
+-        f"digest={plan.content_digest[:12]}...; wall={time.monotonic() - started:.1f}s; "
+-        "TARGET-DATA2C v4 unchanged"
++        "TARGET-DATA2C-MVSEL1 + MVSTATE-REUSE1 frozen: "
++        f"selection={plan.content_digest[:12]}...; state={state_cache.content_digest[:12]}...; "
++        f"wall={time.monotonic() - started:.1f}s; TARGET-DATA2C v4 unchanged"
+     )
+-    return plan
+-
++    return plan, state_cache
+ 
+ def _ensure_target_multi_view_repair(
+     store: CampaignStore,
+@@ -4892,6 +4961,7 @@
+     coverage_reference: Any,
+     sparse_index: Any,
+     selection_plan: Any,
++    selection_state_cache: Any = None,
+ ) -> Any:
+     """Build/reuse TARGET-DATA2C-REPAIR1 without migrating DATA2C v4."""
+ 
+@@ -4938,6 +5008,24 @@
+         flush=True,
+     )
+     started = time.monotonic()
++    try:
++        if selection_state_cache is None:
++            selection_state_cache = store.get_record_optional(
++                "target_multi_view_selection_state_cache", mdstats.TargetMultiViewSelectionStateCache
++            )
++        if selection_state_cache is not None:
++            mdstats.validate_target_multi_view_selection_state_cache(
++                selection_state_cache,
++                target_coverage_reference=coverage_reference,
++                target_coverage_sparse_index=sparse_index,
++                target_multi_view_selection=selection_plan,
++            )
++    except Exception as exc:
++        print(
++            f"[TARGET-DATA2C-MVSTATE-REUSE1] state cache unavailable ({exc}); falling back to exact selector replay",
++            flush=True,
++        )
++        selection_state_cache = None
+     repair_workers, repair_resources = _target_multi_view_repair_parallelism(cfg)
+     repair_scope = build_stage_resource_scope(
+         repair_resources, stage_name="TARGET-DATA2C-REPAIR-PAR1",
+@@ -4945,6 +5033,7 @@
+     )
+     print(
+         f"[TARGET-DATA2C-REPAIR-PAR1] proposal_workers={repair_workers}; "
++        f"MVSTATE={'hit' if selection_state_cache is not None else 'fallback-replay'}; "
+         "winner application=sequential; native_threads/proposal=1",
+         flush=True,
+     )
+@@ -4956,6 +5045,7 @@
+         execution_mode="optimized",
+         proposal_workers=repair_workers,
+         resource_scope=repair_scope,
++        selection_state_cache=selection_state_cache,
+         progress_callback=lambda message: print(f"[TARGET-DATA2C-REPAIR1] {message}", flush=True),
+     )
+     mdstats.validate_target_multi_view_repair_authority(
+@@ -9285,7 +9375,7 @@
+         coverage_reference=coverage_reference,
+         feasibility=target_coverage_feasibility,
+     )
+-    target_multi_view_selection = _ensure_target_multi_view_selection(
++    target_multi_view_selection, target_multi_view_selection_state_cache = _ensure_target_multi_view_selection(
+         store,
+         cfg=cfg,
+         coverage_reference=coverage_reference,
+@@ -9297,6 +9387,7 @@
+         coverage_reference=coverage_reference,
+         sparse_index=target_coverage_sparse_index,
+         selection_plan=target_multi_view_selection,
++        selection_state_cache=target_multi_view_selection_state_cache,
+     )
+     legacy_target_ladder = _ensure_target_data_ladder(
+         store,
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.236a0.txt' /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/mdstats/training_data/target_multi_view_repair.py ./mdstats/training_data/target_multi_view_repair.py
+--- /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/mdstats/training_data/target_multi_view_repair.py	2026-08-17 23:16:50.000000000 +0000
++++ ./mdstats/training_data/target_multi_view_repair.py	2026-08-18 02:35:41.749131149 +0000
+@@ -15,6 +15,7 @@
+ from __future__ import annotations
+ 
+ from dataclasses import dataclass, field
++from contextlib import nullcontext
+ import math
+ from threading import local
+ from typing import Any, Mapping, Sequence
+@@ -26,6 +27,7 @@
+ from .work_queue import DeterministicWorkQueue
+ from ._sparse_vector_kernels import csr_gather_rows
+ from . import target_multi_view_selector as _mvsel
++from .target_multi_view_selection_state import restore_domain_state, validate_target_multi_view_selection_state_cache
+ 
+ 
+ TARGET_MULTI_VIEW_REPAIR_POLICY_SCHEMA = "mdstats.target-multi-view-repair-policy.v1"
+@@ -1185,6 +1187,8 @@
+     proposal_workers: int = 1,
+     resource_scope: StageResourceScope | None = None,
+     optimized: bool = True,
++    proposal_queue: DeterministicWorkQueue | None = None,
++    proposal_batch_id: int = 0,
+ ) -> dict[str, Any] | None:
+     """Evaluate immutable removal proposals and reduce in canonical REPAIR1 order.
+ 
+@@ -1249,19 +1253,24 @@
+         default=0,
+     )
+     per_task_memory = max(1, max_family_edges * 48 + int(sparse_domain.candidate_count) * 64)
+-    with DeterministicWorkQueue(
++    owned_queue = proposal_queue is None
++    queue_context = DeterministicWorkQueue(
+         scope,
+         max_ready_tasks=max(len(removals), 2 * workers),
+         max_inflight_tasks=max(1, 2 * workers),
+         max_completed_tasks=max(1, 2 * workers),
+         heartbeat_interval_seconds=30.0,
+         thread_name_prefix="mdstats-repair-par1",
+-    ) as queue:
++    ) if owned_queue else nullcontext(proposal_queue)
++    with queue_context as queue:
++        assert queue is not None
++        memory_key = f"repair-proposal-thread-stamps-{int(proposal_batch_id):06d}"
+         if scratch_bytes:
+-            queue.reserve_memory("repair-proposal-thread-stamps", scratch_bytes)
++            queue.reserve_memory(memory_key, scratch_bytes)
++        finished_before = int(queue.snapshot().finished_tasks)
+         for position, removal in enumerate(removals):
+             queue.submit(
+-                task_id=f"repair-proposal-{position:04d}-rank-{int(removal[0]):08d}",
++                task_id=f"repair-proposal-b{int(proposal_batch_id):06d}-{position:04d}-rank-{int(removal[0]):08d}",
+                 canonical_order=(position,),
+                 function=evaluate,
+                 args=(removal,),
+@@ -1270,14 +1279,14 @@
+                 locality_key=f"{reference_domain.label_domain_id}:repair",
+             )
+         expected = len(removals)
+-        while queue.snapshot().finished_tasks < expected:
++        while int(queue.snapshot().finished_tasks) < finished_before + expected:
+             queue.wait_for_completion()
+             for completion in queue.drain_completed():
+                 results[int(completion.canonical_order[0])] = completion.value
+         for completion in queue.drain_completed():
+             results[int(completion.canonical_order[0])] = completion.value
+         if scratch_bytes:
+-            queue.release_memory("repair-proposal-thread-stamps")
++            queue.release_memory(memory_key)
+ 
+     best = None
+     for position in range(len(removals)):
+@@ -1393,6 +1402,7 @@
+     proposal_workers: int = 1,
+     resource_scope: StageResourceScope | None = None,
+     proposal_optimized: bool = True,
++    selection_state_domain_cache: Any | None = None,
+ ) -> TargetMultiViewRepairDomainPlan:
+     if reference_domain.content_digest != selection_domain.reference_domain_digest:
+         raise TrainingDataInputError("TARGET-DATA2C-REPAIR1 reference/MVSEL domain lineage mismatch.")
+@@ -1406,114 +1416,159 @@
+     if order_indices:
+         rank_by_candidate[np.asarray(order_indices, dtype=np.int64)] = np.arange(len(order_indices), dtype=np.int64)
+ 
+-    state = _mvsel._build_domain_state(reference_domain, sparse_domain)
++    state = None
+     representative_utility = 0.0
+     previous_size = 0
+     rungs: list[TargetMultiViewRepairRung] = []
++    repair_has_diverged = False
++    proposal_batch_id = 0
+ 
+-    for base_rung in selection_domain.rungs:
+-        size = int(base_rung.target_size)
+-        if not base_rung.materializable:
+-            rungs.append(TargetMultiViewRepairRung(
+-                target_size=size,
+-                materializable=False,
+-                active_shell_start=previous_size,
+-                unavailable_reason=base_rung.unavailable_reason or "unavailable_in_mvsel1",
+-            ))
+-            continue
+-        for rank in range(previous_size, size):
+-            candidate = int(order_indices[rank])
+-            if not state.available[candidate]:
+-                raise TrainingDataInputError("TARGET-DATA2C-REPAIR1 repaired order contains an already-selected candidate.")
+-            representative_utility += float(state.total_representative_gain[candidate])
+-            select_function(candidate, sparse_domain, state)
+-
+-        shell_size = size - previous_size
+-        zero_unique_count, first_removals = _shell_removal_scan(
+-            reference_domain, sparse_domain, state, order_indices, previous_size, size, policy
++    queue_context: Any = nullcontext(None)
++    if proposal_optimized and int(proposal_workers) > 1:
++        scope = _proposal_worker_scope(resource_scope, int(proposal_workers))
++        queue_context = DeterministicWorkQueue(
++            scope,
++            max_ready_tasks=max(int(policy.removal_shortlist_limit), 2 * int(proposal_workers)),
++            max_inflight_tasks=max(1, 2 * int(proposal_workers)),
++            max_completed_tasks=max(1, 2 * int(proposal_workers)),
++            heartbeat_interval_seconds=30.0,
++            thread_name_prefix="mdstats-repair-par1",
+         )
+-        zero_unique_fraction = 0.0 if shell_size == 0 else min(1.0, zero_unique_count / float(shell_size))
+-        accepted: list[TargetMultiViewRepairSwap] = []
+-        swap_index = 0
+-        pending_removals: tuple[tuple[int, int, float, float], ...] | None = first_removals
+-        for pass_index in range(policy.max_passes_per_shell):
+-            changed = False
+-            while len(accepted) < policy.max_swaps_per_shell:
+-                if pending_removals is None:
+-                    removals = _removal_shortlist(
+-                        reference_domain, sparse_domain, state, order_indices, previous_size, size, policy
++
++    with queue_context as shared_proposal_queue:
++        for base_rung in selection_domain.rungs:
++            size = int(base_rung.target_size)
++            if not base_rung.materializable:
++                rungs.append(TargetMultiViewRepairRung(
++                    target_size=size,
++                    materializable=False,
++                    active_shell_start=previous_size,
++                    unavailable_reason=base_rung.unavailable_reason or "unavailable_in_mvsel1",
++                ))
++                continue
++
++            checkpoint_used = False
++            if selection_state_domain_cache is not None and not repair_has_diverged:
++                try:
++                    checkpoint = selection_state_domain_cache.checkpoint(size)
++                except KeyError:
++                    checkpoint = None
++                if checkpoint is not None:
++                    state = restore_domain_state(checkpoint, reference_domain, sparse_domain)
++                    representative_utility = float(checkpoint.representative_utility)
++                    checkpoint_used = True
++
++            if not checkpoint_used:
++                if state is None:
++                    state = _mvsel._build_domain_state(reference_domain, sparse_domain)
++                    representative_utility = 0.0
++                    replay_start = 0
++                else:
++                    replay_start = previous_size
++                replay_candidates = order_indices[replay_start:size]
++                if select_function is _mvsel._select_and_update and replay_candidates:
++                    representative_utility = _mvsel._select_many_and_update_exact(
++                        replay_candidates, sparse_domain, state, representative_utility
+                     )
+                 else:
+-                    removals = pending_removals
+-                    pending_removals = None
+-                if not removals:
+-                    break
+-                best = _best_repair_proposal(
+-                    reference_domain,
+-                    sparse_domain,
+-                    state,
+-                    removals,
+-                    representative_utility,
+-                    policy,
+-                    proposal_workers=proposal_workers,
+-                    resource_scope=resource_scope,
+-                    optimized=proposal_optimized,
+-                )
+-                if best is None:
++                    for rank in range(replay_start, size):
++                        candidate = int(order_indices[rank])
++                        if not state.available[candidate]:
++                            raise TrainingDataInputError("TARGET-DATA2C-REPAIR1 repaired order contains an already-selected candidate.")
++                        representative_utility += float(state.total_representative_gain[candidate])
++                        select_function(candidate, sparse_domain, state)
++
++            assert state is not None
++            shell_size = size - previous_size
++            zero_unique_count, first_removals = _shell_removal_scan(
++                reference_domain, sparse_domain, state, order_indices, previous_size, size, policy
++            )
++            zero_unique_fraction = 0.0 if shell_size == 0 else min(1.0, zero_unique_count / float(shell_size))
++            accepted: list[TargetMultiViewRepairSwap] = []
++            swap_index = 0
++            pending_removals: tuple[tuple[int, int, float, float], ...] | None = first_removals
++            for pass_index in range(policy.max_passes_per_shell):
++                changed = False
++                while len(accepted) < policy.max_swaps_per_shell:
++                    if pending_removals is None:
++                        removals = _removal_shortlist(
++                            reference_domain, sparse_domain, state, order_indices, previous_size, size, policy
++                        )
++                    else:
++                        removals = pending_removals
++                        pending_removals = None
++                    if not removals:
++                        break
++                    best = _best_repair_proposal(
++                        reference_domain,
++                        sparse_domain,
++                        state,
++                        removals,
++                        representative_utility,
++                        policy,
++                        proposal_workers=proposal_workers,
++                        resource_scope=resource_scope,
++                        optimized=proposal_optimized,
++                        proposal_queue=shared_proposal_queue,
++                        proposal_batch_id=proposal_batch_id,
++                    )
++                    proposal_batch_id += 1
++                    if best is None:
++                        break
++                    removed_uid = reference_domain.frame_uids[int(best["removed"])]
++                    replacement_uid = reference_domain.frame_uids[int(best["replacement"])]
++                    representative_utility, displaced_rank = _apply_swap(
++                        order_indices, state, sparse_domain, best, representative_utility, size,
++                        rank_by_candidate=rank_by_candidate,
++                        deselect_function=deselect_function, select_function=select_function,
++                    )
++                    accepted.append(TargetMultiViewRepairSwap(
++                        target_size=size,
++                        pass_index=pass_index,
++                        swap_index=swap_index,
++                        rank=int(best["rank"]),
++                        removed_frame_uid=removed_uid,
++                        replacement_frame_uid=replacement_uid,
++                        removed_unique_coverage=float(best["unique"]),
++                        removed_representative_loss=float(best["removal_loss"]),
++                        hard_deficit_before=int(best["hard_before"]),
++                        hard_deficit_after=int(best["hard_after"]),
++                        minimum_coverage_before=float(best["min_before"]),
++                        minimum_coverage_after=float(best["min_after"]),
++                        total_coverage_before=float(best["total_before"]),
++                        total_coverage_after=float(best["total_after"]),
++                        representative_utility_before=float(best["rep_before"]),
++                        representative_utility_after=float(best["rep_after"]),
++                        unit_balance_before=int(best["balance_before"]),
++                        unit_balance_after=int(best["balance_after"]),
++                        bottleneck_family_id=str(best["bottleneck_family_id"]),
++                        displaced_future_rank=displaced_rank,
++                    ))
++                    swap_index += 1
++                    changed = True
++                    repair_has_diverged = True
++                if not changed:
+                     break
+-                removed_uid = reference_domain.frame_uids[int(best["removed"])]
+-                replacement_uid = reference_domain.frame_uids[int(best["replacement"])]
+-                representative_utility, displaced_rank = _apply_swap(
+-                    order_indices, state, sparse_domain, best, representative_utility, size,
+-                    rank_by_candidate=rank_by_candidate,
+-                    deselect_function=deselect_function, select_function=select_function,
+-                )
+-                accepted.append(TargetMultiViewRepairSwap(
+-                    target_size=size,
+-                    pass_index=pass_index,
+-                    swap_index=swap_index,
+-                    rank=int(best["rank"]),
+-                    removed_frame_uid=removed_uid,
+-                    replacement_frame_uid=replacement_uid,
+-                    removed_unique_coverage=float(best["unique"]),
+-                    removed_representative_loss=float(best["removal_loss"]),
+-                    hard_deficit_before=int(best["hard_before"]),
+-                    hard_deficit_after=int(best["hard_after"]),
+-                    minimum_coverage_before=float(best["min_before"]),
+-                    minimum_coverage_after=float(best["min_after"]),
+-                    total_coverage_before=float(best["total_before"]),
+-                    total_coverage_after=float(best["total_after"]),
+-                    representative_utility_before=float(best["rep_before"]),
+-                    representative_utility_after=float(best["rep_after"]),
+-                    unit_balance_before=int(best["balance_before"]),
+-                    unit_balance_after=int(best["balance_after"]),
+-                    bottleneck_family_id=str(best["bottleneck_family_id"]),
+-                    displaced_future_rank=displaced_rank,
+-                ))
+-                swap_index += 1
+-                changed = True
+-            if not changed:
+-                break
+-
+-        rung = _rung_evidence(
+-            reference_domain, sparse_domain, state, order_indices, size, previous_size,
+-            accepted, zero_unique_fraction, selector_policy.coverage_threshold, policy.gain_tie_tolerance,
+-        )
+-        # Repair is allowed to improve but never regress the base same-N authority.
+-        base_cov = dict(base_rung.family_coverage)
+-        for family_id, value in rung.family_coverage:
+-            if value + policy.gain_tie_tolerance < float(base_cov[family_id]):
+-                raise TrainingDataInputError("TARGET-DATA2C-REPAIR1 same-N coverage regressed below MVSEL1.")
+-        if base_rung.hard_obligations_passed and not rung.hard_obligations_passed:
+-            raise TrainingDataInputError("TARGET-DATA2C-REPAIR1 same-N hard obligations regressed below MVSEL1.")
+-        rungs.append(rung)
+-        if progress_callback is not None:
+-            minimum = min(value for _, value in rung.family_coverage)
+-            progress_callback(
+-                f"{reference_domain.label_domain_id} n{size}: swaps={len(accepted)}; "
+-                f"zero_unique_shell_fraction={zero_unique_fraction:.4f}; min_required_coverage={minimum:.6f}"
++
++            rung = _rung_evidence(
++                reference_domain, sparse_domain, state, order_indices, size, previous_size,
++                accepted, zero_unique_fraction, selector_policy.coverage_threshold, policy.gain_tie_tolerance,
+             )
+-        previous_size = size
++            base_cov = dict(base_rung.family_coverage)
++            for family_id, value in rung.family_coverage:
++                if value + policy.gain_tie_tolerance < float(base_cov[family_id]):
++                    raise TrainingDataInputError("TARGET-DATA2C-REPAIR1 same-N coverage regressed below MVSEL1.")
++            if base_rung.hard_obligations_passed and not rung.hard_obligations_passed:
++                raise TrainingDataInputError("TARGET-DATA2C-REPAIR1 same-N hard obligations regressed below MVSEL1.")
++            rungs.append(rung)
++            if progress_callback is not None:
++                minimum = min(value for _, value in rung.family_coverage)
++                cache_note = "; state=MVSTATE-cache" if checkpoint_used else ""
++                progress_callback(
++                    f"{reference_domain.label_domain_id} n{size}: swaps={len(accepted)}; "
++                    f"zero_unique_shell_fraction={zero_unique_fraction:.4f}; min_required_coverage={minimum:.6f}{cache_note}"
++                )
++            previous_size = size
+ 
+     return TargetMultiViewRepairDomainPlan(
+         label_domain_id=reference_domain.label_domain_id,
+@@ -1526,7 +1581,6 @@
+         total_swaps=sum(len(item.swaps) for item in rungs),
+     )
+ 
+-
+ def build_target_multi_view_repair_plan(
+     target_coverage_reference: Any,
+     target_coverage_sparse_index: Any,
+@@ -1537,6 +1591,7 @@
+     execution_mode: str = "optimized",
+     proposal_workers: int = 1,
+     resource_scope: StageResourceScope | None = None,
++    selection_state_cache: Any | None = None,
+ ) -> TargetMultiViewRepairPlan:
+     """Build deterministic REPAIR1 evidence without migrating TARGET-DATA2C."""
+ 
+@@ -1554,6 +1609,13 @@
+         raise TrainingDataInputError("TARGET-DATA2C-REPAIR1 MVSEL/reference lineage mismatch.")
+     if target_multi_view_selection.target_coverage_sparse_index_digest != target_coverage_sparse_index.content_digest:
+         raise TrainingDataInputError("TARGET-DATA2C-REPAIR1 MVSEL/MVIDX lineage mismatch.")
++    if selection_state_cache is not None:
++        validate_target_multi_view_selection_state_cache(
++            selection_state_cache,
++            target_coverage_reference=target_coverage_reference,
++            target_coverage_sparse_index=target_coverage_sparse_index,
++            target_multi_view_selection=target_multi_view_selection,
++        )
+ 
+     domains = []
+     for reference_domain in target_coverage_reference.domains:
+@@ -1571,6 +1633,7 @@
+             proposal_workers=proposal_workers,
+             resource_scope=resource_scope,
+             proposal_optimized=(execution_mode == "optimized"),
++            selection_state_domain_cache=(None if selection_state_cache is None else selection_state_cache.domain(reference_domain.label_domain_id)),
+         ))
+     return TargetMultiViewRepairPlan(
+         dataset_id=target_coverage_reference.dataset_id,
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.236a0.txt' /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/mdstats/training_data/target_multi_view_selection_state.py ./mdstats/training_data/target_multi_view_selection_state.py
+--- /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/mdstats/training_data/target_multi_view_selection_state.py	1970-01-01 00:00:00.000000000 +0000
++++ ./mdstats/training_data/target_multi_view_selection_state.py	2026-08-18 02:29:43.832615831 +0000
+@@ -0,0 +1,427 @@
++"""Authenticated reconstructible MVSEL sparse execution state for MVSTATE-REUSE1.
++
++The objects in this module are execution caches, not scientific authority.  They
++bind exact MVSEL/MVIDX identities and preserve the mutable sparse arrays needed
++by REPAIR1 so a pure selector rung can be restored without replaying every
++selection update from rank zero.
++"""
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from typing import Any, Mapping, Sequence
++
++import numpy as np
++
++from ._common import TrainingDataInputError, TrainingDataSerializationError, digest, validate_digest
++from .target_coverage import _coverage_array_reference, _validate_array_reference
++
++TARGET_MULTI_VIEW_SELECTION_STATE_FAMILY_SCHEMA = "mdstats.target-multi-view-selection-state-family.v1"
++TARGET_MULTI_VIEW_SELECTION_STATE_CHECKPOINT_SCHEMA = "mdstats.target-multi-view-selection-state-checkpoint.v1"
++TARGET_MULTI_VIEW_SELECTION_STATE_DOMAIN_SCHEMA = "mdstats.target-multi-view-selection-state-domain.v1"
++TARGET_MULTI_VIEW_SELECTION_STATE_CACHE_SCHEMA = "mdstats.target-multi-view-selection-state-cache.v1"
++TARGET_MULTI_VIEW_SELECTION_STATE_CACHE_VERSION = "mdstats.target-data2c-mvstate-reuse1.selector-state-cache.2026-08.v1"
++TARGET_MULTI_VIEW_SELECTION_STATE_PERSISTENCE_VERSION = "mdstats.target-data2c-mvstate-reuse1.native-arrays.2026-08.v1"
++TARGET_MULTI_VIEW_SELECTION_STATE_KERNEL_SCHEMA = "mdstats.target-data2c-mvstate-reuse1.sparse-kernel.v1"
++
++
++def _ro(array: np.ndarray, *, dtype: Any | None = None) -> np.ndarray:
++    value = np.ascontiguousarray(array if dtype is None else np.asarray(array, dtype=dtype))
++    value.setflags(write=False)
++    return value
++
++
++@dataclass(frozen=True, slots=True, eq=False)
++class TargetMultiViewSelectionFamilyStateCheckpoint:
++    family_id: str
++    coverage_mass: float
++    covered: np.ndarray
++    multiplicity: np.ndarray
++    coverage_gain: np.ndarray
++    representative_gain: np.ndarray
++    _content_digest_cache: str = field(default="", init=False, repr=False, compare=False)
++
++    def __post_init__(self) -> None:
++        if not self.family_id:
++            raise TrainingDataInputError("MVSTATE-REUSE1 family_id cannot be empty.")
++        covered = _ro(self.covered, dtype=np.bool_)
++        multiplicity = _ro(self.multiplicity, dtype=np.int32)
++        coverage_gain = _ro(self.coverage_gain, dtype=np.float64)
++        representative_gain = _ro(self.representative_gain, dtype=np.float64)
++        if covered.ndim != 1 or multiplicity.shape != covered.shape:
++            raise TrainingDataInputError("MVSTATE-REUSE1 family witness arrays disagree.")
++        if coverage_gain.ndim != 1 or representative_gain.shape != coverage_gain.shape:
++            raise TrainingDataInputError("MVSTATE-REUSE1 family candidate gain arrays disagree.")
++        object.__setattr__(self, "covered", covered)
++        object.__setattr__(self, "multiplicity", multiplicity)
++        object.__setattr__(self, "coverage_gain", coverage_gain)
++        object.__setattr__(self, "representative_gain", representative_gain)
++        object.__setattr__(self, "coverage_mass", float(self.coverage_mass))
++
++    def _digest_payload(self) -> dict[str, Any]:
++        return {
++            "schema": TARGET_MULTI_VIEW_SELECTION_STATE_FAMILY_SCHEMA,
++            "family_id": self.family_id,
++            "coverage_mass": self.coverage_mass,
++            "covered": _coverage_array_reference(self.covered),
++            "multiplicity": _coverage_array_reference(self.multiplicity),
++            "coverage_gain": _coverage_array_reference(self.coverage_gain),
++            "representative_gain": _coverage_array_reference(self.representative_gain),
++        }
++
++    @property
++    def content_digest(self) -> str:
++        cached = self._content_digest_cache
++        if not cached:
++            cached = digest(self._digest_payload())
++            object.__setattr__(self, "_content_digest_cache", cached)
++        return cached
++
++    def metadata_dict(self) -> dict[str, Any]:
++        return {**self._digest_payload(), "content_digest": self.content_digest}
++
++
++@dataclass(frozen=True, slots=True, eq=False)
++class TargetMultiViewSelectionStateCheckpoint:
++    target_size: int
++    selected_prefix_digest: str
++    representative_utility: float
++    available: np.ndarray
++    families: tuple[TargetMultiViewSelectionFamilyStateCheckpoint, ...]
++    total_coverage_gain: np.ndarray
++    total_representative_gain: np.ndarray
++    hard_gain: np.ndarray
++    obligation_counts: np.ndarray
++    required_obligation_mask: np.ndarray
++    unsatisfied_required_obligation_count: int
++    unit_counts: np.ndarray
++    _family_by_id: Mapping[str, TargetMultiViewSelectionFamilyStateCheckpoint] = field(default_factory=dict, init=False, repr=False, compare=False)
++    _content_digest_cache: str = field(default="", init=False, repr=False, compare=False)
++
++    def __post_init__(self) -> None:
++        if int(self.target_size) < 1:
++            raise TrainingDataInputError("MVSTATE-REUSE1 checkpoint target_size must be positive.")
++        object.__setattr__(self, "target_size", int(self.target_size))
++        object.__setattr__(self, "selected_prefix_digest", validate_digest(self.selected_prefix_digest, name="selected_prefix_digest"))
++        object.__setattr__(self, "representative_utility", float(self.representative_utility))
++        arrays = {
++            "available": _ro(self.available, dtype=np.bool_),
++            "total_coverage_gain": _ro(self.total_coverage_gain, dtype=np.float64),
++            "total_representative_gain": _ro(self.total_representative_gain, dtype=np.float64),
++            "hard_gain": _ro(self.hard_gain, dtype=np.int32),
++            "obligation_counts": _ro(self.obligation_counts, dtype=np.int32),
++            "required_obligation_mask": _ro(self.required_obligation_mask, dtype=np.bool_),
++            "unit_counts": _ro(self.unit_counts, dtype=np.int32),
++        }
++        n = arrays["available"].size
++        if any(arr.ndim != 1 for arr in arrays.values()):
++            raise TrainingDataInputError("MVSTATE-REUSE1 checkpoint arrays must be one-dimensional.")
++        if arrays["total_coverage_gain"].size != n or arrays["total_representative_gain"].size != n or arrays["hard_gain"].size != n:
++            raise TrainingDataInputError("MVSTATE-REUSE1 candidate state cardinality mismatch.")
++        if arrays["obligation_counts"].shape != arrays["required_obligation_mask"].shape:
++            raise TrainingDataInputError("MVSTATE-REUSE1 obligation state cardinality mismatch.")
++        for name, value in arrays.items():
++            object.__setattr__(self, name, value)
++        families = tuple(self.families)
++        if not families or len({item.family_id for item in families}) != len(families):
++            raise TrainingDataInputError("MVSTATE-REUSE1 requires unique family checkpoints.")
++        if any(item.coverage_gain.size != n for item in families):
++            raise TrainingDataInputError("MVSTATE-REUSE1 family candidate cardinality mismatch.")
++        object.__setattr__(self, "families", families)
++        object.__setattr__(self, "_family_by_id", {item.family_id: item for item in families})
++        object.__setattr__(self, "unsatisfied_required_obligation_count", int(self.unsatisfied_required_obligation_count))
++
++    def family(self, family_id: str) -> TargetMultiViewSelectionFamilyStateCheckpoint:
++        try:
++            return self._family_by_id[family_id]
++        except KeyError:
++            raise KeyError(family_id) from None
++
++    def _digest_payload(self) -> dict[str, Any]:
++        return {
++            "schema": TARGET_MULTI_VIEW_SELECTION_STATE_CHECKPOINT_SCHEMA,
++            "target_size": self.target_size,
++            "selected_prefix_digest": self.selected_prefix_digest,
++            "representative_utility": self.representative_utility,
++            "available": _coverage_array_reference(self.available),
++            "family_digests": [item.content_digest for item in self.families],
++            "total_coverage_gain": _coverage_array_reference(self.total_coverage_gain),
++            "total_representative_gain": _coverage_array_reference(self.total_representative_gain),
++            "hard_gain": _coverage_array_reference(self.hard_gain),
++            "obligation_counts": _coverage_array_reference(self.obligation_counts),
++            "required_obligation_mask": _coverage_array_reference(self.required_obligation_mask),
++            "unsatisfied_required_obligation_count": self.unsatisfied_required_obligation_count,
++            "unit_counts": _coverage_array_reference(self.unit_counts),
++        }
++
++    @property
++    def content_digest(self) -> str:
++        cached = self._content_digest_cache
++        if not cached:
++            cached = digest(self._digest_payload())
++            object.__setattr__(self, "_content_digest_cache", cached)
++        return cached
++
++    def metadata_dict(self) -> dict[str, Any]:
++        return {**self._digest_payload(), "families": [item.metadata_dict() for item in self.families], "content_digest": self.content_digest}
++
++
++@dataclass(frozen=True, slots=True, eq=False)
++class TargetMultiViewSelectionDomainStateCache:
++    label_domain_id: str
++    reference_domain_digest: str
++    sparse_domain_digest: str
++    selection_domain_digest: str
++    candidate_count: int
++    checkpoints: tuple[TargetMultiViewSelectionStateCheckpoint, ...]
++    _checkpoint_by_size: Mapping[int, TargetMultiViewSelectionStateCheckpoint] = field(default_factory=dict, init=False, repr=False, compare=False)
++    _content_digest_cache: str = field(default="", init=False, repr=False, compare=False)
++
++    def __post_init__(self) -> None:
++        object.__setattr__(self, "reference_domain_digest", validate_digest(self.reference_domain_digest, name="reference_domain_digest"))
++        object.__setattr__(self, "sparse_domain_digest", validate_digest(self.sparse_domain_digest, name="sparse_domain_digest"))
++        object.__setattr__(self, "selection_domain_digest", validate_digest(self.selection_domain_digest, name="selection_domain_digest"))
++        checkpoints = tuple(sorted(self.checkpoints, key=lambda item: item.target_size))
++        if not checkpoints or len({item.target_size for item in checkpoints}) != len(checkpoints):
++            raise TrainingDataInputError("MVSTATE-REUSE1 requires unique checkpoint sizes.")
++        if any(item.available.size != int(self.candidate_count) for item in checkpoints):
++            raise TrainingDataInputError("MVSTATE-REUSE1 checkpoint/domain candidate cardinality mismatch.")
++        object.__setattr__(self, "candidate_count", int(self.candidate_count))
++        object.__setattr__(self, "checkpoints", checkpoints)
++        object.__setattr__(self, "_checkpoint_by_size", {item.target_size: item for item in checkpoints})
++
++    def checkpoint(self, target_size: int) -> TargetMultiViewSelectionStateCheckpoint:
++        try:
++            return self._checkpoint_by_size[int(target_size)]
++        except KeyError:
++            raise KeyError(int(target_size)) from None
++
++    def _digest_payload(self) -> dict[str, Any]:
++        return {
++            "schema": TARGET_MULTI_VIEW_SELECTION_STATE_DOMAIN_SCHEMA,
++            "label_domain_id": self.label_domain_id,
++            "reference_domain_digest": self.reference_domain_digest,
++            "sparse_domain_digest": self.sparse_domain_digest,
++            "selection_domain_digest": self.selection_domain_digest,
++            "candidate_count": self.candidate_count,
++            "checkpoint_digests": [item.content_digest for item in self.checkpoints],
++        }
++
++    @property
++    def content_digest(self) -> str:
++        cached = self._content_digest_cache
++        if not cached:
++            cached = digest(self._digest_payload())
++            object.__setattr__(self, "_content_digest_cache", cached)
++        return cached
++
++    def metadata_dict(self) -> dict[str, Any]:
++        return {**self._digest_payload(), "checkpoints": [item.metadata_dict() for item in self.checkpoints], "content_digest": self.content_digest}
++
++
++@dataclass(frozen=True, slots=True, eq=False)
++class TargetMultiViewSelectionStateCache:
++    dataset_id: str
++    target_coverage_reference_digest: str
++    target_coverage_sparse_index_digest: str
++    target_multi_view_selection_digest: str
++    selector_policy_digest: str
++    domains: tuple[TargetMultiViewSelectionDomainStateCache, ...]
++    sparse_kernel_schema: str = TARGET_MULTI_VIEW_SELECTION_STATE_KERNEL_SCHEMA
++    authority_version: str = TARGET_MULTI_VIEW_SELECTION_STATE_CACHE_VERSION
++    persistence_version: str = TARGET_MULTI_VIEW_SELECTION_STATE_PERSISTENCE_VERSION
++    _domain_by_id: Mapping[str, TargetMultiViewSelectionDomainStateCache] = field(default_factory=dict, init=False, repr=False, compare=False)
++    _content_digest_cache: str = field(default="", init=False, repr=False, compare=False)
++
++    def __post_init__(self) -> None:
++        if not self.dataset_id:
++            raise TrainingDataInputError("MVSTATE-REUSE1 dataset_id cannot be empty.")
++        for name in ("target_coverage_reference_digest", "target_coverage_sparse_index_digest", "target_multi_view_selection_digest", "selector_policy_digest"):
++            object.__setattr__(self, name, validate_digest(getattr(self, name), name=name))
++        domains = tuple(sorted(self.domains, key=lambda item: item.label_domain_id))
++        if not domains or len({item.label_domain_id for item in domains}) != len(domains):
++            raise TrainingDataInputError("MVSTATE-REUSE1 requires unique domain caches.")
++        if self.sparse_kernel_schema != TARGET_MULTI_VIEW_SELECTION_STATE_KERNEL_SCHEMA:
++            raise TrainingDataInputError("Unsupported MVSTATE-REUSE1 sparse-kernel schema.")
++        if self.authority_version != TARGET_MULTI_VIEW_SELECTION_STATE_CACHE_VERSION:
++            raise TrainingDataInputError("Unsupported MVSTATE-REUSE1 cache authority version.")
++        if self.persistence_version != TARGET_MULTI_VIEW_SELECTION_STATE_PERSISTENCE_VERSION:
++            raise TrainingDataInputError("Unsupported MVSTATE-REUSE1 persistence version.")
++        object.__setattr__(self, "domains", domains)
++        object.__setattr__(self, "_domain_by_id", {item.label_domain_id: item for item in domains})
++
++    def domain(self, label_domain_id: str) -> TargetMultiViewSelectionDomainStateCache:
++        try:
++            return self._domain_by_id[label_domain_id]
++        except KeyError:
++            raise KeyError(label_domain_id) from None
++
++    def _digest_payload(self) -> dict[str, Any]:
++        return {
++            "schema": TARGET_MULTI_VIEW_SELECTION_STATE_CACHE_SCHEMA,
++            "dataset_id": self.dataset_id,
++            "target_coverage_reference_digest": self.target_coverage_reference_digest,
++            "target_coverage_sparse_index_digest": self.target_coverage_sparse_index_digest,
++            "target_multi_view_selection_digest": self.target_multi_view_selection_digest,
++            "selector_policy_digest": self.selector_policy_digest,
++            "domain_digests": [item.content_digest for item in self.domains],
++            "sparse_kernel_schema": self.sparse_kernel_schema,
++            "authority_version": self.authority_version,
++            "persistence_version": self.persistence_version,
++        }
++
++    @property
++    def content_digest(self) -> str:
++        cached = self._content_digest_cache
++        if not cached:
++            cached = digest(self._digest_payload())
++            object.__setattr__(self, "_content_digest_cache", cached)
++        return cached
++
++    def metadata_dict(self) -> dict[str, Any]:
++        return {**self._digest_payload(), "domains": [item.metadata_dict() for item in self.domains], "content_digest": self.content_digest}
++
++
++def selected_prefix_digest(frame_uids: Sequence[str]) -> str:
++    return digest({"schema": "mdstats.target-multi-view-selection-state-prefix.v1", "frame_uids": [str(v) for v in frame_uids]})
++
++
++def checkpoint_from_domain_state(
++    state: Any,
++    *,
++    target_size: int,
++    selected_frame_uids: Sequence[str],
++    representative_utility: float,
++) -> TargetMultiViewSelectionStateCheckpoint:
++    families = tuple(
++        TargetMultiViewSelectionFamilyStateCheckpoint(
++            family_id=item.family_id,
++            coverage_mass=float(item.coverage_mass),
++            covered=np.array(item.covered, copy=True),
++            multiplicity=np.array(item.multiplicity, copy=True),
++            coverage_gain=np.array(item.coverage_gain, copy=True),
++            representative_gain=np.array(item.representative_gain, copy=True),
++        )
++        for item in state.family_states
++    )
++    return TargetMultiViewSelectionStateCheckpoint(
++        target_size=int(target_size),
++        selected_prefix_digest=selected_prefix_digest(selected_frame_uids),
++        representative_utility=float(representative_utility),
++        available=np.array(state.available, copy=True),
++        families=families,
++        total_coverage_gain=np.array(state.total_coverage_gain, copy=True),
++        total_representative_gain=np.array(state.total_representative_gain, copy=True),
++        hard_gain=np.array(state.hard_gain, copy=True),
++        obligation_counts=np.array(state.obligation_counts, copy=True),
++        required_obligation_mask=np.array(state.required_obligation_mask, copy=True),
++        unsatisfied_required_obligation_count=int(state.unsatisfied_required_obligation_count),
++        unit_counts=np.array(state.unit_counts, copy=True),
++    )
++
++
++def restore_domain_state(checkpoint: TargetMultiViewSelectionStateCheckpoint, reference_domain: Any, sparse_domain: Any) -> Any:
++    """Return a writable selector state exactly cloned from one checkpoint."""
++    from . import target_multi_view_selector as selector
++
++    if checkpoint.available.size != int(sparse_domain.candidate_count):
++        raise TrainingDataInputError("MVSTATE-REUSE1 checkpoint candidate cardinality changed.")
++    family_states = []
++    for sparse_family in sparse_domain.families:
++        cached = checkpoint.family(sparse_family.family_id)
++        family = reference_domain.family(sparse_family.family_id)
++        if cached.covered.size != int(sparse_family.witness_count):
++            raise TrainingDataInputError("MVSTATE-REUSE1 checkpoint witness cardinality changed.")
++        family_states.append(selector._FamilyState(
++            family_id=cached.family_id,
++            weights=np.asarray(family.weights, dtype=np.float64),
++            covered=np.array(cached.covered, copy=True),
++            multiplicity=np.array(cached.multiplicity, copy=True),
++            coverage_gain=np.array(cached.coverage_gain, copy=True),
++            representative_gain=np.array(cached.representative_gain, copy=True),
++            coverage_mass=float(cached.coverage_mass),
++        ))
++    return selector._DomainSelectorState(
++        available=np.array(checkpoint.available, copy=True),
++        family_states=family_states,
++        total_coverage_gain=np.array(checkpoint.total_coverage_gain, copy=True),
++        total_representative_gain=np.array(checkpoint.total_representative_gain, copy=True),
++        hard_gain=np.array(checkpoint.hard_gain, copy=True),
++        obligation_counts=np.array(checkpoint.obligation_counts, copy=True),
++        required_obligation_mask=np.array(checkpoint.required_obligation_mask, copy=True),
++        unsatisfied_required_obligation_count=int(checkpoint.unsatisfied_required_obligation_count),
++        unit_counts=np.array(checkpoint.unit_counts, copy=True),
++    )
++
++
++def validate_target_multi_view_selection_state_cache(
++    cache: TargetMultiViewSelectionStateCache,
++    *,
++    target_coverage_reference: Any,
++    target_coverage_sparse_index: Any,
++    target_multi_view_selection: Any,
++    verify_state_replay: bool = False,
++) -> None:
++    if cache.dataset_id != target_coverage_reference.dataset_id or cache.dataset_id != target_coverage_sparse_index.dataset_id:
++        raise TrainingDataInputError("MVSTATE-REUSE1 dataset identity mismatch.")
++    if cache.target_coverage_reference_digest != target_coverage_reference.content_digest:
++        raise TrainingDataInputError("MVSTATE-REUSE1 reference digest mismatch.")
++    if cache.target_coverage_sparse_index_digest != target_coverage_sparse_index.content_digest:
++        raise TrainingDataInputError("MVSTATE-REUSE1 sparse-index digest mismatch.")
++    if cache.target_multi_view_selection_digest != target_multi_view_selection.content_digest:
++        raise TrainingDataInputError("MVSTATE-REUSE1 selection digest mismatch.")
++    if cache.selector_policy_digest != target_multi_view_selection.policy.policy_digest:
++        raise TrainingDataInputError("MVSTATE-REUSE1 selector policy digest mismatch.")
++    for selection_domain in target_multi_view_selection.domains:
++        reference_domain = target_coverage_reference.domain(selection_domain.label_domain_id)
++        sparse_domain = target_coverage_sparse_index.domain(selection_domain.label_domain_id)
++        domain = cache.domain(selection_domain.label_domain_id)
++        if domain.reference_domain_digest != reference_domain.content_digest or domain.sparse_domain_digest != sparse_domain.content_digest:
++            raise TrainingDataInputError("MVSTATE-REUSE1 domain lineage mismatch.")
++        if domain.selection_domain_digest != selection_domain.content_digest:
++            raise TrainingDataInputError("MVSTATE-REUSE1 selection-domain digest mismatch.")
++        materializable = [r for r in selection_domain.rungs if r.materializable]
++        if [item.target_size for item in domain.checkpoints] != [r.target_size for r in materializable]:
++            raise TrainingDataInputError("MVSTATE-REUSE1 checkpoint sizes disagree with MVSEL rungs.")
++        for checkpoint, rung in zip(domain.checkpoints, materializable, strict=True):
++            if checkpoint.selected_prefix_digest != selected_prefix_digest(rung.frame_uids):
++                raise TrainingDataInputError("MVSTATE-REUSE1 selected-prefix digest mismatch.")
++            restored = restore_domain_state(checkpoint, reference_domain, sparse_domain)
++            if int(np.count_nonzero(~restored.available)) != checkpoint.target_size:
++                raise TrainingDataInputError("MVSTATE-REUSE1 checkpoint selected cardinality mismatch.")
++        if verify_state_replay:
++            from . import target_multi_view_selector as selector
++            uid_to_candidate = {uid: i for i, uid in enumerate(reference_domain.frame_uids)}
++            replay = selector._build_domain_state(reference_domain, sparse_domain)
++            representative_utility = 0.0
++            checkpoint_by_size = {item.target_size: item for item in domain.checkpoints}
++            for rank, entry in enumerate(selection_domain.master_order, start=1):
++                candidate = uid_to_candidate[entry.frame_uid]
++                representative_utility += float(replay.total_representative_gain[candidate])
++                selector._select_and_update(candidate, sparse_domain, replay)
++                checkpoint = checkpoint_by_size.get(rank)
++                if checkpoint is None:
++                    continue
++                restored = restore_domain_state(checkpoint, reference_domain, sparse_domain)
++                if not selector._states_exactly_equal(replay, restored):
++                    raise TrainingDataInputError(f"MVSTATE-REUSE1 checkpoint n{rank} differs from exact MVSEL replay.")
++                if representative_utility != float(checkpoint.representative_utility):
++                    raise TrainingDataInputError(f"MVSTATE-REUSE1 representative utility at n{rank} differs from exact replay.")
++
++
++__all__ = [
++    "TARGET_MULTI_VIEW_SELECTION_STATE_FAMILY_SCHEMA",
++    "TARGET_MULTI_VIEW_SELECTION_STATE_CHECKPOINT_SCHEMA",
++    "TARGET_MULTI_VIEW_SELECTION_STATE_DOMAIN_SCHEMA",
++    "TARGET_MULTI_VIEW_SELECTION_STATE_CACHE_SCHEMA",
++    "TARGET_MULTI_VIEW_SELECTION_STATE_CACHE_VERSION",
++    "TARGET_MULTI_VIEW_SELECTION_STATE_PERSISTENCE_VERSION",
++    "TARGET_MULTI_VIEW_SELECTION_STATE_KERNEL_SCHEMA",
++    "TargetMultiViewSelectionFamilyStateCheckpoint",
++    "TargetMultiViewSelectionStateCheckpoint",
++    "TargetMultiViewSelectionDomainStateCache",
++    "TargetMultiViewSelectionStateCache",
++    "selected_prefix_digest",
++    "checkpoint_from_domain_state",
++    "restore_domain_state",
++    "validate_target_multi_view_selection_state_cache",
++]
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.236a0.txt' /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/mdstats/training_data/target_multi_view_selection_state_store.py ./mdstats/training_data/target_multi_view_selection_state_store.py
+--- /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/mdstats/training_data/target_multi_view_selection_state_store.py	1970-01-01 00:00:00.000000000 +0000
++++ ./mdstats/training_data/target_multi_view_selection_state_store.py	2026-08-18 02:40:19.018433685 +0000
+@@ -0,0 +1,295 @@
++"""Authenticated bundled-array persistence for MVSTATE-REUSE1 selector state.
++
++The state cache contains many small/medium arrays per target rung.  Persisting
++one fsync'd ``.npy`` file per array makes the reconstructible cache more
++expensive than the compute it saves.  MVSTATE-REUSE1 therefore stores all
++arrays in one uncompressed NPZ bundle, authenticated by a whole-file SHA-256
++plus per-array value identities in the manifest.  The cache remains execution
++state; worker/storage choices never enter scientific digests.
++"""
++from __future__ import annotations
++
++import json
++import os
++from pathlib import Path
++import shutil
++import tempfile
++from typing import Any, Mapping
++
++import numpy as np
++
++from ._common import canonical_json, digest, sha256_file_cached
++from .target_coverage import _coverage_array_reference, _validate_array_reference
++from .target_multi_view_selection_state import (
++    TARGET_MULTI_VIEW_SELECTION_STATE_PERSISTENCE_VERSION,
++    TargetMultiViewSelectionFamilyStateCheckpoint,
++    TargetMultiViewSelectionStateCheckpoint,
++    TargetMultiViewSelectionDomainStateCache,
++    TargetMultiViewSelectionStateCache,
++)
++
++TARGET_MULTI_VIEW_SELECTION_STATE_NATIVE_MANIFEST_SCHEMA = "mdstats.target-multi-view-selection-state-native-manifest.v1"
++TARGET_MULTI_VIEW_SELECTION_STATE_NATIVE_POINTER_SCHEMA = "mdstats.mlff-campaign-target-multi-view-selection-state-native-pointer.v1"
++
++
++class TargetMultiViewSelectionStateNativeStoreError(RuntimeError):
++    """Persisted MVSTATE-REUSE1 arrays are missing, stale, or inconsistent."""
++
++
++def _sha256_file(path: Path) -> str:
++    return sha256_file_cached(path)
++
++
++def _bundle_descriptor(path: Path) -> dict[str, Any]:
++    return {"relative_path": path.name, "sha256": _sha256_file(path), "size_bytes": int(path.stat().st_size)}
++
++
++def _safe_bundle(root: Path, descriptor: Mapping[str, Any]) -> Path:
++    relative = Path(str(descriptor.get("relative_path", "")))
++    if relative.is_absolute() or ".." in relative.parts or relative in {Path(""), Path(".")}:
++        raise TargetMultiViewSelectionStateNativeStoreError("Invalid MVSTATE-REUSE1 bundle path.")
++    path = (root / relative).resolve()
++    if root.resolve() not in path.parents or not path.is_file():
++        raise TargetMultiViewSelectionStateNativeStoreError("MVSTATE-REUSE1 array bundle is missing.")
++    if path.stat().st_size != int(descriptor.get("size_bytes", -1)):
++        raise TargetMultiViewSelectionStateNativeStoreError("MVSTATE-REUSE1 array bundle size mismatch.")
++    if _sha256_file(path) != str(descriptor.get("sha256", "")):
++        raise TargetMultiViewSelectionStateNativeStoreError("MVSTATE-REUSE1 array bundle checksum mismatch.")
++    return path
++
++
++def _array_descriptor(key: str, array: np.ndarray) -> dict[str, Any]:
++    return {"bundle_key": key, "array_reference": _coverage_array_reference(np.ascontiguousarray(array))}
++
++
++def _read_array(bundle: Any, descriptor: Mapping[str, Any], *, label: str) -> np.ndarray:
++    key = str(descriptor.get("bundle_key", ""))
++    if not key or key not in bundle.files:
++        raise TargetMultiViewSelectionStateNativeStoreError(f"Missing MVSTATE-REUSE1 {label} array.")
++    try:
++        value = np.asarray(bundle[key])
++        reference = descriptor.get("array_reference")
++        if not isinstance(reference, Mapping):
++            raise TargetMultiViewSelectionStateNativeStoreError(f"Missing MVSTATE-REUSE1 {label} array identity.")
++        _validate_array_reference(reference, value, name=label)
++    except Exception as exc:
++        if isinstance(exc, TargetMultiViewSelectionStateNativeStoreError):
++            raise
++        raise TargetMultiViewSelectionStateNativeStoreError(f"Cannot restore MVSTATE-REUSE1 {label} array.") from exc
++    value = np.ascontiguousarray(value)
++    value.setflags(write=False)
++    return value
++
++
++def _validate_existing_manifest(root: Path, manifest: Mapping[str, Any]) -> None:
++    path = _safe_bundle(root, manifest.get("array_bundle", {}))
++    try:
++        with np.load(path, allow_pickle=False) as bundle:
++            for domain in manifest.get("domains", ()):
++                for checkpoint in domain.get("checkpoints", ()):
++                    for name, desc in checkpoint.get("arrays", {}).items():
++                        _read_array(bundle, desc, label=f"checkpoint {checkpoint.get('target_size')} {name}")
++                    for family in checkpoint.get("families", ()):
++                        for name, desc in family.get("arrays", {}).items():
++                            _read_array(bundle, desc, label=f"family {family.get('family_id')} {name}")
++    except (OSError, ValueError) as exc:
++        raise TargetMultiViewSelectionStateNativeStoreError("Cannot open MVSTATE-REUSE1 array bundle.") from exc
++
++
++def write_target_multi_view_selection_state_native_record(
++    cache: TargetMultiViewSelectionStateCache,
++    records_root: str | Path,
++    *,
++    record_key: str = "target_multi_view_selection_state_cache",
++) -> dict[str, Any]:
++    root = Path(records_root); root.mkdir(parents=True, exist_ok=True)
++    destination = root / f"target-multi-view-selection-state-{cache.content_digest}"
++    manifest_path = destination / "manifest.json"
++    if manifest_path.is_file():
++        try:
++            existing = json.loads(manifest_path.read_text(encoding="utf-8"))
++            supplied = existing.get("manifest_digest")
++            expected = digest({k:v for k,v in existing.items() if k != "manifest_digest"})
++            if (
++                existing.get("schema") == TARGET_MULTI_VIEW_SELECTION_STATE_NATIVE_MANIFEST_SCHEMA
++                and existing.get("content_digest") == cache.content_digest
++                and existing.get("record_key") == record_key
++                and supplied == expected
++            ):
++                _validate_existing_manifest(destination, existing)
++                pointer = {
++                    "schema": TARGET_MULTI_VIEW_SELECTION_STATE_NATIVE_POINTER_SCHEMA,
++                    "persistence_version": TARGET_MULTI_VIEW_SELECTION_STATE_PERSISTENCE_VERSION,
++                    "relative_path": str(manifest_path.relative_to(root.parent)),
++                    "sha256": _sha256_file(manifest_path),
++                    "content_digest": cache.content_digest,
++                    "record_key": record_key,
++                }
++                return {**pointer, "pointer_digest": digest(pointer)}
++        except Exception:
++            pass
++        shutil.rmtree(destination, ignore_errors=True)
++
++    temporary = Path(tempfile.mkdtemp(prefix="target-multi-view-selection-state-write-", dir=root))
++    try:
++        arrays: dict[str, np.ndarray] = {}
++        domains=[]
++        for di, domain in enumerate(cache.domains):
++            cps=[]
++            for ci, cp in enumerate(domain.checkpoints):
++                prefix=f"d{di:03d}_c{ci:03d}_n{cp.target_size:05d}"
++                cp_arrays={}
++                for name, array in (
++                    ("available", cp.available),
++                    ("total_coverage_gain", cp.total_coverage_gain),
++                    ("total_representative_gain", cp.total_representative_gain),
++                    ("hard_gain", cp.hard_gain),
++                    ("obligation_counts", cp.obligation_counts),
++                    ("required_obligation_mask", cp.required_obligation_mask),
++                    ("unit_counts", cp.unit_counts),
++                ):
++                    key=f"{prefix}_{name}"; arrays[key]=np.ascontiguousarray(array); cp_arrays[name]=_array_descriptor(key,array)
++                fams=[]
++                for fi, fam in enumerate(cp.families):
++                    fp=f"{prefix}_f{fi:03d}"
++                    fam_arrays={}
++                    for name, array in (
++                        ("covered", fam.covered),
++                        ("multiplicity", fam.multiplicity),
++                        ("coverage_gain", fam.coverage_gain),
++                        ("representative_gain", fam.representative_gain),
++                    ):
++                        key=f"{fp}_{name}"; arrays[key]=np.ascontiguousarray(array); fam_arrays[name]=_array_descriptor(key,array)
++                    fams.append({"family_id":fam.family_id,"coverage_mass":fam.coverage_mass,"content_digest":fam.content_digest,"arrays":fam_arrays})
++                cps.append({
++                    "target_size":cp.target_size,"selected_prefix_digest":cp.selected_prefix_digest,
++                    "representative_utility":cp.representative_utility,
++                    "unsatisfied_required_obligation_count":cp.unsatisfied_required_obligation_count,
++                    "content_digest":cp.content_digest,"arrays":cp_arrays,"families":fams,
++                })
++            domains.append({
++                "label_domain_id":domain.label_domain_id,"reference_domain_digest":domain.reference_domain_digest,
++                "sparse_domain_digest":domain.sparse_domain_digest,"selection_domain_digest":domain.selection_domain_digest,
++                "candidate_count":domain.candidate_count,"content_digest":domain.content_digest,"checkpoints":cps,
++            })
++
++        bundle_path=temporary/"arrays.npz"
++        np.savez(bundle_path, **arrays)
++        with bundle_path.open("rb") as handle:
++            os.fsync(handle.fileno())
++        manifest={
++            "schema":TARGET_MULTI_VIEW_SELECTION_STATE_NATIVE_MANIFEST_SCHEMA,
++            "persistence_version":cache.persistence_version,"record_key":record_key,"content_digest":cache.content_digest,
++            "dataset_id":cache.dataset_id,"target_coverage_reference_digest":cache.target_coverage_reference_digest,
++            "target_coverage_sparse_index_digest":cache.target_coverage_sparse_index_digest,
++            "target_multi_view_selection_digest":cache.target_multi_view_selection_digest,
++            "selector_policy_digest":cache.selector_policy_digest,"sparse_kernel_schema":cache.sparse_kernel_schema,
++            "authority_version":cache.authority_version,"array_bundle":_bundle_descriptor(bundle_path),"domains":domains,
++        }
++        manifest["manifest_digest"]=digest(manifest)
++        mp=temporary/"manifest.json"; mp.write_text(canonical_json(manifest)+"\n",encoding="utf-8")
++        with mp.open("rb") as handle: os.fsync(handle.fileno())
++        os.replace(temporary,destination)
++        manifest_path=destination/"manifest.json"
++        pointer={
++            "schema":TARGET_MULTI_VIEW_SELECTION_STATE_NATIVE_POINTER_SCHEMA,
++            "persistence_version":TARGET_MULTI_VIEW_SELECTION_STATE_PERSISTENCE_VERSION,
++            "relative_path":str(manifest_path.relative_to(root.parent)),"sha256":_sha256_file(manifest_path),
++            "content_digest":cache.content_digest,"record_key":record_key,
++        }
++        return {**pointer,"pointer_digest":digest(pointer)}
++    except Exception:
++        shutil.rmtree(temporary,ignore_errors=True); raise
++
++
++def read_target_multi_view_selection_state_native_record(
++    pointer: Mapping[str, Any],
++    campaign_root: str | Path,
++    *,
++    mmap_threshold_bytes: int = 8 * 1024 * 1024,  # retained for API symmetry; NPZ is bundled/non-mmap
++) -> TargetMultiViewSelectionStateCache:
++    del mmap_threshold_bytes
++    if pointer.get("schema") != TARGET_MULTI_VIEW_SELECTION_STATE_NATIVE_POINTER_SCHEMA:
++        raise TargetMultiViewSelectionStateNativeStoreError("Unsupported MVSTATE-REUSE1 native pointer schema.")
++    if pointer.get("pointer_digest") != digest({k:v for k,v in pointer.items() if k != "pointer_digest"}):
++        raise TargetMultiViewSelectionStateNativeStoreError("MVSTATE-REUSE1 native pointer digest mismatch.")
++    root=Path(campaign_root).resolve(); rel=Path(str(pointer.get("relative_path","")))
++    if rel.is_absolute() or ".." in rel.parts:
++        raise TargetMultiViewSelectionStateNativeStoreError("MVSTATE-REUSE1 native pointer escapes campaign root.")
++    manifest_path=(root/rel).resolve()
++    if root not in manifest_path.parents or not manifest_path.is_file():
++        raise TargetMultiViewSelectionStateNativeStoreError("MVSTATE-REUSE1 native manifest is missing.")
++    if _sha256_file(manifest_path) != str(pointer.get("sha256","")):
++        raise TargetMultiViewSelectionStateNativeStoreError("MVSTATE-REUSE1 native manifest checksum mismatch.")
++    manifest=json.loads(manifest_path.read_text(encoding="utf-8"))
++    if manifest.get("schema") != TARGET_MULTI_VIEW_SELECTION_STATE_NATIVE_MANIFEST_SCHEMA:
++        raise TargetMultiViewSelectionStateNativeStoreError("Unsupported MVSTATE-REUSE1 native manifest schema.")
++    if manifest.get("persistence_version") != TARGET_MULTI_VIEW_SELECTION_STATE_PERSISTENCE_VERSION:
++        raise TargetMultiViewSelectionStateNativeStoreError("Unsupported MVSTATE-REUSE1 native persistence version.")
++    if manifest.get("manifest_digest") != digest({k:v for k,v in manifest.items() if k != "manifest_digest"}):
++        raise TargetMultiViewSelectionStateNativeStoreError("MVSTATE-REUSE1 native manifest digest mismatch.")
++    bundle_path=_safe_bundle(manifest_path.parent,manifest.get("array_bundle",{}))
++    domains=[]
++    try:
++        with np.load(bundle_path,allow_pickle=False) as bundle:
++            for drow in manifest.get("domains",()):
++                cps=[]
++                for crow in drow.get("checkpoints",()):
++                    fams=[]
++                    for frow in crow.get("families",()):
++                        a=frow["arrays"]
++                        fam=TargetMultiViewSelectionFamilyStateCheckpoint(
++                            family_id=str(frow["family_id"]),coverage_mass=float(frow["coverage_mass"]),
++                            covered=_read_array(bundle,a["covered"],label="covered"),
++                            multiplicity=_read_array(bundle,a["multiplicity"],label="multiplicity"),
++                            coverage_gain=_read_array(bundle,a["coverage_gain"],label="coverage_gain"),
++                            representative_gain=_read_array(bundle,a["representative_gain"],label="representative_gain"),
++                        )
++                        if fam.content_digest != frow.get("content_digest"):
++                            raise TargetMultiViewSelectionStateNativeStoreError("MVSTATE-REUSE1 family content digest mismatch.")
++                        fams.append(fam)
++                    a=crow["arrays"]
++                    cp=TargetMultiViewSelectionStateCheckpoint(
++                        target_size=int(crow["target_size"]),selected_prefix_digest=str(crow["selected_prefix_digest"]),
++                        representative_utility=float(crow["representative_utility"]),
++                        available=_read_array(bundle,a["available"],label="available"),families=tuple(fams),
++                        total_coverage_gain=_read_array(bundle,a["total_coverage_gain"],label="total_coverage_gain"),
++                        total_representative_gain=_read_array(bundle,a["total_representative_gain"],label="total_representative_gain"),
++                        hard_gain=_read_array(bundle,a["hard_gain"],label="hard_gain"),
++                        obligation_counts=_read_array(bundle,a["obligation_counts"],label="obligation_counts"),
++                        required_obligation_mask=_read_array(bundle,a["required_obligation_mask"],label="required_obligation_mask"),
++                        unsatisfied_required_obligation_count=int(crow["unsatisfied_required_obligation_count"]),
++                        unit_counts=_read_array(bundle,a["unit_counts"],label="unit_counts"),
++                    )
++                    if cp.content_digest != crow.get("content_digest"):
++                        raise TargetMultiViewSelectionStateNativeStoreError("MVSTATE-REUSE1 checkpoint content digest mismatch.")
++                    cps.append(cp)
++                domain=TargetMultiViewSelectionDomainStateCache(
++                    label_domain_id=str(drow["label_domain_id"]),reference_domain_digest=str(drow["reference_domain_digest"]),
++                    sparse_domain_digest=str(drow["sparse_domain_digest"]),selection_domain_digest=str(drow["selection_domain_digest"]),
++                    candidate_count=int(drow["candidate_count"]),checkpoints=tuple(cps),
++                )
++                if domain.content_digest != drow.get("content_digest"):
++                    raise TargetMultiViewSelectionStateNativeStoreError("MVSTATE-REUSE1 domain content digest mismatch.")
++                domains.append(domain)
++    except (OSError,ValueError,KeyError,TargetMultiViewSelectionStateNativeStoreError) as exc:
++        if isinstance(exc,TargetMultiViewSelectionStateNativeStoreError): raise
++        raise TargetMultiViewSelectionStateNativeStoreError("Cannot restore MVSTATE-REUSE1 array bundle.") from exc
++    cache=TargetMultiViewSelectionStateCache(
++        dataset_id=str(manifest["dataset_id"]),target_coverage_reference_digest=str(manifest["target_coverage_reference_digest"]),
++        target_coverage_sparse_index_digest=str(manifest["target_coverage_sparse_index_digest"]),
++        target_multi_view_selection_digest=str(manifest["target_multi_view_selection_digest"]),
++        selector_policy_digest=str(manifest["selector_policy_digest"]),domains=tuple(domains),
++        sparse_kernel_schema=str(manifest["sparse_kernel_schema"]),authority_version=str(manifest["authority_version"]),
++        persistence_version=str(manifest["persistence_version"]),
++    )
++    if cache.content_digest != manifest.get("content_digest") or cache.content_digest != pointer.get("content_digest"):
++        raise TargetMultiViewSelectionStateNativeStoreError("MVSTATE-REUSE1 cache content digest mismatch.")
++    return cache
++
++
++__all__=[
++    "TARGET_MULTI_VIEW_SELECTION_STATE_NATIVE_MANIFEST_SCHEMA","TARGET_MULTI_VIEW_SELECTION_STATE_NATIVE_POINTER_SCHEMA",
++    "TargetMultiViewSelectionStateNativeStoreError","write_target_multi_view_selection_state_native_record",
++    "read_target_multi_view_selection_state_native_record",
++]
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.236a0.txt' /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/mdstats/training_data/target_multi_view_selector.py ./mdstats/training_data/target_multi_view_selector.py
+--- /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/mdstats/training_data/target_multi_view_selector.py	2026-08-17 22:33:38.000000000 +0000
++++ ./mdstats/training_data/target_multi_view_selector.py	2026-08-18 02:38:33.410177916 +0000
+@@ -27,7 +27,12 @@
+ import numpy as np
+ 
+ from ._common import TrainingDataInputError, TrainingDataSerializationError, digest, validate_digest
+-from ._sparse_vector_kernels import iter_csr_gather_batches
++from ._sparse_vector_kernels import csr_gather_rows, iter_csr_gather_batches
++from .target_multi_view_selection_state import (
++    TargetMultiViewSelectionDomainStateCache,
++    TargetMultiViewSelectionStateCache,
++    checkpoint_from_domain_state,
++)
+ 
+ 
+ TARGET_MULTI_VIEW_SELECTOR_POLICY_SCHEMA = "mdstats.target-multi-view-selector-policy.v1"
+@@ -815,6 +820,151 @@
+     state.available[candidate] = False
+ 
+ 
++_MVSTATE_REPLAY_CANDIDATE_BLOCK = 32
++
++
++def _scatter_decrement_pair_pregathered_exact(
++    left: np.ndarray,
++    right: np.ndarray,
++    rows: np.ndarray,
++    edge_amounts: np.ndarray,
++) -> None:
++    """Apply one already-gathered canonical edge stream with MVSEL arithmetic."""
++    if rows.size == 0:
++        return
++    np.add.at(left, rows, -edge_amounts)
++    np.add.at(right, rows, -edge_amounts)
++    for array in (left, right):
++        near = rows[np.abs(array[rows]) <= 5.0e-13]
++        if near.size:
++            array[near] = 0.0
++        if np.any(array[rows] < -5.0e-12):
++            raise TrainingDataInputError(
++                "TARGET-DATA2C-MVSEL1 incremental gain bookkeeping became negative."
++            )
++
++
++def _prepare_replay_family_block(sparse_family: Any, candidates: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
++    """Prepare canonical inverse-edge streams for a predetermined candidate block.
++
++    Returns candidate-witness prefix, witness events, witness-edge prefix and
++    pregathered inverse candidate rows.  This is execution-only preparation;
++    arithmetic is still applied one selected candidate at a time.
++    """
++    witness_events, candidate_witness_lengths = csr_gather_rows(
++        sparse_family.candidate_offsets, sparse_family.candidate_witnesses, candidates
++    )
++    candidate_witness_prefix = np.empty(candidates.size + 1, dtype=np.int64)
++    candidate_witness_prefix[0] = 0
++    np.cumsum(candidate_witness_lengths, dtype=np.int64, out=candidate_witness_prefix[1:])
++    inverse_rows, witness_edge_lengths = csr_gather_rows(
++        sparse_family.witness_offsets, sparse_family.witness_candidates,
++        witness_events.astype(np.int64, copy=False),
++    )
++    witness_edge_prefix = np.empty(witness_events.size + 1, dtype=np.int64)
++    witness_edge_prefix[0] = 0
++    np.cumsum(witness_edge_lengths, dtype=np.int64, out=witness_edge_prefix[1:])
++    return candidate_witness_prefix, witness_events.astype(np.int64, copy=False), witness_edge_prefix, inverse_rows.astype(np.int64, copy=False)
++
++
++def _select_many_and_update_exact(
++    candidates: Sequence[int] | np.ndarray,
++    sparse_domain: Any,
++    state: _DomainSelectorState,
++    representative_utility: float,
++    *,
++    candidate_block_size: int = _MVSTATE_REPLAY_CANDIDATE_BLOCK,
++) -> float:
++    """Replay a predetermined selection sequence with batched CSR preparation.
++
++    MVSTATE-REUSE1 may use this only after rank decisions are already frozen.
++    Every state mutation remains candidate-major and uses the exact MVKERNEL1
++    ``np.add.at``/clamp arithmetic.  Only repeated CSR gather construction is
++    coalesced across a bounded block.
++    """
++    ordered = np.asarray(tuple(int(v) for v in candidates), dtype=np.int64)
++    if ordered.ndim != 1:
++        raise TrainingDataInputError("MVSTATE-REUSE1 replay candidates must be one-dimensional.")
++    if ordered.size == 0:
++        return float(representative_utility)
++    if np.unique(ordered).size != ordered.size or np.any(ordered < 0) or np.any(ordered >= state.available.size):
++        raise TrainingDataInputError("MVSTATE-REUSE1 replay candidate sequence is invalid.")
++    if not np.all(state.available[ordered]):
++        raise TrainingDataInputError("MVSTATE-REUSE1 replay sequence contains an already-selected candidate.")
++    block_size = max(1, int(candidate_block_size))
++    utility = float(representative_utility)
++
++    for block_start in range(0, ordered.size, block_size):
++        block = ordered[block_start:block_start + block_size]
++        prepared = [_prepare_replay_family_block(sf, block) for sf in sparse_domain.families]
++        for local_position, candidate_value in enumerate(block):
++            candidate = int(candidate_value)
++            utility += float(state.total_representative_gain[candidate])
++            marginal_by_family = [float(item.coverage_gain[candidate]) for item in state.family_states]
++            for sparse_family, family_state, marginal, prep in zip(
++                sparse_domain.families, state.family_states, marginal_by_family, prepared, strict=True
++            ):
++                candidate_witness_prefix, witness_events, witness_edge_prefix, inverse_rows = prep
++                w0 = int(candidate_witness_prefix[local_position])
++                w1 = int(candidate_witness_prefix[local_position + 1])
++                witnesses = witness_events[w0:w1]
++                family_state.coverage_mass = min(1.0, family_state.coverage_mass + marginal)
++                if witnesses.size:
++                    newly_covered = witnesses[~family_state.covered[witnesses]]
++                    if newly_covered.size:
++                        coverage_amounts = np.asarray(family_state.weights[newly_covered], dtype=np.float64)
++                        _scatter_decrement_pair_exact(
++                            family_state.coverage_gain,
++                            state.total_coverage_gain,
++                            sparse_family.witness_offsets,
++                            sparse_family.witness_candidates,
++                            newly_covered,
++                            coverage_amounts,
++                        )
++                        family_state.covered[newly_covered] = True
++
++                    witness_weights = family_state.weights[witnesses]
++                    witness_multiplicity = family_state.multiplicity[witnesses].astype(np.float64, copy=False)
++                    representative_amounts = (
++                        witness_weights / (1.0 + witness_multiplicity)
++                        - witness_weights / (2.0 + witness_multiplicity)
++                    )
++                    e0 = int(witness_edge_prefix[w0])
++                    e1 = int(witness_edge_prefix[w1])
++                    rows = inverse_rows[e0:e1]
++                    edge_lengths = np.diff(witness_edge_prefix[w0:w1 + 1])
++                    edge_amounts = np.repeat(representative_amounts, edge_lengths)
++                    _scatter_decrement_pair_pregathered_exact(
++                        family_state.representative_gain,
++                        state.total_representative_gain,
++                        rows,
++                        edge_amounts,
++                    )
++                    family_state.multiplicity[witnesses] += 1
++
++            for oi in np.asarray(sparse_domain.candidate_obligation_indices(candidate), dtype=np.int64):
++                oi_int = int(oi)
++                obligation = sparse_domain.obligations[oi_int]
++                if not obligation.required:
++                    continue
++                before = int(state.obligation_counts[oi_int])
++                after = before + 1
++                state.obligation_counts[oi_int] = after
++                minimum = int(obligation.minimum_selected_frames)
++                if before < minimum and after >= minimum:
++                    state.unsatisfied_required_obligation_count -= 1
++                    if state.unsatisfied_required_obligation_count < 0:
++                        raise TrainingDataInputError("TARGET-DATA2C-MVSEL1 hard-obligation pending count became negative.")
++                    affected = np.asarray(sparse_domain.obligation_candidate_indices(oi_int), dtype=np.int64)
++                    state.hard_gain[affected] -= 1
++                    if np.any(state.hard_gain[affected] < 0):
++                        raise TrainingDataInputError("TARGET-DATA2C-MVSEL1 hard-obligation gain bookkeeping became negative.")
++            unit_code = int(sparse_domain.candidate_correlation_unit_codes[candidate])
++            state.unit_counts[unit_code] += 1
++            state.available[candidate] = False
++    return utility
++
++
+ def _states_exactly_equal(left: _DomainSelectorState, right: _DomainSelectorState) -> bool:
+     """Execution-only exact-state comparator used by MVPERF1 qualification."""
+     if not (
+@@ -839,7 +989,7 @@
+             return False
+     return True
+ 
+-def _build_domain_plan(reference_domain: Any, sparse_domain: Any, policy: TargetMultiViewSelectorPolicy, *, progress_callback: Callable[[str], None] | None = None, update_function: Callable[[int, Any, _DomainSelectorState], None] = _select_and_update) -> TargetMultiViewSelectionDomainPlan:
++def _build_domain_plan(reference_domain: Any, sparse_domain: Any, policy: TargetMultiViewSelectorPolicy, *, progress_callback: Callable[[str], None] | None = None, update_function: Callable[[int, Any, _DomainSelectorState], None] = _select_and_update, checkpoint_collector: list[Any] | None = None) -> TargetMultiViewSelectionDomainPlan:
+     if reference_domain.content_digest != sparse_domain.frame_domain_digest and reference_domain.frame_domain_digest != sparse_domain.frame_domain_digest:
+         # MVIDX binds frame_domain_digest, not the complete reference domain digest.
+         if reference_domain.frame_domain_digest != sparse_domain.frame_domain_digest:
+@@ -857,6 +1007,7 @@
+     rung_by_size: dict[int, TargetMultiViewSelectionRung] = {}
+     phase_a_completed_at: int | None = None
+     previous_rung_size = 0
++    representative_utility = 0.0
+ 
+     for rank in range(limit):
+         chosen, phase, bottleneck_id, diversity = _choose_candidate(reference_domain, sparse_domain, state, policy)
+@@ -884,6 +1035,7 @@
+             correlation_unit_code=int(sparse_domain.candidate_correlation_unit_codes[chosen]),
+         )
+         entries.append(entry)
++        representative_utility += representative_gain
+         update_function(chosen, sparse_domain, state)
+ 
+         if phase_a_completed_at is None and _hard_obligations_satisfied(sparse_domain, state) and _coverage_satisfied(state, policy.coverage_threshold, policy.gain_tie_tolerance):
+@@ -908,6 +1060,13 @@
+                 shell_coverage_gain=float(np.sum([item.total_coverage_gain for item in shell], dtype=np.float64)),
+                 shell_representative_gain=float(np.sum([item.representative_gain for item in shell], dtype=np.float64)),
+             )
++            if checkpoint_collector is not None:
++                checkpoint_collector.append(checkpoint_from_domain_state(
++                    state,
++                    target_size=size,
++                    selected_frame_uids=tuple(item.frame_uid for item in entries[:size]),
++                    representative_utility=representative_utility,
++                ))
+             previous_rung_size = size
+             if progress_callback is not None:
+                 minimum = min(value for _, value in family_coverage)
+@@ -939,16 +1098,15 @@
+     )
+ 
+ 
+-def build_target_multi_view_selection_plan(
++def _build_target_multi_view_selection(
+     target_coverage_reference: Any,
+     target_coverage_sparse_index: Any,
+     *,
+     policy: TargetMultiViewSelectorPolicy | None = None,
+     progress_callback: Callable[[str], None] | None = None,
+     execution_mode: str = "optimized",
+-) -> TargetMultiViewSelectionPlan:
+-    """Construct exact deterministic MVSEL1 evidence without migrating DATA2C."""
+-
++    capture_state_cache: bool = False,
++) -> tuple[TargetMultiViewSelectionPlan, TargetMultiViewSelectionStateCache | None]:
+     policy = policy or TargetMultiViewSelectorPolicy()
+     if target_coverage_reference.dataset_id != target_coverage_sparse_index.dataset_id:
+         raise TrainingDataInputError("TARGET-DATA2C-MVSEL1 dataset identity mismatch.")
+@@ -956,25 +1114,84 @@
+         raise TrainingDataInputError("TARGET-DATA2C-MVSEL1 MVIDX/reference lineage mismatch.")
+     if not math.isclose(float(target_coverage_reference.policy.coverage_threshold), policy.coverage_threshold, rel_tol=0.0, abs_tol=0.0):
+         raise TrainingDataInputError("TARGET-DATA2C-MVSEL1 policy/reference coverage thresholds disagree.")
+-
+     if execution_mode not in {"optimized", "reference"}:
+         raise TrainingDataInputError("TARGET-DATA2C-MVPERF1 execution_mode must be optimized or reference.")
+     update_function = _select_and_update if execution_mode == "optimized" else _select_and_update_reference
+     domains = []
++    checkpoint_rows: dict[str, tuple[Any, ...]] = {}
+     for reference_domain in target_coverage_reference.domains:
+         sparse_domain = target_coverage_sparse_index.domain(reference_domain.label_domain_id)
+-        domains.append(_build_domain_plan(
+-            reference_domain, sparse_domain, policy, progress_callback=progress_callback, update_function=update_function
+-        ))
+-    return TargetMultiViewSelectionPlan(
++        collector: list[Any] | None = [] if capture_state_cache else None
++        domain_plan = _build_domain_plan(
++            reference_domain, sparse_domain, policy,
++            progress_callback=progress_callback, update_function=update_function,
++            checkpoint_collector=collector,
++        )
++        domains.append(domain_plan)
++        if collector is not None:
++            checkpoint_rows[reference_domain.label_domain_id] = tuple(collector)
++    plan = TargetMultiViewSelectionPlan(
+         dataset_id=target_coverage_reference.dataset_id,
+         target_coverage_reference_digest=target_coverage_reference.content_digest,
+         target_coverage_sparse_index_digest=target_coverage_sparse_index.content_digest,
+         policy=policy,
+         domains=tuple(domains),
+     )
++    if not capture_state_cache:
++        return plan, None
++    cache_domains = []
++    for domain_plan in plan.domains:
++        cache_domains.append(TargetMultiViewSelectionDomainStateCache(
++            label_domain_id=domain_plan.label_domain_id,
++            reference_domain_digest=domain_plan.reference_domain_digest,
++            sparse_domain_digest=domain_plan.sparse_domain_digest,
++            selection_domain_digest=domain_plan.content_digest,
++            candidate_count=domain_plan.candidate_count,
++            checkpoints=checkpoint_rows[domain_plan.label_domain_id],
++        ))
++    cache = TargetMultiViewSelectionStateCache(
++        dataset_id=plan.dataset_id,
++        target_coverage_reference_digest=plan.target_coverage_reference_digest,
++        target_coverage_sparse_index_digest=plan.target_coverage_sparse_index_digest,
++        target_multi_view_selection_digest=plan.content_digest,
++        selector_policy_digest=plan.policy.policy_digest,
++        domains=tuple(cache_domains),
++    )
++    return plan, cache
+ 
+ 
++def build_target_multi_view_selection_plan(
++    target_coverage_reference: Any,
++    target_coverage_sparse_index: Any,
++    *,
++    policy: TargetMultiViewSelectorPolicy | None = None,
++    progress_callback: Callable[[str], None] | None = None,
++    execution_mode: str = "optimized",
++) -> TargetMultiViewSelectionPlan:
++    """Construct exact deterministic MVSEL1 evidence without migrating DATA2C."""
++    plan, _ = _build_target_multi_view_selection(
++        target_coverage_reference, target_coverage_sparse_index, policy=policy,
++        progress_callback=progress_callback, execution_mode=execution_mode, capture_state_cache=False,
++    )
++    return plan
++
++
++def build_target_multi_view_selection_artifacts(
++    target_coverage_reference: Any,
++    target_coverage_sparse_index: Any,
++    *,
++    policy: TargetMultiViewSelectorPolicy | None = None,
++    progress_callback: Callable[[str], None] | None = None,
++    execution_mode: str = "optimized",
++) -> tuple[TargetMultiViewSelectionPlan, TargetMultiViewSelectionStateCache]:
++    """Build MVSEL1 authority and exact reconstructible rung-state checkpoints once."""
++    plan, cache = _build_target_multi_view_selection(
++        target_coverage_reference, target_coverage_sparse_index, policy=policy,
++        progress_callback=progress_callback, execution_mode=execution_mode, capture_state_cache=True,
++    )
++    assert cache is not None
++    return plan, cache
++
+ def validate_target_multi_view_selection_authority(
+     plan: TargetMultiViewSelectionPlan,
+     *,
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.236a0.txt' /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/pyproject.toml ./pyproject.toml
+--- /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/pyproject.toml	2026-08-18 02:02:32.000000000 +0000
++++ ./pyproject.toml	2026-08-18 02:50:34.944131472 +0000
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "mdstats"
+-version = "0.20.235a0"
++version = "0.20.236a0"
+ description = "Transparent atomistic frame collections and structural/dynamical statistics"
+ requires-python = ">=3.10"
+ dependencies = [
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.236a0.txt' /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/release/qualification_logs/MLFF_MVSTATE_REUSE1_QUALIFICATION_0.20.236a0.json ./release/qualification_logs/MLFF_MVSTATE_REUSE1_QUALIFICATION_0.20.236a0.json
+--- /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/release/qualification_logs/MLFF_MVSTATE_REUSE1_QUALIFICATION_0.20.236a0.json	1970-01-01 00:00:00.000000000 +0000
++++ ./release/qualification_logs/MLFF_MVSTATE_REUSE1_QUALIFICATION_0.20.236a0.json	2026-08-18 03:00:22.498079334 +0000
+@@ -0,0 +1,84 @@
++{
++  "active_foundation": {
++    "checkpoint_sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638",
++    "family": "MACE-MPA-0 medium",
++    "mh1_compatible": true
++  },
++  "architecture_revision": 103,
++  "build": {
++    "compileall": "PASS",
++    "wheel_build": "PASS_NO_BUILD_ISOLATION",
++    "wheel_version": "0.20.236a0"
++  },
++  "closure_decision": {
++    "cpu_optimization_program_closed": true,
++    "next_gate": "FINAL_GPU1_DEFERRED_RELEASE_QUALIFICATION",
++    "reason": "remaining target-data tail is dominated by exact sequential sparse-state arithmetic; no material duplicated reconstructible CPU execution state remains under exact-equivalence authority"
++  },
++  "content_digest": "d60a451e09c569a45b4ca936e286b238ebccab12316ca9ccb22040082b7edb09",
++  "dependency_graph_schema": 83,
++  "documentation": {
++    "manual_markdown_sha256": "e7a0e86a71e7828734bec60ff1651044379644d898526f896bdefeb73b14385c",
++    "manual_pdf_pages": 52,
++    "manual_pdf_sha256": "368524a543d0e01ddc30613ae2997e3f6aa28fc599d1e6bff084eb5be3dfa912",
++    "pdf_full_render": "PASS",
++    "pdf_preflight": "PASS",
++    "pdf_revision_102_to_103_compare": "PASS",
++    "pdf_visual_qa": "PASS"
++  },
++  "evidence": {
++    "content_digest": "6574082019480b5ea3cbe82e9cee2295db477bb74685123dfd569ab08aa320ac",
++    "path": "benchmarks/mlff_mvstate_reuse1_cloud_cpu_mpa0_2026-08-17.json",
++    "sha256": "8711406910eb4a055ee2ec878cdd0ead38a4affb98c545d83ca931e03d8ad24e"
++  },
++  "gate": "MVSTATE-REUSE1",
++  "gpu_authority_change": false,
++  "implementation": {
++    "bundled_npz_persistence": true,
++    "checkpoint_use": "pre_repair_divergence_only",
++    "exact_batched_gather_preparation": true,
++    "fresh_campaign_in_memory_handoff": true,
++    "historical_replay_fallback": true,
++    "native_manifest_schema": "mdstats.target-multi-view-selection-state-native-manifest.v1",
++    "post_divergence_checkpoint_reconciliation_rejected": true,
++    "state_cache_schema": "mdstats.target-multi-view-selection-state-cache.v1"
++  },
++  "performance": {
++    "cache_read_median_seconds": 0.12541601300108596,
++    "cache_write_median_seconds": 0.17597612850113364,
++    "control_0_20_235_target_chain_median_seconds": 11.998227584501365,
++    "cumulative_fresh_speedup_vs_0_20_225_perfbase": 2.4351176667259553,
++    "fresh_speedup_vs_0_20_235": 1.0719762783496567,
++    "mvstate_fresh_target_chain_seconds_including_cache_write": 11.192624153001816,
++    "mvstate_target_chain_median_seconds_excluding_persistence": 11.016648024500682,
++    "peak_rss_ratio_vs_0_20_235": 1.0560040043956296,
++    "repair_control_median_seconds": 5.365011229499942,
++    "repair_mvstate_median_seconds": 4.272232458999497,
++    "repair_speedup": 1.255786355491611
++  },
++  "release": "0.20.236a0",
++  "schema": "mdstats.mlff-mvstate-reuse1-qualification.v1",
++  "scientific": {
++    "all_exact": true,
++    "feasibility_digest": "937214c70d1f2baae883993082f1ceb25bea6007a5a2be0beee045262f5c0613",
++    "mvidx_digest": "e408bd25dcc9b3c515a76ba2de505ca272d2243e7f9079f65e279694c987597c",
++    "qualification_digest": "c19f2f9c3a328c7003e169bd9584277b21e72a6720caa588cf3879bd1cac1b25",
++    "repair_digest": "ab7dc752555114bcd756913187e1d0eb7069c2e9a093f2a8a41130f485cdc33f",
++    "selection_digest": "c179df6cfbb3b052c866d17bcf54aa5088ebc1998b35259afd3bd0ca163e8b8d",
++    "state_cache_digest": "9904a0c96c83f4fdfe47558dc115d59664ab1a5a5456e687b9d7d3c75c1912db"
++  },
++  "scientific_authority_change": false,
++  "status": "PASS_CPU_OPTIMIZATION_CLOSED",
++  "tests": {
++    "current_optimization_documentation": {
++      "failed": 0,
++      "passed": 116,
++      "warnings": 3
++    },
++    "target_data2_scientific_authority": {
++      "failed": 0,
++      "passed": 111,
++      "warnings": 18
++    }
++  }
++}
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.236a0.txt' /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/tests/test_mlff_audit_eval_perf1_specification.py ./tests/test_mlff_audit_eval_perf1_specification.py
+--- /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/tests/test_mlff_audit_eval_perf1_specification.py	2026-08-18 01:31:30.000000000 +0000
++++ ./tests/test_mlff_audit_eval_perf1_specification.py	2026-08-18 02:54:30.832940466 +0000
+@@ -24,7 +24,7 @@
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+     assert graph["architecture_revision"] >= 100
+     assert graph["schema_version"] >= 80
+-    assert graph["documentation_gate"] in {"AUDIT_EVAL_PERF1_CPU_KERNELS", "REPLAY_PERF1_INDEX_CACHE", "CAMPAIGN_PERF_QUAL1_CLOSURE"}
++    assert graph["documentation_gate"] in {"AUDIT_EVAL_PERF1_CPU_KERNELS", "REPLAY_PERF1_INDEX_CACHE", "CAMPAIGN_PERF_QUAL1_CLOSURE", "MVSTATE_REUSE1_SELECTOR_REPAIR_HANDOFF"}
+     assert any(item["id"] == "REPLAY_PERF1_INDEX_CACHE" for item in graph["nodes"])
+     node = next(item for item in graph["nodes"] if item["id"] == "AUDIT_EVAL_PERF1_CPU_KERNELS")
+     assert node["implemented_release"] == "0.20.233a0"
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.236a0.txt' /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/tests/test_mlff_campaign_perf_qual1_specification.py ./tests/test_mlff_campaign_perf_qual1_specification.py
+--- /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/tests/test_mlff_campaign_perf_qual1_specification.py	2026-08-18 02:03:20.000000000 +0000
++++ ./tests/test_mlff_campaign_perf_qual1_specification.py	2026-08-18 02:53:15.869849481 +0000
+@@ -13,24 +13,16 @@
+ NEXT_SPEC = ROOT / "docs/specs/training_data/mlff_mvstate_reuse1_selector_repair_handoff_spec.md"
+ 
+ 
+-def test_campaign_perf_qual1_release_and_manual_are_current() -> None:
+-    assert mdstats.__version__ == "0.20.235a0"
+-    assert 'version = "0.20.235a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+-    assert "Version: 0.20.235a0" in (ROOT / "PKG-INFO").read_text(encoding="utf-8")
++def test_campaign_perf_qual1_historical_release_and_current_manual_are_synchronized() -> None:
+     text = MANUAL.read_text(encoding="utf-8")
+-    assert "architecture_revision: 102" in text
+-    assert 'release: "mdstats 0.20.235a0"' in text
+     assert "Gate CAMPAIGN-PERF-QUAL1 - end-to-end optimization closure - COMPLETE" in text
+-    assert "Gate MVSTATE-REUSE1 - selector-to-repair sparse-state reuse - PLANNED" in text
++    assert "Gate MVSTATE-REUSE1 - selector-to-repair sparse-state reuse - COMPLETE" in text
+     assert SPEC.is_file() and NEXT_SPEC.is_file()
++    assert (ROOT / "docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV102.md").is_file()
+ 
+ 
+-def test_campaign_perf_qual1_graph_closes_gate_and_opens_followup() -> None:
++def test_campaign_perf_qual1_graph_remains_closed_historical_authority() -> None:
+     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
+-    assert graph["architecture_revision"] == 102
+-    assert graph["schema_version"] == 82
+-    assert graph["documentation_gate"] == "CAMPAIGN_PERF_QUAL1_CLOSURE"
+-    assert graph["next_gate"] == "MVSTATE_REUSE1_SELECTOR_REPAIR_HANDOFF"
+     nodes = {node["id"]: node for node in graph["nodes"]}
+     current = nodes["CAMPAIGN_PERF_QUAL1_CLOSURE"]
+     assert current["implemented_release"] == "0.20.235a0"
+@@ -39,7 +31,7 @@
+     assert current["runtime_algorithm_change"] is False
+     assert current["optimization_program_closed"] is False
+     nxt = nodes["MVSTATE_REUSE1_SELECTOR_REPAIR_HANDOFF"]
+-    assert nxt["implementation_status"] == "planned"
++    assert nxt["implementation_status"] == "implemented_cpu_optimization_closed"
+     assert nxt["selector_rank_authority_change"] is False
+     assert nxt["repair_objective_authority_change"] is False
+ 
+@@ -65,5 +57,5 @@
+ def test_campaign_perf_qual1_history_and_release_records_exist() -> None:
+     assert (ROOT / "docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV102.md").is_file()
+     assert (ROOT / "docs/history/mlff/release_notes/PATCH_NOTES_0.20.235a0.md").is_file()
+-    assert "0.20.235a0" in (ROOT / "CHANGELOG.md").read_text(encoding="utf-8").splitlines()[0]
++    assert "0.20.235a0" in (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+     assert (ROOT / "benchmarks/mlff_campaign_perf_qual1_implementation_manifest_0.20.235a0.json").is_file()
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.236a0.txt' /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/tests/test_mlff_doc_arch1_specification.py ./tests/test_mlff_doc_arch1_specification.py
+--- /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/tests/test_mlff_doc_arch1_specification.py	2026-08-18 02:03:20.000000000 +0000
++++ ./tests/test_mlff_doc_arch1_specification.py	2026-08-18 02:53:15.870048675 +0000
+@@ -16,10 +16,10 @@
+ 
+ 
+ def test_doc_arch1_release_and_current_authority_are_synchronized():
+-    assert mdstats.__version__ == "0.20.235a0"
++    assert mdstats.__version__ == "0.20.236a0"
+     text = MANUAL.read_text(encoding="utf-8")
+-    assert "architecture_revision: 102" in text
+-    assert 'release: "mdstats 0.20.235a0"' in text
++    assert "architecture_revision: 103" in text
++    assert 'release: "mdstats 0.20.236a0"' in text
+     assert "# Part VI - Performance and execution architecture" in text
+     assert "# Part VII - Current implementation status and frozen forward gates" in text
+     assert "## Context retrieval index" in text
+@@ -72,17 +72,17 @@
+     revision_rows = [line for line in REV_INDEX.read_text().splitlines() if re.match(r"^\|\s*\d+\s*\|", line)]
+     revisions = [int(line.split("|")[1].strip()) for line in revision_rows]
+     assert revisions == sorted(set(revisions))
+-    assert revisions[-1] == 102
++    assert revisions[-1] == 103
+     assert "NEIGHBOR1" in REV_INDEX.read_text()
+-    assert "0.20.235a0" in REL_INDEX.read_text()
++    assert "0.20.236a0" in REL_INDEX.read_text()
+     assert (ROOT / "docs/history/mlff/LINEAGE.md").is_file()
+     assert (ROOT / "docs/history/mlff/manual_snapshots/mlff_training_data_architecture_rev090_full.md").is_file()
+ 
+ 
+ def test_doc_arch1_graph_and_directory_ownership_are_current():
+     graph = json.loads(GRAPH.read_text())
+-    assert graph["architecture_revision"] == 102
+-    assert graph["schema_version"] == 82
++    assert graph["architecture_revision"] == 103
++    assert graph["schema_version"] == 83
+     node_ids = {node["id"] for node in graph["nodes"]}
+     for node in (
+         "DOC_ARCH1_MANUAL_RESTRUCTURE_PERFORMANCE_ROADMAP",
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.236a0.txt' /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/tests/test_mlff_mvstate_reuse1.py ./tests/test_mlff_mvstate_reuse1.py
+--- /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/tests/test_mlff_mvstate_reuse1.py	1970-01-01 00:00:00.000000000 +0000
++++ ./tests/test_mlff_mvstate_reuse1.py	2026-08-18 02:46:38.430997614 +0000
+@@ -0,0 +1,129 @@
++from __future__ import annotations
++
++import json
++from pathlib import Path
++
++import numpy as np
++import pytest
++
++import mdstats
++from mdstats.training_data.campaign_cli import CampaignStore
++from tests.test_mlff_target_data2b_feas1 import _reference_and_role
++
++
++def _fixture():
++    reference, role = _reference_and_role(split_units=True)
++    feasibility, neighborhoods = mdstats.build_target_coverage_feasibility_artifacts(reference, role)
++    sparse = mdstats.build_target_coverage_sparse_index(
++        reference, role, feasibility, exact_neighborhood_store=neighborhoods
++    )
++    policy = mdstats.TargetMultiViewSelectorPolicy(target_sizes=(2, 4, 8, 16))
++    selection, cache = mdstats.build_target_multi_view_selection_artifacts(reference, sparse, policy=policy)
++    return reference, sparse, selection, cache
++
++
++def test_mvstate_checkpoints_equal_exact_selector_replay() -> None:
++    reference, sparse, selection, cache = _fixture()
++    mdstats.validate_target_multi_view_selection_state_cache(
++        cache,
++        target_coverage_reference=reference,
++        target_coverage_sparse_index=sparse,
++        target_multi_view_selection=selection,
++        verify_state_replay=True,
++    )
++    domain = cache.domain("target")
++    assert [cp.target_size for cp in domain.checkpoints] == [2, 4, 8, 16]
++    assert all(np.count_nonzero(~cp.available) == cp.target_size for cp in domain.checkpoints)
++
++
++def test_mvstate_cached_repair_is_byte_identical_to_replay_oracle() -> None:
++    reference, sparse, selection, cache = _fixture()
++    reference_plan = mdstats.build_target_multi_view_repair_plan(
++        reference, sparse, selection, execution_mode="optimized", proposal_workers=2
++    )
++    cached_plan = mdstats.build_target_multi_view_repair_plan(
++        reference, sparse, selection, execution_mode="optimized", proposal_workers=2,
++        selection_state_cache=cache,
++    )
++    assert cached_plan.to_dict() == reference_plan.to_dict()
++    assert cached_plan.content_digest == reference_plan.content_digest
++
++
++def test_mvstate_cache_native_round_trip_and_campaign_store(tmp_path: Path) -> None:
++    reference, sparse, selection, cache = _fixture()
++    records = tmp_path / "records"
++    pointer = mdstats.write_target_multi_view_selection_state_native_record(cache, records)
++    restored = mdstats.read_target_multi_view_selection_state_native_record(pointer, tmp_path)
++    assert restored.content_digest == cache.content_digest
++    mdstats.validate_target_multi_view_selection_state_cache(
++        restored,
++        target_coverage_reference=reference,
++        target_coverage_sparse_index=sparse,
++        target_multi_view_selection=selection,
++        verify_state_replay=True,
++    )
++
++    store = CampaignStore(tmp_path / "campaign.sqlite3")
++    store.put_record("target_multi_view_selection_state_cache", cache)
++    stored = store.get_record("target_multi_view_selection_state_cache", mdstats.TargetMultiViewSelectionStateCache)
++    assert stored.content_digest == cache.content_digest
++    assert any("target-multi-view-selection-state" in str(path) for path in store.storage_references())
++
++
++def test_mvstate_native_tamper_is_rejected(tmp_path: Path) -> None:
++    _, _, _, cache = _fixture()
++    pointer = mdstats.write_target_multi_view_selection_state_native_record(cache, tmp_path / "records")
++    manifest = tmp_path / pointer["relative_path"]
++    payload = json.loads(manifest.read_text())
++    bundle_name = payload["array_bundle"]["relative_path"]
++    array_path = manifest.parent / bundle_name
++    data = bytearray(array_path.read_bytes())
++    data[-1] ^= 1
++    array_path.write_bytes(data)
++    with pytest.raises(mdstats.TargetMultiViewSelectionStateNativeStoreError):
++        mdstats.read_target_multi_view_selection_state_native_record(pointer, tmp_path)
++
++
++def test_mvstate_stale_selection_lineage_is_rejected() -> None:
++    reference, sparse, selection, cache = _fixture()
++    payload = selection.to_dict()
++    payload["domains"][0]["phase_a_completed_at"] = None if payload["domains"][0]["phase_a_completed_at"] is not None else 1
++    payload["domains"][0].pop("content_digest", None)
++    payload.pop("content_digest", None)
++    payload.pop("domain_digests", None)
++    changed = mdstats.TargetMultiViewSelectionPlan.from_dict(payload)
++    with pytest.raises(mdstats.TrainingDataInputError):
++        mdstats.validate_target_multi_view_selection_state_cache(
++            cache,
++            target_coverage_reference=reference,
++            target_coverage_sparse_index=sparse,
++            target_multi_view_selection=changed,
++        )
++
++
++def test_mvstate_batched_replay_matches_scalar_state_exactly() -> None:
++    import mdstats.training_data.target_multi_view_selector as selector
++
++    reference, sparse, selection, cache = _fixture()
++    reference_domain = reference.domain("target")
++    sparse_domain = sparse.domain("target")
++    domain = cache.domain("target")
++    checkpoint = domain.checkpoint(4)
++    batch_state = mdstats.restore_domain_state(
++        checkpoint, reference_domain, sparse_domain
++    )
++    scalar_state = mdstats.restore_domain_state(
++        checkpoint, reference_domain, sparse_domain
++    )
++    uid_to_candidate = {uid: i for i, uid in enumerate(reference_domain.frame_uids)}
++    order = [uid_to_candidate[item.frame_uid] for item in selection.domain("target").master_order]
++    candidates = order[4:16]
++    batch_utility = selector._select_many_and_update_exact(
++        candidates, sparse_domain, batch_state, checkpoint.representative_utility, candidate_block_size=4
++    )
++    scalar_utility = float(checkpoint.representative_utility)
++    for candidate in candidates:
++        scalar_utility += float(scalar_state.total_representative_gain[candidate])
++        selector._select_and_update(int(candidate), sparse_domain, scalar_state)
++    assert selector._states_exactly_equal(batch_state, scalar_state)
++    assert batch_utility == scalar_utility
+diff -ruN '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=*.pyc' '--exclude=build' '--exclude=*.egg-info' '--exclude=SHA256SUMS_0.20.236a0.txt' /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/tests/test_mlff_mvstate_reuse1_specification.py ./tests/test_mlff_mvstate_reuse1_specification.py
+--- /mnt/data/mdstats-mvstate-control/mdstats-0.20.235a0/tests/test_mlff_mvstate_reuse1_specification.py	1970-01-01 00:00:00.000000000 +0000
++++ ./tests/test_mlff_mvstate_reuse1_specification.py	2026-08-18 02:53:14.590433685 +0000
+@@ -0,0 +1,74 @@
++from __future__ import annotations
++
++import json
++from pathlib import Path
++
++import mdstats
++
++ROOT = Path(__file__).resolve().parents[1]
++MANUAL = ROOT / "docs/arch_manuals/mlff_training_data_architecture.md"
++GRAPH = ROOT / "docs/arch_manuals/mlff_training_data_dependency_graph.json"
++SPEC = ROOT / "docs/specs/training_data/mlff_mvstate_reuse1_selector_repair_handoff_spec.md"
++EVIDENCE = ROOT / "benchmarks/mlff_mvstate_reuse1_cloud_cpu_mpa0_2026-08-17.json"
++
++
++def test_mvstate_reuse1_release_and_manual_are_current() -> None:
++    assert mdstats.__version__ == "0.20.236a0"
++    assert 'version = "0.20.236a0"' in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
++    assert "Version: 0.20.236a0" in (ROOT / "PKG-INFO").read_text(encoding="utf-8")
++    text = MANUAL.read_text(encoding="utf-8")
++    assert "architecture_revision: 103" in text
++    assert 'release: "mdstats 0.20.236a0"' in text
++    assert "Gate MVSTATE-REUSE1 - selector-to-repair sparse-state reuse - COMPLETE" in text
++    assert "CPU OPTIMIZATION CLOSED" in text
++    assert SPEC.is_file()
++
++
++def test_mvstate_reuse1_graph_closes_cpu_program_and_hands_to_final_gpu1() -> None:
++    graph = json.loads(GRAPH.read_text(encoding="utf-8"))
++    assert graph["architecture_revision"] == 103
++    assert graph["schema_version"] == 83
++    assert graph["documentation_gate"] == "MVSTATE_REUSE1_SELECTOR_REPAIR_HANDOFF"
++    assert graph["next_gate"] == "FINAL_GPU1_DEFERRED_RELEASE_QUALIFICATION"
++    nodes = {node["id"]: node for node in graph["nodes"]}
++    current = nodes["MVSTATE_REUSE1_SELECTOR_REPAIR_HANDOFF"]
++    assert current["implemented_release"] == "0.20.236a0"
++    assert current["implementation_status"] == "implemented_cpu_optimization_closed"
++    assert current["optimization_program_closed"] is True
++    assert current["scientific_authority_change"] is False
++    assert current["selector_rank_authority_change"] is False
++    assert current["repair_objective_authority_change"] is False
++    assert current["next_gate"] == "FINAL_GPU1_DEFERRED_RELEASE_QUALIFICATION"
++
++
++def test_mvstate_reuse1_evidence_is_exact_and_material() -> None:
++    ev = json.loads(EVIDENCE.read_text(encoding="utf-8"))
++    assert ev["release"] == "0.20.236a0"
++    assert ev["architecture_revision"] == 103
++    assert ev["acceptance"]["status"] == "PASS_CPU_OPTIMIZATION_CLOSED"
++    assert ev["acceptance"]["cpu_optimization_program_closed"] is True
++    assert ev["acceptance"]["next_gate"] == "FINAL-GPU1"
++    assert ev["acceptance"]["scientific_outputs_exact"] is True
++    assert ev["active_foundation"]["checkpoint_sha256"] == "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638"
++    assert ev["active_foundation"]["mh1_compatible"] is True
++    assert ev["scientific"]["repair_digest"] == "ab7dc752555114bcd756913187e1d0eb7069c2e9a093f2a8a41130f485cdc33f"
++    assert ev["state_cache"]["content_digest"] == "9904a0c96c83f4fdfe47558dc115d59664ab1a5a5456e687b9d7d3c75c1912db"
++    assert ev["execution"]["target_chain_mvstate"]["repair_speedup"] > 1.2
++    assert ev["execution"]["target_chain_mvstate"]["speedup_vs_control_fresh_including_cache_write"] > 1.05
++    assert ev["execution"]["cumulative_vs_perfbase1_0_20_225"]["speedup_fresh_including_mvstate_cache_write"] > 2.4
++    assert ev["exactness_decisions"]["pure_checkpoint_reconciliation_after_repair_divergence"] == "rejected"
++
++
++def test_mvstate_reuse1_code_and_history_contracts_exist() -> None:
++    code = (ROOT / "mdstats/training_data/target_multi_view_selection_state.py").read_text(encoding="utf-8")
++    store = (ROOT / "mdstats/training_data/target_multi_view_selection_state_store.py").read_text(encoding="utf-8")
++    repair = (ROOT / "mdstats/training_data/target_multi_view_repair.py").read_text(encoding="utf-8")
++    campaign = (ROOT / "mdstats/training_data/campaign_cli.py").read_text(encoding="utf-8")
++    for token in ("TargetMultiViewSelectionStateCache", "verify_state_replay", "restore_domain_state"):
++        assert token in code
++    assert "np.savez" in store and '"array_bundle"' in store
++    assert "repair_has_diverged" in repair and "selection_state_cache" in repair
++    assert "target_multi_view_selection_state_cache" in campaign
++    assert (ROOT / "docs/history/mlff/architecture_revisions/ARCHITECTURE_NOTES_MLFF_REV103.md").is_file()
++    assert (ROOT / "docs/history/mlff/release_notes/PATCH_NOTES_0.20.236a0.md").is_file()
++    assert (ROOT / "benchmarks/mlff_mvstate_reuse1_implementation_manifest_0.20.236a0.json").is_file()

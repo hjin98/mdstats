@@ -1,0 +1,210 @@
+{
+  "compute_tile_shape": [
+    32,
+    32,
+    32
+  ],
+  "focused_microbenchmark": {
+    "cases": [
+      {
+        "canonical_s2_seconds": 0.6610679469995375,
+        "case": "fragmented",
+        "direct_tile_count": 24,
+        "fft_tile_count": 0,
+        "hybrid_seconds": 0.23559318399929907,
+        "integral": 1.0,
+        "nonpositive_repairs": 0,
+        "planning_seconds": 0.007156223997299094,
+        "relative_l1": 2.897212022170641e-18,
+        "relative_linf": 2.104168586134165e-16,
+        "source_node_count": 64,
+        "speedup_over_s2": 2.805972294179378,
+        "stencil_offset_count": 8409,
+        "target_node_count": 398664,
+        "tile_count": 24
+      },
+      {
+        "canonical_s2_seconds": 1.1344760339998174,
+        "case": "compact",
+        "direct_tile_count": 0,
+        "fft_tile_count": 1,
+        "hybrid_seconds": 0.02805607600021176,
+        "integral": 0.9999999999999999,
+        "nonpositive_repairs": 0,
+        "planning_seconds": 0.0014876120003464166,
+        "relative_l1": 5.318131843711278e-16,
+        "relative_linf": 5.280278613345763e-16,
+        "source_node_count": 512,
+        "speedup_over_s2": 40.43601942022308,
+        "stencil_offset_count": 8409,
+        "target_node_count": 23032,
+        "tile_count": 1
+      },
+      {
+        "canonical_s2_seconds": 0.710082790999877,
+        "case": "boundary_crossing",
+        "direct_tile_count": 18,
+        "fft_tile_count": 0,
+        "hybrid_seconds": 0.15773989199806238,
+        "integral": 0.9999999999999999,
+        "nonpositive_repairs": 0,
+        "planning_seconds": 0.003946383996662917,
+        "relative_l1": 4.315682886694311e-17,
+        "relative_linf": 2.7465868035112115e-16,
+        "source_node_count": 128,
+        "speedup_over_s2": 4.501605662368524,
+        "stencil_offset_count": 8409,
+        "target_node_count": 217285,
+        "tile_count": 18
+      },
+      {
+        "canonical_s2_seconds": 8.917760721000377,
+        "case": "oxygen_heavy",
+        "direct_tile_count": 0,
+        "fft_tile_count": 27,
+        "hybrid_seconds": 0.6473852540002554,
+        "integral": 0.9999999999999999,
+        "nonpositive_repairs": 0,
+        "planning_seconds": 0.01193069100190769,
+        "relative_l1": 5.09529757252482e-16,
+        "relative_linf": 4.660294812546723e-16,
+        "source_node_count": 2047,
+        "speedup_over_s2": 13.77504455947472,
+        "stencil_offset_count": 8409,
+        "target_node_count": 884736,
+        "tile_count": 27
+      }
+    ],
+    "display_cell": [
+      [
+        9.600000000000001,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        9.600000000000001,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        9.600000000000001
+      ]
+    ],
+    "gaussian_bandwidth": 0.2,
+    "grid_shape": [
+      96,
+      96,
+      96
+    ],
+    "host": {
+      "numpy": "2.3.5",
+      "platform": "Linux-4.4.0-x86_64-with-glibc2.41",
+      "python": "3.13.5"
+    },
+    "kernel_tail_tolerance": 1e-08,
+    "schema": "mdstats.density-ld8-s3-hybrid-microbenchmark.v1",
+    "stencil_offset_count": 8409,
+    "total_seconds": 23.43312629600041
+  },
+  "full_trajectory_fields": [
+    {
+      "atlas_seconds": 13.093008350999298,
+      "cic_seconds": 0.03132275399912032,
+      "compute_tile_count": 115,
+      "direct_tile_count": 10,
+      "fft_kernel_transform_count": 6,
+      "fft_tile_count": 105,
+      "field_total_seconds": 21.32681438000145,
+      "grid_shape": [
+        540,
+        540,
+        540
+      ],
+      "hybrid_planning_seconds": 0.04977062800026033,
+      "hybrid_realization_seconds": 2.087830057997053,
+      "integral": 24.0,
+      "label": "Na density",
+      "ld7_scientific_seconds": 41.93356415400012,
+      "nonpositive_node_repairs": 10,
+      "predicted_peak_bytes": 80129744,
+      "process_peak_rss_bytes": 1032941568,
+      "realization_speedup_over_ld7": 20.08475929033651,
+      "resolution_seconds": 5.932518280002114,
+      "routing_seconds": 0.05522970400124905,
+      "source_node_count": 36280,
+      "source_packing_seconds": 0.05599659099971177,
+      "stencil_offset_count": 12017,
+      "stencil_seconds": 0.009181958997942274,
+      "target_support_node_count": 1728706
+    },
+    {
+      "atlas_seconds": 13.572051773997373,
+      "cic_seconds": 0.03874245599945425,
+      "compute_tile_count": 108,
+      "direct_tile_count": 14,
+      "fft_kernel_transform_count": 1,
+      "fft_tile_count": 94,
+      "field_total_seconds": 23.038947886998358,
+      "grid_shape": [
+        1038,
+        1038,
+        1038
+      ],
+      "hybrid_planning_seconds": 0.05032021999795688,
+      "hybrid_realization_seconds": 2.015462330000446,
+      "integral": 24.0,
+      "label": "Si density",
+      "ld7_scientific_seconds": 54.244404064000264,
+      "nonpositive_node_repairs": 1,
+      "predicted_peak_bytes": 73710692,
+      "process_peak_rss_bytes": 1023475712,
+      "realization_speedup_over_ld7": 26.914124494695102,
+      "resolution_seconds": 7.182141530000081,
+      "routing_seconds": 0.07292319199768826,
+      "source_node_count": 54680,
+      "source_packing_seconds": 0.08598643699951936,
+      "stencil_offset_count": 12017,
+      "stencil_seconds": 0.008834653999656439,
+      "target_support_node_count": 1833591
+    },
+    {
+      "atlas_seconds": 14.34542625299946,
+      "cic_seconds": 0.03201056000034441,
+      "compute_tile_count": 119,
+      "direct_tile_count": 12,
+      "fft_kernel_transform_count": 1,
+      "fft_tile_count": 107,
+      "field_total_seconds": 22.07082227099818,
+      "grid_shape": [
+        1037,
+        1037,
+        1037
+      ],
+      "hybrid_planning_seconds": 0.05384485000104178,
+      "hybrid_realization_seconds": 2.145830292000028,
+      "integral": 24.0,
+      "label": "Al density",
+      "ld7_scientific_seconds": 56.02196929300044,
+      "nonpositive_node_repairs": 0,
+      "predicted_peak_bytes": 76682368,
+      "process_peak_rss_bytes": 1051324416,
+      "realization_speedup_over_ld7": 26.10736249826401,
+      "resolution_seconds": 5.333449584002665,
+      "routing_seconds": 0.05853314599880832,
+      "source_node_count": 57471,
+      "source_packing_seconds": 0.07966609600043739,
+      "stencil_offset_count": 12017,
+      "stencil_seconds": 0.010460690002219053,
+      "target_support_node_count": 1952525
+    }
+  ],
+  "full_trajectory_oxygen_status": {
+    "completed": false,
+    "reason": "Repeated construction of the pre-existing S1 oxygen atlas had unstable wall time in the shared validation environment. The exact S1 oxygen support was previously validated, and the S3 oxygen-heavy focused fixture passed against S2. S4 must rerun the full production oxygen channel."
+  },
+  "kernel_tail_tolerance": 1e-08,
+  "schema": "mdstats.density-ld8-s3-evidence.v1",
+  "status": "s3_complete_opt_in_s4_production_gate_pending"
+}

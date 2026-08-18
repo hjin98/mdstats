@@ -1,0 +1,129 @@
+{
+  "architecture_revision": 81,
+  "counts": {
+    "monitor": 2000,
+    "train": 10000
+  },
+  "gate": "REPLAY-UNIFY1E",
+  "gpu_mace_execution_status": "deferred_to_regenerated_FINAL_GPU1_v3_workstation_run",
+  "invalidation_examples": {
+    "foundation_policy_change": {
+      "content_digest": "6737aa063658d2b93fc314d45750830cc042b34ef101d54b9345b297a9f7b069",
+      "label_mode": "foundation_pseudolabel",
+      "reasons": [
+        "prediction_policy_changed"
+      ],
+      "reindex_source": false,
+      "rematerialize_roles": [
+        "monitor",
+        "train"
+      ],
+      "requalify": true,
+      "rerun_pseudolabel_inference": true,
+      "resplit": true,
+      "schema": "mdstats.replay-invalidation-plan.v1",
+      "version": "REPLAY-UNIFY1E-v1"
+    },
+    "qualification_threshold_only": {
+      "content_digest": "0b3525e89629fe76c153e9e1f4a2cd74b825988b89f570a1d34c853a37ed6789",
+      "label_mode": "foundation_pseudolabel",
+      "reasons": [
+        "qualification_policy_changed"
+      ],
+      "reindex_source": false,
+      "rematerialize_roles": [
+        "monitor",
+        "train"
+      ],
+      "requalify": true,
+      "rerun_pseudolabel_inference": false,
+      "resplit": true,
+      "schema": "mdstats.replay-invalidation-plan.v1",
+      "version": "REPLAY-UNIFY1E-v1"
+    },
+    "source_true_labels_only_pseudolabel_mode": {
+      "content_digest": "61527e47371ad619324f049fe127982d94c1149f40909abb6357df90a7af55a0",
+      "label_mode": "foundation_pseudolabel",
+      "reasons": [
+        "source_bytes_changed",
+        "source_true_labels_changed"
+      ],
+      "reindex_source": true,
+      "rematerialize_roles": [],
+      "requalify": false,
+      "rerun_pseudolabel_inference": false,
+      "resplit": false,
+      "schema": "mdstats.replay-invalidation-plan.v1",
+      "version": "REPLAY-UNIFY1E-v1"
+    },
+    "split_ratio_only": {
+      "content_digest": "d91f3a1bdb95fd8d9548beaca4746683fd331abae73ccdb694c8e052debf772f",
+      "label_mode": "foundation_pseudolabel",
+      "reasons": [
+        "split_policy_changed"
+      ],
+      "reindex_source": false,
+      "rematerialize_roles": [
+        "monitor",
+        "train"
+      ],
+      "requalify": false,
+      "rerun_pseudolabel_inference": false,
+      "resplit": true,
+      "schema": "mdstats.replay-invalidation-plan.v1",
+      "version": "REPLAY-UNIFY1E-v1"
+    },
+    "unchanged": {
+      "content_digest": "226fc8014482ed0d14a05b8a68ce925d00ad55df078da1acb2e283241215146e",
+      "label_mode": "foundation_pseudolabel",
+      "reasons": [],
+      "reindex_source": false,
+      "rematerialize_roles": [],
+      "requalify": false,
+      "rerun_pseudolabel_inference": false,
+      "resplit": false,
+      "schema": "mdstats.replay-invalidation-plan.v1",
+      "version": "REPLAY-UNIFY1E-v1"
+    }
+  },
+  "observations": [
+    "Gate-C and Gate-D timing references are retained because the scientific/cache implementation is unchanged; Gate E adds hardening and release-handoff authority rather than a new inference kernel.",
+    "No positive CUDA/CuEq/MACE replay execution is claimed by this CPU qualification."
+  ],
+  "qualification_scope": "cpu_metadata_hardening_plus_prior_real_12k_transport_evidence_gpu_deferred",
+  "release": "0.20.214a0",
+  "schema": "mdstats.replay-unify1e-cpu-hardening-qualification.v1",
+  "source": {
+    "configuration_count": 12000,
+    "geometry_set_digest": "13975290b0851948e54536f4dee9375ef0675ed1398a342eea4462a7ddb45532",
+    "logical_name": "LTA_replay/mp_replay_selected.extxyz",
+    "sha256": "671aa55f740e9ce890a740f47bda8ab1d02ca7458994005441682d5276d95ddc",
+    "size_bytes": 51666318
+  },
+  "storage_bytes": {
+    "external_replay_source": 51666318,
+    "internal_true_view_tree_total": 54620179,
+    "source_authority_receipt": 1777971,
+    "transport_receipts_total": 1781664,
+    "true_label_transport_extxyz_total": 51060544
+  },
+  "timings_seconds": {
+    "current_metadata_true_cache_plus_split": 0.1478,
+    "gate_c_authenticated_pseudo_view_restart_reference": 0.2159,
+    "gate_c_threshold_reclassification_reference": 0.1052,
+    "gate_d_process_style_restart_reference": 0.5993,
+    "identical_byte_50mb_source_relocation_receipt_rebind": 0.1884
+  },
+  "verified_invariants": [
+    "default 12000 -> 10000/2000",
+    "unchanged restart requires zero replay work",
+    "split-only and threshold-only changes require zero pseudo-label inference",
+    "source-label-only mutation in pseudo-label mode requires source reindex but zero foundation reinference",
+    "foundation policy change requires pseudo-label reinference",
+    "identical-byte source relocation rebinds persisted authority without ExtXYZ reparse",
+    "duplicate canonical geometries fail closed",
+    "true/pseudo monitor views bind the same split manifest",
+    "deleted materializations reconstruct from authenticated caches without reinference",
+    "audit and prediction-shard tampering fail closed"
+  ]
+}
