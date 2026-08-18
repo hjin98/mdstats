@@ -1,0 +1,61 @@
+{
+  "schema": "mdstats.benchmark.mvsel-production-density.v1",
+  "date": "2026-08-18",
+  "release": "0.20.241a0",
+  "environment": {
+    "conda_environment": "mace",
+    "python": "3.11",
+    "numpy_dtype": "float64",
+    "cpu_workers": 1,
+    "gpu_used": false
+  },
+  "input": {
+    "campaign": "LTA/mpa0/FP32",
+    "dataset_digest": "2c9b855794e5e123c0170ebdbf5764b787e3aadfac330366e97bfc68111f79d1",
+    "candidate_count": 36408,
+    "family_count": 165,
+    "edge_count": 9505021522,
+    "largest_family_edge_count": 1324124073
+  },
+  "scope": {
+    "mvidx_restore": true,
+    "selector_initialization": true,
+    "selection_ranks": 1,
+    "full_prepare_campaign": false,
+    "repeats": 1,
+    "reason_for_single_repeat": "Production rank 0 exceeded five minutes before optimization; the user prohibited the full campaign."
+  },
+  "baseline": {
+    "initialization_seconds": 80.257,
+    "rank_0_choose_seconds": 0.0154,
+    "rank_0_update_seconds": 239.888,
+    "initialization_peak_rss_kib": 43457580,
+    "process_peak_rss_kib": 54035696,
+    "swap_kib": 573648
+  },
+  "optimized": {
+    "mvidx_restore_seconds": 16.716350508,
+    "initialization_seconds": 55.930843815,
+    "rank_0_choose_seconds": 0.003424031,
+    "rank_0_update_seconds": 49.66429606,
+    "initialization_peak_rss_kib": 7337748,
+    "process_peak_rss_kib": 20091900,
+    "post_rank_rss_anon_kib": 525216,
+    "post_rank_rss_file_kib": 19568388,
+    "swap_kib": 162044
+  },
+  "comparison": {
+    "initialization_speedup": 1.435,
+    "rank_0_update_speedup": 4.83,
+    "initialization_plus_rank_0_speedup": 3.03,
+    "peak_rss_reduction_fraction": 0.628
+  },
+  "correctness": {
+    "scientific_policy_changed": false,
+    "canonical_witness_order_preserved": true,
+    "canonical_edge_order_preserved": true,
+    "focused_oracle_tests": "PASS",
+    "full_campaign": "NOT RUN",
+    "gpu_qualification": "DEFERRED"
+  }
+}

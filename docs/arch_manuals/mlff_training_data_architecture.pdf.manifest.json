@@ -1,0 +1,31 @@
+{
+  "pdf": {
+    "name": "mlff_training_data_architecture.pdf",
+    "sha256": "a27bc5a30777ba93c46912cca46afe569201f2603a13014edaab07d73624f53b"
+  },
+  "renderer": {
+    "config": {
+      "absolute_images": "reject",
+      "fontsize": "10.5pt",
+      "from": "markdown",
+      "lang": "en-US",
+      "margin": "0.75in",
+      "papersize": "us-letter",
+      "pdf_engine": "typst",
+      "remote_images": "reject",
+      "resource_path": "source-parent",
+      "resource_provenance": "pandoc-image-ast-local-files-v1"
+    },
+    "config_sha256": "a9a9944a65faa5149dea0d9ebeaee33df9adb32f8da5d6e94fde1d2a581ead51",
+    "driver": "render_markdown_pdfs.py",
+    "pandoc_version": "pandoc 3.10.2",
+    "policy_version": "pandoc-typst-v2",
+    "typst_version": "typst 0.15.1 (ca4bbbe8)"
+  },
+  "resources": [],
+  "schema_version": 1,
+  "source": {
+    "name": "mlff_training_data_architecture.md",
+    "sha256": "116871df6c7c05f893982a98c46e5ea4bac7b31914795caed0894f9d9d807adb"
+  }
+}

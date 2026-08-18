@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: mdstats
-Version: 0.20.240a0
+Version: 0.20.241a0
 Summary: Transparent atomistic frame collections and structural/dynamical statistics
 Requires-Python: >=3.10
 Requires-Dist: numpy>=1.26

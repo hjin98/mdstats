@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from pathlib import Path
+
+import mdstats
 import numpy as np
 
 from mdstats.training_data import target_multi_view_selector as mvsel
@@ -47,6 +50,23 @@ def test_mvkernel1_row_weight_sums_avoid_cross_row_prefix_cancellation() -> None
     assert row_sums[3] == 0.0
 
 
+def test_mvkernel1_row_weight_sums_are_exact_across_bounded_chunks(monkeypatch) -> None:
+    offsets = np.asarray([0, 3, 3, 8, 10, 14], dtype=np.uint64)
+    indices = np.asarray([0, 1, 2, 2, 1, 0, 3, 2, 3, 0, 1, 2, 3, 0], dtype=np.uint32)
+    weights = np.asarray([1.0e12, 1.0e-9, 3.25, 7.5e-7], dtype=np.float64)
+    edge_weights = weights[np.asarray(indices, dtype=np.int64)]
+    expected = np.zeros(5, dtype=np.float64)
+    for row in range(5):
+        expected[row] = np.add.reduce(
+            edge_weights[int(offsets[row]):int(offsets[row + 1])], dtype=np.float64
+        )
+
+    monkeypatch.setattr(mvsel, "_MVSEL1_MAX_INITIAL_WEIGHT_BYTES", 4 * 8)
+    actual = mvsel._row_weight_sums(offsets, indices, weights)
+
+    assert np.array_equal(actual, expected)
+
+
 def test_mvkernel1_ragged_gather_matches_canonical_python_concatenation() -> None:
     offsets = np.asarray([0, 2, 2, 5, 9, 10], dtype=np.uint64)
     indices = np.asarray([7, 8, 1, 4, 9, 2, 3, 5, 8, 6], dtype=np.uint32)
@@ -66,6 +86,62 @@ def test_mvkernel1_bounded_ragged_batches_preserve_complete_row_order() -> None:
     assert [a.tolist() for a, _, _ in batches] == [
         [0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11]
     ]
+
+
+def test_mvkernel1_dense_run_pair_update_is_bit_exact_to_scatter() -> None:
+    rng = np.random.default_rng(20260818)
+    candidate_count = 257
+    rows: list[np.ndarray] = []
+    for _ in range(19):
+        keep = rng.random(candidate_count) < 0.985
+        rows.append(np.flatnonzero(keep).astype(np.uint32))
+    offsets = np.zeros(len(rows) + 1, dtype=np.uint64)
+    offsets[1:] = np.cumsum([row.size for row in rows], dtype=np.uint64)
+    indices = np.concatenate(rows)
+    witnesses = np.arange(len(rows), dtype=np.int64)
+    amounts = rng.uniform(1.0e-9, 1.0e-3, size=len(rows)).astype(np.float64)
+    left_scatter = rng.uniform(1.0, 2.0, size=candidate_count).astype(np.float64)
+    right_scatter = left_scatter.copy()
+    left_dense = left_scatter.copy()
+    right_dense = right_scatter.copy()
+
+    mvsel._scatter_decrement_pair_exact(
+        left_scatter, right_scatter, offsets, indices, witnesses, amounts
+    )
+    mvsel._scatter_decrement_pair_dense_runs_exact(
+        left_dense, right_dense, offsets, indices, witnesses, amounts
+    )
+
+    assert np.array_equal(left_dense, left_scatter)
+    assert np.array_equal(right_dense, right_scatter)
+
+
+def test_mvkernel1_selector_reports_initialization_and_first_rank() -> None:
+    reference, _, _, index, policy, _ = _selector()
+    messages: list[str] = []
+
+    __import__("mdstats").build_target_multi_view_selection_plan(
+        reference,
+        index,
+        policy=policy,
+        progress_callback=messages.append,
+        progress_interval_seconds=3600.0,
+    )
+
+    assert messages[0].startswith("status=initializing;")
+    assert any("families=1/1 (100.0%)" in message for message in messages)
+    assert any(message.startswith("status=selecting;") and "selected=0/" in message for message in messages)
+    assert any(message.startswith("status=selecting;") and "selected=1/" in message for message in messages)
+
+
+def test_mvkernel1_production_density_release_contract() -> None:
+    assert mdstats.__version__ == "0.20.241a0"
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "docs/specs/training_data/mlff_mvkernel1_sparse_vector_kernels_spec.md"
+    ).read_text(encoding="utf-8")
+    for token in ("512 MiB", "98%", "touched flag", "1.11x/1.08x"):
+        assert token in source
 
 
 def test_mvkernel1_selector_state_matches_reference_after_every_rank() -> None:

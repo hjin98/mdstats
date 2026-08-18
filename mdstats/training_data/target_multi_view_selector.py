@@ -22,12 +22,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import math
+import mmap
+import time
 from typing import Any, Callable, Mapping, Sequence
 
 import numpy as np
 
 from ._common import TrainingDataInputError, TrainingDataSerializationError, digest, validate_digest
 from ._sparse_vector_kernels import csr_gather_rows, iter_csr_gather_batches
+from .progress_timing import format_progress_fraction, format_progress_time
 from .target_multi_view_selection_state import (
     TargetMultiViewSelectionDomainStateCache,
     TargetMultiViewSelectionStateCache,
@@ -49,6 +52,14 @@ _DEFAULT_TIE_TOLERANCE = 1.0e-14
 # excluded from scientific policy/digests; changing batch boundaries preserves
 # witness order and therefore exact floating-point update order.
 _MVPERF1_MAX_SCATTER_EDGES = 262_144
+# Production MVIDX families can contain more than a billion inverse edges.
+# Bound the transient FP64 weight gather used during selector initialization;
+# row boundaries preserve the exact row-local reduction authority.
+_MVSEL1_MAX_INITIAL_WEIGHT_BYTES = 512 * 1024 * 1024
+# A dense-run update is selected only where at most two percent of the complete
+# candidate/witness rectangle is absent.  This conservative measured crossover
+# avoids replacing compact sparse gathers with fragmented Python run traversal.
+_MVSEL1_DENSE_RUN_MIN_DENSITY = 0.98
 
 
 def _validate_target_sizes(values: Sequence[int]) -> tuple[int, ...]:
@@ -431,6 +442,7 @@ class _FamilyState:
     coverage_gain: np.ndarray
     representative_gain: np.ndarray
     coverage_mass: float = 0.0
+    use_dense_runs: bool = False
 
 
 @dataclass(slots=True)
@@ -447,27 +459,72 @@ class _DomainSelectorState:
 
 
 def _row_weight_sums(offsets: np.ndarray, indices: np.ndarray, weights: np.ndarray) -> np.ndarray:
-    edge_weights = weights[np.asarray(indices, dtype=np.int64)]
+    """Return exact row-local FP64 sums with a bounded gather temporary."""
+
     starts = np.asarray(offsets[:-1], dtype=np.int64)
     stops = np.asarray(offsets[1:], dtype=np.int64)
     sums = np.zeros(starts.size, dtype=np.float64)
-    nonempty = starts < stops
-    if np.any(nonempty):
-        # Reduce each CSR row independently.  A global cumulative sum followed
-        # by prefix subtraction loses precision for small rows late in a large
-        # graph and can initialize a gain below the decrements it represents.
-        sums[nonempty] = np.add.reduceat(
-            edge_weights, starts[nonempty], dtype=np.float64
-        )
+    max_edges = max(1, _MVSEL1_MAX_INITIAL_WEIGHT_BYTES // np.dtype(np.float64).itemsize)
+    row_start = 0
+    while row_start < starts.size:
+        edge_start = int(starts[row_start])
+        edge_limit = edge_start + max_edges
+        row_stop = int(np.searchsorted(stops, edge_limit, side="right"))
+        row_stop = max(row_start + 1, min(starts.size, row_stop))
+        edge_stop = int(stops[row_stop - 1])
+        edge_weights = weights[np.asarray(indices[edge_start:edge_stop], dtype=np.int64)]
+        local_starts = starts[row_start:row_stop] - edge_start
+        local_stops = stops[row_start:row_stop] - edge_start
+        nonempty = local_starts < local_stops
+        if np.any(nonempty):
+            # Every CSR row remains one independent reduceat segment.  Chunking
+            # only between complete rows cannot change FP64 operation order.
+            local_sums = sums[row_start:row_stop]
+            local_sums[nonempty] = np.add.reduceat(
+                edge_weights, local_starts[nonempty], dtype=np.float64
+            )
+        row_start = row_stop
     return sums
 
 
-def _build_domain_state(reference_domain: Any, sparse_domain: Any) -> _DomainSelectorState:
+def _drop_file_backed_pages(array: np.ndarray) -> None:
+    """Release scanned mmap pages when the platform exposes MADV_DONTNEED."""
+
+    root: Any = array
+    while isinstance(getattr(root, "base", None), np.ndarray):
+        root = root.base
+    mapped = getattr(root, "_mmap", None)
+    advice = getattr(mmap, "MADV_DONTNEED", None)
+    if mapped is not None and advice is not None and hasattr(mapped, "madvise"):
+        try:
+            mapped.madvise(advice)
+        except (BufferError, OSError, ValueError):
+            pass
+
+
+def _build_domain_state(
+    reference_domain: Any,
+    sparse_domain: Any,
+    *,
+    progress_callback: Callable[[str], None] | None = None,
+    progress_interval_seconds: float = 30.0,
+) -> _DomainSelectorState:
     n = sparse_domain.candidate_count
     family_states: list[_FamilyState] = []
     total_coverage = np.zeros(n, dtype=np.float64)
     total_rep = np.zeros(n, dtype=np.float64)
-    for sparse_family in sparse_domain.families:
+    family_count = len(sparse_domain.families)
+    edge_total = sum(int(item.edge_count) for item in sparse_domain.families)
+    started = time.monotonic()
+    last_progress = started
+    completed_edges = 0
+    if progress_callback is not None:
+        progress_callback(
+            f"status=initializing; domain={reference_domain.label_domain_id}; "
+            f"families={format_progress_fraction(0, family_count)}; edges=0/{edge_total:,}; "
+            f"elapsed={format_progress_time(0.0)}; eta=--:--:--"
+        )
+    for family_number, sparse_family in enumerate(sparse_domain.families, start=1):
         family = reference_domain.family(sparse_family.family_id)
         weights = np.asarray(family.weights, dtype=np.float64)
         if weights.shape != (sparse_family.witness_count,):
@@ -477,6 +534,12 @@ def _build_domain_state(reference_domain: Any, sparse_domain: Any) -> _DomainSel
         representative_gain = initial.copy()
         total_coverage += coverage_gain
         total_rep += representative_gain
+        dense_denominator = int(sparse_family.candidate_count) * int(sparse_family.witness_count)
+        use_dense_runs = (
+            dense_denominator > 0
+            and float(sparse_family.edge_count) / float(dense_denominator)
+            >= _MVSEL1_DENSE_RUN_MIN_DENSITY
+        )
         family_states.append(_FamilyState(
             family_id=sparse_family.family_id,
             weights=weights,
@@ -484,7 +547,24 @@ def _build_domain_state(reference_domain: Any, sparse_domain: Any) -> _DomainSel
             multiplicity=np.zeros(sparse_family.witness_count, dtype=np.int32),
             coverage_gain=coverage_gain,
             representative_gain=representative_gain,
+            use_dense_runs=use_dense_runs,
         ))
+        completed_edges += int(sparse_family.edge_count)
+        _drop_file_backed_pages(np.asarray(sparse_family.candidate_witnesses))
+        now = time.monotonic()
+        if progress_callback is not None and (
+            family_number == family_count or now - last_progress >= progress_interval_seconds
+        ):
+            elapsed = now - started
+            rate = completed_edges / elapsed if elapsed > 0.0 else 0.0
+            eta = (edge_total - completed_edges) / rate if rate > 0.0 else None
+            progress_callback(
+                f"status=initializing; domain={reference_domain.label_domain_id}; "
+                f"families={format_progress_fraction(family_number, family_count)}; "
+                f"edges={completed_edges:,}/{edge_total:,}; "
+                f"elapsed={format_progress_time(elapsed)}; eta={format_progress_time(eta)}"
+            )
+            last_progress = now
 
     required_mask = np.asarray([bool(item.required) for item in sparse_domain.obligations], dtype=np.bool_)
     hard_gain = np.zeros(n, dtype=np.int32)
@@ -703,18 +783,18 @@ def _scatter_decrement_exact(
 ) -> None:
     """Apply exact MVSEL1 decrements with bounded vectorized scatter batches."""
 
-    touched: list[np.ndarray] = []
+    touched = np.zeros(array.size, dtype=np.bool_)
     for rows, edge_amounts in _iter_inverse_scatter_batches(
         offsets, indices, witness_indices, witness_amounts
     ):
         np.add.at(array, rows, -edge_amounts)
-        touched.append(rows)
-    if not touched:
+        touched[rows] = True
+    rows = np.flatnonzero(touched)
+    if rows.size == 0:
         return
     # Reference MVSEL1 clamps only numerical zero noise.  Delaying this check to
     # the end of the selected-candidate update is arithmetic-equivalent because
     # all updates are non-positive and witness order is preserved.
-    rows = np.concatenate(touched) if len(touched) > 1 else touched[0]
     near = rows[np.abs(array[rows]) <= 5.0e-13]
     if near.size:
         array[near] = 0.0
@@ -737,17 +817,23 @@ def _scatter_decrement_pair_exact(
     frozen ordered ``np.add.at`` operation independently to both arrays.
     """
 
-    touched: list[np.ndarray] = []
+    touched = np.zeros(left.size, dtype=np.bool_)
     for rows, edge_amounts in _iter_inverse_scatter_batches(
         offsets, indices, witness_indices, witness_amounts
     ):
         np.add.at(left, rows, -edge_amounts)
         np.add.at(right, rows, -edge_amounts)
-        touched.append(rows)
-    if not touched:
+        touched[rows] = True
+    rows = np.flatnonzero(touched)
+    if rows.size == 0:
         return
-    rows = np.concatenate(touched) if len(touched) > 1 else touched[0]
-    for array in (left, right):
+    _clamp_and_validate_touched((left, right), rows)
+
+
+def _clamp_and_validate_touched(arrays: Sequence[np.ndarray], rows: np.ndarray) -> None:
+    """Apply the frozen MVSEL numerical guard once to unique touched rows."""
+
+    for array in arrays:
         near = rows[np.abs(array[rows]) <= 5.0e-13]
         if near.size:
             array[near] = 0.0
@@ -757,16 +843,86 @@ def _scatter_decrement_pair_exact(
             )
 
 
-def _select_and_update(candidate: int, sparse_domain: Any, state: _DomainSelectorState) -> None:
+def _scatter_decrement_pair_dense_runs_exact(
+    left: np.ndarray,
+    right: np.ndarray,
+    offsets: np.ndarray,
+    indices: np.ndarray,
+    witness_indices: np.ndarray,
+    witness_amounts: np.ndarray,
+) -> None:
+    """Apply canonical witness updates as contiguous candidate runs.
+
+    MVIDX rows are strictly sorted and duplicate-free.  A contiguous slice add
+    therefore applies the same scalar add once to each candidate, while the
+    outer witness traversal preserves the reference FP64 order exactly.
+    """
+
+    witnesses = np.asarray(witness_indices, dtype=np.int64)
+    amounts = np.asarray(witness_amounts, dtype=np.float64)
+    if witnesses.ndim != 1 or amounts.shape != witnesses.shape:
+        raise TrainingDataInputError("TARGET-DATA2C-MVKERNEL1 scatter witness/amount shape mismatch.")
+    touched = np.zeros(left.size, dtype=np.bool_)
+    for witness, amount in zip(witnesses, amounts, strict=True):
+        start = int(offsets[int(witness)])
+        stop = int(offsets[int(witness) + 1])
+        row = np.asarray(indices[start:stop])
+        if row.size == 0:
+            continue
+        gaps = np.flatnonzero(row[1:] != row[:-1] + 1)
+        run_starts = np.concatenate((np.asarray([0], dtype=np.int64), gaps + 1))
+        run_stops = np.concatenate((gaps + 1, np.asarray([row.size], dtype=np.int64)))
+        negative_amount = -float(amount)
+        for local_start, local_stop in zip(run_starts, run_stops, strict=True):
+            candidate_start = int(row[int(local_start)])
+            candidate_stop = int(row[int(local_stop) - 1]) + 1
+            np.add(
+                left[candidate_start:candidate_stop],
+                negative_amount,
+                out=left[candidate_start:candidate_stop],
+            )
+            np.add(
+                right[candidate_start:candidate_stop],
+                negative_amount,
+                out=right[candidate_start:candidate_stop],
+            )
+            touched[candidate_start:candidate_stop] = True
+    rows = np.flatnonzero(touched)
+    if rows.size:
+        _clamp_and_validate_touched((left, right), rows)
+
+
+def _select_and_update(
+    candidate: int,
+    sparse_domain: Any,
+    state: _DomainSelectorState,
+    *,
+    progress_callback: Callable[[str], None] | None = None,
+    progress_interval_seconds: float = 30.0,
+    rank: int | None = None,
+    domain_id: str | None = None,
+) -> None:
     """MVPERF1 exact batched implementation of the frozen MVSEL1 update."""
 
     if not state.available[candidate]:
         raise TrainingDataInputError("TARGET-DATA2C-MVSEL1 attempted to select a duplicate candidate.")
 
     marginal_by_family = [float(item.coverage_gain[candidate]) for item in state.family_states]
-    for sparse_family, family_state, marginal in zip(
+    update_started = time.monotonic()
+    last_progress = update_started
+    completed_edges = 0
+    update_edge_total = sum(int(item.edge_count) for item in sparse_domain.families)
+    family_rows = zip(
         sparse_domain.families, state.family_states, marginal_by_family, strict=True
+    )
+    for family_number, (sparse_family, family_state, marginal) in enumerate(
+        family_rows, start=1
     ):
+        scatter_pair = (
+            _scatter_decrement_pair_dense_runs_exact
+            if family_state.use_dense_runs
+            else _scatter_decrement_pair_exact
+        )
         family_state.coverage_mass = min(1.0, family_state.coverage_mass + marginal)
         witnesses = np.asarray(sparse_family.candidate_witness_indices(candidate), dtype=np.int64)
         if witnesses.size:
@@ -775,7 +931,7 @@ def _select_and_update(candidate: int, sparse_domain: Any, state: _DomainSelecto
                 coverage_amounts = np.asarray(
                     family_state.weights[newly_covered], dtype=np.float64
                 )
-                _scatter_decrement_pair_exact(
+                scatter_pair(
                     family_state.coverage_gain,
                     state.total_coverage_gain,
                     sparse_family.witness_offsets,
@@ -793,7 +949,7 @@ def _select_and_update(candidate: int, sparse_domain: Any, state: _DomainSelecto
                 witness_weights / (1.0 + witness_multiplicity)
                 - witness_weights / (2.0 + witness_multiplicity)
             )
-            _scatter_decrement_pair_exact(
+            scatter_pair(
                 family_state.representative_gain,
                 state.total_representative_gain,
                 sparse_family.witness_offsets,
@@ -802,6 +958,19 @@ def _select_and_update(candidate: int, sparse_domain: Any, state: _DomainSelecto
                 representative_amounts,
             )
             family_state.multiplicity[witnesses] += 1
+        completed_edges += int(sparse_family.edge_count)
+        now = time.monotonic()
+        if progress_callback is not None and now - last_progress >= progress_interval_seconds:
+            elapsed = now - update_started
+            rate = completed_edges / elapsed if elapsed > 0.0 else 0.0
+            eta = (update_edge_total - completed_edges) / rate if rate > 0.0 else None
+            progress_callback(
+                f"status=updating; domain={domain_id or 'unknown'}; rank={rank if rank is not None else -1}; "
+                f"families={format_progress_fraction(family_number, len(sparse_domain.families))}; "
+                f"edges={completed_edges:,}/{update_edge_total:,}; "
+                f"elapsed={format_progress_time(elapsed)}; eta={format_progress_time(eta)}"
+            )
+            last_progress = now
 
     for oi in np.asarray(sparse_domain.candidate_obligation_indices(candidate), dtype=np.int64):
         oi_int = int(oi)
@@ -995,7 +1164,16 @@ def _states_exactly_equal(left: _DomainSelectorState, right: _DomainSelectorStat
             return False
     return True
 
-def _build_domain_plan(reference_domain: Any, sparse_domain: Any, policy: TargetMultiViewSelectorPolicy, *, progress_callback: Callable[[str], None] | None = None, update_function: Callable[[int, Any, _DomainSelectorState], None] = _select_and_update, checkpoint_collector: list[Any] | None = None) -> TargetMultiViewSelectionDomainPlan:
+def _build_domain_plan(
+    reference_domain: Any,
+    sparse_domain: Any,
+    policy: TargetMultiViewSelectorPolicy,
+    *,
+    progress_callback: Callable[[str], None] | None = None,
+    progress_interval_seconds: float = 30.0,
+    update_function: Callable[[int, Any, _DomainSelectorState], None] = _select_and_update,
+    checkpoint_collector: list[Any] | None = None,
+) -> TargetMultiViewSelectionDomainPlan:
     if reference_domain.content_digest != sparse_domain.frame_domain_digest and reference_domain.frame_domain_digest != sparse_domain.frame_domain_digest:
         # MVIDX binds frame_domain_digest, not the complete reference domain digest.
         if reference_domain.frame_domain_digest != sparse_domain.frame_domain_digest:
@@ -1008,12 +1186,26 @@ def _build_domain_plan(reference_domain: Any, sparse_domain: Any, policy: Target
         raise TrainingDataInputError("TARGET-DATA2C-MVSEL1 candidate pool is smaller than every requested target size.")
     limit = materializable_sizes[-1]
     target_set = set(materializable_sizes)
-    state = _build_domain_state(reference_domain, sparse_domain)
+    state = _build_domain_state(
+        reference_domain,
+        sparse_domain,
+        progress_callback=progress_callback,
+        progress_interval_seconds=progress_interval_seconds,
+    )
     entries: list[TargetMultiViewSelectionEntry] = []
     rung_by_size: dict[int, TargetMultiViewSelectionRung] = {}
     phase_a_completed_at: int | None = None
     previous_rung_size = 0
     representative_utility = 0.0
+    selection_started = time.monotonic()
+    last_rank_progress = selection_started
+    if progress_callback is not None:
+        dense_count = sum(int(item.use_dense_runs) for item in state.family_states)
+        progress_callback(
+            f"status=selecting; domain={reference_domain.label_domain_id}; "
+            f"selected={format_progress_fraction(0, limit)}; dense_run_families={dense_count}; "
+            f"elapsed={format_progress_time(0.0)}; eta=--:--:--"
+        )
 
     for rank in range(limit):
         chosen, phase, bottleneck_id, diversity = _choose_candidate(reference_domain, sparse_domain, state, policy)
@@ -1042,12 +1234,36 @@ def _build_domain_plan(reference_domain: Any, sparse_domain: Any, policy: Target
         )
         entries.append(entry)
         representative_utility += representative_gain
-        update_function(chosen, sparse_domain, state)
+        if update_function is _select_and_update:
+            _select_and_update(
+                chosen,
+                sparse_domain,
+                state,
+                progress_callback=progress_callback,
+                progress_interval_seconds=progress_interval_seconds,
+                rank=rank,
+                domain_id=reference_domain.label_domain_id,
+            )
+        else:
+            update_function(chosen, sparse_domain, state)
 
         if phase_a_completed_at is None and _hard_obligations_satisfied(sparse_domain, state) and _coverage_satisfied(state, policy.coverage_threshold, policy.gain_tie_tolerance):
             phase_a_completed_at = rank + 1
 
         size = rank + 1
+        now = time.monotonic()
+        if progress_callback is not None and (
+            size == 1 or size == limit or now - last_rank_progress >= progress_interval_seconds
+        ):
+            elapsed = now - selection_started
+            rate = size / elapsed if elapsed > 0.0 else 0.0
+            eta = (limit - size) / rate if rate > 0.0 else None
+            progress_callback(
+                f"status=selecting; domain={reference_domain.label_domain_id}; "
+                f"selected={format_progress_fraction(size, limit)}; phase={phase}; "
+                f"elapsed={format_progress_time(elapsed)}; eta={format_progress_time(eta)}"
+            )
+            last_rank_progress = now
         if size in target_set:
             unsatisfied = _unsatisfied_required_obligations(sparse_domain, state)
             family_coverage = tuple((item.family_id, min(1.0, max(0.0, float(item.coverage_mass)))) for item in state.family_states)
@@ -1111,6 +1327,7 @@ def _build_target_multi_view_selection(
     *,
     policy: TargetMultiViewSelectorPolicy | None = None,
     progress_callback: Callable[[str], None] | None = None,
+    progress_interval_seconds: float = 30.0,
     execution_mode: str = "optimized",
     capture_state_cache: bool = False,
 ) -> tuple[TargetMultiViewSelectionPlan, TargetMultiViewSelectionStateCache | None]:
@@ -1123,6 +1340,8 @@ def _build_target_multi_view_selection(
         raise TrainingDataInputError("TARGET-DATA2C-MVSEL1 policy/reference coverage thresholds disagree.")
     if execution_mode not in {"optimized", "reference"}:
         raise TrainingDataInputError("TARGET-DATA2C-MVPERF1 execution_mode must be optimized or reference.")
+    if not math.isfinite(float(progress_interval_seconds)) or float(progress_interval_seconds) <= 0.0:
+        raise TrainingDataInputError("TARGET-DATA2C-MVSEL1 progress_interval_seconds must be positive.")
     update_function = _select_and_update if execution_mode == "optimized" else _select_and_update_reference
     domains = []
     checkpoint_rows: dict[str, tuple[Any, ...]] = {}
@@ -1131,7 +1350,9 @@ def _build_target_multi_view_selection(
         collector: list[Any] | None = [] if capture_state_cache else None
         domain_plan = _build_domain_plan(
             reference_domain, sparse_domain, policy,
-            progress_callback=progress_callback, update_function=update_function,
+            progress_callback=progress_callback,
+            progress_interval_seconds=float(progress_interval_seconds),
+            update_function=update_function,
             checkpoint_collector=collector,
         )
         domains.append(domain_plan)
@@ -1173,12 +1394,15 @@ def build_target_multi_view_selection_plan(
     *,
     policy: TargetMultiViewSelectorPolicy | None = None,
     progress_callback: Callable[[str], None] | None = None,
+    progress_interval_seconds: float = 30.0,
     execution_mode: str = "optimized",
 ) -> TargetMultiViewSelectionPlan:
     """Construct exact deterministic MVSEL1 evidence without migrating DATA2C."""
     plan, _ = _build_target_multi_view_selection(
         target_coverage_reference, target_coverage_sparse_index, policy=policy,
-        progress_callback=progress_callback, execution_mode=execution_mode, capture_state_cache=False,
+        progress_callback=progress_callback,
+        progress_interval_seconds=progress_interval_seconds,
+        execution_mode=execution_mode, capture_state_cache=False,
     )
     return plan
 
@@ -1189,12 +1413,15 @@ def build_target_multi_view_selection_artifacts(
     *,
     policy: TargetMultiViewSelectorPolicy | None = None,
     progress_callback: Callable[[str], None] | None = None,
+    progress_interval_seconds: float = 30.0,
     execution_mode: str = "optimized",
 ) -> tuple[TargetMultiViewSelectionPlan, TargetMultiViewSelectionStateCache]:
     """Build MVSEL1 authority and exact reconstructible rung-state checkpoints once."""
     plan, cache = _build_target_multi_view_selection(
         target_coverage_reference, target_coverage_sparse_index, policy=policy,
-        progress_callback=progress_callback, execution_mode=execution_mode, capture_state_cache=True,
+        progress_callback=progress_callback,
+        progress_interval_seconds=progress_interval_seconds,
+        execution_mode=execution_mode, capture_state_cache=True,
     )
     assert cache is not None
     return plan, cache

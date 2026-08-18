@@ -1,8 +1,8 @@
 ---
 geometry: "margin=0.75in"
 architecture_revision: 103
-release: "mdstats 0.20.240a0"
-status: "current normative architecture; revision 103 unchanged; MVIDX multi-billion-edge scaling and bounded-queue backpressure hardened; exact-equivalence CPU optimization closed; FINAL-GPU1 next"
+release: "mdstats 0.20.241a0"
+status: "current normative architecture; revision 103 unchanged; MVIDX and MVSEL multi-billion-edge execution hardened; exact-equivalence CPU optimization closed; FINAL-GPU1 next"
 last_updated: "2026-08-18"
 ---
 
@@ -75,6 +75,8 @@ The assembled manual is the release-facing authority; chapter files are retrieva
 - **reconstructible execution cache**: discardable state derivable exactly from authoritative inputs.
 
 ## Current release boundary
+
+`mdstats 0.20.241a0` is an exact-execution MVSEL production-density hardening release on architecture revision 103. Initialization gathers FP64 weights in complete-row chunks bounded to a 512 MiB target and releases scanned inverse-mmap pages. Sparse scatter validation retains one touched bit per candidate rather than every processed edge. Families with at least 98% rectangular density use canonical witness-ordered contiguous-run adds that are bit-exact to the scalar oracle. On the supplied 36,408-candidate, 165-family, 9.51-billion-edge domain, scoped initialization plus rank 0 improves from about 320 s to 106 s and peak RSS from about 51.5 GiB to 19.2 GiB. Rate-limited initialization/rank heartbeats are now emitted before the first rung. Scientific identity, sequential rank authority, revision 103, schema 83, and `FINAL-GPU1` remain unchanged.
 
 `mdstats 0.20.240a0` is an exact-execution MVIDX/PARCORE1 backpressure hardening release on architecture revision 103. MVIDX no longer eager-submits every required family inversion into the bounded PARCORE1 ready queue. It feeds family and hard-obligation tasks through a deterministic producer/consumer refill loop: submit only while ready capacity exists, wait for completion, drain canonical completions, then refill. This preserves bounded ready/in-flight/completed queues and explicit RAM admission while allowing domains with arbitrarily more required families than queue slots (including the observed 165-family / 56-ready-slot production case). Scientific sparse-index authority, out-of-core storage semantics, worker-independent digests, and `FINAL-GPU1` as the next scientific gate are unchanged.
 
@@ -2761,6 +2763,8 @@ The multi-view scientific gates FEAS1, MVIDX1, MVSEL1, REPAIR1, MVPERF1, MVQUAL1
 **Implementation.** `0.20.230a0` adds shared exact ragged-CSR gather kernels and routes MVSEL inverse-edge updates through them. Per-family and domain-total gain arrays share one gathered edge stream, while `np.add.at` is still applied independently in canonical witness/edge order so floating-point state remains exact. Coverage and representative witness amounts are vectorized, and required hard-obligation pending count is maintained incrementally. MVIDX selected-subset coverage and obligation helpers gather candidate CSR rows once and use boolean assignment/`bincount`. MVQUAL gathers selected candidate rows once per family to derive multiplicity, covered/unique witness masks, and unique-owner candidates; DATA2A run/condition provenance codes are built once per domain. The scalar MVSEL update and scalar MVQUAL telemetry implementations are retained as qualification references.
 
 **Acceptance. PASS.** Optimized and scalar MVSEL states agree exactly after every qualified rank and persisted selection plans remain byte-identical. The frozen 4,096-candidate/2,048-selection digest remains `d147d85acd64...b2ffaddbb978b378`; the 24,576-candidate/16,384-selection stress digest remains `aaec42fb0c1d...9a0461bcd75d608`. Same-host measurements reduce the representative selector median from about 1.404 s in untouched `0.20.229a0` to about 0.811 s, and the 16,384-selection stress path from about 6.640 s to about 5.591 s. A 16,384-candidate/8,192-selected/6-family MVQUAL telemetry fixture drops from about 0.578 s to about 0.041 s (about 14.1x), with byte-identical telemetry. Full MVQUAL plan evidence remains digest-identical to untouched `0.20.229a0`. Timing is execution evidence; exact selector state and qualification records are authority.
+
+**Production-density maintenance (`0.20.241a0`). COMPLETE.** A 36,408-candidate, 165-family, 9.51-billion-edge campaign exposed unbounded selector temporaries hidden by the smaller qualification fixtures. Exact complete-row initialization chunks now cap indexed FP64 weight gathers at 512 MiB; scanned inverse mmap pages are released; numerical guards use a candidate-sized touched bitmap; and families at least 98% dense use canonical witness-ordered contiguous-run adds. Scoped initialization plus rank 0 improves from about 320 s to 106 s (about 3.03x), with peak RSS reduced from about 51.5 GiB to 19.2 GiB. Focused scalar-oracle and bit-exact kernel tests pass. Threaded scatter remains rejected after only about 1.1x measured gain, and no parallel rank authority is introduced.
 
 **Next gate.** `REPAIR-PAR1`.
 

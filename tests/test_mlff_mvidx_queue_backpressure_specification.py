@@ -10,9 +10,9 @@ MANUAL = ROOT / "docs/arch_manuals/mlff_training_data_architecture.md"
 
 
 def test_mvidx_backpressure_release_metadata() -> None:
-    assert mdstats.__version__ == "0.20.240a0"
+    assert mdstats.__version__ == "0.20.241a0"
     manual = MANUAL.read_text(encoding="utf-8")
-    assert 'release: "mdstats 0.20.240a0"' in manual
+    assert 'release: "mdstats 0.20.241a0"' in manual
     assert "architecture_revision: 103" in manual
     assert "165-family / 56-ready-slot" in manual
     assert "FINAL-GPU1" in manual

@@ -1,0 +1,31 @@
+{
+  "pdf": {
+    "name": "mlff_mvkernel1_sparse_vector_kernels_spec.pdf",
+    "sha256": "de53a67dddc53d3fa2bbe3433f985a86143a1c08cf2b91292884f0ae9b85bba2"
+  },
+  "renderer": {
+    "config": {
+      "absolute_images": "reject",
+      "fontsize": "10.5pt",
+      "from": "markdown",
+      "lang": "en-US",
+      "margin": "0.75in",
+      "papersize": "us-letter",
+      "pdf_engine": "typst",
+      "remote_images": "reject",
+      "resource_path": "source-parent",
+      "resource_provenance": "pandoc-image-ast-local-files-v1"
+    },
+    "config_sha256": "a9a9944a65faa5149dea0d9ebeaee33df9adb32f8da5d6e94fde1d2a581ead51",
+    "driver": "render_markdown_pdfs.py",
+    "pandoc_version": "pandoc 3.10.2",
+    "policy_version": "pandoc-typst-v2",
+    "typst_version": "typst 0.15.1 (ca4bbbe8)"
+  },
+  "resources": [],
+  "schema_version": 1,
+  "source": {
+    "name": "mlff_mvkernel1_sparse_vector_kernels_spec.md",
+    "sha256": "ebd3a25875de3048bbfb3310ae66539a2fb549876575ede0cdb6c0e6f0548f6f"
+  }
+}
