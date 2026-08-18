@@ -21,36 +21,27 @@ if not readme_snapshot.exists():
     readme_snapshot.write_text(readme_text, encoding="utf-8")
 
 marker = "\n# Stage gates\n"
-if marker in stage_text:
-    current = stage_text.split(marker, 1)[0].rstrip() + "\n"
-else:
-    current = stage_text
-
+current = stage_text.split(marker, 1)[0].rstrip() + "\n" if marker in stage_text else stage_text
 current = current.replace(
-    "# MLFF Training-Data Stage Plan Specification",
-    "# MLFF Training-Data System Contract Specification",
+    'title: "MLFF-DATA Stage and Data-Contract Specification"',
+    'title: "MLFF Training-Data System Contract Specification"',
     1,
 )
 
-scope_start = current.find("## Scope\n")
-principles_start = current.find("## Normative principles\n")
+scope_start = current.find("# Scope\n")
+principles_start = current.find("# Normative principles\n")
 if scope_start < 0 or principles_start < 0 or principles_start <= scope_start:
     raise SystemExit("could not locate Scope/Normative principles boundary")
-new_scope = """## Scope\n\nThis document is the cross-cutting current system contract for the mdstats MLFF training-data and fine-tuning workflow. It owns invariants that span multiple narrower module specifications: evidence-role separation, identity and lineage boundaries, leakage prevention, protocol identity, target/replay separation, MACE realization, calibration applicability, and append-only active-learning lineage.\n\nThe legacy filename is retained for stable repository references. It is **not** an implementation stage plan. Developer sequencing and future gates belong in `workplans/`; completed implementation chronology belongs in `docs/history/mlff/`. Narrower current specifications under this directory own module-local API, schema, algorithm, persistence, and runtime details.\n\n"""
+new_scope = """# Scope\n\nThis document is the cross-cutting current system contract for the mdstats MLFF training-data and fine-tuning workflow. It owns invariants that span multiple narrower module specifications: evidence-role separation, identity and lineage boundaries, leakage prevention, protocol identity, target/replay separation, MACE realization, calibration applicability, and append-only active-learning lineage.\n\nThe legacy filename is retained for stable repository references. It is **not** an implementation stage plan. Developer sequencing and future gates belong in `workplans/`; completed implementation chronology belongs in `docs/history/mlff/`. Narrower current specifications under this directory own module-local API, schema, algorithm, persistence, and runtime details.\n\n"""
 current = current[:scope_start] + new_scope + current[principles_start:]
-
 current = current.replace(
     "The first adapter may rely on MACE only for the behavior explicitly verified by its version lock and compatibility smoke tests:",
     "The MACE adapter may rely on MACE only for behavior explicitly verified by its current version lock and compatibility smoke tests:",
 )
-current = current.replace(
-    "The first adapter uses:",
-    "The current adapter contract uses:",
-)
-
+current = current.replace("The first adapter uses:", "The current adapter contract uses:")
 current = current.rstrip() + """
 
-## Authority and supersession
+# Authority and supersession
 
 This specification owns only the cross-cutting invariants stated above. The dedicated current specifications listed in `README.md` own their module-local behavior and may refine implementation details without weakening these invariants. Runtime/product gates remain normative where they define current software behavior; developer implementation gates are non-normative coordination artifacts under `workplans/`.
 
