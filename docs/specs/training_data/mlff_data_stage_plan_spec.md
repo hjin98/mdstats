@@ -69,6 +69,11 @@ The legacy filename is retained for stable repository references. It is **not** 
 | `SelectionAssignment` | selected/not-selected and reasons | epoch use count |
 | `ExposureAssignment` | head, epochs, weights, and use counts | independent-evidence claim |
 | `MaceExposureRealizationRecord` | actual loader counts, duplication, batches, and property exposures | intended exposure only |
+
+The fitted/protocol/profile record families continue the same ownership contract:
+
+| Record | Owns | Must not own |
+|---|---|---|
 | `AtomicReferenceFitRecord` | training-domain E0 corrections and residual | held-out labels |
 | `TrainingProtocolIdentity` | complete model/data/replay/objective/exposure/checkpoint protocol | mutable runtime observations |
 | `ProtocolFreezeRecord` | frozen selected protocol and committee identities | evaluation results |
