@@ -4,32 +4,28 @@ handoff_id: DOC-MVSEL2-HARDEN1-V3-REV8-LIGHTWEIGHT
 protocol_version: 3.1.0
 workplan_id: DOC-MVSEL2-HARDEN1-V3
 plan_revision: 8
-status: DESIGN_READY_FOR_IMPLEMENTATION
+status: PREPARED_FOR_TARGET_QUALIFICATION
 ---
 
-# MVSEL2 hardening — final reviewed lightweight workstation qualification
+# MVSEL2 hardening — REV8 autonomous workstation qualification
 
-## Governing design
+## Governing design and implementation
+
+Design authority:
 
 `workplans/active/DOC-MVSEL2_HARDEN1_V3_REV8_FINAL_REVIEWED_QUALIFICATION.md`
 
-REV5-REV7 execution designs are superseded. Qualification is a short current-candidate benchmark bound to the complete production graph, not a production replay.
+Implementation execution record:
 
-## Candidate boundary before execution
+`workplans/active/DOC-MVSEL2_HARDEN1_V3_REV8_IMPLEMENTATION.md`
 
-R8 implementation may change qualification-only code or may require a small packaged-runtime refactor to share exact checkpoint-started REPAIR2 rung execution.
+REV5-REV7 execution procedures are superseded. The current qualifier is a short current-candidate measurement bound to the complete production graph; it is not a production replay.
 
-- If only `scripts/`, `benchmarks/`, workplans, tests, or qualification/evidence code changes and packaged `mdstats/` runtime behavior is unchanged, the existing frozen product candidate remains applicable; rerun only materially affected harness checks.
-- If any packaged `mdstats/` runtime source changes, freeze a **new Git candidate commit** after the refactor and before final workstation qualification. Use that Git commit plus a clean/non-shadowed working tree as the default candidate identity.
-- After a packaged-runtime change, rerun affected focused v2 tests, adjacent v1 regressions when the changed runtime/import surface can affect them, and wheel/build/install/import because packaged bytes changed. Broad-suite reruns follow repository policy and attribution rather than an artificial universal zero-failure requirement.
-- Previously executed evidence remains reusable when its material code/package surface did not change.
-- Production MVIDX/reference/config/checkpoint digests remain separate material external-input identities.
+Packaged/runtime code changed during REV8, so earlier candidate/package evidence is not silently inherited. The implementation code anchor after the autonomous qualifier was completed is `c7f67572a37c81b8eba05e6cbf601f933d46fbe1`; subsequent workplan/run-card commits are coordination-only unless a later product/source diff says otherwise. The qualifier records the actual Git HEAD and requires a clean tracked/staged working tree before executing candidate checks.
 
-Do not qualify a runtime-refactored candidate under stale evidence from the earlier candidate.
+## One command
 
-## Intended one-command interface
-
-After R8-G1 through R8-G5 are implemented:
+From the up-to-date `feat/mvsel2-forward-lazy` checkout:
 
 ```bash
 set -euo pipefail
@@ -43,94 +39,162 @@ conda run -n mace python scripts/mvsel2_bounded_qualification.py \
   --domain "$DOMAIN"
 ```
 
-The script owns resource discovery/admission, one supervised compute worker, benchmark sizing, compact evidence/state, cleanup/scavenging, and final summary. No Codex/ChatGPT session is required after launch.
+No ChatGPT/Codex process must remain connected. The command automatically runs the affected tests/package check first, then the bounded production-data checks, then publishes compact evidence and cleans owned scratch.
 
-Explicit resource/time flags may only tighten discovered limits.
+The `mace` environment must already contain the repository's normal test/build dependencies (`pytest`, `build`, `pip`, NumPy, and mdstats runtime dependencies). Missing tooling is `BLOCKED` environment evidence, not a product FAIL.
 
-## Expected envelope
+## Resource behavior
 
-- normal end-to-end target on `local-user-ProBuild`: about 5-8 minutes;
-- default hard total containment: about 15 minutes, never >20 minutes without explicit override;
-- scratch: normally hundreds of MiB, hard aggregate cap <=1 GiB;
-- one serial mapped compute worker by default;
-- normal planned work materially below hard containment.
+The driver discovers effective CPU affinity, host/cgroup available memory, free disk, and stricter user caps. It derives:
 
-Containment activation is exceptional, not ordinary flow.
+1. effective capacity;
+2. hard containment;
+3. a smaller normal operating envelope.
 
-## Production safety
+Defaults/guards:
 
-- production DB/config/native arrays are read-only;
-- do not construct writable `CampaignStore` on production DB;
-- read records using SQLite `mode=ro` and explicit deserialization;
-- use `immutable=1` only after proving quiescence;
-- map the native forward-only MVIDX once and reuse it;
-- never copy/mirror complete `.mdstats`;
-- verify production identity remains stable;
-- production identity change => `EXTERNAL_INPUT_CHANGED`/`BLOCKED`, not product FAIL.
+- hard total wall boundary: 15 minutes;
+- explicit `--total-timeout-seconds` may only tighten that boundary;
+- hard aggregate scratch: no more than 1 GiB and further reduced by free-space constraints;
+- RSS hard containment is derived conservatively from currently effective memory; explicit `--max-rss-gib` may only tighten it;
+- normal operating RSS/time/scratch stay materially below the hard boundaries;
+- aggregate owned-process RSS, scratch blocks, wall time, and host/cgroup memory pressure are supervised externally;
+- `RLIMIT_AS` is not used because the large file-backed MVIDX virtual mapping is not resident-memory demand.
 
-## Automatic stages
+The normal workstation target remains approximately 5-8 minutes. The watchdog is emergency containment, not the workload-sizing mechanism.
 
-### LQ0 — admission/ownership
+## Automatic stage G5 — candidate regression/package preflight
 
-Discover effective affinity/cgroup/job/memory/storage limits and stricter user caps. Create separate evidence/scratch roots with an ownership manifest and safely scavenge only abandoned scratch proven to belong to this qualifier.
+Before production MVIDX is mapped, the supervised worker automatically:
 
-Prefer delegated cgroup-v2 containment when available; otherwise use conservative admission plus process-group watchdog. Monitor aggregate owned RSS, scratch blocks, wall time, and host/cgroup pressure where available.
+1. requires clean tracked/staged candidate state;
+2. runs the affected focused v2 regressions, REV8 harness tests, and adjacent REPAIR1 regression;
+3. materializes a clean tracked candidate with `git archive` into owned scratch;
+4. builds one wheel with `python -m build --wheel --no-isolation`;
+5. isolated-installs that wheel under scratch;
+6. imports from an unrelated scratch cwd and requires version `0.20.242a0` plus import origin beneath the isolated install;
+7. requires the wheel to exclude `workplans/`.
 
-### LQ1 — production binding
+The focused set is:
 
-Authenticate the real 36,408-candidate / 165-family graph, MVIDX1 digest/edge count, MVSEL2 ladder through 16,384, and native forward-only path. Query only a tiny deterministic incidence sample.
+```text
+tests/test_mlff_repair2.py
+tests/test_mlff_mvstate2.py
+tests/test_mlff_mvsel2_forward.py
+tests/test_mlff_mvmigrate2.py
+tests/test_mlff_mvsel2_hardening.py
+tests/test_mlff_mvsel2_oracle.py
+tests/test_mlff_mvsel2_rev8_qualification.py
+tests/test_mlff_target_data2c_repair1.py
+```
 
-No full candidate sweep and no fresh full-domain feasibility/state validation scan.
+Pytest exit 1 or a demonstrated build/install/import/package-content defect is product FAIL. Missing test/build capability, collection/infrastructure failure, or ambiguous working-tree state is BLOCKED.
 
-### LQ2 — exact 128 -> 256 recovery
+This replaces a separate manual G5 sequence; the same one command performs it under the hard supervisor.
 
-Require real valid 128 and 256 MVSTATE2 checkpoints.
+## LQ0 — ownership, quiescence, and admission
 
-Copy only those two bundles to scratch; restore both; corrupt only the 256 scratch record; require fallback to 128; replay canonical candidates 128..255 using exact production score/select mutations; compare reconstructed state exactly with authenticated 256 state.
+The parent:
 
-Compare selected order, availability, all family multiplicities/coverage masses, obligation counts, unsatisfied-required count, correlation-unit counts, and representative utility.
+- creates separate compact evidence and disposable scratch roots;
+- scavenges only abandoned scratch with a valid matching `OWNER.json` and dead recorded owner process;
+- captures production SQLite/config identity twice across a short quiescence interval before launch;
+- includes the SQLite main DB plus any material `-wal`/rollback-journal content in identity, while deliberately excluding transient `-shm` reader marks;
+- refuses to launch production work if authority is changing;
+- hashes/checks production identity again after execution.
 
-Do not run selector search or rebuild a fresh production state.
+Production input change or non-quiescence is `BLOCKED`, not product FAIL.
 
-### LQ3 — REPAIR2 micro-benchmark
+## LQ1 — full production binding, tiny execution
 
-Share the exact production checkpoint-started rung helper; do not duplicate repair science and do not enter the current fresh-state full-validation path.
+The worker opens the production SQLite database with `mode=ro`, explicitly deserializes production authority, and opens the native forward-only MVIDX in place.
 
-Mandatory measured rungs: 128 and 256. Add 512 only if proposal/timing/material evidence is insufficient; add at most 1024 if still needed and safely admitted. Never enlarge merely to force a swap.
+It authenticates:
 
-Require default policy, zero proposal full-state clones, no inverse mapping/mutation, no coverage/hard-obligation regression, and correct checkpoint restore/replay mode.
+- 36,408 candidates;
+- 165 families;
+- complete current forward-edge count and MVIDX digest;
+- production MVSEL2 authority;
+- materializable ladder through 16,384;
+- native forward-only execution.
 
-The highest materializable checkpoint <=16,384 must restore. For the current ladder the **16,384 checkpoint itself is mandatory**. This is a read-only sentinel; no 16,384 repair run is required.
+Only candidates 0, midpoint, and final candidate are sampled for forward incidence. No complete candidate sweep and no fresh full-domain feasibility/state build is performed.
 
-### LQ4 — fresh current-candidate performance projection
+No writable `CampaignStore` is constructed on the production database.
 
-The old `~69x` MVSEL2 projection is historical diagnostic evidence only; it is not current-candidate PASS evidence.
+## LQ2 — exact 128 -> 256 recovery
 
-Reuse only the legacy MVSEL1 full-order baseline from historical production evidence, and only if:
+The current production 128, 256, and 16,384 MVSTATE2 checkpoints are required.
 
-- current MVIDX identity matches;
-- current host is the original `local-user-ProBuild` context (or explicitly accepted same-host equivalent);
-- the tracked legacy MVSEL1 comparator surface is unchanged from the historical benchmark source Git head.
+For recovery:
 
-Otherwise baseline evidence is `BLOCKED`; do not run full MVSEL1 automatically.
+1. copy only the 128 and 256 checkpoint bundles into run-owned scratch;
+2. restore/authenticate the production 256 authority;
+3. corrupt only the scratch 256 pointer record;
+4. require runtime fallback to the scratch 128 checkpoint;
+5. replay only canonical selected candidates at ranks 128..255 with the exact production score/select mutation primitives;
+6. compare reconstructed state exactly against authenticated production 256 state.
 
-For current MVSEL2:
+Exact comparison covers selected order, availability, every family multiplicity/coverage mass, obligation counts, unsatisfied-required count, correlation-unit counts, and representative utility.
 
-1. restore the real 128 checkpoint;
-2. run exact current Phase-A choice+mutation from rank 128 until Phase A completes, requiring every chosen candidate to match production master order;
-3. measure total Phase-A time and maximum measured Phase-A rank time;
-4. conservatively bound unmeasured ranks 0..127 as `128 * max_phase_a_rank_seconds`;
-5. from current Phase-A completion state, perform exactly one current lazy-frontier exact rebase;
-6. only start the rebase if resource admission predicts safe headroom;
-7. run exactly 32 current Phase-B choice+mutation ranks, requiring production-order identity;
-8. use the maximum current Phase-B sampled rank time to project remaining ranks to 16,384.
+A recovery/state mismatch is product FAIL. Missing/corrupt external authority that prevents a trustworthy comparison is BLOCKED.
+
+## LQ3 — shared exact REPAIR2 micro-benchmark
+
+Production and qualification now share `mvsel2_repair_checkpoint_runtime.py`; the qualification harness does not duplicate `_proposal`, `_better`, swap mutation, coverage, or obligation science.
+
+Mandatory rungs: 128 and 256.
+
+Adaptive extension:
+
+- add 512 only if required proposal/timing evidence is still absent;
+- add at most 1024 if still needed and admitted;
+- stop once proposal-cost/material evidence is sufficient;
+- never enlarge merely to force an accepted swap.
+
+If an accepted repair divergence occurs, subsequent measured rungs carry the repaired state/order exactly as production does rather than restoring a later pure-selector checkpoint.
+
+PASS assertions on measured rungs include default policy, zero rejected-proposal full-state copies, no inverse mutation, and no coverage/hard-obligation regression. Accepted-swap semantic branches remain covered by the focused regression suite.
+
+The actual production 16,384 checkpoint is restored as the mandatory large-rung compatibility sentinel. No 16,384 REPAIR2 computation is launched solely for qualification.
+
+If no bounded measured rung exercises proposal cost through the allowed extension, the performance component is BLOCKED instead of guessed.
+
+## LQ4 — fresh current-candidate selector + combined >=10x bound
+
+The old approximately 69x MVSEL2 projection is advisory historical evidence only.
+
+### Legacy baseline
+
+Only the legacy MVSEL1 baseline is reused. Reuse requires:
+
+- exact current production graph identity;
+- original `local-user-ProBuild` host context, unless the operator explicitly supplies `--accept-same-host-equivalent` after establishing equivalence;
+- no Git diff from historical source head `f23426d426af21a54914f4e62181ce09e864330b` across the frozen legacy comparator surface.
+
+Failure to establish that baseline is BLOCKED. The driver never launches a full legacy MVSEL1 replay automatically.
+
+### Current selector measurement
+
+The current candidate is measured directly:
+
+1. restore real MVSTATE2 rank 128;
+2. run exact current Phase A from 128 until Phase A completes, requiring every chosen candidate to match authenticated production order;
+3. conservatively bound unmeasured ranks 0..127 with the maximum measured Phase-A rank cost;
+4. build one exact current Phase-B lazy frontier;
+5. run exactly 32 current Phase-B ranks and require production-order identity;
+6. conservatively project the remaining ranks to 16,384 with the maximum measured Phase-B rank cost.
+
+REV8 changes the exact frontier *execution mechanics* to family-streaming: each candidate's FP64 representative gain is still accumulated in canonical family order, but a family's mmap pages are released immediately after that family is scanned. Focused parity requires bit-identical exact scores/generations/heap authority versus the legacy rebase. Campaign selection, checkpoint resume, and qualification all use this shared streaming frontier.
+
+Admission for the rebase uses current resident memory plus a conservative multiple of the largest single mapped family, with additional headroom. It no longer assumes the misleading post-release RSS and does not plan to touch all 35+ GiB of forward pages resident at once.
 
 Selector bound:
 
 ```text
 setup_upper = max(
-    2.0 * current_reference_plus_forward_restore_seconds,
-    4.0 * historical_cold_preflight_total_seconds
+    2 * current_reference_plus_forward_restore_seconds,
+    4 * historical_cold_preflight_total_seconds
 )
 phase_a_prefix_upper = 128 * max_current_phase_a_rank_seconds
 selector_upper = 1.25 * (
@@ -142,30 +206,24 @@ selector_upper = 1.25 * (
 )
 ```
 
-The historical cold-preflight value is used only as a deliberately inflated setup-cost guard; all selector hot-path timing terms are current-candidate measurements.
-
-REPAIR2 bound from LQ3:
+REPAIR2 bound:
 
 ```text
 work_i = shell_size_i + proposals_i * candidate_count
 unit_seconds = max(rung_wall_seconds_i / max(1, work_i))
 P_cap = removal_shortlist_limit * (max_swaps_per_shell + max_passes_per_shell)
 work_upper_r = shell_size_r + P_cap * candidate_count
-repair_upper = 4.0 * unit_seconds * sum(work_upper_r over rungs <=16384)
+repair_upper = 4 * unit_seconds * sum(work_upper_r over materializable rungs <=16384)
 combined_speedup_lower = historical_mvsel1_baseline_seconds / (selector_upper + repair_upper)
 ```
 
-If no measured repair rung evaluates proposals, add the allowed next rung; if proposal cost remains unmeasurable inside the bounded plan, mark performance `BLOCKED` rather than guessing.
-
 PASS requires `combined_speedup_lower >= 10.0`.
 
-If the bounded current-candidate projection executes successfully but falls below 10x, return product/performance failure to implementation. If required legacy-baseline compatibility or safe rebase evidence cannot be established, return `BLOCKED` for a new bounded comparator.
+A successfully measured bound below 10x is product/performance FAIL. Missing safely establishable baseline/proposal/rebase evidence is BLOCKED. The threshold is never lowered and there is no unbounded fallback replay.
 
-Never lower the threshold or fall back to a full MVSEL1/MVSEL2 replay.
+## LQ5 — all-terminal cleanup and compact evidence
 
-### LQ5 — cleanup/report
-
-Use separate compact evidence and disposable scratch:
+The layout is:
 
 ```text
 qualification/bounded-mvsel2/
@@ -176,41 +234,28 @@ qualification/bounded-mvsel2/
   summary.json
 ```
 
-On PASS, product FAIL, BLOCKED, exception, SIGINT, or SIGTERM: retain a compact diagnostic capsule, terminate descendants, close DB/mmap handles, delete all owned large scratch, then atomically publish terminal state.
+The supervisor retains compact worker/stage evidence and bounded log tails, keeps only a small number of previous evidence capsules, and removes the entire owned scratch run on PASS, FAIL, BLOCKED, ordinary exceptions, SIGINT, or SIGTERM.
 
-Startup scavenging handles uncatchable prior termination only when ownership is proven. Evidence/log retention is byte/count bounded.
+SIGKILL/power-loss cleanup is handled on the next startup only when the ownership manifest proves the directory belongs to this qualifier and its recorded owner process is no longer the same live process.
 
-## Resource-model recovery
+## Result semantics
 
-If containment activates during optional work, one automatic fresh-worker retry is allowed after cleaning prior scratch and removing optional work. Do not increase limits.
+- demonstrated semantic/product/package/performance violation -> `FAIL`;
+- missing/unstable external input, missing environment capability, unsafe minimum workload, or ambiguous harness/input exception -> `BLOCKED`;
+- hard containment activation -> `BLOCKED` as `QUALIFICATION_RESOURCE_MODEL_FAILURE`, never automatic product FAIL and never an automatic limit increase;
+- optional telemetry/cosmetic metadata defects -> advisory when safety and interpretation remain intact.
 
-If minimum LQ1/LQ2/128+256 LQ3 or the required admitted Phase-B rebase cannot execute safely, classify missing evidence as `BLOCKED`/harness-resource-model issue, not product FAIL. Do not repeatedly hit the ceiling.
+## Evidence to return
 
-A properly designed current measurement that violates a frozen product resource/performance threshold remains a product failure.
+After the command completes, the only files normally needed for review are:
 
-## Material versus advisory
+```text
+qualification/bounded-mvsel2/summary.json
+qualification/bounded-mvsel2/state.json
+qualification/bounded-mvsel2/evidence/<latest-run>/summary.json
+qualification/bounded-mvsel2/evidence/<latest-run>/worker.json
+```
 
-Acceptance-critical:
+plus the bounded G5/worker log tails if a stage failed or blocked.
 
-- full stable read-only production identity;
-- native forward-only path;
-- exact 128->256 recovery-state equivalence;
-- shared exact REPAIR2 path on mandatory measured rungs;
-- zero full-state proposal clones/no inverse mapping or mutation/no regression;
-- valid 16,384 checkpoint sentinel;
-- compatible legacy same-host baseline;
-- fresh current Phase-A-from-128 + exact rebase + 32 Phase-B projection;
-- conservative current selector+repair combined >=10x lower bound;
-- safe admission/containment and production non-mutation;
-- correct candidate/evidence invalidation if packaged runtime code changes during R8 implementation.
-
-Advisory/nonblocking:
-
-- historical MVSEL2 ~69x projection;
-- GPU/page-cache/profiler telemetry;
-- optional 512/1024 repair rungs once evidence is sufficient;
-- cosmetic metadata.
-
-## Implementation handoff
-
-Proceed R8-G0 -> R8-G6 automatically unless a genuine material blocker or frozen-design contradiction emerges. Equivalent safe containment mechanics, evidence paths, and optional telemetry do not require another design revision.
+The qualifier's own large temporary candidate archive, wheel/install tree, scratch SQLite database, and copied MVSTATE2 bundles are not final evidence and are removed automatically.
