@@ -16,15 +16,20 @@ Qualify the frozen MVSEL2/MVSTATE2/REPAIR2 hardening candidate with a short, aut
 
 The frozen scientific/persistence semantics and the combined-chain `>=10x` performance floor do not change.
 
-## Final-review correction to REV7
+## Final-review corrections incorporated
 
-REV7 still treated `benchmarks/mlff_mvsel2_production_density_2026-08-18.json` as reusable current-candidate MVSEL2 performance evidence. Final review found that this is not sufficiently bound to the rescued candidate:
+The final review identified and resolves the remaining material ambiguities from REV6/REV7:
 
-- the benchmark embeds `source.git_head = f23426d426af21a54914f4e62181ce09e864330b`;
-- the current branch history shows the v2 selector/forward-view implementation files were committed after that Git head, so the benchmark was produced from a working tree whose exact v2 source is not identified by that SHA alone;
-- `release/MLFF_MVSEL2_HARDEN1_V3_STATUS_0.20.242a0.json` explicitly classifies prior performance records as historical evidence rather than Protocol-v3 acceptance of the rescued candidate.
+1. the current `_build_repair_from_checkpoints(...)` fresh-state initialization can scan the complete multi-billion-edge graph before a checkpoint replaces that state;
+2. a benchmark-only truncated selection object could blur evidence versus product authority;
+3. the 16,384 compatibility requirement must not silently degrade to an 8,192 checkpoint when 16,384 is materializable;
+4. production database access through a normal writable `CampaignStore` is not a strong enough read-only qualification boundary;
+5. repeated child stages would unnecessarily remap the huge MVIDX;
+6. cleanup/evidence retention and resource-model recovery needed deterministic all-terminal rules;
+7. the historical MVSEL2 production-density benchmark is not sufficiently source-bound to the rescued candidate: it embeds `source.git_head = f23426d426af21a54914f4e62181ce09e864330b`, while the branch history shows the v2 implementation files were committed after that Git head; the release-status record explicitly classifies prior performance records as historical evidence rather than Protocol-v3 acceptance of the rescued candidate;
+8. any private runtime refactor needed to share checkpoint-started REPAIR2 execution may create a new product candidate and therefore changes which earlier evidence may be reused.
 
-Therefore REV8 does **not** promote the historical MVSEL2 projection to candidate evidence. It reuses only the compatible legacy MVSEL1 baseline/comparator context and builds a fresh, bounded production-density projection from the current candidate.
+REV8 freezes the corresponding corrections below.
 
 ## Frozen execution architecture
 
@@ -68,6 +73,18 @@ Reference-workstation normal target: approximately 5-8 minutes end-to-end.
 Default hard wall containment should be about 15 minutes and must not exceed 20 minutes without explicit user override. Normal planned execution must remain materially below the selected hard boundary.
 
 Scratch is expected in the hundreds of MiB; default hard aggregate scratch cap <=1 GiB. Logs/evidence have their own small byte/count retention limits.
+
+## Candidate boundary and evidence reuse
+
+REV8 distinguishes harness-only work from product-runtime work.
+
+- If implementation changes only `scripts/`, `benchmarks/`, workplans, tests, or qualification evidence and does **not** change packaged/runtime product behavior, the existing frozen product candidate remains applicable; affected harness checks may be rerun without inventing a new product candidate.
+- If implementation refactors any packaged `mdstats/` runtime source (for example to factor the exact checkpoint-started REPAIR2 rung helper), freeze a **new Git candidate commit** after that refactor and before final qualification. The Git commit plus a clean/non-shadowed working tree is the default candidate identity under Protocol 3.1; do not recreate redundant candidate-content hashing unless a real external/generated boundary requires it.
+- After a product-runtime refactor, rerun the focused v2 correctness tests that exercise the helper/runtime path. Rerun adjacent v1 regressions when the changed import/runtime surface could affect them. Rerun wheel/build/install/import because packaged bytes changed. Broad-suite reruns follow repository policy and attribution: unrelated known failures do not become an artificial zero-failure oracle.
+- Previously passed evidence whose material code/package surface is unchanged remains reusable.
+- Production MVIDX/reference/config/checkpoint digests remain separate material external-input identities regardless of the Git candidate boundary.
+
+This prevents the qualification-harness redesign from silently qualifying a different runtime candidate under stale evidence.
 
 ## Qualification stages
 
@@ -117,9 +134,11 @@ Focused tests remain authority for full search/rebase/rank-zero-fallback semanti
 
 ### LQ3 — exact checkpoint-started REPAIR2 micro-benchmark
 
-The current `_build_repair_from_checkpoints(...)` fresh-state initialization can trigger complete graph validation before checkpoint replacement. The qualification path MUST NOT use that expensive initialization.
+The qualification path MUST NOT enter the current fresh-state initialization that performs complete production validation before checkpoint replacement.
 
 Factor/reuse one exact private production rung helper that can start from an authenticated checkpoint state. Production full-ladder execution and qualification must share this helper. Qualification passes an evidence-only rung filter; it must not create/persist a truncated fake selection authority.
+
+Do not duplicate `_proposal`, `_better`, mutation, coverage, or obligation logic in benchmark code.
 
 Mandatory measured rungs: 128 and 256.
 
@@ -152,15 +171,17 @@ Do not use the historical MVSEL2 projection as current-candidate PASS evidence a
 
 #### Legacy baseline reuse
 
-The historical benchmark provides the legacy MVSEL1 same-host production baseline `B_hist = baseline_full_order_seconds` and is tied to the same production MVIDX digest.
+The historical production evidence provides the legacy MVSEL1 same-host baseline `B_hist = baseline_full_order_seconds`.
 
 Reuse `B_hist` only when:
 
-- current production MVIDX digest/counts match the benchmark;
-- execution is on the intended original workstation context (`local-user-ProBuild`) or an explicitly accepted equivalent same-host context;
-- the tracked legacy MVSEL1 comparator implementation used by the baseline is unchanged from the benchmark source Git head, verified by Git blob/diff identity for the legacy selector/comparator surface.
+- current production MVIDX digest/counts match the historical benchmark;
+- execution is on the intended original workstation context (`local-user-ProBuild`) or an explicitly accepted same-host equivalent;
+- the tracked legacy MVSEL1 comparator surface used by the baseline is unchanged from the historical benchmark source Git head, verified by Git blob/diff identity.
 
-If those conditions fail, the baseline component is `BLOCKED`; do not launch a full legacy replay automatically.
+The legacy comparator existed as tracked code at the historical Git head, so this compatibility check is meaningful even though the then-uncommitted v2 implementation is not source-bound by that SHA.
+
+If baseline compatibility fails, the baseline component is `BLOCKED`; do not launch a full legacy replay automatically.
 
 #### Current-candidate Phase A measurement
 
@@ -175,31 +196,29 @@ Record:
 - total measured Phase-A wall time from 128 to completion;
 - maximum current per-rank `(choose + mutation)` time.
 
-Conservatively upper-bound the unmeasured first 128 ranks by:
+Conservatively upper-bound unmeasured ranks 0..127:
 
 `phase_a_prefix_upper = 128 * max_current_phase_a_rank_seconds`.
 
-No historical MVSEL2 timing is needed for this bound.
+No historical MVSEL2 algorithm timing is used for this term.
 
 #### Current-candidate Phase B measurement
 
 From the exact current state at Phase-A completion:
 
 1. build the current exact lazy frontier once with `build_target_multi_view_lazy_frontier_v2(...)` and measure rebase wall time;
-2. admission must treat the rebase as a material memory event and must not start it if current headroom is insufficient;
+2. treat the rebase as a material memory event and do not start it unless admission predicts safe headroom;
 3. run exactly 32 current Phase-B choice + mutation ranks (or all remaining ranks if fewer than 32);
 4. require every chosen candidate to match the authenticated production master order;
 5. record the maximum current sampled Phase-B `(choose + mutation)` rank time.
 
-This is the same conservative projection shape as the historical production-density benchmark, but it is generated from the **current candidate** and does not execute the remaining ~15k ranks.
+This recreates the conservative projection method with the **current candidate** while executing only a few hundred production ranks, not the remaining ~15k.
 
 #### Current selector upper bound
 
-Define a conservative setup allowance:
+Use the historical cold-preflight measurement only as a deliberately inflated setup-cost guard, never as current candidate algorithm timing:
 
-`setup_upper = 1.25 * max(current_LQ1_reference_plus_forward_restore_seconds, historical_cold_preflight_total_seconds)`.
-
-The historical cold-preflight value is only a setup-cost bound; it is not used as current MVSEL2 algorithm timing.
+`setup_upper = max(2.0 * current_LQ1_reference_plus_forward_restore_seconds, 4.0 * historical_cold_preflight_total_seconds)`.
 
 Let:
 
@@ -214,7 +233,7 @@ Then:
 
 `selector_upper = 1.25 * (setup_upper + A_prefix + A_measured + R_current + max(0, N_target - N_phase_a) * B_rank_max)`.
 
-The outer 1.25 is the frozen qualification timing margin. This is deliberately conservative and uses current candidate execution for all selector hot-path terms.
+The outer 1.25 is the frozen qualification timing margin. All selector hot-path timing terms are current-candidate measurements; the historical setup number is multiplied by 4 solely to avoid undercharging unmeasured fresh-state setup.
 
 #### REPAIR2 upper bound
 
@@ -236,9 +255,9 @@ If no measured rung executes any proposal, add the allowed next rung. If proposa
 
 PASS requires `combined_speedup_lower >= 10.0`.
 
-The old historical MVSEL2 `~69x` projection may be reported only as a diagnostic cross-check. It is not an acceptance input for the rescued candidate.
+The old historical MVSEL2 `~69x` projection may be reported only as an advisory diagnostic cross-check. It is not an acceptance input for the rescued candidate.
 
-If the current bounded projection does not clear 10x, return product/performance evidence to implementation. If required baseline/rebase evidence cannot be established safely, report `BLOCKED` for a new bounded comparator. Never lower the threshold and never fall back to an unbounded replay.
+If the current bounded projection executes successfully but fails the frozen 10x floor, return a product/performance failure to implementation. If required baseline/rebase evidence cannot be established safely, report `BLOCKED` for a new bounded comparator. Never lower the threshold and never fall back to an unbounded replay.
 
 ### LQ5 — all-terminal cleanup and compact evidence
 
@@ -283,10 +302,11 @@ Acceptance-critical:
 - exact shared REPAIR2 path on mandatory measured rungs;
 - zero proposal full-state clones/no inverse mapping or mutation/no regression;
 - valid 16,384 checkpoint sentinel;
-- fresh current-candidate Phase-A/Phase-B selector projection;
 - compatible legacy same-host baseline;
+- fresh current-candidate Phase-A-from-128 + exact rebase + 32 Phase-B projection;
 - conservative current selector + repair combined `>=10x` lower bound;
-- safely admitted/contained execution and production non-mutation.
+- safely admitted/contained execution and production non-mutation;
+- correct candidate/evidence invalidation if packaged runtime code changes during R8 implementation.
 
 Advisory/nonblocking when material interpretation remains sound:
 
@@ -300,9 +320,9 @@ Do not let advisory evidence defects disqualify valid material results.
 ## Expected implementation change surface
 
 - `scripts/mvsel2_bounded_qualification.py` — supervisor/worker redesign, read-only capture, resource discovery/admission, aggregate monitoring, current selector projection, repair bound, cleanup/scavenging.
-- `mdstats/training_data/mvsel2_hardening_runtime.py` and/or `target_multi_view_repair_v2.py` — small private refactor to share exact checkpoint-started repair rung execution without fresh full-domain validation.
+- `mdstats/training_data/mvsel2_hardening_runtime.py` and/or `target_multi_view_repair_v2.py` — small private refactor only if necessary to share exact checkpoint-started repair rung execution without fresh full-domain validation.
 - production repair benchmark wrapper — bounded selected-rung mode with no duplicated repair science.
-- focused tests for read-only DB handling, resource admission/monitoring, exact recovery-state equality, repair helper equivalence, proposal-bound arithmetic, current selector projection arithmetic, legacy baseline compatibility checks, cleanup/scavenging, retry/failure classification.
+- focused tests for read-only DB handling, resource admission/monitoring, exact recovery-state equality, repair helper equivalence, proposal-bound arithmetic, current selector projection arithmetic, legacy baseline compatibility, candidate invalidation, cleanup/scavenging, retry/failure classification.
 - qualification run card/evidence schema.
 
 No public/scientific algorithm change is intended.
@@ -311,12 +331,12 @@ No public/scientific algorithm change is intended.
 
 | Gate | Status | Purpose |
 |---|---|---|
-| R8-G0 | PENDING | Freeze read-only authority capture, legacy-baseline compatibility surface, resource model, and projection arithmetic. |
+| R8-G0 | PENDING | Freeze read-only authority capture, legacy-baseline compatibility surface, candidate invalidation, resource model, and projection arithmetic. |
 | R8-G1 | PENDING | Implement one-worker supervisor, aggregate containment, ownership, cleanup/scavenging, bounded evidence retention. |
 | R8-G2 | PENDING | Implement LQ1/LQ2 without full-domain validation scan and exact state-equivalence tests. |
-| R8-G3 | PENDING | Factor checkpoint-started REPAIR2 helper; implement 128/256[/512/1024] benchmark and mandatory 16,384 sentinel. |
+| R8-G3 | PENDING | Factor checkpoint-started REPAIR2 helper if needed; implement 128/256[/512/1024] benchmark and mandatory 16,384 sentinel. |
 | R8-G4 | PENDING | Implement fresh current Phase-A-from-128 + exact rebase + 32 Phase-B projection and combined selector+repair >=10x bound. |
-| R8-G5 | PENDING | Focused harness/runtime/cleanup/failure tests and one-command small-fixture dry qualification. |
+| R8-G5 | PENDING | Freeze the resulting candidate boundary; rerun affected focused/package checks; run harness/cleanup/failure tests and one-command small-fixture dry qualification. |
 | R8-G6 | PENDING | Autonomous workstation qualification and compact evidence handoff to verification. |
 
 ## Design-revision triggers
