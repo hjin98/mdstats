@@ -1,48 +1,44 @@
 # DOC-MVSEL2 Repository Handoff State
 
-This file records the current coordination state for the MVSEL2 branch. It is not scientific authority.
+This file records current coordination state for the MVSEL2 branch. It is not scientific authority and is excluded from candidate product identity.
 
-## Current handoff
+## Governing authority
 
-- Active hardening workplan: `workplans/active/DOC-MVSEL2_HARDEN1.md`
-- Workplan ID/revision: `DOC-MVSEL2-HARDEN1` / `1`
-- Workplan SHA-256 at handoff: `ab9eb69673f3d6ea255f9d71c9d4b4b1ce1f1e8560e232a8add9d42b0e13e9ee`
-- Review protocol: `software-design-review` protocol `2.0.1`
-- Reviewed implementation base: `feat/mvsel2-forward-lazy` at `e24d5168ce01bf2d773339e1a91d5ded4871a57f`
+- Active implementation workplan: `workplans/active/DOC-MVSEL2_HARDEN1_V3.md`
+- Workplan ID/revision: `DOC-MVSEL2-HARDEN1-V3` / `1`
+- Workplan SHA-256: `ac674abd68dcc43f0fe8f559aecbe913b6e9ae79194e5ff7327b2de531e2716b`
+- Protocol: `3.0.0`
+- Analysis base: `e24d5168ce01bf2d773339e1a91d5ded4871a57f`
+- Target branch: `feat/mvsel2-forward-lazy`
+- Source-lineage workplan: `workplans/active/DOC-MVSEL2_HARDEN1.md` revision 1 / protocol 2.0.1
 - Original implementation workplan: `workplans/archive/DOC-MVSEL2_forward_lazy_selector.md` revision 4
-- Implementation branch: `feat/mvsel2-forward-lazy`
 - Gate approval: `AUTO`
-- Merge status: **DO NOT MERGE** until hardening H0-H6 pass.
+- Merge status: **DO NOT MERGE** until Protocol-v3 qualification and independent verification pass.
 
-## Review outcome
+## Current state
 
-The post-implementation review accepted the core MVSEL2 Phase-A/Phase-B forward/lazy selector design but found merge-blocking conformance gaps in the surrounding G5/G7/G8 integration:
+The v3 hardening implementation for H0-H4 is source-prepared. `PREPARED` is not a qualification or acceptance PASS. H5 target qualification has not run. H6 may finalize candidate documentation/generated product artifacts before qualification, but final evidence claims, workplan completion, archive movement, and merge-readiness remain downstream verification responsibilities.
 
-1. REPAIR2 defaults/policy and complete durable trace do not yet prove exact REPAIR1 semantic equivalence.
-2. Campaign MVSEL2/REPAIR2 currently project an already materialized full MVIDX1 object instead of consuming the native forward-only reader end-to-end.
-3. MVSTATE2 checkpoints are written, but interrupted campaign selection does not resume from them.
-4. REPAIR2 replays selector prefixes instead of consuming MVSTATE2 at the selector-to-repair boundary.
-5. REPAIR2 currently copies full forward state per proposal and has only 128/256 zero-swap production scaling evidence.
-6. Final qualification is not yet bound cleanly to the corrected code-under-test SHA, and the prior full non-slow suite was blocked at collection.
+The frozen scientific/algorithmic design remains unchanged: REPAIR2 mirrors REPAIR1 scientific semantics, v2 campaign execution uses native forward-only MVIDX state, interrupted MVSEL2 resumes from authenticated MVSTATE2 with exact fallback/rebase behavior, REPAIR2 reuses selector state only before divergence, rejected repair proposals do not clone full forward state, and production hardening requires the materializable fixed-eight ladder through rank 16,384.
 
-These are narrow hardening/integration defects. The selector scientific policy, Phase-A algorithm, Phase-B certification design, target sizes, coverage threshold, and MVIDX1 scientific identity are frozen and must not be redesigned under this handoff.
+## Division of responsibility
 
-## Implementation instruction
+Repository-local implementation closeout is owned by the implementation authority and should be completed before consuming target-environment qualification capacity. This includes source/test/harness construction, documentation and release-metadata truthfulness, permanent generated product artifacts, removal of temporary diagnostics, cheap/available structural checks, and candidate-freeze preparation.
 
-Codex continues on `feat/mvsel2-forward-lazy` and follows `DOC-MVSEL2-HARDEN1` starting at **H0 REVIEW-BASELINE**.
+Codex on the user's local workstation is reserved for the Qualification Handoff only: materialize the exact frozen candidate in the prescribed `mace` environment, prove a clean start state and candidate content identity, execute the enumerated target-environment/production-data checks, record evidence, and return exact failures to implementation. Codex must not redesign or broadly continue the workplan.
 
-Hardening gates are:
+## Qualification barrier
+
+Before the first qualification test, implementation must establish and bind:
 
 ```text
-H0 REVIEW-BASELINE
- -> H1 REPAIR2-SEM1
- -> H2 MVIDX-FWD-RUNTIME1
- -> H3 MVSTATE2-RESUME1
- -> H4 REPAIR2-SCALE1
- -> H5 QUAL-HARDEN1
- -> H6 CLOSEOUT-HARDEN1
+candidate_ref
+candidate_commit
+candidate_content_identity
+candidate_identity_policy
+Qualification Handoff
 ```
 
-After objective PASS, record evidence and continue automatically. Stop on persistent FAIL, BLOCKED, `STALE_WORKPLAN`, `DESIGN_REVISION_REQUIRED`, an irreversible/external action requiring approval, or a genuinely unresolved user decision.
+Qualification then runs with `product_source_mutation: FORBIDDEN`. Any required product/source correction returns to implementation, produces a new candidate identity, and invalidates dependent evidence as defined by the handoff.
 
-Do not rewrite the archived revision-4 workplan to conceal the failed review. The hardening workplan is the active transition authority; permanent architecture/specification edits occur only after the corresponding corrected implementation is accepted.
+GPU qualification remains `DEFERRED_NOT_RUN` unless it is genuinely executed on supported hardware.
