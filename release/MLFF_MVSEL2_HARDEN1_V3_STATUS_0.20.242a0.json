@@ -6,7 +6,7 @@
   "plan_revision": 1,
   "workplan_sha256": "ac674abd68dcc43f0fe8f559aecbe913b6e9ae79194e5ff7327b2de531e2716b",
   "protocol_version": "3.0.0",
-  "status": "PREQUALIFICATION_CLOSEOUT_IN_PROGRESS",
+  "status": "PREPARED_FOR_QUALIFICATION_BOOTSTRAP",
   "supersedes_acceptance_claims_in": "release/MLFF_MVSEL2_QUALIFICATION_0.20.242a0.json",
   "supersession_scope": [
     "final hardening acceptance",
@@ -22,7 +22,7 @@
     "H3_MVSTATE2_RESUME1": "PREPARED",
     "H4_REPAIR2_SCALE1": "PREPARED_WITH_FULL_LADDER_HARNESS",
     "H5_QUAL_HARDEN1": "PENDING_FROZEN_CANDIDATE_TARGET_QUALIFICATION",
-    "H6_CLOSEOUT_HARDEN1": "IN_PROGRESS"
+    "H6_CLOSEOUT_HARDEN1": "PREPARED"
   },
   "qualification": {
     "focused_v2": "NOT_RUN",
@@ -35,19 +35,21 @@
     "gpu": "DEFERRED_NOT_RUN"
   },
   "prequalification_closeout": {
+    "repository_local_closeout": "COMPLETE",
     "temporary_github_diagnostic_workflows": "REMOVED",
     "protocol_v3_repository_handoff": "UPDATED",
     "historical_patch_note_qualification_claims": "CORRECTED",
     "runtime_spec_markdown": "STAGED",
-    "runtime_spec_pdf_provenance": "PENDING_EXACT_REPOSITORY_RENDERER",
-    "candidate_content_identity": "PENDING_FINAL_CLEAN_CHECKOUT"
+    "runtime_spec_pdf_provenance": "COMPLETE_VERIFIED_PANDOC_3.10.2_TYPST_0.15.1",
+    "patch_notes_pdf_provenance": "COMPLETE_VERIFIED_PANDOC_3.10.2_TYPST_0.15.1",
+    "candidate_content_identity": "PENDING_WORKSTATION_CLEAN_CHECKOUT"
   },
   "current_blocker": {
-    "class": "PREQUALIFICATION_ARTIFACT_AND_TARGET_ENVIRONMENT",
-    "detail": "Repository-local closeout has removed temporary GitHub qualification workflows and corrected the Protocol-v3 handoff/history wording. The permanent HARDEN1-v3 runtime-spec PDF/provenance pair still requires the repository's recorded pandoc-typst-v2 renderer stack, which is not installed in the current ChatGPT runtime. After that implementation-owned artifact is committed, the exact final candidate must be materialized in the user's prescribed mace workstation environment so its clean state/content identity can be bound and target/production-data qualification can run.",
+    "class": "TARGET_ENVIRONMENT_IDENTITY_AND_QUALIFICATION",
+    "detail": "Deterministic repository-local closeout is complete, including permanent Markdown/PDF/provenance artifacts rendered under the established pandoc-typst-v2 policy and visual QA. The remaining work requires materializing the frozen candidate in the user's prescribed workstation environment, proving a clean checkout including untracked/shadowing-source review, computing and binding candidate_content_identity, instantiating the exact Protocol-v3 Qualification Handoff, and executing the target-runtime/production-data H5 checks without product-source mutation.",
     "required_to_clear": [
-      "generate and visually verify the HARDEN1-v3 runtime-spec PDF/provenance pair with the established repository renderer policy before candidate freeze",
-      "materialize the exact final candidate in a clean local checkout and compute candidate_content_identity",
+      "materialize the exact frozen candidate in a clean local checkout and compute candidate_content_identity",
+      "instantiate the exact candidate-bound Protocol-v3 Qualification Handoff",
       "execute the candidate-bound H5 workstation qualification using the prescribed mace environment and production campaign inputs"
     ]
   },
