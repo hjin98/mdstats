@@ -96,11 +96,6 @@ def run_preflight(repo: Path, scratch: Path, evidence: Path) -> dict[str, Any]:
             f"focused regression execution unavailable: pytest exit {pytest.returncode}"
         )
 
-    if importlib.util.find_spec("build") is None:
-        raise RuntimeError(
-            "Python package 'build' is unavailable for isolated wheel qualification"
-        )
-
     archive = preflight / "candidate.tar"
     archive_result = _run(
         ["git", "archive", "--format=tar", "HEAD", "-o", str(archive)],
@@ -122,8 +117,9 @@ def run_preflight(repo: Path, scratch: Path, evidence: Path) -> dict[str, Any]:
 
     wheel_dir = preflight / "wheel"
     wheel_dir.mkdir()
-    build = _run(
-        [
+    if importlib.util.find_spec("build") is not None:
+        wheel_builder = "python-build"
+        build_command = [
             sys.executable,
             "-m",
             "build",
@@ -131,13 +127,34 @@ def run_preflight(repo: Path, scratch: Path, evidence: Path) -> dict[str, Any]:
             "--no-isolation",
             "--outdir",
             str(wheel_dir),
-        ],
+        ]
+    else:
+        # `build` is a convenience frontend, not an mdstats dependency.  PEP-517
+        # wheel construction through pip is materially equivalent for this G5
+        # package check and avoids blocking qualification on an optional tool.
+        wheel_builder = "pip-wheel"
+        build_command = [
+            sys.executable,
+            "-m",
+            "pip",
+            "wheel",
+            "--no-deps",
+            "--no-build-isolation",
+            "--wheel-dir",
+            str(wheel_dir),
+            ".",
+        ]
+
+    build = _run(
+        build_command,
         cwd=source,
         timeout=90.0,
         log_path=evidence / "g5_wheel_build.log",
     )
     if build.returncode != 0:
-        raise PreflightProductFailure("clean candidate wheel build failed")
+        raise PreflightProductFailure(
+            f"clean candidate wheel build failed via {wheel_builder}"
+        )
     wheels = tuple(wheel_dir.glob("mdstats-*.whl"))
     if len(wheels) != 1:
         raise PreflightProductFailure(
@@ -203,6 +220,7 @@ def run_preflight(repo: Path, scratch: Path, evidence: Path) -> dict[str, Any]:
         "candidate_git_head": head,
         "focused_test_files": FOCUSED_TESTS,
         "focused_pytest_returncode": pytest.returncode,
+        "wheel_builder": wheel_builder,
         "wheel_name": wheel.name,
         "wheel_entry_count": len(names),
         "workplans_excluded": True,
