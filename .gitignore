@@ -24,6 +24,7 @@ htmlcov/
 *.log
 *.tmp
 *.bak
+qualification/bounded-mvsel2/
 
 # Large local data
 data/
