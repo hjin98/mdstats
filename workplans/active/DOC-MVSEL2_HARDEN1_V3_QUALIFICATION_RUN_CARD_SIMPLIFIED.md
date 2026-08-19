@@ -15,6 +15,18 @@ status: DESIGN_READY_FOR_IMPLEMENTATION
 
 REV5-REV7 execution designs are superseded. Qualification is a short current-candidate benchmark bound to the complete production graph, not a production replay.
 
+## Candidate boundary before execution
+
+R8 implementation may change qualification-only code or may require a small packaged-runtime refactor to share exact checkpoint-started REPAIR2 rung execution.
+
+- If only `scripts/`, `benchmarks/`, workplans, tests, or qualification/evidence code changes and packaged `mdstats/` runtime behavior is unchanged, the existing frozen product candidate remains applicable; rerun only materially affected harness checks.
+- If any packaged `mdstats/` runtime source changes, freeze a **new Git candidate commit** after the refactor and before final workstation qualification. Use that Git commit plus a clean/non-shadowed working tree as the default candidate identity.
+- After a packaged-runtime change, rerun affected focused v2 tests, adjacent v1 regressions when the changed runtime/import surface can affect them, and wheel/build/install/import because packaged bytes changed. Broad-suite reruns follow repository policy and attribution rather than an artificial universal zero-failure requirement.
+- Previously executed evidence remains reusable when its material code/package surface did not change.
+- Production MVIDX/reference/config/checkpoint digests remain separate material external-input identities.
+
+Do not qualify a runtime-refactored candidate under stale evidence from the earlier candidate.
+
 ## Intended one-command interface
 
 After R8-G1 through R8-G5 are implemented:
@@ -116,8 +128,10 @@ For current MVSEL2:
 Selector bound:
 
 ```text
-setup_upper = 1.25 * max(current_reference_plus_forward_restore_seconds,
-                         historical_cold_preflight_total_seconds)
+setup_upper = max(
+    2.0 * current_reference_plus_forward_restore_seconds,
+    4.0 * historical_cold_preflight_total_seconds
+)
 phase_a_prefix_upper = 128 * max_current_phase_a_rank_seconds
 selector_upper = 1.25 * (
     setup_upper
@@ -127,6 +141,8 @@ selector_upper = 1.25 * (
     + (16384 - phase_a_end) * max_current_phase_b_rank_seconds
 )
 ```
+
+The historical cold-preflight value is used only as a deliberately inflated setup-cost guard; all selector hot-path timing terms are current-candidate measurements.
 
 REPAIR2 bound from LQ3:
 
@@ -142,6 +158,8 @@ combined_speedup_lower = historical_mvsel1_baseline_seconds / (selector_upper + 
 If no measured repair rung evaluates proposals, add the allowed next rung; if proposal cost remains unmeasurable inside the bounded plan, mark performance `BLOCKED` rather than guessing.
 
 PASS requires `combined_speedup_lower >= 10.0`.
+
+If the bounded current-candidate projection executes successfully but falls below 10x, return product/performance failure to implementation. If required legacy-baseline compatibility or safe rebase evidence cannot be established, return `BLOCKED` for a new bounded comparator.
 
 Never lower the threshold or fall back to a full MVSEL1/MVSEL2 replay.
 
@@ -181,9 +199,10 @@ Acceptance-critical:
 - zero full-state proposal clones/no inverse mapping or mutation/no regression;
 - valid 16,384 checkpoint sentinel;
 - compatible legacy same-host baseline;
-- fresh current Phase-A + exact rebase + 32 Phase-B projection;
+- fresh current Phase-A-from-128 + exact rebase + 32 Phase-B projection;
 - conservative current selector+repair combined >=10x lower bound;
-- safe admission/containment and production non-mutation.
+- safe admission/containment and production non-mutation;
+- correct candidate/evidence invalidation if packaged runtime code changes during R8 implementation.
 
 Advisory/nonblocking:
 
