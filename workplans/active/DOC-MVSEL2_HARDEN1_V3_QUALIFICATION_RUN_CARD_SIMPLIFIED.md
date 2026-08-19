@@ -1,23 +1,23 @@
 ---
 kind: qualification-handoff
-handoff_id: DOC-MVSEL2-HARDEN1-V3-REV6-LIGHTWEIGHT
+handoff_id: DOC-MVSEL2-HARDEN1-V3-REV7-LIGHTWEIGHT
 protocol_version: 3.1.0
 workplan_id: DOC-MVSEL2-HARDEN1-V3
-plan_revision: 6
+plan_revision: 7
 status: DESIGN_READY_FOR_IMPLEMENTATION
 ---
 
-# MVSEL2 hardening — lightweight autonomous workstation qualification
+# MVSEL2 hardening — final lightweight autonomous workstation qualification
 
-## Objective
+## Governing design
 
-The workstation qualification must be a short benchmark, not a production replay. It binds to the complete LTA production graph while computing only the smallest materially sufficient recovery, repair, and performance probes.
+`workplans/active/DOC-MVSEL2_HARDEN1_V3_REV7_FINAL_LIGHTWEIGHT_QUALIFICATION.md`
 
-REV5 fixed the unsafe full-tree copying design but is now superseded. Do not use the old fixed 40 GiB / 4 GiB / 90-minute Q5/Q6 execution as the target design.
+REV5/REV6 execution designs are superseded. The workstation check is a short qualification benchmark bound to the complete production authority, not a production replay.
 
 ## Intended one-command interface
 
-After R6-G1 through R6-G5 are implemented, the normal workstation command should require only material inputs:
+After R7-G1 through R7-G5 are implemented, ordinary workstation execution should require only material inputs:
 
 ```bash
 set -euo pipefail
@@ -31,107 +31,168 @@ conda run -n mace python scripts/mvsel2_bounded_qualification.py \
   --domain "$DOMAIN"
 ```
 
-The script owns its bounded evidence/scratch roots, resource discovery, calibration, benchmark sizing, cleanup, and final summary. Codex/ChatGPT does not need to remain connected.
+The script owns resource discovery, machine-adaptive admission, one supervised compute worker, benchmark sizing, compact state/evidence, cleanup/scavenging, and final summary. Codex/ChatGPT does not need to remain connected.
 
-Explicit `--max-rss-*`, `--max-scratch-*`, or stricter wall limits may remain available as user caps, but ordinary execution must not require workstation-specific numbers.
+Explicit resource/time options may remain as stricter user caps. They must not be required for normal execution and must never silently raise discovered safe limits.
 
-## Resource-bounded execution
-
-The implemented driver must discover the effective machine allocation and derive:
-
-- hard safety containment;
-- a smaller planned operating envelope;
-- a short-work admission model.
+## Expected execution envelope
 
 Reference-workstation target:
 
-- normal total wall time: approximately 5–8 minutes;
-- default hard total wall boundary: approximately 15 minutes;
-- expected final evidence: small JSON/state/log-tail files;
-- expected scratch: hundreds of MiB, with a default hard maximum no larger than 1 GiB unless a future material requirement proves otherwise;
-- CPU benchmark execution: normally serial/single-worker unless a material production-path claim requires otherwise.
+- normal wall time: approximately 5-8 minutes;
+- default hard wall containment: approximately 15 minutes; never above 20 minutes without explicit user override;
+- scratch: normally hundreds of MiB, hard aggregate scratch cap <=1 GiB;
+- serial/single compute worker unless a material production path requires otherwise;
+- normal planned workload materially below hard containment.
 
-The driver must reduce optional benchmark work before approaching the hard boundary. Watchdog termination is emergency containment, not normal control flow.
+Hard-limit activation is exceptional containment, not ordinary benchmark control flow.
 
-Monitor aggregate owned-process RSS and host/cgroup memory pressure where available, not only one child PID. Missing secondary telemetry is nonblocking if the safe envelope remains conservatively established.
+## Production safety boundary
+
+The qualifier must:
+
+- authenticate the full 36,408-candidate / 165-family production graph and exact MVIDX1 digest/edge count;
+- keep production DB/config/native state read-only;
+- avoid constructing a writable `CampaignStore` on the production DB;
+- use read-only SQLite capture and explicit deserialization;
+- verify production identity remains stable across material execution;
+- never copy/mirror the complete `.mdstats` tree;
+- map the production reference/MVIDX once in the normal compute worker and reuse it across material checks.
+
+If production identity changes during the run, report `EXTERNAL_INPUT_CHANGED`/`BLOCKED`; do not classify the candidate as failed.
 
 ## Automatic stages
 
-### LQ0 — admission
+### LQ0 — admission and ownership
 
-Discover CPU/memory/storage/cgroup/job constraints, establish owned evidence/scratch directories, perform safe startup scavenging, and choose the initial benchmark plan.
+Discover effective CPU/memory/storage/cgroup/job constraints, apply stricter user caps, derive hard containment and a smaller operating envelope, create separate evidence/scratch roots with an ownership manifest, and safely scavenge only abandoned scratch proven to belong to this qualifier.
+
+Prefer delegated cgroup-v2 memory containment when safely available; otherwise use conservative admission plus process-group watchdog containment. Monitor aggregate owned-process RSS and host/cgroup pressure where available.
 
 ### LQ1 — production binding
 
-Read the real production reference and native forward-only MVIDX in place. Authenticate the 36,408-candidate / 165-family production graph, MVIDX digest/edge count, production selection ladder through 16,384, and inverse-unmapped v2 path. Query only a small deterministic candidate sample.
+Open the real reference and native forward-only MVIDX. Authenticate production counts/digests/edge count and the materializable ladder through 16,384. Query only a tiny deterministic forward-incidence sample and prove the v2 boundary does not open/map inverse arrays.
+
+No full candidate sweep or fresh full-problem feasibility validation is allowed.
 
 ### LQ2 — recovery micro-integration
 
-Automatically choose the smallest adjacent compatible production MVSTATE2 checkpoint pair, normally 128 -> 256.
+Use the real 128 -> 256 production MVSTATE2 checkpoint pair under the current standard policy.
 
-Copy only those checkpoint bundles to scratch, corrupt the newer scratch record, require runtime fallback to the older checkpoint, replay only the canonical selected-prefix delta, and compare the reconstructed forward state exactly with the authenticated newer checkpoint.
+Copy only those two checkpoint bundles to scratch. Restore both, corrupt only the newer scratch record, require runtime fallback to 128, and replay only canonical selected candidates 128..255 using the exact production score/select mutation primitives.
 
-Do not run selector search to 16,384.
+Do not run selector search and do not rebuild a fresh production forward state.
+
+Compare reconstructed versus authenticated 256 state exactly for:
+
+- selected order;
+- availability bitmap;
+- every family multiplicity array and coverage mass;
+- obligation counts and unsatisfied-required count;
+- correlation-unit counts;
+- representative utility.
 
 ### LQ3 — REPAIR2 micro-benchmark
 
-Run the exact REPAIR2 runtime path against an evidence-only prefix of the authenticated production ladder.
+The benchmark must share the exact production REPAIR2 rung implementation and start from authenticated checkpoint state. It must not enter the current fresh-state path that performs a complete production validation scan.
 
-Start at 128 and 256. Add 512 or another modest rung only when needed and only if calibration predicts comfortable completion. Stop when the representative claim is established.
+Mandatory measured rungs: 128 and 256.
 
-Require zero rejected-proposal full-state copies, no inverse mapping/mutation, default policy, and no coverage/hard-obligation regression.
+Add 512 only when proposal/timing/material evidence is insufficient; add at most 1024 if still needed and safely admitted. Do not escalate merely to force an accepted swap.
 
-Separately restore/authenticate the largest valid production MVSTATE2 checkpoint at or below 16,384 as a read-only large-rung compatibility sentinel. Do not compute REPAIR2 at 16,384 merely to qualify it.
+Measured-rung requirements:
 
-### LQ4 — performance sentinel
+- default REPAIR2 policy;
+- exact shared production repair logic;
+- zero proposal full-state clones;
+- no inverse mapping/mutation;
+- no coverage/hard-obligation regression;
+- correct checkpoint restore/replay mode;
+- wall/proposal/shell/resource telemetry needed for the bounded performance projection.
 
-Authenticate the existing same-production conservative performance evidence. Never launch a fresh full MVSEL1 replay.
+Separately restore/authenticate the highest materializable production checkpoint <=16,384. For the current ladder that means the **16,384 checkpoint itself is mandatory**. Do not substitute 8,192 when 16,384 is materializable. This is a read-only sentinel; no 16,384 repair computation is required solely for qualification.
 
-Run only a small deterministic current MVSEL2 timing sample on the real forward view when needed to bind the current candidate and detect a gross regression. Derive a conservative degradation-adjusted lower bound from the historical production evidence; the frozen threshold remains >=10x.
+### LQ4 — deterministic performance sentinel and combined-chain floor
 
-If the bound cannot be established safely, report the performance check `BLOCKED` for a new bounded comparator rather than launching an unbounded baseline.
+Never run a fresh full MVSEL1 production replay.
 
-### LQ5 — cleanup/report
+Authenticate `benchmarks/mlff_mvsel2_production_density_2026-08-18.json` against the current MVIDX1 graph.
 
-Write one compact summary plus per-material-check evidence. Preserve a bounded failure capsule/log tail. Remove all run-owned large scratch on PASS, product FAIL, BLOCKED, exceptions, SIGINT, and SIGTERM.
+Restore the 128 checkpoint and execute exact Phase-A choice+mutation for ranks 128..135. Every chosen candidate must match the authenticated production master order. Compare current summed `(choose + mutation)` time with the historical exact same-rank sum.
 
-At startup, safely scavenge abandoned prior scratch only when an ownership manifest proves it belongs to this qualifier.
+Define:
 
-## Material versus advisory results
+```text
+selector_slowdown = max(1, current_sum / historical_sum)
+selector_upper = historical_mvsel2_full_order_seconds * selector_slowdown * 1.25
+```
+
+If decision noise matters, extend the same deterministic sample up to 32 ranks; do not cherry-pick ranks.
+
+Include REPAIR2 in the combined chain. From LQ3:
+
+```text
+work_i = shell_size_i + proposals_i * candidate_count
+unit_seconds = max(rung_wall_seconds_i / max(1, work_i))
+P_cap = removal_shortlist_limit * (max_swaps_per_shell + max_passes_per_shell)
+work_upper_r = shell_size_r + P_cap * candidate_count
+repair_upper = 4.0 * unit_seconds * sum(work_upper_r over production rungs <=16384)
+combined_speedup_lower = historical_baseline_full_order_seconds / (selector_upper + repair_upper)
+```
+
+The factor 4 is the frozen qualification safety margin for incidence/cache variation. If no bounded measured rung evaluates any repair proposal, add the allowed next rung; if proposal cost still cannot be measured safely, the repair-performance component is `BLOCKED`, not guessed.
+
+PASS requires `combined_speedup_lower >= 10.0`.
+
+If the conservative lower bound cannot be established inside the bounded plan, return `BLOCKED`/`RETURN_TO_IMPLEMENTATION` for a new bounded comparator. Never lower the threshold or fall back to an unbounded V1 replay.
+
+### LQ5 — cleanup and compact evidence
+
+Use separate compact evidence and disposable scratch, e.g.:
+
+```text
+qualification/bounded-mvsel2/
+  evidence/<run-id>/...
+  scratch/<run-id>/OWNER.json
+  scratch/<run-id>/...
+  state.json
+  summary.json
+```
+
+On PASS, product FAIL, BLOCKED, harness exception, SIGINT, and SIGTERM, retain a compact diagnostic capsule, terminate owned children, close mappings/DB handles, and remove all owned large transient scratch before atomically publishing terminal state.
+
+Startup scavenging may delete abandoned scratch only when the ownership manifest proves it belongs to this qualifier. Evidence/log retention must itself be byte/count bounded.
+
+## Automatic resource-model recovery
+
+If containment unexpectedly activates during optional work, the supervisor may make one fresh-worker retry after cleaning prior scratch and removing optional repetitions/larger rungs. **Do not increase limits.**
+
+If containment activates during the minimum LQ1/LQ2/128+256 LQ3 path, or the reduced retry still cannot execute safely, classify the missing evidence as `BLOCKED`/harness-resource-model issue rather than product FAIL.
+
+A properly designed representative product measurement that violates a frozen resource/performance requirement remains a product failure.
+
+## Material versus advisory
 
 Acceptance-critical:
 
-- correct production graph/authority binding;
-- native forward-only production path;
-- exact bounded recovery fallback/prefix-state equivalence;
-- representative REPAIR2 no-copy/no-inverse/no-regression behavior;
-- large-rung checkpoint compatibility;
-- conservative >=10x performance bound;
-- production inputs remain unchanged;
-- execution is safely admitted and bounded.
+- stable full production identity/read-only authority;
+- native forward-only path;
+- exact 128->256 recovery-state equivalence;
+- exact shared REPAIR2 path on mandatory measured rungs;
+- zero full-state proposal clones/no inverse mapping or mutation/no regression;
+- valid 16,384 checkpoint sentinel;
+- conservative combined-chain >=10x lower bound;
+- safely admitted/contained execution and production non-mutation.
 
-Advisory/nonblocking when interpretation remains sound:
+Advisory/nonblocking when safety and interpretation remain adequate:
 
-- optional CPU/GPU/system telemetry;
-- extra benchmark repetitions or larger optional rungs;
-- detailed page-cache statistics;
-- cosmetic/report metadata;
-- optional profiling counters.
+- optional GPU/page-cache/system telemetry;
+- optional 512/1024 repair rungs once evidence is sufficient;
+- extra timing repetitions beyond the decision rule;
+- profiler counters and cosmetic metadata.
 
-An unexpected hard-limit hit caused by the qualification harness is not a product FAIL. Preserve compact evidence, clean scratch, continue independent safe checks when useful, and classify the missing required evidence as harness/resource-model defect or `BLOCKED` as appropriate.
-
-A properly designed representative check that violates a frozen product resource/performance requirement remains a product failure.
-
-## Existing evidence reuse
-
-Focused v2 correctness, adjacent v1 regressions, broad non-slow tests, and wheel/install/import qualification remain reusable while their material code/package surfaces remain unchanged.
-
-The current production-density performance evidence may be reused only under the REV6 LQ4 compatibility rule.
+Do not disqualify valid material evidence for an advisory defect.
 
 ## Implementation handoff
 
-Governing design:
-
-`workplans/active/DOC-MVSEL2_HARDEN1_V3_REV6_LIGHTWEIGHT_AUTONOMOUS_QUALIFICATION.md`
-
-Implementation should proceed through R6-G0 -> R6-G6 automatically unless a genuine material blocker or design contradiction emerges.
+Implementation should proceed automatically through R7-G0 -> R7-G6 unless a genuine material blocker or frozen-design contradiction emerges. Safe harness corrections, resource discovery details, evidence paths, and optional telemetry do not require another design revision.
