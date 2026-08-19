@@ -1,114 +1,137 @@
 ---
 kind: qualification-handoff
-handoff_id: DOC-MVSEL2-HARDEN1-V3-REV5-BOUNDED
-protocol_version: 3.0.0
+handoff_id: DOC-MVSEL2-HARDEN1-V3-REV6-LIGHTWEIGHT
+protocol_version: 3.1.0
 workplan_id: DOC-MVSEL2-HARDEN1-V3
-plan_revision: 5
-status: PREPARED_FOR_QUALIFICATION
+plan_revision: 6
+status: DESIGN_READY_FOR_IMPLEMENTATION
 ---
 
-# MVSEL2 hardening — bounded standalone workstation run card
+# MVSEL2 hardening — lightweight autonomous workstation qualification
 
-## One-command execution
+## Objective
 
-The old REV4 Q5/Q6/Q7 copy-based procedure is retired. Do not run the old qualification helpers that clone the complete `.mdstats` directory.
+The workstation qualification must be a short benchmark, not a production replay. It binds to the complete LTA production graph while computing only the smallest materially sufficient recovery, repair, and performance probes.
 
-From the `feat/mvsel2-forward-lazy` checkout, run:
+REV5 fixed the unsafe full-tree copying design but is now superseded. Do not use the old fixed 40 GiB / 4 GiB / 90-minute Q5/Q6 execution as the target design.
+
+## Intended one-command interface
+
+After R6-G1 through R6-G5 are implemented, the normal workstation command should require only material inputs:
 
 ```bash
 set -euo pipefail
 PROD_DB='$HOME/QE/lammps-proj/zeolite/05_mace_training/LTA/mpa0/FP32/mlff-campaign/.mdstats/campaign.sqlite3'
 CONFIG='$HOME/QE/lammps-proj/zeolite/05_mace_training/LTA/mpa0/FP32/campaign.toml'
 DOMAIN='label-domain-5aa1ee5d50cd0b23'
-ROOT='qualification/bounded-mvsel2'
-mkdir -p "$ROOT"
 
 conda run -n mace python scripts/mvsel2_bounded_qualification.py \
   --production-db "$PROD_DB" \
   --config "$CONFIG" \
-  --domain "$DOMAIN" \
-  --root "$ROOT" \
-  --max-rss-gib 40 \
-  --max-scratch-gib 4 \
-  --q5-timeout-seconds 5400 \
-  --q6-timeout-seconds 5400 \
-  --total-timeout-seconds 10800 \
-  2>&1 | tee "$ROOT/driver.log"
+  --domain "$DOMAIN"
 ```
 
-Codex/ChatGPT does not need to remain connected after this command starts.
+The script owns its bounded evidence/scratch roots, resource discovery, calibration, benchmark sizing, cleanup, and final summary. Codex/ChatGPT does not need to remain connected.
 
-The script defaults are 48 GiB RSS / 8 GiB scratch, but this run card intentionally uses the tighter 40 GiB / 4 GiB workstation envelope on a 64 GiB machine. Raising either ceiling should be deliberate and should follow inspection of the prior limit-hit evidence rather than being the first response.
+Explicit `--max-rss-*`, `--max-scratch-*`, or stricter wall limits may remain available as user caps, but ordinary execution must not require workstation-specific numbers.
 
-## Resource guarantees
+## Resource-bounded execution
 
-The driver is fail-closed:
+The implemented driver must discover the effective machine allocation and derive:
 
-- this run card caps the supervised worker at 40 GiB RSS;
-- this run card caps the whole qualification root at 4 GiB physical scratch blocks;
-- Q5 and Q6 each have a 90-minute wall limit;
-- the entire run has a 3-hour wall limit;
-- expensive work executes in supervised child processes;
-- a sustained RAM/disk limit violation or stage timeout terminates the worker;
-- the complete production `.mdstats` directory is never cloned;
-- production database/config are hashed before and after material stages.
+- hard safety containment;
+- a smaller planned operating envelope;
+- a short-work admission model.
 
-If a limit is hit, do not automatically raise it. Preserve `state.json` and the stage log and treat the limit hit as scaling evidence.
+Reference-workstation target:
 
-## What the driver does
+- normal total wall time: approximately 5–8 minutes;
+- default hard total wall boundary: approximately 15 minutes;
+- expected final evidence: small JSON/state/log-tail files;
+- expected scratch: hundreds of MiB, with a default hard maximum no larger than 1 GiB unless a future material requirement proves otherwise;
+- CPU benchmark execution: normally serial/single-worker unless a material production-path claim requires otherwise.
 
-### Q5 recovery
+The driver must reduce optional benchmark work before approaching the hard boundary. Watchdog termination is emergency containment, not normal control flow.
 
-Q5 reads the production reference/MVIDX in place, copies only MVSTATE2 checkpoint bundles into bounded scratch, corrupts the newest checkpoint record in scratch, identifies the highest older compatible checkpoint independently, resumes from it, and compares the result against the already-authenticated production selector digest.
+Monitor aggregate owned-process RSS and host/cgroup memory pressure where available, not only one child PID. Missing secondary telemetry is nonblocking if the safe envelope remains conservatively established.
 
-It does **not** copy the full campaign cache and does **not** run a redundant uninterrupted rank-zero production selector.
+## Automatic stages
 
-Transient Q5 checkpoint scratch is deleted after PASS.
+### LQ0 — admission
 
-### Q6 REPAIR2 production ladder
+Discover CPU/memory/storage/cgroup/job constraints, establish owned evidence/scratch directories, perform safe startup scavenging, and choose the initial benchmark plan.
 
-Q6 invokes the existing read-only production REPAIR2 benchmark directly against the production database and native forward-only MVIDX state. It measures the fixed-eight ladder through 16,384 under the watchdog.
+### LQ1 — production binding
 
-### Q7 performance
+Read the real production reference and native forward-only MVIDX in place. Authenticate the 36,408-candidate / 165-family production graph, MVIDX digest/edge count, production selection ladder through 16,384, and inverse-unmapped v2 path. Query only a small deterministic candidate sample.
 
-Q7 does not launch a fresh multi-hour/day MVSEL1 replay. It authenticates the existing conservative production-density benchmark against the current MVIDX1 content digest, 36,408 candidates, and 165 families. The bound evidence must still report >=10x; otherwise Q7 fails and a new bounded comparator must be designed.
+### LQ2 — recovery micro-integration
 
-## Restart behavior
+Automatically choose the smallest adjacent compatible production MVSTATE2 checkpoint pair, normally 128 -> 256.
 
-The driver writes:
+Copy only those checkpoint bundles to scratch, corrupt the newer scratch record, require runtime fallback to the older checkpoint, replay only the canonical selected-prefix delta, and compare the reconstructed forward state exactly with the authenticated newer checkpoint.
 
-```text
-qualification/bounded-mvsel2/state.json
-```
+Do not run selector search to 16,384.
 
-after every stage. Rerunning the same command reuses PASS stages only if the production DB/config identity is unchanged. This makes terminal loss, shell interruption, and agent/token limits non-destructive.
+### LQ3 — REPAIR2 micro-benchmark
 
-The final compact outputs are:
+Run the exact REPAIR2 runtime path against an evidence-only prefix of the authenticated production ladder.
 
-```text
-qualification/bounded-mvsel2/q5_recovery.json
-qualification/bounded-mvsel2/q6_repair2_production.json
-qualification/bounded-mvsel2/q7_performance_reuse.json
-qualification/bounded-mvsel2/summary.json
-qualification/bounded-mvsel2/state.json
-```
+Start at 128 and 256. Add 512 or another modest rung only when needed and only if calibration predicts comfortable completion. Stop when the representative claim is established.
 
-plus stage logs.
+Require zero rejected-proposal full-state copies, no inverse mapping/mutation, default policy, and no coverage/hard-obligation regression.
 
-## Existing evidence
+Separately restore/authenticate the largest valid production MVSTATE2 checkpoint at or below 16,384 as a read-only large-rung compatibility sentinel. Do not compute REPAIR2 at 16,384 merely to qualify it.
 
-Q1 focused correctness, Q2 adjacent V1 compatibility, and Q4 wheel/install qualification remain reusable while their product/package surfaces remain unchanged. This workstation command is for the remaining production-scale qualification only.
+### LQ4 — performance sentinel
 
-## Stop conditions
+Authenticate the existing same-production conservative performance evidence. Never launch a fresh full MVSEL1 replay.
 
-Stop and return the evidence if any of these occurs:
+Run only a small deterministic current MVSEL2 timing sample on the real forward view when needed to bind the current candidate and detect a gross regression. Derive a conservative degradation-adjusted lower bound from the historical production evidence; the frozen threshold remains >=10x.
 
-- `RSS_LIMIT_EXCEEDED`;
-- `SCRATCH_LIMIT_EXCEEDED`;
-- `TIME_LIMIT_EXCEEDED`;
-- Q5 fallback/digest mismatch;
-- Q6 fixed-eight/no-copy/no-inverse assertion failure;
-- Q7 graph-identity mismatch or conservative projected speedup <10x;
-- production DB/config hash changes during qualification.
+If the bound cannot be established safely, report the performance check `BLOCKED` for a new bounded comparator rather than launching an unbounded baseline.
 
-These are substantive signals. Do not work around them by making the workstation unbounded.
+### LQ5 — cleanup/report
+
+Write one compact summary plus per-material-check evidence. Preserve a bounded failure capsule/log tail. Remove all run-owned large scratch on PASS, product FAIL, BLOCKED, exceptions, SIGINT, and SIGTERM.
+
+At startup, safely scavenge abandoned prior scratch only when an ownership manifest proves it belongs to this qualifier.
+
+## Material versus advisory results
+
+Acceptance-critical:
+
+- correct production graph/authority binding;
+- native forward-only production path;
+- exact bounded recovery fallback/prefix-state equivalence;
+- representative REPAIR2 no-copy/no-inverse/no-regression behavior;
+- large-rung checkpoint compatibility;
+- conservative >=10x performance bound;
+- production inputs remain unchanged;
+- execution is safely admitted and bounded.
+
+Advisory/nonblocking when interpretation remains sound:
+
+- optional CPU/GPU/system telemetry;
+- extra benchmark repetitions or larger optional rungs;
+- detailed page-cache statistics;
+- cosmetic/report metadata;
+- optional profiling counters.
+
+An unexpected hard-limit hit caused by the qualification harness is not a product FAIL. Preserve compact evidence, clean scratch, continue independent safe checks when useful, and classify the missing required evidence as harness/resource-model defect or `BLOCKED` as appropriate.
+
+A properly designed representative check that violates a frozen product resource/performance requirement remains a product failure.
+
+## Existing evidence reuse
+
+Focused v2 correctness, adjacent v1 regressions, broad non-slow tests, and wheel/install/import qualification remain reusable while their material code/package surfaces remain unchanged.
+
+The current production-density performance evidence may be reused only under the REV6 LQ4 compatibility rule.
+
+## Implementation handoff
+
+Governing design:
+
+`workplans/active/DOC-MVSEL2_HARDEN1_V3_REV6_LIGHTWEIGHT_AUTONOMOUS_QUALIFICATION.md`
+
+Implementation should proceed through R6-G0 -> R6-G6 automatically unless a genuine material blocker or design contradiction emerges.
