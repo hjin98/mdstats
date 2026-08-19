@@ -73,10 +73,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e . pytest psutil PyYAML build
       - name: Adjacent v1 regressions
-        run: |
-          python -m pytest -q \
-            tests/test_mlff_target_data2c_repair1.py \
-            tests/test_mlff_target_data2c_repair2_optin.py
+        run: python -m pytest -q tests/test_mlff_target_data2c_repair1.py
       - name: Full non-slow suite
         run: python -m pytest -q -m 'not slow'
       - name: Build wheel
