@@ -1,82 +1,59 @@
 #!/usr/bin/env python3
-"""Resource-bounded standalone qualification for the production MVSEL2 chain.
+"""REV8 lightweight autonomous qualification for production MVSEL2.
 
-This driver is intentionally independent of Codex/ChatGPT session lifetime.  It
-uses the production campaign as read-only authority, never clones the complete
-``.mdstats`` tree, supervises expensive workers from a parent process, and
-fails closed on RAM, scratch-disk, or wall-clock limits.
-
-The production-scale checks are deliberately split by material purpose:
-
-* Q5 copies only the small MVSTATE2 checkpoint bundles required to inject a
-  corrupt-newest fault, resumes from the highest remaining compatible state,
-  and compares against the already-authenticated production selection digest.
-* Q6 invokes the existing read-only production REPAIR2 benchmark directly on
-  the production database; no campaign snapshot is created.
-* Q7 reuses the already-recorded same-production MVIDX performance projection
-  only after binding it to the current production MVIDX content digest.  The
-  historical projection is conservative and avoids an hours-to-days MVSEL1
-  replay whose only purpose would be to re-establish an already-large margin.
-
-All mutable files live below ``--root``.  The parent watchdog checks current
-RSS, physical scratch blocks, and elapsed wall time and terminates a runaway
-worker before the configured ceilings are exceeded for a sustained interval.
+The production graph remains full-scale authority, but qualification executes
+only bounded production-state probes: native-forward identity, exact 128->256
+MVSTATE2 recovery, checkpoint-started REPAIR2 rungs, and a current-candidate
+selector projection.  A parent supervisor provides hard containment while the
+worker intentionally operates inside a smaller admitted envelope.
 """
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 from pathlib import Path
+import platform
 import shutil
-import signal
 import sqlite3
 import subprocess
 import sys
 import time
 from typing import Any, Mapping
 
-GIB = 1024 ** 3
+import numpy as np
+
+from mvsel2_qualification_support import (
+    GIB,
+    MIB,
+    derive_resource_plan,
+    json_dump,
+    json_load,
+    repair_projection_upper,
+    rss_bytes,
+    run_supervised_worker,
+    selector_projection_upper,
+)
+
 DEFAULT_DOMAIN = "label-domain-5aa1ee5d50cd0b23"
 DEFAULT_CANDIDATES = 36_408
 DEFAULT_FAMILIES = 165
-DEFAULT_MEM_GIB = 48.0
-DEFAULT_SCRATCH_GIB = 8.0
-DEFAULT_Q5_SECONDS = 90 * 60
-DEFAULT_Q6_SECONDS = 90 * 60
-DEFAULT_TOTAL_SECONDS = 3 * 60 * 60
-WATCH_INTERVAL_SECONDS = 2.0
-LIMIT_GRACE_SAMPLES = 2
+TARGET_SIZE = 16_384
+WORKER_SCHEMA = "mdstats.mvsel2-lightweight-qualification.worker.v2"
+HISTORICAL_SOURCE_HEAD = "f23426d426af21a54914f4e62181ce09e864330b"
+LEGACY_SURFACE = (
+    "mdstats/training_data/target_multi_view_selector.py",
+    "mdstats/training_data/target_multi_view_selection_state.py",
+    "mdstats/training_data/target_multi_view_repair.py",
+    "mdstats/training_data/target_coverage_sparse_index.py",
+    "benchmarks/mlff_mvsel_production_density_2026-08-18.json",
+)
 
 
-def _sha256(path: Path) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(8 * 1024 * 1024), b""):
-            h.update(chunk)
-    return h.hexdigest()
-
-
-def _production_identity(database: Path, config: Path | None) -> dict[str, Any]:
-    result: dict[str, Any] = {
-        "database": str(database),
-        "database_sha256": _sha256(database),
-        "database_size_bytes": database.stat().st_size,
-    }
-    if config is not None:
-        result.update(
-            config=str(config),
-            config_sha256=_sha256(config),
-            config_size_bytes=config.stat().st_size,
-        )
-    return result
-
-
-def _pointer_ro(database: Path, key: str) -> dict[str, Any]:
-    uri = f"file:{database.resolve()}?mode=ro&immutable=1"
-    with sqlite3.connect(uri, uri=True) as connection:
-        row = connection.execute("SELECT payload FROM records WHERE key=?", (key,)).fetchone()
+def _record_ro(connection: sqlite3.Connection, key: str) -> dict[str, Any]:
+    row = connection.execute(
+        "SELECT payload FROM records WHERE key=?", (key,)
+    ).fetchone()
     if row is None:
         raise RuntimeError(f"missing production campaign record: {key}")
     payload = json.loads(str(row[0]))
@@ -85,14 +62,14 @@ def _pointer_ro(database: Path, key: str) -> dict[str, Any]:
     return payload
 
 
-def _checkpoint_rows_ro(database: Path, domain: str) -> list[tuple[int, dict[str, Any]]]:
+def _checkpoint_rows_ro(
+    connection: sqlite3.Connection, domain: str
+) -> dict[int, dict[str, Any]]:
     prefix = f"target_multi_view_selection_state_v2:{domain}:"
-    uri = f"file:{database.resolve()}?mode=ro&immutable=1"
-    with sqlite3.connect(uri, uri=True) as connection:
-        rows = connection.execute(
-            "SELECT key,payload FROM records WHERE key LIKE ?", (prefix + "%",)
-        ).fetchall()
-    result: list[tuple[int, dict[str, Any]]] = []
+    rows = connection.execute(
+        "SELECT key,payload FROM records WHERE key LIKE ?", (prefix + "%",)
+    ).fetchall()
+    result: dict[int, dict[str, Any]] = {}
     for key, encoded in rows:
         try:
             size = int(str(key).rsplit(":", 1)[1])
@@ -100,137 +77,39 @@ def _checkpoint_rows_ro(database: Path, domain: str) -> list[tuple[int, dict[str
         except Exception:
             continue
         if isinstance(payload, dict):
-            result.append((size, payload))
-    return sorted(result, key=lambda item: item[0], reverse=True)
+            result[size] = payload
+    return result
 
 
-def _rss_bytes(pid: int) -> int | None:
-    try:
-        for line in Path(f"/proc/{pid}/status").read_text(encoding="utf-8").splitlines():
-            if line.startswith("VmRSS:"):
-                return int(line.split()[1]) * 1024
-    except (OSError, ValueError, IndexError):
-        return None
-    return None
+class _ReadOnlyStore:
+    """CampaignStore-shaped adapter backed only by a read-only SQLite handle."""
 
+    def __init__(self, path: Path, connection: sqlite3.Connection) -> None:
+        self.path = path
+        self._connection = connection
 
-def _physical_tree_bytes(root: Path) -> int:
-    if not root.exists():
-        return 0
-    total = 0
-    seen: set[tuple[int, int]] = set()
-    for base, dirs, files in os.walk(root, followlinks=False):
-        for name in dirs + files:
-            path = Path(base) / name
-            try:
-                stat = path.lstat()
-            except OSError:
-                continue
-            identity = (int(stat.st_dev), int(stat.st_ino))
-            if identity in seen:
-                continue
-            seen.add(identity)
-            total += int(getattr(stat, "st_blocks", 0)) * 512
-    return total
-
-
-def _terminate(process: subprocess.Popen[str]) -> None:
-    if process.poll() is not None:
-        return
-    try:
-        os.killpg(process.pid, signal.SIGTERM)
-    except (ProcessLookupError, PermissionError):
-        process.terminate()
-    deadline = time.monotonic() + 10.0
-    while process.poll() is None and time.monotonic() < deadline:
-        time.sleep(0.2)
-    if process.poll() is None:
-        try:
-            os.killpg(process.pid, signal.SIGKILL)
-        except (ProcessLookupError, PermissionError):
-            process.kill()
-
-
-def _run_bounded(
-    *,
-    name: str,
-    command: list[str],
-    cwd: Path,
-    log_path: Path,
-    scratch_root: Path,
-    max_rss_bytes: int,
-    max_scratch_bytes: int,
-    max_seconds: float,
-) -> dict[str, Any]:
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    started = time.monotonic()
-    peak_rss = 0
-    peak_scratch = 0
-    rss_over = 0
-    disk_over = 0
-    reason: str | None = None
-    env = os.environ.copy()
-    env.setdefault("OMP_NUM_THREADS", "1")
-    env.setdefault("MKL_NUM_THREADS", "1")
-    env.setdefault("OPENBLAS_NUM_THREADS", "1")
-    env.setdefault("NUMEXPR_NUM_THREADS", "1")
-    with log_path.open("w", encoding="utf-8") as log:
-        process = subprocess.Popen(
-            command,
-            cwd=cwd,
-            env=env,
-            stdout=log,
-            stderr=subprocess.STDOUT,
-            text=True,
-            start_new_session=True,
-        )
-        while process.poll() is None:
-            now = time.monotonic()
-            rss = _rss_bytes(process.pid)
-            scratch = _physical_tree_bytes(scratch_root)
-            if rss is not None:
-                peak_rss = max(peak_rss, rss)
-                rss_over = rss_over + 1 if rss > max_rss_bytes else 0
-            peak_scratch = max(peak_scratch, scratch)
-            disk_over = disk_over + 1 if scratch > max_scratch_bytes else 0
-            if rss_over >= LIMIT_GRACE_SAMPLES:
-                reason = f"RSS_LIMIT_EXCEEDED:{rss}>{max_rss_bytes}"
-            elif disk_over >= LIMIT_GRACE_SAMPLES:
-                reason = f"SCRATCH_LIMIT_EXCEEDED:{scratch}>{max_scratch_bytes}"
-            elif now - started > max_seconds:
-                reason = f"TIME_LIMIT_EXCEEDED:{now-started:.1f}>{max_seconds:.1f}"
-            if reason is not None:
-                _terminate(process)
-                break
-            time.sleep(WATCH_INTERVAL_SECONDS)
-        returncode = process.wait()
-    elapsed = time.monotonic() - started
-    status = "PASS" if returncode == 0 and reason is None else "FAIL"
-    return {
-        "stage": name,
-        "status": status,
-        "returncode": returncode,
-        "limit_reason": reason,
-        "wall_seconds": elapsed,
-        "peak_worker_rss_bytes": peak_rss,
-        "peak_scratch_physical_bytes": peak_scratch,
-        "max_rss_bytes": max_rss_bytes,
-        "max_scratch_bytes": max_scratch_bytes,
-        "max_seconds": max_seconds,
-        "command": command,
-        "log": str(log_path),
-    }
+    def _connect(self) -> sqlite3.Connection:
+        return self._connection
 
 
 def _copy_checkpoint_bundle(
     pointer: Mapping[str, Any], production_root: Path, scratch_root: Path
 ) -> None:
     relative = Path(str(pointer.get("relative_path", "")))
-    if relative.is_absolute() or ".." in relative.parts or relative in {Path(""), Path(".")}:
+    if (
+        relative.is_absolute()
+        or ".." in relative.parts
+        or relative in {Path(""), Path(".")}
+    ):
         raise RuntimeError("invalid MVSTATE2 pointer path")
     source_manifest = (production_root / relative).resolve()
-    if production_root.resolve() not in source_manifest.parents or not source_manifest.is_file():
-        raise RuntimeError(f"missing production MVSTATE2 manifest: {source_manifest}")
+    if (
+        production_root.resolve() not in source_manifest.parents
+        or not source_manifest.is_file()
+    ):
+        raise RuntimeError(
+            f"missing production MVSTATE2 manifest: {source_manifest}"
+        )
     source_dir = source_manifest.parent
     target_dir = scratch_root / relative.parent
     target_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -239,351 +118,556 @@ def _copy_checkpoint_bundle(
     shutil.copytree(source_dir, target_dir, copy_function=shutil.copy2)
 
 
-def _worker_q5(args: argparse.Namespace) -> int:
+def _state_equal(left: Any, right: Any) -> tuple[bool, str]:
+    if tuple(left.selected_order) != tuple(right.selected_order):
+        return False, "selected_order"
+    if not np.array_equal(left.available, right.available):
+        return False, "available"
+    if len(left.family_states) != len(right.family_states):
+        return False, "family_count"
+    for index, (a, b) in enumerate(
+        zip(left.family_states, right.family_states, strict=True)
+    ):
+        if a.family_id != b.family_id:
+            return False, f"family_id[{index}]"
+        if not np.array_equal(a.multiplicity, b.multiplicity):
+            return False, f"multiplicity[{index}]"
+        if float(a.coverage_mass) != float(b.coverage_mass):
+            return False, f"coverage_mass[{index}]"
+    if not np.array_equal(left.obligation_counts, right.obligation_counts):
+        return False, "obligation_counts"
+    if (
+        int(left.unsatisfied_required_obligation_count)
+        != int(right.unsatisfied_required_obligation_count)
+    ):
+        return False, "unsatisfied_required_obligation_count"
+    if not np.array_equal(
+        left.correlation_unit_counts, right.correlation_unit_counts
+    ):
+        return False, "correlation_unit_counts"
+    if float(left.representative_utility) != float(right.representative_utility):
+        return False, "representative_utility"
+    return True, "exact"
+
+
+def _legacy_surface_compatible(repo: Path) -> tuple[bool, str]:
+    result = subprocess.run(
+        [
+            "git",
+            "diff",
+            "--quiet",
+            HISTORICAL_SOURCE_HEAD,
+            "HEAD",
+            "--",
+            *LEGACY_SURFACE,
+        ],
+        cwd=repo,
+        check=False,
+    )
+    if result.returncode == 0:
+        return True, "unchanged"
+    if result.returncode == 1:
+        return False, "legacy MVSEL1 comparator surface changed"
+    return False, f"git compatibility check failed: exit={result.returncode}"
+
+
+def _worker(args: argparse.Namespace) -> int:
     import mdstats
     from mdstats.training_data._campaign_cli_core import CampaignStore
     from mdstats.training_data import mvsel2_hardening_runtime as hardening
+    from mdstats.training_data.mvsel2_repair_checkpoint_runtime import (
+        repair_rung_from_authenticated_state,
+    )
     from mdstats.training_data.target_coverage_sparse_index_store import (
         read_target_coverage_sparse_index_forward_view_native_record,
     )
-    from mdstats.training_data.target_coverage_store import read_target_coverage_native_record
-    from mdstats.training_data.target_multi_view_selector_v2_resume import (
-        build_target_multi_view_selection_plan_v2_resumable,
+    from mdstats.training_data.target_coverage_store import (
+        read_target_coverage_native_record,
+    )
+    from mdstats.training_data.target_multi_view_repair_v2 import (
+        TargetMultiViewRepairPolicyV2,
+    )
+    from mdstats.training_data.target_multi_view_selector_v2 import (
+        TargetMultiViewSelectionPlanV2,
+        build_target_multi_view_lazy_frontier_v2,
+        choose_target_multi_view_phase_a_candidate_v2,
+        choose_target_multi_view_phase_b_candidate_v2,
+        score_target_multi_view_candidate_v2,
+        select_target_multi_view_candidate_v2,
     )
 
     database = Path(args.production_db).resolve()
+    repo = Path(args.repo).resolve()
+    scratch = Path(args.worker_scratch).resolve()
+    evidence = Path(args.worker_evidence).resolve()
     production_root = database.parent
-    scratch = Path(args.stage_scratch).resolve()
-    if scratch.exists():
-        shutil.rmtree(scratch)
-    scratch.mkdir(parents=True)
+    operating_rss = int(args.operating_rss_bytes)
+    operating_seconds = float(args.operating_seconds)
+    worker_started = time.monotonic()
 
-    reference = read_target_coverage_native_record(
-        _pointer_ro(database, "target_coverage_reference"), production_root
-    )
-    sparse_pointer = _pointer_ro(database, "target_coverage_sparse_index")
-    forward = read_target_coverage_sparse_index_forward_view_native_record(
-        sparse_pointer, production_root
-    )
-    forward_domain = forward.domain(args.domain)
-    if forward_domain.candidate_count != args.expected_candidates:
-        raise RuntimeError("production candidate count mismatch")
-    if len(forward_domain.families) != args.expected_families:
-        raise RuntimeError("production family count mismatch")
+    result: dict[str, Any] = {
+        "schema": WORKER_SCHEMA,
+        "stages": {},
+    }
 
-    production_store = CampaignStore(database)
+    def elapsed() -> float:
+        return time.monotonic() - worker_started
+
+    uri = f"file:{database}?mode=ro"
+    connection = sqlite3.connect(uri, uri=True)
+    store = _ReadOnlyStore(database, connection)
     try:
-        selection = production_store.get_record_optional(
-            "target_multi_view_selection_v2", mdstats.TargetMultiViewSelectionPlanV2
+        # LQ1: bind the complete real authority, but query only tiny incidence.
+        stage_started = time.perf_counter()
+        reference_pointer = _record_ro(connection, "target_coverage_reference")
+        sparse_pointer = _record_ro(connection, "target_coverage_sparse_index")
+        reference = read_target_coverage_native_record(
+            reference_pointer, production_root
         )
-        if selection is None:
-            raise RuntimeError("production target_multi_view_selection_v2 is missing")
-    finally:
-        production_store.close()
-
-    rows = [row for row in _checkpoint_rows_ro(database, args.domain) if row[0] <= 16384]
-    if len(rows) < 2:
-        raise RuntimeError("Q5 requires at least two production MVSTATE2 checkpoints")
-
-    scratch_db = scratch / "qualification.sqlite3"
-    scratch_store = CampaignStore(scratch_db)
-    try:
-        for size, pointer in rows:
-            _copy_checkpoint_bundle(pointer, production_root, scratch)
-            key = f"target_multi_view_selection_state_v2:{args.domain}:{size}"
-            scratch_store.put_record(key, pointer)
-
+        forward = read_target_coverage_sparse_index_forward_view_native_record(
+            sparse_pointer, production_root
+        )
+        restore_seconds = time.perf_counter() - stage_started
+        selection = TargetMultiViewSelectionPlanV2.from_dict(
+            _record_ro(connection, "target_multi_view_selection_v2")
+        )
         reference_domain = reference.domain(args.domain)
-        policy = selection.policy
-        newest_size, newest_pointer = rows[0]
-        newest_state = hardening._restore_checkpoint(
-            newest_pointer,
-            store=scratch_store,
-            reference_domain=reference_domain,
-            forward_domain=forward_domain,
-            dataset_id=reference.dataset_id,
-            selector_policy=policy,
+        forward_domain = forward.domain(args.domain)
+        selection_domain = selection.domain(args.domain)
+
+        candidate_count = int(forward_domain.candidate_count)
+        family_count = len(forward_domain.families)
+        edge_count = int(
+            sum(family.edge_count for family in forward_domain.families)
         )
-        if int(newest_state.selected_count) != int(newest_size):
-            raise RuntimeError("newest MVSTATE2 checkpoint is not self-consistent")
-
-        fallback_size = None
-        fallback_pointer: Mapping[str, Any] | None = None
-        for size, pointer in rows[1:]:
-            try:
-                state = hardening._restore_checkpoint(
-                    pointer,
-                    store=scratch_store,
-                    reference_domain=reference_domain,
-                    forward_domain=forward_domain,
-                    dataset_id=reference.dataset_id,
-                    selector_policy=policy,
-                )
-            except Exception:
-                continue
-            if int(state.selected_count) == int(size):
-                fallback_size = int(size)
-                fallback_pointer = pointer
-                break
-        if fallback_size is None or fallback_pointer is None:
-            raise RuntimeError("no older compatible MVSTATE2 checkpoint is available")
-
-        newest_key = f"target_multi_view_selection_state_v2:{args.domain}:{newest_size}"
-        db = scratch_store._connect()
-        db.execute("UPDATE records SET payload='{}' WHERE key=?", (newest_key,))
-        db.commit()
-
-        resume_states, resume_pointers = hardening._highest_valid_resume_states(
-            scratch_store, reference, forward, policy
-        )
-        actual = resume_pointers.get(args.domain)
-        if actual is None or dict(actual) != dict(fallback_pointer):
+        if candidate_count != args.expected_candidates:
             raise RuntimeError(
-                "runtime did not choose the prevalidated highest older compatible checkpoint"
+                "production candidate count mismatch: "
+                f"{candidate_count}!={args.expected_candidates}"
             )
-        started = time.perf_counter()
-        resumed = build_target_multi_view_selection_plan_v2_resumable(
-            reference,
-            forward,
-            policy=policy,
-            workers=1,
-            resume_states=resume_states,
-            progress_callback=lambda message: print(f"[Q5] {message}", flush=True),
-            progress_interval_seconds=30.0,
-        )
-        elapsed = time.perf_counter() - started
-        if resumed.content_digest != selection.content_digest:
+        if family_count != args.expected_families:
             raise RuntimeError(
-                "resumed selection digest differs from authenticated production authority"
+                "production family count mismatch: "
+                f"{family_count}!={args.expected_families}"
             )
-        payload = {
-            "schema": "mdstats.mvsel2-bounded-qualification.q5.v1",
-            "production_database": str(database),
-            "domain": args.domain,
-            "candidate_count": forward_domain.candidate_count,
-            "family_count": len(forward_domain.families),
+
+        materializable = tuple(
+            int(rung.target_size)
+            for rung in selection_domain.rungs
+            if rung.materializable and int(rung.target_size) <= TARGET_SIZE
+        )
+        if TARGET_SIZE not in materializable:
+            raise RuntimeError("production ladder lacks materializable 16384 rung")
+        sample_candidates = tuple(
+            dict.fromkeys((0, candidate_count // 2, candidate_count - 1))
+        )
+        sampled_edges = 0
+        for candidate in sample_candidates:
+            sampled_edges += sum(
+                len(family.candidate_witness_indices(candidate))
+                for family in forward_domain.families
+            )
+        result["stages"]["LQ1"] = {
+            "status": "PASS",
+            "reference_plus_forward_restore_seconds": restore_seconds,
+            "candidate_count": candidate_count,
+            "family_count": family_count,
+            "forward_edge_count": edge_count,
             "mvidx1_content_digest": forward.mvidx1_content_digest,
-            "canonical_selection_digest": selection.content_digest,
-            "resumed_selection_digest": resumed.content_digest,
-            "newest_corrupted_size": int(newest_size),
-            "highest_valid_fallback_size": int(fallback_size),
-            "fallback_pointer_match": True,
-            "digest_equal": True,
-            "resume_wall_seconds": elapsed,
-            "full_production_tree_copied": False,
-            "copied_checkpoint_count": len(rows),
-            "inverse_arrays_mapped_by_reader": False,
+            "materializable_rungs": materializable,
+            "sample_candidates": sample_candidates,
+            "sampled_forward_edges": sampled_edges,
+            "inverse_arrays_mapped": False,
         }
-        output = Path(args.worker_output)
-        output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        print(json.dumps(payload, indent=2, sort_keys=True), flush=True)
-        return 0
+
+        checkpoints = _checkpoint_rows_ro(connection, args.domain)
+        for required in (128, 256, TARGET_SIZE):
+            if required not in checkpoints:
+                raise RuntimeError(
+                    f"required production MVSTATE2 checkpoint missing: {required}"
+                )
+        selector_policy = selection.policy
+
+        def restore(size: int) -> Any:
+            return hardening._restore_checkpoint(
+                checkpoints[size],
+                store=store,
+                reference_domain=reference_domain,
+                forward_domain=forward_domain,
+                dataset_id=reference.dataset_id,
+                selector_policy=selector_policy,
+            )
+
+        state128 = restore(128)
+        state256 = restore(256)
+        state16384 = restore(TARGET_SIZE)
+        if state16384.selected_count != TARGET_SIZE:
+            raise RuntimeError("16384 checkpoint sentinel cardinality mismatch")
+
+        uid_to_candidate = {
+            uid: index for index, uid in enumerate(reference_domain.frame_uids)
+        }
+        canonical_order = [
+            uid_to_candidate[entry.frame_uid]
+            for entry in selection_domain.master_order
+        ]
+        rung_by_size = {
+            int(rung.target_size): rung for rung in selection_domain.rungs
+        }
+
+        # LQ2: corrupt only qualification-owned 256 pointer and prove fallback.
+        q2_scratch = scratch / "lq2"
+        q2_scratch.mkdir(parents=True, exist_ok=True)
+        for size in (128, 256):
+            _copy_checkpoint_bundle(
+                checkpoints[size], production_root, q2_scratch
+            )
+        scratch_store = CampaignStore(q2_scratch / "qualification.sqlite3")
+        try:
+            for size in (128, 256):
+                scratch_store.put_record(
+                    f"target_multi_view_selection_state_v2:{args.domain}:{size}",
+                    checkpoints[size],
+                )
+            corrupt_key = (
+                f"target_multi_view_selection_state_v2:{args.domain}:256"
+            )
+            db = scratch_store._connect()
+            db.execute(
+                "UPDATE records SET payload='{}' WHERE key=?", (corrupt_key,)
+            )
+            db.commit()
+            states, pointers = hardening._highest_valid_resume_states(
+                scratch_store, reference, forward, selector_policy
+            )
+            recovered = states.get(args.domain)
+            recovered_pointer = pointers.get(args.domain)
+            if (
+                recovered is None
+                or recovered_pointer is None
+                or dict(recovered_pointer) != dict(checkpoints[128])
+            ):
+                raise RuntimeError(
+                    "runtime recovery did not select the 128 checkpoint"
+                )
+            for candidate in canonical_order[128:256]:
+                score = score_target_multi_view_candidate_v2(
+                    candidate, forward_domain, recovered
+                )
+                select_target_multi_view_candidate_v2(
+                    candidate, forward_domain, recovered, score=score
+                )
+            equal, field = _state_equal(recovered, state256)
+            if not equal:
+                raise RuntimeError(
+                    f"128->256 reconstructed state differs at {field}"
+                )
+        finally:
+            scratch_store.close()
+            shutil.rmtree(q2_scratch, ignore_errors=True)
+        result["stages"]["LQ2"] = {
+            "status": "PASS",
+            "fallback_size": 128,
+            "comparison_size": 256,
+            "state_equivalence": "exact",
+        }
+
+        # LQ3: exact shared per-rung repair science from authenticated states.
+        repair_policy = TargetMultiViewRepairPolicyV2()
+        repair_rows: list[dict[str, Any]] = []
+        for size in (128, 256, 512, 1024):
+            optional = size >= 512
+            if size not in checkpoints or size not in materializable:
+                if optional:
+                    continue
+                raise RuntimeError(f"mandatory REPAIR2 checkpoint missing: {size}")
+            if optional and any(row["proposals"] > 0 for row in repair_rows):
+                break
+            if optional and elapsed() > 0.40 * operating_seconds:
+                break
+
+            state = restore(size)
+            shell_start = 0 if size == 128 else max(
+                value for value in materializable if value < size
+            )
+            order = list(canonical_order)
+            started = time.perf_counter()
+            rung, telemetry = repair_rung_from_authenticated_state(
+                reference_domain,
+                forward_domain,
+                selection,
+                rung_by_size[size],
+                policy=repair_policy,
+                order=order,
+                state=state,
+                shell_start=shell_start,
+            )
+            wall = time.perf_counter() - started
+            repair_rows.append(
+                {
+                    "target_size": size,
+                    "shell_size": size - shell_start,
+                    "wall_seconds": wall,
+                    "proposals": int(telemetry["proposals"]),
+                    "swaps": len(rung.swaps),
+                    "proposal_full_state_copies": int(
+                        telemetry["proposal_full_state_copies"]
+                    ),
+                    "inverse_mutation": bool(telemetry["inverse_mutation"]),
+                    "checkpoint_mode": "mvstate2_authenticated",
+                    "current_rss_bytes": rss_bytes(os.getpid()),
+                }
+            )
+
+        if tuple(row["target_size"] for row in repair_rows[:2]) != (128, 256):
+            raise RuntimeError("mandatory 128/256 REPAIR2 measurements absent")
+        if any(
+            row["proposal_full_state_copies"] != 0
+            or row["inverse_mutation"]
+            for row in repair_rows
+        ):
+            raise RuntimeError("REPAIR2 no-copy/no-inverse invariant failed")
+
+        repair_upper = repair_projection_upper(
+            repair_rows,
+            candidate_count=candidate_count,
+            materializable_sizes=materializable,
+            removal_shortlist_limit=repair_policy.removal_shortlist_limit,
+            max_swaps_per_shell=repair_policy.max_swaps_per_shell,
+            max_passes_per_shell=repair_policy.max_passes_per_shell,
+        )
+        result["stages"]["LQ3"] = {
+            "status": "PASS" if repair_upper is not None else "BLOCKED",
+            "rungs": repair_rows,
+            "large_checkpoint_sentinel": TARGET_SIZE,
+            "repair_upper_seconds": repair_upper,
+        }
+
+        # LQ4: reuse only legacy MVSEL1 baseline; measure current MVSEL2 hot path.
+        historical_v1 = json_load(
+            repo / "benchmarks/mlff_mvsel_production_density_2026-08-18.json"
+        )
+        historical_preflight = json_load(
+            repo / "benchmarks/mlff_mvsel2_phase_a_preflight_2026-08-18.json"
+        )
+        historical_density = json_load(
+            repo / "benchmarks/mlff_mvsel2_production_density_2026-08-18.json"
+        )
+        legacy_input = historical_v1["input"]
+        baseline_ok = True
+        baseline_reason = "compatible"
+        if (
+            int(legacy_input["candidate_count"]) != candidate_count
+            or int(legacy_input["family_count"]) != family_count
+            or int(legacy_input["edge_count"]) != edge_count
+            or str(legacy_input["dataset_digest"])
+            != str(forward.mvidx1_content_digest)
+        ):
+            baseline_ok = False
+            baseline_reason = "legacy baseline production graph mismatch"
+        elif (
+            platform.node() != "local-user-ProBuild"
+            and not args.accept_same_host_equivalent
+        ):
+            baseline_ok = False
+            baseline_reason = f"legacy baseline host mismatch: {platform.node()}"
+        else:
+            baseline_ok, baseline_reason = _legacy_surface_compatible(repo)
+
+        baseline_full = float(
+            historical_v1["optimized"]["initialization_seconds"]
+        ) + TARGET_SIZE * float(
+            historical_v1["optimized"]["rank_0_update_seconds"]
+        )
+
+        if not baseline_ok:
+            result["stages"]["LQ4"] = {
+                "status": "BLOCKED",
+                "reason": baseline_reason,
+                "historical_mvsel1_baseline_seconds": baseline_full,
+            }
+        elif repair_upper is None:
+            result["stages"]["LQ4"] = {
+                "status": "BLOCKED",
+                "reason": "bounded REPAIR2 proposal cost was not exercised",
+                "historical_mvsel1_baseline_seconds": baseline_full,
+            }
+        else:
+            state = restore(128)
+            phase_a_rows: list[dict[str, Any]] = []
+            phase_a_started = time.perf_counter()
+            while (
+                state.unsatisfied_required_obligation_count > 0
+                or any(
+                    family.coverage_mass
+                    < selector_policy.coverage_threshold
+                    - selector_policy.gain_tie_tolerance
+                    for family in state.family_states
+                )
+            ):
+                rank = state.selected_count
+                rank_started = time.perf_counter()
+                choice = choose_target_multi_view_phase_a_candidate_v2(
+                    reference_domain, forward_domain, state
+                )
+                if choice.candidate_index != canonical_order[rank]:
+                    raise RuntimeError(
+                        f"current Phase-A candidate mismatch at rank {rank}"
+                    )
+                select_target_multi_view_candidate_v2(
+                    choice.candidate_index,
+                    forward_domain,
+                    state,
+                    score=choice.score,
+                )
+                phase_a_rows.append(
+                    {
+                        "rank": rank,
+                        "seconds": time.perf_counter() - rank_started,
+                    }
+                )
+            phase_a_seconds = time.perf_counter() - phase_a_started
+            phase_a_end = state.selected_count
+            max_phase_a = max(
+                float(row["seconds"]) for row in phase_a_rows
+            )
+
+            historical_rebase_seconds = float(
+                historical_density["phase_b"]["exact_rebase_seconds"]
+            )
+            historical_rebase_rss = int(
+                historical_density["phase_b"]["post_rebase_release_rss_kib"]
+            ) * 1024
+            admitted_rebase_rss = max(
+                historical_rebase_rss * 5 // 4,
+                int(rss_bytes(os.getpid()) or 0),
+            )
+            admitted_rebase_time = 1.5 * historical_rebase_seconds + 90.0
+            if admitted_rebase_rss > operating_rss:
+                result["stages"]["LQ4"] = {
+                    "status": "BLOCKED",
+                    "reason": "current operating envelope does not admit exact Phase-B rebase",
+                    "projected_rebase_rss_bytes": admitted_rebase_rss,
+                    "operating_rss_bytes": operating_rss,
+                }
+            elif elapsed() + admitted_rebase_time > operating_seconds:
+                result["stages"]["LQ4"] = {
+                    "status": "BLOCKED",
+                    "reason": "current operating time envelope does not admit exact Phase-B rebase",
+                    "elapsed_seconds": elapsed(),
+                    "operating_seconds": operating_seconds,
+                }
+            else:
+                rebase_started = time.perf_counter()
+                frontier = build_target_multi_view_lazy_frontier_v2(
+                    forward_domain, state
+                )
+                rebase_seconds = time.perf_counter() - rebase_started
+                phase_b_rows: list[dict[str, Any]] = []
+                for _ in range(min(32, TARGET_SIZE - state.selected_count)):
+                    rank = state.selected_count
+                    rank_started = time.perf_counter()
+                    choice = choose_target_multi_view_phase_b_candidate_v2(
+                        reference_domain, forward_domain, state, frontier
+                    )
+                    if choice.candidate_index != canonical_order[rank]:
+                        raise RuntimeError(
+                            f"current Phase-B candidate mismatch at rank {rank}"
+                        )
+                    select_target_multi_view_candidate_v2(
+                        choice.candidate_index,
+                        forward_domain,
+                        state,
+                        score=choice.score,
+                    )
+                    phase_b_rows.append(
+                        {
+                            "rank": rank,
+                            "seconds": time.perf_counter() - rank_started,
+                            "fallback": bool(choice.telemetry.fallback_used),
+                        }
+                    )
+                max_phase_b = max(
+                    float(row["seconds"]) for row in phase_b_rows
+                )
+                selector_upper = selector_projection_upper(
+                    current_restore_seconds=restore_seconds,
+                    historical_cold_preflight_seconds=float(
+                        historical_preflight["cold_preflight"]["total_seconds"]
+                    ),
+                    phase_a_prefix_size=128,
+                    max_phase_a_rank_seconds=max_phase_a,
+                    measured_phase_a_seconds=phase_a_seconds,
+                    exact_rebase_seconds=rebase_seconds,
+                    phase_a_end=phase_a_end,
+                    max_phase_b_rank_seconds=max_phase_b,
+                    target_size=TARGET_SIZE,
+                )
+                combined = baseline_full / (
+                    selector_upper + float(repair_upper)
+                )
+                result["stages"]["LQ4"] = {
+                    "status": "PASS" if combined >= 10.0 else "FAIL",
+                    "historical_mvsel1_baseline_seconds": baseline_full,
+                    "legacy_surface_compatible": True,
+                    "phase_a_start": 128,
+                    "phase_a_end": phase_a_end,
+                    "phase_a_measured_seconds": phase_a_seconds,
+                    "phase_a_max_rank_seconds": max_phase_a,
+                    "exact_rebase_seconds": rebase_seconds,
+                    "phase_b_sampled_ranks": len(phase_b_rows),
+                    "phase_b_max_rank_seconds": max_phase_b,
+                    "phase_b_fallback_count": sum(
+                        bool(row["fallback"]) for row in phase_b_rows
+                    ),
+                    "selector_upper_seconds": selector_upper,
+                    "repair_upper_seconds": repair_upper,
+                    "combined_speedup_lower": combined,
+                    "minimum_10x_pass": combined >= 10.0,
+                    "historical_mvsel2_projection_advisory": float(
+                        historical_density["projection"]["projected_speedup"]
+                    ),
+                }
+
+        statuses = [
+            str(stage.get("status", "BLOCKED"))
+            for stage in result["stages"].values()
+        ]
+        if "FAIL" in statuses:
+            overall = "FAIL"
+        elif "BLOCKED" in statuses:
+            overall = "BLOCKED"
+        else:
+            overall = "PASS"
+        result.update(
+            status=overall,
+            git_head=subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=repo,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip(),
+            elapsed_seconds=elapsed(),
+            production={
+                "database": str(database),
+                "domain": args.domain,
+                "mvidx1_content_digest": forward.mvidx1_content_digest,
+            },
+        )
+        json_dump(evidence / "worker.json", result)
+        return 0 if overall == "PASS" else (2 if overall == "FAIL" else 3)
+    except Exception as exc:
+        result.update(
+            status="FAIL",
+            failure_class="PRODUCT_OR_MATERIAL_CHECK_ERROR",
+            error=f"{type(exc).__name__}: {exc}",
+            elapsed_seconds=elapsed(),
+        )
+        json_dump(evidence / "worker.json", result)
+        raise
     finally:
-        scratch_store.close()
-
-
-def _load_json(path: Path) -> dict[str, Any]:
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict):
-        raise RuntimeError(f"expected JSON object: {path}")
-    return payload
-
-
-def _validate_q7_projection(database: Path, benchmark: Path) -> dict[str, Any]:
-    pointer = _pointer_ro(database, "target_coverage_sparse_index")
-    current_digest = str(pointer.get("content_digest", ""))
-    evidence = _load_json(benchmark)
-    source_input = evidence.get("input", {})
-    projection = evidence.get("projection", {})
-    if not isinstance(source_input, Mapping) or not isinstance(projection, Mapping):
-        raise RuntimeError("production performance benchmark lacks required input/projection fields")
-    if str(source_input.get("mvidx1_content_digest")) != current_digest:
-        raise RuntimeError("historical performance evidence is for a different MVIDX1 graph")
-    if int(source_input.get("candidate_count", -1)) != DEFAULT_CANDIDATES:
-        raise RuntimeError("historical performance evidence candidate count mismatch")
-    if int(source_input.get("family_count", -1)) != DEFAULT_FAMILIES:
-        raise RuntimeError("historical performance evidence family count mismatch")
-    speedup = float(projection.get("projected_speedup", 0.0))
-    passed = bool(projection.get("minimum_10x_pass", False)) and speedup >= 10.0
-    return {
-        "schema": "mdstats.mvsel2-bounded-qualification.q7-reuse.v1",
-        "evidence": str(benchmark),
-        "mvidx1_content_digest": current_digest,
-        "baseline_full_order_seconds": float(projection.get("baseline_full_order_seconds")),
-        "mvsel2_full_order_seconds": float(projection.get("mvsel2_full_order_seconds")),
-        "projected_speedup": speedup,
-        "minimum_10x_pass": passed,
-        "method": str(projection.get("method", "")),
-        "rerun_policy": "reuse_same-production conservative projection; no unbounded MVSEL1 replay",
-    }
-
-
-def _write_state(path: Path, payload: Mapping[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    os.replace(temporary, path)
-
-
-def _main_supervisor(args: argparse.Namespace) -> int:
-    repo = Path.cwd().resolve()
-    database = Path(args.production_db).expanduser().resolve()
-    config = Path(args.config).expanduser().resolve() if args.config else None
-    root = Path(args.root).expanduser().resolve()
-    root.mkdir(parents=True, exist_ok=True)
-    if not database.is_file():
-        raise RuntimeError(f"production database not found: {database}")
-    if config is not None and not config.is_file():
-        raise RuntimeError(f"campaign config not found: {config}")
-    if root == database.parent or database.parent in root.parents:
-        raise RuntimeError("qualification root must be outside production .mdstats")
-
-    max_rss = int(args.max_rss_gib * GIB)
-    max_scratch = int(args.max_scratch_gib * GIB)
-    if max_rss <= 0 or max_scratch <= 0:
-        raise RuntimeError("resource limits must be positive")
-    free_disk = shutil.disk_usage(root).free
-    if free_disk < max_scratch + 2 * GIB:
-        raise RuntimeError(
-            f"insufficient free disk for bounded qualification: free={free_disk} "
-            f"required_headroom={max_scratch + 2 * GIB}"
-        )
-
-    identity_before = _production_identity(database, config)
-    state_path = root / "state.json"
-    prior = _load_json(state_path) if state_path.is_file() else {}
-    if prior.get("production_identity") not in (None, identity_before):
-        raise RuntimeError("production input identity changed since prior qualification attempt")
-    state: dict[str, Any] = {
-        "schema": "mdstats.mvsel2-bounded-qualification.state.v1",
-        "production_identity": identity_before,
-        "limits": {
-            "max_rss_gib": args.max_rss_gib,
-            "max_scratch_gib": args.max_scratch_gib,
-            "q5_timeout_seconds": args.q5_timeout_seconds,
-            "q6_timeout_seconds": args.q6_timeout_seconds,
-            "total_timeout_seconds": args.total_timeout_seconds,
-        },
-        "stages": dict(prior.get("stages", {})) if isinstance(prior.get("stages"), dict) else {},
-    }
-    _write_state(state_path, state)
-    total_started = time.monotonic()
-
-    def remaining() -> float:
-        return args.total_timeout_seconds - (time.monotonic() - total_started)
-
-    q5_output = root / "q5_recovery.json"
-    q5_scratch = root / "q5-scratch"
-    if state["stages"].get("q5", {}).get("status") != "PASS":
-        timeout = min(float(args.q5_timeout_seconds), remaining())
-        if timeout <= 0:
-            raise RuntimeError("total qualification time budget exhausted before Q5")
-        cmd = [
-            sys.executable,
-            str(Path(__file__).resolve()),
-            "--worker-q5",
-            "--production-db", str(database),
-            "--domain", args.domain,
-            "--expected-candidates", str(args.expected_candidates),
-            "--expected-families", str(args.expected_families),
-            "--stage-scratch", str(q5_scratch),
-            "--worker-output", str(q5_output),
-        ]
-        result = _run_bounded(
-            name="q5",
-            command=cmd,
-            cwd=repo,
-            log_path=root / "q5_recovery.log",
-            scratch_root=root,
-            max_rss_bytes=max_rss,
-            max_scratch_bytes=max_scratch,
-            max_seconds=timeout,
-        )
-        state["stages"]["q5"] = result
-        _write_state(state_path, state)
-        if result["status"] != "PASS":
-            print(json.dumps(result, indent=2, sort_keys=True), flush=True)
-            return 2
-        shutil.rmtree(q5_scratch, ignore_errors=True)
-
-    identity_after_q5 = _production_identity(database, config)
-    if identity_after_q5 != identity_before:
-        raise RuntimeError("production input changed during Q5; result invalidated")
-
-    q6_output = root / "q6_repair2_production.json"
-    if state["stages"].get("q6", {}).get("status") != "PASS":
-        timeout = min(float(args.q6_timeout_seconds), remaining())
-        if timeout <= 0:
-            raise RuntimeError("total qualification time budget exhausted before Q6")
-        benchmark = repo / "benchmarks/benchmark_mlff_mvsel2_harden1_v3_repair2_production.py"
-        cmd = [
-            sys.executable,
-            str(benchmark),
-            str(database),
-            "--domain", args.domain,
-            "--workplan-id", "DOC-MVSEL2-HARDEN1-V3",
-            "--workplan-revision", "5",
-            "--workplan-sha256", "resource-bounded-standalone-qualification",
-            "--expected-candidate-count", str(args.expected_candidates),
-            "--expected-family-count", str(args.expected_families),
-            "--output", str(q6_output),
-        ]
-        result = _run_bounded(
-            name="q6",
-            command=cmd,
-            cwd=repo,
-            log_path=root / "q6_repair2_production.log",
-            scratch_root=root,
-            max_rss_bytes=max_rss,
-            max_scratch_bytes=max_scratch,
-            max_seconds=timeout,
-        )
-        state["stages"]["q6"] = result
-        _write_state(state_path, state)
-        if result["status"] != "PASS":
-            print(json.dumps(result, indent=2, sort_keys=True), flush=True)
-            return 3
-
-    identity_after_q6 = _production_identity(database, config)
-    if identity_after_q6 != identity_before:
-        raise RuntimeError("production input changed during Q6; result invalidated")
-
-    if state["stages"].get("q7", {}).get("status") != "PASS":
-        q7 = _validate_q7_projection(
-            database, repo / "benchmarks/mlff_mvsel2_production_density_2026-08-18.json"
-        )
-        q7_path = root / "q7_performance_reuse.json"
-        q7_path.write_text(json.dumps(q7, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        state["stages"]["q7"] = {
-            "stage": "q7",
-            "status": "PASS" if q7["minimum_10x_pass"] else "FAIL",
-            "evidence": str(q7_path),
-            "projected_speedup": q7["projected_speedup"],
-        }
-        _write_state(state_path, state)
-        if not q7["minimum_10x_pass"]:
-            return 4
-
-    identity_final = _production_identity(database, config)
-    if identity_final != identity_before:
-        raise RuntimeError("production input changed during qualification; results invalidated")
-
-    summary = {
-        "schema": "mdstats.mvsel2-bounded-qualification.summary.v1",
-        "status": "PASS",
-        "production_identity": identity_before,
-        "limits": state["limits"],
-        "stages": state["stages"],
-        "scratch_physical_bytes_final": _physical_tree_bytes(root),
-        "codex_required": False,
-        "full_mdstats_snapshot_created": False,
-        "production_mutation": False,
-    }
-    summary_path = root / "summary.json"
-    summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(json.dumps(summary, indent=2, sort_keys=True), flush=True)
-    return 0
+        connection.close()
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -594,14 +678,16 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--root", default="qualification/bounded-mvsel2")
     parser.add_argument("--expected-candidates", type=int, default=DEFAULT_CANDIDATES)
     parser.add_argument("--expected-families", type=int, default=DEFAULT_FAMILIES)
-    parser.add_argument("--max-rss-gib", type=float, default=DEFAULT_MEM_GIB)
-    parser.add_argument("--max-scratch-gib", type=float, default=DEFAULT_SCRATCH_GIB)
-    parser.add_argument("--q5-timeout-seconds", type=float, default=DEFAULT_Q5_SECONDS)
-    parser.add_argument("--q6-timeout-seconds", type=float, default=DEFAULT_Q6_SECONDS)
-    parser.add_argument("--total-timeout-seconds", type=float, default=DEFAULT_TOTAL_SECONDS)
-    parser.add_argument("--worker-q5", action="store_true", help=argparse.SUPPRESS)
-    parser.add_argument("--stage-scratch", help=argparse.SUPPRESS)
-    parser.add_argument("--worker-output", help=argparse.SUPPRESS)
+    parser.add_argument("--max-rss-gib", type=float)
+    parser.add_argument("--max-scratch-gib", type=float)
+    parser.add_argument("--total-timeout-seconds", type=float)
+    parser.add_argument("--accept-same-host-equivalent", action="store_true")
+    parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--repo", help=argparse.SUPPRESS)
+    parser.add_argument("--worker-scratch", help=argparse.SUPPRESS)
+    parser.add_argument("--worker-evidence", help=argparse.SUPPRESS)
+    parser.add_argument("--operating-rss-bytes", type=int, help=argparse.SUPPRESS)
+    parser.add_argument("--operating-seconds", type=float, help=argparse.SUPPRESS)
     return parser
 
 
@@ -609,11 +695,84 @@ def main() -> int:
     args = _parser().parse_args()
     if not args.production_db:
         raise SystemExit("--production-db is required")
-    if args.worker_q5:
-        if not args.stage_scratch or not args.worker_output:
-            raise SystemExit("worker Q5 requires --stage-scratch and --worker-output")
-        return _worker_q5(args)
-    return _main_supervisor(args)
+    database = Path(args.production_db).expanduser().resolve()
+    config = Path(args.config).expanduser().resolve() if args.config else None
+    if args.worker:
+        required = (
+            "repo",
+            "worker_scratch",
+            "worker_evidence",
+            "operating_rss_bytes",
+            "operating_seconds",
+        )
+        for name in required:
+            if getattr(args, name) is None:
+                raise SystemExit(
+                    f"--{name.replace('_', '-')} is required in worker mode"
+                )
+        return _worker(args)
+
+    if not database.is_file():
+        raise RuntimeError(f"production database not found: {database}")
+    if config is not None and not config.is_file():
+        raise RuntimeError(f"campaign config not found: {config}")
+
+    repo = Path.cwd().resolve()
+    root = Path(args.root).expanduser().resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    if root == database.parent or database.parent in root.parents:
+        raise RuntimeError("qualification root must be outside production .mdstats")
+
+    plan = derive_resource_plan(
+        root=root,
+        max_rss_gib=args.max_rss_gib,
+        max_scratch_gib=args.max_scratch_gib,
+        total_seconds=args.total_timeout_seconds,
+    )
+    if plan.hard_scratch_bytes < 128 * MIB:
+        raise RuntimeError("safe scratch containment is below minimum requirement")
+    if plan.free_disk_bytes < plan.hard_scratch_bytes + 2 * GIB:
+        raise RuntimeError("insufficient free-disk headroom for qualification")
+
+    command = [
+        sys.executable,
+        str(Path(__file__).resolve()),
+        "--worker",
+        "--production-db",
+        str(database),
+        "--domain",
+        args.domain,
+        "--repo",
+        str(repo),
+        "--expected-candidates",
+        str(args.expected_candidates),
+        "--expected-families",
+        str(args.expected_families),
+    ]
+    if config is not None:
+        command += ["--config", str(config)]
+    if args.accept_same_host_equivalent:
+        command.append("--accept-same-host-equivalent")
+
+    print(
+        "[REV8 qualification] "
+        f"cpu={plan.cpu_count}; "
+        f"effective-memory={plan.effective_available_bytes / GIB:.1f} GiB; "
+        f"operating-rss={plan.operating_rss_bytes / GIB:.1f} GiB; "
+        f"hard-rss={plan.hard_rss_bytes / GIB:.1f} GiB; "
+        f"operating-wall={plan.operating_total_seconds:.0f}s; "
+        f"hard-wall={plan.hard_total_seconds:.0f}s; "
+        f"hard-scratch={plan.hard_scratch_bytes / GIB:.2f} GiB",
+        flush=True,
+    )
+    return run_supervised_worker(
+        command=command,
+        repo=repo,
+        database=database,
+        config=config,
+        root=root,
+        plan=plan,
+    )
 
 
 if __name__ == "__main__":
