@@ -207,7 +207,22 @@ def main() -> int:
 
     worker_class = "" if worker is None else str(worker.get("failure_class", ""))
     worker_error = "" if worker is None else str(worker.get("error", ""))
-    display_classification = worker_class or classification
+    stage_class = ""
+    stage_reason = ""
+    if worker is not None and not worker_error:
+        stages = worker.get("stages")
+        if isinstance(stages, dict):
+            for stage_name, stage in stages.items():
+                if not isinstance(stage, dict):
+                    continue
+                stage_status = str(stage.get("status", ""))
+                reason = str(stage.get("reason", ""))
+                if stage_status in {"BLOCKED", "FAIL"}:
+                    stage_class = f"{stage_name}_{stage_status}"
+                    stage_reason = reason
+                    break
+    display_classification = worker_class or stage_class or classification
+    display_reason = worker_error or stage_reason
 
     print(
         f"[REV8 qualification] FINAL status={status}; "
@@ -215,8 +230,14 @@ def main() -> int:
         f"returncode={returncode}",
         flush=True,
     )
-    if worker_error:
-        print(f"[REV8 qualification] reason={worker_error}", flush=True)
+    if display_reason:
+        print(f"[REV8 qualification] reason={display_reason}", flush=True)
+    if worker is not None and worker.get("selection_authority_source"):
+        print(
+            "[REV8 qualification] selection-authority="
+            f"{worker['selection_authority_source']}",
+            flush=True,
+        )
     print(f"[REV8 qualification] summary={summary_path}", flush=True)
     print(f"[REV8 qualification] state={root / 'state.json'}", flush=True)
     if worker_path is not None and worker_path.is_file():
