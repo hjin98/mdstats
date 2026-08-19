@@ -113,8 +113,11 @@ def run_preflight(repo: Path, scratch: Path, evidence: Path) -> dict[str, Any]:
 
     source = preflight / "source"
     source.mkdir()
+    # The tar is produced by git from this trusted repository.  Avoid the newer
+    # tarfile extraction-filter API so the qualifier remains compatible with
+    # the bound Python 3.11 workstation environment.
     with tarfile.open(archive, "r") as handle:
-        handle.extractall(source, filter="data")
+        handle.extractall(source)
     archive.unlink(missing_ok=True)
 
     wheel_dir = preflight / "wheel"
