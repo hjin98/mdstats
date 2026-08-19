@@ -254,6 +254,10 @@ def _json_dump(path: Path, payload: Mapping[str, Any]) -> None:
 
 engine._record_ro = _record_ro
 engine.json_dump = _json_dump
+# The frozen engine constructs its worker subprocess command from ``__file__``.
+# Route that worker back through this launcher so the same fail-closed authority
+# recovery shim applies in worker mode as in supervisor mode.
+engine.__file__ = __file__
 
 
 if __name__ == "__main__":
