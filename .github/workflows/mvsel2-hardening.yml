@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - feat/mvsel2-forward-lazy
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
