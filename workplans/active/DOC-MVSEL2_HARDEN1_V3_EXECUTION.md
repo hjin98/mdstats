@@ -10,6 +10,8 @@ This is a Protocol-v3 coordination/evidence-reference supplement. It does not ch
 - Workplan SHA-256: `ac674abd68dcc43f0fe8f559aecbe913b6e9ae79194e5ff7327b2de531e2716b`
 - Analysis base: `e24d5168ce01bf2d773339e1a91d5ded4871a57f`
 - Target branch: `feat/mvsel2-forward-lazy`
+- Frozen candidate commit: `a9cb41ad9b1c6305de195f1a88b71ea098e582b7`
+- Candidate identity policy: `mdstats.mvsel2-harden1-v3.candidate-identity.v1`
 - Execution policy: GitHub connector for repository traffic; no GitHub-hosted qualification substitution
 
 ## Bounded stale-plan revalidation
@@ -28,24 +30,35 @@ Result: the workplan is not `STALE_WORKPLAN`. Execution evidence is still requir
 | H3 MVSTATE2-RESUME1 | PREPARED | NOT_RUN | PENDING | highest-valid checkpoint fallback, selected-prefix replay, Phase-B exact rebase, and post-divergence state-carry implementation/tests present |
 | H4 REPAIR2-SCALE1 | PREPARED | NOT_RUN | PENDING | no-copy analytical proposal implementation and full-ladder production harness are present |
 | H5 QUAL-HARDEN1 | PENDING | NOT_RUN | PENDING | reserved for exact frozen-candidate execution in the user's local `mace` environment with production campaign inputs |
-| H6 CLOSEOUT-HARDEN1 | IN_PROGRESS | NOT_RUN | PENDING | hosted repository-local closeout is being finalized before candidate freeze; final acceptance remains verification-owned |
+| H6 CLOSEOUT-HARDEN1 | PREPARED | NOT_RUN | PENDING | deterministic repository-local closeout is complete; final evidence/acceptance remains qualification/verification-owned |
 
 `PREPARED` means source/test/harness construction is sufficiently present for the declared remaining qualification. It is not a qualification or acceptance PASS.
 
-## Hosted closeout responsibility
+## Repository-local closeout completed
 
-Before workstation qualification, complete every deterministic repository-local task available in the ChatGPT environment rather than spending target-environment Codex capacity on it. This includes permanent documentation/release-metadata correction, removal of temporary GitHub diagnostic workflows, generated product artifact/provenance preparation when reproducible under the repository policy, coordination cleanup, and source review.
+The implementation authority completed the deterministic closeout before candidate freeze:
 
-The target workstation is required only for candidate-bound checks whose validity depends on the exact local checkout/environment and for production-data measurements unavailable here. Candidate content must not be mutated during qualification.
+- temporary GitHub diagnostic qualification workflows removed;
+- Protocol-v3 repository handoff updated;
+- historical patch-note acceptance wording corrected;
+- permanent HARDEN1-v3 runtime clarification staged;
+- patch-notes and runtime-spec PDFs regenerated and visually verified under the established `pandoc-typst-v2` policy using Pandoc 3.10.2 and Typst 0.15.1;
+- matching SHA-256 provenance manifests committed;
+- release-status metadata corrected without promoting any unexecuted qualification result to PASS;
+- candidate-facing content frozen at `a9cb41ad9b1c6305de195f1a88b71ea098e582b7`.
+
+Subsequent changes to this execution supplement, repository handoff, and `qualification/` records are coordination/evidence-only paths excluded by `mdstats.mvsel2-harden1-v3.candidate-identity.v1`; they do not alter the frozen candidate content identity.
 
 ## Remaining transition to qualification
 
-1. finish permanent candidate PDF/provenance closeout under the established renderer policy;
-2. finalize truthful candidate release status without converting any `NOT_RUN` result into PASS;
-3. establish the final candidate commit and deterministic candidate content identity from a clean checkout;
-4. bind a narrow Protocol-v3 Qualification Handoff;
-5. execute focused/adjacent/full-non-slow/wheel qualification against that exact frozen candidate in the prescribed workstation environment;
-6. execute selector and full-ladder MVSTATE2/REPAIR2 production qualification, including the StageResourceScope-wrapped campaign path, using the real production input graph;
+1. materialize commit `a9cb41ad9b1c6305de195f1a88b71ea098e582b7` in a clean workstation checkout;
+2. require an empty `git status --porcelain=v1 --untracked-files=all` before qualification bootstrap and review any shadowing/import source explicitly;
+3. verify the governing workplan SHA-256 equals `ac674abd68dcc43f0fe8f559aecbe913b6e9ae79194e5ff7327b2de531e2716b`;
+4. compute `candidate_content_identity` using `scripts/mvsel2_harden1_v3_candidate_identity.py` and bind it into the exact Protocol-v3 Qualification Handoff;
+5. execute only the handoff-enumerated focused/adjacent/full-non-slow/wheel and production-data checks against that immutable candidate;
+6. include selector/checkpoint-resume/REPAIR2 full-ladder evidence and a separate `StageResourceScope`-wrapped campaign integration execution on the real production graph;
 7. record GPU as `DEFERRED_NOT_RUN` unless genuinely executed;
-8. route any source defect back to implementation and recompute candidate identity before affected reruns;
+8. route any product-source/test-contract defect back to implementation; do not patch the frozen candidate during qualification;
 9. after all mandatory qualification passes, perform independent Protocol-v3 verification before any `COMPLETE` or merge-ready decision.
+
+The implementation-owned workstation bootstrap contract is `qualification/handoffs/DOC-MVSEL2-HARDEN1-V3_WORKSTATION_BOOTSTRAP.md`.
