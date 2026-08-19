@@ -20,30 +20,34 @@ set -euo pipefail
 PROD_DB='$HOME/QE/lammps-proj/zeolite/05_mace_training/LTA/mpa0/FP32/mlff-campaign/.mdstats/campaign.sqlite3'
 CONFIG='$HOME/QE/lammps-proj/zeolite/05_mace_training/LTA/mpa0/FP32/campaign.toml'
 DOMAIN='label-domain-5aa1ee5d50cd0b23'
+ROOT='qualification/bounded-mvsel2'
+mkdir -p "$ROOT"
 
 conda run -n mace python scripts/mvsel2_bounded_qualification.py \
   --production-db "$PROD_DB" \
   --config "$CONFIG" \
   --domain "$DOMAIN" \
-  --root qualification/bounded-mvsel2 \
-  --max-rss-gib 48 \
-  --max-scratch-gib 8 \
+  --root "$ROOT" \
+  --max-rss-gib 40 \
+  --max-scratch-gib 4 \
   --q5-timeout-seconds 5400 \
   --q6-timeout-seconds 5400 \
   --total-timeout-seconds 10800 \
-  2>&1 | tee qualification/bounded-mvsel2/driver.log
+  2>&1 | tee "$ROOT/driver.log"
 ```
 
 Codex/ChatGPT does not need to remain connected after this command starts.
+
+The script defaults are 48 GiB RSS / 8 GiB scratch, but this run card intentionally uses the tighter 40 GiB / 4 GiB workstation envelope on a 64 GiB machine. Raising either ceiling should be deliberate and should follow inspection of the prior limit-hit evidence rather than being the first response.
 
 ## Resource guarantees
 
 The driver is fail-closed:
 
-- worker RSS default ceiling: 48 GiB;
-- total qualification scratch default ceiling: 8 GiB physical blocks;
-- Q5 and Q6 each: 90-minute wall limit;
-- entire run: 3-hour wall limit;
+- this run card caps the supervised worker at 40 GiB RSS;
+- this run card caps the whole qualification root at 4 GiB physical scratch blocks;
+- Q5 and Q6 each have a 90-minute wall limit;
+- the entire run has a 3-hour wall limit;
 - expensive work executes in supervised child processes;
 - a sustained RAM/disk limit violation or stage timeout terminates the worker;
 - the complete production `.mdstats` directory is never cloned;
