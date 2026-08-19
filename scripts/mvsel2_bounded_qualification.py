@@ -2,10 +2,11 @@
 """REV8 lightweight autonomous qualification for production MVSEL2.
 
 The production graph remains full-scale authority, but qualification executes
-only bounded production-state probes: native-forward identity, exact 128->256
-MVSTATE2 recovery, checkpoint-started REPAIR2 rungs, and a current-candidate
-selector projection.  A parent supervisor provides hard containment while the
-worker intentionally operates inside a smaller admitted envelope.
+only bounded production-state probes: candidate/package preflight,
+native-forward identity, exact 128->256 MVSTATE2 recovery, checkpoint-started
+REPAIR2 rungs, and a current-candidate selector projection.  A parent
+supervisor provides hard containment while the worker intentionally operates
+inside a smaller admitted envelope.
 """
 from __future__ import annotations
 
@@ -23,6 +24,10 @@ from typing import Any, Mapping
 
 import numpy as np
 
+from mvsel2_qualification_preflight import (
+    PreflightProductFailure,
+    run_preflight,
+)
 from mvsel2_qualification_support import (
     GIB,
     MIB,
@@ -221,6 +226,13 @@ def _worker(args: argparse.Namespace) -> int:
     connection = sqlite3.connect(uri, uri=True)
     store = _ReadOnlyStore(database, connection)
     try:
+        # G5: cheap correctness/package checks are part of the same supervised
+        # one-command qualification and use only run-owned scratch.
+        try:
+            result["stages"]["G5"] = run_preflight(repo, scratch, evidence)
+        except PreflightProductFailure as exc:
+            raise MaterialQualificationFailure(str(exc)) from exc
+
         # LQ1: bind the complete real authority, but query only tiny incidence.
         stage_started = time.perf_counter()
         reference_pointer = _record_ro(connection, "target_coverage_reference")
@@ -573,11 +585,7 @@ def _worker(args: argparse.Namespace) -> int:
                 for family in forward_domain.families
             )
             current_rss = int(rss_bytes(os.getpid()) or 0)
-            admitted_rebase_rss = (
-                current_rss
-                + 2 * largest_family_bytes
-                + 2 * GIB
-            )
+            admitted_rebase_rss = current_rss + 2 * largest_family_bytes + 2 * GIB
             historical_rebase_seconds = float(
                 historical_density["phase_b"]["exact_rebase_seconds"]
             )
