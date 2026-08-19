@@ -1,5 +1,5 @@
 ---
-kind: qualification-handoff-template
+kind: qualification-handoff
 handoff_id: DOC-MVSEL2-HARDEN1-V3-QUAL-1
 protocol_version: 3.0.0
 workplan_id: DOC-MVSEL2-HARDEN1-V3
@@ -20,7 +20,7 @@ allowed_write_paths:
 
 # DOC-MVSEL2-HARDEN1-V3 Qualification Handoff
 
-This is the implementation-owned Protocol-v3 execution contract for the frozen MVSEL2 hardening candidate. Before qualification, the bootstrap must replace `__CANDIDATE_CONTENT_IDENTITY__` with the exact digest emitted by `scripts/mvsel2_harden1_v3_candidate_identity.py`, write the bound artifact as `workplans/active/DOC-MVSEL2_HARDEN1_V3_QUALIFICATION_HANDOFF.md`, and record its SHA-256. Qualification must consume only that bound artifact.
+This is the implementation-owned Protocol-v3 execution contract for the frozen MVSEL2 hardening candidate. The workstation bootstrap binds the five unique tokens in this template and emits `workplans/active/DOC-MVSEL2_HARDEN1_V3_QUALIFICATION_HANDOFF.md`. Qualification must consume only the bound artifact and its recorded SHA-256.
 
 ## Prepared candidate
 
@@ -32,22 +32,33 @@ This is the implementation-owned Protocol-v3 execution contract for the frozen M
 - Environment: user's workstation, Conda environment `mace`.
 - GitHub Actions are not an authorized substitute for workstation qualification.
 
+## Bound production inputs
+
+The exact production graph binding used by Q5-Q7 is:
+
+```bash
+MVSEL2_CAMPAIGN_DATABASE='__CAMPAIGN_DATABASE__'
+MVSEL2_DOMAIN='__DOMAIN__'
+```
+
+These values must identify the real 36,408-candidate / 165-family production campaign. The bootstrap must refuse to emit the final handoff if either value is absent or still contains placeholder syntax.
+
 ## Candidate preflight
 
 Require before Q1:
 
 - `HEAD == a9cb41ad9b1c6305de195f1a88b71ea098e582b7`;
-- recomputed candidate content identity equals the bound value above;
+- recomputed candidate content identity equals the bound value in the front matter;
 - no staged/tracked candidate changes;
 - no undeclared untracked/shadowing files can affect import/build/runtime;
 - cwd is repository root and import/source origins are controlled;
 - workplan digest equals the value above.
 
-Any mismatch stops qualification as stale/ambiguous candidate.
+Any mismatch stops qualification as a stale or ambiguous candidate.
 
 ## Output policy
 
-`qualification/evidence/`, `qualification/tmp/`, `build/`, and `dist/` are `EPHEMERAL_QUALIFICATION_OUTPUT`. Product source, tests, specs, config, packaging metadata, release metadata, and tracked generated candidate artifacts are immutable. Any required candidate correction is `RETURN_TO_IMPLEMENTATION`.
+`qualification/evidence/`, `qualification/tmp/`, `build/`, and `dist/` are `EPHEMERAL_QUALIFICATION_OUTPUT`. Product source, tests, specs, configuration, packaging metadata, release metadata, and tracked generated candidate artifacts are immutable. Any required candidate correction is `RETURN_TO_IMPLEMENTATION`.
 
 ## Q1 — focused v2 hardening regressions
 
@@ -95,7 +106,7 @@ conda run -n mace pytest -q -m 'not slow'
 
 ## Q4 — clean wheel/install/import/package-content qualification
 
-Use the frozen candidate and setuptools backend declared in `pyproject.toml` (`setuptools.build_meta`). Run from repository root:
+Use the frozen candidate and `setuptools.build_meta` backend declared in `pyproject.toml`:
 
 ```bash
 rm -rf qualification/tmp/wheel-install build dist
@@ -114,21 +125,27 @@ conda run -n mace python -c 'import glob,zipfile; w=glob.glob("dist/mdstats-0.20
 ## Q5 — production MVSEL2/MVSTATE2 selector and continuation
 
 - Mandatory: yes; capabilities `TARGET_RUNTIME`, `PRODUCTION_DATA`.
-- Bind the real production campaign database/domain/config/input identities before execution.
+- Exact pre-existing production invocation bound during bootstrap:
+
+```bash
+__Q5_PRODUCTION_COMMAND__
+```
+
+- The bound command must use the production campaign/database/domain identified above without altering scientific or resource policy.
 - Exercise authenticated MVSEL2 authority and interrupted/resumed MVSTATE2 continuation required by the workplan, including newest-corrupt checkpoint fallback where applicable and exact resumed/uninterrupted persisted-result equivalence.
-- Record candidate SHA, campaign/input identities, exact existing campaign invocation/config, wall/resource telemetry, restore/replay mode, checkpoint identities, persisted digests, and comparison result.
+- Record candidate SHA, campaign/input identities, exact invocation/config, wall/resource telemetry, restore/replay mode, checkpoint identities, persisted digests, and comparison result.
 - Evidence: `qualification/evidence/q5_mvsel2_mvstate2_production.*`
-- Retry: `RESUME_RETRY` only where the production command's existing checkpoint semantics permit exact continuation; otherwise `NONE`.
+- Retry: `RESUME_RETRY` only where the bound production command's existing checkpoint semantics permit exact continuation; otherwise `NONE`.
 - Missing production data/config is `BLOCKED`, not substituted by fixtures.
 
 ## Q6 — full-eight-rung production REPAIR2
 
-Bind `<CAMPAIGN_DATABASE>` and `<DOMAIN>` to the real 36,408-candidate / 165-family graph:
+Using the exact production binding above:
 
 ```bash
 conda run -n mace python benchmarks/benchmark_mlff_mvsel2_harden1_v3_repair2_production.py \
-  <CAMPAIGN_DATABASE> \
-  --domain <DOMAIN> \
+  "$MVSEL2_CAMPAIGN_DATABASE" \
+  --domain "$MVSEL2_DOMAIN" \
   --workplan-sha256 ac674abd68dcc43f0fe8f559aecbe913b6e9ae79194e5ff7327b2de531e2716b \
   --expected-candidate-count 36408 \
   --expected-family-count 165 \
@@ -143,9 +160,14 @@ conda run -n mace python benchmarks/benchmark_mlff_mvsel2_harden1_v3_repair2_pro
 ## Q7 — StageResourceScope campaign integration and >=10x floor
 
 - Mandatory: yes; capabilities `TARGET_RUNTIME`, `PRODUCTION_DATA`.
-- Execute the existing production campaign path under its existing `StageResourceScope` boundary using the same bound production inputs as Q5/Q6.
-- Bind the exact pre-existing campaign CLI/config invocation before execution; do not alter scientific/resource configuration to obtain PASS.
-- Capture selector + checkpoint/resume + repair chain wall/resource telemetry and compare against the frozen same-host MVSEL1 baseline/projection using the workplan's >=10x combined-chain floor.
+- Exact pre-existing StageResourceScope-wrapped campaign invocation bound during bootstrap:
+
+```bash
+__Q7_PRODUCTION_COMMAND__
+```
+
+- The bound command must execute the real campaign path under its existing `StageResourceScope` boundary against the same production inputs as Q5/Q6; do not alter scientific/resource configuration to obtain PASS.
+- Capture selector + checkpoint/resume + repair-chain wall/resource telemetry and compare against the frozen same-host MVSEL1 baseline/projection using the workplan's >=10x combined-chain floor.
 - Evidence: `qualification/evidence/q7_stage_resource_scope_performance.*`
 - Expected: resource boundary exercised and comparable combined speedup >=10x.
 - Retry: `IDENTICAL_RETRY` maximum 1 only for transient measurement failure; no policy/input/candidate change.
@@ -161,7 +183,7 @@ After attempted checks:
 
 1. recompute candidate content identity and require equality with the bound preflight identity;
 2. verify no tracked candidate surface changed;
-3. record `git status --porcelain=v1 --untracked-files=all` and ensure changes are confined to declared ephemeral/evidence paths;
+3. record `git status --porcelain=v1 --untracked-files=all` and ensure changes are confined to declared ephemeral/evidence paths plus the generated workplan coordination artifacts;
 4. produce a Protocol-v3 Qualification Report bound to this handoff's SHA-256 and candidate identity;
 5. do not declare `MERGE_READY`; send the report/evidence to `software-verification`.
 
@@ -169,6 +191,6 @@ After attempted checks:
 
 - product/source/test-contract defect -> `RETURN_TO_IMPLEMENTATION`;
 - frozen design/acceptance contradiction -> `DESIGN_REVISION_REQUIRED`;
-- missing required environment/data -> `BLOCKED`;
+- missing required environment/data or inability to establish exact Q5/Q7 production invocation -> `BLOCKED`;
 - identity/dirty-tree mismatch -> stop as stale/ambiguous candidate;
 - no silent patching, threshold changes, dataset reductions, backend substitutions, or resource-policy changes.
