@@ -14,6 +14,7 @@ from tests.test_mlff_mvsel2_hardening import (
     _v2_redundant_selection,
     _write_checkpoint,
 )
+from tests.test_mlff_repair2 import _trace
 
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 if str(SCRIPTS) not in sys.path:
@@ -22,32 +23,65 @@ if str(SCRIPTS) not in sys.path:
 import mvsel2_qualification_support as support
 
 
+def _checkpoint_fixture(tmp_path):
+    reference, _index, forward, selection = _v2_redundant_selection()
+    store = CampaignStore(tmp_path / "campaign.sqlite3")
+    for rung in selection.domain("target").rungs:
+        if not rung.materializable:
+            continue
+        state = _state_for_prefix(
+            reference.domain("target"),
+            forward.domain("target"),
+            selection.domain("target").master_order[: rung.target_size],
+        )
+        _write_checkpoint(
+            store,
+            reference,
+            forward,
+            selection.policy,
+            rung.target_size,
+            state,
+        )
+    checkpoint_states = _all_valid_rung_states(
+        store, reference, forward, selection.policy
+    )
+    return reference, forward, selection, store, checkpoint_states
+
+
+def test_shared_checkpoint_repair_is_trace_equivalent_to_canonical_repair(
+    tmp_path,
+) -> None:
+    reference, forward, selection, store, checkpoint_states = _checkpoint_fixture(
+        tmp_path
+    )
+    try:
+        policy = repair_v2.TargetMultiViewRepairPolicyV2()
+        canonical = repair_v2.build_target_multi_view_repair_plan_v2(
+            reference, forward, selection, policy=policy
+        )
+        shared = build_repair_from_checkpoints(
+            reference,
+            forward,
+            selection,
+            policy=policy,
+            checkpoint_states=checkpoint_states,
+        )
+        assert _trace(shared) == _trace(canonical)
+        assert (
+            shared.domain("target").repaired_master_order
+            == canonical.domain("target").repaired_master_order
+        )
+    finally:
+        store.close()
+
+
 def test_checkpoint_repair_builder_skips_fresh_validation_when_checkpoints_cover_rungs(
     tmp_path, monkeypatch
 ) -> None:
-    reference, _index, forward, selection = _v2_redundant_selection()
-    store = CampaignStore(tmp_path / "campaign.sqlite3")
+    reference, forward, selection, store, checkpoint_states = _checkpoint_fixture(
+        tmp_path
+    )
     try:
-        for rung in selection.domain("target").rungs:
-            if not rung.materializable:
-                continue
-            state = _state_for_prefix(
-                reference.domain("target"),
-                forward.domain("target"),
-                selection.domain("target").master_order[: rung.target_size],
-            )
-            _write_checkpoint(
-                store,
-                reference,
-                forward,
-                selection.policy,
-                rung.target_size,
-                state,
-            )
-        checkpoint_states = _all_valid_rung_states(
-            store, reference, forward, selection.policy
-        )
-
         def forbidden(*_args, **_kwargs):
             raise AssertionError(
                 "fresh full-domain validation must not run when compatible checkpoints exist"
@@ -124,7 +158,7 @@ def test_resource_plan_user_caps_only_tighten(tmp_path) -> None:
     default = support.derive_resource_plan(root=tmp_path)
     capped = support.derive_resource_plan(
         root=tmp_path,
-        max_rss_gib=max(1.0, default.hard_rss_bytes / support.GIB / 2.0),
+        max_rss_gib=max(1.5, default.hard_rss_bytes / support.GIB / 2.0),
         max_scratch_gib=0.25,
         total_seconds=300.0,
     )
