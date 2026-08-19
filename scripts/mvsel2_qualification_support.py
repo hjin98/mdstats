@@ -21,6 +21,7 @@ DEFAULT_TOTAL_SECONDS = 15 * 60
 DEFAULT_SCRATCH_BYTES = GIB
 WATCH_INTERVAL_SECONDS = 1.0
 LIMIT_GRACE_SAMPLES = 2
+QUIESCENCE_SECONDS = 0.5
 
 
 @dataclass(frozen=True)
@@ -78,22 +79,40 @@ def sha256(path: Path) -> str:
     return result.hexdigest()
 
 
+def _file_identity(path: Path) -> dict[str, Any] | None:
+    if not path.is_file():
+        return None
+    stat = path.stat()
+    return {
+        "path": str(path),
+        "sha256": sha256(path),
+        "size_bytes": int(stat.st_size),
+        "mtime_ns": int(stat.st_mtime_ns),
+    }
+
+
 def production_identity(database: Path, config: Path | None) -> dict[str, Any]:
-    stat = database.stat()
+    """Capture the material SQLite/config authority, including WAL content.
+
+    SQLite ``-shm`` is deliberately excluded: read transactions can change
+    reader marks in shared memory without changing database content.  A WAL or
+    rollback journal, when present, is part of the material database state and
+    is therefore hashed and compared.
+    """
+
+    database_identity = _file_identity(database)
+    if database_identity is None:
+        raise RuntimeError(f"production database is missing: {database}")
     result: dict[str, Any] = {
-        "database": str(database),
-        "database_sha256": sha256(database),
-        "database_size_bytes": int(stat.st_size),
-        "database_mtime_ns": int(stat.st_mtime_ns),
+        "database": database_identity,
+        "database_wal": _file_identity(Path(str(database) + "-wal")),
+        "database_journal": _file_identity(Path(str(database) + "-journal")),
     }
     if config is not None:
-        stat = config.stat()
-        result.update(
-            config=str(config),
-            config_sha256=sha256(config),
-            config_size_bytes=int(stat.st_size),
-            config_mtime_ns=int(stat.st_mtime_ns),
-        )
+        config_identity = _file_identity(config)
+        if config_identity is None:
+            raise RuntimeError(f"campaign config is missing: {config}")
+        result["config"] = config_identity
     return result
 
 
@@ -143,7 +162,11 @@ def derive_resource_plan(
     max_scratch_gib: float | None = None,
     total_seconds: float | None = None,
 ) -> ResourcePlan:
-    """Derive hard containment and a smaller normal operating envelope."""
+    """Derive hard containment and a smaller normal operating envelope.
+
+    User-supplied values may only tighten the automatic Protocol-3.1 defaults;
+    they never raise the discovered/default safety boundary.
+    """
 
     host = read_memavailable()
     cgroup = cgroup_available()
@@ -156,10 +179,11 @@ def derive_resource_plan(
         if max_rss_gib <= 0:
             raise RuntimeError("--max-rss-gib must be positive")
         hard_rss = min(hard_rss, int(max_rss_gib * GIB))
-    operating_rss = max(
-        768 * MIB,
-        min(int(0.70 * hard_rss), hard_rss - 1 * GIB),
-    )
+    if hard_rss < 1536 * MIB:
+        raise RuntimeError(
+            "safe RSS containment is below the minimum qualification envelope"
+        )
+    operating_rss = min(int(0.70 * hard_rss), hard_rss - 512 * MIB)
 
     free_disk = shutil.disk_usage(root).free
     hard_scratch = min(DEFAULT_SCRATCH_BYTES, max(128 * MIB, free_disk // 8))
@@ -172,9 +196,13 @@ def derive_resource_plan(
         min(512 * MIB, int(0.60 * hard_scratch)),
     )
 
-    hard_seconds = DEFAULT_TOTAL_SECONDS if total_seconds is None else float(total_seconds)
-    if hard_seconds <= 0:
+    if total_seconds is not None and float(total_seconds) <= 0:
         raise RuntimeError("--total-timeout-seconds must be positive")
+    hard_seconds = (
+        DEFAULT_TOTAL_SECONDS
+        if total_seconds is None
+        else min(DEFAULT_TOTAL_SECONDS, float(total_seconds))
+    )
     operating_seconds = max(60.0, 0.65 * hard_seconds)
 
     return ResourcePlan(
@@ -383,6 +411,52 @@ def _trim_evidence(evidence_parent: Path, keep: int = 5) -> None:
         shutil.rmtree(old, ignore_errors=True)
 
 
+def _publish_preflight_block(
+    *,
+    root: Path,
+    evidence: Path,
+    state_path: Path,
+    run_id: str,
+    plan: ResourcePlan,
+    scavenged: list[str],
+    first_identity: Mapping[str, Any],
+    second_identity: Mapping[str, Any],
+) -> int:
+    summary = {
+        "schema": SUMMARY_SCHEMA,
+        "run_id": run_id,
+        "status": "BLOCKED",
+        "classification": "EXTERNAL_INPUT_NOT_QUIESCENT",
+        "returncode": None,
+        "limit_reason": None,
+        "elapsed_seconds": 0.0,
+        "peak_owned_process_rss_bytes": 0,
+        "peak_scratch_physical_bytes": 0,
+        "resource_plan": plan.to_dict(),
+        "production_identity_before": first_identity,
+        "production_identity_after": second_identity,
+        "worker_evidence": None,
+        "startup_scavenged": scavenged,
+        "codex_required": False,
+        "full_mdstats_snapshot_created": False,
+    }
+    json_dump(evidence / "summary.json", summary)
+    json_dump(root / "summary.json", summary)
+    json_dump(
+        state_path,
+        {
+            "schema": STATE_SCHEMA,
+            "run_id": run_id,
+            "status": "BLOCKED",
+            "classification": "EXTERNAL_INPUT_NOT_QUIESCENT",
+            "resource_plan": plan.to_dict(),
+            "startup_scavenged": scavenged,
+            "summary": str(evidence / "summary.json"),
+        },
+    )
+    return 3
+
+
 def run_supervised_worker(
     *,
     command: list[str],
@@ -405,8 +479,26 @@ def run_supervised_worker(
     scratch = scratch_parent / run_id
     evidence.mkdir(parents=True)
     scratch.mkdir(parents=True)
+    state_path = root / "state.json"
 
+    first_identity = production_identity(database, config)
+    time.sleep(QUIESCENCE_SECONDS)
     before = production_identity(database, config)
+    if first_identity != before:
+        shutil.rmtree(scratch, ignore_errors=True)
+        result = _publish_preflight_block(
+            root=root,
+            evidence=evidence,
+            state_path=state_path,
+            run_id=run_id,
+            plan=plan,
+            scavenged=scavenged,
+            first_identity=first_identity,
+            second_identity=before,
+        )
+        _trim_evidence(evidence_parent)
+        return result
+
     json_dump(
         scratch / "OWNER.json",
         {
@@ -419,7 +511,6 @@ def run_supervised_worker(
             "production_identity": before,
         },
     )
-    state_path = root / "state.json"
     state: dict[str, Any] = {
         "schema": STATE_SCHEMA,
         "run_id": run_id,
@@ -534,6 +625,14 @@ def run_supervised_worker(
         elif worker is None:
             status = "BLOCKED"
             classification = "WORKER_NO_EVIDENCE"
+        elif worker.get("failure_class") == "PRODUCT_OR_MATERIAL_CHECK_ERROR":
+            # The worker's catch-all cannot distinguish product defects from
+            # malformed/missing external input or a harness defect.  Protocol
+            # 3.1 therefore fails closed as BLOCKED instead of falsely
+            # disqualifying the product.  Explicit measured stage FAIL results
+            # (for example the frozen <10x performance floor) remain FAIL.
+            status = "BLOCKED"
+            classification = "HARNESS_OR_INPUT_BLOCKED"
         else:
             status = str(worker.get("status", "BLOCKED"))
             classification = "MATERIAL_RESULT"
