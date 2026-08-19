@@ -43,9 +43,13 @@ Codex must not perform general repository cleanup, documentation editing, specul
 
 The exact Qualification Handoff cannot be finalized until the workstation computes the candidate content identity from a clean checkout. The implementation-owned bootstrap contract is:
 
-`qualification/handoffs/DOC-MVSEL2-HARDEN1-V3_WORKSTATION_BOOTSTRAP.md`
+`workplans/active/DOC-MVSEL2_HARDEN1_V3_WORKSTATION_BOOTSTRAP.md`
 
-Qualification must not begin until that bootstrap has bound:
+The exact candidate-bound Qualification Handoff created after that bootstrap belongs at:
+
+`workplans/active/DOC-MVSEL2_HARDEN1_V3_QUALIFICATION_HANDOFF.md`
+
+Qualification must not begin until the bootstrap has bound:
 
 ```text
 candidate_ref = a9cb41ad9b1c6305de195f1a88b71ea098e582b7

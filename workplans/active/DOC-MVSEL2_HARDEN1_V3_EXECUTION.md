@@ -47,7 +47,7 @@ The implementation authority completed the deterministic closeout before candida
 - release-status metadata corrected without promoting any unexecuted qualification result to PASS;
 - candidate-facing content frozen at `a9cb41ad9b1c6305de195f1a88b71ea098e582b7`.
 
-Subsequent changes to this execution supplement, repository handoff, and `qualification/` records are coordination/evidence-only paths excluded by `mdstats.mvsel2-harden1-v3.candidate-identity.v1`; they do not alter the frozen candidate content identity.
+Subsequent changes to this execution supplement, repository handoff, and other declared coordination/evidence-only paths are excluded by `mdstats.mvsel2-harden1-v3.candidate-identity.v1`; they do not alter the frozen candidate content identity.
 
 ## Remaining transition to qualification
 
@@ -61,4 +61,4 @@ Subsequent changes to this execution supplement, repository handoff, and `qualif
 8. route any product-source/test-contract defect back to implementation; do not patch the frozen candidate during qualification;
 9. after all mandatory qualification passes, perform independent Protocol-v3 verification before any `COMPLETE` or merge-ready decision.
 
-The implementation-owned workstation bootstrap contract is `qualification/handoffs/DOC-MVSEL2-HARDEN1-V3_WORKSTATION_BOOTSTRAP.md`.
+The implementation-owned workstation bootstrap contract is `workplans/active/DOC-MVSEL2_HARDEN1_V3_WORKSTATION_BOOTSTRAP.md`. The exact candidate-bound Qualification Handoff created after workstation identity preflight belongs at `workplans/active/DOC-MVSEL2_HARDEN1_V3_QUALIFICATION_HANDOFF.md`.

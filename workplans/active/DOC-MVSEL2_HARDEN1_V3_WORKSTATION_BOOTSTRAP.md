@@ -53,10 +53,10 @@ If any condition fails, STOP. Do not qualify an ambiguous or dirty candidate.
 Create qualification output directories only after the clean-state observation, then compute the candidate identity:
 
 ```bash
-mkdir -p qualification/handoffs qualification/evidence
+mkdir -p qualification/evidence qualification/tmp
 conda run -n mace python scripts/mvsel2_harden1_v3_candidate_identity.py \
   --repo . \
-  --manifest qualification/handoffs/DOC-MVSEL2-HARDEN1-V3_CANDIDATE_IDENTITY.json
+  --manifest workplans/active/DOC-MVSEL2_HARDEN1_V3_CANDIDATE_IDENTITY.json
 ```
 
 The emitted object must report:
@@ -71,7 +71,7 @@ The identity script excludes declared coordination/evidence surfaces but does no
 
 Still acting as implementation authority, copy/fill the Protocol-v3 `qualification_handoff_template.md` into:
 
-`qualification/handoffs/DOC-MVSEL2-HARDEN1-V3_QUALIFICATION_HANDOFF.md`
+`workplans/active/DOC-MVSEL2_HARDEN1_V3_QUALIFICATION_HANDOFF.md`
 
 Bind the exact value emitted by the identity script and retain all frozen fields above. The final handoff must use:
 
