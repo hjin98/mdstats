@@ -6,7 +6,7 @@
   "plan_revision": 1,
   "workplan_sha256": "ac674abd68dcc43f0fe8f559aecbe913b6e9ae79194e5ff7327b2de531e2716b",
   "protocol_version": "3.0.0",
-  "status": "IMPLEMENTATION_RESCUE_IN_PROGRESS",
+  "status": "PREQUALIFICATION_CLOSEOUT_IN_PROGRESS",
   "supersedes_acceptance_claims_in": "release/MLFF_MVSEL2_QUALIFICATION_0.20.242a0.json",
   "supersession_scope": [
     "final hardening acceptance",
@@ -14,14 +14,14 @@
     "corrected code-under-test binding",
     "production REPAIR2 scale qualification"
   ],
-  "historical_record_policy": "The prior release qualification record remains readable historical evidence and is not rewritten to conceal its BLOCKED_AT_COLLECTION state.",
+  "historical_record_policy": "Prior qualification and performance records remain readable historical evidence for the candidate state on which they were collected; they are not rewritten or promoted to Protocol-v3 acceptance of the rescued candidate.",
   "implementation": {
-    "H0_REVIEW_BASELINE": "PREPARED_PENDING_LOCAL_EXECUTION",
-    "H1_REPAIR2_SEM1": "PREPARED_PENDING_LOCAL_EXECUTION",
-    "H2_MVIDX_FWD_RUNTIME1": "PREPARED_PENDING_LOCAL_EXECUTION",
-    "H3_MVSTATE2_RESUME1": "PREPARED_PENDING_LOCAL_EXECUTION",
-    "H4_REPAIR2_SCALE1": "PREPARED_WITH_NEW_FULL_LADDER_HARNESS_PENDING_LOCAL_EXECUTION",
-    "H5_QUAL_HARDEN1": "BLOCKED_PENDING_LOCAL_REPOSITORY_AND_ENVIRONMENT",
+    "H0_REVIEW_BASELINE": "PREPARED",
+    "H1_REPAIR2_SEM1": "PREPARED",
+    "H2_MVIDX_FWD_RUNTIME1": "PREPARED",
+    "H3_MVSTATE2_RESUME1": "PREPARED",
+    "H4_REPAIR2_SCALE1": "PREPARED_WITH_FULL_LADDER_HARNESS",
+    "H5_QUAL_HARDEN1": "PENDING_FROZEN_CANDIDATE_TARGET_QUALIFICATION",
     "H6_CLOSEOUT_HARDEN1": "IN_PROGRESS"
   },
   "qualification": {
@@ -34,13 +34,21 @@
     "stage_resource_scope_integration": "NOT_RUN",
     "gpu": "DEFERRED_NOT_RUN"
   },
+  "prequalification_closeout": {
+    "temporary_github_diagnostic_workflows": "REMOVED",
+    "protocol_v3_repository_handoff": "UPDATED",
+    "historical_patch_note_qualification_claims": "CORRECTED",
+    "runtime_spec_markdown": "STAGED",
+    "runtime_spec_pdf_provenance": "PENDING_EXACT_REPOSITORY_RENDERER",
+    "candidate_content_identity": "PENDING_FINAL_CLEAN_CHECKOUT"
+  },
   "current_blocker": {
-    "class": "EXECUTION_ENVIRONMENT",
-    "detail": "The rescue executor has connector-only access to this private repository but the available connector exposes no repository clone/archive/tree-export primitive. The local runtime has no mdstats checkout and no conda executable/mace environment, so source-bound local qualification cannot be executed honestly in this session.",
+    "class": "PREQUALIFICATION_ARTIFACT_AND_TARGET_ENVIRONMENT",
+    "detail": "Repository-local closeout has removed temporary GitHub qualification workflows and corrected the Protocol-v3 handoff/history wording. The permanent HARDEN1-v3 runtime-spec PDF/provenance pair still requires the repository's recorded pandoc-typst-v2 renderer stack, which is not installed in the current ChatGPT runtime. After that implementation-owned artifact is committed, the exact final candidate must be materialized in the user's prescribed mace workstation environment so its clean state/content identity can be bound and target/production-data qualification can run.",
     "required_to_clear": [
-      "materialize the exact private candidate checkout locally without bypassing the GitHub connector constraint",
-      "provide or reproduce the repository-prescribed mace qualification environment",
-      "provide the production campaign database/input graph for H4 production-scale checks"
+      "generate and visually verify the HARDEN1-v3 runtime-spec PDF/provenance pair with the established repository renderer policy before candidate freeze",
+      "materialize the exact final candidate in a clean local checkout and compute candidate_content_identity",
+      "execute the candidate-bound H5 workstation qualification using the prescribed mace environment and production campaign inputs"
     ]
   },
   "merge_ready": false,
