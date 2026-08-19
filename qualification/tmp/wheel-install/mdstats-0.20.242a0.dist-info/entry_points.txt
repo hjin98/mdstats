@@ -1,0 +1,5 @@
+[console_scripts]
+mdstats-3d = mdstats.graphics3d.cli:main
+mdstats-mace-eval = mdstats.training_data.critical_precision_cli:eval_main
+mdstats-mace-select-head = mdstats.training_data.critical_precision_cli:select_head_main
+mdstats-mace-train = mdstats.training_data.critical_precision_cli:train_main
