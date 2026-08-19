@@ -4,8 +4,8 @@
 REV9 no longer routes through the missing-plan/MVSTATE2 recovery shims because
 the production campaign has been proven to contain neither artifact.  The
 frozen supervisor remains in ``mvsel2_bounded_qualification_engine.py`` and the
-campaign-without-artifacts worker is installed from
-``mvsel2_bounded_qualification_noartifacts.py``.
+campaign-without-artifacts worker is installed through the fail-closed measured
+optional-rung admission shim in ``mvsel2_rev9_optional_admission.py``.
 
 This wrapper also preserves the Protocol-3.1 G5 evidence-reuse rule: a prior G5
 PASS may be reused when the current tracked worktree is clean on the G5
@@ -20,7 +20,7 @@ import subprocess
 from typing import Any
 
 import mvsel2_bounded_qualification_engine as engine
-from mvsel2_bounded_qualification_noartifacts import install as install_rev9_worker
+from mvsel2_rev9_optional_admission import install as install_rev9_worker
 
 _ORIGINAL_RUN_PREFLIGHT = engine.run_preflight
 
@@ -145,8 +145,9 @@ engine.run_preflight = _run_preflight
 install_rev9_worker(engine)
 
 # The frozen supervisor constructs its worker subprocess from engine.__file__.
-# Route every child through this wrapper so the REV9 worker and evidence-reuse
-# policy apply identically in supervisor and worker modes.
+# Route every child through this wrapper so the REV9 worker, measured optional
+# admission, and evidence-reuse policy apply identically in supervisor/worker
+# modes.
 engine.__file__ = __file__
 
 
