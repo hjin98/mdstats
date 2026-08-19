@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 import mdstats
 from mdstats.training_data.target_coverage_sparse_forward_view import target_coverage_sparse_forward_view
 
@@ -20,11 +22,76 @@ from tests.test_mlff_target_data2c_repair1 import _redundant_selection
 
 
 def _trace(plan, domain_id="target"):
+    """Return the complete persisted REPAIR1 swap authority in canonical order."""
+
     return tuple(
-        (swap.target_size, swap.pass_index, swap.swap_index, swap.rank,
-         swap.removed_frame_uid, swap.replacement_frame_uid, swap.displaced_future_rank)
-        for rung in plan.domain(domain_id).rungs for swap in rung.swaps
+        (
+            swap.target_size,
+            swap.pass_index,
+            swap.swap_index,
+            swap.rank,
+            swap.removed_frame_uid,
+            swap.replacement_frame_uid,
+            swap.removed_unique_coverage,
+            swap.removed_representative_loss,
+            swap.hard_deficit_before,
+            swap.hard_deficit_after,
+            swap.minimum_coverage_before,
+            swap.minimum_coverage_after,
+            swap.total_coverage_before,
+            swap.total_coverage_after,
+            swap.representative_utility_before,
+            swap.representative_utility_after,
+            swap.unit_balance_before,
+            swap.unit_balance_after,
+            swap.bottleneck_family_id,
+            swap.displaced_future_rank,
+        )
+        for rung in plan.domain(domain_id).rungs
+        for swap in rung.swaps
     )
+
+
+def _policy_payload_without_authority(policy):
+    payload = policy.to_dict().copy()
+    payload.pop("schema", None)
+    payload.pop("policy_digest", None)
+    payload.pop("authority_version", None)
+    return payload
+
+
+def test_repair2_default_policy_is_exact_repair1_semantic_mirror() -> None:
+    legacy = mdstats.TargetMultiViewRepairPolicy()
+    forward = TargetMultiViewRepairPolicyV2()
+    assert _policy_payload_without_authority(forward) == _policy_payload_without_authority(legacy)
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid"),
+    (
+        ("unique_coverage_tolerance", 0.0),
+        ("unique_coverage_tolerance", 1.0e-9),
+        ("gain_tie_tolerance", 0.0),
+        ("gain_tie_tolerance", 1.0e-9),
+        ("max_passes_per_shell", 0),
+        ("max_passes_per_shell", 17),
+        ("max_swaps_per_shell", 0),
+        ("max_swaps_per_shell", 1025),
+        ("removal_shortlist_limit", 0),
+        ("removal_shortlist_limit", 4097),
+        ("active_shell_only", False),
+        ("replacement_rank_inheritance", False),
+        ("strict_no_coverage_regression", False),
+        ("clustering_score_authority", "scientific"),
+    ),
+)
+def test_repair2_policy_validation_matches_repair1_fail_closed_contract(field: str, invalid) -> None:
+    legacy_kwargs = {field: invalid}
+    forward_kwargs = {field: invalid}
+    with pytest.raises(mdstats.TrainingDataInputError):
+        mdstats.TargetMultiViewRepairPolicy(**legacy_kwargs)
+    with pytest.raises(mdstats.TrainingDataInputError):
+        TargetMultiViewRepairPolicyV2(**forward_kwargs)
 
 
 def test_repair2_matches_legacy_trace_and_is_schedule_invariant() -> None:
@@ -68,7 +135,7 @@ def test_repair2_source_has_no_inverse_or_mvsel1_execution_dependency() -> None:
     assert "target_multi_view_selector import" not in source
 
 
-def test_repair2_reproduces_nonempty_legacy_repair_trace() -> None:
+def test_repair2_reproduces_nonempty_legacy_repair_trace_under_default_policy() -> None:
     reference, index, legacy_selection = _redundant_selection()
     forward = target_coverage_sparse_forward_view(index)
     legacy_domain = legacy_selection.domain("target")
@@ -87,16 +154,22 @@ def test_repair2_reproduces_nonempty_legacy_repair_trace() -> None:
             phase_a_completed_at=legacy_domain.phase_a_completed_at,
         ),),
     )
-    legacy_policy = mdstats.TargetMultiViewRepairPolicy(max_passes_per_shell=2, max_swaps_per_shell=8)
     legacy = mdstats.build_target_multi_view_repair_plan(
-        reference, index, legacy_selection, policy=legacy_policy, execution_mode="reference"
+        reference,
+        index,
+        legacy_selection,
+        policy=mdstats.TargetMultiViewRepairPolicy(),
+        execution_mode="reference",
     )
     repaired = build_target_multi_view_repair_plan_v2(
-        reference, forward, selection,
-        policy=TargetMultiViewRepairPolicyV2(max_passes_per_shell=2, max_swaps_per_shell=8),
+        reference,
+        forward,
+        selection,
+        policy=TargetMultiViewRepairPolicyV2(),
     )
     assert legacy.domain("target").total_swaps > 0
     assert _trace(repaired) == _trace(legacy)
+    assert repaired.domain("target").repaired_master_order == legacy.domain("target").repaired_master_order
     validate_target_multi_view_repair_authority_v2(
         repaired,
         target_coverage_reference=reference,
