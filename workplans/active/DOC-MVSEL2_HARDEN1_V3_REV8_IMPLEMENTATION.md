@@ -38,6 +38,10 @@ The implementation follows Protocol 3.1 software-implementation and software-qua
 | R8-G5 | PENDING | Focused runtime/harness tests + wheel/install/import for new candidate. |
 | R8-G6 | PENDING_EXTERNAL | One-command workstation production qualification and compact evidence handoff. |
 
+## Execution note
+
+The Protocol-3.1 implementation runner is intentionally CI-gated. It applies the packaged-runtime helper, autonomous qualifier, and focused harness tests in an isolated checkout, then commits them only after focused MVSEL2/MVSTATE2/REPAIR2 tests and isolated wheel import pass. A runner failure is implementation evidence, not permission to weaken REV8.
+
 ## Qualification command target
 
 ```bash
