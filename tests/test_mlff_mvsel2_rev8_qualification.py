@@ -3,11 +3,23 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import numpy as np
+
 from mdstats.training_data import target_multi_view_repair_v2 as repair_v2
 from mdstats.training_data._campaign_cli_core import CampaignStore
+from mdstats.training_data.target_multi_view_selector_v2 import (
+    build_target_multi_view_forward_state_v2,
+    build_target_multi_view_lazy_frontier_v2 as legacy_frontier,
+    score_target_multi_view_candidate_v2,
+    select_target_multi_view_candidate_v2,
+)
+from mdstats.training_data.mvsel2_streaming_frontier import (
+    build_target_multi_view_lazy_frontier_v2_streaming,
+)
 from mdstats.training_data.mvsel2_repair_checkpoint_runtime import (
     build_repair_from_checkpoints,
 )
+from tests.test_mlff_mvsel2_forward import _forward_fixture
 from tests.test_mlff_mvsel2_hardening import (
     _all_valid_rung_states,
     _state_for_prefix,
@@ -46,6 +58,39 @@ def _checkpoint_fixture(tmp_path):
         store, reference, forward, selection.policy
     )
     return reference, forward, selection, store, checkpoint_states
+
+
+def test_streaming_frontier_is_bit_exact_with_legacy_rebase() -> None:
+    reference, _index, forward = _forward_fixture()
+    reference_domain = reference.domain("target")
+    forward_domain = forward.domain("target")
+    legacy_state = build_target_multi_view_forward_state_v2(
+        reference_domain, forward_domain
+    )
+    streaming_state = build_target_multi_view_forward_state_v2(
+        reference_domain, forward_domain
+    )
+    for candidate in (0, 1, 2):
+        for state in (legacy_state, streaming_state):
+            score = score_target_multi_view_candidate_v2(
+                candidate, forward_domain, state
+            )
+            select_target_multi_view_candidate_v2(
+                candidate, forward_domain, state, score=score
+            )
+
+    legacy = legacy_frontier(forward_domain, legacy_state)
+    streaming = build_target_multi_view_lazy_frontier_v2_streaming(
+        forward_domain, streaming_state
+    )
+    assert np.array_equal(
+        legacy.exact_scores, streaming.exact_scores, equal_nan=True
+    )
+    assert np.array_equal(
+        legacy.exact_generations, streaming.exact_generations
+    )
+    assert legacy.heap == streaming.heap
+    assert legacy.generation == streaming.generation
 
 
 def test_shared_checkpoint_repair_is_trace_equivalent_to_canonical_repair(
@@ -105,8 +150,18 @@ def test_checkpoint_repair_builder_skips_fresh_validation_when_checkpoints_cover
 def test_campaign_facade_routes_production_to_shared_checkpoint_builder() -> None:
     from mdstats.training_data import campaign_cli
     from mdstats.training_data import mvsel2_hardening_runtime as hardening
+    from mdstats.training_data import target_multi_view_selector_v2 as selector_v2
+    from mdstats.training_data import target_multi_view_selector_v2_resume as resume_v2
 
     assert hardening._build_repair_from_checkpoints is build_repair_from_checkpoints
+    assert (
+        selector_v2.build_target_multi_view_lazy_frontier_v2
+        is build_target_multi_view_lazy_frontier_v2_streaming
+    )
+    assert (
+        resume_v2.build_target_multi_view_lazy_frontier_v2
+        is build_target_multi_view_lazy_frontier_v2_streaming
+    )
     assert campaign_cli._core._ensure_target_multi_view_repair_v2 is not None
 
 
@@ -167,6 +222,25 @@ def test_resource_plan_user_caps_only_tighten(tmp_path) -> None:
     assert capped.hard_total_seconds == 300.0
     assert capped.operating_rss_bytes < capped.hard_rss_bytes
     assert capped.operating_total_seconds < capped.hard_total_seconds
+
+
+def test_total_timeout_override_cannot_raise_default(tmp_path) -> None:
+    plan = support.derive_resource_plan(root=tmp_path, total_seconds=3600.0)
+    assert plan.hard_total_seconds == support.DEFAULT_TOTAL_SECONDS
+
+
+def test_production_identity_includes_wal_but_excludes_shm(tmp_path) -> None:
+    database = tmp_path / "campaign.sqlite3"
+    database.write_bytes(b"db")
+    wal = Path(str(database) + "-wal")
+    wal.write_bytes(b"wal")
+    shm = Path(str(database) + "-shm")
+    shm.write_bytes(b"reader-state")
+
+    identity = support.production_identity(database, None)
+
+    assert identity["database_wal"] is not None
+    assert "database_shm" not in identity
 
 
 def test_scavenger_removes_only_owned_dead_scratch(tmp_path) -> None:
