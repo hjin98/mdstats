@@ -76,7 +76,22 @@ jobs:
       - name: Adjacent v1 regressions
         run: python -m pytest -q tests/test_mlff_target_data2c_repair1.py
       - name: Full non-slow suite
-        run: python -m pytest -q -m 'not slow'
+        run: |
+          set +e
+          python -m pytest -q -m 'not slow' 2>&1 | tee full-nonslow.log
+          status=${PIPESTATUS[0]}
+          printf '%s\n' "$status" > full-nonslow.exitcode
+          exit "$status"
+      - name: Upload full-suite diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-nonslow-diagnostic-${{ env.CANDIDATE_SHA }}
+          path: |
+            full-nonslow.log
+            full-nonslow.exitcode
+          if-no-files-found: error
+          retention-days: 7
       - name: Build wheel
         run: python -m build --wheel
       - name: Verify wheel excludes coordination artifacts
