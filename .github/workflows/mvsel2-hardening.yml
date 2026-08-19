@@ -1,0 +1,41 @@
+name: MVSEL2 hardening
+
+on:
+  push:
+    branches:
+      - feat/mvsel2-forward-lazy
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  focused:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install test environment
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . pytest psutil PyYAML
+      - name: Compile touched modules
+        run: |
+          python -m py_compile \
+            mdstats/training_data/target_multi_view_repair_v2.py \
+            mdstats/training_data/target_multi_view_selector_v2_resume.py \
+            mdstats/training_data/mvsel2_hardening_runtime.py \
+            mdstats/training_data/campaign_cli.py \
+            mdstats/training_data/_campaign_cli_core.py
+      - name: Focused MVSEL2 hardening tests
+        run: |
+          python -m pytest -q \
+            tests/test_mlff_repair2.py \
+            tests/test_mlff_mvstate2.py \
+            tests/test_mlff_mvmigrate2.py \
+            tests/test_mlff_mvsel2_forward.py \
+            tests/test_mlff_mvsel2_hardening.py
