@@ -1,0 +1,7 @@
+{
+  "browser_scene_face_overshoots": [301838, 314640],
+  "browser_face_budget": 300000,
+  "sparse_shell_face_count": 582375,
+  "sparse_shell_face_limit": 250000,
+  "partitioned_topology_count": 7
+}
