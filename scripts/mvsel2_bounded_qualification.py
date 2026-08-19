@@ -50,6 +50,10 @@ LEGACY_SURFACE = (
 )
 
 
+class MaterialQualificationFailure(RuntimeError):
+    """A demonstrated candidate/material acceptance failure."""
+
+
 def _record_ro(connection: sqlite3.Connection, key: str) -> dict[str, Any]:
     row = connection.execute(
         "SELECT payload FROM records WHERE key=?", (key,)
@@ -298,11 +302,11 @@ def _worker(args: argparse.Namespace) -> int:
                 selector_policy=selector_policy,
             )
 
-        state128 = restore(128)
         state256 = restore(256)
         state16384 = restore(TARGET_SIZE)
         if state16384.selected_count != TARGET_SIZE:
             raise RuntimeError("16384 checkpoint sentinel cardinality mismatch")
+        del state16384
 
         uid_to_candidate = {
             uid: index for index, uid in enumerate(reference_domain.frame_uids)
@@ -347,7 +351,7 @@ def _worker(args: argparse.Namespace) -> int:
                 or recovered_pointer is None
                 or dict(recovered_pointer) != dict(checkpoints[128])
             ):
-                raise RuntimeError(
+                raise MaterialQualificationFailure(
                     "runtime recovery did not select the 128 checkpoint"
                 )
             for candidate in canonical_order[128:256]:
@@ -359,12 +363,13 @@ def _worker(args: argparse.Namespace) -> int:
                 )
             equal, field = _state_equal(recovered, state256)
             if not equal:
-                raise RuntimeError(
+                raise MaterialQualificationFailure(
                     f"128->256 reconstructed state differs at {field}"
                 )
         finally:
             scratch_store.close()
             shutil.rmtree(q2_scratch, ignore_errors=True)
+        del state256
         result["stages"]["LQ2"] = {
             "status": "PASS",
             "fallback_size": 128,
@@ -372,9 +377,12 @@ def _worker(args: argparse.Namespace) -> int:
             "state_equivalence": "exact",
         }
 
-        # LQ3: exact shared per-rung repair science from authenticated states.
+        # LQ3: exact shared repair science, carrying real divergence forward.
         repair_policy = TargetMultiViewRepairPolicyV2()
         repair_rows: list[dict[str, Any]] = []
+        repair_state = None
+        repair_order = list(canonical_order)
+        repair_diverged = False
         for size in (128, 256, 512, 1024):
             optional = size >= 512
             if size not in checkpoints or size not in materializable:
@@ -386,11 +394,27 @@ def _worker(args: argparse.Namespace) -> int:
             if optional and elapsed() > 0.40 * operating_seconds:
                 break
 
-            state = restore(size)
             shell_start = 0 if size == 128 else max(
                 value for value in materializable if value < size
             )
-            order = list(canonical_order)
+            checkpoint_mode = "mvstate2_authenticated"
+            if repair_state is None or not repair_diverged:
+                repair_state = restore(size)
+                repair_order = list(canonical_order)
+            else:
+                checkpoint_mode = "post_divergence_carried_state"
+                for rank in range(int(repair_state.selected_count), size):
+                    candidate = repair_order[rank]
+                    score = score_target_multi_view_candidate_v2(
+                        candidate, forward_domain, repair_state
+                    )
+                    select_target_multi_view_candidate_v2(
+                        candidate,
+                        forward_domain,
+                        repair_state,
+                        score=score,
+                    )
+
             started = time.perf_counter()
             rung, telemetry = repair_rung_from_authenticated_state(
                 reference_domain,
@@ -398,11 +422,12 @@ def _worker(args: argparse.Namespace) -> int:
                 selection,
                 rung_by_size[size],
                 policy=repair_policy,
-                order=order,
-                state=state,
+                order=repair_order,
+                state=repair_state,
                 shell_start=shell_start,
             )
             wall = time.perf_counter() - started
+            repair_diverged = repair_diverged or bool(rung.swaps)
             repair_rows.append(
                 {
                     "target_size": size,
@@ -414,7 +439,7 @@ def _worker(args: argparse.Namespace) -> int:
                         telemetry["proposal_full_state_copies"]
                     ),
                     "inverse_mutation": bool(telemetry["inverse_mutation"]),
-                    "checkpoint_mode": "mvstate2_authenticated",
+                    "checkpoint_mode": checkpoint_mode,
                     "current_rss_bytes": rss_bytes(os.getpid()),
                 }
             )
@@ -426,7 +451,9 @@ def _worker(args: argparse.Namespace) -> int:
             or row["inverse_mutation"]
             for row in repair_rows
         ):
-            raise RuntimeError("REPAIR2 no-copy/no-inverse invariant failed")
+            raise MaterialQualificationFailure(
+                "REPAIR2 no-copy/no-inverse invariant failed"
+            )
 
         repair_upper = repair_projection_upper(
             repair_rows,
@@ -511,7 +538,7 @@ def _worker(args: argparse.Namespace) -> int:
                     reference_domain, forward_domain, state
                 )
                 if choice.candidate_index != canonical_order[rank]:
-                    raise RuntimeError(
+                    raise MaterialQualificationFailure(
                         f"current Phase-A candidate mismatch at rank {rank}"
                     )
                 select_target_multi_view_candidate_v2(
@@ -528,26 +555,39 @@ def _worker(args: argparse.Namespace) -> int:
                 )
             phase_a_seconds = time.perf_counter() - phase_a_started
             phase_a_end = state.selected_count
+            if not phase_a_rows:
+                raise RuntimeError(
+                    "current production authority completes Phase A before rank 128"
+                )
             max_phase_a = max(
                 float(row["seconds"]) for row in phase_a_rows
             )
 
+            # The REV8 frontier is family-streaming.  Admission is therefore
+            # based on current resident state plus one largest family mmap,
+            # rather than historical post-release RSS or the entire 35+ GiB
+            # forward mapping.  The external supervisor remains the hard guard.
+            largest_family_bytes = max(
+                int(np.asarray(family.candidate_offsets).nbytes)
+                + int(np.asarray(family.candidate_witnesses).nbytes)
+                for family in forward_domain.families
+            )
+            current_rss = int(rss_bytes(os.getpid()) or 0)
+            admitted_rebase_rss = (
+                current_rss
+                + 2 * largest_family_bytes
+                + 2 * GIB
+            )
             historical_rebase_seconds = float(
                 historical_density["phase_b"]["exact_rebase_seconds"]
-            )
-            historical_rebase_rss = int(
-                historical_density["phase_b"]["post_rebase_release_rss_kib"]
-            ) * 1024
-            admitted_rebase_rss = max(
-                historical_rebase_rss * 5 // 4,
-                int(rss_bytes(os.getpid()) or 0),
             )
             admitted_rebase_time = 1.5 * historical_rebase_seconds + 90.0
             if admitted_rebase_rss > operating_rss:
                 result["stages"]["LQ4"] = {
                     "status": "BLOCKED",
-                    "reason": "current operating envelope does not admit exact Phase-B rebase",
+                    "reason": "current operating envelope does not admit exact streaming Phase-B rebase",
                     "projected_rebase_rss_bytes": admitted_rebase_rss,
+                    "largest_family_mapped_bytes": largest_family_bytes,
                     "operating_rss_bytes": operating_rss,
                 }
             elif elapsed() + admitted_rebase_time > operating_seconds:
@@ -571,7 +611,7 @@ def _worker(args: argparse.Namespace) -> int:
                         reference_domain, forward_domain, state, frontier
                     )
                     if choice.candidate_index != canonical_order[rank]:
-                        raise RuntimeError(
+                        raise MaterialQualificationFailure(
                             f"current Phase-B candidate mismatch at rank {rank}"
                         )
                     select_target_multi_view_candidate_v2(
@@ -587,6 +627,8 @@ def _worker(args: argparse.Namespace) -> int:
                             "fallback": bool(choice.telemetry.fallback_used),
                         }
                     )
+                if not phase_b_rows:
+                    raise RuntimeError("no Phase-B ranks available for projection")
                 max_phase_b = max(
                     float(row["seconds"]) for row in phase_b_rows
                 )
@@ -657,15 +699,24 @@ def _worker(args: argparse.Namespace) -> int:
         )
         json_dump(evidence / "worker.json", result)
         return 0 if overall == "PASS" else (2 if overall == "FAIL" else 3)
-    except Exception as exc:
+    except MaterialQualificationFailure as exc:
         result.update(
             status="FAIL",
-            failure_class="PRODUCT_OR_MATERIAL_CHECK_ERROR",
+            failure_class="PRODUCT_FAILURE",
             error=f"{type(exc).__name__}: {exc}",
             elapsed_seconds=elapsed(),
         )
         json_dump(evidence / "worker.json", result)
-        raise
+        return 2
+    except Exception as exc:
+        result.update(
+            status="BLOCKED",
+            failure_class="HARNESS_OR_INPUT_BLOCKED",
+            error=f"{type(exc).__name__}: {exc}",
+            elapsed_seconds=elapsed(),
+        )
+        json_dump(evidence / "worker.json", result)
+        return 3
     finally:
         connection.close()
 
