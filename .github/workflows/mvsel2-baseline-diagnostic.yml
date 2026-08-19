@@ -1,0 +1,47 @@
+name: MVSEL2 baseline diagnostic
+
+on:
+  push:
+    branches:
+      - feat/mvsel2-forward-lazy
+
+permissions:
+  contents: read
+
+jobs:
+  baseline-nonslow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 1918f940debecade786b9b89c13c1bca3d787c89
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Bind baseline
+        run: |
+          test "$(git rev-parse HEAD)" = "1918f940debecade786b9b89c13c1bca3d787c89"
+      - name: Install qualification environment
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . pytest psutil PyYAML build cloudpickle torch-ema
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - name: Full non-slow baseline
+        run: |
+          set +e
+          python -m pytest -q -m 'not slow' 2>&1 | tee baseline-full-nonslow.log
+          status=${PIPESTATUS[0]}
+          printf '%s\n' "$status" > baseline-full-nonslow.exitcode
+          exit "$status"
+      - name: Upload baseline diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: baseline-full-nonslow-1918f940
+          path: |
+            baseline-full-nonslow.log
+            baseline-full-nonslow.exitcode
+          if-no-files-found: error
+          retention-days: 7
