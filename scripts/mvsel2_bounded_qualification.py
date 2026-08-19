@@ -199,18 +199,28 @@ def main() -> int:
     status = str(summary.get("status", "BLOCKED"))
     classification = str(summary.get("classification", "UNKNOWN"))
     evidence = _latest_evidence(root, newer_than_ns=run_started_ns)
-    worker = None if evidence is None else evidence / "worker.json"
+    worker_path = None if evidence is None else evidence / "worker.json"
+    worker = _json_load(worker_path) if worker_path is not None and worker_path.is_file() else None
+    if worker is None:
+        embedded = summary.get("worker_evidence")
+        worker = embedded if isinstance(embedded, dict) else None
+
+    worker_class = "" if worker is None else str(worker.get("failure_class", ""))
+    worker_error = "" if worker is None else str(worker.get("error", ""))
+    display_classification = worker_class or classification
 
     print(
         f"[REV8 qualification] FINAL status={status}; "
-        f"classification={classification}; elapsed={elapsed:.1f}s; "
+        f"classification={display_classification}; elapsed={elapsed:.1f}s; "
         f"returncode={returncode}",
         flush=True,
     )
+    if worker_error:
+        print(f"[REV8 qualification] reason={worker_error}", flush=True)
     print(f"[REV8 qualification] summary={summary_path}", flush=True)
     print(f"[REV8 qualification] state={root / 'state.json'}", flush=True)
-    if worker is not None and worker.is_file():
-        print(f"[REV8 qualification] worker={worker}", flush=True)
+    if worker_path is not None and worker_path.is_file():
+        print(f"[REV8 qualification] worker={worker_path}", flush=True)
     if evidence is not None and (evidence / "worker.log").is_file():
         print(f"[REV8 qualification] log={evidence / 'worker.log'}", flush=True)
 
