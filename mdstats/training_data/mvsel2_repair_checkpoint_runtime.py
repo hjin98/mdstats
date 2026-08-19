@@ -1,10 +1,9 @@
-"""Shared checkpoint-started REPAIR2 execution for production and qualification.
+"""Shared checkpoint-started REV8 execution for production and qualification.
 
-This module contains the exact per-rung repair science used by the REV8
-production seam and the lightweight production qualification harness.  It
-starts from already-authenticated MVSTATE2 forward state and therefore does not
-perform a fresh full-domain feasibility scan before work that will immediately
-reuse a checkpoint.
+This module contains the exact per-rung REPAIR2 science used by the production
+seam and the lightweight production qualification harness.  Importing the seam
+also installs the exact family-streaming Phase-B rebase in the selector module,
+so qualification and campaign execution use the same bounded rebase mechanics.
 """
 from __future__ import annotations
 
@@ -13,12 +12,23 @@ from typing import Any, Mapping
 
 from ._common import TrainingDataInputError
 from .progress_timing import format_progress_time
+from . import target_multi_view_selector_v2 as _selector_v2
+from .mvsel2_streaming_frontier import (
+    build_target_multi_view_lazy_frontier_v2_streaming,
+)
 from .target_multi_view_selector_v2 import (
     deselect_target_multi_view_candidate_v2,
     score_target_multi_view_candidate_v2,
     select_target_multi_view_candidate_v2,
 )
 from . import target_multi_view_repair_v2 as _repair
+
+# REV8 resource hardening changes execution order only.  Install it at the same
+# private runtime seam that production and qualification already share.  The
+# resume module's imported alias is patched explicitly by campaign_cli.
+_selector_v2.build_target_multi_view_lazy_frontier_v2 = (
+    build_target_multi_view_lazy_frontier_v2_streaming
+)
 
 
 def repair_rung_from_authenticated_state(
