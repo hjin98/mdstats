@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
-"""REV8 qualification wrapper with material G5 evidence reuse.
+"""REV9 qualification wrapper with material G5 evidence reuse.
 
-The previous authority-cache/orphan-discovery implementation is preserved in
-``mvsel2_bounded_qualification_adapted.py``.  This outer wrapper adds only a
-Protocol-3.1 evidence-reuse rule: a prior G5 PASS may be reused when the current
-tracked worktree is clean on the G5 material surface and that surface is
-byte-identical between the prior and current Git commits.
+REV9 no longer routes through the missing-plan/MVSTATE2 recovery shims because
+the production campaign has been proven to contain neither artifact.  The
+frozen supervisor remains in ``mvsel2_bounded_qualification_engine.py`` and the
+campaign-without-artifacts worker is installed from
+``mvsel2_bounded_qualification_noartifacts.py``.
+
+This wrapper also preserves the Protocol-3.1 G5 evidence-reuse rule: a prior G5
+PASS may be reused when the current tracked worktree is clean on the G5
+material surface and that surface is byte-identical between the prior and
+current Git commits.
 """
 from __future__ import annotations
 
@@ -14,9 +19,9 @@ from pathlib import Path
 import subprocess
 from typing import Any
 
-import mvsel2_bounded_qualification_adapted as adapted
+import mvsel2_bounded_qualification_engine as engine
+from mvsel2_bounded_qualification_noartifacts import install as install_rev9_worker
 
-engine = adapted.recovery.engine
 _ORIGINAL_RUN_PREFLIGHT = engine.run_preflight
 
 _G5_MATERIAL_PATHS = (
@@ -120,7 +125,7 @@ def _reusable_g5(repo: Path, evidence: Path) -> dict[str, Any] | None:
             }
         )
         print(
-            "[REV8 G5] reusing prior PASS; material surface unchanged; "
+            "[REV9 G5] reusing prior PASS; material surface unchanged; "
             f"source={run.name}",
             flush=True,
         )
@@ -137,9 +142,11 @@ def _run_preflight(repo: Path, scratch: Path, evidence: Path) -> dict[str, Any]:
 
 
 engine.run_preflight = _run_preflight
-# The frozen engine constructs its worker subprocess from engine.__file__.  Route
-# every child through this outer wrapper so evidence reuse and all lower wrapper
-# adaptations apply identically in supervisor and worker modes.
+install_rev9_worker(engine)
+
+# The frozen supervisor constructs its worker subprocess from engine.__file__.
+# Route every child through this wrapper so the REV9 worker and evidence-reuse
+# policy apply identically in supervisor and worker modes.
 engine.__file__ = __file__
 
 
