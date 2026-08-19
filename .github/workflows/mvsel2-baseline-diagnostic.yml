@@ -1,9 +1,9 @@
 name: MVSEL2 baseline diagnostic
 
 on:
-  push:
+  pull_request:
     branches:
-      - feat/mvsel2-forward-lazy
+      - main
 
 permissions:
   contents: read
