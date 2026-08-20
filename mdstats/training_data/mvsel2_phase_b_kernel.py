@@ -8,8 +8,10 @@ The scientific Phase-B policy remains the certified lazy frontier implemented by
 * the cache is updated only on forward rows selected since the previous Phase-B
   evaluation;
 * stale heap entries are rescored in small deterministic batches traversed
-  family-major, so one family's mmap pages are active at a time;
-* each scanned family mapping is released after the batch;
+  family-major for CSR locality;
+* mapped forward pages are retained across all batches needed for one accepted
+  rank and released once after that rank, avoiding repeated DONTNEED/refault
+  churn inside the same certification;
 * the exact Phase-B rebase remains family-major and forward-only.
 
 No candidate marginal array, inverse adjacency, or additional persistent state
@@ -36,6 +38,7 @@ from .target_multi_view_selector_v2 import (
     _filter_best_relative_v2,
     _sparse_diversity_v2,
     _total_coverage_gain_v2,
+    release_target_multi_view_forward_pages_v2,
 )
 
 
@@ -158,7 +161,9 @@ def _representative_gain_cached_batch(
 
     Candidate processing order within a family is sorted for CSR locality. Each
     candidate still receives one FP64 family subtotal in canonical family order,
-    matching the scalar scientific accumulation sequence.
+    matching the scalar scientific accumulation sequence. Forward mmap pages are
+    intentionally retained here so additional stale batches for the same rank can
+    reuse them; the caller releases them once the rank is certified.
     """
 
     if not candidates:
@@ -179,11 +184,6 @@ def _representative_gain_cached_batch(
                 np.sum(terms[witnesses], dtype=np.float64)
             )
             edges += int(witnesses.size)
-
-        # Bound the mapped working set. The next family is independent and all
-        # candidate scores retain their completed family subtotal in RAM.
-        _drop_file_backed_pages_v2(np.asarray(family.candidate_offsets))
-        _drop_file_backed_pages_v2(np.asarray(family.candidate_witnesses))
 
     return {
         candidate: float(scores[position])
@@ -438,6 +438,10 @@ def choose_target_multi_view_phase_b_candidate_v2_kernel(
         forward_domain,
         state,
     )
+    # All stale batches required for this accepted rank are complete. Release
+    # the mapped forward pages once now so later ranks do not accumulate the
+    # whole 9.5B-edge graph, while avoiding repeated refaults inside this rank.
+    release_target_multi_view_forward_pages_v2(forward_domain)
     return TargetMultiViewPhaseBChoiceV2(
         candidate_index=chosen,
         score=TargetMultiViewCandidateScoreV2(
