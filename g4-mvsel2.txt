@@ -1,0 +1,63 @@
+[PASS] precision: profile=single; model/training/inference/export=float32; mdstats scientific arithmetic=float64
+[PASS] DATA2-DATA5 records are present; normalized frame arrays will be restored only if DATA6 or a changed DATA7/DATA8 variant needs them
+[PASS] TARGET-DATA2A role freeze reused: 36408 development frames; digest=2e5036394b74...
+
+DATA6 foundation-model descriptor and prediction sweep
+------------------------------------------------------
+[PASS] DATA6 foundation sweep reused from its completed checkpoint (36759/36759); no MACE inference or full sidecar scan
+[DATA4 restore] restore; status=progress; progress=37,633/37,633 (100.0%); kind=raw-feature
+[DATA4 restore] restore; status=progress; progress=37,633/37,633 (100.0%); kind=LTA frame
+[DATA4 restore] restore; status=progress; progress=100,000/903,192 (11.1%); kind=LTA mobile-state
+[DATA4 restore] restore; status=progress; progress=200,000/903,192 (22.1%); kind=LTA mobile-state
+[DATA4 restore] restore; status=progress; progress=300,000/903,192 (33.2%); kind=LTA mobile-state
+[DATA4 restore] restore; status=progress; progress=400,000/903,192 (44.3%); kind=LTA mobile-state
+[DATA4 restore] restore; status=progress; progress=500,000/903,192 (55.4%); kind=LTA mobile-state
+[DATA4 restore] restore; status=progress; progress=600,000/903,192 (66.4%); kind=LTA mobile-state
+[DATA4 restore] restore; status=progress; progress=700,000/903,192 (77.5%); kind=LTA mobile-state
+[DATA4 restore] restore; status=progress; progress=800,000/903,192 (88.6%); kind=LTA mobile-state
+[DATA4 restore] restore; status=progress; progress=900,000/903,192 (99.6%); kind=LTA mobile-state
+[DATA4 restore] restore; status=progress; progress=903,192/903,192 (100.0%); kind=LTA mobile-state
+[DATA4 restore] restore; status=progress; progress=5,169/5,169 (100.0%); kind=event
+
+Restoring or finalizing DATA6 evidence
+--------------------------------------
+Reusing the just-completed in-memory sweep; no duplicate all-sidecar scan.
+[DATA6 restore] restore; status=progress; progress=36,408/36,408 (100.0%); kind=LTA selection frame
+[DATA6 restore] restore; status=progress; progress=15,535/15,535 (100.0%); kind=difficulty
+[DATA6 restore] restore; status=progress; progress=36,408/36,408 (100.0%); kind=difficulty
+[DATA6 restore] restore; status=progress; progress=16,150/16,150 (100.0%); kind=difficulty
+[DATA6 restore] restore; status=progress; progress=11,564/11,564 (100.0%); kind=difficulty
+[DATA6 restore] restore; status=progress; progress=11,450/11,450 (100.0%); kind=blinded prediction
+[DATA6 restore] restore; status=progress; progress=87/87 (100.0%); kind=blinded prediction
+[DATA6 restore] restore; status=progress; progress=346/346 (100.0%); kind=blinded prediction
+[DATA6 restore] restore; status=progress; progress=11,738/11,738 (100.0%); kind=blinded prediction
+[DATA6 restore] restore; status=progress; progress=980/980 (100.0%); kind=blinded prediction
+[DATA6 restore] restore; status=progress; progress=13,220/13,220 (100.0%); kind=blinded prediction
+[DATA6 restore] restore; status=progress; progress=280/280 (100.0%); kind=blinded prediction
+[DATA6 restore] restore; status=progress; progress=264/264 (100.0%); kind=blinded prediction
+[DATA6 restore] restore; status=progress; progress=1,602/1,602 (100.0%); kind=universal structural event
+[DATA6 restore] restore; status=progress; progress=36,759/36,759 (100.0%); kind=MACE descriptor manifest
+[DATA6 restore] restore; status=progress; progress=36,759/36,759 (100.0%); kind=prediction manifest
+[PASS] finalized DATA6 evidence reused; skipped structural recomputation and sharded-record rewrite
+[PASS] FOUNDATION-AUDIT1 reused: 36408 target configurations; digest=011f30fbcced...
+[PASS] FOUNDATION-AUDIT1 source: family=mace_mpa_0; head=default; sha256=75428afe3a1d...; backend=e3nn; kernel=e3nn; dtype=float32; source-domain=general materials; source-theory=Materials Project PBE/PBE+U; target-core-label-protocol=0bd02711b953...,46bf13e04ead...,53df262d47dd...,86ffc9eec590...,c8e12a058844...,ce816eac6174...,fa646641c36a...; target-role-freeze=2e5036394b74...
+[PASS] TARGET-DATA2B reference reused: 165 families; digest=e79b9fea28d7...
+[PASS] TARGET-DATA2B-FEAS1 reused: state=cross_support_fragile; digest=7f6d3fc7fa73...
+[TARGET-DATA2C-MVIDX1 restore] restore; status=start; validation=receipt-hit; cache_policy=discard; families=0/165; bytes=0/76134275040
+[TARGET-DATA2C-MVIDX1 restore] restore; status=progress; validation=receipt-hit; cache_policy=discard; families=165/165; bytes=76126671512/76134275040; elapsed_s=8.9; eta_s=0.0
+[TARGET-DATA2C-MVIDX1 restore] restore; status=complete; validation=receipt-hit; cache_policy=discard; families=165/165; bytes=76134275040/76134275040; elapsed_s=9.0
+[PASS] TARGET-DATA2C-MVIDX1 reused: families=165; sparse_edges=9505021522; digest=2c9b855794e5...
+
+TARGET-DATA2C-MVSEL2 exact forward/lazy selector
+------------------------------------------------
+[TARGET-DATA2C-MVSEL2] status=selecting; progress=1,024/16,384 (6.2%); elapsed=00:00:00; eta=--:--:--; phase=resume; domain=label-domain-5aa1ee5d50cd0b23; resume_size=1024; resume_mode=mvstate2+legacy_history_replay
+[TARGET-DATA2C-MVSEL2] status=selecting; progress=1,025/16,384 (6.3%); elapsed=00:01:07; eta=286:18:05; throughput=0.015 ranks/s; phase=representative_fill; rank=1024; resume_size=1024; resume_mode=mvstate2+legacy_history_replay; phase_b_resume_rebases=1; mutation_forward_edges=284447; candidate_evaluation_forward_edges=284437; cumulative_mutation_edges=284447; cumulative_evaluation_edges=284437; contender_width=1; rescoring_count=0; heap_entries=35384; fallback_count=0
+[TARGET-DATA2C-MVSEL2] status=selecting; progress=1,094/16,384 (6.7%); elapsed=00:01:38; eta=05:58:30; throughput=0.711 ranks/s; phase=representative_fill; rank=1093; resume_size=1024; resume_mode=mvstate2+legacy_history_replay; phase_b_resume_rebases=1; mutation_forward_edges=249717; candidate_evaluation_forward_edges=172498669; cumulative_mutation_edges=19364470; cumulative_evaluation_edges=3696417246; contender_width=1; rescoring_count=616; heap_entries=35315; fallback_count=0
+[TARGET-DATA2C-MVSEL2] status=selecting; progress=1,129/16,384 (6.9%); elapsed=00:02:09; eta=05:13:12; throughput=0.812 ranks/s; phase=representative_fill; rank=1128; resume_size=1024; resume_mode=mvstate2+legacy_history_replay; phase_b_resume_rebases=1; mutation_forward_edges=280091; candidate_evaluation_forward_edges=193783322; cumulative_mutation_edges=28860888; cumulative_evaluation_edges=7448378030; contender_width=1; rescoring_count=712; heap_entries=35280; fallback_count=0
+[TARGET-DATA2C-MVSEL2] status=selecting; progress=1,162/16,384 (7.1%); elapsed=00:02:40; eta=04:53:45; throughput=0.864 ranks/s; phase=representative_fill; rank=1161; resume_size=1024; resume_mode=mvstate2+legacy_history_replay; phase_b_resume_rebases=1; mutation_forward_edges=315211; candidate_evaluation_forward_edges=129905815; cumulative_mutation_edges=37828911; cumulative_evaluation_edges=11199608143; contender_width=1; rescoring_count=475; heap_entries=35247; fallback_count=0
+[TARGET-DATA2C-MVSEL2] status=selecting; progress=1,197/16,384 (7.3%); elapsed=00:03:11; eta=04:39:35; throughput=0.905 ranks/s; phase=representative_fill; rank=1196; resume_size=1024; resume_mode=mvstate2+legacy_history_replay; phase_b_resume_rebases=1; mutation_forward_edges=264383; candidate_evaluation_forward_edges=225439717; cumulative_mutation_edges=47319933; cumulative_evaluation_edges=15063190821; contender_width=1; rescoring_count=825; heap_entries=35212; fallback_count=0
+[TARGET-DATA2C-MVSEL2] status=selecting; progress=1,231/16,384 (7.5%); elapsed=00:03:41; eta=04:29:49; throughput=0.936 ranks/s; phase=representative_fill; rank=1230; resume_size=1024; resume_mode=mvstate2+legacy_history_replay; phase_b_resume_rebases=1; mutation_forward_edges=282774; candidate_evaluation_forward_edges=76149169; cumulative_mutation_edges=56794128; cumulative_evaluation_edges=18778960452; contender_width=1; rescoring_count=278; heap_entries=35178; fallback_count=0
+[TARGET-DATA2C-MVSEL2] status=selecting; progress=1,266/16,384 (7.7%); elapsed=00:04:12; eta=04:22:20; throughput=0.961 ranks/s; phase=representative_fill; rank=1265; resume_size=1024; resume_mode=mvstate2+legacy_history_replay; phase_b_resume_rebases=1; mutation_forward_edges=252632; candidate_evaluation_forward_edges=156099821; cumulative_mutation_edges=66308561; cumulative_evaluation_edges=22591365682; contender_width=1; rescoring_count=570; heap_entries=35143; fallback_count=0
+[TARGET-DATA2C-MVSEL2] status=selecting; progress=1,300/16,384 (7.9%); elapsed=00:04:42; eta=04:17:06; throughput=0.978 ranks/s; phase=representative_fill; rank=1299; resume_size=1024; resume_mode=mvstate2+legacy_history_replay; phase_b_resume_rebases=1; mutation_forward_edges=289107; candidate_evaluation_forward_edges=156884680; cumulative_mutation_edges=75521835; cumulative_evaluation_edges=26350228308; contender_width=1; rescoring_count=578; heap_entries=35109; fallback_count=0
+[TARGET-DATA2C-MVSEL2] status=selecting; progress=1,334/16,384 (8.1%); elapsed=00:05:13; eta=04:12:58; throughput=0.992 ranks/s; phase=representative_fill; rank=1333; resume_size=1024; resume_mode=mvstate2+legacy_history_replay; phase_b_resume_rebases=1; mutation_forward_edges=341129; candidate_evaluation_forward_edges=54224636; cumulative_mutation_edges=84927829; cumulative_evaluation_edges=30118343993; contender_width=1; rescoring_count=196; heap_entries=35075; fallback_count=0
+[TARGET-DATA2C-MVSEL2] status=selecting; progress=1,368/16,384 (8.3%); elapsed=00:05:43; eta=04:09:18; throughput=1.004 ranks/s; phase=representative_fill; rank=1367; resume_size=1024; resume_mode=mvstate2+legacy_history_replay; phase_b_resume_rebases=1; mutation_forward_edges=292268; candidate_evaluation_forward_edges=195063407; cumulative_mutation_edges=94102845; cumulative_evaluation_edges=33845979671; contender_width=1; rescoring_count=714; heap_entries=35041; fallback_count=0
