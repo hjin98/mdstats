@@ -43,9 +43,11 @@ def test_mvsel2_native_registry_preserves_exact_openmp_profile() -> None:
     assert spec.optional is True
 
 
-def test_setup_py_delegates_all_native_targets_to_registry() -> None:
+def test_setup_py_delegates_all_native_targets_to_registry_without_bootstrap_import() -> None:
     source = (ROOT / "setup.py").read_text(encoding="utf-8")
     assert "build_native_extensions" in source
+    assert "runpy.run_path" in source
+    assert "from build_support" not in source
     assert "_mvsel2_extension" not in source
     assert "Extension(" not in source
     assert "-fopenmp" not in source
