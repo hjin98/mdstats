@@ -128,7 +128,10 @@ def test_mvsel2_v5_phase_b_cached_kernel_matches_scalar_oracle_after_mutations()
             kernel_state,
             kernel_frontier,
         )
-        assert actual == expected
+        # Batched execution may refresh additional stale bounds, so execution
+        # telemetry can differ. Scientific choice and exact score may not.
+        assert actual.candidate_index == expected.candidate_index
+        assert actual.score == expected.score
 
         selector_v2.select_target_multi_view_candidate_v2(
             expected.candidate_index,
@@ -142,6 +145,27 @@ def test_mvsel2_v5_phase_b_cached_kernel_matches_scalar_oracle_after_mutations()
             kernel_state,
             score=actual.score,
         )
+
+    assert kernel_state.selected_order == reference_state.selected_order
+    np.testing.assert_array_equal(kernel_state.available, reference_state.available)
+    np.testing.assert_array_equal(
+        kernel_state.obligation_counts, reference_state.obligation_counts
+    )
+    np.testing.assert_array_equal(
+        kernel_state.correlation_unit_counts,
+        reference_state.correlation_unit_counts,
+    )
+    for actual_family, expected_family in zip(
+        kernel_state.family_states,
+        reference_state.family_states,
+        strict=True,
+    ):
+        np.testing.assert_array_equal(
+            actual_family.multiplicity,
+            expected_family.multiplicity,
+        )
+        assert actual_family.coverage_mass == expected_family.coverage_mass
+    assert kernel_state.representative_utility == reference_state.representative_utility
 
 
 def test_mvsel2_v5_scalar_reference_worker_setting_is_semantically_inert() -> None:
