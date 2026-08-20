@@ -7,6 +7,10 @@ import numpy as np
 from mdstats.training_data.mvsel2_phase_a_kernel import (
     choose_target_multi_view_phase_a_candidate_v2_kernel,
 )
+from mdstats.training_data.mvsel2_phase_b_kernel import (
+    build_target_multi_view_lazy_frontier_v2_kernel,
+    choose_target_multi_view_phase_b_candidate_v2_kernel,
+)
 from mdstats.training_data import target_multi_view_selector_v2 as selector_v2
 from tests.test_mlff_mvsel2_forward import _forward_fixture
 
@@ -66,6 +70,78 @@ def test_mvsel2_v5_kernel_worker_setting_is_semantically_inert() -> None:
         reference_domain, forward_domain, state, workers=32
     )
     assert many == one
+
+
+def test_mvsel2_v5_phase_b_cached_kernel_matches_scalar_oracle_after_mutations() -> None:
+    reference, _, forward = _forward_fixture()
+    reference_domain = reference.domain("target")
+    forward_domain = forward.domain("target")
+    reference_state = selector_v2.build_target_multi_view_forward_state_v2(
+        reference_domain, forward_domain
+    )
+    kernel_state = selector_v2.build_target_multi_view_forward_state_v2(
+        reference_domain, forward_domain
+    )
+
+    # Seed identical non-zero witness multiplicities before constructing the
+    # Phase-B queues so the cache is tested away from the trivial all-zero state.
+    for candidate in range(3):
+        expected_score = selector_v2.score_target_multi_view_candidate_v2(
+            candidate, forward_domain, reference_state
+        )
+        actual_score = selector_v2.score_target_multi_view_candidate_v2(
+            candidate, forward_domain, kernel_state
+        )
+        assert actual_score == expected_score
+        selector_v2.select_target_multi_view_candidate_v2(
+            candidate, forward_domain, reference_state, score=expected_score
+        )
+        selector_v2.select_target_multi_view_candidate_v2(
+            candidate, forward_domain, kernel_state, score=actual_score
+        )
+
+    reference_frontier = selector_v2.build_target_multi_view_lazy_frontier_v2(
+        forward_domain, reference_state
+    )
+    kernel_frontier = build_target_multi_view_lazy_frontier_v2_kernel(
+        forward_domain, kernel_state
+    )
+    np.testing.assert_array_equal(
+        kernel_frontier.exact_generations,
+        reference_frontier.exact_generations,
+    )
+    np.testing.assert_array_equal(
+        kernel_frontier.exact_scores,
+        reference_frontier.exact_scores,
+    )
+
+    for _ in range(5):
+        expected = selector_v2.choose_target_multi_view_phase_b_candidate_v2(
+            reference_domain,
+            forward_domain,
+            reference_state,
+            reference_frontier,
+        )
+        actual = choose_target_multi_view_phase_b_candidate_v2_kernel(
+            reference_domain,
+            forward_domain,
+            kernel_state,
+            kernel_frontier,
+        )
+        assert actual == expected
+
+        selector_v2.select_target_multi_view_candidate_v2(
+            expected.candidate_index,
+            forward_domain,
+            reference_state,
+            score=expected.score,
+        )
+        selector_v2.select_target_multi_view_candidate_v2(
+            actual.candidate_index,
+            forward_domain,
+            kernel_state,
+            score=actual.score,
+        )
 
 
 def test_mvsel2_v5_scalar_reference_worker_setting_is_semantically_inert() -> None:
