@@ -7,7 +7,6 @@ from forward CSR rows and current witness multiplicity.
 
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 import heapq
 import math
@@ -32,32 +31,22 @@ def _iter_candidate_blocks_v2(
     evaluator: Callable[[int], Any],
     *,
     batch_size: int,
-    executor: ThreadPoolExecutor | None,
+    executor: Any | None,
 ) -> Iterator[Any]:
-    """Yield canonical candidate-block results without changing result order.
+    """Yield canonical scalar-reference results in candidate order.
 
-    The executor is execution-only. Workers read the shared forward MVIDX and
-    current selector state; authoritative state mutation remains outside this
-    helper on the controlling thread.
+    PAR1 candidate threading is retired. ``batch_size`` and ``executor``
+    remain internal compatibility parameters only. Any non-None executor
+    is rejected fail-closed.
     """
 
-    if not candidates:
-        return
-    if executor is None or len(candidates) <= int(batch_size):
-        for candidate in candidates:
-            yield evaluator(candidate)
-        return
-    blocks = tuple(
-        candidates[start : start + int(batch_size)]
-        for start in range(0, len(candidates), int(batch_size))
-    )
-
-    def evaluate_block(block: tuple[int, ...]) -> tuple[Any, ...]:
-        return tuple(evaluator(candidate) for candidate in block)
-
-    for block_values in executor.map(evaluate_block, blocks):
-        yield from block_values
-
+    del batch_size
+    if executor is not None:
+        raise TrainingDataInputError(
+            "TARGET-DATA2C-MVSEL2 PAR1 candidate threading is retired."
+        )
+    for candidate in candidates:
+        yield evaluator(candidate)
 
 def _drop_file_backed_pages_v2(array: np.ndarray) -> None:
     """Release fully scanned mmap pages without changing array identity."""
@@ -676,7 +665,7 @@ def _choose_target_multi_view_phase_a_candidate_v2_impl(
     coverage_threshold: float,
     epsilon: float,
     batch_size: int,
-    executor: ThreadPoolExecutor | None,
+    executor: Any | None,
 ) -> TargetMultiViewPhaseAChoiceV2:
     """Execute Phase A against one immutable state snapshot."""
 
@@ -846,41 +835,28 @@ def choose_target_multi_view_phase_a_candidate_v2(
     batch_size: int = 256,
     workers: int = 1,
 ) -> TargetMultiViewPhaseAChoiceV2:
-    """Execute exact Phase A with candidate-parallel read-only scoring."""
+    """Execute the exact single-threaded Phase-A reference/oracle.
+
+    Production uses ``mvsel2_phase_a_kernel``. Changing ``workers`` here
+    cannot resurrect the failed PAR1 execution design.
+    """
 
     epsilon = float(epsilon)
     batch_size = int(batch_size)
     workers = int(workers)
     if batch_size < 1 or workers < 1:
-        raise TrainingDataInputError("TARGET-DATA2C-MVSEL2 batch/worker settings must be positive.")
-
-    candidate_count = int(np.count_nonzero(state.available))
-    block_count = max(1, math.ceil(candidate_count / batch_size))
-    active_workers = min(workers, block_count)
-    if active_workers <= 1:
-        return _choose_target_multi_view_phase_a_candidate_v2_impl(
-            reference_domain,
-            forward_domain,
-            state,
-            coverage_threshold=float(coverage_threshold),
-            epsilon=epsilon,
-            batch_size=batch_size,
-            executor=None,
+        raise TrainingDataInputError(
+            "TARGET-DATA2C-MVSEL2 batch/worker settings must be positive."
         )
-    with ThreadPoolExecutor(
-        max_workers=active_workers,
-        thread_name_prefix="mdstats-mvsel2",
-    ) as executor:
-        return _choose_target_multi_view_phase_a_candidate_v2_impl(
-            reference_domain,
-            forward_domain,
-            state,
-            coverage_threshold=float(coverage_threshold),
-            epsilon=epsilon,
-            batch_size=batch_size,
-            executor=executor,
-        )
-
+    return _choose_target_multi_view_phase_a_candidate_v2_impl(
+        reference_domain,
+        forward_domain,
+        state,
+        coverage_threshold=float(coverage_threshold),
+        epsilon=epsilon,
+        batch_size=batch_size,
+        executor=None,
+    )
 
 def score_target_multi_view_candidates_v2(
     candidates: Iterable[int],
@@ -890,43 +866,23 @@ def score_target_multi_view_candidates_v2(
     batch_size: int = 256,
     workers: int = 1,
 ) -> tuple[TargetMultiViewCandidateScoreV2, ...]:
-    """Score candidates in canonical order with candidate-block threading.
-
-    Each candidate retains the existing canonical FP64 family reduction. The
-    worker count changes only which candidates are evaluated concurrently.
-    """
+    """Score candidates in canonical order without candidate threading."""
 
     batch_size = int(batch_size)
     workers = int(workers)
     if batch_size < 1 or workers < 1:
-        raise TrainingDataInputError("TARGET-DATA2C-MVSEL2 batch/worker settings must be positive.")
+        raise TrainingDataInputError(
+            "TARGET-DATA2C-MVSEL2 batch/worker settings must be positive."
+        )
     ordered = tuple(sorted(int(candidate) for candidate in candidates))
     if len(set(ordered)) != len(ordered):
-        raise TrainingDataInputError("TARGET-DATA2C-MVSEL2 candidate score request contains duplicates.")
-    if not ordered:
-        return ()
-    block_count = max(1, math.ceil(len(ordered) / batch_size))
-    active_workers = min(workers, block_count)
-    if active_workers <= 1:
-        return tuple(
-            score_target_multi_view_candidate_v2(candidate, forward_domain, state)
-            for candidate in ordered
+        raise TrainingDataInputError(
+            "TARGET-DATA2C-MVSEL2 candidate score request contains duplicates."
         )
-    with ThreadPoolExecutor(
-        max_workers=active_workers,
-        thread_name_prefix="mdstats-mvsel2",
-    ) as executor:
-        return tuple(
-            _iter_candidate_blocks_v2(
-                ordered,
-                lambda candidate: score_target_multi_view_candidate_v2(
-                    candidate, forward_domain, state
-                ),
-                batch_size=batch_size,
-                executor=executor,
-            )
-        )
-
+    return tuple(
+        score_target_multi_view_candidate_v2(candidate, forward_domain, state)
+        for candidate in ordered
+    )
 
 def select_target_multi_view_candidate_v2(
     candidate_index: int,
