@@ -2,7 +2,7 @@
 kind: implementation-workplan
 workplan_id: DOC-MVSEL2-V5-REDESIGN1
 protocol_version: 5.0.0
-status: G4_AWAITING_PRODUCTION_METER
+status: G4_AWAITING_USER_VALIDATION
 analysis_base_ref: feat/mvsel2-forward-lazy
 supersedes_execution_workplan: DOC-MVSEL2-PAR1
 ---
@@ -35,7 +35,7 @@ PAR1 parallelized the wrong abstraction. Threads executed Python candidate/famil
 
 Additional problems addressed by this redesign:
 
-1. persisted `uint32` witness rows were repeatedly widened/copied to `int64` in the broad Phase-A path;
+1. persisted `uint32` witness rows were repeatedly widened/copied to `int64` in broad scoring and retained scalar/state paths;
 2. Phase A stored complete per-family Python gain tuples for every total-coverage contender although only the winner required the complete score;
 3. broad scans traversed candidate-major across many mapped family arrays rather than streaming one family at a time;
 4. Phase-B family-streaming execution was installed through runtime monkeypatching instead of the production selector engine;
@@ -58,24 +58,21 @@ Do not add multiprocessing, a worker supervisor, GPU selector authority, a secon
 |---|---|---|
 | G0 | PASS | PAR1 marked failed/superseded; production stopped routing Phase A through Python candidate threading. |
 | G1 | PASS | Workstation validation supplied by project owner: 51 focused tests passed in 3.84 s. Locality-oriented Phase-A kernel is exact against the scalar reference. |
-| G2 | PASS | One production fresh/resume rank loop lives in `mvsel2_selection_engine.py`; authenticated identity/prefix-bound rank history removes post-validation historical rescoring for new MVSTATE2 checkpoints. Independent clean runner: 56 passed in 5.78 s on Python 3.11.15. |
-| G3 | PASS | Runtime duplicate REPAIR2 science removed; `target_multi_view_repair_v2.py` is the sole repair-science owner and the old checkpoint runtime is delegation-only compatibility. Independent expanded runner: 70 passed, 1 pre-existing warning, in 9.12 s. |
-| G4 | AWAITING_PRODUCTION_METER | Executable PAR1 threading removed from the retained scalar/reference selector. Final clean runner: 73 passed, 1 pre-existing warning, in 15.06 s; explicit source scan `PAR1_SOURCE_PRESENT=0`. Only real production-graph throughput/RSS/page-fault acceptance remains. |
+| G2 | PASS | One production fresh/resume rank loop lives in `mvsel2_selection_engine.py`; authenticated identity/prefix-bound rank history removes post-validation historical rescoring for new MVSTATE2 checkpoints. |
+| G3 | PASS | Runtime duplicate REPAIR2 science removed; `target_multi_view_repair_v2.py` is the sole repair-science owner and the old checkpoint runtime is delegation-only compatibility. |
+| G4 | AWAITING_USER_VALIDATION | Final cleanup at `855bb2611aa8ddb7015fae7ab577ee43fc3e73c6` removes executable PAR1 threading and residual persisted-CSR `uint32 -> int64` widening from scalar/state validation, scoring, and mutation primitives. Focused regression and real production-graph meter must be executed against this exact cleanup before G4 can pass. |
 
 ## Validation record
 
-Executed evidence accepted so far:
+Accepted evidence before the final G4 cleanup:
 
 - G1 workstation focused suite: `51 passed in 3.84 s`;
-- G2 independent clean Python 3.11.15 runner: `56 passed in 5.78 s`;
-- G3 independent clean Python 3.11.15 runner, including ownership and production-style repair integration: `70 passed, 1 warning in 9.12 s`;
-- post-G4-source-cleanup independent runner: `73 passed, 1 warning in 15.06 s`;
-- post-G4 source scan: `PAR1_SOURCE_PRESENT=0` for `ThreadPoolExecutor`, the MVSEL2 thread-name prefix, and `executor.map` in `target_multi_view_selector_v2.py`;
-- clean editable installation succeeded using the package-declared scientific-Python dependencies plus pytest. No additional MACE/GPU/local-workstation dependency is required for these focused selector/repair tests.
+- G2/G3 portable execution and expanded focused suites established fresh/resume/journal/repair routing and ownership behavior;
+- an earlier post-thread-removal suite reported `73 passed, 1 warning in 15.06 s` and `PAR1_SOURCE_PRESENT=0`.
 
-The warning in the 70/73-test suites is the existing `VelocityReconstructionWarning` emitted by the VASP I/O path in `test_repair1_accepts_production_style_multifamily_target_data2b`; it is not an MVSEL2/REPAIR2 failure.
+The 73-test result **predates** commit `855bb2611aa8ddb7015fae7ab577ee43fc3e73c6`, which additionally removed residual native CSR row widening. It is retained only as historical evidence for the thread-removal step and does **not** validate the final G4 code. G4 therefore requires a fresh focused regression run on or after that commit.
 
-Temporary CI branches used to obtain independent execution evidence are not scientific or release authorities and must not be merged into the feature branch.
+The previously observed warning was the existing `VelocityReconstructionWarning` from the VASP I/O path in `test_repair1_accepts_production_style_multifamily_target_data2b`; it was not an MVSEL2/REPAIR2 failure.
 
 ## Gates
 
@@ -120,19 +117,21 @@ Production REPAIR2 intentionally does not discover/reuse every pure-selector run
 
 ### G4 — product-path review and performance closeout
 
-Completed portable checks:
+Final source cleanup completed before validation:
 
-- focused MVSEL2 oracle/forward/state/resume/repair regressions;
-- campaign routing and production-style repair integration;
-- removal of executable PAR1 candidate threading from the retained scalar/reference selector;
-- source assertion preventing `ThreadPoolExecutor`, `executor.map`, or the old MVSEL2 thread pool from returning;
-- clean dependency installation and test execution outside the project workstation.
+- executable PAR1 candidate threading removed from `target_multi_view_selector_v2.py`;
+- `workers`/`batch_size` remain positive-validated API-compatibility arguments on the scalar reference path but no longer alter execution;
+- persisted integer CSR rows remain in their authenticated native integer dtype for scalar scoring, reachability validation, obligation scanning, selection mutation, and deselection mutation;
+- production Phase A remains the locality-oriented contiguous-scratch kernel;
+- production Phase B remains the family-streaming exact frontier;
+- no inverse MVSEL1 runtime state or second persistent graph was introduced.
 
-Remaining production-only meter:
+Required validation against commit `855bb2611aa8ddb7015fae7ab577ee43fc3e73c6` or a descendant:
 
-- run the current branch against the already-persisted real production MVIDX1 graph/cache;
-- record sustained Phase-A/Phase-B rank throughput, peak RSS, major page faults or equivalent paging evidence, and on-disk scratch growth;
-- compare sustained throughput directly to the accepted pre-PAR1 single-worker implementation and to the failed PAR1 observation.
+1. run the focused MVSEL2 oracle/forward/state/resume/repair/campaign-routing regression suite;
+2. run the normal campaign product path against the already-persisted real production MVIDX1 graph/cache under resource metering;
+3. record sustained Phase-A/Phase-B rank throughput, peak RSS, major page faults or equivalent paging evidence, and on-disk scratch growth;
+4. compare sustained throughput directly to the accepted pre-PAR1 single-worker implementation and the failed PAR1 observation.
 
 Final acceptance requires:
 
