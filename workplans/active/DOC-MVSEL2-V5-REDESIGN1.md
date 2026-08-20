@@ -56,15 +56,17 @@ CPU concurrency is deferred until the clean serial/vectorized kernel is measured
 | Gate | Status | Current result |
 |---|---|---|
 | G0 | PASS | PAR1 marked failed/superseded; production facade no longer routes Phase A through Python candidate threading. |
-| G1 | IMPLEMENTED_AWAITING_EXECUTION | Locality-oriented exact Phase-A kernel and direct serial-reference equivalence tests committed. No GitHub Actions run exists for the direct commits and the available execution container cannot reach GitHub, so the tests have not executed. |
-| G2 | BLOCKED | Do not migrate selector/resume persistence ownership until G1 exact-equivalence tests pass. |
-| G3 | BLOCKED | Do not consolidate REPAIR2 runtime ownership until G1 exact-equivalence tests pass. |
+| G1 | PASS | User workstation validation: 51 focused tests passed in 3.84 s. Locality-oriented Phase-A kernel is exact against the serial reference; production Phase-B rebase uses native-dtype family streaming. |
+| G2 | IMPLEMENTED_AWAITING_EXECUTION | One production fresh/resume rank loop now lives in `mvsel2_selection_engine.py`; resume module is a compatibility facade; new MVSTATE2 companion rank history avoids post-validation prefix rescoring; legacy checkpoints retain a one-time reconstruction fallback. |
+| G3 | BLOCKED | Requires G2 fresh/resume/journal equivalence tests before deleting duplicated REPAIR2 runtime authority. |
 | G4 | BLOCKED | Requires focused tests plus representative/production execution. |
 
-Required first validation command from any checkout of this branch:
+Required G2 validation command from a checkout of this branch:
 
 ```bash
 python -m pytest -q \
+  tests/test_mlff_mvsel2_v5_resume.py \
+  tests/test_mlff_mvsel2_v5_campaign_route.py \
   tests/test_mlff_mvsel2_v5_kernel.py \
   tests/test_mlff_mvsel2_forward.py \
   tests/test_mlff_mvsel2_oracle.py \
@@ -92,18 +94,19 @@ If the project environment is required, run the same command through `conda run 
 - Use reusable contiguous candidate score scratch arrays rather than per-candidate Python dictionaries where broad scans require scalar scores.
 - During Phase A, avoid complete per-candidate Python family-gain tuples; use bounded contiguous FP64 scratch and materialize the winner score once.
 - Implement family-major exact broad scans where they preserve canonical FP64 semantics; keep staged Phase-A pruning.
-- Make the family-streaming Phase-B rebase canonical and remove runtime monkeypatch installation.
+- Make the family-streaming Phase-B rebase canonical in the production selector engine and remove selector-side runtime monkeypatch installation.
 
 **Pass:** focused oracle/equivalence tests produce identical choices/scores/rungs on existing fixtures; no inverse adjacency is touched.
 
 ### G2 — one selector/resume authority
 
-- Collapse normal and resumable selection into one selector engine accepting an optional authenticated continuation state/history.
-- Remove duplicated rank-loop ownership from the resume module.
-- Keep checkpoint reconstruction validation independent, but avoid replaying the same historical prefix twice during one resume.
-- Persist/reuse the compact rank journal needed to reconstruct plan history without rescoring already accepted ranks when safe under existing artifact compatibility rules.
+- Collapse production fresh and resumable selection into one selector engine accepting an optional authenticated continuation state/history.
+- Remove duplicated rank-loop ownership from the resume module; retain the original fresh builder only as an independent reference/oracle.
+- Keep MVSTATE2 reconstruction validation independent.
+- Persist/reuse a compact identity- and selected-prefix-bound rank journal containing only prior entries, completed rungs, and the Phase-A boundary.
+- New checkpoints resume without historical scoring after MVSTATE2 validation; old checkpoints without a journal use one compatibility history reconstruction.
 
-**Pass:** fresh and resumed execution are byte/field equivalent on focused fixtures; one normal rank loop owns selection.
+**Pass:** fresh and resumed execution are byte/field equivalent on focused fixtures; journal-backed resume does not invoke selected-prefix history replay; the campaign facade routes selection directly through the single-owner v5 runtime.
 
 ### G3 — one REPAIR2/runtime authority
 
@@ -129,8 +132,8 @@ Acceptance:
 3. PAR1 slowdown is eliminated;
 4. sustained throughput is at least no worse than the accepted pre-PAR1 single-worker implementation, with further optimization accepted only when measured benefit justifies complexity;
 5. no material RAM/disk regression;
-6. restart avoids duplicate full historical replay in one invocation;
-7. Protocol-5 independent review finds no remaining duplicated execution authority or unjustified compatibility machinery in the affected subsystem.
+6. journal-backed restart performs no second full selected-prefix replay after MVSTATE2 validation;
+7. Protocol-5 independent review finds no remaining duplicated production execution authority or unjustified compatibility machinery in the affected subsystem.
 
 If the clean Python/NumPy family-streaming kernel is still materially too slow at production scale, the next authorized escalation is a small compiled CSR scan kernel behind the same scoring interface. Do not add Python process/thread orchestration first.
 
