@@ -2,7 +2,7 @@
 kind: implementation-workplan
 workplan_id: DOC-MVSEL2-V5-REDESIGN1
 protocol_version: 5.0.0
-status: G4_AWAITING_USER_VALIDATION
+status: G4_REDESIGN_IN_PROGRESS
 analysis_base_ref: feat/mvsel2-forward-lazy
 supersedes_execution_workplan: DOC-MVSEL2-PAR1
 ---
@@ -13,7 +13,7 @@ supersedes_execution_workplan: DOC-MVSEL2-PAR1
 
 Restore and materially improve MVSEL2 production throughput without changing the frozen scientific selector/repair semantics, while reducing the accumulated execution and recovery complexity around MVSEL2.
 
-The observed candidate-thread PAR1 implementation is a failed optimization: on the real workstation it reduced throughput to roughly half of the prior single-worker path. Treat that as a redesign trigger, not a request for additional worker/process machinery.
+The observed candidate-thread PAR1 implementation was a failed optimization. Subsequent product-path metering established that the currently dominant production cost is not Phase-A threading but Phase-B lazy-frontier stale rescoring. The redesign therefore continues at the measured bottleneck rather than adding more worker/process machinery.
 
 ## Engineering envelope
 
@@ -27,123 +27,134 @@ Preserve exactly:
 - nested rung/master-order semantics;
 - MVSTATE2 restart correctness and REPAIR2 exact scientific behavior.
 
-Production scale is approximately 36,408 candidates, 165 families, 9.5 billion forward candidate-witness edges, and requested prefixes through 16,384. The design must remain feasible on the 64 GiB-class workstation without recreating MVSEL1 eager inverse marginal state or a second persistent global graph.
+Production scale is approximately 36,408 candidates, 165 families, 9.505 billion forward candidate-witness edges, and requested prefixes through 16,384. The design must remain feasible on the workstation without recreating MVSEL1 eager inverse marginal state or a second persistent global graph.
 
-## Root-cause diagnosis
+## Root-cause record
 
-PAR1 parallelized the wrong abstraction. Threads executed Python candidate/family loops containing many small NumPy/memmap gathers and temporary allocations. This added scheduling, allocator, page-cache, and memory-bandwidth contention without creating a coarse vector/compiled kernel.
+### PAR1
 
-Additional problems addressed by this redesign:
+PAR1 parallelized Python candidate/family loops containing many small NumPy/memmap gathers and temporary allocations. The real workstation showed roughly 0.5x the prior observed throughput. Candidate threading is retired.
 
-1. persisted `uint32` witness rows were repeatedly widened/copied to `int64` in broad scoring and retained scalar/state paths;
-2. Phase A stored complete per-family Python gain tuples for every total-coverage contender although only the winner required the complete score;
-3. broad scans traversed candidate-major across many mapped family arrays rather than streaming one family at a time;
-4. Phase-B family-streaming execution was installed through runtime monkeypatching instead of the production selector engine;
-5. normal and resumable selector builders duplicated substantial control flow;
-6. checkpoint restore plus resume could replay/rescore the selected prefix again solely to reconstruct plan history;
-7. REPAIR2 loop ownership was duplicated between the canonical repair module and runtime helpers;
-8. the retired PAR1 `ThreadPoolExecutor` remained executable in the scalar/reference selector source even after production routing stopped using it.
+### G4 production meter — Phase-B lazy degeneracy
+
+The first G4 product-path meter resumed at rank 1,024 directly in `representative_fill` and therefore did not exercise Phase-A selection as the sustained workload. It established:
+
+- one exact Phase-B resume rebase took about 67 s;
+- after rebase, sustained throughput rose only to roughly 0.7-1.0 ranks/s;
+- sampled accepted ranks rescored roughly 196-825 stale candidates each;
+- sampled candidate-evaluation traffic was roughly 54-225 million forward edges per accepted rank;
+- by rank 1,367, 343 new selections had accumulated 33,845,979,671 candidate-evaluation edges, over 3.5 complete equivalents of the 9.505-billion-edge graph;
+- mutation traffic over the same interval was only 94,102,845 edges, confirming candidate evaluation rather than authoritative state mutation as the bottleneck;
+- peak RSS reported by `/usr/bin/time -v` was 83,665,652 KiB with 30,670 major faults and heavy filesystem input;
+- `.mdstats` remained 87 GiB before and after, so the failure is repeated working-set/graph traffic rather than scratch growth.
+
+This is the lazy-degeneracy failure mode anticipated by the original MVSEL2 design. G4 therefore failed its throughput/resource acceptance and remains open.
 
 ## Chosen architecture
 
-Use one production forward selection engine over the existing MVIDX1 forward view. Phase A uses the locality-oriented kernel; Phase B uses the family-streaming exact frontier; the authoritative mutation order remains sequential. MVSTATE2 remains compact continuation state, paired with an authenticated rank-history journal for replay-free plan-history reconstruction after checkpoint validation.
+Use one production forward selection engine over the existing MVIDX1 forward view.
 
-`target_multi_view_repair_v2.py` is the sole REPAIR2 scientific owner. Runtime code performs only persisted-forward lookup, checkpoint authentication needed by selector restart, invocation, resource scoping, persistence, and progress plumbing.
+- Phase A: locality-oriented exact kernel with native CSR rows and bounded contiguous scratch.
+- Phase B: certified exact lazy frontier with a reconstructible **per-witness FP64 representative-term execution cache**. For each witness, cache `weight / (multiplicity + 1)` once and update it only along newly selected forward rows. Stale candidate rescoring then performs native CSR gather + canonical FP64 sum instead of repeated multiplicity widening, temporary allocation, and division on every candidate edge.
+- The witness-term cache is derived execution state only. It is not persisted, not included in scientific identity, and is reconstructible from MVSTATE2 multiplicities.
+- The scalar selector remains the independent exact oracle/reference.
+- REPAIR2 scientific ownership remains solely in `target_multi_view_repair_v2.py`.
 
-Do not add multiprocessing, a worker supervisor, GPU selector authority, a second persistent index, or MVSEL1-style complete candidate marginal arrays. PAR1 candidate threading is retired at the source: the retained scalar selector is an independent oracle/reference and ignores the positive `workers` value semantically.
+Do not add multiprocessing, a worker supervisor, GPU selector authority, a second persistent index, or MVSEL1-style complete candidate marginal arrays.
+
+A deterministic queue-rebase policy remains an available later execution optimization, but it will not be enabled blindly: a full production rebase itself scans approximately 9.5 billion edges, so the witness-term kernel is measured first. If stale-edge traffic remains dominant after per-edge cost reduction, the next redesign should batch/family-stream stale rescoring or introduce a small compiled CSR scan kernel before adding repeated global rescans.
 
 ## Gate status
 
 | Gate | Status | Current result |
 |---|---|---|
 | G0 | PASS | PAR1 marked failed/superseded; production stopped routing Phase A through Python candidate threading. |
-| G1 | PASS | Workstation validation supplied by project owner: 51 focused tests passed in 3.84 s. Locality-oriented Phase-A kernel is exact against the scalar reference. |
-| G2 | PASS | One production fresh/resume rank loop lives in `mvsel2_selection_engine.py`; authenticated identity/prefix-bound rank history removes post-validation historical rescoring for new MVSTATE2 checkpoints. |
-| G3 | PASS | Runtime duplicate REPAIR2 science removed; `target_multi_view_repair_v2.py` is the sole repair-science owner and the old checkpoint runtime is delegation-only compatibility. |
-| G4 | AWAITING_USER_VALIDATION | Final cleanup at `855bb2611aa8ddb7015fae7ab577ee43fc3e73c6` removes executable PAR1 threading and residual persisted-CSR `uint32 -> int64` widening from scalar/state validation, scoring, and mutation primitives. Focused regression and real production-graph meter must be executed against this exact cleanup before G4 can pass. |
+| G1 | PASS | Workstation validation: 51 focused tests passed in 3.84 s; locality-oriented Phase-A kernel exact against scalar reference. |
+| G2 | PASS | One production fresh/resume rank loop in `mvsel2_selection_engine.py`; authenticated rank history eliminates replay-only historical scoring for new checkpoints. |
+| G3 | PASS | `target_multi_view_repair_v2.py` is the sole REPAIR2 scientific owner; runtime repair code is orchestration/delegation only. |
+| G4 | REDESIGN_IN_PROGRESS | First real-graph trial failed: sustained Phase B remained ~0.7-1.0 ranks/s with 33.85B evaluation edges over 343 ranks and ~83.7GB peak RSS. Production Phase B now routes through the exact witness-term cached kernel; focused exactness regression and a second bounded workstation meter are required. |
 
 ## Validation record
 
-Accepted evidence before the final G4 cleanup:
+Accepted evidence before the current G4 redesign:
 
 - G1 workstation focused suite: `51 passed in 3.84 s`;
-- G2/G3 portable execution and expanded focused suites established fresh/resume/journal/repair routing and ownership behavior;
-- an earlier post-thread-removal suite reported `73 passed, 1 warning in 15.06 s` and `PAR1_SOURCE_PRESENT=0`.
+- G2/G3 focused/portable evidence established fresh/resume/journal/repair routing and ownership behavior;
+- earlier thread-removal regression reported `73 passed, 1 warning in 15.06 s` and no executable PAR1 source path;
+- final native-row cleanup occurred after that 73-test run, so the old test result is historical rather than final-G4 evidence.
 
-The 73-test result **predates** commit `855bb2611aa8ddb7015fae7ab577ee43fc3e73c6`, which additionally removed residual native CSR row widening. It is retained only as historical evidence for the thread-removal step and does **not** validate the final G4 code. G4 therefore requires a fresh focused regression run on or after that commit.
+G4 production evidence is authoritative for performance and failed acceptance as described above.
 
-The previously observed warning was the existing `VelocityReconstructionWarning` from the VASP I/O path in `test_repair1_accepts_production_style_multifamily_target_data2b`; it was not an MVSEL2/REPAIR2 failure.
+For the witness-term redesign:
+
+- production Phase B is implemented in `mdstats/training_data/mvsel2_phase_b_kernel.py`;
+- `mvsel2_selection_engine.py` routes directly to this kernel; no import-time monkeypatch is used;
+- a focused regression compares exact frontier initialization and repeated Phase-B choices against the scalar oracle after nonzero witness multiplicity and successive state mutations;
+- an independent randomized FP64 check confirmed bitwise equality between direct per-row `weight/(multiplicity+1)` evaluation and summation of the precomputed per-witness terms.
 
 ## Gates
 
 ### G0 — stop regression and freeze baseline
 
-- Mark `DOC-MVSEL2-PAR1` superseded.
-- Restore production MVSEL2 execution to the single-worker authority regardless of campaign worker budget.
-- Replace thread-scheduling evidence with correctness/performance-contract regression.
-- Record the real workstation PAR1 observation of approximately 0.5x the prior throughput.
+Retire PAR1 and preserve scientific/API compatibility without Python candidate threading.
 
-**Pass:** production no longer routes Phase-A candidate scoring through PAR1 threading and API compatibility is retained.
+**Pass:** production no longer routes Phase-A candidate scoring through PAR1 threading.
 
 ### G1 — canonical forward scoring kernel
 
-- Introduce a locality-oriented exact Phase-A kernel using native CSR integer dtype without unconditional `uint32 -> int64` row copies in the broad path.
-- Use reusable contiguous score scratch arrays rather than per-candidate dictionaries where broad scans require scalar scores.
-- Replace per-contender Python family tuples with bounded FP64 contender-by-family scratch and materialize the winner score.
-- Traverse broad coverage family-major while preserving exact FP64 decision semantics.
-- Use the family-streaming Phase-B rebase directly from the production selector engine.
+Use native CSR rows, bounded contiguous scratch, and family-major broad Phase-A scans while preserving the frozen comparator.
 
 **Pass:** focused oracle/equivalence tests produce identical choices/scores/rungs; no inverse adjacency is touched.
 
 ### G2 — one selector/resume authority
 
-- Collapse production fresh and resumable selection into one selector engine accepting optional authenticated continuation state/history.
-- Reduce the resume module to compatibility/delegation; retain the original fresh builder only as an independent reference/oracle.
-- Keep MVSTATE2 reconstruction validation independent.
-- Persist/reuse a compact identity- and exact-selected-prefix-bound rank journal containing prior entries, completed rungs, and the Phase-A boundary.
-- New checkpoints resume without historical rescoring after MVSTATE2 validation; old checkpoints without a journal use one compatibility history reconstruction.
+Use one production rank loop for fresh/resumed selection and authenticated compact rank history for replay-free history reconstruction after MVSTATE2 validation.
 
-**Pass:** fresh/resumed execution is field-equivalent; journal-backed resume does not invoke selected-prefix history reconstruction; campaign routing points to the single production engine.
+**Pass:** fresh/resumed execution is field-equivalent and campaign routing points to the single production engine.
 
 ### G3 — one REPAIR2/runtime authority
 
-- Keep exact per-rung repair execution in `target_multi_view_repair_v2.py` as the sole scientific owner.
-- Reduce runtime modules to I/O, authentication helpers used by selection restart, invocation, persistence, resources, and progress.
-- Remove import-time repair monkeypatching and the duplicate proposal/scoring/mutation loop.
+Keep repair science in `target_multi_view_repair_v2.py`; runtime owns only I/O/authentication/invocation/persistence/resources/progress.
 
-Production REPAIR2 intentionally does not discover/reuse every pure-selector rung checkpoint. Authenticating each MVSTATE2 rung itself replays that selected prefix, so loading all nested checkpoints can add a cumulative historical scan before repair. Canonical rank-zero repair construction instead performs one sequential selected-prefix buildup while processing the repair rungs. A checkpoint optimization may be reconsidered only if target-scale metering demonstrates a material benefit and it is implemented inside the canonical repair owner with exact-equivalence evidence.
+**Pass:** runtime contains no independent repair science and repair fixtures remain exact.
 
-**Pass:** runtime contains no independent repair science; compatibility calls delegate to the canonical owner; repair fixtures and production-style integration remain exact.
+### G4 — product-path performance closeout
 
-### G4 — product-path review and performance closeout
+#### Completed source/ownership work
 
-Final source cleanup completed before validation:
+- executable PAR1 candidate threading removed;
+- persisted CSR rows retain native integer dtype;
+- Phase A uses the locality-oriented exact kernel;
+- selector/resume and repair ownership consolidated;
+- Phase-B product-path degeneracy measured on the real MVIDX1 graph;
+- Phase-B witness-term execution cache implemented without changing scientific/persistence authority.
 
-- executable PAR1 candidate threading removed from `target_multi_view_selector_v2.py`;
-- `workers`/`batch_size` remain positive-validated API-compatibility arguments on the scalar reference path but no longer alter execution;
-- persisted integer CSR rows remain in their authenticated native integer dtype for scalar scoring, reachability validation, obligation scanning, selection mutation, and deselection mutation;
-- production Phase A remains the locality-oriented contiguous-scratch kernel;
-- production Phase B remains the family-streaming exact frontier;
-- no inverse MVSEL1 runtime state or second persistent graph was introduced.
+#### Next validation
 
-Required validation against commit `855bb2611aa8ddb7015fae7ab577ee43fc3e73c6` or a descendant:
+1. run the focused MVSEL2 oracle/forward/state/resume/repair/campaign-routing regressions including the new cached Phase-B oracle comparison;
+2. run a bounded product-path meter from the existing rank-1,024 checkpoint against the same persisted MVIDX1 graph;
+3. measure the first Phase-B rebase plus roughly 200-350 accepted Phase-B ranks, then stop if the rate has clearly stabilized;
+4. compare throughput, candidate-evaluation edges, rescoring counts, peak RSS/page faults, and disk footprint to the failed first G4 trial.
 
-1. run the focused MVSEL2 oracle/forward/state/resume/repair/campaign-routing regression suite;
-2. run the normal campaign product path against the already-persisted real production MVIDX1 graph/cache under resource metering;
-3. record sustained Phase-A/Phase-B rank throughput, peak RSS, major page faults or equivalent paging evidence, and on-disk scratch growth;
-4. compare sustained throughput directly to the accepted pre-PAR1 single-worker implementation and the failed PAR1 observation.
-
-Final acceptance requires:
+#### Final acceptance
 
 1. scientific choices and persisted authority remain exact;
 2. no inverse MVSEL1 mutation or inverse-array paging is reintroduced;
-3. PAR1 execution is absent and its slowdown is eliminated;
-4. sustained real-graph throughput is at least no worse than the accepted pre-PAR1 single-worker implementation;
+3. PAR1 execution remains absent;
+4. sustained real-graph throughput is at least no worse than the accepted pre-PAR1 observed single-worker throughput;
 5. no material RAM/disk regression;
 6. journal-backed selector restart performs no second historical rescoring after MVSTATE2 validation;
 7. no duplicated production selector/repair scientific authority remains.
 
-If the clean Python/NumPy family-streaming kernel remains materially too slow at production scale, the next authorized escalation is a small compiled CSR scan kernel behind the same scoring interface. Do not add Python process/thread orchestration first.
+#### Escalation if the witness-term meter still fails
+
+Use the measured result to choose exactly one next kernel change:
+
+- if arithmetic cost falls but graph/page traffic remains dominant: implement exact batched/family-major stale-candidate rescoring;
+- if Python/NumPy per-row overhead remains dominant: implement a small compiled/native CSR representative-sum kernel behind the same Phase-B interface;
+- only if measured stale-bound looseness proves that a rebase pays for itself: add a deterministic adaptive rebase trigger based on stale-rescore work.
+
+Do not add Python process/thread orchestration first and do not introduce approximation under the MVSEL2 authority.
 
 ## Non-goals
 
