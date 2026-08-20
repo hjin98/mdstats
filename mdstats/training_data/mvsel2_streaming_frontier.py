@@ -1,11 +1,9 @@
 """Memory-bounded exact MVSEL2 Phase-B frontier reconstruction.
 
-The scientific operation is identical to ``build_target_multi_view_lazy_frontier_v2``:
-for every available candidate, accumulate the FP64 representative marginal in
-canonical family order and seed the exact conservative lazy frontier.  The
-execution order is transposed family-major so each family's mmap pages can be
-released before the next family is scanned.  Per-candidate FP64 addition order
-is unchanged.
+For every available candidate, accumulate the FP64 representative marginal in
+canonical family order and seed the exact conservative lazy frontier. Execution
+is transposed family-major so each family's mmap pages can be released before
+the next family is scanned. Per-candidate FP64 addition order is unchanged.
 """
 from __future__ import annotations
 
@@ -14,11 +12,21 @@ from typing import Any
 
 import numpy as np
 
+from ._common import TrainingDataInputError
 from .target_multi_view_selector_v2 import (
     TargetMultiViewForwardStateV2,
     TargetMultiViewLazyFrontierV2,
     _drop_file_backed_pages_v2,
 )
+
+
+def _native_row(values: Any) -> np.ndarray:
+    row = np.asarray(values)
+    if row.ndim != 1 or row.dtype.kind not in "iu":
+        raise TrainingDataInputError(
+            "TARGET-DATA2C-MVSEL2 CSR row is not an integer vector."
+        )
+    return row
 
 
 def build_target_multi_view_lazy_frontier_v2_streaming(
@@ -31,7 +39,7 @@ def build_target_multi_view_lazy_frontier_v2_streaming(
     candidate_count = int(forward_domain.candidate_count)
     available = tuple(int(value) for value in np.flatnonzero(state.available))
 
-    # Python float is an IEEE-754 double.  Keeping one scalar per candidate and
+    # Python float is an IEEE-754 double. Keeping one scalar per candidate and
     # updating families in canonical order reproduces the original
     # ``gain += float(np.sum(..., dtype=float64))`` accumulation sequence.
     scores = [0.0] * candidate_count
@@ -39,9 +47,7 @@ def build_target_multi_view_lazy_frontier_v2_streaming(
         forward_domain.families, state.family_states, strict=True
     ):
         for candidate in available:
-            witnesses = np.asarray(
-                family.candidate_witness_indices(candidate), dtype=np.int64
-            )
+            witnesses = _native_row(family.candidate_witness_indices(candidate))
             if witnesses.size == 0:
                 continue
             family_gain = float(
@@ -56,9 +62,8 @@ def build_target_multi_view_lazy_frontier_v2_streaming(
             )
             scores[candidate] += family_gain
 
-        # The next family is independent.  Release the just-scanned file-backed
-        # pages now instead of retaining the complete 9.5-billion-edge working
-        # set until the end of the rebase.
+        # The next family is independent. Release the just-scanned file-backed
+        # pages now instead of retaining the complete forward graph working set.
         _drop_file_backed_pages_v2(np.asarray(family.candidate_offsets))
         _drop_file_backed_pages_v2(np.asarray(family.candidate_witnesses))
 
