@@ -5,6 +5,7 @@ protocol_version: 5.1.0
 status: R0_READY
 analysis_base_ref: feat/mvsel2-forward-lazy
 predecessor_workplan: DOC-MVSEL2-V5-REDESIGN1
+review_status: FINAL_REVIEW_HARDENED
 ---
 
 # DOC-REPAIR2-PERF1 — exact REPAIR2 scaling and downstream preparation optimization
@@ -48,6 +49,32 @@ Preserve exactly:
 
 Execution-only caches and native kernels may be introduced only when they are reconstructible from authenticated authority and cannot become independent scientific state.
 
+### Frozen-reference rule
+
+This is an execution optimization of the **current REPAIR2 authority**, not an opportunity to reinterpret its hypothetical exchange mathematics.
+
+In particular, preserve the following current behaviors even where another formulation might appear more natural:
+
+1. `_proposal()` builds its hard, bottleneck-family, and total-coverage frontiers from the current unmodified state before any hypothetical removal is applied.
+2. A selected removal candidate is not reintroduced into the replacement pool during the hypothetical proposal search; the pool is the current `state.available` population.
+3. Removals qualify when unique coverage is `<= unique_coverage_tolerance`, not only when unique coverage is mathematically zero. Therefore a small positive unique mass within tolerance must behave exactly as it does before optimization.
+4. The bottleneck family is the **first canonical family** whose coverage mass lies within `min_mass + gain_tie_tolerance`; it is not replaceable by an arbitrary `argmin`/parallel reduction result.
+5. Every `_filter()` stage preserves its incoming canonical candidate order; only the existing terminal UID rule resolves the final replacement tie.
+
+If an implementation changes any of these behaviors, R1 fails. Such a change would require a separately approved scientific redesign rather than a performance workplan update.
+
+### Authority/version rule
+
+R0/R1/R2 are execution-only changes. They must not change:
+
+- REPAIR2 policy/schema/version;
+- serialized rung/swap fields;
+- repair plan digest for identical inputs;
+- campaign persistence key or lineage;
+- scientific output merely to accommodate a faster implementation.
+
+Do not update a golden digest to bless a changed result. Any output/digest change is a failed equivalence gate unless separately reviewed as a scientific change.
+
 ## Source review — current execution path
 
 ### Ownership is sound
@@ -60,7 +87,7 @@ This single-owner architecture is retained.
 
 Within one invocation, repaired state is carried forward from rung to rung. REPAIR2 is not rebuilding each rung from rank zero.
 
-However, the campaign currently persists `target_multi_view_repair_v2` only after the complete plan builds and validates. The accepted status explicitly reports `repair_checkpoint_reuse=false`. An interruption therefore reruns REPAIR2 from its beginning. Restart optimization is considered only after the primary algorithmic bottleneck is removed.
+However, the campaign currently persists `target_multi_view_repair_v2` only after the complete plan builds and validates. An interruption therefore reruns REPAIR2 from its beginning. Restart optimization is considered only after the primary algorithmic bottleneck is removed.
 
 ### Worker configuration is currently execution-inert
 
@@ -74,10 +101,10 @@ For each unchanged authoritative state, the repair loop may shortlist up to 64 r
 
 For every one of those removals, the current implementation repeats state-invariant work:
 
-1. enumerate the entire currently available candidate set;
+1. enumerate the current available candidate set;
 2. recompute representative utility and the current objective;
 3. recompute hard-gain values/frontier;
-4. recompute the current family masses and bottleneck family;
+4. recompute current family masses and the canonical bottleneck family;
 5. scan candidate rows in that bottleneck family and filter them;
 6. for every survivor, compute total coverage gain by traversing all forward families;
 7. rediscover the same state-level no-positive-coverage-gain early-exit condition.
@@ -90,7 +117,21 @@ The current algorithm can approach repeated product-scale forward scans per unch
 
 ## Chosen design — execution-only proposal frontier context
 
-Introduce one private execution-only `RepairProposalFrontierContextV2` (name may change during implementation) built once for each unchanged authoritative state and invalidated immediately after any accepted swap.
+Introduce one private execution-only `RepairProposalFrontierContextV2` (name may change during implementation) for one repair-loop state iteration.
+
+### Lifetime and invalidation
+
+Prefer a **lexically local context** constructed after the removal shortlist for the current `while` iteration and discarded before that iteration exits. This is safer than a long-lived cache plus generation bookkeeping.
+
+The context must never survive:
+
+- an accepted deselect/select swap;
+- selector-prefix extension into another rung;
+- any other authoritative mutation of multiplicity, coverage, obligation, availability, or correlation-unit state.
+
+A fresh context is built for the next unchanged state. If implementation instead introduces a reusable object, it must carry an explicit state-generation guard and fail closed on a generation mismatch; lexical lifetime remains preferred.
+
+### Permitted contents
 
 The context may contain only state-invariant information such as:
 
@@ -110,13 +151,19 @@ The context must not contain persisted scientific authority.
 
 Do **not** cache a candidate-by-family gain matrix or per-removal candidate table.
 
-For shared frontier construction, retain at most O(candidate-count) scalar/index data plus existing state. Per-family gain vectors may be transient. When a final replacement requires its full family gain tuple for the `coverage_after` objective, recompute that one candidate's family gains in canonical family order or use an equivalently bounded exact cache.
+For shared frontier construction, retain at most O(candidate-count) scalar/index data plus existing state. No new array may have a material dimension proportional to `candidate_count * family_count`, `removal_count * candidate_count`, or total forward-edge count.
 
-This prevents a CPU optimization from recreating the memory-scaling failure that motivated the forward-only redesign.
+Per-family gain vectors may be transient. When a final replacement requires its full family-gain tuple for `coverage_after`, recompute that one candidate through the same canonical `_total_coverage_gains()` reduction path or prove an exactly equivalent bounded representation.
+
+R0/R1 must report attributable execution-only allocation/RSS. Design target is well below 512 MiB incremental execution memory; any unexplained multi-GiB increase or OS swap fails the gate even if wall time improves.
+
+No new `MADV_DONTNEED`/explicit page-release loop is authorized by this plan; G4c/G4d already demonstrated the risk of release/refault churn.
 
 ### Exactness argument to qualify
 
-The current `_proposal()` performs the hard/bottleneck/total-coverage frontier computation from the **unmodified current state** before applying any hypothetical removal. Consequently those steps are already removal-invariant in the frozen implementation. Moving them out of the per-removal function changes execution placement, not scientific inputs.
+The factorization is justified by **frozen implementation dataflow**, not by assuming hypothetical removal has zero physical effect.
+
+The current `_proposal()` computes the hard/bottleneck/total-coverage frontier from the unmodified current state. This remains true even when a removable candidate has small positive unique mass allowed by `unique_coverage_tolerance`. R1 must reproduce those same pre-removal values and decisions exactly; it must not recompute them from a more literal post-removal state.
 
 Removal-dependent operations remain per removal:
 
@@ -125,16 +172,18 @@ Removal-dependent operations remain per removal:
 - `_pair_representative_gain()`;
 - `_pair_diversity()`;
 - replacement UID tie-break;
-- exact `before`/`after` objective construction using that removal's loss and chosen replacement;
+- exact `before`/`after` objective construction using that removal's loss and the chosen replacement;
 - strict-improvement/non-regression check.
 
-The optimization is accepted only if oracle tests demonstrate exactly identical proposal presence/absence, replacement, objective tuple, winning removal, swap sequence, repaired master order, rung evidence, and serialized authority.
+Hard-frontier factorization likewise preserves current execution order: shortlist removals are already `_hard_safe`, and `_proposal()` computes replacement hard gain from the current state rather than a mutated hypothetical state.
+
+The optimization is accepted only if oracle tests demonstrate exactly identical proposal presence/absence, replacement, objective tuple, winning removal, swap sequence, repaired master order, rung evidence, serialized authority, and final content digest.
 
 ### State-level early termination
 
-The current scientific rule returns no proposal when there is no hard deficit and the best surviving total coverage gain is at or below tolerance. That condition is independent of the removal candidate because it is evaluated from the unmodified state.
+The current scientific rule returns no proposal when there is no hard deficit and the best surviving total coverage gain is at or below tolerance. That condition is evaluated from the unmodified current state and is therefore identical for every removal considered in that state iteration.
 
-The frontier context may therefore conclude once per unchanged state that **no shortlisted removal can produce a proposal under the existing authority**. In that case all per-removal proposal calls are skipped exactly.
+The frontier context may therefore conclude once per unchanged state that **no shortlisted removal can produce a proposal under the frozen authority**. In that case all removal-dependent proposal evaluations are skipped.
 
 This is expected to be the highest-leverage improvement at highly covered large rungs.
 
@@ -147,7 +196,9 @@ Add low-overhead execution telemetry before changing the algorithm.
 For every rung and repair-state iteration record separately:
 
 - selected-prefix extension/replay wall time;
+- initial `zero_unique_shell_fraction` scan wall/rows/edges separately from later removal-shortlist scans;
 - removal-metric scan wall time and forward rows/edges inspected;
+- representative-utility/objective wall time;
 - number of zero/negligible-unique hard-safe removals;
 - removal shortlist size;
 - proposal-frontier/state-invariant wall time;
@@ -155,13 +206,21 @@ For every rung and repair-state iteration record separately:
 - total candidate-family rows/forward edges evaluated for coverage gains;
 - removal-dependent representative/diversity wall time;
 - accepted mutation wall time;
-- proposal count and accepted swap count;
+- proposal counts both per state/rung and cumulative per domain;
+- accepted swap count;
 - final independent validation wall time;
-- fixed `hh:mm:ss` progress timing/ETA where an ETA is meaningful.
+- major/minor faults and filesystem input around REPAIR2 when cheaply available;
+- fixed `hh:mm:ss` elapsed/ETA formatting where an ETA is meaningful; report ETA as unavailable rather than inventing a misleading rung-linear estimate before enough comparable work exists.
 
-The R0 real-product meter may stop after the first proposal-bearing/pathological rung. It need not spend another long timeout merely to prove the already observed problem.
+#### Instrumentation constraints
 
-**Pass:** identify the first expensive rung and quantify which portion is repeated state-invariant proposal work versus removal metrics, pair terms, state mutation, and validation.
+Telemetry is execution-only and cannot affect scientific digests. Edge counts should be derived from existing CSR offset differences/row lengths rather than adding a Python increment inside every forward edge. Timers/counters must not allocate product-scale copies.
+
+Focused instrumentation qualification must show no result/digest change and no material distortion of a representative REPAIR2 fixture; target overhead is <5% on a repeatable fixture when timing noise permits comparison.
+
+The R0 real-product meter may terminate after the first completed pathological/proposal-bearing rung. Do not add a production scientific `stop_after_rung` policy. Use an external meter timeout or a clearly benchmark-only completion callback/private sentinel that cannot be reached through normal campaign authority construction.
+
+**Pass:** identify the first expensive rung and quantify which portion is repeated state-invariant proposal work versus initial/removal metrics, representative utility, pair terms, state mutation, and validation.
 
 ### R1 — scalar proposal-frontier factorization
 
@@ -169,27 +228,43 @@ Implement the execution-only frontier context described above while leaving all 
 
 Requirements:
 
-- context is built at most once per unchanged authoritative state;
-- context is invalidated immediately after every accepted swap;
-- no context survives across a state mutation;
-- canonical candidate order is preserved through every filter;
+- construct one context per unchanged `while`-iteration state, after the current removal shortlist is known;
+- discard it at the iteration/mutation boundary; no cross-mutation reuse;
+- preserve the exact current `state.available` replacement pool; do not reinsert the removed selected candidate;
+- preserve the exact first-family-within-tolerance bottleneck rule;
+- preserve incoming candidate order through hard/bottleneck/total/unit/representative/diversity filters;
+- preserve the existing FP64 summation/reduction path for values that participate in decisions or persisted evidence;
 - full per-family gain matrices are not retained;
-- existing `_proposal()` behavior remains available as a test oracle/private reference, not as a second product authority;
-- state-level no-proposal early termination is used only when exactly equivalent to the current frozen condition.
+- state-level no-proposal early termination is used only when exactly equivalent to the current frozen condition;
+- retain the old scalar proposal path only as a test/reference oracle, unreachable from the product campaign path; add a focused source/call-path assertion if useful to prevent two product authorities from surviving.
 
-Focused qualification:
+Focused qualification must include:
 
 - hand-constructed hard-deficit and no-hard-deficit cases;
 - no-proposal fully/highly covered cases;
+- exact-zero unique removal and **positive-but-within-`unique_coverage_tolerance`** removal;
 - multiple qualifying removals with different correlation units;
 - candidates sharing removed witnesses;
-- tolerance-boundary coverage/representative cases;
-- deterministic UID tie cases;
+- two or more family masses within the bottleneck tolerance, proving the same canonical first-family choice;
+- coverage/representative filter values exactly on and immediately around tolerance boundaries;
+- empty/near-empty available frontier and single-candidate frontier behavior;
+- deterministic UID terminal ties;
 - randomized authenticated small forward graphs;
 - exact old-vs-new proposal result and whole-rung swap sequence;
-- exact final repair authority serialization/digest where inputs are identical.
+- exact final repair authority serialization and content digest for identical inputs;
+- existing REPAIR2-vs-REPAIR1 nonempty trace parity and forward-only dependency tests.
 
-**Product pass:** materially reduce candidate-family forward-edge evaluations per unchanged state and the first pathological-rung wall time. If the full REPAIR2 stage then completes comfortably, do not add native complexity merely because it is available.
+#### R1 structural performance acceptance
+
+Instrumentation must prove the intended asymptotic change, not merely one noisy wall-time win:
+
+- `frontier_build_count` is at most one per unchanged proposal-state iteration;
+- state-invariant bottleneck/total-coverage scans do not scale with `removal_shortlist_size`;
+- candidate-family forward-edge evaluations attributable to the shared frontier are performed once per state rather than once per shortlisted removal;
+- no new product-scale persistent file or inverse graph is created;
+- no OS swap and no unexplained multi-GiB execution-memory increase occurs.
+
+**Product pass:** the first pathological rung must show a material reduction in both repeated frontier-edge work and wall time. As a decision guide, >=4x reduction in state-invariant repeated edge work or >=3x pathological-rung wall-time speedup is strong evidence to proceed directly to R5; if the full REPAIR2 stage already completes <=10 minutes including validation, stop adding optimization complexity. Failure to obtain a material improvement sends the measured residual bottleneck to R2 rather than relaxing exactness.
 
 ### R2 — remaining scalar/local work, conditional
 
@@ -197,20 +272,44 @@ Run only if R1 leaves a material REPAIR2 bottleneck.
 
 Profile-guided candidates, in priority order:
 
-1. combine/reuse shell removal metrics where exact and state-valid;
-2. reduce allocation in pair representative/diversity evaluation using the existing epoch/stamp scratch mechanism;
-3. introduce reconstructible per-family uncovered-term execution caches only if measured candidate coverage-row evaluation remains dominant;
-4. optimize final independent validation by incremental nested-prefix replay only if validation itself becomes a measured bottleneck.
+1. reuse the already computed initial active-shell removal metrics for the first repair iteration **only if no state mutation occurs between the two scans**; retain/recompute `_hard_safe` as required by exact current state;
+2. combine/reuse later shell removal metrics only where exact state validity can be proven;
+3. reduce allocation in pair representative/diversity evaluation using the existing epoch/stamp scratch mechanism;
+4. introduce reconstructible per-family uncovered-term execution caches only if measured candidate coverage-row evaluation remains dominant;
+5. optimize final independent validation by incremental nested-prefix replay only if validation itself becomes a measured bottleneck.
 
 Every cache is execution-only and invalidated/updated by the same authoritative mutation boundary. No inverse mapping may be introduced.
 
 ### R3 — checkpoint-assisted execution, conditional
 
-Run only if REPAIR2 remains long enough that interruption/restart cost is operationally material.
+Run only if REPAIR2 remains long enough that interruption/restart cost is operationally material after R1/R2.
 
-Prefer reuse of existing authenticated MVSTATE2 rung checkpoints **before the first repair divergence**, but only through a canonical-owner API that still evaluates that rung's active shell. Never restore all rung states simultaneously.
+#### Pre-divergence MVSTATE2 reuse
 
-If post-divergence restart remains necessary, design a compact REPAIR2 journal/checkpoint that persists completed rung evidence and enough repaired-order information to reconstruct state by exact forward replay. Do not persist another product-scale graph or a removal×candidate cache.
+Checkpoint reuse must be implemented inside the canonical REPAIR2 owner, not in a second campaign-side repair loop.
+
+A crucial boundary is the active shell: restoring the current implementation at a checkpoint whose size equals the rung being repaired sets `previous_size` to that rung and would make its shell empty. Therefore do **not** simply restore the target rung and claim it has been repaired.
+
+Prefer one of these provably exact designs:
+
+- restore the authenticated checkpoint for the **predecessor materializable rung / active-shell start**, then extend and repair the complete next shell normally; or
+- extend the canonical owner with explicit authenticated `repair_shell_start` metadata and prove that a state restored at a later size still evaluates exactly the same active shell and frozen proposal semantics.
+
+The predecessor-rung form is preferred because it reuses the current state machine with less exceptional logic. Never restore all rung states simultaneously.
+
+#### Post-divergence journal, only if still needed
+
+If post-divergence restart remains operationally necessary, design a compact REPAIR2 journal/checkpoint that persists only completed authoritative boundaries and enough information to reconstruct state by exact forward replay. Its authenticated identity must include at least:
+
+- target coverage reference digest;
+- MVIDX1 content/domain digest;
+- MVSEL2 plan/domain digest;
+- REPAIR2 policy digest/version;
+- completed rung/swap boundary;
+- repaired-order/prefix identity;
+- checkpoint/journal payload digest.
+
+Writes must be atomic/transactional. Never persist partial proposal-frontier context, per-removal candidate state, another graph, or an unauthenticated scratch cache.
 
 Qualification must prove restart equivalence to uninterrupted execution, including repaired order, swap history, rung digests, and final plan digest.
 
@@ -221,12 +320,12 @@ Run only if R1/R2 leave repeated read-only candidate-row scoring as a measured d
 - use the package-wide native extension registry/build machinery;
 - parallelize independent read-only candidate rows only;
 - keep removal ordering, proposal winner choice, and authoritative mutation serial;
-- reproduce the frozen NumPy FP64 reduction/filter semantics exactly, including any masked/compacted summation order;
+- reproduce the frozen NumPy FP64 reduction/filter semantics exactly, including masked/compacted summation order and tolerance-boundary decisions;
 - qualify native output against the Python oracle at bitwise/exact decision level;
 - use a bounded real-MVIDX worker preflight and automatic scalar fallback;
 - do not add Python process pools or inverse-edge state.
 
-Do not assume the existing MVSEL2 row scorer can be reused directly: REPAIR2's masked coverage sums must first be proven to have identical FP64 reduction semantics.
+Do not assume the existing MVSEL2 row scorer can be reused directly: REPAIR2's masked/compacted coverage summation can have different FP64 grouping from a dense term-with-zeros row sum.
 
 ### R5 — full REPAIR2 product closeout
 
@@ -237,14 +336,17 @@ Required acceptance:
 1. exact scientific regression suite passes;
 2. final repair authority validates independently;
 3. no coverage/hard-obligation regression versus MVSEL2;
-4. deterministic repaired order/swap history across repeated runs;
+4. deterministic repaired order/swap history is proven by repeated bounded recomputation and product content-digest comparison; a cache-hit/reuse invocation alone does not count as a determinism rerun;
 5. no inverse adjacency or full-state proposal copies;
 6. no second product-scale graph;
 7. zero swap at the OS level;
 8. persistent `.mdstats` growth remains bounded and justified;
-9. complete REPAIR2 comfortably inside the former 20-minute enclosing meter.
+9. R1/R2 execution-only changes leave REPAIR2 schema/version and identical-input authority digest unchanged;
+10. complete **build plus independent validation** comfortably inside the former 20-minute enclosing meter.
 
-Performance target: <=10 minutes for full REPAIR2 is sufficient to close the pathological gate; <=5 minutes is the preferred design target. If R1 alone reaches that regime, stop optimization and proceed downstream.
+Report build and validation wall times separately even though the closeout target applies to their sum.
+
+Performance target: <=10 minutes for full REPAIR2 build + validation is sufficient to close the pathological gate; <=5 minutes is the preferred design target. If R1 alone reaches that regime, stop optimization and proceed downstream.
 
 ## Downstream observation gates
 
@@ -255,21 +357,23 @@ The design review does **not** authorize speculative rewrites of every later sta
 After R5, continue the same invocation and record per-stage:
 
 - wall/user/system time;
-- worker topology;
+- worker topology/resource class (CPU preparation, GPU inference, GPU training, I/O-heavy materialization);
 - peak incremental RSS where attributable;
 - filesystem input/output;
 - cache/reuse status;
 - restart behavior;
 - product-scale row/edge/configuration counts when meaningful.
 
-A downstream stage becomes an optimization target only if either:
+A downstream stage becomes an optimization target if either:
 
-- it consumes more than about 20% of the remaining preparation wall time or more than about 5 minutes on the product case; or
+- it exceeds about 5 minutes on the product case or materially dominates other stages in the **same resource class**; or
 - source review plus product counters demonstrates a clear asymptotic/repeated-scan pathology likely to worsen materially with scale.
+
+Do not use a long GPU TRAIN2 wall time to make a CPU preparation stage look artificially insignificant, or vice versa.
 
 ### O1 — REPAIR2 final validator watch
 
-The current validator independently recomputes coverage and hard-obligation evidence for every materializable nested rung. Preserve independent validation, but measure it separately after R1. If it becomes dominant, redesign it as an independent incremental nested-prefix validator rather than removing or weakening the check.
+The current validator independently recomputes coverage and hard-obligation evidence for every materializable nested rung. Preserve independent validation, but measure it separately after R1. If it becomes dominant, redesign it as an independent incremental nested-prefix validator rather than removing or weakening the check. The optimized validator must remain independent of proposal-context caches and repair-time derived coverage evidence.
 
 ### O2 — MVQUAL1 watch
 
@@ -291,16 +395,33 @@ Production DATA6--DATA8 materialization already owns restart checkpoints, immuta
 
 Pure decision/provenance stages such as TARGET-DATA2E should not be optimized without evidence.
 
-## Independent design-review findings incorporated
+## Final independent-review findings incorporated
 
-The reviewed plan explicitly rejects the following initially tempting approaches:
+The final adversarial review applies the protocol's software-design independent-review criteria to correctness, numerical fidelity, asymptotic scaling, memory/I/O, recovery, ownership, complexity, and representative qualification.
 
-1. **Parallelism first** — rejected because the source-level amplification repeats the same state-invariant frontier up to the removal-shortlist limit. Parallelizing redundant work preserves the wrong algorithm.
-2. **Port REPAIR1 inverse-edge optimization** — rejected because REPAIR2's accepted architecture is forward-only and inverse scientific/mutation state would recreate the design that MVSEL2 deliberately removed.
-3. **Cache all candidate×family gains** — rejected because it can create large execution memory proportional to candidate count × family count and is unnecessary for the final objective.
-4. **Reuse the MVSEL2 native row scorer without proof** — rejected because filtered/compacted REPAIR2 coverage summation can have different FP64 grouping from a dense term-with-zeros row sum.
-5. **Restore all MVSTATE2 rung states at once** — rejected because that can multiply forward-state memory. Any checkpoint-assisted execution must be lazy and one-rung-at-a-time.
-6. **Optimize downstream stages before measurement** — rejected because MVQUAL1 and production materialization already contain explicit parallel/restart machinery and may not be the next wall-time bottleneck.
+It adds or tightens the following boundaries:
+
+1. **Factorization proof is based on frozen dataflow, not exact-zero uniqueness.** Positive-but-within-tolerance unique mass is an explicit regression case.
+2. **Replacement-pool semantics are frozen.** The hypothetical removal is not reinserted into `state.available`.
+3. **Tolerance-order semantics are frozen.** Canonical first-family bottleneck selection and candidate filter order must survive refactoring.
+4. **Context lifetime is lexical per unchanged state.** This prevents stale execution caches from crossing prefix extension or accepted swaps.
+5. **Execution-only means no authority migration.** R0/R1/R2 cannot change schema, version, persistence lineage, or identical-input content digest.
+6. **Instrumentation must be cheap.** Edge accounting derives from CSR lengths rather than per-edge Python hooks, and benchmark stopping cannot become a scientific production policy.
+7. **Performance acceptance is structural as well as temporal.** R1 must prove removal-shortlist amplification is gone, not merely produce one favorable wall-clock run.
+8. **Memory/I/O regression is a gate.** No candidate×family/per-removal matrix, second graph, page-release churn, swap, or unexplained multi-GiB allocation is acceptable.
+9. **Checkpoint reuse must respect the active-shell boundary.** A checkpoint at the rung being repaired cannot simply be fed to the current continuation hook because that would make the shell empty; predecessor-rung restore is preferred.
+10. **Restart journals, if ever needed, have explicit lineage/atomicity requirements** and cannot persist proposal scratch.
+11. **Product determinism and validation timing are defined precisely.** A cache-hit run is not a determinism rerun; build and independent validation are timed separately and jointly.
+12. **Downstream bottlenecks are compared within resource class**, preventing long GPU stages from obscuring CPU/I/O pathologies.
+
+The reviewed plan continues to reject these tempting approaches:
+
+- parallelism first;
+- REPAIR1 inverse-edge machinery;
+- candidate×family gain matrices;
+- unproven direct MVSEL2 native scorer reuse;
+- restoring all MVSTATE2 rung states at once;
+- speculative downstream rewrites before measurement.
 
 ## Implementation boundary
 
