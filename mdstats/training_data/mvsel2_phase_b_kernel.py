@@ -1,20 +1,19 @@
 """Exact production MVSEL2 Phase-B kernel with witness-side representative terms.
 
 The scientific Phase-B policy remains the certified lazy frontier implemented by
-``target_multi_view_selector_v2``.  This module changes only the execution
-representation used by production selection:
+``target_multi_view_selector_v2``. This module changes only execution:
 
 * one FP64 representative term is cached per witness,
   ``weight / (multiplicity + 1)``;
 * the cache is updated only on forward rows selected since the previous Phase-B
   evaluation;
-* stale-candidate rescoring becomes CSR gather + canonical FP64 sum instead of
-  repeating integer-to-FP64 conversion, allocation, and division for every
-  candidate edge;
+* stale heap entries are rescored in small deterministic batches traversed
+  family-major, so one family's mmap pages are active at a time;
+* each scanned family mapping is released after the batch;
 * the exact Phase-B rebase remains family-major and forward-only.
 
 No candidate marginal array, inverse adjacency, or additional persistent state
-is introduced.  The cache is reconstructible from MVSTATE2 witness
+is introduced. The cache is reconstructible from MVSTATE2 witness
 multiplicities and is therefore execution state only.
 """
 from __future__ import annotations
@@ -40,6 +39,9 @@ from .target_multi_view_selector_v2 import (
 )
 
 
+_PHASE_B_RESCORING_BATCH_SIZE = 128
+
+
 @dataclass(slots=True)
 class _RepresentativeTermCacheV2:
     """Reconstructible per-witness execution cache for one live selector state."""
@@ -49,8 +51,8 @@ class _RepresentativeTermCacheV2:
     terms: tuple[np.ndarray, ...]
 
 
-# A production process normally owns one live MVSEL2 state per domain.  Keeping a
-# strong state reference prevents Python id reuse from aliasing caches.  This is
+# A production process normally owns one live MVSEL2 state per domain. Keeping a
+# strong state reference prevents Python id reuse from aliasing caches. This is
 # execution-only state and is never serialized or included in scientific digests.
 _CACHE_BY_STATE_ID: dict[int, _RepresentativeTermCacheV2] = {}
 
@@ -133,8 +135,8 @@ def _sync_terms(
         if not touched:
             continue
         # The normal selector advances one rank at a time, so this fast path is
-        # almost always a single native CSR row.  Concatenate only when execution
-        # was externally advanced by multiple ranks between Phase-B calls.
+        # almost always a single native CSR row. Concatenate only if execution
+        # advanced by multiple ranks between Phase-B calls.
         if len(touched) == 1:
             witnesses = touched[0]
         else:
@@ -147,25 +149,46 @@ def _sync_terms(
     cache.generation = generation
 
 
-def _representative_gain_cached(
-    candidate: int,
+def _representative_gain_cached_batch(
+    candidates: tuple[int, ...],
     forward_domain: Any,
     cache: _RepresentativeTermCacheV2,
-) -> tuple[float, int]:
-    gain = 0.0
+) -> tuple[dict[int, float], int]:
+    """Score stale candidates exactly while traversing MVIDX family-major.
+
+    Candidate processing order within a family is sorted for CSR locality. Each
+    candidate still receives one FP64 family subtotal in canonical family order,
+    matching the scalar scientific accumulation sequence.
+    """
+
+    if not candidates:
+        return {}, 0
+    ordered = tuple(sorted(set(int(candidate) for candidate in candidates)))
+    scores = [0.0] * len(ordered)
     edges = 0
     for family, terms in zip(
         forward_domain.families,
         cache.terms,
         strict=True,
     ):
-        witnesses = _native_row(family.candidate_witness_indices(candidate))
-        if witnesses.size == 0:
-            continue
-        # Preserve the frozen candidate-local family accumulation sequence.
-        gain += float(np.sum(terms[witnesses], dtype=np.float64))
-        edges += int(witnesses.size)
-    return gain, edges
+        for position, candidate in enumerate(ordered):
+            witnesses = _native_row(family.candidate_witness_indices(candidate))
+            if witnesses.size == 0:
+                continue
+            scores[position] += float(
+                np.sum(terms[witnesses], dtype=np.float64)
+            )
+            edges += int(witnesses.size)
+
+        # Bound the mapped working set. The next family is independent and all
+        # candidate scores retain their completed family subtotal in RAM.
+        _drop_file_backed_pages_v2(np.asarray(family.candidate_offsets))
+        _drop_file_backed_pages_v2(np.asarray(family.candidate_witnesses))
+
+    return {
+        candidate: float(scores[position])
+        for position, candidate in enumerate(ordered)
+    }, edges
 
 
 def build_target_multi_view_lazy_frontier_v2_kernel(
@@ -236,6 +259,43 @@ def _valid_heap_top(
     return None
 
 
+def _pop_stale_batch(
+    frontier: TargetMultiViewLazyFrontierV2,
+    state: TargetMultiViewForwardStateV2,
+    *,
+    generation: int,
+    best_exact: float,
+    epsilon: float,
+) -> tuple[tuple[int, ...], int]:
+    """Pop a bounded top-of-heap batch of stale candidates.
+
+    Stop before a current-generation exact entry or a bound already below the
+    established exact threshold. Extra stale entries inside the bounded batch
+    may be refreshed earlier than the scalar loop would require; that changes
+    only reconstructible execution state, never the certified comparator.
+    """
+
+    batch: list[int] = []
+    seen: set[int] = set()
+    discarded = 0
+    while len(batch) < _PHASE_B_RESCORING_BATCH_SIZE:
+        top = _valid_heap_top(frontier, state)
+        if top is None:
+            break
+        upper, candidate, entry_generation, removed = top
+        discarded += removed
+        if best_exact > -math.inf and upper < best_exact - float(epsilon):
+            break
+        if entry_generation == generation:
+            break
+        heapq.heappop(frontier.heap)
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        batch.append(candidate)
+    return tuple(batch), discarded
+
+
 def choose_target_multi_view_phase_b_candidate_v2_kernel(
     reference_domain: Any,
     forward_domain: Any,
@@ -244,7 +304,7 @@ def choose_target_multi_view_phase_b_candidate_v2_kernel(
     *,
     epsilon: float = 1.0e-14,
 ) -> TargetMultiViewPhaseBChoiceV2:
-    """Certify the exact Phase-B contender set with cached witness terms."""
+    """Certify the exact Phase-B contender set with batched stale rescoring."""
 
     cache = _cache_for_state(state)
     _sync_terms(cache, forward_domain, state)
@@ -268,34 +328,50 @@ def choose_target_multi_view_phase_b_candidate_v2_kernel(
         stale_discarded += discarded
         if best_exact > -math.inf and upper < best_exact - float(epsilon):
             break
-        heapq.heappop(frontier.heap)
+
         if entry_generation != generation:
-            exact, edges = _representative_gain_cached(
-                candidate,
+            batch, removed = _pop_stale_batch(
+                frontier,
+                state,
+                generation=generation,
+                best_exact=best_exact,
+                epsilon=float(epsilon),
+            )
+            stale_discarded += removed
+            if not batch:
+                raise TrainingDataInputError(
+                    "TARGET-DATA2C-MVSEL2 failed to form a stale Phase-B batch."
+                )
+            exact_by_candidate, edges = _representative_gain_cached_batch(
+                batch,
                 forward_domain,
                 cache,
             )
-            old_exact = float(frontier.exact_scores[candidate])
-            if np.isfinite(old_exact) and exact > old_exact + 5.0e-13:
-                raise TrainingDataInputError(
-                    "TARGET-DATA2C-MVSEL2 representative bound increased after selection."
+            representative_edges += int(edges)
+            rescoring_count += len(batch)
+            for refreshed in batch:
+                exact = float(exact_by_candidate[refreshed])
+                old_exact = float(frontier.exact_scores[refreshed])
+                if np.isfinite(old_exact) and exact > old_exact + 5.0e-13:
+                    raise TrainingDataInputError(
+                        "TARGET-DATA2C-MVSEL2 representative bound increased after selection."
+                    )
+                frontier.exact_scores[refreshed] = exact
+                frontier.exact_generations[refreshed] = generation
+                conservative = float(
+                    np.nextafter(np.float64(exact), np.float64(np.inf))
                 )
-            frontier.exact_scores[candidate] = exact
-            frontier.exact_generations[candidate] = generation
-            conservative = float(
-                np.nextafter(np.float64(exact), np.float64(np.inf))
-            )
-            if conservative + 5.0e-13 < exact:
-                raise TrainingDataInputError(
-                    "TARGET-DATA2C-MVSEL2 representative upper bound is not conservative."
+                if conservative + 5.0e-13 < exact:
+                    raise TrainingDataInputError(
+                        "TARGET-DATA2C-MVSEL2 representative upper bound is not conservative."
+                    )
+                heapq.heappush(
+                    frontier.heap,
+                    (-conservative, refreshed, generation),
                 )
-            heapq.heappush(
-                frontier.heap,
-                (-conservative, candidate, generation),
-            )
-            rescoring_count += 1
-            representative_edges += edges
             continue
+
+        heapq.heappop(frontier.heap)
         exact = float(frontier.exact_scores[candidate])
         exact_candidates.add(candidate)
         best_exact = max(best_exact, exact)
