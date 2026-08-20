@@ -5,7 +5,7 @@ Branch: `feat/mvsel2-forward-lazy`
 
 ## Scope
 
-This record closes the product-performance gate for the exact forward-only MVSEL2 native/OpenMP Phase-B implementation. Raw workstation evidence is retained in the repository root as `g4n3-mvsel2.txt`, `g4n3-time.txt`, `g4n3-disk-before.txt`, and `g4n3-disk-after.txt`.
+This record closes the product-performance gate for the exact forward-only MVSEL2 native/OpenMP Phase-B implementation. The raw workstation `.txt` evidence used during development was normalized into this durable benchmark record and intentionally removed from the merge candidate during repository cleanup. The underlying raw logs remain recoverable from feature-branch history if forensic reconstruction is ever needed.
 
 ## Real-MVIDX preflight
 

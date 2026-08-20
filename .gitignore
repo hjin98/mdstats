@@ -5,6 +5,16 @@ __pycache__/
 build/
 dist/
 
+# Native build artifacts
+*.o
+*.obj
+*.so
+*.pyd
+*.dll
+*.dylib
+*.a
+*.lib
+
 # Environments
 .venv/
 venv/
@@ -19,6 +29,7 @@ htmlcov/
 .vscode/
 .idea/
 .DS_Store
+*~
 
 # Scientific / runtime outputs
 *.log
