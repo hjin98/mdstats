@@ -1,7 +1,7 @@
 """Protocol-5 campaign runtime for the single-owner MVSEL2 selector engine.
 
 This module replaces only selection orchestration while G3 still owns REPAIR2
-cleanup.  It reuses the established native-forward/checkpoint readers, pairs new
+cleanup. It reuses the established native-forward/checkpoint readers, pairs new
 MVSTATE2 checkpoints with authenticated compact rank history, and routes fresh
 and resumed selection through one engine.
 """
@@ -30,6 +30,7 @@ from .target_multi_view_selector_v2 import TargetMultiViewSelectorPolicyV2
 
 
 _HISTORY_KEY_PREFIX = "target_multi_view_selection_history_v2"
+_NATIVE_WORKER_QUALIFICATION_CEILING = 16
 
 
 def _history_key(domain_id: str, size: int) -> str:
@@ -113,6 +114,14 @@ def _highest_valid_resume_bundle(
                     )
             break
     return states, histories, pointers
+
+
+def _selection_worker_budget(core: Any, cfg: Mapping[str, Any]) -> tuple[int, Any]:
+    """Return the qualified MVSEL2 worker count and existing resource policy."""
+
+    query_workers, resources = core._target_coverage_query_workers(cfg)
+    workers = max(1, min(int(query_workers), _NATIVE_WORKER_QUALIFICATION_CEILING))
+    return workers, resources
 
 
 def ensure_target_multi_view_selection_v2(
@@ -235,10 +244,12 @@ def ensure_target_multi_view_selection_v2(
         store.put_record(key, record)
         checkpoint_pointers[key] = record
 
-    _, resources = core._target_coverage_query_workers(cfg)
+    selector_workers, resources = _selection_worker_budget(core, cfg)
     scope = core.build_stage_resource_scope(
         resources,
         stage_name="TARGET-DATA2C-MVSEL2/MVSTATE2",
+        # Native OpenMP is the only parallel execution inside this stage. Keep
+        # Python/structural/tree/BLAS machinery serial to prevent nested pools.
         python_workers=1,
         structural_workers=1,
         tree_workers=1,
@@ -250,7 +261,7 @@ def ensure_target_multi_view_selection_v2(
             coverage_reference,
             forward,
             policy=policy,
-            workers=1,
+            workers=selector_workers,
             checkpoint_callback=checkpoint,
             history_callback=history_checkpoint,
             progress_callback=lambda message: print(
@@ -279,6 +290,7 @@ def ensure_target_multi_view_selection_v2(
         f"digest={plan.content_digest[:12]}...; "
         f"checkpoints={len(checkpoint_pointers)}; "
         f"elapsed={format_progress_time(time.monotonic() - started)}; "
+        f"selector-workers={selector_workers}; "
         "native-forward-runtime=true; rank-history=true; "
         "legacy MVSEL1/MVSTATE-REUSE1 records retained"
     )
