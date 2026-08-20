@@ -1,8 +1,13 @@
 """MVSEL2 exact forward-state scoring and mutation primitives.
 
 The v2 kernel deliberately owns no witness-to-candidate adjacency and no
-complete candidate marginal arrays.  Candidate scores are evaluated on demand
+complete candidate marginal arrays. Candidate scores are evaluated on demand
 from forward CSR rows and current witness multiplicity.
+
+This module also retains the independent sequential reference/oracle path used
+for focused equivalence tests. Production selection is owned by
+``mvsel2_selection_engine`` and its optimized Phase-A/family-streaming kernels.
+The failed PAR1 candidate-thread execution path is intentionally absent.
 """
 
 from __future__ import annotations
@@ -12,7 +17,7 @@ import heapq
 import math
 import mmap
 import time
-from typing import Any, Callable, Iterable, Iterator
+from typing import Any, Iterable
 
 import numpy as np
 
@@ -26,27 +31,16 @@ TARGET_MULTI_VIEW_SELECTOR_V2_VERSION = "mdstats.target-data2c-mvsel2.forward-la
 TARGET_MULTI_VIEW_SELECTION_PLAN_V2_SCHEMA = "mdstats.target-multi-view-selection-plan.v2"
 
 
-def _iter_candidate_blocks_v2(
-    candidates: tuple[int, ...],
-    evaluator: Callable[[int], Any],
-    *,
-    batch_size: int,
-    executor: Any | None,
-) -> Iterator[Any]:
-    """Yield canonical scalar-reference results in candidate order.
+def _native_row_v2(values: Any) -> np.ndarray:
+    """Return one authenticated CSR row without widening/copying its dtype."""
 
-    PAR1 candidate threading is retired. ``batch_size`` and ``executor``
-    remain internal compatibility parameters only. Any non-None executor
-    is rejected fail-closed.
-    """
-
-    del batch_size
-    if executor is not None:
+    row = np.asarray(values)
+    if row.ndim != 1 or row.dtype.kind not in "iu":
         raise TrainingDataInputError(
-            "TARGET-DATA2C-MVSEL2 PAR1 candidate threading is retired."
+            "TARGET-DATA2C-MVSEL2 CSR row is not an integer vector."
         )
-    for candidate in candidates:
-        yield evaluator(candidate)
+    return row
+
 
 def _drop_file_backed_pages_v2(array: np.ndarray) -> None:
     """Release fully scanned mmap pages without changing array identity."""
@@ -145,9 +139,9 @@ class TargetMultiViewLazyFrontierV2:
 
 def build_target_multi_view_lazy_frontier_v2(
     forward_domain: TargetCoverageSparseForwardDomainView,
-    state: TargetMultiViewForwardStateV2,
+    state: "TargetMultiViewForwardStateV2",
 ) -> TargetMultiViewLazyFrontierV2:
-    """Run the deterministic exact Phase-B rebase over all available candidates."""
+    """Run the deterministic exact Phase-B reference rebase."""
 
     generation = state.selected_count
     candidate_count = forward_domain.candidate_count
@@ -173,7 +167,7 @@ def build_target_multi_view_lazy_frontier_v2(
 
 def _valid_heap_top_v2(
     frontier: TargetMultiViewLazyFrontierV2,
-    state: TargetMultiViewForwardStateV2,
+    state: "TargetMultiViewForwardStateV2",
 ) -> tuple[float, int, int, int] | None:
     discarded = 0
     while frontier.heap:
@@ -189,7 +183,7 @@ def _valid_heap_top_v2(
 def choose_target_multi_view_phase_b_full_forward_v2(
     reference_domain: Any,
     forward_domain: TargetCoverageSparseForwardDomainView,
-    state: TargetMultiViewForwardStateV2,
+    state: "TargetMultiViewForwardStateV2",
     *,
     epsilon: float = 1.0e-14,
 ) -> TargetMultiViewPhaseBChoiceV2:
@@ -250,7 +244,7 @@ def choose_target_multi_view_phase_b_full_forward_v2(
 def choose_target_multi_view_phase_b_candidate_v2(
     reference_domain: Any,
     forward_domain: TargetCoverageSparseForwardDomainView,
-    state: TargetMultiViewForwardStateV2,
+    state: "TargetMultiViewForwardStateV2",
     frontier: TargetMultiViewLazyFrontierV2,
     *,
     epsilon: float = 1.0e-14,
@@ -323,8 +317,6 @@ def choose_target_multi_view_phase_b_candidate_v2(
     contenders = _filter_best_relative_v2(contenders, diversity, float(epsilon))
     chosen = min(contenders, key=lambda candidate: reference_domain.frame_uids[candidate])
 
-    # Reinsert exact candidates so their conservative bounds remain available
-    # when this choice is inspected or rebuilt before mutation.
     for candidate in exact_candidates:
         conservative = float(
             np.nextafter(frontier.exact_scores[candidate], np.float64(np.inf))
@@ -409,7 +401,7 @@ def _validate_forward_problem(
             raise TrainingDataInputError("TARGET-DATA2C-MVSEL2 witness weights must be finite and nonnegative.")
         reachable = np.zeros(forward_family.witness_count, dtype=np.bool_)
         for candidate in range(candidate_count):
-            row = np.asarray(forward_family.candidate_witness_indices(candidate), dtype=np.int64)
+            row = _native_row_v2(forward_family.candidate_witness_indices(candidate))
             if row.size:
                 reachable[row] = True
         capacity = float(np.sum(weights[reachable], dtype=np.float64))
@@ -421,8 +413,8 @@ def _validate_forward_problem(
 
     obligation_capacity = np.zeros(len(forward_domain.obligations), dtype=np.int64)
     for candidate in range(candidate_count):
-        obligation_capacity[np.asarray(
-            forward_domain.candidate_obligation_indices(candidate), dtype=np.int64
+        obligation_capacity[_native_row_v2(
+            forward_domain.candidate_obligation_indices(candidate)
         )] += 1
     for obligation_index, obligation in enumerate(forward_domain.obligations):
         if obligation.required and int(obligation_capacity[obligation_index]) < int(obligation.minimum_selected_frames):
@@ -491,8 +483,8 @@ def score_target_multi_view_candidate_v2(
     for forward_family, family_state in zip(
         forward_domain.families, state.family_states, strict=True
     ):
-        witnesses = np.asarray(
-            forward_family.candidate_witness_indices(candidate), dtype=np.int64
+        witnesses = _native_row_v2(
+            forward_family.candidate_witness_indices(candidate)
         )
         if witnesses.size == 0:
             family_coverage.append(0.0)
@@ -514,13 +506,14 @@ def score_target_multi_view_candidate_v2(
             )
         )
     hard_gain = 0
-    for obligation_index in np.asarray(
-        forward_domain.candidate_obligation_indices(candidate), dtype=np.int64
+    for obligation_index in _native_row_v2(
+        forward_domain.candidate_obligation_indices(candidate)
     ):
-        obligation = forward_domain.obligations[int(obligation_index)]
+        index = int(obligation_index)
+        obligation = forward_domain.obligations[index]
         if (
             obligation.required
-            and int(state.obligation_counts[obligation_index])
+            and int(state.obligation_counts[index])
             < int(obligation.minimum_selected_frames)
         ):
             hard_gain += 1
@@ -557,13 +550,14 @@ def _hard_gain_v2(
     state: TargetMultiViewForwardStateV2,
 ) -> int:
     gain = 0
-    for obligation_index in np.asarray(
-        forward_domain.candidate_obligation_indices(candidate), dtype=np.int64
+    for obligation_index in _native_row_v2(
+        forward_domain.candidate_obligation_indices(candidate)
     ):
-        obligation = forward_domain.obligations[int(obligation_index)]
+        index = int(obligation_index)
+        obligation = forward_domain.obligations[index]
         if (
             obligation.required
-            and int(state.obligation_counts[obligation_index])
+            and int(state.obligation_counts[index])
             < int(obligation.minimum_selected_frames)
         ):
             gain += 1
@@ -578,7 +572,7 @@ def _family_coverage_gain_v2(
 ) -> tuple[float, int]:
     family = forward_domain.families[family_index]
     family_state = state.family_states[family_index]
-    witnesses = np.asarray(family.candidate_witness_indices(candidate), dtype=np.int64)
+    witnesses = _native_row_v2(family.candidate_witness_indices(candidate))
     if witnesses.size == 0:
         return 0.0, 0
     uncovered = family_state.multiplicity[witnesses] == 0
@@ -614,7 +608,7 @@ def _representative_gain_v2(
     for family, family_state in zip(
         forward_domain.families, state.family_states, strict=True
     ):
-        witnesses = np.asarray(family.candidate_witness_indices(candidate), dtype=np.int64)
+        witnesses = _native_row_v2(family.candidate_witness_indices(candidate))
         if witnesses.size == 0:
             continue
         gain += float(
@@ -638,7 +632,7 @@ def _sparse_diversity_v2(
     for family, family_state in zip(
         forward_domain.families, state.family_states, strict=True
     ):
-        witnesses = np.asarray(family.candidate_witness_indices(candidate), dtype=np.int64)
+        witnesses = _native_row_v2(family.candidate_witness_indices(candidate))
         if witnesses.size == 0:
             continue
         values.append(
@@ -664,10 +658,8 @@ def _choose_target_multi_view_phase_a_candidate_v2_impl(
     *,
     coverage_threshold: float,
     epsilon: float,
-    batch_size: int,
-    executor: Any | None,
 ) -> TargetMultiViewPhaseAChoiceV2:
-    """Execute Phase A against one immutable state snapshot."""
+    """Execute the exact sequential Phase-A reference against one state."""
 
     available = tuple(int(value) for value in np.flatnonzero(state.available))
     if not available:
@@ -680,7 +672,10 @@ def _choose_target_multi_view_phase_a_candidate_v2_impl(
     if not hard_pending and not coverage_pending:
         raise TrainingDataInputError("TARGET-DATA2C-MVSEL2 Phase A is already complete.")
 
-    hard_gains = {candidate: _hard_gain_v2(candidate, forward_domain, state) for candidate in available}
+    hard_gains = {
+        candidate: _hard_gain_v2(candidate, forward_domain, state)
+        for candidate in available
+    }
     candidates = available
     if hard_pending:
         maximum = max(hard_gains.values())
@@ -697,18 +692,10 @@ def _choose_target_multi_view_phase_a_candidate_v2_impl(
     bottleneck_index = int(np.flatnonzero(ratios <= minimum + epsilon)[0])
     bottleneck_values: dict[int, float] = {}
     bottleneck_edges = 0
-    bottleneck_rows = _iter_candidate_blocks_v2(
-        candidates,
-        lambda candidate: (
-            candidate,
-            *_family_coverage_gain_v2(
-                candidate, bottleneck_index, forward_domain, state
-            ),
-        ),
-        batch_size=batch_size,
-        executor=executor,
-    )
-    for candidate, value, edges in bottleneck_rows:
+    for candidate in candidates:
+        value, edges = _family_coverage_gain_v2(
+            candidate, bottleneck_index, forward_domain, state
+        )
         bottleneck_values[candidate] = value
         bottleneck_edges += edges
     candidates = _filter_best_relative_v2(candidates, bottleneck_values, epsilon)
@@ -717,16 +704,10 @@ def _choose_target_multi_view_phase_a_candidate_v2_impl(
     family_gains: dict[int, tuple[float, ...]] = {}
     total_coverage_values: dict[int, float] = {}
     total_coverage_edges = 0
-    total_coverage_rows = _iter_candidate_blocks_v2(
-        candidates,
-        lambda candidate: (
-            candidate,
-            *_total_coverage_gain_v2(candidate, forward_domain, state),
-        ),
-        batch_size=batch_size,
-        executor=executor,
-    )
-    for candidate, gains, total, edges in total_coverage_rows:
+    for candidate in candidates:
+        gains, total, edges = _total_coverage_gain_v2(
+            candidate, forward_domain, state
+        )
         family_gains[candidate] = gains
         total_coverage_values[candidate] = total
         total_coverage_edges += edges
@@ -749,16 +730,8 @@ def _choose_target_multi_view_phase_a_candidate_v2_impl(
 
     representative_values: dict[int, float] = {}
     representative_edges = 0
-    representative_rows = _iter_candidate_blocks_v2(
-        candidates,
-        lambda candidate: (
-            candidate,
-            *_representative_gain_v2(candidate, forward_domain, state),
-        ),
-        batch_size=batch_size,
-        executor=executor,
-    )
-    for candidate, value, edges in representative_rows:
+    for candidate in candidates:
+        value, edges = _representative_gain_v2(candidate, forward_domain, state)
         representative_values[candidate] = value
         representative_edges += edges
     candidates = _filter_best_relative_v2(
@@ -768,25 +741,11 @@ def _choose_target_multi_view_phase_a_candidate_v2_impl(
 
     diversity_values: dict[int, float] = {}
     diversity_edges = 0
-    if len(candidates) > 1:
-        diversity_rows = _iter_candidate_blocks_v2(
-            candidates,
-            lambda candidate: (
-                candidate,
-                *_sparse_diversity_v2(candidate, forward_domain, state),
-            ),
-            batch_size=batch_size,
-            executor=executor,
-        )
-        for candidate, value, edges in diversity_rows:
-            diversity_values[candidate] = value
-            diversity_edges += edges
-        candidates = _filter_best_relative_v2(candidates, diversity_values, epsilon)
-    else:
-        candidate = candidates[0]
+    for candidate in candidates:
         value, edges = _sparse_diversity_v2(candidate, forward_domain, state)
         diversity_values[candidate] = value
         diversity_edges += edges
+    candidates = _filter_best_relative_v2(candidates, diversity_values, epsilon)
 
     chosen = min(candidates, key=lambda candidate: reference_domain.frame_uids[candidate])
     if chosen not in family_gains:
@@ -835,28 +794,26 @@ def choose_target_multi_view_phase_a_candidate_v2(
     batch_size: int = 256,
     workers: int = 1,
 ) -> TargetMultiViewPhaseAChoiceV2:
-    """Execute the exact single-threaded Phase-A reference/oracle.
+    """Execute exact sequential Phase A for reference/equivalence testing.
 
-    Production uses ``mvsel2_phase_a_kernel``. Changing ``workers`` here
-    cannot resurrect the failed PAR1 execution design.
+    ``batch_size`` and ``workers`` remain accepted for API compatibility but
+    are intentionally execution-inert. The production locality kernel lives in
+    ``mvsel2_phase_a_kernel``.
     """
 
     epsilon = float(epsilon)
     batch_size = int(batch_size)
     workers = int(workers)
     if batch_size < 1 or workers < 1:
-        raise TrainingDataInputError(
-            "TARGET-DATA2C-MVSEL2 batch/worker settings must be positive."
-        )
+        raise TrainingDataInputError("TARGET-DATA2C-MVSEL2 batch/worker settings must be positive.")
     return _choose_target_multi_view_phase_a_candidate_v2_impl(
         reference_domain,
         forward_domain,
         state,
         coverage_threshold=float(coverage_threshold),
         epsilon=epsilon,
-        batch_size=batch_size,
-        executor=None,
     )
+
 
 def score_target_multi_view_candidates_v2(
     candidates: Iterable[int],
@@ -871,18 +828,15 @@ def score_target_multi_view_candidates_v2(
     batch_size = int(batch_size)
     workers = int(workers)
     if batch_size < 1 or workers < 1:
-        raise TrainingDataInputError(
-            "TARGET-DATA2C-MVSEL2 batch/worker settings must be positive."
-        )
+        raise TrainingDataInputError("TARGET-DATA2C-MVSEL2 batch/worker settings must be positive.")
     ordered = tuple(sorted(int(candidate) for candidate in candidates))
     if len(set(ordered)) != len(ordered):
-        raise TrainingDataInputError(
-            "TARGET-DATA2C-MVSEL2 candidate score request contains duplicates."
-        )
+        raise TrainingDataInputError("TARGET-DATA2C-MVSEL2 candidate score request contains duplicates.")
     return tuple(
         score_target_multi_view_candidate_v2(candidate, forward_domain, state)
         for candidate in ordered
     )
+
 
 def select_target_multi_view_candidate_v2(
     candidate_index: int,
@@ -905,19 +859,20 @@ def select_target_multi_view_candidate_v2(
     for family_index, (forward_family, family_state) in enumerate(
         zip(forward_domain.families, state.family_states, strict=True)
     ):
-        witnesses = np.asarray(
-            forward_family.candidate_witness_indices(candidate), dtype=np.int64
+        witnesses = _native_row_v2(
+            forward_family.candidate_witness_indices(candidate)
         )
         if witnesses.size == 0:
             continue
         family_state.coverage_mass += score.family_coverage_gains[family_index]
         family_state.multiplicity[witnesses] += 1
-    for obligation_index in np.asarray(
-        forward_domain.candidate_obligation_indices(candidate), dtype=np.int64
+    for obligation_index in _native_row_v2(
+        forward_domain.candidate_obligation_indices(candidate)
     ):
-        obligation = forward_domain.obligations[int(obligation_index)]
-        before = int(state.obligation_counts[obligation_index])
-        state.obligation_counts[obligation_index] = before + 1
+        index = int(obligation_index)
+        obligation = forward_domain.obligations[index]
+        before = int(state.obligation_counts[index])
+        state.obligation_counts[index] = before + 1
         if obligation.required and before < obligation.minimum_selected_frames <= before + 1:
             state.unsatisfied_required_obligation_count -= 1
     unit_code = int(forward_domain.candidate_correlation_unit_codes[candidate])
@@ -943,8 +898,8 @@ def deselect_target_multi_view_candidate_v2(
     for forward_family, family_state in zip(
         forward_domain.families, state.family_states, strict=True
     ):
-        witnesses = np.asarray(
-            forward_family.candidate_witness_indices(candidate), dtype=np.int64
+        witnesses = _native_row_v2(
+            forward_family.candidate_witness_indices(candidate)
         )
         if witnesses.size == 0:
             continue
@@ -964,14 +919,15 @@ def deselect_target_multi_view_candidate_v2(
         if family_state.coverage_mass < -5.0e-13:
             raise TrainingDataInputError("TARGET-DATA2C-MVSEL2 coverage mass became negative.")
         family_state.multiplicity[witnesses] -= 1
-    for obligation_index in np.asarray(
-        forward_domain.candidate_obligation_indices(candidate), dtype=np.int64
+    for obligation_index in _native_row_v2(
+        forward_domain.candidate_obligation_indices(candidate)
     ):
-        obligation = forward_domain.obligations[int(obligation_index)]
-        before = int(state.obligation_counts[obligation_index])
+        index = int(obligation_index)
+        obligation = forward_domain.obligations[index]
+        before = int(state.obligation_counts[index])
         if before <= 0:
             raise TrainingDataInputError("TARGET-DATA2C-MVSEL2 obligation count underflow.")
-        state.obligation_counts[obligation_index] = before - 1
+        state.obligation_counts[index] = before - 1
         if obligation.required and before >= obligation.minimum_selected_frames > before - 1:
             state.unsatisfied_required_obligation_count += 1
     unit_code = int(forward_domain.candidate_correlation_unit_codes[candidate])
@@ -1157,9 +1113,13 @@ def build_target_multi_view_selection_plan_v2(
     progress_callback: Any | None = None,
     progress_interval_seconds: float = 30.0,
 ) -> TargetMultiViewSelectionPlanV2:
-    """Build exact nested MVSEL2 rungs from the forward-only MVIDX1 view."""
+    """Build exact nested MVSEL2 rungs through the sequential reference path."""
 
     policy = policy or TargetMultiViewSelectorPolicyV2()
+    batch_size = int(batch_size)
+    workers = int(workers)
+    if batch_size < 1 or workers < 1:
+        raise TrainingDataInputError("TARGET-DATA2C-MVSEL2 batch/worker settings must be positive.")
     if not math.isfinite(progress_interval_seconds) or progress_interval_seconds <= 0.0:
         raise TrainingDataInputError("TARGET-DATA2C-MVSEL2 progress interval must be positive.")
     if target_coverage_reference.dataset_id != target_coverage_forward_index.dataset_id:
