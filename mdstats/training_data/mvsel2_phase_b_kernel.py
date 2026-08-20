@@ -1,21 +1,14 @@
-"""Exact production MVSEL2 Phase-B kernel with witness-side representative terms.
+"""Exact production MVSEL2 Phase-B kernel with qualified native parallel scoring.
 
 The scientific Phase-B policy remains the certified lazy frontier implemented by
-``target_multi_view_selector_v2``. This module changes only the execution
-representation used by production selection:
+``target_multi_view_selector_v2``. Production keeps the proven G4b
+candidate-local NumPy path for ``workers=1``. When ``workers>1`` is requested,
+only independent candidate rows inside one canonical family are scored in the
+qualified native/OpenMP backend; heap certification, family accumulation,
+contender logic, ties, and authoritative mutation remain serial Python science.
 
-* one FP64 representative term is cached per witness,
-  ``weight / (multiplicity + 1)``;
-* the cache is updated only on forward rows selected since the previous Phase-B
-  evaluation;
-* stale-candidate rescoring becomes CSR gather + canonical FP64 sum instead of
-  repeating integer-to-FP64 conversion, allocation, and division for every
-  candidate edge;
-* the exact Phase-B rebase remains family-major and forward-only.
-
-No candidate marginal array, inverse adjacency, or additional persistent state
-is introduced. The cache is reconstructible from MVSTATE2 witness
-multiplicities and is therefore execution state only.
+No candidate marginal array, inverse adjacency, second persistent graph, or
+parallel scientific authority is introduced.
 """
 from __future__ import annotations
 
@@ -27,6 +20,10 @@ from typing import Any
 import numpy as np
 
 from ._common import TrainingDataInputError
+from .mvsel2_native_backend import (
+    phase_b_execution_backend_v2,
+    score_family_candidate_batch_v2,
+)
 from .target_multi_view_selector_v2 import (
     TargetMultiViewForwardStateV2,
     TargetMultiViewLazyFrontierV2,
@@ -111,8 +108,6 @@ def _sync_terms(
         )
     generation = int(state.selected_count)
     if generation < cache.generation:
-        # Deselect/repair is not part of the production Phase-B selector loop.
-        # Reconstruct rather than trying to infer an arbitrary reverse history.
         cache.terms = _build_terms(state)
         cache.generation = generation
         return
@@ -132,9 +127,6 @@ def _sync_terms(
                 touched.append(row)
         if not touched:
             continue
-        # The normal selector advances one rank at a time, so this fast path is
-        # almost always a single native CSR row. Concatenate only if execution
-        # was externally advanced by multiple ranks between Phase-B calls.
         if len(touched) == 1:
             witnesses = touched[0]
         else:
@@ -152,6 +144,8 @@ def _representative_gain_cached(
     forward_domain: Any,
     cache: _RepresentativeTermCacheV2,
 ) -> tuple[float, int]:
+    """Proven G4b candidate-local NumPy scorer used for workers=1."""
+
     gain = 0.0
     edges = 0
     for family, terms in zip(
@@ -162,46 +156,131 @@ def _representative_gain_cached(
         witnesses = _native_row(family.candidate_witness_indices(candidate))
         if witnesses.size == 0:
             continue
-        # Preserve the frozen candidate-local family accumulation sequence.
         gain += float(np.sum(terms[witnesses], dtype=np.float64))
         edges += int(witnesses.size)
     return gain, edges
 
 
+def _representative_gain_native_batch(
+    candidates: tuple[int, ...],
+    forward_domain: Any,
+    cache: _RepresentativeTermCacheV2,
+    *,
+    workers: int,
+) -> tuple[dict[int, float], int]:
+    """Score independent stale candidates family-major through native OpenMP."""
+
+    if not candidates:
+        return {}, 0
+    ordered = tuple(sorted(set(int(candidate) for candidate in candidates)))
+    candidate_array = np.asarray(ordered, dtype=np.uint32)
+    scores = [0.0] * len(ordered)
+    edges = 0
+
+    for family, terms in zip(
+        forward_domain.families,
+        cache.terms,
+        strict=True,
+    ):
+        family_scores, family_edges = score_family_candidate_batch_v2(
+            np.asarray(family.candidate_offsets),
+            np.asarray(family.candidate_witnesses),
+            terms,
+            candidate_array,
+            workers=workers,
+        )
+        # Preserve the exact canonical family accumulation sequence for each
+        # candidate. Parallelism exists only inside the family-row scorer.
+        for position, value in enumerate(family_scores):
+            scores[position] += float(value)
+        edges += int(family_edges)
+
+    return {
+        candidate: float(scores[position])
+        for position, candidate in enumerate(ordered)
+    }, edges
+
+
+def _build_native_frontier_scores(
+    forward_domain: Any,
+    cache: _RepresentativeTermCacheV2,
+    available: tuple[int, ...],
+    *,
+    workers: int,
+) -> list[float]:
+    candidate_array = np.asarray(available, dtype=np.uint32)
+    scores = [0.0] * len(available)
+    for family, terms in zip(
+        forward_domain.families,
+        cache.terms,
+        strict=True,
+    ):
+        family_scores, _ = score_family_candidate_batch_v2(
+            np.asarray(family.candidate_offsets),
+            np.asarray(family.candidate_witnesses),
+            terms,
+            candidate_array,
+            workers=workers,
+        )
+        for position, value in enumerate(family_scores):
+            scores[position] += float(value)
+        # A full rebase is a complete one-pass scan of this family. Releasing
+        # after the family is complete cannot cause intra-rebase refault churn.
+        _drop_file_backed_pages_v2(np.asarray(family.candidate_offsets))
+        _drop_file_backed_pages_v2(np.asarray(family.candidate_witnesses))
+    return scores
+
+
 def build_target_multi_view_lazy_frontier_v2_kernel(
     forward_domain: Any,
     state: TargetMultiViewForwardStateV2,
+    *,
+    workers: int = 1,
 ) -> TargetMultiViewLazyFrontierV2:
     """Build one exact Phase-B frontier from cached per-witness terms."""
 
+    workers = int(workers)
+    backend = phase_b_execution_backend_v2(workers)
     cache = _cache_for_state(state)
     _sync_terms(cache, forward_domain, state)
     generation = int(state.selected_count)
     candidate_count = int(forward_domain.candidate_count)
     available = tuple(int(value) for value in np.flatnonzero(state.available))
 
-    # Family-major traversal preserves canonical per-candidate FP64 family
-    # accumulation while keeping only one family's MVIDX pages active at once.
-    scores = [0.0] * candidate_count
-    for family, terms in zip(
-        forward_domain.families,
-        cache.terms,
-        strict=True,
-    ):
-        for candidate in available:
-            witnesses = _native_row(family.candidate_witness_indices(candidate))
-            if witnesses.size:
-                scores[candidate] += float(
-                    np.sum(terms[witnesses], dtype=np.float64)
-                )
-        _drop_file_backed_pages_v2(np.asarray(family.candidate_offsets))
-        _drop_file_backed_pages_v2(np.asarray(family.candidate_witnesses))
-
     exact_scores = np.full(candidate_count, np.nan, dtype=np.float64)
     exact_generations = np.full(candidate_count, -1, dtype=np.int64)
     heap: list[tuple[float, int, int]] = []
+
+    if backend == "python-numpy":
+        scores = [0.0] * candidate_count
+        for family, terms in zip(
+            forward_domain.families,
+            cache.terms,
+            strict=True,
+        ):
+            for candidate in available:
+                witnesses = _native_row(family.candidate_witness_indices(candidate))
+                if witnesses.size:
+                    scores[candidate] += float(
+                        np.sum(terms[witnesses], dtype=np.float64)
+                    )
+            _drop_file_backed_pages_v2(np.asarray(family.candidate_offsets))
+            _drop_file_backed_pages_v2(np.asarray(family.candidate_witnesses))
+        score_by_candidate = {candidate: float(scores[candidate]) for candidate in available}
+    else:
+        native_scores = _build_native_frontier_scores(
+            forward_domain,
+            cache,
+            available,
+            workers=workers,
+        )
+        score_by_candidate = {
+            candidate: float(native_scores[position])
+            for position, candidate in enumerate(available)
+        }
+
     for candidate in available:
-        score = float(scores[candidate])
+        score = score_by_candidate[candidate]
         exact_scores[candidate] = score
         exact_generations[candidate] = generation
         upper = float(np.nextafter(np.float64(score), np.float64(np.inf)))
@@ -236,6 +315,38 @@ def _valid_heap_top(
     return None
 
 
+def _pop_stale_batch(
+    frontier: TargetMultiViewLazyFrontierV2,
+    state: TargetMultiViewForwardStateV2,
+    *,
+    generation: int,
+    best_exact: float,
+    epsilon: float,
+    batch_size: int,
+) -> tuple[tuple[int, ...], int]:
+    """Pop a bounded stale batch for native independent-row scoring."""
+
+    batch: list[int] = []
+    seen: set[int] = set()
+    discarded = 0
+    while len(batch) < batch_size:
+        top = _valid_heap_top(frontier, state)
+        if top is None:
+            break
+        upper, candidate, entry_generation, removed = top
+        discarded += removed
+        if best_exact > -math.inf and upper < best_exact - float(epsilon):
+            break
+        if entry_generation == generation:
+            break
+        heapq.heappop(frontier.heap)
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        batch.append(candidate)
+    return tuple(batch), discarded
+
+
 def choose_target_multi_view_phase_b_candidate_v2_kernel(
     reference_domain: Any,
     forward_domain: Any,
@@ -243,9 +354,18 @@ def choose_target_multi_view_phase_b_candidate_v2_kernel(
     frontier: TargetMultiViewLazyFrontierV2,
     *,
     epsilon: float = 1.0e-14,
+    workers: int = 1,
+    batch_size: int = 256,
 ) -> TargetMultiViewPhaseBChoiceV2:
-    """Certify the exact Phase-B contender set with cached witness terms."""
+    """Certify the exact Phase-B contender set with qualified execution."""
 
+    workers = int(workers)
+    batch_size = int(batch_size)
+    if batch_size < 1:
+        raise TrainingDataInputError(
+            "TARGET-DATA2C-MVSEL2 Phase-B batch size must be positive."
+        )
+    backend = phase_b_execution_backend_v2(workers)
     cache = _cache_for_state(state)
     _sync_terms(cache, forward_domain, state)
     generation = int(state.selected_count)
@@ -268,34 +388,63 @@ def choose_target_multi_view_phase_b_candidate_v2_kernel(
         stale_discarded += discarded
         if best_exact > -math.inf and upper < best_exact - float(epsilon):
             break
-        heapq.heappop(frontier.heap)
+
         if entry_generation != generation:
-            exact, edges = _representative_gain_cached(
-                candidate,
-                forward_domain,
-                cache,
-            )
-            old_exact = float(frontier.exact_scores[candidate])
-            if np.isfinite(old_exact) and exact > old_exact + 5.0e-13:
-                raise TrainingDataInputError(
-                    "TARGET-DATA2C-MVSEL2 representative bound increased after selection."
+            if backend == "python-numpy":
+                heapq.heappop(frontier.heap)
+                exact, edges = _representative_gain_cached(
+                    candidate,
+                    forward_domain,
+                    cache,
                 )
-            frontier.exact_scores[candidate] = exact
-            frontier.exact_generations[candidate] = generation
-            conservative = float(
-                np.nextafter(np.float64(exact), np.float64(np.inf))
-            )
-            if conservative + 5.0e-13 < exact:
-                raise TrainingDataInputError(
-                    "TARGET-DATA2C-MVSEL2 representative upper bound is not conservative."
+                exact_by_candidate = {candidate: exact}
+                refreshed_candidates = (candidate,)
+            else:
+                refreshed_candidates, removed = _pop_stale_batch(
+                    frontier,
+                    state,
+                    generation=generation,
+                    best_exact=best_exact,
+                    epsilon=float(epsilon),
+                    batch_size=batch_size,
                 )
-            heapq.heappush(
-                frontier.heap,
-                (-conservative, candidate, generation),
-            )
-            rescoring_count += 1
-            representative_edges += edges
+                stale_discarded += removed
+                if not refreshed_candidates:
+                    raise TrainingDataInputError(
+                        "TARGET-DATA2C-MVSEL2 failed to form a native stale batch."
+                    )
+                exact_by_candidate, edges = _representative_gain_native_batch(
+                    refreshed_candidates,
+                    forward_domain,
+                    cache,
+                    workers=workers,
+                )
+
+            representative_edges += int(edges)
+            rescoring_count += len(refreshed_candidates)
+            for refreshed in refreshed_candidates:
+                exact = float(exact_by_candidate[refreshed])
+                old_exact = float(frontier.exact_scores[refreshed])
+                if np.isfinite(old_exact) and exact > old_exact + 5.0e-13:
+                    raise TrainingDataInputError(
+                        "TARGET-DATA2C-MVSEL2 representative bound increased after selection."
+                    )
+                frontier.exact_scores[refreshed] = exact
+                frontier.exact_generations[refreshed] = generation
+                conservative = float(
+                    np.nextafter(np.float64(exact), np.float64(np.inf))
+                )
+                if conservative + 5.0e-13 < exact:
+                    raise TrainingDataInputError(
+                        "TARGET-DATA2C-MVSEL2 representative upper bound is not conservative."
+                    )
+                heapq.heappush(
+                    frontier.heap,
+                    (-conservative, refreshed, generation),
+                )
             continue
+
+        heapq.heappop(frontier.heap)
         exact = float(frontier.exact_scores[candidate])
         exact_candidates.add(candidate)
         best_exact = max(best_exact, exact)
