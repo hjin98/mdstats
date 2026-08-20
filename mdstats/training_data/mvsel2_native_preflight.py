@@ -113,14 +113,16 @@ def preflight_mvsel2_native_workers_v2(
             f"OpenMP backend; {status.reason or 'OpenMP unavailable'}."
         )
 
+    # omp_get_max_threads() is the current default team size, not a hard limit
+    # for an explicit num_threads(N) region. The campaign worker budget is the
+    # authority here; if the runtime constrains actual teams, the meter will
+    # expose that as weak/flat scaling and fall back to workers=1.
     worker_counts = tuple(
-        value
-        for value in (1, 2, 4, 8, 16)
-        if value <= max_workers and value <= status.max_threads
+        value for value in (1, 2, 4, 8, 16) if value <= max_workers
     )
     if len(worker_counts) < 2:
         raise TrainingDataInputError(
-            "TARGET-DATA2C-MVSEL2 native worker preflight has no qualified "
+            "TARGET-DATA2C-MVSEL2 native worker preflight has no authorized "
             "parallel worker count."
         )
 
