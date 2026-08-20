@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 
@@ -52,12 +53,16 @@ def _native_artifacts(repo_root: Path, module_name: str) -> tuple[Path, ...]:
     )
 
 
-def _remove_stale_native_artifacts(
+def _clean_native_build_state(
     repo_root: Path,
     modules: tuple[str, ...],
 ) -> None:
-    """Prevent an old in-tree extension from masking a failed current rebuild."""
+    """Force a clean strict build so stale objects/DSOs cannot mask updates."""
 
+    build_dir = repo_root / "build"
+    if build_dir.exists():
+        shutil.rmtree(build_dir)
+        print(f"[mdstats-build] removed stale build tree {build_dir}", flush=True)
     for module_name in modules:
         for artifact in _native_artifacts(repo_root, module_name):
             artifact.unlink()
@@ -99,7 +104,7 @@ def _verify_native_modules(repo_root: Path, modules: tuple[str, ...]) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
-            "Install mdstats in editable mode, build all registered native "
+            "Install mdstats in editable mode, clean-build all registered native "
             "extensions, and fail if any registered native module cannot import."
         )
     )
@@ -118,7 +123,7 @@ def main(argv: list[str] | None = None) -> int:
         flush=True,
     )
 
-    _remove_stale_native_artifacts(repo_root, modules)
+    _clean_native_build_state(repo_root, modules)
     command = _install_command(repo_root, no_deps=bool(args.no_deps))
     print("[mdstats-build] installing editable package and compiling native targets", flush=True)
     completed = subprocess.run(command, cwd=repo_root, check=False)
