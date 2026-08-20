@@ -1,9 +1,9 @@
 """Single production MVSEL2 selection engine with authenticated resume history.
 
 The engine owns the only production rank loop for fresh and resumed MVSEL2
-selection.  Scientific scoring/mutation remains in the selector primitives;
+selection. Scientific scoring/mutation remains in the selector primitives;
 Phase A uses the Protocol-5 locality kernel and Phase B uses the exact
-family-streaming frontier.  MVSTATE2 provides continuation state, while an
+witness-term cached lazy kernel. MVSTATE2 provides continuation state, while an
 optional authenticated rank-history journal avoids rescoring the selected
 prefix solely to reconstruct plan history.
 """
@@ -19,8 +19,9 @@ from ._common import TrainingDataInputError
 from .mvsel2_phase_a_kernel import (
     choose_target_multi_view_phase_a_candidate_v2_kernel,
 )
-from .mvsel2_streaming_frontier import (
-    build_target_multi_view_lazy_frontier_v2_streaming,
+from .mvsel2_phase_b_kernel import (
+    build_target_multi_view_lazy_frontier_v2_kernel,
+    choose_target_multi_view_phase_b_candidate_v2_kernel,
 )
 from .progress_timing import format_progress_fraction, format_progress_time
 from .target_multi_view_selection_history_v2 import (
@@ -38,7 +39,6 @@ from .target_multi_view_selector_v2 import (
     TargetMultiViewSelectionPlanV2,
     TargetMultiViewSelectorPolicyV2,
     build_target_multi_view_forward_state_v2,
-    choose_target_multi_view_phase_b_candidate_v2,
     score_target_multi_view_candidate_v2,
     select_target_multi_view_candidate_v2,
 )
@@ -210,7 +210,7 @@ def _replay_selected_prefix_history(
 ) -> TargetMultiViewSelectionHistoryV2:
     """Compatibility fallback for legacy checkpoints that predate rank history.
 
-    Each historical candidate is scored exactly once.  This replay reconstructs
+    Each historical candidate is scored exactly once. This replay reconstructs
     plan evidence only; the authenticated restored MVSTATE2 state remains the
     continuation authority after reconstruction.
     """
@@ -426,12 +426,12 @@ def build_target_multi_view_selection_plan_v2_engine(
                     frontier_rebuild_interval > 0
                     and rank % frontier_rebuild_interval == 0
                 ):
-                    frontier = build_target_multi_view_lazy_frontier_v2_streaming(
+                    frontier = build_target_multi_view_lazy_frontier_v2_kernel(
                         forward_domain, state
                     )
                     if restored is not None and completed_after_resume == 0:
                         phase_b_resume_rebases += 1
-                choice = choose_target_multi_view_phase_b_candidate_v2(
+                choice = choose_target_multi_view_phase_b_candidate_v2_kernel(
                     reference_domain,
                     forward_domain,
                     state,
