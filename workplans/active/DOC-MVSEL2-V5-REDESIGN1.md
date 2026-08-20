@@ -2,7 +2,7 @@
 kind: implementation-workplan
 workplan_id: DOC-MVSEL2-V5-REDESIGN1
 protocol_version: 5.0.0
-status: IN_PROGRESS
+status: BLOCKED_VALIDATION
 analysis_base_ref: feat/mvsel2-forward-lazy
 supersedes_execution_workplan: DOC-MVSEL2-PAR1
 ---
@@ -51,22 +51,46 @@ Do not add multiprocessing, a worker supervisor, GPU selector authority, a secon
 
 CPU concurrency is deferred until the clean serial/vectorized kernel is measured. Any later concurrency must operate on coarse contiguous edge ranges and demonstrate material sustained speedup over the clean baseline.
 
+## Gate status
+
+| Gate | Status | Current result |
+|---|---|---|
+| G0 | PASS | PAR1 marked failed/superseded; production facade no longer routes Phase A through Python candidate threading. |
+| G1 | IMPLEMENTED_AWAITING_EXECUTION | Locality-oriented exact Phase-A kernel and direct serial-reference equivalence tests committed. No GitHub Actions run exists for the direct commits and the available execution container cannot reach GitHub, so the tests have not executed. |
+| G2 | BLOCKED | Do not migrate selector/resume persistence ownership until G1 exact-equivalence tests pass. |
+| G3 | BLOCKED | Do not consolidate REPAIR2 runtime ownership until G1 exact-equivalence tests pass. |
+| G4 | BLOCKED | Requires focused tests plus representative/production execution. |
+
+Required first validation command from any checkout of this branch:
+
+```bash
+python -m pytest -q \
+  tests/test_mlff_mvsel2_v5_kernel.py \
+  tests/test_mlff_mvsel2_forward.py \
+  tests/test_mlff_mvsel2_oracle.py \
+  tests/test_mlff_mvsel2_hardening.py \
+  tests/test_mlff_mvstate2.py \
+  tests/test_mlff_repair2.py
+```
+
+If the project environment is required, run the same command through `conda run -n mace`.
+
 ## Gates
 
 ### G0 — stop regression and freeze baseline
 
 - Mark `DOC-MVSEL2-PAR1` superseded.
 - Restore production MVSEL2 execution to the single-worker authority regardless of campaign worker budget.
-- Replace the thread-scheduling regression with a correctness/performance-contract regression that prevents reintroducing PAR1 implicitly.
+- Replace thread-scheduling evidence with a correctness/performance-contract regression that prevents reintroducing PAR1 implicitly.
 - Record that the current real workstation observation is approximately 0.5x the prior throughput with PAR1.
 
-**Pass:** no production `ThreadPoolExecutor` path remains active in MVSEL2 selection; scientific API compatibility is retained.
+**Pass:** the production campaign no longer routes Phase-A candidate scoring through PAR1 threading and scientific API compatibility is retained.
 
 ### G1 — canonical forward scoring kernel
 
 - Introduce one cohesive forward scoring kernel using native CSR index dtype without unconditional `uint32 -> int64` row copies.
 - Use reusable contiguous candidate score scratch arrays rather than per-candidate Python dictionaries where broad scans require scalar scores.
-- During Phase A, retain only scalar total-coverage values for contenders; recompute/materialize the complete family-gain vector once for the winner.
+- During Phase A, avoid complete per-candidate Python family-gain tuples; use bounded contiguous FP64 scratch and materialize the winner score once.
 - Implement family-major exact broad scans where they preserve canonical FP64 semantics; keep staged Phase-A pruning.
 - Make the family-streaming Phase-B rebase canonical and remove runtime monkeypatch installation.
 
