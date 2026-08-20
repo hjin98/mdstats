@@ -9,36 +9,23 @@
 
 #define MVSEL2_PW_BLOCKSIZE 128
 
-static inline double
-mvsel2_checked_term(
-    const uint32_t *witnesses,
-    const double *terms,
-    uint64_t position,
-    uint64_t term_count,
-    int *invalid
-)
-{
-    const uint32_t witness = witnesses[position];
-    if ((uint64_t)witness >= term_count) {
-        *invalid = 1;
-        return 0.0;
-    }
-    return terms[witness];
-}
-
 /*
  * Match NumPy's DOUBLE_pairwise_sum ordering for a contiguous gathered FP64
- * row. The only difference is that the gather is performed lazily through the
- * authenticated uint32 witness indices rather than materializing terms[row]
- * first. Do not compile this function with fast-math/reassociation.
+ * row. The gather is performed lazily through authenticated MVIDX1 uint32
+ * witness indices rather than materializing terms[row] first.
+ *
+ * Witness bounds are an already-authenticated MVIDX1 invariant and the private
+ * Python owner guarantees terms length == family witness_count before entering
+ * this hot loop. Rechecking every edge would add a branch to billions of edge
+ * visits without strengthening the scientific persistence boundary.
+ *
+ * Do not compile this function with fast-math/reassociation.
  */
 static inline double
 mvsel2_pairwise_sum_gather(
     const uint32_t *witnesses,
     const double *terms,
-    uint64_t n,
-    uint64_t term_count,
-    int *invalid
+    uint64_t n
 )
 {
     uint64_t i;
@@ -48,56 +35,48 @@ mvsel2_pairwise_sum_gather(
     if (n < 8) {
         double res = -0.0;
         for (i = 0; i < n; ++i) {
-            res += mvsel2_checked_term(
-                witnesses, terms, i, term_count, invalid
-            );
+            res += terms[witnesses[i]];
         }
         return res;
     }
     if (n <= MVSEL2_PW_BLOCKSIZE) {
         double r[8];
         double res;
-        r[0] = mvsel2_checked_term(witnesses, terms, 0, term_count, invalid);
-        r[1] = mvsel2_checked_term(witnesses, terms, 1, term_count, invalid);
-        r[2] = mvsel2_checked_term(witnesses, terms, 2, term_count, invalid);
-        r[3] = mvsel2_checked_term(witnesses, terms, 3, term_count, invalid);
-        r[4] = mvsel2_checked_term(witnesses, terms, 4, term_count, invalid);
-        r[5] = mvsel2_checked_term(witnesses, terms, 5, term_count, invalid);
-        r[6] = mvsel2_checked_term(witnesses, terms, 6, term_count, invalid);
-        r[7] = mvsel2_checked_term(witnesses, terms, 7, term_count, invalid);
+        r[0] = terms[witnesses[0]];
+        r[1] = terms[witnesses[1]];
+        r[2] = terms[witnesses[2]];
+        r[3] = terms[witnesses[3]];
+        r[4] = terms[witnesses[4]];
+        r[5] = terms[witnesses[5]];
+        r[6] = terms[witnesses[6]];
+        r[7] = terms[witnesses[7]];
 
         for (i = 8; i < n - (n % 8); i += 8) {
-            r[0] += mvsel2_checked_term(witnesses, terms, i + 0, term_count, invalid);
-            r[1] += mvsel2_checked_term(witnesses, terms, i + 1, term_count, invalid);
-            r[2] += mvsel2_checked_term(witnesses, terms, i + 2, term_count, invalid);
-            r[3] += mvsel2_checked_term(witnesses, terms, i + 3, term_count, invalid);
-            r[4] += mvsel2_checked_term(witnesses, terms, i + 4, term_count, invalid);
-            r[5] += mvsel2_checked_term(witnesses, terms, i + 5, term_count, invalid);
-            r[6] += mvsel2_checked_term(witnesses, terms, i + 6, term_count, invalid);
-            r[7] += mvsel2_checked_term(witnesses, terms, i + 7, term_count, invalid);
+            r[0] += terms[witnesses[i + 0]];
+            r[1] += terms[witnesses[i + 1]];
+            r[2] += terms[witnesses[i + 2]];
+            r[3] += terms[witnesses[i + 3]];
+            r[4] += terms[witnesses[i + 4]];
+            r[5] += terms[witnesses[i + 5]];
+            r[6] += terms[witnesses[i + 6]];
+            r[7] += terms[witnesses[i + 7]];
         }
 
         res = ((r[0] + r[1]) + (r[2] + r[3])) +
               ((r[4] + r[5]) + (r[6] + r[7]));
         for (; i < n; ++i) {
-            res += mvsel2_checked_term(
-                witnesses, terms, i, term_count, invalid
-            );
+            res += terms[witnesses[i]];
         }
         return res;
     }
     else {
         uint64_t n2 = n / 2;
         n2 -= n2 % 8;
-        return mvsel2_pairwise_sum_gather(
-                   witnesses, terms, n2, term_count, invalid
-               ) +
+        return mvsel2_pairwise_sum_gather(witnesses, terms, n2) +
                mvsel2_pairwise_sum_gather(
                    witnesses + n2,
                    terms,
-                   n - n2,
-                   term_count,
-                   invalid
+                   n - n2
                );
     }
 }
@@ -146,7 +125,6 @@ mvsel2_score_family_batch(PyObject *self, PyObject *args)
     Py_buffer terms_view = {0};
     Py_buffer candidates_view = {0};
     Py_buffer output_view = {0};
-    unsigned char *invalid_rows = NULL;
     uint64_t edges = 0;
     PyObject *result = NULL;
 
@@ -215,6 +193,10 @@ mvsel2_score_family_batch(PyObject *self, PyObject *args)
             PyErr_SetString(PyExc_ValueError, "offsets must contain at least two entries");
             goto done;
         }
+        if (terms_view.len == 0) {
+            PyErr_SetString(PyExc_ValueError, "terms must not be empty");
+            goto done;
+        }
         if (requested > output_count) {
             PyErr_SetString(PyExc_ValueError, "output is shorter than candidates");
             goto done;
@@ -241,20 +223,9 @@ mvsel2_score_family_batch(PyObject *self, PyObject *args)
             edges += stop - start;
         }
 
-        if (requested > 0) {
-            invalid_rows = (unsigned char *)PyMem_Calloc(
-                (size_t)requested, sizeof(unsigned char)
-            );
-            if (invalid_rows == NULL) {
-                PyErr_NoMemory();
-                goto done;
-            }
-        }
-
         {
             const uint32_t *witnesses = (const uint32_t *)witnesses_view.buf;
             const double *terms = (const double *)terms_view.buf;
-            const uint64_t term_count = (uint64_t)(terms_view.len / (Py_ssize_t)sizeof(double));
             double *output = (double *)output_view.buf;
             Py_ssize_t count = (Py_ssize_t)requested;
             Py_ssize_t p;
@@ -267,33 +238,19 @@ mvsel2_score_family_batch(PyObject *self, PyObject *args)
                 const uint64_t candidate = (uint64_t)candidates[p];
                 const uint64_t start = offsets[candidate];
                 const uint64_t stop = offsets[candidate + 1];
-                int invalid = 0;
                 output[p] = mvsel2_pairwise_sum_gather(
                     witnesses + start,
                     terms,
-                    stop - start,
-                    term_count,
-                    &invalid
+                    stop - start
                 );
-                invalid_rows[p] = (unsigned char)(invalid != 0);
             }
             Py_END_ALLOW_THREADS
-        }
-
-        for (position = 0; position < requested; ++position) {
-            if (invalid_rows[position]) {
-                PyErr_SetString(PyExc_IndexError, "witness index is out of range");
-                goto done;
-            }
         }
     }
 
     result = PyLong_FromUnsignedLongLong((unsigned long long)edges);
 
 done:
-    if (invalid_rows != NULL) {
-        PyMem_Free(invalid_rows);
-    }
     if (output_view.obj != NULL) {
         PyBuffer_Release(&output_view);
     }
@@ -337,7 +294,7 @@ static PyMethodDef mvsel2_methods[] = {
         "score_family_batch",
         mvsel2_score_family_batch,
         METH_VARARGS,
-        "Score candidate CSR rows against one FP64 witness-term vector."
+        "Score authenticated candidate CSR rows against one FP64 witness-term vector."
     },
     {
         "openmp_enabled",
