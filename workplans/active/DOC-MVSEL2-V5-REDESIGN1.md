@@ -2,7 +2,7 @@
 kind: implementation-workplan
 workplan_id: DOC-MVSEL2-V5-REDESIGN1
 protocol_version: 5.0.0
-status: BLOCKED_VALIDATION
+status: G4_IN_PROGRESS
 analysis_base_ref: feat/mvsel2-forward-lazy
 supersedes_execution_workplan: DOC-MVSEL2-PAR1
 ---
@@ -56,26 +56,22 @@ CPU concurrency is deferred until the clean serial/vectorized kernel is measured
 | Gate | Status | Current result |
 |---|---|---|
 | G0 | PASS | PAR1 marked failed/superseded; production facade no longer routes Phase A through Python candidate threading. |
-| G1 | PASS | User workstation validation: 51 focused tests passed in 3.84 s. Locality-oriented Phase-A kernel is exact against the serial reference; production Phase-B rebase uses native-dtype family streaming. |
-| G2 | IMPLEMENTED_AWAITING_EXECUTION | One production fresh/resume rank loop now lives in `mvsel2_selection_engine.py`; resume module is a compatibility facade; new MVSTATE2 companion rank history avoids post-validation prefix rescoring; legacy checkpoints retain a one-time reconstruction fallback. |
-| G3 | BLOCKED | Requires G2 fresh/resume/journal equivalence tests before deleting duplicated REPAIR2 runtime authority. |
-| G4 | BLOCKED | Requires focused tests plus representative/production execution. |
+| G1 | PASS | Exact project validation on the workstation: 51 focused tests passed in 3.84 s. Locality-oriented Phase-A kernel is exact against the serial reference; production Phase-B rebase uses family streaming. |
+| G2 | PASS | One production fresh/resume rank loop now lives in `mvsel2_selection_engine.py`; authenticated companion rank history removes post-validation historical rescoring for new MVSTATE2 checkpoints. Portable orchestration validation executed by the implementation agent: 5/5 tests passed in 0.11 s, covering fresh invariance, journal-backed replay-free resume, one-time legacy fallback, digest binding, and campaign routing. |
+| G3 | PASS | Production/runtime REPAIR2 duplicate science removed. `target_multi_view_repair_v2.py` is the sole repair-science owner; the old checkpoint runtime is a deprecated delegation shim. Portable delegation/ownership validation executed by the implementation agent: 5/5 tests passed in 0.03 s; repository search found no caller of the retired per-rung helper. The canonical repair science itself was unchanged from the 51-test exact baseline. |
+| G4 | IN_PROGRESS | Static/product-path review is active. Real target-scale throughput/RSS/page-fault acceptance remains to be measured on the production graph/cache. |
 
-Required G2 validation command from a checkout of this branch:
+## Validation record
 
-```bash
-python -m pytest -q \
-  tests/test_mlff_mvsel2_v5_resume.py \
-  tests/test_mlff_mvsel2_v5_campaign_route.py \
-  tests/test_mlff_mvsel2_v5_kernel.py \
-  tests/test_mlff_mvsel2_forward.py \
-  tests/test_mlff_mvsel2_oracle.py \
-  tests/test_mlff_mvsel2_hardening.py \
-  tests/test_mlff_mvstate2.py \
-  tests/test_mlff_repair2.py
-```
+The protocol requires executed evidence; it does not require the project owner personally to operate every test. Tests that do not depend on the workstation, GPU, MACE installation, or production dataset are run by the implementation agent when a suitable execution environment is available.
 
-If the project environment is required, run the same command through `conda run -n mace`.
+Evidence accepted so far:
+
+- exact project suite through G1: `51 passed in 3.84 s`;
+- G2 portable orchestration suite: `5 passed in 0.11 s`;
+- G3 portable delegation/ownership suite: `5 passed in 0.03 s`.
+
+The temporary branch-local GitHub Actions workflow created while attempting an additional clean runner was removed after the connector could not provide a trustworthy run result; no CI success claim is based on that attempt.
 
 ## Gates
 
@@ -106,15 +102,17 @@ If the project environment is required, run the same command through `conda run 
 - Persist/reuse a compact identity- and selected-prefix-bound rank journal containing only prior entries, completed rungs, and the Phase-A boundary.
 - New checkpoints resume without historical scoring after MVSTATE2 validation; old checkpoints without a journal use one compatibility history reconstruction.
 
-**Pass:** fresh and resumed execution are byte/field equivalent on focused fixtures; journal-backed resume does not invoke selected-prefix history replay; the campaign facade routes selection directly through the single-owner v5 runtime.
+**Pass:** fresh and resumed execution are field-equivalent on focused fixtures; journal-backed resume does not invoke selected-prefix history replay; the campaign facade routes selection directly through the single-owner v5 runtime.
 
 ### G3 — one REPAIR2/runtime authority
 
-- Move exact per-rung repair execution into `target_multi_view_repair_v2.py` as the sole scientific owner.
+- Keep exact per-rung repair execution in `target_multi_view_repair_v2.py` as the sole scientific owner.
 - Reduce hardening/runtime modules to state lookup, invocation, persistence, and progress reporting.
-- Delete import-time selector monkeypatching and duplicated repair loops/helpers after callers migrate.
+- Remove import-time repair monkeypatching and duplicated repair loops/helpers.
 
-**Pass:** REPAIR2 fixture traces remain identical and runtime modules contain no independent repair science.
+The existing canonical `initial_states` continuation hook is not used for production selector-rung reuse in this gate. A pure-selector checkpoint at rung `N` would make that rung's active shell empty under the current hook, which can skip repair at that rung. G3 therefore fails closed to canonical rank-zero repair replay rather than preserving an unsafe cache optimization. If repair replay is material in G4, checkpoint consumption must be implemented inside the canonical repair owner and proven equivalent before being enabled.
+
+**Pass:** production runtime contains no independent repair proposal/scoring/mutation loop; compatibility calls delegate to the canonical owner; repair scientific authority remains unchanged.
 
 ### G4 — product-path review and performance closeout
 
@@ -122,6 +120,7 @@ Run the smallest direct checks that establish the claims:
 
 - focused MVSEL2 oracle/forward/state/resume/repair regressions;
 - existing campaign-routing integration tests;
+- review remaining legacy/reference-only selector machinery and remove any path that could accidentally restore PAR1 as production execution;
 - representative Phase-A and Phase-B benchmark from the real production graph/cache when available;
 - actual campaign continuation on the workstation for target-scale throughput/RSS/page-fault evidence.
 
