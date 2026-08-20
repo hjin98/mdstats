@@ -12,6 +12,10 @@ from typing import Any, Mapping
 
 from . import mvsel2_hardening_runtime as _legacy_runtime
 from ._common import digest
+from .mvsel2_native_preflight import (
+    format_mvsel2_native_preflight_v2,
+    preflight_mvsel2_native_workers_v2,
+)
 from .mvsel2_selection_engine import (
     build_target_multi_view_selection_plan_v2_engine,
 )
@@ -117,11 +121,49 @@ def _highest_valid_resume_bundle(
 
 
 def _selection_worker_budget(core: Any, cfg: Mapping[str, Any]) -> tuple[int, Any]:
-    """Return the qualified MVSEL2 worker count and existing resource policy."""
+    """Return the qualified MVSEL2 worker ceiling and existing resource policy."""
 
     query_workers, resources = core._target_coverage_query_workers(cfg)
     workers = max(1, min(int(query_workers), _NATIVE_WORKER_QUALIFICATION_CEILING))
     return workers, resources
+
+
+def _preflight_selection_workers(
+    forward: Any,
+    resume_states: Mapping[str, Any],
+    *,
+    requested_workers: int,
+) -> int:
+    """Select a real-graph worker count without starting a long product meter."""
+
+    requested_workers = int(requested_workers)
+    if requested_workers <= 1:
+        return 1
+    results = []
+    for domain_id in sorted(resume_states):
+        result = preflight_mvsel2_native_workers_v2(
+            forward.domain(domain_id),
+            resume_states[domain_id],
+            max_workers=requested_workers,
+        )
+        results.append(result)
+        print(
+            f"[TARGET-DATA2C-MVSEL2 native preflight] domain={domain_id}; "
+            f"{format_mvsel2_native_preflight_v2(result)}",
+            flush=True,
+        )
+    if not results:
+        print(
+            "[TARGET-DATA2C-MVSEL2 native preflight] skipped=no-resume-state; "
+            f"effective_workers={requested_workers}",
+            flush=True,
+        )
+        return requested_workers
+    # One engine worker count is shared by all domains. If any resumed domain is
+    # memory-bound and rejects native scaling, retain the proven G4b serial path.
+    if any(not result.scaling_passed for result in results):
+        return 1
+    return min(result.effective_workers for result in results)
 
 
 def ensure_target_multi_view_selection_v2(
@@ -244,20 +286,25 @@ def ensure_target_multi_view_selection_v2(
         store.put_record(key, record)
         checkpoint_pointers[key] = record
 
-    selector_workers, resources = _selection_worker_budget(core, cfg)
+    requested_workers, resources = _selection_worker_budget(core, cfg)
     scope = core.build_stage_resource_scope(
         resources,
         stage_name="TARGET-DATA2C-MVSEL2/MVSTATE2",
         # Account the native OpenMP region against the existing CPU-worker
         # budget. No Python pool is created; this value prevents the enclosing
         # stage scope from constraining the authorized native worker count to 1.
-        python_workers=selector_workers,
+        python_workers=requested_workers,
         structural_workers=1,
         tree_workers=1,
         blas_threads=1,
     )
     started = time.monotonic()
     with core.stage_resource_scope(scope):
+        selector_workers = _preflight_selection_workers(
+            forward,
+            resume_states,
+            requested_workers=requested_workers,
+        )
         plan = build_target_multi_view_selection_plan_v2_engine(
             coverage_reference,
             forward,
@@ -291,7 +338,7 @@ def ensure_target_multi_view_selection_v2(
         f"digest={plan.content_digest[:12]}...; "
         f"checkpoints={len(checkpoint_pointers)}; "
         f"elapsed={format_progress_time(time.monotonic() - started)}; "
-        f"selector-workers={selector_workers}; "
+        f"selector-workers={selector_workers}; requested-workers={requested_workers}; "
         "native-forward-runtime=true; rank-history=true; "
         "legacy MVSEL1/MVSTATE-REUSE1 records retained"
     )
