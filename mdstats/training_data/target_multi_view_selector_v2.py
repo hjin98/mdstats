@@ -7,12 +7,13 @@ from forward CSR rows and current witness multiplicity.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 import heapq
 import math
 import mmap
 import time
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable, Iterator
 
 import numpy as np
 
@@ -24,6 +25,38 @@ from .target_coverage_sparse_forward_view import TargetCoverageSparseForwardDoma
 
 TARGET_MULTI_VIEW_SELECTOR_V2_VERSION = "mdstats.target-data2c-mvsel2.forward-lazy.2026-08.v1"
 TARGET_MULTI_VIEW_SELECTION_PLAN_V2_SCHEMA = "mdstats.target-multi-view-selection-plan.v2"
+
+
+def _iter_candidate_blocks_v2(
+    candidates: tuple[int, ...],
+    evaluator: Callable[[int], Any],
+    *,
+    batch_size: int,
+    executor: ThreadPoolExecutor | None,
+) -> Iterator[Any]:
+    """Yield canonical candidate-block results without changing result order.
+
+    The executor is execution-only. Workers read the shared forward MVIDX and
+    current selector state; authoritative state mutation remains outside this
+    helper on the controlling thread.
+    """
+
+    if not candidates:
+        return
+    if executor is None or len(candidates) <= int(batch_size):
+        for candidate in candidates:
+            yield evaluator(candidate)
+        return
+    blocks = tuple(
+        candidates[start : start + int(batch_size)]
+        for start in range(0, len(candidates), int(batch_size))
+    )
+
+    def evaluate_block(block: tuple[int, ...]) -> tuple[Any, ...]:
+        return tuple(evaluator(candidate) for candidate in block)
+
+    for block_values in executor.map(evaluate_block, blocks):
+        yield from block_values
 
 
 def _drop_file_backed_pages_v2(array: np.ndarray) -> None:
@@ -635,21 +668,18 @@ def _sparse_diversity_v2(
     return (0.0 if not values else float(np.mean(values, dtype=np.float64))), edges
 
 
-def choose_target_multi_view_phase_a_candidate_v2(
+def _choose_target_multi_view_phase_a_candidate_v2_impl(
     reference_domain: Any,
     forward_domain: TargetCoverageSparseForwardDomainView,
     state: TargetMultiViewForwardStateV2,
     *,
-    coverage_threshold: float = 0.95,
-    epsilon: float = 1.0e-14,
-    batch_size: int = 256,
-    workers: int = 1,
+    coverage_threshold: float,
+    epsilon: float,
+    batch_size: int,
+    executor: ThreadPoolExecutor | None,
 ) -> TargetMultiViewPhaseAChoiceV2:
-    """Execute the frozen staged exact Phase-A contender pipeline."""
+    """Execute Phase A against one immutable state snapshot."""
 
-    epsilon = float(epsilon)
-    if int(batch_size) < 1 or int(workers) < 1:
-        raise TrainingDataInputError("TARGET-DATA2C-MVSEL2 batch/worker settings must be positive.")
     available = tuple(int(value) for value in np.flatnonzero(state.available))
     if not available:
         raise TrainingDataInputError("TARGET-DATA2C-MVSEL2 exhausted the candidate pool.")
@@ -678,10 +708,18 @@ def choose_target_multi_view_phase_a_candidate_v2(
     bottleneck_index = int(np.flatnonzero(ratios <= minimum + epsilon)[0])
     bottleneck_values: dict[int, float] = {}
     bottleneck_edges = 0
-    for candidate in candidates:
-        value, edges = _family_coverage_gain_v2(
-            candidate, bottleneck_index, forward_domain, state
-        )
+    bottleneck_rows = _iter_candidate_blocks_v2(
+        candidates,
+        lambda candidate: (
+            candidate,
+            *_family_coverage_gain_v2(
+                candidate, bottleneck_index, forward_domain, state
+            ),
+        ),
+        batch_size=batch_size,
+        executor=executor,
+    )
+    for candidate, value, edges in bottleneck_rows:
         bottleneck_values[candidate] = value
         bottleneck_edges += edges
     candidates = _filter_best_relative_v2(candidates, bottleneck_values, epsilon)
@@ -690,8 +728,16 @@ def choose_target_multi_view_phase_a_candidate_v2(
     family_gains: dict[int, tuple[float, ...]] = {}
     total_coverage_values: dict[int, float] = {}
     total_coverage_edges = 0
-    for candidate in candidates:
-        gains, total, edges = _total_coverage_gain_v2(candidate, forward_domain, state)
+    total_coverage_rows = _iter_candidate_blocks_v2(
+        candidates,
+        lambda candidate: (
+            candidate,
+            *_total_coverage_gain_v2(candidate, forward_domain, state),
+        ),
+        batch_size=batch_size,
+        executor=executor,
+    )
+    for candidate, gains, total, edges in total_coverage_rows:
         family_gains[candidate] = gains
         total_coverage_values[candidate] = total
         total_coverage_edges += edges
@@ -714,8 +760,16 @@ def choose_target_multi_view_phase_a_candidate_v2(
 
     representative_values: dict[int, float] = {}
     representative_edges = 0
-    for candidate in candidates:
-        value, edges = _representative_gain_v2(candidate, forward_domain, state)
+    representative_rows = _iter_candidate_blocks_v2(
+        candidates,
+        lambda candidate: (
+            candidate,
+            *_representative_gain_v2(candidate, forward_domain, state),
+        ),
+        batch_size=batch_size,
+        executor=executor,
+    )
+    for candidate, value, edges in representative_rows:
         representative_values[candidate] = value
         representative_edges += edges
     candidates = _filter_best_relative_v2(
@@ -726,8 +780,16 @@ def choose_target_multi_view_phase_a_candidate_v2(
     diversity_values: dict[int, float] = {}
     diversity_edges = 0
     if len(candidates) > 1:
-        for candidate in candidates:
-            value, edges = _sparse_diversity_v2(candidate, forward_domain, state)
+        diversity_rows = _iter_candidate_blocks_v2(
+            candidates,
+            lambda candidate: (
+                candidate,
+                *_sparse_diversity_v2(candidate, forward_domain, state),
+            ),
+            batch_size=batch_size,
+            executor=executor,
+        )
+        for candidate, value, edges in diversity_rows:
             diversity_values[candidate] = value
             diversity_edges += edges
         candidates = _filter_best_relative_v2(candidates, diversity_values, epsilon)
@@ -774,6 +836,52 @@ def choose_target_multi_view_phase_a_candidate_v2(
     )
 
 
+def choose_target_multi_view_phase_a_candidate_v2(
+    reference_domain: Any,
+    forward_domain: TargetCoverageSparseForwardDomainView,
+    state: TargetMultiViewForwardStateV2,
+    *,
+    coverage_threshold: float = 0.95,
+    epsilon: float = 1.0e-14,
+    batch_size: int = 256,
+    workers: int = 1,
+) -> TargetMultiViewPhaseAChoiceV2:
+    """Execute exact Phase A with candidate-parallel read-only scoring."""
+
+    epsilon = float(epsilon)
+    batch_size = int(batch_size)
+    workers = int(workers)
+    if batch_size < 1 or workers < 1:
+        raise TrainingDataInputError("TARGET-DATA2C-MVSEL2 batch/worker settings must be positive.")
+
+    candidate_count = int(np.count_nonzero(state.available))
+    block_count = max(1, math.ceil(candidate_count / batch_size))
+    active_workers = min(workers, block_count)
+    if active_workers <= 1:
+        return _choose_target_multi_view_phase_a_candidate_v2_impl(
+            reference_domain,
+            forward_domain,
+            state,
+            coverage_threshold=float(coverage_threshold),
+            epsilon=epsilon,
+            batch_size=batch_size,
+            executor=None,
+        )
+    with ThreadPoolExecutor(
+        max_workers=active_workers,
+        thread_name_prefix="mdstats-mvsel2",
+    ) as executor:
+        return _choose_target_multi_view_phase_a_candidate_v2_impl(
+            reference_domain,
+            forward_domain,
+            state,
+            coverage_threshold=float(coverage_threshold),
+            epsilon=epsilon,
+            batch_size=batch_size,
+            executor=executor,
+        )
+
+
 def score_target_multi_view_candidates_v2(
     candidates: Iterable[int],
     forward_domain: TargetCoverageSparseForwardDomainView,
@@ -782,24 +890,42 @@ def score_target_multi_view_candidates_v2(
     batch_size: int = 256,
     workers: int = 1,
 ) -> tuple[TargetMultiViewCandidateScoreV2, ...]:
-    """Score candidates in canonical order with execution-only batching.
+    """Score candidates in canonical order with candidate-block threading.
 
-    G1 keeps one canonical scalar authority.  ``workers`` is accepted as an
-    execution setting but does not alter numerical reduction or result order.
+    Each candidate retains the existing canonical FP64 family reduction. The
+    worker count changes only which candidates are evaluated concurrently.
     """
 
-    if int(batch_size) < 1 or int(workers) < 1:
+    batch_size = int(batch_size)
+    workers = int(workers)
+    if batch_size < 1 or workers < 1:
         raise TrainingDataInputError("TARGET-DATA2C-MVSEL2 batch/worker settings must be positive.")
     ordered = tuple(sorted(int(candidate) for candidate in candidates))
     if len(set(ordered)) != len(ordered):
         raise TrainingDataInputError("TARGET-DATA2C-MVSEL2 candidate score request contains duplicates.")
-    result: list[TargetMultiViewCandidateScoreV2] = []
-    for start in range(0, len(ordered), int(batch_size)):
-        for candidate in ordered[start : start + int(batch_size)]:
-            result.append(
-                score_target_multi_view_candidate_v2(candidate, forward_domain, state)
+    if not ordered:
+        return ()
+    block_count = max(1, math.ceil(len(ordered) / batch_size))
+    active_workers = min(workers, block_count)
+    if active_workers <= 1:
+        return tuple(
+            score_target_multi_view_candidate_v2(candidate, forward_domain, state)
+            for candidate in ordered
+        )
+    with ThreadPoolExecutor(
+        max_workers=active_workers,
+        thread_name_prefix="mdstats-mvsel2",
+    ) as executor:
+        return tuple(
+            _iter_candidate_blocks_v2(
+                ordered,
+                lambda candidate: score_target_multi_view_candidate_v2(
+                    candidate, forward_domain, state
+                ),
+                batch_size=batch_size,
+                executor=executor,
             )
-    return tuple(result)
+        )
 
 
 def select_target_multi_view_candidate_v2(
