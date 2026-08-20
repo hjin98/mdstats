@@ -3,9 +3,10 @@
 The engine owns the only production rank loop for fresh and resumed MVSEL2
 selection. Scientific scoring/mutation remains in the selector primitives;
 Phase A uses the Protocol-5 locality kernel and Phase B uses the exact
-witness-term cached lazy kernel. MVSTATE2 provides continuation state, while an
-optional authenticated rank-history journal avoids rescoring the selected
-prefix solely to reconstruct plan history.
+witness-term cached kernel, with qualified native/OpenMP candidate-row execution
+when workers>1. MVSTATE2 provides continuation state, while an optional
+authenticated rank-history journal avoids rescoring the selected prefix solely
+to reconstruct plan history.
 """
 from __future__ import annotations
 
@@ -16,6 +17,7 @@ from typing import Any, Mapping
 import numpy as np
 
 from ._common import TrainingDataInputError
+from .mvsel2_native_backend import phase_b_execution_backend_v2
 from .mvsel2_phase_a_kernel import (
     choose_target_multi_view_phase_a_candidate_v2_kernel,
 )
@@ -310,6 +312,7 @@ def build_target_multi_view_selection_plan_v2_engine(
         raise TrainingDataInputError(
             "TARGET-DATA2C-MVSEL2 dataset identity mismatch."
         )
+    phase_b_backend = phase_b_execution_backend_v2(workers)
     resume_states = {} if resume_states is None else resume_states
     resume_histories = {} if resume_histories is None else resume_histories
     domains: list[TargetMultiViewSelectionDomainPlanV2] = []
@@ -398,7 +401,8 @@ def build_target_multi_view_selection_plan_v2_engine(
                 f"status=selecting; progress={format_progress_fraction(resume_size, limit)}; "
                 f"elapsed={format_progress_time(0.0)}; eta=--:--:--; "
                 f"phase=resume; domain={domain_id}; resume_size={resume_size}; "
-                f"resume_mode={history_mode}"
+                f"resume_mode={history_mode}; phase_b_backend={phase_b_backend}; "
+                f"phase_b_workers={workers}"
             )
 
         for rank in range(resume_size, limit):
@@ -427,7 +431,9 @@ def build_target_multi_view_selection_plan_v2_engine(
                     and rank % frontier_rebuild_interval == 0
                 ):
                     frontier = build_target_multi_view_lazy_frontier_v2_kernel(
-                        forward_domain, state
+                        forward_domain,
+                        state,
+                        workers=workers,
                     )
                     if restored is not None and completed_after_resume == 0:
                         phase_b_resume_rebases += 1
@@ -437,6 +443,8 @@ def build_target_multi_view_selection_plan_v2_engine(
                     state,
                     frontier,
                     epsilon=policy.gain_tie_tolerance,
+                    workers=workers,
+                    batch_size=batch_size,
                 )
                 bottleneck_id = None
                 phase = "representative_fill"
@@ -527,6 +535,7 @@ def build_target_multi_view_selection_plan_v2_engine(
                     f"elapsed={format_progress_time(elapsed)}; eta={format_progress_time(eta)}; "
                     f"throughput={throughput:.3f} ranks/s; phase={phase}; rank={rank}; "
                     f"resume_size={resume_size}; resume_mode={history_mode}; "
+                    f"phase_b_backend={phase_b_backend}; phase_b_workers={workers}; "
                     f"phase_b_resume_rebases={phase_b_resume_rebases}; "
                     f"mutation_forward_edges={mutation_edges}; "
                     f"candidate_evaluation_forward_edges={evaluation_edges}; "
