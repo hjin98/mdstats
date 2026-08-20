@@ -2,7 +2,7 @@
 kind: implementation-workplan
 workplan_id: DOC-NATIVE-BUILD1
 protocol_version: 5.0.0
-status: BUILD1_IN_PROGRESS
+status: BUILD1_SOURCE_COMPLETE_WORKSTATION_VALIDATION_PENDING
 analysis_base_ref: feat/mvsel2-forward-lazy
 ---
 
@@ -12,60 +12,104 @@ analysis_base_ref: feat/mvsel2-forward-lazy
 
 Replace the one-off MVSEL2 extension build definition with one package-wide native build registry and one developer command that installs `mdstats`, compiles every registered native extension, and verifies that the compiled modules are importable.
 
-The build machinery must remain ordinary Python packaging machinery: source/wheel builds and editable installs consume the same native registry. Scientific/runtime qualification remains owned by each subsystem and is not conflated with compilation success.
+The build machinery remains ordinary Python packaging machinery: source/wheel builds and editable installs consume the same native registry. Scientific/runtime qualification remains owned by each subsystem and is not conflated with compilation success.
 
 ## Current state
 
-`mdstats._mvsel2_native` is the first in-tree custom compiled extension. The current `setup.py` defines that extension directly, so future native kernels would otherwise accumulate ad-hoc build logic.
+`mdstats._mvsel2_native` is the first in-tree custom compiled extension. The original one-off target-specific `setup.py` implementation has been replaced by the uniform machinery described here.
 
 ## Build contract
 
 - `pyproject.toml` remains the PEP-517 package/build authority.
-- `setup.py` becomes a thin setuptools bridge that consumes one central native-extension registry.
-- A top-level build-support module owns platform/compiler profiles and all native target declarations.
+- `setup.py` is a thin setuptools bridge that consumes one central native-extension registry.
+- `build_support/native_extensions.py` owns native target declarations and reusable platform/compiler requirements.
 - Future C/C++ CPU extensions are added by registering a target, not by modifying package-install commands.
 - Normal development installation remains `python -m pip install -e .`; this compiles all registered native targets as part of installation.
-- A strict helper command `python tools/mdstats-build.py` performs the editable install and then verifies imports for every registered native target. It fails if a registered target did not build, even if that target is optional for ordinary pure-Python package installation.
-- Source distributions explicitly include native sources and build-support Python modules.
+- The strict developer command `python tools/mdstats-build.py` performs the editable install and then verifies imports for every registered native target. It fails if a registered target did not build, even if that target is optional for ordinary pure-Python package installation.
+- Before a strict build, stale in-tree binary artifacts for registered modules are removed so an obsolete `.so`/`.pyd` cannot mask a failed current compilation.
+- Verification occurs in a fresh Python subprocess so newly installed editable-package path metadata is honored.
+- Source distributions explicitly include build-support modules and native C/C++ source/header files.
 - Runtime capability/scientific parity checks remain separate. For example, successful import of `_mvsel2_native` does not by itself qualify its OpenMP numerical authority.
 
 ## Rebuild semantics
 
 A rebuild is required when native sources, native build configuration/compiler flags, Python ABI/interpreter, compiler toolchain, or native dependency ABI/header inputs change. Pure Python-only package updates do not technically require recompilation.
 
-Operationally, after pulling an arbitrary package update, rerunning the single build/install command is safe and removes the need for the user to determine whether that update touched native code.
+Operationally, after pulling an arbitrary package update, rerunning the single strict build/install command is safe and removes the need for the user to determine whether that update touched native code.
 
-## Gates
+For a normal source checkout:
 
-### BUILD1-G0 — central registry
+```text
+python tools/mdstats-build.py
+```
 
-Create a build-support registry with explicit extension specifications and reusable platform build profiles. Register the existing `mdstats._mvsel2_native` target without changing its strict-FP/OpenMP compiler semantics.
+For an already-prepared environment where dependency installation should be skipped:
 
-**Pass:** `setup.py` contains no target-specific compiler logic and obtains all `ext_modules` from the registry.
+```text
+python tools/mdstats-build.py --no-deps
+```
 
-### BUILD1-G1 — one-command strict developer build
+## Gate status
 
-Add `tools/mdstats-build.py`.
+| Gate | Status | Result / next boundary |
+|---|---|---|
+| BUILD1-G0 | IMPLEMENTED | Central native registry added; `setup.py` now delegates all extension declarations. |
+| BUILD1-G1 | IMPLEMENTED | One-command strict editable install/build/import verification added. |
+| BUILD1-G2 | IMPLEMENTED; SOURCE TESTS PENDING | Sdist manifest explicitly carries build support and native sources; focused registry/build-tool regressions added. |
+| BUILD1-G3 | READY | MVSEL2 N3 should use `python tools/mdstats-build.py` instead of direct `setup.py build_ext`. |
 
-The command must:
+## Implemented sequence
 
-1. locate the repository root robustly;
-2. invoke the active interpreter as `python -m pip install -e <repo>`;
-3. use the same PEP-517/setuptools build path as ordinary installation;
-4. verify that every registered native module imports after installation;
-5. return nonzero if installation or native verification fails;
-6. print the registered/built targets concisely.
+- `d8c1dede08451998d587568d86481dc59212e725` — add BUILD1 workplan;
+- `354df85bf1e71012bc6d956bade9291bf9a18388` / `1035df98f6412b6817cb1ab3632371a44ad53d08` — add build-support package and native registry;
+- `46bbda5b7713fcf7f1ee6214621e3a88beb03b30` — reduce `setup.py` to registry delegation;
+- `d7b2e4f1a387aa88eadd6f7563dbddfd39101f20` — add strict one-command developer build;
+- `57dda06663b2310dd7704dce6cc8c1ce2f2c61d9` — make native/build sources explicit in sdist;
+- `c9e384510dbb610894d35af9c2d947895e1ec3a8` / `4a8dfeb57a81c1fdd1eb6d86cf0039096fe2f158` — add focused build-registry regressions;
+- `8f327c07dbadafbca166c46658eb3db960ec2c02` — harden strict build against stale binaries and in-process editable-path ambiguity.
 
-No duplicate compiler invocation is allowed.
+## BUILD1-G0 — central registry
 
-### BUILD1-G2 — packaging and regression contract
+The registry entry for `mdstats._mvsel2_native` retains the original build semantics:
 
-- Explicitly include build-support modules and native source/header files in the source distribution manifest.
-- Add focused tests for registry uniqueness, source existence, setup delegation, and strict-build target discovery.
-- Keep the native extension optional for ordinary installation so pure-Python fallback remains installable when a compiler is unavailable; the strict developer builder is the mechanism that requires all registered native targets.
+- strict FP enabled;
+- OpenMP requested where the default platform toolchain supports the established flags;
+- Linux: `-O3 -fno-fast-math -ffp-contract=off -fopenmp`, link `-fopenmp`;
+- Windows: `/O2 /fp:strict /openmp`;
+- other POSIX/macOS: exact serial build without assuming an OpenMP runtime;
+- extension remains optional for ordinary package installation.
 
-### BUILD1-G3 — N3 handoff
+## BUILD1-G1 — strict developer build
 
-Once the uniform build gate is source-complete, the MVSEL2 N3 workstation command uses `python tools/mdstats-build.py` instead of the one-off `python setup.py build_ext --inplace` step.
+The strict helper performs one compiler/install path only:
+
+1. read registered native module names;
+2. remove stale in-tree binaries matching those module names;
+3. invoke the active interpreter as `python -m pip install -e <repo>`;
+4. start fresh Python subprocesses to import every registered native module;
+5. fail if installation or any registered-module import fails.
+
+This does not duplicate compilation and does not replace standard PEP-517 packaging.
+
+## BUILD1-G2 — remaining validation
+
+On the source checkout, run:
+
+```text
+python -m pytest -q tests/test_native_build_registry.py tests/test_mlff_mvsel2_native_backend.py
+python tools/mdstats-build.py --no-deps
+```
+
+The second command is the real build qualification and should report the registered native target and a `[PASS]` import location.
+
+## BUILD1-G3 — N3 handoff
+
+After BUILD1 validation, the MVSEL2 N3 workstation sequence begins with:
+
+```text
+python tools/mdstats-build.py --no-deps
+```
+
+then runs the MVSEL2 runtime qualifier/focused tests and product meter. No direct `python setup.py build_ext --inplace` step is part of the supported workflow anymore.
 
 No MVSEL2 scientific code changes belong to BUILD1.
