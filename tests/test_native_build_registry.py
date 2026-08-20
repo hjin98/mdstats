@@ -71,16 +71,20 @@ def test_strict_build_tool_discovers_registry_and_uses_active_python() -> None:
     assert no_deps == command + ["--no-deps"]
 
 
-def test_strict_build_tool_removes_stale_in_tree_binary(tmp_path: Path) -> None:
+def test_strict_build_tool_cleans_stale_objects_and_binary(tmp_path: Path) -> None:
     tool = _load_build_tool()
     package = tmp_path / "mdstats"
     package.mkdir()
     stale = package / "_example.cpython-test.so"
     source = package / "_example.c"
-    stale.write_bytes(b"old")
+    build_object = tmp_path / "build" / "temp" / "example.o"
+    build_object.parent.mkdir(parents=True)
+    build_object.write_bytes(b"old-object")
+    stale.write_bytes(b"old-binary")
     source.write_text("/* source */\n", encoding="utf-8")
 
     assert tool._native_artifacts(tmp_path, "mdstats._example") == (stale,)
-    tool._remove_stale_native_artifacts(tmp_path, ("mdstats._example",))
+    tool._clean_native_build_state(tmp_path, ("mdstats._example",))
     assert not stale.exists()
+    assert not (tmp_path / "build").exists()
     assert source.exists()
