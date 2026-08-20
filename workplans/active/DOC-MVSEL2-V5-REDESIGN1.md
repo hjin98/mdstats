@@ -2,7 +2,7 @@
 kind: implementation-workplan
 workplan_id: DOC-MVSEL2-V5-REDESIGN1
 protocol_version: 5.0.0
-status: G4_NATIVE_PARALLELIZATION_IN_PROGRESS
+status: G4_N3_PRODUCT_QUALIFICATION_PENDING
 analysis_base_ref: feat/mvsel2-forward-lazy
 supersedes_execution_workplan: DOC-MVSEL2-PAR1
 ---
@@ -42,7 +42,7 @@ The real product showed roughly 1.0 ranks/s with about 98 million candidate-eval
 
 ### G4b — accepted performance baseline
 
-Caching one FP64 term per witness, `weight / (multiplicity + 1)`, restored roughly 2.0 ranks/s and reduced the resume rebase from about 67 s to about 36 s. This is the baseline to restore before native work.
+Caching one FP64 term per witness, `weight / (multiplicity + 1)`, restored roughly 2.0 ranks/s and reduced the resume rebase from about 67 s to about 36 s. G4b is the baseline retained for `workers=1` and for any native-scaling fallback.
 
 G4b retained high mapped-page residency (~88.9 GB peak RSS), but it is the last proven compute-efficient exact implementation.
 
@@ -52,7 +52,7 @@ Family-major stale batches with `MADV_DONTNEED` after every batch reduced peak R
 
 ### G4d — rejected release-cadence follow-up
 
-The once-per-accepted-rank release policy did not recover G4b performance. The latest product meter still remained in the ~1.6–1.7 ranks/s regime and reported:
+The once-per-accepted-rank release policy did not recover G4b performance. The latest product meter remained in the ~1.6–1.7 ranks/s regime and reported:
 
 - 20:01.94 wall time under the expected timeout;
 - 800.65 s user time and 341.05 s system time;
@@ -61,7 +61,7 @@ The once-per-accepted-rank release policy did not recover G4b performance. The l
 - 152,034,240 filesystem input blocks;
 - correct `resume_size=2048` and `resume_mode=mvstate2+journal`.
 
-Decision: remove the batched stale rescoring/release experiment and restore the exact G4b candidate-local cached-witness path before native execution is introduced.
+Decision: G4c/G4d mmap-release execution is removed from the production Phase-B path. Native work is layered on the exact G4b witness-cache baseline.
 
 ## Chosen architecture
 
@@ -72,7 +72,7 @@ Use one production selector engine and one scientific Python oracle/reference.
 Python continues to own:
 
 - lazy-heap certification;
-- canonical family traversal;
+- canonical family traversal and candidate family-subtotal accumulation;
 - exact contender formation;
 - correlation/diversity/UID tie handling;
 - authoritative selection mutation;
@@ -80,7 +80,7 @@ Python continues to own:
 
 ### Native execution owner
 
-Add one small private CPython C extension for the repeated family-local operation:
+One private CPython C extension owns only the repeated family-local row scorer:
 
 ```text
 score_family_batch(offsets_u64,
@@ -91,87 +91,115 @@ score_family_batch(offsets_u64,
                    workers)
 ```
 
-The extension receives existing authenticated forward CSR buffers directly; it creates no persistent scientific state.
+The extension consumes the existing authenticated MVIDX1 forward CSR and reconstructible FP64 witness-term cache directly. It creates no persistent scientific state.
 
 Parallelization unit:
 
-- keep the Python outer loop family-major;
-- within one active family, parallelize independent candidate rows with OpenMP;
-- one worker owns one complete candidate row;
-- never parallel-reduce within a row;
-- never parallelize authoritative selection/mutation;
-- use static scheduling for deterministic work assignment.
-
-This avoids PAR1-style Python dispatch and avoids concurrently streaming unrelated family mmaps.
+- Python remains family-major;
+- within one active family, independent candidate rows are distributed with OpenMP `schedule(static)`;
+- one worker owns one complete row;
+- no within-row parallel reduction;
+- no parallel authoritative selection/mutation;
+- no Python thread/process pool.
 
 ### Exact FP64 reduction contract
 
-The current oracle evaluates each family subtotal as:
+The oracle family subtotal is:
 
 ```python
 np.sum(terms[witnesses], dtype=np.float64)
 ```
 
-The native backend may become authoritative only if it is bitwise identical to that reduction for supported execution. Ordinary C left-to-right summation and OpenMP reduction are not acceptable substitutes.
+The native row reducer reproduces NumPy's deterministic pairwise FP64 summation order: 128-element block cutoff, eight accumulators, recursive multiple-of-eight split, and the short-row `-0.0` initialization. Compilation explicitly disables fast-math/reassociation/FMA contraction where applicable.
 
-Implement the NumPy-compatible deterministic pairwise FP64 row reducer and compile without fast-math/reassociation. Runtime qualification must compare native results bitwise against NumPy before native authority is used. If qualification fails, the backend is unavailable; do not silently weaken the numerical contract.
+The private runtime qualifier compares native output bitwise against NumPy around pairwise boundaries and realistic production row lengths before native execution can be used. OpenMP workers operate on different rows only, so worker count cannot change a row's accumulation order.
+
+MVIDX1 already authenticates witness bounds when forward families are constructed. The native hot loop therefore does not recheck every witness edge; candidate/offset buffer safety remains checked at the native boundary and the Python owner supplies terms whose cardinality matches the authenticated family witness domain.
 
 ### Portability and fallback
 
 - The extension is private and optional at package-build level.
-- `workers=1` may fall back to the exact Python/NumPy G4b path if the extension is unavailable.
-- `workers>1` requires a qualified native OpenMP backend and fails clearly if it is unavailable.
-- No new runtime dependency such as Numba, Cython, pybind11, or CFFI is introduced.
+- `workers=1` executes the proven G4b Python/NumPy path.
+- `workers>1` requires a successfully built, runtime-qualified OpenMP backend.
+- no Numba, Cython, pybind11, CFFI, multiprocessing, or GPU selector authority is added.
+- the campaign's existing target-coverage worker budget remains the CPU resource authority; native MVSEL2 activation is capped at 16 workers until real-graph evidence justifies more.
 
-## Gates
+## Gate status
 
-### G4-N0 — restore G4b baseline
+| Gate | Status | Result / next boundary |
+|---|---|---|
+| G4-N0 | IMPLEMENTED | G4c/G4d stale-batch release path removed for serial execution; proven G4b candidate-local witness cache restored. |
+| G4-N1 | IMPLEMENTED; LOW-LEVEL PARITY CHECKED | Private C extension, build hook, Python qualifier, exact NumPy-compatible reducer, and native-vs-oracle tests added. Independent Linux GCC/OpenMP compilation and 1/2/4/8/16 bitwise parity check succeeded; repository-focused pytest still must run in the source checkout. |
+| G4-N2 | IMPLEMENTED; REAL-GRAPH PREFLIGHT PENDING | OpenMP candidate-row scoring is integrated for rebase and stale rescoring; runtime worker propagation, telemetry, regressions, and bounded real-MVIDX 1/2/4/8/16 preflight are implemented. The workstation run will execute this gate automatically before long selection. |
+| G4-N3 | PENDING WORKSTATION PRODUCT METER | If N2 real-graph scaling clears 1.75x, the same `prepare` invocation continues with the fastest qualified worker count; otherwise it falls back automatically to G4b `workers=1`. |
 
-Remove the G4c/G4d stale-batch machinery and rank-level mmap release from the production Phase-B path. Restore candidate-local cached-witness rescoring exactly as in the proven G4b implementation.
+## Implemented sequence
 
-**Pass:** source again contains no Phase-B stale-batch executor and no per-rank forward-page release; oracle behavior remains unchanged.
+Key feature-branch commits, in order:
 
-### G4-N1 — exact native family scorer
+- `6b20233128257a9585734ee4dcc239ad134c8aed` — record failed G4d and native execution workplan;
+- `7446fe63a0b4ffd10ae76668cfbfbd5037df3fbc` — G4-N0 restore proven cached Phase-B baseline;
+- `c36bdacf0c19d53599981941951cd2c5c967b03a` — add exact native MVSEL2 row scorer;
+- `6536a50cbf09a8fcced5b9d48643952778369eae` — wire private extension build;
+- `4d1bea7a56a9afe9f68a2b9ec13371cf30dd004a` — add fail-closed native runtime qualifier/wrapper;
+- `aa0995f18f466b27d867bacfbed31cbe63ecddef` — integrate native candidate-parallel Phase-B scoring;
+- `f20acc1087d862fdeccaa28b77dfce6c56dc76e9` — route Phase-B workers/backend telemetry through the selection engine;
+- `65c7fc6cd555169562e75472089889f3888737e8` — add native exactness/OpenMP selector regressions;
+- `1857d21e04bcaaba5d355a8572fc3cb140a5294e` / `a165f0d86b6e3cd5490a5a62ec3f90f1d1219049` — route and resource-account campaign worker budget;
+- `59b5192be5983da7adbd41fa7e718fb812760411` — add bounded real-MVIDX worker preflight;
+- `9943702b5f8dcc5825f0d7aa17d7d4a67d0c61ff` — gate production workers through real-graph preflight;
+- `8e0fa28a217db35bdc39986017b936f77a8a3e3b` — remove redundant per-edge native witness-bound branch;
+- `aa791ed85fcf829be3a16c5b394161018e022883` — test preflight routing and G4b fallback.
 
-Add the private C extension and Python wrapper.
+## G4-N0 — restored baseline contract
 
-Requirements:
+Serial Phase B must remain the exact G4b path:
 
-- direct buffer access to canonical `uint64` offsets, `uint32` witnesses, FP64 terms, and `uint32` candidate IDs;
-- no NumPy C API dependency required for the kernel;
-- deterministic NumPy-compatible FP64 pairwise reduction;
-- bounds/type/shape validation sufficient to prevent unsafe native access;
-- no fast-math or reassociation;
-- private runtime qualification covering row lengths around pairwise boundaries and realistic production lengths;
-- bitwise equality against the Python NumPy oracle before native execution is accepted.
+- per-witness FP64 term cache;
+- candidate-local stale rescoring;
+- no stale-batch execution in `workers=1`;
+- no rank-level `MADV_DONTNEED`;
+- full rebase remains family-major and may release a family only after its complete rebase scan.
 
-Integrate the same family scorer into both:
+## G4-N1 — native exactness qualification
 
-- full Phase-B frontier rebase;
-- stale candidate rescoring.
+Before the workstation product meter:
 
-At this gate, `workers=1` is sufficient to establish numerical authority.
+1. build the extension in place;
+2. run the runtime qualifier;
+3. run the focused MVSEL2/native/oracle/restart/repair suite.
 
-**Pass:** focused native-vs-NumPy tests and repeated selector/oracle tests are bitwise/scientifically identical.
+Native authority is unavailable if bitwise qualification fails.
 
-### G4-N2 — deterministic OpenMP candidate parallelism
+## G4-N2 — automatic real-MVIDX worker preflight
 
-Enable OpenMP only across independent candidate rows within one active family.
+On a journal-backed restart with requested workers >1, the normal product path now performs a bounded execution-only preflight before the long selector:
 
-Requirements:
+1. choose 256 deterministic available candidates spanning the domain;
+2. warm those exact rows once with native one-thread execution;
+3. meter native 1/2/4/8/16 workers, capped by the authorized worker budget and native runtime capability;
+4. run two timed passes per worker count and use the faster pass to reduce incidental timing noise;
+5. require identical edge counts and bitwise-identical FP64 candidate scores across every tested worker count;
+6. choose the fastest parallel count only if speedup over native one-thread is >=1.75x;
+7. otherwise set effective workers to 1 and continue through the proven G4b path.
 
-- `workers=1,2,4,8,16` produce bitwise-identical family outputs where supported;
-- selected candidate, exact score, selected order, multiplicities, coverage masses, obligation counts, correlation counts, representative utility, and rungs remain identical to the scalar oracle;
-- backend and active worker count are visible in selector progress telemetry;
-- no Python thread/process pool is added.
+The preflight does not mutate selector state, does not persist results, and does not release/refault mappings between worker trials.
 
-A small real-MVIDX scorer meter should compare 1/2/4/8/16 workers through the production native primitive, allowing worker-count selection without five full campaign runs.
+Expected progress evidence resembles:
 
-**Pass:** best worker count shows material scaling on the real graph; target is >=1.75x over native one-thread scorer throughput before a full campaign meter is justified.
+```text
+[TARGET-DATA2C-MVSEL2 native preflight] domain=...; sample=256; edges=...; meters=1w:.../1.00x,2w:...,...; best_parallel_speedup=...; threshold=1.75x; scaling=pass|fail; effective_workers=N
+```
 
-### G4-N3 — one product-path closeout meter
+Normal selector progress additionally reports:
 
-Using the best qualified worker count from N2, run the normal product `prepare` path from the existing journal-backed checkpoint.
+```text
+phase_b_backend=python-numpy|native-openmp; phase_b_workers=N
+```
+
+## G4-N3 — one product-path closeout meter
+
+Using the automatically selected effective worker count, continue the same normal `prepare` invocation from the existing journal-backed checkpoint.
 
 Measure separately:
 
@@ -183,25 +211,28 @@ Measure separately:
 - filesystem input normalized by accepted rank or evaluated billion edges;
 - evaluation-edge demand;
 - `.mdstats` size;
-- restart mode.
+- restart mode;
+- N2 preflight worker meter and selected worker count.
 
 Acceptance targets:
 
-1. scientific behavior remains exact;
-2. restart remains `mvstate2+journal` without historical rescoring;
-3. sustained product throughput materially exceeds G4b; design target >=4 ranks/s and minimum native-specialization justification >=3 ranks/s;
-4. peak RSS does not exceed the G4b ~88.9 GB baseline and no swap occurs;
-5. G4c/G4d release/refault pathology does not return;
-6. disk remains bounded with no second graph;
-7. no duplicated selector/repair scientific authority is introduced.
+1. focused exact tests pass;
+2. native runtime qualifier passes;
+3. scientific behavior and persistence remain exact;
+4. restart remains `mvstate2+journal` without historical rescoring;
+5. N2 native worker preflight shows >=1.75x best parallel speedup before native execution is retained;
+6. sustained product throughput materially exceeds G4b; design target >=4 ranks/s and minimum native-specialization justification >=3 ranks/s;
+7. peak RSS does not exceed the G4b ~88.9 GB baseline and no swap occurs;
+8. G4c/G4d release/refault pathology does not return;
+9. disk remains bounded with no second graph;
+10. no duplicated selector/repair scientific authority is introduced.
 
 ## Redesign triggers after N3
 
-- If native one-thread is much faster than Python and OpenMP scales well, retain the native backend.
-- If native one-thread is faster but OpenMP is nearly flat, the next limit is memory latency/bandwidth; stop thread tuning and examine exact stale-edge reduction/adaptive rebase.
-- If native one-thread is only marginally faster than G4b, Python dispatch is not the dominant remaining cost; stop native tuning and redesign the exact lazy-bound/rebase policy.
-- If native/OpenMP improves compute but faults/RSS become unacceptable, revisit page/block lifecycle without multiprocessing or inverse state.
-- Adaptive full frontier rebasing is considered only after the native rebase cost is measured; it must remain exact and must amortize its own 9.5B-edge scan.
+- If the real-MVIDX preflight fails 1.75x scaling, the product automatically stays on G4b; remove or retain the native backend only as justified by native one-thread/rebase evidence, and move to exact stale-edge reduction/adaptive-rebase design rather than more thread tuning.
+- If the preflight scales but sustained product throughput remains <3 ranks/s, Python dispatch is not the primary remaining bottleneck or batch early-refresh cost dominates; stop native tuning and redesign the exact lazy-bound/rebase policy.
+- If native rebase becomes cheap enough, evaluate an exact adaptive frontier rebase only when the measured reduction in stale candidate-edge rescoring amortizes the full 9.5B-edge scan.
+- If native execution improves compute but RSS/faults regress beyond G4b, revisit page/block lifecycle without multiprocessing, inverse state, or per-batch `MADV_DONTNEED`.
 
 Do not introduce approximation under MVSEL2 authority.
 
