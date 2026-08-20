@@ -1,6 +1,8 @@
 include README.md
 include CHANGELOG.md
 include campaign.toml.example
+recursive-include build_support *.py
+recursive-include mdstats *.c *.cc *.cpp *.cxx *.h *.hpp
 recursive-include docs *.md *.pdf *.png *.json *.svg
 recursive-include audits *.md *.pdf *.json
 recursive-include benchmarks *.py *.json *.md *.pdf *.csv
