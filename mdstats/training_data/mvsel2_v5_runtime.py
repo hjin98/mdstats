@@ -248,9 +248,10 @@ def ensure_target_multi_view_selection_v2(
     scope = core.build_stage_resource_scope(
         resources,
         stage_name="TARGET-DATA2C-MVSEL2/MVSTATE2",
-        # Native OpenMP is the only parallel execution inside this stage. Keep
-        # Python/structural/tree/BLAS machinery serial to prevent nested pools.
-        python_workers=1,
+        # Account the native OpenMP region against the existing CPU-worker
+        # budget. No Python pool is created; this value prevents the enclosing
+        # stage scope from constraining the authorized native worker count to 1.
+        python_workers=selector_workers,
         structural_workers=1,
         tree_workers=1,
         blas_threads=1,
