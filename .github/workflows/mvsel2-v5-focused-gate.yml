@@ -1,0 +1,41 @@
+name: MVSEL2 v5 focused gate
+
+on:
+  push:
+    branches:
+      - feat/mvsel2-forward-lazy
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  focused-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout mdstats
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install focused-test environment
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . pytest
+
+      - name: Run MVSEL2 v5 G2 focused gate
+        run: |
+          python -m pytest -q \
+            tests/test_mlff_mvsel2_v5_resume.py \
+            tests/test_mlff_mvsel2_v5_campaign_route.py \
+            tests/test_mlff_mvsel2_v5_kernel.py \
+            tests/test_mlff_mvsel2_forward.py \
+            tests/test_mlff_mvsel2_oracle.py \
+            tests/test_mlff_mvsel2_hardening.py \
+            tests/test_mlff_mvstate2.py \
+            tests/test_mlff_repair2.py
