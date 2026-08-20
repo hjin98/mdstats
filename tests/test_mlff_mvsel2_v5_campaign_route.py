@@ -38,6 +38,64 @@ def test_v5_runtime_caps_selector_workers_at_qualified_ceiling() -> None:
     assert actual_resources is resources
 
 
+def test_v5_runtime_preflight_uses_best_qualified_parallel_worker_count(
+    monkeypatch,
+) -> None:
+    state = object()
+    forward = SimpleNamespace(domain=lambda domain_id: ("forward", domain_id))
+    result = SimpleNamespace(
+        scaling_passed=True,
+        effective_workers=8,
+    )
+    monkeypatch.setattr(
+        mvsel2_v5_runtime,
+        "preflight_mvsel2_native_workers_v2",
+        lambda domain, actual_state, max_workers: result,
+    )
+    monkeypatch.setattr(
+        mvsel2_v5_runtime,
+        "format_mvsel2_native_preflight_v2",
+        lambda value: "meter",
+    )
+    assert (
+        mvsel2_v5_runtime._preflight_selection_workers(
+            forward,
+            {"target": state},
+            requested_workers=16,
+        )
+        == 8
+    )
+
+
+def test_v5_runtime_preflight_falls_back_to_g4b_when_scaling_fails(
+    monkeypatch,
+) -> None:
+    state = object()
+    forward = SimpleNamespace(domain=lambda domain_id: ("forward", domain_id))
+    result = SimpleNamespace(
+        scaling_passed=False,
+        effective_workers=1,
+    )
+    monkeypatch.setattr(
+        mvsel2_v5_runtime,
+        "preflight_mvsel2_native_workers_v2",
+        lambda domain, actual_state, max_workers: result,
+    )
+    monkeypatch.setattr(
+        mvsel2_v5_runtime,
+        "format_mvsel2_native_preflight_v2",
+        lambda value: "meter",
+    )
+    assert (
+        mvsel2_v5_runtime._preflight_selection_workers(
+            forward,
+            {"target": state},
+            requested_workers=16,
+        )
+        == 1
+    )
+
+
 def test_v5_runtime_source_does_not_hardcode_serial_selector() -> None:
     source = open(mvsel2_v5_runtime.__file__, encoding="utf-8").read()
     assert "workers=selector_workers" in source
