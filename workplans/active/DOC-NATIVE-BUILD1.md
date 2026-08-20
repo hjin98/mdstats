@@ -25,8 +25,8 @@ The build machinery remains ordinary Python packaging machinery: source/wheel bu
 - `build_support/native_extensions.py` owns native target declarations and reusable platform/compiler requirements.
 - Future C/C++ CPU extensions are added by registering a target, not by modifying package-install commands.
 - Normal development installation remains `python -m pip install -e .`; this compiles all registered native targets as part of installation.
-- The strict developer command `python tools/mdstats-build.py` performs the editable install and then verifies imports for every registered native target. It fails if a registered target did not build, even if that target is optional for ordinary pure-Python package installation.
-- Before a strict build, stale in-tree binary artifacts for registered modules are removed so an obsolete `.so`/`.pyd` cannot mask a failed current compilation.
+- The strict developer command `python tools/mdstats-build.py` performs a clean editable install/build and then verifies imports for every registered native target. It fails if a registered target did not build, even if that target is optional for ordinary pure-Python package installation.
+- Before a strict build, the generated `build/` tree and stale in-tree binary artifacts for registered modules are removed so old object files or an obsolete `.so`/`.pyd` cannot mask a failed/current-profile rebuild.
 - Verification occurs in a fresh Python subprocess so newly installed editable-package path metadata is honored.
 - Source distributions explicitly include build-support modules and native C/C++ source/header files.
 - Runtime capability/scientific parity checks remain separate. For example, successful import of `_mvsel2_native` does not by itself qualify its OpenMP numerical authority.
@@ -35,7 +35,7 @@ The build machinery remains ordinary Python packaging machinery: source/wheel bu
 
 A rebuild is required when native sources, native build configuration/compiler flags, Python ABI/interpreter, compiler toolchain, or native dependency ABI/header inputs change. Pure Python-only package updates do not technically require recompilation.
 
-Operationally, after pulling an arbitrary package update, rerunning the single strict build/install command is safe and removes the need for the user to determine whether that update touched native code.
+Operationally, after pulling an arbitrary package update, rerunning the single strict build/install command is safe and removes the need for the user to determine whether that update touched native code. The strict command intentionally clean-rebuilds registered native targets so compiler-profile changes cannot reuse stale object files.
 
 For a normal source checkout:
 
@@ -54,7 +54,7 @@ python tools/mdstats-build.py --no-deps
 | Gate | Status | Result / next boundary |
 |---|---|---|
 | BUILD1-G0 | IMPLEMENTED | Central native registry added; `setup.py` now delegates all extension declarations. |
-| BUILD1-G1 | IMPLEMENTED | One-command strict editable install/build/import verification added. |
+| BUILD1-G1 | IMPLEMENTED | One-command strict clean editable install/build/import verification added. |
 | BUILD1-G2 | IMPLEMENTED; SOURCE TESTS PENDING | Sdist manifest explicitly carries build support and native sources; focused registry/build-tool regressions added. |
 | BUILD1-G3 | READY | MVSEL2 N3 should use `python tools/mdstats-build.py` instead of direct `setup.py build_ext`. |
 
@@ -66,7 +66,9 @@ python tools/mdstats-build.py --no-deps
 - `d7b2e4f1a387aa88eadd6f7563dbddfd39101f20` — add strict one-command developer build;
 - `57dda06663b2310dd7704dce6cc8c1ce2f2c61d9` — make native/build sources explicit in sdist;
 - `c9e384510dbb610894d35af9c2d947895e1ec3a8` / `4a8dfeb57a81c1fdd1eb6d86cf0039096fe2f158` — add focused build-registry regressions;
-- `8f327c07dbadafbca166c46658eb3db960ec2c02` — harden strict build against stale binaries and in-process editable-path ambiguity.
+- `8f327c07dbadafbca166c46658eb3db960ec2c02` — harden strict build against stale binaries and in-process editable-path ambiguity;
+- `2d1e92570b68a77443eacea499ecaab8bc4d7bc9` — force clean strict rebuild by clearing generated build objects;
+- `b0d6c998f6876aa6facbdd6f0db1823b6be97561` — cover clean-object/binary behavior in focused regressions.
 
 ## BUILD1-G0 — central registry
 
@@ -84,7 +86,7 @@ The registry entry for `mdstats._mvsel2_native` retains the original build seman
 The strict helper performs one compiler/install path only:
 
 1. read registered native module names;
-2. remove stale in-tree binaries matching those module names;
+2. remove the generated `build/` tree and stale in-tree binaries matching those module names;
 3. invoke the active interpreter as `python -m pip install -e <repo>`;
 4. start fresh Python subprocesses to import every registered native module;
 5. fail if installation or any registered-module import fails.
