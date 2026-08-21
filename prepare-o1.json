@@ -1,0 +1,190 @@
+{
+  "command": [
+    "python",
+    "tools/mdstats-mlff-campaign.py",
+    "--config",
+    "$HOME/QE/lammps-proj/zeolite/05_mace_training/LTA/mpa0/FP32/campaign.toml",
+    "prepare"
+  ],
+  "execution": {
+    "child_filesystem_inputs": 166794560,
+    "child_filesystem_outputs": 181688,
+    "child_major_faults": 495766,
+    "child_maxrss_kib": 58831904,
+    "child_minor_faults": 14481415,
+    "child_system_cpu_seconds": 155.278701,
+    "child_user_cpu_seconds": 1229.06971,
+    "interrupted": false,
+    "log_path": "$HOME/QE/lammps-proj/zeolite/90_scripts/mdstats/prepare-o1.log",
+    "returncode": 1,
+    "sample_interval_seconds": 1.0,
+    "sampled_peak_processes": 1,
+    "sampled_peak_rss_kib": 58728180,
+    "sampled_peak_threads": 10,
+    "sampled_seen_processes": 1,
+    "timed_out": false,
+    "timeout_seconds": 1800.0,
+    "wall_hhmmss": "00:21:15",
+    "wall_seconds": 1275.0003766159934
+  },
+  "measurement_notes": [
+    "The wrapped campaign command is unchanged; this file is benchmark evidence only.",
+    "Stage CPU/I/O counters are sampled from /proc for the observed process tree and are diagnostic, not scientific authority.",
+    "Very short-lived descendants between samples can be missed; whole-command RUSAGE_CHILDREN counters are retained separately.",
+    "Stage labels are inferred only from leading/bracketed canonical progress tokens; unrecognized intervals remain attached to the last observed stage."
+  ],
+  "schema": "mdstats.benchmark.prepare-o0.v1",
+  "source": {
+    "git_head": "e29ebbb9bf5b87b0bdf9abcd7178c24f232ba883"
+  },
+  "stage_segments": [
+    {
+      "peak_processes_sampled": 1,
+      "peak_rss_kib_sampled": 2307076,
+      "peak_threads_sampled": 2,
+      "read_bytes_sampled": 768806912,
+      "stage": "startup",
+      "system_cpu_seconds_sampled": 2.81,
+      "transition_line": "DATA6 foundation-model descriptor and prediction sweep",
+      "user_cpu_seconds_sampled": 48.22,
+      "wall_hhmmss": "00:00:52",
+      "wall_seconds": 52.02353698799561,
+      "write_bytes_sampled": 495616
+    },
+    {
+      "peak_processes_sampled": 1,
+      "peak_rss_kib_sampled": 3055316,
+      "peak_threads_sampled": 2,
+      "read_bytes_sampled": 139927552,
+      "stage": "DATA6",
+      "system_cpu_seconds_sampled": 0.7399999999999998,
+      "transition_line": "[DATA4 restore] restore; status=progress; progress=37,633/37,633 (100.0%); kind=raw-feature",
+      "user_cpu_seconds_sampled": 22.83,
+      "wall_hhmmss": "00:00:24",
+      "wall_seconds": 23.626965592993656,
+      "write_bytes_sampled": 102400
+    },
+    {
+      "peak_processes_sampled": 1,
+      "peak_rss_kib_sampled": 4229252,
+      "peak_threads_sampled": 2,
+      "read_bytes_sampled": 978030592,
+      "stage": "DATA4",
+      "system_cpu_seconds_sampled": 1.1600000000000001,
+      "transition_line": "[DATA6 restore] restore; status=progress; progress=36,408/36,408 (100.0%); kind=LTA selection frame",
+      "user_cpu_seconds_sampled": 29.210000000000008,
+      "wall_hhmmss": "00:00:30",
+      "wall_seconds": 30.471732862002682,
+      "write_bytes_sampled": 184320
+    },
+    {
+      "peak_processes_sampled": 1,
+      "peak_rss_kib_sampled": 5122808,
+      "peak_threads_sampled": 2,
+      "read_bytes_sampled": 645533696,
+      "stage": "DATA6",
+      "system_cpu_seconds_sampled": 0.9199999999999999,
+      "transition_line": "[TARGET-DATA2C-MVIDX1 restore] restore; status=start; validation=receipt-hit; cache_policy=discard; families=0/165; bytes=0/76134275040",
+      "user_cpu_seconds_sampled": 72.39,
+      "wall_hhmmss": "00:01:20",
+      "wall_seconds": 80.23411753200344,
+      "write_bytes_sampled": 22945792
+    },
+    {
+      "peak_processes_sampled": 1,
+      "peak_rss_kib_sampled": 58728180,
+      "peak_threads_sampled": 10,
+      "read_bytes_sampled": 81460748288,
+      "stage": "TARGET-DATA2C-MVIDX1",
+      "system_cpu_seconds_sampled": 145.04,
+      "transition_line": "TARGET-DATA2C deterministic nested target-size ladder (historical v4 authority)",
+      "user_cpu_seconds_sampled": 1036.5,
+      "wall_hhmmss": "00:17:48",
+      "wall_seconds": 1067.7950047269987,
+      "write_bytes_sampled": 69267456
+    },
+    {
+      "peak_processes_sampled": 1,
+      "peak_rss_kib_sampled": 48087620,
+      "peak_threads_sampled": 6,
+      "read_bytes_sampled": 107823104,
+      "stage": "TARGET-DATA2C",
+      "system_cpu_seconds_sampled": 0.3400000000000034,
+      "transition_line": "TARGET-DATA2C-MVQUAL1 independent same-N legacy-vs-MV qualification",
+      "user_cpu_seconds_sampled": 16.929999999999836,
+      "wall_hhmmss": "00:00:06",
+      "wall_seconds": 6.131791795996833,
+      "write_bytes_sampled": 28672
+    },
+    {
+      "peak_processes_sampled": 1,
+      "peak_rss_kib_sampled": 48056436,
+      "peak_threads_sampled": 2,
+      "read_bytes_sampled": 8192,
+      "stage": "TARGET-DATA2C-MVQUAL1",
+      "system_cpu_seconds_sampled": 0.0,
+      "transition_line": "[TARGET-DATA2C-MVQUAL-PAR1] scoring_workers=4; native_tree_threads/job=1; reduction=canonical domain/size order",
+      "user_cpu_seconds_sampled": 0.0,
+      "wall_hhmmss": "00:00:00",
+      "wall_seconds": 0.00031458800367545336,
+      "write_bytes_sampled": 0
+    },
+    {
+      "peak_processes_sampled": 1,
+      "peak_rss_kib_sampled": 48087784,
+      "peak_threads_sampled": 2,
+      "read_bytes_sampled": -84100878336,
+      "stage": "TARGET-DATA2C-MVQUAL-PAR1",
+      "system_cpu_seconds_sampled": 3.890000000000015,
+      "transition_line": null,
+      "user_cpu_seconds_sampled": 2.980000000000018,
+      "wall_hhmmss": "00:00:15",
+      "wall_seconds": 14.716912529998808,
+      "write_bytes_sampled": -93024256
+    }
+  ],
+  "stage_transitions": [
+    {
+      "at_seconds": 52.02353698799561,
+      "from": "startup",
+      "line": "DATA6 foundation-model descriptor and prediction sweep",
+      "to": "DATA6"
+    },
+    {
+      "at_seconds": 75.65050258098927,
+      "from": "DATA6",
+      "line": "[DATA4 restore] restore; status=progress; progress=37,633/37,633 (100.0%); kind=raw-feature",
+      "to": "DATA4"
+    },
+    {
+      "at_seconds": 106.12223544299195,
+      "from": "DATA4",
+      "line": "[DATA6 restore] restore; status=progress; progress=36,408/36,408 (100.0%); kind=LTA selection frame",
+      "to": "DATA6"
+    },
+    {
+      "at_seconds": 186.3563529749954,
+      "from": "DATA6",
+      "line": "[TARGET-DATA2C-MVIDX1 restore] restore; status=start; validation=receipt-hit; cache_policy=discard; families=0/165; bytes=0/76134275040",
+      "to": "TARGET-DATA2C-MVIDX1"
+    },
+    {
+      "at_seconds": 1254.1513577019941,
+      "from": "TARGET-DATA2C-MVIDX1",
+      "line": "TARGET-DATA2C deterministic nested target-size ladder (historical v4 authority)",
+      "to": "TARGET-DATA2C"
+    },
+    {
+      "at_seconds": 1260.283149497991,
+      "from": "TARGET-DATA2C",
+      "line": "TARGET-DATA2C-MVQUAL1 independent same-N legacy-vs-MV qualification",
+      "to": "TARGET-DATA2C-MVQUAL1"
+    },
+    {
+      "at_seconds": 1260.2834640859946,
+      "from": "TARGET-DATA2C-MVQUAL1",
+      "line": "[TARGET-DATA2C-MVQUAL-PAR1] scoring_workers=4; native_tree_threads/job=1; reduction=canonical domain/size order",
+      "to": "TARGET-DATA2C-MVQUAL-PAR1"
+    }
+  ]
+}
