@@ -6,8 +6,11 @@ single-owner REPAIR2 orchestration seam before exposing the same module surface.
 """
 from __future__ import annotations
 
+import mdstats as _mdstats
+
 from . import _campaign_cli_core as _core
 from . import mvidx1_forward_receipt_runtime as _mvidx1_forward_receipt
+from . import mvqual_p2_runtime as _mvqual_p2
 from . import mvsel2_hardening_runtime as _hardening
 from . import mvsel2_v5_runtime as _v5_runtime
 
@@ -22,6 +25,13 @@ _mvidx1_forward_receipt.install_forward_receipt_runtime(_hardening)
 # scientific repair loop lives exclusively in target_multi_view_repair_v2.
 _hardening.install_campaign_hardening(_core)
 _v5_runtime.install_campaign_v5_selection(_core)
+
+# PERF1/P1 was scientifically exact but failed its product wall-time acceptance:
+# its two-selector direct-score prepass lost the four-way per-rung overlap.  P2
+# instead targets the measured dominant sparse MVIDX rescans.  The canonical
+# MVQUAL builder remains the sole scientific authority; this seam is execution
+# only and direct imports of that owner remain unchanged.
+_mvqual_p2.install_mvqual_p2_runtime(_mdstats)
 
 # Preserve the historical campaign module surface, including internal helper
 # names used by focused regression tests. Function globals continue to resolve

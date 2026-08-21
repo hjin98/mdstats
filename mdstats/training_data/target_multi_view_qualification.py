@@ -15,14 +15,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import math
+import time
 from typing import Any, Mapping, Sequence
 
 import numpy as np
 
 from ._common import TrainingDataInputError, TrainingDataSerializationError, digest, validate_digest
-from ._sparse_vector_kernels import csr_gather_rows
+from ._sparse_vector_kernels import csr_row_lengths, iter_csr_edge_batches
 from .target_coverage import score_target_subset_coverage
-from .target_coverage_sparse_index import indexed_family_covered_mask, indexed_obligation_selected_counts
+from .target_coverage_sparse_index import indexed_obligation_selected_counts
 from .resources import StageResourceScope, available_cpu_threads, stage_resource_scope
 from .work_queue import DeterministicWorkQueue
 
@@ -42,6 +43,8 @@ _OUTCOME_CAPACITY_LIMITED = "capacity_limited_within_16384"
 _OUTCOME_PROVABLY_CAPACITY_INFEASIBLE = "provably_capacity_infeasible"
 _OUTCOME_INCOMPLETE = "incomplete_ceiling_evidence"
 _LEARNING_DEFERRED = "deferred_final_gpu_qualification"
+_MVQUAL_STRICT_EDGE_LIMIT = 1_048_576
+_MVQUAL_PERSISTENT_RESERVATION_ID = "mvqual-persistent-results"
 
 
 @dataclass(frozen=True, slots=True)
@@ -621,41 +624,107 @@ def _qualification_provenance_codes(reference_domain: Any, role_domain: Any) -> 
     return uid_to_index, run_codes, condition_codes
 
 
-def _selector_telemetry_indices(
+@dataclass(frozen=True, slots=True)
+class _MvqualSparseTelemetryResult:
+    """Execution-only bounded sparse telemetry and exact family cross-check state."""
+
+    telemetry: TargetMultiViewSelectorTelemetry
+    covered_mass_by_family: tuple[tuple[str, float], ...]
+    streamed_edge_count: int
+    maximum_chunk_edges: int
+    maximum_selected_row_edges: int
+
+
+def _selector_telemetry_indices_bounded(
     reference_domain: Any,
     sparse_domain: Any,
     selected: np.ndarray,
     run_codes: np.ndarray,
     condition_codes: np.ndarray,
-) -> TargetMultiViewSelectorTelemetry:
-    """Vectorized exact MVIDX telemetry for one selected candidate set."""
+    *,
+    max_edges: int,
+) -> _MvqualSparseTelemetryResult:
+    """Bounded exact MVIDX telemetry for one selected candidate set.
+
+    Integer witness multiplicity is accumulated through strict edge chunks.
+    Scientific floating-point reductions remain one canonical full-witness
+    reduction per family, so chunk size cannot change reduction association.
+    """
 
     selected = np.asarray(selected, dtype=np.int64)
+    if selected.ndim != 1 or selected.size < 1:
+        raise TrainingDataInputError("TARGET-DATA2C-MVQUAL1 selected candidates must be nonempty and one-dimensional.")
+    if selected.size > np.iinfo(np.int32).max:
+        raise TrainingDataInputError("TARGET-DATA2C-MVQUAL1 selected cardinality exceeds int32 multiplicity capacity.")
+    edge_limit = int(max_edges)
+    if edge_limit < 1:
+        raise TrainingDataInputError("TARGET-DATA2C-MVQUAL1 sparse edge limit must be positive.")
+
     total_uncovered_count = 0
     total_uncovered_mass = np.float64(0.0)
     total_unique_mass = np.float64(0.0)
     total_reference_mass = np.float64(0.0)
     unique_owner = np.zeros(len(reference_domain.frame_uids), dtype=np.bool_)
+    covered_mass_by_family: list[tuple[str, float]] = []
+    streamed_edge_count = 0
+    maximum_chunk_edges = 0
+    maximum_selected_row_edges = 0
 
     for sparse_family in sparse_domain.families:
         family = reference_domain.family(sparse_family.family_id)
         weights = np.asarray(family.weights, dtype=np.float64)
-        witnesses, lengths = csr_gather_rows(
-            sparse_family.candidate_offsets, sparse_family.candidate_witnesses, selected
-        )
-        witness_indices = np.asarray(witnesses, dtype=np.int64)
-        multiplicity = np.bincount(
-            witness_indices, minlength=sparse_family.witness_count
-        ).astype(np.int32, copy=False)
+        witness_count = int(sparse_family.witness_count)
+        if witness_count < 0 or weights.ndim != 1 or weights.size != witness_count:
+            raise TrainingDataInputError("TARGET-DATA2C-MVQUAL1 sparse/reference witness cardinality mismatch.")
+        multiplicity = np.zeros(witness_count, dtype=np.int32)
+        row_lengths = csr_row_lengths(sparse_family.candidate_offsets, selected)
+        if row_lengths.size:
+            maximum_selected_row_edges = max(
+                maximum_selected_row_edges, int(np.max(row_lengths))
+            )
+
+        for witness_indices, _owner_positions in iter_csr_edge_batches(
+            sparse_family.candidate_offsets,
+            sparse_family.candidate_witnesses,
+            selected,
+            max_edges=edge_limit,
+        ):
+            chunk_edges = int(witness_indices.size)
+            streamed_edge_count += chunk_edges
+            maximum_chunk_edges = max(maximum_chunk_edges, chunk_edges)
+            witness_indices = np.asarray(witness_indices)
+            if witness_indices.size and int(np.max(witness_indices)) >= witness_count:
+                raise TrainingDataInputError("TARGET-DATA2C-MVQUAL1 MVIDX witness is outside the reference family.")
+            np.add.at(multiplicity, witness_indices, 1)
+
         covered = multiplicity > 0
+        unique_witness = multiplicity == 1
         total_uncovered_count += int(np.count_nonzero(~covered))
         total_uncovered_mass += np.sum(weights[~covered], dtype=np.float64)
         total_reference_mass += np.sum(weights, dtype=np.float64)
-        unique_witness = multiplicity == 1
         total_unique_mass += np.sum(weights[unique_witness], dtype=np.float64)
-        if witness_indices.size and np.any(unique_witness):
-            edge_owners = np.repeat(selected, lengths)
-            unique_owner[edge_owners[unique_witness[witness_indices]]] = True
+        covered_mass_by_family.append(
+            (
+                str(sparse_family.family_id),
+                float(np.sum(weights[covered], dtype=np.float64)),
+            )
+        )
+
+        if np.any(unique_witness):
+            for witness_indices, owner_positions in iter_csr_edge_batches(
+                sparse_family.candidate_offsets,
+                sparse_family.candidate_witnesses,
+                selected,
+                max_edges=edge_limit,
+            ):
+                chunk_edges = int(witness_indices.size)
+                streamed_edge_count += chunk_edges
+                maximum_chunk_edges = max(maximum_chunk_edges, chunk_edges)
+                unique_edges = unique_witness[np.asarray(witness_indices)]
+                if np.any(unique_edges):
+                    unique_owner[
+                        selected[np.asarray(owner_positions, dtype=np.int64)[unique_edges]]
+                    ] = True
 
     zero_unique = 1.0 - float(np.count_nonzero(unique_owner[selected])) / float(len(selected))
     unique_fraction = 0.0 if total_reference_mass <= 0.0 else float(total_unique_mass / total_reference_mass)
@@ -668,7 +737,7 @@ def _selector_telemetry_indices(
     selected_condition_codes = condition_codes[selected]
     if np.any(selected_run_codes < 0) or np.any(selected_condition_codes < 0):
         raise TrainingDataInputError("TARGET-DATA2C-MVQUAL1 selected frame lacks DATA2A provenance mapping.")
-    return TargetMultiViewSelectorTelemetry(
+    telemetry = TargetMultiViewSelectorTelemetry(
         uncovered_witness_count=total_uncovered_count,
         uncovered_reference_mass=float(total_uncovered_mass),
         unique_reference_mass_fraction=unique_fraction,
@@ -678,6 +747,34 @@ def _selector_telemetry_indices(
         run_count=int(np.unique(selected_run_codes).size),
         condition_count=int(np.unique(selected_condition_codes).size),
     )
+    return _MvqualSparseTelemetryResult(
+        telemetry=telemetry,
+        covered_mass_by_family=tuple(covered_mass_by_family),
+        streamed_edge_count=int(streamed_edge_count),
+        maximum_chunk_edges=int(maximum_chunk_edges),
+        maximum_selected_row_edges=int(maximum_selected_row_edges),
+    )
+
+
+def _selector_telemetry_indices(
+    reference_domain: Any,
+    sparse_domain: Any,
+    selected: np.ndarray,
+    run_codes: np.ndarray,
+    condition_codes: np.ndarray,
+    *,
+    max_edges: int = _MVQUAL_STRICT_EDGE_LIMIT,
+) -> TargetMultiViewSelectorTelemetry:
+    """Bounded exact MVIDX telemetry compatibility wrapper."""
+
+    return _selector_telemetry_indices_bounded(
+        reference_domain,
+        sparse_domain,
+        selected,
+        run_codes,
+        condition_codes,
+        max_edges=max_edges,
+    ).telemetry
 
 
 def _selector_telemetry(reference_domain: Any, sparse_domain: Any, role_domain: Any, selected_uids: Sequence[str]) -> TargetMultiViewSelectorTelemetry:
@@ -772,6 +869,174 @@ def _n95_nonregression(legacy_n95: int | None, mv_n95: int | None) -> bool:
 
 
 @dataclass(frozen=True, slots=True)
+class _MvqualMemoryEstimate:
+    """Execution-only peak-live memory model for one MVQUAL scoring task."""
+
+    persistent_bytes: int
+    direct_scratch_bytes: int
+    sparse_scratch_bytes: int
+    hard_scratch_bytes: int
+
+    @property
+    def peak_bytes(self) -> int:
+        return int(
+            self.persistent_bytes
+            + max(
+                self.direct_scratch_bytes,
+                self.sparse_scratch_bytes,
+                self.hard_scratch_bytes,
+            )
+        )
+
+    def to_dict(self) -> dict[str, int]:
+        return {
+            "persistent_bytes": int(self.persistent_bytes),
+            "direct_scratch_bytes": int(self.direct_scratch_bytes),
+            "sparse_scratch_bytes": int(self.sparse_scratch_bytes),
+            "hard_scratch_bytes": int(self.hard_scratch_bytes),
+            "peak_bytes": int(self.peak_bytes),
+        }
+
+
+def _estimate_mvqual_score_memory(
+    reference_domain: Any,
+    sparse_domain: Any,
+    selected_count: int,
+    *,
+    sparse_max_edges: int = _MVQUAL_STRICT_EDGE_LIMIT,
+) -> _MvqualMemoryEstimate:
+    """Conservative phase-aware temporary-memory estimate for one score job."""
+
+    selected_count = max(1, int(selected_count))
+    edge_limit = max(1, int(sparse_max_edges))
+
+    # The direct TARGET-DATA2B scorer traverses families sequentially.  Model
+    # the largest family rather than summing mutually exclusive family scratch.
+    direct_scratch = 1
+    for family in reference_domain.families:
+        values = np.asarray(family.values)
+        if values.ndim == 1:
+            n, width = int(values.shape[0]), 1
+        elif values.ndim == 2:
+            n, width = int(values.shape[0]), max(1, int(values.shape[1]))
+        else:
+            n, width = len(family.values), max(1, len(family.feature_names))
+        # scaled values, selected/raw selected copies, cKDTree storage,
+        # representative/covered/distance arrays and fidelity scratch.
+        family_scratch = n * (64 * width + 160)
+        direct_scratch = max(direct_scratch, family_scratch)
+
+    # The bounded sparse phase holds one family's witness state and one strict
+    # chunk.  The 48-byte/edge term conservatively covers stream position and
+    # owner buffers, gathered uint32 indices, unique-edge mask and second-pass
+    # owner-selection temporaries.  Read-only MVIDX arrays are shared mappings.
+    sparse_scratch = 1
+    for family in sparse_domain.families:
+        witness_count = max(0, int(family.witness_count))
+        family_scratch = (
+            witness_count * 14
+            + edge_limit * 48
+            + selected_count * 16
+            + max(1, int(getattr(sparse_domain, "candidate_count", selected_count)))
+        )
+        sparse_scratch = max(sparse_scratch, family_scratch)
+
+    obligation_offsets = np.asarray(
+        getattr(sparse_domain, "candidate_obligation_offsets", np.zeros(1, dtype=np.uint64))
+    )
+    if obligation_offsets.size > 1:
+        max_obligations_per_candidate = int(
+            np.max(np.diff(obligation_offsets.astype(np.int64, copy=False)))
+        )
+    else:
+        max_obligations_per_candidate = 0
+    obligation_edge_bound = selected_count * max(0, max_obligations_per_candidate)
+    hard_scratch = (
+        obligation_edge_bound * 32
+        + max(1, len(getattr(sparse_domain, "obligations", ()))) * 16
+        + selected_count * 16
+    )
+
+    # Per-task state that can span phases: selected indices, compact telemetry,
+    # report/result objects and Python container overhead.  The larger retained
+    # result-set lifetime is reserved once at the coordinator level below.
+    persistent = (
+        selected_count * 32
+        + max(1, len(reference_domain.families)) * 1024
+        + max(1, len(getattr(reference_domain, "strata", ()))) * 256
+        + 64 * 1024
+    )
+    return _MvqualMemoryEstimate(
+        persistent_bytes=max(1, int(persistent)),
+        direct_scratch_bytes=max(1, int(direct_scratch)),
+        sparse_scratch_bytes=max(1, int(sparse_scratch)),
+        hard_scratch_bytes=max(1, int(hard_scratch)),
+    )
+
+
+def _estimate_mvqual_score_memory_bytes(
+    reference_domain: Any,
+    sparse_domain: Any,
+    selected_count: int,
+    *,
+    sparse_max_edges: int = _MVQUAL_STRICT_EDGE_LIMIT,
+) -> int:
+    """Compatibility scalar for PARCORE1 task admission."""
+
+    return _estimate_mvqual_score_memory(
+        reference_domain,
+        sparse_domain,
+        selected_count,
+        sparse_max_edges=sparse_max_edges,
+    ).peak_bytes
+
+
+def _estimate_mvqual_retained_result_bytes(reference_domain: Any, selected_count: int) -> int:
+    """Conservative bytes retained after one score task is drained."""
+
+    return int(
+        16 * max(1, int(selected_count))
+        + 1024 * max(1, len(reference_domain.families))
+        + 512 * max(1, len(getattr(reference_domain, "strata", ())))
+        + 16 * 1024
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _MvqualJobExecutionTelemetry:
+    """Execution-only per-job meter; never serialized into scientific authority."""
+
+    label_domain_id: str
+    selector: str
+    target_size: int
+    sparse_max_edges: int
+    streamed_edge_count: int
+    maximum_chunk_edges: int
+    maximum_selected_row_edges: int
+    direct_seconds: float
+    sparse_seconds: float
+    crosscheck_seconds: float
+    hard_seconds: float
+    estimated_peak_bytes: int
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "label_domain_id": self.label_domain_id,
+            "selector": self.selector,
+            "target_size": int(self.target_size),
+            "sparse_max_edges": int(self.sparse_max_edges),
+            "streamed_edge_count": int(self.streamed_edge_count),
+            "maximum_chunk_edges": int(self.maximum_chunk_edges),
+            "maximum_selected_row_edges": int(self.maximum_selected_row_edges),
+            "direct_seconds": float(self.direct_seconds),
+            "sparse_seconds": float(self.sparse_seconds),
+            "crosscheck_seconds": float(self.crosscheck_seconds),
+            "hard_seconds": float(self.hard_seconds),
+            "estimated_peak_bytes": int(self.estimated_peak_bytes),
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class _MvqualScoreResult:
     """Execution-only independent score result for one domain/selector/size job."""
 
@@ -782,6 +1047,13 @@ class _MvqualScoreResult:
     selected_indices: np.ndarray = field(repr=False, compare=False)
     telemetry: TargetMultiViewSelectorTelemetry = field(repr=False, compare=False)
     hard_state: tuple[bool, tuple[str, ...]] = field(repr=False, compare=False)
+    streamed_edge_count: int = field(default=0, repr=False, compare=False)
+    maximum_chunk_edges: int = field(default=0, repr=False, compare=False)
+    maximum_selected_row_edges: int = field(default=0, repr=False, compare=False)
+    direct_seconds: float = field(default=0.0, repr=False, compare=False)
+    sparse_seconds: float = field(default=0.0, repr=False, compare=False)
+    crosscheck_seconds: float = field(default=0.0, repr=False, compare=False)
+    hard_seconds: float = field(default=0.0, repr=False, compare=False)
 
 
 def _mvqual_parallel_scope(
@@ -829,30 +1101,6 @@ def _mvqual_parallel_scope(
     )
 
 
-def _estimate_mvqual_score_memory_bytes(
-    reference_domain: Any,
-    sparse_domain: Any,
-    selected_count: int,
-) -> int:
-    """Conservative execution-only temporary-memory estimate for one score job."""
-
-    total = 0
-    for family in reference_domain.families:
-        n = len(family.values)
-        width = max(1, len(family.feature_names))
-        # raw/scaled FP64 values + distances/radii/weights/masks and tree scratch.
-        total += n * (16 * width + 40)
-    # Sparse telemetry: multiplicity plus gathered candidate->witness edges.
-    for family in sparse_domain.families:
-        offsets = np.asarray(family.candidate_offsets, dtype=np.uint64)
-        if offsets.size > 1 and selected_count > 0:
-            mean_edges = int(offsets[-1]) // max(1, int(family.candidate_count))
-            total += int(selected_count) * mean_edges * 16
-        total += int(family.witness_count) * 8
-    total += int(selected_count) * 128
-    return max(1, int(total))
-
-
 def _mvqual_score_job(
     target_coverage_reference: Any,
     reference_domain: Any,
@@ -866,46 +1114,68 @@ def _mvqual_score_job(
     run_codes: np.ndarray,
     condition_codes: np.ndarray,
     query_workers: int,
+    sparse_max_edges: int = _MVQUAL_STRICT_EDGE_LIMIT,
 ) -> _MvqualScoreResult:
     """Compute one immutable MVQUAL same-N scoring job."""
 
+    direct_started = time.perf_counter()
     report = score_target_subset_coverage(
         target_coverage_reference,
         label,
         selected_uids,
         query_workers=int(query_workers),
     )
+    direct_seconds = time.perf_counter() - direct_started
     try:
         selected = np.asarray([uid_to_index[uid] for uid in selected_uids], dtype=np.int64)
     except KeyError as exc:
         raise TrainingDataInputError(
             "TARGET-DATA2C-MVQUAL1 selected frame is outside the reference domain."
         ) from exc
-    telemetry = _selector_telemetry_indices(
-        reference_domain, sparse_domain, selected, run_codes, condition_codes
+
+    sparse_started = time.perf_counter()
+    sparse_result = _selector_telemetry_indices_bounded(
+        reference_domain,
+        sparse_domain,
+        selected,
+        run_codes,
+        condition_codes,
+        max_edges=sparse_max_edges,
     )
+    sparse_seconds = time.perf_counter() - sparse_started
+
+    crosscheck_started = time.perf_counter()
     # MVIDX remains secondary telemetry only.  Every independent coverage mass
     # must agree with the TARGET-DATA2B scorer exactly within the historical tol.
     report_by_family = {item.family_id: item for item in report.family_reports}
+    indexed_mass_by_family = dict(sparse_result.covered_mass_by_family)
     for sparse_family in sparse_domain.families:
-        family = reference_domain.family(sparse_family.family_id)
-        mask = indexed_family_covered_mask(sparse_family, selected)
-        indexed_mass = float(
-            np.sum(np.asarray(family.weights, dtype=np.float64)[mask], dtype=np.float64)
-        )
+        indexed_mass = indexed_mass_by_family[sparse_family.family_id]
         direct_mass = report_by_family[sparse_family.family_id].covered_reference_mass
         if not math.isclose(indexed_mass, direct_mass, rel_tol=0.0, abs_tol=5.0e-12):
             raise TrainingDataInputError(
                 "TARGET-DATA2C-MVQUAL1 independent scorer disagrees with MVIDX telemetry."
             )
+    crosscheck_seconds = time.perf_counter() - crosscheck_started
+
+    hard_started = time.perf_counter()
+    hard_state = _hard_obligation_state(sparse_domain, selected)
+    hard_seconds = time.perf_counter() - hard_started
     return _MvqualScoreResult(
         label_domain_id=str(label),
         selector=str(selector),
         target_size=int(target_size),
         report=report,
         selected_indices=selected,
-        telemetry=telemetry,
-        hard_state=_hard_obligation_state(sparse_domain, selected),
+        telemetry=sparse_result.telemetry,
+        hard_state=hard_state,
+        streamed_edge_count=sparse_result.streamed_edge_count,
+        maximum_chunk_edges=sparse_result.maximum_chunk_edges,
+        maximum_selected_row_edges=sparse_result.maximum_selected_row_edges,
+        direct_seconds=direct_seconds,
+        sparse_seconds=sparse_seconds,
+        crosscheck_seconds=crosscheck_seconds,
+        hard_seconds=hard_seconds,
     )
 
 
@@ -920,17 +1190,19 @@ def build_target_multi_view_qualification_plan(
     policy: TargetMultiViewQualificationPolicy | None = None,
     coverage_query_workers: int = 1,
     scoring_workers: int = 1,
+    sparse_max_edges: int = _MVQUAL_STRICT_EDGE_LIMIT,
     resource_scope: StageResourceScope | None = None,
     execution_telemetry_callback: Any = None,
+    job_telemetry_callback: Any = None,
     progress_callback: Any = None,
 ) -> TargetMultiViewQualificationPlan:
     """Build independent same-N legacy-vs-MV qualification evidence.
 
-    ``scoring_workers`` is execution-only.  When greater than one, independent
-    domain/selector/size jobs share one PARCORE1 queue and every nested
-    TARGET-DATA2B cKDTree query is constrained to one native worker.  Results
-    are reassembled in the historical domain/size order before any scientific
-    comparison or progress emission occurs.
+    ``scoring_workers`` and ``sparse_max_edges`` are execution-only.  When
+    scoring is parallel, independent domain/selector/size jobs share one
+    PARCORE1 queue and every nested TARGET-DATA2B cKDTree query is constrained
+    to one native worker.  Results are reassembled in historical order before
+    any scientific comparison or progress emission occurs.
     """
 
     policy = policy or TargetMultiViewQualificationPolicy(
@@ -942,6 +1214,9 @@ def build_target_multi_view_qualification_plan(
     requested_scoring_workers = int(scoring_workers)
     if requested_scoring_workers < 1:
         raise TrainingDataInputError("TARGET-DATA2C-MVQUAL-PAR1 scoring workers must be positive.")
+    sparse_edge_limit = int(sparse_max_edges)
+    if sparse_edge_limit < 1:
+        raise TrainingDataInputError("TARGET-DATA2C-MVQUAL1 sparse edge limit must be positive.")
     dataset_ids = {
         target_coverage_reference.dataset_id,
         target_coverage_sparse_index.dataset_id,
@@ -1043,6 +1318,34 @@ def build_target_multi_view_qualification_plan(
             )
             job_position += 1
 
+    job_memory: dict[tuple[str, str, int], _MvqualMemoryEstimate] = {}
+    retained_result_bytes = 0
+    for _, _, _, label, selector, size, selected_uids, context in jobs:
+        key = (label, selector, int(size))
+        job_memory[key] = _estimate_mvqual_score_memory(
+            context["reference_domain"],
+            context["sparse_domain"],
+            len(selected_uids),
+            sparse_max_edges=sparse_edge_limit,
+        )
+        retained_result_bytes += _estimate_mvqual_retained_result_bytes(
+            context["reference_domain"], len(selected_uids)
+        )
+    # Context/provenance containers are also retained for the full build.  Do
+    # not count the immutable reference/MVIDX mappings themselves per worker.
+    coordinator_persistent_bytes = int(retained_result_bytes)
+    for context in domain_contexts:
+        candidate_count = len(context["reference_domain"].frame_uids)
+        coordinator_persistent_bytes += candidate_count * 112 + 64 * 1024
+
+    if resource_scope is not None and resource_scope.ram_budget_bytes is not None:
+        ram_budget = int(resource_scope.ram_budget_bytes)
+        largest_task = max(estimate.peak_bytes for estimate in job_memory.values())
+        if coordinator_persistent_bytes + largest_task > ram_budget:
+            raise TrainingDataInputError(
+                "TARGET-DATA2C-MVQUAL-PAR1 bounded job plus persistent result state exceeds the stage RAM budget."
+            )
+
     score_results: dict[tuple[str, str, int], _MvqualScoreResult] = {}
     effective_workers = max(1, min(requested_scoring_workers, len(jobs)))
     inner_query_workers = query_workers if effective_workers == 1 else 1
@@ -1061,52 +1364,96 @@ def build_target_multi_view_qualification_plan(
             run_codes=context["run_codes"],
             condition_codes=context["condition_codes"],
             query_workers=inner_query_workers,
+            sparse_max_edges=sparse_edge_limit,
         )
+
+    def consume_result(result: _MvqualScoreResult) -> None:
+        key = (result.label_domain_id, result.selector, result.target_size)
+        score_results[key] = result
+        if job_telemetry_callback is not None:
+            job_telemetry_callback(
+                _MvqualJobExecutionTelemetry(
+                    label_domain_id=result.label_domain_id,
+                    selector=result.selector,
+                    target_size=result.target_size,
+                    sparse_max_edges=sparse_edge_limit,
+                    streamed_edge_count=result.streamed_edge_count,
+                    maximum_chunk_edges=result.maximum_chunk_edges,
+                    maximum_selected_row_edges=result.maximum_selected_row_edges,
+                    direct_seconds=result.direct_seconds,
+                    sparse_seconds=result.sparse_seconds,
+                    crosscheck_seconds=result.crosscheck_seconds,
+                    hard_seconds=result.hard_seconds,
+                    estimated_peak_bytes=job_memory[key].peak_bytes,
+                )
+            )
 
     if effective_workers == 1:
         if resource_scope is None:
             for job in jobs:
-                result = evaluate_job(job)
-                score_results[(result.label_domain_id, result.selector, result.target_size)] = result
+                consume_result(evaluate_job(job))
         else:
             serial_scope = _mvqual_parallel_scope(resource_scope, 1)
             with stage_resource_scope(serial_scope):
                 for job in jobs:
-                    result = evaluate_job(job)
-                    score_results[(result.label_domain_id, result.selector, result.target_size)] = result
+                    consume_result(evaluate_job(job))
     else:
         scope = _mvqual_parallel_scope(resource_scope, effective_workers)
         with DeterministicWorkQueue(
             scope,
-            max_ready_tasks=max(len(jobs), 2 * effective_workers),
-            max_inflight_tasks=max(1, 2 * effective_workers),
-            max_completed_tasks=max(1, 2 * effective_workers),
+            max_ready_tasks=max(2, 2 * effective_workers),
+            # One future per real worker keeps PARCORE1 scratch accounting tied
+            # to possible concurrent live task memory rather than executor backlog.
+            max_inflight_tasks=effective_workers,
+            # MVQUAL drains immediately; one completion slot limits the brief
+            # post-task over-accounting of scratch that is already dead.
+            max_completed_tasks=1,
             heartbeat_interval_seconds=30.0,
             telemetry_callback=execution_telemetry_callback,
             thread_name_prefix="mdstats-mvqual-par1",
             manage_resource_scope=resource_scope is not None,
         ) as queue:
-            for position, domain_index, selector_index, label, selector, size, selected_uids, context in jobs:
-                queue.submit(
-                    task_id=f"mvqual-score-{domain_index:04d}-{selector}-{size:08d}",
-                    canonical_order=(domain_index, int(size), selector_index, position),
-                    function=evaluate_job,
-                    args=((position, domain_index, selector_index, label, selector, size, selected_uids, context),),
-                    task_kind="mvqual-score",
-                    estimated_memory_bytes=_estimate_mvqual_score_memory_bytes(
-                        context["reference_domain"], context["sparse_domain"], len(selected_uids)
-                    ),
-                    locality_key=f"{label}:mvqual",
+            if scope.ram_budget_bytes is not None and coordinator_persistent_bytes > 0:
+                queue.reserve_memory(
+                    _MVQUAL_PERSISTENT_RESERVATION_ID, coordinator_persistent_bytes
                 )
+            next_submit = 0
             expected = len(jobs)
             while queue.snapshot().finished_tasks < expected:
+                while next_submit < expected and queue.can_submit():
+                    (
+                        position,
+                        domain_index,
+                        selector_index,
+                        label,
+                        selector,
+                        size,
+                        selected_uids,
+                        context,
+                    ) = jobs[next_submit]
+                    memory = job_memory[(label, selector, int(size))]
+                    queue.submit(
+                        task_id=f"mvqual-score-{domain_index:04d}-{selector}-{size:08d}",
+                        canonical_order=(domain_index, int(size), selector_index, position),
+                        function=evaluate_job,
+                        args=((position, domain_index, selector_index, label, selector, size, selected_uids, context),),
+                        task_kind="mvqual-score",
+                        estimated_memory_bytes=memory.peak_bytes,
+                        locality_key=f"{label}:mvqual",
+                    )
+                    next_submit += 1
                 queue.wait_for_completion()
                 for completion in queue.drain_completed():
-                    result = completion.value
-                    score_results[(result.label_domain_id, result.selector, result.target_size)] = result
+                    consume_result(completion.value)
             for completion in queue.drain_completed():
-                result = completion.value
-                score_results[(result.label_domain_id, result.selector, result.target_size)] = result
+                consume_result(completion.value)
+            final_queue_snapshot = queue.snapshot()
+            if next_submit != expected or queue.has_outstanding_work:
+                raise RuntimeError("TARGET-DATA2C-MVQUAL-PAR1 bounded queue did not drain exactly.")
+            if execution_telemetry_callback is not None:
+                execution_telemetry_callback(final_queue_snapshot)
+            if scope.ram_budget_bytes is not None and coordinator_persistent_bytes > 0:
+                queue.release_memory(_MVQUAL_PERSISTENT_RESERVATION_ID)
 
     domains: list[TargetMultiViewQualificationDomainPlan] = []
     mv_independent_passes: dict[str, dict[int, bool]] = {}
@@ -1260,6 +1607,7 @@ def build_target_multi_view_qualification_plan(
         capacity_diagnosis=capacity_diagnosis,
         outcome=outcome,
     )
+
 
 def validate_target_multi_view_qualification_authority(
     plan: TargetMultiViewQualificationPlan,

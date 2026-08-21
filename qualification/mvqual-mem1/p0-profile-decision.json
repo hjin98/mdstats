@@ -1,0 +1,40 @@
+{
+  "schema": "mdstats.qualification.mvqual-mem1-p0.v1",
+  "workplan": "DOC-MVQUAL-MEM1-PERF1",
+  "source_m5_commit": "327b56f687a20baea42c15f70e37431958e941b6",
+  "source_m5_plan_digest": "338c336ab6021e0807b9c1d2b5945a29959eeccc3e8a46860e6a11931b893d11",
+  "m5": {
+    "memory_gate": "PASS",
+    "repeated_plan_digest_identical": true,
+    "scientific_validation_passed": true,
+    "full_16384_scored": true,
+    "strict_chunk_limit_edges": 1048576,
+    "maximum_observed_chunk_edges": 1048576,
+    "system_swap_in_pages": 0,
+    "system_swap_out_pages": 0,
+    "warm_lifetime_peak_rss_kib": 31908416,
+    "warm_stage_ram_budget_bytes": 48999871283,
+    "parcore1_peak_accounted_memory_bytes": 555321984,
+    "parcore1_memory_backpressure_events": 0,
+    "note": "The M5 /proc/self/status sampler returned null RSS fields because its generic colon parser rejected nonnumeric status rows. resource.getrusage ru_maxrss, system swap counters, MemAvailable, and PARCORE1 accounting still establish bounded product completion and meaningful headroom."
+  },
+  "p0": {
+    "decision": "OPEN_P1",
+    "stop_target_seconds": 300,
+    "warm_builder_wall_seconds": 418.32510886299997,
+    "warm_builder_wall_hhmmss": "00:06:58",
+    "warm_phases_lane_seconds": {
+      "direct_target_data2b": 270.7905310749993,
+      "sparse_mvidx": 726.8767030829999,
+      "crosscheck": 0.0009309320012107491,
+      "hard_obligations": 0.022253855999679217
+    },
+    "measured_phase_fraction": {
+      "direct_target_data2b": 0.2714,
+      "sparse_mvidx": 0.7286
+    },
+    "warm_major_faults": 0,
+    "warm_physical_read_bytes": 0,
+    "reason": "Warm MVQUAL exceeds the approximately five-minute stop target. Sparse rescanning is dominant, while independent direct TARGET-DATA2B scoring remains material at approximately 27 percent of measured lane time. P1 is therefore authorized before any P2 progressive sparse redesign."
+  }
+}

@@ -1,0 +1,69 @@
+{
+  "schema": "mdstats.qualification.mvqual-mem1-p3-closeout.v1",
+  "workplan": "DOC-MVQUAL-MEM1-PERF1",
+  "decision": "PASS_CLOSE_PERF1",
+  "accepted_source_commit": "9d97569bf3d7802d813d3562a2e34f4409be67ec",
+  "product_evidence": "qualification/mvqual-mem1/mvqual-mem1-p2.json",
+  "baseline_evidence": "qualification/mvqual-mem1/mvqual-mem1-m5.json",
+  "p1_rejection_evidence": "qualification/mvqual-mem1/p1-product-rejection.json",
+  "scientific": {
+    "candidate_count": 36408,
+    "family_count": 165,
+    "forward_edge_count": 9505021522,
+    "maximum_target_size": 16384,
+    "outcome": "scientific_coverage_qualified",
+    "plan_digest": "338c336ab6021e0807b9c1d2b5945a29959eeccc3e8a46860e6a11931b893d11",
+    "repeated_plan_digest_identical": true,
+    "scientific_validation_passed": true,
+    "scientific_authority_written": false,
+    "policy_schema_digest_changed": false
+  },
+  "memory_and_bounding": {
+    "strict_edge_limit": 1048576,
+    "maximum_observed_chunk_edges": 1048576,
+    "peak_rss_kib": [31985088, 31981944],
+    "peak_rss_within_stage_ram_budget": [true, true],
+    "process_swap_growth_kib": [0, 0],
+    "system_swap_in_pages": [0, 0],
+    "system_swap_out_pages": [0, 0],
+    "major_faults_during_builder": [0, 0],
+    "persistent_second_graph_created": false
+  },
+  "performance": {
+    "m5_warm_builder_wall_seconds": 418.32510886299997,
+    "m5_warm_builder_wall_hhmmss": "00:06:58",
+    "p2_builder_wall_seconds": [207.17176613300035, 209.312653727],
+    "p2_builder_wall_hhmmss": ["00:03:27", "00:03:29"],
+    "p2_total_wall_seconds": [227.0344000389996, 228.71827053500238],
+    "p2_total_wall_hhmmss": ["00:03:47", "00:03:49"],
+    "p2_progressive_sparse_wall_seconds": [112.39014740700077, 113.22992846399939],
+    "p2_progressive_sparse_wall_hhmmss": ["00:01:52", "00:01:53"],
+    "p2_streamed_edge_count": 6621378654,
+    "effective_workers": 4,
+    "family_task_count": 330,
+    "progressive_group_count": 2,
+    "fallback_group_count": 0,
+    "report_count": 15,
+    "builder_speedup_vs_m5_warm": 1.99856,
+    "builder_wall_reduction_fraction_vs_m5_warm": 0.49964,
+    "design_stop_target_seconds": 300,
+    "stop_target_met": true
+  },
+  "p1": {
+    "decision": "REJECTED",
+    "reason": "P1 preserved science but increased product wall time by serializing progressive direct TARGET-DATA2B work outside the four-worker rung queue. It is not part of the accepted runtime."
+  },
+  "p2": {
+    "decision": "ACCEPTED",
+    "reason": "Progressive exact sparse telemetry removes repeated nested-rung MVIDX rescans while preserving the bounded M2 implementation as oracle, canonical float64 reductions, strict chunking, exact final science, four-worker family parallelism, and bounded workstation memory."
+  },
+  "documentation": {
+    "architecture_or_specification_delta_required": false,
+    "reason": "The accepted change is execution-only: no public scientific policy, schema, persistence identity, authority ownership, or content-digest contract changed."
+  },
+  "test_receipt": {
+    "github_ci_status_available": false,
+    "repository_machine_readable_local_pytest_receipt": false,
+    "note": "No GitHub CI status or local pytest receipt is stored with this branch. This closeout does not fabricate one; product qualification independently validates the accepted full-scale scientific path."
+  }
+}
