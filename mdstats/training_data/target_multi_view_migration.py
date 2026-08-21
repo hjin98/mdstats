@@ -510,7 +510,7 @@ def build_target_multi_view_migration_plan(
         raise TrainingDataInputError("MVMIGRATE1 SIZE-HALVE2 references a different REPAIR1 authority.")
     if size_halve2_plan.target_multi_view_qualification_digest != target_multi_view_qualification.content_digest:
         raise TrainingDataInputError("MVMIGRATE1 SIZE-HALVE2 references a different MVQUAL1 authority.")
-    if size_fidelity2_execution_plan.size_halve2_plan_digest != size_halve2_plan.content_digest:
+    if size_fidelity2_execution_plan.size_halve2_digest != size_halve2_plan.content_digest:
         raise TrainingDataInputError("MVMIGRATE1 SIZE-FIDELITY2 references a different SIZE-HALVE2 authority.")
 
     qualified = tuple(int(v) for v in target_multi_view_qualification.mv_qualified_sizes)
