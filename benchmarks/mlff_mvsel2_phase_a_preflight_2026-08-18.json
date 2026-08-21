@@ -1,0 +1,104 @@
+{
+  "cold_preflight": {
+    "forward_index_restore_seconds": 44.17787908400351,
+    "reference_restore_seconds": 1.2876427519950084,
+    "state_validation_build_seconds": 18.53681105800206,
+    "total_seconds": 64.00233289400057
+  },
+  "input": {
+    "campaign": "LTA/mpa0/FP32",
+    "candidate_count": 36408,
+    "family_count": 165,
+    "forward_edge_count": 9505021522,
+    "mvidx1_content_digest": "2c9b855794e5e123c0170ebdbf5764b787e3aadfac330366e97bfc68111f79d1",
+    "projection_target_size": 16384,
+    "sample_ranks": 3
+  },
+  "limitations": {
+    "full_phase_a_executed": false,
+    "inverse_arrays_mapped": false,
+    "projection_is_sla": false
+  },
+  "projection": {
+    "baseline_full_order_seconds": 813755.757490855,
+    "baseline_initialization_seconds": 55.930843815,
+    "baseline_rank_seconds": 49.66429606,
+    "method": "conservative maximum sampled accepted-rank wall time multiplied by identical target cardinality",
+    "mvsel2_conservative_rank_seconds": 0.22945603800326353,
+    "mvsel2_full_order_seconds": 3823.4100595394702,
+    "phase_a_10x_preflight_pass": true,
+    "projected_speedup": 212.83507257102102
+  },
+  "ranks": [
+    {
+      "accepted_rank_seconds": 0.22945603800326353,
+      "bottleneck_contender_count": 1,
+      "bottleneck_family_id": "foundation_residual:global",
+      "candidate_evaluation_forward_edges": 646698,
+      "candidate_index": 21579,
+      "choose_seconds": 0.22698156100523192,
+      "correlation_contender_count": 1,
+      "eligible_count": 1,
+      "final_contender_count": 1,
+      "frame_uid": "975c3228dbbb60b7f5821567b9f4ec1cdf1767a0767ea4b07d2a235a7c8b08f4",
+      "mutation_forward_edges": 215473,
+      "mutation_seconds": 0.002474476998031605,
+      "rank": 0,
+      "representative_contender_count": 1,
+      "rss_kib": 719700,
+      "total_coverage_contender_count": 1
+    },
+    {
+      "accepted_rank_seconds": 0.22635882999747992,
+      "bottleneck_contender_count": 1,
+      "bottleneck_family_id": "profile:lta:a53115ffb68c0c94",
+      "candidate_evaluation_forward_edges": 682565,
+      "candidate_index": 1355,
+      "choose_seconds": 0.22538985799474176,
+      "correlation_contender_count": 1,
+      "eligible_count": 1,
+      "final_contender_count": 1,
+      "frame_uid": "09b156546e94ad75a85872ff05cb22e8389e405a6d5a375ae7680a042aca1fdc",
+      "mutation_forward_edges": 226984,
+      "mutation_seconds": 0.0009689720027381554,
+      "rank": 1,
+      "representative_contender_count": 1,
+      "rss_kib": 727264,
+      "total_coverage_contender_count": 1
+    },
+    {
+      "accepted_rank_seconds": 0.22631507000187412,
+      "bottleneck_contender_count": 1,
+      "bottleneck_family_id": "profile:lta:1f5604374bb9a4b0",
+      "candidate_evaluation_forward_edges": 663495,
+      "candidate_index": 4595,
+      "choose_seconds": 0.22549491799873067,
+      "correlation_contender_count": 1,
+      "eligible_count": 1,
+      "final_contender_count": 1,
+      "frame_uid": "207b26ab5b88dc3a179bc580c2615464d632573cba4abe771a9e1254820f1cf1",
+      "mutation_forward_edges": 221224,
+      "mutation_seconds": 0.0008201520031434484,
+      "rank": 2,
+      "representative_contender_count": 1,
+      "rss_kib": 734716,
+      "total_coverage_contender_count": 1
+    }
+  ],
+  "resources": {
+    "cpu_workers": 1,
+    "current_rss_kib": 734716,
+    "gpu_used": false,
+    "process_peak_rss_kib": 37819348
+  },
+  "schema": "mdstats.benchmark.mvsel2-phase-a-preflight.v1",
+  "source": {
+    "git_head": "f23426d426af21a54914f4e62181ce09e864330b",
+    "selector_version": "MVSEL2-FWD1/PHASEA1"
+  },
+  "workplan": {
+    "plan_revision": 4,
+    "workplan_id": "DOC-MVSEL2",
+    "workplan_sha256": "5fbfacc164908452a9c4e1e260c9d6a52b7a68c4881a497f42fad1803ecf968c"
+  }
+}

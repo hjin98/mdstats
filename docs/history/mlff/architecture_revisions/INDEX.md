@@ -85,3 +85,4 @@ Historical revision notes are non-normative. Current authority is `docs/arch_man
 | 101 | REPLAY-PERF1 / mdstats 0.20.234a0 | [MLFF architecture revision 101 - REPLAY-PERF1](ARCHITECTURE_NOTES_MLFF_REV101.md) | - |
 | 102 | CAMPAIGN-PERF-QUAL1 / mdstats 0.20.235a0 | [MLFF architecture revision 102 - CAMPAIGN-PERF-QUAL1](ARCHITECTURE_NOTES_MLFF_REV102.md) | - |
 | 103 | MVSTATE-REUSE1 / mdstats 0.20.236a0 | [MLFF architecture revision 103 - MVSTATE-REUSE1](ARCHITECTURE_NOTES_MLFF_REV103.md) | - |
+| 104 | DOC-MVSEL2 / mdstats 0.20.242a0 | [MLFF architecture revision 104 - MVSEL2 forward/lazy chain](ARCHITECTURE_NOTES_MLFF_REV104.md) | - |

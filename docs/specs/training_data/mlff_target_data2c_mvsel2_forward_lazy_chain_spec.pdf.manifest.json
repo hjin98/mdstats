@@ -1,0 +1,31 @@
+{
+  "pdf": {
+    "name": "mlff_target_data2c_mvsel2_forward_lazy_chain_spec.pdf",
+    "sha256": "5be6140df36a93ba67bddbfb706803954e9069cee81b6cccae3a82b4d46c5116"
+  },
+  "renderer": {
+    "config": {
+      "absolute_images": "reject",
+      "fontsize": "10.5pt",
+      "from": "markdown",
+      "lang": "en-US",
+      "margin": "0.75in",
+      "papersize": "us-letter",
+      "pdf_engine": "typst",
+      "remote_images": "reject",
+      "resource_path": "source-parent",
+      "resource_provenance": "pandoc-image-ast-local-files-v1"
+    },
+    "config_sha256": "a9a9944a65faa5149dea0d9ebeaee33df9adb32f8da5d6e94fde1d2a581ead51",
+    "driver": "render_markdown_pdfs.py",
+    "pandoc_version": "pandoc 3.10.2",
+    "policy_version": "pandoc-typst-v2",
+    "typst_version": "typst 0.15.1 (9dfd3a08)"
+  },
+  "resources": [],
+  "schema_version": 1,
+  "source": {
+    "name": "mlff_target_data2c_mvsel2_forward_lazy_chain_spec.md",
+    "sha256": "02998c91d1d73e2db633943a06d6634011eecb47b8721030e41c4c7261039908"
+  }
+}

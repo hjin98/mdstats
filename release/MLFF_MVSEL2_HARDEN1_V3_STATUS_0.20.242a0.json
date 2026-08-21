@@ -1,0 +1,58 @@
+{
+  "schema": "mdstats.release-status.mvsel2-harden1-v3.v1",
+  "release_candidate": "0.20.242a0",
+  "branch": "feat/mvsel2-forward-lazy",
+  "workplan_id": "DOC-MVSEL2-HARDEN1-V3",
+  "plan_revision": 1,
+  "workplan_sha256": "ac674abd68dcc43f0fe8f559aecbe913b6e9ae79194e5ff7327b2de531e2716b",
+  "protocol_version": "3.0.0",
+  "status": "PREPARED_FOR_QUALIFICATION_BOOTSTRAP",
+  "supersedes_acceptance_claims_in": "release/MLFF_MVSEL2_QUALIFICATION_0.20.242a0.json",
+  "supersession_scope": [
+    "final hardening acceptance",
+    "full non-slow suite status",
+    "corrected code-under-test binding",
+    "production REPAIR2 scale qualification"
+  ],
+  "historical_record_policy": "Prior qualification and performance records remain readable historical evidence for the candidate state on which they were collected; they are not rewritten or promoted to Protocol-v3 acceptance of the rescued candidate.",
+  "implementation": {
+    "H0_REVIEW_BASELINE": "PREPARED",
+    "H1_REPAIR2_SEM1": "PREPARED",
+    "H2_MVIDX_FWD_RUNTIME1": "PREPARED",
+    "H3_MVSTATE2_RESUME1": "PREPARED",
+    "H4_REPAIR2_SCALE1": "PREPARED_WITH_FULL_LADDER_HARNESS",
+    "H5_QUAL_HARDEN1": "PENDING_FROZEN_CANDIDATE_TARGET_QUALIFICATION",
+    "H6_CLOSEOUT_HARDEN1": "PREPARED"
+  },
+  "qualification": {
+    "focused_v2": "NOT_RUN",
+    "adjacent_v1": "NOT_RUN",
+    "full_non_slow": "NOT_RUN",
+    "production_selector": "NOT_RUN_FOR_RESCUE_CANDIDATE",
+    "production_mvstate2_repair2_full_ladder": "NOT_RUN",
+    "clean_wheel_install_import": "NOT_RUN",
+    "stage_resource_scope_integration": "NOT_RUN",
+    "gpu": "DEFERRED_NOT_RUN"
+  },
+  "prequalification_closeout": {
+    "repository_local_closeout": "COMPLETE",
+    "temporary_github_diagnostic_workflows": "REMOVED",
+    "protocol_v3_repository_handoff": "UPDATED",
+    "historical_patch_note_qualification_claims": "CORRECTED",
+    "runtime_spec_markdown": "STAGED",
+    "runtime_spec_pdf_provenance": "COMPLETE_VERIFIED_PANDOC_3.10.2_TYPST_0.15.1",
+    "patch_notes_pdf_provenance": "COMPLETE_VERIFIED_PANDOC_3.10.2_TYPST_0.15.1",
+    "candidate_content_identity": "PENDING_WORKSTATION_CLEAN_CHECKOUT"
+  },
+  "current_blocker": {
+    "class": "TARGET_ENVIRONMENT_IDENTITY_AND_QUALIFICATION",
+    "detail": "Deterministic repository-local closeout is complete, including permanent Markdown/PDF/provenance artifacts rendered under the established pandoc-typst-v2 policy and visual QA. The remaining work requires materializing the frozen candidate in the user's prescribed workstation environment, proving a clean checkout including untracked/shadowing-source review, computing and binding candidate_content_identity, instantiating the exact Protocol-v3 Qualification Handoff, and executing the target-runtime/production-data H5 checks without product-source mutation.",
+    "required_to_clear": [
+      "materialize the exact frozen candidate in a clean local checkout and compute candidate_content_identity",
+      "instantiate the exact candidate-bound Protocol-v3 Qualification Handoff",
+      "execute the candidate-bound H5 workstation qualification using the prescribed mace environment and production campaign inputs"
+    ]
+  },
+  "merge_ready": false,
+  "workplan_complete": false
+}

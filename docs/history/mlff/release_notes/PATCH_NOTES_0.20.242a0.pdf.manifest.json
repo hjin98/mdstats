@@ -1,0 +1,31 @@
+{
+  "pdf": {
+    "name": "PATCH_NOTES_0.20.242a0.pdf",
+    "sha256": "3c034309788f40e0ff03d1387ffa27b99a56273756a06ca1338da6b3b5c280af"
+  },
+  "renderer": {
+    "config": {
+      "absolute_images": "reject",
+      "fontsize": "10.5pt",
+      "from": "markdown",
+      "lang": "en-US",
+      "margin": "0.75in",
+      "papersize": "us-letter",
+      "pdf_engine": "typst",
+      "remote_images": "reject",
+      "resource_path": "source-parent",
+      "resource_provenance": "pandoc-image-ast-local-files-v1"
+    },
+    "config_sha256": "a9a9944a65faa5149dea0d9ebeaee33df9adb32f8da5d6e94fde1d2a581ead51",
+    "driver": "render_markdown_pdfs.py",
+    "pandoc_version": "pandoc 3.10.2",
+    "policy_version": "pandoc-typst-v2",
+    "typst_version": "typst 0.15.1 (9dfd3a08)"
+  },
+  "resources": [],
+  "schema_version": 1,
+  "source": {
+    "name": "PATCH_NOTES_0.20.242a0.md",
+    "sha256": "30826fd7f8e6583bd9600644f1f681851ae6f20fc5035288662119c085a8d71d"
+  }
+}

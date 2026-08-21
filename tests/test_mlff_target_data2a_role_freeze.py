@@ -6,7 +6,7 @@ import pytest
 
 import mdstats
 from mdstats.training_data import campaign_cli
-from test_mlff_data5_partition_roles import _build
+from tests.test_mlff_data5_partition_roles import _build
 
 
 def _frames_for_units(bundle: mdstats.Data5PartitionBundle, unit_ids: tuple[str, ...]) -> set[str]:

@@ -4144,3 +4144,9 @@ The single-source replay migration is complete. The executable invalidation plan
 - Add kinetic model-selection/fit/validation partitions and a zero-event rate-candidate edge universe.
 - Assign final candidate freezing to GR4 and add source-bundle/model-generation records.
 - Upgrade the Stage 11 DAG to typed dependency edges and split E8b product gates.
+## 0.20.242a0 - 2026-08-18
+
+- Add the exact MVSEL2 forward/lazy selector with staged Phase A and a certified outward-rounded Phase-B frontier while preserving the MVSEL1 scientific order.
+- Add compact authenticated MVSTATE2 checkpoints and exact forward-state REPAIR2; neither persists complete candidate gains nor uses inverse witness propagation.
+- Wire new campaigns to explicit v2 record keys while retaining readable MVSEL1/MVSTATE-REUSE1/REPAIR1 identities.
+- Qualify the 36,408-candidate, 9.505-billion-edge production graph at a conservative 69.06x projected selector improvement with zero sampled Phase-B fallback, plus compact checkpoint/recovery and forward-only repair on production prefixes; GPU qualification remains deferred.

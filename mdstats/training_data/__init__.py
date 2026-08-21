@@ -510,6 +510,13 @@ from .target_coverage_sparse_index import (
     indexed_obligation_selected_counts,
 )
 
+from .target_coverage_sparse_forward_view import (
+    TargetCoverageSparseForwardFamilyView,
+    TargetCoverageSparseForwardDomainView,
+    TargetCoverageSparseForwardIndexView,
+    target_coverage_sparse_forward_view,
+)
+
 from .target_multi_view_selection_state import (
     TARGET_MULTI_VIEW_SELECTION_STATE_FAMILY_SCHEMA,
     TARGET_MULTI_VIEW_SELECTION_STATE_CHECKPOINT_SCHEMA,
@@ -552,12 +559,65 @@ from .target_multi_view_selector import (
     validate_target_multi_view_selection_authority,
 )
 
+from .target_multi_view_selector_v2 import (
+    TARGET_MULTI_VIEW_SELECTOR_V2_VERSION,
+    TARGET_MULTI_VIEW_SELECTION_PLAN_V2_SCHEMA,
+    TargetMultiViewSelectorPolicyV2,
+    TargetMultiViewSelectionDomainPlanV2,
+    TargetMultiViewSelectionPlanV2,
+    TargetMultiViewCandidateScoreV2,
+    TargetMultiViewPhaseATelemetryV2,
+    TargetMultiViewPhaseAChoiceV2,
+    TargetMultiViewPhaseBTelemetryV2,
+    TargetMultiViewPhaseBChoiceV2,
+    TargetMultiViewLazyFrontierV2,
+    TargetMultiViewForwardFamilyStateV2,
+    TargetMultiViewForwardStateV2,
+    build_target_multi_view_forward_state_v2,
+    score_target_multi_view_candidate_v2,
+    score_target_multi_view_candidates_v2,
+    choose_target_multi_view_phase_a_candidate_v2,
+    build_target_multi_view_lazy_frontier_v2,
+    choose_target_multi_view_phase_b_full_forward_v2,
+    choose_target_multi_view_phase_b_candidate_v2,
+    select_target_multi_view_candidate_v2,
+    deselect_target_multi_view_candidate_v2,
+    release_target_multi_view_forward_pages_v2,
+    build_target_multi_view_selection_plan_v2,
+    validate_target_multi_view_selection_authority_v2,
+)
+
+from .target_multi_view_selection_state_v2 import (
+    MVSTATE2_SCHEMA,
+    MVSTATE2_POINTER_SCHEMA,
+    MVSTATE2_PERSISTENCE_VERSION,
+    TargetMultiViewSelectionStateV2StoreError,
+    TargetMultiViewSelectionIdentityV2,
+    TargetMultiViewSelectionCheckpointV2,
+    build_target_multi_view_selection_identity_v2,
+    checkpoint_target_multi_view_forward_state_v2,
+    restore_target_multi_view_forward_state_v2,
+    write_target_multi_view_selection_checkpoint_v2,
+    read_target_multi_view_selection_checkpoint_v2,
+)
+
+from .target_multi_view_repair_v2 import (
+    TARGET_MULTI_VIEW_REPAIR_V2_VERSION,
+    TARGET_MULTI_VIEW_REPAIR_PLAN_V2_SCHEMA,
+    TargetMultiViewRepairPolicyV2,
+    TargetMultiViewRepairDomainPlanV2,
+    TargetMultiViewRepairPlanV2,
+    build_target_multi_view_repair_plan_v2,
+    validate_target_multi_view_repair_authority_v2,
+)
+
 from .target_coverage_sparse_index_store import (
     TARGET_COVERAGE_SPARSE_INDEX_NATIVE_MANIFEST_SCHEMA,
     TARGET_COVERAGE_SPARSE_INDEX_NATIVE_POINTER_SCHEMA,
     TargetCoverageSparseIndexNativeStoreError,
     write_target_coverage_sparse_index_native_record,
     read_target_coverage_sparse_index_native_record,
+    read_target_coverage_sparse_index_forward_view_native_record,
 )
 
 from .target_ladder import (
