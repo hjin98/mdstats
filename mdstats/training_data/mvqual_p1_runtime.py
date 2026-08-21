@@ -297,14 +297,28 @@ def _install_builder_wrapper(mdstats_module: Any) -> None:
         # call so concurrent independent builder invocations cannot observe a
         # partially installed cache.
         with _INSTALL_LOCK:
-            cache, telemetry = _progressive_direct_report_cache(
-                target_reference,
-                legacy_ladder,
-                repair_plan,
-                coverage_query_workers=query_workers,
-                scoring_workers=scoring_workers,
-                resource_scope=resource_scope,
-            )
+            try:
+                cache, telemetry = _progressive_direct_report_cache(
+                    target_reference,
+                    legacy_ladder,
+                    repair_plan,
+                    coverage_query_workers=query_workers,
+                    scoring_workers=scoring_workers,
+                    resource_scope=resource_scope,
+                )
+            except AttributeError:
+                # The campaign path supplies a canonical TargetCoverageReference.
+                # Focused unit tests and third-party callers may intentionally use
+                # a partial duck-typed authority while replacing the downstream
+                # MVQUAL job evaluator.  P1 is an optional execution seam, so it
+                # must be transparent for those noncanonical objects rather than
+                # strengthening the public builder's input contract.  Never hide
+                # an AttributeError from a real persisted authority.
+                if isinstance(target_reference, _coverage.TargetCoverageReference):
+                    raise
+                _LAST_TELEMETRY = None
+                return original_builder(*args, **kwargs)
+
             _LAST_TELEMETRY = telemetry
             if progress_callback is not None:
                 progress_callback(
