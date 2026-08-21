@@ -20,9 +20,9 @@ from typing import Any, Mapping, Sequence
 import numpy as np
 
 from ._common import TrainingDataInputError, TrainingDataSerializationError, digest, validate_digest
-from ._sparse_vector_kernels import csr_gather_rows
+from ._sparse_vector_kernels import csr_row_lengths, iter_csr_edge_batches
 from .target_coverage import score_target_subset_coverage
-from .target_coverage_sparse_index import indexed_family_covered_mask, indexed_obligation_selected_counts
+from .target_coverage_sparse_index import indexed_obligation_selected_counts
 from .resources import StageResourceScope, available_cpu_threads, stage_resource_scope
 from .work_queue import DeterministicWorkQueue
 
@@ -42,6 +42,7 @@ _OUTCOME_CAPACITY_LIMITED = "capacity_limited_within_16384"
 _OUTCOME_PROVABLY_CAPACITY_INFEASIBLE = "provably_capacity_infeasible"
 _OUTCOME_INCOMPLETE = "incomplete_ceiling_evidence"
 _LEARNING_DEFERRED = "deferred_final_gpu_qualification"
+_MVQUAL_STRICT_EDGE_LIMIT = 1_048_576
 
 
 @dataclass(frozen=True, slots=True)
@@ -621,41 +622,107 @@ def _qualification_provenance_codes(reference_domain: Any, role_domain: Any) -> 
     return uid_to_index, run_codes, condition_codes
 
 
-def _selector_telemetry_indices(
+@dataclass(frozen=True, slots=True)
+class _MvqualSparseTelemetryResult:
+    """Execution-only bounded sparse telemetry and exact family cross-check state."""
+
+    telemetry: TargetMultiViewSelectorTelemetry
+    covered_mass_by_family: tuple[tuple[str, float], ...]
+    streamed_edge_count: int
+    maximum_chunk_edges: int
+    maximum_selected_row_edges: int
+
+
+def _selector_telemetry_indices_bounded(
     reference_domain: Any,
     sparse_domain: Any,
     selected: np.ndarray,
     run_codes: np.ndarray,
     condition_codes: np.ndarray,
-) -> TargetMultiViewSelectorTelemetry:
-    """Vectorized exact MVIDX telemetry for one selected candidate set."""
+    *,
+    max_edges: int,
+) -> _MvqualSparseTelemetryResult:
+    """Bounded exact MVIDX telemetry for one selected candidate set.
+
+    Integer witness multiplicity is accumulated through strict edge chunks.
+    Scientific floating-point reductions remain one canonical full-witness
+    reduction per family, so chunk size cannot change reduction association.
+    """
 
     selected = np.asarray(selected, dtype=np.int64)
+    if selected.ndim != 1 or selected.size < 1:
+        raise TrainingDataInputError("TARGET-DATA2C-MVQUAL1 selected candidates must be nonempty and one-dimensional.")
+    if selected.size > np.iinfo(np.int32).max:
+        raise TrainingDataInputError("TARGET-DATA2C-MVQUAL1 selected cardinality exceeds int32 multiplicity capacity.")
+    edge_limit = int(max_edges)
+    if edge_limit < 1:
+        raise TrainingDataInputError("TARGET-DATA2C-MVQUAL1 sparse edge limit must be positive.")
+
     total_uncovered_count = 0
     total_uncovered_mass = np.float64(0.0)
     total_unique_mass = np.float64(0.0)
     total_reference_mass = np.float64(0.0)
     unique_owner = np.zeros(len(reference_domain.frame_uids), dtype=np.bool_)
+    covered_mass_by_family: list[tuple[str, float]] = []
+    streamed_edge_count = 0
+    maximum_chunk_edges = 0
+    maximum_selected_row_edges = 0
 
     for sparse_family in sparse_domain.families:
         family = reference_domain.family(sparse_family.family_id)
         weights = np.asarray(family.weights, dtype=np.float64)
-        witnesses, lengths = csr_gather_rows(
-            sparse_family.candidate_offsets, sparse_family.candidate_witnesses, selected
-        )
-        witness_indices = np.asarray(witnesses, dtype=np.int64)
-        multiplicity = np.bincount(
-            witness_indices, minlength=sparse_family.witness_count
-        ).astype(np.int32, copy=False)
+        witness_count = int(sparse_family.witness_count)
+        if witness_count < 0 or weights.ndim != 1 or weights.size != witness_count:
+            raise TrainingDataInputError("TARGET-DATA2C-MVQUAL1 sparse/reference witness cardinality mismatch.")
+        multiplicity = np.zeros(witness_count, dtype=np.int32)
+        row_lengths = csr_row_lengths(sparse_family.candidate_offsets, selected)
+        if row_lengths.size:
+            maximum_selected_row_edges = max(
+                maximum_selected_row_edges, int(np.max(row_lengths))
+            )
+
+        for witness_indices, _owner_positions in iter_csr_edge_batches(
+            sparse_family.candidate_offsets,
+            sparse_family.candidate_witnesses,
+            selected,
+            max_edges=edge_limit,
+        ):
+            chunk_edges = int(witness_indices.size)
+            streamed_edge_count += chunk_edges
+            maximum_chunk_edges = max(maximum_chunk_edges, chunk_edges)
+            witness_indices = np.asarray(witness_indices)
+            if witness_indices.size and int(np.max(witness_indices)) >= witness_count:
+                raise TrainingDataInputError("TARGET-DATA2C-MVQUAL1 MVIDX witness is outside the reference family.")
+            np.add.at(multiplicity, witness_indices, 1)
+
         covered = multiplicity > 0
+        unique_witness = multiplicity == 1
         total_uncovered_count += int(np.count_nonzero(~covered))
         total_uncovered_mass += np.sum(weights[~covered], dtype=np.float64)
         total_reference_mass += np.sum(weights, dtype=np.float64)
-        unique_witness = multiplicity == 1
         total_unique_mass += np.sum(weights[unique_witness], dtype=np.float64)
-        if witness_indices.size and np.any(unique_witness):
-            edge_owners = np.repeat(selected, lengths)
-            unique_owner[edge_owners[unique_witness[witness_indices]]] = True
+        covered_mass_by_family.append(
+            (
+                str(sparse_family.family_id),
+                float(np.sum(weights[covered], dtype=np.float64)),
+            )
+        )
+
+        if np.any(unique_witness):
+            for witness_indices, owner_positions in iter_csr_edge_batches(
+                sparse_family.candidate_offsets,
+                sparse_family.candidate_witnesses,
+                selected,
+                max_edges=edge_limit,
+            ):
+                chunk_edges = int(witness_indices.size)
+                streamed_edge_count += chunk_edges
+                maximum_chunk_edges = max(maximum_chunk_edges, chunk_edges)
+                unique_edges = unique_witness[np.asarray(witness_indices)]
+                if np.any(unique_edges):
+                    unique_owner[
+                        selected[np.asarray(owner_positions, dtype=np.int64)[unique_edges]]
+                    ] = True
 
     zero_unique = 1.0 - float(np.count_nonzero(unique_owner[selected])) / float(len(selected))
     unique_fraction = 0.0 if total_reference_mass <= 0.0 else float(total_unique_mass / total_reference_mass)
@@ -668,7 +735,7 @@ def _selector_telemetry_indices(
     selected_condition_codes = condition_codes[selected]
     if np.any(selected_run_codes < 0) or np.any(selected_condition_codes < 0):
         raise TrainingDataInputError("TARGET-DATA2C-MVQUAL1 selected frame lacks DATA2A provenance mapping.")
-    return TargetMultiViewSelectorTelemetry(
+    telemetry = TargetMultiViewSelectorTelemetry(
         uncovered_witness_count=total_uncovered_count,
         uncovered_reference_mass=float(total_uncovered_mass),
         unique_reference_mass_fraction=unique_fraction,
@@ -678,6 +745,34 @@ def _selector_telemetry_indices(
         run_count=int(np.unique(selected_run_codes).size),
         condition_count=int(np.unique(selected_condition_codes).size),
     )
+    return _MvqualSparseTelemetryResult(
+        telemetry=telemetry,
+        covered_mass_by_family=tuple(covered_mass_by_family),
+        streamed_edge_count=int(streamed_edge_count),
+        maximum_chunk_edges=int(maximum_chunk_edges),
+        maximum_selected_row_edges=int(maximum_selected_row_edges),
+    )
+
+
+def _selector_telemetry_indices(
+    reference_domain: Any,
+    sparse_domain: Any,
+    selected: np.ndarray,
+    run_codes: np.ndarray,
+    condition_codes: np.ndarray,
+    *,
+    max_edges: int = _MVQUAL_STRICT_EDGE_LIMIT,
+) -> TargetMultiViewSelectorTelemetry:
+    """Bounded exact MVIDX telemetry compatibility wrapper."""
+
+    return _selector_telemetry_indices_bounded(
+        reference_domain,
+        sparse_domain,
+        selected,
+        run_codes,
+        condition_codes,
+        max_edges=max_edges,
+    ).telemetry
 
 
 def _selector_telemetry(reference_domain: Any, sparse_domain: Any, role_domain: Any, selected_uids: Sequence[str]) -> TargetMultiViewSelectorTelemetry:
@@ -782,6 +877,9 @@ class _MvqualScoreResult:
     selected_indices: np.ndarray = field(repr=False, compare=False)
     telemetry: TargetMultiViewSelectorTelemetry = field(repr=False, compare=False)
     hard_state: tuple[bool, tuple[str, ...]] = field(repr=False, compare=False)
+    streamed_edge_count: int = field(default=0, repr=False, compare=False)
+    maximum_chunk_edges: int = field(default=0, repr=False, compare=False)
+    maximum_selected_row_edges: int = field(default=0, repr=False, compare=False)
 
 
 def _mvqual_parallel_scope(
@@ -866,6 +964,7 @@ def _mvqual_score_job(
     run_codes: np.ndarray,
     condition_codes: np.ndarray,
     query_workers: int,
+    sparse_max_edges: int = _MVQUAL_STRICT_EDGE_LIMIT,
 ) -> _MvqualScoreResult:
     """Compute one immutable MVQUAL same-N scoring job."""
 
@@ -881,18 +980,20 @@ def _mvqual_score_job(
         raise TrainingDataInputError(
             "TARGET-DATA2C-MVQUAL1 selected frame is outside the reference domain."
         ) from exc
-    telemetry = _selector_telemetry_indices(
-        reference_domain, sparse_domain, selected, run_codes, condition_codes
+    sparse_result = _selector_telemetry_indices_bounded(
+        reference_domain,
+        sparse_domain,
+        selected,
+        run_codes,
+        condition_codes,
+        max_edges=sparse_max_edges,
     )
     # MVIDX remains secondary telemetry only.  Every independent coverage mass
     # must agree with the TARGET-DATA2B scorer exactly within the historical tol.
     report_by_family = {item.family_id: item for item in report.family_reports}
+    indexed_mass_by_family = dict(sparse_result.covered_mass_by_family)
     for sparse_family in sparse_domain.families:
-        family = reference_domain.family(sparse_family.family_id)
-        mask = indexed_family_covered_mask(sparse_family, selected)
-        indexed_mass = float(
-            np.sum(np.asarray(family.weights, dtype=np.float64)[mask], dtype=np.float64)
-        )
+        indexed_mass = indexed_mass_by_family[sparse_family.family_id]
         direct_mass = report_by_family[sparse_family.family_id].covered_reference_mass
         if not math.isclose(indexed_mass, direct_mass, rel_tol=0.0, abs_tol=5.0e-12):
             raise TrainingDataInputError(
@@ -904,8 +1005,11 @@ def _mvqual_score_job(
         target_size=int(target_size),
         report=report,
         selected_indices=selected,
-        telemetry=telemetry,
+        telemetry=sparse_result.telemetry,
         hard_state=_hard_obligation_state(sparse_domain, selected),
+        streamed_edge_count=sparse_result.streamed_edge_count,
+        maximum_chunk_edges=sparse_result.maximum_chunk_edges,
+        maximum_selected_row_edges=sparse_result.maximum_selected_row_edges,
     )
 
 
@@ -920,17 +1024,18 @@ def build_target_multi_view_qualification_plan(
     policy: TargetMultiViewQualificationPolicy | None = None,
     coverage_query_workers: int = 1,
     scoring_workers: int = 1,
+    sparse_max_edges: int = _MVQUAL_STRICT_EDGE_LIMIT,
     resource_scope: StageResourceScope | None = None,
     execution_telemetry_callback: Any = None,
     progress_callback: Any = None,
 ) -> TargetMultiViewQualificationPlan:
     """Build independent same-N legacy-vs-MV qualification evidence.
 
-    ``scoring_workers`` is execution-only.  When greater than one, independent
-    domain/selector/size jobs share one PARCORE1 queue and every nested
-    TARGET-DATA2B cKDTree query is constrained to one native worker.  Results
-    are reassembled in the historical domain/size order before any scientific
-    comparison or progress emission occurs.
+    ``scoring_workers`` and ``sparse_max_edges`` are execution-only.  When
+    scoring is parallel, independent domain/selector/size jobs share one
+    PARCORE1 queue and every nested TARGET-DATA2B cKDTree query is constrained
+    to one native worker.  Results are reassembled in historical order before
+    any scientific comparison or progress emission occurs.
     """
 
     policy = policy or TargetMultiViewQualificationPolicy(
@@ -942,6 +1047,9 @@ def build_target_multi_view_qualification_plan(
     requested_scoring_workers = int(scoring_workers)
     if requested_scoring_workers < 1:
         raise TrainingDataInputError("TARGET-DATA2C-MVQUAL-PAR1 scoring workers must be positive.")
+    sparse_edge_limit = int(sparse_max_edges)
+    if sparse_edge_limit < 1:
+        raise TrainingDataInputError("TARGET-DATA2C-MVQUAL1 sparse edge limit must be positive.")
     dataset_ids = {
         target_coverage_reference.dataset_id,
         target_coverage_sparse_index.dataset_id,
@@ -1061,6 +1169,7 @@ def build_target_multi_view_qualification_plan(
             run_codes=context["run_codes"],
             condition_codes=context["condition_codes"],
             query_workers=inner_query_workers,
+            sparse_max_edges=sparse_edge_limit,
         )
 
     if effective_workers == 1:
@@ -1260,6 +1369,7 @@ def build_target_multi_view_qualification_plan(
         capacity_diagnosis=capacity_diagnosis,
         outcome=outcome,
     )
+
 
 def validate_target_multi_view_qualification_authority(
     plan: TargetMultiViewQualificationPlan,
