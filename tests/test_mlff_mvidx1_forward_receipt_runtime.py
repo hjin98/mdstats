@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -7,9 +8,12 @@ import numpy as np
 import pytest
 
 from mdstats.training_data import mvidx1_forward_receipt_runtime as runtime
-from mdstats.training_data import target_coverage_sparse_forward_view as forward_types
 from mdstats.training_data import target_coverage_sparse_index_store as store
 from tests.test_mlff_target_data2c_repair1 import _index
+
+forward_types = importlib.import_module(
+    "mdstats.training_data.target_coverage_sparse_forward_view"
+)
 
 
 def _native_fixture(tmp_path: Path):
