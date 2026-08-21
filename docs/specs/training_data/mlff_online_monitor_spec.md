@@ -1,132 +1,160 @@
-# MLFF ADAPT-MON1 fixed common online monitor specification
+# MLFF common online-monitor specification
 
-Status: implemented in mdstats 0.20.123a0
+**Status:** current normative monitoring policy  
+**Architecture:** revision 105
 
-## 1. Scope
+## 1. Scope and semantic type boundary
 
-ADAPT-MON1 replaces variable fold-local checkpoint-monitor inputs in newly prepared MLFF
-campaigns with two immutable, campaign-common online validation artifacts. It changes monitor
-construction and lineage only. It does **not** implement adaptive stopping, lightweight finalist
-ranking, or retirement of EVAL-MF; those remain later gates.
+This specification defines deterministic campaign-common **monitoring evidence**. It does not define target-training size, replay-training membership, checkpoint score thresholds, or held-out cross-validation roles.
 
-The online monitors are model-selection evidence only and must never supply gradients.
+The current policy families are type-distinct:
 
-## 2. Canonical policy
+```text
+OnlineTargetMonitorPolicy
+ReplayMonitorPolicy
+TargetSizeStudyPolicy
+```
 
-`OnlineMonitorPolicy` uses schema `mdstats.online-monitor-policy.v1` and defaults to:
+Their records SHALL remain distinct even when two cardinalities happen to share an integer value.
 
-- target budget: **256 configurations**;
-- replay budget: **512 configurations**;
-- deterministic monitor seed: **161803**;
-- target strategy: `balanced_condition_run_time_systematic`;
-- replay strategy: `chemistry_size_systematic`.
+Online monitors never supply gradients.
 
-Changing any policy field changes the policy digest and therefore the materialization/protocol
-identity.
+## 2. Common target monitor
 
-## 3. Common target monitor
+`OnlineTargetMonitorPolicy` owns the common target-monitor subset used by authorized development/model-selection procedures, including target-size screening and current checkpoint/stopping control when those consumers explicitly bind this monitor.
 
-The target parent domain is DATA5 `outer_monitor` evidence only. Fold-local training,
-fold-local validation, and locked/held-out test roles are not eligible parents.
+The current default requested target-monitor cardinality is exactly:
 
-The selector:
+```text
+256 configurations
+```
 
-1. groups eligible units by declared condition and run identity;
-2. distributes the requested budget as evenly as possible across those strata;
-3. orders frames by source trajectory/time within each stratum;
-4. uses a deterministic random-start systematic sample to spread selections across time; and
-5. records exact ordered configuration identities, source-frame indices, stratum counts,
-   requested/realized size, seed, strategy, parent digest, and true-label domain.
+The current deterministic monitor seed is:
 
-Every fold, seed, training method, and final-development job prepared under the same label domain
-receives the **same target monitor membership and artifact content digest**. This is required so
-online errors are directly comparable across competing runs.
+```text
+161803
+```
 
-If fewer than 256 eligible configurations exist, all eligible configurations are used and the
-fallback is explicitly recorded.
+The current default strategy is:
 
-## 4. Independent true-label replay monitor
+```text
+balanced_condition_run_time_systematic
+```
 
-The replay parent must be a `ReplayFileArtifact` with `ReplayLabelMode.TRUE_DFT`. Foundation
-pseudo labels may remain replay **training** data, but they cannot define the absolute online
-replay validation metric.
+Changing the requested cardinality, seed, strategy, or other policy field changes the policy identity.
 
-Replay selection uses a stable ordering over exact composition/chemistry, atom count/size bin,
-and source order followed by deterministic systematic sampling. The selected 512-frame default
-subset is materialized at:
+### Parent role
 
-`shared/replay/online_true_replay_monitor.xyz`
+The target-monitor parent is the DATA5 common outer-monitor/development-monitor domain only. Gradient-training, held-out CV evaluation, calibration, purge-only, excluded, and locked-test roles are not eligible parents.
 
-The materialized artifact is immediately re-inspected. Geometry identity, ordered membership,
-label identity, and true-label mode must match the parent selection exactly or preparation fails.
-If fewer than 512 true-label configurations exist, all available configurations are used and the
-fallback is recorded.
+### Deterministic selection
 
-For multi-head replay jobs:
+The current target-monitor constructor:
 
-- MACE `pt_train_file` remains the configured replay training artifact; and
-- MACE `pt_valid_file` is the fixed true-label online replay monitor.
+1. groups eligible monitor units by declared condition and source/run identity;
+2. allocates the requested budget as evenly as possible across eligible strata under the current deterministic apportionment rule;
+3. orders configurations by source trajectory/time within each stratum;
+4. uses the policy seed for deterministic random-start systematic sampling;
+5. emits exact ordered configuration identities, source indices, stratum available/selected counts, requested/realized size, policy identity, and label-domain identity.
 
-Thus validation evidence is independent of the gradient-label mode.
+Every fold, seed, training mode, and final-development job using the same compatible campaign monitor identity receives the same target-monitor membership/content identity.
 
-## 5. Identity contracts
+When fewer than 256 eligible configurations exist, all eligible configurations are used and the short-parent fallback is explicit in the record. The realized monitor size remains a monitor property and does not become a target-training size.
 
-`OnlineMonitorRecord` uses schema `mdstats.online-monitor-record.v1`. A record binds:
+## 3. Independent true-label replay monitor
 
-- role (`target` or `replay`);
+`ReplayMonitorPolicy` owns replay-monitor construction. The current default requested replay-monitor cardinality is exactly:
+
+```text
+512 configurations
+```
+
+The default replay-monitor strategy is:
+
+```text
+chemistry_size_systematic
+```
+
+The true-label replay monitor parent must satisfy the current true-label replay contract. Foundation pseudo labels may be used by a separately identified replay-training path when allowed, but they do not define an absolute true-label replay-validation metric.
+
+Replay-monitor selection uses deterministic ordering across chemistry/composition, atom-count/size grouping, and source order followed by the current systematic selection rule. The materialized replay-monitor artifact is immediately re-inspected; ordered geometry identity, label identity, and true-label mode must match its selection record.
+
+When fewer than 512 eligible true-label replay configurations exist, all are used and the fallback is explicit.
+
+Replay training and replay monitoring are different evidence roles and may not silently alias one another.
+
+## 4. Record contracts
+
+### `OnlineTargetMonitorRecord`
+
+Binds at least:
+
+- target-monitor role;
 - parent-domain digest;
-- policy digest;
+- `OnlineTargetMonitorPolicy` digest;
 - requested and realized sizes;
-- exact ordered selected identities;
-- source indices;
+- exact ordered selected identities/source indices;
 - per-stratum available/selected counts;
 - strategy and seed;
-- label mode and parent role; and
-- explicit fallback reason codes.
+- label-domain identity;
+- explicit fallback reason where applicable.
 
-New DATA8 preparation uses `mdstats.data8-preparation-bundle.v2`. New production materialization
-uses `mdstats.production-materialization-plan.v4`. New training protocol identities use
-`mdstats.training-protocol-identity.v4` when online-monitor evidence is present. The protocol
-binds the policy digest, target-record digest, replay-record digest, and materialized replay-valid
-artifact digest as one quartet.
+### `ReplayMonitorRecord`
 
-Historical DATA8/production-plan/protocol schemas remain readable. Low-level callers that do not
-request ADAPT-MON1 retain legacy construction semantics for compatibility, while new campaign CLI
-preparation always binds the new monitor policy and requires independent true replay labels.
+Binds at least:
 
-## 6. Leakage and role invariants
+- replay-monitor role;
+- replay source/label lineage;
+- `ReplayMonitorPolicy` digest;
+- requested and realized sizes;
+- exact ordered selected identities/source indices;
+- strategy/seed fields owned by the replay policy;
+- true-label mode where required;
+- materialized artifact digest where applicable;
+- explicit fallback reason where applicable.
 
-- Online monitor configurations never contribute gradients.
-- Target monitor selection is restricted to the common DATA5 outer-monitor domain.
-- Locked/sealed test evidence cannot be promoted into the online monitor role.
-- Target-training geometries may not overlap the true-label replay online monitor by exact
-  geometry identity.
-- Monitor membership is selected once and reused; it is not redrawn per epoch, fold, or seed.
-- The monitor seed is identity, not an informal reproducibility hint.
+`TrainingProtocolIdentity` binds the exact monitor record/policy identities it uses. It does not infer them from filenames.
 
-## 7. Precision boundary
+## 5. Leakage and independence invariants
 
-ADAPT-PREC1 remains authoritative. `single` jobs evaluate these monitors with the FP32 learned
-model; `double` jobs use the FP64 learned model. mdstats-owned SSE/RMSE/statistical accumulation
-remains hard-coded FP64 under either model precision.
+- Monitoring configurations never contribute gradients.
+- The common target monitor is development/model-selection evidence, not held-out CV evidence.
+- Held-out CV evaluation and locked tests cannot be promoted into online-monitor roles.
+- Target-training geometries may not overlap true-label replay-monitor evidence where the current replay contract forbids such overlap.
+- Membership is selected once per compatible campaign identity and reused; it is not redrawn per epoch, fold, seed, or target-size candidate.
+- The monitor seed is policy identity, not an informal hint.
+- A monitor cardinality is never interpreted as `N_selected`.
 
-## 8. Current runtime boundary
+## 6. Relationship to target-size study
 
-ADAPT-MON1 itself freezes the common validation artifacts. Beginning in 0.20.124a0, ADAPT-STOP1
-consumes their already-paid force-RMSE rows at every evaluated epoch and can terminate training at
-the target-success, replay-exhaustion, or hard-epoch boundary without additional monitor
-inference. ADAPT-EVAL1 has not yet retired the existing mixed-fidelity evaluation stage.
+`TargetSizeStudyPolicy` may consume the common target and replay monitors as authorized development/model-selection evidence.
 
-## 9. Acceptance tests
+The target-size study does not own their construction and cannot change their membership between size candidates. Every size candidate/seed sees the same monitor identities so comparison is paired with respect to evaluation evidence.
 
-The gate requires regression coverage for:
+The target-size ladder remains the fixed population owned by `mlff_target_subset_size_study_spec.md`; monitor sizes 256 and 512 are semantically independent.
 
-1. deterministic target and replay membership regeneration;
-2. exact 256/512 defaults and explicit small-parent fallbacks;
-3. common target membership across every fold/final job;
-4. target condition/run/time coverage rather than first-N selection;
-5. TRUE_DFT replay enforcement and exact label/geometry round-trip;
-6. no target-training/replay-monitor geometry overlap;
-7. MACE `pt_valid_file` separation from replay training data;
-8. protocol/digest serialization and corruption rejection; and
-9. historical schema readability.
+## 7. Precision and accumulation boundary
+
+Monitor inference uses the learned model precision/backend declared by `TrainingProtocolIdentity`. mdstats-owned metric accumulation remains under the current numerical-precision specification and is not weakened by model dtype.
+
+Changing model precision/backend creates a different training/runtime protocol identity where the current architecture declares it protocol-defining.
+
+## 8. Persistence and unsupported historical records
+
+Current monitor artifacts are accepted only when their current schema, content, parent lineage, and policy digests validate.
+
+Obsolete monitor/campaign schemas do not gain current meaning through compatibility aliases. A campaign whose monitor records cannot validate under the current generation requires re-preparation.
+
+## 9. Acceptance requirements
+
+Current monitor qualification covers at least:
+
+1. deterministic target/replay membership regeneration;
+2. exact requested defaults and explicit short-parent fallback;
+3. common target-monitor identity across compatible fold/final/seed jobs;
+4. condition/run/time distribution rather than first-N truncation;
+5. true-label replay enforcement where required and exact artifact round-trip;
+6. forbidden-role/geometry-overlap checks;
+7. protocol identity binding;
+8. corruption/staleness rejection;
+9. proof that monitor cardinalities are not consumed as target-size authority.
