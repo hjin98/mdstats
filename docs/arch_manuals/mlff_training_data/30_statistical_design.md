@@ -1,6 +1,14 @@
-# Part III - Statistical design and selection
+# Part III - Statistical design and fitted preparation
 
-## Outer partition architecture
+## Purpose and ownership
+
+This chapter defines the statistical evidence roles that make later model comparisons interpretable and the fitted-preparation boundary immediately upstream of multi-view target-subset construction.
+
+It owns the architectural separation among training, monitoring, cross-validation, calibration, and locked-test evidence. It also defines what fold/final-domain fitted preparation may consume and emit.
+
+It does **not** own target membership or target size. DATA7 prepares fitted inputs; MVSEL2/REPAIR2 determine target membership inside each authorized training domain; `TargetSizeStudyPolicy` chooses the protocol-global target size.
+
+## Independence and evidence roles
 
 ### Independence hierarchy
 
@@ -13,11 +21,11 @@ Evidence uses the strongest available independence level, for example:
 
 Temporal separation does not create an independent metastable state when the relevant slow variable never decorrelates. Every cohort carries machine-readable independence evidence and known limitations.
 
-### Partition-role feasibility
+### Partition feasibility
 
-Before role assignment, `PartitionRoleBudgetPolicy` declares requested cohorts, cross-validation support, minimum independent blocks/grades, purge requirements, and allowed reductions. `PartitionFeasibilityReport` determines what the available evidence can actually support.
+Before assigning roles, the partition policy declares requested cohorts, cross-validation support, minimum independent blocks/grades, purge requirements, and allowed reductions. A feasibility report states what the available evidence can support.
 
-Outcomes include full support, temporal-block-only support, deferred calibration, external-only challenge evidence, reduced fold count, or insufficient support. The workflow never fabricates every desired role from a short trajectory merely to satisfy a percentage.
+Valid outcomes include full support, temporal-block-only support, deferred calibration, external-only challenge evidence, reduced fold count, or insufficient support. The workflow never fabricates every desired role from a short or correlated trajectory to satisfy a percentage target.
 
 ### Outer evidence roles
 
@@ -31,15 +39,17 @@ locked_interpolation_test
 zero or more locked_challenge_tests
 ```
 
-Only the development pool supplies gradient-training candidates. The fixed outer monitor may control the current final-run monitoring/checkpoint policy but supplies no gradients and is not the locked test. Calibration is reserved for predictions from the actual final committee. Locked interpolation/challenge evidence cannot affect training, selection, checkpointing, calibration policy, acquisition policy, or protocol design.
+Only the development pool supplies gradient-training candidates. The common target monitor is development/model-selection evidence: it may control the current authorized monitoring/checkpoint and target-size-screen policies but supplies no gradients and is not a held-out CV fold or locked test.
 
-When a requested role is unsupported, the role is absent/deferred with explicit evidence rather than synthesized from correlated data.
+Calibration is reserved for predictions from the actual final committee. Locked interpolation/challenge evidence cannot affect fitting, subset construction, target-size selection, training protocol, checkpoint selection, calibration-policy choice, acquisition policy, or protocol design.
 
-## Independent cross-validation job families
+When a requested role is unsupported, it is absent/deferred explicitly rather than synthesized from correlated evidence.
 
-A frame that has contributed a gradient is not independent validation evidence for that model. Likewise, a held-out evaluation fold cannot control stopping/checkpoint choice for the fold model whose error it is intended to estimate.
+## Cross-validation validates a frozen protocol
 
-For $K$ folds, job $k$ contains distinct:
+A frame that supplied a gradient is not independent validation evidence for that model. Likewise, a held-out evaluation fold cannot control stopping, checkpoint choice, or target-size choice for the protocol it is intended to evaluate.
+
+For cross-validation fold \(k\), keep distinct:
 
 ```text
 fold_training_domain_k
@@ -47,84 +57,108 @@ fold_checkpoint_monitor_k
 held_out_evaluation_fold_k
 ```
 
-The checkpoint monitor is a deterministic authorized split/cohort from non-evaluation evidence. The held-out evaluation fold remains inaccessible to fitted products and checkpoint choice.
+The fold model has fresh model/optimizer/checkpoint lineage. Fitted transforms, feature metrics, E0 fits, difficulty evidence, and target membership are constructed only from `fold_training_domain_k`. Checkpoint selection uses its authorized monitor, not the held-out evaluation fold.
 
-The fold model has fresh model/optimizer/checkpoint lineage. Transform, feature-metric fit, E0 fit, difficulty evidence, and target selector are fitted only on the fold-training domain. Only after checkpoint choice freezes is the model evaluated on its held-out fold. The resulting out-of-fold catalog is bound to the complete `TrainingProtocolIdentity`.
+Target size is frozen **before** protocol-matched held-out CV evaluation. The same selected cardinality is used as a protocol hyperparameter across required folds/final development, while each domain has its own leakage-safe target membership. Only after checkpoint choice freezes is a fold model evaluated on `held_out_evaluation_fold_k`.
 
-Cross-validation is therefore a family of independent jobs, not a rotating epoch schedule inside one evolving model.
+Cross-validation is therefore a family of independent jobs evaluating one frozen protocol, not a rotating epoch schedule and not an inner loop for choosing target size.
 
-## Training-set selection
+## Fitted preparation inside each training domain
 
-Selection runs only inside the applicable fold-training or final-training domain. `SelectionBudgetPolicy` binds requested sizes, mandatory anchors/obligations, evidence-class budgets, near-duplicate policy, and deterministic tie/interleaving behavior.
+For each fold/final training domain, DATA6/DATA7 may construct products whose statistical meaning depends on that domain. These include, as applicable:
 
-### Deterministic nested order
+- descriptor transforms and heterogeneous fitted feature metrics;
+- training-domain foundation-model predictions/residual difficulty evidence;
+- atomic-reference/E0 fits;
+- objective, configuration-weight, and property-weight records;
+- condition/provenance/event/environment/diversity inputs needed by target-subset construction;
+- deterministic identities binding those products to the training domain and complete protocol.
 
-The selector constructs a deterministic ordered target-data sequence whose permitted dataset sizes are prefixes. Mandatory anchors/obligations are satisfied first; remaining capacity is allocated among the declared evidence classes without allowing one earlier class to consume the full budget.
+No fitted product may inspect held-out CV evaluation, calibration, or locked-test evidence unless an owning specification explicitly gives it a non-training role that preserves the relevant independence boundary.
 
-Representative evidence classes include:
+### Raw versus fitted information
+
+Partition-independent physical facts and raw feature/event providers belong upstream. A fitted normalization, metric, model residual, E0 correction, or difficulty transform belongs to the training domain that fitted it.
+
+This distinction prevents an apparently innocuous global normalization or residual calculation from leaking held-out evidence into subset construction.
+
+## Selection inputs are not a second selector
+
+Representative density, diversity/FPS, environment coverage, condition balance, protected events, difficulty, provenance/correlation structure, and mandatory anchors remain useful scientific information. They do not define an independent DATA7 target order.
+
+DATA7 expresses them as one or more of:
 
 ```text
-representative distribution coverage
-species/atom-group environment coverage
-rare/protected events
-descriptor diversity/FPS
-difficulty enrichment
+fitted feature coordinates/metrics
+hard obligations or applicability masks
+representative-density / utility evidence
+diversity evidence
+event/environment/condition evidence
+difficulty evidence
+correlation/provenance identities
+policy inputs with deterministic identities
 ```
 
-Their exact fractions/counts are policy, not universal constants. Deficits are redistributed by the declared deterministic rule. A requested size smaller than mandatory support fails explicitly.
+The one current membership authority consumes these inputs in the multi-view chain described in Part V. There is no competing quota/FPS `TrainingSelectionPlan` whose prefixes can disagree with MVSEL2/REPAIR2.
 
-### Hierarchical quotas
+### Material/profile specialization
 
-Every observed and scientifically applicable combination of declared condition axes/protected classes receives its policy-defined coverage request. Condition axes are profile-owned and may include composition, temperature, pressure, strain, phase, defect, surface/interface state, molecular conformer, or preparation history.
+Condition axes and focus groups are declared by the applicable material/profile contract. They may include composition, temperature, pressure, strain, phase, defect, surface/interface state, molecular conformer, preparation history, or other scientifically justified axes.
 
-The optional LTA profile uses hierarchical unstrained and strained schemas rather than a global Cartesian product. Empty/non-applicable combinations are not treated as missing data.
+A profile may define hierarchical applicability rather than a global Cartesian product. Empty or physically inapplicable combinations are not treated as missing observations merely because all axis names exist.
 
-### Representative, diversity, and environment evidence
-
-Representative anchors preserve dense expected-production regions; pure diversity sampling is insufficient because it can overweight feature-space boundaries.
-
-Configuration-level farthest-point sampling uses the fitted heterogeneous feature metric with stable identity tie-breaking. It is one evidence source rather than the entire selector.
-
-Declared focus atom groups receive separate environment coverage/selection so abundant host atoms cannot determine the entire target set. The generic architecture is group-driven; Li/Na/K groups are an LTA specialization, not core defaults.
-
-### Rare-event anchors
-
-Protected event windows are retained around declared structural/chemical/trajectory changes. Generic changes include coordination/connectivity, large non-affine displacement, local packing/order changes, phase/state changes, strain extrema, and high but physical restoring-force excursions. Site/window/ring/interface/adsorption events activate only through the appropriate profile/provider.
-
-### Difficulty enrichment and blinding
-
-Label-derived foundation-model residuals may enrich selection only inside the authorized training domain. Evaluation-domain residuals remain blinded. Difficulty enrichment is quota-controlled and cannot replace representative or hard coverage.
-
-### Coverage diagnostics
-
-Selection evidence reports condition/group/feature coverage, nearest-distance/radius statistics, event/state counts, redundancy, and realized evidence-class budgets under the current target-data coverage authority. Coverage diagnostics recommend data sufficiency; they do not by themselves prove final model adequacy.
+Material-specific semantics remain explicit extensions. Li/Na/K focus groups, ring/cage/site concepts, or LTA-specific condition hierarchies are not generic defaults.
 
 ## Training objective, weighting, and exposure
 
-Training membership, label weighting, and runtime exposure are separate decisions.
+Target membership, target size, loss weighting, and runtime exposure are separate decisions.
 
-`TrainingObjectivePolicy` binds loss family, energy/force/stress weights, head weights, normalization, robust-loss choices, and missing-label behavior. `ConfigurationWeightPolicy` and `PropertyWeightPolicy` bind condition/regime/event/quality and property-specific weights.
+`TrainingObjectivePolicy` binds the loss family, energy/force/stress weights, head weights, normalization, robust-loss choices, and missing-label behavior. Configuration/property weighting policies bind condition/regime/event/quality and property-specific weights.
 
-`ExposureAssignment`/realization evidence binds the head, eligible use, actual gradient exposures, configuration/property weights, sampling/duplication behavior, and seed/runtime lineage as applicable.
+Exposure realization binds the head, eligible use, actual gradient exposures, configuration/property weights, sampling/duplication behavior, seed, and runtime lineage as applicable.
+
+A frame can therefore be selected once, weighted non-uniformly, and exposed according to a qualified loader policy without those three decisions becoming the same authority.
 
 ### Atom-group force imbalance
 
-A configuration can contain many more host force components than scientifically critical minority-group components. Selection diversity does not eliminate that loss imbalance.
+A configuration can contain many more host force components than scientifically critical minority-group components. Subset diversity alone does not eliminate that loss imbalance.
 
-The standard MACE configuration/property-weight path does not claim a generic atomwise group-weighted loss. Therefore evaluation/checkpoint policy reports declared group-resolved metrics and imposes applicable group constraints. Any custom atomwise/auxiliary loss defines a different `TrainingProtocolIdentity` and requires its own qualification.
+The standard MACE configuration/property-weight path does not claim a generic atomwise group-weighted loss. Evaluation/checkpoint policy therefore reports declared group-resolved metrics and imposes applicable group constraints. A custom atomwise or auxiliary loss defines a different `TrainingProtocolIdentity` and requires separate qualification.
 
 ### Exposure backends
 
-Exposure modes are distinct protocol semantics. The standard qualified fixed-file MACE path is `NATIVE_MACE_FIXED`: selected target/replay frames are materialized in fixed artifacts and the upstream loader performs the qualified shuffle/batching behavior.
+The qualified fixed-file MACE path materializes selected target/replay frames in fixed artifacts and binds the realized upstream loader shuffle/batching behavior into the protocol.
 
-Any custom epoch resampling, multi-job resampling, or final-refit behavior is valid only when a current adapter/specification explicitly supports it and binds its optimizer/checkpoint/exposure lineage. Static files alone cannot claim dynamic per-epoch resampling.
+Dynamic epoch resampling, multi-job resampling, or alternate final-refit exposure semantics are valid only when a current adapter/specification supports them and records optimizer/checkpoint/exposure lineage. Static files alone cannot claim dynamic resampling.
 
-### Realized MACE exposure
+### Realized exposure audit
 
-`MaceExposureRealizationRecord` compares intended artifacts/weights with observed loader behavior, including target/replay counts, implicit duplication, expected/observed batches, and configuration/property exposures.
+Exposure evidence compares intended artifacts and weights with observed loader behavior, including target/replay counts, implicit duplication, expected/observed batches, and configuration/property exposures.
 
 Upstream target/replay duplication behavior is version-dependent. The adapter either disables unintended duplication when supported or binds the realized behavior into the protocol and verifies it. Silent changes in effective target/replay exposure fail closed.
 
-## Statistical authority boundary
+## Statistical dependency boundary
 
-The statistical design is controlled by explicit policies and immutable evidence lineage. Worker count, cache layout, training scheduler parallelism, and other execution realization cannot change partition membership, fold roles, selection order, checkpoint evidence role, or locked-test boundaries.
+The allowed dependency direction is:
+
+```text
+raw source / feature / event evidence
+    -> role assignment
+    -> training domain
+    -> fitted preparation
+    -> MVSEL2 / REPAIR2 target membership
+    -> target-size study using authorized development/model-selection evidence
+    -> frozen target size and training protocol
+    -> checkpoint selection
+    -> held-out protocol validation
+    -> calibration / locked-test activation
+```
+
+Forbidden reverse dependencies include:
+
+- held-out CV error choosing target size;
+- locked-test evidence tuning subset policy or checkpoint policy;
+- calibration evidence fitting the training protocol it calibrates;
+- execution worker/cache/scheduler behavior changing partition membership, fitted domains, target order, or evidence roles.
+
+This dependency boundary is the statistical contract that makes the later model-quality evidence interpretable.
