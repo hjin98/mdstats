@@ -1,34 +1,51 @@
-# Part V - Multi-view target-data architecture
+# Part V - Multi-view target subset and target-size architecture
 
-## Motivation and authority
+## Purpose and ownership
 
-A target-data subset must cover several physically meaningful feature views simultaneously. Optimizing only an average distance or one descriptor can hide a severe deficit in another required view. The multi-view architecture treats each required family as an explicit coverage constraint, diagnoses full-pool feasibility before subset optimization, and preserves deterministic nested target sets so size/fidelity comparisons are not confounded by resampling.
+This chapter defines how an authorized fold/final training domain becomes one deterministic nested family of target-training subsets and how one protocol-global target size is selected without consuming held-out validation evidence.
 
-The architecture follows four rules:
+The current chain is:
+
+```text
+DATA7 fitted selection inputs
+    -> FEAS1 full-pool feasibility
+    -> MVIDX1 exact sparse neighborhood authority
+    -> MVSEL2 progressive target order
+    -> REPAIR2 repaired master order / MVSTATE2 continuation state
+    -> MVQUAL independent prefix qualification
+    -> TargetSizeStudyPolicy
+    -> selected target size
+```
+
+Each component has one role. MVSEL2 is the only current ordering authority; REPAIR2 is the only current repair authority; MVSTATE2 is the only current continuation-state family; MVQUAL independently verifies hard requirements. Superseded selector/repair/migration generations are historical and are not alternate current paths.
+
+## Why multi-view subset construction is necessary
+
+A target subset must cover several physically meaningful feature views simultaneously. Optimizing one descriptor distance or one average utility can conceal a severe deficit in another required view. The architecture therefore treats each required family as an explicit coverage relation, diagnoses full-pool feasibility before subset optimization, and maintains hard coverage separately from discretionary representative utility.
+
+Four principles control the design:
 
 1. feasibility precedes subset optimization;
-2. hard coverage cannot be traded for aggregate utility;
-3. redundancy is defined through unique covered witness mass and hard/provenance obligations rather than local density alone;
-4. selector state and independent qualification remain separate authorities.
+2. hard coverage and obligations cannot be traded away by aggregate score;
+3. subset ordering is deterministic and nested so size comparisons are not confounded by resampling;
+4. selector/repair state and independent qualification evidence are separate authorities.
 
-## Exact neighborhood graph
+## Exact multi-view neighborhood authority
 
-For feature family $m$, let $x_w^{(m)}$ be witness coordinates, $x_c^{(m)}$ candidate coordinates, $D_m$ the frozen scaling transform, and $r_w^{(m)}$ the authoritative witness radius. Exact adjacency is
+For feature family \(m\), let \(x_w^{(m)}\) be witness coordinates, \(x_c^{(m)}\) candidate coordinates, \(D_m\) the frozen scaling transform, and \(r_w^{(m)}\) the authoritative witness radius. Exact adjacency is
 
 $$
-A_{wc}^{(m)} =
+A_{wc}^{(m)}=
 \mathbf 1\!\left[
 \left\|D_m\left(x_w^{(m)}-x_c^{(m)}\right)\right\|_2
 \le r_w^{(m)}
 \right].
 $$
 
-Production authority uses exact radius semantics; approximate-neighbor substitutions are not scientifically equivalent unless a future accepted specification explicitly changes that contract.
-
-For selected subset $S$,
+For selected subset \(S\), witness multiplicity is
 
 $$
-n_w^{(m)}(S)=\sum_{c\in S} A_{wc}^{(m)},
+n_w^{(m)}(S)=\sum_{c\in S}A_{wc}^{(m)},
 $$
 
 and weighted family coverage is
@@ -39,55 +56,78 @@ C_m(S)=
      {\sum_w \omega_w^{(m)}}.
 $$
 
-For hard threshold $\tau$ defined by the current coverage policy, robust deficit is
+For hard threshold \(\tau_m\) owned by the current coverage policy, family deficit is
 
 $$
-D_{\max}(S)=\max_m \max\!\left(0,\tau-C_m(S)\right).
+D_m(S)=\max(0,\tau_m-C_m(S)),
 $$
 
-A weighted average cannot substitute for a failed required view.
-
-## FEAS1 - full-pool feasibility and fragility
-
-FEAS1 evaluates the complete eligible candidate/reference authority before subset optimization. It verifies expected self/cross support, measures low-support fragility, records candidate-degree/support evidence, and derives conservative lower bounds needed to satisfy hard support/obligation constraints.
-
-For witness $w$,
+and the worst-view deficit is
 
 $$
-d_w^{(m)}=\sum_{c\in \mathcal C}A_{wc}^{(m)}.
+D_{\max}(S)=\max_m D_m(S).
 $$
 
-Low-degree witness mass identifies regions where correlation-unit exclusion or subset restriction can destroy support. A capacity diagnosis is evidence that a requested ceiling/rung cannot satisfy the frozen predicates; it is not permission to relax those predicates silently.
+A weighted average across families cannot substitute for a failed required family.
 
-## MVIDX1 - one shared exact sparse relation
+Approximate-neighbor substitutions are not scientifically equivalent to the exact relation unless a future accepted design explicitly changes that contract.
 
-MVIDX1 reuses the exact neighborhood relation already produced/qualified for the same semantic inputs. FEAS1 and MVIDX are therefore consumers of one exact neighborhood authority rather than independent geometric implementations.
+## Full-pool feasibility (FEAS1)
 
-Canonical sparse execution uses witness-oriented CSR-equivalent storage with fixed typed offsets/indices and FP64 scientific weights stored separately. Identity binds candidate/reference ordering, family/scaling/radius/distance semantics, cardinalities, and cache/schema version; execution-only worker/block/queue/storage choices are excluded.
+FEAS1 inspects the complete eligible candidate/reference authority before subset ordering begins. It answers whether the frozen hard coverage and obligation predicates are satisfiable at all and how fragile that support is.
 
-MVIDX persists authenticated witness-to-candidate and candidate-to-witness CSR without repeating geometry. Forward/inverse edge cardinality and identities are cross-checked exactly. MVSEL2 and REPAIR2 open a forward-only runtime projection containing candidate-to-witness rows, candidate-to-obligation incidence, and correlation codes; they neither map nor page-fault witness-to-candidate arrays. The complete MVIDX1 artifact remains available to legacy consumers.
+For witness \(w\),
 
-Large inversions may use the current deterministic out-of-core implementation described in Part VI, but in-memory and file-backed realizations remain byte-equivalent for authoritative sparse arrays.
+$$
+d_w^{(m)}=\sum_{c\in\mathcal C}A_{wc}^{(m)}.
+$$
 
-## MVSEL1 - deterministic progressive selection
+Low-support witness mass and mandatory-obligation incidence identify regions where correlation-unit exclusion, provenance restrictions, or subset-size ceilings can destroy feasibility.
 
-MVSEL constructs one global selection order whose permitted target sets are prefixes/rungs defined by the current target-data policy. Mandatory reservations and unsatisfied hard views/strata are serviced before discretionary representative filling.
+FEAS1 may conclude that a requested rung cannot satisfy the frozen predicates. That conclusion is evidence about the data/policy combination, not permission to relax coverage, fabricate candidates, or invent an intermediate target size.
 
-At each rank, admissible candidates are compared by the frozen lexicographic priorities, including hard/worst-view deficit reduction, newly covered weighted mass, correlation/provenance balance, representative gain, normalized diversity, and stable candidate identity as applicable.
+## One exact sparse relation (MVIDX1)
 
-Rank authority is sequential because selection state changes after every accepted candidate. Parallel/vector execution may accelerate exact sparse state preparation/mutation only when the authoritative candidate choice and FP state remain equivalent.
+MVIDX1 owns the authenticated exact sparse neighborhood relation used by selection, repair, and qualification. Scientific identity binds at least:
 
-The selector maintains witness multiplicity, hard-obligation state, and candidate marginal state incrementally through inverse adjacency. Full candidate-by-witness rescoring after each rank is not the current execution architecture.
+- candidate and witness identity/order;
+- feature-family identity;
+- scaling/distance/radius semantics;
+- exact sparse cardinalities/content;
+- policy-relevant schema identity.
 
-The current MVSEL1 execution representation includes complete per-candidate coverage and harmonic-representative marginal arrays. A changed witness updates those arrays through witness-to-candidate inverse adjacency so later rank decisions remain exact. This eager candidate-state representation is an execution contract of the v1 path; it is not itself part of the scientific selection objective.
+Execution-only details such as worker count, query block size, in-memory versus file-backed inversion, mmap placement, queue depth, or NUMA placement do not change scientific identity.
 
-MVSEL1 remains an explicitly readable legacy authority. New campaign selection uses MVSEL2, which preserves the same FP64 policy while replacing eager inverse propagation with compact witness multiplicity and on-demand candidate-row scoring. During hard coverage, MVSEL2 performs a staged exact scan: maximum hard gain, first canonical bottleneck family, best-relative bottleneck and total-coverage filters, correlation balance, representative gain, diversity, then stable UID.
+The selector/repair path consumes a forward-oriented projection sufficient to score candidate rows and obligation/correlation incidence. Independent qualification may consume the authenticated primitive relation it needs, but no downstream component recomputes geometry under a competing numerical implementation when the same semantic MVIDX authority already exists.
 
-After hard coverage completes, MVSEL2 runs one exact Phase-B rebase and maintains a global certified lazy representative frontier. Outward-rounded stale scores are conservative upper bounds. Candidates are refreshed until every unrefreshed bound is below the best exact score minus the frozen tolerance; correlation, diversity, and UID are then applied to the complete exact contender set. Full-forward scoring is a bounded oracle/fallback, not the normal production path.
+Large exact inversions may use deterministic out-of-core execution as described in Part VI.
 
-## REPAIR1 - exact shell repair
+## Progressive target ordering (MVSEL2)
 
-For selected candidate $c$, unique covered mass follows from multiplicity-one witnesses:
+MVSEL2 constructs one deterministic progressive order \(\pi_d\) for training domain \(d\). It consumes DATA7 fitted selection inputs, FEAS1 evidence, MVIDX1, hard obligations, correlation/provenance structure, and the frozen selector policy.
+
+### Scientific priority structure
+
+The exact lexicographic policy is specification-owned. Architecturally it has two classes of responsibility:
+
+1. satisfy hard/worst-view coverage and mandatory obligations first; and
+2. once hard requirements permit, improve representative utility/diversity and declared balance objectives without violating the hard state.
+
+Representative density, diversity/FPS, environment coverage, protected events, condition balance, difficulty, and provenance are inputs to this one selector rather than independent target-membership authorities.
+
+### Deterministic exact execution
+
+Rank authority is sequential because the scientific state changes after every accepted candidate. Parallel or vector execution may accelerate preparation and exact candidate scoring, but the authoritative accepted candidate and FP64 scientific decision semantics must remain unchanged.
+
+The current execution architecture uses compact witness/obligation/correlation state and exact on-demand forward-row scoring rather than a product-scale eager inverse marginal array for every candidate. During hard-coverage selection, exact staged filtering may eliminate candidates only when the frozen lexicographic ordering proves they cannot win.
+
+After hard coverage completes, an exact certified lazy representative frontier may avoid full rescoring. Stale upper bounds are conservative; candidates are refreshed until the winner is certified under the frozen tolerance and complete tie hierarchy. A full-forward exact oracle remains a bounded correctness fallback, not a separate scientific policy.
+
+## Exact repaired master order (REPAIR2)
+
+MVSEL2 produces the progressive order; REPAIR2 is the sole authority allowed to perform the declared exact active-shell repair while preserving protected lower prefixes and hard invariants.
+
+For selected candidate \(c\), unique covered mass is
 
 $$
 U(c\mid S)=
@@ -95,35 +135,188 @@ U(c\mid S)=
 \omega_w^{(m)}\,\mathbf 1[n_w^{(m)}(S)=1].
 $$
 
-Removal candidates must have sufficiently small/allowed unique contribution and no unique mandatory obligation. Replacement candidates come from the declared deficit/frontier policy. Every accepted swap obeys the frozen objective/tie hierarchy and preserves lower protected prefixes/rungs.
+A removal is admissible only when it satisfies the frozen unique-support and hard-obligation safety predicates. Replacement proposals follow the frozen deficit/frontier objective and deterministic tie hierarchy. Accepted swaps cannot regress protected hard coverage.
 
-Proposal scoring within one immutable pre-swap state may execute concurrently, but accepted-winner comparison and authoritative state mutation remain deterministic. Exact selector-to-repair state reuse is governed by Part VI: a pure-selector checkpoint is valid only before repair divergence.
+Proposal scoring within one immutable pre-swap state may execute concurrently; authoritative winner comparison and state mutation remain deterministic.
 
-MVSTATE-REUSE1 persists the current v1 selector state, including candidate marginal arrays, for exact selector-to-repair reuse. REPAIR1 restores compatible checkpoints or reconstructs the same v1 mutable state before repair and then uses the v1 select/deselect mutation contract. This coupling belongs to current execution structure; the scientific repair policy remains the exact shell objective and invariants described above.
+REPAIR2 publishes **one repaired master order per domain**. Candidate target subsets are prefix views of that order. The architecture forbids independently repairing separate copies of the 128-, 256-, 512-, or other rungs because that would destroy nesting and make size comparisons conflate cardinality with unrelated membership changes.
 
-REPAIR1 and MVSTATE-REUSE1 remain readable legacy identities. New campaigns use REPAIR2 over the same compact forward state as MVSEL2. Removal metrics, hypothetical replacement scores, accepted swap comparisons, and select/deselect mutations traverse only affected candidate rows and obligation/correlation incidence. REPAIR2 preserves active-shell-only repair, immutable lower prefixes, exact zero-unique and hard-safety admission, the deficit-frontier objective/tie hierarchy, strict no-coverage regression, rank inheritance, future displacement, and deterministic bounded traces.
+## Reconstructible continuation state (MVSTATE2)
 
-MVSTATE2 is authenticated reconstructible continuation state. It binds dataset/domain, UID and family order, DATA2B/MVIDX1 identities, weights, obligations, correlation units, selector policy, selected prefix, and v2 versions. It persists witness multiplicity, coverage mass, obligation/correlation counts, and representative utility; complete candidate marginal arrays and lazy-heap contents are forbidden. Publication is atomic, restoration revalidates state against the selected prefix, and incompatible MVSTATE-REUSE1 artifacts rebuild rather than migrate or deserialize as v2.
+MVSTATE2 is compact authenticated continuation state for the current selector/repair generation. It binds the dataset/domain identity, UID/family order, MVIDX identity, weights, obligations, correlation units, selector/repair policy, selected prefix, and current schema identity.
 
-## MVQUAL1 - independent same-N qualification
+It persists only state required to reconstruct the current scientific position, such as witness multiplicity, covered mass, obligation/correlation counts, and representative utility. Product-scale complete candidate marginal arrays and ephemeral lazy-heap contents are not authoritative continuation state.
 
-MVQUAL independently recomputes coverage/obligation evidence for candidate subsets at identical cardinality. It records the current hard-view deficits, uncovered mass/count, redundancy/unique-support evidence, provenance/correlation diversity, and other policy-defined diagnostics.
+Publication is atomic. Restoration revalidates the persisted state against the selected prefix and primitive identities. Incompatible historical state is not migrated into MVSTATE2; the current campaign must reconstruct from current authoritative inputs or be re-prepared.
 
-Selector-internal counters are not accepted as independent qualification evidence. Qualification may share authenticated primitive sparse inputs but recomputes the relevant predicates through its own verification path. Locked-test data cannot tune radii, weights, repair budgets, tie rules, or qualification thresholds.
+## Independent prefix qualification (MVQUAL)
 
-## Target-size and fidelity funnel
+MVQUAL independently recomputes the hard coverage and obligation evidence required to qualify candidate prefixes. It records policy-defined evidence such as:
 
-The allowed nested sizes and screening/fidelity stages are current specification/policy, not architecture chronology. Architecture requires:
+- per-family hard deficits;
+- uncovered weighted mass and counts;
+- redundancy/unique-support diagnostics;
+- mandatory-obligation satisfaction;
+- provenance/correlation diversity diagnostics;
+- exact input and policy identities.
 
-- a deterministic ordered/rung family whose smaller accepted sets are protected prefixes of larger ones where the current policy declares nesting;
-- a hard coverage/obligation feasibility screen before expensive training;
-- deterministic reduction of surviving candidate sizes under the declared zero-shot/short/full training policy;
-- the smaller-size tie preference whenever the current indistinguishability criterion is satisfied;
-- fail-closed behavior when too few sizes satisfy the minimum coverage/feasibility requirement;
-- full-fidelity comparison only among survivors authorized by the earlier current-policy stages.
+Selector/repair internal counters are not accepted as independent qualification evidence. MVQUAL may share authenticated primitive sparse inputs, but it recomputes the relevant predicates through its independent verification path.
 
-The exact size list, epoch budgets, indistinguishability threshold, survivor counts, and coverage threshold belong to the current target-data specifications/policies and are not duplicated here as a developer roadmap.
+Locked-test data cannot tune radii, weights, hard thresholds, repair budgets, tie rules, or qualification predicates.
+
+## Nested prefixes and hard-coverage monotonicity
+
+Let \(\pi_d\) denote the repaired master order for domain \(d\). The target subset at size \(N\) is
+
+$$
+D_{d,N}=\pi_d[:N].
+$$
+
+For \(N_2>N_1\),
+
+$$
+D_{d,N_1}\subset D_{d,N_2}.
+$$
+
+Under fixed exact hard-coverage and obligation predicates, adding candidates cannot remove already-covered witnesses or already-satisfied positive obligations. Therefore hard satisfaction cannot regress solely because \(N\) increases.
+
+A pass/fail/pass qualification pattern across increasing prefixes is an invariant violation. It indicates broken nesting, identity, qualification logic, obligation semantics, or numerical realization and must fail closed.
+
+## Target-size populations
+
+The scientific target-size study uses a fixed nominal population
+
+$$
+\mathcal N_0=\{128,256,512,1024,2048,4096,8192,16384\}.
+$$
+
+For required training domain \(d\),
+
+$$
+N_{\mathrm{available},d}=|\mathcal D_{\mathrm{eligible},d}|.
+$$
+
+The common materializable population is
+
+$$
+\mathcal N_M=
+\left\{N\in\mathcal N_0:
+N\le \min_d N_{\mathrm{available},d}
+\right\},
+$$
+
+where required domains include final development and every required cross-validation gradient-training domain.
+
+Independent MVQUAL evidence defines
+
+$$
+\mathcal Q=\left\{N\in\mathcal N_M:
+\text{all hard requirements pass in every required domain}
+\right\}.
+$$
+
+The selected size satisfies
+
+$$
+N_{\mathrm{selected}}\in\mathcal Q\subseteq\mathcal N_0.
+$$
+
+No dynamic rescue size is created. An arbitrary available-pool cardinality, monitor cardinality, replay cardinality, batch size, or implementation budget can never silently become a scientific target size.
+
+## Domain-local membership, protocol-global size
+
+Each required training domain has its own leakage-safe fitted inputs and repaired master order. Therefore the actual selected frames differ by domain even when the selected cardinality is common.
+
+`N_selected` is one protocol hyperparameter shared across required fold/final jobs. This permits protocol-matched cross-validation without leaking held-out fold evidence into size selection.
+
+Held-out cross-validation folds evaluate the complete already-frozen protocol. If held-out fold performance were used to choose `N_selected`, those folds would no longer be independent protocol-validation evidence unless the entire procedure were wrapped in a separate nested-validation design.
+
+## Target-size study policy
+
+`TargetSizeStudyPolicy` is the sole target-size decision authority. It consumes the qualified size population and authorized development/model-selection evidence, including common target/replay monitors as defined by their own policies.
+
+Monitor policies are type-distinct from target-size policy. A target monitor of 256 configurations and a replay monitor of 512 configurations, if those values are current, remain monitoring evidence sets; their integers do not create target-size rungs.
+
+### Exact continuation fidelity
+
+Each candidate follows one authenticated training continuation:
+
+```text
+0 -> 3 epochs -> 10 epochs -> 30 epochs
+```
+
+The epoch-10 state authenticates the exact epoch-3 model, optimizer, RNG, and protocol parent. Epoch 30 continues epoch 10. All size candidates use the same foundation, replay semantics, objective, optimizer/LR schedule, exposure policy, precision/backend, and frozen training-seed set.
+
+Ordinary target-success early stopping is disabled during this experiment because size candidates must be compared at common fidelity boundaries. Hard numerical/scientific failure may still reject a candidate. Normal production/CV stopping resumes once the size experiment is complete.
+
+### Successive-fidelity funnel
+
+Let \(q=|\mathcal Q|\). The production decision requires at least three qualified sizes:
+
+```text
+q < 3      -> insufficient_qualified_sizes
+q >= 3     -> epoch 3:  q -> min(q,4)
+              epoch 10: <=4 -> 2
+              epoch 30: 2 -> 1
+```
+
+Candidate comparison uses paired seed-aggregated evidence: every candidate uses the same frozen seed set, avoiding comparisons between unrelated stochastic realizations.
+
+At epoch 3 and epoch 10, candidates within 1 meV/Angstrom in the primary target-force metric are practically equivalent for the screen and the smaller size is preferred. The early screens rank relative promise; they do not require the final absolute force-accuracy threshold.
+
+At epoch 30, only a candidate satisfying the complete frozen hard-admissibility policy may win. Applicable target/focus-group, replay-retention, energy/stress, physical-integrity, relaxation/deployment, and other mandatory requirements are constraints. Replay retention and integrity are not score bonuses unless a future explicit scientific policy changes that rule.
+
+### Typed terminal outcomes
+
+The size study returns a typed decision, not merely an integer:
+
+```text
+selected(N)
+insufficient_materializable_sizes
+insufficient_qualified_sizes
+no_admissible_finalist
+nonconverged_at_available_ceiling
+nonconverged_at_fixed_ceiling
+hard_scientific_failure
+```
+
+If the available corpus stops below 16,384 and the largest materializable rung remains materially superior, the outcome is `nonconverged_at_available_ceiling`. If 16,384 is available and remains materially superior, the outcome is `nonconverged_at_fixed_ceiling`.
+
+The architecture never creates an intermediate size merely to avoid reporting non-convergence.
+
+## Production screening versus algorithm qualification
+
+Ordinary production executes the successive-fidelity funnel and stops training eliminated sizes.
+
+A release/algorithm qualification may retrospectively train the complete candidate population to 30 epochs to measure survivor recall or calibrate the screening policy. That exhaustive matrix is qualification evidence, not a permanent production requirement. If representative qualification shows that the early screens do not reliably retain eventual finalists, the screening policy must be revised explicitly rather than forcing every campaign to repay every eliminated candidate.
+
+## Bounded scientific materialization
+
+The fixed eight-size population is a scientific policy, not a storage mandate. Per training domain, the intended product-scale state is:
+
+```text
+one fitted selection-input authority
+one exact MVIDX authority
+one MVSEL2/REPAIR2 master order
+prefix metadata for candidate sizes
+MVQUAL evidence for required prefixes
+training artifacts only for candidates authorized to train
+```
+
+The architecture specifically rejects eight independent descriptor, sparse-graph, selector-state, or target-dataset copies. Execution caches are reconstructible and bounded.
 
 ## Scientific non-negotiables
 
-Execution optimization does not authorize approximate neighborhood search, relaxed hard coverage, changing correlation/leakage boundaries, altering sequential selection/repair decision authority, or using locked evidence to tune target-data policy. Any scientific change to those semantics requires an explicit specification/architecture revision rather than an execution optimization.
+Execution optimization cannot authorize:
+
+- approximate neighborhood semantics in place of the exact frozen relation;
+- relaxed hard coverage or obligations;
+- changed leakage/correlation boundaries;
+- a second target-membership selector;
+- independently repaired rungs;
+- held-out or locked evidence controlling target size;
+- generated/intermediate rescue sizes;
+- non-deterministic authoritative rank/repair decisions;
+- migration of unsupported historical selector/repair state into current authority.
+
+Any change to these semantics requires an explicit architecture/specification revision rather than an execution optimization.
