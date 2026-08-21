@@ -14,8 +14,8 @@ from . import mvsel2_v5_runtime as _v5_runtime
 # O0 showed that the authenticated forward-only MVIDX1 reopen was rescanning
 # product-scale candidate-to-witness rows after the exact compound validation
 # receipt had already hit. Install the cache-hit-only forward projection before
-# either MVSEL2 or REPAIR2 resolves the shared legacy runtime seam. Receipt
-# misses continue to delegate to the canonical native-store reader unchanged.
+# either MVSEL2 or REPAIR2 uses the shared hardening runtime seam. Receipt misses
+# continue to delegate to the canonical native-store reader unchanged.
 _mvidx1_forward_receipt.install_forward_receipt_runtime(_hardening)
 
 # G3 leaves runtime code responsible only for REPAIR2 orchestration.  The
