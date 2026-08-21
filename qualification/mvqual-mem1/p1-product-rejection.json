@@ -1,0 +1,30 @@
+{
+  "schema": "mdstats.qualification.mvqual-mem1-p1-rejection.v1",
+  "workplan": "DOC-MVQUAL-MEM1-PERF1",
+  "decision": "REJECT_P1_OPEN_P2",
+  "baseline": {
+    "source": "qualification/mvqual-mem1/p0-profile-decision.json",
+    "warm_builder_wall_seconds": 418.32510886299997,
+    "warm_builder_wall_hhmmss": "00:06:58",
+    "direct_lane_seconds": 270.7905310749993,
+    "sparse_lane_seconds": 726.8767030829999
+  },
+  "p1_product_repeat_1": {
+    "evidence_source": "user-supplied product log",
+    "builder_wall_hhmmss": "00:07:33",
+    "builder_wall_seconds": 453,
+    "progressive_direct_prepass_hhmmss": "00:01:58",
+    "progressive_direct_prepass_seconds": 118,
+    "progressive_groups": 2,
+    "progressive_reports": 15,
+    "progressive_workers": 2,
+    "plan_digest_prefix": "338c336ab602",
+    "peak_rss_kib": 31979828,
+    "swap_growth_kib": 0
+  },
+  "scientific_result": "UNCHANGED",
+  "performance_result": "FAIL",
+  "reason": "P1 preserved the accepted scientific digest but failed its workplan acceptance requirement for material product wall-time improvement. The two-selector progressive direct prepass took about 118 seconds outside the canonical four-worker rung queue, while the baseline direct TARGET-DATA2B work had already overlapped with other rung jobs. Repeat 1 therefore increased builder wall time from the 418-second warm baseline to approximately 453 seconds. One repeat is sufficient to reject P1 as a performance optimization; a second repeat is not required to demonstrate material improvement after the observed regression.",
+  "next_gate": "P2",
+  "p2_basis": "Baseline P0 evidence attributes approximately 72.9 percent of measured lane time to repeated sparse MVIDX telemetry. P2 therefore targets incremental exact sparse telemetry while preserving canonical scientific reductions and worker-independent output."
+}
