@@ -2,11 +2,26 @@
 """P2 product meter layered on the accepted M5 qualification contract."""
 from __future__ import annotations
 
+import importlib.util
 import json
 from pathlib import Path
 
-import benchmark_mvqual_mem1_m5 as _m5
 from mdstats.training_data import mvqual_p2_runtime as _p2
+
+
+def _load_m5_module():
+    """Load the sibling M5 benchmark independent of caller ``sys.path``."""
+
+    path = Path(__file__).resolve().with_name("benchmark_mvqual_mem1_m5.py")
+    spec = importlib.util.spec_from_file_location("_mdstats_benchmark_mvqual_mem1_m5", path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Could not load MVQUAL M5 benchmark from {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_m5 = _load_m5_module()
 
 
 def _read_colon_ints_tolerant(path: Path) -> dict[str, int] | None:
