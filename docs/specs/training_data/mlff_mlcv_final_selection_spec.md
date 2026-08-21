@@ -1,61 +1,103 @@
-# MLFF MLCV-FINAL1 final-seed selection specification
+# MLFF final-seed selection and committee specification
 
-Status: implemented in mdstats 0.20.137a0 (`MLCV-FINAL1`)
+**Status:** current normative final-development selection contract  
+**Architecture:** revision 105
 
-## Purpose
+## 1. Purpose
 
-MLCV-FINAL1 converts conventional CV evidence plus full-development MLCV-SELECT1 representatives into the only production-eligible model pool. Fold models are evidence about the training recipe and are permanently excluded from production and committee export.
+This specification converts accepted protocol-validation evidence plus final-development checkpoint evidence into the production-eligible model pool and final committee. Cross-validation fold models are validation evidence only and are permanently excluded from production/committee export.
 
-## Recipe-level CV gate
+## 2. Protocol-level CV gate
 
-When CV folds are configured, MLCV-AGG1 must report campaign-level `cv_robust` before FINAL1 may create production or committee authority. A `cv_failed` campaign therefore exports no final seed even if one final-development run has an attractive `D_full` score. This preserves the interpretation that CV validates the training recipe rather than serving as another model leaderboard.
+When cross-validation is configured, final selection requires the current CV policy to accept the complete frozen `TrainingProtocolIdentity`. A protocol that fails CV produces no production/committee authority even if an individual final-development seed has attractive development metrics.
 
-An explicitly configured zero-fold campaign remains supported. It records `cv_not_performed`; FINAL1 may compare its full-development representatives without inventing CV evidence.
-The per-seed AGG1 records supplied to FINAL1 must match byte-identical content digests already embedded in the immutable campaign-level AGG1 aggregate; matching seed labels or outcomes are not sufficient authority.
+An explicitly configured zero-fold protocol may record `cv_not_performed` when the current campaign policy permits it; that state does not imply CV robustness.
 
-## Final-seed candidate domain
+The final-development runs SHALL bind the same protocol-defining identities validated by CV, including `N_selected`. A change to target size, target-membership policy, replay, objective, stopping/LR, precision/backend, or another protocol-defining field requires new protocol-matched validation.
 
-Exactly one final-development run per optimizer seed is expected. For each seed FINAL1 consumes the immutable MLCV-SELECT1 run-selection record and its authenticated representative, if one exists. Comparable final seeds must share:
+## 3. Final-development candidate domain
 
-- one SELECT1 policy identity;
-- identical complete target validation `D_full` artifact identity; and
-- identical complete TRUE_DFT replay validation `R_full` artifact identity.
+Final candidates are representatives from independent final-development optimizer-seed runs. Comparable seeds share:
 
-A fold selection passed into this layer fails closed.
+- one frozen `TrainingProtocolIdentity`;
+- one protocol-global selected target size;
+- one final-development domain-local target-prefix identity;
+- common target/replay monitor identities;
+- one checkpoint/admissibility policy identity;
+- the same intended exposure semantics and runtime lock.
 
-## Qualification and ranking
+Fold representatives passed into this layer fail closed.
 
-A final seed is individually qualified only when its final-development SELECT1 run produced a representative and its seed CV evidence is robust (or explicitly `cv_not_performed` for a zero-fold campaign). Failed final seeds are omitted; committee cardinality is never padded with an inadmissible model.
+## 4. Hard admissibility before ranking
 
-When the recipe-level CV gate passes, qualified final representatives are ordered deterministically by:
+A final seed is eligible only if its representative satisfies every mandatory current constraint, including as applicable:
 
-1. lower authoritative full weighted score;
-2. lower `D_full` target force RMSE;
-3. lower `DeltaR_full` replay degradation;
-4. lower absolute `R_full` replay force RMSE;
-4. lower optimizer seed;
-5. earlier representative checkpoint epoch; and
-6. checkpoint SHA-256.
+- target force metric;
+- declared focus-group/species force metrics;
+- energy/stress constraints;
+- worst-condition constraints;
+- replay-retention constraint;
+- numerical finiteness/stability;
+- physical/structural integrity;
+- relaxation/deployment integrity;
+- required protocol/CV evidence.
 
-The first item is the single `production_best` **verification candidate**. FINAL1 does not publish a verified production model.
+Failed final seeds are omitted. Committee cardinality is never padded with an inadmissible model.
 
-## Committee export
+Replay retention and integrity are hard constraints, not positive score bonuses by default.
 
-Every qualified final seed is exported as an exact target-head deployment artifact under the FINAL1 committee namespace. Committee members are bound to final-candidate digest, final run identity, SELECT1 record digest, checkpoint SHA/epoch, full score, target-head name, exported model SHA, and byte size.
+## 5. Deterministic ranking
 
-The committee contains only full-development representatives. Its best member is the same model identified by `production_best`, but that member is still awaiting MLCV-VERIFY1 physical verification.
+After hard filtering, admissible final representatives are ranked by the current target-oriented primary policy. The default conceptual ordering is:
 
-## Seed modes
+1. lower authoritative primary target metric;
+2. lower declared secondary target/focus metrics as serialized by policy;
+3. deterministic optimizer-seed tie;
+4. deterministic checkpoint epoch/digest tie.
 
-Generated campaigns use `seed_mode = "optimizer_only"`. Optimizer seeds change stochastic MACE training while the CV partition seed is shared, preserving separation between optimizer-seed variance and partition variance.
+Replay degradation and absolute replay error remain separately reported physical diagnostics/constraints. They do not lower a candidate's ranking score merely for exceeding the required retention margin unless an explicit future scientific policy changes that rule.
 
-Advanced `seed_mode = "optimizer_and_cv_partition"` derives a different deterministic CV partition seed for each optimizer seed. This broadens robustness sampling only. It does not change the final-development `A+B+C` training membership and therefore must not be described as a final-model diversity mechanism.
+The first ranked admissible candidate is the production-best **verification candidate**. Final selection does not itself assert that deployment verification has passed.
 
-## Restart and immutability
+## 6. Committee construction
 
-Final selection is deterministic from immutable AGG1 and SELECT1 records. Existing FINAL1 selection/committee records must reproduce byte-for-byte identities on restart or fail closed. Authenticated exported committee artifacts may be reused without re-extraction. The selected production model remains unpublished until MLCV-VERIFY1 passes physical verification.
+Every admissible final seed selected for committee membership is exported as an exact target-head deployment artifact under the current committee identity.
 
+A committee member binds at least:
 
-## 0.20.140a0 replay-degradation correction
+- final candidate/run identity;
+- frozen protocol and selected-size identities;
+- final-domain target-prefix identity;
+- checkpoint digest/epoch;
+- current target/focus/replay/integrity evidence;
+- target-head identity;
+- exported artifact digest/size/runtime identity.
 
-Only qualified final-development representatives compete, as before, but FINAL1 now ranks their authenticated full score built from absolute target error plus signed full replay degradation. Each final candidate/committee member retains raw `R_full`, matched `R0_full`, `DeltaR_full`, the degradation budget, and baseline model identity for auditability. Fold models remain permanently excluded and failed seeds are never padded into the committee.
+Committee membership contains final-development seeds only. The best member remains subject to the current deployment/physical verification contract.
+
+## 7. Seed semantics
+
+Optimizer seeds alter stochastic training while partition identity remains separately controlled. Any mode that also changes CV partition identity must record that distinction explicitly and cannot be described as final-model training diversity unless it actually changes final-development training evidence under a separately accepted protocol.
+
+Target-size study and final training use their own frozen ordered seed policies. Seed labels alone are not sufficient identity; protocol and parent lineage must match.
+
+## 8. Restart and immutability
+
+Final selection is deterministic from authenticated current protocol/CV and final-run records. Existing final selection/committee records are reusable only when all bound identities and exported artifacts verify.
+
+A restart cannot substitute another checkpoint, target size, membership prefix, monitor, or replay lineage under the same immutable final-selection identity.
+
+## 9. Failure conditions
+
+Final selection fails closed when:
+
+- protocol-level CV is required but not accepted;
+- final runs do not match the validated complete protocol identity;
+- a fold model is supplied as a production candidate;
+- no final representative satisfies all mandatory constraints;
+- ranking uses replay/integrity as an undeclared positive bonus;
+- exported target-head identity or artifact digest does not match the selected checkpoint;
+- committee membership is padded with failed/incompatible candidates;
+- historical migration aliases are required to interpret a supposedly current result.
+
+Unsupported older final-selection schemas remain historical evidence and do not define current production authority.
