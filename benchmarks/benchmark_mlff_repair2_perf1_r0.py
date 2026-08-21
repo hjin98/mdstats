@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
-"""Bounded real-product R0 meter for DOC-REPAIR2-PERF1.
+"""Bounded real-product meter for DOC-REPAIR2-PERF1 staged optimization.
 
 This benchmark consumes authenticated TARGET-DATA2B/MVIDX1/MVSEL2 campaign
-products, executes the canonical scalar REPAIR2 owner, and emits execution-only
-telemetry.  The optional bounded stop is benchmark-private and fires only after
+products, executes the canonical REPAIR2 owner, and emits execution-only
+telemetry. The optional bounded stop is benchmark-private and fires only after
 one complete proposal-bearing rung; it never changes product semantics or
 persists repair authority.
+
+The filename is retained for compatibility with R0 commands. Summary handling
+is version-aware: R0 telemetry used a nested frontier timer, while R1+ reports
+state-invariant frontier wall exclusive of representative/objective wall.
 """
 
 from __future__ import annotations
@@ -96,6 +100,8 @@ def _summaries(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "target_size": key[1],
             "state_iterations": 0,
             "proposals": 0,
+            "proposal_evaluations": 0,
+            "frontier_builds": 0,
             "accepted_swaps": 0,
             "removal_metric_scan_wall_seconds": 0.0,
             "representative_objective_wall_seconds": 0.0,
@@ -107,17 +113,36 @@ def _summaries(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "removal_metric_forward_edges": 0,
             "coverage_gain_candidate_family_rows": 0,
             "coverage_gain_forward_edges": 0,
+            "frontier_coverage_gain_candidate_family_rows": 0,
+            "frontier_coverage_gain_forward_edges": 0,
+            "proposal_final_coverage_candidate_family_rows": 0,
+            "proposal_final_coverage_forward_edges": 0,
+            "telemetry_regimes": [],
         })
         row["state_iterations"] += 1
         row["proposals"] += int(event["proposal_count"])
         row["accepted_swaps"] += int(event["accepted_swaps"])
+
+        is_r1 = "frontier_build_count" in event
+        regime = "r1_frontier_timer_exclusive" if is_r1 else "r0_frontier_timer_inclusive"
+        if regime not in row["telemetry_regimes"]:
+            row["telemetry_regimes"].append(regime)
+        row["frontier_builds"] += int(event.get("frontier_build_count", 0))
+        row["proposal_evaluations"] += int(
+            event.get("proposal_evaluation_count", event["proposal_count"])
+        )
+
         for name in (
             "removal_metric_candidate_family_rows",
             "removal_metric_forward_edges",
             "coverage_gain_candidate_family_rows",
             "coverage_gain_forward_edges",
+            "frontier_coverage_gain_candidate_family_rows",
+            "frontier_coverage_gain_forward_edges",
+            "proposal_final_coverage_candidate_family_rows",
+            "proposal_final_coverage_forward_edges",
         ):
-            row[name] += int(event[name])
+            row[name] += int(event.get(name, 0))
         for name in (
             "removal_metric_scan_wall_seconds",
             "representative_objective_wall_seconds",
@@ -125,15 +150,23 @@ def _summaries(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "accepted_mutation_wall_seconds",
         ):
             row[name] += float(event[name])
-        inclusive = float(event["proposal_frontier_state_invariant_wall_seconds"])
+
+        frontier = float(event["proposal_frontier_state_invariant_wall_seconds"])
         representative = float(event["representative_objective_wall_seconds"])
+        if is_r1:
+            # R1 source measures the shared frontier interval after subtracting
+            # the separately measured representative/objective interval.
+            exclusive = frontier
+            inclusive = frontier + representative
+        else:
+            # R0 source nested representative/objective timing inside the raw
+            # frontier timer. Preserve the old correction for existing R0 JSON.
+            inclusive = frontier
+            exclusive = max(0.0, frontier - representative)
         row["proposal_frontier_state_invariant_inclusive_wall_seconds"] += inclusive
-        # R0 instrumentation deliberately keeps nested timers cheap.  This
-        # subtraction removes the nested representative/objective interval so
-        # bottleneck attribution remains non-overlapping.
-        row["proposal_frontier_state_invariant_exclusive_wall_seconds"] += max(
-            0.0, inclusive - representative
-        )
+        row["proposal_frontier_state_invariant_exclusive_wall_seconds"] += exclusive
+    for row in rows.values():
+        row["telemetry_regimes"] = tuple(row["telemetry_regimes"])
     return [rows[key] for key in sorted(rows)]
 
 
@@ -187,7 +220,7 @@ def main() -> int:
         events.append(dict(event))
         if event.get("kind") == "repair_state":
             print(
-                "[REPAIR2-R0] "
+                "[REPAIR2-PERF1] "
                 f"domain={event['domain']}; target_size={event['target_size']}; "
                 f"state={event['state_iteration']}; proposals={event['proposal_count']}; "
                 f"frontier={event['proposal_frontier_state_invariant_wall_hhmmss']}; "
@@ -215,7 +248,7 @@ def main() -> int:
             selection,
             policy=policy,
             workers=1,
-            progress_callback=lambda message: print(f"[REPAIR2-R0] {message}", flush=True),
+            progress_callback=lambda message: print(f"[REPAIR2-PERF1] {message}", flush=True),
             telemetry_callback=telemetry,
         )
         completed = True
@@ -240,7 +273,7 @@ def main() -> int:
         validation_usage = _usage_delta(validation_before, _usage())
 
     payload = {
-        "schema": "mdstats.benchmark.repair2-perf1-r0.v1",
+        "schema": "mdstats.benchmark.repair2-perf1.v2",
         "source": {"git_head": _git_head()},
         "input": {
             "campaign_database": str(database),
