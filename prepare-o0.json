@@ -1,0 +1,171 @@
+{
+  "command": [
+    "python",
+    "tools/mdstats-mlff-campaign.py",
+    "--config",
+    "$HOME/QE/lammps-proj/zeolite/05_mace_training/LTA/mpa0/FP32/campaign.toml",
+    "prepare"
+  ],
+  "execution": {
+    "child_filesystem_inputs": 172659856,
+    "child_filesystem_outputs": 158256,
+    "child_major_faults": 297220,
+    "child_maxrss_kib": 90868748,
+    "child_minor_faults": 14711153,
+    "child_system_cpu_seconds": 159.637825,
+    "child_user_cpu_seconds": 1711.191879,
+    "interrupted": false,
+    "log_path": "$HOME/QE/lammps-proj/zeolite/90_scripts/mdstats/prepare-o0.log",
+    "returncode": -15,
+    "sample_interval_seconds": 1.0,
+    "sampled_peak_processes": 1,
+    "sampled_peak_rss_kib": 90647696,
+    "sampled_peak_threads": 10,
+    "sampled_seen_processes": 1,
+    "timed_out": true,
+    "timeout_seconds": 1800.0,
+    "wall_hhmmss": "00:30:03",
+    "wall_seconds": 1802.8086435620062
+  },
+  "measurement_notes": [
+    "The wrapped campaign command is unchanged; this file is benchmark evidence only.",
+    "Stage CPU/I/O counters are sampled from /proc for the observed process tree and are diagnostic, not scientific authority.",
+    "Very short-lived descendants between samples can be missed; whole-command RUSAGE_CHILDREN counters are retained separately.",
+    "Stage labels are inferred only from leading/bracketed canonical progress tokens; unrecognized intervals remain attached to the last observed stage."
+  ],
+  "schema": "mdstats.benchmark.prepare-o0.v1",
+  "source": {
+    "git_head": "c7c9e308aef23a5913bac092e33d9ee396710d3f"
+  },
+  "stage_segments": [
+    {
+      "peak_processes_sampled": 1,
+      "peak_rss_kib_sampled": 2264736,
+      "peak_threads_sampled": 2,
+      "read_bytes_sampled": 784302080,
+      "stage": "startup",
+      "system_cpu_seconds_sampled": 2.95,
+      "transition_line": "DATA6 foundation-model descriptor and prediction sweep",
+      "user_cpu_seconds_sampled": 47.53,
+      "wall_hhmmss": "00:00:51",
+      "wall_seconds": 51.489710475012544,
+      "write_bytes_sampled": 471040
+    },
+    {
+      "peak_processes_sampled": 1,
+      "peak_rss_kib_sampled": 3028932,
+      "peak_threads_sampled": 2,
+      "read_bytes_sampled": 139780096,
+      "stage": "DATA6",
+      "system_cpu_seconds_sampled": 0.73,
+      "transition_line": "[DATA4 restore] restore; status=progress; progress=37,633/37,633 (100.0%); kind=raw-feature",
+      "user_cpu_seconds_sampled": 22.560000000000002,
+      "wall_hhmmss": "00:00:23",
+      "wall_seconds": 23.338102059991797,
+      "write_bytes_sampled": 102400
+    },
+    {
+      "peak_processes_sampled": 1,
+      "peak_rss_kib_sampled": 4268748,
+      "peak_threads_sampled": 2,
+      "read_bytes_sampled": 978051072,
+      "stage": "DATA4",
+      "system_cpu_seconds_sampled": 1.1599999999999997,
+      "transition_line": "[DATA6 restore] restore; status=progress; progress=36,408/36,408 (100.0%); kind=LTA selection frame",
+      "user_cpu_seconds_sampled": 29.409999999999997,
+      "wall_hhmmss": "00:00:31",
+      "wall_seconds": 30.675696338003036,
+      "write_bytes_sampled": 229376
+    },
+    {
+      "peak_processes_sampled": 1,
+      "peak_rss_kib_sampled": 5120640,
+      "peak_threads_sampled": 2,
+      "read_bytes_sampled": 346374144,
+      "stage": "DATA6",
+      "system_cpu_seconds_sampled": 0.8799999999999999,
+      "transition_line": "[TARGET-DATA2C-MVIDX1 restore] restore; status=start; validation=receipt-hit; cache_policy=discard; families=0/165; bytes=0/76134275040",
+      "user_cpu_seconds_sampled": 72.0,
+      "wall_hhmmss": "00:01:20",
+      "wall_seconds": 79.62873008099268,
+      "write_bytes_sampled": 23949312
+    },
+    {
+      "peak_processes_sampled": 1,
+      "peak_rss_kib_sampled": 89529168,
+      "peak_threads_sampled": 2,
+      "read_bytes_sampled": 83440930816,
+      "stage": "TARGET-DATA2C-MVIDX1",
+      "system_cpu_seconds_sampled": 123.28,
+      "transition_line": "TARGET-DATA2C-REPAIR2 forward-state active-shell repair",
+      "user_cpu_seconds_sampled": 326.57,
+      "wall_hhmmss": "00:08:42",
+      "wall_seconds": 521.7610774500063,
+      "write_bytes_sampled": 52805632
+    },
+    {
+      "peak_processes_sampled": 1,
+      "peak_rss_kib_sampled": 90647696,
+      "peak_threads_sampled": 10,
+      "read_bytes_sampled": 2712408064,
+      "stage": "TARGET-DATA2C-REPAIR2",
+      "system_cpu_seconds_sampled": 28.180000000000007,
+      "transition_line": "TARGET-DATA2C deterministic nested target-size ladder (historical v4 authority)",
+      "user_cpu_seconds_sampled": 1213.04,
+      "wall_hhmmss": "00:18:16",
+      "wall_seconds": 1095.9140230399935,
+      "write_bytes_sampled": 3469312
+    },
+    {
+      "peak_processes_sampled": 1,
+      "peak_rss_kib_sampled": 0,
+      "peak_threads_sampled": 0,
+      "read_bytes_sampled": 0,
+      "stage": "TARGET-DATA2C",
+      "system_cpu_seconds_sampled": 0.0,
+      "transition_line": null,
+      "user_cpu_seconds_sampled": 0.0,
+      "wall_hhmmss": "00:00:00",
+      "wall_seconds": 0.0013041180063737556,
+      "write_bytes_sampled": 0
+    }
+  ],
+  "stage_transitions": [
+    {
+      "at_seconds": 51.489710475012544,
+      "from": "startup",
+      "line": "DATA6 foundation-model descriptor and prediction sweep",
+      "to": "DATA6"
+    },
+    {
+      "at_seconds": 74.82781253500434,
+      "from": "DATA6",
+      "line": "[DATA4 restore] restore; status=progress; progress=37,633/37,633 (100.0%); kind=raw-feature",
+      "to": "DATA4"
+    },
+    {
+      "at_seconds": 105.50350887300738,
+      "from": "DATA4",
+      "line": "[DATA6 restore] restore; status=progress; progress=36,408/36,408 (100.0%); kind=LTA selection frame",
+      "to": "DATA6"
+    },
+    {
+      "at_seconds": 185.13223895400006,
+      "from": "DATA6",
+      "line": "[TARGET-DATA2C-MVIDX1 restore] restore; status=start; validation=receipt-hit; cache_policy=discard; families=0/165; bytes=0/76134275040",
+      "to": "TARGET-DATA2C-MVIDX1"
+    },
+    {
+      "at_seconds": 706.8933164040063,
+      "from": "TARGET-DATA2C-MVIDX1",
+      "line": "TARGET-DATA2C-REPAIR2 forward-state active-shell repair",
+      "to": "TARGET-DATA2C-REPAIR2"
+    },
+    {
+      "at_seconds": 1802.8073394439998,
+      "from": "TARGET-DATA2C-REPAIR2",
+      "line": "TARGET-DATA2C deterministic nested target-size ladder (historical v4 authority)",
+      "to": "TARGET-DATA2C"
+    }
+  ]
+}
