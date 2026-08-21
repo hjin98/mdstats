@@ -72,6 +72,12 @@ def _new_state_telemetry() -> dict[str, Any]:
         "removed_witness_mark_wall_seconds": 0.0,
         "unit_filter_wall_seconds": 0.0,
         "removal_dependent_representative_diversity_wall_seconds": 0.0,
+        "frontier_build_count": 0,
+        "proposal_evaluation_count": 0,
+        "frontier_coverage_gain_candidate_family_rows": 0,
+        "frontier_coverage_gain_forward_edges": 0,
+        "proposal_final_coverage_candidate_family_rows": 0,
+        "proposal_final_coverage_forward_edges": 0,
         "candidates_after_hard_filter_total": 0,
         "candidates_after_bottleneck_filter_total": 0,
         "candidates_after_total_coverage_filter_total": 0,
@@ -324,6 +330,18 @@ class _RepairProposalScratchV2:
         return self._marks[int(family_index)][witnesses] == self._epoch
 
 
+@dataclass(frozen=True, slots=True)
+class _RepairProposalFrontierContextV2:
+    """O(candidate_count) pre-removal frontier shared by one unchanged repair state."""
+
+    representative_before: float
+    before: tuple[int, float, float, float, int] | None
+    hard_pending: bool
+    bottleneck: int
+    candidates: tuple[int, ...]
+    proposal_possible: bool
+
+
 def _hard_deficit(forward_domain: Any, state: TargetMultiViewForwardStateV2) -> int:
     return int(sum(
         max(0, int(item.minimum_selected_frames) - int(state.obligation_counts[index]))
@@ -528,7 +546,7 @@ def _filter(candidates: tuple[int, ...], values: dict[int, float], tolerance: fl
     return tuple(candidate for candidate in candidates if values[candidate] >= best - tolerance)
 
 
-def _proposal(
+def _proposal_reference(
     reference_domain: Any,
     forward_domain: Any,
     state: TargetMultiViewForwardStateV2,
@@ -540,7 +558,7 @@ def _proposal(
     coverage_gain_scan: list[int] | None = None,
     removed_mark_scan: list[int] | None = None,
 ) -> dict[str, Any] | None:
-    """Evaluate one exact hypothetical without cloning or mutating forward state."""
+    """Frozen R0 scalar proposal oracle; production code does not call it."""
 
     rank, removed, unique, loss = removal
     mark_started = time.perf_counter() if perf is not None else 0.0
@@ -684,6 +702,198 @@ def _proposal(
     }
 
 
+def _build_proposal_frontier_context_v2(
+    forward_domain: Any,
+    state: TargetMultiViewForwardStateV2,
+    policy: TargetMultiViewRepairPolicyV2,
+    *,
+    perf: dict[str, Any] | None = None,
+    coverage_gain_scan: list[int] | None = None,
+) -> _RepairProposalFrontierContextV2:
+    """Build the exact pre-removal proposal frontier once for an unchanged state."""
+
+    total_started = time.perf_counter() if perf is not None else 0.0
+    representative_wall = 0.0
+    if perf is not None:
+        perf["frontier_build_count"] += 1
+
+    available = tuple(int(value) for value in np.flatnonzero(state.available))
+    if not available:
+        if perf is not None:
+            perf["proposal_frontier_state_invariant_wall_seconds"] += time.perf_counter() - total_started
+        return _RepairProposalFrontierContextV2(0.0, None, False, -1, (), False)
+
+    tolerance = policy.gain_tie_tolerance
+    representative_started = time.perf_counter() if perf is not None else 0.0
+    representative_before = _representative_utility(state)
+    before = _objective(forward_domain, state, representative_before)
+    if perf is not None:
+        representative_wall = time.perf_counter() - representative_started
+        perf["representative_objective_wall_seconds"] += representative_wall
+    hard_pending = before[0] > 0
+
+    candidates = available
+    hard_values = {candidate: _hard_gain(candidate, forward_domain, state) for candidate in candidates}
+    if hard_pending:
+        maximum = max(hard_values.values())
+        candidates = tuple(candidate for candidate in candidates if hard_values[candidate] == maximum)
+    if perf is not None:
+        perf["candidates_after_hard_filter_total"] += len(candidates)
+
+    masses = np.asarray([item.coverage_mass for item in state.family_states], dtype=np.float64)
+    bottleneck = int(np.flatnonzero(masses <= float(np.min(masses)) + tolerance)[0])
+    bottleneck_values = {
+        candidate: _family_coverage_gain(
+            candidate,
+            bottleneck,
+            forward_domain,
+            state,
+            perf_scan=coverage_gain_scan,
+        )
+        for candidate in candidates
+    }
+    candidates = _filter(candidates, bottleneck_values, tolerance)
+    if perf is not None:
+        perf["candidates_after_bottleneck_filter_total"] += len(candidates)
+
+    total_values: dict[int, float] = {}
+    for candidate in candidates:
+        _, total = _total_coverage_gains(
+            candidate,
+            forward_domain,
+            state,
+            perf_scan=coverage_gain_scan,
+        )
+        total_values[candidate] = total
+    candidates = _filter(candidates, total_values, tolerance)
+    if perf is not None:
+        perf["candidates_after_total_coverage_filter_total"] += len(candidates)
+        perf["proposal_frontier_state_invariant_wall_seconds"] += max(
+            0.0, time.perf_counter() - total_started - representative_wall
+        )
+
+    proposal_possible = hard_pending or max(total_values[candidate] for candidate in candidates) > tolerance
+    return _RepairProposalFrontierContextV2(
+        representative_before=representative_before,
+        before=before,
+        hard_pending=hard_pending,
+        bottleneck=bottleneck,
+        candidates=candidates,
+        proposal_possible=proposal_possible,
+    )
+
+
+def _proposal_from_frontier_context_v2(
+    reference_domain: Any,
+    forward_domain: Any,
+    state: TargetMultiViewForwardStateV2,
+    removal: tuple[int, int, float, float],
+    policy: TargetMultiViewRepairPolicyV2,
+    scratch: _RepairProposalScratchV2,
+    context: _RepairProposalFrontierContextV2,
+    *,
+    perf: dict[str, Any] | None = None,
+    final_coverage_gain_scan: list[int] | None = None,
+    removed_mark_scan: list[int] | None = None,
+) -> dict[str, Any] | None:
+    """Evaluate only removal-dependent terms against a frozen state frontier."""
+
+    if not context.proposal_possible:
+        return None
+    rank, removed, unique, loss = removal
+    if bool(state.available[removed]):
+        raise TrainingDataInputError(
+            "TARGET-DATA2C-REPAIR2 removal shortlist candidate unexpectedly remained available."
+        )
+    before = context.before
+    if before is None or context.bottleneck < 0 or not context.candidates:
+        return None
+
+    mark_started = time.perf_counter() if perf is not None else 0.0
+    scratch.mark_removed(forward_domain, removed, perf_scan=removed_mark_scan)
+    if perf is not None:
+        perf["removed_witness_mark_wall_seconds"] += time.perf_counter() - mark_started
+        perf["proposal_evaluation_count"] += 1
+
+    tolerance = policy.gain_tie_tolerance
+    candidates = context.candidates
+    unit_started = time.perf_counter() if perf is not None else 0.0
+    removed_unit = int(forward_domain.candidate_correlation_unit_codes[removed])
+    hypothetical_unit_counts: dict[int, int] = {}
+    for candidate in candidates:
+        unit = int(forward_domain.candidate_correlation_unit_codes[candidate])
+        hypothetical_unit_counts[candidate] = int(state.correlation_unit_counts[unit]) - int(unit == removed_unit)
+    minimum_unit = min(hypothetical_unit_counts.values())
+    candidates = tuple(candidate for candidate in candidates if hypothetical_unit_counts[candidate] == minimum_unit)
+    if perf is not None:
+        perf["unit_filter_wall_seconds"] += time.perf_counter() - unit_started
+        perf["candidates_after_unit_filter_total"] += len(candidates)
+
+    pair_started = time.perf_counter() if perf is not None else 0.0
+    representative_values = {
+        candidate: _pair_representative_gain(candidate, forward_domain, state, scratch)
+        for candidate in candidates
+    }
+    candidates = _filter(candidates, representative_values, tolerance)
+    if perf is not None:
+        perf["candidates_after_representative_filter_total"] += len(candidates)
+    diversity_values = {
+        candidate: _pair_diversity(candidate, forward_domain, state, scratch)
+        for candidate in candidates
+    }
+    candidates = _filter(candidates, diversity_values, tolerance)
+    if perf is not None:
+        perf["removal_dependent_representative_diversity_wall_seconds"] += (
+            time.perf_counter() - pair_started
+        )
+        perf["candidates_after_diversity_filter_total"] += len(candidates)
+    replacement = min(candidates, key=lambda candidate: reference_domain.frame_uids[candidate])
+
+    gains, _ = _total_coverage_gains(
+        replacement,
+        forward_domain,
+        state,
+        perf_scan=final_coverage_gain_scan,
+    )
+    coverage_after = [
+        min(1.0, float(item.coverage_mass) + float(gain))
+        for item, gain in zip(state.family_states, gains, strict=True)
+    ]
+    hard_after = max(0, before[0] - _hard_gain(replacement, forward_domain, state))
+    representative_after = float(context.representative_before - loss + representative_values[replacement])
+    replacement_unit = int(forward_domain.candidate_correlation_unit_codes[replacement])
+    if replacement_unit == removed_unit:
+        balance_after = before[4]
+    else:
+        removed_count = int(state.correlation_unit_counts[removed_unit])
+        replacement_count = int(state.correlation_unit_counts[replacement_unit])
+        balance_after = before[4] + 2 * (removed_count - replacement_count - 1)
+    after = (
+        hard_after,
+        float(min(coverage_after)),
+        float(sum(coverage_after)),
+        representative_after,
+        balance_after,
+    )
+    if policy.strict_no_coverage_regression and any(
+        new + tolerance < float(old.coverage_mass)
+        for old, new in zip(state.family_states, coverage_after, strict=True)
+    ):
+        return None
+    if not _strictly_better(before, after, tolerance):
+        return None
+    return {
+        "rank": rank,
+        "removed": removed,
+        "replacement": replacement,
+        "unique": unique,
+        "loss": loss,
+        "before": before,
+        "after": after,
+        "bottleneck": state.family_states[context.bottleneck].family_id,
+    }
+
+
 def _better(
     left: dict[str, Any] | None,
     right: dict[str, Any],
@@ -726,12 +936,11 @@ def build_target_multi_view_repair_plan_v2(
     """Build REPAIR2 using exact forward-only state and no-copy proposals.
 
     ``initial_states`` is an execution-only continuation hook used by campaign
-    MVSTATE2 integration.  Missing state falls back to selected-prefix forward
-    replay.  Once a repair swap is accepted the repaired state is carried
+    MVSTATE2 integration. Missing state falls back to selected-prefix forward
+    replay. Once a repair swap is accepted the repaired state is carried
     forward and no later pure-selector checkpoint is consulted.
 
-    ``telemetry_callback`` is an execution-only R0 profiling hook.  It receives
-    per-rung and per-repair-state dictionaries and is excluded from all
+    ``telemetry_callback`` is execution-only profiling. It is excluded from all
     scientific policy, serialization, lineage, and digest calculations.
     """
 
@@ -795,8 +1004,6 @@ def build_target_multi_view_repair_plan_v2(
                     })
                 continue
             if size < restored_size:
-                # Reconstruct immutable earlier rung evidence directly from the
-                # selector record; the restored state already contains it.
                 rungs.append(TargetMultiViewRepairRung(
                     target_size=size,
                     materializable=True,
@@ -890,24 +1097,39 @@ def build_target_multi_view_repair_plan_v2(
                     ))
                     shortlist = removals[: policy.removal_shortlist_limit]
                     state_proposal_start = proposal_count
-                    coverage_gain_scan = [0, 0] if telemetry_callback is not None else None
+                    proposal_count += len(shortlist)
+                    frontier_scan = [0, 0] if telemetry_callback is not None else None
+                    final_coverage_scan = [0, 0] if telemetry_callback is not None else None
                     removed_mark_scan = [0, 0] if telemetry_callback is not None else None
                     best = None
-                    for removal in shortlist:
-                        proposal_count += 1
-                        proposal = _proposal(
-                            reference_domain,
+                    if shortlist:
+                        if any(bool(state.available[int(removal[1])]) for removal in shortlist):
+                            raise TrainingDataInputError(
+                                "TARGET-DATA2C-REPAIR2 removal shortlist contains an available candidate."
+                            )
+                        context = _build_proposal_frontier_context_v2(
                             forward_domain,
                             state,
-                            removal,
                             policy,
-                            scratch,
                             perf=state_perf,
-                            coverage_gain_scan=coverage_gain_scan,
-                            removed_mark_scan=removed_mark_scan,
+                            coverage_gain_scan=frontier_scan,
                         )
-                        if proposal is not None:
-                            best = _better(best, proposal, reference_domain, policy.gain_tie_tolerance)
+                        if context.proposal_possible:
+                            for removal in shortlist:
+                                proposal = _proposal_from_frontier_context_v2(
+                                    reference_domain,
+                                    forward_domain,
+                                    state,
+                                    removal,
+                                    policy,
+                                    scratch,
+                                    context,
+                                    perf=state_perf,
+                                    final_coverage_gain_scan=final_coverage_scan,
+                                    removed_mark_scan=removed_mark_scan,
+                                )
+                                if proposal is not None:
+                                    best = _better(best, proposal, reference_domain, policy.gain_tie_tolerance)
                     mutation_wall = 0.0
                     accepted_in_state = 0
                     if best is not None:
@@ -921,9 +1143,6 @@ def build_target_multi_view_repair_plan_v2(
                             displaced = future
                         order[rank] = replacement
 
-                        # Mutate the real state exactly once after the winning
-                        # hypothetical is selected; recompute the replacement score
-                        # in the actual post-removal state.
                         mutation_started = time.perf_counter() if telemetry_callback is not None else 0.0
                         deselect_target_multi_view_candidate_v2(removed, forward_domain, state)
                         accepted_score = score_target_multi_view_candidate_v2(replacement, forward_domain, state)
@@ -959,6 +1178,15 @@ def build_target_multi_view_repair_plan_v2(
                         accepted_in_state = 1
                         changed = True
                     if telemetry_callback is not None:
+                        assert state_perf is not None
+                        assert removal_scan is not None
+                        assert frontier_scan is not None
+                        assert final_coverage_scan is not None
+                        assert removed_mark_scan is not None
+                        state_perf["frontier_coverage_gain_candidate_family_rows"] = int(frontier_scan[0])
+                        state_perf["frontier_coverage_gain_forward_edges"] = int(frontier_scan[1])
+                        state_perf["proposal_final_coverage_candidate_family_rows"] = int(final_coverage_scan[0])
+                        state_perf["proposal_final_coverage_forward_edges"] = int(final_coverage_scan[1])
                         state_event = {
                             "kind": "repair_state",
                             "domain": reference_domain.label_domain_id,
@@ -976,8 +1204,8 @@ def build_target_multi_view_repair_plan_v2(
                             "domain_cumulative_proposal_count": proposal_count,
                             "accepted_swaps": accepted_in_state,
                             "rung_cumulative_accepted_swaps": len(accepted),
-                            "coverage_gain_candidate_family_rows": int(coverage_gain_scan[0]),
-                            "coverage_gain_forward_edges": int(coverage_gain_scan[1]),
+                            "coverage_gain_candidate_family_rows": int(frontier_scan[0] + final_coverage_scan[0]),
+                            "coverage_gain_forward_edges": int(frontier_scan[1] + final_coverage_scan[1]),
                             "removed_mark_candidate_family_rows": int(removed_mark_scan[0]),
                             "removed_mark_forward_edges": int(removed_mark_scan[1]),
                             "accepted_mutation_wall_seconds": mutation_wall,
@@ -985,7 +1213,6 @@ def build_target_multi_view_repair_plan_v2(
                             "eta_hhmmss": "--:--:--",
                             "resource_delta": _resource_delta(state_resource_before, _resource_snapshot()),
                         }
-                        assert state_perf is not None
                         state_event.update(state_perf)
                         for key in (
                             "representative_objective_wall_seconds",
