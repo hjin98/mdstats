@@ -7,8 +7,16 @@ single-owner REPAIR2 orchestration seam before exposing the same module surface.
 from __future__ import annotations
 
 from . import _campaign_cli_core as _core
+from . import mvidx1_forward_receipt_runtime as _mvidx1_forward_receipt
 from . import mvsel2_hardening_runtime as _hardening
 from . import mvsel2_v5_runtime as _v5_runtime
+
+# O0 showed that the authenticated forward-only MVIDX1 reopen was rescanning
+# product-scale candidate-to-witness rows after the exact compound validation
+# receipt had already hit. Install the cache-hit-only forward projection before
+# either MVSEL2 or REPAIR2 resolves the shared legacy runtime seam. Receipt
+# misses continue to delegate to the canonical native-store reader unchanged.
+_mvidx1_forward_receipt.install_forward_receipt_runtime(_hardening)
 
 # G3 leaves runtime code responsible only for REPAIR2 orchestration.  The
 # scientific repair loop lives exclusively in target_multi_view_repair_v2.
