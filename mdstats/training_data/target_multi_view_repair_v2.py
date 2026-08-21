@@ -29,6 +29,58 @@ _DEFAULT_UNIQUE_TOLERANCE = 1.0e-14
 _DEFAULT_GAIN_TOLERANCE = 1.0e-14
 
 
+def _resource_snapshot() -> tuple[int, int, int, int] | None:
+    """Return cheap process-fault/I/O counters for opt-in REPAIR2 telemetry."""
+
+    try:
+        import resource
+
+        usage = resource.getrusage(resource.RUSAGE_SELF)
+    except (ImportError, AttributeError, OSError):
+        return None
+    return (
+        int(getattr(usage, "ru_minflt", 0)),
+        int(getattr(usage, "ru_majflt", 0)),
+        int(getattr(usage, "ru_inblock", 0)),
+        int(getattr(usage, "ru_oublock", 0)),
+    )
+
+
+def _resource_delta(
+    before: tuple[int, int, int, int] | None,
+    after: tuple[int, int, int, int] | None,
+) -> dict[str, int] | None:
+    if before is None or after is None:
+        return None
+    return {
+        "minor_faults": after[0] - before[0],
+        "major_faults": after[1] - before[1],
+        "filesystem_inputs": after[2] - before[2],
+        "filesystem_outputs": after[3] - before[3],
+    }
+
+
+def _emit_telemetry(callback: Any | None, payload: dict[str, Any]) -> None:
+    if callback is not None:
+        callback(payload)
+
+
+def _new_state_telemetry() -> dict[str, Any]:
+    return {
+        "representative_objective_wall_seconds": 0.0,
+        "proposal_frontier_state_invariant_wall_seconds": 0.0,
+        "removed_witness_mark_wall_seconds": 0.0,
+        "unit_filter_wall_seconds": 0.0,
+        "removal_dependent_representative_diversity_wall_seconds": 0.0,
+        "candidates_after_hard_filter_total": 0,
+        "candidates_after_bottleneck_filter_total": 0,
+        "candidates_after_total_coverage_filter_total": 0,
+        "candidates_after_unit_filter_total": 0,
+        "candidates_after_representative_filter_total": 0,
+        "candidates_after_diversity_filter_total": 0,
+    }
+
+
 @dataclass(frozen=True, slots=True)
 class TargetMultiViewRepairPolicyV2:
     """REPAIR2 policy mirror of the frozen REPAIR1 scientific policy."""
@@ -245,7 +297,13 @@ class _RepairProposalScratchV2:
         )
         self._epoch = np.uint32(0)
 
-    def mark_removed(self, forward_domain: Any, removed: int) -> None:
+    def mark_removed(
+        self,
+        forward_domain: Any,
+        removed: int,
+        *,
+        perf_scan: list[int] | None = None,
+    ) -> None:
         next_epoch = int(self._epoch) + 1
         if next_epoch >= np.iinfo(np.uint32).max:
             for marks in self._marks:
@@ -254,6 +312,9 @@ class _RepairProposalScratchV2:
         self._epoch = np.uint32(next_epoch)
         for marks, family in zip(self._marks, forward_domain.families, strict=True):
             witnesses = np.asarray(family.candidate_witness_indices(removed), dtype=np.int64)
+            if perf_scan is not None:
+                perf_scan[0] += 1
+                perf_scan[1] += int(witnesses.size)
             if witnesses.size:
                 marks[witnesses] = self._epoch
 
@@ -331,11 +392,16 @@ def _removal_metrics(
     candidate: int,
     forward_domain: Any,
     state: TargetMultiViewForwardStateV2,
+    *,
+    perf_scan: list[int] | None = None,
 ) -> tuple[float, float]:
     unique = 0.0
     loss = 0.0
     for family, family_state in zip(forward_domain.families, state.family_states, strict=True):
         witnesses = np.asarray(family.candidate_witness_indices(candidate), dtype=np.int64)
+        if perf_scan is not None:
+            perf_scan[0] += 1
+            perf_scan[1] += int(witnesses.size)
         if witnesses.size == 0:
             continue
         multiplicity = family_state.multiplicity[witnesses].astype(np.float64, copy=False)
@@ -376,10 +442,15 @@ def _family_coverage_gain(
     family_index: int,
     forward_domain: Any,
     state: TargetMultiViewForwardStateV2,
+    *,
+    perf_scan: list[int] | None = None,
 ) -> float:
     family = forward_domain.families[int(family_index)]
     family_state = state.family_states[int(family_index)]
     witnesses = np.asarray(family.candidate_witness_indices(candidate), dtype=np.int64)
+    if perf_scan is not None:
+        perf_scan[0] += 1
+        perf_scan[1] += int(witnesses.size)
     if witnesses.size == 0:
         return 0.0
     multiplicity = family_state.multiplicity[witnesses]
@@ -390,9 +461,17 @@ def _total_coverage_gains(
     candidate: int,
     forward_domain: Any,
     state: TargetMultiViewForwardStateV2,
+    *,
+    perf_scan: list[int] | None = None,
 ) -> tuple[tuple[float, ...], float]:
     gains = tuple(
-        _family_coverage_gain(candidate, family_index, forward_domain, state)
+        _family_coverage_gain(
+            candidate,
+            family_index,
+            forward_domain,
+            state,
+            perf_scan=perf_scan,
+        )
         for family_index in range(len(forward_domain.families))
     )
     return gains, float(np.sum(gains, dtype=np.float64))
@@ -456,17 +535,31 @@ def _proposal(
     removal: tuple[int, int, float, float],
     policy: TargetMultiViewRepairPolicyV2,
     scratch: _RepairProposalScratchV2,
+    *,
+    perf: dict[str, Any] | None = None,
+    coverage_gain_scan: list[int] | None = None,
+    removed_mark_scan: list[int] | None = None,
 ) -> dict[str, Any] | None:
     """Evaluate one exact hypothetical without cloning or mutating forward state."""
 
     rank, removed, unique, loss = removal
-    scratch.mark_removed(forward_domain, removed)
+    mark_started = time.perf_counter() if perf is not None else 0.0
+    scratch.mark_removed(forward_domain, removed, perf_scan=removed_mark_scan)
+    if perf is not None:
+        perf["removed_witness_mark_wall_seconds"] += time.perf_counter() - mark_started
+
+    frontier_started = time.perf_counter() if perf is not None else 0.0
     available = tuple(int(value) for value in np.flatnonzero(state.available) if int(value) != removed)
     if not available:
+        if perf is not None:
+            perf["proposal_frontier_state_invariant_wall_seconds"] += time.perf_counter() - frontier_started
         return None
     tolerance = policy.gain_tie_tolerance
+    representative_started = time.perf_counter() if perf is not None else 0.0
     representative_before = _representative_utility(state)
     before = _objective(forward_domain, state, representative_before)
+    if perf is not None:
+        perf["representative_objective_wall_seconds"] += time.perf_counter() - representative_started
     hard_pending = before[0] > 0
 
     candidates = available
@@ -474,25 +567,44 @@ def _proposal(
     if hard_pending:
         maximum = max(hard_values.values())
         candidates = tuple(candidate for candidate in candidates if hard_values[candidate] == maximum)
+    if perf is not None:
+        perf["candidates_after_hard_filter_total"] += len(candidates)
 
     masses = np.asarray([item.coverage_mass for item in state.family_states], dtype=np.float64)
     bottleneck = int(np.flatnonzero(masses <= float(np.min(masses)) + tolerance)[0])
     bottleneck_values = {
-        candidate: _family_coverage_gain(candidate, bottleneck, forward_domain, state)
+        candidate: _family_coverage_gain(
+            candidate,
+            bottleneck,
+            forward_domain,
+            state,
+            perf_scan=coverage_gain_scan,
+        )
         for candidate in candidates
     }
     candidates = _filter(candidates, bottleneck_values, tolerance)
+    if perf is not None:
+        perf["candidates_after_bottleneck_filter_total"] += len(candidates)
 
     family_gains: dict[int, tuple[float, ...]] = {}
     total_values: dict[int, float] = {}
     for candidate in candidates:
-        gains, total = _total_coverage_gains(candidate, forward_domain, state)
+        gains, total = _total_coverage_gains(
+            candidate,
+            forward_domain,
+            state,
+            perf_scan=coverage_gain_scan,
+        )
         family_gains[candidate] = gains
         total_values[candidate] = total
     candidates = _filter(candidates, total_values, tolerance)
+    if perf is not None:
+        perf["candidates_after_total_coverage_filter_total"] += len(candidates)
+        perf["proposal_frontier_state_invariant_wall_seconds"] += time.perf_counter() - frontier_started
     if not hard_pending and max(total_values[candidate] for candidate in candidates) <= tolerance:
         return None
 
+    unit_started = time.perf_counter() if perf is not None else 0.0
     removed_unit = int(forward_domain.candidate_correlation_unit_codes[removed])
     hypothetical_unit_counts: dict[int, int] = {}
     for candidate in candidates:
@@ -500,21 +612,37 @@ def _proposal(
         hypothetical_unit_counts[candidate] = int(state.correlation_unit_counts[unit]) - int(unit == removed_unit)
     minimum_unit = min(hypothetical_unit_counts.values())
     candidates = tuple(candidate for candidate in candidates if hypothetical_unit_counts[candidate] == minimum_unit)
+    if perf is not None:
+        perf["unit_filter_wall_seconds"] += time.perf_counter() - unit_started
+        perf["candidates_after_unit_filter_total"] += len(candidates)
 
+    pair_started = time.perf_counter() if perf is not None else 0.0
     representative_values = {
         candidate: _pair_representative_gain(candidate, forward_domain, state, scratch)
         for candidate in candidates
     }
     candidates = _filter(candidates, representative_values, tolerance)
+    if perf is not None:
+        perf["candidates_after_representative_filter_total"] += len(candidates)
     diversity_values = {
         candidate: _pair_diversity(candidate, forward_domain, state, scratch)
         for candidate in candidates
     }
     candidates = _filter(candidates, diversity_values, tolerance)
+    if perf is not None:
+        perf["removal_dependent_representative_diversity_wall_seconds"] += (
+            time.perf_counter() - pair_started
+        )
+        perf["candidates_after_diversity_filter_total"] += len(candidates)
     replacement = min(candidates, key=lambda candidate: reference_domain.frame_uids[candidate])
 
     if replacement not in family_gains:
-        gains, total = _total_coverage_gains(replacement, forward_domain, state)
+        gains, total = _total_coverage_gains(
+            replacement,
+            forward_domain,
+            state,
+            perf_scan=coverage_gain_scan,
+        )
         family_gains[replacement] = gains
         total_values[replacement] = total
     coverage_after = [
@@ -593,6 +721,7 @@ def build_target_multi_view_repair_plan_v2(
     initial_states: dict[str, TargetMultiViewForwardStateV2] | None = None,
     initial_state_sizes: dict[str, int] | None = None,
     initial_state_modes: dict[str, str] | None = None,
+    telemetry_callback: Any | None = None,
 ) -> TargetMultiViewRepairPlanV2:
     """Build REPAIR2 using exact forward-only state and no-copy proposals.
 
@@ -600,6 +729,10 @@ def build_target_multi_view_repair_plan_v2(
     MVSTATE2 integration.  Missing state falls back to selected-prefix forward
     replay.  Once a repair swap is accepted the repaired state is carried
     forward and no later pure-selector checkpoint is consulted.
+
+    ``telemetry_callback`` is an execution-only R0 profiling hook.  It receives
+    per-rung and per-repair-state dictionaries and is excluded from all
+    scientific policy, serialization, lineage, and digest calculations.
     """
 
     del batch_size  # execution-only; scalar authority is canonical
@@ -609,6 +742,13 @@ def build_target_multi_view_repair_plan_v2(
     initial_states = {} if initial_states is None else initial_states
     initial_state_sizes = {} if initial_state_sizes is None else initial_state_sizes
     initial_state_modes = {} if initial_state_modes is None else initial_state_modes
+    repair_started = time.perf_counter() if telemetry_callback is not None else 0.0
+    repair_resource_before = _resource_snapshot() if telemetry_callback is not None else None
+    _emit_telemetry(telemetry_callback, {
+        "kind": "repair_start",
+        "workers": int(workers),
+        "scalar_authority": True,
+    })
     domains: list[TargetMultiViewRepairDomainPlanV2] = []
     for reference_domain in target_coverage_reference.domains:
         domain_started = time.monotonic()
@@ -631,6 +771,8 @@ def build_target_multi_view_repair_plan_v2(
         diverged = False
         proposal_count = 0
         for base_rung in selection_domain.rungs:
+            rung_started = time.perf_counter() if telemetry_callback is not None else 0.0
+            rung_resource_before = _resource_snapshot() if telemetry_callback is not None else None
             size = int(base_rung.target_size)
             if not base_rung.materializable:
                 rungs.append(TargetMultiViewRepairRung(
@@ -639,6 +781,18 @@ def build_target_multi_view_repair_plan_v2(
                     active_shell_start=previous_size,
                     unavailable_reason=base_rung.unavailable_reason or "unavailable_in_mvsel2",
                 ))
+                if telemetry_callback is not None:
+                    rung_wall = time.perf_counter() - rung_started
+                    _emit_telemetry(telemetry_callback, {
+                        "kind": "rung",
+                        "domain": reference_domain.label_domain_id,
+                        "target_size": size,
+                        "materializable": False,
+                        "rung_wall_seconds": rung_wall,
+                        "rung_wall_hhmmss": format_progress_time(rung_wall),
+                        "eta_hhmmss": "--:--:--",
+                        "resource_delta": _resource_delta(rung_resource_before, _resource_snapshot()),
+                    })
                 continue
             if size < restored_size:
                 # Reconstruct immutable earlier rung evidence directly from the
@@ -655,82 +809,197 @@ def build_target_multi_view_repair_plan_v2(
                     swaps=(),
                     zero_unique_shell_fraction=0.0,
                 ))
+                if telemetry_callback is not None:
+                    rung_wall = time.perf_counter() - rung_started
+                    _emit_telemetry(telemetry_callback, {
+                        "kind": "rung",
+                        "domain": reference_domain.label_domain_id,
+                        "target_size": size,
+                        "materializable": True,
+                        "reconstructed_before_restore": True,
+                        "selected_prefix_extension_wall_seconds": 0.0,
+                        "selected_prefix_extension_wall_hhmmss": "00:00:00",
+                        "initial_zero_unique_scan_wall_seconds": 0.0,
+                        "initial_zero_unique_scan_wall_hhmmss": "00:00:00",
+                        "initial_zero_unique_candidate_family_rows": 0,
+                        "initial_zero_unique_forward_edges": 0,
+                        "initial_zero_unique_count": 0,
+                        "repair_state_iterations": 0,
+                        "rung_proposal_count": 0,
+                        "domain_cumulative_proposal_count": proposal_count,
+                        "accepted_swaps": 0,
+                        "rung_wall_seconds": rung_wall,
+                        "rung_wall_hhmmss": format_progress_time(rung_wall),
+                        "eta_hhmmss": "--:--:--",
+                        "resource_delta": _resource_delta(rung_resource_before, _resource_snapshot()),
+                    })
                 continue
             shell_start = previous_size
+            extension_started = time.perf_counter() if telemetry_callback is not None else 0.0
             for rank in range(previous_size, size):
                 candidate = order[rank]
                 score = score_target_multi_view_candidate_v2(candidate, forward_domain, state)
                 select_target_multi_view_candidate_v2(candidate, forward_domain, state, score=score)
+            extension_wall = (
+                time.perf_counter() - extension_started if telemetry_callback is not None else 0.0
+            )
             shell_size = size - shell_start
+            initial_scan = [0, 0] if telemetry_callback is not None else None
+            initial_started = time.perf_counter() if telemetry_callback is not None else 0.0
             initial_zero = sum(
-                _removal_metrics(order[rank], forward_domain, state)[0] <= policy.unique_coverage_tolerance
+                _removal_metrics(
+                    order[rank],
+                    forward_domain,
+                    state,
+                    perf_scan=initial_scan,
+                )[0] <= policy.unique_coverage_tolerance
                 for rank in range(shell_start, size)
             )
+            initial_wall = (
+                time.perf_counter() - initial_started if telemetry_callback is not None else 0.0
+            )
             accepted: list[TargetMultiViewRepairSwap] = []
+            rung_proposal_start = proposal_count
+            state_iteration = 0
             for pass_index in range(policy.max_passes_per_shell):
                 changed = False
                 while len(accepted) < policy.max_swaps_per_shell:
+                    state_iteration += 1
+                    state_resource_before = _resource_snapshot() if telemetry_callback is not None else None
+                    state_perf = _new_state_telemetry() if telemetry_callback is not None else None
+                    removal_scan = [0, 0] if telemetry_callback is not None else None
+                    removal_started = time.perf_counter() if telemetry_callback is not None else 0.0
                     removals: list[tuple[int, int, float, float]] = []
                     for rank in range(shell_start, size):
                         candidate = order[rank]
-                        unique, loss = _removal_metrics(candidate, forward_domain, state)
+                        unique, loss = _removal_metrics(
+                            candidate,
+                            forward_domain,
+                            state,
+                            perf_scan=removal_scan,
+                        )
                         if unique <= policy.unique_coverage_tolerance and _hard_safe(candidate, forward_domain, state):
                             removals.append((rank, candidate, unique, loss))
+                    removal_wall = (
+                        time.perf_counter() - removal_started if telemetry_callback is not None else 0.0
+                    )
                     removals.sort(key=lambda row: (
                         row[3],
                         -int(state.correlation_unit_counts[int(forward_domain.candidate_correlation_unit_codes[row[1]])]),
                         reference_domain.frame_uids[row[1]],
                     ))
+                    shortlist = removals[: policy.removal_shortlist_limit]
+                    state_proposal_start = proposal_count
+                    coverage_gain_scan = [0, 0] if telemetry_callback is not None else None
+                    removed_mark_scan = [0, 0] if telemetry_callback is not None else None
                     best = None
-                    for removal in removals[: policy.removal_shortlist_limit]:
+                    for removal in shortlist:
                         proposal_count += 1
-                        proposal = _proposal(reference_domain, forward_domain, state, removal, policy, scratch)
+                        proposal = _proposal(
+                            reference_domain,
+                            forward_domain,
+                            state,
+                            removal,
+                            policy,
+                            scratch,
+                            perf=state_perf,
+                            coverage_gain_scan=coverage_gain_scan,
+                            removed_mark_scan=removed_mark_scan,
+                        )
                         if proposal is not None:
                             best = _better(best, proposal, reference_domain, policy.gain_tie_tolerance)
+                    mutation_wall = 0.0
+                    accepted_in_state = 0
+                    if best is not None:
+                        rank = int(best["rank"])
+                        removed = int(best["removed"])
+                        replacement = int(best["replacement"])
+                        future = next((index for index in range(size, len(order)) if order[index] == replacement), -1)
+                        displaced = None
+                        if future >= size:
+                            order[future] = removed
+                            displaced = future
+                        order[rank] = replacement
+
+                        # Mutate the real state exactly once after the winning
+                        # hypothetical is selected; recompute the replacement score
+                        # in the actual post-removal state.
+                        mutation_started = time.perf_counter() if telemetry_callback is not None else 0.0
+                        deselect_target_multi_view_candidate_v2(removed, forward_domain, state)
+                        accepted_score = score_target_multi_view_candidate_v2(replacement, forward_domain, state)
+                        select_target_multi_view_candidate_v2(replacement, forward_domain, state, score=accepted_score)
+                        mutation_wall = (
+                            time.perf_counter() - mutation_started if telemetry_callback is not None else 0.0
+                        )
+                        diverged = True
+                        before = best["before"]
+                        after = best["after"]
+                        accepted.append(TargetMultiViewRepairSwap(
+                            target_size=size,
+                            pass_index=pass_index,
+                            swap_index=len(accepted),
+                            rank=rank,
+                            removed_frame_uid=reference_domain.frame_uids[removed],
+                            replacement_frame_uid=reference_domain.frame_uids[replacement],
+                            removed_unique_coverage=best["unique"],
+                            removed_representative_loss=best["loss"],
+                            hard_deficit_before=before[0],
+                            hard_deficit_after=after[0],
+                            minimum_coverage_before=before[1],
+                            minimum_coverage_after=after[1],
+                            total_coverage_before=before[2],
+                            total_coverage_after=after[2],
+                            representative_utility_before=before[3],
+                            representative_utility_after=after[3],
+                            unit_balance_before=before[4],
+                            unit_balance_after=after[4],
+                            bottleneck_family_id=best["bottleneck"],
+                            displaced_future_rank=displaced,
+                        ))
+                        accepted_in_state = 1
+                        changed = True
+                    if telemetry_callback is not None:
+                        state_event = {
+                            "kind": "repair_state",
+                            "domain": reference_domain.label_domain_id,
+                            "target_size": size,
+                            "pass_index": pass_index,
+                            "state_iteration": state_iteration,
+                            "removal_metric_scan_wall_seconds": removal_wall,
+                            "removal_metric_scan_wall_hhmmss": format_progress_time(removal_wall),
+                            "removal_metric_candidate_family_rows": int(removal_scan[0]),
+                            "removal_metric_forward_edges": int(removal_scan[1]),
+                            "zero_unique_hard_safe_removals": len(removals),
+                            "removal_shortlist_size": len(shortlist),
+                            "proposal_count": proposal_count - state_proposal_start,
+                            "rung_cumulative_proposal_count": proposal_count - rung_proposal_start,
+                            "domain_cumulative_proposal_count": proposal_count,
+                            "accepted_swaps": accepted_in_state,
+                            "rung_cumulative_accepted_swaps": len(accepted),
+                            "coverage_gain_candidate_family_rows": int(coverage_gain_scan[0]),
+                            "coverage_gain_forward_edges": int(coverage_gain_scan[1]),
+                            "removed_mark_candidate_family_rows": int(removed_mark_scan[0]),
+                            "removed_mark_forward_edges": int(removed_mark_scan[1]),
+                            "accepted_mutation_wall_seconds": mutation_wall,
+                            "accepted_mutation_wall_hhmmss": format_progress_time(mutation_wall),
+                            "eta_hhmmss": "--:--:--",
+                            "resource_delta": _resource_delta(state_resource_before, _resource_snapshot()),
+                        }
+                        assert state_perf is not None
+                        state_event.update(state_perf)
+                        for key in (
+                            "representative_objective_wall_seconds",
+                            "proposal_frontier_state_invariant_wall_seconds",
+                            "removed_witness_mark_wall_seconds",
+                            "unit_filter_wall_seconds",
+                            "removal_dependent_representative_diversity_wall_seconds",
+                        ):
+                            state_event[key.replace("_seconds", "_hhmmss")] = format_progress_time(
+                                float(state_event[key])
+                            )
+                        _emit_telemetry(telemetry_callback, state_event)
                     if best is None:
                         break
-                    rank = int(best["rank"])
-                    removed = int(best["removed"])
-                    replacement = int(best["replacement"])
-                    future = next((index for index in range(size, len(order)) if order[index] == replacement), -1)
-                    displaced = None
-                    if future >= size:
-                        order[future] = removed
-                        displaced = future
-                    order[rank] = replacement
-
-                    # Mutate the real state exactly once after the winning
-                    # hypothetical is selected; recompute the replacement score
-                    # in the actual post-removal state.
-                    deselect_target_multi_view_candidate_v2(removed, forward_domain, state)
-                    accepted_score = score_target_multi_view_candidate_v2(replacement, forward_domain, state)
-                    select_target_multi_view_candidate_v2(replacement, forward_domain, state, score=accepted_score)
-                    diverged = True
-                    before = best["before"]
-                    after = best["after"]
-                    accepted.append(TargetMultiViewRepairSwap(
-                        target_size=size,
-                        pass_index=pass_index,
-                        swap_index=len(accepted),
-                        rank=rank,
-                        removed_frame_uid=reference_domain.frame_uids[removed],
-                        replacement_frame_uid=reference_domain.frame_uids[replacement],
-                        removed_unique_coverage=best["unique"],
-                        removed_representative_loss=best["loss"],
-                        hard_deficit_before=before[0],
-                        hard_deficit_after=after[0],
-                        minimum_coverage_before=before[1],
-                        minimum_coverage_after=after[1],
-                        total_coverage_before=before[2],
-                        total_coverage_after=after[2],
-                        representative_utility_before=before[3],
-                        representative_utility_after=after[3],
-                        unit_balance_before=before[4],
-                        unit_balance_after=after[4],
-                        bottleneck_family_id=best["bottleneck"],
-                        displaced_future_rank=displaced,
-                    ))
-                    changed = True
                 if not changed:
                     break
             coverage = tuple(
@@ -777,6 +1046,31 @@ def build_target_multi_view_repair_plan_v2(
                     f"zero_unique_shell_fraction={0.0 if not shell_size else initial_zero / shell_size:.6f}; "
                     f"inverse_mutation=false"
                 )
+            if telemetry_callback is not None:
+                rung_wall = time.perf_counter() - rung_started
+                state_mode = "post_divergence_carried_state" if diverged else restore_mode
+                _emit_telemetry(telemetry_callback, {
+                    "kind": "rung",
+                    "domain": reference_domain.label_domain_id,
+                    "target_size": size,
+                    "materializable": True,
+                    "selected_prefix_extension_wall_seconds": extension_wall,
+                    "selected_prefix_extension_wall_hhmmss": format_progress_time(extension_wall),
+                    "initial_zero_unique_scan_wall_seconds": initial_wall,
+                    "initial_zero_unique_scan_wall_hhmmss": format_progress_time(initial_wall),
+                    "initial_zero_unique_candidate_family_rows": int(initial_scan[0]),
+                    "initial_zero_unique_forward_edges": int(initial_scan[1]),
+                    "initial_zero_unique_count": initial_zero,
+                    "repair_state_iterations": state_iteration,
+                    "rung_proposal_count": proposal_count - rung_proposal_start,
+                    "domain_cumulative_proposal_count": proposal_count,
+                    "accepted_swaps": len(accepted),
+                    "selected_prefix_state_mode": state_mode,
+                    "rung_wall_seconds": rung_wall,
+                    "rung_wall_hhmmss": format_progress_time(rung_wall),
+                    "eta_hhmmss": "--:--:--",
+                    "resource_delta": _resource_delta(rung_resource_before, _resource_snapshot()),
+                })
             previous_size = size
         domains.append(TargetMultiViewRepairDomainPlanV2(
             label_domain_id=reference_domain.label_domain_id,
@@ -788,7 +1082,7 @@ def build_target_multi_view_repair_plan_v2(
             rungs=tuple(rungs),
             total_swaps=sum(len(rung.swaps) for rung in rungs),
         ))
-    return TargetMultiViewRepairPlanV2(
+    result = TargetMultiViewRepairPlanV2(
         dataset_id=target_coverage_reference.dataset_id,
         target_coverage_reference_digest=target_coverage_reference.content_digest,
         mvidx1_content_digest=target_coverage_forward_index.mvidx1_content_digest,
@@ -796,6 +1090,17 @@ def build_target_multi_view_repair_plan_v2(
         policy=policy,
         domains=tuple(domains),
     )
+    if telemetry_callback is not None:
+        repair_wall = time.perf_counter() - repair_started
+        _emit_telemetry(telemetry_callback, {
+            "kind": "repair_complete",
+            "wall_seconds": repair_wall,
+            "wall_hhmmss": format_progress_time(repair_wall),
+            "eta_hhmmss": "00:00:00",
+            "resource_delta": _resource_delta(repair_resource_before, _resource_snapshot()),
+            "content_digest": result.content_digest,
+        })
+    return result
 
 
 def validate_target_multi_view_repair_authority_v2(
