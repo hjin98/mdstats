@@ -97,3 +97,67 @@ def iter_csr_gather_batches(
         )
         yield gathered, lens, slice(cursor, stop)
         cursor = stop
+
+
+def iter_csr_edge_batches(
+    offsets: np.ndarray,
+    indices: np.ndarray,
+    rows: np.ndarray,
+    *,
+    max_edges: int,
+) -> Iterator[tuple[np.ndarray, np.ndarray]]:
+    """Yield strictly edge-bounded CSR chunks in canonical selected-row order.
+
+    Each result is ``(gathered_indices, owner_positions)``.  ``owner_positions``
+    contains positions into the supplied ``rows`` array, not CSR row numbers.
+    This makes ownership exact even when callers intentionally repeat a row.
+
+    Unlike :func:`iter_csr_gather_batches`, this primitive may split inside a
+    CSR row.  Every nonempty emitted chunk therefore satisfies
+    ``len(gathered_indices) <= max_edges`` even for a single pathological row.
+    Only one chunk-sized position/owner scratch pair is live at a time; no
+    full-selected-edge owner array is constructed.
+    """
+    off = np.asarray(offsets)
+    idx = np.asarray(indices)
+    r = np.asarray(rows, dtype=np.int64)
+    if off.ndim != 1 or off.size < 1:
+        raise ValueError("CSR offsets must be a nonempty one-dimensional array.")
+    if idx.ndim != 1:
+        raise ValueError("CSR indices must be one-dimensional.")
+    if r.ndim != 1:
+        raise ValueError("CSR gather rows must be one-dimensional.")
+    edge_limit = int(max_edges)
+    if edge_limit < 1:
+        raise ValueError("CSR strict edge limit must be positive.")
+    row_count = off.size - 1
+    if r.size and (np.any(r < 0) or np.any(r >= row_count)):
+        raise ValueError("CSR gather row is outside the offsets domain.")
+    if np.any(off[1:] < off[:-1]):
+        raise ValueError("CSR offsets must be nondecreasing.")
+    if int(off[-1]) > idx.size:
+        raise ValueError("CSR offsets exceed the indices array.")
+    if r.size == 0:
+        return
+
+    positions = np.empty(edge_limit, dtype=np.int64)
+    owners = np.empty(edge_limit, dtype=np.int64)
+    filled = 0
+
+    for owner_position, row in enumerate(r):
+        edge_cursor = int(off[int(row)])
+        edge_stop = int(off[int(row) + 1])
+        while edge_cursor < edge_stop:
+            room = edge_limit - filled
+            take = min(room, edge_stop - edge_cursor)
+            segment = slice(filled, filled + take)
+            positions[segment] = np.arange(edge_cursor, edge_cursor + take, dtype=np.int64)
+            owners[segment] = owner_position
+            filled += take
+            edge_cursor += take
+            if filled == edge_limit:
+                yield idx[positions], owners.copy()
+                filled = 0
+
+    if filled:
+        yield idx[positions[:filled]], owners[:filled].copy()
