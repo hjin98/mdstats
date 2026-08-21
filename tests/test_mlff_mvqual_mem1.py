@@ -4,7 +4,13 @@ from dataclasses import dataclass
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
+from mdstats.training_data._sparse_vector_kernels import (
+    csr_gather_rows,
+    csr_row_lengths,
+    iter_csr_edge_batches,
+)
 from mdstats.training_data.target_multi_view_qualification import (
     _qualification_provenance_codes,
     _selector_telemetry_indices,
@@ -119,3 +125,60 @@ def test_mvqual_mem1_reference_locks_unique_owner_and_provenance_semantics() -> 
     assert telemetry.maximum_correlation_unit_fraction == 1.0 / 3.0
     assert telemetry.run_count == 3
     assert telemetry.condition_count == 2
+
+
+def test_strict_csr_edge_stream_reconstructs_canonical_gather_and_owners() -> None:
+    offsets = np.asarray((0, 0, 5, 7, 17, 18), dtype=np.uint64)
+    indices = np.arange(100, 118, dtype=np.uint32)
+    rows = np.asarray((0, 3, 1, 4), dtype=np.int64)
+    expected_indices, expected_lengths = csr_gather_rows(offsets, indices, rows)
+    expected_owners = np.repeat(
+        np.arange(rows.size, dtype=np.int64), expected_lengths
+    )
+
+    for edge_limit in (1, 2, 3, 4, 32):
+        chunks = list(
+            iter_csr_edge_batches(offsets, indices, rows, max_edges=edge_limit)
+        )
+        assert chunks
+        assert all(0 < chunk_indices.size <= edge_limit for chunk_indices, _ in chunks)
+        actual_indices = np.concatenate([chunk_indices for chunk_indices, _ in chunks])
+        actual_owners = np.concatenate([owners for _, owners in chunks])
+        np.testing.assert_array_equal(actual_indices, expected_indices)
+        np.testing.assert_array_equal(actual_owners, expected_owners)
+
+
+def test_strict_csr_edge_stream_splits_one_oversized_row_and_preserves_repeats() -> None:
+    offsets = np.asarray((0, 2, 11, 11, 14), dtype=np.uint64)
+    indices = np.arange(14, dtype=np.uint32)
+    rows = np.asarray((1, 2, 1, 3), dtype=np.int64)
+    expected_indices, expected_lengths = csr_gather_rows(offsets, indices, rows)
+    expected_owners = np.repeat(
+        np.arange(rows.size, dtype=np.int64), expected_lengths
+    )
+
+    chunks = list(iter_csr_edge_batches(offsets, indices, rows, max_edges=3))
+
+    assert max(chunk_indices.size for chunk_indices, _ in chunks) == 3
+    np.testing.assert_array_equal(
+        np.concatenate([chunk_indices for chunk_indices, _ in chunks]), expected_indices
+    )
+    np.testing.assert_array_equal(
+        np.concatenate([owners for _, owners in chunks]), expected_owners
+    )
+
+
+def test_strict_csr_edge_stream_validates_obvious_contract_errors() -> None:
+    offsets = np.asarray((0, 1, 2), dtype=np.uint64)
+    indices = np.asarray((3, 4), dtype=np.uint32)
+
+    with pytest.raises(ValueError, match="positive"):
+        list(iter_csr_edge_batches(offsets, indices, np.asarray((0,)), max_edges=0))
+    with pytest.raises(ValueError, match="outside"):
+        list(iter_csr_edge_batches(offsets, indices, np.asarray((2,)), max_edges=1))
+    with pytest.raises(ValueError, match="one-dimensional"):
+        list(
+            iter_csr_edge_batches(
+                offsets, indices, np.asarray(((0,),)), max_edges=1
+            )
+        )
