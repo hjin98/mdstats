@@ -8,12 +8,12 @@ import pytest
 
 from mdstats.training_data._sparse_vector_kernels import (
     csr_gather_rows,
-    csr_row_lengths,
     iter_csr_edge_batches,
 )
 from mdstats.training_data.target_multi_view_qualification import (
     _qualification_provenance_codes,
     _selector_telemetry_indices,
+    _selector_telemetry_indices_bounded,
     _selector_telemetry_reference,
 )
 
@@ -36,6 +36,10 @@ class _SparseFamily:
     @property
     def witness_count(self) -> int:
         return 6
+
+    @property
+    def candidate_count(self) -> int:
+        return len(self.rows)
 
     def candidate_witness_indices(self, candidate_index: int) -> np.ndarray:
         return np.asarray(self.rows[candidate_index], dtype=np.uint32)
@@ -92,14 +96,23 @@ def _fixture() -> tuple[SimpleNamespace, SimpleNamespace, SimpleNamespace]:
     return reference, sparse, role
 
 
-def test_mvqual_mem1_current_vectorized_telemetry_matches_frozen_reference() -> None:
-    reference, sparse, role = _fixture()
-    selected_uids = ("f0", "f2", "f3")
-    expected = _selector_telemetry_reference(reference, sparse, role, selected_uids)
+def _selected_inputs(
+    reference: SimpleNamespace,
+    role: SimpleNamespace,
+    selected_uids: tuple[str, ...],
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     uid_to_index, run_codes, condition_codes = _qualification_provenance_codes(
         reference, role
     )
     selected = np.asarray([uid_to_index[uid] for uid in selected_uids], dtype=np.int64)
+    return selected, run_codes, condition_codes
+
+
+def test_mvqual_mem1_current_vectorized_telemetry_matches_frozen_reference() -> None:
+    reference, sparse, role = _fixture()
+    selected_uids = ("f0", "f2", "f3")
+    expected = _selector_telemetry_reference(reference, sparse, role, selected_uids)
+    selected, run_codes, condition_codes = _selected_inputs(reference, role, selected_uids)
 
     actual = _selector_telemetry_indices(
         reference,
@@ -118,13 +131,89 @@ def test_mvqual_mem1_reference_locks_unique_owner_and_provenance_semantics() -> 
         reference, sparse, role, ("f0", "f2", "f3")
     )
 
-    assert telemetry.uncovered_witness_count == 0
-    assert telemetry.uncovered_reference_mass == 0.0
+    assert telemetry.uncovered_witness_count == 1
+    assert telemetry.uncovered_reference_mass == np.float64(0.17)
+    assert telemetry.unique_reference_mass_fraction == np.float64(1.05 / 2.0)
     assert telemetry.zero_unique_candidate_fraction == 0.0
     assert telemetry.correlation_unit_count == 3
     assert telemetry.maximum_correlation_unit_fraction == 1.0 / 3.0
     assert telemetry.run_count == 3
     assert telemetry.condition_count == 2
+
+
+@pytest.mark.parametrize("edge_limit", (1, 2, 3, 4, 7, 1_000_000))
+@pytest.mark.parametrize(
+    "selected_uids",
+    (
+        ("f0",),
+        ("f0", "f2", "f3"),
+        ("f0", "f1", "f2", "f3", "f4"),
+    ),
+)
+def test_mvqual_mem1_bounded_telemetry_is_exact_for_all_chunk_sizes(
+    edge_limit: int,
+    selected_uids: tuple[str, ...],
+) -> None:
+    reference, sparse, role = _fixture()
+    expected = _selector_telemetry_reference(reference, sparse, role, selected_uids)
+    selected, run_codes, condition_codes = _selected_inputs(reference, role, selected_uids)
+
+    result = _selector_telemetry_indices_bounded(
+        reference,
+        sparse,
+        selected,
+        run_codes,
+        condition_codes,
+        max_edges=edge_limit,
+    )
+
+    assert result.telemetry == expected
+    assert result.maximum_chunk_edges <= edge_limit
+    assert result.maximum_selected_row_edges <= 3
+
+
+def test_mvqual_mem1_bounded_telemetry_reuses_exact_covered_mask_for_mass() -> None:
+    reference, sparse, role = _fixture()
+    selected_uids = ("f0", "f2", "f3")
+    selected, run_codes, condition_codes = _selected_inputs(reference, role, selected_uids)
+
+    result = _selector_telemetry_indices_bounded(
+        reference,
+        sparse,
+        selected,
+        run_codes,
+        condition_codes,
+        max_edges=2,
+    )
+
+    masses = dict(result.covered_mass_by_family)
+    expected_a = float(np.sum(reference.family("family-a").weights, dtype=np.float64))
+    expected_b = float(
+        np.sum(reference.family("family-b").weights[[0, 2, 3, 4, 5]], dtype=np.float64)
+    )
+    assert masses == {"family-a": expected_a, "family-b": expected_b}
+    assert result.streamed_edge_count == 32
+    assert result.maximum_chunk_edges == 2
+    assert result.maximum_selected_row_edges == 3
+
+
+def test_mvqual_mem1_all_selected_candidates_have_no_unique_owner() -> None:
+    reference, sparse, role = _fixture()
+    selected_uids = tuple(reference.frame_uids)
+    selected, run_codes, condition_codes = _selected_inputs(reference, role, selected_uids)
+
+    telemetry = _selector_telemetry_indices(
+        reference,
+        sparse,
+        selected,
+        run_codes,
+        condition_codes,
+        max_edges=1,
+    )
+
+    assert telemetry.uncovered_witness_count == 0
+    assert telemetry.unique_reference_mass_fraction == 0.0
+    assert telemetry.zero_unique_candidate_fraction == 1.0
 
 
 def test_strict_csr_edge_stream_reconstructs_canonical_gather_and_owners() -> None:
