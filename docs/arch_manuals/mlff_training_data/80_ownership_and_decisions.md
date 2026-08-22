@@ -67,7 +67,9 @@ DATA7 is the last fitted-preparation authority before multi-view subset construc
 - condition, provenance, event, environment, and diversity inputs needed by subset construction;
 - immutable identities linking those products to the domain and protocol.
 
-DATA7 does **not** publish an independent quota/FPS `TrainingSelectionPlan`, a second target-membership ladder, or a target-size decision. Representative coverage, diversity/FPS, environment coverage, protected events, difficulty, and condition balance are expressed as inputs, hard obligations, or objective terms of the one MVSEL2 policy.
+DATA7 does **not** publish an independent quota/FPS membership decision, a second target-membership ladder, or a target-size decision. Representative coverage, diversity/FPS, environment coverage, protected events, difficulty, and condition balance are expressed as inputs, hard obligations, or objective terms of the one MVSEL2 policy.
+
+After target size is frozen, target-size-controlled DATA7 materialization in every final-development and CV gradient-training domain consumes the authenticated prescribed membership `R_d[:N_selected]`. A `TrainingSelectionPlan` used to record that prescribed materialization is a consumer record, not an independent selector: the quota/FPS selector is not invoked and cannot replace the REPAIR2 prefix.
 
 This boundary prevents two selectors from producing incompatible notions of the target set while preserving the useful fitted/statistical information accumulated in DATA7.
 
@@ -157,7 +159,7 @@ Each candidate follows one authenticated continuation trajectory:
 foundation -> epoch 3 -> epoch 10 -> epoch 30
 ```
 
-Epoch 10 authenticates the exact epoch-3 model/optimizer/RNG parent; epoch 30 authenticates epoch 10. Candidates use the same foundation, replay semantics, objective, optimizer/LR schedule, exposure policy, precision/backend, and frozen seed set.
+Epoch 10 authenticates the exact epoch-3 model/optimizer/RNG parent; epoch 30 authenticates epoch 10. Candidates use the same foundation, replay semantics, objective, optimizer/LR schedule, exposure policy, precision/backend, and ordered seed set. That seed set comes from the `seeds` field of the sole enabled training method; current generated campaigns default the owning field to `[1, 2]`. The target-size policy serializes the ordered set and does not invent a second seed convention.
 
 Ordinary target-success early stopping is disabled during the size experiment because candidates must reach comparable fidelity boundaries. Hard numerical or scientific failure may still reject a candidate. Normal production/CV stopping resumes after target size is frozen.
 
@@ -172,9 +174,9 @@ q >= 3
   epoch 30: 2 -> 1
 ```
 
-All candidates use the same frozen training-seed set, and comparisons aggregate paired seed evidence rather than unrelated stochastic realizations.
+All candidates use the same authenticated ordered training-seed set, and comparisons aggregate paired seed evidence rather than unrelated stochastic realizations. Missing, duplicated, reordered, or candidate-specific seed populations invalidate the state.
 
-At epoch 3 and epoch 10, candidates within the frozen practical-equivalence width of 1 meV/Angstrom in the primary target-force metric prefer the smaller size. Early screens need not satisfy the final absolute force-accuracy threshold.
+At epoch 3 and epoch 10, the configurable coarse practical-equivalence width defaults to 1 meV/Angstrom in the primary target-force metric, and candidates inside that band prefer the smaller size. The independently configurable final width also defaults to 1 meV/Angstrom for epoch-30 ranking and fixed-ceiling material superiority. Both positive finite values are policy-identity fields, not frozen schema constants. Early screens need not satisfy the final absolute force-accuracy threshold.
 
 At epoch 30, the two finalists are ranked only by the target-size study metric under the frozen practical-equivalence rule. MVQUAL remains the sole hard target-size eligibility gate; target-threshold, replay, physical-integrity, relaxation, deployment, and other model/protocol acceptance evidence is downstream of the immutable size choice. Numerically invalid trajectories may be excluded because they cannot supply comparable ranking evidence.
 
@@ -185,10 +187,13 @@ The target-size decision is a typed result, at minimum:
 ```text
 selected(N)
 insufficient_qualified_sizes
+insufficient_comparable_candidates
 nonconverged_at_fixed_ceiling
 ```
 
-If 16,384 reaches the final comparison and remains materially better than every smaller numerically valid finalist by more than the frozen practical-equivalence width, the result is `nonconverged_at_fixed_ceiling`. No generated/intermediate rescue size is synthesized.
+`insufficient_comparable_candidates` records the failed fidelity stage and authenticated candidate/seed failure reasons when numerical/scientific trajectory failure leaves too few complete paired candidates for a required comparison. Input/lineage/programming defects remain fail-closed exceptions.
+
+If 16,384 reaches the final comparison and remains materially better than every smaller numerically valid finalist by more than the configured final practical-equivalence width, the result is `nonconverged_at_fixed_ceiling`. No generated/intermediate rescue size is synthesized.
 
 Exhaustively training all sizes to the final fidelity to measure survivor recall is release/algorithm qualification, not the ordinary scientific production path.
 

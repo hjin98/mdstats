@@ -27,6 +27,7 @@ from typing import Any, Callable, Mapping, Sequence
 import numpy as np
 
 from ._common import TrainingDataInputError, TrainingDataSerializationError, digest, validate_digest
+from .target_coverage import target_coverage_role_domain_view
 from .resources import StageResourceScope, available_cpu_threads
 from .progress_timing import format_progress_fraction, format_progress_time
 from .target_coverage_exact_neighborhood import (
@@ -1364,7 +1365,7 @@ def build_target_coverage_feasibility_artifacts(
     # work. This gives the reporter true campaign-wide profile/block/witness
     # totals and lets all domains/families feed one shared executor queue.
     for domain in target_coverage_reference.domains:
-        role_domain = target_data_role_freeze.domain(domain.label_domain_id)
+        role_domain = target_coverage_role_domain_view(target_data_role_freeze, domain)
         if set(domain.frame_uids) != set(role_domain.size_development_frame_uids):
             raise TrainingDataInputError("TARGET-DATA2B-FEAS1 coverage/role frame-domain mismatch.")
         unit_codes = _role_domain_frame_units(role_domain, domain.frame_uids)

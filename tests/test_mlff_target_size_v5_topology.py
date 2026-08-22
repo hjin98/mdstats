@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import inspect
 from pathlib import Path
+from types import SimpleNamespace
 
 import mdstats
+import pytest
 from mdstats.training_data import campaign_cli
 from mdstats.training_data import _campaign_cli_core as campaign_core
 from mdstats.training_data import production_materialization
@@ -92,6 +94,42 @@ def test_target_size_funnel_finishes_before_held_out_cv() -> None:
     for retired_mutator in ("with_stage_b0_evidence", "with_stage_b_evidence", "with_stage_c_evidence"):
         assert retired_mutator not in eval_source
         assert retired_mutator not in role_source
+
+
+def test_held_out_cv_runtime_is_rejected_before_target_size_freeze(monkeypatch) -> None:
+    monkeypatch.setattr(campaign_core, "_eval2_label_domain_id", lambda *_args, **_kwargs: "d0")
+    run = SimpleNamespace(
+        kind=mdstats.MaceJobKind.CROSS_VALIDATION_FOLD,
+        fold_index=0,
+    )
+    study = SimpleNamespace(outcome=mdstats.OUTCOME_AWAITING_EPOCH_3)
+    with pytest.raises(campaign_core.CampaignCliError, match="blocked until selected_target_size is frozen"):
+        campaign_core._eval2_target_role_for_run(
+            store=object(),
+            target_size_study=study,
+            repair2=object(),
+            role_freeze=object(),
+            bundle=object(),
+            run=run,
+        )
+
+
+def test_screening_materialization_uses_exact_stage_sizes_and_ordered_seed_set(monkeypatch) -> None:
+    method = SimpleNamespace(mode="multihead", fold_partition_seed=17)
+    monkeypatch.setattr(campaign_core, "_training_method_specs", lambda _cfg: (method,))
+    study = SimpleNamespace(
+        outcome=mdstats.OUTCOME_AWAITING_EPOCH_10,
+        next_training_sizes=(512, 2048),
+        policy=SimpleNamespace(screening_optimizer_seeds=(7, 11)),
+    )
+    variants = campaign_core._target_size_materialization_variants({}, study=study)
+    assert [(item.selection_size, item.seed) for item in variants] == [
+        (512, 7),
+        (512, 11),
+        (2048, 7),
+        (2048, 11),
+    ]
+    assert all(item.cross_validation_folds == 0 for item in variants)
 
 
 def test_post_selection_verification_cannot_advance_target_size() -> None:

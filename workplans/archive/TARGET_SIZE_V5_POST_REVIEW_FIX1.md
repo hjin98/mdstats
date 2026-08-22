@@ -1,6 +1,6 @@
 # TARGET-SIZE-V5-POST-REVIEW-FIX1
 
-**Status:** Active — post-implementation corrective round
+**Status:** Completed / archived after gated implementation on 2026-08-22
 **Parent implementation plan:** `workplans/archive/TARGET_SIZE_V5_WORKPLAN.md`
 **Scope:** Close design-review gaps in the fixed-eight target-size v5 path without restoring any retired ladder/migration/rescue authority.
 **Priority:** Scientific/protocol identity and ownership correctness first; preserve the successful v5 hard cut.

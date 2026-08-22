@@ -205,6 +205,63 @@ def test_target_data2b_builds_only_on_frozen_development_domain_and_full_selecti
         assert all(item.passed for item in report.stratum_reports if item.required)
 
 
+def test_target_data2b_covers_every_required_final_and_cv_training_domain(tmp_path: Path) -> None:
+    from mdstats.training_data import campaign_cli
+
+    _, _, _, data4, data5, data6, freeze, audit = _build_coverage_inputs(tmp_path)
+    training_domains = campaign_cli._target_size_required_feature_fit_domains({}, data5)
+    kinds = {domain.kind for domain in training_domains}
+    assert kinds == {
+        mdstats.FeatureFitDomainKind.FINAL_DEVELOPMENT,
+        mdstats.FeatureFitDomainKind.CROSS_VALIDATION_TRAINING,
+    }
+
+    reference = mdstats.build_target_coverage_reference(
+        data4,
+        data5,
+        data6,
+        freeze,
+        audit,
+        training_domains=training_domains,
+    )
+    by_training_digest = {
+        domain.training_domain_digest: domain for domain in reference.domains
+    }
+    assert set(by_training_digest) == {
+        domain.content_digest for domain in training_domains
+    }
+    for training_domain in training_domains:
+        coverage_domain = by_training_digest[training_domain.content_digest]
+        assert coverage_domain.source_label_domain_id == training_domain.label_domain_id
+        assert coverage_domain.training_domain_kind == training_domain.kind.value
+        assert coverage_domain.training_domain_fold_index == training_domain.fold_index
+        assert coverage_domain.frame_uids == tuple(sorted(training_domain.frame_uids))
+        role_view = tc.target_coverage_role_domain_view(freeze, coverage_domain)
+        assert role_view.size_development_frame_uids == coverage_domain.frame_uids
+
+    mdstats.validate_target_coverage_reference_authority(
+        reference,
+        data4_bundle=data4,
+        data5_bundle=data5,
+        data6_bundle=data6,
+        target_data_role_freeze=freeze,
+        foundation_target_audit=audit,
+        training_domains=training_domains,
+    )
+    pointer = mdstats.write_target_coverage_native_record(
+        reference, tmp_path / "target-coverage-native"
+    )
+    restored = mdstats.read_target_coverage_native_record(pointer, tmp_path)
+    assert restored.content_digest == reference.content_digest
+    assert {
+        (domain.training_domain_digest, domain.training_domain_kind, domain.training_domain_fold_index)
+        for domain in restored.domains
+    } == {
+        (domain.training_domain_digest, domain.training_domain_kind, domain.training_domain_fold_index)
+        for domain in reference.domains
+    }
+
+
 def test_target_data2b_authority_fails_closed_if_data6_changes(tmp_path: Path) -> None:
     _, _, _, data4, data5, data6, freeze, audit = _build_coverage_inputs(tmp_path)
     reference = mdstats.build_target_coverage_reference(data4, data5, data6, freeze, audit)

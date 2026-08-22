@@ -21,7 +21,8 @@ from .reference_fit import (
 )
 from .selection import (
     SelectionBudgetPolicy, SelectionCoverageReport, TrainingSelectionPlan,
-    build_selection_coverage_report, build_training_selection_plan,
+    build_prescribed_training_selection_plan, build_selection_coverage_report,
+    build_training_selection_plan,
 )
 
 DATA7_PREPARATION_BUNDLE_SCHEMA = "mdstats.data7-preparation-bundle.v1"
@@ -244,10 +245,6 @@ def build_data7_preparation_bundle(
             data4_bundle, data5_bundle, data6_bundle, metric, policy=selection_budget_policy
         )
     else:
-        if domain.kind.value != "final_development":
-            raise TrainingDataInputError(
-                "Upstream-authenticated selection prefixes are allowed only for final-development DATA7 domains."
-            )
         role = str(prescribed_selection_role or "upstream_authenticated_prefix")
         selection = build_prescribed_training_selection_plan(
             data4_bundle,
@@ -269,6 +266,6 @@ def build_data7_preparation_bundle(
         notes=(
             "DATA7 fitted products and selections are local to one canonical training domain; held-out evidence remains untouched.",
             "Coverage reports are descriptive and require DATA9 learning-curve validation.",
-            ("DATA7 selection is domain-local." if prescribed_selection_frame_uids is None else f"DATA7 final-development selection is the authenticated {str(prescribed_selection_role or 'upstream_authenticated_prefix')} upstream prefix; no second ranking is performed."),
+            ("DATA7 selection is domain-local." if prescribed_selection_frame_uids is None else f"DATA7 training-domain selection is the authenticated {str(prescribed_selection_role or 'upstream_authenticated_prefix')} upstream prefix; no second ranking is performed."),
         ),
     )

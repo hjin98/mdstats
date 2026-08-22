@@ -938,7 +938,7 @@ def build_prescribed_training_selection_plan(
     performs no second ranking or qualification.  The caller owns the upstream
     order (REPAIR2 in the target-size v5 workflow), and DATA7 only authenticates
     that every requested ladder level is a strict prefix of that order and lies
-    inside the final-development domain.
+    inside the supplied gradient-training domain (final-development or CV-training).
     """
 
     domain = metric.domain

@@ -31,7 +31,7 @@ def _telemetry() -> TargetMultiViewSelectorTelemetry:
     )
 
 
-def _plan(qualified=(1024, 2048, 4096)) -> TargetMultiViewQualificationPlanV2:
+def _plan(qualified=(1024, 2048, 4096, 8192, 16384)) -> TargetMultiViewQualificationPlanV2:
     rows = tuple(
         TargetMultiViewQualificationRungV2(
             target_size=size,
@@ -75,7 +75,7 @@ def test_mvqual2_freezes_exact_eight_size_universe() -> None:
 
 def test_mvqual2_global_q_is_derived_only_from_domain_hard_evidence() -> None:
     plan = _plan()
-    assert plan.mv_qualified_sizes == (1024, 2048, 4096)
+    assert plan.mv_qualified_sizes == (1024, 2048, 4096, 8192, 16384)
     assert tuple(row.target_size for row in plan.domain("target").rungs) == FIXED_TARGET_SIZES
     with pytest.raises(TrainingDataInputError, match="global qualification"):
         TargetMultiViewQualificationPlanV2(
@@ -90,6 +90,11 @@ def test_mvqual2_global_q_is_derived_only_from_domain_hard_evidence() -> None:
             mv_qualified_sizes=(1024,),
             outcome=OUTCOME_QUALIFIED,
         )
+
+
+def test_mvqual2_rejects_pass_then_fail_domain_pattern() -> None:
+    with pytest.raises(TrainingDataInputError, match="monotonic qualification invariant"):
+        _plan((1024, 2048, 8192, 16384))
 
 
 def test_mvqual2_roundtrip_and_legacy_schema_rejection() -> None:

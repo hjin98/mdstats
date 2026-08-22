@@ -40,9 +40,9 @@ TARGET_COVERAGE_FAMILY_LEGACY_SCHEMA = "mdstats.target-coverage-family.v1"
 TARGET_COVERAGE_FAMILY_SCHEMA = "mdstats.target-coverage-family.v2"
 TARGET_COVERAGE_STRATUM_SCHEMA = "mdstats.target-coverage-stratum.v1"
 TARGET_COVERAGE_DOMAIN_LEGACY_SCHEMA = "mdstats.target-coverage-domain.v1"
-TARGET_COVERAGE_DOMAIN_SCHEMA = "mdstats.target-coverage-domain.v2"
+TARGET_COVERAGE_DOMAIN_SCHEMA = "mdstats.target-coverage-domain.v3"
 TARGET_COVERAGE_REFERENCE_LEGACY_SCHEMA = "mdstats.target-coverage-reference.v1"
-TARGET_COVERAGE_REFERENCE_SCHEMA = "mdstats.target-coverage-reference.v2"
+TARGET_COVERAGE_REFERENCE_SCHEMA = "mdstats.target-coverage-reference.v3"
 TARGET_COVERAGE_FAMILY_REPORT_SCHEMA = "mdstats.target-coverage-family-report.v1"
 TARGET_COVERAGE_STRATUM_REPORT_SCHEMA = "mdstats.target-coverage-stratum-report.v1"
 TARGET_COVERAGE_REPORT_SCHEMA = "mdstats.target-coverage-report.v1"
@@ -602,6 +602,10 @@ class TargetCoverageDomainReference:
     families: tuple[TargetCoverageFamilyReference, ...]
     strata: tuple[TargetCoverageStratumRequirement, ...]
     frame_domain_digest: str
+    source_label_domain_id: str | None = None
+    training_domain_kind: str = "final_development"
+    training_domain_fold_index: int | None = None
+    training_domain_digest: str | None = None
     _family_by_id: Mapping[str, TargetCoverageFamilyReference] = field(default_factory=dict, init=False, repr=False, compare=False)
     _frame_index_by_uid: Mapping[str, int] = field(default_factory=dict, init=False, repr=False, compare=False)
     _content_digest_cache: str = field(default="", init=False, repr=False, compare=False)
@@ -628,6 +632,30 @@ class TargetCoverageDomainReference:
         object.__setattr__(self, "families", families)
         object.__setattr__(self, "strata", strata)
         object.__setattr__(self, "frame_domain_digest", validate_digest(self.frame_domain_digest, name="frame_domain_digest"))
+        source_label = self.label_domain_id if self.source_label_domain_id is None else str(self.source_label_domain_id)
+        if not source_label.strip():
+            raise TrainingDataInputError("TARGET-DATA2B source label domain must be non-empty.")
+        kind = str(self.training_domain_kind)
+        if kind not in {"final_development", "cross_validation_training"}:
+            raise TrainingDataInputError("TARGET-DATA2B training domain kind is invalid.")
+        fold = None if self.training_domain_fold_index is None else int(self.training_domain_fold_index)
+        if kind == "cross_validation_training" and (fold is None or fold < 0):
+            raise TrainingDataInputError("TARGET-DATA2B CV training domains require a fold index.")
+        if kind == "final_development" and fold is not None:
+            raise TrainingDataInputError("TARGET-DATA2B final-development domains cannot carry a fold index.")
+        training_digest = self.training_domain_digest
+        if training_digest is None:
+            training_digest = digest({
+                "schema": "mdstats.target-coverage-training-domain.v1",
+                "source_label_domain_id": source_label,
+                "kind": kind,
+                "fold_index": fold,
+                "frame_uids": list(frames),
+            })
+        object.__setattr__(self, "source_label_domain_id", source_label)
+        object.__setattr__(self, "training_domain_kind", kind)
+        object.__setattr__(self, "training_domain_fold_index", fold)
+        object.__setattr__(self, "training_domain_digest", validate_digest(training_digest, name="training_domain_digest"))
         object.__setattr__(self, "_family_by_id", {item.family_id: item for item in families})
         object.__setattr__(self, "_frame_index_by_uid", {uid: i for i, uid in enumerate(frames)})
 
@@ -649,6 +677,10 @@ class TargetCoverageDomainReference:
             "label_domain_id": self.label_domain_id,
             "frame_uids": list(self.frame_uids),
             "frame_domain_digest": self.frame_domain_digest,
+            "source_label_domain_id": self.source_label_domain_id,
+            "training_domain_kind": self.training_domain_kind,
+            "training_domain_fold_index": self.training_domain_fold_index,
+            "training_domain_digest": self.training_domain_digest,
             "family_digests": [item.content_digest for item in self.families],
             "strata": [item.to_dict() for item in self.strata],
         }
@@ -695,6 +727,10 @@ class TargetCoverageDomainReference:
             label_domain_id=str(payload["label_domain_id"]),
             frame_uids=tuple(str(v) for v in payload["frame_uids"]),
             frame_domain_digest=str(payload["frame_domain_digest"]),
+            source_label_domain_id=(None if payload.get("source_label_domain_id") is None else str(payload["source_label_domain_id"])),
+            training_domain_kind=str(payload.get("training_domain_kind", "final_development")),
+            training_domain_fold_index=(None if payload.get("training_domain_fold_index") is None else int(payload["training_domain_fold_index"])),
+            training_domain_digest=(None if payload.get("training_domain_digest") is None else str(payload["training_domain_digest"])),
             families=tuple(TargetCoverageFamilyReference.from_dict(item) for item in payload["families"]),
             strata=tuple(TargetCoverageStratumRequirement.from_dict(item) for item in payload.get("strata", ())),
         )
@@ -2270,8 +2306,10 @@ def _foundation_residual_families_for_domain(
     if difficulty is None:
         raise TrainingDataInputError(f"TARGET-DATA2B lacks foundation residuals for {label_domain_id!r}.")
     by_uid = {item.frame_uid: item for item in difficulty.records}
-    if set(domain_frame_uids) != set(by_uid):
-        raise TrainingDataInputError("TARGET-DATA2B foundation residual domain differs from TARGET-DATA2A.")
+    if not set(domain_frame_uids).issubset(set(by_uid)):
+        raise TrainingDataInputError(
+            "TARGET-DATA2B gradient-training domain is not covered by the source final-development foundation residual evidence."
+        )
     result: list[TargetCoverageFamilyReference] = []
     global_names = (
         "absolute_energy_error_per_atom_ev",
@@ -2304,7 +2342,7 @@ def _foundation_residual_families_for_domain(
         source_evidence_digest=difficulty.content_digest,
         required=True,
         extent=True,
-        notes=("Zero-shot residual family uses only cached final-development DATA6 foundation evidence.",),
+        notes=("Zero-shot residual family projects cached source final-development DATA6 foundation evidence onto this gradient-training domain.",),
         query_workers=query_workers,
         execution_context=execution_context,
     )
@@ -2445,6 +2483,146 @@ def _strata_for_domain(
     return strata
 
 
+@dataclass(frozen=True, slots=True)
+class _TargetCoverageTrainingDomainSpec:
+    authority_domain_id: str
+    source_label_domain_id: str
+    kind: str
+    fold_index: int | None
+    training_domain_digest: str
+    frame_uids: tuple[str, ...]
+
+
+def _target_training_domain_authority_id(domain: Any) -> str:
+    kind = str(getattr(getattr(domain, "kind", "final_development"), "value", getattr(domain, "kind", "final_development")))
+    fold = getattr(domain, "fold_index", None)
+    fold_token = "final" if fold is None else f"fold{int(fold)}"
+    return (
+        f"{str(domain.label_domain_id)}::{kind}:{fold_token}:"
+        f"{str(domain.content_digest)}"
+    )
+
+
+def _resolve_target_training_domain_specs(
+    data5_bundle: Any,
+    target_data_role_freeze: Any,
+    training_domains: Sequence[Any] | None,
+) -> tuple[_TargetCoverageTrainingDomainSpec, ...]:
+    if training_domains is None:
+        result = []
+        for frozen in target_data_role_freeze.domains:
+            frames = tuple(sorted(frozen.size_development_frame_uids))
+            training_digest = digest({
+                "schema": "mdstats.target-coverage-training-domain.v1",
+                "source_label_domain_id": frozen.label_domain_id,
+                "kind": "final_development",
+                "fold_index": None,
+                "frame_uids": list(frames),
+            })
+            result.append(_TargetCoverageTrainingDomainSpec(
+                authority_domain_id=frozen.label_domain_id,
+                source_label_domain_id=frozen.label_domain_id,
+                kind="final_development",
+                fold_index=None,
+                training_domain_digest=training_digest,
+                frame_uids=frames,
+            ))
+        return tuple(result)
+
+    result = []
+    seen_digests: set[str] = set()
+    seen_ids: set[str] = set()
+    for domain in training_domains:
+        if str(domain.data5_bundle_digest) != str(data5_bundle.content_digest):
+            raise TrainingDataInputError("TARGET-DATA2B training-domain/DATA5 lineage mismatch.")
+        training_digest = validate_digest(str(domain.content_digest), name="training_domain_digest")
+        if training_digest in seen_digests:
+            continue
+        source_label = str(domain.label_domain_id)
+        try:
+            frozen = target_data_role_freeze.domain(source_label)
+        except KeyError as exc:
+            raise TrainingDataInputError(
+                f"TARGET-DATA2B training domain references unknown label domain {source_label!r}."
+            ) from exc
+        frames = tuple(sorted(str(uid) for uid in domain.frame_uids))
+        if not frames or not set(frames).issubset(set(frozen.size_development_frame_uids)):
+            raise TrainingDataInputError(
+                "TARGET-DATA2B training domain must be a non-empty subset of DATA2A development frames."
+            )
+        units = tuple(sorted(str(uid) for uid in domain.unit_ids))
+        expected_frames = tuple(sorted({
+            uid
+            for unit_id in units
+            for uid in data5_bundle.unit_catalog.unit(unit_id).frame_uids
+        }))
+        if expected_frames != frames:
+            raise TrainingDataInputError(
+                "TARGET-DATA2B training-domain frames do not exactly match its DATA5 units."
+            )
+        kind = str(getattr(domain.kind, "value", domain.kind))
+        fold = None if domain.fold_index is None else int(domain.fold_index)
+        authority_id = _target_training_domain_authority_id(domain)
+        if authority_id in seen_ids:
+            raise TrainingDataInputError("TARGET-DATA2B training-domain authority IDs collided.")
+        seen_ids.add(authority_id)
+        seen_digests.add(training_digest)
+        result.append(_TargetCoverageTrainingDomainSpec(
+            authority_domain_id=authority_id,
+            source_label_domain_id=source_label,
+            kind=kind,
+            fold_index=fold,
+            training_domain_digest=training_digest,
+            frame_uids=frames,
+        ))
+    if not result:
+        raise TrainingDataInputError("TARGET-DATA2B requires at least one gradient-training domain.")
+    return tuple(sorted(result, key=lambda item: item.authority_domain_id))
+
+
+@dataclass(frozen=True, slots=True)
+class _TargetCoverageRoleDomainView:
+    label_domain_id: str
+    size_development_unit_ids: tuple[str, ...]
+    size_development_frame_uids: tuple[str, ...]
+    development_intervals: tuple[Any, ...]
+
+
+def target_coverage_role_domain_view(
+    target_data_role_freeze: Any,
+    reference_domain: TargetCoverageDomainReference,
+) -> Any:
+    """Project DATA2A provenance onto one final/CV gradient-training domain."""
+
+    base = target_data_role_freeze.domain(reference_domain.source_label_domain_id)
+    frame_set = set(reference_domain.frame_uids)
+    if not frame_set.issubset(set(base.size_development_frame_uids)):
+        raise TrainingDataInputError(
+            "TARGET-DATA2B projected DATA2A frame-domain mismatch for the training domain."
+        )
+    intervals = []
+    for interval in base.development_intervals:
+        overlap = frame_set.intersection(interval.frame_uids)
+        if not overlap:
+            continue
+        if overlap != set(interval.frame_uids):
+            raise TrainingDataInputError(
+                "TARGET-DATA2B training domains must preserve complete DATA5 correlation units."
+            )
+        intervals.append(interval)
+    covered = {uid for interval in intervals for uid in interval.frame_uids}
+    if covered != frame_set:
+        raise TrainingDataInputError(
+            "TARGET-DATA2B projected DATA2A provenance does not cover the training domain exactly."
+        )
+    return _TargetCoverageRoleDomainView(
+        label_domain_id=reference_domain.label_domain_id,
+        size_development_unit_ids=tuple(sorted(interval.unit_id for interval in intervals)),
+        size_development_frame_uids=tuple(reference_domain.frame_uids),
+        development_intervals=tuple(intervals),
+    )
+
+
 def build_target_coverage_reference(
     data4_bundle: Any,
     data5_bundle: Any,
@@ -2452,6 +2630,7 @@ def build_target_coverage_reference(
     target_data_role_freeze: Any,
     foundation_target_audit: Any,
     *,
+    training_domains: Sequence[Any] | None = None,
     policy: TargetCoveragePolicy | None = None,
     progress_callback: Callable[[str], None] | None = None,
     query_workers: int = 1,
@@ -2478,6 +2657,10 @@ def build_target_coverage_reference(
     if not data6_bundle.universal_structural_features:
         raise TrainingDataInputError("TARGET-DATA2B requires DATA6 universal structural features.")
 
+    domain_specs = _resolve_target_training_domain_specs(
+        data5_bundle, target_data_role_freeze, training_domains
+    )
+
     if execution_scope is not None and int(query_workers) != 1:
         raise TrainingDataInputError(
             "COVREF-PAR1 execution_scope requires query_workers=1 to prevent nested cKDTree parallelism."
@@ -2486,8 +2669,8 @@ def build_target_coverage_reference(
     def _build_domains(radius_queue: DeterministicWorkQueue | None) -> list[TargetCoverageDomainReference]:
         domains: list[TargetCoverageDomainReference] = []
         shared_weight_cache = _TargetCoverageBuildCache() if use_execution_caches else None
-        for domain_number, frozen in enumerate(target_data_role_freeze.domains, start=1):
-            frame_uids = tuple(sorted(frozen.size_development_frame_uids))
+        for domain_number, domain_spec in enumerate(domain_specs, start=1):
+            frame_uids = domain_spec.frame_uids
             frame_index = {uid: index for index, uid in enumerate(frame_uids)}
             try:
                 correlation_unit_by_uid = {
@@ -2499,7 +2682,9 @@ def build_target_coverage_reference(
                     "TARGET-DATA2B domain contains a frame outside DATA5."
                 ) from exc
             execution_context = _TargetCoverageExecutionContext(
-                label_domain_id=frozen.label_domain_id,
+                # Domain-local cache/task identity must distinguish CV folds that
+                # share one source label domain.
+                label_domain_id=domain_spec.authority_domain_id,
                 correlation_unit_by_uid=correlation_unit_by_uid,
                 weight_cache=shared_weight_cache,
                 radius_block_size=max(1, int(radius_block_size)),
@@ -2508,8 +2693,8 @@ def build_target_coverage_reference(
             )
             if progress_callback is not None:
                 progress_callback(
-                    f"TARGET-DATA2B domain; progress={format_progress_fraction(domain_number, len(target_data_role_freeze.domains))}; "
-                    f"domain={frozen.label_domain_id}; reference_frames={len(frame_uids):,}"
+                    f"TARGET-DATA2B domain; progress={format_progress_fraction(domain_number, len(domain_specs))}; "
+                    f"domain={domain_spec.authority_domain_id}; reference_frames={len(frame_uids):,}"
                 )
                 if radius_queue is None:
                     progress_callback(
@@ -2570,7 +2755,7 @@ def build_target_coverage_reference(
             )
             families.extend(
                 _foundation_residual_families_for_domain(
-                    label_domain_id=frozen.label_domain_id,
+                    label_domain_id=domain_spec.source_label_domain_id,
                     domain_frame_uids=frame_uids,
                     domain_frame_index=frame_index,
                     data5_bundle=data5_bundle,
@@ -2582,9 +2767,9 @@ def build_target_coverage_reference(
                 )
             )
             if not families:
-                raise TrainingDataInputError(f"TARGET-DATA2B produced no coverage families for {frozen.label_domain_id!r}.")
+                raise TrainingDataInputError(f"TARGET-DATA2B produced no coverage families for {domain_spec.authority_domain_id!r}.")
             strata = _strata_for_domain(
-                label_domain_id=frozen.label_domain_id,
+                label_domain_id=domain_spec.source_label_domain_id,
                 domain_frame_uids=frame_uids,
                 domain_frame_index=frame_index,
                 data5_bundle=data5_bundle,
@@ -2594,22 +2779,28 @@ def build_target_coverage_reference(
             frame_domain_digest = digest(
                 {
                     "schema": "mdstats.target-coverage-frame-domain.v1",
-                    "label_domain_id": frozen.label_domain_id,
+                    "label_domain_id": domain_spec.authority_domain_id,
+                    "source_label_domain_id": domain_spec.source_label_domain_id,
+                    "training_domain_digest": domain_spec.training_domain_digest,
                     "frame_uids": list(frame_uids),
                 }
             )
             domains.append(
                 TargetCoverageDomainReference(
-                    label_domain_id=frozen.label_domain_id,
+                    label_domain_id=domain_spec.authority_domain_id,
                     frame_uids=frame_uids,
                     families=tuple(families),
                     strata=tuple(strata),
                     frame_domain_digest=frame_domain_digest,
+                    source_label_domain_id=domain_spec.source_label_domain_id,
+                    training_domain_kind=domain_spec.kind,
+                    training_domain_fold_index=domain_spec.fold_index,
+                    training_domain_digest=domain_spec.training_domain_digest,
                 )
             )
             if progress_callback is not None:
                 progress_callback(
-                    f"status=domain-complete; domain={frozen.label_domain_id}; required_families={len(families)}; support_strata={len(strata)}"
+                    f"status=domain-complete; domain={domain_spec.authority_domain_id}; required_families={len(families)}; support_strata={len(strata)}"
                 )
         return domains
 
@@ -3002,6 +3193,7 @@ def validate_target_coverage_reference_authority(
     data6_bundle: Any,
     target_data_role_freeze: Any,
     foundation_target_audit: Any,
+    training_domains: Sequence[Any] | None = None,
 ) -> None:
     expected = {
         "source_catalog_digest": data4_bundle.source_catalog_digest,
@@ -3015,10 +3207,28 @@ def validate_target_coverage_reference_authority(
     for name, value in expected.items():
         if getattr(reference, name) != value:
             raise TrainingDataInputError(f"TARGET-DATA2B authority mismatch: {name} changed.")
+    specs = _resolve_target_training_domain_specs(
+        data5_bundle, target_data_role_freeze, training_domains
+    )
     live_domains = {
-        item.label_domain_id: tuple(sorted(item.size_development_frame_uids))
-        for item in target_data_role_freeze.domains
+        item.authority_domain_id: (
+            item.source_label_domain_id,
+            item.kind,
+            item.fold_index,
+            item.training_domain_digest,
+            tuple(item.frame_uids),
+        )
+        for item in specs
     }
-    frozen_domains = {item.label_domain_id: tuple(item.frame_uids) for item in reference.domains}
+    frozen_domains = {
+        item.label_domain_id: (
+            item.source_label_domain_id,
+            item.training_domain_kind,
+            item.training_domain_fold_index,
+            item.training_domain_digest,
+            tuple(item.frame_uids),
+        )
+        for item in reference.domains
+    }
     if live_domains != frozen_domains:
-        raise TrainingDataInputError("TARGET-DATA2B frozen reference domains changed.")
+        raise TrainingDataInputError("TARGET-DATA2B frozen gradient-training domains changed.")

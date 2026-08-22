@@ -285,6 +285,7 @@ class ProductionMaterializationPlan:
     selection_authority_role: str = "standard"
     target_size_study_digest: str | None = None
     prescribed_final_development_prefixes: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    prescribed_training_domain_prefixes: tuple[tuple[str, tuple[str, ...]], ...] = ()
     prescribed_target_size_evaluation_frames: tuple[tuple[str, tuple[str, ...]], ...] = ()
     require_foundation_residual_e0: bool = True
     require_replay: bool = True
@@ -421,10 +422,16 @@ class ProductionMaterializationPlan:
         allowed_roles = {"standard", "target_size_candidate", "selected_production_prefix"}
         if role not in allowed_roles:
             raise TrainingDataInputError("Unsupported production selection authority role.")
-        prefixes = tuple(
+        legacy_prefixes = tuple(
             sorted(
                 (str(label), tuple(str(uid) for uid in uids))
                 for label, uids in self.prescribed_final_development_prefixes
+            )
+        )
+        prefixes = tuple(
+            sorted(
+                (str(domain_digest), tuple(str(uid) for uid in uids))
+                for domain_digest, uids in self.prescribed_training_domain_prefixes
             )
         )
         evaluation_frames = tuple(
@@ -433,14 +440,38 @@ class ProductionMaterializationPlan:
                 for label, uids in self.prescribed_target_size_evaluation_frames
             )
         )
-        if len({label for label, _ in prefixes}) != len(prefixes):
-            raise TrainingDataInputError("Prescribed final-development prefixes require unique label domains.")
+        if len({label for label, _ in legacy_prefixes}) != len(legacy_prefixes):
+            raise TrainingDataInputError("Legacy prescribed final-development prefixes require unique label domains.")
+        if len({domain_digest for domain_digest, _ in prefixes}) != len(prefixes):
+            raise TrainingDataInputError("Prescribed target training prefixes require unique DATA7 domain identities.")
+        if legacy_prefixes and prefixes:
+            raise TrainingDataInputError("Target membership cannot have both legacy label-prefix and training-domain-prefix authorities.")
+        domain_by_digest = {item.content_digest: item for item in self.domains}
+        final_domains = {
+            item.label_domain_id: item
+            for item in self.domains
+            if item.kind is FeatureFitDomainKind.FINAL_DEVELOPMENT
+        }
+        if legacy_prefixes:
+            if any(item.kind is not FeatureFitDomainKind.FINAL_DEVELOPMENT for item in self.domains):
+                raise TrainingDataInputError(
+                    "Legacy label-domain prefixes cannot authorize target-size materialization with CV training domains."
+                )
+            if set(label for label, _ in legacy_prefixes) != set(final_domains):
+                raise TrainingDataInputError(
+                    "Legacy target-size prefix materialization must bind every final-development label domain exactly once."
+                )
+            prefixes = tuple(sorted(
+                (final_domains[label].content_digest, uids)
+                for label, uids in legacy_prefixes
+            ))
+            legacy_prefixes = ()
         if role == "standard":
             if prefixes or evaluation_frames or self.target_size_study_digest is not None:
                 raise TrainingDataInputError("Standard DATA7 selection cannot claim target-size prefix authority.")
         else:
             if self.plan_schema != PRODUCTION_MATERIALIZATION_PLAN_SCHEMA:
-                raise TrainingDataInputError("Target-size prefix materialization requires production plan v9.")
+                raise TrainingDataInputError("Target-size prefix materialization requires current production plan authority.")
             if self.target_size_study_digest is None:
                 raise TrainingDataInputError("Target-size prefix materialization requires the target-size study digest.")
             object.__setattr__(
@@ -449,22 +480,26 @@ class ProductionMaterializationPlan:
             )
             if self.selection_size is None or not prefixes:
                 raise TrainingDataInputError("Target-size prefix materialization requires a selected size and domain prefixes.")
-            final_domains = {
-                item.label_domain_id: item
-                for item in self.domains
-                if item.kind is FeatureFitDomainKind.FINAL_DEVELOPMENT
-            }
-            if set(label for label, _ in prefixes) != set(final_domains):
-                raise TrainingDataInputError("Target-size prefix materialization must bind every final-development label domain exactly once.")
-            for label, uids in prefixes:
+            if set(domain_digest for domain_digest, _ in prefixes) != set(domain_by_digest):
+                raise TrainingDataInputError(
+                    "Target-size prefix materialization must bind every final/CV gradient-training DATA7 domain exactly once."
+                )
+            for domain_digest, uids in prefixes:
+                domain = domain_by_digest[domain_digest]
                 if len(uids) != self.selection_size or len(set(uids)) != len(uids):
                     raise TrainingDataInputError("Each prescribed target-size prefix must equal selection_size with unique frames.")
-                if any(uid not in set(final_domains[label].frame_uids) for uid in uids):
-                    raise TrainingDataInputError("Prescribed target-size prefix contains frames outside its final-development domain.")
+                if any(uid not in set(domain.frame_uids) for uid in uids):
+                    raise TrainingDataInputError(
+                        "Prescribed target-size prefix contains frames outside its gradient-training domain."
+                    )
             if role == "target_size_candidate":
                 if set(label for label, _ in evaluation_frames) != set(final_domains):
                     raise TrainingDataInputError("Candidate target-size materialization requires one development-complement evaluation cohort per label domain.")
-                prefix_by_label = dict(prefixes)
+                prefix_by_label = {
+                    domain_by_digest[domain_digest].label_domain_id: uids
+                    for domain_digest, uids in prefixes
+                    if domain_by_digest[domain_digest].kind is FeatureFitDomainKind.FINAL_DEVELOPMENT
+                }
                 for label, uids in evaluation_frames:
                     if not uids or len(uids) != len(set(uids)):
                         raise TrainingDataInputError("Candidate target-size evaluation cohorts must be non-empty and unique.")
@@ -475,7 +510,8 @@ class ProductionMaterializationPlan:
             elif evaluation_frames:
                 raise TrainingDataInputError("Only target_size_candidate materializations may bind the pre-selection development evaluation cohort.")
         object.__setattr__(self, "selection_authority_role", role)
-        object.__setattr__(self, "prescribed_final_development_prefixes", prefixes)
+        object.__setattr__(self, "prescribed_final_development_prefixes", legacy_prefixes)
+        object.__setattr__(self, "prescribed_training_domain_prefixes", prefixes)
         object.__setattr__(self, "prescribed_target_size_evaluation_frames", evaluation_frames)
 
     def _payload(self) -> dict[str, Any]:
@@ -519,6 +555,15 @@ class ProductionMaterializationPlan:
             "require_foundation_residual_e0": self.require_foundation_residual_e0,
             "require_replay": self.require_replay,
         }
+        # This field is an optional current-v9 extension.  Omitting the empty
+        # value preserves digest compatibility for unrelated standard v9 plans,
+        # while target-size-controlled plans authenticate the new final/CV
+        # training-domain prefix authority explicitly.
+        if self.prescribed_training_domain_prefixes:
+            payload["prescribed_training_domain_prefixes"] = [
+                [domain_digest, list(uids)]
+                for domain_digest, uids in self.prescribed_training_domain_prefixes
+            ]
         if self.plan_schema == PRODUCTION_MATERIALIZATION_PLAN_SCHEMA:
             payload["selected_head_qualification"] = self.selected_head_qualification.to_dict()
         if self.plan_schema in {PRODUCTION_MATERIALIZATION_PLAN_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V8_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V7_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V6_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V5_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V4_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V3_SCHEMA}:
@@ -608,6 +653,10 @@ class ProductionMaterializationPlan:
             prescribed_final_development_prefixes=tuple(
                 (str(item[0]), tuple(str(uid) for uid in item[1]))
                 for item in payload.get("prescribed_final_development_prefixes", ())
+            ),
+            prescribed_training_domain_prefixes=tuple(
+                (str(item[0]), tuple(str(uid) for uid in item[1]))
+                for item in payload.get("prescribed_training_domain_prefixes", ())
             ),
             prescribed_target_size_evaluation_frames=tuple(
                 (str(item[0]), tuple(str(uid) for uid in item[1]))
@@ -864,6 +913,7 @@ def build_production_materialization_plan(
     selection_authority_role: str = "standard",
     target_size_study_digest: str | None = None,
     prescribed_final_development_prefixes: Mapping[str, Sequence[str]] | None = None,
+    prescribed_training_domain_prefixes: Mapping[str, Sequence[str]] | None = None,
     prescribed_target_size_evaluation_frames: Mapping[str, Sequence[str]] | None = None,
     require_foundation_residual_e0: bool = True,
     require_replay: bool = True,
@@ -957,6 +1007,10 @@ def build_production_materialization_plan(
             (str(label), tuple(str(uid) for uid in uids))
             for label, uids in (prescribed_final_development_prefixes or {}).items()
         ),
+        prescribed_training_domain_prefixes=tuple(
+            (str(domain_digest), tuple(str(uid) for uid in uids))
+            for domain_digest, uids in (prescribed_training_domain_prefixes or {}).items()
+        ),
         prescribed_target_size_evaluation_frames=tuple(
             (str(label), tuple(str(uid) for uid in uids))
             for label, uids in (prescribed_target_size_evaluation_frames or {}).items()
@@ -1002,10 +1056,10 @@ def _data7_recipe_digest(
             if domain.kind is not FeatureFitDomainKind.FINAL_DEVELOPMENT
             else list(dict(plan.prescribed_target_size_evaluation_frames).get(domain.label_domain_id, ()))
         ),
-        "prescribed_final_development_prefix": (
+        "prescribed_training_domain_prefix": (
             None
-            if domain.kind is not FeatureFitDomainKind.FINAL_DEVELOPMENT
-            else list(dict(plan.prescribed_final_development_prefixes).get(domain.label_domain_id, ()))
+            if plan.selection_authority_role == "standard"
+            else list(dict(plan.prescribed_training_domain_prefixes).get(domain.content_digest, ()))
         ),
         "foundation_checkpoint_sha256": plan.foundation_checkpoint.sha256,
         "foundation_identity_digest": plan.foundation_checkpoint.canonical_content_digest,
@@ -1437,8 +1491,8 @@ def run_restartable_production_materialization(
                     protected_event_frame_uids=protected_event_frame_uids,
                     prescribed_selection_frame_uids=(
                         None
-                        if domain.kind is not FeatureFitDomainKind.FINAL_DEVELOPMENT
-                        else dict(plan.prescribed_final_development_prefixes).get(domain.label_domain_id)
+                        if plan.selection_authority_role == "standard"
+                        else dict(plan.prescribed_training_domain_prefixes).get(domain.content_digest)
                     ),
                     prescribed_selection_role=(
                         None if plan.selection_authority_role == "standard" else plan.selection_authority_role

@@ -25,6 +25,7 @@ from ._target_multi_view_scoring import (
     _qualification_provenance_codes,
 )
 from .target_size_study import FIXED_TARGET_SIZES
+from .target_coverage import target_coverage_role_domain_view
 
 TARGET_MULTI_VIEW_QUALIFICATION_V2_VERSION = (
     "mdstats.target-data2c.mvqual2.fixed-eight.2026-08.v1"
@@ -44,6 +45,24 @@ TARGET_MULTI_VIEW_QUALIFICATION_V2_PLAN_SCHEMA = (
 
 OUTCOME_QUALIFIED = "fixed_universe_qualified"
 OUTCOME_NO_QUALIFIED_SIZES = "no_qualified_sizes_within_fixed_universe"
+
+
+def _assert_monotone_qualification(
+    states: Sequence[tuple[int, bool, bool]], *, scope: str
+) -> None:
+    """Require FAIL* -> PASS* across the materializable nested-prefix population."""
+
+    passed = False
+    for size, materializable, qualified in states:
+        if not materializable:
+            continue
+        if qualified:
+            passed = True
+        elif passed:
+            raise TrainingDataInputError(
+                f"MVQUAL2 monotonic qualification invariant violated for {scope}: "
+                f"a larger materializable prefix n{size} failed after a smaller prefix passed."
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -205,6 +224,10 @@ class TargetMultiViewQualificationDomainPlanV2:
             raise TrainingDataInputError(
                 "Each MVQUAL2 domain must report the complete fixed target-size universe."
             )
+        _assert_monotone_qualification(
+            tuple((v.target_size, v.materializable, v.qualified) for v in rungs),
+            scope=f"domain {self.label_domain_id!r}",
+        )
         object.__setattr__(self, "rungs", rungs)
         object.__setattr__(self, "_rung_by_size", {v.target_size: v for v in rungs})
 
@@ -286,6 +309,17 @@ class TargetMultiViewQualificationPlanV2:
         )
         if qualified != derived:
             raise TrainingDataInputError("MVQUAL2 global qualification contradicts domain evidence.")
+        _assert_monotone_qualification(
+            tuple(
+                (
+                    size,
+                    all(domain.rung(size).materializable for domain in domains),
+                    size in qualified,
+                )
+                for size in FIXED_TARGET_SIZES
+            ),
+            scope="global intersection",
+        )
         expected_outcome = OUTCOME_QUALIFIED if qualified else OUTCOME_NO_QUALIFIED_SIZES
         if self.outcome != expected_outcome:
             raise TrainingDataInputError("MVQUAL2 outcome contradicts qualification evidence.")
@@ -421,7 +455,7 @@ def build_target_multi_view_qualification_plan_v2(
         label = reference_domain.label_domain_id
         sparse_domain = target_coverage_sparse_index.domain(label)
         repair_domain = target_multi_view_repair.domain(label)
-        role_domain = target_data_role_freeze.domain(label)
+        role_domain = target_coverage_role_domain_view(target_data_role_freeze, reference_domain)
         uid_to_index, run_codes, condition_codes = _qualification_provenance_codes(
             reference_domain, role_domain
         )

@@ -448,7 +448,9 @@ def _progressive_sparse_cache(
     for group in groups:
         reference_domain = reference.domain(group.label_domain_id)
         sparse_domain = sparse_index.domain(group.label_domain_id)
-        role_domain = role_freeze.domain(group.label_domain_id)
+        from .target_coverage import target_coverage_role_domain_view
+
+        role_domain = target_coverage_role_domain_view(role_freeze, reference_domain)
         uid_to_index, run_codes, condition_codes = _mvqual._qualification_provenance_codes(
             reference_domain, role_domain
         )

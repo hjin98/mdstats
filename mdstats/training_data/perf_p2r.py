@@ -18,7 +18,7 @@ from ._common import (
 )
 
 PERF_P2R_PARAMETER_GRID_SCHEMA = "mdstats.perf-p2r-parameter-grid.target-size-v5.v2"
-PERF_P2R_STAGE_PLAN_SCHEMA = "mdstats.perf-p2r-stage-plan.target-size-v5.v2"
+PERF_P2R_STAGE_PLAN_SCHEMA = "mdstats.perf-p2r-stage-plan.target-size-v5.v3"
 PERF_P2R_EXPOSURE_SCHEMA = "mdstats.perf-p2r-exposure.v1"
 
 
@@ -139,7 +139,7 @@ class PerfP2RStagePlan:
     start_epoch: int
     target_epoch: int
     planned_final_epoch: int
-    screening_optimizer_seed: int | None
+    screening_optimizer_seeds: tuple[int, ...]
     continuation_required: bool
     target_only_evaluation: bool
     replay_diagnostic_authorized: bool
@@ -184,8 +184,17 @@ class PerfP2RStagePlan:
         object.__setattr__(self, "start_epoch", start)
         object.__setattr__(self, "target_epoch", target)
         object.__setattr__(self, "planned_final_epoch", final)
-        if self.screening_optimizer_seed is not None:
-            object.__setattr__(self, "screening_optimizer_seed", int(self.screening_optimizer_seed))
+        seeds = tuple(int(v) for v in self.screening_optimizer_seeds)
+        if stage == "production":
+            if seeds:
+                raise TrainingDataInputError(
+                    "PERF-P2R production stage does not own target-size screening seeds."
+                )
+        elif not seeds or len(set(seeds)) != len(seeds) or any(v < 0 for v in seeds):
+            raise TrainingDataInputError(
+                "PERF-P2R screening stages require the authenticated ordered unique seed set."
+            )
+        object.__setattr__(self, "screening_optimizer_seeds", seeds)
 
     @property
     def incremental_epochs(self) -> int:
@@ -200,7 +209,7 @@ class PerfP2RStagePlan:
             "start_epoch": self.start_epoch,
             "target_epoch": self.target_epoch,
             "planned_final_epoch": self.planned_final_epoch,
-            "screening_optimizer_seed": self.screening_optimizer_seed,
+            "screening_optimizer_seeds": list(self.screening_optimizer_seeds),
             "continuation_required": self.continuation_required,
             "target_only_evaluation": self.target_only_evaluation,
             "replay_diagnostic_authorized": self.replay_diagnostic_authorized,
@@ -225,10 +234,8 @@ class PerfP2RStagePlan:
             start_epoch=int(payload["start_epoch"]),
             target_epoch=int(payload["target_epoch"]),
             planned_final_epoch=int(payload["planned_final_epoch"]),
-            screening_optimizer_seed=(
-                None
-                if payload.get("screening_optimizer_seed") is None
-                else int(payload["screening_optimizer_seed"])
+            screening_optimizer_seeds=tuple(
+                int(v) for v in payload.get("screening_optimizer_seeds", ())
             ),
             continuation_required=bool(payload["continuation_required"]),
             target_only_evaluation=bool(payload["target_only_evaluation"]),
@@ -254,7 +261,7 @@ def build_perf_p2r_stage_plan(study: Any) -> PerfP2RStagePlan:
         return PerfP2RStagePlan(
             **common, stage="coarse", candidate_sizes=tuple(study.qualified_sizes),
             start_epoch=0, target_epoch=epoch3,
-            screening_optimizer_seed=int(policy.screening_optimizer_seed),
+            screening_optimizer_seeds=tuple(policy.screening_optimizer_seeds),
             continuation_required=False, target_only_evaluation=True,
             replay_diagnostic_authorized=False, physical_qualification_authorized=False,
         )
@@ -262,7 +269,7 @@ def build_perf_p2r_stage_plan(study: Any) -> PerfP2RStagePlan:
         return PerfP2RStagePlan(
             **common, stage="short", candidate_sizes=tuple(study.epoch3_survivor_sizes),
             start_epoch=epoch3, target_epoch=epoch10,
-            screening_optimizer_seed=int(policy.screening_optimizer_seed),
+            screening_optimizer_seeds=tuple(policy.screening_optimizer_seeds),
             continuation_required=True, target_only_evaluation=True,
             replay_diagnostic_authorized=False, physical_qualification_authorized=False,
         )
@@ -270,7 +277,7 @@ def build_perf_p2r_stage_plan(study: Any) -> PerfP2RStagePlan:
         return PerfP2RStagePlan(
             **common, stage="final", candidate_sizes=tuple(study.epoch10_finalist_sizes),
             start_epoch=epoch10, target_epoch=epoch30,
-            screening_optimizer_seed=int(policy.screening_optimizer_seed),
+            screening_optimizer_seeds=tuple(policy.screening_optimizer_seeds),
             continuation_required=True, target_only_evaluation=True,
             replay_diagnostic_authorized=False, physical_qualification_authorized=False,
         )
@@ -279,7 +286,7 @@ def build_perf_p2r_stage_plan(study: Any) -> PerfP2RStagePlan:
             raise TrainingDataInputError("Selected target-size-v5 authority lacks a target size.")
         return PerfP2RStagePlan(
             **common, stage="production", candidate_sizes=(int(study.selected_target_size),),
-            start_epoch=0, target_epoch=epoch30, screening_optimizer_seed=None,
+            start_epoch=0, target_epoch=epoch30, screening_optimizer_seeds=(),
             continuation_required=False, target_only_evaluation=False,
             replay_diagnostic_authorized=True, physical_qualification_authorized=True,
         )

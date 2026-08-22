@@ -412,7 +412,11 @@ def _screen_order(
     if not admissible:
         return ()
     # _equivalence_aware_target_order reads only target_size and target_force_score_mev_per_a.
-    return _equivalence_aware_target_order(admissible, epsilon=float(epsilon), boundary_preserve_size=boundary_size)
+    # ``boundary_size`` remains in this calibration helper's call surface for
+    # historical result compatibility, but current target-size v5 deliberately
+    # gives the fixed ceiling no ordering priority inside an equivalence band.
+    del boundary_size
+    return _equivalence_aware_target_order(admissible, epsilon=float(epsilon))
 
 
 @dataclass(frozen=True, slots=True)

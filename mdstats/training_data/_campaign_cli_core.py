@@ -4131,6 +4131,64 @@ def _target_coverage_policy(cfg: Mapping[str, Any]) -> Any:
     )
 
 
+def _target_size_required_feature_fit_domains(
+    cfg: Mapping[str, Any], data5: Any
+) -> tuple[Any, ...]:
+    """Resolve every final/CV gradient-training domain before MV selection."""
+
+    import mdstats
+
+    methods = _training_method_specs(cfg)
+    if len(methods) != 1:
+        raise CampaignCliError(
+            "Target-size v5 requires exactly one enabled training mode while its membership authority is built; "
+            f"found {[item.mode for item in methods]}."
+        )
+    method = methods[0]
+    domains: dict[str, Any] = {
+        item.content_digest: item
+        for item in mdstats.build_feature_fit_domains(
+            data5, cross_validation_plans=()
+        )
+    }
+    if method.cross_validation_folds > 0:
+        fold_seeds: list[int] = []
+        for optimizer_seed in method.seeds:
+            fold_seed = method.fold_partition_seed
+            if method.seed_mode == "optimizer_and_cv_partition":
+                fold_seed = int(digest({
+                    "schema": "mdstats.mlcv-per-seed-fold-partition.v1",
+                    "base_fold_partition_seed": method.fold_partition_seed,
+                    "optimizer_seed": optimizer_seed,
+                })[:8], 16)
+            if fold_seed not in fold_seeds:
+                fold_seeds.append(fold_seed)
+        for fold_seed in fold_seeds:
+            plans = mdstats.build_cross_validation_plans(
+                data5.unit_catalog,
+                data5.outer_partitions,
+                data5.feasibility_reports,
+                policy=data5.partition_policy,
+                fold_count_override=method.cross_validation_folds,
+                fold_seed_override=fold_seed,
+            )
+            for item in mdstats.build_feature_fit_domains(
+                data5, cross_validation_plans=plans
+            ):
+                domains[item.content_digest] = item
+    return tuple(
+        sorted(
+            domains.values(),
+            key=lambda item: (
+                item.label_domain_id,
+                item.kind.value,
+                -1 if item.fold_index is None else item.fold_index,
+                item.content_digest,
+            ),
+        )
+    )
+
+
 def _ensure_target_coverage_reference(
     store: CampaignStore,
     *,
@@ -4148,6 +4206,7 @@ def _ensure_target_coverage_reference(
         "target_data_role_freeze", mdstats.TargetDataRoleFreeze
     )
     policy = _target_coverage_policy(cfg)
+    training_domains = _target_size_required_feature_fit_domains(cfg, data5)
     try:
         existing = store.get_record_optional(
             "target_coverage_reference", mdstats.TargetCoverageReference
@@ -4167,6 +4226,7 @@ def _ensure_target_coverage_reference(
                 data6_bundle=data6,
                 target_data_role_freeze=role_freeze,
                 foundation_target_audit=foundation_audit,
+                training_domains=training_domains,
             )
             if existing.policy.policy_digest != policy.policy_digest:
                 raise CampaignCliError("TARGET-DATA2B coverage policy changed.")
@@ -4235,6 +4295,7 @@ def _ensure_target_coverage_reference(
         data6,
         role_freeze,
         foundation_audit,
+        training_domains=training_domains,
         policy=policy,
         progress_callback=lambda message: print(f"[TARGET-DATA2B] {message}", flush=True),
         query_workers=1,
@@ -4395,6 +4456,18 @@ def _target_size_study_policy(cfg: Mapping[str, Any]) -> Any:
     size_cfg = target_data.get("size_convergence", {}) if isinstance(target_data, Mapping) else {}
     if not isinstance(size_cfg, Mapping):
         raise CampaignCliError("[target_data.size_convergence] must be a TOML table.")
+    if "screening_optimizer_seed" in size_cfg:
+        raise CampaignCliError(
+            "[target_data.size_convergence].screening_optimizer_seed is retired. "
+            "Target-size v5 now authenticates the ordered seed set owned by the sole enabled "
+            "training method; remove the scalar override."
+        )
+    methods = _training_method_specs(cfg)
+    if len(methods) != 1:
+        raise CampaignCliError(
+            "Target-size v5 requires exactly one enabled training mode so one training-protocol "
+            f"seed authority exists; found {[item.mode for item in methods]}."
+        )
     policy = mdstats.TargetSizeStudyPolicy(
         practical_equivalence_mev_per_a=float(size_cfg.get("practical_equivalence_mev_per_a", 1.0)),
         coarse_practical_equivalence_mev_per_a=float(
@@ -4403,7 +4476,7 @@ def _target_size_study_policy(cfg: Mapping[str, Any]) -> Any:
                 size_cfg.get("practical_equivalence_mev_per_a", 1.0),
             )
         ),
-        screening_optimizer_seed=int(size_cfg.get("screening_optimizer_seed", 1)),
+        screening_optimizer_seeds=tuple(int(v) for v in methods[0].seeds),
     )
     training = cfg.get("training", {})
     if not isinstance(training, Mapping):
@@ -8001,7 +8074,8 @@ def _target_size_materialization_variants(
 ) -> tuple[_VariantSpec, ...]:
     """Return the materialization matrix for the v5 study or selected production size.
 
-    Before selection only Q is materialized, with one screening optimizer seed
+    Before selection only the currently authorized fidelity-stage candidates are
+    materialized, with the training protocol's complete ordered screening seed set
     and no held-out CV jobs.  The same candidate DATA8 runs survive all 3/10/30
     continuation boundaries.  After selection the normal configured seed/CV
     matrix is materialized for the single frozen production size.
@@ -8024,13 +8098,13 @@ def _target_size_materialization_variants(
             f"found {[item.mode for item in methods]}."
         )
     method = methods[0]
-    seed = int(study.policy.screening_optimizer_seed)
     return tuple(
         _VariantSpec(
-            mode=method.mode, selection_size=int(size), seed=seed,
+            mode=method.mode, selection_size=int(size), seed=int(seed),
             cross_validation_folds=0, fold_partition_seed=method.fold_partition_seed,
         )
-        for size in study.qualified_sizes
+        for size in study.next_training_sizes
+        for seed in study.policy.screening_optimizer_seeds
     )
 
 
@@ -8705,6 +8779,12 @@ def _prepare_materialization(
                 "Target-size v5 terminated at the fixed 16384 ceiling without convergence; "
                 "rescue above 16384 is forbidden."
             )
+        if target_size_study.outcome == mdstats.OUTCOME_INSUFFICIENT_COMPARABLE_CANDIDATES:
+            raise CampaignCliError(
+                "Target-size v5 terminated because too few paired candidates remained numerically "
+                f"comparable at {target_size_study.comparison_failure_stage}: "
+                f"{target_size_study.comparison_failures}."
+            )
         authoritative_selection_sizes = (
             (int(target_size_study.selected_target_size),)
             if target_size_study.outcome == mdstats.OUTCOME_SELECTED
@@ -8908,6 +8988,23 @@ def _prepare_materialization(
                 data5, frames, data4, variant
             )
             cross_validation_cache[fold_key] = variant_cv_plans
+        variant_feature_domains = mdstats.build_feature_fit_domains(
+            data5, cross_validation_plans=variant_cv_plans
+        )
+        coverage_domain_by_training_digest = {
+            domain.training_domain_digest: domain
+            for domain in coverage_reference.domains
+        }
+        missing_training_domains = tuple(
+            domain.content_digest
+            for domain in variant_feature_domains
+            if domain.content_digest not in coverage_domain_by_training_digest
+        )
+        if _training_policy_generation(cfg) == "train2" and missing_training_domains:
+            raise CampaignCliError(
+                "Target-size v5 production domain is missing from the authenticated REPAIR2/MVQUAL2 authority: "
+                + ", ".join(value[:12] for value in missing_training_domains)
+            )
         policy_generation = _training_policy_generation(cfg)
         adaptive_stop_policy = None
         training_budget_policy = None
@@ -9006,17 +9103,19 @@ def _prepare_materialization(
                     else target_size_study.candidate_authority_digest
                 )
             ),
-            prescribed_final_development_prefixes=(
+            prescribed_training_domain_prefixes=(
                 None
                 if _training_policy_generation(cfg) != "train2"
                 else {
-                    domain.label_domain_id: mdstats.materialize_candidate_prefix(
+                    feature_domain.content_digest: mdstats.materialize_candidate_prefix(
                         target_size_study,
                         repair2=target_multi_view_repair,
-                        label_domain_id=domain.label_domain_id,
+                        label_domain_id=coverage_domain_by_training_digest[
+                            feature_domain.content_digest
+                        ].label_domain_id,
                         target_size=int(size),
                     )
-                    for domain in target_multi_view_repair.domains
+                    for feature_domain in variant_feature_domains
                 }
             ),
             prescribed_target_size_evaluation_frames=(
@@ -9024,17 +9123,24 @@ def _prepare_materialization(
                 if _training_policy_generation(cfg) != "train2"
                 or target_size_study.outcome == mdstats.OUTCOME_SELECTED
                 else {
-                    domain.label_domain_id: tuple(
-                        uid for uid in store.get_record(
+                    feature_domain.label_domain_id: tuple(
+                        uid
+                        for uid in store.get_record(
                             "target_data_role_freeze", mdstats.TargetDataRoleFreeze
-                        ).domain(domain.label_domain_id).size_development_frame_uids
-                        if uid not in set(mdstats.materialize_candidate_prefix(
-                            target_size_study, repair2=target_multi_view_repair,
-                            label_domain_id=domain.label_domain_id,
-                            target_size=max(target_size_study.qualified_sizes),
-                        ))
+                        ).domain(feature_domain.label_domain_id).size_development_frame_uids
+                        if uid not in set(
+                            mdstats.materialize_candidate_prefix(
+                                target_size_study,
+                                repair2=target_multi_view_repair,
+                                label_domain_id=coverage_domain_by_training_digest[
+                                    feature_domain.content_digest
+                                ].label_domain_id,
+                                target_size=max(target_size_study.qualified_sizes),
+                            )
+                        )
                     )
-                    for domain in target_multi_view_repair.domains
+                    for feature_domain in variant_feature_domains
+                    if feature_domain.kind is mdstats.FeatureFitDomainKind.FINAL_DEVELOPMENT
                 }
             ),
             require_foundation_residual_e0=True,
@@ -10323,6 +10429,7 @@ def command_preflight(args: argparse.Namespace) -> int:
     if target_size_study.outcome in {
         mdstats.OUTCOME_INSUFFICIENT_QUALIFIED_SIZES,
         mdstats.OUTCOME_NONCONVERGED_AT_FIXED_CEILING,
+        mdstats.OUTCOME_INSUFFICIENT_COMPARABLE_CANDIDATES,
     }:
         raise CampaignCliError(
             f"Target-size v5 is terminal without a production size: {target_size_study.outcome}; "
@@ -12478,12 +12585,12 @@ def command_train(args: argparse.Namespace) -> int:
                 f"target-size v5 exact continuation to epoch {train2_execution_epoch_limit}/30"
             )
             allowed_sizes = set(int(v) for v in study.next_training_sizes)
-            screening_seed = int(study.policy.screening_optimizer_seed)
+            screening_seeds = set(int(v) for v in study.policy.screening_optimizer_seeds)
             train2_allowed_run_ids = {
                 run.run_id
                 for run in campaign.runs
                 if run.kind is mdstats.MaceJobKind.FINAL_DEVELOPMENT
-                and run.seed == screening_seed
+                and run.seed in screening_seeds
                 and run.selection_size in allowed_sizes
             }
         else:
@@ -17065,26 +17172,43 @@ def _eval2_target_size_endpoint_evidence(
         raise CampaignCliError(
             f"Target-size evidence requested from non-trainable state {target_size_study.outcome}."
         )
-    expected_sizes = set(int(v) for v in target_size_study.next_training_sizes)
-    screening_seed = int(target_size_study.policy.screening_optimizer_seed)
+    expected_sizes = tuple(int(v) for v in target_size_study.next_training_sizes)
+    screening_seeds = tuple(int(v) for v in target_size_study.policy.screening_optimizer_seeds)
+    expected_keys = tuple((size, seed) for size in expected_sizes for seed in screening_seeds)
     runs = [
         run for run in campaign.runs
         if run.kind is mdstats.MaceJobKind.FINAL_DEVELOPMENT
-        and run.seed == screening_seed
+        and run.seed in set(screening_seeds)
         and run.selection_size in expected_sizes
     ]
-    if {run.selection_size for run in runs} != expected_sizes:
+    run_by_key = {(int(run.selection_size), int(run.seed)): run for run in runs}
+    if len(run_by_key) != len(runs) or tuple(run_by_key) != expected_keys:
+        # Campaign run order is not itself authority, so compare exact population here;
+        # evidence is emitted below in canonical policy order.
+        if set(run_by_key) != set(expected_keys) or len(run_by_key) != len(expected_keys):
+            raise CampaignCliError(
+                f"EVAL2 target-size epoch-{epoch} cannot resolve exactly one final-development run "
+                "for every required (candidate, screening-seed) pair."
+            )
+    if set(run_by_key) != set(expected_keys):
         raise CampaignCliError(
-            f"EVAL2 target-size epoch-{epoch} cannot resolve exactly one final-development run for every required candidate."
+            f"EVAL2 target-size epoch-{epoch} cannot resolve the authenticated paired seed population."
         )
-    parent_by_size: dict[int, Any] = {}
+    parent_by_key: dict[tuple[int, int], Any] = {}
     if epoch == 10:
-        parent_by_size = {item.target_size: item for item in target_size_study.epoch3_evidence}
+        parent_by_key = {
+            (item.target_size, item.optimizer_seed): item
+            for item in target_size_study.epoch3_evidence
+        }
     elif epoch == 30:
-        parent_by_size = {item.target_size: item for item in target_size_study.epoch10_evidence}
+        parent_by_key = {
+            (item.target_size, item.optimizer_seed): item
+            for item in target_size_study.epoch10_evidence
+        }
 
     evidence: list[Any] = []
-    for run in sorted(runs, key=lambda value: value.selection_size):
+    for key in expected_keys:
+        run = run_by_key[key]
         execution = execution_records.get(run.content_digest)
         if execution is None:
             raise CampaignCliError(
@@ -17133,10 +17257,11 @@ def _eval2_target_size_endpoint_evidence(
             shortlist_reasons=(f"target_size_v5_epoch_{epoch}_exact_endpoint",),
             full_evaluation_rank=1, include_replay=False,
         )
-        parent = parent_by_size.get(run.selection_size)
+        parent = parent_by_key.get((run.selection_size, run.seed))
         if epoch > 3 and parent is None:
             raise CampaignCliError(
-                f"n={run.selection_size} lost its exact epoch-{3 if epoch == 10 else 10} continuation parent."
+                f"n={run.selection_size}, seed={run.seed} lost its exact "
+                f"epoch-{3 if epoch == 10 else 10} continuation parent."
             )
         wall_time = sum(float(attempt.elapsed_seconds) for attempt in execution.attempts)
         evidence.append(
@@ -17154,6 +17279,7 @@ def _eval2_target_size_endpoint_evidence(
                 foundation_identity_digest=job.protocol.foundation_checkpoint.canonical_content_digest,
                 evaluation_role_digest=target_role.content_digest,
                 training_policy_digest=_train2_policy_set_digest(job.protocol),
+                target_size_study_policy_digest=target_size_study.policy.policy_digest,
                 training_run_digest=run.content_digest,
                 candidate_data_digest=target_size_study.candidate(run.selection_size).candidate_data_digest,
                 checkpoint_digest=point.checkpoint_sha256,
@@ -23950,7 +24076,8 @@ structural_workers = 0
 # No generated/rescue sizes and no ceiling above 16384 are permitted.
 coarse_practical_equivalence_mev_per_a = 1.0
 practical_equivalence_mev_per_a = 1.0
-screening_optimizer_seed = 1
+# Screening seeds are not configured here. Target-size v5 authenticates the
+# ordered `seeds` list of the sole enabled training method below.
 
 [objective]
 energy_weight = 1.0

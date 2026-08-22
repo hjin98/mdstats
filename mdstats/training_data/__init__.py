@@ -2077,6 +2077,7 @@ from .target_size_study import (
     OUTCOME_AWAITING_EPOCH_30,
     OUTCOME_SELECTED,
     OUTCOME_NONCONVERGED_AT_FIXED_CEILING,
+    OUTCOME_INSUFFICIENT_COMPARABLE_CANDIDATES,
     TargetSizeStudyPolicy,
     TargetSizeStudyCandidate,
     TargetSizeTrainingEvidence as TargetSizeStudyTrainingEvidence,

@@ -601,3 +601,48 @@ def test_preflight_prints_variant_qualified_config_mismatch(
     assert "[FAIL] DATA8 config failed byte verification" in output
     assert "multihead_replay-n8-seed1/final" in output
     assert "stopped before launching MACE" in output
+
+
+
+def test_prescribed_target_prefixes_drive_final_and_cv_data7_without_reselection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sources, frames, frame_data, data4, data5, data6, sweep, plan, _ = _fixture(tmp_path)
+    selected_size = 4
+
+    import mdstats.training_data.data7_bundle as data7_bundle_module
+
+    def forbidden_selector(*args, **kwargs):
+        raise AssertionError("target-size-controlled DATA7 must not invoke independent selection")
+
+    monkeypatch.setattr(
+        data7_bundle_module, "build_training_selection_plan", forbidden_selector
+    )
+    observed_kinds = set()
+    for domain in plan.domains:
+        prefix = tuple(domain.frame_uids[:selected_size])
+        bundle = mdstats.build_data7_preparation_bundle(
+            sources,
+            frames,
+            frame_data,
+            data4,
+            data5,
+            data6,
+            domain,
+            feature_metric_policy=plan.feature_metric_policy,
+            atomic_reference_policy=plan.atomic_reference_policy,
+            objective_policy=plan.objective_policy,
+            configuration_weight_policy=plan.configuration_weight_policy,
+            checkpoint_metric_policy=plan.checkpoint_metric_policy,
+            selection_budget_policy=mdstats.SelectionBudgetPolicy(target_sizes=(selected_size,)),
+            mace_descriptor_root=sweep.root_directory,
+            prescribed_selection_frame_uids=prefix,
+            prescribed_selection_role="selected_production_prefix",
+        )
+        observed_kinds.add(bundle.domain.kind)
+        assert tuple(item.frame_uid for item in bundle.selection_plan.master_order) == prefix
+        assert bundle.selection_plan.ladder_levels[-1].frame_uids == prefix
+    assert observed_kinds == {
+        mdstats.FeatureFitDomainKind.FINAL_DEVELOPMENT,
+        mdstats.FeatureFitDomainKind.CROSS_VALIDATION_TRAINING,
+    }
