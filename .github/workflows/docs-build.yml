@@ -1,0 +1,36 @@
+name: Build documentation PDFs
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'docs/**'
+      - '.github/workflows/docs-build.yml'
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pandoc and typst
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pandoc
+          curl -fsSL https://typst.community/typst-install/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Build architecture PDF
+        run: |
+          mkdir -p build/docs
+          test -f docs/build_architecture_pdf.sh && docs/build_architecture_pdf.sh || echo "No repository build script yet; add docs/build_architecture_pdf.sh"
+
+      - name: Upload documentation artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: documentation-pdf
+          path: |
+            build/docs/**/*.pdf
+            docs/**/*.pdf
+          if-no-files-found: warn
