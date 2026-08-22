@@ -3,6 +3,12 @@ name: Build documentation PDFs
 on:
   workflow_dispatch:
   push:
+    branches:
+      - '**'
+    paths:
+      - 'docs/**'
+      - '.github/workflows/docs-build.yml'
+  pull_request:
     paths:
       - 'docs/**'
       - '.github/workflows/docs-build.yml'
@@ -24,13 +30,14 @@ jobs:
       - name: Build architecture PDF
         run: |
           mkdir -p build/docs
-          test -f docs/build_architecture_pdf.sh && docs/build_architecture_pdf.sh || echo "No repository build script yet; add docs/build_architecture_pdf.sh"
+          test -x docs/build_architecture_pdf.sh
+          docs/build_architecture_pdf.sh
 
       - name: Upload documentation artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: documentation-pdf
+          name: documentation-pdf-${{ github.sha }}
           path: |
             build/docs/**/*.pdf
-            docs/**/*.pdf
-          if-no-files-found: warn
+            build/docs/**/*.sha256
+          if-no-files-found: error
