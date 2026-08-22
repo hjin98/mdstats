@@ -36,11 +36,8 @@ Current issue:
 
 - DATA7/MVSEL2 owns the materializable ladder.
 - DATA8 correctly validates requested sizes against that ladder.
-- DATA8 variants currently take TRAIN2 sizes from target-size study state, while
-  each DATA7 ladder is independently built from legacy `[selection].sizes`.
-- Before a terminal target-size decision, hard-qualified candidates are valid
-  stage-authorized training inputs. After `selected(N)`, intermediate candidate
-  sets are no longer materialization authorities.
+- DATA8 variants currently take TRAIN2 sizes from target-size study state, while each DATA7 ladder is independently built from legacy `[selection].sizes`.
+- Before a terminal target-size decision, hard-qualified candidates are valid stage-authorized training inputs. After `selected(N)`, intermediate candidate sets are no longer materialization authorities.
 
 ## Scope
 
@@ -87,8 +84,8 @@ target-size study state -> DATA8 variants
 with:
 
 ```
-validated active TARGET-DATA2D sizes -> DATA7 and DATA8
-selected(N)                       -> selected_target_size only
+validated active TARGET-DATA2C sizes -> DATA7 and DATA8
+selected(N)                        -> selected_target_size only
 ```
 
 Add hard validation:
@@ -106,6 +103,51 @@ Test:
 2. Legacy intermediate rung does not bypass DATA7 authority.
 3. Invalid authority mismatch produces actionable error.
 4. Original DATA8 preparation failure no longer occurs.
+
+### Gate 3 Revision Requirements from Design Review
+
+The first Codex patch introduced a regression test that preserved the old authority model:
+
+```
+stage_a_survivor_sizes -> DATA8 materialization
+```
+
+This is incompatible with the new architecture and must be removed or rewritten.
+
+Required test revisions:
+
+1. Replace any test asserting that `stage_a_survivor_sizes` drives DATA7/DATA8 materialization.
+2. Add a regression test explicitly proving that intermediate candidates cannot override `selected_target_size`.
+3. Add a production-bug reproduction case:
+
+```
+legacy candidate:
+    13568
+
+active DATA7 ladder:
+    [512]
+
+selected target size:
+    512
+```
+
+Expected:
+
+```
+DATA8 receives 512
+13568 cannot enter materialization
+```
+
+4. Verify terminal failed convergence cannot fall back to intermediate candidate sizes.
+
+## Review Criteria
+
+Before merge:
+
+- `selected_target_size` is the only terminal materialization authority.
+- DATA7 and DATA8 consume the same validated target-size tuple.
+- Intermediate convergence states remain evidence only, not materialization authority.
+- MVSEL2, MVQUAL, DATA7 algorithms, and DATA8 format remain unchanged.
 
 ## Commit Requirements
 
