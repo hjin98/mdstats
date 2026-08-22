@@ -9714,13 +9714,34 @@ def _prepare_materialization(
         cfg=cfg,
         ladder=target_ladder,
     )
-    authoritative_selection_sizes = (
-        _authoritative_materialization_selection_sizes(
+    # TARGET-DATA2D intentionally has an intermediate state between ladder
+    # qualification and production materialization.  Do not treat a valid
+    # waiting state as a failed prepare run: Stage B0/B1/C evaluation owns the
+    # transition to the terminal selected_target_size authority.  The actual
+    # materialization authorization remains fail-closed in
+    # _authoritative_materialization_selection_sizes().
+    authoritative_selection_sizes = None
+    if _training_policy_generation(cfg) == "train2":
+        if size_convergence.outcome in {
+            "awaiting_stage_b0_coarse_training",
+            "awaiting_stage_b1_short_training",
+            "awaiting_stage_c_full_training",
+        }:
+            _ok(
+                "TARGET-DATA2D convergence is awaiting training evidence; "
+                "DATA7/DATA8 materialization is deferred until selected_target_size is frozen"
+            )
+            _mark_stage(
+                store,
+                paths,
+                "prepare",
+                StageState.WAITING,
+                "TARGET-DATA2D convergence pending Stage B0/B1/C evaluation",
+            )
+            return False
+        authoritative_selection_sizes = _authoritative_materialization_selection_sizes(
             size_convergence, ladder=target_ladder
         )
-        if _training_policy_generation(cfg) == "train2"
-        else None
-    )
     replay, replay_qualification, replay_failures, _ = _qualify_replay(cfg, paths)
     if replay_failures:
         raise CampaignCliError("Replay production gate did not pass: " + "; ".join(replay_failures))
