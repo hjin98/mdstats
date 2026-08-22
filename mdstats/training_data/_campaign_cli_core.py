@@ -9736,7 +9736,7 @@ def _prepare_materialization(
                 paths,
                 "prepare",
                 StageState.WAITING,
-                "TARGET-DATA2D convergence pending Stage B0/B1/C evaluation",
+                "TARGET-DATA2D convergence pending Stage B0/B1/C size-fidelity evidence",
             )
             return False
         authoritative_selection_sizes = _authoritative_materialization_selection_sizes(
@@ -10242,8 +10242,14 @@ def command_prepare(args: argparse.Namespace) -> int:
             frame_data_by_run=frame_data,
             sweep_artifacts=sweep,
         ):
-            _mark_stage(store, paths, "prepare", StageState.WAITING, "DATA7/DATA8 materialization is resumable and incomplete")
-            return 2
+            _mark_stage(
+                store,
+                paths,
+                "prepare",
+                StageState.WAITING,
+                "DATA7/DATA8 materialization deferred until TARGET-DATA2D selected_target_size is frozen",
+            )
+            return 0
     except CampaignCliError as exc:
         if "Manifest" in str(exc) or "manifest" in str(exc):
             _mark_stage(store, paths, "prepare", StageState.WAITING, str(exc))
