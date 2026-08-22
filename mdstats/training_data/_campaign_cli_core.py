@@ -4455,62 +4455,68 @@ def _target_size_convergence_policy(cfg: Mapping[str, Any], *, ladder: Any | Non
 
 
 def _load_verified_target_size_convergence_authority(store: CampaignStore) -> Any:
-    """Restore and authenticate TARGET-DATA2D against TARGET-DATA2C."""
+    """Restore TARGET-DATA2D and authenticate its active-ladder bridge."""
 
     import mdstats
 
     ladder = _load_verified_target_data_ladder_authority(store)
     plan = store.get_record("target_size_convergence", mdstats.TargetSizeConvergencePlan)
-    mdstats.validate_target_size_convergence_authority(plan, ladder=ladder)
+    if plan.outcome == "selected":
+        _authoritative_materialization_selection_sizes(plan, ladder=ladder)
+    else:
+        mdstats.validate_target_size_convergence_authority(plan, ladder=ladder)
     return plan
 
 
 def _authoritative_materialization_selection_sizes(
     convergence: Any, *, ladder: Any
 ) -> tuple[int, ...]:
-    """Resolve the TARGET-DATA2D sizes currently authorized for DATA7/DATA8.
-
-    Before the size study terminates, every hard-qualified Stage-A rung must be
-    available to the 3/10/30 funnel. Once the study selects a winner, only that
-    protocol-global target size remains a materialization authority.
-    """
+    """Resolve the terminal TARGET-DATA2D size authorized for DATA7/DATA8."""
 
     import mdstats
 
-    if convergence.outcome == "selected":
-        if convergence.selected_target_size is None:
-            raise CampaignCliError(
-                "TARGET-DATA2D selected outcome has no selected_target_size for DATA8 materialization."
-            )
-        sizes = (int(convergence.selected_target_size),)
-    elif convergence.outcome in {
-        "awaiting_stage_b0_coarse_training",
-        "awaiting_stage_b1_short_training",
-        "awaiting_stage_c_full_training",
-    }:
-        sizes = tuple(int(value) for value in convergence.stage_a_survivor_sizes)
-    else:
+    if convergence.outcome != "selected":
         raise CampaignCliError(
-            "TARGET-DATA2D cannot authorize DATA8 materialization without a selected target size: "
-            f"outcome={convergence.outcome!r}."
+            "TARGET-DATA2D cannot authorize DATA7/DATA8 materialization before "
+            "selected_target_size is terminally frozen; intermediate convergence "
+            f"states are evidence only (outcome={convergence.outcome!r})."
+        )
+    if convergence.selected_target_size is None:
+        raise CampaignCliError(
+            "TARGET-DATA2D selected outcome has no selected_target_size for DATA7/DATA8 materialization."
         )
 
-    ladder_sizes = tuple(int(value) for value in ladder.materialized_target_sizes)
-    ladder_size_set = set(ladder_sizes)
-    missing = tuple(value for value in sizes if value not in ladder_size_set)
-    if missing:
-        role = (
-            "selected target size"
-            if convergence.outcome == "selected"
-            else "active size-study candidate"
-        )
+    convergence_dataset_id = str(getattr(convergence, "dataset_id", ""))
+    ladder_dataset_id = str(getattr(ladder, "dataset_id", ""))
+    if (
+        convergence_dataset_id
+        and ladder_dataset_id
+        and convergence_dataset_id != ladder_dataset_id
+    ):
         raise CampaignCliError(
-            f"TARGET-DATA2D {role} {list(missing)} is absent from the authoritative "
+            "TARGET-DATA2D selected target size belongs to a different dataset than "
+            "the active TARGET-DATA2C ladder."
+        )
+
+    sizes = (int(convergence.selected_target_size),)
+
+    ladder_sizes = tuple(int(value) for value in ladder.materialized_target_sizes)
+    if sizes[0] not in set(ladder_sizes):
+        raise CampaignCliError(
+            f"TARGET-DATA2D selected target size {sizes[0]} is absent from the authoritative "
             f"TARGET-DATA2C materialized ladder {list(ladder_sizes)}; rerun `prepare` from current "
             "MVSEL2/REPAIR2/MVQUAL authorities."
         )
 
-    mdstats.validate_target_size_convergence_authority(convergence, ladder=ladder)
+    # A terminal decision from the retired ladder generation is intentionally
+    # bridged by dataset identity and selected-rung membership above. A
+    # current-generation decision still receives the complete authority check.
+    if getattr(convergence, "target_data_ladder_digest", None) == getattr(
+        ladder, "content_digest", None
+    ):
+        mdstats.validate_target_size_convergence_authority(
+            convergence, ladder=ladder
+        )
     return sizes
 
 
@@ -4654,6 +4660,40 @@ def _ensure_target_size_convergence(
             flush=True,
         )
         existing = None
+    if existing is not None:
+        if existing.outcome == "selected":
+            try:
+                _authoritative_materialization_selection_sizes(
+                    existing, ladder=ladder
+                )
+                same_ladder = (
+                    existing.target_data_ladder_digest == ladder.content_digest
+                )
+                if (
+                    same_ladder
+                    and existing.policy.policy_digest != policy.policy_digest
+                ):
+                    raise CampaignCliError(
+                        "TARGET-DATA2D convergence policy changed."
+                    )
+            except Exception as exc:
+                print(
+                    f"[TARGET-DATA2D restart] stored terminal authority is stale ({exc}); rebuilding Stage A",
+                    flush=True,
+                )
+            else:
+                bridge = (
+                    "current ladder"
+                    if same_ladder
+                    else "legacy-to-active selected-size bridge"
+                )
+                _ok(
+                    "TARGET-DATA2D terminal authority reused through "
+                    f"{bridge}: selected_target_size={existing.selected_target_size}; "
+                    f"digest={existing.content_digest[:12]}..."
+                )
+                return existing
+            existing = None
     if existing is not None:
         try:
             mdstats.validate_target_size_convergence_authority(existing, ladder=ladder)
