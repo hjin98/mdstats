@@ -4455,14 +4455,69 @@ def _target_size_convergence_policy(cfg: Mapping[str, Any], *, ladder: Any | Non
 
 
 def _load_verified_target_size_convergence_authority(store: CampaignStore) -> Any:
-    """Restore and authenticate TARGET-DATA2D against TARGET-DATA2C."""
+    """Restore TARGET-DATA2D and authenticate its active-ladder bridge."""
 
     import mdstats
 
     ladder = _load_verified_target_data_ladder_authority(store)
     plan = store.get_record("target_size_convergence", mdstats.TargetSizeConvergencePlan)
-    mdstats.validate_target_size_convergence_authority(plan, ladder=ladder)
+    if plan.outcome == "selected":
+        _authoritative_materialization_selection_sizes(plan, ladder=ladder)
+    else:
+        mdstats.validate_target_size_convergence_authority(plan, ladder=ladder)
     return plan
+
+
+def _authoritative_materialization_selection_sizes(
+    convergence: Any, *, ladder: Any
+) -> tuple[int, ...]:
+    """Resolve the terminal TARGET-DATA2D size authorized for DATA7/DATA8."""
+
+    import mdstats
+
+    if convergence.outcome != "selected":
+        raise CampaignCliError(
+            "TARGET-DATA2D cannot authorize DATA7/DATA8 materialization before "
+            "selected_target_size is terminally frozen; intermediate convergence "
+            f"states are evidence only (outcome={convergence.outcome!r})."
+        )
+    if convergence.selected_target_size is None:
+        raise CampaignCliError(
+            "TARGET-DATA2D selected outcome has no selected_target_size for DATA7/DATA8 materialization."
+        )
+
+    convergence_dataset_id = str(getattr(convergence, "dataset_id", ""))
+    ladder_dataset_id = str(getattr(ladder, "dataset_id", ""))
+    if (
+        convergence_dataset_id
+        and ladder_dataset_id
+        and convergence_dataset_id != ladder_dataset_id
+    ):
+        raise CampaignCliError(
+            "TARGET-DATA2D selected target size belongs to a different dataset than "
+            "the active TARGET-DATA2C ladder."
+        )
+
+    sizes = (int(convergence.selected_target_size),)
+
+    ladder_sizes = tuple(int(value) for value in ladder.materialized_target_sizes)
+    if sizes[0] not in set(ladder_sizes):
+        raise CampaignCliError(
+            f"TARGET-DATA2D selected target size {sizes[0]} is absent from the authoritative "
+            f"TARGET-DATA2C materialized ladder {list(ladder_sizes)}; rerun `prepare` from current "
+            "MVSEL2/REPAIR2/MVQUAL authorities."
+        )
+
+    # A terminal decision from the retired ladder generation is intentionally
+    # bridged by dataset identity and selected-rung membership above. A
+    # current-generation decision still receives the complete authority check.
+    if getattr(convergence, "target_data_ladder_digest", None) == getattr(
+        ladder, "content_digest", None
+    ):
+        mdstats.validate_target_size_convergence_authority(
+            convergence, ladder=ladder
+        )
+    return sizes
 
 
 def _load_target_multi_view_repair_authority(store: CampaignStore) -> Any:
@@ -4605,6 +4660,40 @@ def _ensure_target_size_convergence(
             flush=True,
         )
         existing = None
+    if existing is not None:
+        if existing.outcome == "selected":
+            try:
+                _authoritative_materialization_selection_sizes(
+                    existing, ladder=ladder
+                )
+                same_ladder = (
+                    existing.target_data_ladder_digest == ladder.content_digest
+                )
+                if (
+                    same_ladder
+                    and existing.policy.policy_digest != policy.policy_digest
+                ):
+                    raise CampaignCliError(
+                        "TARGET-DATA2D convergence policy changed."
+                    )
+            except Exception as exc:
+                print(
+                    f"[TARGET-DATA2D restart] stored terminal authority is stale ({exc}); rebuilding Stage A",
+                    flush=True,
+                )
+            else:
+                bridge = (
+                    "current ladder"
+                    if same_ladder
+                    else "legacy-to-active selected-size bridge"
+                )
+                _ok(
+                    "TARGET-DATA2D terminal authority reused through "
+                    f"{bridge}: selected_target_size={existing.selected_target_size}; "
+                    f"digest={existing.content_digest[:12]}..."
+                )
+                return existing
+            existing = None
     if existing is not None:
         try:
             mdstats.validate_target_size_convergence_authority(existing, ladder=ladder)
@@ -9625,6 +9714,13 @@ def _prepare_materialization(
         cfg=cfg,
         ladder=target_ladder,
     )
+    authoritative_selection_sizes = (
+        _authoritative_materialization_selection_sizes(
+            size_convergence, ladder=target_ladder
+        )
+        if _training_policy_generation(cfg) == "train2"
+        else None
+    )
     replay, replay_qualification, replay_failures, _ = _qualify_replay(cfg, paths)
     if replay_failures:
         raise CampaignCliError("Replay production gate did not pass: " + "; ".join(replay_failures))
@@ -9705,12 +9801,7 @@ def _prepare_materialization(
 
     data8_bundles = []
     materializations = []
-    materialized_selection_sizes = (
-        tuple(size_convergence.stage_a_survivor_sizes)
-        if _training_policy_generation(cfg) == "train2"
-        else None
-    )
-    variants = _variant_specs(cfg, selection_sizes=materialized_selection_sizes)
+    variants = _variant_specs(cfg, selection_sizes=authoritative_selection_sizes)
     expected_variant_ids = {variant.variant_id for variant in variants}
     # Remove pointers for variants no longer requested, but retain every
     # matching pointer so unchanged jobs can be restored without rehashing or
@@ -9890,7 +9981,20 @@ def _prepare_materialization(
             else float(_cfg(cfg, "acceptance", "maximum_replay_degradation_fraction", 0.20))
         ),
             ),
-            selection_budget_policy=mdstats.SelectionBudgetPolicy(target_sizes=tuple(sorted(set(int(v) for v in _cfg(cfg, "selection", "sizes", (512,))))),),
+            selection_budget_policy=mdstats.SelectionBudgetPolicy(
+                target_sizes=(
+                    authoritative_selection_sizes
+                    if authoritative_selection_sizes is not None
+                    else tuple(
+                        sorted(
+                            set(
+                                int(v)
+                                for v in _cfg(cfg, "selection", "sizes", (512,))
+                            )
+                        )
+                    )
+                ),
+            ),
             optimizer_policy=_optimizer_policy(
                 cfg, seed=seed, num_workers=loader_workers
             ),
@@ -11312,13 +11416,16 @@ def _build_campaign(cfg: Mapping[str, Any], store: CampaignStore, data8_bundles:
     )
     if acceleration_probe_record is not None:
         acceleration_probe_digest = acceleration_probe_record.content_digest
-    size_convergence = store.get_record_optional("target_size_convergence", mdstats.TargetSizeConvergencePlan)
-    materialized_selection_sizes = (
-        tuple(size_convergence.stage_a_survivor_sizes)
-        if _training_policy_generation(cfg) == "train2" and size_convergence is not None
-        else None
-    )
-    variants = _variant_specs(cfg, selection_sizes=materialized_selection_sizes)
+    authoritative_selection_sizes = None
+    if _training_policy_generation(cfg) == "train2":
+        ladder = _load_verified_target_data_ladder_authority(store)
+        size_convergence = store.get_record(
+            "target_size_convergence", mdstats.TargetSizeConvergencePlan
+        )
+        authoritative_selection_sizes = _authoritative_materialization_selection_sizes(
+            size_convergence, ladder=ladder
+        )
+    variants = _variant_specs(cfg, selection_sizes=authoritative_selection_sizes)
     modes = tuple(
         sorted(
             {mdstats.TrainingMode(item.mode) for item in variants},
