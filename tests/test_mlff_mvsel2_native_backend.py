@@ -86,9 +86,14 @@ def test_mvsel2_native_openmp_worker_counts_are_bitwise_identical() -> None:
     status = _require_native(parallel=True)
     offsets, witnesses, terms, candidates = _row_fixture()
     expected = _numpy_scores(offsets, witnesses, terms, candidates)
-    worker_counts = [value for value in (2, 4, 8, 16) if value <= status.max_threads]
-    if not worker_counts:
-        worker_counts = [2]
+    worker_counts: list[int] = []
+    value = 2
+    while value < status.max_threads:
+        worker_counts.append(value)
+        value *= 2
+    if status.max_threads >= 2:
+        worker_counts.append(int(status.max_threads))
+    worker_counts = list(dict.fromkeys(worker_counts))
     for workers in worker_counts:
         actual, edges = score_family_candidate_batch_v2(
             offsets,

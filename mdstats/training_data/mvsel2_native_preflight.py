@@ -75,15 +75,30 @@ def _score_vector(
     return np.asarray([scores[candidate] for candidate in candidates], dtype=np.float64)
 
 
+def _worker_counts(max_workers: int) -> tuple[int, ...]:
+    """Return logarithmic scaling points plus the exact runtime budget endpoint."""
+
+    maximum = max(1, int(max_workers))
+    values = [1]
+    value = 2
+    while value < maximum:
+        values.append(value)
+        value *= 2
+    if maximum > 1:
+        values.append(maximum)
+    return tuple(dict.fromkeys(values))
+
+
 def preflight_mvsel2_native_workers_v2(
     forward_domain: Any,
     state: TargetMultiViewForwardStateV2,
     *,
     max_workers: int,
     sample_size: int = 256,
-    minimum_parallel_speedup: float = 1.75,
+    minimum_parallel_speedup: float = 1.05,
+    economical_tolerance: float = 0.05,
 ) -> MVSEL2NativePreflightV2:
-    """Meter 1/2/4/8/16 native workers on one deterministic real-graph sample."""
+    """Meter exact native widths through the runtime-authorized CPU endpoint."""
 
     max_workers = int(max_workers)
     if max_workers < 1:
@@ -93,6 +108,10 @@ def preflight_mvsel2_native_workers_v2(
     if not np.isfinite(minimum_parallel_speedup) or minimum_parallel_speedup <= 1.0:
         raise TrainingDataInputError(
             "TARGET-DATA2C-MVSEL2 native preflight speedup threshold must exceed one."
+        )
+    if not np.isfinite(economical_tolerance) or not (0.0 <= economical_tolerance < 1.0):
+        raise TrainingDataInputError(
+            "TARGET-DATA2C-MVSEL2 native preflight economical tolerance must be in [0, 1)."
         )
     if max_workers == 1:
         return MVSEL2NativePreflightV2(
@@ -117,9 +136,7 @@ def preflight_mvsel2_native_workers_v2(
     # for an explicit num_threads(N) region. The campaign worker budget is the
     # authority here; if the runtime constrains actual teams, the meter will
     # expose that as weak/flat scaling and fall back to workers=1.
-    worker_counts = tuple(
-        value for value in (1, 2, 4, 8, 16) if value <= max_workers
-    )
+    worker_counts = _worker_counts(max_workers)
     if len(worker_counts) < 2:
         raise TrainingDataInputError(
             "TARGET-DATA2C-MVSEL2 native worker preflight has no authorized "
@@ -185,7 +202,14 @@ def preflight_mvsel2_native_workers_v2(
     parallel = tuple(item for item in meters if item.workers > 1)
     best = min(parallel, key=lambda item: (item.elapsed_seconds, item.workers))
     scaling_passed = best.speedup_vs_one >= float(minimum_parallel_speedup)
-    effective = best.workers if scaling_passed else 1
+    if scaling_passed:
+        economical_limit = best.elapsed_seconds * (1.0 + float(economical_tolerance))
+        economical = tuple(
+            item for item in parallel if item.elapsed_seconds <= economical_limit
+        )
+        effective = min(item.workers for item in economical)
+    else:
+        effective = 1
     return MVSEL2NativePreflightV2(
         requested_workers=max_workers,
         effective_workers=effective,

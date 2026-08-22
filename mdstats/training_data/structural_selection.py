@@ -53,7 +53,6 @@ from .material_profiles import (
 )
 from .raw_features import minimum_image_displacements
 from .resources import (
-    available_cpu_threads,
     build_stage_resource_scope,
     detect_system_resources,
     stage_resource_scope,
@@ -1476,16 +1475,12 @@ def _resident_set_mib() -> float | None:
         return None
 
 
-def _automatic_structural_worker_cap(task_count: int) -> int:
-    """Return the safe outer-thread search bound for structural kernels."""
+def _automatic_structural_worker_cap(task_count: int, *, cpu_budget: int) -> int:
+    """Return the runtime-authorized outer-thread search bound."""
 
     if task_count <= 1:
         return 1
-    cpu_budget = max(1, int(math.floor(available_cpu_threads() * 0.9)))
-    # These frames already contain internally vectorized NumPy/SciPy kernels.
-    # Higher outer concurrency usually saturates memory bandwidth and increases
-    # the simultaneous exact-MIC working set. The final choice is autotuned.
-    return max(1, min(task_count, cpu_budget, 8))
+    return max(1, min(int(task_count), int(cpu_budget)))
 
 
 def _autotune_structural_workers(
@@ -1499,19 +1494,24 @@ def _autotune_structural_workers(
     CPU count alone is a poor predictor for this stage: exact MIC, radial
     tensors, and angular reductions are memory-bandwidth-heavy. A 2--3 second
     microbenchmark is negligible for a tens-of-thousands-frame campaign and
-    avoids making eight threads slower than two on a particular NUMA/cache
-    topology. Within five percent of the fastest rate, fewer workers win.
+    avoids selecting a wider team when a narrower one is faster on the
+    current NUMA/cache topology. Within five percent of the fastest rate, fewer workers win.
     """
 
     cap = max(1, min(int(worker_cap), len(records)))
     if cap <= 1 or len(records) < 8:
         return 1, ((1, 0.0),)
-    candidates = tuple(
-        value for value in (1, 2, 4, 8) if value <= cap
-    )
-    if candidates[-1] != cap:
-        candidates = tuple(sorted(set((*candidates, cap))))
-    sample_count = min(len(records), max(12, 2 * cap), 24)
+    values = [1]
+    value = 2
+    while value < cap:
+        values.append(value)
+        value *= 2
+    if cap > 1:
+        values.append(cap)
+    candidates = tuple(dict.fromkeys(values))
+    # Give every candidate width enough independent frames to expose scaling,
+    # while bounding autotune cost on very large hosts.
+    sample_count = min(len(records), max(12, 2 * cap), 256)
     if sample_count == len(records):
         sample = tuple(records)
     else:
@@ -1712,10 +1712,14 @@ class UniversalStructuralSelectionProvider:
         )
 
         requested_workers = int(max_workers)
+        resources = detect_system_resources(device="cpu")
+        cpu_budget = max(1, int(resources.cpu_threads_budget))
         worker_count = (
-            _automatic_structural_worker_cap(len(chronological))
+            _automatic_structural_worker_cap(
+                len(chronological), cpu_budget=cpu_budget
+            )
             if requested_workers == 0
-            else min(requested_workers, len(chronological))
+            else min(requested_workers, len(chronological), cpu_budget)
         )
         # A dynamic membership provider may depend on chronological state or
         # external non-thread-safe resources. Preserve its original serial

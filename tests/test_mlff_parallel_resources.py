@@ -134,3 +134,62 @@ def test_data6_uses_batch_provider_and_adaptive_oom(tmp_path):
     assert result.complete
     assert provider.batch_descriptor_calls > 0
     assert provider.batch_prediction_calls > 1
+
+
+def test_explicit_worker_request_cannot_bypass_cpu_fraction_budget() -> None:
+    resources = _resources(cpu=32, ram=8 * 1024**3)
+    assert resources.cpu_threads_budget == 28
+    assert resolve_worker_count(task_count=64, resources=resources, requested=32) == 28
+
+
+def test_stage_scope_accounts_native_openmp_separately() -> None:
+    from mdstats.training_data.resources import StageResourceScope
+
+    scope = StageResourceScope(
+        stage_name="native",
+        cpu_threads_available=32,
+        cpu_threads_budget=28,
+        python_workers=1,
+        native_openmp_threads=28,
+    )
+    assert scope.estimated_nested_cpu_threads == 28
+    assert "openmp=28" in scope.summary()
+
+
+def test_stage_scope_rejects_native_openmp_oversubscription() -> None:
+    import pytest
+    from mdstats.training_data.resources import StageResourceScope
+
+    with pytest.raises(ValueError, match="nested CPU threads"):
+        StageResourceScope(
+            stage_name="native-over",
+            cpu_threads_available=32,
+            cpu_threads_budget=28,
+            python_workers=2,
+            native_openmp_threads=28,
+        )
+
+
+def test_campaign_parallel_resolvers_use_full_runtime_budget(monkeypatch) -> None:
+    from mdstats.training_data import campaign_cli
+
+    resources = _resources(cpu=32, ram=8 * 1024**3)
+    monkeypatch.setattr(
+        campaign_cli._core,
+        "detect_system_resources",
+        lambda **kwargs: resources,
+    )
+    cfg = {"performance": {"cpu_fraction": 0.90, "ram_fraction": 0.80}}
+    query_workers, _ = campaign_cli._target_coverage_query_workers(cfg)
+    repair_workers, _ = campaign_cli._target_multi_view_repair_parallelism(cfg)
+    qualification_workers, _ = campaign_cli._target_multi_view_qualification_parallelism(cfg)
+    assert query_workers == resources.cpu_threads_budget == 28
+    assert repair_workers == 28
+    assert qualification_workers == 28
+
+
+def test_structural_autotune_capacity_uses_supplied_runtime_budget() -> None:
+    from mdstats.training_data.structural_selection import _automatic_structural_worker_cap
+
+    assert _automatic_structural_worker_cap(100, cpu_budget=28) == 28
+    assert _automatic_structural_worker_cap(12, cpu_budget=28) == 12

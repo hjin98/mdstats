@@ -30,11 +30,13 @@ from .target_multi_view_selection_state_v2 import (
     checkpoint_target_multi_view_forward_state_v2,
     write_target_multi_view_selection_checkpoint_v2,
 )
-from .target_multi_view_selector_v2 import TargetMultiViewSelectorPolicyV2
+from .target_multi_view_selector_v2 import (
+    TargetMultiViewSelectorPolicyV2,
+    build_target_multi_view_forward_state_v2,
+)
 
 
 _HISTORY_KEY_PREFIX = "target_multi_view_selection_history_v2"
-_NATIVE_WORKER_QUALIFICATION_CEILING = 16
 
 
 def _history_key(domain_id: str, size: int) -> str:
@@ -121,16 +123,22 @@ def _highest_valid_resume_bundle(
 
 
 def _selection_worker_budget(core: Any, cfg: Mapping[str, Any]) -> tuple[int, Any]:
-    """Return the qualified MVSEL2 worker ceiling and existing resource policy."""
+    """Return MVSEL2's runtime CPU budget without borrowing cKDTree policy."""
 
-    query_workers, resources = core._target_coverage_query_workers(cfg)
-    workers = max(1, min(int(query_workers), _NATIVE_WORKER_QUALIFICATION_CEILING))
-    return workers, resources
+    resources = core.detect_system_resources(
+        cpu_fraction=float(core._cfg(cfg, "performance", "cpu_fraction", 0.90)),
+        ram_fraction=float(core._cfg(cfg, "performance", "ram_fraction", 0.80)),
+        gpu_memory_fraction=float(
+            core._cfg(cfg, "performance", "gpu_memory_fraction", 0.90)
+        ),
+        device="cpu",
+    )
+    return max(1, int(resources.cpu_threads_budget)), resources
 
 
 def _preflight_selection_workers(
     forward: Any,
-    resume_states: Mapping[str, Any],
+    states: Mapping[str, Any],
     *,
     requested_workers: int,
 ) -> int:
@@ -140,10 +148,10 @@ def _preflight_selection_workers(
     if requested_workers <= 1:
         return 1
     results = []
-    for domain_id in sorted(resume_states):
+    for domain_id in sorted(states):
         result = preflight_mvsel2_native_workers_v2(
             forward.domain(domain_id),
-            resume_states[domain_id],
+            states[domain_id],
             max_workers=requested_workers,
         )
         results.append(result)
@@ -153,12 +161,9 @@ def _preflight_selection_workers(
             flush=True,
         )
     if not results:
-        print(
-            "[TARGET-DATA2C-MVSEL2 native preflight] skipped=no-resume-state; "
-            f"effective_workers={requested_workers}",
-            flush=True,
+        raise RuntimeError(
+            "TARGET-DATA2C-MVSEL2 native preflight requires at least one real domain state."
         )
-        return requested_workers
     # One engine worker count is shared by all domains. If any resumed domain is
     # memory-bound and rejects native scaling, retain the proven G4b serial path.
     if any(not result.scaling_passed for result in results):
@@ -287,22 +292,36 @@ def ensure_target_multi_view_selection_v2(
         checkpoint_pointers[key] = record
 
     requested_workers, resources = _selection_worker_budget(core, cfg)
+    preflight_states = dict(resume_states)
+    for reference_domain in coverage_reference.domains:
+        domain_id = reference_domain.label_domain_id
+        if domain_id in preflight_states:
+            continue
+        forward_domain = forward.domain(domain_id)
+        limit = max(
+            size for size in policy.target_sizes if size <= forward_domain.candidate_count
+        )
+        preflight_states[domain_id] = build_target_multi_view_forward_state_v2(
+            reference_domain,
+            forward_domain,
+            coverage_threshold=policy.coverage_threshold,
+            epsilon=policy.gain_tie_tolerance,
+            requested_cardinality=limit,
+        )
     scope = core.build_stage_resource_scope(
         resources,
         stage_name="TARGET-DATA2C-MVSEL2/MVSTATE2",
-        # Account the native OpenMP region against the existing CPU-worker
-        # budget. No Python pool is created; this value prevents the enclosing
-        # stage scope from constraining the authorized native worker count to 1.
-        python_workers=requested_workers,
+        python_workers=1,
         structural_workers=1,
         tree_workers=1,
         blas_threads=1,
+        native_openmp_threads=requested_workers,
     )
     started = time.monotonic()
     with core.stage_resource_scope(scope):
         selector_workers = _preflight_selection_workers(
             forward,
-            resume_states,
+            preflight_states,
             requested_workers=requested_workers,
         )
         plan = build_target_multi_view_selection_plan_v2_engine(

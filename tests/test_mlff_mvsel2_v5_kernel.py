@@ -37,7 +37,7 @@ def test_mvsel2_v5_phase_a_kernel_matches_serial_reference_across_ranks() -> Non
             reference_domain,
             forward_domain,
             kernel_state,
-            workers=8,  # execution compatibility only; PAR1 threads are retired
+            workers=8,  # qualified native/OpenMP row scoring; Python PAR1 is retired
         )
         assert actual == expected
 
@@ -55,7 +55,7 @@ def test_mvsel2_v5_phase_a_kernel_matches_serial_reference_across_ranks() -> Non
         )
 
 
-def test_mvsel2_v5_kernel_worker_setting_is_semantically_inert() -> None:
+def test_mvsel2_v5_kernel_worker_setting_preserves_scientific_choice() -> None:
     reference, _, forward = _forward_fixture()
     reference_domain = reference.domain("target")
     forward_domain = forward.domain("target")

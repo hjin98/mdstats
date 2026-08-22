@@ -154,8 +154,8 @@ class StageResourceScope:
 
     The scope is deliberately excluded from scientific records.  It prevents
     independently reasonable worker settings from multiplying into CPU
-    oversubscription when Python/process, structural, native-tree, BLAS, or
-    PyTorch layers are nested.
+    oversubscription when Python/process, structural, native-tree, BLAS, explicit
+    OpenMP, or PyTorch layers are nested.
     """
 
     stage_name: str
@@ -165,6 +165,7 @@ class StageResourceScope:
     structural_workers: int = 1
     tree_workers: int = 1
     blas_threads: int = 1
+    native_openmp_threads: int = 1
     pytorch_cpu_workers: int = 1
     gpu_jobs: int = 0
     ram_budget_bytes: int | None = None
@@ -175,7 +176,7 @@ class StageResourceScope:
         for name in (
             "cpu_threads_available", "cpu_threads_budget", "python_workers",
             "structural_workers", "tree_workers", "blas_threads",
-            "pytorch_cpu_workers",
+            "native_openmp_threads", "pytorch_cpu_workers",
         ):
             if int(getattr(self, name)) <= 0:
                 raise ValueError(f"{name} must be positive")
@@ -197,6 +198,7 @@ class StageResourceScope:
         inner = max(
             int(self.structural_workers) * int(self.blas_threads),
             int(self.tree_workers),
+            int(self.native_openmp_threads),
             int(self.pytorch_cpu_workers),
             1,
         )
@@ -207,7 +209,8 @@ class StageResourceScope:
             f"{self.stage_name}: cpu={self.estimated_nested_cpu_threads}/"
             f"{self.cpu_threads_budget} budget; python={self.python_workers}; "
             f"structure={self.structural_workers}; tree={self.tree_workers}; "
-            f"blas={self.blas_threads}; torch={self.pytorch_cpu_workers}; "
+            f"blas={self.blas_threads}; openmp={self.native_openmp_threads}; "
+            f"torch={self.pytorch_cpu_workers}; "
             f"gpu_jobs={self.gpu_jobs}; "
             f"ram_budget={'unbounded' if self.ram_budget_bytes is None else int(self.ram_budget_bytes)}"
         )
@@ -221,6 +224,7 @@ def build_stage_resource_scope(
     structural_workers: int = 1,
     tree_workers: int = 1,
     blas_threads: int = 1,
+    native_openmp_threads: int = 1,
     pytorch_cpu_workers: int = 1,
     gpu_jobs: int = 0,
     ram_budget_bytes: int | None = None,
@@ -235,6 +239,7 @@ def build_stage_resource_scope(
         structural_workers=int(structural_workers),
         tree_workers=int(tree_workers),
         blas_threads=int(blas_threads),
+        native_openmp_threads=int(native_openmp_threads),
         pytorch_cpu_workers=int(pytorch_cpu_workers),
         gpu_jobs=int(gpu_jobs),
         ram_budget_bytes=(
@@ -259,8 +264,12 @@ def stage_resource_scope(scope: StageResourceScope):
     except ModuleNotFoundError:  # pragma: no cover - optional dependency
         yield scope
         return
-    with threadpool_limits(limits=int(scope.blas_threads)):
-        yield scope
+    # BLAS and OpenMP are independent nesting dimensions.  Limit them
+    # separately so a stage using an explicit native OpenMP team does not have
+    # to masquerade as Python-worker parallelism or inherit a BLAS limit.
+    with threadpool_limits(limits=int(scope.blas_threads), user_api="blas"):
+        with threadpool_limits(limits=int(scope.native_openmp_threads), user_api="openmp"):
+            yield scope
 
 def detect_gpu_resources(*, memory_fraction: float = 0.9, device: str = "cuda") -> GpuResourceSnapshot:
     fraction = _fraction(memory_fraction, name="gpu_memory_fraction")
@@ -334,7 +343,10 @@ def resolve_worker_count(
         return 0
     if requested < 0:
         raise ValueError("requested worker count must be zero (auto) or positive")
-    cpu_limit = resources.cpu_threads_budget if requested == 0 else min(requested, resources.cpu_threads_available)
+    # Explicit worker settings are stage caps inside the campaign-wide CPU
+    # fraction.  The only supported way to authorize more host CPU capacity is
+    # to change cpu_fraction itself; a stage override must never bypass it.
+    cpu_limit = resources.cpu_threads_budget if requested == 0 else min(requested, resources.cpu_threads_budget)
     if reserved_bytes < 0:
         raise ValueError("reserved_bytes must be non-negative")
     memory_limit = task_count

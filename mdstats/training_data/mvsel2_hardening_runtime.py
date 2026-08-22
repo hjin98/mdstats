@@ -282,11 +282,11 @@ def _ensure_target_multi_view_repair_v2(
 
     core._print_header("TARGET-DATA2C-REPAIR2 forward-state active-shell repair")
     forward = _native_forward_view(store, sparse_index)
-    repair_workers, resources = core._target_coverage_query_workers(cfg)
+    repair_workers, resources = core._target_multi_view_repair_parallelism(cfg)
     scope = core.build_stage_resource_scope(
         resources,
         stage_name="TARGET-DATA2C-REPAIR2",
-        python_workers=1,
+        python_workers=max(1, int(repair_workers)),
         structural_workers=1,
         tree_workers=1,
         blas_threads=1,
@@ -299,6 +299,7 @@ def _ensure_target_multi_view_repair_v2(
             selection_plan,
             policy=policy,
             workers=max(1, int(repair_workers)),
+            resource_scope=scope,
             progress_callback=lambda message: print(
                 f"[TARGET-DATA2C-REPAIR2] {message}", flush=True
             ),
