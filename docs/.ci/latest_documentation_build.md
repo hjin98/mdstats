@@ -1,7 +1,7 @@
 # Documentation build status
 
-- commit: 181dc519f8654bae984f12c4248854f3e7fc1259
+- commit: ff28ce5d08634f6f2c9c5c60baaff3913b11baec
 - workflow: Build documentation PDFs
-- run: 32540903938
+- run: 32541297539
 - status: failure
-- generated: 2026-08-22T00:37:11Z
+- generated: 2026-08-22T00:44:34Z
