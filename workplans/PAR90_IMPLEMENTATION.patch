@@ -1,0 +1,1351 @@
+diff --git a/docs/specs/training_data/mlff_mvqual_par1_global_scoring_queue_spec.md b/docs/specs/training_data/mlff_mvqual_par1_global_scoring_queue_spec.md
+index 8f79138..a36fd0b 100644
+--- a/docs/specs/training_data/mlff_mvqual_par1_global_scoring_queue_spec.md
++++ b/docs/specs/training_data/mlff_mvqual_par1_global_scoring_queue_spec.md
+@@ -21,13 +21,13 @@ One immutable scoring job is formed for each materializable `(label domain, sele
+ 
+ When `scoring_workers > 1`, jobs execute on the PARCORE1 `DeterministicWorkQueue`. Nested cKDTree, BLAS/OpenMP, and PyTorch CPU work are one native lane per campaign job. Completed jobs may arrive in arbitrary order, but comparison construction and progress emission MUST be reduced in historical domain/size order.
+ 
+-Per-job temporary-memory estimates participate in queue admission. Automatic campaign mode uses at most four outer scoring workers; explicit positive configuration may request more subject to the existing CPU/RAM resource budget.
++Per-job temporary-memory estimates participate in queue admission. Automatic campaign mode may use any outer scoring width up to the runtime `SystemResourceSnapshot.cpu_threads_budget` (the default campaign budget is 90% of runtime-available CPU threads); task count and RAM admission may select fewer effective workers. Explicit positive configuration is a cap inside the same CPU/RAM budget and cannot bypass `cpu_fraction`.
+ 
+ Direct API callers that do not supply `StageResourceScope` retain their historical process native-thread environment. Explicit campaign scopes retain BLAS=1. This distinction is required because changing only BLAS thread count can shift the Wasserstein diagnostic at ~1e-16 and therefore change coverage-report cryptographic digests.
+ 
+ ## Configuration
+ 
+-`[performance].target_multi_view_qualification_workers = 0` selects automatic execution. Positive values request an explicit outer scoring-worker count, clipped by available and budgeted CPU resources.
++`[performance].target_multi_view_qualification_workers = 0` selects automatic execution. Positive values request an explicit outer scoring-worker cap, clipped by `cpu_threads_budget` and RAM admission. Runtime resource/tuning choices are execution-only and do not enter the scientific plan digest.
+ 
+ ## Acceptance authority
+ 
+diff --git a/mdstats/training_data/_campaign_cli_core.py b/mdstats/training_data/_campaign_cli_core.py
+index 1fde91c..c787177 100644
+--- a/mdstats/training_data/_campaign_cli_core.py
++++ b/mdstats/training_data/_campaign_cli_core.py
+@@ -6,7 +6,7 @@ configuration, one SQLite state database, and a compact results directory.
+ """
+ from __future__ import annotations
+ 
+-from dataclasses import dataclass, field
++from dataclasses import dataclass, field, replace
+ from collections import Counter, deque
+ from contextlib import contextmanager
+ from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
+@@ -3919,10 +3919,9 @@ def _load_verified_target_coverage_reference_authority(store: CampaignStore) ->
+ def _target_coverage_query_workers(cfg: Mapping[str, Any]) -> tuple[int, Any]:
+     """Resolve bounded native cKDTree workers for TARGET-DATA2B construction.
+ 
+-    Automatic mode deliberately caps the tree at eight native threads: this
+-    captures the useful cKDTree scaling regime on workstation CPUs without
+-    oversubscribing the rest of ``prepare``.  An explicit positive setting may
+-    request more, subject to the machine-visible CPU count.
++    The campaign CPU budget is the capacity ceiling. Kernel-specific callers
++    may still select a smaller effective width when task count, memory, or
++    measured scaling warrants it.
+     """
+ 
+     resources = detect_system_resources(
+@@ -3940,7 +3939,7 @@ def _target_coverage_query_workers(cfg: Mapping[str, Any]) -> tuple[int, Any]:
+         task_count=max(1, int(resources.cpu_threads_available)),
+         resources=resources,
+         requested=requested,
+-        maximum_workers=8 if requested == 0 else None,
++        maximum_workers=None,
+     )
+     return workers, resources
+ 
+@@ -4001,9 +4000,8 @@ def _target_multi_view_qualification_parallelism(cfg: Mapping[str, Any]) -> tupl
+     """Resolve MVQUAL-PAR1 global same-N scoring worker count.
+ 
+     Every outer scoring job owns one independent domain/selector/size rescore;
+-    nested cKDTree/BLAS layers are constrained to one native thread. Automatic
+-    mode uses a conservative four-lane automatic ceiling, while explicit positive
+-    values may request more and remain clipped by visible/budgeted CPUs.
++    nested cKDTree/BLAS layers are constrained to one native thread. The runtime
++    CPU budget is the capacity ceiling; task/RAM admission may reduce it.
+     """
+ 
+     resources = detect_system_resources(
+@@ -4019,11 +4017,7 @@ def _target_multi_view_qualification_parallelism(cfg: Mapping[str, Any]) -> tupl
+         )
+     budget = max(1, int(resources.cpu_threads_budget))
+     available = max(1, int(resources.cpu_threads_available))
+-    # Same-N score jobs are memory-bandwidth and temporary-allocation heavy.
+-    # Qualification on the 4-lane cloud host saturated after two lanes, so
+-    # automatic mode uses a conservative four-lane ceiling while still
+-    # allowing explicit larger values on high-memory-bandwidth servers.
+-    workers = min(budget, available, 4) if requested == 0 else min(requested, budget, available)
++    workers = min(budget, available) if requested == 0 else min(requested, budget, available)
+     return max(1, int(workers)), resources
+ 
+ 
+@@ -12437,9 +12431,6 @@ def _run_staged_evaluation_tasks(
+         gpu_sample=gpu_sample,
+         cpu_sample=cpu_sample,
+     )
+-    _configure_inference_thread_budget(plan)
+-    controller = AdaptiveInferenceConcurrency(plan, policy)
+-
+     def _positive_stage_workers(key: str, default: int) -> int:
+         value = int(_cfg(cfg, "execution", key, 0))
+         if value < 0:
+@@ -12450,22 +12441,64 @@ def _run_staged_evaluation_tasks(
+             return max(1, default)
+         return value
+ 
+-    # These workers do not own MACE calculators.  Keep them deliberately small:
+-    # their job is to overlap hashing/parsing/materialization and metric I/O with
+-    # accelerator work, not to create a second CPU oversubscription problem.
+-    auto_cpu_stage_workers = max(1, min(2, int(resources.cpu_threads_available)))
+-    prepare_workers = min(
++    # Prepare/inference/finalize are simultaneous sibling pools and therefore
++    # partition one campaign CPU budget. Reserve side lanes first, then fit the
++    # inference ceiling/inner thread width into the remaining capacity.
++    cpu_budget = max(1, int(resources.cpu_threads_budget))
++    auto_cpu_stage_workers = 1
++    requested_prepare = min(
+         len(tasks),
+         _positive_stage_workers(
+             "parallel_evaluation_prepare_jobs", auto_cpu_stage_workers
+         ),
+     )
+-    finalize_workers = min(
++    requested_finalize = min(
+         len(tasks),
+         _positive_stage_workers(
+             "parallel_evaluation_finalize_jobs", auto_cpu_stage_workers
+         ),
+     )
++    if cpu_budget >= 3:
++        side_capacity = max(2, min(cpu_budget - 1, requested_prepare + requested_finalize))
++        prepare_workers = min(requested_prepare, max(1, side_capacity // 2))
++        finalize_workers = min(
++            requested_finalize, max(1, side_capacity - prepare_workers)
++        )
++        reserved_side = prepare_workers + finalize_workers
++    else:
++        # Tiny allocations cannot run three sibling CPU pools concurrently.
++        # Keep one worker object for each side stage; scheduling below serializes
++        # side work so at most one side lane overlaps inference.
++        prepare_workers = 1
++        finalize_workers = 1
++        reserved_side = 1 if cpu_budget > 1 else 0
++
++    inference_capacity = max(1, cpu_budget - reserved_side)
++    maximum_jobs = max(1, min(int(plan.maximum_jobs), inference_capacity))
++    initial_jobs = max(1, min(int(plan.initial_jobs), maximum_jobs))
++    # Native BLAS/OpenMP controls are process-wide for this threaded pipeline.
++    # Conservatively assume every simultaneously active side-stage worker may
++    # consume the same native width as an inference job.  For B=1 the
++    # scheduler serializes all three stages, so there is no concurrent side
++    # unit; for B=2 exactly one side unit may overlap inference.
++    concurrent_side_units = reserved_side
++    concurrent_units = max(1, maximum_jobs + concurrent_side_units)
++    threads_per_job = max(1, cpu_budget // concurrent_units)
++    plan = replace(
++        plan,
++        initial_jobs=initial_jobs,
++        maximum_jobs=maximum_jobs,
++        cpu_threads_per_job=threads_per_job,
++        estimated_cpu_utilization_per_job=(
++            100.0 * threads_per_job / max(1, int(resources.cpu_threads_available))
++        ),
++        reason=(
++            f"{plan.reason}; staged CPU budget partition "
++            f"side_units={concurrent_side_units}; concurrent_units={concurrent_units}"
++        ),
++    )
++    _configure_inference_thread_budget(plan)
++    controller = AdaptiveInferenceConcurrency(plan, policy)
+     configured_buffer = int(
+         _cfg(cfg, "execution", "evaluation_pipeline_buffer_jobs", 0)
+     )
+@@ -12587,7 +12620,12 @@ def _run_staged_evaluation_tasks(
+     def launch_prepare(pool: ThreadPoolExecutor) -> None:
+         if stop_scheduling:
+             return
+-        while pending and len(active_prepare) < prepare_workers:
++        while (
++            pending
++            and len(active_prepare) < prepare_workers
++            and (cpu_budget >= 3 or not active_finalize)
++            and (cpu_budget > 1 or not active_inference)
++        ):
+             buffered = len(active_prepare) + len(ready_inference) + len(waiting_finalize)
+             if buffered >= pipeline_buffer:
+                 break
+@@ -12602,7 +12640,12 @@ def _run_staged_evaluation_tasks(
+             active_prepare[future] = (task, timing)
+ 
+     def launch_finalize(pool: ThreadPoolExecutor) -> None:
+-        while waiting_finalize and len(active_finalize) < finalize_workers:
++        while (
++            waiting_finalize
++            and len(active_finalize) < finalize_workers
++            and (cpu_budget >= 3 or not active_prepare)
++            and (cpu_budget > 1 or not active_inference)
++        ):
+             task, prepared, inference_result, timing = waiting_finalize.popleft()
+             future = pool.submit(
+                 execute_finalize, task, prepared, inference_result, timing
+@@ -12613,6 +12656,8 @@ def _run_staged_evaluation_tasks(
+         if stop_scheduling:
+             return
+         while ready_inference and len(active_inference) < controller.target_jobs:
++            if cpu_budget == 1 and (active_prepare or active_finalize):
++                break
+             if len(waiting_finalize) + len(active_finalize) >= finalize_backlog_limit:
+                 break
+             task, prepared, timing = ready_inference.popleft()
+@@ -25259,7 +25304,7 @@ cpu_fraction = 0.90
+ ram_fraction = 0.80
+ gpu_memory_fraction = 0.90
+ # 0 selects the automatic resource-bounded count. Explicit positive values are
+-# still clipped by available CPU threads and the RAM budget.
++# remain caps inside the runtime CPU-fraction and RAM budgets.
+ source_workers = 0
+ feature_workers = 0
+ # Exact TARGET-DATA2B/MVIDX1 cKDTree worker override. FEAS1-PERF3 uses
+@@ -25269,9 +25314,9 @@ target_coverage_workers = 0
+ # REPAIR-PAR1 immutable proposal workers. 0 uses the complete configured CPU
+ # budget; repair-state mutation and winner application remain sequential.
+ target_multi_view_repair_workers = 0
+-# MVQUAL-PAR1 independent domain/selector/size scoring workers. 0 uses the
+-# up to four configured CPU lanes automatically; nested cKDTree/BLAS workers are fixed at 1.
+-# Set a larger explicit value only on a high-memory-bandwidth host after profiling.
++# MVQUAL-PAR1 independent domain/selector/size scoring workers. 0 authorizes
++# the complete runtime CPU budget; task count/RAM admission may use fewer. Nested
++# cKDTree/BLAS workers are fixed at 1 and positive values are budgeted caps.
+ target_multi_view_qualification_workers = 0
+ # 0 gives FEAS1 one single-level global worker for every CPU-budget lane
+ # (normally 90% of logical threads). All domains/profiles feed the same queue.
+diff --git a/mdstats/training_data/mvsel2_hardening_runtime.py b/mdstats/training_data/mvsel2_hardening_runtime.py
+index b6b510d..4aaab89 100644
+--- a/mdstats/training_data/mvsel2_hardening_runtime.py
++++ b/mdstats/training_data/mvsel2_hardening_runtime.py
+@@ -282,11 +282,11 @@ def _ensure_target_multi_view_repair_v2(
+ 
+     core._print_header("TARGET-DATA2C-REPAIR2 forward-state active-shell repair")
+     forward = _native_forward_view(store, sparse_index)
+-    repair_workers, resources = core._target_coverage_query_workers(cfg)
++    repair_workers, resources = core._target_multi_view_repair_parallelism(cfg)
+     scope = core.build_stage_resource_scope(
+         resources,
+         stage_name="TARGET-DATA2C-REPAIR2",
+-        python_workers=1,
++        python_workers=max(1, int(repair_workers)),
+         structural_workers=1,
+         tree_workers=1,
+         blas_threads=1,
+@@ -299,6 +299,7 @@ def _ensure_target_multi_view_repair_v2(
+             selection_plan,
+             policy=policy,
+             workers=max(1, int(repair_workers)),
++            resource_scope=scope,
+             progress_callback=lambda message: print(
+                 f"[TARGET-DATA2C-REPAIR2] {message}", flush=True
+             ),
+diff --git a/mdstats/training_data/mvsel2_native_preflight.py b/mdstats/training_data/mvsel2_native_preflight.py
+index 5555293..7241210 100644
+--- a/mdstats/training_data/mvsel2_native_preflight.py
++++ b/mdstats/training_data/mvsel2_native_preflight.py
+@@ -75,15 +75,30 @@ def _score_vector(
+     return np.asarray([scores[candidate] for candidate in candidates], dtype=np.float64)
+ 
+ 
++def _worker_counts(max_workers: int) -> tuple[int, ...]:
++    """Return logarithmic scaling points plus the exact runtime budget endpoint."""
++
++    maximum = max(1, int(max_workers))
++    values = [1]
++    value = 2
++    while value < maximum:
++        values.append(value)
++        value *= 2
++    if maximum > 1:
++        values.append(maximum)
++    return tuple(dict.fromkeys(values))
++
++
+ def preflight_mvsel2_native_workers_v2(
+     forward_domain: Any,
+     state: TargetMultiViewForwardStateV2,
+     *,
+     max_workers: int,
+     sample_size: int = 256,
+-    minimum_parallel_speedup: float = 1.75,
++    minimum_parallel_speedup: float = 1.05,
++    economical_tolerance: float = 0.05,
+ ) -> MVSEL2NativePreflightV2:
+-    """Meter 1/2/4/8/16 native workers on one deterministic real-graph sample."""
++    """Meter exact native widths through the runtime-authorized CPU endpoint."""
+ 
+     max_workers = int(max_workers)
+     if max_workers < 1:
+@@ -94,6 +109,10 @@ def preflight_mvsel2_native_workers_v2(
+         raise TrainingDataInputError(
+             "TARGET-DATA2C-MVSEL2 native preflight speedup threshold must exceed one."
+         )
++    if not np.isfinite(economical_tolerance) or not (0.0 <= economical_tolerance < 1.0):
++        raise TrainingDataInputError(
++            "TARGET-DATA2C-MVSEL2 native preflight economical tolerance must be in [0, 1)."
++        )
+     if max_workers == 1:
+         return MVSEL2NativePreflightV2(
+             requested_workers=1,
+@@ -117,9 +136,7 @@ def preflight_mvsel2_native_workers_v2(
+     # for an explicit num_threads(N) region. The campaign worker budget is the
+     # authority here; if the runtime constrains actual teams, the meter will
+     # expose that as weak/flat scaling and fall back to workers=1.
+-    worker_counts = tuple(
+-        value for value in (1, 2, 4, 8, 16) if value <= max_workers
+-    )
++    worker_counts = _worker_counts(max_workers)
+     if len(worker_counts) < 2:
+         raise TrainingDataInputError(
+             "TARGET-DATA2C-MVSEL2 native worker preflight has no authorized "
+@@ -185,7 +202,14 @@ def preflight_mvsel2_native_workers_v2(
+     parallel = tuple(item for item in meters if item.workers > 1)
+     best = min(parallel, key=lambda item: (item.elapsed_seconds, item.workers))
+     scaling_passed = best.speedup_vs_one >= float(minimum_parallel_speedup)
+-    effective = best.workers if scaling_passed else 1
++    if scaling_passed:
++        economical_limit = best.elapsed_seconds * (1.0 + float(economical_tolerance))
++        economical = tuple(
++            item for item in parallel if item.elapsed_seconds <= economical_limit
++        )
++        effective = min(item.workers for item in economical)
++    else:
++        effective = 1
+     return MVSEL2NativePreflightV2(
+         requested_workers=max_workers,
+         effective_workers=effective,
+diff --git a/mdstats/training_data/mvsel2_phase_a_kernel.py b/mdstats/training_data/mvsel2_phase_a_kernel.py
+index 9dee01c..4f13b33 100644
+--- a/mdstats/training_data/mvsel2_phase_a_kernel.py
++++ b/mdstats/training_data/mvsel2_phase_a_kernel.py
+@@ -17,6 +17,10 @@ from typing import Any
+ import numpy as np
+ 
+ from ._common import TrainingDataInputError
++from .mvsel2_native_backend import (
++    phase_b_execution_backend_v2,
++    score_family_candidate_batch_v2,
++)
+ from .target_multi_view_selector_v2 import (
+     TargetMultiViewCandidateScoreV2,
+     TargetMultiViewForwardStateV2,
+@@ -122,6 +126,90 @@ def _diversity_gain(
+     )
+ 
+ 
++
++
++def _native_family_scores(
++    family: Any,
++    terms: np.ndarray,
++    candidates: np.ndarray,
++    *,
++    workers: int,
++) -> tuple[np.ndarray, int]:
++    """Score exact family rows with the already-qualified native reduction."""
++
++    return score_family_candidate_batch_v2(
++        np.asarray(family.candidate_offsets),
++        np.asarray(family.candidate_witnesses),
++        np.ascontiguousarray(terms, dtype=np.float64),
++        np.asarray(candidates, dtype=np.uint32),
++        workers=int(workers),
++    )
++
++
++def _native_representative_scores(
++    candidates: np.ndarray,
++    forward_domain: Any,
++    state: TargetMultiViewForwardStateV2,
++    *,
++    workers: int,
++) -> tuple[np.ndarray, int]:
++    scores = np.zeros(len(candidates), dtype=np.float64)
++    edges = 0
++    # Preserve the authoritative family accumulation order exactly. Native
++    # parallelism exists only inside independent CSR rows of one family.
++    for family, family_state in zip(
++        forward_domain.families, state.family_states, strict=True
++    ):
++        terms = np.divide(
++            family_state.weights,
++            family_state.multiplicity.astype(np.float64) + 1.0,
++            dtype=np.float64,
++        )
++        family_scores, family_edges = _native_family_scores(
++            family, terms, candidates, workers=workers
++        )
++        for position, value in enumerate(family_scores):
++            scores[position] += float(value)
++        edges += int(family_edges)
++    return scores, edges
++
++
++def _native_diversity_scores(
++    candidates: np.ndarray,
++    forward_domain: Any,
++    state: TargetMultiViewForwardStateV2,
++    *,
++    workers: int,
++) -> tuple[np.ndarray, int]:
++    family_count = len(forward_domain.families)
++    matrix = np.full((len(candidates), family_count), np.nan, dtype=np.float64)
++    edges = 0
++    for family_index, (family, family_state) in enumerate(
++        zip(forward_domain.families, state.family_states, strict=True)
++    ):
++        terms = np.divide(
++            1.0,
++            family_state.multiplicity.astype(np.float64) + 1.0,
++            dtype=np.float64,
++        )
++        family_sums, family_edges = _native_family_scores(
++            family, terms, candidates, workers=workers
++        )
++        offsets = np.asarray(family.candidate_offsets)
++        for position, candidate_value in enumerate(candidates):
++            candidate = int(candidate_value)
++            row_count = int(offsets[candidate + 1] - offsets[candidate])
++            if row_count:
++                matrix[position, family_index] = float(family_sums[position]) / row_count
++        edges += int(family_edges)
++    scores = np.zeros(len(candidates), dtype=np.float64)
++    for position in range(len(candidates)):
++        values = matrix[position, np.isfinite(matrix[position])]
++        if values.size:
++            scores[position] = float(np.mean(values, dtype=np.float64))
++    return scores, edges
++
++
+ def _best_relative(
+     candidates: np.ndarray,
+     values: np.ndarray,
+@@ -146,8 +234,10 @@ def choose_target_multi_view_phase_a_candidate_v2_kernel(
+ ) -> TargetMultiViewPhaseAChoiceV2:
+     """Execute exact Phase A with one locality-oriented scoring authority.
+ 
+-    ``batch_size`` and ``workers`` remain accepted execution-compatibility
+-    parameters.  PAR1 worker threading is intentionally not used.
++    Python PAR1 threading is intentionally not used. With workers>1, exact
++    independent family CSR rows use the same qualified native/OpenMP reduction
++    primitive as Phase B while lexicographic policy/reduction order remains
++    serial and canonical.
+     """
+ 
+     epsilon = float(epsilon)
+@@ -157,6 +247,7 @@ def choose_target_multi_view_phase_a_candidate_v2_kernel(
+         raise TrainingDataInputError(
+             "TARGET-DATA2C-MVSEL2 batch/worker settings must be positive."
+         )
++    native_parallel = phase_b_execution_backend_v2(workers) == "native-openmp"
+ 
+     candidate_count = int(forward_domain.candidate_count)
+     available = np.flatnonzero(state.available).astype(np.int64, copy=False)
+@@ -192,12 +283,23 @@ def choose_target_multi_view_phase_a_candidate_v2_kernel(
+ 
+     bottleneck_values = np.full(candidate_count, -np.inf, dtype=np.float64)
+     bottleneck_edges = 0
+-    for candidate in candidates:
+-        value, edges = _family_coverage_gain(
+-            int(candidate), bottleneck_index, forward_domain, state
++    if native_parallel:
++        family = forward_domain.families[bottleneck_index]
++        family_state = state.family_states[bottleneck_index]
++        terms = np.where(
++            family_state.multiplicity == 0, family_state.weights, 0.0
++        ).astype(np.float64, copy=False)
++        values, bottleneck_edges = _native_family_scores(
++            family, terms, candidates, workers=workers
+         )
+-        bottleneck_values[int(candidate)] = value
+-        bottleneck_edges += edges
++        bottleneck_values[candidates] = values
++    else:
++        for candidate in candidates:
++            value, edges = _family_coverage_gain(
++                int(candidate), bottleneck_index, forward_domain, state
++            )
++            bottleneck_values[int(candidate)] = value
++            bottleneck_edges += edges
+     candidates = _best_relative(candidates, bottleneck_values, epsilon)
+     bottleneck_width = int(candidates.size)
+ 
+@@ -208,12 +310,24 @@ def choose_target_multi_view_phase_a_candidate_v2_kernel(
+     coverage_matrix = np.zeros((candidates.size, family_count), dtype=np.float64)
+     total_coverage_edges = 0
+     for family_index in range(family_count):
+-        for local_index, candidate in enumerate(candidates):
+-            value, edges = _family_coverage_gain(
+-                int(candidate), family_index, forward_domain, state
++        if native_parallel:
++            family = forward_domain.families[family_index]
++            family_state = state.family_states[family_index]
++            terms = np.where(
++                family_state.multiplicity == 0, family_state.weights, 0.0
++            ).astype(np.float64, copy=False)
++            values, edges = _native_family_scores(
++                family, terms, candidates, workers=workers
+             )
+-            coverage_matrix[local_index, family_index] = value
+-            total_coverage_edges += edges
++            coverage_matrix[:, family_index] = values
++            total_coverage_edges += int(edges)
++        else:
++            for local_index, candidate in enumerate(candidates):
++                value, edges = _family_coverage_gain(
++                    int(candidate), family_index, forward_domain, state
++                )
++                coverage_matrix[local_index, family_index] = value
++                total_coverage_edges += edges
+     total_local = np.sum(coverage_matrix, axis=1, dtype=np.float64)
+     best_total = float(np.max(total_local))
+     total_mask = total_local >= best_total - epsilon
+@@ -245,19 +359,31 @@ def choose_target_multi_view_phase_a_candidate_v2_kernel(
+ 
+     representative_values = np.full(candidate_count, -np.inf, dtype=np.float64)
+     representative_edges = 0
+-    for candidate in candidates:
+-        value, edges = _representative_gain(int(candidate), forward_domain, state)
+-        representative_values[int(candidate)] = value
+-        representative_edges += edges
++    if native_parallel:
++        values, representative_edges = _native_representative_scores(
++            candidates, forward_domain, state, workers=workers
++        )
++        representative_values[candidates] = values
++    else:
++        for candidate in candidates:
++            value, edges = _representative_gain(int(candidate), forward_domain, state)
++            representative_values[int(candidate)] = value
++            representative_edges += edges
+     candidates = _best_relative(candidates, representative_values, epsilon)
+     representative_width = int(candidates.size)
+ 
+     diversity_values = np.full(candidate_count, -np.inf, dtype=np.float64)
+     diversity_edges = 0
+-    for candidate in candidates:
+-        value, edges = _diversity_gain(int(candidate), forward_domain, state)
+-        diversity_values[int(candidate)] = value
+-        diversity_edges += edges
++    if native_parallel:
++        values, diversity_edges = _native_diversity_scores(
++            candidates, forward_domain, state, workers=workers
++        )
++        diversity_values[candidates] = values
++    else:
++        for candidate in candidates:
++            value, edges = _diversity_gain(int(candidate), forward_domain, state)
++            diversity_values[int(candidate)] = value
++            diversity_edges += edges
+     candidates = _best_relative(candidates, diversity_values, epsilon)
+ 
+     chosen = min(
+diff --git a/mdstats/training_data/mvsel2_v5_runtime.py b/mdstats/training_data/mvsel2_v5_runtime.py
+index 73cc0fb..6060a9d 100644
+--- a/mdstats/training_data/mvsel2_v5_runtime.py
++++ b/mdstats/training_data/mvsel2_v5_runtime.py
+@@ -30,11 +30,13 @@ from .target_multi_view_selection_state_v2 import (
+     checkpoint_target_multi_view_forward_state_v2,
+     write_target_multi_view_selection_checkpoint_v2,
+ )
+-from .target_multi_view_selector_v2 import TargetMultiViewSelectorPolicyV2
++from .target_multi_view_selector_v2 import (
++    TargetMultiViewSelectorPolicyV2,
++    build_target_multi_view_forward_state_v2,
++)
+ 
+ 
+ _HISTORY_KEY_PREFIX = "target_multi_view_selection_history_v2"
+-_NATIVE_WORKER_QUALIFICATION_CEILING = 16
+ 
+ 
+ def _history_key(domain_id: str, size: int) -> str:
+@@ -121,16 +123,22 @@ def _highest_valid_resume_bundle(
+ 
+ 
+ def _selection_worker_budget(core: Any, cfg: Mapping[str, Any]) -> tuple[int, Any]:
+-    """Return the qualified MVSEL2 worker ceiling and existing resource policy."""
++    """Return MVSEL2's runtime CPU budget without borrowing cKDTree policy."""
+ 
+-    query_workers, resources = core._target_coverage_query_workers(cfg)
+-    workers = max(1, min(int(query_workers), _NATIVE_WORKER_QUALIFICATION_CEILING))
+-    return workers, resources
++    resources = core.detect_system_resources(
++        cpu_fraction=float(core._cfg(cfg, "performance", "cpu_fraction", 0.90)),
++        ram_fraction=float(core._cfg(cfg, "performance", "ram_fraction", 0.80)),
++        gpu_memory_fraction=float(
++            core._cfg(cfg, "performance", "gpu_memory_fraction", 0.90)
++        ),
++        device="cpu",
++    )
++    return max(1, int(resources.cpu_threads_budget)), resources
+ 
+ 
+ def _preflight_selection_workers(
+     forward: Any,
+-    resume_states: Mapping[str, Any],
++    states: Mapping[str, Any],
+     *,
+     requested_workers: int,
+ ) -> int:
+@@ -140,10 +148,10 @@ def _preflight_selection_workers(
+     if requested_workers <= 1:
+         return 1
+     results = []
+-    for domain_id in sorted(resume_states):
++    for domain_id in sorted(states):
+         result = preflight_mvsel2_native_workers_v2(
+             forward.domain(domain_id),
+-            resume_states[domain_id],
++            states[domain_id],
+             max_workers=requested_workers,
+         )
+         results.append(result)
+@@ -153,12 +161,9 @@ def _preflight_selection_workers(
+             flush=True,
+         )
+     if not results:
+-        print(
+-            "[TARGET-DATA2C-MVSEL2 native preflight] skipped=no-resume-state; "
+-            f"effective_workers={requested_workers}",
+-            flush=True,
++        raise RuntimeError(
++            "TARGET-DATA2C-MVSEL2 native preflight requires at least one real domain state."
+         )
+-        return requested_workers
+     # One engine worker count is shared by all domains. If any resumed domain is
+     # memory-bound and rejects native scaling, retain the proven G4b serial path.
+     if any(not result.scaling_passed for result in results):
+@@ -287,22 +292,36 @@ def ensure_target_multi_view_selection_v2(
+         checkpoint_pointers[key] = record
+ 
+     requested_workers, resources = _selection_worker_budget(core, cfg)
++    preflight_states = dict(resume_states)
++    for reference_domain in coverage_reference.domains:
++        domain_id = reference_domain.label_domain_id
++        if domain_id in preflight_states:
++            continue
++        forward_domain = forward.domain(domain_id)
++        limit = max(
++            size for size in policy.target_sizes if size <= forward_domain.candidate_count
++        )
++        preflight_states[domain_id] = build_target_multi_view_forward_state_v2(
++            reference_domain,
++            forward_domain,
++            coverage_threshold=policy.coverage_threshold,
++            epsilon=policy.gain_tie_tolerance,
++            requested_cardinality=limit,
++        )
+     scope = core.build_stage_resource_scope(
+         resources,
+         stage_name="TARGET-DATA2C-MVSEL2/MVSTATE2",
+-        # Account the native OpenMP region against the existing CPU-worker
+-        # budget. No Python pool is created; this value prevents the enclosing
+-        # stage scope from constraining the authorized native worker count to 1.
+-        python_workers=requested_workers,
++        python_workers=1,
+         structural_workers=1,
+         tree_workers=1,
+         blas_threads=1,
++        native_openmp_threads=requested_workers,
+     )
+     started = time.monotonic()
+     with core.stage_resource_scope(scope):
+         selector_workers = _preflight_selection_workers(
+             forward,
+-            resume_states,
++            preflight_states,
+             requested_workers=requested_workers,
+         )
+         plan = build_target_multi_view_selection_plan_v2_engine(
+diff --git a/mdstats/training_data/resources.py b/mdstats/training_data/resources.py
+index 6844242..2c3edb7 100644
+--- a/mdstats/training_data/resources.py
++++ b/mdstats/training_data/resources.py
+@@ -154,8 +154,8 @@ class StageResourceScope:
+ 
+     The scope is deliberately excluded from scientific records.  It prevents
+     independently reasonable worker settings from multiplying into CPU
+-    oversubscription when Python/process, structural, native-tree, BLAS, or
+-    PyTorch layers are nested.
++    oversubscription when Python/process, structural, native-tree, BLAS, explicit
++    OpenMP, or PyTorch layers are nested.
+     """
+ 
+     stage_name: str
+@@ -165,6 +165,7 @@ class StageResourceScope:
+     structural_workers: int = 1
+     tree_workers: int = 1
+     blas_threads: int = 1
++    native_openmp_threads: int = 1
+     pytorch_cpu_workers: int = 1
+     gpu_jobs: int = 0
+     ram_budget_bytes: int | None = None
+@@ -175,7 +176,7 @@ class StageResourceScope:
+         for name in (
+             "cpu_threads_available", "cpu_threads_budget", "python_workers",
+             "structural_workers", "tree_workers", "blas_threads",
+-            "pytorch_cpu_workers",
++            "native_openmp_threads", "pytorch_cpu_workers",
+         ):
+             if int(getattr(self, name)) <= 0:
+                 raise ValueError(f"{name} must be positive")
+@@ -197,6 +198,7 @@ class StageResourceScope:
+         inner = max(
+             int(self.structural_workers) * int(self.blas_threads),
+             int(self.tree_workers),
++            int(self.native_openmp_threads),
+             int(self.pytorch_cpu_workers),
+             1,
+         )
+@@ -207,7 +209,8 @@ class StageResourceScope:
+             f"{self.stage_name}: cpu={self.estimated_nested_cpu_threads}/"
+             f"{self.cpu_threads_budget} budget; python={self.python_workers}; "
+             f"structure={self.structural_workers}; tree={self.tree_workers}; "
+-            f"blas={self.blas_threads}; torch={self.pytorch_cpu_workers}; "
++            f"blas={self.blas_threads}; openmp={self.native_openmp_threads}; "
++            f"torch={self.pytorch_cpu_workers}; "
+             f"gpu_jobs={self.gpu_jobs}; "
+             f"ram_budget={'unbounded' if self.ram_budget_bytes is None else int(self.ram_budget_bytes)}"
+         )
+@@ -221,6 +224,7 @@ def build_stage_resource_scope(
+     structural_workers: int = 1,
+     tree_workers: int = 1,
+     blas_threads: int = 1,
++    native_openmp_threads: int = 1,
+     pytorch_cpu_workers: int = 1,
+     gpu_jobs: int = 0,
+     ram_budget_bytes: int | None = None,
+@@ -235,6 +239,7 @@ def build_stage_resource_scope(
+         structural_workers=int(structural_workers),
+         tree_workers=int(tree_workers),
+         blas_threads=int(blas_threads),
++        native_openmp_threads=int(native_openmp_threads),
+         pytorch_cpu_workers=int(pytorch_cpu_workers),
+         gpu_jobs=int(gpu_jobs),
+         ram_budget_bytes=(
+@@ -259,8 +264,12 @@ def stage_resource_scope(scope: StageResourceScope):
+     except ModuleNotFoundError:  # pragma: no cover - optional dependency
+         yield scope
+         return
+-    with threadpool_limits(limits=int(scope.blas_threads)):
+-        yield scope
++    # BLAS and OpenMP are independent nesting dimensions.  Limit them
++    # separately so a stage using an explicit native OpenMP team does not have
++    # to masquerade as Python-worker parallelism or inherit a BLAS limit.
++    with threadpool_limits(limits=int(scope.blas_threads), user_api="blas"):
++        with threadpool_limits(limits=int(scope.native_openmp_threads), user_api="openmp"):
++            yield scope
+ 
+ def detect_gpu_resources(*, memory_fraction: float = 0.9, device: str = "cuda") -> GpuResourceSnapshot:
+     fraction = _fraction(memory_fraction, name="gpu_memory_fraction")
+@@ -334,7 +343,10 @@ def resolve_worker_count(
+         return 0
+     if requested < 0:
+         raise ValueError("requested worker count must be zero (auto) or positive")
+-    cpu_limit = resources.cpu_threads_budget if requested == 0 else min(requested, resources.cpu_threads_available)
++    # Explicit worker settings are stage caps inside the campaign-wide CPU
++    # fraction.  The only supported way to authorize more host CPU capacity is
++    # to change cpu_fraction itself; a stage override must never bypass it.
++    cpu_limit = resources.cpu_threads_budget if requested == 0 else min(requested, resources.cpu_threads_budget)
+     if reserved_bytes < 0:
+         raise ValueError("reserved_bytes must be non-negative")
+     memory_limit = task_count
+diff --git a/mdstats/training_data/structural_selection.py b/mdstats/training_data/structural_selection.py
+index b0afd91..d808e41 100644
+--- a/mdstats/training_data/structural_selection.py
++++ b/mdstats/training_data/structural_selection.py
+@@ -53,7 +53,6 @@ from .material_profiles import (
+ )
+ from .raw_features import minimum_image_displacements
+ from .resources import (
+-    available_cpu_threads,
+     build_stage_resource_scope,
+     detect_system_resources,
+     stage_resource_scope,
+@@ -1476,16 +1475,12 @@ def _resident_set_mib() -> float | None:
+         return None
+ 
+ 
+-def _automatic_structural_worker_cap(task_count: int) -> int:
+-    """Return the safe outer-thread search bound for structural kernels."""
++def _automatic_structural_worker_cap(task_count: int, *, cpu_budget: int) -> int:
++    """Return the runtime-authorized outer-thread search bound."""
+ 
+     if task_count <= 1:
+         return 1
+-    cpu_budget = max(1, int(math.floor(available_cpu_threads() * 0.9)))
+-    # These frames already contain internally vectorized NumPy/SciPy kernels.
+-    # Higher outer concurrency usually saturates memory bandwidth and increases
+-    # the simultaneous exact-MIC working set. The final choice is autotuned.
+-    return max(1, min(task_count, cpu_budget, 8))
++    return max(1, min(int(task_count), int(cpu_budget)))
+ 
+ 
+ def _autotune_structural_workers(
+@@ -1499,19 +1494,24 @@ def _autotune_structural_workers(
+     CPU count alone is a poor predictor for this stage: exact MIC, radial
+     tensors, and angular reductions are memory-bandwidth-heavy. A 2--3 second
+     microbenchmark is negligible for a tens-of-thousands-frame campaign and
+-    avoids making eight threads slower than two on a particular NUMA/cache
+-    topology. Within five percent of the fastest rate, fewer workers win.
++    avoids selecting a wider team when a narrower one is faster on the
++    current NUMA/cache topology. Within five percent of the fastest rate, fewer workers win.
+     """
+ 
+     cap = max(1, min(int(worker_cap), len(records)))
+     if cap <= 1 or len(records) < 8:
+         return 1, ((1, 0.0),)
+-    candidates = tuple(
+-        value for value in (1, 2, 4, 8) if value <= cap
+-    )
+-    if candidates[-1] != cap:
+-        candidates = tuple(sorted(set((*candidates, cap))))
+-    sample_count = min(len(records), max(12, 2 * cap), 24)
++    values = [1]
++    value = 2
++    while value < cap:
++        values.append(value)
++        value *= 2
++    if cap > 1:
++        values.append(cap)
++    candidates = tuple(dict.fromkeys(values))
++    # Give every candidate width enough independent frames to expose scaling,
++    # while bounding autotune cost on very large hosts.
++    sample_count = min(len(records), max(12, 2 * cap), 256)
+     if sample_count == len(records):
+         sample = tuple(records)
+     else:
+@@ -1712,10 +1712,14 @@ class UniversalStructuralSelectionProvider:
+         )
+ 
+         requested_workers = int(max_workers)
++        resources = detect_system_resources(device="cpu")
++        cpu_budget = max(1, int(resources.cpu_threads_budget))
+         worker_count = (
+-            _automatic_structural_worker_cap(len(chronological))
++            _automatic_structural_worker_cap(
++                len(chronological), cpu_budget=cpu_budget
++            )
+             if requested_workers == 0
+-            else min(requested_workers, len(chronological))
++            else min(requested_workers, len(chronological), cpu_budget)
+         )
+         # A dynamic membership provider may depend on chronological state or
+         # external non-thread-safe resources. Preserve its original serial
+diff --git a/mdstats/training_data/target_coverage_sparse_index.py b/mdstats/training_data/target_coverage_sparse_index.py
+index a5bd083..3d1afb3 100644
+--- a/mdstats/training_data/target_coverage_sparse_index.py
++++ b/mdstats/training_data/target_coverage_sparse_index.py
+@@ -1108,10 +1108,10 @@ def _build_domain_sparse_components(
+     ooc_admission_bytes = int(_MVIDX_OUT_OF_CORE_TASK_ADMISSION_BYTES)
+     if resource_scope is not None and resource_scope.ram_budget_bytes is not None:
+         budget = max(1, int(resource_scope.ram_budget_bytes))
+-        # Large inversions are I/O/memory-bandwidth heavy.  Reserve enough
+-        # anonymous scratch for at most eight simultaneous OOC transposes; the
+-        # deterministic queue may admit fewer when other work is resident.
+-        lane_budget = max(1, min(int(workers), 8))
++        # Derive per-task OOC admission from the actual authorized worker width.
++        # The deterministic queue may admit fewer when other work is resident;
++        # no host-independent lane ceiling is encoded here.
++        lane_budget = max(1, int(workers))
+         ooc_admission_bytes = min(
+             ooc_admission_bytes,
+             max(1, budget // lane_budget),
+diff --git a/mdstats/training_data/target_multi_view_repair_v2.py b/mdstats/training_data/target_multi_view_repair_v2.py
+index 2b4b34c..586b2a8 100644
+--- a/mdstats/training_data/target_multi_view_repair_v2.py
++++ b/mdstats/training_data/target_multi_view_repair_v2.py
+@@ -4,6 +4,7 @@ from __future__ import annotations
+ 
+ from dataclasses import dataclass, field
+ import math
++from threading import local
+ import time
+ from typing import Any
+ 
+@@ -20,6 +21,8 @@ from .target_multi_view_selector_v2 import (
+     select_target_multi_view_candidate_v2,
+ )
+ from .progress_timing import format_progress_time
++from .resources import StageResourceScope
++from .work_queue import DeterministicWorkQueue
+ 
+ 
+ TARGET_MULTI_VIEW_REPAIR_V2_VERSION = "mdstats.target-data2c-repair2.forward-state.2026-08.v1"
+@@ -919,6 +922,153 @@ def _better(
+     return left if lkey <= rkey else right
+ 
+ 
++
++
++def _parallel_repair_proposals_v2(
++    reference_domain: Any,
++    forward_domain: Any,
++    state: TargetMultiViewForwardStateV2,
++    shortlist: list[tuple[int, int, float, float]],
++    policy: TargetMultiViewRepairPolicyV2,
++    context: _RepairProposalFrontierContextV2,
++    *,
++    workers: int,
++    resource_scope: StageResourceScope | None,
++    state_perf: dict[str, Any] | None,
++    final_coverage_scan: list[int] | None,
++    removed_mark_scan: list[int] | None,
++) -> dict[str, Any] | None:
++    """Evaluate immutable REPAIR2 removal proposals in deterministic parallel order."""
++
++    count = len(shortlist)
++    worker_count = max(1, min(int(workers), count))
++    if worker_count == 1:
++        scratch = _RepairProposalScratchV2(forward_domain)
++        best: dict[str, Any] | None = None
++        for removal in shortlist:
++            proposal = _proposal_from_frontier_context_v2(
++                reference_domain,
++                forward_domain,
++                state,
++                removal,
++                policy,
++                scratch,
++                context,
++                perf=state_perf,
++                final_coverage_gain_scan=final_coverage_scan,
++                removed_mark_scan=removed_mark_scan,
++            )
++            if proposal is not None:
++                best = _better(best, proposal, reference_domain, policy.gain_tie_tolerance)
++        return best
++
++    owned_scope = resource_scope is None
++    scope = resource_scope or StageResourceScope(
++        stage_name="TARGET-DATA2C-REPAIR2/proposals",
++        cpu_threads_available=worker_count,
++        cpu_threads_budget=worker_count,
++        python_workers=worker_count,
++        structural_workers=1,
++        tree_workers=1,
++        blas_threads=1,
++        native_openmp_threads=1,
++        pytorch_cpu_workers=1,
++    )
++    # The queue must reflect the actual proposal width even when the caller's
++    # stage scope authorizes a wider CPU budget than this shortlist can use.
++    if int(scope.python_workers) != worker_count:
++        scope = StageResourceScope(
++            stage_name=f"{scope.stage_name}/proposals",
++            cpu_threads_available=int(scope.cpu_threads_available),
++            cpu_threads_budget=int(scope.cpu_threads_budget),
++            python_workers=worker_count,
++            structural_workers=1,
++            tree_workers=1,
++            blas_threads=1,
++            native_openmp_threads=1,
++            pytorch_cpu_workers=1,
++            ram_budget_bytes=scope.ram_budget_bytes,
++        )
++
++    thread_scratch = local()
++
++    def evaluate(position: int, removal: tuple[int, int, float, float]):
++        scratch = getattr(thread_scratch, "repair2_scratch", None)
++        if scratch is None:
++            scratch = _RepairProposalScratchV2(forward_domain)
++            thread_scratch.repair2_scratch = scratch
++        local_perf = _new_state_telemetry() if state_perf is not None else None
++        local_coverage = [0, 0] if final_coverage_scan is not None else None
++        local_removed = [0, 0] if removed_mark_scan is not None else None
++        proposal = _proposal_from_frontier_context_v2(
++            reference_domain,
++            forward_domain,
++            state,
++            removal,
++            policy,
++            scratch,
++            context,
++            perf=local_perf,
++            final_coverage_gain_scan=local_coverage,
++            removed_mark_scan=local_removed,
++        )
++        return position, proposal, local_perf, local_coverage, local_removed
++
++    results: dict[int, tuple[Any, ...]] = {}
++    scratch_bytes = worker_count * sum(
++        int(family.witness_count) * np.dtype(np.uint32).itemsize
++        for family in forward_domain.families
++    )
++    queue = DeterministicWorkQueue(
++        scope,
++        max_ready_tasks=max(count, 2 * worker_count),
++        max_inflight_tasks=max(1, 2 * worker_count),
++        max_completed_tasks=max(1, 2 * worker_count),
++        thread_name_prefix="mdstats-repair2",
++        manage_resource_scope=owned_scope,
++    )
++    with queue:
++        if scratch_bytes:
++            queue.reserve_memory("repair2-thread-scratch", scratch_bytes)
++        finished_before = int(queue.snapshot().finished_tasks)
++        for position, removal in enumerate(shortlist):
++            queue.submit(
++                task_id=f"repair2-proposal-{position:04d}-rank-{int(removal[0]):08d}",
++                canonical_order=(position,),
++                function=evaluate,
++                args=(position, removal),
++                task_kind="repair2-proposal",
++                # Worker-local scratch is reserved once above for the whole
++                # proposal pool. Do not charge it again per queued task.
++                estimated_memory_bytes=0,
++                locality_key=str(reference_domain.label_domain_id),
++            )
++        while int(queue.snapshot().finished_tasks) < finished_before + count:
++            queue.wait_for_completion()
++            for completion in queue.drain_completed():
++                results[int(completion.canonical_order[0])] = completion.value
++        for completion in queue.drain_completed():
++            results[int(completion.canonical_order[0])] = completion.value
++        if scratch_bytes:
++            queue.release_memory("repair2-thread-scratch")
++
++    best: dict[str, Any] | None = None
++    for position in range(count):
++        _, proposal, local_perf, local_coverage, local_removed = results[position]
++        if state_perf is not None and local_perf is not None:
++            for key, value in local_perf.items():
++                state_perf[key] += value
++        if final_coverage_scan is not None and local_coverage is not None:
++            final_coverage_scan[0] += int(local_coverage[0])
++            final_coverage_scan[1] += int(local_coverage[1])
++        if removed_mark_scan is not None and local_removed is not None:
++            removed_mark_scan[0] += int(local_removed[0])
++            removed_mark_scan[1] += int(local_removed[1])
++        if proposal is not None:
++            best = _better(best, proposal, reference_domain, policy.gain_tie_tolerance)
++    return best
++
++
+ def build_target_multi_view_repair_plan_v2(
+     target_coverage_reference: Any,
+     target_coverage_forward_index: Any,
+@@ -932,6 +1082,7 @@ def build_target_multi_view_repair_plan_v2(
+     initial_state_sizes: dict[str, int] | None = None,
+     initial_state_modes: dict[str, str] | None = None,
+     telemetry_callback: Any | None = None,
++    resource_scope: StageResourceScope | None = None,
+ ) -> TargetMultiViewRepairPlanV2:
+     """Build REPAIR2 using exact forward-only state and no-copy proposals.
+ 
+@@ -976,7 +1127,6 @@ def build_target_multi_view_repair_plan_v2(
+             raise TrainingDataInputError("TARGET-DATA2C-REPAIR2 initial MVSTATE2 continuation size is invalid.")
+         previous_size = restored_size
+         rungs: list[TargetMultiViewRepairRung] = []
+-        scratch = _RepairProposalScratchV2(forward_domain)
+         diverged = False
+         proposal_count = 0
+         for base_rung in selection_domain.rungs:
+@@ -1115,21 +1265,19 @@ def build_target_multi_view_repair_plan_v2(
+                             coverage_gain_scan=frontier_scan,
+                         )
+                         if context.proposal_possible:
+-                            for removal in shortlist:
+-                                proposal = _proposal_from_frontier_context_v2(
+-                                    reference_domain,
+-                                    forward_domain,
+-                                    state,
+-                                    removal,
+-                                    policy,
+-                                    scratch,
+-                                    context,
+-                                    perf=state_perf,
+-                                    final_coverage_gain_scan=final_coverage_scan,
+-                                    removed_mark_scan=removed_mark_scan,
+-                                )
+-                                if proposal is not None:
+-                                    best = _better(best, proposal, reference_domain, policy.gain_tie_tolerance)
++                            best = _parallel_repair_proposals_v2(
++                                reference_domain,
++                                forward_domain,
++                                state,
++                                shortlist,
++                                policy,
++                                context,
++                                workers=int(workers),
++                                resource_scope=resource_scope,
++                                state_perf=state_perf,
++                                final_coverage_scan=final_coverage_scan,
++                                removed_mark_scan=removed_mark_scan,
++                            )
+                     mutation_wall = 0.0
+                     accepted_in_state = 0
+                     if best is not None:
+diff --git a/tests/test_mlff_mvqual_par1.py b/tests/test_mlff_mvqual_par1.py
+index e7b1fa0..5bb53a8 100644
+--- a/tests/test_mlff_mvqual_par1.py
++++ b/tests/test_mlff_mvqual_par1.py
+@@ -70,7 +70,10 @@ def test_mvqual_par1_progress_reduction_remains_canonical() -> None:
+         policy=policy, scoring_workers=4, progress_callback=parallel_messages.append,
+     )
+     assert parallel.content_digest == serial.content_digest
+-    assert parallel_messages == serial_messages
++    # Worker count is execution telemetry, not scientific output. Canonical
++    # scientific progress remains identical after removing that field.
++    normalize = lambda message: message.replace("workers=4", "workers=1")
++    assert [normalize(item) for item in parallel_messages] == serial_messages
+ 
+ 
+ def test_mvqual_par1_rejects_undersized_explicit_scope() -> None:
+@@ -94,7 +97,7 @@ def test_mvqual_par1_rejects_undersized_explicit_scope() -> None:
+ 
+ 
+ def test_mvqual_par1_campaign_configuration_and_resolver_are_wired() -> None:
+-    source = Path(campaign_cli.__file__).read_text(encoding="utf-8")
++    source = Path(campaign_cli._core.__file__).read_text(encoding="utf-8")
+     assert "target_multi_view_qualification_workers = 0" in source
+     workers, resources = campaign_cli._target_multi_view_qualification_parallelism(
+         {"performance": {"cpu_fraction": 0.90, "ram_fraction": 0.80,
+diff --git a/tests/test_mlff_mvsel2_native_backend.py b/tests/test_mlff_mvsel2_native_backend.py
+index f2cc539..9f02193 100644
+--- a/tests/test_mlff_mvsel2_native_backend.py
++++ b/tests/test_mlff_mvsel2_native_backend.py
+@@ -86,9 +86,14 @@ def test_mvsel2_native_openmp_worker_counts_are_bitwise_identical() -> None:
+     status = _require_native(parallel=True)
+     offsets, witnesses, terms, candidates = _row_fixture()
+     expected = _numpy_scores(offsets, witnesses, terms, candidates)
+-    worker_counts = [value for value in (2, 4, 8, 16) if value <= status.max_threads]
+-    if not worker_counts:
+-        worker_counts = [2]
++    worker_counts: list[int] = []
++    value = 2
++    while value < status.max_threads:
++        worker_counts.append(value)
++        value *= 2
++    if status.max_threads >= 2:
++        worker_counts.append(int(status.max_threads))
++    worker_counts = list(dict.fromkeys(worker_counts))
+     for workers in worker_counts:
+         actual, edges = score_family_candidate_batch_v2(
+             offsets,
+diff --git a/tests/test_mlff_mvsel2_v5_campaign_route.py b/tests/test_mlff_mvsel2_v5_campaign_route.py
+index 9facc94..9dfbe1a 100644
+--- a/tests/test_mlff_mvsel2_v5_campaign_route.py
++++ b/tests/test_mlff_mvsel2_v5_campaign_route.py
+@@ -14,27 +14,38 @@ def test_campaign_facade_installs_v5_single_owner_selection_runtime() -> None:
+     assert "build_target_multi_view_lazy_frontier_v2 =" not in source
+ 
+ 
+-def test_v5_runtime_routes_existing_query_worker_budget_to_selector() -> None:
+-    resources = object()
++def test_v5_runtime_uses_runtime_cpu_budget_as_selector_ceiling() -> None:
++    resources = SimpleNamespace(cpu_threads_budget=28)
++    captured = {}
++
++    def detect_system_resources(**kwargs):
++        captured.update(kwargs)
++        return resources
++
+     core = SimpleNamespace(
+-        _target_coverage_query_workers=lambda cfg: (12, resources),
++        detect_system_resources=detect_system_resources,
++        _cfg=lambda cfg, section, key, default: cfg.get(section, {}).get(key, default),
+     )
+     workers, actual_resources = mvsel2_v5_runtime._selection_worker_budget(
+-        core, {}
++        core, {"performance": {"cpu_fraction": 0.90}}
+     )
+-    assert workers == 12
++    assert workers == 28
+     assert actual_resources is resources
++    assert captured["cpu_fraction"] == 0.90
++    assert captured["device"] == "cpu"
+ 
+ 
+-def test_v5_runtime_caps_selector_workers_at_qualified_ceiling() -> None:
+-    resources = object()
++def test_v5_runtime_does_not_borrow_target_coverage_worker_policy() -> None:
++    resources = SimpleNamespace(cpu_threads_budget=57)
+     core = SimpleNamespace(
+-        _target_coverage_query_workers=lambda cfg: (28, resources),
+-    )
+-    workers, actual_resources = mvsel2_v5_runtime._selection_worker_budget(
+-        core, {}
++        detect_system_resources=lambda **kwargs: resources,
++        _cfg=lambda cfg, section, key, default: default,
++        _target_coverage_query_workers=lambda cfg: (_ for _ in ()).throw(
++            AssertionError("MVSEL2 must not use cKDTree worker policy")
++        ),
+     )
+-    assert workers == 16
++    workers, actual_resources = mvsel2_v5_runtime._selection_worker_budget(core, {})
++    assert workers == 57
+     assert actual_resources is resources
+ 
+ 
+@@ -100,3 +111,12 @@ def test_v5_runtime_source_does_not_hardcode_serial_selector() -> None:
+     source = open(mvsel2_v5_runtime.__file__, encoding="utf-8").read()
+     assert "workers=selector_workers" in source
+     assert "workers=1,\n            checkpoint_callback" not in source
++
++
++def test_mvsel2_preflight_worker_points_include_runtime_endpoint() -> None:
++    assert mvsel2_v5_runtime.preflight_mvsel2_native_workers_v2 is not None
++    from mdstats.training_data.mvsel2_native_preflight import _worker_counts
++
++    assert _worker_counts(28) == (1, 2, 4, 8, 16, 28)
++    assert _worker_counts(32) == (1, 2, 4, 8, 16, 32)
++    assert _worker_counts(57) == (1, 2, 4, 8, 16, 32, 57)
+diff --git a/tests/test_mlff_mvsel2_v5_kernel.py b/tests/test_mlff_mvsel2_v5_kernel.py
+index 7807953..7046633 100644
+--- a/tests/test_mlff_mvsel2_v5_kernel.py
++++ b/tests/test_mlff_mvsel2_v5_kernel.py
+@@ -37,7 +37,7 @@ def test_mvsel2_v5_phase_a_kernel_matches_serial_reference_across_ranks() -> Non
+             reference_domain,
+             forward_domain,
+             kernel_state,
+-            workers=8,  # execution compatibility only; PAR1 threads are retired
++            workers=8,  # qualified native/OpenMP row scoring; Python PAR1 is retired
+         )
+         assert actual == expected
+ 
+@@ -55,7 +55,7 @@ def test_mvsel2_v5_phase_a_kernel_matches_serial_reference_across_ranks() -> Non
+         )
+ 
+ 
+-def test_mvsel2_v5_kernel_worker_setting_is_semantically_inert() -> None:
++def test_mvsel2_v5_kernel_worker_setting_preserves_scientific_choice() -> None:
+     reference, _, forward = _forward_fixture()
+     reference_domain = reference.domain("target")
+     forward_domain = forward.domain("target")
+diff --git a/tests/test_mlff_opt_eval4_staged_evaluation_pipeline.py b/tests/test_mlff_opt_eval4_staged_evaluation_pipeline.py
+index c369975..9d7a8d3 100644
+--- a/tests/test_mlff_opt_eval4_staged_evaluation_pipeline.py
++++ b/tests/test_mlff_opt_eval4_staged_evaluation_pipeline.py
+@@ -484,3 +484,56 @@ def test_target_only_evaluation_requires_explicit_target_override(tmp_path: Path
+             policy=mdstats.CheckpointEvaluationPolicy(condition_keys=()),
+             allow_target_only_evaluation=True,
+         )
++
++
++def test_staged_runner_one_thread_budget_serializes_all_cpu_stages(
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    gib = 1024**3
++    one_thread = SystemResourceSnapshot(
++        cpu_threads_available=2,
++        cpu_fraction=0.50,
++        cpu_threads_budget=1,
++        ram_available_bytes=8 * gib,
++        ram_fraction=0.80,
++        ram_budget_bytes=int(8 * gib * 0.80),
++        gpu_memory_fraction=0.90,
++        gpu=GpuResourceSnapshot(False, 0, None, None, None, None, None, "test"),
++    )
++    monkeypatch.setattr(campaign_cli._core, "detect_system_resources", lambda **kwargs: one_thread)
++    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", _Probe)
++    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", lambda device: None)
++
++    lock = threading.Lock()
++    active = 0
++    peak = 0
++
++    def stage(value):
++        nonlocal active, peak
++        with lock:
++            active += 1
++            peak = max(peak, active)
++        time.sleep(0.01)
++        with lock:
++            active -= 1
++        return value
++
++    tasks = [
++        campaign_cli._StagedEvaluationTask(
++            display_index=index + 1,
++            key=f"one-{index}",
++            label=f"one-{index}",
++            start_detail="one-thread",
++            prepare=lambda index=index: stage(index),
++            requires_inference=lambda prepared: True,
++            infer=lambda prepared: stage(prepared),
++            finalize=lambda prepared, inferred: stage(inferred),
++            done_detail=lambda result, wall: "done",
++        )
++        for index in range(2)
++    ]
++    result = campaign_cli._run_staged_evaluation_tasks(
++        tasks, cfg=_pipeline_cfg(), device="cpu", progress=_Progress()
++    )
++    assert result == {"one-0": 0, "one-1": 1}
++    assert peak == 1
+diff --git a/tests/test_mlff_parallel_resources.py b/tests/test_mlff_parallel_resources.py
+index 7096ca1..07ed805 100644
+--- a/tests/test_mlff_parallel_resources.py
++++ b/tests/test_mlff_parallel_resources.py
+@@ -134,3 +134,62 @@ def test_data6_uses_batch_provider_and_adaptive_oom(tmp_path):
+     assert result.complete
+     assert provider.batch_descriptor_calls > 0
+     assert provider.batch_prediction_calls > 1
++
++
++def test_explicit_worker_request_cannot_bypass_cpu_fraction_budget() -> None:
++    resources = _resources(cpu=32, ram=8 * 1024**3)
++    assert resources.cpu_threads_budget == 28
++    assert resolve_worker_count(task_count=64, resources=resources, requested=32) == 28
++
++
++def test_stage_scope_accounts_native_openmp_separately() -> None:
++    from mdstats.training_data.resources import StageResourceScope
++
++    scope = StageResourceScope(
++        stage_name="native",
++        cpu_threads_available=32,
++        cpu_threads_budget=28,
++        python_workers=1,
++        native_openmp_threads=28,
++    )
++    assert scope.estimated_nested_cpu_threads == 28
++    assert "openmp=28" in scope.summary()
++
++
++def test_stage_scope_rejects_native_openmp_oversubscription() -> None:
++    import pytest
++    from mdstats.training_data.resources import StageResourceScope
++
++    with pytest.raises(ValueError, match="nested CPU threads"):
++        StageResourceScope(
++            stage_name="native-over",
++            cpu_threads_available=32,
++            cpu_threads_budget=28,
++            python_workers=2,
++            native_openmp_threads=28,
++        )
++
++
++def test_campaign_parallel_resolvers_use_full_runtime_budget(monkeypatch) -> None:
++    from mdstats.training_data import campaign_cli
++
++    resources = _resources(cpu=32, ram=8 * 1024**3)
++    monkeypatch.setattr(
++        campaign_cli._core,
++        "detect_system_resources",
++        lambda **kwargs: resources,
++    )
++    cfg = {"performance": {"cpu_fraction": 0.90, "ram_fraction": 0.80}}
++    query_workers, _ = campaign_cli._target_coverage_query_workers(cfg)
++    repair_workers, _ = campaign_cli._target_multi_view_repair_parallelism(cfg)
++    qualification_workers, _ = campaign_cli._target_multi_view_qualification_parallelism(cfg)
++    assert query_workers == resources.cpu_threads_budget == 28
++    assert repair_workers == 28
++    assert qualification_workers == 28
++
++
++def test_structural_autotune_capacity_uses_supplied_runtime_budget() -> None:
++    from mdstats.training_data.structural_selection import _automatic_structural_worker_cap
++
++    assert _automatic_structural_worker_cap(100, cpu_budget=28) == 28
++    assert _automatic_structural_worker_cap(12, cpu_budget=28) == 12
