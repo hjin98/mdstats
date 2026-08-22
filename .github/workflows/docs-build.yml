@@ -26,13 +26,13 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y pandoc
-          curl -fsSL https://typst.community/typst-install/install.sh | sh
+          curl -fsSL https://raw.githubusercontent.com/typst/typst/main/installer/install.sh | sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Build architecture PDF
         run: |
-          test -x docs/build_architecture_pdf.sh
-          docs/build_architecture_pdf.sh
+          test -f docs/build_architecture_pdf.sh
+          bash docs/build_architecture_pdf.sh
 
       - name: Publish build provenance
         if: always()
