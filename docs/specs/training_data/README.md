@@ -73,6 +73,7 @@ Profile-migration documents are historical rather than current extension contrac
 
 ## Deterministic and bounded execution
 
+- `mlff_cpu_resource_budget_spec.md` — sole campaign-wide CPU-capacity authority: affinity/cgroup-aware runtime availability, production `cpu_fraction = 0.90`, stage/native/OpenMP ownership, and nested/concurrent admission inside one budget.
 - `mlff_parcore1_deterministic_work_queue_spec.md` — shared bounded deterministic CPU work queue.
 - `mlff_mvkernel1_sparse_vector_kernels_spec.md` — exact sparse/vector kernel equivalence contract.
 - `mlff_repair_par1_deterministic_parallel_proposals_spec.md` — exact deterministic parallel REPAIR2 proposal scoring where current.

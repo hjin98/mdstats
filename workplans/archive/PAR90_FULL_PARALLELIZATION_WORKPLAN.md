@@ -104,3 +104,14 @@ Exercise fresh/resumed campaign paths under multiple affinity/cgroup budgets, RA
 - G6: complete. Active cKDTree/MVQUAL/structural capacity ceilings and the MVIDX eight-lane OOC assumption are removed; structural autotuning probes through the runtime endpoint.
 - G7: complete. Evaluation prepare/inference/finalize share one aggregate CPU budget, including process-wide native-thread width; a one-thread budget serializes all three stages.
 - G8: focused CPU/resource/native/determinism suites pass in the available container; source native build and clean wheel install/import both qualify the OpenMP backend. Full repository tests and production-scale timing remain workstation qualification because this container does not provide the required `mace` Conda environment/ASE dependency. GPU qualification remains deferred by project policy.
+
+## Closeout — 2026-08-22
+
+**Terminal implementation state: accepted for merge and archived.**
+
+- G0-G7 are complete and the G8 CPU/native closeout evidence recorded above is accepted for the implementation environment. The established product-density MVSEL2 evidence and comparable local Phase-A qualification remain the performance evidence for this transition; no new performance claim is made beyond those qualified workloads.
+- The durable exact CPU-capacity contract is now owned by `docs/specs/training_data/mlff_cpu_resource_budget_spec.md` and indexed as a current deterministic/bounded-execution specification. The cross-cutting architecture already states bounded single-level parallelism, shared stage resource ownership, and scientific-order preservation, so no duplicate architecture constant or derived PDF edit is introduced.
+- No second scheduler was added. The accepted implementation continues to reuse `SystemResourceSnapshot`, `StageResourceScope`, and `DeterministicWorkQueue` and preserves the scientific authorities listed in this plan.
+- Full-repository execution under the project `mace` Conda environment and workstation-scale production timing were not rerun in the present environment because that environment/ASE dependency is unavailable here. These environment-specific checks remain explicit workstation qualification, not evidence claimed by this closeout.
+- GPU qualification remains intentionally deferred to the final release workflow and is not part of PAR90 CPU implementation acceptance.
+- With those qualification boundaries recorded rather than silently waived, no remaining implementation gate is open. Future workstation/release qualification may reject or retune an execution width, but must preserve the current resource-budget and scientific-equivalence contracts.
