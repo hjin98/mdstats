@@ -1,10 +1,9 @@
 name: Build documentation PDFs
 
 on:
-  workflow_dispatch:
   push:
     branches:
-      - '**'
+      - docs/mlff-architecture-reset
     paths:
       - 'docs/**'
       - '.github/workflows/docs-build.yml'
@@ -12,6 +11,9 @@ on:
     paths:
       - 'docs/**'
       - '.github/workflows/docs-build.yml'
+
+permissions:
+  contents: read
 
 jobs:
   docs:
@@ -29,7 +31,6 @@ jobs:
 
       - name: Build architecture PDF
         run: |
-          mkdir -p build/docs
           test -x docs/build_architecture_pdf.sh
           docs/build_architecture_pdf.sh
 
