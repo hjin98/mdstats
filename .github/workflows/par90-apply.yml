@@ -1,0 +1,33 @@
+name: PAR90 branch patch apply
+
+on:
+  push:
+    branches:
+      - feat/par90-full-parallelization
+    paths:
+      - .github/workflows/par90-apply.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/par90-full-parallelization
+          fetch-depth: 0
+      - name: Apply reviewed PAR90 implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply --check workplans/PAR90_IMPLEMENTATION.patch
+          git apply --index workplans/PAR90_IMPLEMENTATION.patch
+          rm workplans/PAR90_IMPLEMENTATION.patch
+          rm .github/workflows/par90-apply.yml
+          git add -A
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Implement PAR90 full parallelization"
+          git push origin HEAD:feat/par90-full-parallelization
