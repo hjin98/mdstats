@@ -36,16 +36,20 @@ Current issue:
 
 - DATA7/MVSEL2 owns the materializable ladder.
 - DATA8 correctly validates requested sizes against that ladder.
-- Legacy target-size study state can still inject intermediate candidate sizes into DATA8.
-- Intermediate survivor sets are not final materialization authorities.
+- DATA8 variants currently take TRAIN2 sizes from target-size study state, while
+  each DATA7 ladder is independently built from legacy `[selection].sizes`.
+- Before a terminal target-size decision, hard-qualified candidates are valid
+  stage-authorized training inputs. After `selected(N)`, intermediate candidate
+  sets are no longer materialization authorities.
 
 ## Scope
 
 Included:
 
 - Trace the producer of DATA8 `selection_size`.
-- Replace legacy intermediate target-size propagation with authoritative selected target size.
-- Add validation that selected target size exists in the DATA7 ladder.
+- Use one validated target-size tuple for both DATA7 and DATA8 materialization.
+- Narrow that tuple to the authoritative selected target size after `selected(N)`.
+- Add validation that every requested size exists in the active TARGET-DATA2C ladder.
 - Add regression coverage.
 
 Excluded:
@@ -73,24 +77,25 @@ Document exact producer-consumer chain.
 
 ### Gate 2: Control-plane patch
 
-Replace legacy:
+Replace split authority:
 
 ```
-intermediate survivor sizes -> DATA8
+target-size study state -> DATA8 variants
+[selection].sizes       -> DATA7 ladder
 ```
 
 with:
 
 ```
-validated selected_target_size -> DATA8
+validated active TARGET-DATA2D sizes -> DATA7 and DATA8
+selected(N)                       -> selected_target_size only
 ```
 
 Add hard validation:
 
 ```
-selected_target_size exists
-AND
-selected_target_size is present in DATA7 ladder
+every requested size is present in active TARGET-DATA2C
+AND selected(N) has selected_target_size
 ```
 
 ### Gate 3: Regression
