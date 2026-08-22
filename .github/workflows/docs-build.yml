@@ -1,0 +1,78 @@
+name: Build documentation PDFs
+
+on:
+  push:
+    branches:
+      - docs/mlff-architecture-reset
+    paths:
+      - 'docs/**'
+      - '.github/workflows/docs-build.yml'
+  pull_request:
+    paths:
+      - 'docs/**'
+      - '.github/workflows/docs-build.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout mdstats
+        uses: actions/checkout@v4
+
+      - name: Install pinned documentation toolchain
+        run: |
+          set -euo pipefail
+          mkdir -p .doc-tools
+          curl -fsSL https://raw.githubusercontent.com/hjin98/mace-dependencies/main/pandoc-3.10.2-linux-amd64.tar.gz -o /tmp/pandoc.tar.gz
+          curl -fsSL https://raw.githubusercontent.com/hjin98/mace-dependencies/main/typst-x86_64-unknown-linux-musl.tar.xz -o /tmp/typst.tar.xz
+          tar -xzf /tmp/pandoc.tar.gz -C .doc-tools --strip-components=1
+          tar -xf /tmp/typst.tar.xz -C .doc-tools
+          find .doc-tools -type f -name pandoc -exec chmod +x {} \;
+          find .doc-tools -type f -name typst -exec chmod +x {} \;
+          find .doc-tools -type f -name pandoc -exec dirname {} \; >> "$GITHUB_PATH"
+          find .doc-tools -type f -name typst -exec dirname {} \; >> "$GITHUB_PATH"
+
+      - name: Validate documentation toolchain
+        run: |
+          set -euo pipefail
+          command -v pandoc
+          command -v typst
+          pandoc --version
+          typst --version
+
+      - name: Build architecture PDF
+        run: |
+          test -f docs/build_architecture_pdf.sh
+          bash docs/build_architecture_pdf.sh
+
+      - name: Publish build provenance
+        if: always()
+        run: |
+          mkdir -p docs/.ci
+          {
+            echo "# Documentation build status"
+            echo
+            echo "- commit: $GITHUB_SHA"
+            echo "- workflow: $GITHUB_WORKFLOW"
+            echo "- run: $GITHUB_RUN_ID"
+            echo "- status: ${{ job.status }}"
+            echo "- generated: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            if [ -f build/docs/mlff_training_data_architecture.pdf.sha256 ]; then
+              echo
+              echo "## PDF checksum"
+              cat build/docs/mlff_training_data_architecture.pdf.sha256
+            fi
+          } > docs/.ci/latest_documentation_build.md
+
+      - name: Upload documentation artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: documentation-pdf-${{ github.sha }}
+          path: |
+            build/docs/**/*.pdf
+            build/docs/**/*.sha256
+            docs/.ci/latest_documentation_build.md
+          if-no-files-found: error

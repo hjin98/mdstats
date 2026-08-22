@@ -1,31 +1,47 @@
-# Bounded checkpoint evaluation and tiered verification
+# Bounded checkpoint evaluation and tiered deployment verification
 
 ## Scope
 
-This manual defines the DATA9B cost-control contract introduced in mdstats 0.20.82a0. It preserves authoritative model selection and deployment checks while preventing evaluation and verification from repeating training-scale work.
+This note explains the current cost-control boundary for checkpoint evaluation and deployment verification. It preserves authoritative model selection and mandatory deployment checks while avoiding repeated training-scale inference when a bounded exact-equivalent evaluation plan is available.
+
+Exact shortlist, metric, resource, and verification policies are owned by the current specifications indexed in `docs/specs/training_data/README.md`.
 
 ## Checkpoint screening versus authoritative evaluation
 
-Training already writes validation summaries for every epoch. Those summaries are inexpensive evidence because no model reconstruction is required. mdstats uses them only to construct a deterministic shortlist containing the latest durable checkpoint and candidates representing strong target and, when present, replay validation metrics.
+Training may emit inexpensive per-epoch validation summaries. Those summaries may construct a deterministic evaluation shortlist under the current checkpoint-control policy, but they are not themselves final checkpoint authority.
 
-The shortlist is not the final selector. Every shortlisted checkpoint is reconstructed and evaluated against mdstats monitor sets, including target force/energy/stress and mobile-ion/condition strata. Genuine DFT-labeled replay can supply an additional retention gate; foundation-pseudolabel replay supplies only an absolute behavioral-drift diagnostic. Production checkpoint selection uses these authoritative results. A zero shortlist limit restores exhaustive behavior.
+Every shortlisted checkpoint is reconstructed and evaluated on the current authenticated target/replay monitor evidence. The resulting authoritative metrics and mandatory constraints decide checkpoint admissibility.
 
-## Independent replay-label plane
+A bounded shortlist is an evaluation budget, not an exhaustive scientific claim. A completed run with no admissible checkpoint records that result explicitly; it does not silently promote an unevaluated or constraint-violating checkpoint. When the current policy permits exhaustive evaluation, its explicit configuration changes the evaluation workload without changing metric semantics.
 
-DATA8 replay artifacts remain the immutable training plane. When `[paths].replay_true_labels` is configured, evaluation resolves an independent label plane with the exact same ordered replay geometries. The original source-to-split mapping is authenticated by `replay_source_index` and geometry identities. Candidate and foundation metrics are then computed against true labels while the campaign run remains bound to its pseudo-label DATA8 artifact. The evaluation cache includes both identities, so changing true labels refreshes metrics without rebuilding or relabelling training data.
+## Replay-label plane
 
-Evaluation records store full per-dataset metrics for the foundation and candidate on the target and replay monitors. This makes improvement and forgetting directly inspectable rather than reducing the comparison to one replay ratio.
+Replay training and replay evaluation remain separate evidence roles. When true-label replay evaluation is configured, the evaluation layer binds exact replay geometry/source identities to the independent true-label plane and computes candidate/foundation retention metrics against that evidence.
+
+Pseudo-label replay may diagnose behavioral drift but does not masquerade as an absolute DFT-label validation metric.
+
+Changing replay-label evidence refreshes evaluation identity; it does not rewrite the immutable replay-training artifact under the same identity.
 
 ## Verification tiers
 
-A final/deployment model receives all configured structures and temperatures for the full NVE length. Cross-validation fold models are comparison evidence rather than deployment candidates and receive a bounded stability smoke unless no final model exists, in which case the strongest available fold receives full coverage.
+Production/deployment candidates receive the complete mandatory verification suite defined by the current deployment policy. Cross-validation fold models are protocol-validation evidence and are not deployment candidates.
 
-Every verification case is identified by model bytes, structure bytes, temperature, step count, timestep, sampling cadence, numerical mode and runtime identity. Completed cases are reusable after interruption. A single calculator is retained while sequential cases for the same model run.
+A verification case binds model bytes, structure/evidence bytes, physical condition, integration/analysis settings, numerical mode, and runtime identity. Authenticated completed cases may be reused after interruption.
+
+Short stability smokes may establish finite-output and gross physical-safety predicates but cannot claim long-time drift/transport evidence that requires a longer trajectory.
 
 ## Diagnostic cadence
 
-Velocity-Verlet integration still advances every MD step. Expensive energy, force and all-pairs minimum-distance diagnostics are evaluated at a configurable cadence and at the final step. Energy drift is fitted only for full-length cases. Short smoke cases enforce finite outputs, minimum-distance and maximum-force bounds but do not claim a long-time drift result.
+The numerical integrator advances according to the current simulation contract. Expensive diagnostic evaluation may occur at a qualified cadence when that cadence preserves the owning verification predicate.
+
+Long-time metrics such as energy-drift fits are reported only when the required trajectory length/evidence conditions are satisfied. A short smoke cannot substitute for them.
 
 ## Cleanup contract
 
-After full evaluation commits a selected checkpoint and complete shortlist evidence, checkpoints excluded during screening may be removed when configured. Interim evaluation never applies this pruning because unfinished training may still need restart checkpoints. Selected checkpoints, exported models, metric records, hashes and diagnostics remain protected.
+Reconstructible excluded-checkpoint caches may be pruned after authoritative selection evidence is committed and restart requirements are satisfied. Selected checkpoints, exported models, current metric/admissibility records, hashes, and mandatory verification evidence remain protected under the storage policy.
+
+Cleanup cannot alter scientific selection or erase evidence needed to reproduce why a candidate passed or failed.
+
+## Single-generation boundary
+
+This note defines current behavior only. Historical release/gate implementations remain in Git/history and do not create alternate shortlist, reconstruction, or verification semantics for new campaigns.

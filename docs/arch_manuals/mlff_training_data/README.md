@@ -1,16 +1,23 @@
-# MLFF architecture chapter sources
+# MLFF architecture canonical chapter sources
 
-These numbered Markdown files are the maintainable sources for the canonical `../mlff_training_data_architecture.md`. Run `python tools/build_mlff_architecture_manual.py` from the repository root after editing a chapter. The assembled manual and PDF are release-facing authority; history belongs under `docs/history/mlff/`.
+The numbered Markdown files in this directory are the **canonical editable sources** for the current MLFF architecture. The assembled `../mlff_training_data_architecture.md` and its PDF are derived publication products and must be regenerated from these chapters rather than edited independently.
+
+The architecture is present-tense and single-generation. Historical selector/repair/migration designs belong under `docs/history/mlff/`; proposed implementation transitions belong under `workplans/`.
 
 | Order | Chapter | Purpose |
 |---:|---|---|
-| 00 | `00_front_matter.md` | MLFF Training-Data and Fine-Tuning Architecture |
-| 01 | `10_foundations.md` | Part I - Foundations and ownership |
+| 00 | `00_front_matter.md` | Purpose, authority, workflow map, terminology, retrieval index |
+| 01 | `10_foundations.md` | Part I - Foundations |
 | 02 | `20_data_contracts.md` | Part II - Data and evidence contracts |
-| 03 | `30_statistical_design.md` | Part III - Statistical design and selection |
-| 04 | `40_training_evaluation.md` | Part IV - Training and evaluation |
-| 05 | `50_target_multiview.md` | Part V - Multi-view target-data architecture |
-| 06 | `60_execution_performance.md` | Part VI - Performance and execution architecture |
-| 07 | `70_status_and_gates.md` | Part VII - Current implementation status and frozen forward gates |
-| 08 | `80_ownership_and_decisions.md` | Part VIII - Ownership boundaries and decision summary |
-| 09 | `90_references.md` | References |
+| 03 | `30_statistical_design.md` | Part III - Statistical design and fitted preparation |
+| 04 | `40_training_evaluation.md` | Part IV - Training, evaluation, and deployment |
+| 05 | `50_target_multiview.md` | Part V - Multi-view target subset and target-size architecture |
+| 06 | `60_execution_performance.md` | Part VI - Bounded execution, restart, and performance architecture |
+| 07 | `80_ownership_and_decisions.md` | Part VII - Ownership and extension boundaries |
+| 08 | `90_references.md` | References |
+
+`70_status_and_gates.md` is not a current architecture chapter and must not be recreated as a task/status surface. Release/gate chronology is non-normative.
+
+The current dependency/data-flow companion is `../mlff_training_data_dependency_graph.json`. It is reconciled with these chapter sources and contains no alternate legacy/migration execution path.
+
+Publication tooling is validated in DOC-MLFF-ARCH-RESET1 A5. If the repository lacks a reproducible builder for the assembled Markdown/PDF, that is a publication-source-chain defect to repair; it is not permission to patch the derived outputs manually.

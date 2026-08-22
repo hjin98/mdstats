@@ -1,171 +1,154 @@
-# Part I - Foundations and ownership
+# Part I - Foundations
 
-## Reader orientation
-
-### What an MLFF learns
+## What an MLFF learns
 
 An energy-conserving machine-learned force field represents a potential-energy function
 
 $$
-E_\theta = E_\theta(\mathbf Z, \mathbf R, \mathbf H),
+E_\theta=E_\theta(\mathbf Z,\mathbf R,\mathbf H),
 $$
 
-where $\mathbf Z$ contains atomic numbers, $\mathbf R$ contains positions, $\mathbf H$ is the periodic cell, and $\theta$ denotes model parameters. Forces and stress follow from derivatives of the same energy,
+where \(\mathbf Z\) contains atomic numbers, \(\mathbf R\) positions, \(\mathbf H\) the periodic cell, and \(\theta\) model parameters. Forces and stress follow from derivatives of the same energy,
 
 $$
-\mathbf F_i = -\frac{\partial E_\theta}{\partial \mathbf R_i},
+\mathbf F_i=-\frac{\partial E_\theta}{\partial\mathbf R_i},
 \qquad
-\boldsymbol\sigma = -\frac{1}{V}\frac{\partial E_\theta}{\partial \boldsymbol\epsilon},
+\boldsymbol\sigma=-\frac{1}{V}\frac{\partial E_\theta}{\partial\boldsymbol\epsilon},
 $$
 
-under the declared stress sign and strain convention of the label source. MACE constructs symmetry-aware local atomic features and sums atomic-energy contributions [1]. A useful training/evaluation corpus therefore constrains both the energy surface and its derivatives throughout the intended simulation domain.
+under the declared stress sign and strain convention of the label source. MACE constructs symmetry-aware local atomic representations and sums atomic-energy contributions [1]. A useful training/evaluation corpus must therefore constrain both the energy surface and its derivatives throughout the intended simulation domain.
 
-A low average force error is not sufficient. Common framework vibrations can dominate aggregate statistics while rare mobile-ion environments, strain states, migration geometries, or other declared focus physics remain poorly represented. The architecture therefore separates broad numerical metrics, condition/group-resolved evidence, physical observable validation, and explicit extrapolation/challenge evidence.
+A low global force error is not sufficient. Common framework vibrations can dominate aggregate statistics while rare mobile-ion environments, strain states, migration geometries, interfaces, defects, or other declared focus physics remain poorly represented. The architecture separates broad numerical metrics, condition/group-resolved evidence, physical-observable validation, and explicit extrapolation/challenge evidence.
 
-### Why adjacent MD frames are not independent
+## Why trajectory frames need statistical roles
 
-A molecular-dynamics trajectory contains temporally correlated configurations. Neighboring frames can be near duplicates, so placing them in different statistical roles can create leakage and overstate model accuracy.
+Molecular-dynamics frames are temporally correlated. Neighboring configurations can be near duplicates, so assigning them to nominally different roles can create leakage and overstate model quality.
 
-For an observable $x_t$, the normalized autocorrelation at lag $k$ is
+For observable \(x_t\), normalized autocorrelation at lag \(k\) is
 
 $$
-\rho_x(k) =
-\frac{\langle (x_t-\bar x)(x_{t+k}-\bar x)\rangle}
-{\langle (x_t-\bar x)^2\rangle}.
+\rho_x(k)=
+\frac{\langle(x_t-\bar x)(x_{t+k}-\bar x)\rangle}
+     {\langle(x_t-\bar x)^2\rangle}.
 $$
 
 A truncated integrated autocorrelation time is
 
 $$
-\tau_{\mathrm{int},x}
-=
-\Delta t\left[\frac{1}{2}+\sum_{k=1}^{k^\star}\rho_x(k)\right],
+\tau_{\mathrm{int},x}=\Delta t\left[\frac12+\sum_{k=1}^{k^\star}\rho_x(k)\right],
 $$
 
-with an effective sample count approximately
+with approximate effective sample count
 
 $$
 N_{\mathrm{eff},x}\approx\frac{T}{2\tau_{\mathrm{int},x}}.
 $$
 
-mdstats uses autocorrelation-aware complete-frame blocks, purge semantics, and explicit independence grades rather than treating every frame as an independent observation [3-5]. The precise estimator, truncation, block-size, purge, and role-assignment behavior belongs to the current sampling/partition specifications.
+mdstats therefore uses autocorrelation-aware complete-frame blocks, purge semantics, and explicit independence grades rather than treating every frame as independent [3-5]. Exact estimators, truncation, block size, purge, and role-assignment rules are specification-owned.
 
-### Statistical evidence roles
+## Evidence-role model
 
-The architecture distinguishes gradient-training evidence from model-control and final-evaluation evidence.
+The architecture distinguishes evidence by what it is allowed to control.
 
-| Role | Function | May affect parameters? | May affect model/checkpoint choice? |
-|---|---|---:|---:|
-| Training/development | Supplies gradient updates and fitted training-domain products | Yes | Yes |
-| Checkpoint monitor / validation | Controls declared stopping/checkpoint policy | No | Yes |
-| Outer validation | Estimates protocol performance without fitting that protocol | No | No for the already-frozen job |
-| Calibration | Calibrates final-committee uncertainty/acquisition behavior | No | No training/checkpoint change |
-| Locked test / challenge | Final sealed evaluation of interpolation or named mechanisms | No | No |
+| Role | Supplies gradients? | May control fitted preparation/subset/size/checkpoint? | Purpose |
+|---|---:|---:|---|
+| development / training domain | Yes when selected | Yes, within the authorized training/model-selection contract | fitting and protocol development |
+| checkpoint / common target monitor | No | Yes, only for explicitly authorized development/model-control decisions | stopping/checkpoint and target-size development evidence |
+| held-out CV evaluation | No | No for the frozen protocol it evaluates | protocol validation |
+| calibration | No | No training/subset/checkpoint changes | final-committee uncertainty calibration |
+| locked interpolation/challenge test | No | No | sealed final evaluation |
 
-Calibration is not test data, and locked/challenge evidence is not ordinary validation data.
+Calibration is not test data; held-out CV is not a checkpoint monitor; and a monitor cardinality is not a target-training cardinality.
 
 ## Scope and ownership
 
-The MLFF training-data subsystem owns dataset-level certification, comparison, partition, selection, training-artifact construction, campaign orchestration, checkpoint/evaluation lineage, deployment verification coordination, and active-learning lineage.
+The MLFF subsystem owns dataset certification, evidence-role construction, fitted preparation, multi-view target-subset construction, target-size study, training-artifact construction, campaign orchestration, checkpoint/evaluation lineage, deployment verification coordination, and active-learning lineage.
 
 Its current responsibilities include:
 
 - VASP source discovery/certification and source/label identities;
-- composition, thermodynamic condition, ensemble, reference-cell, and strain reconstruction;
+- composition, thermodynamic condition, ensemble, reference-cell, strain/stress reconstruction;
 - electronic-structure compatibility and label-domain grouping;
-- energy/force/stress auditing and atomic-reference identifiability/fitting lineage;
+- energy/force/stress audit and atomic-reference identifiability/fitting lineage;
 - immutable frame facts, eligibility, and quality decisions;
-- generic structural feature providers plus explicit optional material-profile extensions;
-- event detection before ordinary thinning;
+- generic raw structural features/events plus explicit optional material/profile extensions;
 - autocorrelation-aware complete-frame blocks and role feasibility;
-- fixed outer evidence roles and independent cross-validation job families;
-- fold-local transforms, metrics, E0 fits, difficulty evidence, and selection;
-- deterministic nested target-data construction and exact multi-view coverage/selection;
+- fixed outer roles and independent CV job families;
+- fold/final-domain fitted descriptors, transforms, metrics, E0, objective/weight, and difficulty evidence;
+- exact multi-view feasibility/indexing, MVSEL2 ordering, REPAIR2 master order, MVSTATE2 continuation, and MVQUAL qualification;
+- one protocol-global target-size decision with domain-local membership;
 - MACE target/replay artifacts and explicit exposure realization;
-- replay-retention monitoring and checkpoint admissibility;
-- training/evaluation execution, protocol freeze, and committee export;
-- final-committee-bound calibration and sealed evaluation activation;
-- candidate admissibility/acquisition records and append-only active-learning lineage where supported by the current runtime/specification set.
+- replay-retention and checkpoint admissibility;
+- protocol-matched CV, final training, committee export, calibration, sealed evaluation, and deployment verification;
+- active-learning candidate/DFT lineage where supported by current specifications.
 
-LTA/zeolite ring, cage, site, crossing, and related semantics are optional profile extensions; they are not generic defaults.
+The subsystem does not silently merge incompatible electronic-structure levels, infer ambiguous scientific references, use held-out/locked evidence for forbidden model-control decisions, redefine analysis-owned physical-observable algorithms, create a second target selector, generate rescue target sizes, or migrate unsupported old campaign generations.
 
-The subsystem does not silently merge incompatible electronic-structure levels, infer ambiguous scientific references, use locked-test evidence for fitting/calibration/acquisition, treat replay-head disagreement as an uncertainty committee, redefine physical-analysis algorithms, or silently obtain external replay data.
+LTA/zeolite ring, cage, site, crossing, and related semantics are optional profile extensions rather than generic defaults.
 
-## Reference application: bulk Li/Na/K-LTA
+## Reference application: Li/Na/K-LTA
 
-The principal reference corpus contains 27 AIMD runs spanning seven cation compositions, three temperatures, and six additional LiNaK strain conditions. This application motivates, but does not hard-code into generic behavior, several design requirements:
+The principal reference application contains AIMD evidence spanning multiple cation compositions, temperatures, and strain conditions. It motivates—but does not hard-code into generic architecture—several requirements:
 
-1. framework atoms can outnumber mobile cations, so global descriptor averages must not hide declared mobile-species environments;
-2. strain conditions need not form a full Cartesian product with composition and temperature, so condition schemas are hierarchical;
+1. framework atoms can outnumber mobile cations, so aggregate metrics must not hide declared mobile-species environments;
+2. strain conditions need not form a full Cartesian product with composition/temperature, so condition applicability may be hierarchical;
 3. one trajectory per condition supplies limited independence and must not be represented as an independent-replica test;
 4. fixed framework stoichiometry can make individual atomic reference-energy corrections non-identifiable without anchors;
 5. short trajectories may contain few rare transitions, so absent events are explicit coverage gaps rather than evidence of irrelevance.
 
-## Relationship to existing mdstats capabilities
+## Reuse of analysis and sampling capabilities
 
-The training-data subsystem orchestrates existing mdstats scientific capabilities rather than duplicating them.
+The MLFF workflow orchestrates existing mdstats capabilities instead of duplicating them.
 
-| Existing capability | Reused evidence |
+| Capability | MLFF use |
 |---|---|
 | `mdstats.io.vasp.read_vasp_frames` | cells, coordinates, energies, forces, stress, temperature, provenance |
-| `mdstats.io.vasp_controls.read_vasp_run_controls` | source controls, named energy channels, SCF behavior |
-| VASP ensemble-control certification | ensemble/control classification |
-| trajectory-quality assessment | source and trajectory integrity verdicts |
-| production-regime assessment | transient/stationary regime evidence |
-| analysis structural/topology modules | optional profile-owned structural evidence |
-| `mdstats.io.sampling_crossfit` and sampling primitives | source-bound block and purge semantics |
+| VASP control/ensemble readers | controls, energy-channel and ensemble evidence |
+| trajectory-quality / production-regime assessment | source and stationary-regime evidence |
+| analysis structural/topology modules | optional profile-owned raw evidence or post-training observables under analysis contracts |
+| sampling/cross-fit primitives | source-bound blocks, purge, and independence semantics |
 
-Physical observables remain owned by `mdstats.analysis`; the MLFF layer may invoke and compare their results only through the declared analysis-owned contracts.
+Physical observables remain owned by `mdstats.analysis`. The MLFF layer may orchestrate matched evaluation and retain analysis-owned result identities, but it does not redefine RDF, MSD, VACF, VDOS, diffusion, topology, conductivity, or related numerical algorithms.
 
-## Controlling data flow
-
-The current controlling flow is:
+## Current controlling data flow
 
 ```text
-source bytes
-  -> source occurrence identity
-  -> controls + trajectory collection
-  -> ensemble, quality, and production-regime evidence
-  -> source catalog + decomposed label-domain audit
-  -> structural atomic-reference identifiability
-  -> immutable frame facts
-       occurrence UID
-       geometry fingerprint
-       label payload digest
-       labeled-configuration fingerprint
-  -> labeled-frame eligibility
-  -> full-resolution generic + partition-critical profile features
-  -> event detection before ordinary thinning
-  -> complete-frame temporal blocks
-  -> fixed outer partition + independence evidence
-       development pool
-       outer monitor/validation
-       calibration cohort when supported
-       sealed interpolation/challenge tests when supported
-  -> independent cross-validation job family
-       fold-training domain
-       disjoint checkpoint monitor
-       held-out evaluation fold
-       fold-local fitted products and selection
-       fresh model/checkpoint per fold
-       out-of-fold predictions
-  -> final target-training fitted products + deterministic target-data order/rungs
-  -> development MACE target/replay bundle
-       no locked-test path
-       replay-retention constraints
-  -> candidate checkpoint evaluation and admissibility
-  -> selected final checkpoints + independent-seed committee
-  -> protocol freeze
-  -> final-committee calibration where configured
-  -> explicit sealed-evaluation activation
-  -> deployment verification
-  -> active-learning candidate/DFT lineage where configured
+source bytes / controls / trajectory collections
+  -> source and label-domain certification
+  -> immutable frame facts and eligibility
+  -> raw features/events before ordinary thinning
+  -> correlation-aware blocks and evidence-role feasibility
+  -> development / monitor / CV / calibration / locked roles
+  -> required fold/final training domains
+  -> domain-local DATA6/DATA7 fitted preparation
+  -> FEAS1 + MVIDX1
+  -> MVSEL2 -> REPAIR2 / MVSTATE2
+  -> independent MVQUAL prefix qualification
+  -> common qualified target-size population
+  -> target-size study using authorized development/model-selection evidence
+  -> one frozen protocol-global N_selected
+  -> domain-local selected prefixes
+  -> protocol-matched CV with held-out folds inaccessible to size/checkpoint choice
+  -> accepted frozen protocol
+  -> independent final seeds and checkpoint admission
+  -> final committee + deployment artifacts
+  -> final-committee calibration where supported
+  -> explicit locked-test / observable-validation activation
+  -> active-learning lineage where configured
 ```
 
-No allowed dependency runs from locked-test evidence into fitted transforms, E0 fitting, training selection, protocol/checkpoint choice, uncertainty calibration, or acquisition policy.
+No allowed dependency runs from held-out CV or locked-test evidence backward into fitted transforms, E0 fitting, target membership, target-size selection, checkpoint choice, or calibration-policy design.
 
-## Package and responsibility structure
+## Responsibility separation is more durable than module layout
 
-Current implementation is organized under source-independent sampling primitives, `mdstats.training_data` record/policy/workflow modules, optional feature/profile providers, MACE export/runtime adapters, campaign orchestration, and analysis-owned observable bridges. The architectural requirement is responsibility separation rather than a frozen file listing: source facts, workflow decisions, fitted products, runtime realizations, and external-analysis results remain distinct owners even when modules are reorganized internally.
+The implementation may reorganize Python modules while preserving the architecture. The durable separation is among:
 
-Public/serialized compatibility promises are controlled by current specifications and schema readers. Internal refactoring may reuse common sampling or execution primitives only when the externally owned scientific behavior and persisted identities remain compatible.
+- physical/source facts;
+- evidence-role and policy decisions;
+- training-domain fitted products;
+- target-membership and target-size decisions;
+- runtime/execution realization;
+- validation/calibration/locked evidence;
+- external analysis-owned results.
+
+Current specifications control public/serialized current-generation contracts. Internal refactoring may reuse common sampling/execution primitives when externally owned scientific behavior and persisted current-generation identities remain conforming. Backward compatibility with superseded campaign generations is not an architectural requirement.

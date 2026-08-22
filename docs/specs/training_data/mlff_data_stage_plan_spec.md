@@ -1,496 +1,177 @@
 ---
-title: "MLFF Training-Data System Contract Specification"
-subtitle: "MLFF-DATA0"
+title: "MLFF Training-Data System Contract"
+subtitle: "Cross-cutting current-generation invariants"
 author: "mdstats project"
-date: "2026-08-04 (through DATA9B3A)"
+date: "2026-08-21"
 geometry: margin=0.78in
 toc: true
-toc-depth: 2
-numbersections: true
-fontsize: 10.5pt
-header-includes:
-  - |-
-    \usepackage{booktabs}
-  - |-
-    \usepackage{longtable}
-  - |-
-    \usepackage{microtype}
 ---
 
 # Scope
 
-This document is the cross-cutting current system contract for the mdstats MLFF training-data and fine-tuning workflow. It owns invariants that span multiple narrower module specifications: evidence-role separation, identity and lineage boundaries, leakage prevention, protocol identity, target/replay separation, MACE realization, calibration applicability, and append-only active-learning lineage.
+This document is the cross-cutting current system contract for the mdstats MLFF training-data and fine-tuning workflow. The legacy filename is retained for stable references; this is **not** an implementation-stage plan.
 
-The legacy filename is retained for stable repository references. It is **not** an implementation stage plan. Developer sequencing and future gates belong in `workplans/`; completed implementation chronology belongs in `docs/history/mlff/`. Narrower current specifications under this directory own module-local API, schema, algorithm, persistence, and runtime details.
+It owns only invariants that span narrower specifications: evidence-role separation, dependency direction, identity/lineage, fitted-domain isolation, target-membership/target-size ownership, protocol identity, replay/monitor separation, sealed evaluation, calibration, bounded execution, and fail-closed current-generation publication.
+
+Narrow specifications own exact module schemas, numerical constants, algorithms, storage formats, and runtime behavior. Architecture owns the higher-level dependency/ownership model. Workplans and historical documents are non-normative.
 
 # Normative principles
 
-1. Source facts, eligibility, partition, selection, weighting, exposure, and
-   acquisition are separate immutable record families.
-2. A frame that has contributed a gradient is not independent validation
-   evidence for that model.
-3. Cross-validation SHALL train one fresh model per held-out evaluation fold.
-4. A held-out evaluation fold SHALL NOT control stopping or checkpoint choice.
-5. Every fold SHALL have a checkpoint-monitor domain disjoint from both its
-   gradient-training domain and held-out evaluation fold.
-6. Cross-validation SHALL be bound to the complete `TrainingProtocolIdentity`
-   used for final training. Naive and replay protocols are different protocols.
-7. Feature fitting, label-derived difficulty features, E0 fitting, and selection
-   SHALL inspect only the applicable training domain.
-8. Locked tests SHALL NOT affect fitting, selection, protocol choice, stopping,
-   checkpointing, uncertainty calibration, or acquisition.
-9. Locked tests SHALL be absent from training configurations and activated only
-   after a `ProtocolFreezeRecord` and selected committee identity exist.
-10. Partition-critical system-profile features SHALL exist before the outer
-    partition is locked.
-11. The first MACE adapter SHALL support one target label domain, an optional
-    replay head, and fixed-file native training only.
-12. The first MACE adapter SHALL verify native head ordering, checkpoint control,
-    and target/replay exposure realization against its version lock.
-13. Replay retention SHALL be governed by an explicit constraint and applied to
-    saved candidate checkpoints.
-14. Dynamic per-epoch resampling SHALL require a custom runtime adapter or
-    explicit multi-job protocol; fixed files alone SHALL NOT claim that feature.
-15. Active-learning calibration SHALL be bound to the actual final committee and
-    a declared applicability domain.
-16. Existing frame roles SHALL be inherited unchanged by active-learning child
-    datasets unless a new evaluation lineage is explicitly created.
+1. Source facts, eligibility, evidence roles, fitted preparation, target membership, target size, weighting, exposure, checkpoint selection, validation, calibration, and acquisition are distinct record/decision families.
+2. A frame that supplied a gradient is not independent validation evidence for that model.
+3. Held-out cross-validation evaluates a frozen protocol and cannot control target size, stopping, or checkpoint choice for that protocol.
+4. Every fold has a gradient-training domain, an authorized checkpoint monitor, and a held-out evaluation fold with explicit independence/purge evidence.
+5. Cross-validation trains a fresh model/optimizer lineage for each held-out fold and validates the complete `TrainingProtocolIdentity` actually used by final training.
+6. Feature fitting, E0 fitting, label-derived difficulty evidence, and target-subset inputs inspect only the applicable fold/final gradient-training domain.
+7. DATA7 prepares fitted target-subset inputs and SHALL NOT publish target membership or target size.
+8. MVSEL2/REPAIR2 are the sole current target-membership ordering/repair authorities; MVSTATE2 is current continuation state; MVQUAL independently verifies hard prefix requirements.
+9. `TargetSizeStudyPolicy` is the sole scientific target-size authority. Monitor/replay/batch/pool cardinalities are different semantic types.
+10. Target membership is domain-local; the selected target size is protocol-global across required domains.
+11. Target-size screening uses only authorized development/model-selection evidence. Held-out CV, calibration, and locked tests are forbidden inputs.
+12. Locked tests cannot affect fitting, membership, size, protocol choice, stopping, checkpointing, calibration-policy choice, or acquisition and are activated only after protocol/committee freeze.
+13. Replay training, replay monitoring, target monitoring, and target training preserve separate source/role identities.
+14. Replay retention and mandatory physical/deployment integrity are hard admissibility constraints unless an explicit current scientific policy states otherwise.
+15. Dynamic resampling/exposure semantics require an explicit current adapter/protocol; static files alone cannot claim them.
+16. Calibration is bound to predictions from the actual frozen final committee and an explicit applicability domain.
+17. Active-learning child generations inherit prior evidence roles unless a new evaluation lineage explicitly reassigns them.
+18. Unsupported old campaign generations are rejected/re-prepared rather than migrated into current semantics.
+19. Execution caches, worker scheduling, out-of-core layout, and other realization choices cannot change scientific identity or authoritative decisions.
+20. Publication fails closed when required current-generation identities, upstream evidence, or schema/content validation are missing/incompatible.
 
-# Record-family contract
+# Core record ownership
 
-| Record | Owns | Must not own |
+| Record / policy family | Owns | Must not own |
 |---|---|---|
-| `TrainingDataSource` | source path, hashes, composition, controls, ensemble, quality, label domain | frame eligibility or split role |
-| `TrainingFrameRecord` | source-bound frame facts and identity references | eligibility, partition, selection, exposure, acquisition |
-| `FrameEligibilityDecision` | post-DFT label/quality outcome | partition or training membership |
-| `PartitionAssignment` | one statistical role under one partition policy | feature-selection outcome |
-| `PartitionFeasibilityReport` | support for requested roles and declared reductions | fabricated independent cohorts |
-| `PartitionIndependenceReport` | evidence grade, purge, correlation, and duplicate limits | claim of stronger independence than observed |
-| `SelectionAssignment` | selected/not-selected and reasons | epoch use count |
-| `ExposureAssignment` | head, epochs, weights, and use counts | independent-evidence claim |
-| `MaceExposureRealizationRecord` | actual loader counts, duplication, batches, and property exposures | intended exposure only |
+| `TrainingDataSource` / source records | source bytes/controls/composition/label-domain lineage | frame eligibility or evidence role |
+| `TrainingFrameRecord` | immutable source-bound frame facts | eligibility, partition, membership, exposure |
+| `FrameEligibilityDecision` | post-label/quality eligibility | partition or target membership |
+| `PartitionAssignment` | one statistical role under DATA5 policy | fitted quantities or target order |
+| `PartitionFeasibilityReport` | whether requested evidence roles are supportable | fabricated independent evidence |
+| `PartitionIndependenceReport` | actual independence/purge/duplicate limitations | stronger independence than observed |
+| DATA6/7 fitted records | training-domain descriptors/transforms/E0/difficulty/objective/weights/subset inputs | held-out labels, target membership, target size |
+| MVSEL2 result | deterministic target order within one training domain | independent qualification or selected target size |
+| REPAIR2 result | one repaired master order per domain | independently repaired rung copies |
+| MVSTATE2 | authenticated reconstructible selector/repair continuation state | migration semantics for obsolete state |
+| MVQUAL result | independent hard coverage/obligation evidence for a prefix | selector score/ranking or target-size choice by itself |
+| `TargetSizeStudyPolicy` / `TargetSizeDecision` | nominal/materializable/qualified population, fidelity funnel, selected target size or typed failure | monitor construction or held-out CV evaluation |
+| `OnlineTargetMonitorPolicy` | common target-monitor evidence set | target-training size |
+| `ReplayMonitorPolicy` | replay-monitor evidence set | target-training size or replay-training membership |
+| `TrainingProtocolIdentity` | complete frozen model/data/replay/membership/size/objective/exposure/checkpoint/runtime protocol | mutable runtime observations or test results |
+| `ProtocolFreezeRecord` | frozen protocol/committee identities and promotion evidence | locked-test results |
+| calibration records | final-committee uncertainty calibration/applicability | refitting the protocol being calibrated |
+| locked-test activation/evidence | final sealed evaluation | upstream model-control decisions |
+| `CandidateAdmissibilityDecision` | pre-query safety/admissibility | DFT convergence result |
+| `AcquisitionDecision` | calibrated/rank-only acquisition result | post-DFT eligibility |
 
-The fitted/protocol/profile record families continue the same ownership contract:
+Every serialized current record SHALL carry a versioned schema, deterministic content identity, explicit upstream lineage, and explicit policy/failure identities as appropriate.
 
-| Record | Owns | Must not own |
-|---|---|---|
-| `AtomicReferenceFitRecord` | training-domain E0 corrections and residual | held-out labels |
-| `TrainingProtocolIdentity` | complete model/data/replay/objective/exposure/checkpoint protocol | mutable runtime observations |
-| `ProtocolFreezeRecord` | frozen selected protocol and committee identities | evaluation results |
-| `CandidateAdmissibilityDecision` | pre-DFT geometry and trajectory safety | DFT convergence claim |
-| `AcquisitionDecision` | calibrated or rank-only acquisition result | post-DFT eligibility |
-| `MaterialProfileIdentity` | user-declared phases, geometry, chemistry modifiers, and optional extensions | structural feature values or automatic classification claims |
-| `AtomGroupCatalog` | immutable group selectors and phase linkage | per-frame group membership arrays unless owned by a provider artifact |
-| `ConditionAxisCatalog` | axes whose coverage may matter | observed coverage or partition assignment |
-| `IndependenceAxisCatalog` | candidate sources of independent evidence | proof that independent realizations exist |
-| `MaterialProfileContracts` | digest-bound aggregate of the four declarative profile families | physical features, events, or validation results |
+# Identity and leakage contract
 
-Every serialized record SHALL include a versioned schema and deterministic
-content digest. Policy and decision records SHALL additionally carry their
-policy identity and explicit failure reasons where applicable. Identity records
-SHALL carry their declared parent or provider lineage rather than a fictitious
-policy digest.
+## Source occurrence, geometry, and labels
 
-# Identity contract
+Source occurrence (`frame_uid` or current equivalent), geometry fingerprint, label payload digest, and combined labeled-configuration fingerprint are distinct identities.
 
-## Source occurrence
+Geometry identity excludes energy/force/stress labels. Label identity includes selected labels and label-domain identity. Leakage audits use exact occurrence overlap, exact geometry overlap, exact labeled-configuration overlap, near-duplicate evidence where required, and forbidden temporal proximity.
 
-`frame_uid` SHALL be derived from source identity and source frame index. It
-identifies an occurrence, not a unique physical configuration.
+## Label-domain compatibility
 
-## Geometry and label identities
+Label-domain identity separates theory/electronic-structure identity, energy-reference identity, derivative/stress convention, numerical-quality profile, and software provenance. A current compatibility policy may accept non-semantic provenance differences but cannot silently merge incompatible theory or energy-reference domains.
 
-The following identities SHALL be separate:
+One target MACE bundle contains one compatible target label domain plus a separately identified replay lineage where replay is enabled.
 
-```text
-geometry_fingerprint
-label_payload_digest
-labeled_configuration_fingerprint
-```
+# Fitted-domain isolation
 
-`geometry_fingerprint` SHALL exclude energy, force, and stress labels.
-`label_payload_digest` SHALL include selected labels and label-domain identity.
-The combined fingerprint SHALL identify the same geometry with the same labeled
-payload.
+Raw physical/structural/event facts may be constructed before partitioning when the owning provider is partition-independent. Any learned/fitted transform—including scaling, PCA/whitening, fitted metrics, E0 corrections, or label-derived residual difficulty—is bound to a specific authorized gradient-training domain.
 
-Leakage audits SHALL use exact UID overlap, exact geometry overlap, exact
-labeled-configuration overlap, near-duplicate geometry/descriptor distance, and
-forbidden temporal proximity.
-
-# Label-domain and energy contract
-
-A label-domain fingerprint SHALL be decomposed into:
+For fold `k`, the allowed direction is:
 
 ```text
-TheoryIdentity
-EnergyReferenceIdentity
-DerivativeConvention
-NumericalQualityProfile
-SoftwareProvenance
+DATA5 fold_training_domain_k
+  -> DATA6/7 fitted products
+  -> MVSEL2/REPAIR2 membership inside that domain
+  -> selected-size prefix after target-size freeze
+  -> training/checkpoint choice using authorized monitor
+  -> held_out_evaluation_fold_k only after checkpoint freeze
 ```
 
-A versioned compatibility policy SHALL classify differences. Exact equality of
-all provenance fields is not required; theory- or energy-reference differences
-cannot be silently combined.
+A reverse dependency from held-out evaluation into fitted products, target size, or checkpoint selection is prohibited.
 
-The first adapter SHALL export one target label domain per MACE bundle. Multiple
-incompatible target domains SHALL produce multiple bundles.
+# Target membership and target-size contract
 
-The selected VASP energy channel SHALL be named, complete, and consistent with
-the derivative labels. The channel identity SHALL be preserved in provenance.
-
-# Atomic-reference contract
-
-The structural `AtomicReferenceIdentifiabilityReport` SHALL record:
+The current target-subset construction chain is:
 
 ```text
-count matrix
-rank
-singular values
-condition number
-null-space dimension
-identifiable combinations
-policy outcome
-transfer limitations
+DATA7 TargetSubsetInputBundle
+  -> FEAS1
+  -> MVIDX1
+  -> MVSEL2
+  -> REPAIR2 / MVSTATE2
+  -> MVQUAL
+  -> TargetSizeStudyPolicy
 ```
 
-It SHALL NOT contain fitted corrections or fit residuals.
+No current alternate v1/migration/rescue branch exists.
 
-Each fold and final training domain SHALL receive a separate
-`AtomicReferenceFitRecord` containing:
+The exact fixed nominal target-size population and 3/10/30 fidelity policy are owned by `mlff_target_subset_size_study_spec.md` and are not duplicated here.
+
+For each required training domain `d`, candidate membership at size `N` is the prefix of that domain's one repaired master order. One selected `N` is frozen into the complete training protocol across required fold/final domains.
+
+Hard prefix qualification is independently owned by MVQUAL. Non-monotone hard qualification over nested increasing prefixes is an invariant failure.
+
+# Training-protocol and checkpoint contract
+
+`TrainingProtocolIdentity` SHALL bind, as applicable:
 
 ```text
-training-domain frame UIDs
-element support
-identifiability-report digest
-foundation-checkpoint digest
-fitted corrections
-fit residual
-solver/tolerance
-policy outcome
+foundation/model/head identity
+selected target size and domain-local membership identity
+replay source/training/monitor identities
+common target-monitor identity
+objective and configuration/property weights
+exposure backend and realized balancing/duplication policy
+checkpoint metric and replay-retention policy
+optimizer/LR/stopping/epoch policy
+seed policy
+precision/backend
+MACE adapter/runtime lock
 ```
 
-The fit SHALL exclude held-out evaluation, checkpoint-monitor, outer monitor,
-calibration, and locked-test labels. Missing elemental support SHALL fail or
-invoke an explicit alternative policy.
-
-An emitted MACE configuration SHALL contain the exact version-supported E0 value,
-normally an explicit atomic-number mapping. A conceptual record name SHALL NOT
-be written into the `E0s` field.
-
-# Cell, strain, stress, and virial contract
-
-ASE cell vectors SHALL be treated as rows. Fractional row vectors SHALL map as
-
-$$
-\mathbf r_{\mathrm{row}}=\mathbf s_{\mathrm{row}}\mathbf H.
-$$
-
-For reference cell $\mathbf H_0$ and current cell $\mathbf H_t$, the reported
-deformation gradient acting on Cartesian column vectors SHALL be
-
-$$
-\mathbf F=\left(\mathbf H_0^{-1}\mathbf H_t\right)^T.
-$$
-
-The implementation SHALL record whether internal calculations use an equivalent
-right-acting row-vector map. Tests SHALL include nonsymmetric shear and rotated
-stretch fixtures.
-
-Canonical `REF_stress` SHALL be a symmetric Cartesian 3 x 3 Cauchy-stress tensor
-in eV/Angstrom^3, using the ASE/MACE sign convention verified by the version-
-locked adapter. Virial and stress SHALL use distinct keys.
-
-The export gate SHALL test units, sign, Voigt order, shear factors, and MACE
-read-back. Missing stress MAY use `config_stress_weight=0.0` under an explicit
-heterogeneous-label policy.
-
-# Event, feature, and blinding contract
-
-Full-resolution event detection SHALL run before ordinary thinning. Protected
-events include coordination changes, site changes, ring crossings, topology
-changes, strain extrema, and high but physical restoring-force excursions.
-
-DATA4 SHALL provide partition-critical system-profile features before the outer
-partition is locked. For LTA these SHALL include resolvable coarse ring-site,
-off-center, coordination-change, site-change, ring-crossing, and framework-
-integrity states.
-
-Raw feature providers SHALL be partition-independent. Scaling, PCA, whitening,
-or fitted metrics SHALL be represented by separate static templates and fitted
-records:
-
-```text
-FeatureMetricPolicyTemplate
-FoldFeatureTransform
-FoldFeatureMetricFit
-FinalFeatureTransform
-FinalFeatureMetricFit
-```
-
-A static template SHALL define feature blocks, scaling rules, block/species
-weights, retained dimensions, missing-block behavior, distance metric, dtype,
-and tolerance. A fitted record SHALL contain only parameters learned from its
-declared training domain.
-
-Foundation descriptors may be computed for all domains. Foundation-model
-residuals require DFT labels and SHALL be exposed only in a
-`TrainingDifficultyFeatureCatalog` for the applicable training domain. Outer
-monitor, calibration, held-out-fold, and locked-test residuals SHALL remain
-blinded until authorized evaluation.
-
-# Partition feasibility and outer-role contract
-
-A `PartitionRoleBudgetPolicy` SHALL declare requested roles, minimum block counts,
-minimum independence grades, and allowable reductions. A
-`PartitionFeasibilityReport` SHALL classify support before assignment.
-
-Allowed outcomes include:
-
-```text
-fully_supported
-supported_with_temporal_blocks_only
-calibration_deferred
-challenge_set_external_only
-reduced_cross_validation_folds
-insufficient_for_locked_test
-insufficient_for_requested_roles
-```
-
-The workflow SHALL NOT fabricate every role from a short trajectory to satisfy
-fixed percentages.
-
-Every feasible target label domain may define:
-
-```text
-development_pool
-outer_monitor_validation
-uncertainty_calibration
-locked_interpolation_test
-zero or more locked_challenge_tests
-```
-
-The calibration domain MAY be deferred to later independent calculations.
-Locked tests SHALL remain operationally sealed.
-
-The LTA profile SHALL use hierarchical applicable schemas rather than a global
-Cartesian product:
-
-```text
-unstrained: composition x temperature x regime
-strained: composition x reference-condition x strain-mode x sign x regime
-```
-
-Every cohort SHALL emit a `PartitionIndependenceReport` with machine-readable
-grades such as independent replica, independent ordering, independent run,
-purged temporal block, slow-state not decorrelated, or insufficient
-independence.
-
-# Cross-validation and training-protocol contract
-
-A `TrainingProtocolIdentity` SHALL bind:
-
-```text
-foundation checkpoint and head
-naive or multi-head mode
-replay source, selection, and monitor
-training objective and property weights
-target/replay head weights
-exposure backend and balancing policy
-checkpoint metric and checkpoint-control policy
-replay-retention policy
-optimizer, scheduler, epoch cap, and seed policy
-MACE adapter lock
-```
-
-A `CrossValidationJobFamily` SHALL contain $K$ independent jobs using the same
-complete protocol. For fold $k$:
-
-1. designate a held-out evaluation fold;
-2. form the non-evaluation domain;
-3. carve a deterministic purged checkpoint-monitor split;
-4. fit transform, metric, E0, difficulty features, and selector only on the
-   remaining gradient-training domain;
-5. initialize a fresh model and optimizer;
-6. train under the declared MACE checkpoint-control policy;
-7. select and freeze a checkpoint without inspecting the held-out fold;
-8. evaluate only then on the held-out fold;
-9. emit out-of-fold predictions and independence grades.
-
-A rotating inner-validation fold inside one evolving model is prohibited.
-Cross-validation results from a naive protocol SHALL NOT be used as validation
-of a replay protocol.
-
-# Selection-budget contract
-
-The selector SHALL construct one deterministic master order with mandatory
-anchors followed by quota-interleaved evidence classes:
-
-```text
-representative coverage
-species-environment coverage
-rare events
-descriptor FPS
-difficulty enrichment
-```
-
-`SelectionBudgetPolicy` SHALL define counts or fractions and a deterministic
-deficit-redistribution rule. Later evidence classes SHALL NOT be starved because
-an earlier selector consumed the size budget.
-
-Near-duplicate pruning SHALL occur during master-order construction. Requested
-sizes SHALL be exact prefixes. A size smaller than the mandatory-anchor count is
-infeasible.
-
-Species-specific Li, Na, and K environment selection SHALL be available in the
-LTA profile. Whole-cell framework-dominated descriptors alone are insufficient.
-
-# Training objective, weights, and checkpoint metrics
-
-`TrainingObjectivePolicy` SHALL define the loss family, energy/force/stress
-weights, head weights, normalization, robust-loss settings, and missing-label
-behavior.
-
-`ConfigurationWeightPolicy` and `PropertyWeightPolicy` SHALL define
-condition-, regime-, event-, quality-, and property-specific weights. Selection,
-weighting, and exposure are separate decisions.
-
-The first adapter SHALL use standard MACE configuration/property weights and
-SHALL NOT claim a species-aware atomwise loss. It SHALL report species-resolved
-force metrics and impose profile focus-group acceptance or checkpoint constraints. Any
-custom species-aware loss SHALL create a different `TrainingProtocolIdentity`.
-
-`CheckpointMetricPolicy` SHALL define the primary target scalar plus energy,
-force, stress, species, worst-condition, rare-event, and replay-retention
-constraints.
-
-# Exposure and MACE realization contract
-
-Exposure backends are:
-
-```text
-NATIVE_MACE_FIXED
-CUSTOM_EPOCH_RESAMPLE
-MULTI_JOB_RESAMPLE
-FINAL_REFIT
-```
-
-The first adapter SHALL support only `NATIVE_MACE_FIXED`. Dynamic epoch
-resampling SHALL NOT be represented by static files alone.
-
-Every run SHALL emit a `MaceExposureRealizationRecord` containing:
-
-```text
-real_pt_data_ratio_threshold
-pre-MACE target/replay counts
-post-MACE effective target/replay counts
-implicit duplication factor
-expected and observed batches
-configuration, energy, force, and stress exposures
-```
+A comparison or CV claim applies only to the protocol identity actually evaluated.
 
-The adapter SHALL disable implicit target duplication where supported. Otherwise
-it SHALL bind the realized duplication to `TrainingProtocolIdentity` and fail if
-observed loader counts differ from the accepted plan.
+Checkpoint selection uses explicit target/focus/replay/property/integrity constraints. A candidate violating a mandatory constraint is inadmissible even if another target metric is lower.
 
-# MACE checkpoint-control and replay contract
+# MACE realization and exposure
 
-The initial adapter target is `mace-torch==0.3.16`, with a tested compatibility
-matrix. It SHALL capture package digest, source/tag identity, CLI help, and key
-parser, loader, and training-loop source digests.
+Current MACE artifacts contain only supported labels/weights/compact identities in their interchange format; extended provenance remains sidecar/content-addressed.
 
-MACE 0.3.16 uses the last validation head for native scheduling, patience, and
-best-checkpoint decisions. The accepted first mode is:
+The adapter verifies current upstream behaviors on which protocol semantics depend: head ordering, loader realization, checkpoint retention/control, precision/backend, and effective target/replay exposure.
 
-```text
-NATIVE_TARGET_LAST_WITH_EXTERNAL_CONSTRAINT_AUDIT
-```
+Intended exposure cannot substitute for realized exposure. Silent loader duplication or changed target/replay counts fail closed unless the accepted current protocol explicitly binds that behavior.
 
-The adapter SHALL:
+Runtime/package locks are owned by the narrow current runtime specification and may evolve independently of this cross-cutting contract.
 
-1. verify that the target monitor is the last validation head;
-2. prevent replay-head behavior from terminating training;
-3. retain every evaluation checkpoint;
-4. externally evaluate target, focus-group-resolved, and replay monitors;
-5. apply `CheckpointMetricPolicy` deterministically;
-6. fail closed when version-tested behavior changes.
+# Sealed evaluation, calibration, and active learning
 
-Replay preparation SHALL precede replay-aware cross-validation. The replay
-monitor SHALL be disjoint from replay training. `ReplayRetentionPolicy` SHALL
-define baseline, metric, tolerated degradation, and failure/override behavior.
+Development, calibration, and locked evaluation artifacts remain role-separated. Locked-test configuration/path access is absent from development control flow until explicit activation after protocol/committee freeze.
 
-# MACE artifact contract
+Calibration numerical thresholds derive from the actual frozen final committee and a dedicated authorized calibration cohort. Applicability/transfer decisions explicitly distinguish within-domain, rank-only, recalibration-required, and incompatible-domain behavior.
 
-Extended XYZ SHALL contain only MACE-readable labels, weights, and compact stable
-identities. Complete provenance and selection reasons SHALL live in a sidecar
-manifest keyed by `frame_uid`.
+Active-learning labels create a new development generation. Existing role assignments are inherited by default; repartitioning previously classified evidence creates a new evaluation lineage.
 
-The development bundle SHALL contain no locked-test path and SHALL include the
-complete `TrainingProtocolIdentity`, objective, checkpoint metric, replay plan,
-checkpoint-control policy, E0 mapping, and adapter lock.
+# Bounded execution and persistence
 
-The following artifacts SHALL be separate:
+Scientific policy must be realizable without duplicating product-scale state per target-size rung. The current architectural materialization is one fitted-input authority, one exact sparse neighborhood/MVIDX authority, one repaired master order per training domain, prefix metadata, required MVQUAL evidence, and only currently authorized training artifacts.
 
-```text
-development_bundle/
-calibration_bundle/
-sealed_evaluation_bundle/
-evaluation_activation/
-evaluation_results/
-```
+Persistent execution caches are reconstructible unless another current specification explicitly makes them scientific evidence. Every cache validates semantic inputs and payload integrity. Corrupt/stale state is rebuilt or fails cleanly; it never changes policy to rescue a run.
 
-A sealed evaluation bundle MAY be prepared early. An
-`EvaluationActivationDecision` SHALL require a `ProtocolFreezeRecord`, selected
-committee identity, complete training-protocol digest, and checkpoint-selection
-decision.
+Worker count, queue ordering, chunking, file-backed versus in-memory layout, and cache path are non-semantic under an exact-equivalence contract.
 
-# Calibration and active-learning contract
+# Current-generation publication and failure rules
 
-Out-of-fold predictions MAY diagnose uncertainty ranking. Numerical thresholds
-SHALL be calibrated from the actual final committee on a dedicated calibration
-cohort.
+Current products SHALL fail closed when required source/label identity, evidence roles, fitted-domain lineage, selector/repair/qualification identity, target-size decision, replay/monitor lineage, training protocol, runtime behavior, or publication payload validation is missing/incompatible.
 
-`CalibrationApplicabilityDomain` SHALL record covered elements, compositions,
-temperatures, strains, cell sizes, site/event classes, descriptor-distance
-range, force/stress range, and framework-integrity state.
+Unsupported historical campaign schemas are not current compatibility obligations. Current code may retain low-level readers for forensic purposes, but those readers cannot create a second product-semantic path and are not normative documentation authority.
 
-`CalibrationTransferDecision` SHALL classify candidates as:
+# Extension rule
 
-```text
-within_calibrated_domain
-rank_only_outside_domain
-recalibration_required
-rejected_incompatible_domain
-```
-
-Locked tests are forbidden from calibration and acquisition.
-
-Pre-DFT candidates receive `CandidateAdmissibilityDecision`. Child datasets
-SHALL inherit existing roles unchanged by default. Selection-biased new labels
-enter the development pool; independent random labels may form new
-validation/calibration cohorts; predeclared challenges may form new locked
-challenge sets. A full repartition SHALL create a new evaluation lineage.
-
-# Authority and supersession
-
-This specification owns only the cross-cutting invariants stated above. The dedicated current specifications listed in `README.md` own their module-local behavior and may refine implementation details without weakening these invariants. Runtime/product gates remain normative where they define current software behavior; developer implementation gates are non-normative coordination artifacts under `workplans/`.
-
-The complete pre-DOC-GOV1 mixed specification, including completed stage chronology and historical/future developer planning, is preserved at `docs/history/mlff/manual_snapshots/mlff_data_stage_plan_spec_pre_doc_gov1.md` and is non-normative.
-
-# Authority and supersession
-
-This specification owns only the cross-cutting invariants stated above. The dedicated current specifications listed in `README.md` own their module-local behavior and may refine implementation details without weakening these invariants. Runtime/product gates remain normative where they define current software behavior; developer implementation gates are non-normative coordination artifacts under `workplans/`.
-
-The complete pre-DOC-GOV1 mixed specification, including completed stage chronology and historical/future developer planning, is preserved at `docs/history/mlff/manual_snapshots/mlff_data_stage_plan_spec_pre_doc_gov1.md` and is non-normative.
-
-# Authority and supersession
-
-This specification owns only the cross-cutting invariants stated above. The dedicated current specifications listed in `README.md` own their module-local behavior and may refine implementation details without weakening these invariants. Runtime/product gates remain normative where they define current software behavior; developer implementation gates are non-normative coordination artifacts under `workplans/`.
-
-The complete pre-DOC-GOV1 mixed specification, including completed stage chronology and historical/future developer planning, is preserved at `docs/history/mlff/manual_snapshots/mlff_data_stage_plan_spec_pre_doc_gov1.md` and is non-normative.
-
-# Authority and supersession
-
-This specification owns only the cross-cutting invariants stated above. The dedicated current specifications listed in `README.md` own their module-local behavior and may refine implementation details without weakening these invariants. Runtime/product gates remain normative where they define current software behavior; developer implementation gates are non-normative coordination artifacts under `workplans/`.
-
-The complete pre-DOC-GOV1 mixed specification, including completed stage chronology and historical/future developer planning, is preserved at `docs/history/mlff/manual_snapshots/mlff_data_stage_plan_spec_pre_doc_gov1.md` and is non-normative.
+A new feature/provider may enrich raw or DATA7 inputs without creating another membership selector. A new selector objective, target-size population, evidence role, loss function, stopping rule, or compatibility generation changes scientific protocol semantics and requires explicit architecture/specification revision plus qualification.

@@ -1,24 +1,30 @@
 # Part II - Data and evidence contracts
 
+## Purpose and ownership
+
+This chapter defines immutable source/frame facts, label-domain identity, physical conditions, quality/eligibility, raw feature/event providers, and correlation-aware complete-frame evidence blocks.
+
+It does not own evidence-role assignment beyond the records needed to support DATA5, fitted statistics, target membership, target size, training exposure, checkpoint selection, or validation decisions.
+
 ## Evidence records and immutability
 
 The MLFF data model separates source facts, workflow decisions, fitted products, runtime realizations, and external scientific results. A new policy creates new policy/decision records rather than mutating immutable source/frame facts.
 
 ### Source and frame facts
 
-`TrainingDataSource` owns source occurrence identity, path/location hints, content hashes, composition/controls, ensemble/quality/production evidence, label-domain identity, and declared reference grouping. `TrainingFrameRecord` owns source-bound frame facts such as `frame_uid`, source occurrence, frame index/time, atoms/cell, label references, conditions, and distinct geometry/label fingerprints.
+`TrainingDataSource` owns source occurrence identity, path/location hints, content hashes, composition/controls, ensemble/quality/production evidence, label-domain identity, and declared reference grouping.
 
-`TrainingFrameRecord` does **not** own eligibility, partition, selection, exposure, calibration, or acquisition state.
+`TrainingFrameRecord` owns source-bound frame facts such as `frame_uid`, source occurrence, frame index/time, atoms/cell, label references, physical conditions, and distinct geometry/label fingerprints.
 
-### Decision, policy, fitted, and realization records
+`TrainingFrameRecord` does **not** own eligibility, statistical role, target membership, target size, training exposure, calibration, or acquisition state.
 
-Separate record families include, as applicable:
+### Decision, policy, fitted, and realization families
+
+Representative downstream/current families include:
 
 ```text
 FrameEligibilityDecision
 PartitionAssignment
-SelectionAssignment
-ExposureAssignment
 CandidateAdmissibilityDecision
 AcquisitionDecision
 
@@ -27,11 +33,12 @@ PartitionFeasibilityReport
 FeatureMetricPolicyTemplate
 FoldFeatureMetricFit
 FinalFeatureMetricFit
-SelectionBudgetPolicy
 TrainingObjectivePolicy
 ConfigurationWeightPolicy
 PropertyWeightPolicy
 CheckpointMetricPolicy
+TargetSubsetInputBundle
+TargetSizeStudyPolicy
 TrainingProtocolIdentity
 MaceCheckpointControlPolicy
 ExposureBackendPolicy
@@ -44,9 +51,11 @@ CalibrationTransferDecision
 
 A static policy defines an algorithm and fixed choices. A fitted record contains parameters learned from one explicitly authorized training domain. A realization record records behavior actually observed from an external/runtime system. Those roles are not interchangeable.
 
+Target membership is intentionally absent from the generic DATA2-DATA4 record list because its current authority is the MVSEL2/REPAIR2 chain after fitted preparation.
+
 ### Digests and signatures
 
-The architecture distinguishes deterministic content/policy/source digests from authenticated digital signatures. Content digests detect modification and bind identity but do not by themselves authenticate authorship. Serialized current records carry version/schema and deterministic content identity under their owning specifications.
+Deterministic content/policy/source digests bind identity and detect modification. They do not by themselves authenticate authorship. Serialized current records carry version/schema and deterministic content identity under their owning specifications.
 
 ## Source manifest and occurrence identity
 
@@ -54,7 +63,7 @@ A review/production manifest supplies source locators, grouping declarations, sc
 
 The source byte/content identity is distinct from a manifest occurrence. Byte-identical copies may share a source-content identity while deliberately distinct manifest runs have distinct occurrence identities.
 
-A frame occurrence is derived from the occurrence identity plus source frame index. This keeps occurrence identity stable across later concatenation/export while permitting duplicate-geometry detection across separate source occurrences.
+A frame occurrence derives from occurrence identity plus source frame index. This keeps occurrence identity stable across later concatenation/export while permitting duplicate-geometry detection across separate source occurrences.
 
 ## Geometry, label, and labeled-configuration identities
 
@@ -66,9 +75,9 @@ label_payload_digest
 labeled_configuration_fingerprint
 ```
 
-`geometry_fingerprint` identifies atomic geometry independently of energy/force/stress labels under the current canonical wrapping/cell/tolerance policy. `label_payload_digest` binds the selected labeled payload and its label-domain identity. `labeled_configuration_fingerprint` combines geometry and label payload.
+`geometry_fingerprint` identifies atomic geometry independently of energy/force/stress labels under the current canonical wrapping/cell/tolerance policy. `label_payload_digest` binds the selected labeled payload and label-domain identity. `labeled_configuration_fingerprint` combines geometry and label payload.
 
-Leakage auditing uses occurrence overlap, exact geometry overlap, exact labeled-configuration overlap, declared near-geometry/descriptor criteria, restart/copy detection, and forbidden temporal proximity. Approximate/symmetry-aware matching may exist as an additional current policy only when explicitly specified; it cannot change the semantic roles above.
+Leakage auditing may use occurrence overlap, exact geometry overlap, exact labeled-configuration overlap, declared near-geometry/descriptor criteria, restart/copy detection, and forbidden temporal proximity. Approximate or symmetry-aware matching may exist only under an explicit current policy; it cannot change the semantic roles above.
 
 ## Electronic-structure label domains
 
@@ -88,11 +97,11 @@ A target training bundle contains one compatible target label domain and, when e
 
 ### Energy channel
 
-The selected target energy is an explicit named channel consistent with the derivative labels. Its channel, units, completeness, electronic/reference convention, and provenance are preserved. Energy/force/stress labels that do not share an accepted derivative/reference convention are not silently combined.
+The selected target energy is an explicit named channel consistent with derivative labels. Its channel, units, completeness, electronic/reference convention, and provenance are preserved. Energy/force/stress labels that do not share an accepted derivative/reference convention are not silently combined.
 
-## Atomic-reference identifiability and fitting
+## Atomic-reference identifiability and fitting boundary
 
-For elemental correction vector $\Delta\mathbf e_0$, fitting has the schematic form
+For elemental correction vector $\Delta\mathbf e_0$, the schematic fit is
 
 $$
 \mathbf A\,\Delta\mathbf e_0 \approx \mathbf b,
@@ -100,19 +109,13 @@ $$
 
 with configuration-element count matrix $\mathbf A$ and target-minus-foundation energy residual $\mathbf b$.
 
-### Structural identifiability
-
 `AtomicReferenceIdentifiabilityReport` depends on elemental count support rather than fitted target residuals. It records element order, matrix shape/rank/singular values, condition/null-space information, identifiable combinations, outcome, and transfer limitations. It does not contain fitted elemental corrections.
 
-Rank deficiency can be acceptable only under an explicit fixed-domain/reference policy with its null space and transfer restrictions preserved. Fixed-stoichiometry systems must not imply individually identified elemental offsets when the count matrix does not support them.
+The actual `AtomicReferenceFitRecord` is a DATA7 fitted object bound to one fold/final training domain, foundation checkpoint identity, identifiability report, solver/tolerance, elemental support, fitted corrections, residual, and policy outcome.
 
-### Training-domain fit
+Each cross-validation fold receives its own fold-local fit. Final training receives a separate final-training fit. Monitors, calibration, held-out evaluation folds, and locked tests are excluded from the fit.
 
-`AtomicReferenceFitRecord` is a fitted object bound to one fold/final training domain, foundation checkpoint identity, identifiability report, solver/tolerance, elemental support, fitted corrections, residual, and policy outcome.
-
-Each cross-validation fold receives its own fold-local fit. Final training receives a separate final-training fit. Outer monitors, calibration, held-out evaluation folds, and locked tests are excluded from the fit. Missing elemental support or new rank deficiency fails or invokes an explicitly declared alternative reference policy.
-
-MACE export receives the exact accepted numerical E0 representation (normally an atomic-number mapping); a record/path name is provenance rather than an E0 payload.
+MACE export receives the exact accepted numerical E0 representation, normally an atomic-number mapping; a record/path name is provenance rather than an E0 payload.
 
 ## Ensemble, temperature, cell, and strain
 
@@ -140,13 +143,13 @@ $$
 \mathbf F_t=\left(\mathbf H_0^{-1}\mathbf H_t\right)^T.
 $$
 
-An internal right-acting row-vector form is acceptable only when serialization/reporting returns the declared Cartesian-column convention. Rotation/stretch separation uses the declared polar-decomposition convention. Stored strain evidence includes the applicable volume, linear/finite/logarithmic, hydrostatic/deviatoric, principal, shear, rotation, coordinate-frame, and storage-convention quantities.
+An internal right-acting row-vector form is acceptable only when serialization/reporting returns the declared Cartesian-column convention. Rotation/stretch separation uses the declared polar-decomposition convention.
 
-Qualification includes nonsymmetric shear and rotated-stretch cases so transpose/left-right errors cannot hide behind diagonal fixtures.
+Stored strain evidence includes the applicable volume, linear/finite/logarithmic, hydrostatic/deviatoric, principal, shear, rotation, coordinate-frame, and storage-convention quantities. Qualification includes nonsymmetric shear and rotated-stretch cases so transpose/left-right errors cannot hide behind diagonal fixtures.
 
 ### Hierarchical condition schemas
 
-Condition space is not assumed to be a global Cartesian product. A material profile declares applicable condition axes and hierarchical strata. The LTA profile, for example, separates unstrained composition/temperature/regime strata from strained composition/reference-condition/strain-mode/sign/regime strata. Only observed and scientifically applicable combinations are required.
+Condition space is not assumed to be a global Cartesian product. A material profile declares applicable condition axes and hierarchical strata. For example, an LTA profile may separate unstrained composition/temperature/regime strata from strained composition/reference-condition/strain-mode/sign/regime strata. Only observed and scientifically applicable combinations are required.
 
 ## Stress and virial
 
@@ -158,7 +161,9 @@ Virial and stress have distinct keys and are never silently relabeled. Qualifica
 
 Run/source quality distinguishes qualified, degraded, unqualified, and unresolved states under current policy. Overrides are explicit evidence.
 
-`FrameEligibilityDecision` applies after labels exist. Hard rejection includes absent/nonfinite required labels or geometry/cell, singular/corrupt structures, incomplete ionic records not recoverable under the current trailing-interruption policy, catastrophic overlaps, and disallowed electronic-convergence failures. Soft evidence records transient regimes, unusual but physical forces/stress, rare coordination/events, topology changes, model residuals, and degraded numerical quality without turning percentile tails into automatic rejection.
+`FrameEligibilityDecision` applies after labels exist. Hard rejection includes absent/nonfinite required labels or geometry/cell, singular/corrupt structures, incomplete ionic records not recoverable under the current interruption policy, catastrophic overlaps, and disallowed electronic-convergence failures.
+
+Soft evidence records transient regimes, unusual but physical forces/stress, rare coordination/events, topology changes, model residuals, and degraded numerical quality without turning percentile tails into automatic rejection.
 
 Pre-DFT candidates use a separate `CandidateAdmissibilityDecision` over geometry/cell safety, element/count policy, topology/integrity, trajectory/integrator evidence, model outputs, and descriptor availability. After DFT labeling they re-enter normal source/frame eligibility lineage.
 
@@ -170,21 +175,19 @@ Pre-DFT candidates use a separate `CandidateAdmissibilityDecision` over geometry
 
 Profiles are compositional rather than a single flat material enum. Interface/multiphase systems explicitly declare component membership. Generic fallback supplies only generic groups/axes; porous/zeolite/LTA semantics require the corresponding explicit extension chain and never activate automatically.
 
-### Universal structural selection features
+### Universal structural selection inputs
 
-The generic structural provider supplies selection-grade local geometry descriptors such as smooth chemistry-scaled coordination, support-neighbor count, radial projections, local-density/mixing proxies, angular moments, and rotationally invariant orientational-order summaries. These are frame/environment selection descriptors, not replacements for analysis-owned RDF, integer coordination, full angle distributions, structure factors, or topology observables.
+The generic structural provider supplies selection-grade local geometry descriptors such as smooth chemistry-scaled coordination, support-neighbor count, radial projections, local-density/mixing proxies, angular moments, and rotationally invariant orientational-order summaries.
+
+These are upstream target-subset inputs, not an independent selector and not replacements for analysis-owned RDF, integer coordination, full angle distributions, structure factors, or topology observables.
 
 Descriptors aggregate by authorized atom groups and elements present in the permitted domain. Generic temporal events capture large local structural changes without assigning material-specific physical meaning.
 
 ### Partition-critical profile features
 
-Rare categorical states that partition policy promises to protect are available at full resolution before the outer partition freezes. A profile may supply phase, environment, defect, region, molecular, or event states. Optional LTA state includes framework/mobile roles, resolvable ring/site class, off-center class, coordination/site/ring-crossing changes, and framework-integrity evidence.
+Rare categorical states that partition policy promises to protect are available at full resolution before the outer partition freezes. A profile may supply phase, environment, defect, region, molecular, or event states.
 
-Unresolved required classifications produce explicit coverage/partition limitations rather than fabricated balanced strata.
-
-### Optional profile extensions
-
-Optional porous/zeolite/LTA providers may contribute framework/cation coordination, tetrahedral distortion/topology, ring/site/window geometry, site assignment, and transition/crossing evidence only when their extension is explicitly declared.
+Optional LTA state includes framework/mobile roles, resolvable ring/site class, off-center class, coordination/site/ring-crossing changes, and framework-integrity evidence. Unresolved required classifications produce explicit coverage/partition limitations rather than fabricated balanced strata.
 
 ### Optional learned-model features
 
@@ -194,7 +197,7 @@ A qualified optional MACE provider may supply foundation/model identity, invaria
 
 Geometry-only descriptors from a frozen model may be computed wherever authorized. Label-derived residual/difficulty features may be exposed only inside their applicable training domain.
 
-Outer monitor, calibration, held-out evaluation, and locked-test residuals do not enter feature fitting or selection. Evaluation predictions can be persisted in blinded catalogs without exposing residual-derived selector inputs. Violating this boundary is a hard leakage failure.
+Outer monitor, calibration, held-out evaluation, and locked-test residuals do not enter feature fitting or target-subset construction. Evaluation predictions can be persisted in blinded catalogs without exposing residual-derived selector inputs. Violating this boundary is a hard leakage failure.
 
 Raw feature providers are partition-independent. Dataset-dependent scaling/PCA/whitening/metric fitting is represented by separate static templates and fold/final fitted records. For fold $k$, fitting may inspect only its gradient-training domain; other domains may be transformed by the frozen fitted object but cannot influence it.
 
@@ -214,7 +217,7 @@ The controlling order is:
 2. event/change detection on all eligible frames;
 3. protected event-window preservation;
 4. temporal thinning of the ordinary non-event pool;
-5. higher-cost descriptor/selection operations.
+5. higher-cost descriptor/fitted target-subset-input operations.
 
 Event stencils are policy-controlled and compact by default. Adjacent frames from one physical event are not mistaken for independent rare-event evidence.
 

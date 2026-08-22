@@ -1,51 +1,61 @@
-# Part IV - Training and evaluation
+# Part IV - Training, evaluation, and deployment
 
-## Multi-head replay and training-protocol contract
+## Purpose and ownership
 
-Multi-head replay fine-tuning trains a shared MACE backbone on target data and a foundation replay dataset with separate output heads. The replay objective limits catastrophic forgetting while the target head adapts [11, 12]. Replay, objective, exposure, checkpoint control, backend, precision, optimizer/scheduler, and seed policy are part of the training protocol rather than incidental runtime settings.
+This chapter defines the current training-protocol identity, replay boundary, checkpoint admissibility, protocol-matched cross-validation, final training/committee construction, calibration, sealed evaluation, deployment verification, and active-learning lineage.
 
-### `TrainingProtocolIdentity`
+Target membership and target size are already frozen by the Part V authorities before protocol-validation cross-validation is interpreted. This chapter consumes those decisions; it does not create a second subset or size authority.
 
-Every cross-validation family and final run is bound to one complete protocol identity containing, as applicable:
+## Multi-head replay and complete protocol identity
+
+Multi-head replay fine-tuning trains a shared MACE backbone on target data and a foundation replay dataset with separate output heads. Replay constrains catastrophic forgetting while the target head adapts.
+
+Every scientifically compared run is bound to a complete `TrainingProtocolIdentity` containing, as applicable:
 
 ```text
-foundation checkpoint and head
-model/foundation family and target head
-naive or multi-head mode
-replay source, selection, and monitor
-training objective and property weights
+foundation checkpoint / model family / head identity
+selected protocol-global target size
+domain-local target-membership identity
+replay source, split, and replay-monitor identity
+training objective and property/configuration weights
 target/replay head weights
-exposure backend and realized balancing policy
+exposure backend and realized balancing/duplication policy
 checkpoint metric and checkpoint-control policy
 replay-retention policy
-optimizer, scheduler, epoch cap, stopping/LR policy, and seed policy
+optimizer, LR schedule, epoch cap, stopping policy, and seed policy
 model precision and execution backend
 MACE adapter/runtime lock
 ```
 
-Cross-validation results apply only to that identity. Results from a different replay mode, objective, precision/backend realization, checkpoint policy, or other protocol-defining choice are not validation of the final protocol.
+Cross-validation evidence validates only the protocol identity it actually used. A change to replay semantics, objective, selected size, membership policy, checkpoint policy, precision/backend, stopping/LR policy, or another protocol-defining field creates a different protocol.
 
-### Separate target and replay lineages
+## Separate target and replay evidence
 
-Target and replay evidence retain separate source/label identities, atomic-reference policy where applicable, selection/split plans, weights/exposure accounting, and validation/sentinel monitoring. Replay train and replay monitor roles are disjoint.
+Target and replay evidence retain separate source/label identities, atomic-reference rules where applicable, split/membership plans, weights/exposure accounting, and monitors. Replay training and replay monitoring are disjoint evidence roles.
 
-The mdstats core records replay preparation and does not silently download external replay data. True-label replay is evaluated against held-out labels; pseudo-label replay measures drift from the bound foundation model on an unseen sentinel set.
+The mdstats workflow records replay preparation and does not silently acquire external replay data. True-label replay is evaluated against held-out labels; pseudo-label replay, when supported, measures drift from the bound foundation model on an unseen sentinel set.
 
-### Replay retention
+`ReplayRetentionPolicy` binds the retention metric, baseline, allowed degradation, aggregation, and failure semantics. A checkpoint that violates a mandatory replay-retention requirement is inadmissible even when its target metric improves.
 
-`ReplayRetentionPolicy` binds the retention metric, foundation/pre-fine-tuning baseline, tolerated degradation, aggregation over properties, and failure/override behavior. Candidate checkpoints that violate a mandatory replay-retention constraint are inadmissible even when target error improves.
+## Common online monitors
 
-### Checkpoint metrics and constrained choice
+Monitoring evidence sets are deterministic protocol inputs with their own policy identities. Their cardinalities are monitor properties, not target-size candidates.
 
-`CheckpointMetricPolicy` defines the primary target objective together with all mandatory target, focus-group/species, condition, stress/property, and replay constraints. Candidate checkpoint selection is deterministic over the complete evaluated candidate set and fails closed when no candidate satisfies mandatory constraints.
+The common target monitor is authorized development/model-selection evidence. It may be used by the target-size study and by the current checkpoint/stopping policy as explicitly specified. It supplies no gradients and is distinct from held-out CV evaluation and locked tests.
 
-A typical mathematical form is
+The replay monitor is separately owned and separately identified. Numeric equality between a monitor cardinality and one nominal target size has no semantic effect.
+
+## Checkpoint metrics and constrained choice
+
+`CheckpointMetricPolicy` defines the primary target objective and every mandatory target, focus-group/species, condition, energy/stress/property, replay, and physical-integrity constraint applicable to checkpoint admission.
+
+A typical constrained form is
 
 $$
 \min_c L_{\mathrm{target\ monitor}}(c)
 $$
 
-subject to profile- and protocol-specific constraints such as
+subject to requirements such as
 
 $$
 L_{F,g}(c)\le\delta_g,
@@ -53,98 +63,79 @@ L_{F,g}(c)\le\delta_g,
 \Delta L_{\mathrm{replay}}(c)\le\delta_{\mathrm{replay}}.
 $$
 
-Exact metrics and thresholds are serialized policy, not hard-coded universal constants.
+Exact metrics and thresholds are specification-owned serialized policy. Replay retention, structural integrity, relaxation/deployment integrity, and similar mandatory predicates are constraints rather than score bonuses unless an explicit current policy says otherwise.
 
-### MACE checkpoint control
+Checkpoint selection is deterministic over the complete authorized candidate set and fails closed when no candidate satisfies mandatory constraints.
 
-The supported MACE adapter is version-locked and verifies the native validation-head ordering, scheduling/stopping behavior, checkpoint retention, target/replay loader realization, and other upstream behaviors on which the protocol depends. The accepted native-target-monitor mode ensures that the target checkpoint monitor owns native scheduling/checkpoint control while replay behavior cannot silently terminate the run.
+## MACE adapter and runtime lock
 
-Every candidate checkpoint needed by the external selection policy is retained and evaluated on the authorized target and replay monitors. If the version-locked upstream behavior changes, preparation/qualification fails closed rather than silently accepting a different control flow.
+The current MACE adapter binds the upstream behaviors on which the protocol depends, including package/source identity, target/replay head ordering, loader realization, scheduler/stopping behavior, checkpoint retention, precision/backend realization, and accelerator qualification where applicable.
 
-## MACE adapter and artifact boundary
-
-### Version/runtime lock
-
-Every supported runtime lock records sufficient identity to reproduce and requalify upstream-dependent behavior, including package/source identity, relevant CLI/parser/loader/train-loop identity, validated head order, checkpoint behavior, replay-ratio behavior, precision/backend realization, and accelerator qualification where applicable. Documentation URLs alone are not treated as a stable API contract.
+Documentation URLs are not a runtime contract. If version-locked upstream behavior changes materially, preparation or qualification fails closed until the current adapter specification is revised and requalified.
 
 ### Minimal Extended XYZ plus sidecar provenance
 
-Extended XYZ contains only MACE-readable labels, weights, and compact stable identities. Long provenance, policy identities, and selection/audit reasons live in a sidecar manifest keyed by `frame_uid`.
+Extended XYZ contains only MACE-readable labels, weights, and compact stable identities. Long provenance, policy identities, and audit reasons live in sidecar manifests keyed by stable frame/configuration identity.
 
-Target-frame export includes the declared energy channel, forces, stress when available/authorized, stable frame/config identities, configuration/property weights, cell/PBC, atom order, and exact label-domain/E0 provenance. Export uses sufficient numerical precision and certifies round-trip semantics through the locked parser/reader path.
+Target export includes the declared energy channel, forces, authorized stress, configuration/property weights, cell/PBC, atom order, and exact label-domain/E0 provenance. Export precision and round-trip behavior are qualified through the current parser/reader path.
 
-### Separated development, calibration, and sealed-evaluation artifacts
+### Explicit E0 realization
 
-The architecture separates:
+An `AtomicReferenceFitRecord` is converted to the exact numerical representation accepted by the current MACE runtime, normally an explicit atomic-number mapping. A provenance record name or path never substitutes for the numerical E0 payload.
 
-```text
-development_bundle/
-calibration_bundle/
-sealed_evaluation_bundle/
-evaluation_activation/
-evaluation_results/
-```
+### Label-domain boundary
 
-Development artifacts contain no locked-test path. A sealed evaluation bundle may exist before activation, but training and checkpoint selection cannot inspect it. Activation requires the applicable `ProtocolFreezeRecord`, selected committee identity, complete training-protocol identity, checkpoint-selection decision, and other owning-specification predicates.
+A target bundle contains one compatible target `LabelDomain` and, when replay is enabled, a separately identified replay head/lineage. Incompatible target electronic-structure domains are not silently merged.
 
-### Explicit E0 serialization
+## Target-size study versus ordinary stopping
 
-`AtomicReferenceFitRecord` is converted to the exact upstream representation accepted by the runtime lock, normally an explicit atomic-number mapping. A conceptual record name/path is provenance and is never substituted for the numerical `E0s` payload.
+The target-size experiment is a special protocol-comparison control described in Part V. It uses authenticated 3 -> 10 -> 30 epoch continuation with a frozen common seed set and disables ordinary target-success early stopping so candidate sizes reach comparable fidelity boundaries. Hard numerical/scientific failure remains a valid rejection.
 
-### One compatible target label domain per bundle
+Ordinary production/CV stopping policy resumes after `N_selected` is frozen. Its target-oriented stopping and LR-refinement semantics are part of `TrainingProtocolIdentity`; changing them after protocol comparison invalidates the comparison.
 
-A target bundle contains one compatible target `LabelDomain` and, when replay is enabled, its separately identified replay head/lineage. Incompatible target electronic-structure domains are not silently merged.
+This separation prevents an early-stopping rule from turning nominal size into a confounded comparison of both size and achieved fidelity.
 
-### Export/loader qualification
+## Protocol-matched cross-validation
 
-The adapter qualifies atom order, cell/PBC, selected energy, forces, stress/virial convention, weights, head labels/order, explicit E0 mapping, parser recognition, effective target/replay counts, and downstream element mapping where required. Intended exposure never substitutes for observed loader realization.
+Cross-validation validates the **complete already-frozen protocol**, including selected target size. It does not choose target size.
 
-## Protocol-matched cross-validation and final training
+For each fold \(k\):
 
-The current workflow preserves a strict dependency order:
+1. DATA5 provides `fold_training_domain_k`, a disjoint authorized checkpoint monitor, and `held_out_evaluation_fold_k`.
+2. DATA6/DATA7 fit descriptors, transforms, metrics, E0, objective/weights, and difficulty evidence only within `fold_training_domain_k`.
+3. MVSEL2/REPAIR2 construct the fold-local repaired master order from fold-authorized evidence.
+4. The already-frozen protocol-global `N_selected` defines the fold target prefix.
+5. A fresh model/optimizer lineage is trained under the bound production stopping/checkpoint policy.
+6. Checkpoint choice freezes without inspecting `held_out_evaluation_fold_k`.
+7. Only then is the checkpoint evaluated on the held-out fold.
 
-1. freeze one outer partition, feasibility report, and independence evidence;
-2. bind each candidate protocol to complete `TrainingProtocolIdentity` and replay/exposure/checkpoint lineages;
-3. create independent cross-validation jobs with fold-training, disjoint checkpoint-monitor, and held-out evaluation domains;
-4. fit transforms, metrics, E0, difficulty evidence, and target selection using only each fold-training domain;
-5. train a fresh model for each fold under the bound checkpoint-control policy;
-6. freeze checkpoint choice without inspecting the held-out evaluation fold;
-7. evaluate the frozen checkpoint on the held-out fold and aggregate protocol-matched out-of-fold evidence;
-8. freeze the chosen protocol/data/selection/stopping/checkpoint/seed policies;
-9. fit final training-domain products and train the declared independent final seeds;
-10. externally evaluate/admit candidate checkpoints, export the selected target heads, and construct the final committee;
-11. emit protocol/committee freeze evidence;
-12. calibrate final-committee uncertainty on a dedicated authorized cohort where available;
-13. activate sealed evaluation only after all promotion predicates pass;
-14. execute bounded deployment verification under the frozen model/runtime identity.
+The fold membership is local because each fold has different authorized evidence; the selected cardinality is global because it is part of the one protocol being validated.
 
-If a protocol intentionally consumes an ordinary monitor during final refit, that loss of independent monitoring is explicit in the protocol/evidence lineage; it cannot be hidden by relabeling the consumed data.
+If held-out fold performance were used to select `N_selected`, that evidence would no longer be independent protocol validation unless the complete size-selection procedure were nested inside another outer validation design.
 
-## Training monitoring, stopping, and learning-rate control
+## Final training and committee construction
 
-Online monitors are deterministic, common protocol inputs rather than resampled per epoch. Lightweight monitoring may control target-oriented stopping or detect unacceptable replay degradation only under the current stopping specification. The held-out cross-validation evaluation fold never controls stopping or checkpoint choice.
+After protocol-matched CV is accepted, final-development fitted products and the final-domain target master order are already governed by the same frozen protocol and selected size. Final seeds are trained independently under that protocol.
 
-Learning-rate scheduling/refinement is part of `TrainingProtocolIdentity`. Scheduler changes, epoch-cap changes, or checkpoint-control changes define a different protocol and require protocol-matched validation rather than being applied after comparison.
+Candidate checkpoints are evaluated under the current constrained policy. The selected target heads are exported and a committee is constructed with explicit member/seed/checkpoint identity.
 
-## Evaluation and candidate reduction
+`ProtocolFreezeRecord` binds the final training protocol, selected target-size decision, final-domain target-membership identity, replay/monitor identities, model/checkpoint identities, committee identity, and required upstream evidence.
 
-Checkpoint evaluation proceeds from lightweight online evidence to the current bounded full-evaluation/selection policy without changing the role of the underlying evidence. Screening reduces computation; it does not authorize inspecting locked-test data or changing thresholds after seeing candidate results.
+## Sealed evaluation and deployment
 
-Full candidate metrics are persisted with their exact model/data/runtime identities. Replay retention is a hard admissibility condition rather than a bonus in a combined target score unless the current metric policy explicitly says otherwise. Where physical relaxation/deployment integrity is required, structural failure is a rejection condition independent of numerical force-RMSE ranking.
+Development artifacts are separated from calibration and sealed-evaluation artifacts. A locked evaluation bundle may exist before activation, but development/training/checkpoint processes cannot inspect it.
 
-## Committee, protocol freeze, and sealed evaluation
+Locked-test activation requires the frozen protocol/committee plus every owning-specification promotion predicate. Locked evidence cannot retroactively alter fitted preparation, target membership, target size, stopping/LR policy, checkpoint selection, replay policy, calibration-policy choice, or acquisition policy.
 
-A committee is constructed only from selected final-run target heads with explicit seed/member identity. `ProtocolFreezeRecord` binds the selected training protocol, model/checkpoint identities, committee identity, and required upstream evidence.
+Deployment artifacts are produced only from admitted final target heads with explicit precision/runtime identity. Deployment verification is bounded and uses the frozen downstream-runtime contract. Structural/relaxation failure, NaN/Inf behavior, topology breakage where prohibited, or another mandatory deployment-integrity failure rejects the candidate independently of force-RMSE rank.
 
-Locked interpolation/challenge evaluation is operationally sealed until the applicable activation predicates pass. Locked evidence cannot retroactively alter training selection, stopping, checkpoint choice, replay policy, calibration policy, or acquisition rules.
+## Calibration and uncertainty lineage
 
-## Calibration and active-learning lineage
+Committee disagreement is a ranking signal, not an error guarantee. Numerical uncertainty/acquisition thresholds are calibrated only using predictions of the actual frozen final committee on an authorized calibration cohort.
 
-Committee disagreement is a ranking signal rather than an error guarantee [13, 14]. Numerical uncertainty/acquisition thresholds are calibrated only from predictions of the actual frozen final committee on an authorized calibration cohort.
+Calibration identity binds model/committee digests, complete training protocol, target/replay/seed/runtime lineage, precision/backend, calibration cohort, and declared applicability domain.
 
-Calibration identity binds the committee/model digests, training/replay/seed/runtime lineage, precision/backend, calibration cohort, and declared applicability domain. The applicability domain records relevant elements/compositions, thermodynamic/strain ranges, cell sizes, structural/event classes, descriptor-distance ranges, force/stress ranges, and integrity states.
-
-`CalibrationTransferDecision` distinguishes at least:
+A transfer decision distinguishes at least:
 
 ```text
 within_calibrated_domain
@@ -153,33 +144,48 @@ recalibration_required
 rejected_incompatible_domain
 ```
 
-Without valid final-committee calibration, acquisition is explicitly uncalibrated/rank-only. Locked tests are excluded from calibration and acquisition.
+Without valid final-committee calibration, acquisition is explicitly uncalibrated or rank-only. Locked tests are excluded from calibration and acquisition.
 
-Selection-biased active-learning labels enter a new development/training candidate pool. Existing frame roles are inherited unchanged by default. Independent new evidence may create new calibration/validation/challenge cohorts only under explicit lineage. Repartitioning existing evidence creates a new evaluation lineage rather than silently rewriting the old one.
+## Active-learning lineage
 
-## Determinism and reproducibility
+Selection-biased active-learning labels enter a new development/training candidate pool. Existing frame roles are inherited unchanged by default. Independent new evidence may create new calibration/validation/challenge cohorts only through explicit lineage.
 
-A reproducible campaign binds source and parser identities, policies/digests, reference-cell/deformation conventions, feature providers, foundation/model/runtime locks, random seeds/dtype/backend, fitted metrics/E0, partition/independence evidence, target selection/coverage policy, training objective/weights, complete protocol identity, exposure realization, replay-retention and checkpoint decisions, committee/protocol freeze, activation/calibration evidence, role inheritance, tie rules, fold assignments, ordered selections, and output checksums as applicable.
+Repartitioning previously classified evidence creates a new evaluation lineage rather than silently rewriting old roles. A new active-learning generation may require re-preparation of fitted products and target membership; this is normal current-generation construction, not compatibility migration of obsolete campaign schemas.
 
-Execution-only worker counts, queue completion order, cache location, and storage layout are excluded from scientific identities unless a current specification explicitly declares otherwise.
+## Reproducibility identity
+
+A reproducible campaign binds, as applicable:
+
+- source/parser and label-domain identities;
+- partition/independence roles;
+- feature/provider and fitted DATA6/DATA7 product identities;
+- MVIDX, MVSEL2, REPAIR2, MVSTATE2, and MVQUAL identities;
+- target-size decision and domain-local target-prefix identities;
+- foundation/model/runtime lock;
+- replay and monitor identities;
+- objective, weights, exposure realization;
+- optimizer/LR/stopping/seed policy;
+- checkpoint metrics/admission decision;
+- committee/protocol freeze;
+- calibration and locked-test activation evidence;
+- output/deployment checksums.
+
+Execution-only worker counts, queue completion order, cache paths, file-backing choice, and similar non-semantic settings are excluded unless a current specification explicitly declares otherwise.
 
 ## Failure semantics
 
-The workflow fails closed when, among other owning-specification conditions:
+The workflow fails closed when, among other current-specification conditions:
 
-- source/label identity is unresolved or required labels are invalid;
-- incompatible label domains are mixed;
-- strain/reference conventions are ambiguous;
+- source/label identity is unresolved or incompatible;
+- required strain/reference conventions are ambiguous;
 - requested evidence roles are infeasible under the declared independence policy;
-- monitor/locked evidence reaches a forbidden fitted/selection/calibration/acquisition operation;
-- a held-out evaluation fold controls checkpoint choice;
-- cross-validation and final training do not share the compared complete protocol identity;
-- required MACE/runtime behavior differs from its qualified lock;
-- realized target/replay exposure differs from the accepted plan;
-- a locked-test path appears in development configuration;
+- held-out, calibration, or locked evidence reaches a forbidden fitted/subset/size/checkpoint operation;
+- a fold held-out evaluation controls checkpoint choice or target size;
+- compared CV and final runs do not share the claimed complete protocol identity;
+- runtime behavior differs materially from its qualified lock;
+- realized target/replay exposure differs from accepted protocol;
 - no checkpoint satisfies mandatory target/focus/replay/integrity constraints;
-- replay checkpoint/source lineage is incompatible;
 - calibrated acquisition is attempted outside its applicability domain without the declared transfer action;
-- active-learning child generation rewrites existing roles without a new evaluation lineage.
+- active-learning lineage silently rewrites prior evidence roles.
 
 Absent rare events, replicas, condition combinations, calibration cohorts, or challenge sets are reported as limitations/coverage gaps rather than fabricated evidence.

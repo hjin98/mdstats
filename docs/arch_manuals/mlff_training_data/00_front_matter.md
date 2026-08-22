@@ -1,75 +1,104 @@
 ---
 geometry: "margin=0.75in"
-architecture_revision: 104
-release: "mdstats 0.20.242a0"
+architecture_revision: 105
 status: "current normative architecture"
-last_updated: "2026-08-18"
+last_updated: "2026-08-21"
 ---
 
 # MLFF Training-Data and Fine-Tuning Architecture
 
-## Purpose
+## Purpose and authority
 
-This manual defines the accepted current scientific, statistical, execution, and evidence architecture for the mdstats MLFF training-data package. It covers source-certified atomistic data preparation, leakage-safe partitioning, target-data construction, MACE fine-tuning, evaluation, deployment verification, and campaign execution architecture.
+This manual defines the accepted current scientific, statistical, execution, and evidence architecture for the mdstats MLFF workflow: source-certified atomistic data preparation, leakage-safe evidence roles, fitted preparation, multi-view target-subset construction, target-size selection, MACE fine-tuning, protocol validation, deployment, calibration, and bounded campaign execution.
 
-The manual is state-oriented. It describes what mdstats **is**, not the sequence by which the implementation was developed. Proposed transitions and developer implementation gates belong under `workplans/`; completed release chronology belongs under `docs/history/mlff/`; correctness and performance evidence belong under `audits/`, `release/`, and `benchmarks/` as appropriate.
+It is intentionally present-tense and single-generation. A reader does not need release chronology, migration history, or obsolete stage semantics to determine current behavior.
+
+The canonical editable architecture sources are the numbered chapters under `docs/arch_manuals/mlff_training_data/`. The assembled Markdown and PDF are generated publication products of those sources and must not be edited as independent authorities.
+
+Detailed exact behavior is owned by current specifications under `docs/specs/training_data/`. Methods/theory material may explain rationale but does not override architecture or specifications. Proposed transitions live in `workplans/`; completed chronology lives under `docs/history/mlff/`; correctness/performance evidence lives in audits, release evidence, and benchmarks.
 
 ## Architectural motive
 
-MLFF campaigns mix several kinds of state that must not be conflated: physical source facts, eligibility decisions, statistical partitions, fitted transforms, subset-selection decisions, optimization/checkpoint state, evaluation evidence, and deployment decisions. The architecture therefore uses immutable, content-addressed records and explicit ownership boundaries. The same separation applies to execution: caches, schedulers, worker counts, memory layouts, and storage realization may change without silently changing scientific authority.
+MLFF campaigns combine state with fundamentally different epistemic roles: physical source facts, eligibility decisions, evidence partitions, fitted transforms, subset-membership decisions, target-size decisions, optimization/checkpoint state, protocol-validation evidence, calibration evidence, locked tests, and deployment decisions. Conflating those roles creates leakage and ambiguous authority even when the numerical code is correct.
 
-Expensive exact numerical work is computed once, exposed as independent work where safe, and reused downstream whenever its semantic inputs are unchanged. Exactness, deterministic authoritative reduction order, explicit resource ownership, and authenticated restart state take precedence over nominal utilization.
+The architecture therefore uses immutable/content-addressed evidence, explicit statistical roles, one normative owner per scientific decision, and authenticated dependency direction. Execution realization is kept separate: cache layout, worker count, queue order, out-of-core storage, and scheduler policy may change without changing scientific membership, ordering, coverage, ranking, or evidence roles.
 
-## Canonical documentation layout
+Expensive exact numerical work is computed once per semantic identity and reused wherever its inputs are unchanged. Exactness, deterministic authoritative decisions, bounded materialization, explicit resource ownership, and restartable authenticated state take precedence over nominal utilization.
 
-The release-facing authority is this assembled file and its synchronized PDF:
+## Current workflow at a glance
 
-- `docs/arch_manuals/mlff_training_data_architecture.md`
-- `docs/arch_manuals/mlff_training_data_architecture.pdf`
+```text
+source evidence and labels
+  -> eligibility / physical conditions
+  -> raw feature and event evidence
+  -> evidence-role partitioning
+  -> fold/final training domains
+  -> fitted descriptors, metrics, E0/objective/weight inputs
+  -> multi-view feasibility and exact sparse neighborhood authority
+  -> MVSEL2 target order
+  -> REPAIR2 repaired master order + MVSTATE2 continuation state
+  -> independent MVQUAL prefix qualification
+  -> fixed target-size study
+  -> one protocol-global selected target size
+  -> domain-local target prefixes
+  -> training / checkpoint selection
+  -> held-out protocol validation
+  -> final committee / deployment
+  -> calibration and activated locked-test / observable validation
+```
 
-The maintainable source chapters live under `docs/arch_manuals/mlff_training_data/` and are assembled deterministically by `tools/build_mlff_architecture_manual.py`. Chapter files are retrieval units for the assembled authority and must not contradict it.
-
-Detailed current behavior is owned by `docs/specs/training_data/`. Historical lineage is non-normative and is stored under `docs/history/mlff/`. Active implementation coordination is non-normative and stored under `workplans/active/`.
+The current graph has no alternate MVSEL1/REPAIR1 path and no migration path for superseded campaign generations.
 
 ## Reading index
 
 | Need | Primary chapter |
 |---|---|
-| Physical/statistical motivation and scope | Part I - Foundations and ownership |
-| Source, labels, strain/stress, eligibility, feature/event contracts | Part II - Data and evidence contracts |
-| Leakage control, cross-validation, selection, objective weighting | Part III - Statistical design and selection |
-| Replay, MACE adapter, training/evaluation, active learning, determinism | Part IV - Training and evaluation |
-| FEAS1/MVIDX1/MVSEL1/REPAIR1/MVQUAL1 theory and exact multi-view graph | Part V - Multi-view target-data architecture |
-| Scheduler, exact execution, cache reuse, memory/storage, progress | Part VI - Performance and execution architecture |
-| Cross-subsystem ownership and accepted design boundaries | Part VII - Ownership boundaries and decision summary |
+| Scientific motivation, record/evidence model, and scope | Part I - Foundations |
+| Source identity, labels, strain/stress, eligibility, raw features/events | Part II - Data and evidence contracts |
+| Evidence roles, leakage-safe CV, fitted preparation, objective/weighting/exposure boundaries | Part III - Statistical design and fitted preparation |
+| Replay, MACE protocol, checkpointing, validation, deployment, calibration, active learning | Part IV - Training, evaluation, and deployment |
+| FEAS1/MVIDX1/MVSEL2/REPAIR2/MVSTATE2/MVQUAL and target-size study | Part V - Multi-view target subset and size architecture |
+| Exact execution, bounded resource/materialization, cache/restart/storage/progress | Part VI - Performance and execution architecture |
+| Sole-owner matrix and accepted extension boundaries | Part VII - Ownership and extension boundaries |
 | External scientific/algorithmic sources | References |
 
 ## Context retrieval index
 
-For targeted human or AI loading, use the smallest authoritative source that contains the needed contract:
+For targeted human or AI loading, use the smallest current source containing the needed concept:
 
 | Query terms | Load first |
 |---|---|
-| `DATA*`, source/label identity, eligibility, stress/strain, features | `20_data_contracts.md` |
-| partition, leakage, CV, selection, weighting, exposure | `30_statistical_design.md` |
-| replay, MACE, checkpoint, evaluation, active learning, determinism | `40_training_evaluation.md` |
-| FEAS1, MVIDX1, MVSEL1, REPAIR1, MVQUAL1, target rungs | `50_target_multiview.md` |
-| scheduler, utilization, CSR/CSC, vectorization, memory, persistence, progress | `60_execution_performance.md` |
-| ownership or accepted design boundary | `80_ownership_and_decisions.md` |
-| provenance for an algorithmic/scientific idea | `90_references.md` |
-| why/when a historical decision changed | `docs/history/mlff/` |
-| a proposed implementation transition | `workplans/active/` |
+| source/label identity, eligibility, strain/stress, raw features/events | `20_data_contracts.md` |
+| evidence roles, leakage, CV, fitted metrics, E0, objective, weighting, exposure | `30_statistical_design.md` |
+| replay, MACE, checkpoint, evaluation, deployment, calibration, active learning | `40_training_evaluation.md` |
+| FEAS1, MVIDX1, MVSEL2, REPAIR2, MVSTATE2, MVQUAL, target size, 3/10/30 | `50_target_multiview.md` |
+| scheduler, sparse execution, out-of-core, memory, persistence, progress | `60_execution_performance.md` |
+| owner, dependency direction, unsupported generation, extension boundary | `80_ownership_and_decisions.md` |
+| scientific/algorithmic provenance | `90_references.md` |
+| superseded design rationale or release chronology | `docs/history/mlff/` |
+| proposed transition | `workplans/active/` |
+
+## Stable terminology
+
+- **training domain** — the DATA5-authorized fold/final gradient-training evidence available to fitted preparation and subset construction.
+- **target membership** — frame membership in a target-training subset; owned by MVSEL2/REPAIR2 within a training domain.
+- **target size** — the protocol-level scientific target-training cardinality chosen by `TargetSizeStudyPolicy`.
+- **monitor size** — the cardinality of a monitoring/evaluation evidence set; never target-size authority.
+- **master order** — the one repaired REPAIR2 ordering per training domain whose prefixes define candidate target subsets.
+- **qualified size** — a materializable nominal size whose prefix passes independent MVQUAL hard requirements in every required training domain.
+- **selected size** — the one protocol-global target size selected from the qualified population.
+- **authoritative evidence** — persisted information that defines or independently proves a scientific decision.
+- **reconstructible execution cache** — discardable state derivable exactly from authoritative inputs.
+- **unsupported generation** — an old campaign/artifact generation that current architecture does not interpret or migrate; it requires re-preparation.
 
 ## Normative vocabulary
 
-- **SHALL / MUST**: required for scientific or execution correctness.
-- **SHOULD**: default design unless measured evidence justifies another exact-equivalent realization.
-- **MAY**: optional realization that cannot weaken scientific contracts.
-- **authoritative evidence**: persisted information that defines or proves a scientific decision.
-- **reconstructible execution cache**: discardable state derivable exactly from authoritative inputs.
+- **SHALL / MUST** — required for scientific, statistical, or execution correctness.
+- **SHOULD** — the default design unless measured evidence justifies another exact-equivalent realization.
+- **MAY** — optional realization that cannot weaken the scientific contract.
 
-## Current release boundary
+When architecture explains a change-sensitive constant whose exact value is specification-owned, the owning specification remains the sole normative location for changing that value.
 
-The current architecture uses exact multi-view target selection, deterministic resource-bounded CPU scheduling, authenticated sparse execution caches, restart-safe out-of-core MVIDX inversion, exact MVSEL-to-REPAIR state reuse before repair divergence, common fixed-width progress reporting, and bounded model-training/evaluation execution. Scientific identity and sequential decision authority are independent of worker count, queue completion order, memory layout, and reconstructible cache location.
+## Retrieval and local-context rule
 
-Positive accelerator qualification that has not yet been executed is not architecture history or proof. Current release-qualification requirements remain in their owning specifications/runbooks; execution planning for unfinished qualification belongs in `workplans/active/`.
+Each major chapter states what its concepts own, consume, emit, and explicitly do not own. Equations and symbols are defined near first use. A chapter may repeat a dependency boundary for local comprehension, but repeated prose must not create a second independently tunable contract.

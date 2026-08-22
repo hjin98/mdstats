@@ -1,27 +1,101 @@
-# TARGET-DATA2C-MVQUAL1 - independent same-N qualification
+# MLFF MVQUAL independent prefix-qualification specification
 
-**Release:** `mdstats 0.20.205a0`  
-**Architecture:** revision 72  
-**Dependency graph:** schema 54
+**Status:** current normative independent hard-qualification contract  
+**Architecture:** revision 105
 
-## Authority
+## 1. Authority
 
-MVQUAL1 compares production TARGET-DATA2C v4 with repaired MV membership at identical materializable cardinality. Pass/fail evidence is recomputed through independent TARGET-DATA2B scoring; cached MVSEL1/REPAIR1 coverage cannot satisfy the gate. DATA2A/MVIDX1 hard obligations, including correlation intervals, are checked separately.
+MVQUAL independently recomputes the hard multi-view coverage and obligation predicates for repaired target-subset prefixes. Its purpose is to verify scientific hard requirements without trusting MVSEL2/REPAIR2 internal counters.
 
-For every common N, record required-family coverage/extents, protected strata, hard obligations, `D_max(N)`, `D_sum(N)`, uncovered count/mass, unique-reference-mass fraction, zero-unique-candidate fraction, correlation-unit balance, and run/condition diversity.
+MVQUAL is not a legacy-versus-current comparator and is not a target-size selector. `TargetSizeStudyPolicy` consumes its current prefix pass/fail evidence.
 
-## Hard acceptance
+## 2. Inputs
 
-A common-N comparison passes only when:
+A qualification request binds:
 
-1. every legacy required coverage/extent/stratum/hard-obligation pass remains a pass for MV;
-2. `D_max_MV(N) <= D_max_legacy(N) + tolerance`;
-3. common independently hard-qualified `N95` does not increase.
+- one canonical DATA5 gradient-training domain;
+- current DATA7 `TargetSubsetInputBundle` identity;
+- current FEAS1/MVIDX1 primitive identities;
+- one current REPAIR2 repaired master-order identity;
+- requested prefix size `N`;
+- exact hard-coverage/obligation policy identity;
+- current MVQUAL schema/policy identity.
 
-`D_sum` and redundancy/provenance telemetry are secondary diagnostics and cannot hide a worst-view regression. Locked-test data cannot tune selector policy. All materializable MV rungs are independently rescored for capacity diagnosis; selector-internal pass flags are not evidence for the 16,384 ceiling.
+The selected prefix is exactly the first `N` entries of the repaired master order. MVQUAL SHALL reject a caller-supplied membership list that does not authenticate as that prefix.
 
-## Learning controls and migration
+## 3. Independent recomputation
 
-Freeze at most two common sizes that hard-qualify independently for both selectors, preferring the smallest and then the next larger control. They become legacy-vs-MV TRAIN2/EVAL2 controls; positive GPU execution is `deferred_final_gpu_qualification`.
+MVQUAL may reuse authenticated primitive sparse neighborhood/obligation inputs from MVIDX1. It SHALL recompute the qualification predicates independently of selector/repair mutable counters.
 
-The persisted campaign record is `target_multi_view_qualification` and is receipt-bound to TARGET-DATA2B, FEAS1, DATA2A, MVIDX1, the legacy ladder, REPAIR1, and MVQUAL1 policy identity. MVQUAL1 remains pre-migration evidence: revision-64 TARGET-DATA2C v4 is still production authority. Next gate: `SIZE-HALVE2`.
+For each required family and obligation class, it records the current policy-defined evidence, including as applicable:
+
+- weighted family coverage;
+- hard deficit `D_m(N)` and worst-view deficit `D_max(N)`;
+- uncovered witness count and weighted mass;
+- required extent/stratum/obligation predicates;
+- unique-support and redundancy diagnostics;
+- correlation/provenance/run/condition diversity diagnostics;
+- exact pass/fail reasons.
+
+Secondary diagnostics cannot compensate for failure of a mandatory hard family or obligation.
+
+## 4. Hard pass
+
+A prefix passes only when every hard predicate defined by the bound current policy passes. No historical selector/ladder result is part of this comparison.
+
+Locked-test, held-out CV, and calibration evidence cannot tune the qualification policy or satisfy a hard predicate.
+
+## 5. Monotonicity invariant
+
+Required target-size rungs are nested prefixes of one repaired master order. Under the current positive hard-coverage/obligation predicates, adding candidates cannot remove already covered witness mass or unsatisfy an already satisfied positive obligation.
+
+Therefore, across increasing materializable nominal sizes, the hard-pass sequence SHALL be monotone: once a prefix passes, all larger prefixes under the identical scientific input/policy identity must also pass.
+
+A pass/fail/pass or pass/fail suffix is an invariant violation. MVQUAL SHALL report the inconsistency and target-size preparation SHALL fail closed.
+
+## 6. Result record
+
+`MultiViewQualificationRecord` (or the current implementation-equivalent schema) binds:
+
+- domain and prefix size;
+- repaired-order identity;
+- DATA7/FEAS1/MVIDX1 identities;
+- hard policy and MVQUAL policy identities;
+- independently recomputed per-family/obligation evidence;
+- deterministic pass/fail result and reason codes;
+- current schema/version identity.
+
+Execution worker count, queue completion order, cache location, and equivalent runtime choices do not enter the scientific result identity.
+
+## 7. Parallel execution
+
+Qualification of different domains or prefix sizes may execute concurrently under bounded resource admission. Completion order is non-authoritative; persisted result ordering is canonical.
+
+Parallelism cannot change the primitive sparse relation, FP64 predicate arithmetic, hard thresholds, or pass/fail result.
+
+## 8. Relationship to target-size study
+
+The target-size study defines:
+
+```text
+qualified_sizes = {
+  N in materializable_sizes :
+  MVQUAL(d,N).hard_pass for every required training domain d
+}
+```
+
+MVQUAL supplies only the independent hard evidence for that definition. It does not train models, rank qualified sizes by learning performance, inspect held-out folds, or choose `N_selected`.
+
+## 9. Failure conditions
+
+MVQUAL fails closed when:
+
+- primitive MVIDX/policy identity does not match the repaired order;
+- requested membership is not the authenticated repaired prefix;
+- selector/repair counters are supplied as a substitute for independent recomputation;
+- a required hard predicate cannot be evaluated exactly;
+- forbidden held-out/calibration/locked evidence enters the qualification policy;
+- nested-prefix qualification violates monotonicity;
+- persisted qualification evidence is stale, corrupt, or incompatible.
+
+Unsupported historical qualification/comparison schemas are non-current evidence and do not define current acceptance behavior.

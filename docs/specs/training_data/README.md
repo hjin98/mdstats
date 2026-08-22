@@ -1,132 +1,109 @@
-# MLFF training-data specifications
+# MLFF training-data current specification index
 
-This directory is the normative current-behavior layer for the MLFF training-data, fine-tuning, evaluation, deployment, and active-learning workflow. Specifications describe accepted behavior implemented by the current code; they are not implementation roadmaps or release chronologies.
+This directory contains narrow **current-generation** MLFF specifications plus a temporary residue of superseded documents being consolidated into `docs/history/mlff/` by `DOC-MLFF-ARCH-RESET1` A4.
 
-## Authority model
+Only the specifications listed in this index are current normative owners. Unlisted release/gate/migration-era files do not override the architecture or this index and are scheduled for historical consolidation/removal.
 
-- `mlff_data_stage_plan_spec.md` retains its legacy filename for stable links but is the **cross-cutting MLFF system contract**, not a stage plan. It owns workflow-wide invariants that are not usefully duplicated across narrower modules.
-- Narrower specifications own module-local APIs, schemas, numerical behavior, persistence, runtime semantics, and compatibility contracts.
-- Architecture under `docs/arch_manuals/` owns accepted current structure and ownership boundaries.
-- Developer transitions and implementation gates live under `workplans/`.
-- Completed chronology is non-normative and lives under `docs/history/mlff/`, `CHANGELOG.md`, release evidence, audits, or benchmarks as appropriate.
+The cross-cutting architecture is defined by the canonical chapters under `docs/arch_manuals/mlff_training_data/`. This specification layer owns exact current schemas, policy values, algorithms, failure modes, and runtime behavior.
 
-When a narrow specification refines a cross-cutting rule, both must remain compatible: the narrow document owns the detailed realization, while the system contract owns the invariant it serves.
+## Cross-cutting system contract
 
-## Current specification hierarchy
+- `mlff_data_stage_plan_spec.md` — stable-filename cross-cutting system invariants; despite the filename, it is not an implementation stage plan.
 
-- `mlff_data2_source_catalog_spec.{md,pdf}`: source manifest, label-domain,
-  named-energy, and atomic-reference contracts.
-- `mlff_data2a_manifest_inference_gate_spec.{md,pdf}`: XML metadata inference, filename strain candidates, fixed-cell geometry verification, and review-manifest promotion.
-- `mlff_data3_frame_conditions_spec.{md,pdf}`: frame identity, eligibility,
-  conditions, duplicate handling, reference cells, and strain.
-- `mlff_data4_raw_features_events_spec.{md,pdf}`: generic raw features/events,
-  optional profile-extension catalogs, and current DATA4 evidence contracts.
-- `mlff_data5_partition_roles_spec.{md,pdf}`: partition units, feasibility,
-  evidence roles, independence, nested monitors, blinding, and leakage audits.
-- `mlff_data6_selection_descriptors_spec.{md,pdf}`: universal and optional
-  profile selection descriptors, restartable model-sweep evidence,
-  training-only difficulty, and blinded-prediction contracts.
-- `mlff_data7_fitted_metrics_selection_spec.{md,pdf}`: fitted metrics, E0 fits,
-  objectives, weights, selection ladders, and coverage.
-- `mlff_data8_mace_artifacts_spec.{md,pdf}`: MACE XYZ, replay, protocol,
-  compatibility, job-bundle, and sealed-evaluation contracts.
-- `mlff_data9b1_campaign_checkpoint_control_spec.{md,pdf}`: passed-gate campaign freezing, checkpoint inventory, metric admissibility, and deterministic constrained selection.
-- `mlff_data9b2_execution_aggregation_freeze_spec.{md,pdf}`: supervised and
-  restartable execution, exact monitor-bound evaluation, fold/seed aggregation,
-  committee export, protocol freeze, and sealed-test activation.
-- `mlff_data9b3_campaign_cli_spec.{md,pdf}`: one-config UNIX-style campaign
-  interface, digest-approved manifest, one SQLite state database, fail-closed
-  advancement, compact results, and bounded deployment verification.
-- `mlff_data9b3a_cueq_campaign_spec.{md,pdf}`: frozen e3nn/CuEq backend
-  policy, automatic initialization detection, real-model qualification, and
-  end-to-end propagation through preparation, training, evaluation, and verification.
-- `mlff_data9b4_storage_restart_spec.md`: conservative campaign artifact
-  lifecycle, selected-checkpoint retention, active-process ownership, durable
-  interruption, completed-run recovery, and disk-pressure continuation.
-- `mlff_data9a_integration_qualification_spec.md`: real MACE, foundation,
-  replay, and production qualification gate.
-- `mlff_data9a2_real_mace_realization_spec.md`: executable MACE realization.
-- `mlff_data9a5_deployment_artifact_spec.{md,pdf}`: deterministic FP32/FP64
-  deployment artifacts and downstream-runtime boundary.
-- `mlff_observable_validation_bridge_spec.{md,pdf}`: immutable pairing and
-  orchestration of analysis-owned observables.
-- `mlff_data9a7e_cross_system_qualification_spec.{md,pdf}`: bounded
-  crystal, amorphous, liquid, interface, and LTA DATA4--DATA7 qualification,
-  lazy optional imports, and immutable release evidence.
-- `mlff_data9a6b_architecture_consistency_spec.{md,pdf}`: recipe safety,
-  initial collection/model lineage, capability schemas, manual/graph correction,
-  and thermomechanical-analysis ownership plan.
-- `mlff_data9a6c_observable_evidence_leakage_spec.{md,pdf}`: verified symmetric
-  lineage, analysis-owned result identities, evidence roles, locked-test gates,
-  source/wheel parity, and graph ordering.
-- `mlff_data9a7a_material_profile_contracts_spec.{md,pdf}`: compositional phases,
-  geometry, chemistry modifiers, structural extensions, atom groups, condition
-  axes, independence axes, provider identity, and DATA4 profile threading.
-- `mlff_data9a7b_universal_structural_selection_spec.{md,pdf}`: analysis-owned
-  local geometry, universal structural provider catalogs, DATA6-v2 integration,
-  generic events, DATA7 feature fitting, and per-species environment coverage.
-- `mlff_data9a7c_phase_geometry_profiles_spec.{md,pdf}`: phase-composed feature
-  and event defaults, geometry-aware atom-group priorities, DATA6-v3 plan
-  lineage, and advisory physical-observable call composition.
-- `mlff_data9a9a_production_model_sweep_spec.{md,pdf}`: exact DATA5-authorized
-  model-sweep planning, restartable descriptor/prediction sidecars, corruption
-  recovery, and DATA6-v5 consumption without repeated foundation inference.
-- `mlff_parallel_evaluation_verification_spec.md`: adaptive resource-bounded
-  checkpoint evaluation and NVE verification concurrency, with 90% CPU/GPU
-  utilization and VRAM ceilings and the retained 80% RAM ceiling.
-- `mlff_perf_p0_native_target_coverage_spec.{md,pdf}`: current 0.20.179a0
-  PERF-P0 authority for canonical native TARGET-DATA2B arrays, authenticated
-  NPY-shard persistence, exact historical-v1 migration, shared balanced-weight
-  profiles, one-sort weighted statistics, exact uniform-weight radius dispatch,
-  matched supplied-data CPU evidence, and the PERF-P1 handoff.
-- `mlff_true_inference_telemetry_gate_spec.md`: historical 0.20.87a0 first-forward
-  gate and 60-second true-inference window.
-- `mlff_mixed_stage_admission_progress_spec.md`: historical 0.20.88a0 heavy-work
-  boundary and 20-second mixed-stage admission policy.
-- `mlff_single_job_gpu_calibration_spec.md`: historical 0.20.89a0 single-job
-  180-second calibration using means over all retained nonzero samples.
-- `mlff_upper_tail_gpu_calibration_spec.md`: historical 0.20.90a0 five-minute
-  calibration using the highest retained decile after the 1% activity filter.
-- `mlff_peak_trimmed_gpu_calibration_spec.md`: historical 0.20.91a0 evaluation/verification
-  policy: discard the highest retained decile and average the next decile.
-- `mlff_85_95_gpu_calibration_spec.md`: historical/current estimator introduced in 0.20.92a0 for evaluation/verification
-  policy: discard the highest 5% of retained activity and average the next-highest 10%
-  (approximately the 85th--95th percentile band), freeze GPU-utilization concurrency
-  after calibration, and retain only the live VRAM hard guard. CPU evaluation/verification
-  stays on a 20-second window and training stays on a 60-second true-epoch window.
-- `mlff_work_conserving_inference_queue_spec.md`: historical/current 0.20.93a0 rolling-queue policy;
-  admitted evaluation/verification slots are refilled immediately on completion.
-- `mlff_parallel_cueq_incremental_export_spec.md`: current 0.20.94a0 runtime policy;
-  serialize only thread-unsafe MACE accelerator FX conversion, finalize selection per run,
-  atomically publish `models/<run-id>-target.model` while other runs continue, and refill
-  all completed-wave slots before selection/export callbacks.
+## Source, labels, evidence roles, and fitted preparation
 
-The DATA1 shared sampling specification remains in
-`../sampling/shared_sampling_primitives_spec.{md,pdf}`.
+- `mlff_data2_source_catalog_spec.md` — source catalog, label-domain and source identity.
+- `mlff_data2a_manifest_inference_gate_spec.md` — explicit source-manifest inference/validation behavior where applicable.
+- `mlff_data3_frame_conditions_spec.md` — frame conditions, reference/strain/stress context and eligibility-facing condition records.
+- `mlff_data4_raw_features_events_spec.md` — partition-independent raw features and protected-event evidence.
+- `mlff_data5_partition_roles_spec.md` — statistical roles, independence, purge, fold/final training-domain construction.
+- `mlff_data6_selection_descriptors_spec.md` — current selection-descriptor and foundation-prediction evidence.
+- `mlff_data7_fitted_metrics_selection_spec.md` — domain-local fitted metrics, E0/objective/weights, difficulty, and `TargetSubsetInputBundle`; **no target membership or target-size authority**.
 
+## Multi-view target subset and target size
 
-- `MLFF-PERF1` (0.20.62a0): profiled one-pass campaign execution, indexed catalogs, vectorized DATA4 kernels, sharded state, and progress contracts.
-- `MLFF-PERF2` (0.20.63a0): resource-bounded CPU/RAM/VRAM planning, isolated trajectory workers, compact LTA process transfer, native MACE graph batches, and adaptive CUDA-OOM recovery.
-- `MLFF-PERF4` (0.20.86a0): parallel evaluation and verification, projected GPU-utilization/VRAM admission, projected CPU-utilization admission, and package-wide 90% CPU/GPU defaults while RAM remains 80%.
-- `MLFF-PERF5` (0.20.87a0): exclude initialization from evaluation/verification telemetry, begin calibration at the first real model forward pass, and require a trailing 60-second inference window before promotion.
-- `MLFF-PERF6` (0.20.88a0): begin at the first computation-heavy stage, average the complete evaluation/verification workload for 20 seconds, keep training at 60 seconds, and report per-task stages.
-- ADAPT-PREC1 binary learned-model precision is implemented in `0.20.122a0`: new campaigns
-  support only `single|double`; staged `refine` remains historical/read-only, while
-  mdstats-owned scientific arithmetic remains FP64 under both model modes. See
-  `mlff_binary_model_precision_spec.{md,pdf}`.
-- ADAPT-MON1 fixed common online monitors are implemented in `0.20.123a0`: new campaign
-  preparation binds a deterministic 256-configuration target monitor from the common DATA5
-  outer-monitor domain and a deterministic 512-configuration TRUE_DFT replay monitor. See
-  `mlff_online_monitor_spec.{md,pdf}`.
-- ADAPT-STOP1, ADAPT-RANK1, ADAPT-EVAL1, and ADAPT-VERIFY1 are implemented in
-  `0.20.124a0`--`0.20.127a0`; their specifications freeze adaptive stopping, one-champion-per-run
-  lightweight ranking, top-K full evaluation, and score-ordered bounded verification.
-- ADAPT-MIGRATE1 is implemented in `0.20.128a0`: schema-neutral protocol-freeze authority,
-  restart/stale-evidence closure, historical evaluator readability, and storage compatibility. See
-  `mlff_adaptive_migration_spec.{md,pdf}`. The seven-gate adaptive revision is complete.
+- `mlff_target_data2b_feas1_support_capacity_spec.md` — FEAS1 full-pool feasibility/support evidence.
+- `mlff_neighbor1_exact_neighborhood_spec.md` — exact neighborhood producer semantics shared by current multi-view consumers.
+- `mlff_target_data2c_mvidx1_sparse_coverage_index_spec.md` — MVIDX1 authenticated exact sparse coverage index.
+- `mlff_mvidx_out_of_core_scaling_spec.md` — exact bounded/file-backed MVIDX realization.
+- `mlff_mvidx_queue_backpressure_spec.md` — bounded MVIDX queue/admission behavior.
+- `mlff_target_data2c_mvsel2_forward_lazy_chain_spec.md` — current integrated FEAS1/MVIDX1/MVSEL2/REPAIR2/MVSTATE2/MVQUAL target-subset chain and exact forward/lazy semantics.
+- `mlff_target_data2c_mvqual1_same_n_qualification_spec.md` — narrow independent MVQUAL predicate/result details where not superseded by the integrated current contract.
+- `mlff_target_subset_size_study_spec.md` — sole exact `TargetSizeStudyPolicy` owner: fixed nominal sizes, materializable/qualified/selected semantics, 3/10/30 continuation, paired seeds, funnel, hard admissibility, typed non-convergence/failure.
 
-- `mlff_cueq_dep1_runtime_freeze_spec.{md,pdf}`: current `0.20.188a0` CUEQ-DEP1 authority for content-addressed CuEq core/Torch/CUDA-ops distributions, CUDA/determinism provenance, fail-closed runtime capture, and FINAL-GPU1 integration. Positive accelerator evidence remains deferred to the final release workstation run.
-- `mlff_mvstate_reuse1_selector_repair_handoff_spec.md`: 0.20.236a0 exact MVSEL-to-REPAIR sparse-state checkpoint handoff, authenticated bundled persistence, post-divergence exactness boundary, and CPU optimization closure.
-- `mlff_progress_reporting_format_spec.md`: current 0.20.237a0 presentation-only MLFF progress grammar (`HH:MM:SS` elapsed/ETA, canonical counters/rates/status fields) with revision 103 and FINAL-GPU1 authority unchanged.
+The following are **not** current target-subset authorities: MVSEL1, REPAIR1, MVSTATE-REUSE1, MVMIGRATE, generated/rescue ladders, or older size-halving/fidelity gate documents. A4 consolidates their useful rationale into history.
 
-- `mlff_mvidx_out_of_core_scaling_spec.md`: 0.20.238a0 exact-equivalence multi-billion-edge MVIDX file-backed/chunked inversion hardening.
+## Monitoring, replay, training, checkpointing, and evaluation
+
+- `mlff_online_monitor_spec.md` — `OnlineTargetMonitorPolicy` and `ReplayMonitorPolicy`; monitor cardinalities are not target sizes.
+- `mlff_data8_mace_artifacts_spec.md` — current MACE target/replay artifact realization.
+- `mlff_adaptive_training_stop_spec.md` — ordinary post-size-freeze training stopping/LR control where current; target-size-study stopping override is owned by `mlff_target_subset_size_study_spec.md`.
+- `mlff_data9b1_campaign_checkpoint_control_spec.md` — checkpoint control and candidate retention/evaluation orchestration.
+- `mlff_adaptive_full_evaluation_spec.md` — current full candidate evaluation/admissibility behavior where applicable.
+- `mlff_adaptive_verification_spec.md` — current deployment/model verification behavior where applicable.
+- `mlff_binary_model_precision_spec.md` — model precision policy.
+- `mlff_true_label_restart_lineage_spec.md` — true-label restart/source lineage.
+- `mlff_mace_torchscript_warning_compatibility_spec.md` — current warning handling where the locked runtime still emits the relevant warnings.
+
+## Cross-validation, final selection, deployment, and campaign realization
+
+- `mlff_mlcv_cross_validation_spec.md` — protocol-matched held-out cross-validation; held-out folds do not choose target size or checkpoint.
+- `mlff_mlcv_run_selection_spec.md` — current run/checkpoint aggregation behavior.
+- `mlff_mlcv_final_selection_spec.md` — final constrained selection/committee behavior.
+- `mlff_mlcv_verification_spec.md` — final protocol/committee verification.
+- `mlff_data9a5_deployment_artifact_spec.md` — deployment artifact contract.
+- `mlff_data9b2_execution_aggregation_freeze_spec.md` — current aggregation/freeze identity.
+- `mlff_data9b3_campaign_cli_spec.md` — current campaign CLI contract.
+- `mlff_data9b4_storage_restart_spec.md` — campaign storage/restart behavior.
+- `mlff_storage_management_spec.md` — bounded storage/scratch retention policy.
+
+Migration-only specifications are non-current and intentionally omitted.
+
+## Material/profile and physical-observable validation
+
+- `mlff_data9a7a_material_profile_contracts_spec.md` — material/profile declarative extension contracts.
+- `mlff_data9a7b_universal_structural_selection_spec.md` — generic structural-provider/current selection-input behavior where compatible with the single-selector architecture.
+- `mlff_data9a7c_phase_geometry_profiles_spec.md` — phase/geometry profile semantics.
+- `mlff_data9a7e_cross_system_qualification_spec.md` — cross-system/profile qualification evidence.
+- `mlff_data9a6c_observable_evidence_leakage_spec.md` — statistical-role restrictions on physical-observable evidence.
+- `mlff_observable_validation_bridge_spec.md` — MLFF-to-`mdstats.analysis` observable orchestration boundary.
+- `mlff_data9a8_observable_comparison_spec.md` — current observable-comparison policy/result contract.
+
+Profile-migration documents are historical rather than current extension contracts.
+
+## Deterministic and bounded execution
+
+- `mlff_parcore1_deterministic_work_queue_spec.md` — shared bounded deterministic CPU work queue.
+- `mlff_mvkernel1_sparse_vector_kernels_spec.md` — exact sparse/vector kernel equivalence contract.
+- `mlff_repair_par1_deterministic_parallel_proposals_spec.md` — exact deterministic parallel REPAIR2 proposal scoring where current.
+- `mlff_mvqual_par1_global_scoring_queue_spec.md` — bounded independent MVQUAL job execution.
+- `mlff_replay_perf1_index_cache_spec.md` — authenticated replay-source index/cache.
+- `mlff_parallel_evaluation_verification_spec.md` — bounded parallel checkpoint evaluation/deployment verification.
+- `mlff_vram1_perf_p4_memory_pipeline_spec.md` — GPU/VRAM bounded execution where current runtime qualification supports it.
+- `mlff_progress_reporting_format_spec.md` — shared MLFF progress grammar, including fixed-width `HH:MM:SS` elapsed/ETA.
+
+Performance documents that only record a historical gate, calibration experiment, hotfix, or release qualification are evidence/history rather than permanent current specifications and are intentionally omitted from this index.
+
+## Runtime/backend locks
+
+Runtime/backend specifications are current only while their exact dependency/adapter contract remains supported. The current index includes a runtime lock only when it is an actual accepted execution dependency, not merely because a past release qualified it.
+
+Relevant current runtime sources may include:
+
+- `mlff_cueq_dep1_runtime_freeze_spec.md` — CuEq/MACE/Torch runtime identity where the current configured backend uses that lock.
+- `mlff_data9b3a_cueq_campaign_spec.md` — CuEq campaign realization where that backend is explicitly selected and qualified.
+
+Backend qualification reports, hotfix notes, parity diagnostics, and obsolete migration policies are not current semantic owners.
+
+## Authority and compatibility rules
+
+1. Architecture owns cross-subsystem scientific/statistical structure.
+2. This index identifies narrow current specification owners.
+3. A narrow specification may strengthen its local current contract but cannot contradict the architecture.
+4. A workplan, audit, benchmark, release note, generated PDF, or historical document cannot override current architecture/specifications.
+5. Unsupported old campaign artifacts fail clearly and require re-preparation; historical readability is not a current product-semantic requirement.
+6. If two current listed specifications appear to own the same scientific decision, that is a documentation/design defect and must be resolved to one owner rather than patched with precedence prose.
+
+## Publication rule
+
+Markdown is the editable semantic source for these specifications. Generated PDFs, when maintained for a current specification, must be regenerated from the current Markdown and visually/semantically checked under the repository documentation publication process. Superseded PDFs do not remain current merely because a file exists.

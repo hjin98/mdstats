@@ -1,196 +1,216 @@
-# Part VI - Performance and execution architecture
+# Part VI - Bounded execution, restart, and performance architecture
 
-## Performance objective and authority
+## Purpose and authority
 
-Execution optimization is accepted only when it preserves scientific authority and improves measured throughput, memory behavior, or restart cost. CPU/GPU utilization is diagnostic rather than scientific authority. Memory-bound sparse kernels may be optimal below nominal occupancy targets.
+Execution optimization is acceptable only when it preserves the scientific/statistical authorities defined in Parts I-V and improves measured throughput, memory behavior, storage behavior, or restart cost. Utilization is diagnostic; scientific digests, exact decision traces, and authoritative records decide correctness.
 
-For a stage allocated $P$ CPU lanes, effective occupancy over a bulk interval is
+Worker count, queue depth, query-block size, cache location, file-backing threshold, storage path, and similar execution choices do not enter scientific identity unless a current specification explicitly makes them part of the scientific algorithm.
 
-$$
-U_P = \frac{\Delta t_{\mathrm{CPU}}}{P\,\Delta t_{\mathrm{wall}}}.
-$$
+The central rule is:
 
-When sufficient independent compute tasks exist and the kernel is compute-bound, automatic execution targets high sustained occupancy while respecting the configured CPU/RAM/GPU/VRAM ceilings. Throughput and wall time decide among exact-equivalent realizations; scientific digests and authoritative records decide correctness.
+> change how exact work is scheduled or represented, not what scientific evidence is consumed or what authoritative decision is produced.
 
-Worker count, queue depth, query-block size, storage path, cache location, and other execution-only choices SHALL NOT enter scientific identity unless the value changes a declared scientific algorithm.
+## Work/span and single-level parallelism
 
-## Work/span model and single-level parallelism
-
-The campaign follows a task-parallel work/span model. With serial work $T_1$ and critical path $T_\infty$,
+For serial work \(T_1\), critical path \(T_\infty\), and \(P\) admitted CPU lanes,
 
 $$
-T_P \ge \max\!\left(\frac{T_1}{P},T_\infty\right).
+T_P\ge\max\!\left(\frac{T_1}{P},T_\infty\right).
 $$
 
-Independent work is exposed at the highest level that supplies enough tasks. Nested numerical parallelism is suppressed while the outer queue can fill the budget:
+Independent work is exposed at the highest useful level. Nested numerical parallelism is suppressed while outer work can fill the resource budget:
 
 $$
-P_{\mathrm{outer}}\times P_{\mathrm{native}}\le P_{\mathrm{budget}}.
+P_{\mathrm{outer}}P_{\mathrm{native}}\le P_{\mathrm{budget}}.
 $$
 
-For cKDTree, BLAS, OpenMP, and similar native kernels, campaign execution normally uses one native lane per task when outer work is sufficient. Native-thread configuration is owned by the stage/resource scope rather than toggled independently inside arbitrary workers.
+For native kernels such as cKDTree, BLAS, or OpenMP, a campaign resource scope owns native-thread admission. Individual workers do not independently oversubscribe the machine.
 
-## Shared deterministic CPU scheduler
+## Deterministic resource-bounded work queue
 
-`DeterministicWorkQueue` is the common substrate for CPU-heavy independent work. Its current execution contract provides:
+CPU-heavy independent tasks use a shared deterministic queue abstraction with explicit CPU and memory ownership. Its architectural responsibilities are:
 
-- explicit `StageResourceScope` CPU and RAM ownership;
-- separately bounded ready, submitted/in-flight, and completed work;
-- work-conserving dispatch across compatible profiles, families, domains, or jobs;
-- deterministic task identities and exception propagation;
-- deterministic ordered reducers where authoritative FP64 reduction order matters;
-- memory-weighted admission/backpressure and explicit persistent-memory reservations;
-- queue/executor heartbeat telemetry;
-- locality metadata that does not enter scientific identity.
+- bound executing, ready, in-flight, and buffered work;
+- reserve persistent memory before admitting temporaries;
+- propagate deterministic task identities and exceptions;
+- allow arbitrary completion order where scientific order is irrelevant;
+- restore canonical reduction/commit order where FP64 arithmetic or record order is authoritative;
+- expose progress/resource telemetry without placing telemetry in scientific identity.
 
-The executor owns exactly the executing Python lanes admitted by the resource scope. It MAY retain more submitted futures than executing lanes to hide coordinator hand-off latency, but simultaneously executing work remains bounded by the resource scope and does not authorize nested oversubscription.
+Task submission may run ahead of execution to hide hand-off latency, but simultaneous execution remains bounded by the declared resource scope.
 
-Task completion may be arbitrary. Whenever arithmetic order is part of exact-equivalence authority, authoritative state is committed only in the prescribed canonical order.
+## One product-scale authority per semantic input
 
-Bare library/API calls that do not receive an explicit campaign scope preserve their documented direct-call resource semantics. Campaign orchestration supplies the explicit bounded scope and therefore owns admission, native-thread quarantine, and hard resource ceilings.
+The fixed target-size population does not permit one full descriptor/graph/selector copy per rung. Per required training domain, the product-scale execution model is:
+
+```text
+one fitted DATA7 selection-input authority
+one exact neighborhood/MVIDX authority
+one MVSEL2/REPAIR2 master order
+one compact MVSTATE2 continuation state when persisted
+prefix metadata/views for candidate rungs
+MVQUAL evidence for required prefixes
+training artifacts only for candidates authorized by the size funnel
+```
+
+This is an architectural resource invariant, not merely an optimization preference. A realization whose memory/storage scales approximately with eight independent copies of the target-selection state is non-conforming even if it eventually produces the same scientific result.
 
 ## Exact neighborhood production and reuse
 
-`ExactNeighborhoodEngine` is the single exact TARGET-DATA2B/C geometric neighborhood implementation. Query blocks from eligible feature families may execute through the shared deterministic queue. The frozen scaled-distance/radius/tolerance semantics and candidate/witness order remain scientific authority.
+The exact neighborhood engine is the sole geometric producer for the multi-view relation. Query blocks may execute independently through the bounded queue, but completed blocks are committed in the canonical witness/family order required by the scientific representation.
 
-Completed blocks are reduced in canonical witness order and streamed into authenticated witness-oriented CSR state. Ragged neighbor temporaries are released after canonical commit. The final CSR uses fixed typed offsets/indices and is admitted against the stage RAM budget before materialization.
+The resulting sparse store is authenticated by semantic inputs such as candidate/reference ordering, family identity, fitted metric/scaling, radius/tolerance semantics, and cache-format identity. Worker count, block size, queue depth, and cache location are excluded.
 
-The neighborhood store is reconstructible execution state. Its identity binds the semantic reference/candidate ordering, family identity, metric/tolerance policy, cardinalities, and cache-format version. Worker count, block size, queue depth, timing, and progress configuration are excluded.
+MVIDX1 consumes this authenticated exact relation and does not repeat geometry when a compatible forward relation exists. Missing, stale, corrupt, or incompatible reconstructible state is rebuilt from the same authoritative inputs.
 
-MVIDX consumes authenticated forward CSR and SHALL NOT perform a second geometric query on a cache hit. Missing, corrupt, or stale forward state is rebuilt through the same exact neighborhood engine rather than a separate geometry implementation.
+## Deterministic out-of-core MVIDX
 
-## Deterministic MVIDX inversion and out-of-core scaling
+Large candidate-to-witness inversions must be bounded in anonymous RAM. Exact row-chunk transpose/inversion and file-backed typed arrays are permitted when they produce the same authoritative sparse arrays as the in-memory realization.
 
-Required-family candidate-to-witness inversion and hard-obligation inversion are independent exact tasks. Each transpose uses deterministic counting/transpose semantics; canonical family order is restored after arbitrary task completion.
+The execution layer therefore preflights RAM and scratch/disk capacity, bounds concurrent inversions, and may use mmap/NPY-compatible arrays for large products. Candidate offsets and candidate-to-witness indices use the current specified canonical types and ordering.
 
-Within-row strict-order validation is vectorized but semantically identical to a row-by-row predicate: every adjacent candidate index inside a CSR row must be strictly increasing.
+Chunk size, file-backing threshold, and inversion concurrency are execution-only. In-memory and out-of-core paths must satisfy the same scientific content/equivalence contract.
 
-Campaign MVIDX MUST NOT require a multi-billion-edge inverse payload and a full-family transpose workspace to coexist in anonymous RAM. Large-family inversion therefore supports bounded row-chunk CSR-to-CSC construction and file-backed NPY arrays under explicit RAM and disk admission. Candidate offsets remain canonical unsigned 64-bit arrays and candidate-to-witness indices remain canonical unsigned 32-bit arrays.
+## MVSEL2 exact forward/lazy execution
 
-Chunk size, file-backing threshold, and concurrent inversion count are execution-only. Out-of-core and in-memory paths SHALL be byte-equivalent for the authoritative sparse arrays and content digest. Required disk capacity is preflighted before inversion. Durable authenticated state is re-opened before transient build paths are removed.
+MVSEL2 rank authority remains sequential because each accepted candidate changes the scientific state. Execution acceleration is concentrated in exact candidate-row evaluation, staged lexicographic filtering, vectorized sparse gathers, and a certified lazy representative frontier.
 
-The producer/consumer driver SHALL respect bounded ready/in-flight/completed queue capacity even when the number of required families exceeds queue slots. It submits only admitted work, drains completions, and refills deterministically; it does not eager-submit an unbounded family set.
+A stale lazy score is only an upper bound. A candidate can be excluded without refresh only when the bound proves it cannot defeat the best exact contender under the frozen tolerance. Otherwise it is refreshed exactly. Authoritative contender comparison and state mutation remain canonical.
 
-## Exact reference-radius construction
+MVSEL2 maintains compact witness multiplicity, covered mass, obligation/correlation counts, and representative state. It does not require complete product-scale candidate marginal arrays or normal-path witness-to-candidate inverse propagation.
 
-TARGET-DATA2B reference-radius construction uses one shared read-only scaled matrix/tree per family and independent row blocks through the deterministic queue. Each queued cKDTree operation uses one native worker while outer work is available.
+## REPAIR2 exact active-shell execution
 
-Execution may reduce a configured maximum block size to improve lane occupancy and bound query temporaries. Block boundaries are not scientific inputs; local radii and downstream reference arrays SHALL remain byte-identical across qualified block/worker schedules.
+REPAIR2 keeps authoritative repair iteration, admissibility predicates, objective/tie hierarchy, accepted/rejected trace, and winner application deterministic.
 
-Pair/species lookup structures, constant-family rejection, and cached scaling may remove repeated object traversal or unnecessary computation only when inclusion rules and numerical results remain unchanged.
+Independent proposal scoring inside one immutable pre-swap state may execute concurrently when measured work justifies it. Vectorized candidate-row gathers, stamp arrays, bounded-ID indexing, and fused sparse scans are valid preparation optimizations. The accepted winner and authoritative mutation are committed in the frozen deterministic order.
 
-## Exact forward/lazy selector and qualification kernels
+Repair operates on the one master order and protected prefixes. It does not create independently repaired dataset copies for individual target-size rungs.
 
-MVSEL/MVQUAL use typed ragged-CSR gathers and indexed reductions to replace repeated Python object traversal. Candidate/witness ordering remains canonical.
+## MVSTATE2 restart boundary
 
-The MVSEL rank authority remains sequential. MVSEL2 evaluates exact candidate-to-witness rows on demand during hard coverage, then uses an outward-rounded certified lazy representative frontier after one exact Phase-B rebase. A stale bound is excluded only when it is strictly below the best exact score minus the frozen tolerance. Vectorization MAY combine independent row evaluation and telemetry work, but authoritative FP64 row reductions, contender filters, and state mutations remain canonical.
+MVSTATE2 is the only current selector/repair continuation-state family. Its persistent bundle is compact and reconstructible from the selected prefix plus authenticated primitive identities.
 
-MVSEL2/REPAIR2 mutation touches only the selected candidate's forward witness and obligation incidence. It does not maintain complete candidate marginal arrays or traverse witness-to-candidate inverse adjacency. MVIDX1 remains unchanged on disk; its forward-only v2 runtime view avoids mapping inverse arrays.
+Persisted state may include:
 
-Required hard-obligation state and coverage counters may be maintained incrementally if qualification proves equality to reconstruction from the canonical sparse relation.
+- selected order/prefix identity;
+- per-family witness multiplicity and covered mass;
+- obligation and correlation counts;
+- representative utility/state required by the current exact continuation contract;
+- manifest identities binding dataset/domain, MVIDX, policy, ordering, and schema.
 
-Same-N MVQUAL rescoring jobs are independent and may execute concurrently. Completion order is non-authoritative; comparison and persisted result order are reconstructed canonically. Campaign jobs use bounded native numerical lanes and memory admission to avoid nested oversubscription.
+Ephemeral lazy queues and product-scale candidate marginal arrays are reconstructed rather than treated as durable authority.
 
-## Deterministic repair execution
+Restoration authenticates payloads and recomputes continuation invariants from the selected prefix. State from unsupported historical generations is not deserialized or migrated into current authority; the current state is reconstructed from current inputs or the campaign is re-prepared.
 
-REPAIR retains the sequential repair iteration, objective, tie hierarchy, accepted/rejected trace, and winner application as authority. Immutable proposal scoring may execute concurrently when measured work exceeds the execution-only break-even threshold.
+## MVQUAL independent execution
 
-Proposal kernels may use vectorized CSR gathers, fused sparse scans, stamp-array membership, and O(1) candidate/rank maps. Parallel proposal completion is reduced in historical shortlist order. Before a winning swap is persisted, any arithmetic whose exact historical order is authoritative is recomputed in that order.
+Same-prefix MVQUAL jobs are independent and may execute concurrently. Their completion order is non-authoritative; persisted comparison order is canonical.
 
-## Selector-to-repair exact state reuse
+MVQUAL may share authenticated primitive sparse inputs but recomputes the hard predicates independently of selector/repair counters. Parallelism, vectorization, or cache reuse cannot turn selector-internal state into qualification evidence.
 
-`TargetMultiViewSelectionStateCache` is authenticated reconstructible state at the MVSEL/REPAIR boundary. MVSEL may snapshot exact mutable selector state at materializable rungs. REPAIR may restore such a checkpoint only while repair state is identical to the pure selector order.
+## Target-size funnel materialization
 
-After the first accepted repair swap, repair carries the historical mutable state forward. It SHALL NOT synthesize a later repaired state by reconciling a pure MVSEL checkpoint with selected-set differences when that operation changes FP64 state, even if selected candidate IDs happen to match.
+The 3/10/30 size study materializes training state only for candidates still authorized by the production funnel:
 
-Cache identity binds the reference/MVIDX/MVSEL/policy/sparse-kernel lineage and excludes worker/storage choices. Missing, stale, corrupt, or incompatible state falls back to exact historical replay. Post-divergence CSR gather preparation may be batched, but authoritative candidate-major FP64 mutations remain in canonical order.
+```text
+qualified population
+  -> epoch-3 candidates
+  -> at most four epoch-10 continuations
+  -> two epoch-30 continuations
+  -> one selected size or typed failure
+```
 
-For the current v2 chain, MVSTATE2 replaces the v1 eager cache. Its native bundle contains only selected order, per-family witness multiplicity and coverage mass, obligation counts, correlation counts, and representative utility. The lazy queue is reconstructed by exact rebase. Restore authenticates the manifest and array bundle, rejects v1/stale/tampered/truncated artifacts, and recomputes continuation invariants from the selected prefix before use.
+Continuation authenticates model, optimizer, RNG, and protocol parentage. Eliminated candidates are not trained further in ordinary production.
 
-## Replay-source indexing and materialization
+Exhaustive training of the full candidate population to final fidelity is release/algorithm qualification only and must use a bounded dedicated qualification design. It is not permitted to become an unbounded default campaign artifact generator.
 
-The selected replay ExtXYZ remains the external replay authority. A `ReplaySourceIndex` may record authenticated source-byte identity, frame byte offsets/lengths, atom counts, and source-order geometry identity so sparse monitor subsets can seek directly to requested frames and complete traversals can parse bounded contiguous chunks.
+## Replay indexing and bounded parsing
 
-The index is reconstructible execution state and SHALL NOT replace replay source, split, label, prediction, or retention authority. Parser chunk size and index location are execution-only. Source mutation or index corruption causes safe reconstruction.
+The selected replay source remains external scientific authority. A replay source index may store authenticated source-byte identity, frame offsets/lengths, atom counts, and source-order geometry identity to permit sparse monitor access and bounded chunk parsing.
 
-Parser concurrency is not introduced merely to increase worker count. It is permitted only when measured on the relevant workload and exact persisted replay bytes/identities are preserved.
+The index is reconstructible execution state. It cannot replace replay source, split, label, prediction, monitor, or retention authority. Source mutation or index corruption causes safe reconstruction.
 
-## Model inference, evaluation, and verification concurrency
+Parser concurrency is introduced only when measurement on representative workload shows benefit and exact persisted replay bytes/identities are preserved.
 
-Independent checkpoint-evaluation and bounded verification jobs may execute concurrently under common CPU/RAM/GPU/VRAM admission. Initialization/setup work is excluded or included in utilization calibration according to the current dedicated runtime specification; architecture requires only that the selected calibration policy be explicit, deterministic, and independent of scientific checkpoint metrics.
+## Training, evaluation, and verification concurrency
 
-Runtime parallelism SHALL NOT enter evaluation policy, checkpoint metric, selection, or verification scientific digests. Existing completed verification/evaluation artifacts remain reusable only when their immutable model, structure/data, runtime dependency, and scientific execution identities remain compatible.
+Independent training, checkpoint-evaluation, and deployment-verification jobs may execute concurrently under common CPU/RAM/GPU/VRAM admission where their owning policies permit concurrency.
 
-GPU admission SHALL fail closed on hard memory limits and SHALL NOT silently change backend/model precision or scientific policy. Positive accelerator qualification is evidence, not an architectural assumption.
+Runtime concurrency never enters the scientific checkpoint score or admissibility policy. Hard GPU/VRAM or RAM limits fail closed rather than silently switching precision/backend, shrinking scientific evidence, or changing model policy.
 
-## Memory budget and persistence
+Positive accelerator qualification is evidence. The architecture does not assume an accelerator path is correct merely because it is available.
 
-CPU admission is necessary but insufficient. Long stages track an estimated memory budget including persistent trees/scaled arrays, in-flight temporaries, buffered completions, sparse state, result accumulation, and scratch space:
+## Memory and storage budget
+
+Long stages account for persistent and transient memory:
 
 $$
-M_{\mathrm{stage}} =
+M_{\mathrm{stage}}=
 M_{\mathrm{persistent}}+M_{\mathrm{inflight}}+M_{\mathrm{buffered}}+
 M_{\mathrm{sparse}}+M_{\mathrm{result}}+M_{\mathrm{scratch}}.
 $$
 
-New work is admitted only when CPU and memory budgets permit it. Large reconstructible arrays may use mmap-compatible uncompressed persistence when that lowers peak memory or restart cost without changing scientific content.
+New work is admitted only when its CPU and memory reservations fit the stage budget. Large reconstructible arrays may use mmap-compatible/file-backed persistence to lower peak RSS or restart cost.
 
-Every persistent execution cache SHALL authenticate its semantic inputs and payload arrays independently. Cache corruption/staleness is a reconstruction event unless the cache itself is explicitly defined as scientific evidence by another contract.
+Every persistent cache authenticates its semantic inputs and payload independently. Corrupt/stale reconstructible caches are rebuild events; they are not silently accepted and are not scientific evidence unless another current contract explicitly defines them as such.
+
+Scratch-space admission is part of bounded execution. A stage that can create product-scale temporary files must predict and cap scratch use before production work begins.
+
+## GPU/VRAM admission
+
+GPU jobs are admitted against explicit free-memory and configured-budget evidence. Calibration/measurement windows and utilization estimators are runtime policy owned by the current execution specifications, not by release chronology in this manual.
+
+An execution controller may reduce job concurrency after measured resource pressure. It cannot change the scientific batch/exposure semantics, precision policy, checkpoint evidence, or target/replay membership merely to fit memory unless the owning scientific specification explicitly permits that change.
+
+Adaptive OOM recovery is acceptable only when the recovered execution is protocol-equivalent and the changed execution parameter is non-semantic.
 
 ## NUMA-ready locality
 
-A flat work queue is appropriate when memory locality is not limiting. Multi-socket systems may require node-local queues/data shards, worker affinity, local stealing first, and cross-node stealing only to avoid idle lanes.
+A flat queue is appropriate when locality is not limiting. Multi-socket systems may add node-local queues/shards, worker affinity, local stealing first, and cross-node stealing to avoid idle lanes.
 
-NUMA behavior is an execution extension only. It SHALL be activated only after measurement on suitable hardware and SHALL NOT alter scientific identity or canonical reduction order.
+NUMA policy is an execution extension. It is activated only after measurement and cannot alter scientific identity, canonical reduction order, or data partition/evidence roles.
 
-## Vectorization and allocation hygiene
+## Vectorization and allocation discipline
 
-Performance-critical loops SHOULD avoid repeated linear searches, rebuilding immutable dictionaries, repeated full-array scaling, unnecessary concatenation, Python-object materialization where contiguous typed arrays suffice, and per-frame/per-species mask reconstruction that can be cached safely.
+Performance-critical implementations should avoid:
 
-Appropriate exact kernels include:
+- repeated linear searches and immutable-map reconstruction;
+- repeated full-array scaling when a fitted/scaled authority can be reused;
+- unnecessary concatenation or Python-object materialization where typed arrays suffice;
+- repeated per-frame/per-species masks that can be safely cached;
+- full candidate rescans when exact sparse/local updates suffice;
+- duplicate descriptor/graph/materialization per target-size rung.
 
-- offset-derived ragged CSR gathers;
-- bounded-integer indexed counting/reduction;
-- epoch/stamp arrays for bounded-ID membership;
-- bounded batched bootstrap/statistical work that preserves the declared RNG stream;
-- preallocated output arrays and static indexing metadata;
-- cache-keyed static reduction metadata for repeated checkpoint evaluation.
+Useful exact kernels include offset-derived ragged CSR gathers, bounded integer indexed counting/reduction, epoch/stamp arrays, preallocated typed outputs, and cached static reduction metadata.
 
-Optimization changes must distinguish arithmetic preparation from authoritative arithmetic order. Rearranging addresses or batching independent work is acceptable only when the resulting authoritative records satisfy the applicable equivalence contract.
+Optimization reviews must distinguish arithmetic preparation from authoritative arithmetic order. Reordering memory accesses or batching independent work is acceptable only when the authoritative records satisfy the required exact/tolerance contract.
 
-## Progress and observability contract
+## Progress and observability
 
-Every long-running stage SHALL expose:
+Every long-running stage exposes both scientific progress and resource/executor state. At minimum:
 
-1. scientific progress: completed/total work, percent where meaningful, and ETA when estimable;
-2. executor state: busy/allocated workers, ready/in-flight/buffered work, and resource pressure where measurable;
-3. current hot items: identities/local progress for slow active families, shards, jobs, or proposals.
+1. completed/total work and percent where meaningful;
+2. elapsed and ETA when estimable;
+3. throughput with an explicit stable unit;
+4. active/pending/buffered work or equivalent scheduler state;
+5. resource pressure or current hot item when relevant.
 
-A heartbeat is emitted even when no task completes during the reporting interval. ETA is based on globally committed work rather than one current item.
+A heartbeat is emitted during long periods without task completion. ETA is based on globally committed work.
 
-User-facing MLFF progress uses the common presentation grammar:
+User-facing MLFF elapsed and known ETA use fixed `HH:MM:SS` formatting; unavailable ETA is `--:--:--`. Presentation state never enters scientific digests or cache identity.
 
-- dynamic fields appear in canonical order beginning with status/progress/elapsed/ETA;
-- elapsed and known ETA use fixed-width `HH:MM:SS`; durations beyond 99 hours retain all hour digits;
-- unavailable ETA is exactly `--:--:--`;
-- counted work uses `progress=completed/total (percent%)`;
-- throughput carries an explicit stable unit;
-- fields are semicolon-delimited;
-- scheduler heartbeats expose completed and active/pending/queue state rather than prose-only status.
+## Performance qualification
 
-Presentation state SHALL NOT enter scientific digests or execution-cache identity. Shared timing/progress helpers own formatting so individual stages do not introduce private ETA dialects.
-
-## Performance qualification contract
-
-A performance change is qualified against representative worker schedules and workloads appropriate to the stage. Qualification evidence records, as applicable:
+A performance change is reviewed against representative target-scale work. Evidence records, as applicable:
 
 - wall and CPU time;
-- occupancy/utilization and throughput;
-- peak RSS/VRAM and persisted bytes;
+- throughput and measured occupancy/utilization;
+- peak RSS/VRAM and scratch/persisted bytes;
 - queue occupancy/backpressure;
 - output/content digests;
 - exact scientific-record equality or the explicitly declared tolerance contract.
 
-For sequential-authority algorithms, equivalence is checked at the state granularity needed to detect arithmetic drift: for example, MVSEL after each selected rank, REPAIR across the complete swap trace, and MVIDX across every canonical offset/index array.
+Sequential-authority algorithms are checked at sufficient state granularity to detect drift—for example MVSEL2 accepted ranks, REPAIR2 swap trace/state, and MVIDX canonical sparse arrays.
 
-Detailed measurements, historical before/after comparisons, rejected implementation experiments, and release-by-release optimization chronology belong in `benchmarks/`, `audits/`, `release/`, and `docs/history/mlff/`, not in this architecture chapter.
+Detailed before/after measurements, failed optimization experiments, release qualification results, and chronology belong in benchmarks/audits/history rather than the current architecture.
