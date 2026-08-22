@@ -6,7 +6,7 @@ configuration, one SQLite state database, and a compact results directory.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from collections import Counter, deque
 from contextlib import contextmanager
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
@@ -3919,10 +3919,9 @@ def _load_verified_target_coverage_reference_authority(store: CampaignStore) -> 
 def _target_coverage_query_workers(cfg: Mapping[str, Any]) -> tuple[int, Any]:
     """Resolve bounded native cKDTree workers for TARGET-DATA2B construction.
 
-    Automatic mode deliberately caps the tree at eight native threads: this
-    captures the useful cKDTree scaling regime on workstation CPUs without
-    oversubscribing the rest of ``prepare``.  An explicit positive setting may
-    request more, subject to the machine-visible CPU count.
+    The campaign CPU budget is the capacity ceiling. Kernel-specific callers
+    may still select a smaller effective width when task count, memory, or
+    measured scaling warrants it.
     """
 
     resources = detect_system_resources(
@@ -3940,7 +3939,7 @@ def _target_coverage_query_workers(cfg: Mapping[str, Any]) -> tuple[int, Any]:
         task_count=max(1, int(resources.cpu_threads_available)),
         resources=resources,
         requested=requested,
-        maximum_workers=8 if requested == 0 else None,
+        maximum_workers=None,
     )
     return workers, resources
 
@@ -4001,9 +4000,8 @@ def _target_multi_view_qualification_parallelism(cfg: Mapping[str, Any]) -> tupl
     """Resolve MVQUAL-PAR1 global same-N scoring worker count.
 
     Every outer scoring job owns one independent domain/selector/size rescore;
-    nested cKDTree/BLAS layers are constrained to one native thread. Automatic
-    mode uses a conservative four-lane automatic ceiling, while explicit positive
-    values may request more and remain clipped by visible/budgeted CPUs.
+    nested cKDTree/BLAS layers are constrained to one native thread. The runtime
+    CPU budget is the capacity ceiling; task/RAM admission may reduce it.
     """
 
     resources = detect_system_resources(
@@ -4019,11 +4017,7 @@ def _target_multi_view_qualification_parallelism(cfg: Mapping[str, Any]) -> tupl
         )
     budget = max(1, int(resources.cpu_threads_budget))
     available = max(1, int(resources.cpu_threads_available))
-    # Same-N score jobs are memory-bandwidth and temporary-allocation heavy.
-    # Qualification on the 4-lane cloud host saturated after two lanes, so
-    # automatic mode uses a conservative four-lane ceiling while still
-    # allowing explicit larger values on high-memory-bandwidth servers.
-    workers = min(budget, available, 4) if requested == 0 else min(requested, budget, available)
+    workers = min(budget, available) if requested == 0 else min(requested, budget, available)
     return max(1, int(workers)), resources
 
 
@@ -12437,9 +12431,6 @@ def _run_staged_evaluation_tasks(
         gpu_sample=gpu_sample,
         cpu_sample=cpu_sample,
     )
-    _configure_inference_thread_budget(plan)
-    controller = AdaptiveInferenceConcurrency(plan, policy)
-
     def _positive_stage_workers(key: str, default: int) -> int:
         value = int(_cfg(cfg, "execution", key, 0))
         if value < 0:
@@ -12450,22 +12441,64 @@ def _run_staged_evaluation_tasks(
             return max(1, default)
         return value
 
-    # These workers do not own MACE calculators.  Keep them deliberately small:
-    # their job is to overlap hashing/parsing/materialization and metric I/O with
-    # accelerator work, not to create a second CPU oversubscription problem.
-    auto_cpu_stage_workers = max(1, min(2, int(resources.cpu_threads_available)))
-    prepare_workers = min(
+    # Prepare/inference/finalize are simultaneous sibling pools and therefore
+    # partition one campaign CPU budget. Reserve side lanes first, then fit the
+    # inference ceiling/inner thread width into the remaining capacity.
+    cpu_budget = max(1, int(resources.cpu_threads_budget))
+    auto_cpu_stage_workers = 1
+    requested_prepare = min(
         len(tasks),
         _positive_stage_workers(
             "parallel_evaluation_prepare_jobs", auto_cpu_stage_workers
         ),
     )
-    finalize_workers = min(
+    requested_finalize = min(
         len(tasks),
         _positive_stage_workers(
             "parallel_evaluation_finalize_jobs", auto_cpu_stage_workers
         ),
     )
+    if cpu_budget >= 3:
+        side_capacity = max(2, min(cpu_budget - 1, requested_prepare + requested_finalize))
+        prepare_workers = min(requested_prepare, max(1, side_capacity // 2))
+        finalize_workers = min(
+            requested_finalize, max(1, side_capacity - prepare_workers)
+        )
+        reserved_side = prepare_workers + finalize_workers
+    else:
+        # Tiny allocations cannot run three sibling CPU pools concurrently.
+        # Keep one worker object for each side stage; scheduling below serializes
+        # side work so at most one side lane overlaps inference.
+        prepare_workers = 1
+        finalize_workers = 1
+        reserved_side = 1 if cpu_budget > 1 else 0
+
+    inference_capacity = max(1, cpu_budget - reserved_side)
+    maximum_jobs = max(1, min(int(plan.maximum_jobs), inference_capacity))
+    initial_jobs = max(1, min(int(plan.initial_jobs), maximum_jobs))
+    # Native BLAS/OpenMP controls are process-wide for this threaded pipeline.
+    # Conservatively assume every simultaneously active side-stage worker may
+    # consume the same native width as an inference job.  For B=1 the
+    # scheduler serializes all three stages, so there is no concurrent side
+    # unit; for B=2 exactly one side unit may overlap inference.
+    concurrent_side_units = reserved_side
+    concurrent_units = max(1, maximum_jobs + concurrent_side_units)
+    threads_per_job = max(1, cpu_budget // concurrent_units)
+    plan = replace(
+        plan,
+        initial_jobs=initial_jobs,
+        maximum_jobs=maximum_jobs,
+        cpu_threads_per_job=threads_per_job,
+        estimated_cpu_utilization_per_job=(
+            100.0 * threads_per_job / max(1, int(resources.cpu_threads_available))
+        ),
+        reason=(
+            f"{plan.reason}; staged CPU budget partition "
+            f"side_units={concurrent_side_units}; concurrent_units={concurrent_units}"
+        ),
+    )
+    _configure_inference_thread_budget(plan)
+    controller = AdaptiveInferenceConcurrency(plan, policy)
     configured_buffer = int(
         _cfg(cfg, "execution", "evaluation_pipeline_buffer_jobs", 0)
     )
@@ -12587,7 +12620,12 @@ def _run_staged_evaluation_tasks(
     def launch_prepare(pool: ThreadPoolExecutor) -> None:
         if stop_scheduling:
             return
-        while pending and len(active_prepare) < prepare_workers:
+        while (
+            pending
+            and len(active_prepare) < prepare_workers
+            and (cpu_budget >= 3 or not active_finalize)
+            and (cpu_budget > 1 or not active_inference)
+        ):
             buffered = len(active_prepare) + len(ready_inference) + len(waiting_finalize)
             if buffered >= pipeline_buffer:
                 break
@@ -12602,7 +12640,12 @@ def _run_staged_evaluation_tasks(
             active_prepare[future] = (task, timing)
 
     def launch_finalize(pool: ThreadPoolExecutor) -> None:
-        while waiting_finalize and len(active_finalize) < finalize_workers:
+        while (
+            waiting_finalize
+            and len(active_finalize) < finalize_workers
+            and (cpu_budget >= 3 or not active_prepare)
+            and (cpu_budget > 1 or not active_inference)
+        ):
             task, prepared, inference_result, timing = waiting_finalize.popleft()
             future = pool.submit(
                 execute_finalize, task, prepared, inference_result, timing
@@ -12613,6 +12656,8 @@ def _run_staged_evaluation_tasks(
         if stop_scheduling:
             return
         while ready_inference and len(active_inference) < controller.target_jobs:
+            if cpu_budget == 1 and (active_prepare or active_finalize):
+                break
             if len(waiting_finalize) + len(active_finalize) >= finalize_backlog_limit:
                 break
             task, prepared, timing = ready_inference.popleft()
@@ -25259,7 +25304,7 @@ cpu_fraction = 0.90
 ram_fraction = 0.80
 gpu_memory_fraction = 0.90
 # 0 selects the automatic resource-bounded count. Explicit positive values are
-# still clipped by available CPU threads and the RAM budget.
+# remain caps inside the runtime CPU-fraction and RAM budgets.
 source_workers = 0
 feature_workers = 0
 # Exact TARGET-DATA2B/MVIDX1 cKDTree worker override. FEAS1-PERF3 uses
@@ -25269,9 +25314,9 @@ target_coverage_workers = 0
 # REPAIR-PAR1 immutable proposal workers. 0 uses the complete configured CPU
 # budget; repair-state mutation and winner application remain sequential.
 target_multi_view_repair_workers = 0
-# MVQUAL-PAR1 independent domain/selector/size scoring workers. 0 uses the
-# up to four configured CPU lanes automatically; nested cKDTree/BLAS workers are fixed at 1.
-# Set a larger explicit value only on a high-memory-bandwidth host after profiling.
+# MVQUAL-PAR1 independent domain/selector/size scoring workers. 0 authorizes
+# the complete runtime CPU budget; task count/RAM admission may use fewer. Nested
+# cKDTree/BLAS workers are fixed at 1 and positive values are budgeted caps.
 target_multi_view_qualification_workers = 0
 # 0 gives FEAS1 one single-level global worker for every CPU-budget lane
 # (normally 90% of logical threads). All domains/profiles feed the same queue.

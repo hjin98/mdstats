@@ -14,27 +14,38 @@ def test_campaign_facade_installs_v5_single_owner_selection_runtime() -> None:
     assert "build_target_multi_view_lazy_frontier_v2 =" not in source
 
 
-def test_v5_runtime_routes_existing_query_worker_budget_to_selector() -> None:
-    resources = object()
+def test_v5_runtime_uses_runtime_cpu_budget_as_selector_ceiling() -> None:
+    resources = SimpleNamespace(cpu_threads_budget=28)
+    captured = {}
+
+    def detect_system_resources(**kwargs):
+        captured.update(kwargs)
+        return resources
+
     core = SimpleNamespace(
-        _target_coverage_query_workers=lambda cfg: (12, resources),
+        detect_system_resources=detect_system_resources,
+        _cfg=lambda cfg, section, key, default: cfg.get(section, {}).get(key, default),
     )
     workers, actual_resources = mvsel2_v5_runtime._selection_worker_budget(
-        core, {}
+        core, {"performance": {"cpu_fraction": 0.90}}
     )
-    assert workers == 12
+    assert workers == 28
     assert actual_resources is resources
+    assert captured["cpu_fraction"] == 0.90
+    assert captured["device"] == "cpu"
 
 
-def test_v5_runtime_caps_selector_workers_at_qualified_ceiling() -> None:
-    resources = object()
+def test_v5_runtime_does_not_borrow_target_coverage_worker_policy() -> None:
+    resources = SimpleNamespace(cpu_threads_budget=57)
     core = SimpleNamespace(
-        _target_coverage_query_workers=lambda cfg: (28, resources),
+        detect_system_resources=lambda **kwargs: resources,
+        _cfg=lambda cfg, section, key, default: default,
+        _target_coverage_query_workers=lambda cfg: (_ for _ in ()).throw(
+            AssertionError("MVSEL2 must not use cKDTree worker policy")
+        ),
     )
-    workers, actual_resources = mvsel2_v5_runtime._selection_worker_budget(
-        core, {}
-    )
-    assert workers == 16
+    workers, actual_resources = mvsel2_v5_runtime._selection_worker_budget(core, {})
+    assert workers == 57
     assert actual_resources is resources
 
 
@@ -100,3 +111,12 @@ def test_v5_runtime_source_does_not_hardcode_serial_selector() -> None:
     source = open(mvsel2_v5_runtime.__file__, encoding="utf-8").read()
     assert "workers=selector_workers" in source
     assert "workers=1,\n            checkpoint_callback" not in source
+
+
+def test_mvsel2_preflight_worker_points_include_runtime_endpoint() -> None:
+    assert mvsel2_v5_runtime.preflight_mvsel2_native_workers_v2 is not None
+    from mdstats.training_data.mvsel2_native_preflight import _worker_counts
+
+    assert _worker_counts(28) == (1, 2, 4, 8, 16, 28)
+    assert _worker_counts(32) == (1, 2, 4, 8, 16, 32)
+    assert _worker_counts(57) == (1, 2, 4, 8, 16, 32, 57)

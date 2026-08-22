@@ -1108,10 +1108,10 @@ def _build_domain_sparse_components(
     ooc_admission_bytes = int(_MVIDX_OUT_OF_CORE_TASK_ADMISSION_BYTES)
     if resource_scope is not None and resource_scope.ram_budget_bytes is not None:
         budget = max(1, int(resource_scope.ram_budget_bytes))
-        # Large inversions are I/O/memory-bandwidth heavy.  Reserve enough
-        # anonymous scratch for at most eight simultaneous OOC transposes; the
-        # deterministic queue may admit fewer when other work is resident.
-        lane_budget = max(1, min(int(workers), 8))
+        # Derive per-task OOC admission from the actual authorized worker width.
+        # The deterministic queue may admit fewer when other work is resident;
+        # no host-independent lane ceiling is encoded here.
+        lane_budget = max(1, int(workers))
         ooc_admission_bytes = min(
             ooc_admission_bytes,
             max(1, budget // lane_budget),

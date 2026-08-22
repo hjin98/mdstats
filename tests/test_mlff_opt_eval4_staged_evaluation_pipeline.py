@@ -484,3 +484,56 @@ def test_target_only_evaluation_requires_explicit_target_override(tmp_path: Path
             policy=mdstats.CheckpointEvaluationPolicy(condition_keys=()),
             allow_target_only_evaluation=True,
         )
+
+
+def test_staged_runner_one_thread_budget_serializes_all_cpu_stages(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gib = 1024**3
+    one_thread = SystemResourceSnapshot(
+        cpu_threads_available=2,
+        cpu_fraction=0.50,
+        cpu_threads_budget=1,
+        ram_available_bytes=8 * gib,
+        ram_fraction=0.80,
+        ram_budget_bytes=int(8 * gib * 0.80),
+        gpu_memory_fraction=0.90,
+        gpu=GpuResourceSnapshot(False, 0, None, None, None, None, None, "test"),
+    )
+    monkeypatch.setattr(campaign_cli._core, "detect_system_resources", lambda **kwargs: one_thread)
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", _Probe)
+    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", lambda device: None)
+
+    lock = threading.Lock()
+    active = 0
+    peak = 0
+
+    def stage(value):
+        nonlocal active, peak
+        with lock:
+            active += 1
+            peak = max(peak, active)
+        time.sleep(0.01)
+        with lock:
+            active -= 1
+        return value
+
+    tasks = [
+        campaign_cli._StagedEvaluationTask(
+            display_index=index + 1,
+            key=f"one-{index}",
+            label=f"one-{index}",
+            start_detail="one-thread",
+            prepare=lambda index=index: stage(index),
+            requires_inference=lambda prepared: True,
+            infer=lambda prepared: stage(prepared),
+            finalize=lambda prepared, inferred: stage(inferred),
+            done_detail=lambda result, wall: "done",
+        )
+        for index in range(2)
+    ]
+    result = campaign_cli._run_staged_evaluation_tasks(
+        tasks, cfg=_pipeline_cfg(), device="cpu", progress=_Progress()
+    )
+    assert result == {"one-0": 0, "one-1": 1}
+    assert peak == 1

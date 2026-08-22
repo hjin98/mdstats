@@ -17,6 +17,10 @@ from typing import Any
 import numpy as np
 
 from ._common import TrainingDataInputError
+from .mvsel2_native_backend import (
+    phase_b_execution_backend_v2,
+    score_family_candidate_batch_v2,
+)
 from .target_multi_view_selector_v2 import (
     TargetMultiViewCandidateScoreV2,
     TargetMultiViewForwardStateV2,
@@ -122,6 +126,90 @@ def _diversity_gain(
     )
 
 
+
+
+def _native_family_scores(
+    family: Any,
+    terms: np.ndarray,
+    candidates: np.ndarray,
+    *,
+    workers: int,
+) -> tuple[np.ndarray, int]:
+    """Score exact family rows with the already-qualified native reduction."""
+
+    return score_family_candidate_batch_v2(
+        np.asarray(family.candidate_offsets),
+        np.asarray(family.candidate_witnesses),
+        np.ascontiguousarray(terms, dtype=np.float64),
+        np.asarray(candidates, dtype=np.uint32),
+        workers=int(workers),
+    )
+
+
+def _native_representative_scores(
+    candidates: np.ndarray,
+    forward_domain: Any,
+    state: TargetMultiViewForwardStateV2,
+    *,
+    workers: int,
+) -> tuple[np.ndarray, int]:
+    scores = np.zeros(len(candidates), dtype=np.float64)
+    edges = 0
+    # Preserve the authoritative family accumulation order exactly. Native
+    # parallelism exists only inside independent CSR rows of one family.
+    for family, family_state in zip(
+        forward_domain.families, state.family_states, strict=True
+    ):
+        terms = np.divide(
+            family_state.weights,
+            family_state.multiplicity.astype(np.float64) + 1.0,
+            dtype=np.float64,
+        )
+        family_scores, family_edges = _native_family_scores(
+            family, terms, candidates, workers=workers
+        )
+        for position, value in enumerate(family_scores):
+            scores[position] += float(value)
+        edges += int(family_edges)
+    return scores, edges
+
+
+def _native_diversity_scores(
+    candidates: np.ndarray,
+    forward_domain: Any,
+    state: TargetMultiViewForwardStateV2,
+    *,
+    workers: int,
+) -> tuple[np.ndarray, int]:
+    family_count = len(forward_domain.families)
+    matrix = np.full((len(candidates), family_count), np.nan, dtype=np.float64)
+    edges = 0
+    for family_index, (family, family_state) in enumerate(
+        zip(forward_domain.families, state.family_states, strict=True)
+    ):
+        terms = np.divide(
+            1.0,
+            family_state.multiplicity.astype(np.float64) + 1.0,
+            dtype=np.float64,
+        )
+        family_sums, family_edges = _native_family_scores(
+            family, terms, candidates, workers=workers
+        )
+        offsets = np.asarray(family.candidate_offsets)
+        for position, candidate_value in enumerate(candidates):
+            candidate = int(candidate_value)
+            row_count = int(offsets[candidate + 1] - offsets[candidate])
+            if row_count:
+                matrix[position, family_index] = float(family_sums[position]) / row_count
+        edges += int(family_edges)
+    scores = np.zeros(len(candidates), dtype=np.float64)
+    for position in range(len(candidates)):
+        values = matrix[position, np.isfinite(matrix[position])]
+        if values.size:
+            scores[position] = float(np.mean(values, dtype=np.float64))
+    return scores, edges
+
+
 def _best_relative(
     candidates: np.ndarray,
     values: np.ndarray,
@@ -146,8 +234,10 @@ def choose_target_multi_view_phase_a_candidate_v2_kernel(
 ) -> TargetMultiViewPhaseAChoiceV2:
     """Execute exact Phase A with one locality-oriented scoring authority.
 
-    ``batch_size`` and ``workers`` remain accepted execution-compatibility
-    parameters.  PAR1 worker threading is intentionally not used.
+    Python PAR1 threading is intentionally not used. With workers>1, exact
+    independent family CSR rows use the same qualified native/OpenMP reduction
+    primitive as Phase B while lexicographic policy/reduction order remains
+    serial and canonical.
     """
 
     epsilon = float(epsilon)
@@ -157,6 +247,7 @@ def choose_target_multi_view_phase_a_candidate_v2_kernel(
         raise TrainingDataInputError(
             "TARGET-DATA2C-MVSEL2 batch/worker settings must be positive."
         )
+    native_parallel = phase_b_execution_backend_v2(workers) == "native-openmp"
 
     candidate_count = int(forward_domain.candidate_count)
     available = np.flatnonzero(state.available).astype(np.int64, copy=False)
@@ -192,12 +283,23 @@ def choose_target_multi_view_phase_a_candidate_v2_kernel(
 
     bottleneck_values = np.full(candidate_count, -np.inf, dtype=np.float64)
     bottleneck_edges = 0
-    for candidate in candidates:
-        value, edges = _family_coverage_gain(
-            int(candidate), bottleneck_index, forward_domain, state
+    if native_parallel:
+        family = forward_domain.families[bottleneck_index]
+        family_state = state.family_states[bottleneck_index]
+        terms = np.where(
+            family_state.multiplicity == 0, family_state.weights, 0.0
+        ).astype(np.float64, copy=False)
+        values, bottleneck_edges = _native_family_scores(
+            family, terms, candidates, workers=workers
         )
-        bottleneck_values[int(candidate)] = value
-        bottleneck_edges += edges
+        bottleneck_values[candidates] = values
+    else:
+        for candidate in candidates:
+            value, edges = _family_coverage_gain(
+                int(candidate), bottleneck_index, forward_domain, state
+            )
+            bottleneck_values[int(candidate)] = value
+            bottleneck_edges += edges
     candidates = _best_relative(candidates, bottleneck_values, epsilon)
     bottleneck_width = int(candidates.size)
 
@@ -208,12 +310,24 @@ def choose_target_multi_view_phase_a_candidate_v2_kernel(
     coverage_matrix = np.zeros((candidates.size, family_count), dtype=np.float64)
     total_coverage_edges = 0
     for family_index in range(family_count):
-        for local_index, candidate in enumerate(candidates):
-            value, edges = _family_coverage_gain(
-                int(candidate), family_index, forward_domain, state
+        if native_parallel:
+            family = forward_domain.families[family_index]
+            family_state = state.family_states[family_index]
+            terms = np.where(
+                family_state.multiplicity == 0, family_state.weights, 0.0
+            ).astype(np.float64, copy=False)
+            values, edges = _native_family_scores(
+                family, terms, candidates, workers=workers
             )
-            coverage_matrix[local_index, family_index] = value
-            total_coverage_edges += edges
+            coverage_matrix[:, family_index] = values
+            total_coverage_edges += int(edges)
+        else:
+            for local_index, candidate in enumerate(candidates):
+                value, edges = _family_coverage_gain(
+                    int(candidate), family_index, forward_domain, state
+                )
+                coverage_matrix[local_index, family_index] = value
+                total_coverage_edges += edges
     total_local = np.sum(coverage_matrix, axis=1, dtype=np.float64)
     best_total = float(np.max(total_local))
     total_mask = total_local >= best_total - epsilon
@@ -245,19 +359,31 @@ def choose_target_multi_view_phase_a_candidate_v2_kernel(
 
     representative_values = np.full(candidate_count, -np.inf, dtype=np.float64)
     representative_edges = 0
-    for candidate in candidates:
-        value, edges = _representative_gain(int(candidate), forward_domain, state)
-        representative_values[int(candidate)] = value
-        representative_edges += edges
+    if native_parallel:
+        values, representative_edges = _native_representative_scores(
+            candidates, forward_domain, state, workers=workers
+        )
+        representative_values[candidates] = values
+    else:
+        for candidate in candidates:
+            value, edges = _representative_gain(int(candidate), forward_domain, state)
+            representative_values[int(candidate)] = value
+            representative_edges += edges
     candidates = _best_relative(candidates, representative_values, epsilon)
     representative_width = int(candidates.size)
 
     diversity_values = np.full(candidate_count, -np.inf, dtype=np.float64)
     diversity_edges = 0
-    for candidate in candidates:
-        value, edges = _diversity_gain(int(candidate), forward_domain, state)
-        diversity_values[int(candidate)] = value
-        diversity_edges += edges
+    if native_parallel:
+        values, diversity_edges = _native_diversity_scores(
+            candidates, forward_domain, state, workers=workers
+        )
+        diversity_values[candidates] = values
+    else:
+        for candidate in candidates:
+            value, edges = _diversity_gain(int(candidate), forward_domain, state)
+            diversity_values[int(candidate)] = value
+            diversity_edges += edges
     candidates = _best_relative(candidates, diversity_values, epsilon)
 
     chosen = min(

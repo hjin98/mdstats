@@ -21,13 +21,13 @@ One immutable scoring job is formed for each materializable `(label domain, sele
 
 When `scoring_workers > 1`, jobs execute on the PARCORE1 `DeterministicWorkQueue`. Nested cKDTree, BLAS/OpenMP, and PyTorch CPU work are one native lane per campaign job. Completed jobs may arrive in arbitrary order, but comparison construction and progress emission MUST be reduced in historical domain/size order.
 
-Per-job temporary-memory estimates participate in queue admission. Automatic campaign mode uses at most four outer scoring workers; explicit positive configuration may request more subject to the existing CPU/RAM resource budget.
+Per-job temporary-memory estimates participate in queue admission. Automatic campaign mode may use any outer scoring width up to the runtime `SystemResourceSnapshot.cpu_threads_budget` (the default campaign budget is 90% of runtime-available CPU threads); task count and RAM admission may select fewer effective workers. Explicit positive configuration is a cap inside the same CPU/RAM budget and cannot bypass `cpu_fraction`.
 
 Direct API callers that do not supply `StageResourceScope` retain their historical process native-thread environment. Explicit campaign scopes retain BLAS=1. This distinction is required because changing only BLAS thread count can shift the Wasserstein diagnostic at ~1e-16 and therefore change coverage-report cryptographic digests.
 
 ## Configuration
 
-`[performance].target_multi_view_qualification_workers = 0` selects automatic execution. Positive values request an explicit outer scoring-worker count, clipped by available and budgeted CPU resources.
+`[performance].target_multi_view_qualification_workers = 0` selects automatic execution. Positive values request an explicit outer scoring-worker cap, clipped by `cpu_threads_budget` and RAM admission. Runtime resource/tuning choices are execution-only and do not enter the scientific plan digest.
 
 ## Acceptance authority
 

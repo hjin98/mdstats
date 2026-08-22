@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import math
+from threading import local
 import time
 from typing import Any
 
@@ -20,6 +21,8 @@ from .target_multi_view_selector_v2 import (
     select_target_multi_view_candidate_v2,
 )
 from .progress_timing import format_progress_time
+from .resources import StageResourceScope
+from .work_queue import DeterministicWorkQueue
 
 
 TARGET_MULTI_VIEW_REPAIR_V2_VERSION = "mdstats.target-data2c-repair2.forward-state.2026-08.v1"
@@ -919,6 +922,153 @@ def _better(
     return left if lkey <= rkey else right
 
 
+
+
+def _parallel_repair_proposals_v2(
+    reference_domain: Any,
+    forward_domain: Any,
+    state: TargetMultiViewForwardStateV2,
+    shortlist: list[tuple[int, int, float, float]],
+    policy: TargetMultiViewRepairPolicyV2,
+    context: _RepairProposalFrontierContextV2,
+    *,
+    workers: int,
+    resource_scope: StageResourceScope | None,
+    state_perf: dict[str, Any] | None,
+    final_coverage_scan: list[int] | None,
+    removed_mark_scan: list[int] | None,
+) -> dict[str, Any] | None:
+    """Evaluate immutable REPAIR2 removal proposals in deterministic parallel order."""
+
+    count = len(shortlist)
+    worker_count = max(1, min(int(workers), count))
+    if worker_count == 1:
+        scratch = _RepairProposalScratchV2(forward_domain)
+        best: dict[str, Any] | None = None
+        for removal in shortlist:
+            proposal = _proposal_from_frontier_context_v2(
+                reference_domain,
+                forward_domain,
+                state,
+                removal,
+                policy,
+                scratch,
+                context,
+                perf=state_perf,
+                final_coverage_gain_scan=final_coverage_scan,
+                removed_mark_scan=removed_mark_scan,
+            )
+            if proposal is not None:
+                best = _better(best, proposal, reference_domain, policy.gain_tie_tolerance)
+        return best
+
+    owned_scope = resource_scope is None
+    scope = resource_scope or StageResourceScope(
+        stage_name="TARGET-DATA2C-REPAIR2/proposals",
+        cpu_threads_available=worker_count,
+        cpu_threads_budget=worker_count,
+        python_workers=worker_count,
+        structural_workers=1,
+        tree_workers=1,
+        blas_threads=1,
+        native_openmp_threads=1,
+        pytorch_cpu_workers=1,
+    )
+    # The queue must reflect the actual proposal width even when the caller's
+    # stage scope authorizes a wider CPU budget than this shortlist can use.
+    if int(scope.python_workers) != worker_count:
+        scope = StageResourceScope(
+            stage_name=f"{scope.stage_name}/proposals",
+            cpu_threads_available=int(scope.cpu_threads_available),
+            cpu_threads_budget=int(scope.cpu_threads_budget),
+            python_workers=worker_count,
+            structural_workers=1,
+            tree_workers=1,
+            blas_threads=1,
+            native_openmp_threads=1,
+            pytorch_cpu_workers=1,
+            ram_budget_bytes=scope.ram_budget_bytes,
+        )
+
+    thread_scratch = local()
+
+    def evaluate(position: int, removal: tuple[int, int, float, float]):
+        scratch = getattr(thread_scratch, "repair2_scratch", None)
+        if scratch is None:
+            scratch = _RepairProposalScratchV2(forward_domain)
+            thread_scratch.repair2_scratch = scratch
+        local_perf = _new_state_telemetry() if state_perf is not None else None
+        local_coverage = [0, 0] if final_coverage_scan is not None else None
+        local_removed = [0, 0] if removed_mark_scan is not None else None
+        proposal = _proposal_from_frontier_context_v2(
+            reference_domain,
+            forward_domain,
+            state,
+            removal,
+            policy,
+            scratch,
+            context,
+            perf=local_perf,
+            final_coverage_gain_scan=local_coverage,
+            removed_mark_scan=local_removed,
+        )
+        return position, proposal, local_perf, local_coverage, local_removed
+
+    results: dict[int, tuple[Any, ...]] = {}
+    scratch_bytes = worker_count * sum(
+        int(family.witness_count) * np.dtype(np.uint32).itemsize
+        for family in forward_domain.families
+    )
+    queue = DeterministicWorkQueue(
+        scope,
+        max_ready_tasks=max(count, 2 * worker_count),
+        max_inflight_tasks=max(1, 2 * worker_count),
+        max_completed_tasks=max(1, 2 * worker_count),
+        thread_name_prefix="mdstats-repair2",
+        manage_resource_scope=owned_scope,
+    )
+    with queue:
+        if scratch_bytes:
+            queue.reserve_memory("repair2-thread-scratch", scratch_bytes)
+        finished_before = int(queue.snapshot().finished_tasks)
+        for position, removal in enumerate(shortlist):
+            queue.submit(
+                task_id=f"repair2-proposal-{position:04d}-rank-{int(removal[0]):08d}",
+                canonical_order=(position,),
+                function=evaluate,
+                args=(position, removal),
+                task_kind="repair2-proposal",
+                # Worker-local scratch is reserved once above for the whole
+                # proposal pool. Do not charge it again per queued task.
+                estimated_memory_bytes=0,
+                locality_key=str(reference_domain.label_domain_id),
+            )
+        while int(queue.snapshot().finished_tasks) < finished_before + count:
+            queue.wait_for_completion()
+            for completion in queue.drain_completed():
+                results[int(completion.canonical_order[0])] = completion.value
+        for completion in queue.drain_completed():
+            results[int(completion.canonical_order[0])] = completion.value
+        if scratch_bytes:
+            queue.release_memory("repair2-thread-scratch")
+
+    best: dict[str, Any] | None = None
+    for position in range(count):
+        _, proposal, local_perf, local_coverage, local_removed = results[position]
+        if state_perf is not None and local_perf is not None:
+            for key, value in local_perf.items():
+                state_perf[key] += value
+        if final_coverage_scan is not None and local_coverage is not None:
+            final_coverage_scan[0] += int(local_coverage[0])
+            final_coverage_scan[1] += int(local_coverage[1])
+        if removed_mark_scan is not None and local_removed is not None:
+            removed_mark_scan[0] += int(local_removed[0])
+            removed_mark_scan[1] += int(local_removed[1])
+        if proposal is not None:
+            best = _better(best, proposal, reference_domain, policy.gain_tie_tolerance)
+    return best
+
+
 def build_target_multi_view_repair_plan_v2(
     target_coverage_reference: Any,
     target_coverage_forward_index: Any,
@@ -932,6 +1082,7 @@ def build_target_multi_view_repair_plan_v2(
     initial_state_sizes: dict[str, int] | None = None,
     initial_state_modes: dict[str, str] | None = None,
     telemetry_callback: Any | None = None,
+    resource_scope: StageResourceScope | None = None,
 ) -> TargetMultiViewRepairPlanV2:
     """Build REPAIR2 using exact forward-only state and no-copy proposals.
 
@@ -976,7 +1127,6 @@ def build_target_multi_view_repair_plan_v2(
             raise TrainingDataInputError("TARGET-DATA2C-REPAIR2 initial MVSTATE2 continuation size is invalid.")
         previous_size = restored_size
         rungs: list[TargetMultiViewRepairRung] = []
-        scratch = _RepairProposalScratchV2(forward_domain)
         diverged = False
         proposal_count = 0
         for base_rung in selection_domain.rungs:
@@ -1115,21 +1265,19 @@ def build_target_multi_view_repair_plan_v2(
                             coverage_gain_scan=frontier_scan,
                         )
                         if context.proposal_possible:
-                            for removal in shortlist:
-                                proposal = _proposal_from_frontier_context_v2(
-                                    reference_domain,
-                                    forward_domain,
-                                    state,
-                                    removal,
-                                    policy,
-                                    scratch,
-                                    context,
-                                    perf=state_perf,
-                                    final_coverage_gain_scan=final_coverage_scan,
-                                    removed_mark_scan=removed_mark_scan,
-                                )
-                                if proposal is not None:
-                                    best = _better(best, proposal, reference_domain, policy.gain_tie_tolerance)
+                            best = _parallel_repair_proposals_v2(
+                                reference_domain,
+                                forward_domain,
+                                state,
+                                shortlist,
+                                policy,
+                                context,
+                                workers=int(workers),
+                                resource_scope=resource_scope,
+                                state_perf=state_perf,
+                                final_coverage_scan=final_coverage_scan,
+                                removed_mark_scan=removed_mark_scan,
+                            )
                     mutation_wall = 0.0
                     accepted_in_state = 0
                     if best is not None:

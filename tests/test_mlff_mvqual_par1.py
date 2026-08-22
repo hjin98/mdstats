@@ -70,7 +70,10 @@ def test_mvqual_par1_progress_reduction_remains_canonical() -> None:
         policy=policy, scoring_workers=4, progress_callback=parallel_messages.append,
     )
     assert parallel.content_digest == serial.content_digest
-    assert parallel_messages == serial_messages
+    # Worker count is execution telemetry, not scientific output. Canonical
+    # scientific progress remains identical after removing that field.
+    normalize = lambda message: message.replace("workers=4", "workers=1")
+    assert [normalize(item) for item in parallel_messages] == serial_messages
 
 
 def test_mvqual_par1_rejects_undersized_explicit_scope() -> None:
@@ -94,7 +97,7 @@ def test_mvqual_par1_rejects_undersized_explicit_scope() -> None:
 
 
 def test_mvqual_par1_campaign_configuration_and_resolver_are_wired() -> None:
-    source = Path(campaign_cli.__file__).read_text(encoding="utf-8")
+    source = Path(campaign_cli._core.__file__).read_text(encoding="utf-8")
     assert "target_multi_view_qualification_workers = 0" in source
     workers, resources = campaign_cli._target_multi_view_qualification_parallelism(
         {"performance": {"cpu_fraction": 0.90, "ram_fraction": 0.80,
