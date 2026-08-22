@@ -1,9 +1,8 @@
 """TARGET-DATA2C-MVSEL1 deterministic progressive multi-view selector.
 
-This gate consumes the exact sparse MVIDX1 scientific substrate and constructs
-one ordered nested coreset.  It is deliberately diagnostic/pre-migration: the
-legacy TARGET-DATA2C v4 ladder remains the production selection authority until
-MVQUAL1/SIZE-HALVE2/SIZE-FIDELITY2/MVMIGRATE1 close.
+This module preserves the first-generation exact selector kernel for historical
+reproducibility and bounded oracle tests. The current production target-size-v5
+path uses MVSEL2/REPAIR2 and does not treat this module as a target-size authority.
 
 Selection is exact and deterministic:
 

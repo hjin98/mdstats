@@ -35,7 +35,7 @@ from mdstats.training_data.target_multi_view_selector_v2_resume import (
 )
 from tests.test_mlff_mvsel2_forward import _forward_fixture
 from tests.test_mlff_repair2 import _trace
-from tests.test_mlff_target_data2c_repair1 import _redundant_selection
+from tests._mlff_multiview_legacy_fixtures import _redundant_selection
 
 
 def _state_for_prefix(reference_domain, forward_domain, entries):

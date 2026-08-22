@@ -874,6 +874,7 @@ def build_data8_preparation_bundle(
     extxyz_policy: MaceExtxyzPolicy | None = None,
     real_pt_data_ratio_threshold: float = 0.0,
     selection_size: int | None = None,
+    target_size_evaluation_frame_uids: Sequence[str] | None = None,
     require_foundation_residual_e0: bool = True,
     cross_validation_plans: Sequence[Any] | None = None,
     frame_array_index: Mapping[str, tuple[Any, Any, int]] | None = None,
@@ -1034,6 +1035,23 @@ def build_data8_preparation_bundle(
     full_outer_monitor_frames = _frames_for_units(
         data5_bundle, outer.units_for(OuterRole.OUTER_MONITOR)
     )
+    target_size_evaluation_frames = (
+        None
+        if target_size_evaluation_frame_uids is None
+        else tuple(str(uid) for uid in target_size_evaluation_frame_uids)
+    )
+    if target_size_evaluation_frames is not None:
+        development_frames = set(
+            _frames_for_units(data5_bundle, outer.units_for(OuterRole.DEVELOPMENT))
+        )
+        if (
+            not target_size_evaluation_frames
+            or len(target_size_evaluation_frames) != len(set(target_size_evaluation_frames))
+            or any(uid not in development_frames for uid in target_size_evaluation_frames)
+        ):
+            raise TrainingDataInputError(
+                "Target-size candidate evaluation cohort must be a non-empty unique subset of DATA2A development."
+            )
     full_target_evaluation_artifact = None
     if online_monitor_policy is not None:
         (root / "shared" / "target").mkdir(parents=True, exist_ok=True)
@@ -1066,8 +1084,18 @@ def build_data8_preparation_bundle(
     # lightweight subset is constructed only after the concrete training
     # membership is known, so its training-diagnostic monitor can be bound to
     # the exact DATA7 ladder realization as well.
+    final_target_frames = (
+        full_outer_monitor_frames
+        if target_size_evaluation_frames is None
+        else target_size_evaluation_frames
+    )
+    final_target_role = (
+        "target_final_validation"
+        if target_size_evaluation_frames is None
+        else "target_size_candidate_development_complement"
+    )
     job_specs: list[tuple[MaceJobKind, int | None, Any, tuple[str, ...], str, tuple[str, ...] | None]] = [
-        (MaceJobKind.FINAL_DEVELOPMENT, None, final_bundles[0], full_outer_monitor_frames, "target_final_validation", None)
+        (MaceJobKind.FINAL_DEVELOPMENT, None, final_bundles[0], final_target_frames, final_target_role, None)
     ]
     for bundle in fold_bundles:
         assert cv_plan is not None
@@ -1091,6 +1119,11 @@ def build_data8_preparation_bundle(
                 f"Requested DATA8 selection size {chosen_size} is not present in the DATA7 ladder {sorted(levels)}."
             )
         selected_frames = levels[chosen_size].frame_uids
+        if kind is MaceJobKind.FINAL_DEVELOPMENT and target_size_evaluation_frames is not None:
+            if set(selected_frames) & set(target_size_evaluation_frames):
+                raise TrainingDataInputError(
+                    "Target-size candidate training and development-complement evaluation overlap."
+                )
         if local_replay.train_artifact is not None:
             target_geometry = {frame_catalog.frame(uid).geometry_fingerprint for uid in selected_frames}
             overlap = target_geometry & set(local_replay.train_artifact.geometry_identities)

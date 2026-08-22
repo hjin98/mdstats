@@ -118,36 +118,7 @@ def _perf(runtime: mdstats.CueqDep1RuntimeRecord) -> mdstats.PerfCert1Qualificat
     )
 
 
-def _typed_migration_evidence():
-    from tests.test_mlff_size_fidelity2 import _halve_plan, _checkpoints
-    from mdstats.training_data._common import digest
-
-    execution = mdstats.build_size_fidelity2_execution_plan(_halve_plan(8))
-    fidelity = mdstats.build_size_fidelity2_qualification(
-        execution, _checkpoints(execution), gpu_qualification_status="passed"
-    )
-    sizes = (512, 1024)
-    rows = tuple(
-        mdstats.TargetMultiViewLearningControlRow(
-            target_size=size, optimizer_seed=1,
-            legacy_target_force_score_mev_per_a=10.0,
-            mv_target_force_score_mev_per_a=10.5,
-            practical_equivalence_mev_per_a=1.0,
-            common_training_protocol_digest=digest({"train2": 1}),
-            legacy_evaluation_digest=digest({"legacy": size}),
-            mv_evaluation_digest=digest({"mv": size}),
-        )
-        for size in sizes
-    )
-    learning = mdstats.TargetMultiViewLearningControlReport(
-        dataset_id=fidelity.dataset_id,
-        target_multi_view_qualification_digest=digest({"mvqual": 1}),
-        control_target_sizes=sizes, rows=rows, gpu_qualification_status="passed",
-    )
-    return fidelity, learning
-
-
-def _evidence(policy: mdstats.FinalGpu1Policy, release: str, runtime: str, perf: mdstats.PerfCert1QualificationRecord, *, fidelity=None, learning=None):
+def _evidence(policy: mdstats.FinalGpu1Policy, release: str, runtime: str, perf: mdstats.PerfCert1QualificationRecord):
     records = []
     for gate in policy.required_pass_gates:
         content = None
@@ -158,12 +129,6 @@ def _evidence(policy: mdstats.FinalGpu1Policy, release: str, runtime: str, perf:
         elif gate == "CUEQ_PHASE1_TRAINING_ONLY_QUALIFICATION":
             content = perf.upstream.cueq_phase1_qualification_digest
             schema = mdstats.CUEQ_PHASE1_QUALIFICATION_SCHEMA
-        elif gate == "SIZE_FIDELITY2_MV_SURVIVOR_REQUALIFICATION" and fidelity is not None:
-            content = fidelity.content_digest
-            schema = mdstats.SIZE_FIDELITY2_REPORT_SCHEMA
-        elif gate == "TARGET_DATA2C_MVMIGRATE1_LEARNING_CONTROLS" and learning is not None:
-            content = learning.content_digest
-            schema = mdstats.TARGET_MV_LEARNING_CONTROL_REPORT_SCHEMA
         elif gate == "PERF_CERT1_END_TO_END_CERTIFICATION":
             content = perf.content_digest
             schema = mdstats.PERF_CERT1_QUALIFICATION_SCHEMA
@@ -197,13 +162,11 @@ def test_final_gpu1_measure_only_failure_does_not_block_passing_phase1_profile()
     assert perf.passed
     policy = mdstats.FinalGpu1Policy()
     release = "f" * 64
-    fidelity, learning = _typed_migration_evidence()
     record = mdstats.build_final_gpu1_qualification(
         release_artifact_sha256=release,
         foundation_model_sha256=mdstats.FINAL_GPU1_LOCKED_FOUNDATION_SHA256,
         cueq_dep1_runtime=runtime, perf_cert1=perf,
-        size_fidelity2=fidelity, target_mv_learning_control=learning,
-        evidence=_evidence(policy, release, runtime.content_digest, perf, fidelity=fidelity, learning=learning), policy=policy,
+        evidence=_evidence(policy, release, runtime.content_digest, perf), policy=policy,
     )
     assert record.passed
     assert record.recommended_profile_id == "phase1"
@@ -213,15 +176,14 @@ def test_final_gpu1_measure_only_failure_does_not_block_passing_phase1_profile()
 
 def test_final_gpu1_missing_measurement_and_required_failure_fail_closed() -> None:
     runtime = _runtime(); perf = _perf(runtime); policy = mdstats.FinalGpu1Policy(); release = "f" * 64
-    fidelity, learning = _typed_migration_evidence()
-    evidence = list(_evidence(policy, release, runtime.content_digest, perf, fidelity=fidelity, learning=learning))
+    evidence = list(_evidence(policy, release, runtime.content_digest, perf))
     evidence = [v for v in evidence if v.gate_id != "PERF_P5_ACCELERATOR_PERSISTENCE_REUSE"]
     target = next(i for i, v in enumerate(evidence) if v.gate_id == "SIZE_FIDELITY1_EXHAUSTIVE_CALIBRATION")
     evidence[target] = replace(evidence[target], disposition="fail")
     record = mdstats.build_final_gpu1_qualification(
         release_artifact_sha256=release,
         foundation_model_sha256=mdstats.FINAL_GPU1_LOCKED_FOUNDATION_SHA256,
-        cueq_dep1_runtime=runtime, perf_cert1=perf, size_fidelity2=fidelity, target_mv_learning_control=learning, evidence=evidence, policy=policy,
+        cueq_dep1_runtime=runtime, perf_cert1=perf, evidence=evidence, policy=policy,
     )
     assert not record.passed
     assert "required_gate_not_passed:SIZE_FIDELITY1_EXHAUSTIVE_CALIBRATION" in record.blocking_reasons
@@ -230,13 +192,12 @@ def test_final_gpu1_missing_measurement_and_required_failure_fail_closed() -> No
 
 def test_final_gpu1_release_or_runtime_cross_contamination_fails_closed() -> None:
     runtime = _runtime(); perf = _perf(runtime); policy = mdstats.FinalGpu1Policy(); release = "f" * 64
-    fidelity, learning = _typed_migration_evidence()
-    evidence = list(_evidence(policy, release, runtime.content_digest, perf, fidelity=fidelity, learning=learning))
+    evidence = list(_evidence(policy, release, runtime.content_digest, perf))
     evidence[0] = replace(evidence[0], release_artifact_sha256="0" * 64, cueq_dep1_runtime_digest="1" * 64)
     record = mdstats.build_final_gpu1_qualification(
         release_artifact_sha256=release,
         foundation_model_sha256=mdstats.FINAL_GPU1_LOCKED_FOUNDATION_SHA256,
-        cueq_dep1_runtime=runtime, perf_cert1=perf, size_fidelity2=fidelity, target_mv_learning_control=learning, evidence=evidence, policy=policy,
+        cueq_dep1_runtime=runtime, perf_cert1=perf, evidence=evidence, policy=policy,
     )
     assert not record.passed
     assert any(v.startswith("release_artifact_identity:") for v in record.blocking_reasons)
@@ -260,8 +221,7 @@ def test_final_gpu1_evidence_serialization_detects_tamper(tmp_path: Path) -> Non
 
 def test_final_gpu1_measure_only_terminal_state_requires_content_addressed_evidence() -> None:
     runtime = _runtime(); perf = _perf(runtime); policy = mdstats.FinalGpu1Policy(); release = "f" * 64
-    fidelity, learning = _typed_migration_evidence()
-    evidence = list(_evidence(policy, release, runtime.content_digest, perf, fidelity=fidelity, learning=learning))
+    evidence = list(_evidence(policy, release, runtime.content_digest, perf))
     target = next(i for i, v in enumerate(evidence) if v.gate_id == "PERF_P5_ACCELERATOR_PERSISTENCE_REUSE")
     evidence[target] = mdstats.FinalGpu1EvidenceRecord(
         gate_id="PERF_P5_ACCELERATOR_PERSISTENCE_REUSE",
@@ -272,7 +232,7 @@ def test_final_gpu1_measure_only_terminal_state_requires_content_addressed_evide
     record = mdstats.build_final_gpu1_qualification(
         release_artifact_sha256=release,
         foundation_model_sha256=mdstats.FINAL_GPU1_LOCKED_FOUNDATION_SHA256,
-        cueq_dep1_runtime=runtime, perf_cert1=perf, size_fidelity2=fidelity, target_mv_learning_control=learning, evidence=evidence, policy=policy,
+        cueq_dep1_runtime=runtime, perf_cert1=perf, evidence=evidence, policy=policy,
     )
     assert not record.passed
     assert "measurement_evidence_not_content_addressed:PERF_P5_ACCELERATOR_PERSISTENCE_REUSE" in record.blocking_reasons
@@ -280,14 +240,13 @@ def test_final_gpu1_measure_only_terminal_state_requires_content_addressed_evide
 
 def test_final_gpu1_runtime_bound_evidence_requires_explicit_runtime_identity() -> None:
     runtime = _runtime(); perf = _perf(runtime); policy = mdstats.FinalGpu1Policy(); release = "f" * 64
-    fidelity, learning = _typed_migration_evidence()
-    evidence = list(_evidence(policy, release, runtime.content_digest, perf, fidelity=fidelity, learning=learning))
+    evidence = list(_evidence(policy, release, runtime.content_digest, perf))
     target = next(i for i, v in enumerate(evidence) if v.gate_id == "MH1_ACCEL1_CUEQ_NUMERICAL_PARITY")
     evidence[target] = replace(evidence[target], cueq_dep1_runtime_digest=None)
     record = mdstats.build_final_gpu1_qualification(
         release_artifact_sha256=release,
         foundation_model_sha256=mdstats.FINAL_GPU1_LOCKED_FOUNDATION_SHA256,
-        cueq_dep1_runtime=runtime, perf_cert1=perf, size_fidelity2=fidelity, target_mv_learning_control=learning, evidence=evidence, policy=policy,
+        cueq_dep1_runtime=runtime, perf_cert1=perf, evidence=evidence, policy=policy,
     )
     assert not record.passed
     assert "cueq_runtime_binding_missing:MH1_ACCEL1_CUEQ_NUMERICAL_PARITY" in record.blocking_reasons
@@ -296,12 +255,11 @@ def test_final_gpu1_runtime_bound_evidence_requires_explicit_runtime_identity() 
 
 def test_final_gpu1_handoff_integrity_failure_is_release_blocking_and_serialized() -> None:
     runtime = _runtime(); perf = _perf(runtime); policy = mdstats.FinalGpu1Policy(); release = "f" * 64
-    fidelity, learning = _typed_migration_evidence()
     record = mdstats.build_final_gpu1_qualification(
         release_artifact_sha256=release,
         foundation_model_sha256=mdstats.FINAL_GPU1_LOCKED_FOUNDATION_SHA256,
-        cueq_dep1_runtime=runtime, perf_cert1=perf, size_fidelity2=fidelity, target_mv_learning_control=learning,
-        evidence=_evidence(policy, release, runtime.content_digest, perf, fidelity=fidelity, learning=learning), policy=policy,
+        cueq_dep1_runtime=runtime, perf_cert1=perf,
+        evidence=_evidence(policy, release, runtime.content_digest, perf), policy=policy,
         handoff_integrity_failures=("evidence:PERF_P5_ACCELERATOR_PERSISTENCE_REUSE:sha256_changed",),
     )
     assert not record.passed
@@ -422,9 +380,6 @@ def test_final_gpu1_workstation_clis_bootstrap_the_packaged_source_tree() -> Non
         "tools/qualify_mlff_cueq_phase1.py",
         "tools/qualify_mlff_cueq_phase2.py",
         "tools/qualify_mlff_perf_cert1.py",
-        "tools/qualify_mlff_size_fidelity2.py",
-        "tools/qualify_mlff_target_mv_learning_control.py",
-        "tools/activate_mlff_target_mv_migration.py",
         "tools/run_mlff_final_gpu_qualification.py",
     )
     for relative in tools:

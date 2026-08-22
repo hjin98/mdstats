@@ -119,11 +119,11 @@ CAMPAIGN_CLI_SCHEMA = "mdstats.mlff-campaign-cli.v1"
 FOUNDATION_CONFIG_CONTRACT_SCHEMA = "mdstats.mlff-foundation-config-contract.v2"
 CAMPAIGN_STATE_SCHEMA = "mdstats.mlff-campaign-state.v2"
 EXTERNAL_RECORD_POINTER_SCHEMA = "mdstats.mlff-campaign-external-record.v1"
-PREPARE_RESTART_RECEIPT_SCHEMA = "mdstats.mlff-campaign-prepare-restart.v1"
-# Scientific/materialization contract.  This is intentionally independent of
-# the package version: 0.20.71a0 through 0.20.76a0 change training runtime orchestration
-# only and must adopt a fully qualified 0.20.68a0 campaign without rebuilding DATA6.
-PREPARE_CONTRACT_VERSION = "0.20.166a0"
+PREPARE_RESTART_RECEIPT_SCHEMA = "mdstats.mlff-campaign-prepare-restart.target-size-v5.v2"
+# Scientific/materialization contract. Target-size v5 is a hard derived-state
+# cut: independently valid upstream authorities may be reused, but legacy
+# ladder/migration/rescue/convergence receipts cannot authenticate this contract.
+PREPARE_CONTRACT_VERSION = "target-size-v5.2026-08.v1"
 EXTERNAL_RECORD_THRESHOLD_BYTES = 4 * 1024 * 1024
 DEFAULT_CONFIG_NAME = "campaign.toml"
 DEFAULT_MANIFEST_NAME = "campaign-manifest.json"
@@ -597,8 +597,8 @@ class CampaignStore:
 
         All record serialization/externalization happens before the SQLite write
         transaction. The database transaction then performs deletions and alias
-        replacement together, which is required by MVMIGRATE1 so v4/v2/v2 and
-        v5/v3/v3 cannot become partially mixed after interruption.
+        replacement together so incompatible authority generations cannot become
+        partially mixed after interruption.
         """
 
         encoded_rows: list[tuple[str, str, str | None, str, str]] = []
@@ -1597,7 +1597,7 @@ def _train2_policy_set(cfg: Mapping[str, Any], *, require_replay: bool) -> tuple
             _cfg(cfg, "evaluation", "refinement_reserved_candidates", 2)
         ),
         practical_equivalence_ev_per_angstrom=(
-            float(_target_size_convergence_policy(cfg).practical_equivalence_mev_per_a) / 1000.0
+            float(_target_size_study_policy(cfg).practical_equivalence_mev_per_a) / 1000.0
         ),
         bootstrap_replicates=int(_cfg(cfg, "evaluation", "bootstrap_replicates", 2000)),
         bootstrap_confidence=float(_cfg(cfg, "evaluation", "bootstrap_confidence", 0.95)),
@@ -4381,389 +4381,174 @@ def _ensure_target_coverage_feasibility(
     _ok(
         "TARGET-DATA2B-FEAS1 frozen as diagnostic-only evidence: "
         f"state={report.terminal_state}; digest={report.content_digest[:12]}...; "
-        f"elapsed={format_progress_time(time.monotonic() - started)}; TARGET-DATA2C v4 unchanged"
+        f"elapsed={format_progress_time(time.monotonic() - started)}; current v5 upstream authority ready"
     )
     return report
 
 
-def _target_data_ladder_policy(cfg: Mapping[str, Any]) -> Any:
-    """Resolve the frozen TARGET-DATA2C ladder policy from campaign config."""
+def _target_size_study_policy(cfg: Mapping[str, Any]) -> Any:
+    """Resolve the sole v5 fixed-eight target-size study policy."""
 
     import mdstats
 
     target_data = cfg.get("target_data", {})
-    size_convergence = target_data.get("size_convergence", {}) if isinstance(target_data, Mapping) else {}
-    if not isinstance(size_convergence, Mapping):
+    size_cfg = target_data.get("size_convergence", {}) if isinstance(target_data, Mapping) else {}
+    if not isinstance(size_cfg, Mapping):
         raise CampaignCliError("[target_data.size_convergence] must be a TOML table.")
-    return mdstats.TargetDataLadderPolicy(
-        ladder_exponents=tuple(int(v) for v in size_convergence.get("ladder_exponents", (7, 8, 9, 10, 11, 12, 13))),
-        minimum_materializable_rungs=int(size_convergence.get("minimum_materializable_rungs", 3)),
-        reserve_required_strata=bool(size_convergence.get("reserve_required_strata", True)),
-        reserve_correlation_intervals=bool(size_convergence.get("reserve_correlation_intervals", True)),
-        fps_tie_tolerance=float(size_convergence.get("fps_tie_tolerance", 1.0e-12)),
-    )
-
-
-def _target_size_convergence_policy(cfg: Mapping[str, Any], *, ladder: Any | None = None) -> Any:
-    """Resolve the frozen TARGET-DATA2D funnel-decision policy."""
-
-    import mdstats
-
-    target_data = cfg.get("target_data", {})
-    size_convergence = target_data.get("size_convergence", {}) if isinstance(target_data, Mapping) else {}
-    if not isinstance(size_convergence, Mapping):
-        raise CampaignCliError("[target_data.size_convergence] must be a TOML table.")
-    practical = float(size_convergence.get("practical_equivalence_mev_per_a", 1.0))
-    coarse_equivalence = size_convergence.get("coarse_practical_equivalence_mev_per_a")
-    migrated = bool(ladder is not None and getattr(ladder, "authority_version", None) == mdstats.TARGET_DATA_LADDER_MV_VERSION)
-    policy = mdstats.TargetSizeConvergencePolicy(
-        min_coverage_qualifiers=(4 if migrated else int(size_convergence.get("min_coverage_qualifiers", 3))),
-        coarse_training_epochs=int(size_convergence.get("coarse_training_epochs", 3)),
-        max_coarse_training_candidates=int(size_convergence.get("max_coarse_training_candidates", 4)),
-        coarse_target_monitor_configurations=int(size_convergence.get("coarse_target_monitor_configurations", 256)),
-        short_training_epochs=int(size_convergence.get("short_training_epochs", 10)),
-        max_short_training_candidates=int(size_convergence.get("max_short_training_candidates", 2)),
-        final_training_epochs=int(size_convergence.get("final_training_epochs", 30)),
-        practical_equivalence_mev_per_a=practical,
-        coarse_practical_equivalence_mev_per_a=(None if coarse_equivalence is None else float(coarse_equivalence)),
-        screening_optimizer_seed=int(size_convergence.get("screening_optimizer_seed", 1)),
-        policy_version=(mdstats.TARGET_SIZE_CONVERGENCE_MV_VERSION if migrated else mdstats.TARGET_SIZE_CONVERGENCE_VERSION),
+    policy = mdstats.TargetSizeStudyPolicy(
+        practical_equivalence_mev_per_a=float(size_cfg.get("practical_equivalence_mev_per_a", 1.0)),
+        coarse_practical_equivalence_mev_per_a=float(
+            size_cfg.get(
+                "coarse_practical_equivalence_mev_per_a",
+                size_cfg.get("practical_equivalence_mev_per_a", 1.0),
+            )
+        ),
+        screening_optimizer_seed=int(size_cfg.get("screening_optimizer_seed", 1)),
     )
     training = cfg.get("training", {})
     if not isinstance(training, Mapping):
         raise CampaignCliError("[training] must be a TOML table.")
-    warmup_end = float(training.get("train2_warmup_end_fraction", 0.05))
-    coarse_fraction = policy.coarse_training_epochs / policy.final_training_epochs
-    if coarse_fraction <= warmup_end + 1.0e-12:
+    configured_epochs = int(training.get("max_num_epochs", policy.fidelity_epochs[-1]))
+    if configured_epochs != policy.fidelity_epochs[-1]:
         raise CampaignCliError(
-            "TARGET-DATA2D coarse training boundary must be strictly past TRAIN2 LR warm-up: "
-            f"coarse={coarse_fraction:.6g}, warmup_end={warmup_end:.6g}."
+            "Target-size v5 requires [training].max_num_epochs=30 so epoch 3/10/30 are exact continuation "
+            "boundaries of one frozen TRAIN2 schedule."
         )
-    configured_epochs = int(training.get("max_num_epochs", policy.final_training_epochs))
-    if configured_epochs != policy.final_training_epochs:
+    warmup_end = float(training.get("train2_warmup_end_fraction", 0.05))
+    if policy.fidelity_epochs[0] / policy.fidelity_epochs[-1] <= warmup_end + 1.0e-12:
         raise CampaignCliError(
-            "TARGET-DATA2D final_training_epochs must equal [training].max_num_epochs so 3/10/30 evidence "
-            "is sampled from one frozen uninterrupted schedule."
+            "Target-size v5 epoch-3 boundary must lie strictly after TRAIN2 LR warm-up."
         )
     return policy
 
 
-def _load_verified_target_size_convergence_authority(store: CampaignStore) -> Any:
-    """Restore TARGET-DATA2D and authenticate its active-ladder bridge."""
+def _load_verified_target_size_study_authority(store: CampaignStore) -> Any:
+    """Restore v5 target-size authority and authenticate direct REPAIR2/MVQUAL2 lineage."""
 
     import mdstats
 
-    ladder = _load_verified_target_data_ladder_authority(store)
-    plan = store.get_record("target_size_convergence", mdstats.TargetSizeConvergencePlan)
-    if plan.outcome == "selected":
-        _authoritative_materialization_selection_sizes(plan, ladder=ladder)
-    else:
-        mdstats.validate_target_size_convergence_authority(plan, ladder=ladder)
+    repair2 = store.get_record("target_multi_view_repair_v2", mdstats.TargetMultiViewRepairPlanV2)
+    mvqual2 = store.get_record(
+        "target_multi_view_qualification_v2", mdstats.TargetMultiViewQualificationPlanV2
+    )
+    plan = store.get_record("target_size_study", mdstats.TargetSizeStudyPlan)
+    mdstats.validate_target_size_study_authority(plan, repair2=repair2, mvqual=mvqual2)
     return plan
 
 
-def _authoritative_materialization_selection_sizes(
-    convergence: Any, *, ladder: Any
-) -> tuple[int, ...]:
-    """Resolve the terminal TARGET-DATA2D size authorized for DATA7/DATA8."""
-
-    import mdstats
-
-    if convergence.outcome != "selected":
-        raise CampaignCliError(
-            "TARGET-DATA2D cannot authorize DATA7/DATA8 materialization before "
-            "selected_target_size is terminally frozen; intermediate convergence "
-            f"states are evidence only (outcome={convergence.outcome!r})."
-        )
-    if convergence.selected_target_size is None:
-        raise CampaignCliError(
-            "TARGET-DATA2D selected outcome has no selected_target_size for DATA7/DATA8 materialization."
-        )
-
-    convergence_dataset_id = str(getattr(convergence, "dataset_id", ""))
-    ladder_dataset_id = str(getattr(ladder, "dataset_id", ""))
-    if (
-        convergence_dataset_id
-        and ladder_dataset_id
-        and convergence_dataset_id != ladder_dataset_id
-    ):
-        raise CampaignCliError(
-            "TARGET-DATA2D selected target size belongs to a different dataset than "
-            "the active TARGET-DATA2C ladder."
-        )
-
-    sizes = (int(convergence.selected_target_size),)
-
-    ladder_sizes = tuple(int(value) for value in ladder.materialized_target_sizes)
-    if sizes[0] not in set(ladder_sizes):
-        raise CampaignCliError(
-            f"TARGET-DATA2D selected target size {sizes[0]} is absent from the authoritative "
-            f"TARGET-DATA2C materialized ladder {list(ladder_sizes)}; rerun `prepare` from current "
-            "MVSEL2/REPAIR2/MVQUAL authorities."
-        )
-
-    # A terminal decision from the retired ladder generation is intentionally
-    # bridged by dataset identity and selected-rung membership above. A
-    # current-generation decision still receives the complete authority check.
-    if getattr(convergence, "target_data_ladder_digest", None) == getattr(
-        ladder, "content_digest", None
-    ):
-        mdstats.validate_target_size_convergence_authority(
-            convergence, ladder=ladder
-        )
-    return sizes
-
-
-def _load_target_multi_view_repair_authority(store: CampaignStore) -> Any:
-    """Restore explicit v2 authority, falling back only for legacy campaigns."""
-
-    import mdstats
-
-    if store.has_record("target_multi_view_repair_v2"):
-        return store.get_record("target_multi_view_repair_v2", mdstats.TargetMultiViewRepairPlanV2)
-    return store.get_record("target_multi_view_repair", mdstats.TargetMultiViewRepairPlan)
-
-
-def _target_production_migration_kwargs(store: CampaignStore, ladder: Any) -> dict[str, Any]:
-    """Return generation-specific TARGET-DATA2E provenance inputs."""
-
-    import mdstats
-
-    if ladder.authority_version != mdstats.TARGET_DATA_LADDER_MV_VERSION:
-        return {}
-    repair = _load_target_multi_view_repair_authority(store)
-    qualification = store.get_record("target_multi_view_qualification", mdstats.TargetMultiViewQualificationPlan)
-    migration = store.get_record("target_multi_view_migration_plan", mdstats.TargetMultiViewMigrationPlan)
-    activation = store.get_record("target_multi_view_migration_activation", mdstats.TargetMultiViewMigrationActivation)
-    if not migration.activation_authorized or activation.migration_plan_digest != migration.content_digest:
-        raise CampaignCliError("TARGET-DATA2E v3 requires the authorized MVMIGRATE1 activation receipt.")
-    return {
-        "target_multi_view_repair": repair,
-        "target_multi_view_qualification": qualification,
-        "migration_authority_digest": migration.content_digest,
-    }
-
-
-def _load_verified_target_production_corpus_decision(store: CampaignStore) -> Any:
-    """Restore and authenticate a completed TARGET-DATA2E authority."""
-
-    import mdstats
-
-    role_freeze = store.get_record("target_data_role_freeze", mdstats.TargetDataRoleFreeze)
-    foundation_audit = store.get_record("foundation_target_audit", mdstats.FoundationTargetAudit)
-    coverage_reference = store.get_record("target_coverage_reference", mdstats.TargetCoverageReference)
-    ladder = store.get_record("target_data_ladder", mdstats.TargetDataLadderPlan)
-    convergence = store.get_record("target_size_convergence", mdstats.TargetSizeConvergencePlan)
-    decision = store.get_record("target_production_corpus_decision", mdstats.TargetProductionCorpusDecision)
-    migration_kwargs = _target_production_migration_kwargs(store, ladder)
-    mdstats.validate_target_production_corpus_decision(
-        decision,
-        target_data_role_freeze=role_freeze,
-        foundation_target_audit=foundation_audit,
-        target_coverage_reference=coverage_reference,
-        target_data_ladder=ladder,
-        target_size_convergence=convergence,
-        **migration_kwargs,
-    )
-    return decision
-
-
-def _ensure_target_production_corpus_decision(store: CampaignStore) -> Any | None:
-    """Materialize TARGET-DATA2E only after TARGET-DATA2D selects a winner.
-
-    Waiting Stage-B/Stage-C states intentionally return ``None``; they do not
-    create a provisional production corpus.  Failed/non-converged completed
-    funnels fail closed for any attempt to claim a production target size.
-    """
-
-    import mdstats
-
-    role_freeze = store.get_record("target_data_role_freeze", mdstats.TargetDataRoleFreeze)
-    foundation_audit = store.get_record("foundation_target_audit", mdstats.FoundationTargetAudit)
-    coverage_reference = store.get_record("target_coverage_reference", mdstats.TargetCoverageReference)
-    ladder = store.get_record("target_data_ladder", mdstats.TargetDataLadderPlan)
-    convergence = store.get_record("target_size_convergence", mdstats.TargetSizeConvergencePlan)
-    migration_kwargs = _target_production_migration_kwargs(store, ladder)
-
-    if convergence.outcome in {"awaiting_stage_b0_coarse_training", "awaiting_stage_b1_short_training", "awaiting_stage_c_full_training"}:
-        if store.has_record("target_production_corpus_decision"):
-            store.delete_record("target_production_corpus_decision")
-        return None
-    if convergence.outcome != "selected":
-        if store.has_record("target_production_corpus_decision"):
-            store.delete_record("target_production_corpus_decision")
-        raise CampaignCliError(
-            "TARGET-DATA2E cannot claim a production corpus because TARGET-DATA2D "
-            f"completed without convergence: outcome={convergence.outcome}; {convergence.decision_reason}"
-        )
-
-    existing = store.get_record_optional("target_production_corpus_decision", mdstats.TargetProductionCorpusDecision)
-    if existing is not None:
-        try:
-            mdstats.validate_target_production_corpus_decision(
-                existing,
-                target_data_role_freeze=role_freeze,
-                foundation_target_audit=foundation_audit,
-                target_coverage_reference=coverage_reference,
-                target_data_ladder=ladder,
-                target_size_convergence=convergence,
-                **migration_kwargs,
-            )
-        except Exception as exc:
-            print(f"[TARGET-DATA2E restart] stored production-corpus authority is stale ({exc}); rebuilding", flush=True)
-        else:
-            _ok(
-                "TARGET-DATA2E production target corpus reused: "
-                f"N_target={existing.selected_target_size}; digest={existing.content_digest[:12]}..."
-            )
-            return existing
-
-    decision = mdstats.build_target_production_corpus_decision(
-        target_data_role_freeze=role_freeze,
-        foundation_target_audit=foundation_audit,
-        target_coverage_reference=coverage_reference,
-        target_data_ladder=ladder,
-        target_size_convergence=convergence,
-        **migration_kwargs,
-    )
-    store.put_record("target_production_corpus_decision", decision)
-    _ok(
-        "TARGET-DATA2E production target corpus frozen: "
-        f"N_target={decision.selected_target_size}; domains={len(decision.domains)}; "
-        f"digest={decision.content_digest[:12]}..."
-    )
-    return decision
-
-
-def _ensure_target_size_convergence(
-    store: CampaignStore,
-    *,
-    cfg: Mapping[str, Any],
-    ladder: Any,
+def _ensure_target_size_study(
+    store: CampaignStore, *, cfg: Mapping[str, Any], repair2: Any, mvqual2: Any
 ) -> Any:
-    """Apply/reuse TARGET-DATA2D Stage A and freeze its training shortlist."""
+    """Build/reuse the v5 target-size study without migration or rescue state."""
 
     import mdstats
 
-    policy = _target_size_convergence_policy(cfg, ladder=ladder)
+    policy = _target_size_study_policy(cfg)
     try:
-        existing = store.get_record_optional("target_size_convergence", mdstats.TargetSizeConvergencePlan)
+        existing = store.get_record_optional("target_size_study", mdstats.TargetSizeStudyPlan)
     except Exception as exc:
         print(
-            f"[TARGET-DATA2D restart] stored convergence authority cannot be restored ({exc}); rebuilding Stage A",
+            f"[TARGET-SIZE-V5 restart] stale/legacy target-size state rejected ({exc}); rebuilding from REPAIR2 + MVQUAL2",
             flush=True,
         )
         existing = None
     if existing is not None:
-        if existing.outcome == "selected":
-            try:
-                _authoritative_materialization_selection_sizes(
-                    existing, ladder=ladder
-                )
-                same_ladder = (
-                    existing.target_data_ladder_digest == ladder.content_digest
-                )
-                if (
-                    same_ladder
-                    and existing.policy.policy_digest != policy.policy_digest
-                ):
-                    raise CampaignCliError(
-                        "TARGET-DATA2D convergence policy changed."
-                    )
-            except Exception as exc:
-                print(
-                    f"[TARGET-DATA2D restart] stored terminal authority is stale ({exc}); rebuilding Stage A",
-                    flush=True,
-                )
-            else:
-                bridge = (
-                    "current ladder"
-                    if same_ladder
-                    else "legacy-to-active selected-size bridge"
-                )
-                _ok(
-                    "TARGET-DATA2D terminal authority reused through "
-                    f"{bridge}: selected_target_size={existing.selected_target_size}; "
-                    f"digest={existing.content_digest[:12]}..."
-                )
-                return existing
-            existing = None
-    if existing is not None:
         try:
-            mdstats.validate_target_size_convergence_authority(existing, ladder=ladder)
             if existing.policy.policy_digest != policy.policy_digest:
-                raise CampaignCliError("TARGET-DATA2D convergence policy changed.")
+                raise CampaignCliError("target-size study policy changed")
+            mdstats.validate_target_size_study_authority(existing, repair2=repair2, mvqual=mvqual2)
         except Exception as exc:
             print(
-                f"[TARGET-DATA2D restart] stored authority is stale ({exc}); rebuilding Stage A",
+                f"[TARGET-SIZE-V5 restart] derived authority is stale ({exc}); rebuilding from current upstream state",
                 flush=True,
             )
         else:
             _ok(
-                "TARGET-DATA2D authority reused: "
-                f"coverage-qualified sizes={list(existing.stage_a_survivor_sizes)}; "
-                f"outcome={existing.outcome}; digest={existing.content_digest[:12]}..."
+                "TARGET-SIZE-V5 reused: "
+                f"Q={list(existing.qualified_sizes)}; outcome={existing.outcome}; "
+                f"digest={existing.content_digest[:12]}..."
             )
             return existing
-
-    _print_header("TARGET-DATA2D bounded target-size convergence funnel")
-    started = time.monotonic()
-    plan = mdstats.build_target_size_convergence_plan(ladder, policy=policy)
-    store.put_record("target_size_convergence", plan)
-    stage_a = ", ".join(
-        f"n{item.target_size}:{'PASS' if item.qualified else 'FAIL'}"
-        for item in plan.stage_a_rungs
-        if item.materializable
-    )
-    _ok(f"TARGET-DATA2D Stage A: {stage_a}")
+    plan = mdstats.build_target_size_study(repair2, mvqual2, policy=policy)
+    store.put_record("target_size_study", plan)
     _ok(
-        "TARGET-DATA2D hard-coverage admission frozen: "
-        f"survivors={list(plan.stage_a_survivor_sizes)}; "
-        f"screening_seed={policy.screening_optimizer_seed}; "
-        f"3/10/30 epochs={policy.coarse_training_epochs}/{policy.short_training_epochs}/{policy.final_training_epochs}; "
-        f"equivalence={policy.practical_equivalence_mev_per_a:.3f} meV/A; "
-        f"digest={plan.content_digest[:12]}...; elapsed={format_progress_time(time.monotonic() - started)}"
-    )
-    _warn(
-        "TARGET-DATA2D Stage B0/B1/C evidence is intentionally not executed through the legacy adaptive-stop trainer. "
-        "The frozen shortlist will be consumed by TRAIN2/EVAL2/VERIFY gates, which must supply exact 10-of-30 and 30-of-30 evidence."
+        "TARGET-SIZE-V5 frozen directly from REPAIR2 + MVQUAL2: "
+        f"Q={list(plan.qualified_sizes)}; outcome={plan.outcome}; digest={plan.content_digest[:12]}..."
     )
     return plan
 
 
-def _load_verified_target_data_ladder_authority(store: CampaignStore) -> Any:
-    """Restore and authenticate the live TARGET-DATA2C generation."""
+def _ensure_target_multi_view_qualification_v2(
+    store: CampaignStore,
+    *,
+    cfg: Mapping[str, Any],
+    coverage_reference: Any,
+    sparse_index: Any,
+    feasibility: Any,
+    repair_plan: Any,
+) -> Any:
+    """Build/reuse direct fixed-eight MVQUAL2; no ladder/migration comparison exists."""
 
     import mdstats
 
-
     role_freeze = store.get_record("target_data_role_freeze", mdstats.TargetDataRoleFreeze)
-    reference = store.get_record("target_coverage_reference", mdstats.TargetCoverageReference)
-    ladder = store.get_record("target_data_ladder", mdstats.TargetDataLadderPlan)
-    if ladder.authority_version == mdstats.TARGET_DATA_LADDER_VERSION:
-        mdstats.validate_target_data_ladder_authority(
-            ladder, reference=reference, target_data_role_freeze=role_freeze
+    policy = mdstats.TargetMultiViewQualificationPolicyV2(
+        coverage_threshold=float(coverage_reference.policy.coverage_threshold)
+    )
+    try:
+        existing = store.get_record_optional(
+            "target_multi_view_qualification_v2", mdstats.TargetMultiViewQualificationPlanV2
         )
-    elif ladder.authority_version == mdstats.TARGET_DATA_LADDER_MV_VERSION:
-        repair = _load_target_multi_view_repair_authority(store)
-        qualification = store.get_record("target_multi_view_qualification", mdstats.TargetMultiViewQualificationPlan)
-        migration = store.get_record("target_multi_view_migration_plan", mdstats.TargetMultiViewMigrationPlan)
-        activation = store.get_record("target_multi_view_migration_activation", mdstats.TargetMultiViewMigrationActivation)
-        if not migration.activation_authorized or activation.migration_plan_digest != migration.content_digest:
-            raise CampaignCliError("Live TARGET-DATA2C v5 exists without a matching authorized MVMIGRATE1 receipt.")
-        mdstats.validate_migrated_target_data_ladder_authority(
-            ladder,
-            reference=reference,
-            target_data_role_freeze=role_freeze,
-            target_multi_view_repair=repair,
-            target_multi_view_qualification=qualification,
-            migration_authority_digest=migration.content_digest,
+    except Exception as exc:
+        print(f"[TARGET-DATA2C-MVQUAL2 restart] stale record rejected ({exc}); rebuilding", flush=True)
+        existing = None
+    if existing is not None:
+        try:
+            mdstats.validate_target_multi_view_qualification_authority_v2(
+                existing,
+                target_coverage_reference=coverage_reference,
+                target_coverage_sparse_index=sparse_index,
+                target_coverage_feasibility=feasibility,
+                target_data_role_freeze=role_freeze,
+                target_multi_view_repair=repair_plan,
+                policy=policy,
+            )
+        except Exception as exc:
+            print(f"[TARGET-DATA2C-MVQUAL2 restart] authority is stale ({exc}); rebuilding", flush=True)
+        else:
+            _ok(
+                f"TARGET-DATA2C-MVQUAL2 reused: Q={list(existing.mv_qualified_sizes)}; "
+                f"digest={existing.content_digest[:12]}..."
+            )
+            return existing
+    workers, resources = _target_multi_view_qualification_parallelism(cfg)
+    scope = build_stage_resource_scope(
+        resources, stage_name="TARGET-DATA2C-MVQUAL2",
+        python_workers=workers, structural_workers=1, tree_workers=1, blas_threads=1,
+    )
+    _print_header("TARGET-DATA2C-MVQUAL2 fixed-eight REPAIR2-prefix qualification")
+    started = time.monotonic()
+    with stage_resource_scope(scope):
+        plan = mdstats.build_target_multi_view_qualification_plan_v2(
+            coverage_reference, sparse_index, feasibility, role_freeze, repair_plan,
+            policy=policy, coverage_query_workers=1, scoring_workers=workers,
+            progress_callback=lambda message: print(f"[TARGET-DATA2C-MVQUAL2] {message}", flush=True),
         )
-        if activation.migrated_target_data_ladder_digest != ladder.content_digest:
-            raise CampaignCliError("Live TARGET-DATA2C v5 digest differs from the MVMIGRATE1 activation receipt.")
-    else:
-        raise CampaignCliError(f"Unsupported live TARGET-DATA2C authority generation: {ladder.authority_version}.")
-    return ladder
+    mdstats.validate_target_multi_view_qualification_authority_v2(
+        plan,
+        target_coverage_reference=coverage_reference,
+        target_coverage_sparse_index=sparse_index,
+        target_coverage_feasibility=feasibility,
+        target_data_role_freeze=role_freeze,
+        target_multi_view_repair=repair_plan,
+        policy=policy,
+    )
+    store.put_record("target_multi_view_qualification_v2", plan)
+    _ok(
+        f"TARGET-DATA2C-MVQUAL2 accepted: Q={list(plan.mv_qualified_sizes)}; "
+        f"digest={plan.content_digest[:12]}...; elapsed={format_progress_time(time.monotonic()-started)}"
+    )
+    return plan
 
 
 def _ensure_target_coverage_sparse_index(
@@ -4956,266 +4741,9 @@ def _ensure_target_coverage_sparse_index(
     _ok(
         "TARGET-DATA2C-MVIDX1 frozen as diagnostic/index substrate; "
         f"digest={index.content_digest[:12]}...; elapsed={format_progress_time(time.monotonic() - started)}; "
-        "TARGET-DATA2C v4 unchanged"
+        "current v5 MVIDX1 authority ready"
     )
     return index
-
-
-def _ensure_target_multi_view_selection(
-    store: CampaignStore,
-    *,
-    cfg: Mapping[str, Any],
-    coverage_reference: Any,
-    sparse_index: Any,
-) -> Any:
-    """Build/reuse TARGET-DATA2C-MVSEL1 plus reconstructible MVSTATE cache."""
-
-    import mdstats
-
-    policy = mdstats.TargetMultiViewSelectorPolicy()
-    progress_interval = float(_cfg(cfg, "performance", "progress_interval_seconds", 30.0))
-    if progress_interval <= 0.0:
-        raise CampaignCliError("[performance].progress_interval_seconds must be positive.")
-    def progress(message: str) -> None:
-        print(f"[TARGET-DATA2C-MVSEL1] {message}", flush=True)
-    existing = None
-    try:
-        existing = store.get_record_optional(
-            "target_multi_view_selection", mdstats.TargetMultiViewSelectionPlan
-        )
-    except Exception as exc:
-        print(
-            f"[TARGET-DATA2C-MVSEL1 restart] stored selector evidence cannot be restored ({exc}); rebuilding",
-            flush=True,
-        )
-    if existing is not None:
-        try:
-            mdstats.validate_target_multi_view_selection_authority(
-                existing,
-                target_coverage_reference=coverage_reference,
-                target_coverage_sparse_index=sparse_index,
-                policy=policy,
-            )
-        except Exception as exc:
-            print(
-                f"[TARGET-DATA2C-MVSEL1 restart] stored authority is stale ({exc}); rebuilding",
-                flush=True,
-            )
-            existing = None
-        else:
-            try:
-                state_cache = store.get_record_optional(
-                    "target_multi_view_selection_state_cache", mdstats.TargetMultiViewSelectionStateCache
-                )
-                if state_cache is None:
-                    raise CampaignCliError("MVSTATE-REUSE1 cache is missing")
-                mdstats.validate_target_multi_view_selection_state_cache(
-                    state_cache,
-                    target_coverage_reference=coverage_reference,
-                    target_coverage_sparse_index=sparse_index,
-                    target_multi_view_selection=existing,
-                )
-            except Exception as exc:
-                print(
-                    f"[TARGET-DATA2C-MVSTATE-REUSE1 restart] selector authority is reusable but state cache is unavailable ({exc}); rebuilding exact execution cache",
-                    flush=True,
-                )
-                _, selector_resources = _target_coverage_query_workers(cfg)
-                selector_scope = build_stage_resource_scope(
-                    selector_resources, stage_name="TARGET-DATA2C-MVSEL1/MVSTATE-REUSE1",
-                    python_workers=1, structural_workers=1, tree_workers=1, blas_threads=1,
-                )
-                with stage_resource_scope(selector_scope):
-                    rebuilt, state_cache = mdstats.build_target_multi_view_selection_artifacts(
-                        coverage_reference,
-                        sparse_index,
-                        policy=policy,
-                        execution_mode="optimized",
-                        progress_callback=progress,
-                        progress_interval_seconds=progress_interval,
-                    )
-                if rebuilt.content_digest != existing.content_digest:
-                    raise CampaignCliError("MVSTATE-REUSE1 cache rebuild changed MVSEL scientific authority.")
-                mdstats.validate_target_multi_view_selection_state_cache(
-                    state_cache,
-                    target_coverage_reference=coverage_reference,
-                    target_coverage_sparse_index=sparse_index,
-                    target_multi_view_selection=existing,
-                )
-                store.put_record("target_multi_view_selection_state_cache", state_cache)
-            _ok(
-                "TARGET-DATA2C-MVSEL1 reused: "
-                f"domains={len(existing.domains)}; digest={existing.content_digest[:12]}...; "
-                f"MVSTATE={state_cache.content_digest[:12]}...; TARGET-DATA2C v4 remains active"
-            )
-            return existing, state_cache
-
-    _print_header("TARGET-DATA2C-MVSEL1 deterministic progressive multi-view selector")
-    print(
-        "[TARGET-DATA2C-MVSEL1] phases=hard-obligation/worst-view coverage -> "
-        "harmonic density-aware representative fill; FP64 deterministic gains; ceiling=16384; "
-        "MVSTATE rung checkpoints=on; diagnostic only",
-        flush=True,
-    )
-    started = time.monotonic()
-    _, selector_resources = _target_coverage_query_workers(cfg)
-    selector_scope = build_stage_resource_scope(
-        selector_resources, stage_name="TARGET-DATA2C-MVSEL1/MVSTATE-REUSE1",
-        python_workers=1, structural_workers=1, tree_workers=1, blas_threads=1,
-    )
-    with stage_resource_scope(selector_scope):
-        plan, state_cache = mdstats.build_target_multi_view_selection_artifacts(
-            coverage_reference,
-            sparse_index,
-            policy=policy,
-            execution_mode="optimized",
-            progress_callback=progress,
-            progress_interval_seconds=progress_interval,
-        )
-    mdstats.validate_target_multi_view_selection_authority(
-        plan,
-        target_coverage_reference=coverage_reference,
-        target_coverage_sparse_index=sparse_index,
-        policy=policy,
-    )
-    mdstats.validate_target_multi_view_selection_state_cache(
-        state_cache,
-        target_coverage_reference=coverage_reference,
-        target_coverage_sparse_index=sparse_index,
-        target_multi_view_selection=plan,
-    )
-    store.put_records({
-        "target_multi_view_selection": plan,
-        "target_multi_view_selection_state_cache": state_cache,
-    })
-    for domain in plan.domains:
-        qualified = [rung.target_size for rung in domain.rungs if rung.materializable and rung.hard_coverage_qualified]
-        _ok(
-            f"TARGET-DATA2C-MVSEL1 {domain.label_domain_id}: selected={len(domain.master_order)}; "
-            f"phase_A_completed_at={domain.phase_a_completed_at or 'not_within_ceiling'}; "
-            f"qualified_rungs={qualified or 'none'}"
-        )
-    _ok(
-        "TARGET-DATA2C-MVSEL1 + MVSTATE-REUSE1 frozen: "
-        f"selection={plan.content_digest[:12]}...; state={state_cache.content_digest[:12]}...; "
-        f"elapsed={format_progress_time(time.monotonic() - started)}; TARGET-DATA2C v4 unchanged"
-    )
-    return plan, state_cache
-
-def _ensure_target_multi_view_repair(
-    store: CampaignStore,
-    *,
-    cfg: Mapping[str, Any],
-    coverage_reference: Any,
-    sparse_index: Any,
-    selection_plan: Any,
-    selection_state_cache: Any = None,
-) -> Any:
-    """Build/reuse TARGET-DATA2C-REPAIR1 without migrating DATA2C v4."""
-
-    import mdstats
-
-    policy = mdstats.TargetMultiViewRepairPolicy()
-    try:
-        existing = store.get_record_optional(
-            "target_multi_view_repair", mdstats.TargetMultiViewRepairPlan
-        )
-    except Exception as exc:
-        print(
-            f"[TARGET-DATA2C-REPAIR1 restart] stored repair evidence cannot be restored ({exc}); rebuilding",
-            flush=True,
-        )
-        existing = None
-    if existing is not None:
-        try:
-            mdstats.validate_target_multi_view_repair_authority(
-                existing,
-                target_coverage_reference=coverage_reference,
-                target_coverage_sparse_index=sparse_index,
-                target_multi_view_selection=selection_plan,
-                policy=policy,
-            )
-        except Exception as exc:
-            print(
-                f"[TARGET-DATA2C-REPAIR1 restart] stored authority is stale ({exc}); rebuilding",
-                flush=True,
-            )
-        else:
-            swaps = sum(domain.total_swaps for domain in existing.domains)
-            _ok(
-                "TARGET-DATA2C-REPAIR1 reused: "
-                f"domains={len(existing.domains)}; swaps={swaps}; digest={existing.content_digest[:12]}...; "
-                "TARGET-DATA2C v4 remains active"
-            )
-            return existing
-
-    _print_header("TARGET-DATA2C-REPAIR1 exact multiplicity repair and deficit-directed exchange")
-    print(
-        "[TARGET-DATA2C-REPAIR1] removal=zero-unique/hard-safe active shell only; "
-        "replacement=exact current deficit frontier; rank inheritance=yes; diagnostic only",
-        flush=True,
-    )
-    started = time.monotonic()
-    try:
-        if selection_state_cache is None:
-            selection_state_cache = store.get_record_optional(
-                "target_multi_view_selection_state_cache", mdstats.TargetMultiViewSelectionStateCache
-            )
-        if selection_state_cache is not None:
-            mdstats.validate_target_multi_view_selection_state_cache(
-                selection_state_cache,
-                target_coverage_reference=coverage_reference,
-                target_coverage_sparse_index=sparse_index,
-                target_multi_view_selection=selection_plan,
-            )
-    except Exception as exc:
-        print(
-            f"[TARGET-DATA2C-MVSTATE-REUSE1] state cache unavailable ({exc}); falling back to exact selector replay",
-            flush=True,
-        )
-        selection_state_cache = None
-    repair_workers, repair_resources = _target_multi_view_repair_parallelism(cfg)
-    repair_scope = build_stage_resource_scope(
-        repair_resources, stage_name="TARGET-DATA2C-REPAIR-PAR1",
-        python_workers=repair_workers, structural_workers=1, tree_workers=1, blas_threads=1,
-    )
-    print(
-        f"[TARGET-DATA2C-REPAIR-PAR1] proposal_workers={repair_workers}; "
-        f"MVSTATE={'hit' if selection_state_cache is not None else 'fallback-replay'}; "
-        "winner application=sequential; native_threads/proposal=1",
-        flush=True,
-    )
-    plan = mdstats.build_target_multi_view_repair_plan(
-        coverage_reference,
-        sparse_index,
-        selection_plan,
-        policy=policy,
-        execution_mode="optimized",
-        proposal_workers=repair_workers,
-        resource_scope=repair_scope,
-        selection_state_cache=selection_state_cache,
-        progress_callback=lambda message: print(f"[TARGET-DATA2C-REPAIR1] {message}", flush=True),
-    )
-    mdstats.validate_target_multi_view_repair_authority(
-        plan,
-        target_coverage_reference=coverage_reference,
-        target_coverage_sparse_index=sparse_index,
-        target_multi_view_selection=selection_plan,
-        policy=policy,
-    )
-    store.put_record("target_multi_view_repair", plan)
-    for domain in plan.domains:
-        qualified = [rung.target_size for rung in domain.rungs if rung.materializable and rung.hard_coverage_qualified]
-        _ok(
-            f"TARGET-DATA2C-REPAIR1 {domain.label_domain_id}: swaps={domain.total_swaps}; "
-            f"qualified_rungs={qualified or 'none'}"
-        )
-    _ok(
-        "TARGET-DATA2C-REPAIR1 frozen as diagnostic repair evidence; "
-        f"digest={plan.content_digest[:12]}...; elapsed={format_progress_time(time.monotonic() - started)}; "
-        "TARGET-DATA2C v4 unchanged"
-    )
-    return plan
 
 
 def _ensure_target_multi_view_selection_v2(
@@ -5248,7 +4776,7 @@ def _ensure_target_multi_view_selection_v2(
         except Exception as exc:
             print(f"[TARGET-DATA2C-MVSEL2 restart] stored v2 authority is stale ({exc}); rebuilding", flush=True)
         else:
-            _ok(f"TARGET-DATA2C-MVSEL2 reused: digest={existing.content_digest[:12]}...; legacy MVSEL1 records retained")
+            _ok(f"TARGET-DATA2C-MVSEL2 reused: digest={existing.content_digest[:12]}...")
             return existing, {}
 
     _print_header("TARGET-DATA2C-MVSEL2 exact forward/lazy selector")
@@ -5286,8 +4814,7 @@ def _ensure_target_multi_view_selection_v2(
     store.put_record("target_multi_view_selection_v2", plan)
     _ok(
         f"TARGET-DATA2C-MVSEL2 + MVSTATE2 accepted: digest={plan.content_digest[:12]}...; "
-        f"checkpoints={len(checkpoint_pointers)}; elapsed={format_progress_time(time.monotonic() - started)}; "
-        "legacy MVSEL1/MVSTATE-REUSE1 records retained"
+        f"checkpoints={len(checkpoint_pointers)}; elapsed={format_progress_time(time.monotonic() - started)}"
     )
     return plan, checkpoint_pointers
 
@@ -5321,7 +4848,7 @@ def _ensure_target_multi_view_repair_v2(
         except Exception as exc:
             print(f"[TARGET-DATA2C-REPAIR2 restart] stored v2 authority is stale ({exc}); rebuilding", flush=True)
         else:
-            _ok(f"TARGET-DATA2C-REPAIR2 reused: digest={existing.content_digest[:12]}...; legacy REPAIR1 record retained")
+            _ok(f"TARGET-DATA2C-REPAIR2 reused: digest={existing.content_digest[:12]}...")
             return existing
     repair_workers, resources = _target_multi_view_repair_parallelism(cfg)
     scope = build_stage_resource_scope(
@@ -5343,491 +4870,10 @@ def _ensure_target_multi_view_repair_v2(
     store.put_record("target_multi_view_repair_v2", plan)
     _ok(
         f"TARGET-DATA2C-REPAIR2 accepted: swaps={sum(item.total_swaps for item in plan.domains)}; "
-        f"digest={plan.content_digest[:12]}...; elapsed={format_progress_time(time.monotonic() - started)}; legacy REPAIR1 record retained"
+        f"digest={plan.content_digest[:12]}...; elapsed={format_progress_time(time.monotonic() - started)}"
     )
     return plan
 
-
-def _ensure_target_multi_view_qualification(
-    store: CampaignStore,
-    *,
-    cfg: Mapping[str, Any],
-    coverage_reference: Any,
-    sparse_index: Any,
-    feasibility: Any,
-    repair_plan: Any,
-    legacy_ladder: Any,
-) -> Any:
-    """Build/reuse TARGET-DATA2C-MVQUAL1 without migrating DATA2C v4."""
-
-    import mdstats
-
-    role_freeze = store.get_record("target_data_role_freeze", mdstats.TargetDataRoleFreeze)
-    policy = mdstats.TargetMultiViewQualificationPolicy(
-        coverage_threshold=float(coverage_reference.policy.coverage_threshold)
-    )
-    try:
-        existing = store.get_record_optional(
-            "target_multi_view_qualification", mdstats.TargetMultiViewQualificationPlan
-        )
-    except Exception as exc:
-        print(
-            f"[TARGET-DATA2C-MVQUAL1 restart] stored qualification evidence cannot be restored ({exc}); rebuilding",
-            flush=True,
-        )
-        existing = None
-    mvqual_workers, resource_cfg = _target_multi_view_qualification_parallelism(cfg)
-    if existing is not None:
-        try:
-            mdstats.validate_target_multi_view_qualification_authority(
-                existing,
-                target_coverage_reference=coverage_reference,
-                target_coverage_sparse_index=sparse_index,
-                target_coverage_feasibility=feasibility,
-                target_data_role_freeze=role_freeze,
-                legacy_target_data_ladder=legacy_ladder,
-                target_multi_view_repair=repair_plan,
-                policy=policy,
-                coverage_query_workers=1,
-            )
-        except Exception as exc:
-            print(
-                f"[TARGET-DATA2C-MVQUAL1 restart] stored authority is stale ({exc}); rebuilding",
-                flush=True,
-            )
-        else:
-            _ok(
-                "TARGET-DATA2C-MVQUAL1 reused: "
-                f"outcome={existing.outcome}; common_sizes={existing.global_common_target_sizes}; "
-                f"digest={existing.content_digest[:12]}...; TARGET-DATA2C v4 remains active"
-            )
-            return existing
-
-    _print_header("TARGET-DATA2C-MVQUAL1 independent same-N legacy-vs-MV qualification")
-    print(
-        "[TARGET-DATA2C-MVQUAL1] pass authority=independent TARGET-DATA2B rescoring + DATA2A/MVIDX hard obligations; "
-        "metrics=Dmax/Dsum/N95, uncovered mass/count, unique contribution, provenance diversity; "
-        "learning controls frozen but deferred to final GPU qualification",
-        flush=True,
-    )
-    started = time.monotonic()
-    scope = build_stage_resource_scope(
-        resource_cfg, stage_name="TARGET-DATA2C-MVQUAL1",
-        python_workers=mvqual_workers, structural_workers=1, tree_workers=1, blas_threads=1,
-    )
-    print(
-        f"[TARGET-DATA2C-MVQUAL-PAR1] scoring_workers={mvqual_workers}; "
-        "native_tree_threads/job=1; reduction=canonical domain/size order",
-        flush=True,
-    )
-    plan = mdstats.build_target_multi_view_qualification_plan(
-        coverage_reference, sparse_index, feasibility, role_freeze, legacy_ladder, repair_plan,
-        policy=policy, coverage_query_workers=1, scoring_workers=mvqual_workers,
-        resource_scope=scope,
-        progress_callback=lambda message: print(f"[TARGET-DATA2C-MVQUAL1] {message}", flush=True),
-    )
-    mdstats.validate_target_multi_view_qualification_authority(
-        plan,
-        target_coverage_reference=coverage_reference,
-        target_coverage_sparse_index=sparse_index,
-        target_coverage_feasibility=feasibility,
-        target_data_role_freeze=role_freeze,
-        legacy_target_data_ladder=legacy_ladder,
-        target_multi_view_repair=repair_plan,
-        policy=policy,
-        coverage_query_workers=1,
-    )
-    store.put_record("target_multi_view_qualification", plan)
-    _ok(
-        "TARGET-DATA2C-MVQUAL1 frozen as pre-migration qualification evidence: "
-        f"outcome={plan.outcome}; common_N={plan.global_common_target_sizes}; "
-        f"legacy_N95={plan.legacy_n95_common or 'none'}; MV_N95={plan.mv_n95_common or 'none'}; "
-        f"MV_qualified={plan.mv_qualified_sizes or 'none'}; learning_controls={plan.learning_control_target_sizes or 'none'}; "
-        f"digest={plan.content_digest[:12]}...; elapsed={format_progress_time(time.monotonic() - started)}; "
-        "TARGET-DATA2C v4 unchanged"
-    )
-    return plan
-
-
-def _ensure_size_halve2_plan(
-    store: CampaignStore,
-    *,
-    cfg: Mapping[str, Any],
-    repair_plan: Any,
-    qualification_plan: Any,
-) -> Any:
-    """Build/reuse the pre-migration SIZE-HALVE2 fixed-eight funnel authority."""
-
-    import mdstats
-
-    legacy_policy = _target_size_convergence_policy(cfg)
-    policy = mdstats.SizeHalve2Policy(
-        practical_equivalence_mev_per_a=float(legacy_policy.practical_equivalence_mev_per_a),
-        coarse_practical_equivalence_mev_per_a=float(legacy_policy.coarse_practical_equivalence_mev_per_a),
-        screening_optimizer_seed=int(legacy_policy.screening_optimizer_seed),
-    )
-    try:
-        existing = store.get_record_optional("size_halve2_plan", mdstats.SizeHalve2Plan)
-    except Exception as exc:
-        print(f"[SIZE-HALVE2 restart] stored authority cannot be restored ({exc}); rebuilding", flush=True)
-        existing = None
-    if existing is not None:
-        try:
-            mdstats.validate_size_halve2_authority(
-                existing,
-                target_multi_view_repair=repair_plan,
-                target_multi_view_qualification=qualification_plan,
-                policy=policy,
-            )
-        except Exception as exc:
-            print(f"[SIZE-HALVE2 restart] stored authority is stale ({exc}); rebuilding", flush=True)
-        else:
-            _ok(
-                "SIZE-HALVE2 reused: "
-                f"qualified={list(existing.coverage_qualified_sizes)}; outcome={existing.outcome}; "
-                f"digest={existing.content_digest[:12]}...; production TARGET-DATA2D v2 unchanged"
-            )
-            return existing
-
-    _print_header("SIZE-HALVE2 fixed-eight coverage-qualified successive-fidelity authority")
-    plan = mdstats.build_size_halve2_plan(repair_plan, qualification_plan, policy=policy)
-    mdstats.validate_size_halve2_authority(
-        plan,
-        target_multi_view_repair=repair_plan,
-        target_multi_view_qualification=qualification_plan,
-        policy=policy,
-    )
-    store.put_record("size_halve2_plan", plan)
-    candidate_summary = ", ".join(
-        f"n{item.target_size}:{'Q' if item.hard_coverage_qualified else 'X' if item.materializable else 'U'}"
-        for item in plan.candidates
-    )
-    _ok(f"SIZE-HALVE2 fixed population: {candidate_summary}")
-    if plan.outcome == "ready_for_size_fidelity2":
-        _ok(
-            "SIZE-HALVE2 pre-migration funnel frozen: "
-            f"q={len(plan.coverage_qualified_sizes)} -> 4 -> 2 -> 1 at 3/10/30 epochs; "
-            "coverage-failing sizes cannot purchase TRAIN2; "
-            f"digest={plan.content_digest[:12]}..."
-        )
-    else:
-        _warn(
-            "SIZE-HALVE2 is fail-closed for the future MV funnel: "
-            f"outcome={plan.outcome}; reason={plan.decision_reason}. "
-            "This pre-migration record does not interrupt the current TARGET-DATA2C v4/TARGET-DATA2D v2 path."
-        )
-    return plan
-
-
-def _ensure_size_fidelity2_execution_plan(
-    store: CampaignStore,
-    *,
-    size_halve2_plan: Any,
-) -> Any:
-    """Build/reuse the GPU-deferred SIZE-FIDELITY2 exhaustive calibration plan."""
-
-    import mdstats
-
-    policy = mdstats.SizeFidelity2Policy()
-    try:
-        existing = store.get_record_optional(
-            "size_fidelity2_execution_plan", mdstats.SizeFidelity2ExecutionPlan
-        )
-    except Exception as exc:
-        print(f"[SIZE-FIDELITY2 restart] stored execution plan cannot be restored ({exc}); rebuilding", flush=True)
-        existing = None
-    if existing is not None:
-        try:
-            mdstats.validate_size_fidelity2_execution_plan(
-                existing, size_halve2_plan=size_halve2_plan, policy=policy
-            )
-        except Exception as exc:
-            print(f"[SIZE-FIDELITY2 restart] stored execution plan is stale ({exc}); rebuilding", flush=True)
-        else:
-            _ok(
-                "SIZE-FIDELITY2 execution plan reused: "
-                f"status={existing.status}; q-widths={list(existing.admission_widths)}; "
-                f"runs={existing.expected_training_run_count}; digest={existing.content_digest[:12]}..."
-            )
-            return existing
-
-    _print_header("SIZE-FIDELITY2 survivor-fidelity requalification control plane")
-    plan = mdstats.build_size_fidelity2_execution_plan(size_halve2_plan, policy=policy)
-    mdstats.validate_size_fidelity2_execution_plan(
-        plan, size_halve2_plan=size_halve2_plan, policy=policy
-    )
-    store.put_record("size_fidelity2_execution_plan", plan)
-    if plan.status == "ready_for_final_gpu_calibration":
-        _ok(
-            "SIZE-FIDELITY2 exhaustive calibration frozen: "
-            f"widths={list(plan.admission_widths)}; trajectories={plan.expected_training_run_count}; "
-            f"full inference products={plan.expected_full_inference_count}; extra monitor inference=0; "
-            f"digest={plan.content_digest[:12]}...; positive execution deferred to FINAL-GPU1"
-        )
-    else:
-        _warn(
-            "SIZE-FIDELITY2 calibration is blocked by the pre-migration SIZE-HALVE2 state; "
-            f"reason={plan.decision_reason}. Legacy TARGET-DATA2C/DATA2D execution remains unchanged."
-        )
-    return plan
-
-
-def _ensure_target_multi_view_migration(
-    store: CampaignStore,
-    *,
-    cfg: Mapping[str, Any],
-    coverage_reference: Any,
-    repair_plan: Any,
-    qualification_plan: Any,
-    legacy_ladder: Any,
-    size_halve2_plan: Any,
-    size_fidelity2_execution_plan: Any,
-) -> tuple[Any, Any | None]:
-    """Freeze/reuse MVMIGRATE1 and its authenticated v5 candidate without premature activation."""
-
-    import mdstats
-
-    role_freeze = store.get_record("target_data_role_freeze", mdstats.TargetDataRoleFreeze)
-    try:
-        learning_control = store.get_record_optional(
-            "target_multi_view_learning_control_qualification",
-            mdstats.TargetMultiViewLearningControlReport,
-        )
-    except Exception as exc:
-        print(f"[MVMIGRATE1 restart] learning-control report cannot be restored ({exc}); ignoring stale report", flush=True)
-        learning_control = None
-    try:
-        fidelity_qualification = store.get_record_optional(
-            "size_fidelity2_qualification", mdstats.SizeFidelity2QualificationReport
-        )
-    except Exception as exc:
-        print(f"[MVMIGRATE1 restart] SIZE-FIDELITY2 qualification cannot be restored ({exc}); ignoring stale report", flush=True)
-        fidelity_qualification = None
-
-    try:
-        existing = store.get_record_optional(
-            "target_multi_view_migration_plan", mdstats.TargetMultiViewMigrationPlan
-        )
-    except Exception as exc:
-        print(f"[MVMIGRATE1 restart] stored migration plan cannot be restored ({exc}); rebuilding", flush=True)
-        existing = None
-    if existing is not None:
-        try:
-            mdstats.validate_target_multi_view_migration_plan(
-                existing,
-                legacy_target_data_ladder=legacy_ladder,
-                target_multi_view_repair=repair_plan,
-                target_multi_view_qualification=qualification_plan,
-                size_halve2_plan=size_halve2_plan,
-                size_fidelity2_execution_plan=size_fidelity2_execution_plan,
-                learning_control_report=learning_control,
-                size_fidelity2_qualification=fidelity_qualification,
-            )
-        except Exception as exc:
-            print(f"[MVMIGRATE1 restart] stored migration plan is stale ({exc}); rebuilding", flush=True)
-            existing = None
-
-    plan = existing or mdstats.build_target_multi_view_migration_plan(
-        legacy_target_data_ladder=legacy_ladder,
-        target_multi_view_repair=repair_plan,
-        target_multi_view_qualification=qualification_plan,
-        size_halve2_plan=size_halve2_plan,
-        size_fidelity2_execution_plan=size_fidelity2_execution_plan,
-        learning_control_report=learning_control,
-        size_fidelity2_qualification=fidelity_qualification,
-    )
-    mdstats.validate_target_multi_view_migration_plan(
-        plan,
-        legacy_target_data_ladder=legacy_ladder,
-        target_multi_view_repair=repair_plan,
-        target_multi_view_qualification=qualification_plan,
-        size_halve2_plan=size_halve2_plan,
-        size_fidelity2_execution_plan=size_fidelity2_execution_plan,
-        learning_control_report=learning_control,
-        size_fidelity2_qualification=fidelity_qualification,
-    )
-    store.put_record("target_multi_view_migration_plan", plan)
-
-    candidate = None
-    if plan.status in {"awaiting_final_gpu_qualification", "authorized_for_atomic_activation"}:
-        coverage_workers, _ = _target_coverage_query_workers(cfg)
-        try:
-            existing_candidate = store.get_record_optional(
-                "target_data_ladder_mv_candidate", mdstats.TargetDataLadderPlan
-            )
-        except Exception as exc:
-            print(f"[MVMIGRATE1 restart] stored v5 candidate cannot be restored ({exc}); rebuilding", flush=True)
-            existing_candidate = None
-        if existing_candidate is not None:
-            try:
-                mdstats.validate_migrated_target_data_ladder_authority(
-                    existing_candidate,
-                    reference=coverage_reference,
-                    target_data_role_freeze=role_freeze,
-                    target_multi_view_repair=repair_plan,
-                    target_multi_view_qualification=qualification_plan,
-                    migration_authority_digest=plan.content_digest,
-                    coverage_query_workers=coverage_workers,
-                )
-            except Exception as exc:
-                print(f"[MVMIGRATE1 restart] stored v5 candidate is stale ({exc}); rebuilding", flush=True)
-                existing_candidate = None
-        candidate = existing_candidate or mdstats.build_migrated_target_data_ladder(
-            coverage_reference,
-            role_freeze,
-            target_multi_view_repair=repair_plan,
-            target_multi_view_qualification=qualification_plan,
-            migration_authority_digest=plan.content_digest,
-            coverage_query_workers=coverage_workers,
-        )
-        mdstats.validate_migrated_target_data_ladder_authority(
-            candidate,
-            reference=coverage_reference,
-            target_data_role_freeze=role_freeze,
-            target_multi_view_repair=repair_plan,
-            target_multi_view_qualification=qualification_plan,
-            migration_authority_digest=plan.content_digest,
-            coverage_query_workers=coverage_workers,
-        )
-        store.put_record("target_data_ladder_mv_candidate", candidate)
-
-    _print_header("TARGET-DATA2C-MVMIGRATE1 generated-policy migration latch")
-    if plan.activation_authorized:
-        _ok(
-            "MVMIGRATE1 final prerequisites passed and v5 is authorized for atomic activation; "
-            f"candidate_digest={candidate.content_digest[:12] if candidate else 'none'}...; "
-            "promotion remains an explicit final-release transaction so v4 cannot be partially overwritten"
-        )
-    elif plan.status == "awaiting_final_gpu_qualification":
-        _ok(
-            "MVMIGRATE1 control plane frozen: exact fixed-eight v5 candidate is authenticated and reusable; "
-            f"candidate_digest={candidate.content_digest[:12] if candidate else 'none'}...; "
-            "activation is fail-closed pending FINAL-GPU1 learning-control and SIZE-FIDELITY2 evidence; v4 remains active"
-        )
-    else:
-        _warn(
-            "MVMIGRATE1 is scientifically blocked before final GPU qualification; "
-            f"reason={plan.decision_reason}. No v5 candidate is promoted and v4 remains active."
-        )
-    return plan, candidate
-
-
-def _ensure_target_data_ladder(
-    store: CampaignStore,
-    *,
-    cfg: Mapping[str, Any],
-    coverage_reference: Any,
-) -> Any:
-    """Build or reuse the historical v4 TARGET-DATA2C authority.
-
-    After MVMIGRATE1 activation, ``target_data_ladder`` is the live v5 alias.
-    The v4 lineage remains available under ``target_data_ladder_legacy_v4`` so
-    MVQUAL1/MVMIGRATE1 can still authenticate their historical comparison base
-    without ever overwriting the promoted live generation.
-    """
-
-    import mdstats
-
-    role_freeze = store.get_record("target_data_role_freeze", mdstats.TargetDataRoleFreeze)
-    policy = _target_data_ladder_policy(cfg)
-    convergence_policy = _target_size_convergence_policy(cfg)
-    activated = store.has_record("target_multi_view_migration_activation")
-    record_key = "target_data_ladder_legacy_v4" if activated else "target_data_ladder"
-    try:
-        existing = store.get_record_optional(record_key, mdstats.TargetDataLadderPlan)
-    except Exception as exc:
-        print(
-            f"[TARGET-DATA2C restart] stored legacy ladder cannot be restored ({exc}); rebuilding",
-            flush=True,
-        )
-        existing = None
-    if existing is not None:
-        try:
-            if existing.authority_version != mdstats.TARGET_DATA_LADDER_VERSION:
-                raise CampaignCliError("Historical TARGET-DATA2C alias is not v4.")
-            mdstats.validate_target_data_ladder_authority(
-                existing,
-                reference=coverage_reference,
-                target_data_role_freeze=role_freeze,
-            )
-            if existing.policy.policy_digest != policy.policy_digest:
-                raise CampaignCliError("TARGET-DATA2C ladder policy changed.")
-            if existing.coverage_rescue_min_qualifiers != convergence_policy.min_coverage_qualifiers:
-                raise CampaignCliError("TARGET-DATA2C coverage-rescue qualifier requirement changed.")
-        except Exception as exc:
-            print(
-                f"[TARGET-DATA2C restart] stored historical authority is stale ({exc}); rebuilding",
-                flush=True,
-            )
-        else:
-            _ok(
-                "TARGET-DATA2C historical v4 ladder reused: "
-                f"{sum(len(item.materialized_rungs) for item in existing.domains)} materialized rung(s); "
-                f"digest={existing.content_digest[:12]}..."
-            )
-            return existing
-
-    _print_header("TARGET-DATA2C deterministic nested target-size ladder (historical v4 authority)")
-    started = time.monotonic()
-    coverage_workers, _ = _target_coverage_query_workers(cfg)
-    ladder = mdstats.build_target_data_ladder(
-        coverage_reference,
-        role_freeze,
-        policy=policy,
-        coverage_query_workers=coverage_workers,
-        minimum_coverage_qualifiers=convergence_policy.min_coverage_qualifiers,
-    )
-    store.put_record(record_key, ladder)
-    for domain in ladder.domains:
-        materialized = domain.materialized_rungs
-        summary = ", ".join(
-            f"{item.target_size}:{'PASS' if item.coverage_report and item.coverage_report.passed else 'FAIL'}"
-            for item in materialized
-        )
-        unavailable = [str(item.target_size) for item in domain.rungs if not item.materializable]
-        suffix = f"; unavailable={','.join(unavailable)}" if unavailable else ""
-        _ok(
-            f"TARGET-DATA2C {domain.label_domain_id}: pool={domain.pool_frame_count}; "
-            f"mandatory={domain.mandatory_reserved_count}/{domain.mandatory_obligation_count}; "
-            f"rungs=[{summary}]{suffix}"
-        )
-    _ok(
-        "TARGET-DATA2C historical v4 authority frozen: "
-        f"base_sizes={policy.target_sizes}; configured_sizes={ladder.configured_candidate_sizes}; "
-        f"rescue={'active' if ladder.coverage_rescue_activated else 'inactive'}; "
-        f"materialized={ladder.materialized_target_sizes}; "
-        f"stop={ladder.materialization_stop_reason}; digest={ladder.content_digest[:12]}...; "
-        f"elapsed={format_progress_time(time.monotonic() - started)}"
-    )
-    return ladder
-
-
-def _resolve_active_target_data_ladder(
-    store: CampaignStore, *, legacy_ladder: Any, migration_plan: Any, candidate: Any | None
-) -> Any:
-    """Return v4 until the explicit activation receipt atomically promotes v5."""
-
-    import mdstats
-
-    if not store.has_record("target_multi_view_migration_activation"):
-        return legacy_ladder
-    activation = store.get_record(
-        "target_multi_view_migration_activation", mdstats.TargetMultiViewMigrationActivation
-    )
-    if not migration_plan.activation_authorized:
-        raise CampaignCliError("MVMIGRATE1 activation receipt exists but the live migration plan is not authorized.")
-    if candidate is None:
-        raise CampaignCliError("MVMIGRATE1 activation receipt exists without an authenticated v5 candidate.")
-    live = store.get_record("target_data_ladder", mdstats.TargetDataLadderPlan)
-    if live.authority_version != mdstats.TARGET_DATA_LADDER_MV_VERSION:
-        raise CampaignCliError("MVMIGRATE1 activation receipt exists but target_data_ladder is not v5.")
-    if activation.migration_plan_digest != migration_plan.content_digest:
-        raise CampaignCliError("MVMIGRATE1 activation receipt references a stale migration plan.")
-    if activation.legacy_target_data_ladder_digest != legacy_ladder.content_digest:
-        raise CampaignCliError("MVMIGRATE1 activation receipt references a different historical v4 ladder.")
-    if activation.migrated_target_data_ladder_digest != candidate.content_digest or live.content_digest != candidate.content_digest:
-        raise CampaignCliError("MVMIGRATE1 live v5 alias differs from the activation receipt/candidate.")
-    return live
 
 def _load_or_rebuild_frame_data(
     cfg: Mapping[str, Any], paths: CampaignPaths, sources: Any
@@ -8950,6 +7996,44 @@ def _variant_specs(
     return tuple(variants)
 
 
+def _target_size_materialization_variants(
+    cfg: Mapping[str, Any], *, study: Any
+) -> tuple[_VariantSpec, ...]:
+    """Return the materialization matrix for the v5 study or selected production size.
+
+    Before selection only Q is materialized, with one screening optimizer seed
+    and no held-out CV jobs.  The same candidate DATA8 runs survive all 3/10/30
+    continuation boundaries.  After selection the normal configured seed/CV
+    matrix is materialized for the single frozen production size.
+    """
+
+    import mdstats
+
+    if study.outcome == mdstats.OUTCOME_SELECTED:
+        return _variant_specs(cfg, selection_sizes=(int(study.selected_target_size),))
+    if study.outcome not in {
+        mdstats.OUTCOME_AWAITING_EPOCH_3,
+        mdstats.OUTCOME_AWAITING_EPOCH_10,
+        mdstats.OUTCOME_AWAITING_EPOCH_30,
+    }:
+        return ()
+    methods = _training_method_specs(cfg)
+    if len(methods) != 1:
+        raise CampaignCliError(
+            "Target-size v5 screening requires exactly one enabled training mode; "
+            f"found {[item.mode for item in methods]}."
+        )
+    method = methods[0]
+    seed = int(study.policy.screening_optimizer_seed)
+    return tuple(
+        _VariantSpec(
+            mode=method.mode, selection_size=int(size), seed=seed,
+            cross_validation_folds=0, fold_partition_seed=method.fold_partition_seed,
+        )
+        for size in study.qualified_sizes
+    )
+
+
 def _variant_cross_validation_plans(
     data5: Any,
     frames: Any,
@@ -9133,16 +8217,10 @@ _PREPARE_RECEIPT_RECORD_KEYS = (
     "target_coverage_reference",
     "target_coverage_feasibility",
     "target_coverage_sparse_index",
-    "target_multi_view_selection",
-    "target_multi_view_repair",
     "target_multi_view_selection_v2",
     "target_multi_view_repair_v2",
-    "target_multi_view_qualification",
-    "size_halve2_plan",
-    "size_fidelity2_execution_plan",
-    "target_multi_view_migration_plan",
-    "target_data_ladder",
-    "target_size_convergence",
+    "target_multi_view_qualification_v2",
+    "target_size_study",
     "replay_plan",
     "replay_qualification",
     "replay_single_source_config",
@@ -9162,10 +8240,6 @@ _PREPARE_RECEIPT_RECORD_KEYS = (
 
 _PREPARE_RECEIPT_OPTIONAL_RECORD_KEYS = (
     "final_gpu1_qualification",
-    "target_multi_view_learning_control_qualification",
-    "size_fidelity2_qualification",
-    "target_multi_view_migration_activation",
-    "target_data_ladder_legacy_v4",
 )
 
 
@@ -9217,14 +8291,10 @@ def _prepare_contract_signature() -> dict[str, Any]:
         "target_data2b_persistence_version": mdstats.TARGET_COVERAGE_PERSISTENCE_VERSION,
         "target_data2b_feas1_version": mdstats.TARGET_COVERAGE_FEASIBILITY_VERSION,
         "target_data2c_mvidx1_version": mdstats.TARGET_COVERAGE_SPARSE_INDEX_VERSION,
-        "target_data2c_mvsel1_version": mdstats.TARGET_MULTI_VIEW_SELECTOR_VERSION,
-        "target_data2c_repair1_version": mdstats.TARGET_MULTI_VIEW_REPAIR_VERSION,
-        "target_data2c_mvqual1_version": mdstats.TARGET_MULTI_VIEW_QUALIFICATION_VERSION,
-        "target_data2c_ladder_version": mdstats.TARGET_DATA_LADDER_VERSION,
-        "target_data2c_mvmigrate1_version": mdstats.TARGET_MV_MIGRATION_VERSION,
-        "target_data2c_migrated_ladder_version": mdstats.MIGRATED_TARGET_DATA2C_VERSION,
-        "target_data2d_migrated_convergence_version": mdstats.MIGRATED_TARGET_DATA2D_VERSION,
-        "target_data2e_migrated_production_version": mdstats.MIGRATED_TARGET_DATA2E_VERSION,
+        "target_data2c_mvsel2_version": mdstats.TARGET_MULTI_VIEW_SELECTOR_V2_VERSION,
+        "target_data2c_repair2_version": mdstats.TARGET_MULTI_VIEW_REPAIR_V2_VERSION,
+        "target_data2c_mvqual2_version": mdstats.TARGET_MULTI_VIEW_QUALIFICATION_V2_VERSION,
+        "target_size_study_version": mdstats.TARGET_SIZE_STUDY_VERSION,
         "final_gpu1_version": mdstats.FINAL_GPU1_VERSION,
         "replay_unify_integration_version": "REPLAY-UNIFY1D-v1",
         "replay_single_source_config_schema": mdstats.REPLAY_SINGLE_SOURCE_CONFIG_SCHEMA,
@@ -9310,61 +8380,7 @@ def _try_reuse_completed_prepare(
     if store.get_meta(_stage_config_key("prepare")) != _sha256(paths.config):
         return False
     if not store.has_record("prepare_restart_receipt"):
-        # One-time migration for campaigns completed by 0.20.68a0.  The DATA8
-        # parser and variant-identity checks below reject older incompatible
-        # trees, while a valid production qualification proves that DATA6-
-        # DATA9A had already completed under the same campaign.toml.
-        try:
-            import mdstats
-
-            sources = store.get_record(
-                "source_catalog", mdstats.TrainingDataSourceCatalog
-            )
-            qualification = store.get_record(
-                "production_qualification",
-                mdstats.ProductionCorpusQualificationRecord,
-            )
-            if (
-                qualification.status.value != "passed"
-                or not qualification.full_data9a_passed
-            ):
-                return False
-            sweep_pointer = store.get_payload("model_sweep_checkpoint")
-            if (
-                sweep_pointer.get("status") != "complete"
-                or sweep_pointer.get("completed_frames")
-                != sweep_pointer.get("requested_frames")
-            ):
-                return False
-            entries = _current_data8_entries(store)
-            variants = _variant_specs(cfg)
-            by_id = {entry.variant_id: entry for entry in entries}
-            expected_ids = {variant.variant_id for variant in variants}
-            if set(by_id) != expected_ids:
-                return False
-            ordered_entries = [
-                by_id[variant.variant_id]
-                for variant in variants
-            ]
-            if any(entry.materialization is None for entry in ordered_entries):
-                return False
-            if any(not store.has_record(key) for key in _PREPARE_RECEIPT_RECORD_KEYS):
-                return False
-            _write_prepare_restart_receipt(
-                cfg,
-                paths,
-                store,
-                sources=sources,
-                variants=variants,
-                materializations=[entry.materialization for entry in ordered_entries],
-                bundles=[entry.bundle for entry in ordered_entries],
-            )
-            _ok(
-                "adopted the completed 0.20.68a0 prepare artifacts into the new "
-                "restart receipt; no DATA6/DATA7/DATA8 work repeated"
-            )
-        except Exception:
-            return False
+        return False
     try:
         receipt = store.get_payload("prepare_restart_receipt")
         if receipt.get("schema") != PREPARE_RESTART_RECEIPT_SCHEMA:
@@ -9666,75 +8682,33 @@ def _prepare_materialization(
         sparse_index=target_coverage_sparse_index,
         selection_plan=target_multi_view_selection,
     )
-    legacy_target_ladder = _ensure_target_data_ladder(
-        store,
-        cfg=cfg,
-        coverage_reference=coverage_reference,
-    )
-    target_multi_view_qualification = _ensure_target_multi_view_qualification(
+    target_multi_view_qualification = _ensure_target_multi_view_qualification_v2(
         store,
         cfg=cfg,
         coverage_reference=coverage_reference,
         sparse_index=target_coverage_sparse_index,
         feasibility=target_coverage_feasibility,
         repair_plan=target_multi_view_repair,
-        legacy_ladder=legacy_target_ladder,
     )
-    size_halve2_plan = _ensure_size_halve2_plan(
-        store,
-        cfg=cfg,
-        repair_plan=target_multi_view_repair,
-        qualification_plan=target_multi_view_qualification,
+    target_size_study = _ensure_target_size_study(
+        store, cfg=cfg, repair2=target_multi_view_repair, mvqual2=target_multi_view_qualification
     )
-    size_fidelity2_execution_plan = _ensure_size_fidelity2_execution_plan(
-        store, size_halve2_plan=size_halve2_plan
-    )
-    migration_plan, migration_candidate = _ensure_target_multi_view_migration(
-        store,
-        cfg=cfg,
-        coverage_reference=coverage_reference,
-        repair_plan=target_multi_view_repair,
-        qualification_plan=target_multi_view_qualification,
-        legacy_ladder=legacy_target_ladder,
-        size_halve2_plan=size_halve2_plan,
-        size_fidelity2_execution_plan=size_fidelity2_execution_plan,
-    )
-    target_ladder = _resolve_active_target_data_ladder(
-        store, legacy_ladder=legacy_target_ladder, migration_plan=migration_plan,
-        candidate=migration_candidate,
-    )
-    size_convergence = _ensure_target_size_convergence(
-        store,
-        cfg=cfg,
-        ladder=target_ladder,
-    )
-    # TARGET-DATA2D intentionally has an intermediate state between ladder
-    # qualification and production materialization.  Do not treat a valid
-    # waiting state as a failed prepare run: Stage B0/B1/C evaluation owns the
-    # transition to the terminal selected_target_size authority.  The actual
-    # materialization authorization remains fail-closed in
-    # _authoritative_materialization_selection_sizes().
     authoritative_selection_sizes = None
     if _training_policy_generation(cfg) == "train2":
-        if size_convergence.outcome in {
-            "awaiting_stage_b0_coarse_training",
-            "awaiting_stage_b1_short_training",
-            "awaiting_stage_c_full_training",
-        }:
-            _ok(
-                "TARGET-DATA2D convergence is awaiting training evidence; "
-                "DATA7/DATA8 materialization is deferred until selected_target_size is frozen"
+        if target_size_study.outcome == mdstats.OUTCOME_INSUFFICIENT_QUALIFIED_SIZES:
+            raise CampaignCliError(
+                "Target-size v5 terminated: insufficient_qualified_sizes; "
+                f"Q={list(target_size_study.qualified_sizes)}. No rescue sizes are permitted."
             )
-            _mark_stage(
-                store,
-                paths,
-                "prepare",
-                StageState.WAITING,
-                "TARGET-DATA2D convergence pending Stage B0/B1/C size-fidelity evidence",
+        if target_size_study.outcome == mdstats.OUTCOME_NONCONVERGED_AT_FIXED_CEILING:
+            raise CampaignCliError(
+                "Target-size v5 terminated at the fixed 16384 ceiling without convergence; "
+                "rescue above 16384 is forbidden."
             )
-            return False
-        authoritative_selection_sizes = _authoritative_materialization_selection_sizes(
-            size_convergence, ladder=target_ladder
+        authoritative_selection_sizes = (
+            (int(target_size_study.selected_target_size),)
+            if target_size_study.outcome == mdstats.OUTCOME_SELECTED
+            else tuple(int(v) for v in target_size_study.qualified_sizes)
         )
     replay, replay_qualification, replay_failures, _ = _qualify_replay(cfg, paths)
     if replay_failures:
@@ -9816,7 +8790,11 @@ def _prepare_materialization(
 
     data8_bundles = []
     materializations = []
-    variants = _variant_specs(cfg, selection_sizes=authoritative_selection_sizes)
+    variants = (
+        _target_size_materialization_variants(cfg, study=target_size_study)
+        if _training_policy_generation(cfg) == "train2"
+        else _variant_specs(cfg, selection_sizes=authoritative_selection_sizes)
+    )
     expected_variant_ids = {variant.variant_id for variant in variants}
     # Remove pointers for variants no longer requested, but retain every
     # matching pointer so unchanged jobs can be restored without rehashing or
@@ -9998,16 +8976,9 @@ def _prepare_materialization(
             ),
             selection_budget_policy=mdstats.SelectionBudgetPolicy(
                 target_sizes=(
-                    authoritative_selection_sizes
-                    if authoritative_selection_sizes is not None
-                    else tuple(
-                        sorted(
-                            set(
-                                int(v)
-                                for v in _cfg(cfg, "selection", "sizes", (512,))
-                            )
-                        )
-                    )
+                    (int(size),)
+                    if _training_policy_generation(cfg) == "train2"
+                    else tuple(sorted(set(int(v) for v in _cfg(cfg, "selection", "sizes", (512,)))))
                 ),
             ),
             optimizer_policy=_optimizer_policy(
@@ -10017,6 +8988,55 @@ def _prepare_materialization(
             extxyz_policy=mdstats.MaceExtxyzPolicy(),
             foundation_reference_energies=foundation_e0,
             selection_size=size,
+            selection_authority_role=(
+                "standard"
+                if _training_policy_generation(cfg) != "train2"
+                else (
+                    "selected_production_prefix"
+                    if target_size_study.outcome == mdstats.OUTCOME_SELECTED
+                    else "target_size_candidate"
+                )
+            ),
+            target_size_study_digest=(
+                None
+                if _training_policy_generation(cfg) != "train2"
+                else (
+                    target_size_study.content_digest
+                    if target_size_study.outcome == mdstats.OUTCOME_SELECTED
+                    else target_size_study.candidate_authority_digest
+                )
+            ),
+            prescribed_final_development_prefixes=(
+                None
+                if _training_policy_generation(cfg) != "train2"
+                else {
+                    domain.label_domain_id: mdstats.materialize_candidate_prefix(
+                        target_size_study,
+                        repair2=target_multi_view_repair,
+                        label_domain_id=domain.label_domain_id,
+                        target_size=int(size),
+                    )
+                    for domain in target_multi_view_repair.domains
+                }
+            ),
+            prescribed_target_size_evaluation_frames=(
+                None
+                if _training_policy_generation(cfg) != "train2"
+                or target_size_study.outcome == mdstats.OUTCOME_SELECTED
+                else {
+                    domain.label_domain_id: tuple(
+                        uid for uid in store.get_record(
+                            "target_data_role_freeze", mdstats.TargetDataRoleFreeze
+                        ).domain(domain.label_domain_id).size_development_frame_uids
+                        if uid not in set(mdstats.materialize_candidate_prefix(
+                            target_size_study, repair2=target_multi_view_repair,
+                            label_domain_id=domain.label_domain_id,
+                            target_size=max(target_size_study.qualified_sizes),
+                        ))
+                    )
+                    for domain in target_multi_view_repair.domains
+                }
+            ),
             require_foundation_residual_e0=True,
             require_replay=require_replay,
         )
@@ -10241,7 +9261,7 @@ def command_prepare(args: argparse.Namespace) -> int:
                 paths,
                 "prepare",
                 StageState.WAITING,
-                "DATA7/DATA8 materialization deferred until TARGET-DATA2D selected_target_size is frozen",
+                "DATA7/DATA8 production materialization deferred until target-size v5 selection is frozen",
             )
             return 0
     except CampaignCliError as exc:
@@ -11294,27 +10314,24 @@ def command_preflight(args: argparse.Namespace) -> int:
         f"{coverage_reference.content_digest[:12]}..."
     )
     try:
-        target_ladder = _load_verified_target_data_ladder_authority(store)
+        target_size_study = _load_verified_target_size_study_authority(store)
     except Exception as exc:
         raise CampaignCliError(
-            "TARGET-DATA2C is missing or stale; rerun `prepare` before preflight: "
+            "Target-size v5 authority is missing or stale; rerun `prepare` before preflight: "
             f"{exc}"
         ) from exc
-    _ok(
-        "TARGET-DATA2C authority verified before preflight: "
-        f"{target_ladder.content_digest[:12]}..."
-    )
-    try:
-        size_convergence = _load_verified_target_size_convergence_authority(store)
-    except Exception as exc:
+    if target_size_study.outcome in {
+        mdstats.OUTCOME_INSUFFICIENT_QUALIFIED_SIZES,
+        mdstats.OUTCOME_NONCONVERGED_AT_FIXED_CEILING,
+    }:
         raise CampaignCliError(
-            "TARGET-DATA2D is missing or stale; rerun `prepare` before preflight: "
-            f"{exc}"
-        ) from exc
+            f"Target-size v5 is terminal without a production size: {target_size_study.outcome}; "
+            f"{target_size_study.decision_reason}"
+        )
     _ok(
-        "TARGET-DATA2D authority verified before preflight: "
-        f"coverage-qualified sizes={list(size_convergence.stage_a_survivor_sizes)}; "
-        f"outcome={size_convergence.outcome}; {size_convergence.content_digest[:12]}..."
+        "TARGET-SIZE-V5 authority verified before preflight: "
+        f"Q={list(target_size_study.qualified_sizes)}; outcome={target_size_study.outcome}; "
+        f"{target_size_study.content_digest[:12]}..."
     )
     _mark_stage(store, paths, "preflight", StageState.RUNNING, "running bounded training preflight")
     failures: list[str] = []
@@ -11430,28 +10447,32 @@ def command_preflight(args: argparse.Namespace) -> int:
 
 def _build_campaign(cfg: Mapping[str, Any], store: CampaignStore, data8_bundles: Sequence[Any]) -> Any:
     import mdstats
-    qualification = store.get_record("production_qualification", mdstats.ProductionCorpusQualificationRecord)
+
+    qualification = store.get_record(
+        "production_qualification", mdstats.ProductionCorpusQualificationRecord
+    )
     acceleration_probe_digest = None
     acceleration_probe_record = store.get_record_optional(
         "acceleration_probe", mdstats.MaceAccelerationProbe
     )
     if acceleration_probe_record is not None:
         acceleration_probe_digest = acceleration_probe_record.content_digest
-    authoritative_selection_sizes = None
+
+    study = None
     if _training_policy_generation(cfg) == "train2":
-        ladder = _load_verified_target_data_ladder_authority(store)
-        size_convergence = store.get_record(
-            "target_size_convergence", mdstats.TargetSizeConvergencePlan
-        )
-        authoritative_selection_sizes = _authoritative_materialization_selection_sizes(
-            size_convergence, ladder=ladder
-        )
-    variants = _variant_specs(cfg, selection_sizes=authoritative_selection_sizes)
+        study = _load_verified_target_size_study_authority(store)
+        variants = _target_size_materialization_variants(cfg, study=study)
+        if not variants:
+            raise CampaignCliError(
+                f"Target-size v5 has no trainable/materializable state: {study.outcome}; {study.decision_reason}"
+            )
+        candidate_phase = study.outcome != mdstats.OUTCOME_SELECTED
+    else:
+        variants = _variant_specs(cfg)
+        candidate_phase = False
+
     modes = tuple(
-        sorted(
-            {mdstats.TrainingMode(item.mode) for item in variants},
-            key=lambda item: item.value,
-        )
+        sorted({mdstats.TrainingMode(item.mode) for item in variants}, key=lambda item: item.value)
     )
     seeds = tuple(sorted({item.seed for item in variants}))
     policy = mdstats.TrainingCampaignPolicy(
@@ -11468,7 +10489,7 @@ def _build_campaign(cfg: Mapping[str, Any], store: CampaignStore, data8_bundles:
             for item in variants
         ),
         require_final_development=True,
-        require_cross_validation=True,
+        require_cross_validation=not candidate_phase,
         required_execution_wrapper="mdstats-mace-train",
         acceleration_probe_digest=acceleration_probe_digest,
     )
@@ -13381,27 +12402,16 @@ def command_train(args: argparse.Namespace) -> int:
         f"{coverage_reference.content_digest[:12]}..."
     )
     try:
-        target_ladder = _load_verified_target_data_ladder_authority(store)
+        target_size_study = _load_verified_target_size_study_authority(store)
     except Exception as exc:
         raise CampaignCliError(
-            "Training refused because TARGET-DATA2C authority is missing or stale; "
+            "Training refused because target-size v5 authority is missing or stale; "
             f"rerun `prepare` and `preflight`: {exc}"
         ) from exc
     _ok(
-        "TARGET-DATA2C authority verified before training: "
-        f"{target_ladder.content_digest[:12]}..."
-    )
-    try:
-        size_convergence = _load_verified_target_size_convergence_authority(store)
-    except Exception as exc:
-        raise CampaignCliError(
-            "Training refused because TARGET-DATA2D authority is missing or stale; "
-            f"rerun `prepare` and `preflight`: {exc}"
-        ) from exc
-    _ok(
-        "TARGET-DATA2D authority verified before training: "
-        f"coverage-qualified sizes={list(size_convergence.stage_a_survivor_sizes)}; "
-        f"outcome={size_convergence.outcome}; {size_convergence.content_digest[:12]}..."
+        "TARGET-SIZE-V5 authority verified before training: "
+        f"Q={list(target_size_study.qualified_sizes)}; outcome={target_size_study.outcome}; "
+        f"{target_size_study.content_digest[:12]}..."
     )
     if not store.has_record("preflight_smoke"):
         raise CampaignCliError("The required one-epoch MACE preflight record is missing. Run `preflight` before training.")
@@ -13448,44 +12458,47 @@ def command_train(args: argparse.Namespace) -> int:
                 "TRAIN2 target-size convergence currently requires exactly one enabled training mode; "
                 f"found {active_modes}."
             )
-        try:
-            perf_p2r_stage = mdstats.build_perf_p2r_stage_plan(size_convergence)
-        except Exception as exc:
-            raise CampaignCliError(
-                "TRAIN2 training is blocked because TARGET-DATA2D has no trainable PERF-P2R state: "
-                f"outcome={size_convergence.outcome}; {size_convergence.decision_reason}; "
-                f"{type(exc).__name__}: {exc}"
-            ) from exc
-        train2_execution_epoch_limit = int(perf_p2r_stage.target_epoch)
-        train2_allow_successful_continuation = bool(perf_p2r_stage.continuation_required)
-        stage_labels = {
-            "coarse": f"TARGET-DATA2D Stage B0 ({perf_p2r_stage.target_epoch}-of-{perf_p2r_stage.planned_final_epoch})",
-            "short": f"TARGET-DATA2D Stage B1 continuation ({perf_p2r_stage.target_epoch}-of-{perf_p2r_stage.planned_final_epoch})",
-            "final": f"TARGET-DATA2D Stage C continuation ({perf_p2r_stage.target_epoch}-of-{perf_p2r_stage.planned_final_epoch})",
-            "production": "production fixed-budget training",
-        }
-        train2_stage_label = stage_labels[perf_p2r_stage.stage]
-        allowed_sizes = set(int(v) for v in perf_p2r_stage.candidate_sizes)
-        if perf_p2r_stage.stage == "production":
+        study = target_size_study
+        if study.outcome == mdstats.OUTCOME_SELECTED:
+            train2_execution_epoch_limit = int(study.policy.fidelity_epochs[-1])
+            train2_allow_successful_continuation = False
+            train2_stage_label = "production fixed-budget training"
+            allowed_sizes = {int(study.selected_target_size)}
             train2_allowed_run_ids = {
                 run.run_id for run in campaign.runs if run.selection_size in allowed_sizes
             }
-        else:
-            screening_seed = int(perf_p2r_stage.screening_optimizer_seed)
+        elif study.outcome in {
+            mdstats.OUTCOME_AWAITING_EPOCH_3,
+            mdstats.OUTCOME_AWAITING_EPOCH_10,
+            mdstats.OUTCOME_AWAITING_EPOCH_30,
+        }:
+            train2_execution_epoch_limit = int(study.next_training_epoch)
+            train2_allow_successful_continuation = train2_execution_epoch_limit > 3
+            train2_stage_label = (
+                f"target-size v5 exact continuation to epoch {train2_execution_epoch_limit}/30"
+            )
+            allowed_sizes = set(int(v) for v in study.next_training_sizes)
+            screening_seed = int(study.policy.screening_optimizer_seed)
             train2_allowed_run_ids = {
-                run.run_id for run in campaign.runs
+                run.run_id
+                for run in campaign.runs
                 if run.kind is mdstats.MaceJobKind.FINAL_DEVELOPMENT
                 and run.seed == screening_seed
                 and run.selection_size in allowed_sizes
             }
+        else:
+            raise CampaignCliError(
+                "TRAIN2 has no trainable target-size v5 state: "
+                f"outcome={study.outcome}; {study.decision_reason}"
+            )
         if not train2_allowed_run_ids:
             raise CampaignCliError(
                 f"{train2_stage_label} has no matching materialized DATA8 runs. "
-                "Rerun `prepare` so Stage-A target-size survivors are materialized under TRAIN2."
+                "Rerun `prepare`; candidate materializations must cover Q exactly."
             )
         _ok(
-            f"TRAIN2B runtime active: {train2_stage_label}; epoch limit={train2_execution_epoch_limit}/"
-            f"{size_convergence.policy.final_training_epochs}; runs={len(train2_allowed_run_ids)}"
+            f"TRAIN2 target-size runtime active: {train2_stage_label}; "
+            f"runs={len(train2_allowed_run_ids)}"
         )
 
     def _train2_stage_summary(run_root: Path, job: Any, run_id: str) -> Any | None:
@@ -13957,7 +12970,7 @@ def command_train(args: argparse.Namespace) -> int:
         complete_count = _current_train_stage_complete_count()
         required_count = len(_current_train_stage_run_ids())
         if complete_count == required_count:
-            if policy_family == "train2" and size_convergence.outcome != "selected":
+            if policy_family == "train2" and target_size_study.outcome != "selected":
                 _mark_stage(
                     store, paths, "train", StageState.WAITING,
                     f"{train2_stage_label} execution complete ({complete_count}/{required_count}); awaiting evaluation evidence",
@@ -14366,7 +13379,7 @@ def command_train(args: argparse.Namespace) -> int:
     if complete_count < required_run_count:
         _mark_stage(store, paths, "train", StageState.WAITING, f"{complete_count}/{required_run_count} required runs complete")
         return 2
-    if policy_family == "train2" and size_convergence.outcome != "selected":
+    if policy_family == "train2" and target_size_study.outcome != "selected":
         _mark_stage(
             store, paths, "train", StageState.WAITING,
             f"{train2_stage_label} execution complete ({complete_count}/{required_run_count}); awaiting evaluation evidence",
@@ -17568,9 +16581,9 @@ def _eval2_label_domain_id(bundle: Any, role_freeze: Any) -> str:
 def _eval2_target_role_for_run(
     *,
     store: CampaignStore,
-    convergence: Any,
+    target_size_study: Any,
+    repair2: Any,
     role_freeze: Any,
-    ladder: Any,
     bundle: Any,
     run: Any,
     coarse: bool = False,
@@ -17580,35 +16593,24 @@ def _eval2_target_role_for_run(
 
     label_domain_id = _eval2_label_domain_id(bundle, role_freeze)
     if run.kind is mdstats.MaceJobKind.CROSS_VALIDATION_FOLD:
+        if target_size_study.outcome != mdstats.OUTCOME_SELECTED:
+            raise CampaignCliError(
+                "Held-out CV EVAL2 is blocked until selected_target_size is frozen."
+            )
         role = mdstats.build_eval2_cv_target_role(
-            role_freeze,
-            label_domain_id=label_domain_id,
-            fold_index=int(run.fold_index),
+            role_freeze, label_domain_id=label_domain_id, fold_index=int(run.fold_index)
         )
     else:
-        if convergence.outcome in {"awaiting_stage_b0_coarse_training", "awaiting_stage_b1_short_training", "awaiting_stage_c_full_training"}:
-            maximum_training_size = max(int(v) for v in convergence.stage_a_survivor_sizes)
-        elif convergence.selected_target_size is not None:
-            maximum_training_size = int(convergence.selected_target_size)
-        else:
-            raise CampaignCliError(
-                "EVAL2 final-development checkpoint ranking has no leakage-safe target-role boundary."
-            )
-        if coarse:
-            role = mdstats.build_eval2_coarse_size_study_target_role(
-                role_freeze,
-                ladder,
-                label_domain_id=label_domain_id,
-                maximum_training_size=maximum_training_size,
-                maximum_configurations=int(coarse_maximum_configurations),
-            )
-        else:
-            role = mdstats.build_eval2_size_study_target_role(
-                role_freeze,
-                ladder,
-                label_domain_id=label_domain_id,
-                maximum_training_size=maximum_training_size,
-            )
+        maximum_training_size = (
+            int(target_size_study.selected_target_size)
+            if target_size_study.outcome == mdstats.OUTCOME_SELECTED
+            else max(int(v) for v in target_size_study.qualified_sizes)
+        )
+        role = mdstats.build_eval2_size_study_target_role(
+            role_freeze, repair2, target_size_study,
+            label_domain_id=label_domain_id,
+            maximum_training_size=maximum_training_size,
+        )
     key = f"eval2_target_role:{role.content_digest}"
     existing = store.get_record_optional(key, mdstats.Eval2TargetRole)
     if existing is not None and existing.content_digest != role.content_digest:
@@ -17617,8 +16619,8 @@ def _eval2_target_role_for_run(
     return role
 
 
-def _eval2_resolve_existing_cv_artifact(bundle: Any, job: Any, root: Path, role: Any) -> tuple[Any, Path] | None:
-    """Resolve the full CV checkpoint-monitor artifact matching a frozen EVAL2 role."""
+def _eval2_resolve_existing_target_artifact(bundle: Any, job: Any, root: Path, role: Any) -> tuple[Any, Path] | None:
+    """Resolve a frozen DATA8 target artifact matching an EVAL2 role exactly."""
 
     expected = tuple(role.evaluation_frame_uids)
     candidates = [
@@ -17738,13 +16740,13 @@ def _eval2_target_artifact_for_run(
     root: Path,
     role: Any,
 ) -> tuple[Any, Path]:
-    if role.role_kind == "cv_checkpoint_monitor":
-        resolved = _eval2_resolve_existing_cv_artifact(bundle, job, root, role)
-        if resolved is None:
-            raise CampaignCliError(
-                f"EVAL2 CV role for {job.job_id} does not match a frozen full checkpoint-monitor artifact."
-            )
+    resolved = _eval2_resolve_existing_target_artifact(bundle, job, root, role)
+    if resolved is not None:
         return resolved
+    if role.role_kind == "cv_checkpoint_monitor":
+        raise CampaignCliError(
+            f"EVAL2 CV role for {job.job_id} does not match a frozen full checkpoint-monitor artifact."
+        )
     return _eval2_materialize_development_target_artifact(
         paths=paths, store=store, bundle=bundle, root=root, role=role
     )
@@ -17938,9 +16940,9 @@ def _eval2_run_record_for_completed_train2_run(
     bundle: Any,
     root: Path,
     execution: Any,
-    convergence: Any,
+    target_size_study: Any,
+    repair2: Any,
     role_freeze: Any,
-    ladder: Any,
     true_replay_resolution: Any | None,
     baseline_model: Path | None,
     model_dtype: str,
@@ -17949,7 +16951,7 @@ def _eval2_run_record_for_completed_train2_run(
     import mdstats
 
     target_role = _eval2_target_role_for_run(
-        store=store, convergence=convergence, role_freeze=role_freeze, ladder=ladder,
+        store=store, target_size_study=target_size_study, repair2=repair2, role_freeze=role_freeze,
         bundle=bundle, run=run,
     )
     target_artifact, target_path = _eval2_target_artifact_for_run(
@@ -18034,7 +17036,7 @@ def _eval2_run_record_for_completed_train2_run(
 
 
 
-def _eval2_stage_b0_evidence(
+def _eval2_target_size_endpoint_evidence(
     *,
     cfg: Mapping[str, Any],
     paths: CampaignPaths,
@@ -18042,204 +17044,129 @@ def _eval2_stage_b0_evidence(
     campaign: Any,
     jobs: Mapping[str, tuple[Any, Any, Path]],
     execution_records: Mapping[str, Any],
-    convergence: Any,
+    target_size_study: Any,
+    repair2: Any,
     role_freeze: Any,
-    ladder: Any,
     baseline_model: Path | None,
     model_dtype: str,
     local_wrappers: Mapping[str, Path],
 ) -> tuple[Any, ...]:
-    """Evaluate the exact epoch-3 endpoint on one small common target-only role."""
+    """Reduce the exact current 3/10/30 endpoint into v5 size evidence.
+
+    These evaluations use only the common development complement of the
+    largest Q prefix.  They are part of target-size selection, not held-out CV
+    or VERIFY, and they carry no replay/physical hard-pass authority.
+    """
 
     import mdstats
 
-    evidence: list[Any] = []
-    expected_sizes = set(int(v) for v in convergence.stage_a_survivor_sizes)
-    screening_seed = int(convergence.policy.screening_optimizer_seed)
+    epoch = target_size_study.next_training_epoch
+    if epoch not in (3, 10, 30):
+        raise CampaignCliError(
+            f"Target-size evidence requested from non-trainable state {target_size_study.outcome}."
+        )
+    expected_sizes = set(int(v) for v in target_size_study.next_training_sizes)
+    screening_seed = int(target_size_study.policy.screening_optimizer_seed)
     runs = [
         run for run in campaign.runs
         if run.kind is mdstats.MaceJobKind.FINAL_DEVELOPMENT
-        and run.seed == screening_seed and run.selection_size in expected_sizes
+        and run.seed == screening_seed
+        and run.selection_size in expected_sizes
     ]
     if {run.selection_size for run in runs} != expected_sizes:
-        raise CampaignCliError("EVAL2 Stage B0 cannot resolve one final-development screening run for every coverage-qualified rung.")
+        raise CampaignCliError(
+            f"EVAL2 target-size epoch-{epoch} cannot resolve exactly one final-development run for every required candidate."
+        )
+    parent_by_size: dict[int, Any] = {}
+    if epoch == 10:
+        parent_by_size = {item.target_size: item for item in target_size_study.epoch3_evidence}
+    elif epoch == 30:
+        parent_by_size = {item.target_size: item for item in target_size_study.epoch10_evidence}
+
+    evidence: list[Any] = []
     for run in sorted(runs, key=lambda value: value.selection_size):
         execution = execution_records.get(run.content_digest)
         if execution is None:
-            raise CampaignCliError(f"EVAL2 Stage B0 run {run.run_id} is not durably complete at epoch 3.")
-        bundle, job, root = jobs[run.mace_job_artifact_digest]
-        runtime = store.get_record_optional(f"train2_runtime:{run.run_id}", mdstats.Train2RuntimeSummary)
-        if runtime is None:
-            runtime = mdstats.load_train2_runtime_summary(paths.runs / run.run_id / "checkpoints")
-        if runtime.completed_epochs != convergence.policy.coarse_training_epochs or runtime.planned_epochs != convergence.policy.final_training_epochs:
-            raise CampaignCliError(f"EVAL2 Stage B0 run {run.run_id} is not the exact 3-of-30 boundary.")
-        warmup_end = float(job.protocol.learning_rate_schedule_policy.warmup_end_fraction)
-        if runtime.normalized_progress <= warmup_end + 1.0e-12:
             raise CampaignCliError(
-                f"EVAL2 Stage B0 run {run.run_id} is not past LR warm-up: "
-                f"progress={runtime.normalized_progress:.6g}, warmup_end={warmup_end:.6g}."
+                f"EVAL2 target-size run {run.run_id} is not durably complete at epoch {epoch}."
+            )
+        bundle, job, root = jobs[run.mace_job_artifact_digest]
+        runtime = store.get_record_optional(
+            f"train2_runtime:{run.run_id}", mdstats.Train2RuntimeSummary
+        )
+        if runtime is None:
+            runtime = mdstats.load_train2_runtime_summary(
+                paths.runs / run.run_id / "checkpoints"
+            )
+        if runtime.completed_epochs != epoch or runtime.planned_epochs != 30:
+            raise CampaignCliError(
+                f"{run.run_id} is not the exact {epoch}-of-30 TRAIN2 endpoint."
             )
         target_role = _eval2_target_role_for_run(
-            store=store, convergence=convergence, role_freeze=role_freeze, ladder=ladder,
-            bundle=bundle, run=run, coarse=True,
-            coarse_maximum_configurations=int(convergence.policy.coarse_target_monitor_configurations),
+            store=store, target_size_study=target_size_study, repair2=repair2,
+            role_freeze=role_freeze, bundle=bundle, run=run,
         )
         target_artifact, target_path = _eval2_target_artifact_for_run(
-            paths=paths, store=store, bundle=bundle, job=job, root=root, role=target_role,
+            paths=paths, store=store, bundle=bundle, job=job, root=root, role=target_role
         )
         catalog = _evaluation_checkpoint_catalog(store, run.run_id, execution)
         points = mdstats.read_train2_trajectory_points(
             catalog.root_directory, checkpoint_catalog=catalog,
             target_head_name=job.protocol.checkpoint_control_policy.target_head_name,
         )
-        endpoint_epoch = int(convergence.policy.coarse_training_epochs) - 1
+        endpoint_epoch = epoch - 1
         matches = [point for point in points if point.epoch == endpoint_epoch]
         if len(matches) != 1:
-            raise CampaignCliError(f"EVAL2 Stage B0 run {run.run_id} lacks its exact epoch-3 checkpoint.")
+            raise CampaignCliError(
+                f"{run.run_id} lacks its exact epoch-{epoch} checkpoint."
+            )
         point = matches[0]
-        checkpoint = next(value for value in catalog.checkpoints if value.sha256 == point.checkpoint_sha256)
+        checkpoint = next(
+            value for value in catalog.checkpoints if value.sha256 == point.checkpoint_sha256
+        )
         record = _eval2_full_checkpoint(
             cfg=cfg, paths=paths, store=store, run=run, job=job, bundle=bundle, root=root,
             execution=execution, checkpoint=checkpoint, point=point,
             target_role=target_role, target_artifact=target_artifact, target_path=target_path,
-            true_replay_resolution=None, baseline_model=baseline_model,
-            model_dtype=model_dtype, local_wrappers=local_wrappers,
-            shortlist_reasons=("target_size_stage_b0_exact_endpoint",), full_evaluation_rank=1,
-            include_replay=False,
+            true_replay_resolution=None, baseline_model=baseline_model, model_dtype=model_dtype,
+            local_wrappers=local_wrappers,
+            shortlist_reasons=(f"target_size_v5_epoch_{epoch}_exact_endpoint",),
+            full_evaluation_rank=1, include_replay=False,
         )
-        target_threshold = float(job.protocol.checkpoint_admissibility_policy.maximum_target_force_rmse_ev_per_angstrom)
-        target_pass = record.target_metrics.force_component_rmse_ev_per_angstrom <= target_threshold
+        parent = parent_by_size.get(run.selection_size)
+        if epoch > 3 and parent is None:
+            raise CampaignCliError(
+                f"n={run.selection_size} lost its exact epoch-{3 if epoch == 10 else 10} continuation parent."
+            )
         wall_time = sum(float(attempt.elapsed_seconds) for attempt in execution.attempts)
-        evidence.append(mdstats.TargetSizeTrainingEvidence(
-            stage="coarse", target_size=run.selection_size, optimizer_seed=run.seed,
-            completed_epochs=runtime.completed_epochs, planned_epochs=runtime.planned_epochs,
-            optimizer_update_count=runtime.completed_updates, structures_presented=runtime.structures_presented,
-            normalized_schedule_progress=runtime.normalized_progress,
-            instantaneous_learning_rate=runtime.instantaneous_learning_rate, wall_time_seconds=wall_time,
-            target_force_score_mev_per_a=record.target_metrics.force_component_rmse_ev_per_angstrom * 1000.0,
-            numerical_valid=True, target_hard_gates_passed=target_pass,
-            foundation_identity_digest=job.protocol.foundation_checkpoint.canonical_content_digest,
-            evaluation_role_digest=target_role.content_digest,
-            training_policy_digest=_train2_policy_set_digest(job.protocol), training_run_digest=run.content_digest,
-            checkpoint_digest=point.checkpoint_sha256,
-            schedule_digest=job.protocol.learning_rate_schedule_policy.policy_digest,
-            optimizer_state_digest=runtime.optimizer_state_digest, rng_state_digest=runtime.rng_state_digest,
-            target_evaluation_digest=record.target_metrics.content_digest,
-        ))
-    return tuple(evidence)
-
-
-def _eval2_stage_b_evidence(
-    *,
-    cfg: Mapping[str, Any],
-    paths: CampaignPaths,
-    store: CampaignStore,
-    campaign: Any,
-    jobs: Mapping[str, tuple[Any, Any, Path]],
-    execution_records: Mapping[str, Any],
-    convergence: Any,
-    role_freeze: Any,
-    ladder: Any,
-    true_replay_resolution: Any | None,
-    baseline_model: Path | None,
-    model_dtype: str,
-    local_wrappers: Mapping[str, Path],
-) -> tuple[Any, ...]:
-    """Evaluate exact 10-of-30 endpoints; replay is diagnostic only."""
-
-    import mdstats
-
-    evidence: list[Any] = []
-    expected_sizes = set(int(v) for v in convergence.stage_b_survivor_sizes)
-    screening_seed = int(convergence.policy.screening_optimizer_seed)
-    runs = [
-        run for run in campaign.runs
-        if run.kind is mdstats.MaceJobKind.FINAL_DEVELOPMENT
-        and run.seed == screening_seed and run.selection_size in expected_sizes
-    ]
-    if {run.selection_size for run in runs} != expected_sizes:
-        raise CampaignCliError("EVAL2 Stage B cannot resolve one final-development screening run for every epoch-3 survivor.")
-    coarse_by_size = {item.target_size: item for item in convergence.coarse_training_evidence}
-    for run in sorted(runs, key=lambda value: value.selection_size):
-        execution = execution_records.get(run.content_digest)
-        if execution is None:
-            raise CampaignCliError(f"EVAL2 Stage B run {run.run_id} is not durably complete at epoch 10.")
-        bundle, job, root = jobs[run.mace_job_artifact_digest]
-        runtime = store.get_record_optional(f"train2_runtime:{run.run_id}", mdstats.Train2RuntimeSummary)
-        if runtime is None:
-            runtime = mdstats.load_train2_runtime_summary(paths.runs / run.run_id / "checkpoints")
-        if runtime.completed_epochs != convergence.policy.short_training_epochs or runtime.planned_epochs != convergence.policy.final_training_epochs:
-            raise CampaignCliError(f"EVAL2 Stage B run {run.run_id} is not the exact 10-of-30 boundary.")
-        target_role = _eval2_target_role_for_run(
-            store=store, convergence=convergence, role_freeze=role_freeze, ladder=ladder,
-            bundle=bundle, run=run,
+        evidence.append(
+            mdstats.TargetSizeStudyTrainingEvidence(
+                stage={3: "coarse", 10: "short", 30: "final"}[epoch],
+                target_size=run.selection_size, optimizer_seed=run.seed,
+                completed_epochs=runtime.completed_epochs, planned_epochs=runtime.planned_epochs,
+                optimizer_update_count=runtime.completed_updates,
+                structures_presented=runtime.structures_presented,
+                normalized_schedule_progress=runtime.normalized_progress,
+                instantaneous_learning_rate=runtime.instantaneous_learning_rate,
+                wall_time_seconds=wall_time,
+                target_force_score_mev_per_a=record.target_metrics.force_component_rmse_ev_per_angstrom * 1000.0,
+                numerical_valid=True,
+                foundation_identity_digest=job.protocol.foundation_checkpoint.canonical_content_digest,
+                evaluation_role_digest=target_role.content_digest,
+                training_policy_digest=_train2_policy_set_digest(job.protocol),
+                training_run_digest=run.content_digest,
+                candidate_data_digest=target_size_study.candidate(run.selection_size).candidate_data_digest,
+                checkpoint_digest=point.checkpoint_sha256,
+                schedule_digest=job.protocol.learning_rate_schedule_policy.policy_digest,
+                optimizer_state_digest=runtime.optimizer_state_digest,
+                rng_state_digest=runtime.rng_state_digest,
+                target_evaluation_digest=record.target_metrics.content_digest,
+                parent_checkpoint_digest=None if parent is None else parent.checkpoint_digest,
+                parent_optimizer_state_digest=None if parent is None else parent.optimizer_state_digest,
+                parent_rng_state_digest=None if parent is None else parent.rng_state_digest,
+                failure_reasons=(),
+            )
         )
-        target_artifact, target_path = _eval2_target_artifact_for_run(
-            paths=paths, store=store, bundle=bundle, job=job, root=root, role=target_role,
-        )
-        catalog = _evaluation_checkpoint_catalog(store, run.run_id, execution)
-        points = mdstats.read_train2_trajectory_points(
-            catalog.root_directory, checkpoint_catalog=catalog,
-            target_head_name=job.protocol.checkpoint_control_policy.target_head_name,
-        )
-        endpoint_epoch = int(convergence.policy.short_training_epochs) - 1
-        matches = [point for point in points if point.epoch == endpoint_epoch]
-        if len(matches) != 1:
-            raise CampaignCliError(f"EVAL2 Stage B run {run.run_id} lacks its exact epoch-10 checkpoint.")
-        point = matches[0]
-        checkpoint = next(value for value in catalog.checkpoints if value.sha256 == point.checkpoint_sha256)
-        # Full evaluation is purchased here, but replay is intentionally stripped
-        # of Stage-B admissibility authority when the size evidence is reduced.
-        record = _eval2_full_checkpoint(
-            cfg=cfg, paths=paths, store=store, run=run, job=job, bundle=bundle, root=root,
-            execution=execution, checkpoint=checkpoint, point=point,
-            target_role=target_role, target_artifact=target_artifact, target_path=target_path,
-            true_replay_resolution=true_replay_resolution, baseline_model=baseline_model,
-            model_dtype=model_dtype, local_wrappers=local_wrappers,
-            shortlist_reasons=("target_size_stage_b_exact_endpoint",), full_evaluation_rank=1,
-        )
-        target_threshold = float(job.protocol.checkpoint_admissibility_policy.maximum_target_force_rmse_ev_per_angstrom)
-        target_pass = record.target_metrics.force_component_rmse_ev_per_angstrom <= target_threshold
-        wall_time = sum(float(attempt.elapsed_seconds) for attempt in execution.attempts)
-        parent = coarse_by_size.get(run.selection_size)
-        if parent is None:
-            raise CampaignCliError(f"EVAL2 Stage B run n={run.selection_size} lost its epoch-3 continuation parent.")
-        evidence.append(mdstats.TargetSizeTrainingEvidence(
-            stage="short",
-            target_size=run.selection_size,
-            optimizer_seed=run.seed,
-            completed_epochs=runtime.completed_epochs,
-            planned_epochs=runtime.planned_epochs,
-            optimizer_update_count=runtime.completed_updates,
-            structures_presented=runtime.structures_presented,
-            normalized_schedule_progress=runtime.normalized_progress,
-            instantaneous_learning_rate=runtime.instantaneous_learning_rate,
-            wall_time_seconds=wall_time,
-            target_force_score_mev_per_a=record.target_metrics.force_component_rmse_ev_per_angstrom * 1000.0,
-            numerical_valid=True,
-            target_hard_gates_passed=target_pass,
-            foundation_identity_digest=job.protocol.foundation_checkpoint.canonical_content_digest,
-            evaluation_role_digest=target_role.content_digest,
-            training_policy_digest=_train2_policy_set_digest(job.protocol),
-            training_run_digest=run.content_digest,
-            checkpoint_digest=point.checkpoint_sha256,
-            schedule_digest=job.protocol.learning_rate_schedule_policy.policy_digest,
-            optimizer_state_digest=runtime.optimizer_state_digest,
-            rng_state_digest=runtime.rng_state_digest,
-            target_evaluation_digest=record.target_metrics.content_digest,
-            replay_diagnostic_force_rmse_mev_per_a=(
-                None if record.replay_candidate_force_rmse_ev_per_angstrom is None
-                else record.replay_candidate_force_rmse_ev_per_angstrom * 1000.0
-            ),
-            replay_evaluation_digest=(
-                None if record.replay_candidate_force_rmse_ev_per_angstrom is None
-                else record.evaluation_record_digest
-            ),
-            parent_checkpoint_digest=parent.checkpoint_digest,
-            parent_optimizer_state_digest=parent.optimizer_state_digest,
-            parent_rng_state_digest=parent.rng_state_digest,
-            failure_reasons=(() if target_pass else ("target_threshold_exceeded",)),
-        ))
     return tuple(evidence)
 
 
@@ -18252,147 +17179,135 @@ def _command_evaluate_train2(
     campaign: Any,
     model_dtype: str,
 ) -> int:
-    """Executable EVAL2 path for target-size and production TRAIN2 campaigns."""
+    """EVAL2 for v5 target-size endpoints and post-selection production runs."""
 
     import mdstats
 
     entries = _current_data8_entries(store)
     jobs = _job_lookup(entries)
-    convergence = _load_verified_target_size_convergence_authority(store)
+    study = _load_verified_target_size_study_authority(store)
+    repair2 = store.get_record(
+        "target_multi_view_repair_v2", mdstats.TargetMultiViewRepairPlanV2
+    )
     role_freeze = store.get_record("target_data_role_freeze", mdstats.TargetDataRoleFreeze)
-    ladder = _load_verified_target_data_ladder_authority(store)
     execution_records = _available_successful_executions(cfg, paths, store, campaign, jobs)
-    true_replay_resolution = _resolve_true_label_replay_inputs(cfg, paths, require_train=False)
     baseline_model = _path_cfg(cfg, paths, "foundation_model")
     local_wrappers = _ensure_local_wrappers(paths)
 
-    _mark_stage(store, paths, "evaluate", StageState.RUNNING, "running EVAL2 target-first checkpoint evaluation")
+    _mark_stage(store, paths, "evaluate", StageState.RUNNING, "running EVAL2")
     _print_header("EVAL2 target-first checkpoint evaluation")
     _print_precision_profile(cfg)
 
-    if convergence.outcome == "awaiting_stage_b0_coarse_training":
-        evidence = _eval2_stage_b0_evidence(
+    if study.outcome in {
+        mdstats.OUTCOME_AWAITING_EPOCH_3,
+        mdstats.OUTCOME_AWAITING_EPOCH_10,
+        mdstats.OUTCOME_AWAITING_EPOCH_30,
+    }:
+        epoch = int(study.next_training_epoch)
+        evidence = _eval2_target_size_endpoint_evidence(
             cfg=cfg, paths=paths, store=store, campaign=campaign, jobs=jobs,
-            execution_records=execution_records, convergence=convergence,
-            role_freeze=role_freeze, ladder=ladder, baseline_model=baseline_model,
-            model_dtype=model_dtype, local_wrappers=local_wrappers,
+            execution_records=execution_records, target_size_study=study, repair2=repair2,
+            role_freeze=role_freeze, baseline_model=baseline_model, model_dtype=model_dtype,
+            local_wrappers=local_wrappers,
         )
-        updated = mdstats.with_stage_b0_evidence(convergence, evidence)
-        store.put_record("target_size_convergence", updated)
+        if epoch == 3:
+            updated = mdstats.attach_epoch_3_evidence(study, evidence)
+        elif epoch == 10:
+            updated = mdstats.attach_epoch_10_evidence(study, evidence)
+        else:
+            updated = mdstats.attach_epoch_30_evidence(study, evidence)
+        store.put_record("target_size_study", updated)
         for item in evidence:
-            _ok(f"TARGET-DATA2D Stage B0 n={item.target_size}: target={item.target_force_score_mev_per_a:.2f} meV/A")
-        if updated.outcome == "awaiting_stage_b1_short_training":
-            _ok("Stage B0 retained epoch-3 survivors: " + ", ".join(f"n={v}" for v in updated.stage_b_survivor_sizes))
-            _mark_stage(store, paths, "evaluate", StageState.COMPLETE, "EVAL2 Stage B0 complete; epoch-3 survivors frozen")
-            print("\nEVAL2 Stage B0 complete. Next: `train` to continue the survivors to epoch 10.")
+            _ok(
+                f"TARGET-SIZE-V5 epoch {epoch} n={item.target_size}: "
+                f"target={item.target_force_score_mev_per_a:.2f} meV/A"
+            )
+        if updated.outcome == mdstats.OUTCOME_AWAITING_EPOCH_10:
+            _ok(
+                "epoch-3 survivors: "
+                + ", ".join(f"n={v}" for v in updated.epoch3_survivor_sizes)
+            )
+            _mark_stage(store, paths, "evaluate", StageState.COMPLETE, "target-size epoch-3 screen complete")
+            _mark_stage(store, paths, "train", StageState.WAITING, "continue target-size survivors to epoch 10")
+            print("\nTarget-size epoch-3 screen complete. Next: `train` to continue survivors to epoch 10.")
+            return 0
+        if updated.outcome == mdstats.OUTCOME_AWAITING_EPOCH_30:
+            _ok(
+                "epoch-10 finalists: "
+                + ", ".join(f"n={v}" for v in updated.epoch10_finalist_sizes)
+            )
+            _mark_stage(store, paths, "evaluate", StageState.COMPLETE, "target-size epoch-10 screen complete")
+            _mark_stage(store, paths, "train", StageState.WAITING, "continue target-size finalists to epoch 30")
+            print("\nTarget-size epoch-10 screen complete. Next: `train` to continue finalists to epoch 30.")
+            return 0
+        if updated.outcome == mdstats.OUTCOME_SELECTED:
+            _ok(
+                f"target-size selection frozen at n={updated.selected_target_size}; "
+                "held-out CV/EVAL/VERIFY may now be materialized"
+            )
+            # Candidate DATA8 is not the production corpus.  Force the normal
+            # prepare/preflight/train/evaluate sequence to rebuild around the
+            # exact selected REPAIR2 prefix before any held-out work starts.
+            for stage_name in ("prepare", "preflight", "train", "evaluate"):
+                _mark_stage(
+                    store, paths, stage_name, StageState.WAITING,
+                    f"target-size v5 selected n={updated.selected_target_size}; selected production prefix rebuild required",
+                )
+            print(
+                "\nTarget-size selection is frozen. Next: rerun `prepare`, then `preflight`, "
+                "to materialize the selected REPAIR2 prefix and held-out CV matrix."
+            )
             return 0
         _mark_stage(store, paths, "evaluate", StageState.FAILED, updated.decision_reason)
-        return 1
+        raise CampaignCliError(
+            f"Target-size v5 terminated without a selected production size: {updated.outcome}; "
+            f"{updated.decision_reason}"
+        )
 
-    if convergence.outcome == "awaiting_stage_b1_short_training":
-        evidence = _eval2_stage_b_evidence(
-            cfg=cfg, paths=paths, store=store, campaign=campaign, jobs=jobs,
-            execution_records=execution_records, convergence=convergence,
-            role_freeze=role_freeze, ladder=ladder,
+    if study.outcome != mdstats.OUTCOME_SELECTED:
+        raise CampaignCliError(
+            f"EVAL2 has no valid target-size state: {study.outcome}; {study.decision_reason}"
+        )
+
+    selected_size = int(study.selected_target_size)
+    runs = [run for run in campaign.runs if run.selection_size == selected_size]
+    if any(run.kind is mdstats.MaceJobKind.CROSS_VALIDATION_FOLD for run in runs) is False:
+        raise CampaignCliError(
+            "Post-selection EVAL2 requires the production campaign with held-out CV jobs; rerun prepare/preflight/train."
+        )
+    missing = [run.run_id for run in runs if run.content_digest not in execution_records]
+    if missing:
+        raise CampaignCliError(
+            "EVAL2 production evaluation requires all selected-size production runs: "
+            + ", ".join(missing[:4])
+        )
+    true_replay_resolution = _resolve_true_label_replay_inputs(
+        cfg, paths, require_train=False
+    )
+    for run in runs:
+        bundle, job, root = jobs[run.mace_job_artifact_digest]
+        record = _eval2_run_record_for_completed_train2_run(
+            cfg=cfg, paths=paths, store=store, run=run, job=job, bundle=bundle, root=root,
+            execution=execution_records[run.content_digest], target_size_study=study,
+            repair2=repair2, role_freeze=role_freeze,
             true_replay_resolution=true_replay_resolution, baseline_model=baseline_model,
             model_dtype=model_dtype, local_wrappers=local_wrappers,
         )
-        updated = mdstats.with_stage_b_evidence(convergence, evidence)
-        store.put_record("target_size_convergence", updated)
-        for item in evidence:
-            _ok(
-                f"TARGET-DATA2D Stage B1 n={item.target_size}: target={item.target_force_score_mev_per_a:.2f} meV/A"
-                + ("" if item.replay_diagnostic_force_rmse_mev_per_a is None else f"; replay diagnostic={item.replay_diagnostic_force_rmse_mev_per_a:.2f} meV/A")
-            )
-        if updated.outcome == "awaiting_stage_c_full_training":
-            _ok("Stage B1 retained finalists: " + ", ".join(f"n={v}" for v in updated.stage_b_finalist_sizes))
-            _mark_stage(store, paths, "evaluate", StageState.COMPLETE, "EVAL2 Stage B1 complete; two target-size finalists frozen")
-            print("\nEVAL2 Stage B1 complete. Next: `train` to continue the two finalists to epoch 30.")
-            return 0
-        _mark_stage(store, paths, "evaluate", StageState.FAILED, updated.decision_reason)
-        return 1
-
-    if convergence.outcome == "awaiting_stage_c_full_training":
-        expected_sizes = set(int(v) for v in convergence.stage_b_finalist_sizes)
-        screening_seed = int(convergence.policy.screening_optimizer_seed)
-        runs = [
-            run for run in campaign.runs
-            if run.kind is mdstats.MaceJobKind.FINAL_DEVELOPMENT
-            and run.seed == screening_seed and run.selection_size in expected_sizes
-        ]
-        if {run.selection_size for run in runs} != expected_sizes:
-            raise CampaignCliError("EVAL2 Stage C cannot resolve both completed finalist runs.")
-        records = []
-        for run in sorted(runs, key=lambda value: value.selection_size):
-            execution = execution_records.get(run.content_digest)
-            if execution is None:
-                raise CampaignCliError(f"EVAL2 Stage C run {run.run_id} has not completed the 30-epoch budget.")
-            bundle, job, root = jobs[run.mace_job_artifact_digest]
-            runtime = store.get_record_optional(f"train2_runtime:{run.run_id}", mdstats.Train2RuntimeSummary)
-            if runtime is None:
-                runtime = mdstats.load_train2_runtime_summary(paths.runs / run.run_id / "checkpoints")
-            if runtime.completed_epochs != convergence.policy.final_training_epochs or not runtime.complete_budget:
-                raise CampaignCliError(f"EVAL2 Stage C run {run.run_id} is not a complete 30-epoch TRAIN2 trajectory.")
-            record = _eval2_run_record_for_completed_train2_run(
-                cfg=cfg, paths=paths, store=store, run=run, job=job, bundle=bundle, root=root,
-                execution=execution, convergence=convergence, role_freeze=role_freeze, ladder=ladder,
-                true_replay_resolution=true_replay_resolution, baseline_model=baseline_model,
-                model_dtype=model_dtype, local_wrappers=local_wrappers,
-            )
-            records.append(record)
-            if record.outcome != "selected":
-                _mark_stage(store, paths, "evaluate", StageState.FAILED, f"{run.run_id}: EVAL2 found no admissible checkpoint")
-                return 1
+        if record.outcome != "selected":
+            _warn(f"{run.run_id}: EVAL2 has no admissible checkpoint after bounded rescue")
+        else:
             selected = record.selected_checkpoint
             assert selected is not None
             _ok(
-                f"{run.run_id}: EVAL2 selected epoch {record.selected_checkpoint_epoch}; "
-                f"target={selected.target_metrics.force_component_rmse_ev_per_angstrom*1000:.2f} meV/A; "
-                f"replay degradation={(selected.replay_degradation_ev_per_angstrom or 0.0)*1000:.2f} meV/A"
+                f"{run.run_id}: selected epoch {record.selected_checkpoint_epoch}, "
+                f"target={selected.target_metrics.force_component_rmse_ev_per_angstrom*1000:.2f} meV/A"
             )
-        store.put_record("eval2_target_size_stage_c", {
-            "schema": "mdstats.eval2-target-size-stage-c.v1",
-            "target_size_convergence_digest": convergence.content_digest,
-            "run_record_digests": [record.content_digest for record in records],
-        })
-        _mark_stage(store, paths, "evaluate", StageState.COMPLETE, "EVAL2 Stage C static evidence complete; physical qualification pending")
-        print("\nEVAL2 Stage C static evaluation complete. Next: `verify` for deployment/PES/relaxation/dynamics qualification.")
-        return 0
-
-    if convergence.outcome == "selected":
-        selected_size = int(convergence.selected_target_size)
-        runs = [run for run in campaign.runs if run.selection_size == selected_size]
-        missing = [run.run_id for run in runs if run.content_digest not in execution_records]
-        if missing:
-            raise CampaignCliError(
-                "EVAL2 production evaluation requires the selected-size production runs to complete: " + ", ".join(missing[:4])
-            )
-        for run in runs:
-            bundle, job, root = jobs[run.mace_job_artifact_digest]
-            record = _eval2_run_record_for_completed_train2_run(
-                cfg=cfg, paths=paths, store=store, run=run, job=job, bundle=bundle, root=root,
-                execution=execution_records[run.content_digest], convergence=convergence,
-                role_freeze=role_freeze, ladder=ladder,
-                true_replay_resolution=true_replay_resolution, baseline_model=baseline_model,
-                model_dtype=model_dtype, local_wrappers=local_wrappers,
-            )
-            if record.outcome != "selected":
-                _warn(f"{run.run_id}: EVAL2 has no admissible checkpoint after bounded rescue")
-            else:
-                selected = record.selected_checkpoint
-                assert selected is not None
-                _ok(
-                    f"{run.run_id}: selected epoch {record.selected_checkpoint_epoch}, "
-                    f"target={selected.target_metrics.force_component_rmse_ev_per_angstrom*1000:.2f} meV/A"
-                )
-        _mark_stage(store, paths, "evaluate", StageState.COMPLETE, "EVAL2 production static checkpoint selection complete")
-        print("\nEVAL2 production evaluation complete. Next: `verify`.")
-        return 0
-
-    raise CampaignCliError(
-        "EVAL2 cannot run because TARGET-DATA2D is neither awaiting Stage B/C nor holding a selected production size: "
-        f"{convergence.outcome}."
+    _mark_stage(
+        store, paths, "evaluate", StageState.COMPLETE,
+        "EVAL2 post-selection production checkpoint evaluation complete",
     )
+    print("\nEVAL2 production evaluation complete. Next: `verify`.")
+    return 0
 
 
 @mace_runtime_warning_handled("campaign checkpoint evaluation")
@@ -21150,48 +20065,29 @@ def _deploy_verify_policy(cfg: Mapping[str, Any], *, model_dtype: str) -> Any:
     )
 
 
-def _deploy_verify_candidate_runs(campaign: Any, convergence: Any) -> tuple[str, tuple[Any, ...]]:
+def _deploy_verify_candidate_runs(campaign: Any, target_size_study: Any) -> tuple[str, tuple[Any, ...]]:
+    """Resolve post-selection production candidates only."""
+
     import mdstats
 
-    if convergence.outcome == "awaiting_stage_c_full_training":
-        sizes = set(int(v) for v in convergence.stage_b_finalist_sizes)
-        seed = int(convergence.policy.screening_optimizer_seed)
-        runs = tuple(
-            sorted(
-                (
-                    run for run in campaign.runs
-                    if run.kind is mdstats.MaceJobKind.FINAL_DEVELOPMENT
-                    and run.seed == seed
-                    and run.selection_size in sizes
-                ),
-                key=lambda run: (run.selection_size, run.seed, run.run_id),
-            )
+    if target_size_study.outcome != mdstats.OUTCOME_SELECTED or target_size_study.selected_target_size is None:
+        raise CampaignCliError(
+            "DEPLOY-VERIFY1 is blocked until target-size selection is terminally frozen."
         )
-        if {run.selection_size for run in runs} != sizes:
-            raise CampaignCliError(
-                "DEPLOY-VERIFY1 cannot resolve both TARGET-DATA2D Stage-C final-development finalists."
-            )
-        return "target_size_stage_c", runs
-    if convergence.outcome == "selected":
-        selected_size = int(convergence.selected_target_size)
-        runs = tuple(
-            sorted(
-                (
-                    run for run in campaign.runs
-                    if run.kind is mdstats.MaceJobKind.FINAL_DEVELOPMENT
-                    and run.selection_size == selected_size
-                ),
-                key=lambda run: (run.seed, run.run_id),
-            )
+    selected_size = int(target_size_study.selected_target_size)
+    runs = tuple(
+        sorted(
+            (
+                run for run in campaign.runs
+                if run.kind is mdstats.MaceJobKind.FINAL_DEVELOPMENT
+                and run.selection_size == selected_size
+            ),
+            key=lambda run: (run.seed, run.run_id),
         )
-        if not runs:
-            raise CampaignCliError("DEPLOY-VERIFY1 found no selected-size final-development candidates.")
-        return "production", runs
-    raise CampaignCliError(
-        "DEPLOY-VERIFY1 requires completed EVAL2 static evidence for Stage C or a frozen production target size; "
-        f"TARGET-DATA2D outcome is {convergence.outcome!r}."
     )
-
+    if not runs:
+        raise CampaignCliError("DEPLOY-VERIFY1 found no selected-size final-development candidates.")
+    return "production", runs
 
 def _deploy_verify_record_is_current(
     record: Any,
@@ -21240,9 +20136,9 @@ def _deploy_verify_one_train2_run(
     bundle: Any,
     root: Path,
     execution: Any,
-    convergence: Any,
+    target_size_study: Any,
+    repair2: Any,
     role_freeze: Any,
-    ladder: Any,
     policy: Any,
     model_dtype: str,
     local_wrappers: Mapping[str, Path],
@@ -21254,9 +20150,9 @@ def _deploy_verify_one_train2_run(
         raise CampaignCliError(f"DEPLOY-VERIFY1 requires one selected EVAL2 checkpoint for {run.run_id}.")
     target_role = _eval2_target_role_for_run(
         store=store,
-        convergence=convergence,
+        target_size_study=target_size_study,
+        repair2=repair2,
         role_freeze=role_freeze,
-        ladder=ladder,
         bundle=bundle,
         run=run,
     )
@@ -21563,13 +20459,13 @@ def _current_train2_deploy_authority(
     if authority is None:
         return None
     try:
-        convergence = _load_verified_target_size_convergence_authority(store)
-        stage_context, runs = _deploy_verify_candidate_runs(campaign, convergence)
+        target_size_study = _load_verified_target_size_study_authority(store)
+        stage_context, runs = _deploy_verify_candidate_runs(campaign, target_size_study)
         expected = {run.content_digest for run in runs}
         observed = {record.run_plan_digest for record in authority.run_records}
         if (
             authority.campaign_plan_digest != campaign.content_digest
-            or authority.target_size_convergence_digest != convergence.content_digest
+            or authority.target_size_study_digest != target_size_study.content_digest
             or authority.stage_context != stage_context
             or observed != expected
         ):
@@ -21616,7 +20512,7 @@ def _pes_verify_common_target(
     paths: CampaignPaths,
     store: CampaignStore,
     campaign: Any,
-    convergence: Any,
+    target_size_study: Any,
     deploy: Any,
 ) -> tuple[tuple[Any, ...], Any]:
     """Restore the candidate-independent target domain used by DEPLOY/PES."""
@@ -21627,7 +20523,7 @@ def _pes_verify_common_target(
     except ModuleNotFoundError as exc:
         raise CampaignCliError(f"PES-VERIFY1 requires ASE: {exc}") from exc
 
-    _, expected_runs = _deploy_verify_candidate_runs(campaign, convergence)
+    _, expected_runs = _deploy_verify_candidate_runs(campaign, target_size_study)
     run_by_digest = {run.content_digest: run for run in expected_runs}
     first_deploy = deploy.run_records[0]
     run = run_by_digest.get(first_deploy.run_plan_digest)
@@ -21637,12 +20533,12 @@ def _pes_verify_common_target(
     jobs = _job_lookup(entries)
     bundle, job, root = jobs[run.mace_job_artifact_digest]
     role_freeze = store.get_record("target_data_role_freeze", mdstats.TargetDataRoleFreeze)
-    ladder = _load_verified_target_data_ladder_authority(store)
+    repair2 = store.get_record("target_multi_view_repair_v2", mdstats.TargetMultiViewRepairPlanV2)
     role = _eval2_target_role_for_run(
         store=store,
-        convergence=convergence,
+        target_size_study=target_size_study,
+        repair2=repair2,
         role_freeze=role_freeze,
-        ladder=ladder,
         bundle=bundle,
         run=run,
     )
@@ -21696,8 +20592,8 @@ def _command_verify_train2_pes(
 
     import mdstats
 
-    convergence = _load_verified_target_size_convergence_authority(store)
-    if deploy.campaign_plan_digest != campaign.content_digest or deploy.target_size_convergence_digest != convergence.content_digest:
+    target_size_study = _load_verified_target_size_study_authority(store)
+    if deploy.campaign_plan_digest != campaign.content_digest or deploy.target_size_study_digest != target_size_study.content_digest:
         raise CampaignCliError("PES-VERIFY1 received stale DEPLOY-VERIFY1 authority.")
     foundation_audit = _load_verified_foundation_audit_authority(store)
     foundation_model = _path_cfg(cfg, paths, "foundation_model")
@@ -21710,7 +20606,7 @@ def _command_verify_train2_pes(
         paths=paths,
         store=store,
         campaign=campaign,
-        convergence=convergence,
+        target_size_study=target_size_study,
         deploy=deploy,
     )
     probe_digests = {record.probe_set.content_digest for record in deploy.run_records}
@@ -21975,9 +20871,9 @@ def _command_verify_train2_relax(
     if pes.all_candidates_failed:
         _mark_stage(store, paths, "verify", StageState.FAILED, "PES-VERIFY1 rejected every candidate before relaxation")
         return 1
-    convergence = _load_verified_target_size_convergence_authority(store)
+    target_size_study = _load_verified_target_size_study_authority(store)
     target_atoms, _ = _pes_verify_common_target(
-        paths=paths, store=store, campaign=campaign, convergence=convergence, deploy=deploy,
+        paths=paths, store=store, campaign=campaign, target_size_study=target_size_study, deploy=deploy,
     )
     policy = _relax_verify_policy(cfg)
     base_set, base_atoms = mdstats.build_relax_base_set(
@@ -22179,127 +21075,11 @@ def _command_verify_train2_relax(
     )
 
 
-def _dyn_stage_c_training_evidence(
-    *,
-    cfg: Mapping[str, Any],
-    paths: CampaignPaths,
-    store: CampaignStore,
-    campaign: Any,
-    convergence: Any,
-    deploy: Any,
-    dyn: Any,
-) -> tuple[Any, ...]:
-    """Bind completed DEPLOY/PES/RELAX/DYN qualification into TARGET-DATA2D Stage C."""
-
-    import mdstats
-
-    pes = store.get_record("pes_verify", mdstats.PESVerifyCampaignRecord)
-    relax = store.get_record("relax_verify", mdstats.RelaxVerifyCampaignRecord)
-    entries = _current_data8_entries(store)
-    jobs = _job_lookup(entries)
-    executions = _available_successful_executions(cfg, paths, store, campaign, jobs)
-    screening_seed = int(convergence.policy.screening_optimizer_seed)
-    expected_sizes = set(int(v) for v in convergence.stage_b_finalist_sizes)
-    runs = [
-        run for run in campaign.runs
-        if run.kind is mdstats.MaceJobKind.FINAL_DEVELOPMENT
-        and run.seed == screening_seed and run.selection_size in expected_sizes
-    ]
-    if {run.selection_size for run in runs} != expected_sizes:
-        raise CampaignCliError("DYN-VERIFY2 cannot resolve both TARGET-DATA2D Stage-C finalist runs.")
-    deploy_by_run = {v.run_plan_digest: v for v in deploy.run_records}
-    pes_by_run = {v.run_plan_digest: v for v in pes.run_records}
-    relax_by_run = {v.run_plan_digest: v for v in relax.run_records}
-    dyn_by_run = {v.run_plan_digest: v for v in dyn.run_records}
-    short_by_size = {v.target_size: v for v in convergence.short_training_evidence}
-    evidence = []
-    for run in sorted(runs, key=lambda value: value.selection_size):
-        bundle, job, root = jobs[run.mace_job_artifact_digest]
-        execution = executions.get(run.content_digest)
-        if execution is None:
-            raise CampaignCliError(f"DYN-VERIFY2 Stage-C run {run.run_id} lost its successful TRAIN2 execution.")
-        runtime = store.get_record_optional(f"train2_runtime:{run.run_id}", mdstats.Train2RuntimeSummary)
-        if runtime is None:
-            runtime = mdstats.load_train2_runtime_summary(paths.runs / run.run_id / "checkpoints")
-        eval_record = store.get_record(f"eval2_run:{run.run_id}", mdstats.Eval2RunRecord)
-        selected = eval_record.selected_checkpoint
-        if selected is None:
-            raise CampaignCliError(f"DYN-VERIFY2 Stage-C run {run.run_id} lacks a selected EVAL2 checkpoint.")
-        admission = job.protocol.checkpoint_admissibility_policy
-        if admission is None:
-            raise CampaignCliError("DYN-VERIFY2 Stage-C run lacks TRAIN2 admissibility policy.")
-        target_pass = selected.target_metrics.force_component_rmse_ev_per_angstrom <= admission.maximum_target_force_rmse_ev_per_angstrom
-        if admission.replay_enabled:
-            replay_pass = bool(
-                selected.replay_degradation_ev_per_angstrom is not None
-                and selected.replay_label_mode == admission.replay_label_requirement
-                and selected.replay_degradation_ev_per_angstrom <= float(admission.replay_degradation_budget_ev_per_angstrom)
-            )
-        else:
-            replay_pass = True
-        deploy_record = deploy_by_run.get(run.content_digest)
-        pes_record = pes_by_run.get(run.content_digest)
-        relax_record = relax_by_run.get(run.content_digest)
-        dyn_record = dyn_by_run.get(run.content_digest)
-        physical_pass = bool(
-            deploy_record is not None and deploy_record.passed
-            and pes_record is not None and pes_record.passed
-            and relax_record is not None and relax_record.passed
-            and dyn_record is not None and dyn_record.passed
-        )
-        physical_digest = digest({
-            "schema": "mdstats.train2-physical-qualification-chain.v1",
-            "run_plan_digest": run.content_digest,
-            "deploy_verify_run_digest": None if deploy_record is None else deploy_record.content_digest,
-            "pes_verify_run_digest": None if pes_record is None else pes_record.content_digest,
-            "relax_verify_run_digest": None if relax_record is None else relax_record.content_digest,
-            "dyn_verify_run_digest": None if dyn_record is None else dyn_record.content_digest,
-            "passed": physical_pass,
-        })
-        parent = short_by_size.get(run.selection_size)
-        if parent is None:
-            raise CampaignCliError(f"DYN-VERIFY2 Stage-C run n={run.selection_size} lost its Stage-B continuation parent.")
-        wall_time = sum(float(attempt.elapsed_seconds) for attempt in execution.attempts)
-        failure_reasons = list(selected.rejection_reasons)
-        if not physical_pass:
-            failure_reasons.append("physical_qualification_failed")
-        evidence.append(mdstats.TargetSizeTrainingEvidence(
-            stage="final", target_size=run.selection_size, optimizer_seed=run.seed,
-            completed_epochs=runtime.completed_epochs, planned_epochs=runtime.planned_epochs,
-            optimizer_update_count=runtime.completed_updates, structures_presented=runtime.structures_presented,
-            normalized_schedule_progress=runtime.normalized_progress,
-            instantaneous_learning_rate=runtime.instantaneous_learning_rate, wall_time_seconds=wall_time,
-            target_force_score_mev_per_a=selected.target_metrics.force_component_rmse_ev_per_angstrom * 1000.0,
-            numerical_valid=True, target_hard_gates_passed=target_pass,
-            foundation_identity_digest=job.protocol.foundation_checkpoint.canonical_content_digest,
-            evaluation_role_digest=selected.target_metrics.target_role_digest,
-            training_policy_digest=_train2_policy_set_digest(job.protocol), training_run_digest=run.content_digest,
-            checkpoint_digest=selected.trajectory_point.checkpoint_sha256,
-            schedule_digest=job.protocol.learning_rate_schedule_policy.policy_digest,
-            optimizer_state_digest=runtime.optimizer_state_digest,
-            rng_state_digest=runtime.rng_state_digest,
-            target_evaluation_digest=selected.target_metrics.content_digest,
-            replay_diagnostic_force_rmse_mev_per_a=(
-                None if selected.replay_candidate_force_rmse_ev_per_angstrom is None
-                else selected.replay_candidate_force_rmse_ev_per_angstrom * 1000.0
-            ),
-            replay_evaluation_digest=selected.evaluation_record_digest,
-            replay_admissible=replay_pass,
-            physical_qualification_passed=physical_pass,
-            physical_qualification_digest=physical_digest,
-            parent_checkpoint_digest=parent.checkpoint_digest,
-            parent_optimizer_state_digest=parent.optimizer_state_digest,
-            parent_rng_state_digest=parent.rng_state_digest,
-            failure_reasons=tuple(failure_reasons),
-        ))
-    return tuple(evidence)
-
-
 def _select2_candidate_records(
     *,
     store: CampaignStore,
     campaign: Any,
-    convergence: Any,
+    target_size_study: Any,
     deploy: Any,
     dyn: Any,
 ) -> tuple[Any, Any]:
@@ -22307,13 +21087,10 @@ def _select2_candidate_records(
 
     import mdstats
 
-    if convergence.outcome != "selected" or convergence.selected_target_size is None:
-        raise CampaignCliError("SELECT2 requires a frozen TARGET-DATA2D production target size.")
+    if target_size_study.outcome != mdstats.OUTCOME_SELECTED or target_size_study.selected_target_size is None:
+        raise CampaignCliError("SELECT2 requires a frozen v5 production target size.")
     if dyn.stage_context != "production":
         raise CampaignCliError("SELECT2 may only consume production-context DYN-VERIFY2 evidence.")
-    decision = store.get_record("target_production_corpus_decision", mdstats.TargetProductionCorpusDecision)
-    if decision.selected_target_size != int(convergence.selected_target_size):
-        raise CampaignCliError("SELECT2 target-production-corpus decision disagrees with TARGET-DATA2D.")
     pes = store.get_record("pes_verify", mdstats.PESVerifyCampaignRecord)
     relax = store.get_record("relax_verify", mdstats.RelaxVerifyCampaignRecord)
     if not (
@@ -22329,7 +21106,7 @@ def _select2_candidate_records(
     ):
         raise CampaignCliError("SELECT2 physical qualification chain is stale or incomplete.")
 
-    selected_size = int(convergence.selected_target_size)
+    selected_size = int(target_size_study.selected_target_size)
     runs = tuple(sorted(
         (
             run for run in campaign.runs
@@ -22411,7 +21188,7 @@ def _command_verify_train2_select2(
     paths: CampaignPaths,
     store: CampaignStore,
     campaign: Any,
-    convergence: Any,
+    target_size_study: Any,
     deploy: Any,
     dyn: Any,
 ) -> int:
@@ -22420,12 +21197,11 @@ def _command_verify_train2_select2(
     import mdstats
 
     candidates, selection_policy = _select2_candidate_records(
-        store=store, campaign=campaign, convergence=convergence, deploy=deploy, dyn=dyn,
+        store=store, campaign=campaign, target_size_study=target_size_study, deploy=deploy, dyn=dyn,
     )
-    target_decision = store.get_record("target_production_corpus_decision", mdstats.TargetProductionCorpusDecision)
     selection = mdstats.build_select2_selection(
         campaign_plan_digest=campaign.content_digest,
-        target_production_corpus_decision_digest=target_decision.content_digest,
+        target_size_study_digest=target_size_study.content_digest,
         dyn_verify_campaign_digest=dyn.content_digest,
         selection_policy=selection_policy,
         candidates=candidates,
@@ -22901,42 +21677,19 @@ def _finalize_train2_dyn(
     deploy: Any,
     authority: Any,
 ) -> int:
-    """Advance TARGET-DATA2D after DYN Stage C or wait for SELECT2 in production."""
+    """Continue post-selection production qualification into SELECT2."""
 
-    import mdstats
-
-    if authority.stage_context == "target_size_stage_c":
-        convergence = _load_verified_target_size_convergence_authority(store)
-        evidence = _dyn_stage_c_training_evidence(
-            cfg=cfg, paths=paths, store=store, campaign=campaign,
-            convergence=convergence, deploy=deploy, dyn=authority,
-        )
-        updated = mdstats.with_stage_c_evidence(convergence, evidence)
-        store.put_record("target_size_convergence", updated)
-        if updated.outcome == "selected":
-            decision = _ensure_target_production_corpus_decision(store)
-            assert decision is not None
-            _mark_stage(
-                store, paths, "verify", StageState.COMPLETE,
-                f"DYN-VERIFY2 complete; TARGET-DATA2D selected N_target={updated.selected_target_size}",
-            )
-            _ok(f"DYN-VERIFY2 complete; TARGET-DATA2D selected N_target={updated.selected_target_size}")
-            print("\nTarget-size physical qualification is frozen. Next: `train` for the selected-size production matrix.")
-            return 0
-        _mark_stage(store, paths, "verify", StageState.FAILED, updated.decision_reason)
-        print(f"\nTARGET-DATA2D Stage C did not select a production target size: {updated.decision_reason}")
-        return 1
-
+    target_size_study = _load_verified_target_size_study_authority(store)
+    if authority.stage_context != "production":
+        raise CampaignCliError("DYN-VERIFY2 is post-selection production verification only.")
     if authority.all_candidates_failed:
         _mark_stage(store, paths, "verify", StageState.FAILED, "DYN-VERIFY2 rejected every production candidate")
         return 1
     _ok(f"DYN-VERIFY2 complete: {authority.passed_run_count}/{len(authority.run_records)} RELAX-qualified candidate(s) passed")
     return _command_verify_train2_select2(
         cfg=cfg, paths=paths, store=store, campaign=campaign,
-        convergence=_load_verified_target_size_convergence_authority(store), deploy=deploy, dyn=authority,
+        target_size_study=target_size_study, deploy=deploy, dyn=authority,
     )
-
-
 
 def _command_verify_train2_dyn(
     args: argparse.Namespace,
@@ -23081,13 +21834,13 @@ def _command_verify_train2_deploy(
 
     if evaluate_state is not StageState.COMPLETE:
         raise CampaignCliError("DEPLOY-VERIFY1 requires completed EVAL2 static evaluation; rerun `evaluate` first.")
-    convergence = _load_verified_target_size_convergence_authority(store)
-    stage_context, runs = _deploy_verify_candidate_runs(campaign, convergence)
+    target_size_study = _load_verified_target_size_study_authority(store)
+    stage_context, runs = _deploy_verify_candidate_runs(campaign, target_size_study)
     entries = _current_data8_entries(store)
     jobs = _job_lookup(entries)
     executions = _available_successful_executions(cfg, paths, store, campaign, jobs)
     role_freeze = store.get_record("target_data_role_freeze", mdstats.TargetDataRoleFreeze)
-    ladder = _load_verified_target_data_ladder_authority(store)
+    repair2 = store.get_record("target_multi_view_repair_v2", mdstats.TargetMultiViewRepairPlanV2)
     policy = _deploy_verify_policy(cfg, model_dtype=model_dtype)
     local_wrappers = _ensure_local_wrappers(paths)
     _mark_stage(store, paths, "verify", StageState.RUNNING, "running DEPLOY-VERIFY1 deployment parity")
@@ -23107,9 +21860,9 @@ def _command_verify_train2_deploy(
                 bundle=bundle,
                 root=root,
                 execution=execution,
-                convergence=convergence,
+                target_size_study=target_size_study,
+                repair2=repair2,
                 role_freeze=role_freeze,
-                ladder=ladder,
                 policy=policy,
                 model_dtype=model_dtype,
                 local_wrappers=local_wrappers,
@@ -23117,7 +21870,7 @@ def _command_verify_train2_deploy(
         )
     authority = mdstats.DeployVerifyCampaignRecord(
         campaign_plan_digest=campaign.content_digest,
-        target_size_convergence_digest=convergence.content_digest,
+        target_size_study_digest=target_size_study.content_digest,
         run_records=tuple(records),
         stage_context=stage_context,
     )
@@ -25190,30 +23943,11 @@ sizes = [512]
 structural_workers = 0
 
 [target_data.size_convergence]
-# TARGET-DATA2C fixed generic ladder plus TARGET-DATA2D successive-fidelity
-# authority. Coverage is hard admission only: every qualifying rung proceeds to
-# the common epoch-3 target-only screen. Epoch-3/10/30 evidence is supplied by
-# TRAIN2/EVAL2/VERIFY; legacy adaptive-stop runs cannot satisfy it.
-ladder_exponents = [7, 8, 9, 10, 11, 12, 13]
-minimum_materializable_rungs = 3
-reserve_required_strata = true
-reserve_correlation_intervals = true
-fps_tie_tolerance = 1.0e-12
-coverage_metric = "reference_mass_local_knn"
-coverage_threshold = 0.95
-coverage_resolution_mass = 0.0078125
-coverage_leave_one_out = true
-extent_quantile_alpha = 0.01
-extent_default_tolerance = "none"
-min_coverage_qualifiers = 3
-coarse_training_epochs = 3
-max_coarse_training_candidates = 4
-coarse_target_monitor_configurations = 256
-short_training_epochs = 10
-max_short_training_candidates = 2
-final_training_epochs = 30
-# Early practical equivalence is separately versioned/calibratable. Omit this
-# key to inherit practical_equivalence_mev_per_a.
+# Target-size v5 has one fixed candidate universe:
+# 128, 256, 512, 1024, 2048, 4096, 8192, 16384.
+# REPAIR2-prefix materializability plus MVQUAL2 hard admission defines Q.
+# TRAIN2 then follows exact continuation at epochs 3 -> 10 -> 30.
+# No generated/rescue sizes and no ceiling above 16384 are permitted.
 coarse_practical_equivalence_mev_per_a = 1.0
 practical_equivalence_mev_per_a = 1.0
 screening_optimizer_seed = 1

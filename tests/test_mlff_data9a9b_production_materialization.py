@@ -526,13 +526,13 @@ def test_check_only_preflight_reuses_promoted_data8_tree(
     # exercised in their dedicated suites, so provide authenticated-looking
     # records rather than constructing a second full prepare graph here.
     authority = SimpleNamespace(content_digest="a" * 64)
-    convergence = SimpleNamespace(
-        content_digest="d" * 64, stage_a_survivor_sizes=(128, 256, 512), outcome="waiting_stage_b"
+    study = SimpleNamespace(
+        content_digest="d" * 64, qualified_sizes=(128, 256, 512),
+        outcome="awaiting_epoch_10", decision_reason="test target-size study",
     )
     monkeypatch.setattr(campaign_cli, "_load_verified_foundation_audit_authority", lambda store: authority)
     monkeypatch.setattr(campaign_cli, "_load_verified_target_coverage_reference_authority", lambda store: authority)
-    monkeypatch.setattr(campaign_cli, "_load_verified_target_data_ladder_authority", lambda store: authority)
-    monkeypatch.setattr(campaign_cli, "_load_verified_target_size_convergence_authority", lambda store: convergence)
+    monkeypatch.setattr(campaign_cli, "_load_verified_target_size_study_authority", lambda store: study)
 
     result = campaign_cli.command_preflight(
         argparse.Namespace(config=str(config), check_only=True)
@@ -585,13 +585,13 @@ def test_preflight_prints_variant_qualified_config_mismatch(
     # exercised in their dedicated suites, so provide authenticated-looking
     # records rather than constructing a second full prepare graph here.
     authority = SimpleNamespace(content_digest="a" * 64)
-    convergence = SimpleNamespace(
-        content_digest="d" * 64, stage_a_survivor_sizes=(128, 256, 512), outcome="waiting_stage_b"
+    study = SimpleNamespace(
+        content_digest="d" * 64, qualified_sizes=(128, 256, 512),
+        outcome="awaiting_epoch_10", decision_reason="test target-size study",
     )
     monkeypatch.setattr(campaign_cli, "_load_verified_foundation_audit_authority", lambda store: authority)
     monkeypatch.setattr(campaign_cli, "_load_verified_target_coverage_reference_authority", lambda store: authority)
-    monkeypatch.setattr(campaign_cli, "_load_verified_target_data_ladder_authority", lambda store: authority)
-    monkeypatch.setattr(campaign_cli, "_load_verified_target_size_convergence_authority", lambda store: convergence)
+    monkeypatch.setattr(campaign_cli, "_load_verified_target_size_study_authority", lambda store: study)
 
     result = campaign_cli.command_preflight(
         argparse.Namespace(config=str(config), check_only=True)

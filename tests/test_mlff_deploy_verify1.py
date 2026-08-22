@@ -101,7 +101,7 @@ def test_run_record_binds_probe_mliap_and_both_parity_layers():
     assert record.passed
     assert mdstats.DeployVerifyRunRecord.from_dict(record.to_dict()) == record
     campaign = mdstats.DeployVerifyCampaignRecord(
-        campaign_plan_digest=_h("campaign"), target_size_convergence_digest=_h("conv"),
+        campaign_plan_digest=_h("campaign"), target_size_study_digest=_h("study"),
         run_records=(record,), stage_context="production",
     )
     assert mdstats.DeployVerifyCampaignRecord.from_dict(campaign.to_dict()) == campaign

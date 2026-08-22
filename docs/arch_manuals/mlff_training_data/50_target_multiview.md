@@ -247,7 +247,7 @@ Each candidate follows one authenticated training continuation:
 
 The epoch-10 state authenticates the exact epoch-3 model, optimizer, RNG, and protocol parent. Epoch 30 continues epoch 10. All size candidates use the same foundation, replay semantics, objective, optimizer/LR schedule, exposure policy, precision/backend, and frozen training-seed set.
 
-Ordinary target-success early stopping is disabled during this experiment because size candidates must be compared at common fidelity boundaries. Hard numerical/scientific failure may still reject a candidate. Normal production/CV stopping resumes once the size experiment is complete.
+Ordinary target-success early stopping is disabled during this experiment because size candidates must be compared at common fidelity boundaries. A numerically invalid training trajectory may be excluded because it cannot provide comparable ranking evidence. Normal production/CV stopping resumes once the size experiment is complete.
 
 ### Successive-fidelity funnel
 
@@ -264,7 +264,7 @@ Candidate comparison uses paired seed-aggregated evidence: every candidate uses 
 
 At epoch 3 and epoch 10, candidates within 1 meV/Angstrom in the primary target-force metric are practically equivalent for the screen and the smaller size is preferred. The early screens rank relative promise; they do not require the final absolute force-accuracy threshold.
 
-At epoch 30, only a candidate satisfying the complete frozen hard-admissibility policy may win. Applicable target/focus-group, replay-retention, energy/stress, physical-integrity, relaxation/deployment, and other mandatory requirements are constraints. Replay retention and integrity are not score bonuses unless a future explicit scientific policy changes that rule.
+At epoch 30, size selection remains a target-size ranking decision over candidates already admitted by MVQUAL. MVQUAL is the sole hard target-size eligibility authority; the size study does not re-apply target-threshold, replay-retention, energy/stress, physical-integrity, relaxation, deployment, or other downstream model/protocol acceptance gates. Numerically invalid training trajectories may be excluded because they do not provide comparable ranking evidence. Model/protocol acceptance runs only after `N_selected` is frozen and cannot feed back into the size decision.
 
 ### Typed terminal outcomes
 
@@ -272,15 +272,11 @@ The size study returns a typed decision, not merely an integer:
 
 ```text
 selected(N)
-insufficient_materializable_sizes
 insufficient_qualified_sizes
-no_admissible_finalist
-nonconverged_at_available_ceiling
 nonconverged_at_fixed_ceiling
-hard_scientific_failure
 ```
 
-If the available corpus stops below 16,384 and the largest materializable rung remains materially superior, the outcome is `nonconverged_at_available_ceiling`. If 16,384 is available and remains materially superior, the outcome is `nonconverged_at_fixed_ceiling`.
+If 16,384 reaches the final comparison and remains materially better than every smaller numerically valid finalist by more than the frozen practical-equivalence width, the outcome is `nonconverged_at_fixed_ceiling`. The architecture reports that terminal state rather than synthesizing a larger or intermediate rescue size.
 
 The architecture never creates an intermediate size merely to avoid reporting non-convergence.
 

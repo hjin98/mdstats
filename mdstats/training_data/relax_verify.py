@@ -540,8 +540,8 @@ class RelaxVerifyCampaignRecord:
         records = tuple(sorted(self.run_records, key=lambda v: v.run_plan_digest))
         if not records or len({v.run_plan_digest for v in records}) != len(records):
             raise TrainingDataInputError("RELAX-VERIFY1 campaign requires unique candidate run records.")
-        if self.stage_context not in {"target_size_stage_c", "production"}:
-            raise TrainingDataInputError("Unsupported RELAX-VERIFY1 stage context.")
+        if self.stage_context != "production":
+            raise TrainingDataInputError("RELAX-VERIFY1 is post-selection production verification only.")
         object.__setattr__(self, "run_records", records)
 
     @property

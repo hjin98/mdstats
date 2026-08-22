@@ -7,9 +7,9 @@ obligation.  Replacement candidates are chosen from the exact current deficit
 frontier.  Every accepted exchange strictly improves the frozen lexicographic
 objective and the replacement inherits the removed rank.
 
-This authority is diagnostic/pre-migration.  TARGET-DATA2C v4 remains the
-production selector until MVPERF1/MVQUAL1/SIZE-HALVE2/SIZE-FIDELITY2 and the
-explicit MVMIGRATE1 policy gate close.
+This module preserves the first-generation exact repair kernel for historical
+reproducibility and oracle tests. The current production target-size-v5 path
+uses REPAIR2 and does not treat this module as a target-size authority.
 """
 
 from __future__ import annotations

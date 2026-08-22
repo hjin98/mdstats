@@ -20,7 +20,7 @@ from typing import Any, Callable, Sequence
 import numpy as np
 
 import mdstats
-from mdstats.training_data._common import canonical_json, digest
+from mdstats.training_data._common import TrainingDataInputError, canonical_json, digest
 from mdstats.training_data.selection import (
     _extend_selected_neighbor_matrix,
     _extend_selected_neighbor_minima,
@@ -31,9 +31,69 @@ from mdstats.training_data.target_coverage import (
     score_target_nested_subsets_coverage,
     score_target_subset_coverage,
 )
-from mdstats.training_data.target_ladder import _fused_required_family_matrix, _weighted_median
 
 SCHEMA = "mdstats.mlff-perf-p1-benchmark.v1"
+
+
+def _weighted_median(values: np.ndarray, weights: np.ndarray) -> np.ndarray:
+    """Return column-wise weighted medians for benchmark matrix assembly."""
+
+    result = np.empty(values.shape[1], dtype=np.float64)
+    for column in range(values.shape[1]):
+        order = np.argsort(values[:, column], kind="mergesort")
+        ordered_values = values[order, column]
+        ordered_weights = weights[order]
+        cumulative = np.cumsum(ordered_weights)
+        index = int(np.searchsorted(cumulative, 0.5 * cumulative[-1], side="left"))
+        result[column] = float(ordered_values[min(index, len(ordered_values) - 1)])
+    return result
+
+
+def _fused_required_family_matrix(domain: Any) -> tuple[np.ndarray, tuple[str, ...], tuple[str, ...]]:
+    """Build the PERF-P1 fused matrix without depending on retired ladder authority."""
+
+    required = tuple(sorted((item for item in domain.families if item.required), key=lambda item: item.family_id))
+    if not required:
+        raise TrainingDataInputError("PERF-P1 requires at least one required target family.")
+    by_semantic: dict[str, list[Any]] = {}
+    for family in required:
+        by_semantic.setdefault(family.semantic_family, []).append(family)
+    semantic_ids = tuple(sorted(by_semantic))
+    n_frames = len(domain.frame_uids)
+    ordered_families: list[tuple[Any, float, int]] = []
+    total_width = 0
+    for semantic in semantic_ids:
+        families = tuple(sorted(by_semantic[semantic], key=lambda item: item.family_id))
+        family_factor = 1.0 / math.sqrt(float(len(families)))
+        for family in families:
+            scales = np.asarray(family.scales, dtype=np.float64)
+            width = int(scales.size) + 1
+            ordered_families.append((family, family_factor, width))
+            total_width += width
+    matrix = np.empty((n_frames, total_width), dtype=np.float64)
+    first_column = 0
+    for family, family_factor, width in ordered_families:
+        values = np.asarray(family.values, dtype=np.float64)
+        weights = np.asarray(family.weights, dtype=np.float64)
+        scales = np.asarray(family.scales, dtype=np.float64)
+        if values.ndim != 2 or values.shape[1] != scales.size or values.shape[0] != len(family.frame_indices):
+            raise TrainingDataInputError(f"PERF-P1 family {family.family_id!r} is internally misaligned.")
+        scaled = values / scales[None, :]
+        center = _weighted_median(scaled, weights)
+        d = scaled.shape[1]
+        block = matrix[:, first_column : first_column + width]
+        block.fill(0.0)
+        rows = np.asarray(family.frame_indices, dtype=np.int64)
+        block[rows, :d] = scaled - center[None, :]
+        if len(rows) < n_frames:
+            block[:, d] = -0.5
+            block[rows, d] = 0.5
+        block *= family_factor / math.sqrt(float(d + 1))
+        first_column += width
+    matrix /= math.sqrt(float(len(semantic_ids)))
+    if np.any(~np.isfinite(matrix)):
+        raise TrainingDataInputError("PERF-P1 fused selector matrix contains non-finite values.")
+    return matrix, tuple(item.family_id for item in required), semantic_ids
 
 
 @dataclass(slots=True)

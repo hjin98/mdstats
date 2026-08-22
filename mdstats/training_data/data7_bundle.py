@@ -182,6 +182,8 @@ def build_data7_preparation_bundle(
     frame_record_by_uid: Mapping[str, Any] | None = None,
     event_anchor_frame_uids: set[str] | frozenset[str] | None = None,
     protected_event_frame_uids: set[str] | frozenset[str] | None = None,
+    prescribed_selection_frame_uids: Sequence[str] | None = None,
+    prescribed_selection_role: str | None = None,
     progress_callback: Callable[[str], None] | None = None,
 ) -> Data7PreparationBundle:
     canonical = (
@@ -233,7 +235,28 @@ def build_data7_preparation_bundle(
     checkpoint = CheckpointMetricPolicy() if checkpoint_metric_policy is None else checkpoint_metric_policy
     if progress_callback is not None:
         progress_callback("status=phase; phase=building-bounded-selection-ladder")
-    selection = build_training_selection_plan(data4_bundle, data5_bundle, data6_bundle, metric, policy=selection_budget_policy)
+    if prescribed_selection_frame_uids is None:
+        if prescribed_selection_role is not None:
+            raise TrainingDataInputError(
+                "DATA7 prescribed selection role requires prescribed frame UIDs."
+            )
+        selection = build_training_selection_plan(
+            data4_bundle, data5_bundle, data6_bundle, metric, policy=selection_budget_policy
+        )
+    else:
+        if domain.kind.value != "final_development":
+            raise TrainingDataInputError(
+                "Upstream-authenticated selection prefixes are allowed only for final-development DATA7 domains."
+            )
+        role = str(prescribed_selection_role or "upstream_authenticated_prefix")
+        selection = build_prescribed_training_selection_plan(
+            data4_bundle,
+            data6_bundle,
+            metric,
+            policy=selection_budget_policy,
+            frame_uids=prescribed_selection_frame_uids,
+            authority_reason=role,
+        )
     if progress_callback is not None:
         progress_callback("status=phase; phase=computing-vectorized-selection-coverage")
     coverage = build_selection_coverage_report(data4_bundle, data5_bundle, data6_bundle, metric, selection)
@@ -246,5 +269,6 @@ def build_data7_preparation_bundle(
         notes=(
             "DATA7 fitted products and selections are local to one canonical training domain; held-out evidence remains untouched.",
             "Coverage reports are descriptive and require DATA9 learning-curve validation.",
+            ("DATA7 selection is domain-local." if prescribed_selection_frame_uids is None else f"DATA7 final-development selection is the authenticated {str(prescribed_selection_role or 'upstream_authenticated_prefix')} upstream prefix; no second ranking is performed."),
         ),
     )

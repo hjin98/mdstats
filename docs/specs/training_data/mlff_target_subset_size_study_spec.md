@@ -91,7 +91,7 @@ A pass/fail/pass pattern is an invariant violation. Preparation SHALL fail close
 
 At least three qualified sizes are required to execute the production fidelity funnel. Otherwise the terminal outcome is `insufficient_qualified_sizes`.
 
-When fewer than three nominal sizes are materializable before hard qualification, the terminal outcome is `insufficient_materializable_sizes`.
+Materializability is part of membership in `Q`; there is no separate materializability terminal class. Any case with fewer than three materializable-and-MVQUAL-qualified sizes terminates as `insufficient_qualified_sizes`.
 
 ## 5. Protocol-controlled fidelity trajectory
 
@@ -161,31 +161,17 @@ Tie resolution after the practical-equivalence rule SHALL be deterministic and s
 
 ### 6.3 Epoch-30 final comparison
 
-The two finalists continue to epoch 30. A winner is eligible only if it satisfies the complete frozen final admissibility policy, including all applicable:
+The two finalists continue to epoch 30 on their authenticated trajectories. MVQUAL is the sole hard target-size eligibility authority. The epoch-30 comparison SHALL NOT re-apply target-threshold, replay-retention, energy/stress, structural/physical-integrity, relaxation, deployment, or other downstream model/protocol acceptance gates as a second size qualification stage.
 
-- global target metrics;
-- focus-group/species metrics;
-- energy/stress constraints;
-- replay-retention constraints;
-- structural/physical-integrity checks;
-- relaxation/deployment-integrity checks;
-- other current mandatory checkpoint/model constraints.
+Numerically invalid trajectories may be excluded because they cannot provide comparable ranking evidence. Among numerically valid finalists, the winner is determined by the policy-defined target-size metric and practical-equivalence/smaller-size rule serialized in `TargetSizeStudyPolicy`. Replay and other model-quality metrics may be recorded as diagnostics only when they carry no target-size eligibility or tie-break authority.
 
-Replay retention, physical integrity, and deployment integrity are hard constraints. They are not positive score bonuses unless a future explicit architecture/specification revision changes that rule.
-
-If exactly one finalist is admissible, it wins. If both are admissible, the policy applies its current primary comparison and practical-equivalence/smaller-size preference as serialized in `TargetSizeStudyPolicy`. If neither is admissible, the outcome is `no_admissible_finalist` unless a more specific hard-scientific-failure outcome applies.
+After `selected_target_size` is frozen, ordinary production/CV model acceptance, replay-retention, held-out evaluation, and physical/deployment verification may accept or reject the resulting model/protocol but SHALL NOT change the selected target size.
 
 ## 7. Ceiling and non-convergence semantics
 
 The fixed scientific ceiling is 16,384. The workflow SHALL NOT generate an intermediate or larger rescue size to avoid a non-convergence result.
 
-When the available corpus does not materialize 16,384 and the largest materializable/qualified candidate remains materially superior at the final authorized comparison boundary, the terminal outcome is:
-
-```text
-nonconverged_at_available_ceiling
-```
-
-When 16,384 is materializable/qualified and remains materially superior such that the policy cannot establish a converged smaller target size, the terminal outcome is:
+When 16,384 reaches the final comparison and remains materially superior to every smaller numerically valid finalist by more than the frozen practical-equivalence width, the terminal outcome is:
 
 ```text
 nonconverged_at_fixed_ceiling
@@ -199,12 +185,8 @@ A non-convergence result is scientifically meaningful and SHALL be preserved rat
 
 ```text
 selected(N)
-insufficient_materializable_sizes
 insufficient_qualified_sizes
-no_admissible_finalist
-nonconverged_at_available_ceiling
 nonconverged_at_fixed_ceiling
-hard_scientific_failure
 ```
 
 A `selected(N)` result SHALL bind:
@@ -220,7 +202,7 @@ A `selected(N)` result SHALL bind:
 - survivor decisions and deterministic comparison evidence;
 - selected `N`.
 
-Typed failure results SHALL preserve enough upstream and comparison evidence to explain why no selected size was produced.
+Typed failure results SHALL preserve enough upstream and comparison evidence to explain why no selected size was produced. No generated or intermediate rescue size is permitted.
 
 ## 9. Relationship to cross-validation and final training
 

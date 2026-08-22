@@ -9,7 +9,7 @@ import pytest
 
 from mdstats.training_data import mvidx1_forward_receipt_runtime as runtime
 from mdstats.training_data import target_coverage_sparse_index_store as store
-from tests.test_mlff_target_data2c_repair1 import _index
+from tests._mlff_multiview_legacy_fixtures import _index
 
 forward_types = importlib.import_module(
     "mdstats.training_data.target_coverage_sparse_forward_view"

@@ -65,7 +65,7 @@ def study(qualified=FIXED_TARGET_SIZES, lengths=(20000, 20000)):
     return repair, qual, build_target_size_study(repair, qual)
 
 
-def evidence(plan, size: int, epoch: int, score: float, parent=None, *, final_pass=True):
+def evidence(plan, size: int, epoch: int, score: float, parent=None, *, numerical_valid=True):
     stage = {3: "coarse", 10: "short", 30: "final"}[epoch]
     kwargs = dict(
         stage=stage,
@@ -79,8 +79,7 @@ def evidence(plan, size: int, epoch: int, score: float, parent=None, *, final_pa
         instantaneous_learning_rate=1.0e-3,
         wall_time_seconds=float(epoch),
         target_force_score_mev_per_a=score,
-        numerical_valid=True,
-        target_hard_gates_passed=bool(final_pass) if epoch == 30 else True,
+        numerical_valid=bool(numerical_valid),
         foundation_identity_digest=h("foundation"),
         evaluation_role_digest=h("role"),
         training_policy_digest=h("policy"),
@@ -93,12 +92,12 @@ def evidence(plan, size: int, epoch: int, score: float, parent=None, *, final_pa
         target_evaluation_digest=h(f"target-eval-{size}-{epoch}"),
     )
     if epoch == 30:
+        # Target/replay/physical pass-fail are deliberately downstream of the
+        # immutable target-size decision.  A diagnostic replay metric is allowed,
+        # but it carries no target-size eligibility authority.
         kwargs.update(
             replay_diagnostic_force_rmse_mev_per_a=8.0,
             replay_evaluation_digest=h(f"replay-{size}"),
-            replay_admissible=bool(final_pass),
-            physical_qualification_passed=bool(final_pass),
-            physical_qualification_digest=h(f"physical-{size}"),
         )
     if parent is not None:
         kwargs.update(
@@ -258,3 +257,26 @@ def test_v5_restart_hard_rejects_legacy_schema_and_round_trips_current_schema():
     legacy["schema"] = "mdstats.target-size-convergence-plan.v3"
     with pytest.raises(TrainingDataSerializationError, match="not restart-compatible"):
         TargetSizeStudyPlan.from_dict(legacy)
+
+
+def test_epoch30_does_not_apply_second_hard_gate_after_mvqual():
+    _, _, plan = study((4096, 8192, 16384))
+    plan = advance_to_epoch30(
+        plan,
+        {4096: 10.0, 8192: 9.8, 16384: 9.5},
+        {4096: 10.0, 8192: 9.8, 16384: 9.5},
+    )
+    parents = {v.target_size: v for v in plan.epoch10_evidence}
+    finalists = tuple(plan.epoch10_finalist_sizes)
+    assert len(finalists) == 2
+    smaller = min(finalists)
+    final_evidence = [
+        evidence(plan, size, 30, 8.0 if size == smaller else 8.5, parents[size])
+        for size in finalists
+    ]
+    # Epoch-30 evidence has no target-threshold/replay/physical hard-pass field:
+    # MVQUAL is the sole hard target-size eligibility authority.
+    assert all(not hasattr(v, "target_hard_gates_passed") for v in final_evidence)
+    selected = attach_epoch_30_evidence(plan, final_evidence)
+    assert selected.outcome == OUTCOME_SELECTED
+    assert selected.selected_target_size == smaller

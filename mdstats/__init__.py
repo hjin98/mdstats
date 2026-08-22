@@ -5927,42 +5927,6 @@ for _name in (
     if _name not in __all__:
         __all__.append(_name)
 
-from .training_data.target_multi_view_selector import (
-    TARGET_MULTI_VIEW_SELECTOR_POLICY_SCHEMA,
-    TARGET_MULTI_VIEW_SELECTION_ENTRY_SCHEMA,
-    TARGET_MULTI_VIEW_SELECTION_RUNG_SCHEMA,
-    TARGET_MULTI_VIEW_SELECTION_DOMAIN_SCHEMA,
-    TARGET_MULTI_VIEW_SELECTION_PLAN_SCHEMA,
-    TARGET_MULTI_VIEW_SELECTOR_VERSION,
-    TargetMultiViewSelectorPolicy,
-    TargetMultiViewSelectionEntry,
-    TargetMultiViewSelectionRung,
-    TargetMultiViewSelectionDomainPlan,
-    TargetMultiViewSelectionPlan,
-    build_target_multi_view_selection_plan,
-    build_target_multi_view_selection_artifacts,
-    validate_target_multi_view_selection_authority,
-)
-
-for _name in (
-    "TARGET_MULTI_VIEW_SELECTOR_POLICY_SCHEMA",
-    "TARGET_MULTI_VIEW_SELECTION_ENTRY_SCHEMA",
-    "TARGET_MULTI_VIEW_SELECTION_RUNG_SCHEMA",
-    "TARGET_MULTI_VIEW_SELECTION_DOMAIN_SCHEMA",
-    "TARGET_MULTI_VIEW_SELECTION_PLAN_SCHEMA",
-    "TARGET_MULTI_VIEW_SELECTOR_VERSION",
-    "TargetMultiViewSelectorPolicy",
-    "TargetMultiViewSelectionEntry",
-    "TargetMultiViewSelectionRung",
-    "TargetMultiViewSelectionDomainPlan",
-    "TargetMultiViewSelectionPlan",
-    "build_target_multi_view_selection_plan",
-    "build_target_multi_view_selection_artifacts",
-    "validate_target_multi_view_selection_authority",
-):
-    if _name not in __all__:
-        __all__.append(_name)
-
 from .training_data.target_coverage_sparse_index_store import (
     TARGET_COVERAGE_SPARSE_INDEX_NATIVE_MANIFEST_SCHEMA,
     TARGET_COVERAGE_SPARSE_INDEX_NATIVE_POINTER_SCHEMA,
@@ -5977,115 +5941,6 @@ __all__ += [
     "write_target_coverage_sparse_index_native_record",
     "read_target_coverage_sparse_index_native_record",
 ]
-
-
-# TARGET-DATA2C deterministic nested target-size ladder authority (0.20.166a0).
-from .training_data.target_ladder import (
-    TARGET_DATA_LADDER_POLICY_SCHEMA,
-    TARGET_DATA_LADDER_ENTRY_SCHEMA,
-    TARGET_DATA_LADDER_RUNG_SCHEMA,
-    TARGET_DATA_LADDER_DOMAIN_SCHEMA,
-    TARGET_DATA_LADDER_LEGACY_PLAN_SCHEMA,
-    TARGET_DATA_LADDER_V2_PLAN_SCHEMA,
-    TARGET_DATA_LADDER_V3_PLAN_SCHEMA,
-    TARGET_DATA_LADDER_PLAN_SCHEMA,
-    TARGET_DATA_LADDER_MV_POLICY_SCHEMA,
-    TARGET_DATA_LADDER_MV_PLAN_SCHEMA,
-    TARGET_DATA_LADDER_QUALIFICATION_SCHEMA,
-    TARGET_DATA_LADDER_LEGACY_VERSION,
-    TARGET_DATA_LADDER_V2_VERSION,
-    TARGET_DATA_LADDER_V3_VERSION,
-    TARGET_DATA_LADDER_VERSION,
-    TARGET_DATA_LADDER_MV_VERSION,
-    TARGET_DATA_LADDER_POLICY_VERSION,
-    TARGET_DATA_LADDER_MV_POLICY_VERSION,
-    TARGET_DATA_LADDER_MONOTONICITY_CONTRACT_VERSION,
-    TargetDataLadderPolicy,
-    TargetDataLadderEntry,
-    TargetDataLadderRung,
-    TargetDataLadderDomainPlan,
-    TargetDataLadderRungQualification,
-    TargetDataLadderPlan,
-    build_target_data_ladder,
-    build_migrated_target_data_ladder,
-    validate_target_data_ladder_authority,
-    validate_migrated_target_data_ladder_authority,
-)
-__all__ += [
-    "TARGET_DATA_LADDER_POLICY_SCHEMA",
-    "TARGET_DATA_LADDER_ENTRY_SCHEMA",
-    "TARGET_DATA_LADDER_RUNG_SCHEMA",
-    "TARGET_DATA_LADDER_DOMAIN_SCHEMA",
-    "TARGET_DATA_LADDER_LEGACY_PLAN_SCHEMA",
-    "TARGET_DATA_LADDER_V2_PLAN_SCHEMA",
-    "TARGET_DATA_LADDER_V3_PLAN_SCHEMA",
-    "TARGET_DATA_LADDER_PLAN_SCHEMA",
-    "TARGET_DATA_LADDER_MV_POLICY_SCHEMA",
-    "TARGET_DATA_LADDER_MV_PLAN_SCHEMA",
-    "TARGET_DATA_LADDER_QUALIFICATION_SCHEMA",
-    "TARGET_DATA_LADDER_LEGACY_VERSION",
-    "TARGET_DATA_LADDER_V2_VERSION",
-    "TARGET_DATA_LADDER_V3_VERSION",
-    "TARGET_DATA_LADDER_VERSION",
-    "TARGET_DATA_LADDER_MV_VERSION",
-    "TARGET_DATA_LADDER_POLICY_VERSION",
-    "TARGET_DATA_LADDER_MV_POLICY_VERSION",
-    "TARGET_DATA_LADDER_MONOTONICITY_CONTRACT_VERSION",
-    "TargetDataLadderPolicy",
-    "TargetDataLadderEntry",
-    "TargetDataLadderRung",
-    "TargetDataLadderDomainPlan",
-    "TargetDataLadderRungQualification",
-    "TargetDataLadderPlan",
-    "build_target_data_ladder",
-    "build_migrated_target_data_ladder",
-    "validate_target_data_ladder_authority",
-    "validate_migrated_target_data_ladder_authority",
-]
-
-# TARGET-DATA2D bounded target-size convergence funnel authority (0.20.167a0).
-from .training_data.target_size_convergence import (
-    TARGET_SIZE_CONVERGENCE_POLICY_SCHEMA,
-    TARGET_SIZE_STAGE_A_RUNG_SCHEMA,
-    TARGET_SIZE_TRAINING_EVIDENCE_SCHEMA,
-    TARGET_SIZE_CONVERGENCE_PLAN_SCHEMA,
-    TARGET_SIZE_CONVERGENCE_MV_POLICY_SCHEMA,
-    TARGET_SIZE_CONVERGENCE_MV_PLAN_SCHEMA,
-    TARGET_SIZE_CONVERGENCE_VERSION,
-    TARGET_SIZE_CONVERGENCE_MV_VERSION,
-    TargetDataCoverageError,
-    TargetSizeConvergencePolicy,
-    TargetSizeStageARung,
-    TargetSizeTrainingEvidence,
-    TargetSizeConvergencePlan,
-    build_target_size_convergence_plan,
-    with_stage_b0_evidence,
-    with_stage_b_evidence,
-    with_stage_c_evidence,
-    validate_target_size_convergence_authority,
-)
-__all__ += [
-    "TARGET_SIZE_CONVERGENCE_POLICY_SCHEMA",
-    "TARGET_SIZE_STAGE_A_RUNG_SCHEMA",
-    "TARGET_SIZE_TRAINING_EVIDENCE_SCHEMA",
-    "TARGET_SIZE_CONVERGENCE_PLAN_SCHEMA",
-    "TARGET_SIZE_CONVERGENCE_MV_POLICY_SCHEMA",
-    "TARGET_SIZE_CONVERGENCE_MV_PLAN_SCHEMA",
-    "TARGET_SIZE_CONVERGENCE_VERSION",
-    "TARGET_SIZE_CONVERGENCE_MV_VERSION",
-    "TargetDataCoverageError",
-    "TargetSizeConvergencePolicy",
-    "TargetSizeStageARung",
-    "TargetSizeTrainingEvidence",
-    "TargetSizeConvergencePlan",
-    "build_target_size_convergence_plan",
-    "with_stage_b0_evidence",
-    "with_stage_b_evidence",
-    "with_stage_c_evidence",
-    "validate_target_size_convergence_authority",
-]
-
-
 # SIZE-FIDELITY1 empirical coarse-screen calibration authority (0.20.183a0).
 from .training_data.size_fidelity import (
     SIZE_FIDELITY_POLICY_SCHEMA,
@@ -6119,42 +5974,6 @@ __all__ += [
     "build_size_fidelity_qualification",
     "validate_size_fidelity_qualification",
 ]
-
-
-# TARGET-DATA2E immutable production target-corpus decision/provenance authority.
-from .training_data.target_production_corpus import (
-    TARGET_PRODUCTION_RUNG_PROVENANCE_SCHEMA,
-    TARGET_PRODUCTION_EQUIVALENCE_COMPARISON_SCHEMA,
-    TARGET_PRODUCTION_DOMAIN_DECISION_SCHEMA,
-    TARGET_PRODUCTION_CORPUS_DECISION_SCHEMA,
-    TARGET_PRODUCTION_CORPUS_MV_DECISION_SCHEMA,
-    TARGET_PRODUCTION_CORPUS_VERSION,
-    TARGET_PRODUCTION_CORPUS_MV_VERSION,
-    TargetProductionCorpusDecisionError,
-    TargetProductionRungProvenance,
-    TargetProductionEquivalenceComparison,
-    TargetProductionDomainDecision,
-    TargetProductionCorpusDecision,
-    build_target_production_corpus_decision,
-    validate_target_production_corpus_decision,
-)
-__all__ += [
-    "TARGET_PRODUCTION_RUNG_PROVENANCE_SCHEMA",
-    "TARGET_PRODUCTION_EQUIVALENCE_COMPARISON_SCHEMA",
-    "TARGET_PRODUCTION_DOMAIN_DECISION_SCHEMA",
-    "TARGET_PRODUCTION_CORPUS_DECISION_SCHEMA",
-    "TARGET_PRODUCTION_CORPUS_MV_DECISION_SCHEMA",
-    "TARGET_PRODUCTION_CORPUS_VERSION",
-    "TARGET_PRODUCTION_CORPUS_MV_VERSION",
-    "TargetProductionCorpusDecisionError",
-    "TargetProductionRungProvenance",
-    "TargetProductionEquivalenceComparison",
-    "TargetProductionDomainDecision",
-    "TargetProductionCorpusDecision",
-    "build_target_production_corpus_decision",
-    "validate_target_production_corpus_decision",
-]
-
 from .training_data import (
     TRAIN2_RUNTIME_PLAN_SCHEMA,
     TRAIN2_RUNTIME_SUMMARY_SCHEMA,
@@ -6589,180 +6408,6 @@ __all__ += [
     "build_final_gpu1_qualification",
 ]
 
-from .training_data.target_multi_view_repair import (
-    TARGET_MULTI_VIEW_REPAIR_POLICY_SCHEMA,
-    TARGET_MULTI_VIEW_REPAIR_SWAP_SCHEMA,
-    TARGET_MULTI_VIEW_REPAIR_RUNG_SCHEMA,
-    TARGET_MULTI_VIEW_REPAIR_DOMAIN_SCHEMA,
-    TARGET_MULTI_VIEW_REPAIR_PLAN_SCHEMA,
-    TARGET_MULTI_VIEW_REPAIR_VERSION,
-    TargetMultiViewRepairPolicy,
-    TargetMultiViewRepairSwap,
-    TargetMultiViewRepairRung,
-    TargetMultiViewRepairDomainPlan,
-    TargetMultiViewRepairPlan,
-    build_target_multi_view_repair_plan,
-    validate_target_multi_view_repair_authority,
-)
-for _name in (
-    "TARGET_MULTI_VIEW_REPAIR_POLICY_SCHEMA",
-    "TARGET_MULTI_VIEW_REPAIR_SWAP_SCHEMA",
-    "TARGET_MULTI_VIEW_REPAIR_RUNG_SCHEMA",
-    "TARGET_MULTI_VIEW_REPAIR_DOMAIN_SCHEMA",
-    "TARGET_MULTI_VIEW_REPAIR_PLAN_SCHEMA",
-    "TARGET_MULTI_VIEW_REPAIR_VERSION",
-    "TargetMultiViewRepairPolicy",
-    "TargetMultiViewRepairSwap",
-    "TargetMultiViewRepairRung",
-    "TargetMultiViewRepairDomainPlan",
-    "TargetMultiViewRepairPlan",
-    "build_target_multi_view_repair_plan",
-    "validate_target_multi_view_repair_authority",
-):
-    if _name not in __all__:
-        __all__.append(_name)
-
-from .training_data.target_multi_view_qualification import (
-    TARGET_MULTI_VIEW_QUALIFICATION_POLICY_SCHEMA,
-    TARGET_MULTI_VIEW_QUALIFICATION_FAMILY_SCHEMA,
-    TARGET_MULTI_VIEW_QUALIFICATION_STRATUM_SCHEMA,
-    TARGET_MULTI_VIEW_QUALIFICATION_TELEMETRY_SCHEMA,
-    TARGET_MULTI_VIEW_QUALIFICATION_RUNG_SCHEMA,
-    TARGET_MULTI_VIEW_QUALIFICATION_DOMAIN_SCHEMA,
-    TARGET_MULTI_VIEW_QUALIFICATION_PLAN_SCHEMA,
-    TARGET_MULTI_VIEW_QUALIFICATION_VERSION,
-    TargetMultiViewQualificationPolicy,
-    TargetMultiViewQualificationFamilyComparison,
-    TargetMultiViewQualificationStratumComparison,
-    TargetMultiViewSelectorTelemetry,
-    TargetMultiViewQualificationRung,
-    TargetMultiViewQualificationDomainPlan,
-    TargetMultiViewQualificationPlan,
-    build_target_multi_view_qualification_plan,
-    validate_target_multi_view_qualification_authority,
-)
-for _name in (
-    "TARGET_MULTI_VIEW_QUALIFICATION_POLICY_SCHEMA",
-    "TARGET_MULTI_VIEW_QUALIFICATION_FAMILY_SCHEMA",
-    "TARGET_MULTI_VIEW_QUALIFICATION_STRATUM_SCHEMA",
-    "TARGET_MULTI_VIEW_QUALIFICATION_TELEMETRY_SCHEMA",
-    "TARGET_MULTI_VIEW_QUALIFICATION_RUNG_SCHEMA",
-    "TARGET_MULTI_VIEW_QUALIFICATION_DOMAIN_SCHEMA",
-    "TARGET_MULTI_VIEW_QUALIFICATION_PLAN_SCHEMA",
-    "TARGET_MULTI_VIEW_QUALIFICATION_VERSION",
-    "TargetMultiViewQualificationPolicy",
-    "TargetMultiViewQualificationFamilyComparison",
-    "TargetMultiViewQualificationStratumComparison",
-    "TargetMultiViewSelectorTelemetry",
-    "TargetMultiViewQualificationRung",
-    "TargetMultiViewQualificationDomainPlan",
-    "TargetMultiViewQualificationPlan",
-    "build_target_multi_view_qualification_plan",
-    "validate_target_multi_view_qualification_authority",
-):
-    if _name not in __all__:
-        __all__.append(_name)
-
-from .training_data.size_halve2 import (
-    SIZE_HALVE2_FIXED_TARGET_SIZES,
-    SIZE_HALVE2_POLICY_SCHEMA,
-    SIZE_HALVE2_CANDIDATE_SCHEMA,
-    SIZE_HALVE2_PLAN_SCHEMA,
-    SIZE_HALVE2_VERSION,
-    SizeHalve2Policy,
-    SizeHalve2Candidate,
-    SizeHalve2Plan,
-    build_size_halve2_plan,
-    with_size_halve2_epoch3_evidence,
-    with_size_halve2_epoch10_evidence,
-    with_size_halve2_epoch30_evidence,
-    build_size_halve2_execution_stage_plan,
-    validate_size_halve2_authority,
-)
-for _name in (
-    "SIZE_HALVE2_FIXED_TARGET_SIZES",
-    "SIZE_HALVE2_POLICY_SCHEMA",
-    "SIZE_HALVE2_CANDIDATE_SCHEMA",
-    "SIZE_HALVE2_PLAN_SCHEMA",
-    "SIZE_HALVE2_VERSION",
-    "SizeHalve2Policy",
-    "SizeHalve2Candidate",
-    "SizeHalve2Plan",
-    "build_size_halve2_plan",
-    "with_size_halve2_epoch3_evidence",
-    "with_size_halve2_epoch10_evidence",
-    "with_size_halve2_epoch30_evidence",
-    "build_size_halve2_execution_stage_plan",
-    "validate_size_halve2_authority",
-):
-    if _name not in __all__:
-        __all__.append(_name)
-
-from .training_data.size_fidelity2 import (
-    SIZE_FIDELITY2_POLICY_SCHEMA,
-    SIZE_FIDELITY2_MONITOR_SCHEMA,
-    SIZE_FIDELITY2_CHECKPOINT_SCHEMA,
-    SIZE_FIDELITY2_EXECUTION_PLAN_SCHEMA,
-    SIZE_FIDELITY2_WIDTH_SCHEMA,
-    SIZE_FIDELITY2_REPORT_SCHEMA,
-    SIZE_FIDELITY2_VERSION,
-    SizeFidelity2Policy,
-    SizeFidelity2MonitorView,
-    SizeFidelity2Checkpoint,
-    SizeFidelity2ExecutionPlan,
-    SizeFidelity2WidthAssessment,
-    SizeFidelity2QualificationReport,
-    build_size_fidelity2_execution_plan,
-    build_size_fidelity2_qualification,
-    validate_size_fidelity2_execution_plan,
-    validate_size_fidelity2_qualification,
-)
-for _name in (
-    "SIZE_FIDELITY2_POLICY_SCHEMA", "SIZE_FIDELITY2_MONITOR_SCHEMA",
-    "SIZE_FIDELITY2_CHECKPOINT_SCHEMA", "SIZE_FIDELITY2_EXECUTION_PLAN_SCHEMA",
-    "SIZE_FIDELITY2_WIDTH_SCHEMA", "SIZE_FIDELITY2_REPORT_SCHEMA", "SIZE_FIDELITY2_VERSION",
-    "SizeFidelity2Policy", "SizeFidelity2MonitorView", "SizeFidelity2Checkpoint",
-    "SizeFidelity2ExecutionPlan", "SizeFidelity2WidthAssessment", "SizeFidelity2QualificationReport",
-    "build_size_fidelity2_execution_plan", "build_size_fidelity2_qualification",
-    "validate_size_fidelity2_execution_plan", "validate_size_fidelity2_qualification",
-):
-    if _name not in __all__:
-        __all__.append(_name)
-
-
-# TARGET-DATA2C-MVMIGRATE1 generated-policy migration/activation latch (0.20.208a0).
-from .training_data.target_multi_view_migration import (
-    TARGET_MV_MIGRATION_POLICY_SCHEMA,
-    TARGET_MV_LEARNING_CONTROL_ROW_SCHEMA,
-    TARGET_MV_LEARNING_CONTROL_REPORT_SCHEMA,
-    TARGET_MV_MIGRATION_PLAN_SCHEMA,
-    TARGET_MV_MIGRATION_ACTIVATION_SCHEMA,
-    TARGET_MV_MIGRATION_VERSION,
-    MIGRATED_TARGET_DATA2C_VERSION,
-    MIGRATED_TARGET_DATA2D_VERSION,
-    MIGRATED_TARGET_DATA2E_VERSION,
-    TargetMultiViewMigrationPolicy,
-    TargetMultiViewLearningControlRow,
-    TargetMultiViewLearningControlReport,
-    TargetMultiViewMigrationPlan,
-    TargetMultiViewMigrationActivation,
-    build_target_multi_view_migration_plan,
-    validate_target_multi_view_migration_plan,
-)
-for _name in (
-    "TARGET_MV_MIGRATION_POLICY_SCHEMA", "TARGET_MV_LEARNING_CONTROL_ROW_SCHEMA",
-    "TARGET_MV_LEARNING_CONTROL_REPORT_SCHEMA", "TARGET_MV_MIGRATION_PLAN_SCHEMA",
-    "TARGET_MV_MIGRATION_ACTIVATION_SCHEMA",
-    "TARGET_MV_MIGRATION_VERSION", "MIGRATED_TARGET_DATA2C_VERSION",
-    "MIGRATED_TARGET_DATA2D_VERSION", "MIGRATED_TARGET_DATA2E_VERSION",
-    "TargetMultiViewMigrationPolicy", "TargetMultiViewLearningControlRow",
-    "TargetMultiViewLearningControlReport", "TargetMultiViewMigrationPlan",
-    "TargetMultiViewMigrationActivation",
-    "build_target_multi_view_migration_plan", "validate_target_multi_view_migration_plan",
-):
-    if _name not in __all__:
-        __all__.append(_name)
-
 from .training_data.replay_invalidation import (
     REPLAY_INVALIDATION_PLAN_SCHEMA,
     REPLAY_INVALIDATION_VERSION,
@@ -6805,4 +6450,36 @@ from .training_data.target_multi_view_repair_v2 import (
     validate_target_multi_view_repair_authority_v2,
 )
 
+__all__ = sorted(set([name for name in globals() if not name.startswith("_")]))
+
+# Target-size v5 current authority. Retired ladder/migration/convergence APIs are
+# intentionally not re-exported across the hard restart boundary.
+from .training_data.target_multi_view_qualification_v2 import (
+    TARGET_MULTI_VIEW_QUALIFICATION_V2_VERSION,
+    TargetMultiViewQualificationPolicyV2,
+    TargetMultiViewQualificationPlanV2,
+    build_target_multi_view_qualification_plan_v2,
+    validate_target_multi_view_qualification_authority_v2,
+)
+from .training_data.target_size_study import (
+    TARGET_SIZE_STUDY_VERSION,
+    FIXED_TARGET_SIZES,
+    FIXED_TARGET_SIZE_CEILING,
+    OUTCOME_INSUFFICIENT_QUALIFIED_SIZES,
+    OUTCOME_AWAITING_EPOCH_3,
+    OUTCOME_AWAITING_EPOCH_10,
+    OUTCOME_AWAITING_EPOCH_30,
+    OUTCOME_SELECTED,
+    OUTCOME_NONCONVERGED_AT_FIXED_CEILING,
+    TargetSizeStudyPolicy,
+    TargetSizeStudyPlan,
+    TargetSizeTrainingEvidence as TargetSizeStudyTrainingEvidence,
+    build_target_size_study,
+    validate_target_size_study_authority,
+    materialize_candidate_prefix,
+    materialize_selected_prefix,
+    attach_epoch_3_evidence,
+    attach_epoch_10_evidence,
+    attach_epoch_30_evidence,
+)
 __all__ = sorted(set([name for name in globals() if not name.startswith("_")]))

@@ -1,31 +1,31 @@
 {
   "pdf": {
     "name": "mlff_training_data_architecture.pdf",
-    "sha256": "3d7b9865999eee610a7028183d17d2c0e89db7ee0b63264cd8ecb4727cbb2a3b"
+    "sha256": "2ff2386fe1129a268c1a59ec6bf5be5321ab2a2fb40b720522aad1dc34fd9210"
   },
   "renderer": {
     "config": {
       "absolute_images": "reject",
       "fontsize": "10.5pt",
-      "from": "markdown",
+      "from": "markdown+tex_math_single_backslash+tex_math_dollars",
       "lang": "en-US",
       "margin": "0.75in",
       "papersize": "us-letter",
-      "pdf_engine": "typst",
+      "pdf_engine": "xelatex",
       "remote_images": "reject",
       "resource_path": "source-parent",
       "resource_provenance": "pandoc-image-ast-local-files-v1"
     },
-    "config_sha256": "a9a9944a65faa5149dea0d9ebeaee33df9adb32f8da5d6e94fde1d2a581ead51",
-    "driver": "render_markdown_pdfs.py",
-    "pandoc_version": "pandoc 3.10.2",
-    "policy_version": "pandoc-typst-v2",
-    "typst_version": "typst 0.15.1 (9dfd3a08)"
+    "config_sha256": "06f2f4840cb24e2e612c792aca9403c1964d209659ccadaa8a9b4af8e7ba5e6d",
+    "driver": "pandoc-local",
+    "pandoc_version": "pandoc 3.1.11.1",
+    "policy_version": "pandoc-xelatex-local-v1",
+    "xelatex_version": "XeTeX 3.141592653-2.6-0.999996 (TeX Live 2025/dev/Debian)"
   },
   "resources": [],
   "schema_version": 1,
   "source": {
     "name": "mlff_training_data_architecture.md",
-    "sha256": "621759662d216ce9893c7a99cbd960d4c0d453a1d0161534803620b4c6936d35"
+    "sha256": "ae7011263e11d9d9a6d6e8da8a63dba00f1ab780aea0dc4c76612f4b03448785"
   }
 }

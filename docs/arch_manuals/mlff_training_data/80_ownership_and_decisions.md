@@ -176,7 +176,7 @@ All candidates use the same frozen training-seed set, and comparisons aggregate 
 
 At epoch 3 and epoch 10, candidates within the frozen practical-equivalence width of 1 meV/Angstrom in the primary target-force metric prefer the smaller size. Early screens need not satisfy the final absolute force-accuracy threshold.
 
-At epoch 30, a winner must satisfy the complete frozen hard-admissibility policy, including applicable target/focus-group, replay-retention, energy/stress, physical-integrity, relaxation/deployment, and other mandatory constraints. Replay and integrity remain constraints rather than score bonuses unless an explicit future design changes that scientific rule.
+At epoch 30, the two finalists are ranked only by the target-size study metric under the frozen practical-equivalence rule. MVQUAL remains the sole hard target-size eligibility gate; target-threshold, replay, physical-integrity, relaxation, deployment, and other model/protocol acceptance evidence is downstream of the immutable size choice. Numerically invalid trajectories may be excluded because they cannot supply comparable ranking evidence.
 
 ### Typed terminal outcomes
 
@@ -184,15 +184,11 @@ The target-size decision is a typed result, at minimum:
 
 ```text
 selected(N)
-insufficient_materializable_sizes
 insufficient_qualified_sizes
-no_admissible_finalist
-nonconverged_at_available_ceiling
 nonconverged_at_fixed_ceiling
-hard_scientific_failure
 ```
 
-If the available corpus ends below 16,384 and the largest materializable rung remains materially superior, the result is `nonconverged_at_available_ceiling`. If 16,384 is materializable and remains materially superior, the result is `nonconverged_at_fixed_ceiling`. No generated/intermediate rescue size is synthesized.
+If 16,384 reaches the final comparison and remains materially better than every smaller numerically valid finalist by more than the frozen practical-equivalence width, the result is `nonconverged_at_fixed_ceiling`. No generated/intermediate rescue size is synthesized.
 
 Exhaustively training all sizes to the final fidelity to measure survivor recall is release/algorithm qualification, not the ordinary scientific production path.
 
@@ -262,7 +258,7 @@ The current MLFF subsystem follows these durable rules:
 6. frame membership is domain-local while selected target size is protocol-global;
 7. one repaired master order defines every candidate prefix and hard coverage is monotone with increasing prefix size;
 8. the target-size experiment uses development/model-selection evidence, fixed 3/10/30 continuation, paired seeds, and typed non-convergence/failure outcomes;
-9. final size selection is constrained by hard scientific admissibility rather than reward bonuses for replay/integrity;
+9. MVQUAL is the sole hard target-size eligibility authority; downstream model/protocol acceptance cannot alter the immutable size choice;
 10. locked tests remain sealed until the frozen protocol/committee activation boundary;
 11. unsupported old campaigns are re-prepared rather than migrated;
 12. execution is resource-bounded and may not alter scientific semantics.

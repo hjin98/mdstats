@@ -32,7 +32,7 @@ from .data8_bundle import Data8PreparationBundle, build_data8_preparation_bundle
 from .data7_archive import (
     Data7ArchiveError, read_data7_archive, write_data7_archive,
 )
-from .feature_metric import FeatureFitDomain, FeatureMetricPolicyTemplate, build_feature_fit_domains
+from .feature_metric import FeatureFitDomain, FeatureFitDomainKind, FeatureMetricPolicyTemplate, build_feature_fit_domains
 from .foundation import foundation_identity_matches_lineage
 from .mace_compatibility import MaceCheckpointControlPolicy, MaceCompatibilityPolicy, MaceSourceProbe
 from .mace_export import MaceExtxyzPolicy
@@ -47,7 +47,8 @@ from .online_monitor import OnlineMonitorPolicy
 from .selection import SelectionBudgetPolicy
 
 PRODUCTION_MATERIALIZATION_POLICY_SCHEMA = "mdstats.production-materialization-policy.v1"
-PRODUCTION_MATERIALIZATION_PLAN_SCHEMA = "mdstats.production-materialization-plan.v8"
+PRODUCTION_MATERIALIZATION_PLAN_SCHEMA = "mdstats.production-materialization-plan.v9"
+PRODUCTION_MATERIALIZATION_PLAN_V8_SCHEMA = "mdstats.production-materialization-plan.v8"
 PRODUCTION_MATERIALIZATION_PLAN_V7_SCHEMA = "mdstats.production-materialization-plan.v7"
 PRODUCTION_MATERIALIZATION_PLAN_V6_SCHEMA = "mdstats.production-materialization-plan.v6"
 PRODUCTION_MATERIALIZATION_PLAN_V5_SCHEMA = "mdstats.production-materialization-plan.v5"
@@ -281,6 +282,10 @@ class ProductionMaterializationPlan:
     plan_schema: str = PRODUCTION_MATERIALIZATION_PLAN_SCHEMA
     real_pt_data_ratio_threshold: float = 0.0
     selection_size: int | None = None
+    selection_authority_role: str = "standard"
+    target_size_study_digest: str | None = None
+    prescribed_final_development_prefixes: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    prescribed_target_size_evaluation_frames: tuple[tuple[str, tuple[str, ...]], ...] = ()
     require_foundation_residual_e0: bool = True
     require_replay: bool = True
     plan_version: str = MLFF_DATA9A9B_VERSION
@@ -305,6 +310,7 @@ class ProductionMaterializationPlan:
         object.__setattr__(self, "domains", domains)
         if self.plan_schema not in {
             PRODUCTION_MATERIALIZATION_PLAN_SCHEMA,
+            PRODUCTION_MATERIALIZATION_PLAN_V8_SCHEMA,
             PRODUCTION_MATERIALIZATION_PLAN_V7_SCHEMA,
             PRODUCTION_MATERIALIZATION_PLAN_V6_SCHEMA,
             PRODUCTION_MATERIALIZATION_PLAN_V5_SCHEMA,
@@ -351,9 +357,9 @@ class ProductionMaterializationPlan:
             if extraction.source_checkpoint_sha256 != canonical.sha256 or extraction.source_head != canonical.foundation_head:
                 raise TrainingDataInputError("Selected-head qualification source identity disagrees with the production foundation.")
             if self.plan_schema != PRODUCTION_MATERIALIZATION_PLAN_SCHEMA:
-                raise TrainingDataInputError("Selected-head training qualification requires production materialization v8.")
+                raise TrainingDataInputError("Selected-head training qualification requires current production materialization v9.")
         elif self.plan_schema == PRODUCTION_MATERIALIZATION_PLAN_SCHEMA:
-            raise TrainingDataInputError("Production materialization v8 requires selected-head training qualification.")
+            raise TrainingDataInputError("Production materialization v9 requires selected-head training qualification.")
         if (
             self.foundation_checkpoint.inspection_state == "inspected"
             and len(self.foundation_checkpoint.available_heads) > 1
@@ -403,14 +409,74 @@ class ProductionMaterializationPlan:
                 raise TrainingDataInputError("TRAIN2 base LR disagrees with optimizer policy.")
             if bool(self.checkpoint_admissibility_policy.replay_enabled) != bool(self.require_replay):
                 raise TrainingDataInputError("TRAIN2 replay admissibility disagrees with the materialization mode.")
-        if self.plan_schema in {PRODUCTION_MATERIALIZATION_PLAN_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V7_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V6_SCHEMA} and not train2_active:
-            raise TrainingDataInputError("Production materialization v6/v7/v8 requires complete TRAIN2 authority.")
-        if self.plan_schema not in {PRODUCTION_MATERIALIZATION_PLAN_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V7_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V6_SCHEMA} and train2_active:
-            raise TrainingDataInputError("TRAIN2 authority requires production materialization v6, v7, or v8.")
+        if self.plan_schema in {PRODUCTION_MATERIALIZATION_PLAN_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V8_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V7_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V6_SCHEMA} and not train2_active:
+            raise TrainingDataInputError("Production materialization v6/v7/v8/v9 requires complete TRAIN2 authority.")
+        if self.plan_schema not in {PRODUCTION_MATERIALIZATION_PLAN_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V8_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V7_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V6_SCHEMA} and train2_active:
+            raise TrainingDataInputError("TRAIN2 authority requires production materialization v6, v7, v8, or v9.")
         if self.real_pt_data_ratio_threshold < 0.0:
             raise TrainingDataInputError("real_pt_data_ratio_threshold must be nonnegative.")
         if self.selection_size is not None and self.selection_size < 1:
             raise TrainingDataInputError("selection_size must be positive when present.")
+        role = str(self.selection_authority_role)
+        allowed_roles = {"standard", "target_size_candidate", "selected_production_prefix"}
+        if role not in allowed_roles:
+            raise TrainingDataInputError("Unsupported production selection authority role.")
+        prefixes = tuple(
+            sorted(
+                (str(label), tuple(str(uid) for uid in uids))
+                for label, uids in self.prescribed_final_development_prefixes
+            )
+        )
+        evaluation_frames = tuple(
+            sorted(
+                (str(label), tuple(str(uid) for uid in uids))
+                for label, uids in self.prescribed_target_size_evaluation_frames
+            )
+        )
+        if len({label for label, _ in prefixes}) != len(prefixes):
+            raise TrainingDataInputError("Prescribed final-development prefixes require unique label domains.")
+        if role == "standard":
+            if prefixes or evaluation_frames or self.target_size_study_digest is not None:
+                raise TrainingDataInputError("Standard DATA7 selection cannot claim target-size prefix authority.")
+        else:
+            if self.plan_schema != PRODUCTION_MATERIALIZATION_PLAN_SCHEMA:
+                raise TrainingDataInputError("Target-size prefix materialization requires production plan v9.")
+            if self.target_size_study_digest is None:
+                raise TrainingDataInputError("Target-size prefix materialization requires the target-size study digest.")
+            object.__setattr__(
+                self, "target_size_study_digest",
+                validate_digest(self.target_size_study_digest, name="target_size_study_digest"),
+            )
+            if self.selection_size is None or not prefixes:
+                raise TrainingDataInputError("Target-size prefix materialization requires a selected size and domain prefixes.")
+            final_domains = {
+                item.label_domain_id: item
+                for item in self.domains
+                if item.kind is FeatureFitDomainKind.FINAL_DEVELOPMENT
+            }
+            if set(label for label, _ in prefixes) != set(final_domains):
+                raise TrainingDataInputError("Target-size prefix materialization must bind every final-development label domain exactly once.")
+            for label, uids in prefixes:
+                if len(uids) != self.selection_size or len(set(uids)) != len(uids):
+                    raise TrainingDataInputError("Each prescribed target-size prefix must equal selection_size with unique frames.")
+                if any(uid not in set(final_domains[label].frame_uids) for uid in uids):
+                    raise TrainingDataInputError("Prescribed target-size prefix contains frames outside its final-development domain.")
+            if role == "target_size_candidate":
+                if set(label for label, _ in evaluation_frames) != set(final_domains):
+                    raise TrainingDataInputError("Candidate target-size materialization requires one development-complement evaluation cohort per label domain.")
+                prefix_by_label = dict(prefixes)
+                for label, uids in evaluation_frames:
+                    if not uids or len(uids) != len(set(uids)):
+                        raise TrainingDataInputError("Candidate target-size evaluation cohorts must be non-empty and unique.")
+                    if any(uid not in set(final_domains[label].frame_uids) for uid in uids):
+                        raise TrainingDataInputError("Candidate target-size evaluation cohort lies outside its development domain.")
+                    if set(uids) & set(prefix_by_label[label]):
+                        raise TrainingDataInputError("Candidate target-size evaluation cohort overlaps target training membership.")
+            elif evaluation_frames:
+                raise TrainingDataInputError("Only target_size_candidate materializations may bind the pre-selection development evaluation cohort.")
+        object.__setattr__(self, "selection_authority_role", role)
+        object.__setattr__(self, "prescribed_final_development_prefixes", prefixes)
+        object.__setattr__(self, "prescribed_target_size_evaluation_frames", evaluation_frames)
 
     def _payload(self) -> dict[str, Any]:
         payload = {
@@ -442,21 +508,29 @@ class ProductionMaterializationPlan:
             "extxyz_policy": self.extxyz_policy.to_dict(),
             "real_pt_data_ratio_threshold": self.real_pt_data_ratio_threshold,
             "selection_size": self.selection_size,
+            "selection_authority_role": self.selection_authority_role,
+            "target_size_study_digest": self.target_size_study_digest,
+            "prescribed_final_development_prefixes": [
+                [label, list(uids)] for label, uids in self.prescribed_final_development_prefixes
+            ],
+            "prescribed_target_size_evaluation_frames": [
+                [label, list(uids)] for label, uids in self.prescribed_target_size_evaluation_frames
+            ],
             "require_foundation_residual_e0": self.require_foundation_residual_e0,
             "require_replay": self.require_replay,
         }
         if self.plan_schema == PRODUCTION_MATERIALIZATION_PLAN_SCHEMA:
             payload["selected_head_qualification"] = self.selected_head_qualification.to_dict()
-        if self.plan_schema in {PRODUCTION_MATERIALIZATION_PLAN_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V7_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V6_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V5_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V4_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V3_SCHEMA}:
+        if self.plan_schema in {PRODUCTION_MATERIALIZATION_PLAN_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V8_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V7_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V6_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V5_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V4_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V3_SCHEMA}:
             payload["cross_validation_plans"] = [
                 item.to_dict() for item in self.cross_validation_plans
             ]
-        if self.plan_schema in {PRODUCTION_MATERIALIZATION_PLAN_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V7_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V6_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V5_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V4_SCHEMA}:
+        if self.plan_schema in {PRODUCTION_MATERIALIZATION_PLAN_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V8_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V7_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V6_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V5_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V4_SCHEMA}:
             payload["online_monitor_policy"] = None if self.online_monitor_policy is None else self.online_monitor_policy.to_dict()
             payload["true_replay_monitor_artifact"] = None if self.true_replay_monitor_artifact is None else self.true_replay_monitor_artifact.to_dict()
         if self.plan_schema == PRODUCTION_MATERIALIZATION_PLAN_V5_SCHEMA:
             payload["adaptive_stop_policy"] = None if self.adaptive_stop_policy is None else self.adaptive_stop_policy.to_dict()
-        if self.plan_schema in {PRODUCTION_MATERIALIZATION_PLAN_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V7_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V6_SCHEMA}:
+        if self.plan_schema in {PRODUCTION_MATERIALIZATION_PLAN_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V8_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V7_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V6_SCHEMA}:
             payload.update({
                 "training_budget_policy": None if self.training_budget_policy is None else self.training_budget_policy.to_dict(),
                 "learning_rate_schedule_policy": None if self.learning_rate_schedule_policy is None else self.learning_rate_schedule_policy.to_dict(),
@@ -477,6 +551,7 @@ class ProductionMaterializationPlan:
         schema = payload.get("schema")
         if schema not in {
             PRODUCTION_MATERIALIZATION_PLAN_SCHEMA,
+            PRODUCTION_MATERIALIZATION_PLAN_V8_SCHEMA,
             PRODUCTION_MATERIALIZATION_PLAN_V7_SCHEMA,
             PRODUCTION_MATERIALIZATION_PLAN_V6_SCHEMA,
             PRODUCTION_MATERIALIZATION_PLAN_V5_SCHEMA,
@@ -528,6 +603,16 @@ class ProductionMaterializationPlan:
             plan_schema=str(schema),
             real_pt_data_ratio_threshold=float(payload["real_pt_data_ratio_threshold"]),
             selection_size=None if payload.get("selection_size") is None else int(payload["selection_size"]),
+            selection_authority_role=str(payload.get("selection_authority_role", "standard")),
+            target_size_study_digest=(None if payload.get("target_size_study_digest") is None else str(payload["target_size_study_digest"])),
+            prescribed_final_development_prefixes=tuple(
+                (str(item[0]), tuple(str(uid) for uid in item[1]))
+                for item in payload.get("prescribed_final_development_prefixes", ())
+            ),
+            prescribed_target_size_evaluation_frames=tuple(
+                (str(item[0]), tuple(str(uid) for uid in item[1]))
+                for item in payload.get("prescribed_target_size_evaluation_frames", ())
+            ),
             require_foundation_residual_e0=bool(payload["require_foundation_residual_e0"]),
             require_replay=bool(payload["require_replay"]),
             plan_version=str(payload["plan_version"]),
@@ -776,6 +861,10 @@ def build_production_materialization_plan(
     foundation_reference_energies: Mapping[int, float] | None = None,
     real_pt_data_ratio_threshold: float = 0.0,
     selection_size: int | None = None,
+    selection_authority_role: str = "standard",
+    target_size_study_digest: str | None = None,
+    prescribed_final_development_prefixes: Mapping[str, Sequence[str]] | None = None,
+    prescribed_target_size_evaluation_frames: Mapping[str, Sequence[str]] | None = None,
     require_foundation_residual_e0: bool = True,
     require_replay: bool = True,
 ) -> ProductionMaterializationPlan:
@@ -862,6 +951,16 @@ def build_production_materialization_plan(
         ),
         real_pt_data_ratio_threshold=real_pt_data_ratio_threshold,
         selection_size=selection_size,
+        selection_authority_role=selection_authority_role,
+        target_size_study_digest=target_size_study_digest,
+        prescribed_final_development_prefixes=tuple(
+            (str(label), tuple(str(uid) for uid in uids))
+            for label, uids in (prescribed_final_development_prefixes or {}).items()
+        ),
+        prescribed_target_size_evaluation_frames=tuple(
+            (str(label), tuple(str(uid) for uid in uids))
+            for label, uids in (prescribed_target_size_evaluation_frames or {}).items()
+        ),
         require_foundation_residual_e0=require_foundation_residual_e0,
         require_replay=require_replay,
     )
@@ -896,6 +995,18 @@ def _data7_recipe_digest(
         "configuration_weight_policy": plan.configuration_weight_policy.to_dict(),
         "checkpoint_metric_policy": plan.checkpoint_metric_policy.to_dict(),
         "selection_budget_policy": plan.selection_budget_policy.to_dict(),
+        "selection_authority_role": plan.selection_authority_role,
+        "target_size_study_digest": plan.target_size_study_digest,
+        "prescribed_target_size_evaluation_frames": (
+            None
+            if domain.kind is not FeatureFitDomainKind.FINAL_DEVELOPMENT
+            else list(dict(plan.prescribed_target_size_evaluation_frames).get(domain.label_domain_id, ()))
+        ),
+        "prescribed_final_development_prefix": (
+            None
+            if domain.kind is not FeatureFitDomainKind.FINAL_DEVELOPMENT
+            else list(dict(plan.prescribed_final_development_prefixes).get(domain.label_domain_id, ()))
+        ),
         "foundation_checkpoint_sha256": plan.foundation_checkpoint.sha256,
         "foundation_identity_digest": plan.foundation_checkpoint.canonical_content_digest,
         "foundation_reference_energies": {
@@ -1324,6 +1435,14 @@ def run_restartable_production_materialization(
                     frame_record_by_uid=frame_record_by_uid,
                     event_anchor_frame_uids=event_anchor_frame_uids,
                     protected_event_frame_uids=protected_event_frame_uids,
+                    prescribed_selection_frame_uids=(
+                        None
+                        if domain.kind is not FeatureFitDomainKind.FINAL_DEVELOPMENT
+                        else dict(plan.prescribed_final_development_prefixes).get(domain.label_domain_id)
+                    ),
+                    prescribed_selection_role=(
+                        None if plan.selection_authority_role == "standard" else plan.selection_authority_role
+                    ),
                     progress_callback=domain_progress,
                 )
                 resolved_bundles[domain.content_digest] = bundle
@@ -1416,6 +1535,13 @@ def run_restartable_production_materialization(
                 extxyz_policy=plan.extxyz_policy,
                 real_pt_data_ratio_threshold=plan.real_pt_data_ratio_threshold,
                 selection_size=plan.selection_size,
+                target_size_evaluation_frame_uids=(
+                    None
+                    if plan.selection_authority_role != "target_size_candidate"
+                    else dict(plan.prescribed_target_size_evaluation_frames).get(
+                        bundles[0].domain.label_domain_id
+                    )
+                ),
                 require_foundation_residual_e0=plan.require_foundation_residual_e0,
                 cross_validation_plans=(
                     None

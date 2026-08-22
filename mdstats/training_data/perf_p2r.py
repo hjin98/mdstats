@@ -17,8 +17,8 @@ from ._common import (
     validate_digest,
 )
 
-PERF_P2R_PARAMETER_GRID_SCHEMA = "mdstats.perf-p2r-parameter-grid.v1"
-PERF_P2R_STAGE_PLAN_SCHEMA = "mdstats.perf-p2r-stage-plan.v1"
+PERF_P2R_PARAMETER_GRID_SCHEMA = "mdstats.perf-p2r-parameter-grid.target-size-v5.v2"
+PERF_P2R_STAGE_PLAN_SCHEMA = "mdstats.perf-p2r-stage-plan.target-size-v5.v2"
 PERF_P2R_EXPOSURE_SCHEMA = "mdstats.perf-p2r-exposure.v1"
 
 
@@ -31,11 +31,11 @@ class PerfP2RParameterGrid:
     branching into a different implementation.
     """
 
-    coarse_epoch_candidates: tuple[int, ...] = (3, 4, 5)
+    coarse_epoch_candidates: tuple[int, ...] = (3,)
     coarse_monitor_size_candidates: tuple[int, ...] = (128, 256, 512, 1024)
-    coarse_equivalence_mev_per_a_candidates: tuple[float, ...] = (1.0, 2.0, 4.0)
+    coarse_equivalence_mev_per_a_candidates: tuple[float, ...] = (1.0,)
     minimum_coverage_qualified_sizes: int = 3
-    maximum_coverage_qualified_sizes: int = 7
+    maximum_coverage_qualified_sizes: int = 8
     coarse_survivor_limit: int = 4
     short_survivor_limit: int = 2
     short_training_epochs: int = 10
@@ -133,7 +133,7 @@ class PerfP2RParameterGrid:
 class PerfP2RStagePlan:
     """One work-authorizing stage of the successive-fidelity funnel."""
 
-    convergence_digest: str
+    target_size_study_digest: str
     stage: str
     candidate_sizes: tuple[int, ...]
     start_epoch: int
@@ -153,8 +153,8 @@ class PerfP2RStagePlan:
             raise TrainingDataInputError("Unsupported PERF-P2R stage-plan schema.")
         object.__setattr__(
             self,
-            "convergence_digest",
-            validate_digest(self.convergence_digest, name="convergence_digest"),
+            "target_size_study_digest",
+            validate_digest(self.target_size_study_digest, name="target_size_study_digest"),
         )
         stage = str(self.stage)
         if stage not in {"coarse", "short", "final", "production"}:
@@ -174,14 +174,11 @@ class PerfP2RStagePlan:
         if stage == "coarse":
             if not self.target_only_evaluation or self.replay_diagnostic_authorized or self.physical_qualification_authorized:
                 raise TrainingDataInputError("PERF-P2R coarse stage must be target-only.")
-        elif stage == "short":
-            if self.target_only_evaluation or not self.replay_diagnostic_authorized or self.physical_qualification_authorized:
+        elif stage in {"short", "final"}:
+            if not self.target_only_evaluation or self.replay_diagnostic_authorized or self.physical_qualification_authorized:
                 raise TrainingDataInputError(
-                    "PERF-P2R short stage permits replay diagnostics but not physical qualification."
+                    "PERF-P2R target-size-v5 selection stages must remain target-only."
                 )
-        elif stage == "final":
-            if self.target_only_evaluation or not self.replay_diagnostic_authorized or not self.physical_qualification_authorized:
-                raise TrainingDataInputError("PERF-P2R final stage requires full qualification evidence.")
         object.__setattr__(self, "stage", stage)
         object.__setattr__(self, "candidate_sizes", sizes)
         object.__setattr__(self, "start_epoch", start)
@@ -197,7 +194,7 @@ class PerfP2RStagePlan:
     def _payload(self) -> dict[str, Any]:
         return {
             "schema": self.serialization_schema,
-            "convergence_digest": self.convergence_digest,
+            "target_size_study_digest": self.target_size_study_digest,
             "stage": self.stage,
             "candidate_sizes": list(self.candidate_sizes),
             "start_epoch": self.start_epoch,
@@ -222,7 +219,7 @@ class PerfP2RStagePlan:
         if payload.get("schema") != PERF_P2R_STAGE_PLAN_SCHEMA:
             raise TrainingDataSerializationError("Unsupported PERF-P2R stage-plan schema.")
         result = cls(
-            convergence_digest=str(payload["convergence_digest"]),
+            target_size_study_digest=str(payload["target_size_study_digest"]),
             stage=str(payload["stage"]),
             candidate_sizes=tuple(int(v) for v in payload["candidate_sizes"]),
             start_epoch=int(payload["start_epoch"]),
@@ -243,71 +240,51 @@ class PerfP2RStagePlan:
         return result
 
 
-def build_perf_p2r_stage_plan(convergence: Any) -> PerfP2RStagePlan:
-    """Translate current TARGET-DATA2D state into one exact work boundary."""
+def build_perf_p2r_stage_plan(study: Any) -> PerfP2RStagePlan:
+    """Translate one current target-size-v5 authority into an exact work boundary."""
 
-    outcome = str(convergence.outcome)
-    policy = convergence.policy
+    outcome = str(study.outcome)
+    policy = study.policy
+    epoch3, epoch10, epoch30 = (int(v) for v in policy.fidelity_epochs)
     common = dict(
-        convergence_digest=str(convergence.content_digest),
-        planned_final_epoch=int(policy.final_training_epochs),
+        target_size_study_digest=str(study.content_digest),
+        planned_final_epoch=epoch30,
     )
-    if outcome == "awaiting_stage_b0_coarse_training":
+    if outcome == "awaiting_epoch_3":
         return PerfP2RStagePlan(
-            **common,
-            stage="coarse",
-            candidate_sizes=tuple(convergence.stage_a_survivor_sizes),
-            start_epoch=0,
-            target_epoch=int(policy.coarse_training_epochs),
+            **common, stage="coarse", candidate_sizes=tuple(study.qualified_sizes),
+            start_epoch=0, target_epoch=epoch3,
             screening_optimizer_seed=int(policy.screening_optimizer_seed),
-            continuation_required=False,
-            target_only_evaluation=True,
-            replay_diagnostic_authorized=False,
-            physical_qualification_authorized=False,
+            continuation_required=False, target_only_evaluation=True,
+            replay_diagnostic_authorized=False, physical_qualification_authorized=False,
         )
-    if outcome == "awaiting_stage_b1_short_training":
+    if outcome == "awaiting_epoch_10":
         return PerfP2RStagePlan(
-            **common,
-            stage="short",
-            candidate_sizes=tuple(convergence.stage_b_survivor_sizes),
-            start_epoch=int(policy.coarse_training_epochs),
-            target_epoch=int(policy.short_training_epochs),
+            **common, stage="short", candidate_sizes=tuple(study.epoch3_survivor_sizes),
+            start_epoch=epoch3, target_epoch=epoch10,
             screening_optimizer_seed=int(policy.screening_optimizer_seed),
-            continuation_required=True,
-            target_only_evaluation=False,
-            replay_diagnostic_authorized=True,
-            physical_qualification_authorized=False,
+            continuation_required=True, target_only_evaluation=True,
+            replay_diagnostic_authorized=False, physical_qualification_authorized=False,
         )
-    if outcome == "awaiting_stage_c_full_training":
+    if outcome == "awaiting_epoch_30":
         return PerfP2RStagePlan(
-            **common,
-            stage="final",
-            candidate_sizes=tuple(convergence.stage_b_finalist_sizes),
-            start_epoch=int(policy.short_training_epochs),
-            target_epoch=int(policy.final_training_epochs),
+            **common, stage="final", candidate_sizes=tuple(study.epoch10_finalist_sizes),
+            start_epoch=epoch10, target_epoch=epoch30,
             screening_optimizer_seed=int(policy.screening_optimizer_seed),
-            continuation_required=True,
-            target_only_evaluation=False,
-            replay_diagnostic_authorized=True,
-            physical_qualification_authorized=True,
+            continuation_required=True, target_only_evaluation=True,
+            replay_diagnostic_authorized=False, physical_qualification_authorized=False,
         )
     if outcome == "selected":
-        if convergence.selected_target_size is None:
-            raise TrainingDataInputError("Selected TARGET-DATA2D authority lacks a target size.")
+        if study.selected_target_size is None:
+            raise TrainingDataInputError("Selected target-size-v5 authority lacks a target size.")
         return PerfP2RStagePlan(
-            **common,
-            stage="production",
-            candidate_sizes=(int(convergence.selected_target_size),),
-            start_epoch=0,
-            target_epoch=int(policy.final_training_epochs),
-            screening_optimizer_seed=None,
-            continuation_required=False,
-            target_only_evaluation=False,
-            replay_diagnostic_authorized=True,
-            physical_qualification_authorized=True,
+            **common, stage="production", candidate_sizes=(int(study.selected_target_size),),
+            start_epoch=0, target_epoch=epoch30, screening_optimizer_seed=None,
+            continuation_required=False, target_only_evaluation=False,
+            replay_diagnostic_authorized=True, physical_qualification_authorized=True,
         )
     raise TrainingDataInputError(
-        f"TARGET-DATA2D outcome {outcome!r} does not authorize PERF-P2R training work."
+        f"Target-size-v5 outcome {outcome!r} does not authorize PERF-P2R training work."
     )
 
 

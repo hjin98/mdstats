@@ -9,6 +9,7 @@ import pytest
 
 import mdstats
 from mdstats.training_data.model_features import AtomicModelPrediction
+from mdstats.training_data._common import digest
 
 D1 = "1" * 64
 D2 = "2" * 64
@@ -263,57 +264,83 @@ def test_read_train2_history_authenticates_checkpoint_bytes(tmp_path: Path):
         mdstats.read_train2_trajectory_points(root, checkpoint_catalog=catalog, target_head_name="target")
 
 class _FakeRoleDomain:
-    def __init__(self):
-        self.size_development_frame_uids = tuple(f"{i:064x}" for i in range(1, 9))
+    def __init__(self, count: int = 300):
+        self.size_development_frame_uids = tuple(f"{i:064x}" for i in range(1, count + 1))
+        midpoint = count // 2
         self.development_intervals = (
-            SimpleNamespace(unit_id="a" * 64, frame_uids=self.size_development_frame_uids[:4]),
-            SimpleNamespace(unit_id="b" * 64, frame_uids=self.size_development_frame_uids[4:]),
+            SimpleNamespace(unit_id="a" * 64, frame_uids=self.size_development_frame_uids[:midpoint]),
+            SimpleNamespace(unit_id="b" * 64, frame_uids=self.size_development_frame_uids[midpoint:]),
         )
         self.cv_checkpoint_monitor_unit_ids_by_fold = ((0, ("a" * 64,)), (1, ("b" * 64,)))
 
 
 class _FakeRoleFreeze:
     content_digest = "c" * 64
-    def __init__(self): self._domain = _FakeRoleDomain()
+    def __init__(self, count: int = 300): self._domain = _FakeRoleDomain(count)
     def domain(self, label_domain_id): return self._domain
     def require_size_selection_frames(self, frames, **kwargs): return tuple(frames)
 
 
-class _FakeLadder:
-    content_digest = "d" * 64
-    def __init__(self, excluded): self.excluded = excluded
+class _FakeRepair:
+    dataset_id = "dataset"
+    def __init__(self, frames):
+        self._domain = SimpleNamespace(
+            label_domain_id="target", repaired_master_order=tuple(frames)
+        )
+        self.domains = (self._domain,)
+        self.content_digest = digest({"repair": list(frames)})
     def domain(self, label_domain_id):
-        return SimpleNamespace(rungs=(SimpleNamespace(materializable=True, target_size=len(self.excluded), frame_uids=self.excluded),))
+        if label_domain_id != "target":
+            raise KeyError(label_domain_id)
+        return self._domain
+
+
+class _FakeQual:
+    dataset_id = "dataset"
+    def __init__(self, repair, qualified):
+        self.target_multi_view_repair_digest = repair.content_digest
+        self.mv_qualified_sizes = tuple(qualified)
+        self.content_digest = digest({"qualified": list(qualified)})
+
+
+def _fake_v5_size_inputs(*, count: int = 300, qualified=(128, 256)):
+    freeze = _FakeRoleFreeze(count)
+    repair = _FakeRepair(freeze._domain.size_development_frame_uids)
+    qual = _FakeQual(repair, qualified)
+    study = mdstats.build_target_size_study(repair, qual)
+    return freeze, repair, study
 
 
 def test_eval2_size_role_is_common_development_complement_and_cv_role_is_authorized():
-    freeze = _FakeRoleFreeze()
-    excluded = freeze._domain.size_development_frame_uids[:4]
-    role = mdstats.build_eval2_size_study_target_role(freeze, _FakeLadder(excluded), label_domain_id="target", maximum_training_size=4)
+    freeze, repair, study = _fake_v5_size_inputs()
+    excluded = freeze._domain.size_development_frame_uids[:256]
+    role = mdstats.build_eval2_size_study_target_role(
+        freeze, repair, study, label_domain_id="target", maximum_training_size=256
+    )
     assert role.role_kind == "size_development_complement"
+    assert role.target_size_study_digest == study.candidate_authority_digest
     assert set(role.evaluation_frame_uids).isdisjoint(excluded)
-    assert role.evaluation_frame_uids == freeze._domain.size_development_frame_uids[4:]
+    assert role.evaluation_frame_uids == freeze._domain.size_development_frame_uids[256:]
     assert set(role.correlation_block_ids) == {"b" * 64}
     assert mdstats.Eval2TargetRole.from_dict(role.to_dict()) == role
 
     cv = mdstats.build_eval2_cv_target_role(freeze, label_domain_id="target", fold_index=0)
     assert cv.role_kind == "cv_checkpoint_monitor"
-    assert cv.evaluation_frame_uids == freeze._domain.size_development_frame_uids[:4]
+    assert cv.target_size_study_digest is None
+    assert cv.evaluation_frame_uids == freeze._domain.size_development_frame_uids[:150]
     assert set(cv.correlation_block_ids) == {"a" * 64}
 
 
 def test_eval2_coarse_size_role_is_fixed_deterministic_balanced_subset():
-    freeze = _FakeRoleFreeze()
-    excluded = freeze._domain.size_development_frame_uids[:2]
-    ladder = _FakeLadder(excluded)
+    freeze, repair, study = _fake_v5_size_inputs()
     full = mdstats.build_eval2_size_study_target_role(
-        freeze, ladder, label_domain_id="target", maximum_training_size=2
+        freeze, repair, study, label_domain_id="target", maximum_training_size=128
     )
     first = mdstats.build_eval2_coarse_size_study_target_role(
-        freeze, ladder, label_domain_id="target", maximum_training_size=2, maximum_configurations=4
+        freeze, repair, study, label_domain_id="target", maximum_training_size=128, maximum_configurations=4
     )
     second = mdstats.build_eval2_coarse_size_study_target_role(
-        freeze, ladder, label_domain_id="target", maximum_training_size=2, maximum_configurations=4
+        freeze, repair, study, label_domain_id="target", maximum_training_size=128, maximum_configurations=4
     )
     assert first == second
     assert first.role_kind == "size_development_coarse"
@@ -325,11 +352,12 @@ def test_eval2_coarse_size_role_is_fixed_deterministic_balanced_subset():
     assert mdstats.Eval2TargetRole.from_dict(first.to_dict()) == first
 
 
-def test_eval2_size_role_fails_if_largest_rung_consumes_all_development():
-    freeze = _FakeRoleFreeze()
-    all_frames = freeze._domain.size_development_frame_uids
+def test_eval2_size_role_fails_if_largest_prefix_consumes_all_development():
+    freeze, repair, study = _fake_v5_size_inputs(count=128, qualified=(128,))
     with pytest.raises(mdstats.TrainingDataInputError, match="role is empty"):
-        mdstats.build_eval2_size_study_target_role(freeze, _FakeLadder(all_frames), label_domain_id="target", maximum_training_size=8)
+        mdstats.build_eval2_size_study_target_role(
+            freeze, repair, study, label_domain_id="target", maximum_training_size=128
+        )
 
 
 def test_eval2_development_role_materialization_reconstructs_exact_order_from_cv_artifacts(tmp_path: Path):
@@ -377,7 +405,7 @@ def test_eval2_development_role_materialization_reconstructs_exact_order_from_cv
         label_domain_id="domain",
         role_kind="size_development_complement",
         target_data_role_freeze_digest=D3,
-        target_data_ladder_digest=D4,
+        target_size_study_digest=D4,
         evaluation_frame_uids=(uids[2], uids[0]),
         correlation_block_ids=(D5, D6),
         excluded_training_frame_uids=(uids[1],),

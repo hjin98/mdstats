@@ -15,7 +15,7 @@ from mdstats.training_data.target_multi_view_selector_v2 import (
     TargetMultiViewSelectionPlanV2,
     TargetMultiViewSelectorPolicyV2,
 )
-from tests.test_mlff_target_data2c_repair1 import _redundant_selection
+from tests._mlff_multiview_legacy_fixtures import _redundant_selection
 
 
 def _inputs():

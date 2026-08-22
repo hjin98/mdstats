@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""M5 product meter for bounded exact TARGET-DATA2C-MVQUAL1.
+"""M5 product meter for bounded exact TARGET-DATA2C-MVQUAL2.
 
-This benchmark reopens the already-persisted campaign authorities and invokes
-``build_target_multi_view_qualification_plan`` directly.  It deliberately does
-not run ``prepare``, persist a rebuilt MVQUAL authority, or create product-scale
-scratch.  The parent process runs each repetition in a bounded child process so
-a pathological product run can be terminated without leaving Python worker
-threads alive.
+This benchmark reopens the persisted v5 campaign authorities and invokes the
+direct fixed-eight ``build_target_multi_view_qualification_plan_v2`` owner. It
+deliberately does not run ``prepare`` or persist a rebuilt MVQUAL2 authority.
+Each repetition executes in a bounded child process so a pathological product
+run can be terminated without leaving Python worker threads alive.
 """
 
 from __future__ import annotations
@@ -324,6 +323,10 @@ def _completed_sizes(job_telemetry: list[dict[str, Any]]) -> dict[str, list[int]
 
 
 def _single_run(args: argparse.Namespace) -> int:
+    """Measure one exact MVQUAL2 rebuild from persisted v5 authorities."""
+
+    from mdstats.training_data import target_multi_view_qualification_v2 as mvqual_v2
+
     total_usage_before = _usage()
     total_io_before = _proc_io()
     total_started = time.perf_counter()
@@ -339,7 +342,7 @@ def _single_run(args: argparse.Namespace) -> int:
     effective_workers, detected_resources = campaign._target_multi_view_qualification_parallelism(cfg)
     scope = build_stage_resource_scope(
         detected_resources,
-        stage_name="TARGET-DATA2C-MVQUAL1",
+        stage_name="TARGET-DATA2C-MVQUAL2",
         python_workers=effective_workers,
         structural_workers=1,
         tree_workers=1,
@@ -359,17 +362,12 @@ def _single_run(args: argparse.Namespace) -> int:
             "target_coverage_feasibility", mdstats.TargetCoverageFeasibilityReport
         )
         role_freeze = store.get_record("target_data_role_freeze", mdstats.TargetDataRoleFreeze)
-        activated = store.has_record("target_multi_view_migration_activation")
-        legacy_key = "target_data_ladder_legacy_v4" if activated else "target_data_ladder"
-        legacy_ladder = store.get_record(legacy_key, mdstats.TargetDataLadderPlan)
-        if legacy_ladder.authority_version != mdstats.TARGET_DATA_LADDER_VERSION:
-            raise RuntimeError(
-                f"M5 requires the historical v4 comparison ladder; {legacy_key!r} is not v4"
-            )
-        repair_plan = campaign._load_target_multi_view_repair_authority(store)
+        repair_plan = store.get_record(
+            "target_multi_view_repair_v2", mdstats.TargetMultiViewRepairPlanV2
+        )
         try:
             persisted_qualification = store.get_record_optional(
-                "target_multi_view_qualification", mdstats.TargetMultiViewQualificationPlan
+                "target_multi_view_qualification_v2", mdstats.TargetMultiViewQualificationPlanV2
             )
         except Exception:
             persisted_qualification = None
@@ -383,23 +381,37 @@ def _single_run(args: argparse.Namespace) -> int:
             "target_coverage_sparse_index": sparse_index.content_digest,
             "target_coverage_feasibility": feasibility.content_digest,
             "target_data_role_freeze": role_freeze.content_digest,
-            "legacy_target_data_ladder": legacy_ladder.content_digest,
-            "target_multi_view_repair": repair_plan.content_digest,
-            "persisted_target_multi_view_qualification": (
+            "target_multi_view_repair_v2": repair_plan.content_digest,
+            "persisted_target_multi_view_qualification_v2": (
                 None if persisted_qualification is None else persisted_qualification.content_digest
             ),
         }
         sparse_counts = _sparse_counts(sparse_index)
-        policy = mdstats.TargetMultiViewQualificationPolicy(
+        policy = mdstats.TargetMultiViewQualificationPolicyV2(
             coverage_threshold=float(reference.policy.coverage_threshold)
         )
 
-        queue_summary = _QueueSummary()
         job_telemetry: list[dict[str, Any]] = []
+        original_score_job = mvqual_v2._mvqual_score_job
 
-        def capture_job(item: Any) -> None:
-            payload = item.to_dict() if hasattr(item, "to_dict") else dict(item)
-            job_telemetry.append(dict(payload))
+        def capture_score_job(*score_args: Any, **score_kwargs: Any) -> Any:
+            result = original_score_job(*score_args, **score_kwargs)
+            job_telemetry.append(
+                {
+                    "selector": str(result.selector),
+                    "label_domain_id": str(result.label_domain_id),
+                    "target_size": int(result.target_size),
+                    "streamed_edge_count": int(result.streamed_edge_count),
+                    "maximum_chunk_edges": int(result.maximum_chunk_edges),
+                    "maximum_selected_row_edges": int(result.maximum_selected_row_edges),
+                    "estimated_peak_bytes": 0,
+                    "direct_seconds": float(result.direct_seconds),
+                    "sparse_seconds": float(result.sparse_seconds),
+                    "crosscheck_seconds": float(result.crosscheck_seconds),
+                    "hard_seconds": float(result.hard_seconds),
+                }
+            )
+            return result
 
         sampler = _MemorySampler()
         sampler.start()
@@ -407,35 +419,32 @@ def _single_run(args: argparse.Namespace) -> int:
         builder_io_before = _proc_io()
         swap_before = _vmstat_swap()
         builder_started = time.perf_counter()
-        plan = mdstats.build_target_multi_view_qualification_plan(
-            reference,
-            sparse_index,
-            feasibility,
-            role_freeze,
-            legacy_ladder,
-            repair_plan,
-            policy=policy,
-            coverage_query_workers=1,
-            scoring_workers=effective_workers,
-            sparse_max_edges=int(args.sparse_max_edges),
-            resource_scope=scope,
-            execution_telemetry_callback=queue_summary,
-            job_telemetry_callback=capture_job,
-            progress_callback=lambda message: print(
-                f"[MVQUAL-MEM1-M5] {message}", flush=True
-            ),
-        )
-        mdstats.validate_target_multi_view_qualification_authority(
+        mvqual_v2._mvqual_score_job = capture_score_job
+        try:
+            plan = mdstats.build_target_multi_view_qualification_plan_v2(
+                reference,
+                sparse_index,
+                feasibility,
+                role_freeze,
+                repair_plan,
+                policy=policy,
+                coverage_query_workers=1,
+                scoring_workers=effective_workers,
+                sparse_max_edges=int(args.sparse_max_edges),
+                progress_callback=lambda message: print(
+                    f"[MVQUAL-MEM1-M5] {message}", flush=True
+                ),
+            )
+        finally:
+            mvqual_v2._mvqual_score_job = original_score_job
+        mdstats.validate_target_multi_view_qualification_authority_v2(
             plan,
             target_coverage_reference=reference,
             target_coverage_sparse_index=sparse_index,
             target_coverage_feasibility=feasibility,
             target_data_role_freeze=role_freeze,
-            legacy_target_data_ladder=legacy_ladder,
             target_multi_view_repair=repair_plan,
             policy=policy,
-            coverage_query_workers=1,
-            verify_replay=False,
         )
         builder_wall = time.perf_counter() - builder_started
         swap_after = _vmstat_swap()
@@ -450,17 +459,9 @@ def _single_run(args: argparse.Namespace) -> int:
         max_row = max(
             (int(item["maximum_selected_row_edges"]) for item in job_telemetry), default=0
         )
-        max_estimated_peak = max(
-            (int(item["estimated_peak_bytes"]) for item in job_telemetry), default=0
-        )
         phase_seconds = {
             name: sum(float(item[name]) for item in job_telemetry)
-            for name in (
-                "direct_seconds",
-                "sparse_seconds",
-                "crosscheck_seconds",
-                "hard_seconds",
-            )
+            for name in ("direct_seconds", "sparse_seconds", "crosscheck_seconds", "hard_seconds")
         }
         ram_budget = scope.ram_budget_bytes
         peak_rss = memory.get("rss_kib_peak")
@@ -508,11 +509,10 @@ def _single_run(args: argparse.Namespace) -> int:
                 "proc_io_delta": _dict_delta(builder_io_before, builder_io_after),
                 "system_swap_delta": _dict_delta(swap_before, swap_after),
                 "memory": memory,
-                "parcore1": queue_summary.to_dict(),
                 "job_count": len(job_telemetry),
                 "job_telemetry": job_telemetry,
                 "phase_cpu_lane_wall_seconds": phase_seconds,
-                "maximum_estimated_job_peak_bytes": max_estimated_peak,
+                "maximum_estimated_job_peak_bytes": 0,
                 "maximum_observed_chunk_edges": max_chunk,
                 "maximum_selected_row_edges": max_row,
                 "completed_rung_sizes": completed_sizes,
@@ -520,7 +520,6 @@ def _single_run(args: argparse.Namespace) -> int:
             "scientific": {
                 "plan_digest": plan.content_digest,
                 "outcome": plan.outcome,
-                "global_common_target_sizes": list(plan.global_common_target_sizes),
                 "mv_qualified_sizes": list(plan.mv_qualified_sizes),
                 "scientific_validation_passed": True,
                 "persisted_qualification_digest_match": persisted_digest_match,
@@ -550,7 +549,6 @@ def _single_run(args: argparse.Namespace) -> int:
         return 0
     finally:
         store.close()
-
 
 def _product_identity_matches(run: Mapping[str, Any], args: argparse.Namespace) -> bool:
     sparse = run["input"]["sparse_index"]

@@ -26,6 +26,7 @@ TARGET_SIZE_TRAINING_EVIDENCE_SCHEMA = "mdstats.target-size-training-evidence.v5
 TARGET_SIZE_STUDY_PLAN_SCHEMA = "mdstats.target-size-study-plan.v5"
 TARGET_SIZE_PREFIX_SCHEMA = "mdstats.target-size-study-repair2-prefix.v1"
 TARGET_SIZE_CANDIDATE_DATA_SCHEMA = "mdstats.target-size-study-candidate-data.v1"
+TARGET_SIZE_CANDIDATE_AUTHORITY_SCHEMA = "mdstats.target-size-study-candidate-authority.v1"
 
 FIXED_TARGET_SIZES = (128, 256, 512, 1024, 2048, 4096, 8192, 16384)
 FIXED_TARGET_SIZE_CEILING = FIXED_TARGET_SIZES[-1]
@@ -246,7 +247,6 @@ class TargetSizeTrainingEvidence:
     wall_time_seconds: float
     target_force_score_mev_per_a: float
     numerical_valid: bool
-    target_hard_gates_passed: bool
     foundation_identity_digest: str
     evaluation_role_digest: str
     training_policy_digest: str
@@ -398,14 +398,16 @@ class TargetSizeTrainingEvidence:
                 raise TrainingDataInputError(
                     "Epoch-30 schedule progress must be exactly complete."
                 )
-            if (
-                self.replay_admissible is None
-                or self.replay_evaluation_digest is None
-                or self.physical_qualification_passed is None
-                or self.physical_qualification_digest is None
+            if (self.replay_diagnostic_force_rmse_mev_per_a is None) != (
+                self.replay_evaluation_digest is None
             ):
                 raise TrainingDataInputError(
-                    "Epoch-30 evidence requires replay and physical qualification authority."
+                    "Epoch-30 replay diagnostics require both value and digest when present."
+                )
+            if self.replay_admissible is not None or self.physical_qualification_passed is not None or self.physical_qualification_digest is not None:
+                raise TrainingDataInputError(
+                    "Target-size v5 forbids replay/physical hard-pass authority in epoch-30 size evidence; "
+                    "those model/protocol gates run only after selected_target_size is frozen."
                 )
         object.__setattr__(self, "stage", stage)
         object.__setattr__(self, "target_size", size)
@@ -430,12 +432,11 @@ class TargetSizeTrainingEvidence:
 
     @property
     def admissible_for_final_selection(self) -> bool:
-        return bool(
-            self.numerical_valid
-            and self.target_hard_gates_passed
-            and self.replay_admissible
-            and self.physical_qualification_passed
-        )
+        # MVQUAL is the sole hard target-size eligibility gate.  Epoch-30 model
+        # acceptance (target thresholds, replay degradation, PES/relax/dynamics)
+        # is deliberately downstream of the immutable size choice.  Only a
+        # numerically invalid trajectory can be excluded from the ranking here.
+        return bool(self.numerical_valid)
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -452,7 +453,6 @@ class TargetSizeTrainingEvidence:
             "wall_time_seconds": self.wall_time_seconds,
             "target_force_score_mev_per_a": self.target_force_score_mev_per_a,
             "numerical_valid": self.numerical_valid,
-            "target_hard_gates_passed": self.target_hard_gates_passed,
             "foundation_identity_digest": self.foundation_identity_digest,
             "evaluation_role_digest": self.evaluation_role_digest,
             "training_policy_digest": self.training_policy_digest,
@@ -659,6 +659,25 @@ class TargetSizeStudyPlan:
         object.__setattr__(self, "epoch10_finalist_sizes", s10)
         object.__setattr__(self, "epoch30_evidence", e30)
         object.__setattr__(self, "selected_target_size", selected)
+
+    @property
+    def candidate_authority_digest(self) -> str:
+        """Stable identity of Q and its exact REPAIR2 prefix population.
+
+        Unlike ``content_digest`` this intentionally excludes accumulated
+        3/10/30 evidence, so candidate DATA7/DATA8 materializations remain
+        restart-reusable while the same training trajectories advance.
+        """
+
+        return digest({
+            "schema": TARGET_SIZE_CANDIDATE_AUTHORITY_SCHEMA,
+            "dataset_id": self.dataset_id,
+            "repair2_authority_digest": self.repair2_authority_digest,
+            "mvqual_authority_digest": self.mvqual_authority_digest,
+            "policy_digest": self.policy.policy_digest,
+            "candidate_digests": [item.content_digest for item in self.candidates],
+            "qualified_sizes": list(self.qualified_sizes),
+        })
 
     @property
     def complete(self) -> bool:
@@ -1204,14 +1223,14 @@ def attach_epoch_30_evidence(
     if not admissible:
         if FIXED_TARGET_SIZE_CEILING not in plan.epoch10_finalist_sizes:
             raise TrainingDataInputError(
-                "Both final candidates failed hard admissibility before the fixed ceiling could establish convergence."
+                "Both final candidates are numerically invalid before the fixed ceiling can establish convergence."
             )
         return replace(
             plan,
             **common,
             outcome=OUTCOME_NONCONVERGED_AT_FIXED_CEILING,
             decision_reason=(
-                "no epoch-30 finalist is admissible within the fixed universe"
+                "no epoch-30 finalist is numerically valid within the fixed universe"
             ),
         )
     ranking = _equivalence_aware_target_order(
@@ -1227,7 +1246,7 @@ def attach_epoch_30_evidence(
                 **common,
                 outcome=OUTCOME_NONCONVERGED_AT_FIXED_CEILING,
                 decision_reason=(
-                    "n16384 is the only admissible epoch-30 finalist"
+                    "n16384 is the only numerically valid epoch-30 finalist"
                 ),
             )
         best_smaller = min(

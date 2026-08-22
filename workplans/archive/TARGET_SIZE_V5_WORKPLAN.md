@@ -1,6 +1,6 @@
 # Active Workplan — Clean Fixed-Ladder Target-Size Selection
 
-**Status:** Active / implementation-ready  
+**Status:** Completed / archived after gated implementation on 2026-08-22
 **Design state:** Frozen after final software-design review  
 **Scope:** MLFF target-size selection path in `mdstats`  
 **Priority:** Architecture and ownership correctness first; qualification adapts afterward and must not block this redesign.

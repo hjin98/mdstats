@@ -542,23 +542,6 @@ from .target_multi_view_selection_state_store import (
     read_target_multi_view_selection_state_native_record,
 )
 
-from .target_multi_view_selector import (
-    TARGET_MULTI_VIEW_SELECTOR_POLICY_SCHEMA,
-    TARGET_MULTI_VIEW_SELECTION_ENTRY_SCHEMA,
-    TARGET_MULTI_VIEW_SELECTION_RUNG_SCHEMA,
-    TARGET_MULTI_VIEW_SELECTION_DOMAIN_SCHEMA,
-    TARGET_MULTI_VIEW_SELECTION_PLAN_SCHEMA,
-    TARGET_MULTI_VIEW_SELECTOR_VERSION,
-    TargetMultiViewSelectorPolicy,
-    TargetMultiViewSelectionEntry,
-    TargetMultiViewSelectionRung,
-    TargetMultiViewSelectionDomainPlan,
-    TargetMultiViewSelectionPlan,
-    build_target_multi_view_selection_plan,
-    build_target_multi_view_selection_artifacts,
-    validate_target_multi_view_selection_authority,
-)
-
 from .target_multi_view_selector_v2 import (
     TARGET_MULTI_VIEW_SELECTOR_V2_VERSION,
     TARGET_MULTI_VIEW_SELECTION_PLAN_V2_SCHEMA,
@@ -620,60 +603,9 @@ from .target_coverage_sparse_index_store import (
     read_target_coverage_sparse_index_forward_view_native_record,
 )
 
-from .target_ladder import (
-    TARGET_DATA_LADDER_POLICY_SCHEMA,
-    TARGET_DATA_LADDER_ENTRY_SCHEMA,
-    TARGET_DATA_LADDER_RUNG_SCHEMA,
-    TARGET_DATA_LADDER_DOMAIN_SCHEMA,
-    TARGET_DATA_LADDER_LEGACY_PLAN_SCHEMA,
-    TARGET_DATA_LADDER_V2_PLAN_SCHEMA,
-    TARGET_DATA_LADDER_V3_PLAN_SCHEMA,
-    TARGET_DATA_LADDER_PLAN_SCHEMA,
-    TARGET_DATA_LADDER_MV_POLICY_SCHEMA,
-    TARGET_DATA_LADDER_MV_PLAN_SCHEMA,
-    TARGET_DATA_LADDER_QUALIFICATION_SCHEMA,
-    TARGET_DATA_LADDER_LEGACY_VERSION,
-    TARGET_DATA_LADDER_V2_VERSION,
-    TARGET_DATA_LADDER_V3_VERSION,
-    TARGET_DATA_LADDER_VERSION,
-    TARGET_DATA_LADDER_MV_VERSION,
-    TARGET_DATA_LADDER_POLICY_VERSION,
-    TARGET_DATA_LADDER_MV_POLICY_VERSION,
-    TARGET_DATA_LADDER_MONOTONICITY_CONTRACT_VERSION,
-    TargetDataLadderPolicy,
-    TargetDataLadderEntry,
-    TargetDataLadderRung,
-    TargetDataLadderDomainPlan,
-    TargetDataLadderRungQualification,
-    TargetDataLadderPlan,
-    build_target_data_ladder,
-    build_migrated_target_data_ladder,
-    validate_target_data_ladder_authority,
-    validate_migrated_target_data_ladder_authority,
-)
 
 __all__ = [name for name in globals() if not name.startswith("_")]
 
-from .target_size_convergence import (
-    TARGET_SIZE_CONVERGENCE_POLICY_SCHEMA,
-    TARGET_SIZE_STAGE_A_RUNG_SCHEMA,
-    TARGET_SIZE_TRAINING_EVIDENCE_SCHEMA,
-    TARGET_SIZE_CONVERGENCE_PLAN_SCHEMA,
-    TARGET_SIZE_CONVERGENCE_MV_POLICY_SCHEMA,
-    TARGET_SIZE_CONVERGENCE_MV_PLAN_SCHEMA,
-    TARGET_SIZE_CONVERGENCE_VERSION,
-    TARGET_SIZE_CONVERGENCE_MV_VERSION,
-    TargetDataCoverageError,
-    TargetSizeConvergencePolicy,
-    TargetSizeStageARung,
-    TargetSizeTrainingEvidence,
-    TargetSizeConvergencePlan,
-    build_target_size_convergence_plan,
-    with_stage_b0_evidence,
-    with_stage_b_evidence,
-    with_stage_c_evidence,
-    validate_target_size_convergence_authority,
-)
 
 from .size_fidelity import (
     SIZE_FIDELITY_POLICY_SCHEMA,
@@ -1832,22 +1764,6 @@ from .mlcv_migration import (
 
 __all__ = [name for name in globals() if not name.startswith("_")]
 
-from .target_production_corpus import (
-    TARGET_PRODUCTION_RUNG_PROVENANCE_SCHEMA,
-    TARGET_PRODUCTION_EQUIVALENCE_COMPARISON_SCHEMA,
-    TARGET_PRODUCTION_DOMAIN_DECISION_SCHEMA,
-    TARGET_PRODUCTION_CORPUS_DECISION_SCHEMA,
-    TARGET_PRODUCTION_CORPUS_MV_DECISION_SCHEMA,
-    TARGET_PRODUCTION_CORPUS_VERSION,
-    TARGET_PRODUCTION_CORPUS_MV_VERSION,
-    TargetProductionCorpusDecisionError,
-    TargetProductionRungProvenance,
-    TargetProductionEquivalenceComparison,
-    TargetProductionDomainDecision,
-    TargetProductionCorpusDecision,
-    build_target_production_corpus_decision,
-    validate_target_production_corpus_decision,
-)
 
 __all__ = [name for name in globals() if not name.startswith("_")]
 
@@ -2098,88 +2014,16 @@ from .final_gpu1 import (
 
 __all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
 
-from .target_multi_view_qualification import (
-    TARGET_MULTI_VIEW_QUALIFICATION_POLICY_SCHEMA,
-    TARGET_MULTI_VIEW_QUALIFICATION_FAMILY_SCHEMA,
-    TARGET_MULTI_VIEW_QUALIFICATION_STRATUM_SCHEMA,
-    TARGET_MULTI_VIEW_QUALIFICATION_TELEMETRY_SCHEMA,
-    TARGET_MULTI_VIEW_QUALIFICATION_RUNG_SCHEMA,
-    TARGET_MULTI_VIEW_QUALIFICATION_DOMAIN_SCHEMA,
-    TARGET_MULTI_VIEW_QUALIFICATION_PLAN_SCHEMA,
-    TARGET_MULTI_VIEW_QUALIFICATION_VERSION,
-    TargetMultiViewQualificationPolicy,
-    TargetMultiViewQualificationFamilyComparison,
-    TargetMultiViewQualificationStratumComparison,
-    TargetMultiViewSelectorTelemetry,
-    TargetMultiViewQualificationRung,
-    TargetMultiViewQualificationDomainPlan,
-    TargetMultiViewQualificationPlan,
-    build_target_multi_view_qualification_plan,
-    validate_target_multi_view_qualification_authority,
-)
-
-__all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
-
-from .size_halve2 import (
-    SIZE_HALVE2_FIXED_TARGET_SIZES,
-    SIZE_HALVE2_POLICY_SCHEMA,
-    SIZE_HALVE2_CANDIDATE_SCHEMA,
-    SIZE_HALVE2_PLAN_SCHEMA,
-    SIZE_HALVE2_VERSION,
-    SizeHalve2Policy,
-    SizeHalve2Candidate,
-    SizeHalve2Plan,
-    build_size_halve2_plan,
-    with_size_halve2_epoch3_evidence,
-    with_size_halve2_epoch10_evidence,
-    with_size_halve2_epoch30_evidence,
-    build_size_halve2_execution_stage_plan,
-    validate_size_halve2_authority,
-)
-
-__all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
-
-from .size_fidelity2 import (
-    SIZE_FIDELITY2_POLICY_SCHEMA,
-    SIZE_FIDELITY2_MONITOR_SCHEMA,
-    SIZE_FIDELITY2_CHECKPOINT_SCHEMA,
-    SIZE_FIDELITY2_EXECUTION_PLAN_SCHEMA,
-    SIZE_FIDELITY2_WIDTH_SCHEMA,
-    SIZE_FIDELITY2_REPORT_SCHEMA,
-    SIZE_FIDELITY2_VERSION,
-    SizeFidelity2Policy,
-    SizeFidelity2MonitorView,
-    SizeFidelity2Checkpoint,
-    SizeFidelity2ExecutionPlan,
-    SizeFidelity2WidthAssessment,
-    SizeFidelity2QualificationReport,
-    build_size_fidelity2_execution_plan,
-    build_size_fidelity2_qualification,
-    validate_size_fidelity2_execution_plan,
-    validate_size_fidelity2_qualification,
-)
 
 __all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
 
 
-from .target_multi_view_migration import (
-    TARGET_MV_MIGRATION_POLICY_SCHEMA,
-    TARGET_MV_LEARNING_CONTROL_ROW_SCHEMA,
-    TARGET_MV_LEARNING_CONTROL_REPORT_SCHEMA,
-    TARGET_MV_MIGRATION_PLAN_SCHEMA,
-    TARGET_MV_MIGRATION_ACTIVATION_SCHEMA,
-    TARGET_MV_MIGRATION_VERSION,
-    MIGRATED_TARGET_DATA2C_VERSION,
-    MIGRATED_TARGET_DATA2D_VERSION,
-    MIGRATED_TARGET_DATA2E_VERSION,
-    TargetMultiViewMigrationPolicy,
-    TargetMultiViewLearningControlRow,
-    TargetMultiViewLearningControlReport,
-    TargetMultiViewMigrationPlan,
-    TargetMultiViewMigrationActivation,
-    build_target_multi_view_migration_plan,
-    validate_target_multi_view_migration_plan,
-)
+__all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
+
+
+__all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
+
+
 
 __all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
 
@@ -2201,6 +2045,49 @@ from .replay_invalidation import (
     REPLAY_INVALIDATION_VERSION,
     ReplayInvalidationPlan,
     build_replay_invalidation_plan,
+)
+
+__all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))
+
+# TARGET-DATA2C-MVQUAL2 direct fixed-universe authority for target-size v5.
+from .target_multi_view_qualification_v2 import (
+    TARGET_MULTI_VIEW_QUALIFICATION_V2_VERSION,
+    TARGET_MULTI_VIEW_QUALIFICATION_V2_POLICY_SCHEMA,
+    TARGET_MULTI_VIEW_QUALIFICATION_V2_RUNG_SCHEMA,
+    TARGET_MULTI_VIEW_QUALIFICATION_V2_DOMAIN_SCHEMA,
+    TARGET_MULTI_VIEW_QUALIFICATION_V2_PLAN_SCHEMA,
+    TargetMultiViewQualificationPolicyV2,
+    TargetMultiViewQualificationRungV2,
+    TargetMultiViewQualificationDomainPlanV2,
+    TargetMultiViewQualificationPlanV2,
+    build_target_multi_view_qualification_plan_v2,
+    validate_target_multi_view_qualification_authority_v2,
+)
+from .target_size_study import (
+    TARGET_SIZE_STUDY_VERSION,
+    TARGET_SIZE_STUDY_POLICY_SCHEMA,
+    TARGET_SIZE_STUDY_CANDIDATE_SCHEMA,
+    TARGET_SIZE_TRAINING_EVIDENCE_SCHEMA,
+    TARGET_SIZE_STUDY_PLAN_SCHEMA,
+    FIXED_TARGET_SIZES,
+    FIXED_TARGET_SIZE_CEILING,
+    OUTCOME_INSUFFICIENT_QUALIFIED_SIZES,
+    OUTCOME_AWAITING_EPOCH_3,
+    OUTCOME_AWAITING_EPOCH_10,
+    OUTCOME_AWAITING_EPOCH_30,
+    OUTCOME_SELECTED,
+    OUTCOME_NONCONVERGED_AT_FIXED_CEILING,
+    TargetSizeStudyPolicy,
+    TargetSizeStudyCandidate,
+    TargetSizeTrainingEvidence as TargetSizeStudyTrainingEvidence,
+    TargetSizeStudyPlan,
+    build_target_size_study,
+    validate_target_size_study_authority,
+    materialize_candidate_prefix,
+    materialize_selected_prefix,
+    attach_epoch_3_evidence,
+    attach_epoch_10_evidence,
+    attach_epoch_30_evidence,
 )
 
 __all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))

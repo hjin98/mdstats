@@ -21,19 +21,11 @@ from ._common import (
 )
 from .accelerator_runtime_freeze import CueqDep1RuntimeRecord
 from .perf_cert1 import PerfCert1QualificationRecord
-from .size_fidelity2 import SizeFidelity2QualificationReport
-from .target_multi_view_migration import TargetMultiViewLearningControlReport
 
-FINAL_GPU1_POLICY_V1_SCHEMA = "mdstats.final-gpu1-policy.v1"
-FINAL_GPU1_POLICY_V2_SCHEMA = "mdstats.final-gpu1-policy.v2"
-FINAL_GPU1_POLICY_SCHEMA = "mdstats.final-gpu1-policy.v3"
+FINAL_GPU1_POLICY_SCHEMA = "mdstats.final-gpu1-policy.target-size-v5.v4"
 FINAL_GPU1_EVIDENCE_SCHEMA = "mdstats.final-gpu1-evidence.v1"
-FINAL_GPU1_QUALIFICATION_V1_SCHEMA = "mdstats.final-gpu1-qualification.v1"
-FINAL_GPU1_QUALIFICATION_V2_SCHEMA = "mdstats.final-gpu1-qualification.v2"
-FINAL_GPU1_QUALIFICATION_SCHEMA = "mdstats.final-gpu1-qualification.v3"
-FINAL_GPU1_V1_VERSION = "mdstats.final-gpu1.release-handoff.2026-08.v1"
-FINAL_GPU1_V2_VERSION = "mdstats.final-gpu1.release-handoff.2026-08.v2"
-FINAL_GPU1_VERSION = "mdstats.final-gpu1.release-handoff.2026-08.v3"
+FINAL_GPU1_QUALIFICATION_SCHEMA = "mdstats.final-gpu1-qualification.target-size-v5.v4"
+FINAL_GPU1_VERSION = "mdstats.final-gpu1.release-handoff.target-size-v5.2026-08.v4"
 
 ACCEPT_MUST_PASS = "must_pass"
 ACCEPT_MEASURE_ONLY = "measure_only"
@@ -41,27 +33,15 @@ ACCEPT_OPTIONAL = "optional"
 _ALLOWED_ACCEPTANCE = {ACCEPT_MUST_PASS, ACCEPT_MEASURE_ONLY, ACCEPT_OPTIONAL}
 _ALLOWED_DISPOSITIONS = {"pass", "fail", "pending", "superseded", "not_applicable"}
 
-FINAL_GPU1_V1_REQUIRED_PASS_GATES = (
+FINAL_GPU1_REQUIRED_PASS_GATES = (
     "CUEQ_DEP1_RUNTIME_FREEZE",
     "E3NN_BASELINE_COMPLETE_CAMPAIGN",
     "SIZE_FIDELITY1_EXHAUSTIVE_CALIBRATION",
     "PERF_P2R_WHOLE_FUNNEL_GPU_PERFORMANCE",
     "VRAM1_PERF_P4_ACCELERATOR_MEMORY_THROUGHPUT",
     "CUEQ_PHASE1_TRAINING_ONLY_QUALIFICATION",
-    "PERF_CERT1_END_TO_END_CERTIFICATION",
-)
-
-FINAL_GPU1_V2_REQUIRED_PASS_GATES = (
-    *FINAL_GPU1_V1_REQUIRED_PASS_GATES[:-1],
-    "SIZE_FIDELITY2_MV_SURVIVOR_REQUALIFICATION",
-    "TARGET_DATA2C_MVMIGRATE1_LEARNING_CONTROLS",
-    FINAL_GPU1_V1_REQUIRED_PASS_GATES[-1],
-)
-
-FINAL_GPU1_REQUIRED_PASS_GATES = (
-    *FINAL_GPU1_V2_REQUIRED_PASS_GATES[:-1],
     "REPLAY_UNIFY1_GPU_PSEUDOLABEL_EXECUTION",
-    FINAL_GPU1_V2_REQUIRED_PASS_GATES[-1],
+    "PERF_CERT1_END_TO_END_CERTIFICATION",
 )
 
 FINAL_GPU1_MEASURE_ONLY_GATES = (
@@ -90,8 +70,6 @@ FINAL_GPU1_RUNTIME_BOUND_GATES = (
     "MH1_CERT1_GENERATED_DEFAULT_CUEQ_MATRIX",
     "CUEQ_PHASE1_TRAINING_ONLY_QUALIFICATION",
     "CUEQ_PHASE2_SELECTED_HEAD_SOURCE_EXECUTION_OPTIONAL",
-    "SIZE_FIDELITY2_MV_SURVIVOR_REQUALIFICATION",
-    "TARGET_DATA2C_MVMIGRATE1_LEARNING_CONTROLS",
     "REPLAY_UNIFY1_GPU_PSEUDOLABEL_EXECUTION",
     "PERF_CERT1_END_TO_END_CERTIFICATION",
 )
@@ -143,21 +121,10 @@ class FinalGpu1Policy:
             raise TrainingDataInputError(
                 "FINAL-GPU1 cannot directly authorize a generated-default change; a later policy revision is required."
             )
-        if self.authority_version not in {FINAL_GPU1_V1_VERSION, FINAL_GPU1_V2_VERSION, FINAL_GPU1_VERSION}:
-            raise TrainingDataInputError("Unsupported FINAL-GPU1 authority version.")
-        if self.authority_version == FINAL_GPU1_V1_VERSION:
-            if groups[0] != FINAL_GPU1_V1_REQUIRED_PASS_GATES:
-                raise TrainingDataInputError("Historical FINAL-GPU1 v1 required-pass matrix changed.")
-            forbidden = {"SIZE_FIDELITY2_MV_SURVIVOR_REQUALIFICATION", "TARGET_DATA2C_MVMIGRATE1_LEARNING_CONTROLS"}
-            if forbidden.intersection(self.runtime_bound_gates):
-                raise TrainingDataInputError("Historical FINAL-GPU1 v1 cannot bind revision-75 migration gates.")
-        elif self.authority_version == FINAL_GPU1_V2_VERSION:
-            if groups[0] != FINAL_GPU1_V2_REQUIRED_PASS_GATES:
-                raise TrainingDataInputError("Historical FINAL-GPU1 v2 required-pass matrix changed.")
-            if "REPLAY_UNIFY1_GPU_PSEUDOLABEL_EXECUTION" in self.runtime_bound_gates:
-                raise TrainingDataInputError("Historical FINAL-GPU1 v2 cannot bind the REPLAY-UNIFY1 GPU gate.")
-        elif groups[0] != FINAL_GPU1_REQUIRED_PASS_GATES:
-            raise TrainingDataInputError("FINAL-GPU1 v3 required-pass matrix changed.")
+        if self.authority_version != FINAL_GPU1_VERSION:
+            raise TrainingDataInputError("Unsupported stale FINAL-GPU1 authority version; rebuild for target-size v5.")
+        if groups[0] != FINAL_GPU1_REQUIRED_PASS_GATES:
+            raise TrainingDataInputError("FINAL-GPU1 v4 required-pass matrix changed.")
         object.__setattr__(self, "required_pass_gates", groups[0])
         object.__setattr__(self, "measure_only_gates", groups[1])
         object.__setattr__(self, "optional_gates", groups[2])
@@ -190,7 +157,7 @@ class FinalGpu1Policy:
 
     def _payload(self) -> dict[str, Any]:
         return {
-            "schema": (FINAL_GPU1_POLICY_V1_SCHEMA if self.authority_version == FINAL_GPU1_V1_VERSION else FINAL_GPU1_POLICY_V2_SCHEMA if self.authority_version == FINAL_GPU1_V2_VERSION else FINAL_GPU1_POLICY_SCHEMA),
+            "schema": FINAL_GPU1_POLICY_SCHEMA,
             "authority_version": self.authority_version,
             "required_pass_gates": list(self.required_pass_gates),
             "measure_only_gates": list(self.measure_only_gates),
@@ -210,11 +177,9 @@ class FinalGpu1Policy:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "FinalGpu1Policy":
-        schema = payload.get("schema")
-        if schema not in {FINAL_GPU1_POLICY_V1_SCHEMA, FINAL_GPU1_POLICY_V2_SCHEMA, FINAL_GPU1_POLICY_SCHEMA}:
-            raise TrainingDataSerializationError("Unsupported FINAL-GPU1 policy schema.")
-        expected_version = FINAL_GPU1_V1_VERSION if schema == FINAL_GPU1_POLICY_V1_SCHEMA else FINAL_GPU1_V2_VERSION if schema == FINAL_GPU1_POLICY_V2_SCHEMA else FINAL_GPU1_VERSION
-        if str(payload.get("authority_version")) != expected_version:
+        if payload.get("schema") != FINAL_GPU1_POLICY_SCHEMA:
+            raise TrainingDataSerializationError("Unsupported stale FINAL-GPU1 policy schema; rebuild for target-size v5.")
+        if str(payload.get("authority_version")) != FINAL_GPU1_VERSION:
             raise TrainingDataSerializationError("FINAL-GPU1 policy schema/version mismatch.")
         result = cls(
             required_pass_gates=tuple(str(v) for v in payload["required_pass_gates"]),
@@ -360,8 +325,6 @@ class FinalGpu1QualificationRecord:
     foundation_model_sha256: tuple[tuple[str, str], ...]
     cueq_dep1_runtime: CueqDep1RuntimeRecord
     perf_cert1: PerfCert1QualificationRecord | None = None
-    size_fidelity2: SizeFidelity2QualificationReport | None = None
-    target_mv_learning_control: TargetMultiViewLearningControlReport | None = None
     evidence: tuple[FinalGpu1EvidenceRecord, ...] = ()
     handoff_integrity_failures: tuple[str, ...] = ()
     blocking_reasons: tuple[str, ...] = field(init=False)
@@ -440,26 +403,6 @@ class FinalGpu1QualificationRecord:
             if perf_gate is not None and perf_gate.evidence_content_digest != self.perf_cert1.content_digest:
                 reasons.append("PERF_CERT1_evidence_identity")
 
-        if self.policy.authority_version in {FINAL_GPU1_V2_VERSION, FINAL_GPU1_VERSION}:
-            fidelity_gate = by_gate.get("SIZE_FIDELITY2_MV_SURVIVOR_REQUALIFICATION")
-            if self.size_fidelity2 is None:
-                reasons.append("SIZE_FIDELITY2_qualification_record_missing")
-            else:
-                if not self.size_fidelity2.passed or self.size_fidelity2.gpu_qualification_status != "passed":
-                    reasons.append("SIZE_FIDELITY2_MV_SURVIVOR_REQUALIFICATION")
-                if fidelity_gate is not None and fidelity_gate.evidence_content_digest != self.size_fidelity2.content_digest:
-                    reasons.append("SIZE_FIDELITY2_evidence_identity")
-            learning_gate = by_gate.get("TARGET_DATA2C_MVMIGRATE1_LEARNING_CONTROLS")
-            if self.target_mv_learning_control is None:
-                reasons.append("TARGET_DATA2C_MVMIGRATE1_learning_control_record_missing")
-            else:
-                if not self.target_mv_learning_control.passed or self.target_mv_learning_control.gpu_qualification_status != "passed":
-                    reasons.append("TARGET_DATA2C_MVMIGRATE1_LEARNING_CONTROLS")
-                if learning_gate is not None and learning_gate.evidence_content_digest != self.target_mv_learning_control.content_digest:
-                    reasons.append("TARGET_DATA2C_MVMIGRATE1_learning_control_evidence_identity")
-            if self.size_fidelity2 is not None and self.target_mv_learning_control is not None:
-                if self.size_fidelity2.dataset_id != self.target_mv_learning_control.dataset_id:
-                    reasons.append("TARGET_DATA2C_MVMIGRATE1_dataset_identity")
         object.__setattr__(self, "blocking_reasons", tuple(dict.fromkeys(reasons)))
 
     @property
@@ -484,15 +427,13 @@ class FinalGpu1QualificationRecord:
 
     def _payload(self) -> dict[str, Any]:
         return {
-            "schema": (FINAL_GPU1_QUALIFICATION_V1_SCHEMA if self.policy.authority_version == FINAL_GPU1_V1_VERSION else FINAL_GPU1_QUALIFICATION_V2_SCHEMA if self.policy.authority_version == FINAL_GPU1_V2_VERSION else FINAL_GPU1_QUALIFICATION_SCHEMA),
+            "schema": FINAL_GPU1_QUALIFICATION_SCHEMA,
             "authority_version": self.policy.authority_version,
             "policy": self.policy.to_dict(),
             "release_artifact_sha256": self.release_artifact_sha256,
             "foundation_model_sha256": {k: v for k, v in self.foundation_model_sha256},
             "cueq_dep1_runtime": self.cueq_dep1_runtime.to_dict(),
             "perf_cert1": None if self.perf_cert1 is None else self.perf_cert1.to_dict(),
-            "size_fidelity2": None if self.size_fidelity2 is None else self.size_fidelity2.to_dict(),
-            "target_mv_learning_control": None if self.target_mv_learning_control is None else self.target_mv_learning_control.to_dict(),
             "evidence": [item.to_dict() for item in self.evidence],
             "handoff_integrity_failures": list(self.handoff_integrity_failures),
             "blocking_reasons": list(self.blocking_reasons),
@@ -513,11 +454,9 @@ class FinalGpu1QualificationRecord:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "FinalGpu1QualificationRecord":
-        schema = payload.get("schema")
-        if schema not in {FINAL_GPU1_QUALIFICATION_V1_SCHEMA, FINAL_GPU1_QUALIFICATION_V2_SCHEMA, FINAL_GPU1_QUALIFICATION_SCHEMA}:
-            raise TrainingDataSerializationError("Unsupported FINAL-GPU1 qualification schema.")
-        expected_version = FINAL_GPU1_V1_VERSION if schema == FINAL_GPU1_QUALIFICATION_V1_SCHEMA else FINAL_GPU1_V2_VERSION if schema == FINAL_GPU1_QUALIFICATION_V2_SCHEMA else FINAL_GPU1_VERSION
-        if payload.get("authority_version") != expected_version:
+        if payload.get("schema") != FINAL_GPU1_QUALIFICATION_SCHEMA:
+            raise TrainingDataSerializationError("Unsupported stale FINAL-GPU1 qualification schema; rebuild for target-size v5.")
+        if payload.get("authority_version") != FINAL_GPU1_VERSION:
             raise TrainingDataSerializationError("Unsupported FINAL-GPU1 qualification authority version.")
         foundations = payload.get("foundation_model_sha256", {})
         result = cls(
@@ -526,8 +465,6 @@ class FinalGpu1QualificationRecord:
             foundation_model_sha256=tuple((str(k), str(v)) for k, v in sorted(foundations.items())),
             cueq_dep1_runtime=CueqDep1RuntimeRecord.from_dict(payload["cueq_dep1_runtime"]),
             perf_cert1=None if payload.get("perf_cert1") is None else PerfCert1QualificationRecord.from_dict(payload["perf_cert1"]),
-            size_fidelity2=None if payload.get("size_fidelity2") is None else SizeFidelity2QualificationReport.from_dict(payload["size_fidelity2"]),
-            target_mv_learning_control=None if payload.get("target_mv_learning_control") is None else TargetMultiViewLearningControlReport.from_dict(payload["target_mv_learning_control"]),
             evidence=tuple(FinalGpu1EvidenceRecord.from_dict(v) for v in payload.get("evidence", ())),
             handoff_integrity_failures=tuple(str(v) for v in payload.get("handoff_integrity_failures", ())),
         )
@@ -548,8 +485,6 @@ def build_final_gpu1_qualification(
     foundation_model_sha256: Mapping[str, str],
     cueq_dep1_runtime: CueqDep1RuntimeRecord,
     perf_cert1: PerfCert1QualificationRecord | None,
-    size_fidelity2: SizeFidelity2QualificationReport | None = None,
-    target_mv_learning_control: TargetMultiViewLearningControlReport | None = None,
     evidence: Sequence[FinalGpu1EvidenceRecord] = (),
     policy: FinalGpu1Policy | None = None,
     handoff_integrity_failures: Sequence[str] = (),
@@ -560,8 +495,6 @@ def build_final_gpu1_qualification(
         foundation_model_sha256=tuple(sorted((str(k), str(v)) for k, v in foundation_model_sha256.items())),
         cueq_dep1_runtime=cueq_dep1_runtime,
         perf_cert1=perf_cert1,
-        size_fidelity2=size_fidelity2,
-        target_mv_learning_control=target_mv_learning_control,
         evidence=tuple(evidence),
         handoff_integrity_failures=tuple(str(v) for v in handoff_integrity_failures),
     )

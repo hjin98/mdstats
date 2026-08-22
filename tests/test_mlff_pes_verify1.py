@@ -244,7 +244,7 @@ def test_campaign_record_preserves_failed_candidate_evidence() -> None:
         campaign_plan_digest=_d("campaign"), deploy_verify_campaign_digest=_d("deploy-campaign"),
         foundation_audit_digest=_d("foundation-audit"), foundation_model_sha256=_d("foundation"),
         policy=policy, probe_set=probe_set, probe_request=request, reference_artifact=ref_artifact,
-        foundation_qualification=foundation, run_records=(run,), stage_context="target_size_stage_c",
+        foundation_qualification=foundation, run_records=(run,), stage_context="production",
         foundation_head_name="foundation_head",
     )
     assert campaign.all_candidates_failed
