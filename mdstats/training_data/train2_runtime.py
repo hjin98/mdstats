@@ -36,6 +36,12 @@ TRAIN2_RUNTIME_SUMMARY_FILENAME = "train2_runtime.json"
 TRAIN2_RUNTIME_COMPANION_FILENAME = "train2_runtime.pt"
 TRAIN2_RUNTIME_HISTORY_FILENAME = "train2_history.jsonl"
 TRAIN2_PERSISTENCE_TELEMETRY_FILENAME = "train2_persistence.jsonl"
+TRAIN2_NUMERICAL_FAILURE_SCHEMA = "mdstats.train2-numerical-failure.v1"
+TRAIN2_NUMERICAL_FAILURE_FILENAME = "train2_numerical_failure.json"
+TRAIN2_NUMERICAL_FAILURE_CODES = frozenset({
+    "train_nonfinite_model_state",
+    "train_nonfinite_ema_state",
+})
 
 _ACTIVE_RUNTIME: "_Train2Runtime | None" = None
 
@@ -62,6 +68,133 @@ def _atomic_torch_save(path: Path, payload: Mapping[str, Any]) -> None:
     tmp = path.with_suffix(path.suffix + ".tmp")
     torch.save(dict(payload), tmp)
     os.replace(tmp, path)
+
+
+class Train2NumericalFailure(RuntimeError):
+    """Positive TRAIN2 candidate-specific numerical failure signal.
+
+    This exception is never inferred from child stderr.  The runtime writes an
+    authenticated sidecar first; campaign execution recognizes only that
+    machine-readable record.
+    """
+
+    def __init__(self, code: str, reason: str) -> None:
+        if code not in TRAIN2_NUMERICAL_FAILURE_CODES:
+            raise ValueError(f"Unsupported TRAIN2 numerical failure code: {code!r}")
+        self.failure_code = str(code)
+        self.reason = str(reason)
+        super().__init__(f"{self.failure_code}: {self.reason}")
+
+
+@dataclass(frozen=True, slots=True)
+class Train2NumericalFailureRecord:
+    failure_code: str
+    reason: str
+    failed_epoch: int
+    completed_updates: int
+    planned_updates: int
+    execution_epoch_limit: int
+    plan_digest: str
+    training_protocol_digest: str
+    optimizer_policy_digest: str
+    budget_policy_digest: str
+    lr_policy_digest: str
+    raw_checkpoint_name: str
+    raw_checkpoint_sha256: str
+
+    def __post_init__(self) -> None:
+        if self.failure_code not in TRAIN2_NUMERICAL_FAILURE_CODES:
+            raise TrainingDataInputError("Unsupported TRAIN2 numerical-failure code.")
+        if not self.reason.strip():
+            raise TrainingDataInputError("TRAIN2 numerical-failure reason cannot be empty.")
+        if int(self.failed_epoch) < 0:
+            raise TrainingDataInputError("TRAIN2 numerical-failure epoch must be nonnegative.")
+        if int(self.completed_updates) <= 0 or int(self.planned_updates) <= 0:
+            raise TrainingDataInputError("TRAIN2 numerical-failure update counts must be positive.")
+        if int(self.completed_updates) > int(self.planned_updates):
+            raise TrainingDataInputError("TRAIN2 numerical-failure completed updates exceed the frozen budget.")
+        if int(self.execution_epoch_limit) <= 0:
+            raise TrainingDataInputError("TRAIN2 numerical-failure execution epoch limit must be positive.")
+        for name in (
+            "plan_digest",
+            "training_protocol_digest",
+            "optimizer_policy_digest",
+            "budget_policy_digest",
+            "lr_policy_digest",
+            "raw_checkpoint_sha256",
+        ):
+            object.__setattr__(self, name, validate_digest(getattr(self, name), name=name))
+        if not Path(self.raw_checkpoint_name).name == self.raw_checkpoint_name:
+            raise TrainingDataInputError("TRAIN2 numerical-failure raw checkpoint name is invalid.")
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "schema": TRAIN2_NUMERICAL_FAILURE_SCHEMA,
+            "failure_code": self.failure_code,
+            "reason": self.reason,
+            "failed_epoch": int(self.failed_epoch),
+            "completed_updates": int(self.completed_updates),
+            "planned_updates": int(self.planned_updates),
+            "execution_epoch_limit": int(self.execution_epoch_limit),
+            "plan_digest": self.plan_digest,
+            "training_protocol_digest": self.training_protocol_digest,
+            "optimizer_policy_digest": self.optimizer_policy_digest,
+            "budget_policy_digest": self.budget_policy_digest,
+            "lr_policy_digest": self.lr_policy_digest,
+            "raw_checkpoint_name": self.raw_checkpoint_name,
+            "raw_checkpoint_sha256": self.raw_checkpoint_sha256,
+        }
+
+    @property
+    def content_digest(self) -> str:
+        return digest(self._payload())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._payload(), "content_digest": self.content_digest}
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "Train2NumericalFailureRecord":
+        if payload.get("schema") != TRAIN2_NUMERICAL_FAILURE_SCHEMA:
+            raise TrainingDataSerializationError("Unsupported TRAIN2 numerical-failure schema.")
+        result = cls(
+            failure_code=str(payload["failure_code"]),
+            reason=str(payload["reason"]),
+            failed_epoch=int(payload["failed_epoch"]),
+            completed_updates=int(payload["completed_updates"]),
+            planned_updates=int(payload["planned_updates"]),
+            execution_epoch_limit=int(payload["execution_epoch_limit"]),
+            plan_digest=str(payload["plan_digest"]),
+            training_protocol_digest=str(payload["training_protocol_digest"]),
+            optimizer_policy_digest=str(payload["optimizer_policy_digest"]),
+            budget_policy_digest=str(payload["budget_policy_digest"]),
+            lr_policy_digest=str(payload["lr_policy_digest"]),
+            raw_checkpoint_name=str(payload["raw_checkpoint_name"]),
+            raw_checkpoint_sha256=str(payload["raw_checkpoint_sha256"]),
+        )
+        if payload.get("content_digest") not in (None, result.content_digest):
+            raise TrainingDataSerializationError("TRAIN2 numerical-failure digest mismatch.")
+        return result
+
+
+def load_train2_numerical_failure(
+    checkpoint_directory: str | Path,
+) -> Train2NumericalFailureRecord | None:
+    path = Path(checkpoint_directory).resolve() / TRAIN2_NUMERICAL_FAILURE_FILENAME
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise TrainingDataSerializationError(
+            f"TRAIN2 numerical-failure sidecar is unreadable: {type(exc).__name__}: {exc}"
+        ) from exc
+    return Train2NumericalFailureRecord.from_dict(payload)
+
+
+def _tensors_are_finite(values: Sequence[Any]) -> bool:
+    import torch
+
+    return all(bool(torch.isfinite(value).all().item()) for value in values)
 
 
 def _tensor_bytes(tensor: Any) -> bytes:
@@ -394,6 +527,9 @@ class _Train2Runtime:
         self.persistence_telemetry_path = (
             self.checkpoint_directory / TRAIN2_PERSISTENCE_TELEMETRY_FILENAME
         )
+        self.numerical_failure_path = (
+            self.checkpoint_directory / TRAIN2_NUMERICAL_FAILURE_FILENAME
+        )
         self.completed_updates = self.current_epoch * self.updates_per_epoch
         self.group_base_lrs: tuple[float, ...]
         self._metric_offset = 0
@@ -549,6 +685,32 @@ class _Train2Runtime:
             self._metric_offset = handle.tell()
         return (None if not losses else float(sum(losses) / len(losses))), validation
 
+    def _record_numerical_failure(
+        self, *, code: str, reason: str, epoch: int, raw_checkpoint: Path
+    ) -> None:
+        record = Train2NumericalFailureRecord(
+            failure_code=code,
+            reason=reason,
+            failed_epoch=int(epoch),
+            completed_updates=int(self.completed_updates),
+            planned_updates=int(self.planned_updates),
+            execution_epoch_limit=int(self.plan.execution_epoch_limit),
+            plan_digest=self.plan.content_digest,
+            training_protocol_digest=self.plan.training_protocol_digest,
+            optimizer_policy_digest=self.plan.optimizer_policy_digest,
+            budget_policy_digest=self.plan.budget_policy.policy_digest,
+            lr_policy_digest=self.plan.learning_rate_policy.policy_digest,
+            raw_checkpoint_name=raw_checkpoint.name,
+            raw_checkpoint_sha256=_sha256(raw_checkpoint),
+        )
+        existing = load_train2_numerical_failure(self.checkpoint_directory)
+        if existing is not None and existing.content_digest != record.content_digest:
+            raise TrainingDataInputError(
+                "TRAIN2 numerical-failure sidecar already records different scientific evidence."
+            )
+        _atomic_json(self.numerical_failure_path, record.to_dict())
+        raise Train2NumericalFailure(code, reason)
+
     def persist_epoch(self, *, epoch: int) -> Train2RuntimeSummary | None:
         import torch
 
@@ -578,6 +740,24 @@ class _Train2Runtime:
             ema_values = list(ema_state["shadow_params"])
             if ema_state["collected_params"] is not None:
                 ema_values.extend(ema_state["collected_params"])
+        if not _tensors_are_finite(live_parameters):
+            self._record_numerical_failure(
+                code="train_nonfinite_model_state",
+                reason=(
+                    f"TRAIN2 live model state became non-finite at durable epoch {completed_epochs}."
+                ),
+                epoch=epoch,
+                raw_checkpoint=raw,
+            )
+        if self.ema is not None and not _tensors_are_finite(ema_values):
+            self._record_numerical_failure(
+                code="train_nonfinite_ema_state",
+                reason=(
+                    f"TRAIN2 EMA state became non-finite at durable epoch {completed_epochs}."
+                ),
+                epoch=epoch,
+                raw_checkpoint=raw,
+            )
         clone_seconds = time.perf_counter() - clone_started
 
         state_hash_started = time.perf_counter()

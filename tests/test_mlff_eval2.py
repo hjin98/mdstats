@@ -148,6 +148,57 @@ def test_target_metric_reducer_builds_species_tails_conditions_and_blocks():
     assert mdstats.Eval2TargetMetricRecord.from_dict(record.to_dict()) == record
 
 
+def test_target_metric_reducer_classifies_nonfinite_prediction_narrowly():
+    view = SimpleNamespace(
+        configuration_count=1,
+        total_atom_count=2,
+        atom_counts=np.asarray([2]),
+        force_offsets=np.asarray([0, 2]),
+        reference_energies=np.asarray([0.0]),
+        reference_forces=np.zeros((2, 3)),
+        atomic_numbers=np.asarray([11, 8]),
+        focus_atomic_numbers=(11,),
+        condition_labels=("cold",),
+        condition_ids=np.asarray([0]),
+        stress_present=np.asarray([False]),
+        reference_stresses=np.zeros((1, 6)),
+    )
+    nonfinite = (
+        SimpleNamespace(
+            energy_ev=0.0,
+            forces_ev_per_angstrom=np.asarray([[np.nan, 0.0, 0.0], [0.0, 0.0, 0.0]]),
+            stress_ev_per_angstrom3=None,
+        ),
+    )
+    with pytest.raises(mdstats.Eval2NumericalEvaluationError) as caught:
+        mdstats.eval2_target_metrics_from_prediction_view(
+            view,
+            nonfinite,
+            block_ids=("trajectory-A",),
+            target_role_digest=D1,
+            prediction_digest=D2,
+        )
+    assert caught.value.failure_code == "eval_nonfinite_force_prediction"
+    assert caught.value.target_role_digest == D1
+    assert caught.value.prediction_digest == D2
+
+    malformed = (
+        SimpleNamespace(
+            energy_ev=0.0,
+            forces_ev_per_angstrom=np.zeros((1, 3)),
+            stress_ev_per_angstrom3=None,
+        ),
+    )
+    with pytest.raises(mdstats.TrainingDataInputError):
+        mdstats.eval2_target_metrics_from_prediction_view(
+            view,
+            malformed,
+            block_ids=("trajectory-A",),
+            target_role_digest=D1,
+            prediction_digest=D2,
+        )
+
+
 def test_paired_bootstrap_is_deterministic_and_detects_material_improvement():
     policy = mdstats.CheckpointSelectionPolicy(bootstrap_replicates=500)
     first = checkpoint(point(20, 0.020, refinement=True), 0.020)

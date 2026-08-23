@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -85,9 +86,9 @@ def test_prepare_receipt_hard_cuts_retired_derived_authorities() -> None:
 def test_target_size_funnel_finishes_before_held_out_cv() -> None:
     eval_source = inspect.getsource(campaign_cli._command_evaluate_train2)
     role_source = inspect.getsource(campaign_cli._eval2_target_role_for_run)
-    assert "attach_epoch_3_evidence" in eval_source
-    assert "attach_epoch_10_evidence" in eval_source
-    assert "attach_epoch_30_evidence" in eval_source
+    assert "attach_epoch_3_outcomes" in eval_source
+    assert "attach_epoch_10_outcomes" in eval_source
+    assert "attach_epoch_30_outcomes" in eval_source
     assert "target-size selection frozen" in eval_source
     assert 'for stage_name in ("prepare", "preflight", "train", "evaluate")' in eval_source
     assert "Held-out CV EVAL2 is blocked until selected_target_size is frozen" in role_source
@@ -225,3 +226,316 @@ def test_prepare_contract_signature_is_v5_only_and_current_upstreams_are_reusabl
     assert 'if not store.has_record("prepare_restart_receipt"):' in reuse_source
     assert "return False" in reuse_source
     assert "0.20.68a0" not in reuse_source
+
+
+def test_scientific_candidate_failure_only_relaxes_scheduler_stop_during_active_v5_study() -> None:
+    failure_attempt = SimpleNamespace(
+        scientific_failure_code="train_nonfinite_model_state",
+        scientific_failure_evidence_digest="a" * 64,
+    )
+    ordinary_attempt = SimpleNamespace(
+        scientific_failure_code=None, scientific_failure_evidence_digest=None
+    )
+    failed_scientific = SimpleNamespace(
+        state=mdstats.TrainingRunState.FAILED, attempts=(failure_attempt,)
+    )
+    failed_ordinary = SimpleNamespace(
+        state=mdstats.TrainingRunState.FAILED, attempts=(ordinary_attempt,)
+    )
+    active = SimpleNamespace(outcome=mdstats.OUTCOME_AWAITING_EPOCH_3)
+    selected = SimpleNamespace(outcome=mdstats.OUTCOME_SELECTED)
+
+    assert campaign_core._is_target_size_scientific_execution_failure(
+        failed_scientific, policy_family="train2", target_size_study=active
+    )
+    assert not campaign_core._is_target_size_scientific_execution_failure(
+        failed_ordinary, policy_family="train2", target_size_study=active
+    )
+    assert not campaign_core._is_target_size_scientific_execution_failure(
+        failed_scientific, policy_family="train2", target_size_study=selected
+    )
+    assert not campaign_core._is_target_size_scientific_execution_failure(
+        failed_scientific, policy_family="legacy", target_size_study=active
+    )
+
+
+def _direct_digest(label: str) -> str:
+    import hashlib
+    return hashlib.sha256(label.encode()).hexdigest()
+
+
+class _DirectRepairDomain:
+    label_domain_id = "direct-domain"
+    repaired_master_order = tuple(
+        _direct_digest(f"direct-frame-{index}") for index in range(16384)
+    )
+
+
+class _DirectRepair:
+    dataset_id = "direct-dataset"
+    domains = (_DirectRepairDomain(),)
+    content_digest = _direct_digest("direct-repair")
+
+    def domain(self, label_domain_id: str):
+        assert label_domain_id == self.domains[0].label_domain_id
+        return self.domains[0]
+
+
+class _DirectStore:
+    def __init__(self, records):
+        self.records = records
+
+    def get_record_optional(self, key, _record_type):
+        return self.records.get(key)
+
+
+def _direct_study():
+    repair = _DirectRepair()
+    qualified = (2048, 4096, 8192, 16384)
+    qualification = SimpleNamespace(
+        dataset_id=repair.dataset_id,
+        target_multi_view_repair_digest=repair.content_digest,
+        content_digest=_direct_digest("direct-mvqual2"),
+        mv_qualified_sizes=qualified,
+    )
+    policy = mdstats.TargetSizeStudyPolicy(screening_optimizer_seeds=(7, 11))
+    return repair, mdstats.build_target_size_study(repair, qualification, policy=policy)
+
+
+def _direct_protocol(tag: str):
+    del tag
+    policy = lambda name: SimpleNamespace(policy_digest=_direct_digest(f"direct-{name}"))
+    return SimpleNamespace(
+        training_budget_policy=policy("budget"),
+        learning_rate_schedule_policy=policy("schedule"),
+        checkpoint_admissibility_policy=policy("admissibility"),
+        checkpoint_selection_policy=policy("selection"),
+        checkpoint_control_policy=SimpleNamespace(target_head_name="target"),
+        foundation_checkpoint=SimpleNamespace(
+            canonical_content_digest=_direct_digest("direct-foundation")
+        ),
+    )
+
+
+def _direct_failed_execution(evidence_digest: str, run_digest: str, job_digest: str):
+    attempt = SimpleNamespace(
+        scientific_failure_code="train_nonfinite_model_state",
+        scientific_failure_evidence_digest=evidence_digest,
+        content_digest=_direct_digest(f"attempt-{evidence_digest}"),
+        failure_reason="scientific_failure:train_nonfinite_model_state:nonzero_exit:3",
+        elapsed_seconds=1.0,
+    )
+    return SimpleNamespace(
+        run_plan_digest=run_digest,
+        mace_job_artifact_digest=job_digest,
+        state=mdstats.TrainingRunState.FAILED,
+        attempts=(attempt,),
+        successful_attempt_index=None,
+        content_digest=_direct_digest(f"execution-{evidence_digest}"),
+    )
+
+
+def test_real_target_size_eval_path_converts_authenticated_train2_failure_population(tmp_path: Path) -> None:
+    import json
+
+    repair, study = _direct_study()
+    records = {}
+    jobs = {}
+    runs = []
+    paths = SimpleNamespace(runs=tmp_path / "runs")
+    for size in study.next_training_sizes:
+        for seed in study.policy.screening_optimizer_seeds:
+            run_id = f"direct-n{size}-s{seed}"
+            run_digest = _direct_digest(f"run-{size}-{seed}")
+            job_digest = _direct_digest(f"job-{size}-{seed}")
+            failure = mdstats.Train2NumericalFailureRecord(
+                failure_code="train_nonfinite_model_state",
+                reason="controlled non-finite model state",
+                failed_epoch=2,
+                completed_updates=20,
+                planned_updates=300,
+                execution_epoch_limit=3,
+                plan_digest=_direct_digest(f"runtime-plan-{size}-{seed}"),
+                training_protocol_digest=_direct_digest(f"runtime-protocol-{size}-{seed}"),
+                optimizer_policy_digest=_direct_digest(f"runtime-optimizer-{size}-{seed}"),
+                budget_policy_digest=_direct_digest(f"runtime-budget-{size}-{seed}"),
+                lr_policy_digest=_direct_digest(f"runtime-lr-{size}-{seed}"),
+                raw_checkpoint_name="raw-numerical-state.bin",
+                raw_checkpoint_sha256=_direct_digest(f"raw-{size}-{seed}"),
+            )
+            checkpoint_dir = paths.runs / run_id / "checkpoints"
+            checkpoint_dir.mkdir(parents=True)
+            (checkpoint_dir / mdstats.TRAIN2_NUMERICAL_FAILURE_FILENAME).write_text(
+                json.dumps(failure.to_dict(), sort_keys=True), encoding="utf-8"
+            )
+            run = SimpleNamespace(
+                run_id=run_id,
+                kind=mdstats.MaceJobKind.FINAL_DEVELOPMENT,
+                selection_size=size,
+                seed=seed,
+                mace_job_artifact_digest=job_digest,
+                content_digest=run_digest,
+            )
+            runs.append(run)
+            jobs[job_digest] = (SimpleNamespace(), SimpleNamespace(protocol=_direct_protocol(f"{size}-{seed}")), tmp_path)
+            records[f"execution:{run_id}"] = _direct_failed_execution(failure.content_digest, run_digest, job_digest)
+
+    outcomes = campaign_core._eval2_target_size_endpoint_evidence(
+        cfg={}, paths=paths, store=_DirectStore(records),
+        campaign=SimpleNamespace(runs=tuple(runs)), jobs=jobs,
+        target_size_study=study, repair2=repair, role_freeze=SimpleNamespace(),
+        baseline_model=None, model_dtype="float64", local_wrappers={},
+    )
+    assert len(outcomes) == len(runs)
+    assert all(item.success is None for item in outcomes)
+    assert all(item.failure.failure_phase == mdstats.FAILURE_PHASE_TRAIN for item in outcomes)
+    terminal = mdstats.attach_epoch_3_outcomes(study, outcomes)
+    assert terminal.outcome == mdstats.OUTCOME_INSUFFICIENT_COMPARABLE_CANDIDATES
+
+    forged_run = runs[0]
+    records[f"execution:{forged_run.run_id}"].run_plan_digest = _direct_digest("forged-run-plan")
+    with pytest.raises(campaign_core.CampaignCliError, match="execution lineage mismatch"):
+        campaign_core._eval2_target_size_endpoint_evidence(
+            cfg={}, paths=paths, store=_DirectStore(records),
+            campaign=SimpleNamespace(runs=tuple(runs)), jobs=jobs,
+            target_size_study=study, repair2=repair, role_freeze=SimpleNamespace(),
+            baseline_model=None, model_dtype="float64", local_wrappers={},
+        )
+
+
+def test_real_target_size_eval_path_converts_eval2_nonfinite_signal(tmp_path: Path, monkeypatch) -> None:
+    import json
+
+    repair, study = _direct_study()
+    records = {}
+    jobs = {}
+    runs = []
+    paths = SimpleNamespace(runs=tmp_path / "runs")
+    eval_key = (study.next_training_sizes[0], study.policy.screening_optimizer_seeds[0])
+    role_digest = _direct_digest("direct-eval-role")
+    checkpoint_digest = _direct_digest("direct-eval-checkpoint")
+    eval_execution = None
+
+    for size in study.next_training_sizes:
+        for seed in study.policy.screening_optimizer_seeds:
+            run_id = f"direct-eval-n{size}-s{seed}"
+            run_digest = _direct_digest(f"eval-run-{size}-{seed}")
+            job_digest = _direct_digest(f"eval-job-{size}-{seed}")
+            run = SimpleNamespace(
+                run_id=run_id, kind=mdstats.MaceJobKind.FINAL_DEVELOPMENT,
+                selection_size=size, seed=seed,
+                mace_job_artifact_digest=job_digest, content_digest=run_digest,
+            )
+            runs.append(run)
+            jobs[job_digest] = (SimpleNamespace(), SimpleNamespace(protocol=_direct_protocol(f"eval-{size}-{seed}")), tmp_path)
+            if (size, seed) == eval_key:
+                eval_execution = SimpleNamespace(
+                    run_plan_digest=run_digest,
+                    mace_job_artifact_digest=job_digest,
+                    state=mdstats.TrainingRunState.SUCCEEDED,
+                    attempts=(SimpleNamespace(
+                        content_digest=_direct_digest("eval-success-attempt"),
+                        scientific_failure_code=None,
+                        elapsed_seconds=1.0,
+                    ),),
+                    successful_attempt_index=1,
+                    content_digest=_direct_digest("eval-success-execution"),
+                )
+                records[f"execution:{run_id}"] = eval_execution
+                records[f"train2_runtime:{run_id}"] = SimpleNamespace(
+                    completed_epochs=3, planned_epochs=30, completed_updates=30,
+                    structures_presented=300, normalized_progress=0.1,
+                    instantaneous_learning_rate=1.0e-3,
+                    optimizer_state_digest=_direct_digest("eval-optimizer-state"),
+                    rng_state_digest=_direct_digest("eval-rng-state"),
+                )
+                continue
+            failure = mdstats.Train2NumericalFailureRecord(
+                failure_code="train_nonfinite_model_state", reason="controlled non-finite model state",
+                failed_epoch=2, completed_updates=20, planned_updates=300, execution_epoch_limit=3,
+                plan_digest=_direct_digest(f"eval-runtime-plan-{size}-{seed}"),
+                training_protocol_digest=_direct_digest(f"eval-runtime-protocol-{size}-{seed}"),
+                optimizer_policy_digest=_direct_digest(f"eval-runtime-optimizer-{size}-{seed}"),
+                budget_policy_digest=_direct_digest(f"eval-runtime-budget-{size}-{seed}"),
+                lr_policy_digest=_direct_digest(f"eval-runtime-lr-{size}-{seed}"),
+                raw_checkpoint_name="raw-numerical-state.bin",
+                raw_checkpoint_sha256=_direct_digest(f"eval-raw-{size}-{seed}"),
+            )
+            checkpoint_dir = paths.runs / run_id / "checkpoints"
+            checkpoint_dir.mkdir(parents=True)
+            (checkpoint_dir / mdstats.TRAIN2_NUMERICAL_FAILURE_FILENAME).write_text(
+                json.dumps(failure.to_dict(), sort_keys=True), encoding="utf-8"
+            )
+            records[f"execution:{run_id}"] = _direct_failed_execution(failure.content_digest, run_digest, job_digest)
+
+    monkeypatch.setattr(campaign_core, "_eval2_target_role_for_run", lambda **_kwargs: SimpleNamespace(content_digest=role_digest))
+    monkeypatch.setattr(campaign_core, "_eval2_target_artifact_for_run", lambda **_kwargs: (SimpleNamespace(), tmp_path / "target.xyz"))
+    monkeypatch.setattr(campaign_core, "_evaluation_checkpoint_catalog", lambda *_args, **_kwargs: SimpleNamespace(
+        root_directory=str(tmp_path), checkpoints=(SimpleNamespace(sha256=checkpoint_digest),)
+    ))
+    monkeypatch.setattr(mdstats, "read_train2_trajectory_points", lambda *_args, **_kwargs: (
+        SimpleNamespace(epoch=2, checkpoint_sha256=checkpoint_digest),
+    ))
+
+    def _raise_eval2_numerical(**_kwargs):
+        raise mdstats.Eval2NumericalEvaluationError(
+            "eval_nonfinite_force_prediction", "controlled non-finite target force prediction",
+            target_role_digest=role_digest, prediction_digest=_direct_digest("nonfinite-prediction"),
+        )
+
+    monkeypatch.setattr(campaign_core, "_eval2_full_checkpoint", _raise_eval2_numerical)
+    outcomes = campaign_core._eval2_target_size_endpoint_evidence(
+        cfg={}, paths=paths, store=_DirectStore(records),
+        campaign=SimpleNamespace(runs=tuple(runs)), jobs=jobs,
+        target_size_study=study, repair2=repair, role_freeze=SimpleNamespace(),
+        baseline_model=None, model_dtype="float64", local_wrappers={},
+    )
+    outcome = next(item for item in outcomes if item.key == eval_key)
+    failure = outcome.failure
+    assert failure is not None
+    assert failure.failure_phase == mdstats.FAILURE_PHASE_TARGET_EVALUATION
+    assert failure.failure_code == "eval_nonfinite_force_prediction"
+    assert failure.execution_record_digest == eval_execution.content_digest
+    assert failure.execution_attempt_digest == eval_execution.attempts[0].content_digest
+    assert failure.checkpoint_digest == checkpoint_digest
+    assert failure.evaluation_role_digest == role_digest
+    assert failure.target_evaluation_digest is not None
+
+    def _raise_forged_eval2_role(**_kwargs):
+        raise mdstats.Eval2NumericalEvaluationError(
+            "eval_nonfinite_force_prediction", "forged role binding",
+            target_role_digest=_direct_digest("forged-eval-role"),
+            prediction_digest=_direct_digest("forged-nonfinite-prediction"),
+        )
+
+    monkeypatch.setattr(campaign_core, "_eval2_full_checkpoint", _raise_forged_eval2_role)
+    with pytest.raises(campaign_core.CampaignCliError, match="role provenance"):
+        campaign_core._eval2_target_size_endpoint_evidence(
+            cfg={}, paths=paths, store=_DirectStore(records),
+            campaign=SimpleNamespace(runs=tuple(runs)), jobs=jobs,
+            target_size_study=study, repair2=repair, role_freeze=SimpleNamespace(),
+            baseline_model=None, model_dtype="float64", local_wrappers={},
+        )
+
+
+def test_dependency_graph_keeps_replay_out_of_target_size_decision_authority() -> None:
+    root = Path(__file__).resolve().parents[1]
+    graph = json.loads(
+        (root / "docs/arch_manuals/mlff_training_data_dependency_graph.json").read_text()
+    )
+    replay_to_size = {
+        (edge["from"], edge["to"], edge["type"])
+        for edge in graph["edges"]
+        if edge["from"] == "COMMON_REPLAY_MONITOR"
+        and edge["to"] in {"SIZE_STUDY_EPOCH3", "SIZE_STUDY_EPOCH10", "SIZE_STUDY_EPOCH30", "TARGET_SIZE_DECISION"}
+    }
+    assert not replay_to_size
+    assert (
+        "replay-monitor metrics or diagnostics -> target-size ranking/qualification/tie-break"
+        in graph["forbidden_current_paths"]
+    )
+    assert {
+        "from": "COMMON_REPLAY_MONITOR",
+        "to": "FROZEN_TRAINING_PROTOCOL",
+        "type": "identity_requires",
+    } in graph["edges"]

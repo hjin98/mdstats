@@ -32,6 +32,40 @@ EVAL2_BOOTSTRAP_COMPARISON_SCHEMA = "mdstats.eval2-bootstrap-comparison.v1"
 EVAL2_RUN_RECORD_SCHEMA = "mdstats.eval2-run-record.v1"
 EVAL2_EVALUATION_PLAN_SCHEMA = "mdstats.eval2-evaluation-plan.v1"
 EVAL2_TARGET_ROLE_SCHEMA = "mdstats.eval2-target-role.v2"
+EVAL2_NUMERICAL_FAILURE_SCHEMA = "mdstats.eval2-numerical-failure.v1"
+EVAL2_NUMERICAL_FAILURE_CODES = frozenset({
+    "eval_nonfinite_energy_prediction",
+    "eval_nonfinite_force_prediction",
+    "eval_nonfinite_stress_prediction",
+    "eval_nonfinite_target_metric",
+})
+
+
+class Eval2NumericalEvaluationError(RuntimeError):
+    """Positive non-finite scientific failure during target-only EVAL2.
+
+    Shape, schema, lineage, missing-artifact, and programming defects remain
+    ordinary errors and are never converted to target-size scientific evidence.
+    """
+
+    def __init__(
+        self, failure_code: str, reason: str, *, target_role_digest: str, prediction_digest: str
+    ) -> None:
+        code = str(failure_code)
+        if code not in EVAL2_NUMERICAL_FAILURE_CODES:
+            raise ValueError(f"Unsupported EVAL2 numerical failure code: {code!r}")
+        self.failure_code = code
+        self.reason = str(reason)
+        self.target_role_digest = validate_digest(target_role_digest, name="target_role_digest")
+        self.prediction_digest = validate_digest(prediction_digest, name="prediction_digest")
+        self.content_digest = digest({
+            "schema": EVAL2_NUMERICAL_FAILURE_SCHEMA,
+            "failure_code": self.failure_code,
+            "reason": self.reason,
+            "target_role_digest": self.target_role_digest,
+            "prediction_digest": self.prediction_digest,
+        })
+        super().__init__(f"{self.failure_code}: {self.reason}")
 
 
 # AUDIT-EVAL-PERF1 execution-only cache.  The authoritative target-role and
@@ -319,9 +353,11 @@ def build_eval2_coarse_size_study_target_role(
     maximum_training_size: int,
     maximum_configurations: int = 256,
 ) -> Eval2TargetRole:
-    """Freeze one small common target-only monitor for the epoch-3 screen.
+    """Legacy/pre-v5 bounded target-only monitor helper.
 
-    The monitor is sampled from the same leakage-safe development complement
+    Current Target Size v5 orchestration does not call this helper; it is retained
+    only for public compatibility with pre-v5 callers.  The monitor is sampled
+    from the same leakage-safe development complement
     used by the full size-study role.  Sampling is deterministic and balanced
     across correlation blocks: quotas are assigned round-robin in development
     block order and each block contributes systematic interior positions.
@@ -1115,15 +1151,27 @@ def eval2_target_metrics_from_prediction_view(
         stop = int(view.force_offsets[index + 1])
         pred_e = float(prediction.energy_ev)
         if not math.isfinite(pred_e):
-            raise TrainingDataInputError("EVAL2 predicted energy is non-finite.")
+            raise Eval2NumericalEvaluationError(
+                "eval_nonfinite_energy_prediction",
+                f"EVAL2 predicted energy is non-finite for target frame index {index}.",
+                target_role_digest=target_role_digest,
+                prediction_digest=prediction_digest,
+            )
         signed_energy_error_per_atom = (pred_e - float(view.reference_energies[index])) / natoms
         energy_abs_per_atom[index] = abs(signed_energy_error_per_atom)
         composition_key = metadata.composition_keys[index]
         energy_signed_per_atom_by_composition.setdefault(composition_key, []).append(signed_energy_error_per_atom)
 
         pred_f = np.asarray(prediction.forces_ev_per_angstrom, dtype=np.float64)
-        if pred_f.shape != (natoms, 3) or np.any(~np.isfinite(pred_f)):
-            raise TrainingDataInputError("EVAL2 predicted force shape/value is invalid.")
+        if pred_f.shape != (natoms, 3):
+            raise TrainingDataInputError("EVAL2 predicted force shape is invalid.")
+        if np.any(~np.isfinite(pred_f)):
+            raise Eval2NumericalEvaluationError(
+                "eval_nonfinite_force_prediction",
+                f"EVAL2 predicted forces are non-finite for target frame index {index}.",
+                target_role_digest=target_role_digest,
+                prediction_digest=prediction_digest,
+            )
         delta = pred_f - view.reference_forces[start:stop]
         sse = float(np.sum(delta * delta, dtype=np.float64))
         components = int(delta.size)
@@ -1159,8 +1207,15 @@ def eval2_target_metrics_from_prediction_view(
             if prediction.stress_ev_per_angstrom3 is None:
                 raise TrainingDataInputError("EVAL2 target has stress labels but prediction omitted stress.")
             predicted_stress = full_3x3_to_voigt_6_stress(np.asarray(prediction.stress_ev_per_angstrom3, dtype=np.float64)).reshape(-1)
-            if predicted_stress.shape != (6,) or np.any(~np.isfinite(predicted_stress)):
-                raise TrainingDataInputError("EVAL2 predicted stress is invalid.")
+            if predicted_stress.shape != (6,):
+                raise TrainingDataInputError("EVAL2 predicted stress shape is invalid.")
+            if np.any(~np.isfinite(predicted_stress)):
+                raise Eval2NumericalEvaluationError(
+                    "eval_nonfinite_stress_prediction",
+                    f"EVAL2 predicted stress is non-finite for target frame index {index}.",
+                    target_role_digest=target_role_digest,
+                    prediction_digest=prediction_digest,
+                )
             delta_stress = predicted_stress - view.reference_stresses[index]
             stress_sse += float(np.sum(delta_stress * delta_stress, dtype=np.float64))
             stress_count += int(delta_stress.size)
@@ -1209,20 +1264,41 @@ def eval2_target_metrics_from_prediction_view(
         )
         for code, block in enumerate(metadata.block_labels)
     )
+    energy_mae = float(np.mean(energy_abs_per_atom))
+    force_rmse = math.sqrt(force_sse / force_count)
+    p90 = float(np.quantile(vector, 0.90))
+    p95 = float(np.quantile(vector, 0.95))
+    p99 = float(np.quantile(vector, 0.99))
+    stress_rmse = None if stress_count == 0 else math.sqrt(stress_sse / stress_count)
+    numerical_metrics = [
+        energy_mae, force_rmse, species_macro, p90, p95, p99,
+        *(value for _, value in species),
+        *(value for _, value in strata),
+    ]
+    for optional in (relative_energy_rmse, worst, stress_rmse):
+        if optional is not None:
+            numerical_metrics.append(float(optional))
+    if any(not math.isfinite(float(value)) for value in numerical_metrics):
+        raise Eval2NumericalEvaluationError(
+            "eval_nonfinite_target_metric",
+            "EVAL2 target-only reduction produced a non-finite scientific metric.",
+            target_role_digest=target_role_digest,
+            prediction_digest=prediction_digest,
+        )
     return Eval2TargetMetricRecord(
         configuration_count=count,
         atom_count=int(view.total_atom_count),
-        energy_mae_ev_per_atom=float(np.mean(energy_abs_per_atom)),
+        energy_mae_ev_per_atom=energy_mae,
         relative_energy_rmse_ev_per_atom=relative_energy_rmse,
-        force_component_rmse_ev_per_angstrom=math.sqrt(force_sse / force_count),
+        force_component_rmse_ev_per_angstrom=force_rmse,
         species_macro_force_rmse_ev_per_angstrom=species_macro,
         species_force_rmse_ev_per_angstrom=species,
-        force_error_p90_ev_per_angstrom=float(np.quantile(vector, 0.90)),
-        force_error_p95_ev_per_angstrom=float(np.quantile(vector, 0.95)),
-        force_error_p99_ev_per_angstrom=float(np.quantile(vector, 0.99)),
+        force_error_p90_ev_per_angstrom=p90,
+        force_error_p95_ev_per_angstrom=p95,
+        force_error_p99_ev_per_angstrom=p99,
         worst_stratum_force_rmse_ev_per_angstrom=worst,
         stratum_force_rmse_ev_per_angstrom=strata,
-        stress_rmse_ev_per_angstrom3=None if stress_count == 0 else math.sqrt(stress_sse / stress_count),
+        stress_rmse_ev_per_angstrom3=stress_rmse,
         block_metrics=block_metrics,
         target_role_digest=target_role_digest,
         prediction_digest=prediction_digest,

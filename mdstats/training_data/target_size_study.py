@@ -19,11 +19,15 @@ from ._common import (
     validate_digest,
 )
 
-TARGET_SIZE_STUDY_VERSION = "mdstats.target-size-study.fixed-eight.2026-08.v5.2"
+TARGET_SIZE_STUDY_VERSION = "mdstats.target-size-study.fixed-eight.2026-08.v5.3"
 TARGET_SIZE_STUDY_POLICY_SCHEMA = "mdstats.target-size-study-policy.v6"
 TARGET_SIZE_STUDY_CANDIDATE_SCHEMA = "mdstats.target-size-study-candidate.v5"
-TARGET_SIZE_TRAINING_EVIDENCE_SCHEMA = "mdstats.target-size-training-evidence.v6"
-TARGET_SIZE_STUDY_PLAN_SCHEMA = "mdstats.target-size-study-plan.v7"
+TARGET_SIZE_TRAINING_EVIDENCE_SCHEMA = "mdstats.target-size-training-evidence.v7"
+TARGET_SIZE_TRAJECTORY_FAILURE_EVIDENCE_SCHEMA = (
+    "mdstats.target-size-trajectory-failure-evidence.v1"
+)
+TARGET_SIZE_STAGE_OUTCOME_SCHEMA = "mdstats.target-size-stage-outcome.v1"
+TARGET_SIZE_STUDY_PLAN_SCHEMA = "mdstats.target-size-study-plan.v8"
 TARGET_SIZE_PREFIX_SCHEMA = "mdstats.target-size-study-repair2-prefix.v1"
 TARGET_SIZE_CANDIDATE_DATA_SCHEMA = "mdstats.target-size-study-candidate-data.v1"
 TARGET_SIZE_CANDIDATE_AUTHORITY_SCHEMA = "mdstats.target-size-study-candidate-authority.v1"
@@ -45,7 +49,25 @@ _TERMINAL_OUTCOMES = {
     OUTCOME_NONCONVERGED_AT_FIXED_CEILING,
     OUTCOME_INSUFFICIENT_COMPARABLE_CANDIDATES,
 }
-_STAGE_FOR_EPOCH = {3: "coarse", 10: "short", 30: "final"}
+STAGE_COARSE = "coarse"
+STAGE_SHORT = "short"
+STAGE_FINAL = "final"
+_STAGE_FOR_EPOCH = {3: STAGE_COARSE, 10: STAGE_SHORT, 30: STAGE_FINAL}
+_EPOCH_FOR_STAGE = {value: key for key, value in _STAGE_FOR_EPOCH.items()}
+
+FAILURE_PHASE_TRAIN = "train"
+FAILURE_PHASE_TARGET_EVALUATION = "target_evaluation"
+TRAIN2_NUMERICAL_FAILURE_CODES = frozenset({
+    "train_nonfinite_model_state",
+    "train_nonfinite_ema_state",
+})
+EVAL2_NUMERICAL_FAILURE_CODES = frozenset({
+    "eval_nonfinite_energy_prediction",
+    "eval_nonfinite_force_prediction",
+    "eval_nonfinite_stress_prediction",
+    "eval_nonfinite_target_metric",
+})
+TARGET_SIZE_SCIENTIFIC_FAILURE_CODES = TRAIN2_NUMERICAL_FAILURE_CODES | EVAL2_NUMERICAL_FAILURE_CODES
 
 
 @dataclass(frozen=True, slots=True)
@@ -252,7 +274,12 @@ class TargetSizeStudyCandidate:
 
 @dataclass(frozen=True, slots=True)
 class TargetSizeTrainingEvidence:
-    """Authenticated TRAIN2 endpoint evidence for a v5 candidate trajectory."""
+    """Authenticated successful TRAIN2/EVAL2 endpoint evidence.
+
+    Failed trajectories are represented only by
+    :class:`TargetSizeTrajectoryFailureEvidence`; this record always denotes a
+    real, complete, finite 3/10/30 endpoint.
+    """
 
     stage: str
     target_size: int
@@ -265,7 +292,6 @@ class TargetSizeTrainingEvidence:
     instantaneous_learning_rate: float
     wall_time_seconds: float
     target_force_score_mev_per_a: float
-    numerical_valid: bool
     foundation_identity_digest: str
     evaluation_role_digest: str
     training_policy_digest: str
@@ -285,11 +311,10 @@ class TargetSizeTrainingEvidence:
     parent_checkpoint_digest: str | None = None
     parent_optimizer_state_digest: str | None = None
     parent_rng_state_digest: str | None = None
-    failure_reasons: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         stage = str(self.stage).strip().lower()
-        if stage not in {"coarse", "short", "final"}:
+        if stage not in _EPOCH_FOR_STAGE:
             raise TrainingDataInputError(
                 "Target-size training stage must be coarse, short, or final."
             )
@@ -303,52 +328,30 @@ class TargetSizeTrainingEvidence:
         lr = float(self.instantaneous_learning_rate)
         wall = float(self.wall_time_seconds)
         score = float(self.target_force_score_mev_per_a)
-        if (
-            size not in FIXED_TARGET_SIZES
-            or seed < 0
-            or completed <= 0
-            or planned < completed
-            or updates <= 0
-            or structures <= 0
-        ):
-            raise TrainingDataInputError("Target-size training evidence counts are invalid.")
-        if not math.isfinite(progress) or not 0.0 <= progress <= 1.0:
-            raise TrainingDataInputError("Target-size schedule progress is invalid.")
-        if (
-            not math.isfinite(lr)
-            or lr <= 0.0
-            or not math.isfinite(wall)
-            or wall < 0.0
-        ):
+        if size not in FIXED_TARGET_SIZES or seed < 0 or updates <= 0 or structures <= 0:
+            raise TrainingDataInputError("Target-size successful endpoint counts are invalid.")
+        expected_epoch = _EPOCH_FOR_STAGE[stage]
+        if completed != expected_epoch or planned != 30:
             raise TrainingDataInputError(
-                "Target-size learning-rate/wall evidence is invalid."
+                "Target-size successful evidence must be an exact complete 3/10/30 endpoint on the 30-epoch schedule."
             )
+        expected_progress = completed / planned
+        if not math.isfinite(progress) or abs(progress - expected_progress) > 1.0e-12:
+            raise TrainingDataInputError("Target-size schedule progress is inconsistent with the endpoint.")
+        if not math.isfinite(lr) or lr <= 0.0 or not math.isfinite(wall) or wall < 0.0:
+            raise TrainingDataInputError("Target-size learning-rate/wall evidence is invalid.")
         if not math.isfinite(score) or score < 0.0:
-            raise TrainingDataInputError(
-                "Target-size force score must be finite and nonnegative."
-            )
+            raise TrainingDataInputError("Target-size force score must be finite and nonnegative.")
         for name in (
-            "foundation_identity_digest",
-            "evaluation_role_digest",
-            "training_policy_digest",
-            "target_size_study_policy_digest",
-            "training_run_digest",
-            "candidate_data_digest",
-            "checkpoint_digest",
-            "schedule_digest",
-            "optimizer_state_digest",
-            "rng_state_digest",
+            "foundation_identity_digest", "evaluation_role_digest", "training_policy_digest",
+            "target_size_study_policy_digest", "training_run_digest", "candidate_data_digest",
+            "checkpoint_digest", "schedule_digest", "optimizer_state_digest", "rng_state_digest",
             "target_evaluation_digest",
         ):
-            object.__setattr__(
-                self, name, validate_digest(getattr(self, name), name=name)
-            )
+            object.__setattr__(self, name, validate_digest(getattr(self, name), name=name))
         for name in (
-            "replay_evaluation_digest",
-            "physical_qualification_digest",
-            "parent_checkpoint_digest",
-            "parent_optimizer_state_digest",
-            "parent_rng_state_digest",
+            "replay_evaluation_digest", "physical_qualification_digest",
+            "parent_checkpoint_digest", "parent_optimizer_state_digest", "parent_rng_state_digest",
         ):
             value = getattr(self, name)
             if value is not None:
@@ -356,79 +359,40 @@ class TargetSizeTrainingEvidence:
         if self.replay_diagnostic_force_rmse_mev_per_a is not None:
             replay = float(self.replay_diagnostic_force_rmse_mev_per_a)
             if not math.isfinite(replay) or replay < 0.0:
-                raise TrainingDataInputError(
-                    "Replay diagnostic must be finite and nonnegative."
-                )
-            object.__setattr__(
-                self, "replay_diagnostic_force_rmse_mev_per_a", replay
-            )
+                raise TrainingDataInputError("Replay diagnostic must be finite and nonnegative.")
+            object.__setattr__(self, "replay_diagnostic_force_rmse_mev_per_a", replay)
         parents = (
             self.parent_checkpoint_digest,
             self.parent_optimizer_state_digest,
             self.parent_rng_state_digest,
         )
-        if stage == "coarse":
+        if stage == STAGE_COARSE:
             if any(v is not None for v in parents):
-                raise TrainingDataInputError(
-                    "Epoch-3 evidence cannot claim a continuation parent."
-                )
-            if any(
-                v is not None
-                for v in (
-                    self.replay_diagnostic_force_rmse_mev_per_a,
-                    self.replay_evaluation_digest,
-                    self.replay_admissible,
-                    self.physical_qualification_passed,
-                    self.physical_qualification_digest,
-                )
-            ):
+                raise TrainingDataInputError("Epoch-3 evidence cannot claim a continuation parent.")
+            if any(v is not None for v in (
+                self.replay_diagnostic_force_rmse_mev_per_a, self.replay_evaluation_digest,
+                self.replay_admissible, self.physical_qualification_passed, self.physical_qualification_digest,
+            )):
                 raise TrainingDataInputError("Epoch-3 evidence is target-only.")
-            if not (0.0 < progress < 1.0):
-                raise TrainingDataInputError(
-                    "Epoch-3 schedule progress must be inside the 30-epoch horizon."
-                )
-        elif stage == "short":
+        elif stage == STAGE_SHORT:
             if any(v is None for v in parents):
                 raise TrainingDataInputError(
                     "Epoch-10 evidence requires exact epoch-3 checkpoint/optimizer/RNG ancestry."
                 )
-            if (
-                self.replay_admissible is not None
-                or self.physical_qualification_passed is not None
-                or self.physical_qualification_digest is not None
-            ):
-                raise TrainingDataInputError(
-                    "Epoch-10 evidence cannot carry final replay/physical pass authority."
-                )
-            if (self.replay_diagnostic_force_rmse_mev_per_a is None) != (
-                self.replay_evaluation_digest is None
-            ):
-                raise TrainingDataInputError(
-                    "Epoch-10 replay diagnostics require both value and digest."
-                )
-            if not (0.0 < progress < 1.0):
-                raise TrainingDataInputError(
-                    "Epoch-10 schedule progress must be inside the 30-epoch horizon."
-                )
+            if self.replay_admissible is not None or self.physical_qualification_passed is not None or self.physical_qualification_digest is not None:
+                raise TrainingDataInputError("Epoch-10 evidence cannot carry final replay/physical pass authority.")
+            if (self.replay_diagnostic_force_rmse_mev_per_a is None) != (self.replay_evaluation_digest is None):
+                raise TrainingDataInputError("Epoch-10 replay diagnostics require both value and digest.")
         else:
             if any(v is None for v in parents):
                 raise TrainingDataInputError(
                     "Epoch-30 evidence requires exact epoch-10 checkpoint/optimizer/RNG ancestry."
                 )
-            if abs(progress - 1.0) > 1.0e-12:
-                raise TrainingDataInputError(
-                    "Epoch-30 schedule progress must be exactly complete."
-                )
-            if (self.replay_diagnostic_force_rmse_mev_per_a is None) != (
-                self.replay_evaluation_digest is None
-            ):
-                raise TrainingDataInputError(
-                    "Epoch-30 replay diagnostics require both value and digest when present."
-                )
+            if (self.replay_diagnostic_force_rmse_mev_per_a is None) != (self.replay_evaluation_digest is None):
+                raise TrainingDataInputError("Epoch-30 replay diagnostics require both value and digest when present.")
             if self.replay_admissible is not None or self.physical_qualification_passed is not None or self.physical_qualification_digest is not None:
                 raise TrainingDataInputError(
-                    "Target-size v5 forbids replay/physical hard-pass authority in epoch-30 size evidence; "
-                    "those model/protocol gates run only after selected_target_size is frozen."
+                    "Target-size v5 forbids replay/physical hard-pass authority in epoch-30 size evidence; downstream gates run after size freeze."
                 )
         object.__setattr__(self, "stage", stage)
         object.__setattr__(self, "target_size", size)
@@ -441,39 +405,29 @@ class TargetSizeTrainingEvidence:
         object.__setattr__(self, "instantaneous_learning_rate", lr)
         object.__setattr__(self, "wall_time_seconds", wall)
         object.__setattr__(self, "target_force_score_mev_per_a", score)
-        object.__setattr__(
-            self,
-            "failure_reasons",
-            tuple(sorted(set(str(v) for v in self.failure_reasons))),
-        )
+
+    @property
+    def key(self) -> tuple[int, int]:
+        return (self.target_size, self.optimizer_seed)
 
     @property
     def admissible_for_screening(self) -> bool:
-        return bool(self.numerical_valid)
+        return True
 
     @property
     def admissible_for_final_selection(self) -> bool:
-        # MVQUAL is the sole hard target-size eligibility gate.  Epoch-30 model
-        # acceptance (target thresholds, replay degradation, PES/relax/dynamics)
-        # is deliberately downstream of the immutable size choice.  Only a
-        # numerically invalid trajectory can be excluded from the ranking here.
-        return bool(self.numerical_valid)
+        return True
 
     def _payload(self) -> dict[str, Any]:
         return {
             "schema": TARGET_SIZE_TRAINING_EVIDENCE_SCHEMA,
-            "stage": self.stage,
-            "target_size": self.target_size,
-            "optimizer_seed": self.optimizer_seed,
-            "completed_epochs": self.completed_epochs,
-            "planned_epochs": self.planned_epochs,
-            "optimizer_update_count": self.optimizer_update_count,
-            "structures_presented": self.structures_presented,
+            "stage": self.stage, "target_size": self.target_size, "optimizer_seed": self.optimizer_seed,
+            "completed_epochs": self.completed_epochs, "planned_epochs": self.planned_epochs,
+            "optimizer_update_count": self.optimizer_update_count, "structures_presented": self.structures_presented,
             "normalized_schedule_progress": self.normalized_schedule_progress,
             "instantaneous_learning_rate": self.instantaneous_learning_rate,
             "wall_time_seconds": self.wall_time_seconds,
             "target_force_score_mev_per_a": self.target_force_score_mev_per_a,
-            "numerical_valid": self.numerical_valid,
             "foundation_identity_digest": self.foundation_identity_digest,
             "evaluation_role_digest": self.evaluation_role_digest,
             "training_policy_digest": self.training_policy_digest,
@@ -493,7 +447,6 @@ class TargetSizeTrainingEvidence:
             "parent_checkpoint_digest": self.parent_checkpoint_digest,
             "parent_optimizer_state_digest": self.parent_optimizer_state_digest,
             "parent_rng_state_digest": self.parent_rng_state_digest,
-            "failure_reasons": list(self.failure_reasons),
         }
 
     @property
@@ -507,19 +460,193 @@ class TargetSizeTrainingEvidence:
     def from_dict(cls, payload: Mapping[str, Any]) -> "TargetSizeTrainingEvidence":
         if payload.get("schema") != TARGET_SIZE_TRAINING_EVIDENCE_SCHEMA:
             raise TrainingDataSerializationError(
-                "Historical target-size training evidence is stale under v5."
+                "Historical invalid-capable target-size endpoint evidence is not restart-compatible with v5 closeout."
             )
         kwargs = dict(payload)
         kwargs.pop("schema", None)
         kwargs.pop("content_digest", None)
-        kwargs["failure_reasons"] = tuple(
-            str(v) for v in kwargs.get("failure_reasons", ())
-        )
         result = cls(**kwargs)
         if payload.get("content_digest") not in (None, result.content_digest):
-            raise TrainingDataSerializationError(
-                "Target-size training evidence digest mismatch."
-            )
+            raise TrainingDataSerializationError("Target-size training evidence digest mismatch.")
+        return result
+
+
+@dataclass(frozen=True, slots=True)
+class TargetSizeTrajectoryFailureEvidence:
+    """Authenticated candidate-specific numerical/scientific trajectory failure."""
+
+    stage: str
+    target_size: int
+    optimizer_seed: int
+    failure_phase: str
+    failure_code: str
+    failure_reasons: tuple[str, ...]
+    target_size_study_policy_digest: str
+    training_run_digest: str
+    candidate_data_digest: str
+    training_policy_digest: str
+    schedule_digest: str
+    execution_record_digest: str | None = None
+    execution_attempt_digest: str | None = None
+    checkpoint_digest: str | None = None
+    evaluation_role_digest: str | None = None
+    target_evaluation_digest: str | None = None
+    completed_epochs: int | None = None
+    optimizer_update_count: int | None = None
+
+    def __post_init__(self) -> None:
+        stage = str(self.stage).strip().lower()
+        if stage not in _EPOCH_FOR_STAGE:
+            raise TrainingDataInputError("Target-size failure evidence has an invalid fidelity stage.")
+        size = int(self.target_size)
+        seed = int(self.optimizer_seed)
+        if size not in FIXED_TARGET_SIZES or seed < 0:
+            raise TrainingDataInputError("Target-size failure evidence candidate identity is invalid.")
+        phase = str(self.failure_phase).strip()
+        code = str(self.failure_code).strip()
+        if phase == FAILURE_PHASE_TRAIN:
+            if code not in TRAIN2_NUMERICAL_FAILURE_CODES:
+                raise TrainingDataInputError("Only explicit TRAIN2 numerical codes may become train-phase target-size failure evidence.")
+            if self.execution_record_digest is None or self.execution_attempt_digest is None:
+                raise TrainingDataInputError("TRAIN2 failure evidence requires execution-record and attempt provenance.")
+            if self.checkpoint_digest is not None or self.evaluation_role_digest is not None or self.target_evaluation_digest is not None:
+                raise TrainingDataInputError("Train-phase target-size failure cannot fabricate endpoint/evaluation provenance.")
+        elif phase == FAILURE_PHASE_TARGET_EVALUATION:
+            if code not in EVAL2_NUMERICAL_FAILURE_CODES:
+                raise TrainingDataInputError("Only explicit EVAL2 numerical codes may become evaluation-phase target-size failure evidence.")
+            if any(v is None for v in (
+                self.execution_record_digest, self.execution_attempt_digest, self.checkpoint_digest,
+                self.evaluation_role_digest, self.target_evaluation_digest,
+            )):
+                raise TrainingDataInputError(
+                    "EVAL2 numerical failure requires successful execution, attempt, checkpoint, role, and failed-evaluation provenance."
+                )
+        else:
+            raise TrainingDataInputError("Unsupported target-size failure phase.")
+        reasons = tuple(str(v).strip() for v in self.failure_reasons if str(v).strip())
+        if not reasons or len(set(reasons)) != len(reasons):
+            raise TrainingDataInputError("Target-size failure reasons must be non-empty, unique, and deterministic.")
+        for name in (
+            "target_size_study_policy_digest", "training_run_digest", "candidate_data_digest",
+            "training_policy_digest", "schedule_digest",
+        ):
+            object.__setattr__(self, name, validate_digest(getattr(self, name), name=name))
+        for name in (
+            "execution_record_digest", "execution_attempt_digest", "checkpoint_digest",
+            "evaluation_role_digest", "target_evaluation_digest",
+        ):
+            value = getattr(self, name)
+            if value is not None:
+                object.__setattr__(self, name, validate_digest(value, name=name))
+        if self.completed_epochs is not None:
+            completed = int(self.completed_epochs)
+            if completed < 0 or completed > _EPOCH_FOR_STAGE[stage]:
+                raise TrainingDataInputError("Target-size failure completed_epochs lies outside the required stage boundary.")
+            object.__setattr__(self, "completed_epochs", completed)
+        if self.optimizer_update_count is not None:
+            updates = int(self.optimizer_update_count)
+            if updates < 0:
+                raise TrainingDataInputError("Target-size failure optimizer_update_count cannot be negative.")
+            object.__setattr__(self, "optimizer_update_count", updates)
+        object.__setattr__(self, "stage", stage)
+        object.__setattr__(self, "target_size", size)
+        object.__setattr__(self, "optimizer_seed", seed)
+        object.__setattr__(self, "failure_phase", phase)
+        object.__setattr__(self, "failure_code", code)
+        object.__setattr__(self, "failure_reasons", reasons)
+
+    @property
+    def key(self) -> tuple[int, int]:
+        return (self.target_size, self.optimizer_seed)
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "schema": TARGET_SIZE_TRAJECTORY_FAILURE_EVIDENCE_SCHEMA,
+            "stage": self.stage, "target_size": self.target_size, "optimizer_seed": self.optimizer_seed,
+            "failure_phase": self.failure_phase, "failure_code": self.failure_code,
+            "failure_reasons": list(self.failure_reasons),
+            "target_size_study_policy_digest": self.target_size_study_policy_digest,
+            "training_run_digest": self.training_run_digest,
+            "candidate_data_digest": self.candidate_data_digest,
+            "training_policy_digest": self.training_policy_digest,
+            "schedule_digest": self.schedule_digest,
+            "execution_record_digest": self.execution_record_digest,
+            "execution_attempt_digest": self.execution_attempt_digest,
+            "checkpoint_digest": self.checkpoint_digest,
+            "evaluation_role_digest": self.evaluation_role_digest,
+            "target_evaluation_digest": self.target_evaluation_digest,
+            "completed_epochs": self.completed_epochs,
+            "optimizer_update_count": self.optimizer_update_count,
+        }
+
+    @property
+    def content_digest(self) -> str:
+        return digest(self._payload())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._payload(), "content_digest": self.content_digest}
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "TargetSizeTrajectoryFailureEvidence":
+        if payload.get("schema") != TARGET_SIZE_TRAJECTORY_FAILURE_EVIDENCE_SCHEMA:
+            raise TrainingDataSerializationError("Unsupported target-size trajectory-failure schema.")
+        kwargs = dict(payload)
+        kwargs.pop("schema", None)
+        kwargs.pop("content_digest", None)
+        kwargs["failure_reasons"] = tuple(str(v) for v in kwargs.get("failure_reasons", ()))
+        result = cls(**kwargs)
+        if payload.get("content_digest") not in (None, result.content_digest):
+            raise TrainingDataSerializationError("Target-size trajectory-failure digest mismatch.")
+        return result
+
+
+@dataclass(frozen=True, slots=True)
+class TargetSizeStageOutcome:
+    """Exactly one success or failure for an expected ``(size, seed)`` key."""
+
+    success: TargetSizeTrainingEvidence | None = None
+    failure: TargetSizeTrajectoryFailureEvidence | None = None
+
+    def __post_init__(self) -> None:
+        if (self.success is None) == (self.failure is None):
+            raise TrainingDataInputError("Target-size stage outcome must contain exactly one success or failure.")
+
+    @property
+    def key(self) -> tuple[int, int]:
+        item = self.success if self.success is not None else self.failure
+        assert item is not None
+        return item.key
+
+    @property
+    def stage(self) -> str:
+        item = self.success if self.success is not None else self.failure
+        assert item is not None
+        return item.stage
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "schema": TARGET_SIZE_STAGE_OUTCOME_SCHEMA,
+            "success": None if self.success is None else self.success.to_dict(),
+            "failure": None if self.failure is None else self.failure.to_dict(),
+        }
+
+    @property
+    def content_digest(self) -> str:
+        return digest(self._payload())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._payload(), "content_digest": self.content_digest}
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "TargetSizeStageOutcome":
+        if payload.get("schema") != TARGET_SIZE_STAGE_OUTCOME_SCHEMA:
+            raise TrainingDataSerializationError("Unsupported target-size stage-outcome schema.")
+        result = cls(
+            success=None if payload.get("success") is None else TargetSizeTrainingEvidence.from_dict(payload["success"]),
+            failure=None if payload.get("failure") is None else TargetSizeTrajectoryFailureEvidence.from_dict(payload["failure"]),
+        )
+        if payload.get("content_digest") not in (None, result.content_digest):
+            raise TrainingDataSerializationError("Target-size stage-outcome digest mismatch.")
         return result
 
 
@@ -531,91 +658,85 @@ class TargetSizeStudyPlan:
     policy: TargetSizeStudyPolicy
     candidates: tuple[TargetSizeStudyCandidate, ...]
     qualified_sizes: tuple[int, ...]
-    epoch3_evidence: tuple[TargetSizeTrainingEvidence, ...] = ()
+    epoch3_outcomes: tuple[TargetSizeStageOutcome, ...] = ()
     epoch3_survivor_sizes: tuple[int, ...] = ()
-    epoch10_evidence: tuple[TargetSizeTrainingEvidence, ...] = ()
+    epoch10_outcomes: tuple[TargetSizeStageOutcome, ...] = ()
     epoch10_finalist_sizes: tuple[int, ...] = ()
-    epoch30_evidence: tuple[TargetSizeTrainingEvidence, ...] = ()
+    epoch30_outcomes: tuple[TargetSizeStageOutcome, ...] = ()
     selected_target_size: int | None = None
     outcome: str = OUTCOME_AWAITING_EPOCH_3
-    decision_reason: str = (
-        "qualified fixed target-size set frozen; awaiting epoch-3 TRAIN2 evidence"
-    )
+    decision_reason: str = "qualified fixed target-size set frozen; awaiting epoch-3 TRAIN2 outcomes"
     comparison_failure_stage: str | None = None
     comparison_failures: tuple[tuple[int, int, tuple[str, ...]], ...] = ()
     authority_version: str = TARGET_SIZE_STUDY_VERSION
-    _content_digest_cache: str = field(
-        default="", init=False, repr=False, compare=False
-    )
+    _content_digest_cache: str = field(default="", init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if not str(self.dataset_id).strip():
-            raise TrainingDataInputError(
-                "Target-size study dataset_id cannot be empty."
-            )
-        object.__setattr__(
-            self,
-            "repair2_authority_digest",
-            validate_digest(
-                self.repair2_authority_digest, name="repair2_authority_digest"
-            ),
-        )
-        object.__setattr__(
-            self,
-            "mvqual_authority_digest",
-            validate_digest(
-                self.mvqual_authority_digest, name="mvqual_authority_digest"
-            ),
-        )
+            raise TrainingDataInputError("Target-size study dataset_id cannot be empty.")
+        object.__setattr__(self, "repair2_authority_digest", validate_digest(self.repair2_authority_digest, name="repair2_authority_digest"))
+        object.__setattr__(self, "mvqual_authority_digest", validate_digest(self.mvqual_authority_digest, name="mvqual_authority_digest"))
         if self.authority_version != TARGET_SIZE_STUDY_VERSION:
-            raise TrainingDataInputError(
-                "Unsupported target-size study authority version."
-            )
+            raise TrainingDataInputError("Unsupported target-size study authority version.")
         candidates = tuple(sorted(self.candidates, key=lambda v: v.target_size))
-        qualified = tuple(v.target_size for v in candidates if v.qualified)
-        e3 = tuple(self.epoch3_evidence)
-        s3 = tuple(int(v) for v in self.epoch3_survivor_sizes)
-        e10 = tuple(self.epoch10_evidence)
-        s10 = tuple(int(v) for v in self.epoch10_finalist_sizes)
-        e30 = tuple(self.epoch30_evidence)
-        selected = None if self.selected_target_size is None else int(self.selected_target_size)
-        failures = tuple(
-            sorted(
-                (
-                    int(size),
-                    int(seed),
-                    tuple(sorted(set(str(reason) for reason in reasons))),
-                )
-                for size, seed, reasons in self.comparison_failures
-            )
-        )
-        object.__setattr__(self, "candidates", candidates)
-        object.__setattr__(self, "qualified_sizes", tuple(int(v) for v in self.qualified_sizes))
-        object.__setattr__(self, "epoch3_evidence", e3)
-        object.__setattr__(self, "epoch3_survivor_sizes", s3)
-        object.__setattr__(self, "epoch10_evidence", e10)
-        object.__setattr__(self, "epoch10_finalist_sizes", s10)
-        object.__setattr__(self, "epoch30_evidence", e30)
-        object.__setattr__(self, "selected_target_size", selected)
-        object.__setattr__(
-            self,
-            "comparison_failure_stage",
-            None if self.comparison_failure_stage is None else str(self.comparison_failure_stage),
-        )
-        object.__setattr__(self, "comparison_failures", failures)
         if tuple(v.target_size for v in candidates) != FIXED_TARGET_SIZES:
-            raise TrainingDataInputError(
-                "Target-size study must record exactly the fixed eight candidates."
-            )
+            raise TrainingDataInputError("Target-size study must record exactly the fixed eight candidates.")
+        qualified = tuple(v.target_size for v in candidates if v.qualified)
         if tuple(int(v) for v in self.qualified_sizes) != qualified:
-            raise TrainingDataInputError(
-                "Target-size study qualified set must equal MVQUAL-qualified materializable candidates."
+            raise TrainingDataInputError("Target-size study qualified set must equal MVQUAL-qualified materializable candidates.")
+        # Derived candidate identity is recomputed here so a forged in-memory
+        # candidate cannot survive semantic validation merely because its digest
+        # has valid syntax.
+        for candidate in candidates:
+            expected = _candidate_data_digest(
+                self.dataset_id,
+                self.repair2_authority_digest,
+                candidate.target_size,
+                candidate.domain_prefix_digests,
             )
+            if candidate.candidate_data_digest != expected:
+                raise TrainingDataInputError("Target-size candidate_data_digest failed semantic recomputation.")
+        object.__setattr__(self, "candidates", candidates)
+        object.__setattr__(self, "qualified_sizes", qualified)
+        object.__setattr__(self, "epoch3_outcomes", tuple(self.epoch3_outcomes))
+        object.__setattr__(self, "epoch3_survivor_sizes", tuple(int(v) for v in self.epoch3_survivor_sizes))
+        object.__setattr__(self, "epoch10_outcomes", tuple(self.epoch10_outcomes))
+        object.__setattr__(self, "epoch10_finalist_sizes", tuple(int(v) for v in self.epoch10_finalist_sizes))
+        object.__setattr__(self, "epoch30_outcomes", tuple(self.epoch30_outcomes))
+        object.__setattr__(self, "selected_target_size", None if self.selected_target_size is None else int(self.selected_target_size))
+        object.__setattr__(self, "comparison_failure_stage", None if self.comparison_failure_stage is None else str(self.comparison_failure_stage))
+        object.__setattr__(self, "comparison_failures", tuple(
+            (int(size), int(seed), tuple(str(v) for v in reasons))
+            for size, seed, reasons in self.comparison_failures
+        ))
         _validate_target_size_study_semantics(self)
 
     @property
+    def epoch3_evidence(self) -> tuple[TargetSizeTrainingEvidence, ...]:
+        return tuple(v.success for v in self.epoch3_outcomes if v.success is not None)
+
+    @property
+    def epoch3_failures(self) -> tuple[TargetSizeTrajectoryFailureEvidence, ...]:
+        return tuple(v.failure for v in self.epoch3_outcomes if v.failure is not None)
+
+    @property
+    def epoch10_evidence(self) -> tuple[TargetSizeTrainingEvidence, ...]:
+        return tuple(v.success for v in self.epoch10_outcomes if v.success is not None)
+
+    @property
+    def epoch10_failures(self) -> tuple[TargetSizeTrajectoryFailureEvidence, ...]:
+        return tuple(v.failure for v in self.epoch10_outcomes if v.failure is not None)
+
+    @property
+    def epoch30_evidence(self) -> tuple[TargetSizeTrainingEvidence, ...]:
+        return tuple(v.success for v in self.epoch30_outcomes if v.success is not None)
+
+    @property
+    def epoch30_failures(self) -> tuple[TargetSizeTrajectoryFailureEvidence, ...]:
+        return tuple(v.failure for v in self.epoch30_outcomes if v.failure is not None)
+
+    @property
     def candidate_authority_digest(self) -> str:
-        """Stable identity of Q and its exact REPAIR2 prefix population."""
         return digest({
             "schema": TARGET_SIZE_CANDIDATE_AUTHORITY_SCHEMA,
             "dataset_id": self.dataset_id,
@@ -642,20 +763,14 @@ class TargetSizeStudyPlan:
 
     @property
     def next_training_epoch(self) -> int | None:
-        return {
-            OUTCOME_AWAITING_EPOCH_3: 3,
-            OUTCOME_AWAITING_EPOCH_10: 10,
-            OUTCOME_AWAITING_EPOCH_30: 30,
-        }.get(self.outcome)
+        return {OUTCOME_AWAITING_EPOCH_3: 3, OUTCOME_AWAITING_EPOCH_10: 10, OUTCOME_AWAITING_EPOCH_30: 30}.get(self.outcome)
 
     def candidate(self, target_size: int) -> TargetSizeStudyCandidate:
         size = int(target_size)
         for item in self.candidates:
             if item.target_size == size:
                 return item
-        raise TrainingDataInputError(
-            f"Target size n{size} is outside the fixed universe."
-        )
+        raise TrainingDataInputError(f"Target size n{size} is outside the fixed universe.")
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -667,19 +782,16 @@ class TargetSizeStudyPlan:
             "policy": self.policy.to_dict(),
             "candidates": [v.to_dict() for v in self.candidates],
             "qualified_sizes": list(self.qualified_sizes),
-            "epoch3_evidence": [v.to_dict() for v in self.epoch3_evidence],
+            "epoch3_outcomes": [v.to_dict() for v in self.epoch3_outcomes],
             "epoch3_survivor_sizes": list(self.epoch3_survivor_sizes),
-            "epoch10_evidence": [v.to_dict() for v in self.epoch10_evidence],
+            "epoch10_outcomes": [v.to_dict() for v in self.epoch10_outcomes],
             "epoch10_finalist_sizes": list(self.epoch10_finalist_sizes),
-            "epoch30_evidence": [v.to_dict() for v in self.epoch30_evidence],
+            "epoch30_outcomes": [v.to_dict() for v in self.epoch30_outcomes],
             "selected_target_size": self.selected_target_size,
             "outcome": self.outcome,
             "decision_reason": self.decision_reason,
             "comparison_failure_stage": self.comparison_failure_stage,
-            "comparison_failures": [
-                [size, seed, list(reasons)]
-                for size, seed, reasons in self.comparison_failures
-            ],
+            "comparison_failures": [[size, seed, list(reasons)] for size, seed, reasons in self.comparison_failures],
         }
 
     @property
@@ -695,63 +807,31 @@ class TargetSizeStudyPlan:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "TargetSizeStudyPlan":
-        if payload.get("schema") != TARGET_SIZE_STUDY_PLAN_SCHEMA:
+        if payload.get("schema") != TARGET_SIZE_STUDY_PLAN_SCHEMA or payload.get("authority_version") != TARGET_SIZE_STUDY_VERSION:
             raise TrainingDataSerializationError(
-                "Historical target-size/ladder/migration/scalar-seed state is not restart-compatible with current target-size study v5."
-            )
-        if payload.get("authority_version") != TARGET_SIZE_STUDY_VERSION:
-            raise TrainingDataSerializationError(
-                "Target-size study schema/version generation mismatch."
+                "Historical target-size study state is not restart-compatible with v5 closeout; rebuild from upstream authorities."
             )
         result = cls(
             dataset_id=str(payload["dataset_id"]),
             repair2_authority_digest=str(payload["repair2_authority_digest"]),
             mvqual_authority_digest=str(payload["mvqual_authority_digest"]),
             policy=TargetSizeStudyPolicy.from_dict(payload["policy"]),
-            candidates=tuple(
-                TargetSizeStudyCandidate.from_dict(v) for v in payload["candidates"]
-            ),
+            candidates=tuple(TargetSizeStudyCandidate.from_dict(v) for v in payload["candidates"]),
             qualified_sizes=tuple(int(v) for v in payload["qualified_sizes"]),
-            epoch3_evidence=tuple(
-                TargetSizeTrainingEvidence.from_dict(v)
-                for v in payload.get("epoch3_evidence", ())
-            ),
-            epoch3_survivor_sizes=tuple(
-                int(v) for v in payload.get("epoch3_survivor_sizes", ())
-            ),
-            epoch10_evidence=tuple(
-                TargetSizeTrainingEvidence.from_dict(v)
-                for v in payload.get("epoch10_evidence", ())
-            ),
-            epoch10_finalist_sizes=tuple(
-                int(v) for v in payload.get("epoch10_finalist_sizes", ())
-            ),
-            epoch30_evidence=tuple(
-                TargetSizeTrainingEvidence.from_dict(v)
-                for v in payload.get("epoch30_evidence", ())
-            ),
-            selected_target_size=(
-                None
-                if payload.get("selected_target_size") is None
-                else int(payload["selected_target_size"])
-            ),
+            epoch3_outcomes=tuple(TargetSizeStageOutcome.from_dict(v) for v in payload.get("epoch3_outcomes", ())),
+            epoch3_survivor_sizes=tuple(int(v) for v in payload.get("epoch3_survivor_sizes", ())),
+            epoch10_outcomes=tuple(TargetSizeStageOutcome.from_dict(v) for v in payload.get("epoch10_outcomes", ())),
+            epoch10_finalist_sizes=tuple(int(v) for v in payload.get("epoch10_finalist_sizes", ())),
+            epoch30_outcomes=tuple(TargetSizeStageOutcome.from_dict(v) for v in payload.get("epoch30_outcomes", ())),
+            selected_target_size=None if payload.get("selected_target_size") is None else int(payload["selected_target_size"]),
             outcome=str(payload["outcome"]),
             decision_reason=str(payload.get("decision_reason", "")),
-            comparison_failure_stage=(
-                None
-                if payload.get("comparison_failure_stage") is None
-                else str(payload["comparison_failure_stage"])
-            ),
-            comparison_failures=tuple(
-                (int(item[0]), int(item[1]), tuple(str(v) for v in item[2]))
-                for item in payload.get("comparison_failures", ())
-            ),
+            comparison_failure_stage=None if payload.get("comparison_failure_stage") is None else str(payload["comparison_failure_stage"]),
+            comparison_failures=tuple((int(v[0]), int(v[1]), tuple(str(r) for r in v[2])) for v in payload.get("comparison_failures", ())),
             authority_version=str(payload["authority_version"]),
         )
         if payload.get("content_digest") not in (None, result.content_digest):
-            raise TrainingDataSerializationError(
-                "Target-size study plan digest mismatch."
-            )
+            raise TrainingDataSerializationError("Target-size study plan digest mismatch.")
         return result
 
 
@@ -975,168 +1055,126 @@ def materialize_selected_prefix(
     )
 
 
-def _expected_evidence_keys(
-    sizes: Sequence[int], seeds: Sequence[int]
-) -> tuple[tuple[int, int], ...]:
-    return tuple((int(size), int(seed)) for size in sizes for seed in seeds)
+def _outcomes_from_evidence(
+    outcomes: Sequence[TargetSizeTrainingEvidence | TargetSizeTrajectoryFailureEvidence | TargetSizeStageOutcome],
+) -> tuple[TargetSizeStageOutcome, ...]:
+    result: list[TargetSizeStageOutcome] = []
+    for item in outcomes:
+        if isinstance(item, TargetSizeStageOutcome):
+            result.append(item)
+        elif isinstance(item, TargetSizeTrainingEvidence):
+            result.append(TargetSizeStageOutcome(success=item))
+        elif isinstance(item, TargetSizeTrajectoryFailureEvidence):
+            result.append(TargetSizeStageOutcome(failure=item))
+        else:
+            raise TrainingDataInputError(f"Unsupported target-size stage outcome type {type(item).__name__}.")
+    return tuple(result)
 
 
-def _evidence_map(
-    evidence: Sequence[TargetSizeTrainingEvidence],
-) -> dict[tuple[int, int], TargetSizeTrainingEvidence]:
-    result: dict[tuple[int, int], TargetSizeTrainingEvidence] = {}
-    for item in evidence:
-        key = (item.target_size, item.optimizer_seed)
-        if key in result:
-            raise TrainingDataInputError(
-                f"Duplicate target-size evidence for n{item.target_size}, seed={item.optimizer_seed}."
-            )
-        result[key] = item
-    return result
+def _expected_keys(plan: TargetSizeStudyPlan, sizes: Sequence[int]) -> tuple[tuple[int, int], ...]:
+    return tuple((int(size), int(seed)) for size in sizes for seed in plan.policy.screening_optimizer_seeds)
 
 
-def _validate_batch_identity(
+def _comparison_failures(
+    outcomes: Sequence[TargetSizeStageOutcome], sizes: Sequence[int]
+) -> tuple[tuple[int, int, tuple[str, ...]], ...]:
+    allowed = set(int(v) for v in sizes)
+    result = []
+    for outcome in outcomes:
+        failure = outcome.failure
+        if failure is not None and failure.target_size in allowed:
+            result.append((failure.target_size, failure.optimizer_seed, (failure.failure_code, *failure.failure_reasons)))
+    return tuple(result)
+
+
+def _validate_outcome_batch(
     plan: TargetSizeStudyPlan,
-    evidence: Sequence[TargetSizeTrainingEvidence],
-    expected_sizes: Sequence[int],
-    epoch: int,
-) -> dict[tuple[int, int], TargetSizeTrainingEvidence]:
-    expected_keys = _expected_evidence_keys(
-        expected_sizes, plan.policy.screening_optimizer_seeds
-    )
-    observed_keys = tuple(
-        (item.target_size, item.optimizer_seed) for item in evidence
-    )
-    if observed_keys != expected_keys:
+    outcomes: Sequence[TargetSizeStageOutcome],
+    sizes: Sequence[int],
+    stage: str,
+) -> dict[tuple[int, int], TargetSizeStageOutcome]:
+    expected = _expected_keys(plan, sizes)
+    actual = tuple(item.key for item in outcomes)
+    if actual != expected:
         raise TrainingDataInputError(
-            f"Epoch-{epoch} evidence must preserve the exact ordered (size, seed) population; "
-            f"expected={list(expected_keys)}, observed={list(observed_keys)}."
+            f"Target-size {stage} outcome population must exactly equal policy-ordered (size, seed) population; expected={list(expected)}, observed={list(actual)}."
         )
-    by_key = _evidence_map(evidence)
-    stage = _STAGE_FOR_EPOCH[epoch]
-    for size, seed in expected_keys:
-        item = by_key[(size, seed)]
-        if (
-            item.stage != stage
-            or item.completed_epochs != epoch
-            or item.planned_epochs != 30
-        ):
-            raise TrainingDataInputError(
-                f"n{size}, seed={seed} evidence is not the exact {epoch}-of-30 TRAIN2 endpoint."
-            )
-        if item.candidate_data_digest != plan.candidate(size).candidate_data_digest:
-            raise TrainingDataInputError(
-                f"n{size}, seed={seed} TRAIN2 evidence does not use the authenticated REPAIR2 prefix."
-            )
+    by_key = {item.key: item for item in outcomes}
+    if len(by_key) != len(outcomes):
+        raise TrainingDataInputError("Target-size stage outcome population contains duplicate keys.")
+    training_policy_digests: set[str] = set()
+    schedule_digests: set[str] = set()
+    success_foundation_digests: set[str] = set()
+    success_role_digests: set[str] = set()
+    for outcome in outcomes:
+        if outcome.stage != stage:
+            raise TrainingDataInputError("Target-size stage outcome carries the wrong fidelity stage.")
+        item = outcome.success if outcome.success is not None else outcome.failure
+        assert item is not None
+        candidate = plan.candidate(item.target_size)
+        if item.candidate_data_digest != candidate.candidate_data_digest:
+            raise TrainingDataInputError("Target-size stage outcome candidate_data_digest mismatch.")
         if item.target_size_study_policy_digest != plan.policy.policy_digest:
-            raise TrainingDataInputError(
-                f"n{size}, seed={seed} TRAIN2 evidence belongs to a different target-size study policy."
-            )
-    for attr in (
-        "foundation_identity_digest",
-        "evaluation_role_digest",
-        "training_policy_digest",
-        "schedule_digest",
-    ):
-        if len({getattr(v, attr) for v in by_key.values()}) != 1:
-            raise TrainingDataInputError(
-                f"Target-size candidates do not share {attr}."
-            )
+            raise TrainingDataInputError("Target-size stage outcome policy digest mismatch.")
+        training_policy_digests.add(item.training_policy_digest)
+        schedule_digests.add(item.schedule_digest)
+        if outcome.success is not None:
+            success_foundation_digests.add(outcome.success.foundation_identity_digest)
+            success_role_digests.add(outcome.success.evaluation_role_digest)
+    if len(training_policy_digests) != 1 or len(schedule_digests) != 1:
+        raise TrainingDataInputError("Target-size stage outcomes do not share one frozen training-policy/schedule identity.")
+    if len(success_foundation_digests) > 1 or len(success_role_digests) > 1:
+        raise TrainingDataInputError("Successful target-size candidates do not share one foundation/evaluation-role identity.")
     return by_key
 
 
-def _validate_continuation(
-    parent: TargetSizeTrainingEvidence,
-    child: TargetSizeTrainingEvidence,
-) -> None:
-    if child.target_size != parent.target_size or child.optimizer_seed != parent.optimizer_seed:
-        raise TrainingDataInputError(
-            "Target-size continuation changed candidate or optimizer-seed identity."
-        )
-    if child.parent_checkpoint_digest != parent.checkpoint_digest:
-        raise TrainingDataInputError(
-            f"n{child.target_size}, seed={child.optimizer_seed} continuation checkpoint ancestry changed."
-        )
-    if child.parent_optimizer_state_digest != parent.optimizer_state_digest:
-        raise TrainingDataInputError(
-            f"n{child.target_size}, seed={child.optimizer_seed} continuation optimizer ancestry changed."
-        )
-    if child.parent_rng_state_digest != parent.rng_state_digest:
-        raise TrainingDataInputError(
-            f"n{child.target_size}, seed={child.optimizer_seed} continuation RNG ancestry changed."
-        )
-    for attr in (
-        "foundation_identity_digest",
-        "evaluation_role_digest",
-        "training_policy_digest",
-        "target_size_study_policy_digest",
-        "training_run_digest",
-        "schedule_digest",
-        "candidate_data_digest",
-    ):
-        if getattr(child, attr) != getattr(parent, attr):
-            raise TrainingDataInputError(
-                f"n{child.target_size}, seed={child.optimizer_seed} continuation changed {attr}."
-            )
+def _validate_continuation(parent: TargetSizeStageOutcome, child: TargetSizeStageOutcome) -> None:
+    if parent.success is None:
+        raise TrainingDataInputError("Target-size continuation cannot descend from a failed parent trajectory.")
+    parent_item = parent.success
+    child_item = child.success if child.success is not None else child.failure
+    assert child_item is not None
+    for attr in ("target_size", "optimizer_seed", "training_run_digest", "training_policy_digest", "schedule_digest", "candidate_data_digest"):
+        if getattr(child_item, attr) != getattr(parent_item, attr):
+            raise TrainingDataInputError(f"Target-size continuation changed {attr}.")
+    if child.success is not None:
+        if child.success.parent_checkpoint_digest != parent_item.checkpoint_digest:
+            raise TrainingDataInputError("Target-size continuation checkpoint ancestry changed.")
+        if child.success.parent_optimizer_state_digest != parent_item.optimizer_state_digest:
+            raise TrainingDataInputError("Target-size continuation optimizer ancestry changed.")
+        if child.success.parent_rng_state_digest != parent_item.rng_state_digest:
+            raise TrainingDataInputError("Target-size continuation RNG ancestry changed.")
+        if child.success.optimizer_update_count <= parent_item.optimizer_update_count:
+            raise TrainingDataInputError("Target-size continuation optimizer progress did not increase.")
+        if child.success.structures_presented <= parent_item.structures_presented:
+            raise TrainingDataInputError("Target-size continuation exposure did not increase.")
 
 
 def _paired_candidate_scores(
     plan: TargetSizeStudyPlan,
-    by_key: Mapping[tuple[int, int], TargetSizeTrainingEvidence],
+    by_key: Mapping[tuple[int, int], TargetSizeStageOutcome],
     sizes: Sequence[int],
-    *,
-    final: bool = False,
 ) -> dict[int, float]:
-    """Return comparable arithmetic means over the exact common ordered seed set."""
-
     result: dict[int, float] = {}
     for size in sizes:
-        items = [
-            by_key[(int(size), seed)]
-            for seed in plan.policy.screening_optimizer_seeds
-        ]
-        admissible = (
-            all(item.admissible_for_final_selection for item in items)
-            if final
-            else all(item.admissible_for_screening for item in items)
-        )
-        if not admissible:
-            continue
-        result[int(size)] = sum(
-            item.target_force_score_mev_per_a for item in items
-        ) / float(len(items))
+        values: list[float] = []
+        for seed in plan.policy.screening_optimizer_seeds:
+            outcome = by_key[(int(size), int(seed))]
+            if outcome.failure is not None:
+                break
+            assert outcome.success is not None
+            values.append(outcome.success.target_force_score_mev_per_a)
+        else:
+            result[int(size)] = sum(values) / float(len(values))
     return result
 
 
-def _comparison_failures(
-    plan: TargetSizeStudyPlan,
-    by_key: Mapping[tuple[int, int], TargetSizeTrainingEvidence],
-    sizes: Sequence[int],
-) -> tuple[tuple[int, int, tuple[str, ...]], ...]:
-    failures: list[tuple[int, int, tuple[str, ...]]] = []
-    for size, seed in _expected_evidence_keys(
-        sizes, plan.policy.screening_optimizer_seeds
-    ):
-        item = by_key[(size, seed)]
-        if item.numerical_valid:
-            continue
-        reasons = item.failure_reasons or ("numerical_invalid",)
-        failures.append((size, seed, tuple(sorted(set(reasons)))))
-    return tuple(failures)
-
-
-def _equivalence_aware_score_order(
-    scores: Mapping[int, float], *, epsilon: float
-) -> tuple[int, ...]:
+def _equivalence_aware_score_order(scores: Mapping[int, float], *, epsilon: float) -> tuple[int, ...]:
     remaining = sorted(scores, key=lambda size: (scores[size], size))
     ordered: list[int] = []
     while remaining:
         anchor = scores[remaining[0]]
-        band = [
-            size
-            for size in remaining
-            if scores[size] <= anchor + float(epsilon) + 1.0e-12
-        ]
+        band = [size for size in remaining if scores[size] <= anchor + float(epsilon) + 1.0e-12]
         band.sort()
         ordered.extend(band)
         band_set = set(band)
@@ -1144,360 +1182,208 @@ def _equivalence_aware_score_order(
     return tuple(ordered)
 
 
-def _equivalence_aware_target_order(
-    evidence: Sequence[TargetSizeTrainingEvidence],
-    *,
-    epsilon: float,
-) -> tuple[int, ...]:
-    """Compatibility helper for single-evidence synthetic/performance callers."""
-
+def _equivalence_aware_target_order(evidence: Sequence[TargetSizeTrainingEvidence], *, epsilon: float) -> tuple[int, ...]:
     scores: dict[int, float] = {}
     for item in evidence:
         if item.target_size in scores:
-            raise TrainingDataInputError(
-                "Direct equivalence ordering accepts one score per target size."
-            )
+            raise TrainingDataInputError("Direct equivalence ordering accepts one score per target size.")
         scores[item.target_size] = item.target_force_score_mev_per_a
     return _equivalence_aware_score_order(scores, epsilon=epsilon)
 
 
 def _validate_target_size_study_semantics(plan: TargetSizeStudyPlan) -> None:
-    """Canonical semantic validator for construction, transition, and restart."""
-
     qualified = plan.qualified_sizes
     q = len(qualified)
     allowed = {
-        OUTCOME_INSUFFICIENT_QUALIFIED_SIZES,
-        OUTCOME_AWAITING_EPOCH_3,
-        OUTCOME_AWAITING_EPOCH_10,
-        OUTCOME_AWAITING_EPOCH_30,
-        OUTCOME_SELECTED,
-        OUTCOME_NONCONVERGED_AT_FIXED_CEILING,
+        OUTCOME_INSUFFICIENT_QUALIFIED_SIZES, OUTCOME_AWAITING_EPOCH_3,
+        OUTCOME_AWAITING_EPOCH_10, OUTCOME_AWAITING_EPOCH_30,
+        OUTCOME_SELECTED, OUTCOME_NONCONVERGED_AT_FIXED_CEILING,
         OUTCOME_INSUFFICIENT_COMPARABLE_CANDIDATES,
     }
     if plan.outcome not in allowed:
         raise TrainingDataInputError("Unsupported target-size study outcome.")
     if q < plan.policy.minimum_qualified_sizes:
-        if (
-            plan.outcome != OUTCOME_INSUFFICIENT_QUALIFIED_SIZES
-            or plan.epoch3_evidence
-            or plan.epoch3_survivor_sizes
-            or plan.epoch10_evidence
-            or plan.epoch10_finalist_sizes
-            or plan.epoch30_evidence
-            or plan.selected_target_size is not None
-            or plan.comparison_failure_stage is not None
-            or plan.comparison_failures
-        ):
-            raise TrainingDataInputError(
-                "Sub-threshold qualified set must terminate as insufficient_qualified_sizes."
-            )
+        if (plan.outcome != OUTCOME_INSUFFICIENT_QUALIFIED_SIZES or plan.epoch3_outcomes or
+            plan.epoch3_survivor_sizes or plan.epoch10_outcomes or plan.epoch10_finalist_sizes or
+            plan.epoch30_outcomes or plan.selected_target_size is not None or
+            plan.comparison_failure_stage is not None or plan.comparison_failures):
+            raise TrainingDataInputError("Sub-threshold qualified set must terminate as insufficient_qualified_sizes.")
         return
     if plan.outcome == OUTCOME_INSUFFICIENT_QUALIFIED_SIZES:
-        raise TrainingDataInputError(
-            "Qualified set meets the minimum; insufficient_qualified_sizes is inconsistent."
-        )
-
-    if not plan.epoch3_evidence:
-        if (
-            plan.outcome != OUTCOME_AWAITING_EPOCH_3
-            or plan.epoch3_survivor_sizes
-            or plan.epoch10_evidence
-            or plan.epoch10_finalist_sizes
-            or plan.epoch30_evidence
-            or plan.selected_target_size is not None
-            or plan.comparison_failure_stage is not None
-            or plan.comparison_failures
-        ):
+        raise TrainingDataInputError("Qualified set meets the minimum; insufficient_qualified_sizes is inconsistent.")
+    if not plan.epoch3_outcomes:
+        if (plan.outcome != OUTCOME_AWAITING_EPOCH_3 or plan.epoch3_survivor_sizes or plan.epoch10_outcomes or
+            plan.epoch10_finalist_sizes or plan.epoch30_outcomes or plan.selected_target_size is not None or
+            plan.comparison_failure_stage is not None or plan.comparison_failures):
             raise TrainingDataInputError("Epoch-3 wait state is inconsistent.")
         return
-
-    e3 = _validate_batch_identity(plan, plan.epoch3_evidence, qualified, 3)
+    e3 = _validate_outcome_batch(plan, plan.epoch3_outcomes, qualified, STAGE_COARSE)
     scores3 = _paired_candidate_scores(plan, e3, qualified)
     required3 = min(q, plan.policy.epoch3_survivor_limit)
     if len(scores3) < required3:
-        expected_failures = _comparison_failures(plan, e3, qualified)
-        if (
-            plan.outcome != OUTCOME_INSUFFICIENT_COMPARABLE_CANDIDATES
-            or plan.comparison_failure_stage != "coarse"
-            or plan.comparison_failures != expected_failures
-            or plan.epoch3_survivor_sizes
-            or plan.epoch10_evidence
-            or plan.epoch10_finalist_sizes
-            or plan.epoch30_evidence
-            or plan.selected_target_size is not None
-        ):
-            raise TrainingDataInputError(
-                "Epoch-3 insufficient-comparable terminal state is inconsistent."
-            )
+        expected_failures = _comparison_failures(plan.epoch3_outcomes, qualified)
+        if (plan.outcome != OUTCOME_INSUFFICIENT_COMPARABLE_CANDIDATES or
+            plan.comparison_failure_stage != STAGE_COARSE or plan.comparison_failures != expected_failures or
+            plan.epoch3_survivor_sizes or plan.epoch10_outcomes or plan.epoch10_finalist_sizes or plan.epoch30_outcomes or
+            plan.selected_target_size is not None):
+            raise TrainingDataInputError("Epoch-3 insufficient-comparable terminal state is inconsistent.")
         return
-    expected_s3 = _equivalence_aware_score_order(
-        scores3, epsilon=plan.policy.coarse_practical_equivalence_mev_per_a
-    )[:required3]
+    expected_s3 = _equivalence_aware_score_order(scores3, epsilon=plan.policy.coarse_practical_equivalence_mev_per_a)[:required3]
     if plan.epoch3_survivor_sizes != expected_s3:
-        raise TrainingDataInputError(
-            "Epoch-3 survivor decision does not match paired aggregate/equivalence policy."
-        )
-    if not plan.epoch10_evidence:
-        if (
-            plan.outcome != OUTCOME_AWAITING_EPOCH_10
-            or plan.epoch10_finalist_sizes
-            or plan.epoch30_evidence
-            or plan.selected_target_size is not None
-            or plan.comparison_failure_stage is not None
-            or plan.comparison_failures
-        ):
+        raise TrainingDataInputError("Epoch-3 survivor decision does not match paired aggregate/equivalence policy.")
+    if not plan.epoch10_outcomes:
+        if (plan.outcome != OUTCOME_AWAITING_EPOCH_10 or plan.epoch10_finalist_sizes or plan.epoch30_outcomes or
+            plan.selected_target_size is not None or plan.comparison_failure_stage is not None or plan.comparison_failures):
             raise TrainingDataInputError("Epoch-10 wait state is inconsistent.")
         return
-
-    e10 = _validate_batch_identity(
-        plan, plan.epoch10_evidence, plan.epoch3_survivor_sizes, 10
-    )
+    e10 = _validate_outcome_batch(plan, plan.epoch10_outcomes, plan.epoch3_survivor_sizes, STAGE_SHORT)
     for key, child in e10.items():
         _validate_continuation(e3[key], child)
     scores10 = _paired_candidate_scores(plan, e10, plan.epoch3_survivor_sizes)
     if len(scores10) < plan.policy.epoch10_finalist_count:
-        expected_failures = _comparison_failures(
-            plan, e10, plan.epoch3_survivor_sizes
-        )
-        if (
-            plan.outcome != OUTCOME_INSUFFICIENT_COMPARABLE_CANDIDATES
-            or plan.comparison_failure_stage != "short"
-            or plan.comparison_failures != expected_failures
-            or plan.epoch10_finalist_sizes
-            or plan.epoch30_evidence
-            or plan.selected_target_size is not None
-        ):
-            raise TrainingDataInputError(
-                "Epoch-10 insufficient-comparable terminal state is inconsistent."
-            )
+        expected_failures = _comparison_failures(plan.epoch10_outcomes, plan.epoch3_survivor_sizes)
+        if (plan.outcome != OUTCOME_INSUFFICIENT_COMPARABLE_CANDIDATES or
+            plan.comparison_failure_stage != STAGE_SHORT or plan.comparison_failures != expected_failures or
+            plan.epoch10_finalist_sizes or plan.epoch30_outcomes or plan.selected_target_size is not None):
+            raise TrainingDataInputError("Epoch-10 insufficient-comparable terminal state is inconsistent.")
         return
-    expected_s10 = _equivalence_aware_score_order(
-        scores10, epsilon=plan.policy.coarse_practical_equivalence_mev_per_a
-    )[: plan.policy.epoch10_finalist_count]
+    expected_s10 = _equivalence_aware_score_order(scores10, epsilon=plan.policy.coarse_practical_equivalence_mev_per_a)[: plan.policy.epoch10_finalist_count]
     if plan.epoch10_finalist_sizes != expected_s10:
-        raise TrainingDataInputError(
-            "Epoch-10 finalist decision does not match paired aggregate/equivalence policy."
-        )
-    if not plan.epoch30_evidence:
-        if (
-            plan.outcome != OUTCOME_AWAITING_EPOCH_30
-            or plan.selected_target_size is not None
-            or plan.comparison_failure_stage is not None
-            or plan.comparison_failures
-        ):
+        raise TrainingDataInputError("Epoch-10 finalist decision does not match paired aggregate/equivalence policy.")
+    if not plan.epoch30_outcomes:
+        if (plan.outcome != OUTCOME_AWAITING_EPOCH_30 or plan.selected_target_size is not None or
+            plan.comparison_failure_stage is not None or plan.comparison_failures):
             raise TrainingDataInputError("Epoch-30 wait state is inconsistent.")
         return
-
-    e30 = _validate_batch_identity(
-        plan, plan.epoch30_evidence, plan.epoch10_finalist_sizes, 30
-    )
+    e30 = _validate_outcome_batch(plan, plan.epoch30_outcomes, plan.epoch10_finalist_sizes, STAGE_FINAL)
     for key, child in e30.items():
         _validate_continuation(e10[key], child)
-    scores30 = _paired_candidate_scores(
-        plan, e30, plan.epoch10_finalist_sizes, final=True
-    )
+    scores30 = _paired_candidate_scores(plan, e30, plan.epoch10_finalist_sizes)
     if len(scores30) < plan.policy.epoch10_finalist_count:
-        expected_failures = _comparison_failures(
-            plan, e30, plan.epoch10_finalist_sizes
-        )
-        if (
-            plan.outcome != OUTCOME_INSUFFICIENT_COMPARABLE_CANDIDATES
-            or plan.comparison_failure_stage != "final"
-            or plan.comparison_failures != expected_failures
-            or plan.selected_target_size is not None
-        ):
-            raise TrainingDataInputError(
-                "Epoch-30 insufficient-comparable terminal state is inconsistent."
-            )
+        expected_failures = _comparison_failures(plan.epoch30_outcomes, plan.epoch10_finalist_sizes)
+        if (plan.outcome != OUTCOME_INSUFFICIENT_COMPARABLE_CANDIDATES or
+            plan.comparison_failure_stage != STAGE_FINAL or plan.comparison_failures != expected_failures or
+            plan.selected_target_size is not None):
+            raise TrainingDataInputError("Epoch-30 insufficient-comparable terminal state is inconsistent.")
         return
-
-    ranking = _equivalence_aware_score_order(
-        scores30, epsilon=plan.policy.practical_equivalence_mev_per_a
-    )
+    ranking = _equivalence_aware_score_order(scores30, epsilon=plan.policy.practical_equivalence_mev_per_a)
     winner = ranking[0]
     if winner == FIXED_TARGET_SIZE_CEILING:
         smaller = [size for size in scores30 if size < winner]
-        ceiling_superior = bool(smaller) and all(
-            scores30[size] - scores30[winner]
-            > plan.policy.practical_equivalence_mev_per_a + 1.0e-12
-            for size in smaller
-        )
-        if ceiling_superior:
-            if (
-                plan.outcome != OUTCOME_NONCONVERGED_AT_FIXED_CEILING
-                or plan.selected_target_size is not None
-                or plan.comparison_failure_stage is not None
-                or plan.comparison_failures
-            ):
-                raise TrainingDataInputError(
-                    "Fixed-ceiling terminal state does not match final paired comparison."
-                )
+        if smaller and all(scores30[size] - scores30[winner] > plan.policy.practical_equivalence_mev_per_a + 1.0e-12 for size in smaller):
+            if plan.outcome != OUTCOME_NONCONVERGED_AT_FIXED_CEILING or plan.selected_target_size is not None or plan.comparison_failure_stage is not None or plan.comparison_failures:
+                raise TrainingDataInputError("Fixed-ceiling terminal state does not match final paired comparison.")
             return
-    if (
-        plan.outcome != OUTCOME_SELECTED
-        or plan.selected_target_size != winner
-        or plan.comparison_failure_stage is not None
-        or plan.comparison_failures
-    ):
-        raise TrainingDataInputError(
-            "Selected target size does not match final paired aggregate/equivalence policy."
-        )
+    if plan.outcome != OUTCOME_SELECTED or plan.selected_target_size != winner or plan.comparison_failure_stage is not None or plan.comparison_failures:
+        raise TrainingDataInputError("Selected target size does not match final paired aggregate/equivalence policy.")
 
 
 def _insufficient_comparable_result(
     plan: TargetSizeStudyPlan,
-    *,
-    stage: str,
-    evidence_field: str,
-    evidence: Sequence[TargetSizeTrainingEvidence],
-    by_key: Mapping[tuple[int, int], TargetSizeTrainingEvidence],
-    sizes: Sequence[int],
+    *, stage: str, outcome_field: str, outcomes: tuple[TargetSizeStageOutcome, ...], sizes: Sequence[int],
 ) -> TargetSizeStudyPlan:
     return replace(
         plan,
-        **{evidence_field: tuple(evidence)},
+        **{outcome_field: outcomes},
         selected_target_size=None,
         outcome=OUTCOME_INSUFFICIENT_COMPARABLE_CANDIDATES,
         comparison_failure_stage=stage,
-        comparison_failures=_comparison_failures(plan, by_key, sizes),
-        decision_reason=(
-            f"{stage} target-size comparison has too few numerically valid paired candidates"
-        ),
+        comparison_failures=_comparison_failures(outcomes, sizes),
+        decision_reason=f"{stage} target-size comparison has too few complete paired successful candidates",
     )
 
 
-def attach_epoch_3_evidence(
+def attach_epoch_3_outcomes(
     plan: TargetSizeStudyPlan,
-    evidence: Sequence[TargetSizeTrainingEvidence],
+    outcomes: Sequence[TargetSizeTrainingEvidence | TargetSizeTrajectoryFailureEvidence | TargetSizeStageOutcome],
 ) -> TargetSizeStudyPlan:
     if plan.outcome != OUTCOME_AWAITING_EPOCH_3:
-        raise TrainingDataInputError(
-            "Epoch-3 evidence can only be attached while awaiting epoch 3."
-        )
-    evidence = tuple(evidence)
-    by_key = _validate_batch_identity(plan, evidence, plan.qualified_sizes, 3)
+        raise TrainingDataInputError("Epoch-3 outcomes can only be attached while awaiting epoch 3.")
+    batch = _outcomes_from_evidence(outcomes)
+    by_key = _validate_outcome_batch(plan, batch, plan.qualified_sizes, STAGE_COARSE)
     scores = _paired_candidate_scores(plan, by_key, plan.qualified_sizes)
     required = min(len(plan.qualified_sizes), plan.policy.epoch3_survivor_limit)
     if len(scores) < required:
-        return _insufficient_comparable_result(
-            plan,
-            stage="coarse",
-            evidence_field="epoch3_evidence",
-            evidence=evidence,
-            by_key=by_key,
-            sizes=plan.qualified_sizes,
-        )
-    survivors = _equivalence_aware_score_order(
-        scores, epsilon=plan.policy.coarse_practical_equivalence_mev_per_a
-    )[:required]
-    return replace(
-        plan,
-        epoch3_evidence=evidence,
-        epoch3_survivor_sizes=survivors,
-        outcome=OUTCOME_AWAITING_EPOCH_10,
-        decision_reason=(
-            "epoch-3 paired target-only screen retained "
-            + ", ".join(f"n{v}" for v in survivors)
-        ),
-    )
+        return _insufficient_comparable_result(plan, stage=STAGE_COARSE, outcome_field="epoch3_outcomes", outcomes=batch, sizes=plan.qualified_sizes)
+    survivors = _equivalence_aware_score_order(scores, epsilon=plan.policy.coarse_practical_equivalence_mev_per_a)[:required]
+    return replace(plan, epoch3_outcomes=batch, epoch3_survivor_sizes=survivors, outcome=OUTCOME_AWAITING_EPOCH_10,
+                   decision_reason="epoch-3 paired target-only screen complete; awaiting epoch-10 continuation")
 
 
-def attach_epoch_10_evidence(
+def attach_epoch_10_outcomes(
     plan: TargetSizeStudyPlan,
-    evidence: Sequence[TargetSizeTrainingEvidence],
+    outcomes: Sequence[TargetSizeTrainingEvidence | TargetSizeTrajectoryFailureEvidence | TargetSizeStageOutcome],
 ) -> TargetSizeStudyPlan:
     if plan.outcome != OUTCOME_AWAITING_EPOCH_10:
-        raise TrainingDataInputError(
-            "Epoch-10 evidence can only be attached while awaiting epoch 10."
-        )
-    evidence = tuple(evidence)
-    by_key = _validate_batch_identity(
-        plan, evidence, plan.epoch3_survivor_sizes, 10
-    )
-    parents = _evidence_map(plan.epoch3_evidence)
-    for key, item in by_key.items():
-        _validate_continuation(parents[key], item)
+        raise TrainingDataInputError("Epoch-10 outcomes can only be attached while awaiting epoch 10.")
+    batch = _outcomes_from_evidence(outcomes)
+    by_key = _validate_outcome_batch(plan, batch, plan.epoch3_survivor_sizes, STAGE_SHORT)
+    parents = {item.key: item for item in plan.epoch3_outcomes}
+    for key, child in by_key.items():
+        _validate_continuation(parents[key], child)
     scores = _paired_candidate_scores(plan, by_key, plan.epoch3_survivor_sizes)
     if len(scores) < plan.policy.epoch10_finalist_count:
-        return _insufficient_comparable_result(
-            plan,
-            stage="short",
-            evidence_field="epoch10_evidence",
-            evidence=evidence,
-            by_key=by_key,
-            sizes=plan.epoch3_survivor_sizes,
-        )
-    finalists = _equivalence_aware_score_order(
-        scores, epsilon=plan.policy.coarse_practical_equivalence_mev_per_a
-    )[: plan.policy.epoch10_finalist_count]
-    return replace(
-        plan,
-        epoch10_evidence=evidence,
-        epoch10_finalist_sizes=finalists,
-        outcome=OUTCOME_AWAITING_EPOCH_30,
-        decision_reason=(
-            "epoch-10 paired target-only screen retained "
-            + ", ".join(f"n{v}" for v in finalists)
-        ),
-    )
+        return _insufficient_comparable_result(plan, stage=STAGE_SHORT, outcome_field="epoch10_outcomes", outcomes=batch, sizes=plan.epoch3_survivor_sizes)
+    finalists = _equivalence_aware_score_order(scores, epsilon=plan.policy.coarse_practical_equivalence_mev_per_a)[: plan.policy.epoch10_finalist_count]
+    return replace(plan, epoch10_outcomes=batch, epoch10_finalist_sizes=finalists, outcome=OUTCOME_AWAITING_EPOCH_30,
+                   decision_reason="epoch-10 paired target-only screen complete; awaiting epoch-30 continuation")
 
 
-def attach_epoch_30_evidence(
+def attach_epoch_30_outcomes(
     plan: TargetSizeStudyPlan,
-    evidence: Sequence[TargetSizeTrainingEvidence],
+    outcomes: Sequence[TargetSizeTrainingEvidence | TargetSizeTrajectoryFailureEvidence | TargetSizeStageOutcome],
 ) -> TargetSizeStudyPlan:
     if plan.outcome != OUTCOME_AWAITING_EPOCH_30:
-        raise TrainingDataInputError(
-            "Epoch-30 evidence can only be attached while awaiting epoch 30."
-        )
-    evidence = tuple(evidence)
-    by_key = _validate_batch_identity(
-        plan, evidence, plan.epoch10_finalist_sizes, 30
-    )
-    parents = _evidence_map(plan.epoch10_evidence)
-    for key, item in by_key.items():
-        _validate_continuation(parents[key], item)
-    scores = _paired_candidate_scores(
-        plan, by_key, plan.epoch10_finalist_sizes, final=True
-    )
+        raise TrainingDataInputError("Epoch-30 outcomes can only be attached while awaiting epoch 30.")
+    batch = _outcomes_from_evidence(outcomes)
+    by_key = _validate_outcome_batch(plan, batch, plan.epoch10_finalist_sizes, STAGE_FINAL)
+    parents = {item.key: item for item in plan.epoch10_outcomes}
+    for key, child in by_key.items():
+        _validate_continuation(parents[key], child)
+    scores = _paired_candidate_scores(plan, by_key, plan.epoch10_finalist_sizes)
     if len(scores) < plan.policy.epoch10_finalist_count:
-        return _insufficient_comparable_result(
-            plan,
-            stage="final",
-            evidence_field="epoch30_evidence",
-            evidence=evidence,
-            by_key=by_key,
-            sizes=plan.epoch10_finalist_sizes,
-        )
-    ranking = _equivalence_aware_score_order(
-        scores, epsilon=plan.policy.practical_equivalence_mev_per_a
-    )
+        return _insufficient_comparable_result(plan, stage=STAGE_FINAL, outcome_field="epoch30_outcomes", outcomes=batch, sizes=plan.epoch10_finalist_sizes)
+    ranking = _equivalence_aware_score_order(scores, epsilon=plan.policy.practical_equivalence_mev_per_a)
     winner = ranking[0]
     if winner == FIXED_TARGET_SIZE_CEILING:
         smaller = [size for size in scores if size < winner]
-        if smaller and all(
-            scores[size] - scores[winner]
-            > plan.policy.practical_equivalence_mev_per_a + 1.0e-12
-            for size in smaller
-        ):
+        if smaller and all(scores[size] - scores[winner] > plan.policy.practical_equivalence_mev_per_a + 1.0e-12 for size in smaller):
             improvement = min(scores[size] - scores[winner] for size in smaller)
-            return replace(
-                plan,
-                epoch30_evidence=evidence,
-                selected_target_size=None,
-                outcome=OUTCOME_NONCONVERGED_AT_FIXED_CEILING,
-                decision_reason=(
-                    f"n16384 improves paired target force score by at least {improvement:.6g} meV/A beyond practical equivalence; "
-                    "the fixed ceiling is exhausted and rescue above 16384 is forbidden"
-                ),
-            )
-    return replace(
-        plan,
-        epoch30_evidence=evidence,
-        selected_target_size=winner,
-        outcome=OUTCOME_SELECTED,
-        decision_reason=(
-            f"epoch-30 paired comparison selected n{winner}; target size is immutable before held-out validation"
-        ),
-    )
+            return replace(plan, epoch30_outcomes=batch, selected_target_size=None, outcome=OUTCOME_NONCONVERGED_AT_FIXED_CEILING,
+                           decision_reason=f"n16384 improves paired target force score by at least {improvement:.6g} meV/A beyond practical equivalence; the fixed ceiling is exhausted and rescue above 16384 is forbidden")
+    return replace(plan, epoch30_outcomes=batch, selected_target_size=winner, outcome=OUTCOME_SELECTED,
+                   decision_reason=f"epoch-30 paired comparison selected n{winner}; target size is immutable before held-out validation")
+
+
+def attach_epoch_3_evidence(plan: TargetSizeStudyPlan, evidence: Sequence[TargetSizeTrainingEvidence]) -> TargetSizeStudyPlan:
+    return attach_epoch_3_outcomes(plan, evidence)
+
+
+def attach_epoch_10_evidence(plan: TargetSizeStudyPlan, evidence: Sequence[TargetSizeTrainingEvidence]) -> TargetSizeStudyPlan:
+    return attach_epoch_10_outcomes(plan, evidence)
+
+
+def attach_epoch_30_evidence(plan: TargetSizeStudyPlan, evidence: Sequence[TargetSizeTrainingEvidence]) -> TargetSizeStudyPlan:
+    return attach_epoch_30_outcomes(plan, evidence)
+
+
+__all__ = [
+    "FIXED_TARGET_SIZES", "FIXED_TARGET_SIZE_CEILING",
+    "TARGET_SIZE_STUDY_VERSION", "TARGET_SIZE_STUDY_POLICY_SCHEMA", "TARGET_SIZE_STUDY_CANDIDATE_SCHEMA",
+    "TARGET_SIZE_TRAINING_EVIDENCE_SCHEMA", "TARGET_SIZE_TRAJECTORY_FAILURE_EVIDENCE_SCHEMA",
+    "TARGET_SIZE_STAGE_OUTCOME_SCHEMA", "TARGET_SIZE_STUDY_PLAN_SCHEMA",
+    "TARGET_SIZE_PREFIX_SCHEMA", "TARGET_SIZE_CANDIDATE_DATA_SCHEMA", "TARGET_SIZE_CANDIDATE_AUTHORITY_SCHEMA",
+    "OUTCOME_INSUFFICIENT_QUALIFIED_SIZES", "OUTCOME_AWAITING_EPOCH_3", "OUTCOME_AWAITING_EPOCH_10",
+    "OUTCOME_AWAITING_EPOCH_30", "OUTCOME_SELECTED", "OUTCOME_NONCONVERGED_AT_FIXED_CEILING",
+    "OUTCOME_INSUFFICIENT_COMPARABLE_CANDIDATES",
+    "STAGE_COARSE", "STAGE_SHORT", "STAGE_FINAL",
+    "FAILURE_PHASE_TRAIN", "FAILURE_PHASE_TARGET_EVALUATION",
+    "TRAIN2_NUMERICAL_FAILURE_CODES", "EVAL2_NUMERICAL_FAILURE_CODES", "TARGET_SIZE_SCIENTIFIC_FAILURE_CODES",
+    "TargetSizeStudyPolicy", "TargetSizeStudyCandidate", "TargetSizeTrainingEvidence",
+    "TargetSizeTrajectoryFailureEvidence", "TargetSizeStageOutcome", "TargetSizeStudyPlan",
+    "build_target_size_study", "validate_target_size_study_authority",
+    "materialize_candidate_prefix", "materialize_selected_prefix",
+    "attach_epoch_3_outcomes", "attach_epoch_10_outcomes", "attach_epoch_30_outcomes",
+    "attach_epoch_3_evidence", "attach_epoch_10_evidence", "attach_epoch_30_evidence",
+    "_equivalence_aware_target_order",
+]

@@ -1,0 +1,13 @@
+# MLFF architecture revision 105 - Target Size v5 final conformance closure
+
+Revision 105 closes the fixed-eight Target Size v5 architecture against the current production controller without changing its accepted scientific topology.
+
+The target-size study now treats every authorized `(candidate size, seed)` at epochs 3, 10, and 30 as exactly one of two authenticated outcomes: a strict successful endpoint or a candidate-specific scientific trajectory failure. TRAIN2 classifies only positively established non-finite live-model or EMA state at the durability boundary and binds the failure sidecar to the exact runtime plan and raw checkpoint. EVAL2 analogously exposes only non-finite target prediction/metric failures as target-size scientific evidence. Generic nonzero exit, timeout, interruption, OOM/resource exhaustion, malformed input, schema/lineage failure, launch failure, and programming errors remain ordinary fail-closed campaign failures.
+
+Candidate comparison remains paired over the ordered seed set from the sole enabled training method. A failed seed makes that candidate non-comparable; it is never replaced. If enough complete candidates remain, the unchanged `q -> min(q,4) -> 2 -> 1` funnel continues at `3 -> 10 -> 30` epochs. Otherwise the study persists `insufficient_comparable_candidates` with exact failure stage and candidate/seed provenance. Successful continuation still authenticates exact checkpoint, optimizer, RNG, run, policy, and schedule ancestry.
+
+MVQUAL2 remains the sole hard target-size eligibility authority. The epoch-30 decision is target-only; replay metrics and diagnostics, held-out CV, physical-integrity, relaxation, deployment, and other downstream model/protocol acceptance evidence cannot rank, qualify, reject, or tie-break target sizes. Replay identity may remain bound as common training-protocol identity. The dependency graph therefore removes the replay-monitor-to-size-study consumption edge while retaining replay identity on the frozen training protocol.
+
+The domain-local membership invariant is explicit throughout implementation and documentation: every final-development and CV gradient-training domain consumes its own REPAIR2 prefix `R_d[:N]`; DATA7/DATA8 materialization does not invoke a second target-membership selector. Candidate-data digests are recomputed from canonical prefix inputs during semantic validation.
+
+The fixed candidate population `(128, 256, 512, 1024, 2048, 4096, 8192, 16384)`, 16,384 ceiling, configured practical-equivalence policy, bounded materialization, and no-rescue rule are unchanged. GPU qualification remains deferred to the final consolidated release package; this revision is a CPU/control-plane conformance closure.

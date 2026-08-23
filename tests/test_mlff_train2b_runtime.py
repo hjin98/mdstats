@@ -144,6 +144,49 @@ def test_train2b_10_of_30_resume_keeps_one_schedule_and_restores_exact_companion
     assert resumed_scheduler.calls == 0
 
 
+def test_train2b_persistence_records_nonfinite_model_state_before_endpoint(tmp_path: Path) -> None:
+    checkpoint_dir = tmp_path / "checkpoints"
+    checkpoint_dir.mkdir()
+    metrics = tmp_path / "metrics.jsonl"
+    metrics.write_text("", encoding="utf-8")
+    handler = SimpleNamespace(io=SimpleNamespace(directory=str(checkpoint_dir)))
+    loader = [object()]
+    model = torch.nn.Linear(1, 1)
+    optimizer = torch.optim.SGD(model.parameters(), lr=1.0e-4)
+    ema = ExponentialMovingAverage(model.parameters(), decay=0.9)
+    plan = _plan(limit=3)
+    runtime = runtime_mod._Train2Runtime(
+        plan,
+        model=model,
+        optimizer=optimizer,
+        lr_scheduler=_Scheduler(),
+        ema=ema,
+        train_loader=loader,
+        current_epoch=0,
+        checkpoint_handler=handler,
+        logger_path=str(metrics),
+        rank=0,
+    )
+    _step(model, optimizer, ema)
+    with torch.no_grad():
+        next(model.parameters()).view(-1)[0] = float("nan")
+    raw = _raw_checkpoint(checkpoint_dir, 0)
+
+    with pytest.raises(mdstats.Train2NumericalFailure) as caught:
+        runtime.persist_epoch(epoch=0)
+    assert caught.value.failure_code == "train_nonfinite_model_state"
+    failure = mdstats.load_train2_numerical_failure(checkpoint_dir)
+    assert failure is not None
+    assert failure.failure_code == "train_nonfinite_model_state"
+    assert failure.plan_digest == plan.content_digest
+    assert failure.training_protocol_digest == plan.training_protocol_digest
+    assert failure.optimizer_policy_digest == plan.optimizer_policy_digest
+    assert failure.execution_epoch_limit == 3
+    assert failure.raw_checkpoint_name == raw.name
+    assert failure.raw_checkpoint_sha256 == runtime_mod._sha256(raw)
+    assert not (checkpoint_dir / runtime_mod.TRAIN2_RUNTIME_SUMMARY_FILENAME).exists()
+
+
 def test_train2b_restart_rejects_changed_lr_authority(tmp_path: Path) -> None:
     checkpoint_dir = tmp_path / "checkpoints"
     checkpoint_dir.mkdir()

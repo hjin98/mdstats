@@ -12483,6 +12483,37 @@ def _partial_evidence_warnings(availability: _VariantAvailability) -> tuple[str,
     return tuple(warnings)
 
 
+def _is_target_size_scientific_execution_failure(
+    record: Any | None,
+    *,
+    policy_family: str,
+    target_size_study: Any | None,
+) -> bool:
+    """Return whether a failed TRAIN2 execution is resolved scientific size evidence.
+
+    Only an authenticated scientific-failure code/evidence digest emitted by the
+    TRAIN2 execution layer is allowed to relax normal stop/retry behavior.
+    Generic execution failures remain ordinary campaign failures.
+    """
+
+    import mdstats
+
+    if (
+        policy_family != "train2"
+        or target_size_study is None
+        or target_size_study.outcome == mdstats.OUTCOME_SELECTED
+        or record is None
+        or record.state is mdstats.TrainingRunState.SUCCEEDED
+        or not record.attempts
+    ):
+        return False
+    attempt = record.attempts[-1]
+    return bool(
+        attempt.scientific_failure_code is not None
+        and attempt.scientific_failure_evidence_digest is not None
+    )
+
+
 def command_train(args: argparse.Namespace) -> int:
     import mdstats
 
@@ -12672,7 +12703,14 @@ def command_train(args: argparse.Namespace) -> int:
             record = store.get_record_optional(
                 f"execution:{planned_run.run_id}", mdstats.TrainingRunExecutionRecord
             )
-            if record is None or record.state is not mdstats.TrainingRunState.SUCCEEDED:
+            if record is None:
+                continue
+            if _is_target_size_scientific_execution_failure(
+                record, policy_family=policy_family, target_size_study=target_size_study
+            ):
+                count += 1
+                continue
+            if record.state is not mdstats.TrainingRunState.SUCCEEDED:
                 continue
             if policy_family == "train2":
                 _, planned_job, _ = lookup[planned_run.mace_job_artifact_digest]
@@ -12833,6 +12871,17 @@ def command_train(args: argparse.Namespace) -> int:
             print(f"[TRAIN {run.run_id}] {detail}", flush=True)
             previous = None
             store.delete_record(key)
+
+        if _is_target_size_scientific_execution_failure(
+            previous, policy_family=policy_family, target_size_study=target_size_study
+        ):
+            completed_progress += 1
+            attempt = previous.attempts[-1]
+            training_progress.item_done(
+                completed_progress, run.run_id,
+                f"authenticated scientific failure already frozen: {attempt.scientific_failure_code}",
+            )
+            continue
 
         train2_existing_summary = None
         train2_needs_continuation = False
@@ -13346,10 +13395,23 @@ def command_train(args: argparse.Namespace) -> int:
                         "rerun `train` to continue with --restart_latest"
                     )
                 else:
-                    failures.append(f"{task.run.run_id}:{record.state.value}")
-                    _fail(f"{task.run.run_id}: {record.state.value}")
-                    if stop_after_failure:
-                        stop_scheduling = True
+                    if _is_target_size_scientific_execution_failure(
+                        record, policy_family=policy_family, target_size_study=target_size_study
+                    ):
+                        attempt = record.attempts[-1]
+                        _warn(
+                            f"{task.run.run_id}: authenticated target-size scientific failure "
+                            f"{attempt.scientific_failure_code}; continuing the independent stage population"
+                        )
+                        training_progress.item_done(
+                            completed_progress, task.run.run_id,
+                            f"scientific_failure={attempt.scientific_failure_code}",
+                        )
+                    else:
+                        failures.append(f"{task.run.run_id}:{record.state.value}")
+                        _fail(f"{task.run.run_id}: {record.state.value}")
+                        if stop_after_failure:
+                            stop_scheduling = True
 
             now = time.monotonic()
             sample = query_gpu_telemetry(device)
@@ -17150,7 +17212,6 @@ def _eval2_target_size_endpoint_evidence(
     store: CampaignStore,
     campaign: Any,
     jobs: Mapping[str, tuple[Any, Any, Path]],
-    execution_records: Mapping[str, Any],
     target_size_study: Any,
     repair2: Any,
     role_freeze: Any,
@@ -17158,20 +17219,23 @@ def _eval2_target_size_endpoint_evidence(
     model_dtype: str,
     local_wrappers: Mapping[str, Path],
 ) -> tuple[Any, ...]:
-    """Reduce the exact current 3/10/30 endpoint into v5 size evidence.
+    """Reduce the exact current paired-seed TRAIN2 population to stage outcomes.
 
-    These evaluations use only the common development complement of the
-    largest Q prefix.  They are part of target-size selection, not held-out CV
-    or VERIFY, and they carry no replay/physical hard-pass authority.
+    A required trajectory contributes exactly one authenticated outcome: either
+    a strict successful endpoint or an explicit TRAIN2/EVAL2 numerical failure.
+    Ordinary execution, lineage, and infrastructure failures remain campaign
+    errors and are never converted into target-size scientific evidence.
     """
 
     import mdstats
 
     epoch = target_size_study.next_training_epoch
-    if epoch not in (3, 10, 30):
+    stage_by_epoch = {3: "coarse", 10: "short", 30: "final"}
+    if epoch not in stage_by_epoch:
         raise CampaignCliError(
             f"Target-size evidence requested from non-trainable state {target_size_study.outcome}."
         )
+    stage = stage_by_epoch[int(epoch)]
     expected_sizes = tuple(int(v) for v in target_size_study.next_training_sizes)
     screening_seeds = tuple(int(v) for v in target_size_study.policy.screening_optimizer_seeds)
     expected_keys = tuple((size, seed) for size in expected_sizes for seed in screening_seeds)
@@ -17182,39 +17246,104 @@ def _eval2_target_size_endpoint_evidence(
         and run.selection_size in expected_sizes
     ]
     run_by_key = {(int(run.selection_size), int(run.seed)): run for run in runs}
-    if len(run_by_key) != len(runs) or tuple(run_by_key) != expected_keys:
-        # Campaign run order is not itself authority, so compare exact population here;
-        # evidence is emitted below in canonical policy order.
-        if set(run_by_key) != set(expected_keys) or len(run_by_key) != len(expected_keys):
-            raise CampaignCliError(
-                f"EVAL2 target-size epoch-{epoch} cannot resolve exactly one final-development run "
-                "for every required (candidate, screening-seed) pair."
-            )
-    if set(run_by_key) != set(expected_keys):
+    if set(run_by_key) != set(expected_keys) or len(run_by_key) != len(expected_keys):
+        missing = sorted(set(expected_keys) - set(run_by_key))
+        extra = sorted(set(run_by_key) - set(expected_keys))
         raise CampaignCliError(
-            f"EVAL2 target-size epoch-{epoch} cannot resolve the authenticated paired seed population."
+            f"EVAL2 target-size epoch-{epoch} requires the exact paired stage population; "
+            f"missing={missing}, extra={extra}."
         )
-    parent_by_key: dict[tuple[int, int], Any] = {}
-    if epoch == 10:
-        parent_by_key = {
-            (item.target_size, item.optimizer_seed): item
-            for item in target_size_study.epoch3_evidence
-        }
-    elif epoch == 30:
-        parent_by_key = {
-            (item.target_size, item.optimizer_seed): item
-            for item in target_size_study.epoch10_evidence
-        }
 
-    evidence: list[Any] = []
+    if epoch == 3:
+        parent_by_key: dict[tuple[int, int], Any] = {}
+    elif epoch == 10:
+        parent_by_key = {item.key: item.success for item in target_size_study.epoch3_outcomes}
+    else:
+        parent_by_key = {item.key: item.success for item in target_size_study.epoch10_outcomes}
+
+    outcomes: list[Any] = []
     for key in expected_keys:
         run = run_by_key[key]
-        execution = execution_records.get(run.content_digest)
+        bundle, job, root = jobs[run.mace_job_artifact_digest]
+        execution = store.get_record_optional(
+            f"execution:{run.run_id}", mdstats.TrainingRunExecutionRecord
+        )
         if execution is None:
             raise CampaignCliError(
-                f"EVAL2 target-size run {run.run_id} is not durably complete at epoch {epoch}."
+                f"Target-size-v5 run {run.run_id} has no durable execution record."
             )
-        bundle, job, root = jobs[run.mace_job_artifact_digest]
+        if execution.run_plan_digest != run.content_digest:
+            raise CampaignCliError(
+                f"Target-size-v5 execution lineage mismatch for {run.run_id}."
+            )
+        if execution.mace_job_artifact_digest != run.mace_job_artifact_digest:
+            raise CampaignCliError(
+                f"Target-size-v5 DATA8 job lineage mismatch for {run.run_id}."
+            )
+        candidate = target_size_study.candidate(run.selection_size)
+        training_policy_digest = _train2_policy_set_digest(job.protocol)
+        schedule_digest = job.protocol.learning_rate_schedule_policy.policy_digest
+
+        scientific_attempts = [
+            attempt for attempt in execution.attempts
+            if attempt.scientific_failure_code is not None
+        ]
+        if scientific_attempts:
+            if len(scientific_attempts) != 1 or scientific_attempts[0] is not execution.attempts[-1]:
+                raise CampaignCliError(
+                    f"Target-size-v5 run {run.run_id} has invalid scientific-failure attempt provenance."
+                )
+            if execution.state is mdstats.TrainingRunState.SUCCEEDED:
+                raise CampaignCliError(
+                    f"Target-size-v5 run {run.run_id} succeeded after authenticated scientific failure; "
+                    "candidate-specific numerical failure is terminal and cannot be retried into success."
+                )
+            attempt = scientific_attempts[-1]
+            failure = mdstats.load_train2_numerical_failure(
+                paths.runs / run.run_id / "checkpoints"
+            )
+            if failure is None or failure.content_digest != attempt.scientific_failure_evidence_digest:
+                raise CampaignCliError(
+                    f"TRAIN2 numerical-failure evidence for {run.run_id} is missing or unauthenticated."
+                )
+            if failure.failure_code != attempt.scientific_failure_code:
+                raise CampaignCliError(
+                    f"TRAIN2 numerical-failure code provenance mismatch for {run.run_id}."
+                )
+            if failure.execution_epoch_limit != epoch:
+                raise CampaignCliError(
+                    f"TRAIN2 numerical failure for {run.run_id} belongs to epoch limit "
+                    f"{failure.execution_epoch_limit}, expected {epoch}."
+                )
+            outcomes.append(
+                mdstats.TargetSizeStageOutcome(
+                    failure=mdstats.TargetSizeTrajectoryFailureEvidence(
+                        stage=stage,
+                        target_size=run.selection_size,
+                        optimizer_seed=run.seed,
+                        failure_phase=mdstats.FAILURE_PHASE_TRAIN,
+                        failure_code=failure.failure_code,
+                        failure_reasons=(failure.reason,),
+                        target_size_study_policy_digest=target_size_study.policy.policy_digest,
+                        training_run_digest=run.content_digest,
+                        candidate_data_digest=candidate.candidate_data_digest,
+                        training_policy_digest=training_policy_digest,
+                        schedule_digest=schedule_digest,
+                        execution_record_digest=execution.content_digest,
+                        execution_attempt_digest=attempt.content_digest,
+                        completed_epochs=min(int(epoch), int(failure.failed_epoch) + 1),
+                        optimizer_update_count=failure.completed_updates,
+                    )
+                )
+            )
+            continue
+        if execution.state is not mdstats.TrainingRunState.SUCCEEDED:
+            reason = None if not execution.attempts else execution.attempts[-1].failure_reason
+            raise CampaignCliError(
+                f"Target-size-v5 run {run.run_id} failed for a non-scientific execution reason; "
+                f"it cannot be converted to size evidence: {reason}"
+            )
+
         runtime = store.get_record_optional(
             f"train2_runtime:{run.run_id}", mdstats.Train2RuntimeSummary
         )
@@ -17235,67 +17364,102 @@ def _eval2_target_size_endpoint_evidence(
         )
         catalog = _evaluation_checkpoint_catalog(store, run.run_id, execution)
         points = mdstats.read_train2_trajectory_points(
-            catalog.root_directory, checkpoint_catalog=catalog,
+            catalog.root_directory,
+            checkpoint_catalog=catalog,
             target_head_name=job.protocol.checkpoint_control_policy.target_head_name,
         )
-        endpoint_epoch = epoch - 1
-        matches = [point for point in points if point.epoch == endpoint_epoch]
+        matches = [point for point in points if int(point.epoch) == int(epoch) - 1]
         if len(matches) != 1:
             raise CampaignCliError(
                 f"{run.run_id} lacks its exact epoch-{epoch} checkpoint."
             )
         point = matches[0]
         checkpoint = next(
-            value for value in catalog.checkpoints if value.sha256 == point.checkpoint_sha256
+            (value for value in catalog.checkpoints if value.sha256 == point.checkpoint_sha256),
+            None,
         )
-        record = _eval2_full_checkpoint(
-            cfg=cfg, paths=paths, store=store, run=run, job=job, bundle=bundle, root=root,
-            execution=execution, checkpoint=checkpoint, point=point,
-            target_role=target_role, target_artifact=target_artifact, target_path=target_path,
-            true_replay_resolution=None, baseline_model=baseline_model, model_dtype=model_dtype,
-            local_wrappers=local_wrappers,
-            shortlist_reasons=(f"target_size_v5_epoch_{epoch}_exact_endpoint",),
-            full_evaluation_rank=1, include_replay=False,
-        )
-        parent = parent_by_key.get((run.selection_size, run.seed))
+        if checkpoint is None:
+            raise CampaignCliError(
+                f"{run.run_id} endpoint checkpoint is absent from its frozen catalog."
+            )
+        try:
+            record = _eval2_full_checkpoint(
+                cfg=cfg, paths=paths, store=store, run=run, job=job, bundle=bundle, root=root,
+                execution=execution, checkpoint=checkpoint, point=point,
+                target_role=target_role, target_artifact=target_artifact, target_path=target_path,
+                true_replay_resolution=None, baseline_model=baseline_model, model_dtype=model_dtype,
+                local_wrappers=local_wrappers,
+                shortlist_reasons=(f"target_size_v5_epoch_{epoch}_exact_endpoint",),
+                full_evaluation_rank=1, include_replay=False,
+            )
+        except mdstats.Eval2NumericalEvaluationError as exc:
+            if exc.target_role_digest != target_role.content_digest:
+                raise CampaignCliError(
+                    f"EVAL2 numerical-failure role provenance mismatch for {run.run_id}."
+                ) from exc
+            successful_attempt = execution.attempts[execution.successful_attempt_index - 1]
+            outcomes.append(
+                mdstats.TargetSizeStageOutcome(
+                    failure=mdstats.TargetSizeTrajectoryFailureEvidence(
+                        stage=stage,
+                        target_size=run.selection_size,
+                        optimizer_seed=run.seed,
+                        failure_phase=mdstats.FAILURE_PHASE_TARGET_EVALUATION,
+                        failure_code=exc.failure_code,
+                        failure_reasons=(exc.reason,),
+                        target_size_study_policy_digest=target_size_study.policy.policy_digest,
+                        training_run_digest=run.content_digest,
+                        candidate_data_digest=candidate.candidate_data_digest,
+                        training_policy_digest=training_policy_digest,
+                        schedule_digest=schedule_digest,
+                        execution_record_digest=execution.content_digest,
+                        execution_attempt_digest=successful_attempt.content_digest,
+                        checkpoint_digest=checkpoint.sha256,
+                        evaluation_role_digest=target_role.content_digest,
+                        target_evaluation_digest=exc.content_digest,
+                        completed_epochs=runtime.completed_epochs,
+                        optimizer_update_count=runtime.completed_updates,
+                    )
+                )
+            )
+            continue
+
+        parent = parent_by_key.get(key)
         if epoch > 3 and parent is None:
             raise CampaignCliError(
-                f"n={run.selection_size}, seed={run.seed} lost its exact "
+                f"n={run.selection_size}, seed={run.seed} lost its authenticated "
                 f"epoch-{3 if epoch == 10 else 10} continuation parent."
             )
         wall_time = sum(float(attempt.elapsed_seconds) for attempt in execution.attempts)
-        evidence.append(
-            mdstats.TargetSizeStudyTrainingEvidence(
-                stage={3: "coarse", 10: "short", 30: "final"}[epoch],
-                target_size=run.selection_size, optimizer_seed=run.seed,
-                completed_epochs=runtime.completed_epochs, planned_epochs=runtime.planned_epochs,
-                optimizer_update_count=runtime.completed_updates,
-                structures_presented=runtime.structures_presented,
-                normalized_schedule_progress=runtime.normalized_progress,
-                instantaneous_learning_rate=runtime.instantaneous_learning_rate,
-                wall_time_seconds=wall_time,
-                target_force_score_mev_per_a=record.target_metrics.force_component_rmse_ev_per_angstrom * 1000.0,
-                numerical_valid=True,
-                foundation_identity_digest=job.protocol.foundation_checkpoint.canonical_content_digest,
-                evaluation_role_digest=target_role.content_digest,
-                training_policy_digest=_train2_policy_set_digest(job.protocol),
-                target_size_study_policy_digest=target_size_study.policy.policy_digest,
-                training_run_digest=run.content_digest,
-                candidate_data_digest=target_size_study.candidate(run.selection_size).candidate_data_digest,
-                checkpoint_digest=point.checkpoint_sha256,
-                schedule_digest=job.protocol.learning_rate_schedule_policy.policy_digest,
-                optimizer_state_digest=runtime.optimizer_state_digest,
-                rng_state_digest=runtime.rng_state_digest,
-                target_evaluation_digest=record.target_metrics.content_digest,
-                parent_checkpoint_digest=None if parent is None else parent.checkpoint_digest,
-                parent_optimizer_state_digest=None if parent is None else parent.optimizer_state_digest,
-                parent_rng_state_digest=None if parent is None else parent.rng_state_digest,
-                failure_reasons=(),
-            )
+        success = mdstats.TargetSizeStudyTrainingEvidence(
+            stage=stage,
+            target_size=run.selection_size,
+            optimizer_seed=run.seed,
+            completed_epochs=runtime.completed_epochs,
+            planned_epochs=runtime.planned_epochs,
+            optimizer_update_count=runtime.completed_updates,
+            structures_presented=runtime.structures_presented,
+            normalized_schedule_progress=runtime.normalized_progress,
+            instantaneous_learning_rate=runtime.instantaneous_learning_rate,
+            wall_time_seconds=wall_time,
+            target_force_score_mev_per_a=record.target_metrics.force_component_rmse_ev_per_angstrom * 1000.0,
+            foundation_identity_digest=job.protocol.foundation_checkpoint.canonical_content_digest,
+            evaluation_role_digest=target_role.content_digest,
+            training_policy_digest=training_policy_digest,
+            target_size_study_policy_digest=target_size_study.policy.policy_digest,
+            training_run_digest=run.content_digest,
+            candidate_data_digest=candidate.candidate_data_digest,
+            checkpoint_digest=point.checkpoint_sha256,
+            schedule_digest=schedule_digest,
+            optimizer_state_digest=runtime.optimizer_state_digest,
+            rng_state_digest=runtime.rng_state_digest,
+            target_evaluation_digest=record.target_metrics.content_digest,
+            parent_checkpoint_digest=None if parent is None else parent.checkpoint_digest,
+            parent_optimizer_state_digest=None if parent is None else parent.optimizer_state_digest,
+            parent_rng_state_digest=None if parent is None else parent.rng_state_digest,
         )
-    return tuple(evidence)
-
-
+        outcomes.append(mdstats.TargetSizeStageOutcome(success=success))
+    return tuple(outcomes)
 def _command_evaluate_train2(
     args: argparse.Namespace,
     *,
@@ -17316,7 +17480,6 @@ def _command_evaluate_train2(
         "target_multi_view_repair_v2", mdstats.TargetMultiViewRepairPlanV2
     )
     role_freeze = store.get_record("target_data_role_freeze", mdstats.TargetDataRoleFreeze)
-    execution_records = _available_successful_executions(cfg, paths, store, campaign, jobs)
     baseline_model = _path_cfg(cfg, paths, "foundation_model")
     local_wrappers = _ensure_local_wrappers(paths)
 
@@ -17330,24 +17493,25 @@ def _command_evaluate_train2(
         mdstats.OUTCOME_AWAITING_EPOCH_30,
     }:
         epoch = int(study.next_training_epoch)
-        evidence = _eval2_target_size_endpoint_evidence(
+        outcomes = _eval2_target_size_endpoint_evidence(
             cfg=cfg, paths=paths, store=store, campaign=campaign, jobs=jobs,
-            execution_records=execution_records, target_size_study=study, repair2=repair2,
+            target_size_study=study, repair2=repair2,
             role_freeze=role_freeze, baseline_model=baseline_model, model_dtype=model_dtype,
             local_wrappers=local_wrappers,
         )
         if epoch == 3:
-            updated = mdstats.attach_epoch_3_evidence(study, evidence)
+            updated = mdstats.attach_epoch_3_outcomes(study, outcomes)
         elif epoch == 10:
-            updated = mdstats.attach_epoch_10_evidence(study, evidence)
+            updated = mdstats.attach_epoch_10_outcomes(study, outcomes)
         else:
-            updated = mdstats.attach_epoch_30_evidence(study, evidence)
+            updated = mdstats.attach_epoch_30_outcomes(study, outcomes)
         store.put_record("target_size_study", updated)
-        for item in evidence:
-            _ok(
-                f"TARGET-SIZE-V5 epoch {epoch} n={item.target_size}: "
-                f"target={item.target_force_score_mev_per_a:.2f} meV/A"
-            )
+        success_count = sum(item.success is not None for item in outcomes)
+        failure_count = len(outcomes) - success_count
+        _ok(
+            f"TARGET-SIZE-V5 epoch {epoch} exact population reduced: "
+            f"successes={success_count}, scientific_failures={failure_count}, outcome={updated.outcome}"
+        )
         if updated.outcome == mdstats.OUTCOME_AWAITING_EPOCH_10:
             _ok(
                 "epoch-3 survivors: "
@@ -17365,6 +17529,17 @@ def _command_evaluate_train2(
             _mark_stage(store, paths, "evaluate", StageState.COMPLETE, "target-size epoch-10 screen complete")
             _mark_stage(store, paths, "train", StageState.WAITING, "continue target-size finalists to epoch 30")
             print("\nTarget-size epoch-10 screen complete. Next: `train` to continue finalists to epoch 30.")
+            return 0
+        if updated.outcome == mdstats.OUTCOME_INSUFFICIENT_COMPARABLE_CANDIDATES:
+            _mark_stage(
+                store, paths, "evaluate", StageState.COMPLETE,
+                f"target-size-v5 terminal scientific outcome: {updated.outcome}",
+            )
+            print(
+                "\nTarget-size v5 terminated scientifically with insufficient comparable paired candidates. "
+                "Failure evidence is frozen in target_size_study.",
+                flush=True,
+            )
             return 0
         if updated.outcome == mdstats.OUTCOME_SELECTED:
             _ok(
@@ -17395,6 +17570,7 @@ def _command_evaluate_train2(
             f"EVAL2 has no valid target-size state: {study.outcome}; {study.decision_reason}"
         )
 
+    execution_records = _available_successful_executions(cfg, paths, store, campaign, jobs)
     selected_size = int(study.selected_target_size)
     runs = [run for run in campaign.runs if run.selection_size == selected_size]
     if any(run.kind is mdstats.MaceJobKind.CROSS_VALIDATION_FOLD for run in runs) is False:

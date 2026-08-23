@@ -17,12 +17,21 @@ from mdstats.training_data.target_size_study import (
     OUTCOME_INSUFFICIENT_QUALIFIED_SIZES,
     OUTCOME_NONCONVERGED_AT_FIXED_CEILING,
     OUTCOME_SELECTED,
+    FAILURE_PHASE_TRAIN,
+    STAGE_COARSE,
+    STAGE_FINAL,
+    STAGE_SHORT,
+    TargetSizeStageOutcome,
     TargetSizeStudyPlan,
     TargetSizeStudyPolicy,
     TargetSizeTrainingEvidence,
+    TargetSizeTrajectoryFailureEvidence,
     attach_epoch_10_evidence,
+    attach_epoch_10_outcomes,
     attach_epoch_30_evidence,
+    attach_epoch_30_outcomes,
     attach_epoch_3_evidence,
+    attach_epoch_3_outcomes,
     build_target_size_study,
     materialize_candidate_prefix,
     materialize_selected_prefix,
@@ -80,9 +89,6 @@ def evidence(
     epoch: int,
     score: float,
     parent=None,
-    *,
-    numerical_valid=True,
-    failure_reasons=(),
 ):
     stage = {3: "coarse", 10: "short", 30: "final"}[epoch]
     kwargs = dict(
@@ -97,7 +103,6 @@ def evidence(
         instantaneous_learning_rate=1.0e-3,
         wall_time_seconds=float(epoch),
         target_force_score_mev_per_a=score,
-        numerical_valid=bool(numerical_valid),
         foundation_identity_digest=h("foundation"),
         evaluation_role_digest=h("role"),
         training_policy_digest=h("policy"),
@@ -109,7 +114,6 @@ def evidence(
         optimizer_state_digest=h(f"optimizer-{size}-{seed}-{epoch}"),
         rng_state_digest=h(f"rng-{size}-{seed}-{epoch}"),
         target_evaluation_digest=h(f"target-eval-{size}-{seed}-{epoch}"),
-        failure_reasons=tuple(failure_reasons),
     )
     if epoch == 30:
         kwargs.update(
@@ -125,19 +129,42 @@ def evidence(
     return TargetSizeTrainingEvidence(**kwargs)
 
 
+def failure(plan, size: int, seed: int, epoch: int, *, reason="nan_gradient"):
+    stage = {3: STAGE_COARSE, 10: STAGE_SHORT, 30: STAGE_FINAL}[epoch]
+    return TargetSizeTrajectoryFailureEvidence(
+        stage=stage,
+        target_size=size,
+        optimizer_seed=seed,
+        failure_phase=FAILURE_PHASE_TRAIN,
+        failure_code="train_nonfinite_model_state",
+        failure_reasons=(reason,),
+        target_size_study_policy_digest=plan.policy.policy_digest,
+        training_run_digest=h(f"run-{size}-seed-{seed}"),
+        candidate_data_digest=plan.candidate(size).candidate_data_digest,
+        training_policy_digest=h("policy"),
+        schedule_digest=h("schedule"),
+        execution_record_digest=h(f"execution-{size}-{seed}-{epoch}"),
+        execution_attempt_digest=h(f"attempt-{size}-{seed}-{epoch}"),
+        completed_epochs=max(0, epoch - 1),
+        optimizer_update_count=max(0, epoch * 10 - 1),
+    )
+
+
 def batch(plan, sizes, epoch, scores, *, parents=None, invalid=()):
     parent_map = {} if parents is None else parents
     invalid = set(invalid)
     return tuple(
-        evidence(
-            plan,
-            int(size),
-            int(seed),
-            epoch,
-            _score(scores, int(size), int(seed)),
-            parent_map.get((int(size), int(seed))),
-            numerical_valid=(int(size), int(seed)) not in invalid,
-            failure_reasons=("nan_gradient",) if (int(size), int(seed)) in invalid else (),
+        (
+            failure(plan, int(size), int(seed), epoch)
+            if (int(size), int(seed)) in invalid
+            else evidence(
+                plan,
+                int(size),
+                int(seed),
+                epoch,
+                _score(scores, int(size), int(seed)),
+                parent_map.get((int(size), int(seed))),
+            )
         )
         for size in sizes
         for seed in plan.policy.screening_optimizer_seeds
@@ -181,10 +208,13 @@ def select(plan, scores30):
     )
 
 
-def _recompute_nested_and_outer_digest(payload, evidence_field: str, index: int) -> None:
-    item = payload[evidence_field][index]
+def _recompute_nested_and_outer_digest(payload, outcome_field: str, index: int) -> None:
+    outcome = payload[outcome_field][index]
+    item = outcome["success"] if outcome.get("success") is not None else outcome["failure"]
     item.pop("content_digest", None)
     item["content_digest"] = digest(item)
+    outcome.pop("content_digest", None)
+    outcome["content_digest"] = digest(outcome)
     payload.pop("content_digest", None)
     payload["content_digest"] = digest(payload)
 
@@ -269,7 +299,6 @@ def test_epoch10_requires_exact_checkpoint_optimizer_rng_continuation():
     payload = first.to_dict()
     payload.pop("schema")
     payload.pop("content_digest")
-    payload["failure_reasons"] = tuple(payload["failure_reasons"])
     payload["parent_checkpoint_digest"] = h("wrong-parent")
     e10[0] = TargetSizeTrainingEvidence(**payload)
     with pytest.raises(TrainingDataInputError, match="checkpoint ancestry"):
@@ -334,7 +363,7 @@ def test_fixed_ceiling_material_improvement_is_terminal_nonconvergence():
 
 def test_insufficient_paired_comparability_is_typed_terminal_state():
     _, _, plan = study((4096, 8192, 16384))
-    result = attach_epoch_3_evidence(
+    result = attach_epoch_3_outcomes(
         plan,
         batch(
             plan,
@@ -346,7 +375,7 @@ def test_insufficient_paired_comparability_is_typed_terminal_state():
     )
     assert result.outcome == OUTCOME_INSUFFICIENT_COMPARABLE_CANDIDATES
     assert result.comparison_failure_stage == "coarse"
-    assert result.comparison_failures == ((8192, 2, ("nan_gradient",)),)
+    assert result.comparison_failures == ((8192, 2, ("train_nonfinite_model_state", "nan_gradient")),)
     restored = TargetSizeStudyPlan.from_dict(result.to_dict())
     assert restored.content_digest == result.content_digest
 
@@ -365,9 +394,15 @@ def test_selected_production_prefix_is_exact_and_unavailable_before_selection():
         {size: 9.0 + i * 0.2 for i, size in enumerate(plan.epoch10_finalist_sizes)},
     )
     selected = plan.selected_target_size
-    assert materialize_selected_prefix(
+    d0_prefix = materialize_selected_prefix(
         plan, repair2=repair, label_domain_id="d0"
-    ) == repair.domain("d0").repaired_master_order[:selected]
+    )
+    d1_prefix = materialize_selected_prefix(
+        plan, repair2=repair, label_domain_id="d1"
+    )
+    assert d0_prefix == repair.domain("d0").repaired_master_order[:selected]
+    assert d1_prefix == repair.domain("d1").repaired_master_order[:selected]
+    assert d0_prefix != d1_prefix
 
 
 def test_v5_restart_round_trip_revalidates_exact_continuation_semantics():
@@ -381,8 +416,8 @@ def test_v5_restart_round_trip_revalidates_exact_continuation_semantics():
     assert restored.content_digest == plan.content_digest
 
     forged = plan.to_dict()
-    forged["epoch10_evidence"][0]["parent_checkpoint_digest"] = h("forged-parent")
-    _recompute_nested_and_outer_digest(forged, "epoch10_evidence", 0)
+    forged["epoch10_outcomes"][0]["success"]["parent_checkpoint_digest"] = h("forged-parent")
+    _recompute_nested_and_outer_digest(forged, "epoch10_outcomes", 0)
     with pytest.raises(TrainingDataInputError, match="checkpoint ancestry"):
         TargetSizeStudyPlan.from_dict(forged)
 
@@ -402,8 +437,8 @@ def test_restart_rejects_forged_optimizer_and_rng_continuation(field, message):
         {4096: 10.0, 8192: 9.8, 16384: 9.5},
     )
     forged = plan.to_dict()
-    forged["epoch10_evidence"][0][field] = h(f"forged-{field}")
-    _recompute_nested_and_outer_digest(forged, "epoch10_evidence", 0)
+    forged["epoch10_outcomes"][0]["success"][field] = h(f"forged-{field}")
+    _recompute_nested_and_outer_digest(forged, "epoch10_outcomes", 0)
     with pytest.raises(TrainingDataInputError, match=message):
         TargetSizeStudyPlan.from_dict(forged)
 
@@ -449,7 +484,7 @@ def test_restart_rejects_rebound_equivalence_policy_with_old_evidence():
     forged = plan.to_dict()
     forged["policy"]["coarse_practical_equivalence_mev_per_a"] = 0.5
     _recompute_policy_and_outer_digest(forged)
-    with pytest.raises(TrainingDataInputError, match="different target-size study policy"):
+    with pytest.raises(TrainingDataInputError, match="policy digest mismatch"):
         TargetSizeStudyPlan.from_dict(forged)
 
 
@@ -457,13 +492,13 @@ def test_restart_rejects_reordered_seed_evidence_even_with_recomputed_outer_dige
     _, _, plan = study((4096, 8192, 16384))
     plan = advance_to_epoch10(plan, {4096: 10.0, 8192: 9.8, 16384: 9.5})
     forged = plan.to_dict()
-    forged["epoch3_evidence"][0], forged["epoch3_evidence"][1] = (
-        forged["epoch3_evidence"][1],
-        forged["epoch3_evidence"][0],
+    forged["epoch3_outcomes"][0], forged["epoch3_outcomes"][1] = (
+        forged["epoch3_outcomes"][1],
+        forged["epoch3_outcomes"][0],
     )
     forged.pop("content_digest")
     forged["content_digest"] = digest(forged)
-    with pytest.raises(TrainingDataInputError, match="exact ordered"):
+    with pytest.raises(TrainingDataInputError, match="policy-ordered"):
         TargetSizeStudyPlan.from_dict(forged)
 
 
@@ -514,3 +549,155 @@ def test_epoch30_does_not_apply_second_hard_gate_after_mvqual():
     selected = attach_epoch_30_evidence(plan, final_evidence)
     assert selected.outcome == OUTCOME_SELECTED
     assert selected.selected_target_size == smaller
+
+
+def test_candidate_data_digest_is_recomputed_from_canonical_candidate_inputs() -> None:
+    _, _, plan = study((1024, 2048, 4096, 8192, 16384))
+    payload = plan.to_dict()
+    candidate = next(item for item in payload["candidates"] if item["target_size"] == 1024)
+    candidate["candidate_data_digest"] = h("forged-candidate-data")
+    candidate.pop("content_digest", None)
+    candidate["content_digest"] = digest(candidate)
+    payload.pop("content_digest", None)
+    payload["content_digest"] = digest(payload)
+    with pytest.raises(TrainingDataInputError, match="candidate_data_digest"):
+        TargetSizeStudyPlan.from_dict(payload)
+
+
+def test_too_few_comparable_candidates_at_epoch10_is_typed_terminal() -> None:
+    _, _, plan = study((1024, 2048, 4096, 8192, 16384))
+    plan = advance_to_epoch10(
+        plan, {1024: 10.0, 2048: 9.0, 4096: 8.0, 8192: 7.0, 16384: 6.0}
+    )
+    sizes = plan.epoch3_survivor_sizes
+    invalid = tuple((size, plan.policy.screening_optimizer_seeds[0]) for size in sizes[:-1])
+    result = attach_epoch_10_outcomes(
+        plan,
+        batch(
+            plan,
+            sizes,
+            10,
+            {size: float(i + 1) for i, size in enumerate(sizes)},
+            parents=evidence_map(plan.epoch3_evidence),
+            invalid=invalid,
+        ),
+    )
+    assert result.outcome == OUTCOME_INSUFFICIENT_COMPARABLE_CANDIDATES
+    assert result.comparison_failure_stage == STAGE_SHORT
+
+
+def test_one_failed_finalist_at_epoch30_is_typed_terminal() -> None:
+    _, _, plan = study((1024, 2048, 4096, 8192, 16384))
+    plan = advance_to_epoch30(
+        plan,
+        {1024: 10.0, 2048: 9.0, 4096: 8.0, 8192: 7.0, 16384: 6.0},
+        {1024: 10.0, 2048: 9.0, 4096: 8.0, 8192: 7.0, 16384: 6.0},
+    )
+    finalist = plan.epoch10_finalist_sizes[0]
+    result = attach_epoch_30_outcomes(
+        plan,
+        batch(
+            plan,
+            plan.epoch10_finalist_sizes,
+            30,
+            {size: float(i + 1) for i, size in enumerate(plan.epoch10_finalist_sizes)},
+            parents=evidence_map(plan.epoch10_evidence),
+            invalid=((finalist, plan.policy.screening_optimizer_seeds[0]),),
+        ),
+    )
+    assert result.outcome == OUTCOME_INSUFFICIENT_COMPARABLE_CANDIDATES
+    assert result.comparison_failure_stage == STAGE_FINAL
+
+
+def test_generic_failure_code_cannot_be_target_size_scientific_evidence() -> None:
+    _, _, plan = study((4096, 8192, 16384))
+    size = plan.qualified_sizes[0]
+    with pytest.raises(TrainingDataInputError, match="Only explicit TRAIN2 numerical codes"):
+        TargetSizeTrajectoryFailureEvidence(
+            stage=STAGE_COARSE,
+            target_size=size,
+            optimizer_seed=plan.policy.screening_optimizer_seeds[0],
+            failure_phase=FAILURE_PHASE_TRAIN,
+            failure_code="timeout",
+            failure_reasons=("timeout",),
+            target_size_study_policy_digest=plan.policy.policy_digest,
+            training_run_digest=h("run"),
+            candidate_data_digest=plan.candidate(size).candidate_data_digest,
+            training_policy_digest=h("training-policy"),
+            schedule_digest=h("schedule"),
+            execution_record_digest=h("execution"),
+            execution_attempt_digest=h("attempt"),
+        )
+
+
+def test_epoch30_replay_diagnostics_cannot_change_target_size_ranking() -> None:
+    _, _, left = study((4096, 8192, 16384))
+    _, _, right = study((4096, 8192, 16384))
+    scores3 = {4096: 10.0, 8192: 9.8, 16384: 9.5}
+    scores10 = {4096: 9.7, 8192: 9.6, 16384: 9.4}
+    left = advance_to_epoch30(left, scores3, scores10)
+    right = advance_to_epoch30(right, scores3, scores10)
+    final_scores = {
+        size: 8.0 + 0.2 * index
+        for index, size in enumerate(left.epoch10_finalist_sizes)
+    }
+
+    def with_replay(plan, reverse: bool):
+        raw = batch(
+            plan,
+            plan.epoch10_finalist_sizes,
+            30,
+            final_scores,
+            parents=evidence_map(plan.epoch10_evidence),
+        )
+        rewritten = []
+        for item in raw:
+            payload = item.to_dict()
+            payload.pop("content_digest", None)
+            rank = plan.epoch10_finalist_sizes.index(item.target_size)
+            payload["replay_diagnostic_force_rmse_mev_per_a"] = float(
+                1000 - rank if reverse else rank + 1
+            )
+            payload["replay_evaluation_digest"] = h(
+                f"replay-{'reverse' if reverse else 'forward'}-{item.target_size}-{item.optimizer_seed}"
+            )
+            rewritten.append(TargetSizeTrainingEvidence.from_dict(payload))
+        return tuple(rewritten)
+
+    left = attach_epoch_30_evidence(left, with_replay(left, False))
+    right = attach_epoch_30_evidence(right, with_replay(right, True))
+    assert left.outcome == OUTCOME_SELECTED
+    assert right.outcome == OUTCOME_SELECTED
+    assert left.selected_target_size == right.selected_target_size
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    (
+        ("stage", STAGE_SHORT, "stage"),
+        ("optimizer_seed", 999, "policy-ordered"),
+    ),
+)
+def test_restart_rejects_forged_failure_stage_or_seed(field, value, message) -> None:
+    _, _, plan = study((4096, 8192, 16384))
+    failed_key = (8192, plan.policy.screening_optimizer_seeds[0])
+    terminal = attach_epoch_3_outcomes(
+        plan,
+        batch(
+            plan,
+            plan.qualified_sizes,
+            3,
+            {4096: 10.0, 8192: 9.0, 16384: 8.0},
+            invalid=(failed_key,),
+        ),
+    )
+    payload = terminal.to_dict()
+    index = next(
+        i
+        for i, outcome in enumerate(payload["epoch3_outcomes"])
+        if outcome["failure"] is not None
+    )
+    payload["epoch3_outcomes"][index]["failure"][field] = value
+    _recompute_nested_and_outer_digest(payload, "epoch3_outcomes", index)
+    with pytest.raises(TrainingDataInputError, match=message):
+        TargetSizeStudyPlan.from_dict(payload)

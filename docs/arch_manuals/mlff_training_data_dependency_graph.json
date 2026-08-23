@@ -92,7 +92,6 @@
     {"from": "TARGET_SIZE_STUDY_POLICY", "to": "QUALIFIED_TARGET_SIZE_POPULATION", "type": "consumes"},
     {"from": "QUALIFIED_TARGET_SIZE_POPULATION", "to": "SIZE_STUDY_EPOCH3", "type": "promotion_requires"},
     {"from": "COMMON_TARGET_MONITOR", "to": "SIZE_STUDY_EPOCH3", "type": "consumes"},
-    {"from": "COMMON_REPLAY_MONITOR", "to": "SIZE_STUDY_EPOCH3", "type": "consumes"},
     {"from": "SIZE_STUDY_EPOCH3", "to": "SIZE_STUDY_EPOCH10", "type": "identity_requires"},
     {"from": "SIZE_STUDY_EPOCH10", "to": "SIZE_STUDY_EPOCH30", "type": "identity_requires"},
     {"from": "SIZE_STUDY_EPOCH30", "to": "TARGET_SIZE_DECISION", "type": "produces"},
@@ -122,7 +121,8 @@
     "held-out CV evaluation -> target-size decision",
     "locked-test evidence -> target-size decision or training/checkpoint policy",
     "pool cardinality or monitor cardinality -> implicit selected target size",
-    "independent per-rung repair/materialization -> current nested target subsets"
+    "independent per-rung repair/materialization -> current nested target subsets",
+    "replay-monitor metrics or diagnostics -> target-size ranking/qualification/tie-break"
   ],
   "resource_invariants": [
     "one fitted selection-input authority per required training domain",

@@ -9,7 +9,7 @@ This specification owns the scientific target-training cardinality used by the c
 
 It does not own target-monitor cardinality, replay-monitor cardinality, minibatch size, worker count, descriptor-block size, or arbitrary pool cardinality. Numeric equality between one of those quantities and a target-size rung has no semantic effect.
 
-The policy record is `TargetSizeStudyPolicy`. The terminal record is `TargetSizeDecision`.
+The policy record is `TargetSizeStudyPolicy`. The derived study/terminal authority is `TargetSizeStudyPlan`.
 
 ## 2. Required inputs and evidence roles
 
@@ -19,7 +19,7 @@ The study consumes only:
 - one current REPAIR2 repaired master order per required training domain;
 - independent MVQUAL evidence for candidate prefixes;
 - the common target online monitor defined by `OnlineTargetMonitorPolicy`;
-- the replay monitor defined by `ReplayMonitorPolicy` when replay is part of the protocol;
+- replay semantics/monitor identity when replay is part of the frozen training protocol; replay metric values are diagnostic only and are not consumed by size ranking;
 - the frozen foundation, replay, objective, optimizer/LR, exposure, precision/backend, and seed policy used for the size experiment.
 
 The following evidence is forbidden from controlling the target-size decision:
@@ -42,7 +42,7 @@ The fixed nominal scientific population is exactly
 and is represented by
 
 ```text
-TargetSizeStudyPolicy.nominal_sizes
+TargetSizeStudyPolicy.candidate_sizes
 ```
 
 in strictly increasing order.
@@ -57,7 +57,7 @@ The common materializable population is
 
 ```text
 N_materializable = {
-  N in nominal_sizes :
+  N in candidate_sizes :
   N <= min_d N_available[d]
 }
 ```
@@ -116,7 +116,7 @@ foundation -> epoch 3 -> epoch 10 -> epoch 30
 
 Epoch 10 SHALL continue the exact epoch-3 model, optimizer, RNG, and protocol state. Epoch 30 SHALL continue the exact epoch-10 state. Restart or persistence may change storage realization but not parentage.
 
-Ordinary target-success early stopping is disabled during the target-size study. Candidates must reach the common fidelity boundary to remain comparable. Hard numerical/scientific failures remain admissible rejection events.
+Ordinary target-success early stopping is disabled during the target-size study. Candidates must reach the common fidelity boundary to remain comparable. A successful endpoint is represented only by strict finite `TargetSizeTrainingEvidence`; positively identified candidate-specific TRAIN2/EVAL2 numerical invalidity is represented separately by authenticated `TargetSizeTrajectoryFailureEvidence`. Generic execution, resource, input, schema, lineage, timeout, interruption, launch, and programming failures remain campaign errors rather than scientific size evidence.
 
 ## 6. Production successive-fidelity funnel
 
@@ -167,11 +167,11 @@ Tie resolution after the practical-equivalence rule SHALL be deterministic and s
 
 The two finalists continue to epoch 30 on their authenticated trajectories. MVQUAL is the sole hard target-size eligibility authority. The epoch-30 comparison SHALL NOT re-apply target-threshold, replay-retention, energy/stress, structural/physical-integrity, relaxation, deployment, or other downstream model/protocol acceptance gates as a second size qualification stage.
 
-Numerically invalid trajectories may be excluded because they cannot provide comparable ranking evidence. Among numerically valid finalists, the winner is determined by the policy-defined target-size metric and practical-equivalence/smaller-size rule serialized in `TargetSizeStudyPolicy`. Replay and other model-quality metrics may be recorded as diagnostics only when they carry no target-size eligibility or tie-break authority.
+Each expected `(size, seed)` contributes exactly one stage outcome: a strict successful endpoint or authenticated candidate-specific trajectory-failure evidence. Only candidates with complete paired successful seeds are rankable. Among complete finalists, the winner is determined by the policy-defined target-size metric and practical-equivalence/smaller-size rule serialized in `TargetSizeStudyPolicy`. Replay scores and other model-quality metrics may be recorded as diagnostics only; they cannot qualify, reject, rank, or tie-break target sizes.
 
 The final practical-equivalence width defaults to `1 meV/Angstrom` and is independently configurable through `TargetSizeStudyPolicy.practical_equivalence_mev_per_a`. Like the coarse width, it is positive, finite, serialized, and part of the policy digest. It controls the epoch-30 smaller-size equivalence rule and the fixed-ceiling material-superiority test.
 
-If numerical/scientific trajectory failures leave too few complete paired-seed candidates to perform a required epoch-3, epoch-10, or epoch-30 comparison, the study terminates as `insufficient_comparable_candidates`. The terminal state records the failed fidelity stage and authenticated `(candidate size, seed)` failure reasons. Ordinary input, programming, or lineage errors remain exceptions rather than being absorbed into this scientific terminal class.
+If authenticated numerical/scientific trajectory failures leave too few complete paired-seed candidates to perform a required epoch-3, epoch-10, or epoch-30 comparison, the study terminates as `insufficient_comparable_candidates`. The terminal state records the failed fidelity stage and authenticated `(candidate size, seed)` failure reasons. Ordinary input, programming, or lineage errors remain exceptions rather than being absorbed into this scientific terminal class.
 
 After `selected_target_size` is frozen, ordinary production/CV model acceptance, replay-retention, held-out evaluation, and physical/deployment verification may accept or reject the resulting model/protocol but SHALL NOT change the selected target size.
 
@@ -179,7 +179,7 @@ After `selected_target_size` is frozen, ordinary production/CV model acceptance,
 
 The fixed scientific ceiling is 16,384. The workflow SHALL NOT generate an intermediate or larger rescue size to avoid a non-convergence result.
 
-When 16,384 reaches the final comparison and remains materially superior to every smaller numerically valid finalist by more than the configured final practical-equivalence width, the terminal outcome is:
+When 16,384 reaches the final comparison and remains materially superior to every smaller complete finalist by more than the configured final practical-equivalence width, the terminal outcome is:
 
 ```text
 nonconverged_at_fixed_ceiling
@@ -189,7 +189,7 @@ A non-convergence result is scientifically meaningful and SHALL be preserved rat
 
 ## 8. Terminal result schema
 
-`TargetSizeDecision` is a tagged result with at least these terminal states:
+`TargetSizeStudyPlan.outcome` is a tagged derived result with at least these terminal states:
 
 ```text
 selected(N)
@@ -198,7 +198,7 @@ insufficient_comparable_candidates
 nonconverged_at_fixed_ceiling
 ```
 
-A `selected(N)` result SHALL bind:
+A selected `TargetSizeStudyPlan` SHALL bind:
 
 - `TargetSizeStudyPolicy` digest;
 - nominal/materializable/qualified populations;

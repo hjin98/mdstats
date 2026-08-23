@@ -2,7 +2,7 @@
 geometry: "margin=0.75in"
 architecture_revision: 105
 status: "current normative architecture"
-last_updated: "2026-08-21"
+last_updated: "2026-08-22"
 ---
 
 # MLFF Training-Data and Fine-Tuning Architecture
@@ -1081,7 +1081,7 @@ Held-out cross-validation folds evaluate the complete already-frozen protocol. I
 
 ## Target-size study policy
 
-`TargetSizeStudyPolicy` is the sole target-size decision authority. It consumes the qualified size population and authorized development/model-selection evidence, including common target/replay monitors as defined by their own policies.
+`TargetSizeStudyPolicy` is the sole target-size decision authority. It consumes the qualified size population and target-only development/model-selection evidence. Replay semantics and monitor identity remain part of the common frozen training protocol, but replay metric values are diagnostic and are not consumed by target-size ranking, qualification, rejection, or tie-breaking.
 
 Monitor policies are type-distinct from target-size policy. A target monitor of 256 configurations and a replay monitor of 512 configurations, if those values are current, remain monitoring evidence sets; their integers do not create target-size rungs.
 
@@ -1095,7 +1095,7 @@ Each candidate follows one authenticated training continuation:
 
 The epoch-10 state authenticates the exact epoch-3 model, optimizer, RNG, and protocol parent. Epoch 30 continues epoch 10. All size candidates use the same foundation, replay semantics, objective, optimizer/LR schedule, exposure policy, precision/backend, and ordered training-seed set. The seed authority is the ordered `seeds` field of the sole enabled training method; current generated campaigns default that field to `[1, 2]`. The target-size policy authenticates this ordered set rather than owning an unrelated seed convention.
 
-Ordinary target-success early stopping is disabled during this experiment because size candidates must be compared at common fidelity boundaries. A numerically invalid training trajectory may be excluded because it cannot provide comparable ranking evidence. Normal production/CV stopping resumes once the size experiment is complete.
+Ordinary target-success early stopping is disabled during this experiment because size candidates must be compared at common fidelity boundaries. Each expected candidate/seed resolves to exactly one authenticated stage outcome: strict finite endpoint success or explicit candidate-specific TRAIN2/EVAL2 numerical failure. Generic execution/resource/input/lineage failures remain fail-closed campaign errors. Normal production/CV stopping resumes once the size experiment is complete.
 
 ### Successive-fidelity funnel
 
@@ -1112,7 +1112,7 @@ Candidate comparison uses paired seed-aggregated evidence: every candidate uses 
 
 At epoch 3 and epoch 10, the coarse practical-equivalence width defaults to 1 meV/Angstrom in the primary target-force metric; the smaller size is preferred inside the configured band. At epoch 30 the final width independently defaults to 1 meV/Angstrom. Both widths are configurable positive finite policy fields and therefore participate in target-size policy identity; changing either width invalidates reuse of derived study evidence from the old policy. The early screens rank relative promise; they do not require the final absolute force-accuracy threshold.
 
-At epoch 30, size selection remains a target-size ranking decision over candidates already admitted by MVQUAL. MVQUAL is the sole hard target-size eligibility authority; the size study does not re-apply target-threshold, replay-retention, energy/stress, physical-integrity, relaxation, deployment, or other downstream model/protocol acceptance gates. Numerically invalid training trajectories may be excluded because they do not provide comparable ranking evidence. Model/protocol acceptance runs only after `N_selected` is frozen and cannot feed back into the size decision.
+At epoch 30, size selection remains a target-only ranking decision over candidates already admitted by MVQUAL. MVQUAL is the sole hard target-size eligibility authority; the size study does not re-apply target-threshold, replay-retention, energy/stress, physical-integrity, relaxation, deployment, or other downstream model/protocol acceptance gates. Only candidates with complete paired successful endpoints are rankable; authenticated scientific failures remain explicit failure outcomes. Replay scores cannot rank, qualify, reject, or tie-break sizes. Model/protocol acceptance runs only after `N_selected` is frozen and cannot feed back into the size decision.
 
 ### Typed terminal outcomes
 
@@ -1125,9 +1125,9 @@ insufficient_comparable_candidates
 nonconverged_at_fixed_ceiling
 ```
 
-`insufficient_comparable_candidates` records the failed fidelity stage and authenticated candidate/seed failure reasons when numerical/scientific trajectory failures leave too few complete paired candidates for the required comparison. Input, lineage, and programming errors remain fail-closed exceptions.
+`insufficient_comparable_candidates` records the failed fidelity stage and authenticated candidate/seed failure reasons when authenticated numerical/scientific trajectory failures leave too few complete paired candidates for the required comparison. Input, lineage, and programming errors remain fail-closed exceptions.
 
-If 16,384 reaches the final comparison and remains materially better than every smaller numerically valid finalist by more than the configured final practical-equivalence width, the outcome is `nonconverged_at_fixed_ceiling`. The architecture reports that terminal state rather than synthesizing a larger or intermediate rescue size.
+If 16,384 reaches the final comparison and remains materially better than every smaller complete finalist by more than the configured final practical-equivalence width, the outcome is `nonconverged_at_fixed_ceiling`. The architecture reports that terminal state rather than synthesizing a larger or intermediate rescue size.
 
 The architecture never creates an intermediate size merely to avoid reporting non-convergence.
 
@@ -1538,7 +1538,7 @@ A pass/fail/pass sequence is an invariant violation in nesting, identity, qualif
 
 ## Target-size study
 
-`TargetSizeStudyPolicy` is the sole scientific target-size owner. It consumes only authorized development/model-selection evidence and the common target/replay monitoring evidence defined for that role. Held-out CV evaluation folds and locked tests remain unavailable to the size decision.
+`TargetSizeStudyPolicy` is the sole scientific target-size owner. It consumes only authorized target-side development/model-selection evidence. Replay semantics/monitor identity may remain bound through the frozen training protocol, but replay metric values are diagnostics and cannot rank, qualify, reject, or tie-break target sizes. Held-out CV evaluation folds and locked tests remain unavailable to the size decision.
 
 ### Exact fidelity continuation
 
@@ -1550,7 +1550,7 @@ foundation -> epoch 3 -> epoch 10 -> epoch 30
 
 Epoch 10 authenticates the exact epoch-3 model/optimizer/RNG parent; epoch 30 authenticates epoch 10. Candidates use the same foundation, replay semantics, objective, optimizer/LR schedule, exposure policy, precision/backend, and ordered seed set. That seed set comes from the `seeds` field of the sole enabled training method; current generated campaigns default the owning field to `[1, 2]`. The target-size policy serializes the ordered set and does not invent a second seed convention.
 
-Ordinary target-success early stopping is disabled during the size experiment because candidates must reach comparable fidelity boundaries. Hard numerical or scientific failure may still reject a candidate. Normal production/CV stopping resumes after target size is frozen.
+Ordinary target-success early stopping is disabled during the size experiment because candidates must reach comparable fidelity boundaries. Every expected candidate/seed produces exactly one stage outcome: strict successful endpoint evidence or explicit authenticated candidate-specific numerical/scientific failure evidence. Generic execution/resource/input/schema/lineage failures remain campaign errors. Normal production/CV stopping resumes after target size is frozen.
 
 ### Successive-fidelity funnel
 
@@ -1567,7 +1567,7 @@ All candidates use the same authenticated ordered training-seed set, and compari
 
 At epoch 3 and epoch 10, the configurable coarse practical-equivalence width defaults to 1 meV/Angstrom in the primary target-force metric, and candidates inside that band prefer the smaller size. The independently configurable final width also defaults to 1 meV/Angstrom for epoch-30 ranking and fixed-ceiling material superiority. Both positive finite values are policy-identity fields, not frozen schema constants. Early screens need not satisfy the final absolute force-accuracy threshold.
 
-At epoch 30, the two finalists are ranked only by the target-size study metric under the frozen practical-equivalence rule. MVQUAL remains the sole hard target-size eligibility gate; target-threshold, replay, physical-integrity, relaxation, deployment, and other model/protocol acceptance evidence is downstream of the immutable size choice. Numerically invalid trajectories may be excluded because they cannot supply comparable ranking evidence.
+At epoch 30, the two finalists are ranked only by the target-size study metric under the frozen practical-equivalence rule. MVQUAL remains the sole hard target-size eligibility gate; target-threshold, replay, physical-integrity, relaxation, deployment, and other model/protocol acceptance evidence is downstream of the immutable size choice. Only complete paired successful candidates are rankable; authenticated trajectory failures remain explicit evidence and replay scores cannot affect ranking or tie-breaking.
 
 ### Typed terminal outcomes
 
@@ -1580,9 +1580,9 @@ insufficient_comparable_candidates
 nonconverged_at_fixed_ceiling
 ```
 
-`insufficient_comparable_candidates` records the failed fidelity stage and authenticated candidate/seed failure reasons when numerical/scientific trajectory failure leaves too few complete paired candidates for a required comparison. Input/lineage/programming defects remain fail-closed exceptions.
+`insufficient_comparable_candidates` records the failed fidelity stage and authenticated candidate/seed failure reasons when authenticated numerical/scientific trajectory failure leaves too few complete paired candidates for a required comparison. Input/lineage/programming defects remain fail-closed exceptions.
 
-If 16,384 reaches the final comparison and remains materially better than every smaller numerically valid finalist by more than the configured final practical-equivalence width, the result is `nonconverged_at_fixed_ceiling`. No generated/intermediate rescue size is synthesized.
+If 16,384 reaches the final comparison and remains materially better than every smaller complete finalist by more than the configured final practical-equivalence width, the result is `nonconverged_at_fixed_ceiling`. No generated/intermediate rescue size is synthesized.
 
 Exhaustively training all sizes to the final fidelity to measure survivor recall is release/algorithm qualification, not the ordinary scientific production path.
 

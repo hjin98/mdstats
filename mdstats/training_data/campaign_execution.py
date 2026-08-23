@@ -1048,6 +1048,8 @@ class TrainingRunAttemptRecord:
     stderr_relative_path: str
     stderr_sha256: str
     failure_reason: str | None = None
+    scientific_failure_code: str | None = None
+    scientific_failure_evidence_digest: str | None = None
 
     def __post_init__(self) -> None:
         for name in (
@@ -1069,9 +1071,30 @@ class TrainingRunAttemptRecord:
                 raise TrainingDataInputError("Successful training attempt cannot carry failure evidence.")
         elif not self.failure_reason:
             raise TrainingDataInputError("Failed or timed-out training attempt requires a reason.")
+        scientific_code = (
+            None if self.scientific_failure_code is None else str(self.scientific_failure_code)
+        )
+        scientific_digest = self.scientific_failure_evidence_digest
+        if (scientific_code is None) != (scientific_digest is None):
+            raise TrainingDataInputError(
+                "Scientific training-failure classification requires both code and authenticated evidence digest."
+            )
+        if scientific_code is not None:
+            from .train2_runtime import TRAIN2_NUMERICAL_FAILURE_CODES
+
+            if self.state is TrainingRunState.SUCCEEDED:
+                raise TrainingDataInputError("Successful training attempt cannot carry scientific failure evidence.")
+            if scientific_code not in TRAIN2_NUMERICAL_FAILURE_CODES:
+                raise TrainingDataInputError("Unsupported scientific training-failure code.")
+            object.__setattr__(
+                self,
+                "scientific_failure_evidence_digest",
+                validate_digest(scientific_digest, name="scientific_failure_evidence_digest"),
+            )
+            object.__setattr__(self, "scientific_failure_code", scientific_code)
 
     def _payload(self) -> dict[str, Any]:
-        return {
+        payload = {
             "schema": TRAINING_RUN_ATTEMPT_SCHEMA,
             "run_plan_digest": self.run_plan_digest,
             "attempt_index": self.attempt_index,
@@ -1092,6 +1115,15 @@ class TrainingRunAttemptRecord:
             "stderr_sha256": self.stderr_sha256,
             "failure_reason": self.failure_reason,
         }
+        # Keep historical v1 attempt digests byte-identical when no scientific
+        # failure classification exists.  The optional fields are emitted only
+        # for positively identified TRAIN2 numerical failures.
+        if self.scientific_failure_code is not None:
+            payload["scientific_failure_code"] = self.scientific_failure_code
+            payload["scientific_failure_evidence_digest"] = (
+                self.scientific_failure_evidence_digest
+            )
+        return payload
 
     @property
     def content_digest(self) -> str:
@@ -1123,6 +1155,16 @@ class TrainingRunAttemptRecord:
             stderr_relative_path=str(payload["stderr_relative_path"]),
             stderr_sha256=str(payload["stderr_sha256"]),
             failure_reason=None if payload.get("failure_reason") is None else str(payload["failure_reason"]),
+            scientific_failure_code=(
+                None
+                if payload.get("scientific_failure_code") is None
+                else str(payload["scientific_failure_code"])
+            ),
+            scientific_failure_evidence_digest=(
+                None
+                if payload.get("scientific_failure_evidence_digest") is None
+                else str(payload["scientific_failure_evidence_digest"])
+            ),
         )
         if payload.get("content_digest") not in (None, result.content_digest):
             raise TrainingDataSerializationError("Training-run-attempt digest mismatch.")
@@ -1262,6 +1304,71 @@ def _write_mlcv_run_diagnostics_if_available(
         stop_epoch=None if stop_epoch is None else int(stop_epoch),
         stop_reason=None if stop_reason is None else str(stop_reason),
     )
+
+
+def _classify_train2_numerical_failure(
+    checkpoint_directory: Path,
+    failure_reason: str | None,
+    *,
+    environment: Mapping[str, str] | None,
+) -> tuple[str, str] | None:
+    """Read explicit TRAIN2 numerical-failure evidence, never stderr text.
+
+    A generic non-zero exit is scientific evidence only when the launched
+    process carried an authenticated TRAIN2 runtime plan, the runtime persisted
+    a content-addressed numerical-failure record bound to that exact plan, and
+    the raw checkpoint named by the record is still byte-identical.  A stale or
+    foreign sidecar is therefore a lineage/input failure, not scientific
+    evidence.
+    """
+
+    if failure_reason is None or not failure_reason.startswith("nonzero_exit:"):
+        return None
+    from .train2_runtime import (
+        TRAIN2_RUNTIME_ENVIRONMENT_VARIABLE,
+        Train2RuntimePlan,
+        load_train2_numerical_failure,
+    )
+
+    raw_plan = None if environment is None else environment.get(TRAIN2_RUNTIME_ENVIRONMENT_VARIABLE)
+    if raw_plan is None:
+        return None
+    try:
+        runtime_plan = Train2RuntimePlan.from_dict(json.loads(raw_plan))
+    except Exception as exc:
+        raise TrainingDataInputError(
+            "TRAIN2 runtime-plan environment is invalid while classifying a numerical failure."
+        ) from exc
+
+    record = load_train2_numerical_failure(checkpoint_directory)
+    if record is None:
+        return None
+    expected_identity = {
+        "plan_digest": runtime_plan.content_digest,
+        "training_protocol_digest": runtime_plan.training_protocol_digest,
+        "optimizer_policy_digest": runtime_plan.optimizer_policy_digest,
+        "budget_policy_digest": runtime_plan.budget_policy.policy_digest,
+        "lr_policy_digest": runtime_plan.learning_rate_policy.policy_digest,
+        "execution_epoch_limit": int(runtime_plan.execution_epoch_limit),
+    }
+    observed_identity = {
+        "plan_digest": record.plan_digest,
+        "training_protocol_digest": record.training_protocol_digest,
+        "optimizer_policy_digest": record.optimizer_policy_digest,
+        "budget_policy_digest": record.budget_policy_digest,
+        "lr_policy_digest": record.lr_policy_digest,
+        "execution_epoch_limit": int(record.execution_epoch_limit),
+    }
+    if observed_identity != expected_identity:
+        raise TrainingDataInputError(
+            "TRAIN2 numerical-failure sidecar belongs to a different runtime plan."
+        )
+    raw = checkpoint_directory / record.raw_checkpoint_name
+    if not raw.is_file() or _sha256_file(raw) != record.raw_checkpoint_sha256:
+        raise TrainingDataInputError(
+            "TRAIN2 numerical-failure sidecar references a missing or changed raw checkpoint."
+        )
+    return (record.failure_code, record.content_digest)
 
 
 def _classify_nonretryable_training_failure(
@@ -1609,11 +1716,20 @@ def execute_training_run(
             stdout_path.write_bytes(b"")
         if not stderr_path.exists():
             stderr_path.write_bytes(b"")
-        nonretryable_reason = _classify_nonretryable_training_failure(
-            stdout_path, stderr_path, failure_reason
+        scientific_failure = _classify_train2_numerical_failure(
+            checkpoints, failure_reason, environment=merged_env
         )
-        if nonretryable_reason is not None:
-            failure_reason = nonretryable_reason
+        scientific_failure_code = None
+        scientific_failure_evidence_digest = None
+        if scientific_failure is not None:
+            scientific_failure_code, scientific_failure_evidence_digest = scientific_failure
+            failure_reason = f"scientific_failure:{scientific_failure_code}:{failure_reason}"
+        else:
+            nonretryable_reason = _classify_nonretryable_training_failure(
+                stdout_path, stderr_path, failure_reason
+            )
+            if nonretryable_reason is not None:
+                failure_reason = nonretryable_reason
         attempt = TrainingRunAttemptRecord(
             run_plan_digest=run_plan.content_digest,
             attempt_index=attempt_index,
@@ -1633,6 +1749,8 @@ def execute_training_run(
             stderr_relative_path=stderr_path.name,
             stderr_sha256=_sha256_file(stderr_path),
             failure_reason=failure_reason,
+            scientific_failure_code=scientific_failure_code,
+            scientific_failure_evidence_digest=scientific_failure_evidence_digest,
         )
         attempts.append(attempt)
         # Keep MLCV diagnostic curves useful for interrupted/failed attempts as
@@ -1654,7 +1772,10 @@ def execute_training_run(
             _write_json_atomic(run_root / "training_execution.json", interim.to_dict())
             if state is TrainingRunState.INTERRUPTED:
                 return interim
-            if failure_reason is not None and failure_reason.startswith("nonretryable:"):
+            if failure_reason is not None and (
+                failure_reason.startswith("nonretryable:")
+                or failure_reason.startswith("scientific_failure:")
+            ):
                 return interim
         if state is TrainingRunState.SUCCEEDED:
             catalog = inventory_mace_checkpoints(run_plan, checkpoints, pattern=policy.checkpoint_glob)
