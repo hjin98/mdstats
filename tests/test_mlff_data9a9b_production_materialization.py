@@ -1329,3 +1329,80 @@ def test_checkpoint_reads_legacy_lexical_data7_order_and_rewrites_plan_order(tmp
     assert [item.domain_digest for item in restored.data7_artifacts] == [
         domain.content_digest for domain in restored.plan.domains
     ]
+
+
+def test_single_head_train2_target_prefix_uses_current_plan_schema(tmp_path: Path) -> None:
+    sources, frames, _frame_data, data4, data5, data6, sweep, legacy_plan, _calc = _fixture(tmp_path)
+    assert legacy_plan.selected_head_qualification is None
+
+    domains = mdstats.build_feature_fit_domains(data5, cross_validation_plans=())
+    assert len(domains) == 1
+    selection_size = 4
+    prescribed = {
+        domain.content_digest: tuple(domain.frame_uids[:selection_size])
+        for domain in domains
+    }
+    assert all(len(uids) == selection_size for uids in prescribed.values())
+
+    true_replay = mdstats.inspect_replay_extxyz(
+        Path(legacy_plan.replay_plan.monitor_artifact.path),
+        label_mode=mdstats.ReplayLabelMode.TRUE_DFT,
+    )
+    budget = mdstats.TrainingBudgetPolicy(
+        planned_epochs=legacy_plan.optimizer_policy.max_num_epochs
+    )
+    learning_rate = mdstats.LearningRateSchedulePolicy(
+        base_learning_rate=legacy_plan.optimizer_policy.learning_rate
+    )
+    admissibility = mdstats.CheckpointAdmissibilityPolicy(
+        replay_enabled=legacy_plan.require_replay
+    )
+    selection = mdstats.CheckpointSelectionPolicy()
+
+    plan = mdstats.build_production_materialization_plan(
+        sources,
+        frames,
+        data4,
+        data5,
+        data6,
+        sweep,
+        foundation_checkpoint=legacy_plan.foundation_checkpoint,
+        compatibility_probe=legacy_plan.compatibility_probe,
+        replay_plan=legacy_plan.replay_plan,
+        cross_validation_plans=(),
+        online_monitor_policy=mdstats.OnlineMonitorPolicy(
+            target_configurations=1,
+            replay_configurations=1,
+            training_diagnostic_configurations=1,
+        ),
+        true_replay_monitor_artifact=true_replay,
+        training_budget_policy=budget,
+        learning_rate_schedule_policy=learning_rate,
+        checkpoint_admissibility_policy=admissibility,
+        checkpoint_selection_policy=selection,
+        feature_metric_policy=legacy_plan.feature_metric_policy,
+        atomic_reference_policy=legacy_plan.atomic_reference_policy,
+        objective_policy=legacy_plan.objective_policy,
+        configuration_weight_policy=legacy_plan.configuration_weight_policy,
+        checkpoint_metric_policy=legacy_plan.checkpoint_metric_policy,
+        selection_budget_policy=legacy_plan.selection_budget_policy,
+        compatibility_policy=legacy_plan.compatibility_policy,
+        optimizer_policy=legacy_plan.optimizer_policy,
+        checkpoint_control_policy=legacy_plan.checkpoint_control_policy,
+        extxyz_policy=legacy_plan.extxyz_policy,
+        foundation_reference_energies=dict(legacy_plan.foundation_reference_energies),
+        selection_size=selection_size,
+        selection_authority_role="selected_production_prefix",
+        target_size_study_digest="a" * 64,
+        prescribed_training_domain_prefixes=prescribed,
+        require_foundation_residual_e0=False,
+        require_replay=True,
+    )
+
+    assert plan.plan_schema == mdstats.PRODUCTION_MATERIALIZATION_PLAN_SCHEMA
+    assert plan.plan_schema == "mdstats.production-materialization-plan.v10"
+    assert plan.selected_head_qualification is None
+    payload = plan.to_dict()
+    assert payload["selected_head_qualification"] is None
+    restored = mdstats.ProductionMaterializationPlan.from_dict(payload)
+    assert restored.content_digest == plan.content_digest

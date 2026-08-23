@@ -58,7 +58,8 @@ from .resources import (
 from .work_queue import DeterministicOrderedReducer, DeterministicWorkQueue
 
 PRODUCTION_MATERIALIZATION_POLICY_SCHEMA = "mdstats.production-materialization-policy.v1"
-PRODUCTION_MATERIALIZATION_PLAN_SCHEMA = "mdstats.production-materialization-plan.v9"
+PRODUCTION_MATERIALIZATION_PLAN_SCHEMA = "mdstats.production-materialization-plan.v10"
+PRODUCTION_MATERIALIZATION_PLAN_V9_SCHEMA = "mdstats.production-materialization-plan.v9"
 PRODUCTION_MATERIALIZATION_PLAN_V8_SCHEMA = "mdstats.production-materialization-plan.v8"
 PRODUCTION_MATERIALIZATION_PLAN_V7_SCHEMA = "mdstats.production-materialization-plan.v7"
 PRODUCTION_MATERIALIZATION_PLAN_V6_SCHEMA = "mdstats.production-materialization-plan.v6"
@@ -337,6 +338,7 @@ class ProductionMaterializationPlan:
         object.__setattr__(self, "domains", domains)
         if self.plan_schema not in {
             PRODUCTION_MATERIALIZATION_PLAN_SCHEMA,
+            PRODUCTION_MATERIALIZATION_PLAN_V9_SCHEMA,
             PRODUCTION_MATERIALIZATION_PLAN_V8_SCHEMA,
             PRODUCTION_MATERIALIZATION_PLAN_V7_SCHEMA,
             PRODUCTION_MATERIALIZATION_PLAN_V6_SCHEMA,
@@ -383,10 +385,17 @@ class ProductionMaterializationPlan:
                 raise TrainingDataInputError("Selected-head qualification belongs to a different production foundation/head.")
             if extraction.source_checkpoint_sha256 != canonical.sha256 or extraction.source_head != canonical.foundation_head:
                 raise TrainingDataInputError("Selected-head qualification source identity disagrees with the production foundation.")
-            if self.plan_schema != PRODUCTION_MATERIALIZATION_PLAN_SCHEMA:
-                raise TrainingDataInputError("Selected-head training qualification requires current production materialization v9.")
-        elif self.plan_schema == PRODUCTION_MATERIALIZATION_PLAN_SCHEMA:
-            raise TrainingDataInputError("Production materialization v9 requires selected-head training qualification.")
+            if self.plan_schema not in {
+                PRODUCTION_MATERIALIZATION_PLAN_SCHEMA,
+                PRODUCTION_MATERIALIZATION_PLAN_V9_SCHEMA,
+            }:
+                raise TrainingDataInputError(
+                    "Selected-head training qualification requires production materialization v9 or newer."
+                )
+        elif self.plan_schema == PRODUCTION_MATERIALIZATION_PLAN_V9_SCHEMA:
+            raise TrainingDataInputError(
+                "Legacy production materialization v9 requires selected-head training qualification."
+            )
         if (
             self.foundation_checkpoint.inspection_state == "inspected"
             and len(self.foundation_checkpoint.available_heads) > 1
@@ -436,10 +445,21 @@ class ProductionMaterializationPlan:
                 raise TrainingDataInputError("TRAIN2 base LR disagrees with optimizer policy.")
             if bool(self.checkpoint_admissibility_policy.replay_enabled) != bool(self.require_replay):
                 raise TrainingDataInputError("TRAIN2 replay admissibility disagrees with the materialization mode.")
-        if self.plan_schema in {PRODUCTION_MATERIALIZATION_PLAN_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V8_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V7_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V6_SCHEMA} and not train2_active:
-            raise TrainingDataInputError("Production materialization v6/v7/v8/v9 requires complete TRAIN2 authority.")
-        if self.plan_schema not in {PRODUCTION_MATERIALIZATION_PLAN_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V8_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V7_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V6_SCHEMA} and train2_active:
-            raise TrainingDataInputError("TRAIN2 authority requires production materialization v6, v7, v8, or v9.")
+        train2_schemas = {
+            PRODUCTION_MATERIALIZATION_PLAN_SCHEMA,
+            PRODUCTION_MATERIALIZATION_PLAN_V9_SCHEMA,
+            PRODUCTION_MATERIALIZATION_PLAN_V8_SCHEMA,
+            PRODUCTION_MATERIALIZATION_PLAN_V7_SCHEMA,
+            PRODUCTION_MATERIALIZATION_PLAN_V6_SCHEMA,
+        }
+        if self.plan_schema in train2_schemas and not train2_active:
+            raise TrainingDataInputError(
+                "Production materialization v6/v7/v8/v9/v10 requires complete TRAIN2 authority."
+            )
+        if self.plan_schema not in train2_schemas and train2_active:
+            raise TrainingDataInputError(
+                "TRAIN2 authority requires production materialization v6, v7, v8, v9, or v10."
+            )
         if self.real_pt_data_ratio_threshold < 0.0:
             raise TrainingDataInputError("real_pt_data_ratio_threshold must be nonnegative.")
         if self.selection_size is not None and self.selection_size < 1:
@@ -496,7 +516,10 @@ class ProductionMaterializationPlan:
             if prefixes or evaluation_frames or self.target_size_study_digest is not None:
                 raise TrainingDataInputError("Standard DATA7 selection cannot claim target-size prefix authority.")
         else:
-            if self.plan_schema != PRODUCTION_MATERIALIZATION_PLAN_SCHEMA:
+            if self.plan_schema not in {
+                PRODUCTION_MATERIALIZATION_PLAN_SCHEMA,
+                PRODUCTION_MATERIALIZATION_PLAN_V9_SCHEMA,
+            }:
                 raise TrainingDataInputError("Target-size prefix materialization requires current production plan authority.")
             if self.target_size_study_digest is None:
                 raise TrainingDataInputError("Target-size prefix materialization requires the target-size study digest.")
@@ -590,18 +613,25 @@ class ProductionMaterializationPlan:
                 [domain_digest, list(uids)]
                 for domain_digest, uids in self.prescribed_training_domain_prefixes
             ]
-        if self.plan_schema == PRODUCTION_MATERIALIZATION_PLAN_SCHEMA:
-            payload["selected_head_qualification"] = self.selected_head_qualification.to_dict()
-        if self.plan_schema in {PRODUCTION_MATERIALIZATION_PLAN_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V8_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V7_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V6_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V5_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V4_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V3_SCHEMA}:
+        if self.plan_schema in {
+            PRODUCTION_MATERIALIZATION_PLAN_SCHEMA,
+            PRODUCTION_MATERIALIZATION_PLAN_V9_SCHEMA,
+        }:
+            payload["selected_head_qualification"] = (
+                None
+                if self.selected_head_qualification is None
+                else self.selected_head_qualification.to_dict()
+            )
+        if self.plan_schema in {PRODUCTION_MATERIALIZATION_PLAN_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V9_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V8_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V7_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V6_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V5_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V4_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V3_SCHEMA}:
             payload["cross_validation_plans"] = [
                 item.to_dict() for item in self.cross_validation_plans
             ]
-        if self.plan_schema in {PRODUCTION_MATERIALIZATION_PLAN_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V8_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V7_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V6_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V5_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V4_SCHEMA}:
+        if self.plan_schema in {PRODUCTION_MATERIALIZATION_PLAN_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V9_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V8_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V7_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V6_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V5_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V4_SCHEMA}:
             payload["online_monitor_policy"] = None if self.online_monitor_policy is None else self.online_monitor_policy.to_dict()
             payload["true_replay_monitor_artifact"] = None if self.true_replay_monitor_artifact is None else self.true_replay_monitor_artifact.to_dict()
         if self.plan_schema == PRODUCTION_MATERIALIZATION_PLAN_V5_SCHEMA:
             payload["adaptive_stop_policy"] = None if self.adaptive_stop_policy is None else self.adaptive_stop_policy.to_dict()
-        if self.plan_schema in {PRODUCTION_MATERIALIZATION_PLAN_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V8_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V7_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V6_SCHEMA}:
+        if self.plan_schema in {PRODUCTION_MATERIALIZATION_PLAN_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V9_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V8_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V7_SCHEMA, PRODUCTION_MATERIALIZATION_PLAN_V6_SCHEMA}:
             payload.update({
                 "training_budget_policy": None if self.training_budget_policy is None else self.training_budget_policy.to_dict(),
                 "learning_rate_schedule_policy": None if self.learning_rate_schedule_policy is None else self.learning_rate_schedule_policy.to_dict(),
@@ -631,6 +661,7 @@ class ProductionMaterializationPlan:
         schema = payload.get("schema")
         if schema not in {
             PRODUCTION_MATERIALIZATION_PLAN_SCHEMA,
+            PRODUCTION_MATERIALIZATION_PLAN_V9_SCHEMA,
             PRODUCTION_MATERIALIZATION_PLAN_V8_SCHEMA,
             PRODUCTION_MATERIALIZATION_PLAN_V7_SCHEMA,
             PRODUCTION_MATERIALIZATION_PLAN_V6_SCHEMA,
@@ -1066,6 +1097,12 @@ def build_production_materialization_plan(
         checkpoint_selection_policy=checkpoint_selection_policy,
         plan_schema=(
             PRODUCTION_MATERIALIZATION_PLAN_SCHEMA
+            if (
+                training_budget_policy is not None
+                and selection_authority_role != "standard"
+                and selected_head_qualification is None
+            )
+            else PRODUCTION_MATERIALIZATION_PLAN_V9_SCHEMA
             if training_budget_policy is not None and selected_head_qualification is not None
             else PRODUCTION_MATERIALIZATION_PLAN_V7_SCHEMA
             if training_budget_policy is not None

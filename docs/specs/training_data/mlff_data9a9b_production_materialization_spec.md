@@ -74,6 +74,14 @@ when the replay plan is unresolved, when the completed DATA6 sweep differs from
 the DATA6 bundle, or when the DATA8 foundation checkpoint differs from the
 checkpoint used for DATA6 predictions.
 
+The current plan schema is `mdstats.production-materialization-plan.v10`.
+Current TRAIN2 target-size-prefix authority is independent of foundation-head
+topology: a genuinely single-head foundation carries no selected-head
+qualification, while an inspected multi-head foundation still requires the
+qualified EXTRACT1 selected-head training realization. Legacy v9 plans remain
+readable and retain their historical requirement for selected-head
+qualification.
+
 # 4. Restart semantics
 
 Each DATA7 domain is written independently to
