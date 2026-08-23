@@ -64,6 +64,67 @@ def _resources(cpu_budget: int, ram_budget: int = 8 * 1024**3) -> SystemResource
     )
 
 
+def test_variant_cv_planning_reuses_authenticated_data5_authority(tmp_path, monkeypatch) -> None:
+    from mdstats.training_data._campaign_cli_core import (
+        _VariantSpec,
+        _variant_cross_validation_plans,
+    )
+
+    _sources, frames, data4, data5 = _build(tmp_path / "cv-authority")
+    canonical_folds = len(data5.cross_validation_plans[0].folds)
+    variant = _VariantSpec(
+        mode="multihead_replay",
+        selection_size=512,
+        seed=1,
+        cross_validation_folds=canonical_folds,
+        fold_partition_seed=data5.partition_policy.cross_validation_seed,
+    )
+
+    def _unexpected(*args, **kwargs):
+        raise AssertionError("canonical DATA5 CV authority must not be rebuilt or re-audited")
+
+    monkeypatch.setattr(mdstats, "build_cross_validation_plans", _unexpected)
+    monkeypatch.setattr(mdstats, "audit_partition_leakage", _unexpected)
+
+    observed = _variant_cross_validation_plans(data5, frames, data4, variant)
+    assert observed is data5.cross_validation_plans
+
+
+def test_variant_cv_planning_still_builds_and_audits_noncanonical_folds(tmp_path, monkeypatch) -> None:
+    from mdstats.training_data._campaign_cli_core import (
+        _VariantSpec,
+        _variant_cross_validation_plans,
+    )
+
+    _sources, frames, data4, data5 = _build(tmp_path / "cv-derived")
+    canonical_folds = len(data5.cross_validation_plans[0].folds)
+    variant = _VariantSpec(
+        mode="multihead_replay",
+        selection_size=512,
+        seed=1,
+        cross_validation_folds=canonical_folds,
+        fold_partition_seed=data5.partition_policy.cross_validation_seed + 1,
+    )
+    original_build = mdstats.build_cross_validation_plans
+    original_audit = mdstats.audit_partition_leakage
+    calls = {"build": 0, "audit": 0}
+
+    def _build_counted(*args, **kwargs):
+        calls["build"] += 1
+        return original_build(*args, **kwargs)
+
+    def _audit_counted(*args, **kwargs):
+        calls["audit"] += 1
+        return original_audit(*args, **kwargs)
+
+    monkeypatch.setattr(mdstats, "build_cross_validation_plans", _build_counted)
+    monkeypatch.setattr(mdstats, "audit_partition_leakage", _audit_counted)
+
+    observed = _variant_cross_validation_plans(data5, frames, data4, variant)
+    assert calls == {"build": 1, "audit": 1}
+    assert observed != data5.cross_validation_plans
+
+
 def test_data8_stale_staging_cleanup_is_dead_pid_and_age_guarded(tmp_path):
     from mdstats.training_data.data8_bundle import _cleanup_stale_data8_staging
 
@@ -209,6 +270,31 @@ def test_plan_requires_complete_sweep_and_exact_replay(tmp_path: Path) -> None:
     assert mdstats.ProductionMaterializationPlan.from_dict(plan.to_dict()) == plan
     with pytest.raises(mdstats.TrainingDataInputError, match="requires an exact replay corpus"):
         replace(plan, replay_plan=mdstats.ReplayPreparationPlan(mode=mdstats.ReplayMode.NONE))
+
+
+def test_materialization_plan_content_digest_is_cached(tmp_path: Path, monkeypatch) -> None:
+    from mdstats.training_data import production_materialization as module
+
+    plan = _fixture(tmp_path)[7]
+    assert plan._content_digest_cache == ""
+    original_payload = module.ProductionMaterializationPlan._payload
+    calls = {"payload": 0}
+
+    def _payload_counted(self):
+        calls["payload"] += 1
+        return original_payload(self)
+
+    monkeypatch.setattr(module.ProductionMaterializationPlan, "_payload", _payload_counted)
+    serialized = plan.to_dict()
+    expected = serialized["content_digest"]
+    assert calls == {"payload": 1}
+    assert plan._content_digest_cache == expected
+
+    def _unexpected_digest(_payload):
+        raise AssertionError("cached materialization identity must not rebuild the large plan payload")
+
+    monkeypatch.setattr(module, "digest", _unexpected_digest)
+    assert plan.content_digest == expected
 
 
 def test_naive_materialization_drops_replay_and_emits_naive_protocol(tmp_path: Path) -> None:

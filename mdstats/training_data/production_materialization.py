@@ -6,7 +6,7 @@ owned by DATA7 and MACE artifact construction remains owned by DATA8.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 import hashlib
 import json
@@ -313,6 +313,9 @@ class ProductionMaterializationPlan:
     require_foundation_residual_e0: bool = True
     require_replay: bool = True
     plan_version: str = MLFF_DATA9A9B_VERSION
+    _content_digest_cache: str = field(
+        default="", init=False, repr=False, compare=False
+    )
 
     def __post_init__(self) -> None:
         if not self.dataset_id.strip() or not self.plan_version.strip():
@@ -609,10 +612,19 @@ class ProductionMaterializationPlan:
 
     @property
     def content_digest(self) -> str:
-        return digest(self._payload())
+        return self._content_digest_for_payload()
+
+    def _content_digest_for_payload(self, payload: Mapping[str, Any] | None = None) -> str:
+        cached = self._content_digest_cache
+        if cached:
+            return cached
+        value = digest(self._payload() if payload is None else payload)
+        object.__setattr__(self, "_content_digest_cache", value)
+        return value
 
     def to_dict(self) -> dict[str, Any]:
-        return {**self._payload(), "content_digest": self.content_digest}
+        payload = self._payload()
+        return {**payload, "content_digest": self._content_digest_for_payload(payload)}
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "ProductionMaterializationPlan":

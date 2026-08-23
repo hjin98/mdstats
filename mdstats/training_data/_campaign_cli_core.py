@@ -8166,6 +8166,21 @@ def _variant_cross_validation_plans(
     if variant.cross_validation_folds == 0:
         return ()
 
+    canonical_seed = int(data5.partition_policy.cross_validation_seed)
+    canonical_plans = data5.cross_validation_plans
+    if (
+        int(variant.fold_partition_seed) == canonical_seed
+        and canonical_plans
+        and all(
+            len(plan.folds) == int(variant.cross_validation_folds)
+            for plan in canonical_plans
+        )
+    ):
+        # DATA5 already authenticated this exact fold authority and its leakage
+        # audit. Rebuilding and re-auditing the same folds here is redundant
+        # serial work on the critical DATA7/DATA8 initialization path.
+        return canonical_plans
+
     plans = mdstats.build_cross_validation_plans(
         data5.unit_catalog,
         data5.outer_partitions,
@@ -9026,6 +9041,12 @@ def _prepare_materialization(
     shared_data7_cache = paths.internal / "data7-cache"
     shared_data8_fixed_file_cache = paths.internal / "data8-fixed-cache"
     cross_validation_cache: dict[tuple[int, int], tuple[Any, ...]] = {}
+    feature_domain_cache: dict[tuple[int, int], tuple[Any, ...]] = {}
+    coverage_domain_by_training_digest = {
+        domain.training_domain_digest: domain
+        for domain in coverage_reference.domains
+    }
+    policy_generation = _training_policy_generation(cfg)
     variant_progress = _ProgressReporter("DATA8", len(variants))
     for variant_index, variant in enumerate(variants, start=1):
         mode = variant.mode
@@ -9034,9 +9055,19 @@ def _prepare_materialization(
         variant_id = variant.variant_id
         variant_start = time.monotonic()
         require_replay = mode == "multihead_replay"
+        variant_progress.item_start(
+            variant_index,
+            variant_id,
+            "planning materialization identity and completed-reuse check",
+        )
         fold_key = (
             variant.cross_validation_folds,
             variant.fold_partition_seed,
+        )
+        print(
+            f"[{variant_id}] status=phase; phase=resolving-cross-validation-authority; "
+            f"folds={variant.cross_validation_folds}; fold_seed={variant.fold_partition_seed}",
+            flush=True,
         )
         variant_cv_plans = cross_validation_cache.get(fold_key)
         if variant_cv_plans is None:
@@ -9044,24 +9075,45 @@ def _prepare_materialization(
                 data5, frames, data4, variant
             )
             cross_validation_cache[fold_key] = variant_cv_plans
-        variant_feature_domains = mdstats.build_feature_fit_domains(
-            data5, cross_validation_plans=variant_cv_plans
+            cv_source = (
+                "data5-authenticated"
+                if variant_cv_plans is data5.cross_validation_plans
+                else "derived-and-audited"
+            )
+        else:
+            cv_source = "fold-cache"
+        print(
+            f"[{variant_id}] status=phase; phase=cross-validation-authority-ready; source={cv_source}",
+            flush=True,
         )
-        coverage_domain_by_training_digest = {
-            domain.training_domain_digest: domain
-            for domain in coverage_reference.domains
-        }
+        variant_feature_domains = feature_domain_cache.get(fold_key)
+        if variant_feature_domains is None:
+            print(
+                f"[{variant_id}] status=phase; phase=building-feature-fit-domains",
+                flush=True,
+            )
+            variant_feature_domains = mdstats.build_feature_fit_domains(
+                data5, cross_validation_plans=variant_cv_plans
+            )
+            feature_domain_cache[fold_key] = variant_feature_domains
+            feature_domain_source = "built"
+        else:
+            feature_domain_source = "fold-cache"
+        print(
+            f"[{variant_id}] status=phase; phase=feature-fit-domains-ready; "
+            f"source={feature_domain_source}; domains={len(variant_feature_domains)}",
+            flush=True,
+        )
         missing_training_domains = tuple(
             domain.content_digest
             for domain in variant_feature_domains
             if domain.content_digest not in coverage_domain_by_training_digest
         )
-        if _training_policy_generation(cfg) == "train2" and missing_training_domains:
+        if policy_generation == "train2" and missing_training_domains:
             raise CampaignCliError(
                 "Target-size v5 production domain is missing from the authenticated REPAIR2/MVQUAL2 authority: "
                 + ", ".join(value[:12] for value in missing_training_domains)
             )
-        policy_generation = _training_policy_generation(cfg)
         adaptive_stop_policy = None
         training_budget_policy = None
         learning_rate_schedule_policy = None
@@ -9078,6 +9130,10 @@ def _prepare_materialization(
             adaptive_stop_policy = _adaptive_training_stop_policy(
                 cfg, replay_head_name=("pt_head" if require_replay else "replay_monitor")
             )
+        print(
+            f"[{variant_id}] status=phase; phase=building-materialization-plan",
+            flush=True,
+        )
         plan = mdstats.build_production_materialization_plan(
             sources,
             frames,
@@ -9202,7 +9258,17 @@ def _prepare_materialization(
             require_foundation_residual_e0=True,
             require_replay=require_replay,
         )
-        output = paths.data / variant_id / plan.content_digest[:12]
+        print(
+            f"[{variant_id}] status=phase; phase=computing-materialization-identity",
+            flush=True,
+        )
+        plan_digest = plan.content_digest
+        output = paths.data / variant_id / plan_digest[:12]
+        print(
+            f"[{variant_id}] status=phase; phase=checking-completed-materialization-reuse; "
+            f"plan={plan_digest[:12]}",
+            flush=True,
+        )
         reused = _reuse_materialization_if_current(
             store,
             variant_id=variant_id,
@@ -9227,11 +9293,6 @@ def _prepare_materialization(
             )
             _ok(f"DATA7/DATA8 artifacts reused for {variant_id}{suffix}")
             continue
-        variant_progress.item_start(
-            variant_index,
-            variant_id,
-            "active materialization; resolving shared DATA7/DATA8 prerequisites",
-        )
         print(
             f"[{variant_id}] status=phase; phase=resolving-shared-materialization-inputs",
             flush=True,
