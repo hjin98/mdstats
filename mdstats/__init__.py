@@ -6504,6 +6504,7 @@ from .training_data.target_size_study import (
     build_target_size_study,
     validate_target_size_study_authority,
     materialize_candidate_prefix,
+    materialize_candidate_prefix_matrix,
     materialize_selected_prefix,
     attach_epoch_3_outcomes,
     attach_epoch_10_outcomes,

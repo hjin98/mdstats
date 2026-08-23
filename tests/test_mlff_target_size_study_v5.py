@@ -4,6 +4,8 @@ from dataclasses import dataclass
 
 import pytest
 
+import mdstats
+
 from mdstats.training_data._common import (
     TrainingDataInputError,
     TrainingDataSerializationError,
@@ -75,6 +77,11 @@ def study(qualified=FIXED_TARGET_SIZES, lengths=(20000, 20000), *, policy=None):
     repair = Repair(lengths)
     qual = Qual(repair, qualified)
     return repair, qual, build_target_size_study(repair, qual, policy=policy)
+
+
+def test_bulk_candidate_prefix_materialization_is_exported_from_top_level():
+    assert mdstats.materialize_candidate_prefix_matrix is materialize_candidate_prefix_matrix
+    assert "materialize_candidate_prefix_matrix" in mdstats.__all__
 
 
 def test_bulk_candidate_prefix_materialization_matches_scalar_authority(monkeypatch):
