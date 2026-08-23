@@ -37,7 +37,7 @@ TARGET_COVERAGE_EXACT_NEIGHBORHOOD_FAMILY_SCHEMA = "mdstats.target-coverage-exac
 TARGET_COVERAGE_EXACT_NEIGHBORHOOD_DOMAIN_SCHEMA = "mdstats.target-coverage-exact-neighborhood-domain.v1"
 TARGET_COVERAGE_EXACT_NEIGHBORHOOD_STORE_SCHEMA = "mdstats.target-coverage-exact-neighborhood-store.v1"
 TARGET_COVERAGE_EXACT_NEIGHBORHOOD_VERSION = "mdstats.target-data2b-neighbor1.exact-neighborhood.2026-08.v1"
-TARGET_COVERAGE_EXACT_NEIGHBORHOOD_PERSISTENCE_VERSION = "mdstats.target-data2b-neighbor1.native-persistence.2026-08.v1"
+TARGET_COVERAGE_EXACT_NEIGHBORHOOD_PERSISTENCE_VERSION = "mdstats.target-data2b-neighbor1.native-persistence.2026-08.v2"
 
 EXACT_NEIGHBORHOOD_METRIC_TOLERANCE = 1.0e-12
 EXACT_NEIGHBORHOOD_DISTANCE_SEMANTICS = (
@@ -221,6 +221,222 @@ class TargetCoverageExactNeighborhoodFamily:
         if payload.get("content_digest") not in (None, result.content_digest):
             raise TrainingDataSerializationError("NEIGHBOR1 family content digest mismatch.")
         return result
+
+
+@dataclass(frozen=True, slots=True)
+class _StagedExactNeighborhoodFamily:
+    """Closed file-backed CSR plus immutable family metadata."""
+
+    label_domain_id: str
+    frame_domain_digest: str
+    family_id: str
+    family_digest: str
+    candidate_count: int
+    witness_count: int
+    edge_count: int
+    witness_offsets_path: Path
+    witness_candidates_path: Path
+    metric_tolerance: float
+    distance_semantics: str
+    authority_version: str
+    content_digest: str
+
+
+def _root_memmap(array: np.ndarray) -> np.memmap | None:
+    current: Any = array
+    visited: set[int] = set()
+    while isinstance(current, np.ndarray) and id(current) not in visited:
+        visited.add(id(current))
+        if isinstance(current, np.memmap):
+            return current
+        current = getattr(current, "base", None)
+    return None
+
+
+def _close_memmap(array: np.ndarray) -> None:
+    root = _root_memmap(array)
+    if root is None:
+        return
+    mapping = getattr(root, "_mmap", None)
+    if mapping is not None and not mapping.closed:
+        mapping.close()
+
+
+def _stage_file_backed_family(
+    family: TargetCoverageExactNeighborhoodFamily,
+) -> _StagedExactNeighborhoodFamily:
+    offsets_root = _root_memmap(family.witness_offsets)
+    candidates_root = _root_memmap(family.witness_candidates)
+    if offsets_root is None or candidates_root is None:
+        raise TrainingDataInputError(
+            "NEIGHBOR1 staged finalization requires file-backed CSR arrays."
+        )
+    offsets_name = getattr(offsets_root, "filename", None)
+    candidates_name = getattr(candidates_root, "filename", None)
+    if offsets_name is None or candidates_name is None:
+        raise TrainingDataInputError(
+            "NEIGHBOR1 staged finalization requires named CSR backing files."
+        )
+    offsets_path = Path(os.fspath(offsets_name)).resolve()
+    candidates_path = Path(os.fspath(candidates_name)).resolve()
+    if not offsets_path.is_file() or not candidates_path.is_file():
+        raise TrainingDataInputError(
+            "NEIGHBOR1 staged finalization backing file is missing."
+        )
+    staged = _StagedExactNeighborhoodFamily(
+        label_domain_id=family.label_domain_id,
+        frame_domain_digest=family.frame_domain_digest,
+        family_id=family.family_id,
+        family_digest=family.family_digest,
+        candidate_count=family.candidate_count,
+        witness_count=family.witness_count,
+        edge_count=family.edge_count,
+        witness_offsets_path=offsets_path,
+        witness_candidates_path=candidates_path,
+        metric_tolerance=family.metric_tolerance,
+        distance_semantics=family.distance_semantics,
+        authority_version=family.authority_version,
+        content_digest=family.content_digest,
+    )
+    _close_memmap(family.witness_offsets)
+    _close_memmap(family.witness_candidates)
+    return staged
+
+
+def _open_staged_array(path: Path, *, dtype: str, shape: tuple[int, ...], label: str) -> np.memmap:
+    try:
+        array = np.load(path, mmap_mode="r", allow_pickle=False)
+    except (OSError, ValueError) as exc:
+        raise TrainingDataInputError(f"NEIGHBOR1 cannot restore staged {label}: {path}") from exc
+    expected_dtype = np.dtype(dtype).newbyteorder("<")
+    if tuple(array.shape) != tuple(shape) or array.dtype != expected_dtype:
+        _close_memmap(array)
+        raise TrainingDataInputError(
+            f"NEIGHBOR1 staged {label} shape/dtype changed before packing."
+        )
+    return array
+
+
+def _create_packed_memmap(
+    *,
+    shape: tuple[int, ...],
+    dtype: str,
+    directory: Path | None,
+    suffix: str,
+) -> tuple[np.memmap, Path | None]:
+    target_dtype = np.dtype(dtype).newbyteorder("<")
+    if directory is not None:
+        directory.mkdir(parents=True, exist_ok=True)
+        fd, name = tempfile.mkstemp(prefix="neighbor1-packed-", suffix=suffix, dir=directory)
+        os.close(fd)
+        path = Path(name)
+        path.unlink()
+        array = np.lib.format.open_memmap(path, mode="w+", dtype=target_dtype, shape=shape)
+        return array, path
+    handle = tempfile.TemporaryFile(mode="w+b")
+    handle.truncate(int(np.prod(shape, dtype=np.int64)) * target_dtype.itemsize)
+    array = np.memmap(handle, dtype=target_dtype, mode="r+", shape=shape)
+    handle.close()
+    return array, None
+
+
+def _pack_staged_exact_neighborhood_families(
+    staged_families: Sequence[_StagedExactNeighborhoodFamily],
+    *,
+    out_of_core_directory: str | Path | None,
+) -> tuple[TargetCoverageExactNeighborhoodFamily, ...]:
+    """Pack many closed family files into two shared mappings.
+
+    This keeps both RAM and tracked file-descriptor use bounded independently
+    of family count.  Per-family arrays are views into one offsets mapping and
+    one candidates mapping.
+    """
+
+    staged = tuple(staged_families)
+    if not staged:
+        return ()
+    directory = None if out_of_core_directory is None else Path(out_of_core_directory)
+    total_offsets = sum(item.witness_count + 1 for item in staged)
+    total_candidates = sum(item.edge_count for item in staged)
+    packed_offsets, offsets_path = _create_packed_memmap(
+        shape=(total_offsets,), dtype="<u8", directory=directory, suffix="-witness-offsets.npy"
+    )
+    packed_candidates, candidates_path = _create_packed_memmap(
+        shape=(total_candidates,), dtype="<u4", directory=directory, suffix="-witness-candidates.npy"
+    )
+    slices: list[tuple[_StagedExactNeighborhoodFamily, int, int, int, int]] = []
+    offset_cursor = 0
+    candidate_cursor = 0
+    try:
+        for item in staged:
+            source_offsets = _open_staged_array(
+                item.witness_offsets_path,
+                dtype="<u8",
+                shape=(item.witness_count + 1,),
+                label=f"{item.family_id} witness_offsets",
+            )
+            source_candidates = _open_staged_array(
+                item.witness_candidates_path,
+                dtype="<u4",
+                shape=(item.edge_count,),
+                label=f"{item.family_id} witness_candidates",
+            )
+            try:
+                offset_stop = offset_cursor + item.witness_count + 1
+                candidate_stop = candidate_cursor + item.edge_count
+                packed_offsets[offset_cursor:offset_stop] = source_offsets
+                packed_candidates[candidate_cursor:candidate_stop] = source_candidates
+                slices.append(
+                    (item, offset_cursor, offset_stop, candidate_cursor, candidate_stop)
+                )
+                offset_cursor = offset_stop
+                candidate_cursor = candidate_stop
+            finally:
+                _close_memmap(source_offsets)
+                _close_memmap(source_candidates)
+            item.witness_offsets_path.unlink(missing_ok=True)
+            item.witness_candidates_path.unlink(missing_ok=True)
+
+        packed_offsets.flush()
+        packed_candidates.flush()
+        if offsets_path is not None and candidates_path is not None:
+            _close_memmap(packed_offsets)
+            _close_memmap(packed_candidates)
+            packed_offsets = np.load(offsets_path, mmap_mode="r", allow_pickle=False)
+            packed_candidates = np.load(candidates_path, mmap_mode="r", allow_pickle=False)
+        else:
+            packed_offsets.setflags(write=False)
+            packed_candidates.setflags(write=False)
+
+        families: list[TargetCoverageExactNeighborhoodFamily] = []
+        for item, offset_start, offset_stop, candidate_start, candidate_stop in slices:
+            family = TargetCoverageExactNeighborhoodFamily(
+                label_domain_id=item.label_domain_id,
+                frame_domain_digest=item.frame_domain_digest,
+                family_id=item.family_id,
+                family_digest=item.family_digest,
+                candidate_count=item.candidate_count,
+                witness_count=item.witness_count,
+                witness_offsets=packed_offsets[offset_start:offset_stop],
+                witness_candidates=packed_candidates[candidate_start:candidate_stop],
+                metric_tolerance=item.metric_tolerance,
+                distance_semantics=item.distance_semantics,
+                authority_version=item.authority_version,
+            )
+            if family.content_digest != item.content_digest:
+                raise TrainingDataInputError(
+                    f"NEIGHBOR1 packed family digest changed for {item.family_id!r}."
+                )
+            families.append(family)
+        return tuple(families)
+    except Exception:
+        _close_memmap(packed_offsets)
+        _close_memmap(packed_candidates)
+        if offsets_path is not None:
+            offsets_path.unlink(missing_ok=True)
+        if candidates_path is not None:
+            candidates_path.unlink(missing_ok=True)
+        raise
 
 
 @dataclass(frozen=True, slots=True)
@@ -621,6 +837,13 @@ class ExactNeighborhoodCSRStream:
                     pass
             raise
 
+    def finalize_staged(self) -> _StagedExactNeighborhoodFamily:
+        if self._out_of_core_directory is None:
+            raise TrainingDataInputError(
+                "NEIGHBOR1 staged finalization requires an out-of-core build directory."
+            )
+        return _stage_file_backed_family(self.finalize())
+
     def close(self) -> None:
         if not self._closed:
             self._handle.close()
@@ -826,9 +1049,21 @@ def build_target_coverage_exact_neighborhood_store(
     native_workers = max(1, int(query_workers)) if workers == 1 else 1
     block_size = max(1, int(query_block_size))
     interval = max(0.05, float(progress_interval_seconds))
-    ooc_root = None if out_of_core_directory is None else Path(out_of_core_directory)
-    if ooc_root is not None:
-        ooc_root.mkdir(parents=True, exist_ok=True)
+    packed_output_directory = None if out_of_core_directory is None else Path(out_of_core_directory)
+    if packed_output_directory is not None:
+        packed_output_directory.mkdir(parents=True, exist_ok=True)
+    owned_staging = (
+        tempfile.TemporaryDirectory(prefix="mdstats-neighbor1-build-stage-")
+        if packed_output_directory is None
+        else None
+    )
+    staging_root = (
+        Path(owned_staging.name)
+        if owned_staging is not None
+        else packed_output_directory
+    )
+    if staging_root is None:
+        raise AssertionError("unreachable NEIGHBOR1 staging root state")
     explicit_scope = resource_scope is not None
     scope = _default_scope(workers=workers, tree_workers=native_workers) if resource_scope is None else resource_scope
     if int(scope.python_workers) != workers:
@@ -857,7 +1092,7 @@ def build_target_coverage_exact_neighborhood_store(
         )
 
     max_pending = max(workers, 2 * workers)
-    result_by_job: dict[int, TargetCoverageExactNeighborhoodFamily] = {}
+    result_by_job: dict[int, _StagedExactNeighborhoodFamily] = {}
     prepared_by_job: dict[int, ExactNeighborhoodPreparedFamily] = {}
     stream_by_job: dict[int, ExactNeighborhoodCSRStream] = {}
     reducer_by_job: dict[int, DeterministicOrderedReducer] = {}
@@ -988,10 +1223,14 @@ def build_target_coverage_exact_neighborhood_store(
                 ):
                     continue
                 try:
-                    family_result = stream.finalize()
+                    family_result = stream.finalize_staged()
                 finally:
                     queue.release_memory(finalize_id)
-                if _csr_memory_estimate(family_result) != stream.final_array_storage_bytes:
+                actual_output_bytes = int(
+                    (family_result.witness_count + 1) * np.dtype("<u8").itemsize
+                    + family_result.edge_count * np.dtype("<u4").itemsize
+                )
+                if actual_output_bytes != stream.final_array_storage_bytes:
                     raise TrainingDataInputError(
                         "NEIGHBOR1 final CSR storage accounting changed during materialization."
                     )
@@ -1051,7 +1290,7 @@ def build_target_coverage_exact_neighborhood_store(
                     prepared = completion.value
                     prepared_by_job[job_index] = prepared
                     stream_by_job[job_index] = engine.open_stream(
-                        prepared, out_of_core_directory=ooc_root
+                        prepared, out_of_core_directory=staging_root
                     )
                     next_block_by_job[job_index] = 0
                     inflight_blocks_by_job[job_index] = 0
@@ -1113,10 +1352,17 @@ def build_target_coverage_exact_neighborhood_store(
 
         final_snapshot = queue.snapshot()
 
+    packed_results = _pack_staged_exact_neighborhood_families(
+        tuple(result_by_job[index] for index in range(len(manifest))),
+        out_of_core_directory=packed_output_directory,
+    )
+    if owned_staging is not None:
+        owned_staging.cleanup()
+
     domains: list[TargetCoverageExactNeighborhoodDomain] = []
     by_domain: dict[int, list[TargetCoverageExactNeighborhoodFamily]] = {}
     for job_index, (domain_position, _, _) in enumerate(manifest):
-        by_domain.setdefault(domain_position, []).append(result_by_job[job_index])
+        by_domain.setdefault(domain_position, []).append(packed_results[job_index])
     for domain_position, domain in enumerate(target_coverage_reference.domains):
         families = tuple(sorted(by_domain[domain_position], key=lambda item: item.family_id))
         domains.append(

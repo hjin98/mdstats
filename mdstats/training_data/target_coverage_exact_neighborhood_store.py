@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 import shutil
 import tempfile
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 import numpy as np
 
@@ -22,8 +22,11 @@ from .target_coverage_exact_neighborhood import (
     TargetCoverageExactNeighborhoodStore,
 )
 
-TARGET_COVERAGE_EXACT_NEIGHBORHOOD_NATIVE_MANIFEST_SCHEMA = (
+TARGET_COVERAGE_EXACT_NEIGHBORHOOD_LEGACY_NATIVE_MANIFEST_SCHEMA = (
     "mdstats.target-coverage-exact-neighborhood-native-manifest.v1"
+)
+TARGET_COVERAGE_EXACT_NEIGHBORHOOD_NATIVE_MANIFEST_SCHEMA = (
+    "mdstats.target-coverage-exact-neighborhood-native-manifest.v2"
 )
 TARGET_COVERAGE_EXACT_NEIGHBORHOOD_NATIVE_POINTER_SCHEMA = (
     "mdstats.mlff-campaign-target-coverage-exact-neighborhood-native-pointer.v1"
@@ -150,6 +153,142 @@ def _write_npy(path: Path, array: np.ndarray) -> dict[str, Any]:
     }
 
 
+def _family_sequence(store: TargetCoverageExactNeighborhoodStore) -> tuple[TargetCoverageExactNeighborhoodFamily, ...]:
+    return tuple(family for domain in store.domains for family in domain.families)
+
+
+def _shared_packed_root(
+    families: Sequence[TargetCoverageExactNeighborhoodFamily],
+    attribute: str,
+) -> np.memmap | None:
+    root: np.memmap | None = None
+    cursor = 0
+    for family in families:
+        array = np.asarray(getattr(family, attribute))
+        candidate = _root_memmap(array)
+        if candidate is None or candidate.ndim != 1 or not array.flags.c_contiguous:
+            return None
+        if root is None:
+            root = candidate
+        elif candidate is not root:
+            return None
+        byte_offset = int(array.ctypes.data) - int(candidate.ctypes.data)
+        if byte_offset != cursor * array.dtype.itemsize:
+            return None
+        cursor += int(array.size)
+    if root is None or cursor != int(root.size):
+        return None
+    return root
+
+
+def _packed_slice_descriptor(array: np.ndarray, start: int, stop: int) -> dict[str, Any]:
+    return {
+        "start": int(start),
+        "stop": int(stop),
+        "array_reference": _coverage_array_reference(array),
+    }
+
+
+def _write_packed_family_array(
+    path: Path,
+    families: Sequence[TargetCoverageExactNeighborhoodFamily],
+    *,
+    attribute: str,
+    dtype: str,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    target_dtype = np.dtype(dtype).newbyteorder("<")
+    root = _shared_packed_root(families, attribute)
+    slices: list[dict[str, Any]] = []
+    cursor = 0
+    for family in families:
+        array = np.asarray(getattr(family, attribute))
+        stop = cursor + int(array.size)
+        slices.append(_packed_slice_descriptor(array, cursor, stop))
+        cursor = stop
+
+    if root is not None and root.dtype == target_dtype:
+        descriptor = _write_npy(path, root)
+        return descriptor, slices
+
+    packed = np.lib.format.open_memmap(
+        path, mode="w+", dtype=target_dtype, shape=(cursor,)
+    )
+    try:
+        cursor = 0
+        for family in families:
+            array = np.asarray(getattr(family, attribute), dtype=target_dtype)
+            stop = cursor + int(array.size)
+            packed[cursor:stop] = array
+            cursor = stop
+        packed.flush()
+        descriptor = {
+            "relative_path": path.name,
+            "sha256": _sha256_file(path),
+            "size_bytes": path.stat().st_size,
+            "array_reference": _coverage_array_reference(packed),
+        }
+        return descriptor, slices
+    finally:
+        mapping = getattr(packed, "_mmap", None)
+        if mapping is not None and not mapping.closed:
+            mapping.close()
+
+
+def _read_packed_npy(
+    root: Path,
+    descriptor: Mapping[str, Any],
+    *,
+    label: str,
+) -> np.memmap:
+    path = _safe_path(root, descriptor, label=label)
+    reference = descriptor.get("array_reference")
+    if not isinstance(reference, Mapping):
+        raise TargetCoverageExactNeighborhoodNativeStoreError(
+            f"Missing {label} packed-array identity."
+        )
+    try:
+        array = np.load(path, mmap_mode="r", allow_pickle=False)
+    except (OSError, ValueError) as exc:
+        raise TargetCoverageExactNeighborhoodNativeStoreError(
+            f"Cannot restore {label} packed array: {path}"
+        ) from exc
+    try:
+        _validate_array_reference(reference, array, name=label)
+    except Exception as exc:
+        mapping = getattr(array, "_mmap", None)
+        if mapping is not None and not mapping.closed:
+            mapping.close()
+        raise TargetCoverageExactNeighborhoodNativeStoreError(str(exc)) from exc
+    array.setflags(write=False)
+    return array
+
+
+def _packed_slice(
+    packed: np.ndarray,
+    descriptor: Mapping[str, Any],
+    *,
+    label: str,
+) -> np.ndarray:
+    start = int(descriptor.get("start", -1))
+    stop = int(descriptor.get("stop", -1))
+    if start < 0 or stop < start or stop > int(packed.size):
+        raise TargetCoverageExactNeighborhoodNativeStoreError(
+            f"Invalid {label} packed-array slice."
+        )
+    array = packed[start:stop]
+    reference = descriptor.get("array_reference")
+    if not isinstance(reference, Mapping):
+        raise TargetCoverageExactNeighborhoodNativeStoreError(
+            f"Missing {label} packed-slice identity."
+        )
+    try:
+        _validate_array_reference(reference, array, name=label)
+    except Exception as exc:
+        raise TargetCoverageExactNeighborhoodNativeStoreError(str(exc)) from exc
+    array.setflags(write=False)
+    return array
+
+
 def _safe_path(root: Path, descriptor: Mapping[str, Any], *, label: str) -> Path:
     relative = Path(str(descriptor.get("relative_path", "")))
     if relative.is_absolute() or ".." in relative.parts or relative in {Path(""), Path(".")}:
@@ -204,6 +343,15 @@ def _manifest_payload(store: TargetCoverageExactNeighborhoodStore, record_key: s
 
 
 def _validate_existing_manifest(root: Path, manifest: Mapping[str, Any]) -> None:
+    packed = manifest.get("packed_arrays")
+    if isinstance(packed, Mapping):
+        for name, descriptor in packed.items():
+            if not isinstance(descriptor, Mapping):
+                raise TargetCoverageExactNeighborhoodNativeStoreError(
+                    f"Invalid packed NEIGHBOR1 descriptor for {name}."
+                )
+            _safe_path(root, descriptor, label=f"packed {name}")
+        return
     for domain in manifest.get("domains", ()):
         for family in domain.get("families", ()):
             for name, descriptor in family.get("arrays", {}).items():
@@ -228,6 +376,8 @@ def write_target_coverage_exact_neighborhood_native_record(
                 and existing.get("schema") == TARGET_COVERAGE_EXACT_NEIGHBORHOOD_NATIVE_MANIFEST_SCHEMA
                 and existing.get("content_digest") == store.content_digest
                 and existing.get("record_key") == record_key
+                and existing.get("persistence_version") == TARGET_COVERAGE_EXACT_NEIGHBORHOOD_PERSISTENCE_VERSION
+                and isinstance(existing.get("packed_arrays"), Mapping)
             ):
                 supplied = existing.get("manifest_digest")
                 expected = digest({key: value for key, value in existing.items() if key != "manifest_digest"})
@@ -249,11 +399,24 @@ def write_target_coverage_exact_neighborhood_native_record(
 
     temporary = Path(tempfile.mkdtemp(prefix="target-coverage-exact-neighborhood-write-", dir=root))
     try:
+        all_families = _family_sequence(store)
+        packed_offsets, offset_slices = _write_packed_family_array(
+            temporary / "packed-witness-offsets.npy",
+            all_families,
+            attribute="witness_offsets",
+            dtype="<u8",
+        )
+        packed_candidates, candidate_slices = _write_packed_family_array(
+            temporary / "packed-witness-candidates.npy",
+            all_families,
+            attribute="witness_candidates",
+            dtype="<u4",
+        )
         domains: list[dict[str, Any]] = []
-        for domain_position, domain in enumerate(store.domains):
+        family_index = 0
+        for domain in store.domains:
             families: list[dict[str, Any]] = []
-            for family_position, family in enumerate(domain.families):
-                prefix = f"domain-{domain_position:03d}-family-{family_position:04d}"
+            for family in domain.families:
                 families.append(
                     {
                         "label_domain_id": family.label_domain_id,
@@ -268,16 +431,13 @@ def write_target_coverage_exact_neighborhood_native_record(
                         "authority_version": family.authority_version,
                         "identity_digest": family.identity_digest,
                         "content_digest": family.content_digest,
-                        "arrays": {
-                            "witness_offsets": _write_npy(
-                                temporary / f"{prefix}-witness-offsets.npy", family.witness_offsets
-                            ),
-                            "witness_candidates": _write_npy(
-                                temporary / f"{prefix}-witness-candidates.npy", family.witness_candidates
-                            ),
+                        "array_slices": {
+                            "witness_offsets": offset_slices[family_index],
+                            "witness_candidates": candidate_slices[family_index],
                         },
                     }
                 )
+                family_index += 1
             domains.append(
                 {
                     "label_domain_id": domain.label_domain_id,
@@ -288,7 +448,14 @@ def write_target_coverage_exact_neighborhood_native_record(
                     "content_digest": domain.content_digest,
                 }
             )
-        manifest = {**_manifest_payload(store, record_key), "domains": domains}
+        manifest = {
+            **_manifest_payload(store, record_key),
+            "packed_arrays": {
+                "witness_offsets": packed_offsets,
+                "witness_candidates": packed_candidates,
+            },
+            "domains": domains,
+        }
         manifest = {**manifest, "manifest_digest": digest(manifest)}
         _write_json_atomic(temporary / "manifest.json", manifest)
         if destination.exists():
@@ -331,37 +498,93 @@ def read_target_coverage_exact_neighborhood_native_record(
     if _sha256_file(manifest_path) != str(pointer.get("sha256", "")):
         raise TargetCoverageExactNeighborhoodNativeStoreError("NEIGHBOR1 native manifest checksum mismatch.")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if manifest.get("schema") != TARGET_COVERAGE_EXACT_NEIGHBORHOOD_NATIVE_MANIFEST_SCHEMA:
+    manifest_schema = manifest.get("schema")
+    if manifest_schema not in {
+        TARGET_COVERAGE_EXACT_NEIGHBORHOOD_NATIVE_MANIFEST_SCHEMA,
+        TARGET_COVERAGE_EXACT_NEIGHBORHOOD_LEGACY_NATIVE_MANIFEST_SCHEMA,
+    }:
         raise TargetCoverageExactNeighborhoodNativeStoreError("Unsupported NEIGHBOR1 native manifest schema.")
     supplied = manifest.get("manifest_digest")
     expected = digest({key: value for key, value in manifest.items() if key != "manifest_digest"})
     if supplied != expected:
         raise TargetCoverageExactNeighborhoodNativeStoreError("NEIGHBOR1 native manifest digest mismatch.")
     data_root = manifest_path.parent
+    packed_payload = manifest.get("packed_arrays")
+    if (
+        manifest_schema == TARGET_COVERAGE_EXACT_NEIGHBORHOOD_NATIVE_MANIFEST_SCHEMA
+        and not isinstance(packed_payload, Mapping)
+    ):
+        raise TargetCoverageExactNeighborhoodNativeStoreError(
+            "NEIGHBOR1 native v2 manifest is missing packed arrays."
+        )
+    packed_offsets: np.memmap | None = None
+    packed_candidates: np.memmap | None = None
+    if isinstance(packed_payload, Mapping):
+        try:
+            packed_offsets = _read_packed_npy(
+                data_root, packed_payload["witness_offsets"], label="witness_offsets"
+            )
+            packed_candidates = _read_packed_npy(
+                data_root, packed_payload["witness_candidates"], label="witness_candidates"
+            )
+        except Exception:
+            for array in (packed_offsets, packed_candidates):
+                if array is not None:
+                    mapping = getattr(array, "_mmap", None)
+                    if mapping is not None and not mapping.closed:
+                        mapping.close()
+            raise
+
     domains: list[TargetCoverageExactNeighborhoodDomain] = []
+    packed_offset_cursor = 0
+    packed_candidate_cursor = 0
     for domain_payload in manifest.get("domains", ()):
         families: list[TargetCoverageExactNeighborhoodFamily] = []
         for family_payload in domain_payload.get("families", ()):
-            arrays = family_payload.get("arrays", {})
+            family_id = str(family_payload["family_id"])
+            if packed_offsets is not None and packed_candidates is not None:
+                slices = family_payload.get("array_slices", {})
+                offset_slice = slices.get("witness_offsets", {})
+                candidate_slice = slices.get("witness_candidates", {})
+                if int(offset_slice.get("start", -1)) != packed_offset_cursor:
+                    raise TargetCoverageExactNeighborhoodNativeStoreError(
+                        f"NEIGHBOR1 packed witness_offsets are not canonical at family {family_id}."
+                    )
+                if int(candidate_slice.get("start", -1)) != packed_candidate_cursor:
+                    raise TargetCoverageExactNeighborhoodNativeStoreError(
+                        f"NEIGHBOR1 packed witness_candidates are not canonical at family {family_id}."
+                    )
+                witness_offsets = _packed_slice(
+                    packed_offsets, offset_slice, label=f"family {family_id} witness_offsets"
+                )
+                witness_candidates = _packed_slice(
+                    packed_candidates, candidate_slice, label=f"family {family_id} witness_candidates"
+                )
+                packed_offset_cursor = int(offset_slice["stop"])
+                packed_candidate_cursor = int(candidate_slice["stop"])
+            else:
+                arrays = family_payload.get("arrays", {})
+                witness_offsets = _read_npy(
+                    data_root,
+                    arrays["witness_offsets"],
+                    label=f"family {family_id} witness_offsets",
+                    mmap_threshold_bytes=mmap_threshold_bytes,
+                )
+                witness_candidates = _read_npy(
+                    data_root,
+                    arrays["witness_candidates"],
+                    label=f"family {family_id} witness_candidates",
+                    mmap_threshold_bytes=mmap_threshold_bytes,
+                )
             family = TargetCoverageExactNeighborhoodFamily(
                 label_domain_id=str(family_payload["label_domain_id"]),
                 frame_domain_digest=str(family_payload["frame_domain_digest"]),
-                family_id=str(family_payload["family_id"]),
+                family_id=family_id,
                 family_digest=str(family_payload["family_digest"]),
                 candidate_count=int(family_payload["candidate_count"]),
                 witness_count=int(family_payload["witness_count"]),
-                witness_offsets=_read_npy(
-                    data_root,
-                    arrays["witness_offsets"],
-                    label=f"family {family_payload['family_id']} witness_offsets",
-                    mmap_threshold_bytes=mmap_threshold_bytes,
-                ),
-                witness_candidates=_read_npy(
-                    data_root,
-                    arrays["witness_candidates"],
-                    label=f"family {family_payload['family_id']} witness_candidates",
-                    mmap_threshold_bytes=mmap_threshold_bytes,
-                ),
+                witness_offsets=witness_offsets,
+                witness_candidates=witness_candidates,
                 metric_tolerance=float(family_payload["metric_tolerance"]),
                 distance_semantics=str(family_payload["distance_semantics"]),
                 authority_version=str(family_payload["authority_version"]),
@@ -383,6 +606,14 @@ def read_target_coverage_exact_neighborhood_native_record(
         if domain_payload.get("content_digest") != domain.content_digest:
             raise TargetCoverageExactNeighborhoodNativeStoreError("NEIGHBOR1 domain content digest mismatch.")
         domains.append(domain)
+    if packed_offsets is not None and packed_offset_cursor != int(packed_offsets.size):
+        raise TargetCoverageExactNeighborhoodNativeStoreError(
+            "NEIGHBOR1 packed witness_offsets contain unreferenced trailing data."
+        )
+    if packed_candidates is not None and packed_candidate_cursor != int(packed_candidates.size):
+        raise TargetCoverageExactNeighborhoodNativeStoreError(
+            "NEIGHBOR1 packed witness_candidates contain unreferenced trailing data."
+        )
     store = TargetCoverageExactNeighborhoodStore(
         dataset_id=str(manifest["dataset_id"]),
         target_coverage_reference_digest=str(manifest["target_coverage_reference_digest"]),
@@ -397,6 +628,7 @@ def read_target_coverage_exact_neighborhood_native_record(
 
 
 __all__ = [
+    "TARGET_COVERAGE_EXACT_NEIGHBORHOOD_LEGACY_NATIVE_MANIFEST_SCHEMA",
     "TARGET_COVERAGE_EXACT_NEIGHBORHOOD_NATIVE_MANIFEST_SCHEMA",
     "TARGET_COVERAGE_EXACT_NEIGHBORHOOD_NATIVE_POINTER_SCHEMA",
     "TargetCoverageExactNeighborhoodNativeStoreError",

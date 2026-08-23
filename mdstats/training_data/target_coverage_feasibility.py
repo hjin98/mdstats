@@ -22,6 +22,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import math
 from pathlib import Path
+import tempfile
 import time
 from typing import Any, Callable, Mapping, Sequence
 
@@ -36,6 +37,8 @@ from .target_coverage_exact_neighborhood import (
     ExactNeighborhoodCSRStream,
     ExactNeighborhoodEngine,
     ExactNeighborhoodPreparedFamily,
+    _StagedExactNeighborhoodFamily,
+    _pack_staged_exact_neighborhood_families,
     TargetCoverageExactNeighborhoodDomain,
     TargetCoverageExactNeighborhoodFamily,
     TargetCoverageExactNeighborhoodStore,
@@ -821,10 +824,12 @@ def _reduce_family_feasibility_block(
 
 def _finalize_family_feasibility_state(
     state: _FamilyFeasibilityState,
+    *,
+    stage_neighborhood: bool = False,
 ) -> tuple[
     TargetCoverageFamilyFeasibilityReport,
     list[tuple[np.ndarray, int]],
-    TargetCoverageExactNeighborhoodFamily,
+    TargetCoverageExactNeighborhoodFamily | _StagedExactNeighborhoodFamily,
 ]:
     family = state.job.family
     policy = state.job.policy
@@ -863,7 +868,11 @@ def _finalize_family_feasibility_state(
         family.required
         and correlation_report.zero_support_mass > policy.fragile_zero_mass_tolerance
     )
-    neighborhood_family = state.neighborhood_stream.finalize()
+    neighborhood_family = (
+        state.neighborhood_stream.finalize_staged()
+        if stage_neighborhood
+        else state.neighborhood_stream.finalize()
+    )
     if neighborhood_family.edge_count != state.edge_count:
         raise TrainingDataInputError(
             f"TARGET-DATA2B-FEAS1/NEIGHBOR1 edge-count mismatch for {family.family_id!r}."
@@ -1013,7 +1022,7 @@ def _evaluate_family_jobs_global(
         tuple[
             TargetCoverageFamilyFeasibilityReport,
             list[tuple[np.ndarray, int]],
-            TargetCoverageExactNeighborhoodFamily,
+            TargetCoverageExactNeighborhoodFamily | _StagedExactNeighborhoodFamily,
         ] | None
     ] = [None] * total_profiles
 
@@ -1164,14 +1173,16 @@ def _evaluate_family_jobs_global(
                 ):
                     continue
                 try:
-                    finalized = _finalize_family_feasibility_state(state)
+                    finalized = _finalize_family_feasibility_state(
+                        state, stage_neighborhood=ooc_root is not None
+                    )
                 finally:
                     queue.release_memory(finalize_id)
                 results[job_index] = finalized
                 neighborhood_family = finalized[2]
                 actual_output_bytes = int(
-                    neighborhood_family.witness_offsets.nbytes
-                    + neighborhood_family.witness_candidates.nbytes
+                    (neighborhood_family.witness_count + 1) * np.dtype("<u8").itemsize
+                    + neighborhood_family.edge_count * np.dtype("<u4").itemsize
                 )
                 if actual_output_bytes != state.neighborhood_stream.final_array_storage_bytes:
                     raise TrainingDataInputError(
@@ -1424,15 +1435,50 @@ def build_target_coverage_feasibility_artifacts(
             profile_index += 1
         domain_inputs.append((domain, role_domain, ordered_families, tuple(job_indices)))
 
-    family_results = _evaluate_family_jobs_global(
-        jobs,
-        global_workers=block_parallelism,
-        query_workers=workers,
-        progress_interval_seconds=interval,
-        progress_callback=progress_callback,
-        resource_scope=resource_scope,
-        out_of_core_directory=out_of_core_directory,
+    packed_output_directory = (
+        None if out_of_core_directory is None else Path(out_of_core_directory)
     )
+    owned_staging = (
+        tempfile.TemporaryDirectory(prefix="mdstats-neighbor1-feas1-stage-")
+        if packed_output_directory is None
+        else None
+    )
+    staging_directory = (
+        Path(owned_staging.name)
+        if owned_staging is not None
+        else packed_output_directory
+    )
+    if staging_directory is None:
+        raise AssertionError("unreachable NEIGHBOR1 staging directory state")
+    try:
+        family_results = _evaluate_family_jobs_global(
+            jobs,
+            global_workers=block_parallelism,
+            query_workers=workers,
+            progress_interval_seconds=interval,
+            progress_callback=progress_callback,
+            resource_scope=resource_scope,
+            out_of_core_directory=staging_directory,
+        )
+        staged_neighborhoods = tuple(item[2] for item in family_results)
+        if not all(
+            isinstance(item, _StagedExactNeighborhoodFamily)
+            for item in staged_neighborhoods
+        ):
+            raise TrainingDataInputError(
+                "TARGET-DATA2B-FEAS1 did not produce staged NEIGHBOR1 families."
+            )
+        packed_neighborhoods = _pack_staged_exact_neighborhood_families(
+            staged_neighborhoods,
+            out_of_core_directory=packed_output_directory,
+        )
+        family_results = [
+            (family_report, family_extents, packed_neighborhoods[index])
+            for index, (family_report, family_extents, _staged) in enumerate(family_results)
+        ]
+    finally:
+        if owned_staging is not None:
+            owned_staging.cleanup()
 
     for domain, role_domain, ordered_families, job_indices in domain_inputs:
         family_reports: list[TargetCoverageFamilyFeasibilityReport] = []

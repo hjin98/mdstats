@@ -2,7 +2,7 @@
 
 **Status:** active
 **Current authority:** `docs/specs/training_data/mlff_neighbor1_exact_neighborhood_spec.md`, `docs/specs/training_data/mlff_parcore1_deterministic_work_queue_spec.md`
-**Target branch/base:** `fix/feas1-neighbor-memory-backpressure` from uploaded `mdstats-feat-target-size-v5-redesign (6)`
+**Target branch/base:** `fix/feas1-neighbor-memory-fd-bounds` from uploaded `mdstats-feat-target-size-v5-redesign (6)`
 
 ## Objective
 
@@ -15,6 +15,7 @@ Remove the production FEAS1/NEIGHBOR1 failure in which completed forward-CSR fam
 - MVIDX cache-hit geometry reuse remains exact; no second geometry sweep is introduced.
 - PARCORE1 remains fail-closed for anonymous execution RAM. Temporary reservation contention is backpressure, while an intrinsically oversized reservation remains an error.
 - Campaign final CSR storage may exceed the RAM budget because it is disk-backed; bounded copy/finalization scratch may not.
+- Completed-family file mappings MUST NOT scale open file descriptors with family count; build and persisted restore shall use O(1) shared CSR mappings.
 - The runtime 90%-CPU budget and single-level cKDTree parallelism are unchanged.
 
 ## Scope
@@ -72,10 +73,24 @@ Excluded: target-size-v5 scientific selection policy, 3/10/30 halving, MVIDX/MVS
 
 **Acceptance:** focused regressions pass; no scientific schema/digest change is required; no GPU claim is made.
 
+
+### G4 — File-descriptor scaling closeout
+
+**Goal:** remove the second production ceiling exposed after CSR payloads became file-backed.
+
+**Work:**
+
+- Detach and close each completed family mmap immediately after FEAS1/NEIGHBOR1 finalization.
+- Compact staged families into two shared mappings: one packed `uint64` offsets array and one packed `uint32` candidates array.
+- Emit native persistence v2 using those two packed arrays and canonical per-family slices; retain v1 read compatibility without reusing v1 records as v2 writes.
+- Add a constrained-`RLIMIT_NOFILE` regression spanning FEAS1 build, native persistence, and reload.
+
+**Acceptance:** a 96-family fixture completes under a low descriptor ceiling where the preceding out-of-core patch deterministically fails with `EMFILE`; restored scientific/store digests remain unchanged and open mapped-file descriptors remain bounded independently of family count.
+
 ## Closeout
 
 When all gates pass, archive this workplan only after the implementation is accepted; retain it active in the implementation patch so review can trace the transition.
 
 ## Implementation result
 
-All implementation gates are complete in this candidate and await acceptance. The aggregate-memory regression uses 266 exact families under a 70,000-byte explicit stage RAM budget: the untouched uploaded baseline fails from PARCORE1 memory admission after retained final CSR accumulates, while this implementation completes with 70,224 bytes of final CSR payload because the payload is file-backed and only bounded finalization scratch is admitted. Focused PARCORE1, FEAS1, NEIGHBOR1 native-persistence, and MVIDX cache-consumer tests pass with the supplied dependency bundle (ASE source used directly from the bundle). No GPU qualification was attempted or claimed.
+All implementation gates are complete in this candidate and await acceptance. The aggregate-memory regression uses 266 exact families under a 70,000-byte explicit stage RAM budget: the untouched uploaded baseline fails from PARCORE1 memory admission after retained final CSR accumulates, while this implementation completes with 70,224 bytes of final CSR payload because the payload is file-backed and only bounded finalization scratch is admitted. Focused PARCORE1, FEAS1, NEIGHBOR1 native-persistence, and MVIDX cache-consumer tests pass with the supplied dependency bundle (ASE source used directly from the bundle). Follow-up G4 is also complete: the preceding candidate deterministically reproduces `EMFILE` under the constrained descriptor regression, while this candidate completes FEAS1 build and packed native reload with bounded descriptor use. Native persistence is advanced to v2 packed-array storage with v1 read compatibility. No GPU qualification was attempted or claimed.

@@ -156,7 +156,7 @@ def test_neighbor1_native_store_detects_array_tampering(tmp_path: Path) -> None:
     pointer = mdstats.write_target_coverage_exact_neighborhood_native_record(store, tmp_path / "records")
     manifest = tmp_path / pointer["relative_path"]
     payload = json.loads(manifest.read_text(encoding="utf-8"))
-    descriptor = payload["domains"][0]["families"][0]["arrays"]["witness_candidates"]
+    descriptor = payload["packed_arrays"]["witness_candidates"]
     array_path = manifest.parent / descriptor["relative_path"]
     with array_path.open("r+b") as handle:
         handle.seek(-1, 2)
@@ -230,7 +230,7 @@ def test_neighbor1_native_store_hardlinks_whole_out_of_core_npy(tmp_path: Path) 
     pointer = mdstats.write_target_coverage_exact_neighborhood_native_record(store, records)
     manifest_path = tmp_path / pointer["relative_path"]
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    descriptor = manifest["domains"][0]["families"][0]["arrays"]["witness_candidates"]
+    descriptor = manifest["packed_arrays"]["witness_candidates"]
     destination = manifest_path.parent / descriptor["relative_path"]
     assert source.stat().st_ino == destination.stat().st_ino
     assert source.stat().st_dev == destination.stat().st_dev
@@ -242,3 +242,60 @@ def test_neighbor1_native_store_hardlinks_whole_out_of_core_npy(tmp_path: Path) 
     shutil.rmtree(build_root)
     assert restored.content_digest == store.content_digest
     assert restored.domains[0].families[0].edge_count == family.edge_count
+
+
+def test_neighbor1_packed_store_is_bounded_under_low_file_descriptor_limit(tmp_path: Path) -> None:
+    import os
+    import resource
+    from dataclasses import replace
+
+    if not Path("/proc/self/fd").is_dir():
+        pytest.skip("file-descriptor regression requires procfs")
+    soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+    baseline_fds = len(os.listdir("/proc/self/fd"))
+    test_limit = max(64, baseline_fds + 32)
+    if hard != resource.RLIM_INFINITY and hard < test_limit:
+        pytest.skip("hard file-descriptor limit is too small for controlled regression")
+
+    reference, role = _reference_and_role(split_units=True)
+    source_family = reference.domains[0].families[0]
+    families = tuple(
+        replace(
+            source_family,
+            family_id=f"target_label:fd-{index:03d}",
+            required=(index == 0),
+        )
+        for index in range(96)
+    )
+    reference = replace(
+        reference,
+        domains=(replace(reference.domains[0], families=families),),
+    )
+
+    resource.setrlimit(resource.RLIMIT_NOFILE, (test_limit, hard))
+    try:
+        report, store = mdstats.build_target_coverage_feasibility_artifacts(
+            reference,
+            role,
+            query_workers=1,
+            query_block_size=16,
+            block_workers=1,
+            out_of_core_directory=tmp_path / "build",
+        )
+        assert len(report.domains[0].family_reports) == 96
+        assert len(store.domains[0].families) == 96
+        during_build_fds = len(os.listdir("/proc/self/fd"))
+        assert during_build_fds <= baseline_fds + 12
+
+        pointer = mdstats.write_target_coverage_exact_neighborhood_native_record(
+            store, tmp_path / "records"
+        )
+        restored = mdstats.read_target_coverage_exact_neighborhood_native_record(
+            pointer, tmp_path
+        )
+        assert restored.content_digest == store.content_digest
+        assert len(restored.domains[0].families) == 96
+        after_restore_fds = len(os.listdir("/proc/self/fd"))
+        assert after_restore_fds <= baseline_fds + 16
+    finally:
+        resource.setrlimit(resource.RLIMIT_NOFILE, (soft, hard))
