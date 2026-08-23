@@ -218,6 +218,36 @@ def test_universal_structural_parallel_and_serial_are_identical(tmp_path: Path) 
     assert any("frame/s" in message for message in parallel_messages)
 
 
+def test_data6_structural_workers_respect_supplied_campaign_budget(tmp_path: Path) -> None:
+    from mdstats.training_data.resources import GpuResourceSnapshot, SystemResourceSnapshot
+
+    sources, frames, frame_data, data4, data5 = _profiled_data(tmp_path)
+    resources = SystemResourceSnapshot(
+        cpu_threads_available=8,
+        cpu_fraction=0.25,
+        cpu_threads_budget=2,
+        ram_available_bytes=8 * 1024**3,
+        ram_fraction=0.8,
+        ram_budget_bytes=int(6.4 * 1024**3),
+        gpu_memory_fraction=0.9,
+        gpu=GpuResourceSnapshot(False, 0, None, None, None, None, None, "CPU test"),
+    )
+    messages: list[str] = []
+    bundle = mdstats.build_data6_feature_bundle(
+        sources,
+        frames,
+        frame_data,
+        data4,
+        data5,
+        policy=None,
+        structural_max_workers=8,
+        structural_resources=resources,
+        progress_callback=messages.append,
+    )
+    assert bundle.universal_structural_features
+    assert any("workers=2" in message for message in messages)
+
+
 def test_universal_structural_rejects_negative_worker_count(tmp_path: Path) -> None:
     _, frames, frame_data, data4, _ = _profiled_data(tmp_path)
     with pytest.raises(mdstats.TrainingDataInputError, match="max_workers"):

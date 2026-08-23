@@ -53,6 +53,7 @@ from .material_profiles import (
 )
 from .raw_features import minimum_image_displacements
 from .resources import (
+    SystemResourceSnapshot,
     build_stage_resource_scope,
     detect_system_resources,
     stage_resource_scope,
@@ -1647,6 +1648,7 @@ class UniversalStructuralSelectionProvider:
         membership_provider: AtomGroupMembershipProvider | None = None,
         progress_callback: Callable[[str], None] | None = None,
         max_workers: int = 0,
+        resources: SystemResourceSnapshot | None = None,
     ) -> UniversalStructuralFeatureCatalog:
         active = UniversalStructuralSelectionPolicy() if policy is None else policy
         if data4_bundle.frame_catalog_digest != frame_catalog.content_digest:
@@ -1712,8 +1714,10 @@ class UniversalStructuralSelectionProvider:
         )
 
         requested_workers = int(max_workers)
-        resources = detect_system_resources(device="cpu")
-        cpu_budget = max(1, int(resources.cpu_threads_budget))
+        resource_snapshot = (
+            detect_system_resources(device="cpu") if resources is None else resources
+        )
+        cpu_budget = max(1, int(resource_snapshot.cpu_threads_budget))
         worker_count = (
             _automatic_structural_worker_cap(
                 len(chronological), cpu_budget=cpu_budget
@@ -2021,16 +2025,13 @@ class UniversalStructuralSelectionProvider:
                 last_report_time = now
                 last_report_completed = completed
 
-        structural_resources = detect_system_resources(
-            cpu_fraction=1.0, ram_fraction=1.0, gpu_memory_fraction=1.0, device="cpu"
-        )
-        # The worker count has already been bounded by available_cpu_threads().
-        # Keep native BLAS/OpenMP at one thread while frame-level structural
-        # workers are active so nested libraries cannot multiply the stage CPU
-        # budget. The scope is execution-only and never enters scientific
-        # authority.
+        # The worker count has already been bounded by the caller-authorized
+        # resource snapshot. Keep native BLAS/OpenMP at one thread while
+        # frame-level structural workers are active so nested libraries cannot
+        # multiply the stage CPU budget. The scope is execution-only and never
+        # enters scientific authority.
         structural_scope = build_stage_resource_scope(
-            structural_resources,
+            resource_snapshot,
             stage_name="DATA6-structural",
             structural_workers=worker_count,
             blas_threads=1,

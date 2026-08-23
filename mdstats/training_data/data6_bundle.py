@@ -38,6 +38,7 @@ from .phase_geometry_profiles import (
     derive_phase_geometry_selection_plan,
     universal_structural_policy_from_plan,
 )
+from .resources import SystemResourceSnapshot
 from .structural_selection import (
     AtomGroupMembershipProvider,
     StructuralSelectionProvider,
@@ -487,6 +488,7 @@ def build_data6_feature_bundle(
     model_sweep_artifacts: Data6ModelSweepArtifacts | None = None,
     progress_callback: Callable[[str], None] | None = None,
     structural_max_workers: int = 0,
+    structural_resources: SystemResourceSnapshot | None = None,
 ) -> Data6FeatureBundle:
     """Build raw selection/model evidence without fitting statistical transforms."""
 
@@ -533,6 +535,7 @@ def build_data6_feature_bundle(
         if isinstance(provider, UniversalStructuralSelectionProvider):
             structural_kwargs["progress_callback"] = progress_callback
             structural_kwargs["max_workers"] = structural_max_workers
+            structural_kwargs["resources"] = structural_resources
         structural_catalogs.append(
             provider.build_catalog(
                 frame_catalog,

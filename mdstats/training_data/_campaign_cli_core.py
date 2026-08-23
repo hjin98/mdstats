@@ -8688,6 +8688,7 @@ def _prepare_materialization(
             model_sweep_artifacts=sweep,
             progress_callback=lambda message: print(f"[DATA6 finalize] {message}", flush=True),
             structural_max_workers=int(_cfg(cfg, "selection", "structural_workers", 0)),
+            structural_resources=_performance_resources(cfg),
         )
         _ok(f"DATA6 evidence finalized; elapsed={format_progress_time(time.monotonic() - data6_start)}")
         print(

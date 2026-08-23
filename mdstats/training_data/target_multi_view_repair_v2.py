@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 import math
 from threading import local
 import time
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 
@@ -1081,15 +1081,24 @@ def build_target_multi_view_repair_plan_v2(
     initial_states: dict[str, TargetMultiViewForwardStateV2] | None = None,
     initial_state_sizes: dict[str, int] | None = None,
     initial_state_modes: dict[str, str] | None = None,
+    checkpoint_state_provider: (
+        Callable[[str, int], TargetMultiViewForwardStateV2 | None] | None
+    ) = None,
     telemetry_callback: Any | None = None,
     resource_scope: StageResourceScope | None = None,
 ) -> TargetMultiViewRepairPlanV2:
     """Build REPAIR2 using exact forward-only state and no-copy proposals.
 
-    ``initial_states`` is an execution-only continuation hook used by campaign
-    MVSTATE2 integration. Missing state falls back to selected-prefix forward
-    replay. Once a repair swap is accepted the repaired state is carried
-    forward and no later pure-selector checkpoint is consulted.
+    ``checkpoint_state_provider`` is the execution-only MVSTATE2 continuation
+    seam. Before repair divergence the canonical owner may restore the exact
+    pure-selector state for the *current* materializable rung, then still
+    repair that rung's active shell from the previous repaired rung boundary.
+    Missing state falls back to exact selected-prefix forward replay. After the
+    first accepted repair swap the repaired state is carried forward and the
+    provider is never consulted again.
+
+    ``initial_states``/``initial_state_sizes`` remain as a compatibility form
+    of a single rung checkpoint per domain and obey the same rung-aware rules.
 
     ``telemetry_callback`` is execution-only profiling. It is excluded from all
     scientific policy, serialization, lineage, and digest calculations.
@@ -1116,19 +1125,25 @@ def build_target_multi_view_repair_plan_v2(
         selection_domain = target_multi_view_selection.domain(reference_domain.label_domain_id)
         uid_to_candidate = {uid: index for index, uid in enumerate(reference_domain.frame_uids)}
         order = [uid_to_candidate[item.frame_uid] for item in selection_domain.master_order]
-        state = initial_states.get(reference_domain.label_domain_id)
-        restored_size = int(initial_state_sizes.get(reference_domain.label_domain_id, 0))
-        restore_mode = str(initial_state_modes.get(reference_domain.label_domain_id, "selected_prefix_forward_replay"))
-        if state is None:
-            state = build_target_multi_view_forward_state_v2(reference_domain, forward_domain)
-            restored_size = 0
-            restore_mode = "selected_prefix_forward_replay"
-        if restored_size < 0 or restored_size > len(order) or state.selected_count != restored_size:
-            raise TrainingDataInputError("TARGET-DATA2C-REPAIR2 initial MVSTATE2 continuation size is invalid.")
-        previous_size = restored_size
+        legacy_state = initial_states.get(reference_domain.label_domain_id)
+        legacy_restored_size = int(initial_state_sizes.get(reference_domain.label_domain_id, 0))
+        legacy_restore_mode = str(initial_state_modes.get(reference_domain.label_domain_id, "mvstate2"))
+        if legacy_state is None:
+            legacy_restored_size = 0
+        elif (
+            legacy_restored_size < 0
+            or legacy_restored_size > len(order)
+            or legacy_state.selected_count != legacy_restored_size
+        ):
+            raise TrainingDataInputError(
+                "TARGET-DATA2C-REPAIR2 initial MVSTATE2 continuation size is invalid."
+            )
+        state = build_target_multi_view_forward_state_v2(reference_domain, forward_domain)
+        previous_size = 0
         rungs: list[TargetMultiViewRepairRung] = []
         diverged = False
         proposal_count = 0
+        restore_count = 0
         for base_rung in selection_domain.rungs:
             rung_started = time.perf_counter() if telemetry_callback is not None else 0.0
             rung_resource_before = _resource_snapshot() if telemetry_callback is not None else None
@@ -1153,50 +1168,45 @@ def build_target_multi_view_repair_plan_v2(
                         "resource_delta": _resource_delta(rung_resource_before, _resource_snapshot()),
                     })
                 continue
-            if size < restored_size:
-                rungs.append(TargetMultiViewRepairRung(
-                    target_size=size,
-                    materializable=True,
-                    active_shell_start=0,
-                    frame_uids=tuple(reference_domain.frame_uids[candidate] for candidate in order[:size]),
-                    family_coverage=base_rung.family_coverage,
-                    hard_obligations_passed=base_rung.hard_obligations_passed,
-                    unsatisfied_obligation_ids=base_rung.unsatisfied_obligation_ids,
-                    hard_coverage_qualified=base_rung.hard_coverage_qualified,
-                    swaps=(),
-                    zero_unique_shell_fraction=0.0,
-                ))
-                if telemetry_callback is not None:
-                    rung_wall = time.perf_counter() - rung_started
-                    _emit_telemetry(telemetry_callback, {
-                        "kind": "rung",
-                        "domain": reference_domain.label_domain_id,
-                        "target_size": size,
-                        "materializable": True,
-                        "reconstructed_before_restore": True,
-                        "selected_prefix_extension_wall_seconds": 0.0,
-                        "selected_prefix_extension_wall_hhmmss": "00:00:00",
-                        "initial_zero_unique_scan_wall_seconds": 0.0,
-                        "initial_zero_unique_scan_wall_hhmmss": "00:00:00",
-                        "initial_zero_unique_candidate_family_rows": 0,
-                        "initial_zero_unique_forward_edges": 0,
-                        "initial_zero_unique_count": 0,
-                        "repair_state_iterations": 0,
-                        "rung_proposal_count": 0,
-                        "domain_cumulative_proposal_count": proposal_count,
-                        "accepted_swaps": 0,
-                        "rung_wall_seconds": rung_wall,
-                        "rung_wall_hhmmss": format_progress_time(rung_wall),
-                        "eta_hhmmss": "--:--:--",
-                        "resource_delta": _resource_delta(rung_resource_before, _resource_snapshot()),
-                    })
-                continue
             shell_start = previous_size
+            restore_mode = (
+                "post_divergence_carried_state"
+                if diverged
+                else "selected_prefix_forward_replay"
+            )
+            restored_state = None
+            if not diverged:
+                if checkpoint_state_provider is not None:
+                    restored_state = checkpoint_state_provider(
+                        reference_domain.label_domain_id, size
+                    )
+                    if restored_state is not None:
+                        restore_mode = "mvstate2"
+                if (
+                    restored_state is None
+                    and legacy_state is not None
+                    and size == legacy_restored_size
+                ):
+                    restored_state = legacy_state
+                    restore_mode = legacy_restore_mode
+                if restored_state is not None:
+                    if (
+                        restored_state.selected_count != size
+                        or tuple(restored_state.selected_order) != tuple(order[:size])
+                    ):
+                        raise TrainingDataInputError(
+                            "TARGET-DATA2C-REPAIR2 MVSTATE2 continuation does not "
+                            "match the current selector prefix."
+                        )
+                    state = restored_state
+                    restore_count += 1
+
             extension_started = time.perf_counter() if telemetry_callback is not None else 0.0
-            for rank in range(previous_size, size):
-                candidate = order[rank]
-                score = score_target_multi_view_candidate_v2(candidate, forward_domain, state)
-                select_target_multi_view_candidate_v2(candidate, forward_domain, state, score=score)
+            if restored_state is None:
+                for rank in range(previous_size, size):
+                    candidate = order[rank]
+                    score = score_target_multi_view_candidate_v2(candidate, forward_domain, state)
+                    select_target_multi_view_candidate_v2(candidate, forward_domain, state, score=score)
             extension_wall = (
                 time.perf_counter() - extension_started if telemetry_callback is not None else 0.0
             )
@@ -1418,6 +1428,8 @@ def build_target_multi_view_repair_plan_v2(
                     f"active_shell_start={shell_start}; swaps={len(accepted)}; "
                     f"proposals={proposal_count}; proposal_full_state_copies=0; "
                     f"selected_prefix_state_mode={state_mode}; "
+                    f"rung_entry_state_mode={restore_mode}; "
+                    f"mvstate2_restore_count={restore_count}; "
                     f"zero_unique_shell_fraction={0.0 if not shell_size else initial_zero / shell_size:.6f}; "
                     f"inverse_mutation=false"
                 )
@@ -1441,6 +1453,8 @@ def build_target_multi_view_repair_plan_v2(
                     "domain_cumulative_proposal_count": proposal_count,
                     "accepted_swaps": len(accepted),
                     "selected_prefix_state_mode": state_mode,
+                    "rung_entry_state_mode": restore_mode,
+                    "mvstate2_restore_count": restore_count,
                     "rung_wall_seconds": rung_wall,
                     "rung_wall_hhmmss": format_progress_time(rung_wall),
                     "eta_hhmmss": "--:--:--",

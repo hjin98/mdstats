@@ -12,6 +12,7 @@ from mdstats.training_data.mvsel2_hardening_runtime import (
     _all_valid_rung_states,
     _build_repair_from_checkpoints,
     _highest_valid_resume_states,
+    _repair_checkpoint_state_provider,
 )
 from mdstats.training_data.target_coverage_sparse_forward_view import (
     target_coverage_sparse_forward_view,
@@ -147,6 +148,32 @@ def test_checkpoint_discovery_falls_back_from_corrupt_newest(tmp_path) -> None:
         store.close()
 
 
+def test_repair_checkpoint_provider_falls_back_on_corrupt_state(tmp_path) -> None:
+    reference, _index, forward = _forward_fixture()
+    policy = TargetMultiViewSelectorPolicyV2(target_sizes=(4, 8, 12, 16))
+    selection = build_target_multi_view_selection_plan_v2(
+        reference, forward, policy=policy
+    )
+    state = _state_for_prefix(
+        reference.domain("target"),
+        forward.domain("target"),
+        selection.domain("target").master_order[:4],
+    )
+    store = CampaignStore(tmp_path / "campaign.sqlite3")
+    try:
+        pointer = _write_checkpoint(store, reference, forward, policy, 4, state)
+        corrupt = dict(pointer)
+        corrupt["sha256"] = "0" * 64
+        store.put_record("target_multi_view_selection_state_v2:target:4", corrupt)
+        provider = _repair_checkpoint_state_provider(
+            store, reference, forward, policy
+        )
+        assert provider("target", 4) is None
+        assert provider("target", 8) is None
+    finally:
+        store.close()
+
+
 def _v2_redundant_selection():
     reference, index, legacy_selection = _redundant_selection()
     forward = target_coverage_sparse_forward_view(index)
@@ -207,14 +234,78 @@ def test_repair_checkpoint_reuse_stops_after_first_divergence(tmp_path) -> None:
     finally:
         store.close()
 
+    assert resumed.content_digest == baseline.content_digest
     assert _trace(resumed) == _trace(baseline)
     assert resumed.domain("target").repaired_master_order == baseline.domain("target").repaired_master_order
     first_divergent = next(i for i, text in enumerate(progress) if "swaps=0" not in text)
-    assert any("mvstate2_restore_count=" in text for text in progress[: first_divergent + 1])
+    assert any(
+        "rung_entry_state_mode=mvstate2" in text
+        for text in progress[: first_divergent + 1]
+    )
+
+    def restore_count(message: str) -> int:
+        field = next(
+            item for item in message.split("; ")
+            if item.startswith("mvstate2_restore_count=")
+        )
+        return int(field.split("=", 1)[1])
+
+    divergent_restore_count = restore_count(progress[first_divergent])
+    assert divergent_restore_count > 0
+    assert all(
+        restore_count(text) == divergent_restore_count
+        for text in progress[first_divergent:]
+    )
     assert all(
         "selected_prefix_state_mode=post_divergence_carried_state" in text
         for text in progress[first_divergent:]
     )
+
+
+def test_repair_checkpoint_reuse_avoids_selector_prefix_rescoring(monkeypatch) -> None:
+    reference, _index, forward, selection = _v2_redundant_selection()
+    policy = repair_v2.TargetMultiViewRepairPolicyV2()
+    checkpoint_states: dict[int, object] = {}
+    for rung in selection.domain("target").rungs:
+        if not rung.materializable:
+            continue
+        checkpoint_states[rung.target_size] = _state_for_prefix(
+            reference.domain("target"),
+            forward.domain("target"),
+            selection.domain("target").master_order[: rung.target_size],
+        )
+
+    original_score = repair_v2.score_target_multi_view_candidate_v2
+
+    def run(provider):
+        score_calls = 0
+
+        def counted_score(*args, **kwargs):
+            nonlocal score_calls
+            score_calls += 1
+            return original_score(*args, **kwargs)
+
+        monkeypatch.setattr(
+            repair_v2, "score_target_multi_view_candidate_v2", counted_score
+        )
+        plan = repair_v2.build_target_multi_view_repair_plan_v2(
+            reference,
+            forward,
+            selection,
+            policy=policy,
+            checkpoint_state_provider=provider,
+        )
+        monkeypatch.setattr(
+            repair_v2, "score_target_multi_view_candidate_v2", original_score
+        )
+        return plan, score_calls
+
+    cold, cold_score_calls = run(None)
+    resumed, resumed_score_calls = run(
+        lambda domain_id, size: checkpoint_states.get(size)
+    )
+    assert resumed.content_digest == cold.content_digest
+    assert resumed_score_calls < cold_score_calls
 
 
 def test_repair2_rejected_proposals_do_not_mutate_or_clone_state(monkeypatch) -> None:
