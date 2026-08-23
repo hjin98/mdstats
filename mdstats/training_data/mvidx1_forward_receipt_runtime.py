@@ -189,80 +189,111 @@ def read_target_coverage_sparse_index_forward_view_native_record_receipt_aware(
             mmap_threshold_bytes=mmap_threshold_bytes,
         )
 
-    domains: list[TargetCoverageSparseForwardDomainView] = []
-    for domain_payload in manifest.get("domains", ()):
-        families: list[TargetCoverageSparseForwardFamilyView] = []
-        for family_payload in domain_payload.get("families", ()):
-            arrays = family_payload.get("arrays")
+    packed_payload = manifest.get("packed_family_arrays")
+    if not isinstance(packed_payload, Mapping):
+        raise _store.TargetCoverageSparseIndexNativeStoreError(
+            "TARGET-DATA2C-MVIDX1 native v2 manifest is missing packed family arrays."
+        )
+    packed_roots: dict[str, Any] = {}
+    for name in ("candidate_offsets", "candidate_witnesses"):
+        descriptor = packed_payload.get(name)
+        if not isinstance(descriptor, Mapping):
+            raise _store.TargetCoverageSparseIndexNativeStoreError(
+                f"TARGET-DATA2C-MVIDX1 packed {name} descriptor is missing."
+            )
+        packed_roots[name] = _store._read_packed_npy(
+            data_root, descriptor, label=f"packed family {name}"
+        )
+
+    packed_cursors = {name: 0 for name in packed_roots}
+    try:
+        domains: list[TargetCoverageSparseForwardDomainView] = []
+        for domain_payload in manifest.get("domains", ()):
+            families: list[TargetCoverageSparseForwardFamilyView] = []
+            for family_payload in domain_payload.get("families", ()):
+                slices = family_payload.get("array_slices")
+                if not isinstance(slices, Mapping):
+                    raise _store.TargetCoverageSparseIndexNativeStoreError(
+                        "TARGET-DATA2C-MVIDX1 family packed-slice manifest is missing."
+                    )
+                family_arrays: dict[str, Any] = {}
+                for name in ("candidate_offsets", "candidate_witnesses"):
+                    descriptor = slices.get(name)
+                    if not isinstance(descriptor, Mapping):
+                        raise _store.TargetCoverageSparseIndexNativeStoreError(
+                            f"TARGET-DATA2C-MVIDX1 family {name} packed slice is missing."
+                        )
+                    if int(descriptor.get("start", -1)) != packed_cursors[name]:
+                        raise _store.TargetCoverageSparseIndexNativeStoreError(
+                            f"TARGET-DATA2C-MVIDX1 packed {name} slices are not canonical."
+                        )
+                    family_arrays[name] = _store._packed_slice(
+                        packed_roots[name],
+                        descriptor,
+                        label=name,
+                        validate_array_reference=False,
+                    )
+                    packed_cursors[name] = int(descriptor["stop"])
+                family = _forward_family_from_receipt(
+                    family_payload=family_payload,
+                    arrays=slices,
+                    candidate_offsets=family_arrays["candidate_offsets"],
+                    candidate_witnesses=family_arrays["candidate_witnesses"],
+                )
+                if int(family_payload.get("edge_count", family.edge_count)) != family.edge_count:
+                    raise _store.TargetCoverageSparseIndexNativeStoreError(
+                        "TARGET-DATA2C-MVIDX1 forward family edge count mismatch."
+                    )
+                families.append(family)
+
+            arrays = domain_payload.get("arrays")
             if not isinstance(arrays, Mapping):
                 raise _store.TargetCoverageSparseIndexNativeStoreError(
-                    "TARGET-DATA2C-MVIDX1 family array manifest is missing."
+                    "TARGET-DATA2C-MVIDX1 domain array manifest is missing."
                 )
-            candidate_offsets = _store._read_npy(
-                data_root,
-                arrays["candidate_offsets"],
-                label="candidate_offsets",
-                mmap_threshold_bytes=mmap_threshold_bytes,
-                validate_array_reference=False,
+            domains.append(
+                TargetCoverageSparseForwardDomainView(
+                    label_domain_id=str(domain_payload["label_domain_id"]),
+                    frame_domain_digest=str(domain_payload["frame_domain_digest"]),
+                    mvidx1_domain_digest=str(domain_payload["content_digest"]),
+                    candidate_count=int(domain_payload["candidate_count"]),
+                    families=tuple(families),
+                    obligations=tuple(
+                        TargetCoverageHardObligation.from_dict(item)
+                        for item in domain_payload["obligations"]
+                    ),
+                    candidate_obligation_offsets=_store._read_npy(
+                        data_root,
+                        arrays["candidate_obligation_offsets"],
+                        label="candidate_obligation_offsets",
+                        mmap_threshold_bytes=mmap_threshold_bytes,
+                    ),
+                    candidate_obligations=_store._read_npy(
+                        data_root,
+                        arrays["candidate_obligations"],
+                        label="candidate_obligations",
+                        mmap_threshold_bytes=mmap_threshold_bytes,
+                    ),
+                    correlation_unit_ids=tuple(
+                        str(item) for item in domain_payload["correlation_unit_ids"]
+                    ),
+                    candidate_correlation_unit_codes=_store._read_npy(
+                        data_root,
+                        arrays["candidate_correlation_unit_codes"],
+                        label="candidate_correlation_unit_codes",
+                        mmap_threshold_bytes=mmap_threshold_bytes,
+                    ),
+                )
             )
-            candidate_witnesses = _store._read_npy(
-                data_root,
-                arrays["candidate_witnesses"],
-                label="candidate_witnesses",
-                mmap_threshold_bytes=mmap_threshold_bytes,
-                validate_array_reference=False,
-            )
-            family = _forward_family_from_receipt(
-                family_payload=family_payload,
-                arrays=arrays,
-                candidate_offsets=candidate_offsets,
-                candidate_witnesses=candidate_witnesses,
-            )
-            if int(family_payload.get("edge_count", family.edge_count)) != family.edge_count:
+        for name, root_array in packed_roots.items():
+            if packed_cursors[name] != int(root_array.size):
                 raise _store.TargetCoverageSparseIndexNativeStoreError(
-                    "TARGET-DATA2C-MVIDX1 forward family edge count mismatch."
+                    f"TARGET-DATA2C-MVIDX1 packed {name} contains unreferenced trailing data."
                 )
-            families.append(family)
-
-        arrays = domain_payload.get("arrays")
-        if not isinstance(arrays, Mapping):
-            raise _store.TargetCoverageSparseIndexNativeStoreError(
-                "TARGET-DATA2C-MVIDX1 domain array manifest is missing."
-            )
-        domains.append(
-            TargetCoverageSparseForwardDomainView(
-                label_domain_id=str(domain_payload["label_domain_id"]),
-                frame_domain_digest=str(domain_payload["frame_domain_digest"]),
-                mvidx1_domain_digest=str(domain_payload["content_digest"]),
-                candidate_count=int(domain_payload["candidate_count"]),
-                families=tuple(families),
-                obligations=tuple(
-                    TargetCoverageHardObligation.from_dict(item)
-                    for item in domain_payload["obligations"]
-                ),
-                candidate_obligation_offsets=_store._read_npy(
-                    data_root,
-                    arrays["candidate_obligation_offsets"],
-                    label="candidate_obligation_offsets",
-                    mmap_threshold_bytes=mmap_threshold_bytes,
-                ),
-                candidate_obligations=_store._read_npy(
-                    data_root,
-                    arrays["candidate_obligations"],
-                    label="candidate_obligations",
-                    mmap_threshold_bytes=mmap_threshold_bytes,
-                ),
-                correlation_unit_ids=tuple(
-                    str(item) for item in domain_payload["correlation_unit_ids"]
-                ),
-                candidate_correlation_unit_codes=_store._read_npy(
-                    data_root,
-                    arrays["candidate_correlation_unit_codes"],
-                    label="candidate_correlation_unit_codes",
-                    mmap_threshold_bytes=mmap_threshold_bytes,
-                ),
-            )
-        )
+    except Exception:
+        for array in packed_roots.values():
+            _store._close_memmap(array)
+        raise
 
     result = TargetCoverageSparseForwardIndexView(
         dataset_id=str(manifest["dataset_id"]),

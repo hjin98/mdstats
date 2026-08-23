@@ -73,25 +73,29 @@ def test_native_forward_reader_never_opens_inverse_arrays(tmp_path, monkeypatch)
         index, records_root
     )
     opened: list[str] = []
+    packed_opened: list[str] = []
     original = mvidx_store._read_npy
+    original_packed = mvidx_store._read_packed_npy
 
     def guarded(*args, label, **kwargs):
         opened.append(label)
-        assert label not in {
-            "witness_offsets",
-            "witness_candidates",
-            "obligation_offsets",
-            "obligation_candidates",
-        }
+        assert label not in {"obligation_offsets", "obligation_candidates"}
         return original(*args, label=label, **kwargs)
 
+    def guarded_packed(*args, label, **kwargs):
+        packed_opened.append(label)
+        assert "witness_offsets" not in label
+        assert "witness_candidates" not in label
+        return original_packed(*args, label=label, **kwargs)
+
     monkeypatch.setattr(mvidx_store, "_read_npy", guarded)
+    monkeypatch.setattr(mvidx_store, "_read_packed_npy", guarded_packed)
     restored = mvidx_store.read_target_coverage_sparse_index_forward_view_native_record(
         pointer, records_root.parent, mmap_threshold_bytes=0
     )
     assert restored.mvidx1_content_digest == index.content_digest
-    assert "candidate_offsets" in opened
-    assert "candidate_witnesses" in opened
+    assert "packed family candidate_offsets" in packed_opened
+    assert "packed family candidate_witnesses" in packed_opened
 
 
 def test_resumed_selector_reconstructs_exact_cold_authority() -> None:

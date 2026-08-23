@@ -56,7 +56,8 @@ TARGET_COVERAGE_HARD_OBLIGATION_SCHEMA = "mdstats.target-coverage-hard-obligatio
 TARGET_COVERAGE_SPARSE_DOMAIN_SCHEMA = "mdstats.target-coverage-sparse-domain-index.v1"
 TARGET_COVERAGE_SPARSE_INDEX_SCHEMA = "mdstats.target-coverage-sparse-index.v1"
 TARGET_COVERAGE_SPARSE_INDEX_VERSION = "mdstats.target-data2c-mvidx1.coverage-index.2026-08.v1"
-TARGET_COVERAGE_SPARSE_INDEX_PERSISTENCE_VERSION = "mdstats.target-data2c-mvidx1.native-persistence.2026-08.v1"
+TARGET_COVERAGE_SPARSE_INDEX_LEGACY_PERSISTENCE_VERSION = "mdstats.target-data2c-mvidx1.native-persistence.2026-08.v1"
+TARGET_COVERAGE_SPARSE_INDEX_PERSISTENCE_VERSION = "mdstats.target-data2c-mvidx1.native-persistence.2026-08.v2"
 
 _UINT32_MAX = int(np.iinfo(np.uint32).max)
 _INT32_MAX = int(np.iinfo(np.int32).max)

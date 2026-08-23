@@ -129,7 +129,7 @@ def test_mvidx1_native_store_detects_tampering(tmp_path: Path) -> None:
     pointer = mdstats.write_target_coverage_sparse_index_native_record(index, records)
     manifest = tmp_path / pointer["relative_path"]
     payload = json.loads(manifest.read_text())
-    family_array = payload["domains"][0]["families"][0]["arrays"]["witness_candidates"]
+    family_array = payload["packed_family_arrays"]["witness_candidates"]
     array_path = manifest.parent / family_array["relative_path"]
     with array_path.open("r+b") as handle:
         handle.seek(-1, 2)
@@ -175,7 +175,7 @@ def test_mvidx1_native_restore_receipt_skips_and_stat_change_revalidates(
 
         manifest = tmp_path / pointer["relative_path"]
         payload = json.loads(manifest.read_text())
-        descriptor = payload["domains"][0]["families"][0]["arrays"]["witness_candidates"]
+        descriptor = payload["packed_family_arrays"]["witness_candidates"]
         array_path = manifest.parent / descriptor["relative_path"]
         stat = array_path.stat()
         os.utime(array_path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1))
@@ -409,7 +409,7 @@ def test_mvidx1_native_store_hardlinks_whole_out_of_core_npy(
     pointer = mdstats.write_target_coverage_sparse_index_native_record(index, records)
     manifest = tmp_path / pointer["relative_path"]
     payload = json.loads(manifest.read_text(encoding="utf-8"))
-    descriptor = payload["domains"][0]["families"][0]["arrays"]["candidate_witnesses"]
+    descriptor = payload["packed_family_arrays"]["candidate_witnesses"]
     durable = manifest.parent / descriptor["relative_path"]
     assert source.samefile(durable)
 
@@ -493,3 +493,77 @@ def test_mvidx1_bounded_producer_refills_ready_queue_without_queue_full(
     )
     assert sum(len(domain.families) for domain in actual.domains) > 1
     assert actual.content_digest == expected.content_digest
+
+
+def test_mvidx1_packed_store_is_bounded_under_low_file_descriptor_limit(tmp_path: Path) -> None:
+    import gc
+    import resource
+    from dataclasses import replace
+
+    if not Path("/proc/self/fd").is_dir():
+        pytest.skip("file-descriptor regression requires procfs")
+    soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+    baseline_fds = len(os.listdir("/proc/self/fd"))
+    test_limit = max(64, baseline_fds + 32)
+    if hard != resource.RLIM_INFINITY and hard < test_limit:
+        pytest.skip("hard file-descriptor limit is too small for controlled regression")
+
+    _, _, _, base = _index()
+    source_domain = base.domains[0]
+    source_family = source_domain.families[0]
+    families = tuple(
+        replace(source_family, family_id=f"target_label:fd-{position:03d}")
+        for position in range(96)
+    )
+    index = replace(base, domains=(replace(source_domain, families=families),))
+
+    resource.setrlimit(resource.RLIMIT_NOFILE, (test_limit, hard))
+    try:
+        pointer = mdstats.write_target_coverage_sparse_index_native_record(
+            index, tmp_path / "records"
+        )
+        manifest_path = tmp_path / pointer["relative_path"]
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        assert set(manifest["packed_family_arrays"]) == {
+            "witness_offsets",
+            "witness_candidates",
+            "candidate_offsets",
+            "candidate_witnesses",
+        }
+        assert len(manifest["domains"][0]["families"]) == 96
+
+        restored = mdstats.read_target_coverage_sparse_index_native_record(
+            pointer, tmp_path, mmap_threshold_bytes=0
+        )
+        assert restored.content_digest == index.content_digest
+        assert len(restored.domains[0].families) == 96
+        full_restore_fds = len(os.listdir("/proc/self/fd"))
+        assert full_restore_fds <= baseline_fds + 16
+
+        del restored
+        gc.collect()
+        forward = mvidx_store.read_target_coverage_sparse_index_forward_view_native_record(
+            pointer, tmp_path, mmap_threshold_bytes=0
+        )
+        assert forward.mvidx1_content_digest == index.content_digest
+        assert len(forward.domains[0].families) == 96
+        forward_restore_fds = len(os.listdir("/proc/self/fd"))
+        assert forward_restore_fds <= baseline_fds + 12
+    finally:
+        resource.setrlimit(resource.RLIMIT_NOFILE, (soft, hard))
+
+
+def test_mvidx1_legacy_per_family_pointer_is_rejected_before_restore(tmp_path: Path) -> None:
+    _, _, _, index = _index()
+    pointer = mdstats.write_target_coverage_sparse_index_native_record(
+        index, tmp_path / "records"
+    )
+    legacy = dict(pointer)
+    legacy["persistence_version"] = mvidx.TARGET_COVERAGE_SPARSE_INDEX_LEGACY_PERSISTENCE_VERSION
+    payload = {key: value for key, value in legacy.items() if key != "pointer_digest"}
+    legacy["pointer_digest"] = common.digest(payload)
+    with pytest.raises(
+        mdstats.TargetCoverageSparseIndexNativeStoreError,
+        match="legacy per-family native persistence",
+    ):
+        mdstats.read_target_coverage_sparse_index_native_record(legacy, tmp_path)

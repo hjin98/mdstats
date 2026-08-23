@@ -122,30 +122,36 @@ def test_mvsel2_native_forward_restore_never_opens_inverse_arrays(
         index, tmp_path / "records"
     )
     labels: list[str] = []
+    packed_labels: list[str] = []
     original = mvidx_store._read_npy
+    original_packed = mvidx_store._read_packed_npy
 
     def sentinel(*args, label: str, **kwargs):
         labels.append(label)
-        if label in {
-            "witness_offsets",
-            "witness_candidates",
-            "obligation_offsets",
-            "obligation_candidates",
-        }:
+        if label in {"obligation_offsets", "obligation_candidates"}:
             raise AssertionError(f"inverse array opened: {label}")
         return original(*args, label=label, **kwargs)
 
+    def packed_sentinel(*args, label: str, **kwargs):
+        packed_labels.append(label)
+        if "witness_offsets" in label or "witness_candidates" in label:
+            raise AssertionError(f"inverse packed array opened: {label}")
+        return original_packed(*args, label=label, **kwargs)
+
     monkeypatch.setattr(mvidx_store, "_read_npy", sentinel)
+    monkeypatch.setattr(mvidx_store, "_read_packed_npy", packed_sentinel)
     restored = mvidx_store.read_target_coverage_sparse_index_forward_view_native_record(
         pointer, tmp_path, mmap_threshold_bytes=0
     )
     assert restored.mvidx1_content_digest == index.content_digest
     assert set(labels) == {
-        "candidate_offsets",
-        "candidate_witnesses",
         "candidate_obligation_offsets",
         "candidate_obligations",
         "candidate_correlation_unit_codes",
+    }
+    assert set(packed_labels) == {
+        "packed family candidate_offsets",
+        "packed family candidate_witnesses",
     }
     for family in restored.domain("target").families:
         root = family.candidate_witnesses

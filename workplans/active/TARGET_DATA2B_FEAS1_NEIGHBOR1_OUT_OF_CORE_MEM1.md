@@ -20,9 +20,9 @@ Remove the production FEAS1/NEIGHBOR1 failure in which completed forward-CSR fam
 
 ## Scope
 
-Included: `work_queue.py`, exact-neighborhood stream/builders, FEAS1 global scheduler, native NEIGHBOR1 persistence, campaign FEAS1 staging/handoff, focused tests, and owning NEIGHBOR1/PARCORE1 specifications.
+Included: `work_queue.py`, exact-neighborhood stream/builders, FEAS1 global scheduler, native NEIGHBOR1 persistence, campaign FEAS1 staging/handoff, MVIDX1 native persistence/restore descriptor scaling, focused tests, and the owning NEIGHBOR1/PARCORE1/MVIDX1 specifications.
 
-Excluded: target-size-v5 scientific selection policy, 3/10/30 halving, MVIDX/MVSEL algorithms, GPU qualification, and unrelated storage formats.
+Excluded: target-size-v5 scientific selection policy, 3/10/30 halving, MVIDX/MVSEL scientific algorithms, GPU qualification, and unrelated storage formats.
 
 ## Gates
 
@@ -87,10 +87,25 @@ Excluded: target-size-v5 scientific selection policy, 3/10/30 halving, MVIDX/MVS
 
 **Acceptance:** a 96-family fixture completes under a low descriptor ceiling where the preceding out-of-core patch deterministically fails with `EMFILE`; restored scientific/store digests remain unchanged and open mapped-file descriptors remain bounded independently of family count.
 
+### G5 — MVIDX1 native file-descriptor scaling closeout
+
+**Goal:** remove the per-family mmap descriptor ceiling from full MVIDX1 restart and forward-only MVSEL2/REPAIR2 restore.
+
+**Work:**
+
+- Advance reconstructible MVIDX1 native persistence to packed v2 storage with four shared family-array roots: witness offsets, witness candidates, candidate offsets, and candidate witnesses.
+- Represent each family as authenticated canonical slices of those roots while preserving every existing per-family scientific array reference and content digest.
+- Make full restore map four family roots independent of family count; make forward-only restore map only the two candidate-oriented roots.
+- Reject legacy v1 per-family pointers before sidecar validation so production restart rebuilds MVIDX1 from the persisted NEIGHBOR1 authority instead of walking ~100 GiB and eventually failing with `EMFILE`.
+- Preserve receipt-hit behavior, cache advice, tamper rejection, and exact MVIDX1/MVSEL2 scientific identity.
+- Add a constrained-`RLIMIT_NOFILE` 96-family regression covering full and forward-only native restore.
+
+**Acceptance:** full and forward-only restore remain digest-exact under a low descriptor ceiling; family-array mapped descriptors are O(1) in family count; legacy v1 cache state fails fast into the existing reconstructible-cache rebuild path; no target-size or selector semantics change.
+
 ## Closeout
 
 When all gates pass, archive this workplan only after the implementation is accepted; retain it active in the implementation patch so review can trace the transition.
 
 ## Implementation result
 
-All implementation gates are complete in this candidate and await acceptance. The aggregate-memory regression uses 266 exact families under a 70,000-byte explicit stage RAM budget: the untouched uploaded baseline fails from PARCORE1 memory admission after retained final CSR accumulates, while this implementation completes with 70,224 bytes of final CSR payload because the payload is file-backed and only bounded finalization scratch is admitted. Focused PARCORE1, FEAS1, NEIGHBOR1 native-persistence, and MVIDX cache-consumer tests pass with the supplied dependency bundle (ASE source used directly from the bundle). Follow-up G4 is also complete: the preceding candidate deterministically reproduces `EMFILE` under the constrained descriptor regression, while this candidate completes FEAS1 build and packed native reload with bounded descriptor use. Native persistence is advanced to v2 packed-array storage with v1 read compatibility. No GPU qualification was attempted or claimed.
+All implementation gates are complete in this candidate and await acceptance. The aggregate-memory regression uses 266 exact families under a 70,000-byte explicit stage RAM budget: the untouched uploaded baseline fails from PARCORE1 memory admission after retained final CSR accumulates, while this implementation completes with 70,224 bytes of final CSR payload because the payload is file-backed and only bounded finalization scratch is admitted. Focused PARCORE1, FEAS1, NEIGHBOR1 native-persistence, and MVIDX cache-consumer tests pass with the supplied dependency bundle (ASE source used directly from the bundle). Follow-up G4 is also complete: the preceding candidate deterministically reproduces `EMFILE` under the constrained descriptor regression, while this candidate completes FEAS1 build and packed native reload with bounded descriptor use. NEIGHBOR1 native persistence is advanced to v2 packed-array storage with v1 read compatibility. G5 closes the analogous MVIDX1 restart defect: native persistence v2 packs four family-array roots, full/forward restore use O(1) family mappings, and legacy per-family MVIDX1 pointers are rejected before expensive validation so the existing campaign restart path rebuilds this reconstructible cache from NEIGHBOR1. No GPU qualification was attempted or claimed.
