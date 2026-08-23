@@ -227,6 +227,9 @@ The release gate must cover:
 12. descriptor-summary reuse across overlapping DATA7 domains;
 13. shared DATA7 reuse across training variants and process restarts;
 14. no duplicate parse/hash pass when verified DATA7 immediately feeds DATA8.
+15. target-size candidate-prefix planning scales with unique domain/size pairs rather than development-frame count times optimizer variants;
+16. target-size size changes reuse an authenticated selection-invariant DATA7 fitted core while producing the exact same size-specific DATA7 bundle digest as a clean refit;
+17. current DATA7 shared-cache recipe identity excludes DATA8-only evaluation membership and target-study outcome state, with legacy v1 recipe reads preserved.
 
 # 11. Scope of the current implementation
 

@@ -34,6 +34,7 @@ from mdstats.training_data.target_size_study import (
     attach_epoch_3_outcomes,
     build_target_size_study,
     materialize_candidate_prefix,
+    materialize_candidate_prefix_matrix,
     materialize_selected_prefix,
 )
 
@@ -74,6 +75,33 @@ def study(qualified=FIXED_TARGET_SIZES, lengths=(20000, 20000), *, policy=None):
     repair = Repair(lengths)
     qual = Qual(repair, qualified)
     return repair, qual, build_target_size_study(repair, qual, policy=policy)
+
+
+def test_bulk_candidate_prefix_materialization_matches_scalar_authority(monkeypatch):
+    repair, _, plan = study((512, 1024, 2048), lengths=(4096, 4096))
+    import mdstats.training_data.target_size_study as module
+
+    calls = 0
+    original = module._prefix_digest
+
+    def counted(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(module, "_prefix_digest", counted)
+    matrix = materialize_candidate_prefix_matrix(
+        plan,
+        repair2=repair,
+        label_domain_ids=("d0", "d1", "d0"),
+        target_sizes=(512, 1024, 512),
+    )
+    assert calls == 4
+    assert set(matrix) == {
+        ("d0", 512), ("d0", 1024), ("d1", 512), ("d1", 1024)
+    }
+    assert matrix[("d0", 512)] == tuple(repair.domain("d0").repaired_master_order[:512])
+    assert matrix[("d1", 1024)] == tuple(repair.domain("d1").repaired_master_order[:1024])
 
 
 def _score(scores, size: int, seed: int) -> float:

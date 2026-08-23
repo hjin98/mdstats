@@ -670,6 +670,7 @@ class TargetSizeStudyPlan:
     comparison_failures: tuple[tuple[int, int, tuple[str, ...]], ...] = ()
     authority_version: str = TARGET_SIZE_STUDY_VERSION
     _content_digest_cache: str = field(default="", init=False, repr=False, compare=False)
+    _candidate_authority_digest_cache: str = field(default="", init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if not str(self.dataset_id).strip():
@@ -737,15 +738,19 @@ class TargetSizeStudyPlan:
 
     @property
     def candidate_authority_digest(self) -> str:
-        return digest({
-            "schema": TARGET_SIZE_CANDIDATE_AUTHORITY_SCHEMA,
-            "dataset_id": self.dataset_id,
-            "repair2_authority_digest": self.repair2_authority_digest,
-            "mvqual_authority_digest": self.mvqual_authority_digest,
-            "policy_digest": self.policy.policy_digest,
-            "candidate_digests": [item.content_digest for item in self.candidates],
-            "qualified_sizes": list(self.qualified_sizes),
-        })
+        cached = self._candidate_authority_digest_cache
+        if not cached:
+            cached = digest({
+                "schema": TARGET_SIZE_CANDIDATE_AUTHORITY_SCHEMA,
+                "dataset_id": self.dataset_id,
+                "repair2_authority_digest": self.repair2_authority_digest,
+                "mvqual_authority_digest": self.mvqual_authority_digest,
+                "policy_digest": self.policy.policy_digest,
+                "candidate_digests": [item.content_digest for item in self.candidates],
+                "qualified_sizes": list(self.qualified_sizes),
+            })
+            object.__setattr__(self, "_candidate_authority_digest_cache", cached)
+        return cached
 
     @property
     def complete(self) -> bool:
@@ -1035,6 +1040,64 @@ def materialize_candidate_prefix(
             "REPAIR2 prefix changed after target-size study authentication."
         )
     return uids
+
+
+def materialize_candidate_prefix_matrix(
+    plan: TargetSizeStudyPlan,
+    *,
+    repair2: Any,
+    label_domain_ids: Sequence[str],
+    target_sizes: Sequence[int],
+) -> dict[tuple[str, int], tuple[str, ...]]:
+    """Materialize unique authenticated REPAIR2 prefixes in one authority pass.
+
+    The scalar helper remains the public single-prefix convenience API.  This
+    bulk path exists for screening/materialization planning so REPAIR2 identity
+    and domain lookup are not repeated once per optimizer variant or frame UID.
+    """
+
+    if (
+        validate_digest(repair2.content_digest, name="repair2.content_digest")
+        != plan.repair2_authority_digest
+    ):
+        raise TrainingDataInputError(
+            "REPAIR2 authority does not match target-size study."
+        )
+    labels = tuple(dict.fromkeys(str(value) for value in label_domain_ids))
+    sizes = tuple(dict.fromkeys(int(value) for value in target_sizes))
+    candidates = {size: plan.candidate(size) for size in sizes}
+    expected_prefix_by_size = {
+        size: dict(candidate.domain_prefix_digests)
+        for size, candidate in candidates.items()
+    }
+    domains: dict[str, Any] = {}
+    for label in labels:
+        try:
+            domains[label] = repair2.domain(label)
+        except (KeyError, AttributeError) as exc:
+            raise TrainingDataInputError(
+                f"Unknown REPAIR2 label domain {label!r}."
+            ) from exc
+
+    result: dict[tuple[str, int], tuple[str, ...]] = {}
+    for label in labels:
+        domain = domains[label]
+        repaired_order = tuple(str(value) for value in domain.repaired_master_order)
+        for size in sizes:
+            candidate = candidates[size]
+            uids = repaired_order[: candidate.target_size]
+            if len(uids) != candidate.target_size:
+                raise TrainingDataInputError(
+                    f"REPAIR2 cannot materialize n{candidate.target_size} for {label}."
+                )
+            prefix = _prefix_digest(plan.dataset_id, domain, candidate.target_size)
+            expected = expected_prefix_by_size[size].get(label)
+            if expected is None or prefix[1] != expected:
+                raise TrainingDataInputError(
+                    "REPAIR2 prefix changed after target-size study authentication."
+                )
+            result[(label, size)] = uids
+    return result
 
 
 def materialize_selected_prefix(
@@ -1382,7 +1445,7 @@ __all__ = [
     "TargetSizeStudyPolicy", "TargetSizeStudyCandidate", "TargetSizeTrainingEvidence",
     "TargetSizeTrajectoryFailureEvidence", "TargetSizeStageOutcome", "TargetSizeStudyPlan",
     "build_target_size_study", "validate_target_size_study_authority",
-    "materialize_candidate_prefix", "materialize_selected_prefix",
+    "materialize_candidate_prefix", "materialize_candidate_prefix_matrix", "materialize_selected_prefix",
     "attach_epoch_3_outcomes", "attach_epoch_10_outcomes", "attach_epoch_30_outcomes",
     "attach_epoch_3_evidence", "attach_epoch_10_evidence", "attach_epoch_30_evidence",
     "_equivalence_aware_target_order",

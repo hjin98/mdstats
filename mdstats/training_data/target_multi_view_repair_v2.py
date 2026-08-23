@@ -186,10 +186,15 @@ class TargetMultiViewRepairDomainPlanV2:
     repaired_master_order: tuple[str, ...]
     rungs: tuple[TargetMultiViewRepairRung, ...]
     total_swaps: int
+    _content_digest_cache: str = field(default="", init=False, repr=False, compare=False)
 
     @property
     def content_digest(self) -> str:
-        return digest(self.to_dict(include_digest=False))
+        cached = self._content_digest_cache
+        if not cached:
+            cached = digest(self.to_dict(include_digest=False))
+            object.__setattr__(self, "_content_digest_cache", cached)
+        return cached
 
     def to_dict(self, *, include_digest: bool = True) -> dict[str, Any]:
         payload = {
@@ -236,6 +241,7 @@ class TargetMultiViewRepairPlanV2:
     _domain_by_id: dict[str, TargetMultiViewRepairDomainPlanV2] = field(
         default_factory=dict, init=False, repr=False, compare=False
     )
+    _content_digest_cache: str = field(default="", init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         domains = tuple(sorted(self.domains, key=lambda item: item.label_domain_id))
@@ -255,7 +261,11 @@ class TargetMultiViewRepairPlanV2:
 
     @property
     def content_digest(self) -> str:
-        return digest(self.to_dict(include_domains=False, include_digest=False))
+        cached = self._content_digest_cache
+        if not cached:
+            cached = digest(self.to_dict(include_domains=False, include_digest=False))
+            object.__setattr__(self, "_content_digest_cache", cached)
+        return cached
 
     def to_dict(self, *, include_domains: bool = True, include_digest: bool = True) -> dict[str, Any]:
         payload = {

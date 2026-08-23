@@ -492,6 +492,76 @@ def test_shared_data7_cache_reuses_scientific_artifacts_across_variants(
     assert len(restored_shared) == len(first.checkpoint.plan.domains)
 
 
+def test_data7_fitted_core_is_reused_across_selection_sizes_with_exact_bundles(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    inputs = _fixture(tmp_path)
+    import mdstats.training_data.data7_bundle as data7_module
+    import mdstats.training_data.production_materialization as materialization_module
+
+    monkeypatch.setattr(
+        materialization_module, "DATA7_FIT_CORE_REUSE_MIN_DOMAIN_FRAMES", 0
+    )
+
+    original_fit = data7_module.fit_feature_metric
+    fit_calls = 0
+
+    def counted_fit(*args, **kwargs):
+        nonlocal fit_calls
+        fit_calls += 1
+        return original_fit(*args, **kwargs)
+
+    monkeypatch.setattr(data7_module, "fit_feature_metric", counted_fit)
+    first_plan = replace(
+        inputs[7],
+        selection_budget_policy=mdstats.SelectionBudgetPolicy(target_sizes=(4,)),
+    )
+    second_plan = replace(
+        inputs[7],
+        selection_budget_policy=mdstats.SelectionBudgetPolicy(target_sizes=(8,)),
+    )
+    cache = tmp_path / "shared-core-cache"
+    shared: dict[str, object] = {}
+    shared_cores: dict[str, object] = {}
+    policy = mdstats.ProductionMaterializationExecutionPolicy(materialize_data8=False)
+
+    first = mdstats.run_restartable_production_materialization(
+        *inputs[:7],
+        first_plan,
+        tmp_path / "size-four",
+        shared_data7_cache_directory=cache,
+        shared_data7_artifacts=shared,
+        shared_data7_fit_cores=shared_cores,
+        execution_policy=policy,
+    )
+    first_fit_calls = fit_calls
+    assert first_fit_calls == len(first_plan.domains)
+
+    second = mdstats.run_restartable_production_materialization(
+        *inputs[:7],
+        second_plan,
+        tmp_path / "size-eight-reused",
+        shared_data7_cache_directory=cache,
+        shared_data7_artifacts={},
+        shared_data7_fit_cores={},
+        execution_policy=policy,
+    )
+    assert fit_calls == first_fit_calls
+
+    reference = mdstats.run_restartable_production_materialization(
+        *inputs[:7],
+        second_plan,
+        tmp_path / "size-eight-reference",
+        execution_policy=policy,
+    )
+    assert fit_calls == first_fit_calls + len(second_plan.domains)
+    assert second.data7_bundle_digests == reference.data7_bundle_digests
+    assert [bundle.content_digest for bundle in second.load_data7_bundles()] == [
+        bundle.content_digest for bundle in reference.load_data7_bundles()
+    ]
+    assert first.data7_bundle_digests != second.data7_bundle_digests
+
+
 def test_promoted_data7_artifacts_can_seed_optimizer_only_variant_reuse(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -784,6 +854,67 @@ def test_prescribed_target_prefixes_drive_final_and_cv_data7_without_reselection
     }
 
 
+def test_prescribed_target_size_fitted_core_reuse_matches_full_refit_exactly(
+    tmp_path: Path,
+) -> None:
+    sources, frames, frame_data, data4, data5, data6, sweep, plan, _ = _fixture(tmp_path)
+    domain = plan.domains[0]
+    common = dict(
+        feature_metric_policy=plan.feature_metric_policy,
+        atomic_reference_policy=plan.atomic_reference_policy,
+        objective_policy=plan.objective_policy,
+        configuration_weight_policy=plan.configuration_weight_policy,
+        checkpoint_metric_policy=plan.checkpoint_metric_policy,
+        mace_descriptor_root=sweep.root_directory,
+    )
+    carrier = mdstats.build_data7_preparation_bundle(
+        sources,
+        frames,
+        frame_data,
+        data4,
+        data5,
+        data6,
+        domain,
+        selection_budget_policy=mdstats.SelectionBudgetPolicy(target_sizes=(4,)),
+        prescribed_selection_frame_uids=tuple(domain.frame_uids[:4]),
+        prescribed_selection_role="target_size_candidate",
+        **common,
+    )
+    reused = mdstats.build_data7_preparation_bundle(
+        sources,
+        frames,
+        frame_data,
+        data4,
+        data5,
+        data6,
+        domain,
+        selection_budget_policy=mdstats.SelectionBudgetPolicy(target_sizes=(8,)),
+        prescribed_selection_frame_uids=tuple(domain.frame_uids[:8]),
+        prescribed_selection_role="target_size_candidate",
+        reuse_fitted_components_from=carrier,
+        **common,
+    )
+    reference = mdstats.build_data7_preparation_bundle(
+        sources,
+        frames,
+        frame_data,
+        data4,
+        data5,
+        data6,
+        domain,
+        selection_budget_policy=mdstats.SelectionBudgetPolicy(target_sizes=(8,)),
+        prescribed_selection_frame_uids=tuple(domain.frame_uids[:8]),
+        prescribed_selection_role="target_size_candidate",
+        **common,
+    )
+    assert reused.fitted_metric.content_digest == reference.fitted_metric.content_digest
+    assert reused.atomic_reference_fit.content_digest == reference.atomic_reference_fit.content_digest
+    assert reused.training_weights.content_digest == reference.training_weights.content_digest
+    assert reused.selection_plan.content_digest == reference.selection_plan.content_digest
+    assert reused.coverage_report.content_digest == reference.coverage_report.content_digest
+    assert reused.content_digest == reference.content_digest
+
+
 def test_data7_parallel_domains_preserve_serial_content(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     inputs = _fixture(tmp_path)
     import mdstats.training_data.production_materialization as module
@@ -892,14 +1023,21 @@ def test_data7_shared_cache_accepts_legacy_flat_generations(
     )
     legacy_cache = tmp_path / "legacy-data7"
     legacy_cache.mkdir()
+    domains = {
+        domain.content_digest: domain for domain in seed.checkpoint.plan.domains
+    }
     for metadata_path in current_cache.glob("*/*/cache.json"):
         metadata = json.loads(metadata_path.read_text())
-        recipe_digest = metadata["recipe_digest"]
-        artifact_name = f"{recipe_digest}.data7.zip"
+        domain = domains[metadata["domain_digest"]]
+        legacy_recipe_digest = module._data7_recipe_digest_v1(
+            seed.checkpoint.plan, domain
+        )
+        artifact_name = f"{legacy_recipe_digest}.data7.zip"
         shutil.copy2(metadata_path.parent / metadata["artifact_name"], legacy_cache / artifact_name)
         metadata["schema"] = module.SHARED_DATA7_ARTIFACT_V2_SCHEMA
+        metadata["recipe_digest"] = legacy_recipe_digest
         metadata["artifact_name"] = artifact_name
-        (legacy_cache / f"{recipe_digest}.manifest.json").write_text(
+        (legacy_cache / f"{legacy_recipe_digest}.manifest.json").write_text(
             json.dumps(metadata, sort_keys=True, separators=(",", ":")) + "\n"
         )
     assert len(tuple(legacy_cache.glob("*.manifest.json"))) == len(seed.checkpoint.plan.domains)

@@ -9038,6 +9038,7 @@ def _prepare_materialization(
         return foundation_prediction_energy
 
     shared_data7_artifacts: dict[str, Any] = {}
+    shared_data7_fit_cores: dict[str, Any] = {}
     shared_data7_cache = paths.internal / "data7-cache"
     shared_data8_fixed_file_cache = paths.internal / "data8-fixed-cache"
     cross_validation_cache: dict[tuple[int, int], tuple[Any, ...]] = {}
@@ -9047,6 +9048,48 @@ def _prepare_materialization(
         for domain in coverage_reference.domains
     }
     policy_generation = _training_policy_generation(cfg)
+    target_prefix_matrix: dict[tuple[str, int], tuple[str, ...]] = {}
+    target_evaluation_frames_by_label: dict[str, tuple[str, ...]] = {}
+    if policy_generation == "train2":
+        planning_start = time.monotonic()
+        print(
+            "[DATA7 planning] materializing authenticated target-size prefixes once",
+            flush=True,
+        )
+        target_sizes = tuple(sorted({
+            int(variant.selection_size) for variant in variants
+        } | {max(int(value) for value in target_size_study.qualified_sizes)}))
+        target_labels = tuple(sorted({
+            str(domain.label_domain_id) for domain in coverage_reference.domains
+        }))
+        target_prefix_matrix = mdstats.materialize_candidate_prefix_matrix(
+            target_size_study,
+            repair2=target_multi_view_repair,
+            label_domain_ids=target_labels,
+            target_sizes=target_sizes,
+        )
+        if target_size_study.outcome != mdstats.OUTCOME_SELECTED:
+            role_freeze = store.get_record(
+                "target_data_role_freeze", mdstats.TargetDataRoleFreeze
+            )
+            maximum_qualified_size = max(
+                int(value) for value in target_size_study.qualified_sizes
+            )
+            for label in target_labels:
+                maximum_prefix = frozenset(
+                    target_prefix_matrix[(label, maximum_qualified_size)]
+                )
+                target_evaluation_frames_by_label[label] = tuple(
+                    uid
+                    for uid in role_freeze.domain(label).size_development_frame_uids
+                    if uid not in maximum_prefix
+                )
+        _ok(
+            "target-size planning authority prepared once; "
+            f"prefixes={len(target_prefix_matrix)}; "
+            f"evaluation_domains={len(target_evaluation_frames_by_label)}; "
+            f"elapsed={format_progress_time(time.monotonic() - planning_start)}"
+        )
     variant_progress = _ProgressReporter("DATA8", len(variants))
     for variant_index, variant in enumerate(variants, start=1):
         mode = variant.mode
@@ -9146,6 +9189,7 @@ def _prepare_materialization(
             compatibility_probe=probe,
             replay_plan=replay,
             cross_validation_plans=variant_cv_plans,
+            feature_fit_domains=variant_feature_domains,
             online_monitor_policy=online_monitor_policy,
             true_replay_monitor_artifact=true_replay_resolution.monitor_artifact,
             adaptive_stop_policy=adaptive_stop_policy,
@@ -9219,14 +9263,12 @@ def _prepare_materialization(
                 None
                 if _training_policy_generation(cfg) != "train2"
                 else {
-                    feature_domain.content_digest: mdstats.materialize_candidate_prefix(
-                        target_size_study,
-                        repair2=target_multi_view_repair,
-                        label_domain_id=coverage_domain_by_training_digest[
+                    feature_domain.content_digest: target_prefix_matrix[(
+                        coverage_domain_by_training_digest[
                             feature_domain.content_digest
                         ].label_domain_id,
-                        target_size=int(size),
-                    )
+                        int(size),
+                    )]
                     for feature_domain in variant_feature_domains
                 }
             ),
@@ -9235,22 +9277,9 @@ def _prepare_materialization(
                 if _training_policy_generation(cfg) != "train2"
                 or target_size_study.outcome == mdstats.OUTCOME_SELECTED
                 else {
-                    feature_domain.label_domain_id: tuple(
-                        uid
-                        for uid in store.get_record(
-                            "target_data_role_freeze", mdstats.TargetDataRoleFreeze
-                        ).domain(feature_domain.label_domain_id).size_development_frame_uids
-                        if uid not in set(
-                            mdstats.materialize_candidate_prefix(
-                                target_size_study,
-                                repair2=target_multi_view_repair,
-                                label_domain_id=coverage_domain_by_training_digest[
-                                    feature_domain.content_digest
-                                ].label_domain_id,
-                                target_size=max(target_size_study.qualified_sizes),
-                            )
-                        )
-                    )
+                    feature_domain.label_domain_id: target_evaluation_frames_by_label[
+                        feature_domain.label_domain_id
+                    ]
                     for feature_domain in variant_feature_domains
                     if feature_domain.kind is mdstats.FeatureFitDomainKind.FINAL_DEVELOPMENT
                 }
@@ -9277,7 +9306,9 @@ def _prepare_materialization(
         if reused is not None:
             record, bundle = reused
             registered_data7 = mdstats.register_reusable_data7_artifacts(
-                record, shared_data7_artifacts
+                record,
+                shared_data7_artifacts,
+                shared_data7_fit_cores,
             )
             materializations.append(record)
             data8_bundles.append(bundle)
@@ -9323,6 +9354,7 @@ def _prepare_materialization(
             ),
             shared_data7_cache_directory=shared_data7_cache,
             shared_data7_artifacts=shared_data7_artifacts,
+            shared_data7_fit_cores=shared_data7_fit_cores,
             shared_data8_fixed_file_cache_directory=shared_data8_fixed_file_cache,
             shared_frame_array_index_cache=shared_frame_array_index_cache,
             execution_policy=mdstats.ProductionMaterializationExecutionPolicy(
