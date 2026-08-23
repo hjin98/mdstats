@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 import shutil
+import time
 import uuid
 
 import numpy as np
@@ -62,7 +63,7 @@ from .online_monitor import (
 from .partition import OuterRole
 from .mlcv_roles import MlcvRoleCatalog, build_mlcv_role_catalog
 from .mlcv_monitors import (
-    MlcvMonitorPolicy, MlcvMonitorCatalog, MlcvRunMonitorRecord,
+    MlcvMonitorPolicy, MlcvMonitorCatalog, MlcvRunMonitorRecord, MlcvReplayMonitorRecord,
     build_run_monitor_record, build_replay_monitor_record, write_replay_light_subset,
 )
 from .resources import SystemResourceSnapshot, isolated_process_map
@@ -88,8 +89,12 @@ def _sha256_file(path: Path) -> str:
 
 DATA8_FIXED_FILE_CACHE_SCHEMA = "mdstats.perf-p2r-data8-fixed-file-cache.v1"
 DATA8_FIXED_FILE_RECIPE_SCHEMA = "mdstats.perf-p2r-data8-fixed-file-recipe.v1"
+DATA8_PARALLEL_MIN_TOTAL_BYTES = 32 * 1024**2
 DATA8_WEIGHTED_REPLAY_CACHE_SCHEMA = "mdstats.data8-weighted-replay-cache.v1"
 DATA8_WEIGHTED_REPLAY_RECIPE_SCHEMA = "mdstats.data8-weighted-replay-recipe.v1"
+DATA8_INPUT_SNAPSHOT_CACHE_SCHEMA = "mdstats.data8-input-snapshot-cache.v1"
+DATA8_MLCV_REPLAY_CACHE_SCHEMA = "mdstats.data8-mlcv-replay-cache.v1"
+DATA8_MLCV_REPLAY_RECIPE_SCHEMA = "mdstats.data8-mlcv-replay-recipe.v1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -227,6 +232,94 @@ def _populate_data8_fixed_file_batch(task: _Data8FixedFileWorkerTask) -> tuple[s
     return tuple(completed)
 
 
+def _directory_size_bytes(root: Path) -> int:
+    total = 0
+    for path in root.rglob("*"):
+        if path.is_file():
+            try:
+                total += int(path.stat().st_size)
+            except FileNotFoundError:
+                pass
+    return total
+
+
+def _staging_creator_pid(path: Path) -> int | None:
+    """Return the creator PID encoded in one DATA8-owned staging name."""
+
+    name = path.name
+    if name.startswith(".data8-worker-context-"):
+        token = name[len(".data8-worker-context-"):].split("-", 1)[0]
+    elif ".tmp-" in name:
+        token = name.rsplit(".tmp-", 1)[1].split("-", 1)[0]
+    else:
+        return None
+    try:
+        return int(token)
+    except ValueError:
+        return None
+
+
+def _process_is_alive(pid: int) -> bool:
+    if pid <= 0:
+        return True
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return True
+    return True
+
+
+def _cleanup_stale_data8_staging(
+    cache_root: Path, *, minimum_age_seconds: float = 24.0 * 60.0 * 60.0
+) -> tuple[int, int]:
+    """Remove only old DATA8 staging owned by demonstrably dead processes.
+
+    The scan is deliberately limited to known cache-owned staging namespaces.
+    PID reuse is handled conservatively: if the encoded PID currently exists,
+    the entry is retained regardless of age.
+    """
+
+    now = time.time()
+    candidates: list[Path] = []
+    candidates.extend(cache_root.glob(".data8-worker-context-*"))
+    for prefix in cache_root.iterdir():
+        if prefix.is_dir() and len(prefix.name) == 2:
+            candidates.extend(prefix.glob(".*.tmp-*"))
+    for family_name in ("input-snapshots", "weighted-replay", "mlcv-replay"):
+        family = cache_root / family_name
+        if not family.is_dir():
+            continue
+        for prefix in family.iterdir():
+            if prefix.is_dir() and len(prefix.name) == 2:
+                candidates.extend(prefix.glob(".*.tmp-*"))
+
+    removed_count = 0
+    removed_bytes = 0
+    for path in candidates:
+        try:
+            stat = path.stat()
+        except FileNotFoundError:
+            continue
+        if now - float(stat.st_mtime) < float(minimum_age_seconds):
+            continue
+        pid = _staging_creator_pid(path)
+        if pid is None or _process_is_alive(pid):
+            continue
+        if path.is_dir():
+            removed_bytes += _directory_size_bytes(path)
+            shutil.rmtree(path, ignore_errors=True)
+        else:
+            removed_bytes += int(stat.st_size)
+            path.unlink(missing_ok=True)
+        if not path.exists():
+            removed_count += 1
+    return removed_count, removed_bytes
+
+
 def _prepopulate_data8_fixed_file_cache(
     requests: Sequence[_Data8FixedFileRequest],
     *,
@@ -244,20 +337,26 @@ def _prepopulate_data8_fixed_file_cache(
 
     The large scientific context is serialized once with mmap/file references.
     Individual subprocess tasks contain only the context path and recipe IDs.
+    Parallel admission accounts for both final cache bytes and the temporary
+    worker-context spill needed to reconstruct those references.
     """
 
     if shared_cache_directory is None or execution_resources is None:
         return 0, 0
     cache_root = Path(shared_cache_directory).resolve()
     cache_root.mkdir(parents=True, exist_ok=True)
+    stale_count, stale_bytes = _cleanup_stale_data8_staging(cache_root)
+    if stale_count and progress_callback is not None:
+        progress_callback(
+            "DATA8 fixed-file cache; stale-staging-cleanup; "
+            f"removed={stale_count}; reclaimed_mib={stale_bytes / 1024**2:.1f}"
+        )
     bundles_by_digest = {item.content_digest: item for item in data7_bundles}
     unique: dict[str, _Data8FixedFileRequest] = {}
     for request in requests:
         recipe = _request_recipe(
-            request,
-            frame_catalog=frame_catalog,
-            data7_bundles_by_digest=bundles_by_digest,
-            policy=policy,
+            request, frame_catalog=frame_catalog,
+            data7_bundles_by_digest=bundles_by_digest, policy=policy,
         )
         recipe_digest = digest(recipe)
         previous = unique.get(recipe_digest)
@@ -273,10 +372,8 @@ def _prepopulate_data8_fixed_file_cache(
     misses: dict[str, _Data8FixedFileRequest] = {}
     for recipe_digest, request in unique.items():
         recipe = _request_recipe(
-            request,
-            frame_catalog=frame_catalog,
-            data7_bundles_by_digest=bundles_by_digest,
-            policy=policy,
+            request, frame_catalog=frame_catalog,
+            data7_bundles_by_digest=bundles_by_digest, policy=policy,
         )
         cache_directory = cache_root / recipe_digest[:2] / recipe_digest
         if _load_valid_data8_fixed_file_cache(
@@ -294,7 +391,6 @@ def _prepopulate_data8_fixed_file_cache(
 
     if frame_array_index is None:
         from ._frame_access import build_frame_array_index
-
         frame_array_index = build_frame_array_index(frame_catalog, frame_data_by_run)
     estimates = {
         recipe_digest: _estimate_data8_request_bytes(
@@ -304,53 +400,48 @@ def _prepopulate_data8_fixed_file_cache(
     }
     total_final_bytes = sum(estimates.values())
     largest_bytes = max(estimates.values())
-    disk = shutil.disk_usage(cache_root)
     reserve = max(0, int(minimum_free_disk_bytes))
+    disk = shutil.disk_usage(cache_root)
     available_for_cache = max(0, int(disk.free) - reserve)
     if available_for_cache < total_final_bytes:
         raise TrainingDataInputError(
             "DATA8 fixed-file cache lacks free disk for the required immutable "
             "cache outputs while preserving the configured reserve."
         )
-    # A staging generation is renamed into its final location, so one recipe is
-    # never stored twice merely because it is in flight.  Bound concurrency by
-    # the number of largest-request equivalents that fit in the remaining cache
-    # envelope instead of double-counting a full extra staging generation.
-    disk_workers = max(1, available_for_cache // max(1, largest_bytes))
-    worker_rss = 512 * 1024**2
-    ram_budget = execution_resources.ram_budget_bytes
-    ram_workers = (
-        len(misses)
-        if ram_budget is None
-        else max(1, int(ram_budget) // worker_rss)
-    )
-    workers = max(
-        1,
-        min(
-            len(misses),
-            int(execution_resources.cpu_threads_budget),
-            int(ram_workers),
-            int(disk_workers),
-        ),
-    )
-    if workers <= 1:
+    if total_final_bytes < DATA8_PARALLEL_MIN_TOTAL_BYTES:
         if progress_callback is not None:
             progress_callback(
-                "DATA8 fixed-file cache; mode=serial-fallback; "
-                f"unique_requests={len(unique)}; preexisting={len(unique) - len(misses)}; "
-                f"scheduled_misses={len(misses)}; workers=1"
+                "DATA8 fixed-file cache; mode=serial-fallback; reason=small-workload; "
+                f"estimated_output_mib={total_final_bytes / 1024**2:.1f}; "
+                f"parallel_threshold_mib={DATA8_PARALLEL_MIN_TOTAL_BYTES / 1024**2:.1f}; "
+                f"scheduled_misses={len(misses)}"
             )
         return len(unique) - len(misses), len(misses)
 
-    # Largest-first greedy batching balances serialized bytes without creating
-    # one subprocess per file.  Each process reconstructs the mmap index once.
-    bins: list[list[str]] = [[] for _ in range(workers)]
-    bin_bytes = [0] * workers
-    for recipe_digest in sorted(estimates, key=estimates.get, reverse=True):
-        slot = min(range(workers), key=lambda index: bin_bytes[index])
-        bins[slot].append(recipe_digest)
-        bin_bytes[slot] += estimates[recipe_digest]
-    bins = [items for items in bins if items]
+    context = {
+        "frame_catalog": frame_catalog,
+        "frame_data_by_run": frame_data_by_run,
+        "data7_bundles_by_digest": bundles_by_digest,
+        "policy": policy,
+        "cache_root": str(cache_root),
+        "requests": misses,
+    }
+    from ._array_pickle import (
+        dump_with_array_references, estimate_array_reference_spill_bytes,
+    )
+    # Keep a modest metadata allowance in addition to the exact large-array
+    # spill estimate.  If this cannot coexist with final outputs and the free
+    # space reserve, simply use the serial producer path, which needs no worker
+    # context at all.
+    context_estimate = estimate_array_reference_spill_bytes(context) + (32 << 20)
+    if available_for_cache < total_final_bytes + context_estimate:
+        if progress_callback is not None:
+            progress_callback(
+                "DATA8 fixed-file cache; mode=serial-fallback; reason=context-disk; "
+                f"estimated_context_mib={context_estimate / 1024**2:.1f}; "
+                f"scheduled_misses={len(misses)}"
+            )
+        return len(unique) - len(misses), len(misses)
 
     context_root = cache_root / (
         f".data8-worker-context-{os.getpid()}-{uuid.uuid4().hex}"
@@ -359,26 +450,77 @@ def _prepopulate_data8_fixed_file_cache(
     context_path = context_root / "context.pkl"
     array_directory = context_root / "arrays"
     try:
-        from ._array_pickle import dump_with_array_references
-
-        context = {
-            "frame_catalog": frame_catalog,
-            "frame_data_by_run": frame_data_by_run,
-            "data7_bundles_by_digest": bundles_by_digest,
-            "policy": policy,
-            "cache_root": str(cache_root),
-            "requests": misses,
-        }
         with context_path.open("wb") as handle:
             dump_with_array_references(
                 context, handle, array_directory=array_directory
             )
             handle.flush()
             os.fsync(handle.fileno())
+        context_bytes = _directory_size_bytes(context_root)
+        disk_after_context = shutil.disk_usage(cache_root)
+        available_after_context = max(0, int(disk_after_context.free) - reserve)
+        if available_after_context < total_final_bytes:
+            if progress_callback is not None:
+                progress_callback(
+                    "DATA8 fixed-file cache; mode=serial-fallback; "
+                    "reason=measured-context-disk; "
+                    f"context_mib={context_bytes / 1024**2:.1f}; "
+                    f"scheduled_misses={len(misses)}"
+                )
+            return len(unique) - len(misses), len(misses)
+
+        disk_workers = max(1, available_after_context // max(1, largest_bytes))
+        # Fresh workers mmap large arrays, so resident cost is dominated by
+        # Python/ASE metadata and one actively serialized request.  Scale the
+        # historical 512 MiB floor with measured context metadata and a bounded
+        # request-working-set allowance rather than assuming a host-specific
+        # process count.
+        context_pickle_bytes = int(context_path.stat().st_size)
+        worker_rss = max(
+            512 * 1024**2,
+            256 * 1024**2
+            + 4 * context_pickle_bytes
+            + min(int(largest_bytes), 256 * 1024**2),
+        )
+        ram_budget = execution_resources.ram_budget_bytes
+        ram_workers = (
+            len(misses)
+            if ram_budget is None
+            else max(1, int(ram_budget) // worker_rss)
+        )
+        workers = max(
+            1,
+            min(
+                len(misses),
+                int(execution_resources.cpu_threads_budget),
+                int(ram_workers),
+                int(disk_workers),
+            ),
+        )
+        if workers <= 1:
+            if progress_callback is not None:
+                progress_callback(
+                    "DATA8 fixed-file cache; mode=serial-fallback; "
+                    f"unique_requests={len(unique)}; preexisting={len(unique) - len(misses)}; "
+                    f"scheduled_misses={len(misses)}; workers=1; "
+                    f"context_mib={context_bytes / 1024**2:.1f}; "
+                    f"worker_ram_reservation_mib={worker_rss / 1024**2:.1f}"
+                )
+            return len(unique) - len(misses), len(misses)
+
+        # Largest-first greedy batching balances serialized bytes without
+        # creating one subprocess per file.  Each process reconstructs the mmap
+        # index once.
+        bins: list[list[str]] = [[] for _ in range(workers)]
+        bin_bytes = [0] * workers
+        for recipe_digest in sorted(estimates, key=estimates.get, reverse=True):
+            slot = min(range(workers), key=lambda index: bin_bytes[index])
+            bins[slot].append(recipe_digest)
+            bin_bytes[slot] += estimates[recipe_digest]
+        bins = [items for items in bins if items]
         tasks = tuple(
             _Data8FixedFileWorkerTask(
-                context_path=str(context_path),
-                request_digests=tuple(items),
+                context_path=str(context_path), request_digests=tuple(items),
             )
             for items in bins
         )
@@ -386,16 +528,14 @@ def _prepopulate_data8_fixed_file_cache(
             progress_callback(
                 "DATA8 fixed-file cache; mode=parallel; "
                 f"unique_requests={len(unique)}; preexisting={len(unique) - len(misses)}; "
-                f"scheduled_misses={len(misses)}; workers={len(tasks)}"
+                f"scheduled_misses={len(misses)}; workers={len(tasks)}; "
+                f"context_mib={context_bytes / 1024**2:.1f}; "
+                f"worker_ram_reservation_mib={worker_rss / 1024**2:.1f}"
             )
         completed: set[str] = set()
         for result in isolated_process_map(
-            __name__,
-            "_populate_data8_fixed_file_batch",
-            tasks,
-            workers=len(tasks),
-            scratch_directory=context_root,
-            cpu_only=True,
+            __name__, "_populate_data8_fixed_file_batch", tasks,
+            workers=len(tasks), scratch_directory=context_root, cpu_only=True,
         ):
             completed.update(result)
             if progress_callback is not None:
@@ -429,6 +569,127 @@ def _atomic_link_or_copy_file(source: Path, destination: Path) -> None:
         os.replace(temporary, destination)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def _atomic_copy_file(source: Path, destination: Path) -> None:
+    """Create an inode-independent snapshot of an externally owned file."""
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_name(
+        f".{destination.name}.tmp-{os.getpid()}-{uuid.uuid4().hex}"
+    )
+    temporary.unlink(missing_ok=True)
+    try:
+        with source.open("rb") as reader, temporary.open("wb") as writer:
+            shutil.copyfileobj(reader, writer, length=4 * 1024 * 1024)
+            writer.flush()
+            os.fsync(writer.fileno())
+        shutil.copystat(source, temporary, follow_symlinks=True)
+        os.replace(temporary, destination)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _load_valid_input_snapshot(
+    cache_directory: Path, *, expected_sha256: str
+) -> Path | None:
+    metadata_path = cache_directory / "cache.json"
+    artifact_path = cache_directory / "artifact.bin"
+    if not metadata_path.is_file() or not artifact_path.is_file():
+        return None
+    try:
+        payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+        if (
+            payload.get("schema") != DATA8_INPUT_SNAPSHOT_CACHE_SCHEMA
+            or payload.get("sha256") != expected_sha256
+            or int(payload.get("size_bytes", -1)) != artifact_path.stat().st_size
+        ):
+            return None
+        if _sha256_file(artifact_path) != expected_sha256:
+            return None
+        return artifact_path
+    except Exception:
+        return None
+
+
+def _ensure_owned_input_snapshot(
+    source: Path, *, expected_sha256: str, cache_root: Path
+) -> Path:
+    """Authenticate an external source and publish an mdstats-owned byte snapshot."""
+
+    expected = validate_digest(expected_sha256, name="sha256")
+    cache_directory = cache_root / "input-snapshots" / expected[:2] / expected
+    cached = _load_valid_input_snapshot(cache_directory, expected_sha256=expected)
+    if cached is not None:
+        return cached
+    if not source.is_file():
+        raise TrainingDataInputError(f"External DATA8 input does not exist: {source!s}.")
+    if _sha256_file(source) != expected:
+        raise TrainingDataInputError(
+            f"External DATA8 input digest mismatch before snapshot: {source!s}."
+        )
+    cache_directory.parent.mkdir(parents=True, exist_ok=True)
+    staging = cache_directory.parent / (
+        f".{expected}.tmp-{os.getpid()}-{uuid.uuid4().hex}"
+    )
+    shutil.rmtree(staging, ignore_errors=True)
+    staging.mkdir(parents=True, exist_ok=False)
+    try:
+        artifact_path = staging / "artifact.bin"
+        _atomic_copy_file(source, artifact_path)
+        if _sha256_file(artifact_path) != expected:
+            raise TrainingDataInputError(
+                "External DATA8 input changed while its immutable snapshot was created."
+            )
+        metadata = {
+            "schema": DATA8_INPUT_SNAPSHOT_CACHE_SCHEMA,
+            "sha256": expected,
+            "size_bytes": int(artifact_path.stat().st_size),
+        }
+        metadata_path = staging / "cache.json"
+        with metadata_path.open("w", encoding="utf-8") as handle:
+            json.dump(metadata, handle, indent=2, sort_keys=True)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        try:
+            os.rename(staging, cache_directory)
+        except OSError:
+            shutil.rmtree(staging, ignore_errors=True)
+        cached = _load_valid_input_snapshot(cache_directory, expected_sha256=expected)
+        if cached is None:
+            raise TrainingDataInputError(
+                "DATA8 immutable input snapshot could not be validated after publication."
+            )
+        return cached
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+
+
+def _stage_external_input(
+    source: Path,
+    destination: Path,
+    *,
+    expected_sha256: str,
+    shared_cache_directory: str | Path | None,
+) -> None:
+    """Stage external bytes without aliasing their externally owned inode."""
+
+    expected = validate_digest(expected_sha256, name="sha256")
+    if shared_cache_directory is None:
+        if _sha256_file(source) != expected:
+            raise TrainingDataInputError(
+                f"External DATA8 input digest mismatch before staging: {source!s}."
+            )
+        _atomic_copy_file(source, destination)
+    else:
+        owned = _ensure_owned_input_snapshot(
+            source, expected_sha256=expected,
+            cache_root=Path(shared_cache_directory).resolve(),
+        )
+        _atomic_link_or_copy_file(owned, destination)
+    if _sha256_file(destination) != expected:
+        raise TrainingDataInputError("Staged external DATA8 input digest mismatch.")
 
 
 @lru_cache(maxsize=16)
@@ -871,6 +1132,98 @@ def _ensure_weighted_replay_cache(
         shutil.rmtree(staging, ignore_errors=True)
 
 
+def _mlcv_replay_recipe(
+    source: ReplayFileArtifact, policy: MlcvMonitorPolicy
+) -> dict[str, Any]:
+    return {
+        "schema": DATA8_MLCV_REPLAY_RECIPE_SCHEMA,
+        "source_artifact_digest": source.content_digest,
+        "source_sha256": source.sha256,
+        "policy_digest": policy.policy_digest,
+        "extxyz_policy_version": MACE_EXTXYZ_POLICY_VERSION,
+    }
+
+
+def _load_mlcv_replay_cache(
+    cache_directory: Path, *, recipe: Mapping[str, Any], recipe_digest: str
+) -> tuple[MlcvReplayMonitorRecord, ReplayFileArtifact] | None:
+    metadata_path = cache_directory / "cache.json"
+    artifact_path = cache_directory / "artifact.xyz"
+    if not metadata_path.is_file() or not artifact_path.is_file():
+        return None
+    try:
+        payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+        if (
+            payload.get("schema") != DATA8_MLCV_REPLAY_CACHE_SCHEMA
+            or payload.get("recipe_digest") != recipe_digest
+            or payload.get("recipe") != dict(recipe)
+        ):
+            return None
+        record = MlcvReplayMonitorRecord.from_dict(payload["record"])
+        artifact = ReplayFileArtifact.from_dict(payload["artifact"])
+        if artifact.path != "artifact.xyz":
+            return None
+        if record.full_artifact_digest != recipe["source_artifact_digest"]:
+            return None
+        if record.policy_digest != recipe["policy_digest"]:
+            return None
+        if _sha256_file(artifact_path) != artifact.sha256:
+            return None
+        return record, artifact
+    except Exception:
+        return None
+
+
+def _ensure_mlcv_replay_cache(
+    source: ReplayFileArtifact, policy: MlcvMonitorPolicy, cache_root: Path
+) -> tuple[Path, MlcvReplayMonitorRecord, ReplayFileArtifact]:
+    recipe = _mlcv_replay_recipe(source, policy)
+    recipe_digest = digest(recipe)
+    cache_directory = cache_root / "mlcv-replay" / recipe_digest[:2] / recipe_digest
+    cached = _load_mlcv_replay_cache(
+        cache_directory, recipe=recipe, recipe_digest=recipe_digest
+    )
+    if cached is not None:
+        return cache_directory, cached[0], cached[1]
+    cache_directory.parent.mkdir(parents=True, exist_ok=True)
+    staging = cache_directory.parent / (
+        f".{recipe_digest}.tmp-{os.getpid()}-{uuid.uuid4().hex}"
+    )
+    shutil.rmtree(staging, ignore_errors=True)
+    staging.mkdir(parents=True, exist_ok=False)
+    try:
+        record = build_replay_monitor_record(source, policy)
+        artifact = write_replay_light_subset(source, record, staging / "artifact.xyz")
+        cached_artifact = replace(artifact, path="artifact.xyz")
+        metadata = {
+            "schema": DATA8_MLCV_REPLAY_CACHE_SCHEMA,
+            "recipe": recipe,
+            "recipe_digest": recipe_digest,
+            "record": record.to_dict(),
+            "artifact": cached_artifact.to_dict(),
+        }
+        metadata_path = staging / "cache.json"
+        with metadata_path.open("w", encoding="utf-8") as handle:
+            json.dump(metadata, handle, indent=2, sort_keys=True)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        try:
+            os.rename(staging, cache_directory)
+        except OSError:
+            shutil.rmtree(staging, ignore_errors=True)
+        cached = _load_mlcv_replay_cache(
+            cache_directory, recipe=recipe, recipe_digest=recipe_digest
+        )
+        if cached is None:
+            raise TrainingDataInputError(
+                "DATA8 MLCV replay cache could not be validated after population."
+            )
+        return cache_directory, cached[0], cached[1]
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+
+
 def _copy_replay_plan(
     plan: ReplayPreparationPlan,
     root: Path,
@@ -889,6 +1242,8 @@ def _copy_replay_plan(
     train_target = replay_dir / "replay_train.xyz"
     monitor_target = replay_dir / "replay_monitor.xyz"
     if shared_cache_directory is None:
+        if _sha256_file(Path(plan.train_artifact.path)) != plan.train_artifact.sha256:
+            raise TrainingDataInputError("Replay training source digest mismatch before DATA8 staging.")
         _scale_extxyz_configuration_weights(
             Path(plan.train_artifact.path),
             train_target,
@@ -901,12 +1256,25 @@ def _copy_replay_plan(
             foundation_label_generator_identity_digest=plan.train_artifact.foundation_label_generator_identity_digest,
         )
     else:
+        cache_root = Path(shared_cache_directory).resolve()
+        train_source = _ensure_owned_input_snapshot(
+            Path(plan.train_artifact.path),
+            expected_sha256=plan.train_artifact.sha256,
+            cache_root=cache_root,
+        )
+        cache_plan = replace(
+            plan, train_artifact=replace(plan.train_artifact, path=str(train_source))
+        )
         cache_directory, cached_train = _ensure_weighted_replay_cache(
-            plan, Path(shared_cache_directory).resolve()
+            cache_plan, cache_root
         )
         _atomic_link_or_copy_file(cache_directory / "artifact.xyz", train_target)
         train_artifact = replace(cached_train, path=str(train_target))
-    _atomic_link_or_copy_file(Path(plan.monitor_artifact.path), monitor_target)
+    _stage_external_input(
+        Path(plan.monitor_artifact.path), monitor_target,
+        expected_sha256=plan.monitor_artifact.sha256,
+        shared_cache_directory=shared_cache_directory,
+    )
     monitor_artifact = replace(plan.monitor_artifact, path=str(monitor_target))
     return ReplayPreparationPlan(
         mode=plan.mode,
@@ -924,16 +1292,18 @@ def _copy_replay_plan(
     )
 
 
-def _stage_foundation_checkpoint(identity: FoundationCheckpointIdentity, root: Path) -> FoundationCheckpointIdentity:
+def _stage_foundation_checkpoint(
+    identity: FoundationCheckpointIdentity, root: Path, *,
+    shared_cache_directory: str | Path | None = None,
+) -> FoundationCheckpointIdentity:
     source = Path(identity.reference)
-    if not source.is_file():
-        raise TrainingDataInputError(f"Foundation checkpoint does not exist: {source!s}.")
     target_dir = root / "shared" / "foundation"
     target_dir.mkdir(parents=True, exist_ok=True)
     target = target_dir / source.name
-    _atomic_link_or_copy_file(source, target)
-    if _sha256_file(target) != identity.sha256:
-        raise TrainingDataInputError("Staged foundation checkpoint digest mismatch.")
+    _stage_external_input(
+        source, target, expected_sha256=identity.sha256,
+        shared_cache_directory=shared_cache_directory,
+    )
     # Preserve the complete generalized foundation identity when staging;
     # only the location changes.  Reconstructing from the historical four
     # fields would discard architecture/head-table evidence introduced by
@@ -945,6 +1315,8 @@ def _stage_selected_head_training_checkpoint(
     qualification: MaceSelectedHeadQualificationRecord,
     foundation: FoundationCheckpointIdentity,
     root: Path,
+    *,
+    shared_cache_directory: str | Path | None = None,
 ) -> tuple[str, str]:
     """Stage the parity-qualified single-head executable used by MACE training.
 
@@ -964,12 +1336,19 @@ def _stage_selected_head_training_checkpoint(
     if extraction.source_head != canonical.foundation_head:
         raise TrainingDataInputError("Selected-head qualification source head differs from the scientific foundation.")
     source = Path(extraction.derived_checkpoint_reference)
-    if not source.is_file():
-        raise TrainingDataInputError(f"Qualified selected-head checkpoint does not exist: {source!s}.")
-    if _sha256_file(source) != extraction.derived_checkpoint_sha256:
-        raise TrainingDataInputError("Qualified selected-head checkpoint digest mismatch.")
+    if shared_cache_directory is None:
+        if not source.is_file():
+            raise TrainingDataInputError(f"Qualified selected-head checkpoint does not exist: {source!s}.")
+        if _sha256_file(source) != extraction.derived_checkpoint_sha256:
+            raise TrainingDataInputError("Qualified selected-head checkpoint digest mismatch.")
+        inspected_source = source
+    else:
+        inspected_source = _ensure_owned_input_snapshot(
+            source, expected_sha256=extraction.derived_checkpoint_sha256,
+            cache_root=Path(shared_cache_directory).resolve(),
+        )
     inspection = _inspect_mace_foundation_once(
-        str(source.resolve()), extraction.derived_checkpoint_sha256
+        str(inspected_source.resolve()), extraction.derived_checkpoint_sha256
     )
     if inspection.available_heads != (canonical.foundation_head,):
         raise TrainingDataInputError(
@@ -981,9 +1360,15 @@ def _stage_selected_head_training_checkpoint(
     target_dir = root / "shared" / "foundation" / "selected_head"
     target_dir.mkdir(parents=True, exist_ok=True)
     target = target_dir / source.name
-    _atomic_link_or_copy_file(source, target)
-    if _sha256_file(target) != extraction.derived_checkpoint_sha256:
-        raise TrainingDataInputError("Staged selected-head checkpoint digest mismatch.")
+    if shared_cache_directory is None:
+        _stage_external_input(
+            source, target, expected_sha256=extraction.derived_checkpoint_sha256,
+            shared_cache_directory=None,
+        )
+    else:
+        _atomic_link_or_copy_file(inspected_source, target)
+        if _sha256_file(target) != extraction.derived_checkpoint_sha256:
+            raise TrainingDataInputError("Staged selected-head checkpoint digest mismatch.")
     return str(target.relative_to(root)), extraction.derived_checkpoint_sha256
 
 
@@ -1461,12 +1846,16 @@ def build_data8_preparation_bundle(
 
     root = Path(output_directory).resolve()
     root.mkdir(parents=True, exist_ok=True)
-    staged_foundation = _stage_foundation_checkpoint(foundation_checkpoint, root)
+    staged_foundation = _stage_foundation_checkpoint(
+        foundation_checkpoint, root,
+        shared_cache_directory=shared_fixed_file_cache_directory,
+    )
     training_foundation_reference = None
     training_foundation_sha256 = None
     if selected_head_qualification is not None:
         training_foundation_reference, training_foundation_sha256 = _stage_selected_head_training_checkpoint(
-            selected_head_qualification, staged_foundation, root
+            selected_head_qualification, staged_foundation, root,
+            shared_cache_directory=shared_fixed_file_cache_directory,
         )
     elif staged_foundation.inspection_state == "inspected" and len(staged_foundation.available_heads) > 1:
         raise TrainingDataInputError(
@@ -1501,19 +1890,29 @@ def build_data8_preparation_bundle(
         )
         replay_full_path = root / "shared" / "replay" / "full_true_replay_validation.xyz"
         replay_full_path.parent.mkdir(parents=True, exist_ok=True)
-        _atomic_link_or_copy_file(
-            Path(true_replay_monitor_artifact.path), replay_full_path
+        _stage_external_input(
+            Path(true_replay_monitor_artifact.path), replay_full_path,
+            expected_sha256=true_replay_monitor_artifact.sha256,
+            shared_cache_directory=shared_fixed_file_cache_directory,
         )
         replay_full_validation_artifact = replace(
             true_replay_monitor_artifact, path=str(replay_full_path)
         )
-        replay_monitor_record = build_replay_monitor_record(
-            replay_full_validation_artifact, mlcv_monitor_policy
-        )
-        online_replay_artifact = write_replay_light_subset(
-            replay_full_validation_artifact, replay_monitor_record,
-            root / "shared" / "replay" / "light_true_replay_validation.xyz",
-        )
+        light_target = root / "shared" / "replay" / "light_true_replay_validation.xyz"
+        if shared_fixed_file_cache_directory is None:
+            replay_monitor_record = build_replay_monitor_record(
+                replay_full_validation_artifact, mlcv_monitor_policy
+            )
+            online_replay_artifact = write_replay_light_subset(
+                replay_full_validation_artifact, replay_monitor_record, light_target
+            )
+        else:
+            monitor_cache, replay_monitor_record, cached_light = _ensure_mlcv_replay_cache(
+                replay_full_validation_artifact, mlcv_monitor_policy,
+                Path(shared_fixed_file_cache_directory).resolve(),
+            )
+            _atomic_link_or_copy_file(monitor_cache / "artifact.xyz", light_target)
+            online_replay_artifact = replace(cached_light, path=str(light_target))
     if require_foundation_residual_e0:
         for item in bundles:
             fit = item.atomic_reference_fit

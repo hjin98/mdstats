@@ -9,6 +9,7 @@ import mdstats
 from mdstats.training_data._array_pickle import (
     dump_with_array_references,
     load_with_array_references,
+    estimate_array_reference_spill_bytes,
 )
 from mdstats.training_data import sources
 from tests.test_mlff_data2_source_catalog import _write
@@ -71,3 +72,16 @@ def test_vasp_training_source_uses_one_control_parse(tmp_path: Path, monkeypatch
     )
     assert len(loaded.frame_data.fractional_positions) == 2
     assert calls == 1
+
+
+def test_array_reference_spill_estimator_counts_only_large_in_memory_arrays(tmp_path: Path) -> None:
+    source = tmp_path / "mapped.npy"
+    np.save(source, np.arange(300_000, dtype=np.float64), allow_pickle=False)
+    mapped = np.load(source, mmap_mode="r", allow_pickle=False)
+    resident = np.arange(300_000, dtype=np.float64)
+    small = np.arange(8, dtype=np.float64)
+    estimate = estimate_array_reference_spill_bytes(
+        {"mapped": mapped, "resident": resident, "resident_alias": resident, "small": small},
+        externalize_bytes=1_024,
+    )
+    assert resident.nbytes <= estimate <= resident.nbytes + 8192

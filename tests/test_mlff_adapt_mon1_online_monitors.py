@@ -162,3 +162,82 @@ def test_data8_mlcv_mon1_uses_run_local_target_and_true_replay_monitors(tmp_path
 
     assert mdstats.Data8PreparationBundle.from_dict(result.to_dict()) == result
 
+
+
+def test_data8_mlcv_replay_realization_reuses_shared_cache_across_optimizer_variants(
+    tmp_path: Path, monkeypatch
+) -> None:
+    sources, frames, frame_data, _, data5, _, bundles = _data7_bundles(tmp_path)
+    replay_train = tmp_path / "replay_train_shared.xyz"
+    replay_monitor = tmp_path / "replay_monitor_shared.xyz"
+    _write_replay(replay_train, offset=0.0, count=5)
+    _write_replay(replay_monitor, offset=0.3, count=2)
+    replay = mdstats.build_local_replay_plan(replay_train, replay_monitor)
+    true_replay = _true_replay(tmp_path / "replay_true_shared.xyz", count=8)
+    policy = mdstats.OnlineMonitorPolicy(
+        target_configurations=4, replay_configurations=5,
+        training_diagnostic_configurations=3, seed=2026,
+    )
+    cache = tmp_path / "shared-data8-cache"
+    import mdstats.training_data.data8_bundle as module
+
+    original_build = module.build_replay_monitor_record
+    original_write = module.write_replay_light_subset
+    calls = {"build": 0, "write": 0}
+
+    def counted_build(*args, **kwargs):
+        calls["build"] += 1
+        return original_build(*args, **kwargs)
+
+    def counted_write(*args, **kwargs):
+        calls["write"] += 1
+        return original_write(*args, **kwargs)
+
+    monkeypatch.setattr(module, "build_replay_monitor_record", counted_build)
+    monkeypatch.setattr(module, "write_replay_light_subset", counted_write)
+
+    common = dict(
+        foundation_checkpoint=_foundation(tmp_path), compatibility_probe=_probe(),
+        replay_plan=replay, online_monitor_policy=policy,
+        true_replay_monitor_artifact=true_replay,
+        real_pt_data_ratio_threshold=0.0, require_foundation_residual_e0=False,
+        shared_fixed_file_cache_directory=cache,
+    )
+    first = mdstats.build_data8_preparation_bundle(
+        sources, frames, frame_data, data5, bundles,
+        output_directory=tmp_path / "data8_mlcv_cache_v1",
+        optimizer_policy=mdstats.MaceOptimizerPolicy(device="cpu", max_num_epochs=2, seed=1),
+        **common,
+    )
+    second = mdstats.build_data8_preparation_bundle(
+        sources, frames, frame_data, data5, bundles,
+        output_directory=tmp_path / "data8_mlcv_cache_v2",
+        optimizer_policy=mdstats.MaceOptimizerPolicy(device="cpu", max_num_epochs=2, seed=97),
+        **common,
+    )
+    assert calls == {"build": 1, "write": 1}
+    assert first.mlcv_monitor_catalog.replay == second.mlcv_monitor_catalog.replay
+    assert first.online_replay_monitor_artifact.content_digest == second.online_replay_monitor_artifact.content_digest
+
+
+def test_mlcv_replay_cache_concurrent_publishers_converge(tmp_path: Path) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+    import mdstats.training_data.data8_bundle as module
+
+    source = _true_replay(tmp_path / "race_true_replay.xyz", count=8)
+    policy = mdstats.MlcvMonitorPolicy(
+        target_light_configurations=4,
+        replay_light_configurations=5,
+        training_diagnostic_configurations=3,
+        seed=2026,
+    )
+    cache = tmp_path / "mlcv-race-cache"
+
+    def publish(_index: int):
+        directory, record, artifact = module._ensure_mlcv_replay_cache(source, policy, cache)
+        return str(directory), record.content_digest, artifact.content_digest, artifact.sha256
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        results = tuple(executor.map(publish, range(8)))
+    assert len(set(results)) == 1
+    assert len(tuple(cache.glob("mlcv-replay/*/*/cache.json"))) == 1

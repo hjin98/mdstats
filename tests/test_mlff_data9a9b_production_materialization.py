@@ -6,6 +6,7 @@ from dataclasses import replace
 from types import SimpleNamespace
 import hashlib
 import json
+import os
 import shutil
 import threading
 import time
@@ -61,6 +62,36 @@ def _resources(cpu_budget: int, ram_budget: int = 8 * 1024**3) -> SystemResource
         gpu_memory_fraction=0.9,
         gpu=GpuResourceSnapshot(False, 0, None, None, None, None, None, "test"),
     )
+
+
+def test_data8_stale_staging_cleanup_is_dead_pid_and_age_guarded(tmp_path):
+    from mdstats.training_data.data8_bundle import _cleanup_stale_data8_staging
+
+    cache_root = tmp_path / "cache"
+    cache_root.mkdir()
+    old = time.time() - 2.0 * 24.0 * 60.0 * 60.0
+
+    dead = cache_root / ".data8-worker-context-99999999-dead"
+    dead.mkdir()
+    (dead / "spill.bin").write_bytes(b"x" * 1024)
+    os.utime(dead, (old, old))
+
+    live = cache_root / f".data8-worker-context-{os.getpid()}-live"
+    live.mkdir()
+    (live / "spill.bin").write_bytes(b"y" * 1024)
+    os.utime(live, (old, old))
+
+    young = cache_root / ".data8-worker-context-99999998-young"
+    young.mkdir()
+    (young / "spill.bin").write_bytes(b"z" * 1024)
+
+    removed_count, removed_bytes = _cleanup_stale_data8_staging(cache_root)
+
+    assert removed_count == 1
+    assert removed_bytes == 1024
+    assert not dead.exists()
+    assert live.is_dir()
+    assert young.is_dir()
 
 
 def _fixture(tmp_path: Path):
@@ -840,6 +871,7 @@ def test_data8_fixed_file_cache_uses_fresh_parallel_workers(tmp_path: Path, monk
     inputs = _fixture(tmp_path)
     import mdstats.training_data.data8_bundle as module
 
+    monkeypatch.setattr(module, "DATA8_PARALLEL_MIN_TOTAL_BYTES", 0)
     original = module.isolated_process_map
     observed_workers: list[int] = []
 
@@ -869,6 +901,31 @@ def test_data8_fixed_file_cache_uses_fresh_parallel_workers(tmp_path: Path, monk
     )
     assert len(fixed_generations) > 1
     assert record.load_data8_bundle().content_digest == record.data8_bundle_digest
+
+
+def test_data8_small_fixed_file_workload_avoids_fresh_process_overhead(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    inputs = _fixture(tmp_path)
+    import mdstats.training_data.data8_bundle as module
+
+    monkeypatch.setattr(
+        module,
+        "isolated_process_map",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("small DATA8 workload unexpectedly launched fresh workers")
+        ),
+    )
+    progress: list[str] = []
+    record = mdstats.run_restartable_production_materialization(
+        *inputs[:7], inputs[7], tmp_path / "small-data8",
+        shared_data8_fixed_file_cache_directory=tmp_path / "small-data8-cache",
+        execution_resources=_resources(4),
+        minimum_free_disk_bytes=0,
+        progress_callback=progress.append,
+    )
+    assert record.complete
+    assert any("reason=small-workload" in item for item in progress)
 
 
 def test_data8_parallel_fixed_cache_preserves_serial_extxyz_bytes(tmp_path: Path) -> None:
@@ -969,3 +1026,220 @@ def test_data8_parallel_cache_respects_free_disk_reserve(tmp_path: Path) -> None
             execution_resources=_resources(4),
             minimum_free_disk_bytes=free,
         )
+
+
+def test_data8_external_inputs_are_inode_independent_snapshots(tmp_path: Path) -> None:
+    inputs = _fixture(tmp_path)
+    plan = inputs[7]
+    foundation_source = Path(plan.foundation_checkpoint.reference)
+    replay_monitor_source = Path(plan.replay_plan.monitor_artifact.path)
+    foundation_bytes = foundation_source.read_bytes()
+    replay_monitor_bytes = replay_monitor_source.read_bytes()
+    cache = tmp_path / "shared-data8-snapshots"
+
+    record = mdstats.run_restartable_production_materialization(
+        *inputs[:7], plan, tmp_path / "snapshot-variant",
+        shared_data8_fixed_file_cache_directory=cache,
+        execution_resources=_resources(4),
+        minimum_free_disk_bytes=0,
+    )
+    assert record.complete and record.data8_runtime_directory is not None
+    runtime = Path(record.data8_runtime_directory)
+    staged_foundation = runtime / "shared" / "foundation" / foundation_source.name
+    staged_monitor = runtime / "shared" / "replay" / "replay_monitor.xyz"
+    assert staged_foundation.read_bytes() == foundation_bytes
+    assert staged_monitor.read_bytes() == replay_monitor_bytes
+    if foundation_source.stat().st_dev == staged_foundation.stat().st_dev:
+        assert foundation_source.stat().st_ino != staged_foundation.stat().st_ino
+    if replay_monitor_source.stat().st_dev == staged_monitor.stat().st_dev:
+        assert replay_monitor_source.stat().st_ino != staged_monitor.stat().st_ino
+
+    foundation_source.write_bytes(b"externally-mutated-foundation")
+    replay_monitor_source.write_text("externally mutated\n", encoding="utf-8")
+    assert staged_foundation.read_bytes() == foundation_bytes
+    assert staged_monitor.read_bytes() == replay_monitor_bytes
+
+    # Once the authenticated snapshot exists, equivalent variants no longer
+    # depend on the externally owned path retaining those bytes.
+    second_plan = replace(
+        plan, optimizer_policy=replace(plan.optimizer_policy, seed=303)
+    )
+    second = mdstats.run_restartable_production_materialization(
+        *inputs[:7], second_plan, tmp_path / "snapshot-variant-two",
+        shared_data8_fixed_file_cache_directory=cache,
+        execution_resources=_resources(4), minimum_free_disk_bytes=0,
+    )
+    assert second.complete
+
+
+def test_data8_input_snapshots_reuse_content_across_optimizer_variants(tmp_path: Path) -> None:
+    inputs = _fixture(tmp_path)
+    cache = tmp_path / "shared-data8-snapshots"
+    first = mdstats.run_restartable_production_materialization(
+        *inputs[:7], inputs[7], tmp_path / "snapshot-v1",
+        shared_data8_fixed_file_cache_directory=cache,
+        execution_resources=_resources(4), minimum_free_disk_bytes=0,
+    )
+    assert first.complete
+    snapshots_after_first = tuple(sorted(cache.glob("input-snapshots/*/*/artifact.bin")))
+    assert snapshots_after_first
+
+    second_plan = replace(
+        inputs[7], optimizer_policy=replace(inputs[7].optimizer_policy, seed=101)
+    )
+    second = mdstats.run_restartable_production_materialization(
+        *inputs[:7], second_plan, tmp_path / "snapshot-v2",
+        shared_data8_fixed_file_cache_directory=cache,
+        execution_resources=_resources(4), minimum_free_disk_bytes=0,
+    )
+    assert second.complete
+    snapshots_after_second = tuple(sorted(cache.glob("input-snapshots/*/*/artifact.bin")))
+    assert snapshots_after_second == snapshots_after_first
+
+
+def test_data8_parallel_context_disk_pressure_falls_back_before_workers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    inputs = _fixture(tmp_path)
+    import mdstats.training_data.data8_bundle as module
+    import mdstats.training_data._array_pickle as array_pickle
+
+    monkeypatch.setattr(module, "DATA8_PARALLEL_MIN_TOTAL_BYTES", 0)
+    cache = tmp_path / "shared-data8-context-disk"
+    cache.mkdir()
+    original_usage = module.shutil.disk_usage
+    real = original_usage(cache)
+    calls = 0
+
+    def staged_usage(path):
+        nonlocal calls
+        calls += 1
+        # Initial admission permits final files and estimated context.  Once
+        # the context exists, emulate a filesystem whose remaining parallel
+        # headroom disappeared; the code must fall back before worker launch.
+        if calls == 1:
+            return real
+        return type(real)(real.total, real.used, 1 << 20)
+
+    monkeypatch.setattr(module.shutil, "disk_usage", staged_usage)
+    monkeypatch.setattr(array_pickle, "estimate_array_reference_spill_bytes", lambda value: 0)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("DATA8 subprocesses launched despite context disk pressure")
+
+    monkeypatch.setattr(module, "isolated_process_map", forbidden)
+    progress: list[str] = []
+    record = mdstats.run_restartable_production_materialization(
+        *inputs[:7], inputs[7], tmp_path / "context-disk-fallback",
+        shared_data8_fixed_file_cache_directory=cache,
+        execution_resources=_resources(4), minimum_free_disk_bytes=0,
+        progress_callback=progress.append,
+    )
+    assert record.complete
+    assert any("reason=measured-context-disk" in item for item in progress)
+
+
+def test_data7_parallel_out_of_order_completion_commits_canonical_checkpoint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    inputs = _fixture(tmp_path)
+    import mdstats.training_data.production_materialization as module
+
+    original = module.build_data7_preparation_bundle
+    completion_order: list[str] = []
+    completion_lock = threading.Lock()
+
+    def delayed(*args, **kwargs):
+        domain = args[6]
+        bundle = original(*args, **kwargs)
+        if domain.kind is mdstats.FeatureFitDomainKind.FINAL_DEVELOPMENT:
+            time.sleep(0.15)
+        elif domain.fold_index == 0:
+            time.sleep(0.08)
+        with completion_lock:
+            completion_order.append(domain.content_digest)
+        return bundle
+
+    monkeypatch.setattr(module, "build_data7_preparation_bundle", delayed)
+    record = mdstats.run_restartable_production_materialization(
+        *inputs[:7], inputs[7], tmp_path / "out-of-order-data7",
+        shared_data7_cache_directory=tmp_path / "out-of-order-cache",
+        execution_resources=_resources(4),
+        execution_policy=mdstats.ProductionMaterializationExecutionPolicy(materialize_data8=False),
+    )
+    canonical = [domain.content_digest for domain in record.checkpoint.plan.domains]
+    committed = [item.domain_digest for item in record.checkpoint.data7_artifacts]
+    assert completion_order != canonical
+    assert committed == canonical
+
+
+def test_data7_worker_failure_keeps_later_cache_reusable_without_checkpoint_jump(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    inputs = _fixture(tmp_path)
+    import mdstats.training_data.production_materialization as module
+
+    original = module.build_data7_preparation_bundle
+    cache = tmp_path / "failure-data7-cache"
+    root = tmp_path / "failure-data7"
+    fail_digest = inputs[7].domains[1].content_digest
+
+    def failing(*args, **kwargs):
+        domain = args[6]
+        if domain.content_digest == fail_digest:
+            time.sleep(0.25)
+            raise RuntimeError("injected DATA7 domain failure")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(module, "build_data7_preparation_bundle", failing)
+    with pytest.raises(RuntimeError, match="injected DATA7 domain failure"):
+        mdstats.run_restartable_production_materialization(
+            *inputs[:7], inputs[7], root,
+            shared_data7_cache_directory=cache,
+            execution_resources=_resources(4),
+            execution_policy=mdstats.ProductionMaterializationExecutionPolicy(materialize_data8=False),
+        )
+
+    checkpoint_path = root / "production_materialization_checkpoint.json"
+    if checkpoint_path.is_file():
+        checkpoint = mdstats.ProductionMaterializationCheckpoint.from_dict(
+            json.loads(checkpoint_path.read_text())
+        )
+        committed = [item.domain_digest for item in checkpoint.data7_artifacts]
+        canonical = [domain.content_digest for domain in inputs[7].domains]
+        assert committed == canonical[: len(committed)]
+        assert fail_digest not in committed
+
+    published = tuple(cache.glob("*/*/cache.json"))
+    assert published, "nonfailing parallel domains should leave reusable cache generations"
+
+    monkeypatch.setattr(module, "build_data7_preparation_bundle", original)
+    restored = mdstats.run_restartable_production_materialization(
+        *inputs[:7], inputs[7], root,
+        shared_data7_cache_directory=cache,
+        execution_resources=_resources(4),
+        execution_policy=mdstats.ProductionMaterializationExecutionPolicy(materialize_data8=False),
+    )
+    assert [item.domain_digest for item in restored.checkpoint.data7_artifacts] == [
+        domain.content_digest for domain in inputs[7].domains
+    ]
+
+
+def test_checkpoint_reads_legacy_lexical_data7_order_and_rewrites_plan_order(tmp_path: Path) -> None:
+    inputs = _fixture(tmp_path)
+    record = mdstats.run_restartable_production_materialization(
+        *inputs[:7], inputs[7], tmp_path / "legacy-checkpoint-order",
+        execution_resources=_resources(1),
+        execution_policy=mdstats.ProductionMaterializationExecutionPolicy(materialize_data8=False),
+    )
+    checkpoint = record.checkpoint
+    payload = checkpoint.to_dict()
+    lexical = sorted(payload["data7_artifacts"], key=lambda item: item["domain_digest"])
+    legacy_payload = {**payload, "data7_artifacts": lexical}
+    legacy_payload["content_digest"] = digest(
+        {key: value for key, value in legacy_payload.items() if key != "content_digest"}
+    )
+    restored = mdstats.ProductionMaterializationCheckpoint.from_dict(legacy_payload)
+    assert [item.domain_digest for item in restored.data7_artifacts] == [
+        domain.content_digest for domain in restored.plan.domains
+    ]

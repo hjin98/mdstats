@@ -139,7 +139,7 @@ provenance, counts, species, and replay policy must remain unchanged.
 
 # 6. DATA8 promotion
 
-DATA8 construction begins only when every planned DATA7 domain is valid. Immutable fixed-file recipes are enumerated and deduplicated before production-tree mutation. Cache misses may be populated by balanced fresh CPU-only interpreter batches using compact recipe/path descriptors and mmap/file-backed read-only context. CPU, RAM, task count, and the configured free-disk reserve bound this execution-only concurrency. Workers publish only authenticated fixed-file cache generations; the parent then assembles the production tree canonically in hidden staging, verifies it, moves it into a content-addressed generation directory, and exposes it by an atomic `data8` symlink switch. The output tree contains:
+DATA8 construction begins only when every planned DATA7 domain is valid. Immutable fixed-file recipes are enumerated and deduplicated before production-tree mutation. Cache misses may be populated by balanced fresh CPU-only interpreter batches using compact recipe/path descriptors and mmap/file-backed read-only context when the estimated output volume is sufficient to amortize fresh-interpreter startup; smaller batches use the serial producer. CPU, RAM, task count, the measured/estimated worker-context spill, and the configured free-disk reserve bound this execution-only concurrency. If the transient context cannot coexist with the required immutable outputs and reserve, DATA8 falls back to the serial producer before launching subprocesses. Workers publish only authenticated fixed-file cache generations; the parent then assembles the production tree canonically in hidden staging, verifies it, moves it into a content-addressed generation directory, and exposes it by an atomic `data8` symlink switch. The output tree contains:
 
 - one final-development job;
 - one job per cross-validation fold;
@@ -152,10 +152,7 @@ DATA8 construction begins only when every planned DATA7 domain is valid. Immutab
 A DATA8 artifact record binds the native DATA8 bundle digest and a deterministic
 relative-path/file-SHA tree manifest. Fixed-file cache population is
 reconstructible execution state and never replaces this promoted authority.
-Foundation/selected-head sources are authenticated and staged by atomic
-hardlink-or-copy; repeated weighted-replay byte realizations may be reused from
-an exact recipe-bound execution cache. Completion is promoted only after the
-whole staged tree is hashed and its bundle is valid. Restored records perform
+Externally owned foundation, selected-head, and replay sources are authenticated before crossing an inode-independent copy boundary into mdstats-owned content-addressed snapshots. Variant trees may hardlink-or-copy only from those owned immutable snapshots/caches, so later external in-place mutation cannot change an existing materialization. Repeated weighted-replay byte realizations and MLCV TRUE_DFT replay-light monitor realizations may be reused from exact recipe-bound execution caches. Completion is promoted only after the whole staged tree is hashed and its bundle is valid. Restored records perform
 independent tree verification. Failed construction removes an unpromoted
 partial DATA8 directory and records failure evidence.
 

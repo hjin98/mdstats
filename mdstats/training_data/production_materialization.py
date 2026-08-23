@@ -789,11 +789,15 @@ class ProductionMaterializationCheckpoint:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "status", ProductionMaterializationStatus(self.status))
-        records = tuple(sorted(self.data7_artifacts, key=lambda item: item.domain_digest))
+        plan_order = {
+            domain.content_digest: index for index, domain in enumerate(self.plan.domains)
+        }
+        records = tuple(self.data7_artifacts)
         if len({item.domain_digest for item in records}) != len(records):
             raise TrainingDataInputError("Production checkpoint contains duplicate DATA7 domains.")
-        if not set(item.domain_digest for item in records).issubset({item.content_digest for item in self.plan.domains}):
+        if not set(item.domain_digest for item in records).issubset(plan_order):
             raise TrainingDataInputError("Production checkpoint contains foreign DATA7 domains.")
+        records = tuple(sorted(records, key=lambda item: plan_order[item.domain_digest]))
         object.__setattr__(self, "data7_artifacts", records)
         complete_data7 = len(records) == len(self.plan.domains)
         if self.data8_artifact is not None and not complete_data7:
@@ -820,13 +824,43 @@ class ProductionMaterializationCheckpoint:
     def from_dict(cls, payload: Mapping[str, Any]) -> "ProductionMaterializationCheckpoint":
         if payload.get("schema") != PRODUCTION_MATERIALIZATION_CHECKPOINT_SCHEMA:
             raise TrainingDataSerializationError("Unsupported production materialization checkpoint schema.")
-        result = cls(plan=ProductionMaterializationPlan.from_dict(payload["plan"]), data7_artifacts=tuple(ProductionData7ArtifactRecord.from_dict(item) for item in payload.get("data7_artifacts", ())), data8_artifact=None if payload.get("data8_artifact") is None else ProductionData8ArtifactRecord.from_dict(payload["data8_artifact"]), status=ProductionMaterializationStatus(payload["status"]), failure_type=None if payload.get("failure_type") is None else str(payload["failure_type"]), failure_message=None if payload.get("failure_message") is None else str(payload["failure_message"]))
-        validate_serialized_digest(
-            payload,
-            digest_field="content_digest",
-            current_digest=result.content_digest,
-            error_message="Production materialization checkpoint digest mismatch.",
+        parsed_records = tuple(
+            ProductionData7ArtifactRecord.from_dict(item)
+            for item in payload.get("data7_artifacts", ())
         )
+        result = cls(
+            plan=ProductionMaterializationPlan.from_dict(payload["plan"]),
+            data7_artifacts=parsed_records,
+            data8_artifact=(
+                None if payload.get("data8_artifact") is None
+                else ProductionData8ArtifactRecord.from_dict(payload["data8_artifact"])
+            ),
+            status=ProductionMaterializationStatus(payload["status"]),
+            failure_type=None if payload.get("failure_type") is None else str(payload["failure_type"]),
+            failure_message=None if payload.get("failure_message") is None else str(payload["failure_message"]),
+        )
+        serialized_digest = payload.get("content_digest")
+        if serialized_digest not in (None, result.content_digest):
+            # DATA78-PAR1 serialized DATA7 artifact records in lexical digest
+            # order.  CLOSEOUT1 changes the canonical order to ``plan.domains``
+            # while retaining read compatibility with those already-written
+            # checkpoints.  New writes always use plan order.
+            legacy_records = tuple(sorted(parsed_records, key=lambda item: item.domain_digest))
+            legacy_payload = {
+                "schema": PRODUCTION_MATERIALIZATION_CHECKPOINT_SCHEMA,
+                "plan": result.plan.to_dict(),
+                "data7_artifacts": [item.to_dict() for item in legacy_records],
+                "data8_artifact": (
+                    None if result.data8_artifact is None else result.data8_artifact.to_dict()
+                ),
+                "status": result.status.value,
+                "failure_type": result.failure_type,
+                "failure_message": result.failure_message,
+            }
+            if serialized_digest != digest(legacy_payload):
+                raise TrainingDataSerializationError(
+                    "Production materialization checkpoint digest mismatch."
+                )
         return result
 
 

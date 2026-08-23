@@ -8944,6 +8944,14 @@ def _prepare_materialization(
         flush=True,
     )
     foundation_prediction_energy: dict[str, float] | None = None
+    shared_frame_array_index_cache: dict[str, Any] = {}
+
+    def resolved_materialization_frame_index() -> Mapping[str, tuple[Any, Any, int]]:
+        cached = shared_frame_array_index_cache.get(frames.content_digest)
+        if cached is None:
+            cached = build_frame_array_index(frames, resolved_frame_data())
+            shared_frame_array_index_cache[frames.content_digest] = cached
+        return cached
 
     def resolved_foundation_prediction_energy() -> dict[str, float] | None:
         nonlocal foundation_prediction_energy
@@ -8954,9 +8962,7 @@ def _prepare_materialization(
             flush=True,
         )
         energy_start = time.monotonic()
-        from ._frame_access import build_frame_array_index
-
-        frame_index = build_frame_array_index(frames, resolved_frame_data())
+        frame_index = resolved_materialization_frame_index()
         values: dict[str, float] = {}
         for catalog in data6.training_difficulty_catalogs:
             for item in catalog.records:
@@ -9019,7 +9025,6 @@ def _prepare_materialization(
     shared_data7_artifacts: dict[str, Any] = {}
     shared_data7_cache = paths.internal / "data7-cache"
     shared_data8_fixed_file_cache = paths.internal / "data8-fixed-cache"
-    shared_frame_array_index_cache: dict[str, Any] = {}
     cross_validation_cache: dict[tuple[int, int], tuple[Any, ...]] = {}
     variant_progress = _ProgressReporter("DATA8", len(variants))
     for variant_index, variant in enumerate(variants, start=1):
