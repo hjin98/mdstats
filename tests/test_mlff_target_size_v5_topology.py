@@ -90,6 +90,7 @@ def test_target_size_funnel_finishes_before_held_out_cv() -> None:
     assert "attach_epoch_10_outcomes" in eval_source
     assert "attach_epoch_30_outcomes" in eval_source
     assert "target-size selection frozen" in eval_source
+    assert "Target data size selected and frozen: n={updated.selected_target_size}" in eval_source
     assert 'for stage_name in ("prepare", "preflight", "train", "evaluate")' in eval_source
     assert "Held-out CV EVAL2 is blocked until selected_target_size is frozen" in role_source
     for retired_mutator in ("with_stage_b0_evidence", "with_stage_b_evidence", "with_stage_c_evidence"):

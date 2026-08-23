@@ -17555,8 +17555,9 @@ def _command_evaluate_train2(
                     f"target-size v5 selected n={updated.selected_target_size}; selected production prefix rebuild required",
                 )
             print(
-                "\nTarget-size selection is frozen. Next: rerun `prepare`, then `preflight`, "
-                "to materialize the selected REPAIR2 prefix and held-out CV matrix."
+                f"\nTarget data size selected and frozen: n={updated.selected_target_size}. "
+                "Next: rerun `prepare`, then `preflight`, to materialize the selected "
+                "REPAIR2 prefix and held-out CV matrix."
             )
             return 0
         _mark_stage(store, paths, "evaluate", StageState.FAILED, updated.decision_reason)
