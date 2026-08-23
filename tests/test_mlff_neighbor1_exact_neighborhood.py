@@ -129,6 +129,10 @@ def test_neighbor1_native_store_round_trip_and_campaign_references(tmp_path: Pat
     pointer = mdstats.write_target_coverage_exact_neighborhood_native_record(store, records)
     restored = mdstats.read_target_coverage_exact_neighborhood_native_record(pointer, tmp_path)
     _assert_same_store(store, restored)
+    from mdstats.training_data import target_coverage_exact_neighborhood_store as native
+    restored_family = restored.domains[0].families[0]
+    assert native._whole_npy_memmap_source(restored_family.witness_offsets) is not None
+    assert native._whole_npy_memmap_source(restored_family.witness_candidates) is not None
     mdstats.validate_target_coverage_exact_neighborhood_store(
         restored,
         target_coverage_reference=reference,
@@ -204,3 +208,37 @@ def test_neighbor1_public_api_and_mvidx_source_use_shared_engine() -> None:
     assert "cKDTree" not in source
     assert "query_ball_point" not in source
     assert "build_target_coverage_exact_neighborhood_store" in source
+
+
+def test_neighbor1_native_store_hardlinks_whole_out_of_core_npy(tmp_path: Path) -> None:
+    from mdstats.training_data import target_coverage_exact_neighborhood_store as native
+
+    reference, _ = _reference_and_role(split_units=True)
+    build_root = tmp_path / "build"
+    store = mdstats.build_target_coverage_exact_neighborhood_store(
+        reference,
+        global_workers=1,
+        query_workers=1,
+        query_block_size=4,
+        out_of_core_directory=build_root,
+    )
+    family = store.domains[0].families[0]
+    source = native._whole_npy_memmap_source(family.witness_candidates)
+    assert source is not None and source.is_file()
+
+    records = tmp_path / "records"
+    pointer = mdstats.write_target_coverage_exact_neighborhood_native_record(store, records)
+    manifest_path = tmp_path / pointer["relative_path"]
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    descriptor = manifest["domains"][0]["families"][0]["arrays"]["witness_candidates"]
+    destination = manifest_path.parent / descriptor["relative_path"]
+    assert source.stat().st_ino == destination.stat().st_ino
+    assert source.stat().st_dev == destination.stat().st_dev
+
+    restored = mdstats.read_target_coverage_exact_neighborhood_native_record(
+        pointer, tmp_path
+    )
+    import shutil
+    shutil.rmtree(build_root)
+    assert restored.content_digest == store.content_digest
+    assert restored.domains[0].families[0].edge_count == family.edge_count

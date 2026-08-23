@@ -15,7 +15,7 @@ NEIGHBOR1 defines one exact TARGET-DATA2B/C neighborhood implementation and a re
 
 ## 3. FEAS1 streaming contract
 
-FEAS1 SHALL reduce support/capacity evidence in the same historical canonical witness-block order. At that same commit boundary it SHALL append the exact witness->candidate relation to a disk-backed CSR stream and release the ragged temporary neighbor object. The final cache SHALL use `uint64` witness offsets and `uint32` candidate indices. The exact final array allocation SHALL be admitted against the stage RAM budget before materialization from the stream.
+FEAS1 SHALL reduce support/capacity evidence in the same historical canonical witness-block order. At that same commit boundary it SHALL append the exact witness->candidate relation to a disk-backed CSR stream and release the ragged temporary neighbor object. The final cache SHALL use `uint64` witness offsets and `uint32` candidate indices. Final forward-CSR arrays SHALL remain file-backed for campaign execution; aggregate completed CSR payload bytes are storage, not anonymous execution RAM. Only bounded finalization/copy scratch is admitted against the stage RAM budget. When that bounded scratch is temporarily unavailable, finalization SHALL backpressure while already admitted work drains rather than fail merely because other live work occupies the budget.
 
 ## 4. Cache identity and persistence
 
@@ -36,7 +36,7 @@ NEIGHBOR1 passes only if:
 3. cached and rebuilt MVIDX1 outputs are identical;
 4. a cache-hit test can disable the geometric query method entirely without affecting MVIDX construction;
 5. native persistence round trip and tamper rejection pass;
-6. bounded scheduling and pre-materialization CSR RAM admission are exercised; and
+6. bounded scheduling, finalization-scratch RAM admission/backpressure, file-backed aggregate CSR larger than the stage RAM budget, and native mmap persistence are exercised; and
 7. same-host end-to-end FEAS1->MVIDX1 timing shows a material improvement versus untouched 0.20.226a0 without changing scientific digests.
 
 The revision-94 PERFBASE1 workload digests are:

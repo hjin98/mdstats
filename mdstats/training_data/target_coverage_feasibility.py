@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import math
+from pathlib import Path
 import time
 from typing import Any, Callable, Mapping, Sequence
 
@@ -737,7 +738,11 @@ class _FamilyFeasibilityState:
     reducer: DeterministicOrderedReducer | None = field(default=None, repr=False)
 
 
-def _prepare_family_feasibility_state(job: _FamilyFeasibilityJob) -> _FamilyFeasibilityState:
+def _prepare_family_feasibility_state(
+    job: _FamilyFeasibilityJob,
+    *,
+    out_of_core_directory: str | Path | None = None,
+) -> _FamilyFeasibilityState:
     family = job.family
     engine = ExactNeighborhoodEngine()
     neighborhood = engine.prepare_family(
@@ -763,7 +768,9 @@ def _prepare_family_feasibility_state(job: _FamilyFeasibilityJob) -> _FamilyFeas
         correlation_degree_by_witness=np.empty(len(neighborhood.scaled), dtype=np.int64),
         blocks=neighborhood.blocks,
         neighborhood=neighborhood,
-        neighborhood_stream=engine.open_stream(neighborhood),
+        neighborhood_stream=engine.open_stream(
+            neighborhood, out_of_core_directory=out_of_core_directory
+        ),
     )
 
 def _query_family_feasibility_block(
@@ -894,6 +901,7 @@ def _family_state_memory_estimate(job: _FamilyFeasibilityJob) -> int:
     outputs = (
         candidate_count * np.dtype(np.float64).itemsize
         + 2 * witness_count * np.dtype(np.int64).itemsize
+        + witness_count * np.dtype(np.uint64).itemsize
     )
     return max(1, int(scaled_bytes + tree_bytes + outputs))
 
@@ -942,6 +950,7 @@ def _evaluate_family_jobs_global(
     progress_interval_seconds: float,
     progress_callback: Callable[[str], None] | None,
     resource_scope: StageResourceScope | None = None,
+    out_of_core_directory: str | Path | None = None,
 ) -> list[tuple[
     TargetCoverageFamilyFeasibilityReport,
     list[tuple[np.ndarray, int]],
@@ -976,6 +985,9 @@ def _evaluate_family_jobs_global(
         raise TrainingDataInputError(
             "TARGET-DATA2B-FEAS1 StageResourceScope tree_workers does not match the single-level tree width."
         )
+    ooc_root = None if out_of_core_directory is None else Path(out_of_core_directory)
+    if ooc_root is not None:
+        ooc_root.mkdir(parents=True, exist_ok=True)
 
     total_profiles = len(jobs)
     total_blocks = sum(
@@ -1006,7 +1018,9 @@ def _evaluate_family_jobs_global(
     ] = [None] * total_profiles
 
     def prepare_task(job: _FamilyFeasibilityJob) -> _FamilyFeasibilityState:
-        return _prepare_family_feasibility_state(job)
+        return _prepare_family_feasibility_state(
+            job, out_of_core_directory=ooc_root
+        )
 
     def block_task(
         state: _FamilyFeasibilityState,
@@ -1019,7 +1033,7 @@ def _evaluate_family_jobs_global(
     active: dict[int, _FamilyFeasibilityState] = {}
     owners: dict[str, tuple[str, Any, Any]] = {}
     reservation_by_job: dict[int, str] = {}
-    output_reservation_ids: list[str] = []
+    pending_finalization: set[int] = set()
     next_job_to_prepare = 0
     preparing = 0
     rr_cursor = 0
@@ -1085,7 +1099,7 @@ def _evaluate_family_jobs_global(
 
         def refill() -> None:
             nonlocal next_job_to_prepare, rr_cursor
-            if buffered_count() >= max_buffered:
+            if pending_finalization or buffered_count() >= max_buffered:
                 return
 
             # Keep a small preparation stream in front of exact query work.
@@ -1140,14 +1154,60 @@ def _evaluate_family_jobs_global(
                     break
                 next_job_to_prepare += 1
 
+        def finalize_pending_profiles() -> bool:
+            progressed = False
+            for job_index in sorted(tuple(pending_finalization)):
+                state = active[job_index]
+                finalize_id = f"neighbor-finalize:{job_index:08d}"
+                if not queue.try_reserve_memory(
+                    finalize_id, state.neighborhood_stream.finalization_memory_bytes
+                ):
+                    continue
+                try:
+                    finalized = _finalize_family_feasibility_state(state)
+                finally:
+                    queue.release_memory(finalize_id)
+                results[job_index] = finalized
+                neighborhood_family = finalized[2]
+                actual_output_bytes = int(
+                    neighborhood_family.witness_offsets.nbytes
+                    + neighborhood_family.witness_candidates.nbytes
+                )
+                if actual_output_bytes != state.neighborhood_stream.final_array_storage_bytes:
+                    raise TrainingDataInputError(
+                        "TARGET-DATA2B-FEAS1/NEIGHBOR1 final CSR storage accounting changed during materialization."
+                    )
+                pending_finalization.remove(job_index)
+                del active[job_index]
+                reservation_id = reservation_by_job.pop(job_index)
+                queue.release_memory(reservation_id)
+                progress.profile_done(
+                    domain_id=state.job.domain_id,
+                    family_id=state.job.family.family_id,
+                    profile_index=state.job.profile_index,
+                    active_profiles=len(active),
+                    snapshot=queue.snapshot(),
+                )
+                progressed = True
+            return progressed
+
         while next_job_to_prepare < total_profiles and queue.outstanding_tasks < worker_count:
             if not submit_prepare(jobs[next_job_to_prepare]):
                 break
             next_job_to_prepare += 1
 
         while any(item is None for item in results):
+            finalize_pending_profiles()
             refill()
             if not queue.has_outstanding_work:
+                if pending_finalization:
+                    job_index = min(pending_finalization)
+                    state = active[job_index]
+                    queue.reserve_memory(
+                        f"neighbor-finalize:{job_index:08d}",
+                        state.neighborhood_stream.finalization_memory_bytes,
+                    )
+                    raise AssertionError("unreachable FEAS1 finalization admission state")
                 raise TrainingDataInputError(
                     "TARGET-DATA2B-FEAS1 PARCORE1 scheduler exhausted work before every profile completed."
                 )
@@ -1206,42 +1266,14 @@ def _evaluate_family_jobs_global(
                     and state.next_submit_index == len(state.blocks)
                     and state.inflight_blocks == 0
                 ):
-                    output_id = f"neighbor-output:{state.job.job_index:08d}"
-                    # Reserve the exact final CSR bytes *before* the streamed
-                    # edge payload is materialized into RAM.
-                    queue.reserve_memory(
-                        output_id, state.neighborhood_stream.final_array_memory_bytes
-                    )
-                    output_reservation_ids.append(output_id)
-                    finalized = _finalize_family_feasibility_state(state)
-                    results[state.job.job_index] = finalized
-                    neighborhood_family = finalized[2]
-                    actual_output_bytes = int(
-                        neighborhood_family.witness_offsets.nbytes
-                        + neighborhood_family.witness_candidates.nbytes
-                    )
-                    if actual_output_bytes != state.neighborhood_stream.final_array_memory_bytes:
-                        raise TrainingDataInputError(
-                            "TARGET-DATA2B-FEAS1/NEIGHBOR1 final CSR memory accounting changed during materialization."
-                        )
-                    del active[state.job.job_index]
-                    reservation_id = reservation_by_job.pop(state.job.job_index)
-                    queue.release_memory(reservation_id)
-                    progress.profile_done(
-                        domain_id=state.job.domain_id,
-                        family_id=state.job.family.family_id,
-                        profile_index=state.job.profile_index,
-                        active_profiles=len(active),
-                        snapshot=queue.snapshot(),
-                    )
+                    pending_finalization.add(state.job.job_index)
+            finalize_pending_profiles()
             refill()
 
         if reservation_by_job:
             raise TrainingDataInputError(
                 "TARGET-DATA2B-FEAS1 PARCORE1 scheduler retained profile memory reservations after completion."
             )
-        for reservation_id in output_reservation_ids:
-            queue.release_memory(reservation_id)
 
     if any(item is None for item in results):
         raise TrainingDataInputError(
@@ -1328,6 +1360,7 @@ def build_target_coverage_feasibility_artifacts(
     progress_interval_seconds: float = 30.0,
     progress_callback: Callable[[str], None] | None = None,
     resource_scope: StageResourceScope | None = None,
+    out_of_core_directory: str | Path | None = None,
 ) -> tuple[TargetCoverageFeasibilityReport, TargetCoverageExactNeighborhoodStore]:
     """Build exact FEAS1 authority plus the NEIGHBOR1 forward-CSR execution cache.
 
@@ -1398,6 +1431,7 @@ def build_target_coverage_feasibility_artifacts(
         progress_interval_seconds=interval,
         progress_callback=progress_callback,
         resource_scope=resource_scope,
+        out_of_core_directory=out_of_core_directory,
     )
 
     for domain, role_domain, ordered_families, job_indices in domain_inputs:

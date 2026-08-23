@@ -371,3 +371,51 @@ def test_feas1_global_worker_setting_and_legacy_aliases_must_agree() -> None:
             reference,
             query_block_size=2,
         )
+
+
+def test_feas1_file_backed_neighbor_outputs_can_exceed_stage_ram_budget() -> None:
+    reference, role = _reference_and_role(split_units=True)
+    first = reference.domains[0].families[0]
+    families = (first,) + tuple(
+        replace(
+            first,
+            family_id=f"target_label:aggregate-{index:03d}",
+            required=False,
+        )
+        for index in range(1, 266)
+    )
+    domain = replace(reference.domains[0], families=families)
+    many = replace(reference, domains=(domain,))
+    ram_budget = 70_000
+    scope = mdstats.StageResourceScope(
+        stage_name="TARGET-DATA2B-FEAS1-aggregate-output-test",
+        cpu_threads_available=1,
+        cpu_threads_budget=1,
+        python_workers=1,
+        tree_workers=1,
+        blas_threads=1,
+        ram_budget_bytes=ram_budget,
+    )
+
+    report, neighborhoods = mdstats.build_target_coverage_feasibility_artifacts(
+        many,
+        role,
+        query_workers=1,
+        query_block_size=16,
+        block_workers=1,
+        resource_scope=scope,
+    )
+
+    final_payload_bytes = sum(
+        family.witness_offsets.nbytes + family.witness_candidates.nbytes
+        for output_domain in neighborhoods.domains
+        for family in output_domain.families
+    )
+    assert final_payload_bytes > ram_budget
+    assert len(report.domains[0].family_reports) == 266
+    assert len(neighborhoods.domains[0].families) == 266
+    first_output = neighborhoods.domains[0].families[0]
+    current = first_output.witness_candidates
+    while isinstance(current, np.ndarray) and not isinstance(current, np.memmap):
+        current = current.base
+    assert isinstance(current, np.memmap)

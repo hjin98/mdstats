@@ -15,6 +15,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import math
+import os
+from pathlib import Path
+import shutil
 import tempfile
 import time
 from typing import Any, Callable, Mapping, Sequence
@@ -43,6 +46,8 @@ EXACT_NEIGHBORHOOD_DISTANCE_SEMANTICS = (
 )
 
 _UINT32_MAX = int(np.iinfo(np.uint32).max)
+_NEIGHBOR1_FINALIZE_COPY_CHUNK_BYTES = 8 * 1024 * 1024
+_NEIGHBOR1_FINALIZE_MIN_ADMISSION_BYTES = 64 * 1024
 
 
 def _canonical_array(values: np.ndarray | Sequence[Any], *, dtype: str, ndim: int, name: str) -> np.ndarray:
@@ -425,15 +430,25 @@ class ExactNeighborhoodBlockResult:
 
 
 class ExactNeighborhoodCSRStream:
-    """Canonical block-ordered CSR stream with disk-backed ragged edge staging."""
+    """Canonical CSR stream with disk-backed edge staging and final arrays."""
 
     __slots__ = (
-        "prepared", "_handle", "_witness_counts", "_edge_count", "_next_start", "_closed"
+        "prepared", "_handle", "_witness_counts", "_edge_count",
+        "_next_start", "_closed", "_out_of_core_directory",
     )
 
-    def __init__(self, prepared: ExactNeighborhoodPreparedFamily) -> None:
+    def __init__(
+        self,
+        prepared: ExactNeighborhoodPreparedFamily,
+        *,
+        out_of_core_directory: str | Path | None = None,
+    ) -> None:
         self.prepared = prepared
-        self._handle = tempfile.TemporaryFile(mode="w+b")
+        directory = None if out_of_core_directory is None else Path(out_of_core_directory)
+        if directory is not None:
+            directory.mkdir(parents=True, exist_ok=True)
+        self._out_of_core_directory = directory
+        self._handle = tempfile.TemporaryFile(mode="w+b", dir=directory)
         self._witness_counts = np.zeros(len(prepared.scaled), dtype=np.uint64)
         self._edge_count = 0
         self._next_start = 0
@@ -444,10 +459,23 @@ class ExactNeighborhoodCSRStream:
         return int(self._edge_count)
 
     @property
-    def final_array_memory_bytes(self) -> int:
-        """Exact bytes allocated by ``finalize`` for CSR offsets and indices."""
+    def final_array_storage_bytes(self) -> int:
+        """Exact CSR payload bytes retained after finalization."""
 
-        return int((len(self._witness_counts) + 1) * np.dtype("<u8").itemsize + self._edge_count * np.dtype("<u4").itemsize)
+        return int(
+            (len(self._witness_counts) + 1) * np.dtype("<u8").itemsize
+            + self._edge_count * np.dtype("<u4").itemsize
+        )
+
+    @property
+    def finalization_memory_bytes(self) -> int:
+        """Bounded anonymous scratch needed to copy the raw edge stream."""
+
+        candidate_bytes = self._edge_count * np.dtype("<u4").itemsize
+        return max(
+            _NEIGHBOR1_FINALIZE_MIN_ADMISSION_BYTES,
+            min(candidate_bytes, _NEIGHBOR1_FINALIZE_COPY_CHUNK_BYTES),
+        )
 
     def append(self, block: ExactNeighborhoodBlockResult) -> None:
         if self._closed:
@@ -464,32 +492,134 @@ class ExactNeighborhoodCSRStream:
         self._edge_count += int(encoded.size)
         self._next_start = int(block.stop)
 
+    def _named_npy_path(self, suffix: str) -> Path:
+        directory = self._out_of_core_directory
+        if directory is None:
+            raise RuntimeError("NEIGHBOR1 named NPY output requested without a build directory.")
+        fd, name = tempfile.mkstemp(prefix="neighbor1-final-", suffix=suffix, dir=directory)
+        os.close(fd)
+        path = Path(name)
+        path.unlink()
+        return path
+
+    def _finalize_offsets(self) -> tuple[np.ndarray, Path | None]:
+        shape = (len(self._witness_counts) + 1,)
+        if self._out_of_core_directory is None:
+            handle = tempfile.TemporaryFile(mode="w+b")
+            handle.truncate(shape[0] * np.dtype("<u8").itemsize)
+            offsets = np.memmap(handle, dtype="<u8", mode="r+", shape=shape)
+            offsets[0] = 0
+            np.cumsum(self._witness_counts, dtype=np.uint64, out=offsets[1:])
+            offsets.flush()
+            offsets.setflags(write=False)
+            handle.close()
+            return offsets, None
+
+        path = self._named_npy_path("-witness-offsets.npy")
+        try:
+            offsets = np.lib.format.open_memmap(
+                path, mode="w+", dtype="<u8", shape=shape
+            )
+            offsets[0] = 0
+            np.cumsum(self._witness_counts, dtype=np.uint64, out=offsets[1:])
+            offsets.flush()
+            del offsets
+            return np.load(path, mmap_mode="r", allow_pickle=False), path
+        except Exception:
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                pass
+            raise
+
+    def _finalize_candidates(self) -> tuple[np.ndarray, Path | None]:
+        if self._edge_count <= 0:
+            raise TrainingDataInputError("NEIGHBOR1 streamed CSR contains no candidate edges.")
+        self._handle.flush()
+        self._handle.seek(0)
+        if self._out_of_core_directory is None:
+            candidates = np.memmap(
+                self._handle, dtype="<u4", mode="r", shape=(self._edge_count,)
+            )
+            return candidates, None
+
+        path = self._named_npy_path("-witness-candidates.npy")
+        try:
+            candidates = np.lib.format.open_memmap(
+                path, mode="w+", dtype="<u4", shape=(self._edge_count,)
+            )
+            chunk_items = max(
+                1,
+                _NEIGHBOR1_FINALIZE_COPY_CHUNK_BYTES
+                // np.dtype("<u4").itemsize,
+            )
+            cursor = 0
+            while cursor < self._edge_count:
+                count = min(chunk_items, self._edge_count - cursor)
+                chunk = np.fromfile(self._handle, dtype="<u4", count=count)
+                if chunk.size != count:
+                    raise TrainingDataInputError(
+                        "NEIGHBOR1 streamed CSR edge payload is truncated."
+                    )
+                candidates[cursor:cursor + count] = chunk
+                cursor += count
+            candidates.flush()
+            del candidates
+            return np.load(path, mmap_mode="r", allow_pickle=False), path
+        except Exception:
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                pass
+            raise
+
     def finalize(self) -> TargetCoverageExactNeighborhoodFamily:
         if self._closed:
             raise RuntimeError("NEIGHBOR1 CSR stream is already finalized.")
         if self._next_start != len(self._witness_counts):
             raise TrainingDataInputError("NEIGHBOR1 CSR stream finalized before all witnesses were committed.")
-        offsets = np.empty(len(self._witness_counts) + 1, dtype="<u8")
-        offsets[0] = 0
-        np.cumsum(self._witness_counts, dtype=np.uint64, out=offsets[1:])
-        if int(offsets[-1]) != self._edge_count:
-            raise TrainingDataInputError("NEIGHBOR1 streamed CSR edge count is inconsistent.")
-        self._handle.flush()
-        self._handle.seek(0)
-        candidates = np.fromfile(self._handle, dtype="<u4", count=self._edge_count)
-        self.close()
-        if candidates.size != self._edge_count:
-            raise TrainingDataInputError("NEIGHBOR1 streamed CSR edge payload is truncated.")
-        return TargetCoverageExactNeighborhoodFamily(
-            label_domain_id=self.prepared.label_domain_id,
-            frame_domain_digest=self.prepared.frame_domain_digest,
-            family_id=self.prepared.family.family_id,
-            family_digest=self.prepared.family.content_digest,
-            candidate_count=self.prepared.candidate_count,
-            witness_count=len(self.prepared.scaled),
-            witness_offsets=offsets,
-            witness_candidates=candidates,
-        )
+        if self._out_of_core_directory is not None:
+            required = self.final_array_storage_bytes
+            safety = max(1 * 1024**3, int(math.ceil(required * 0.05)))
+            free = int(shutil.disk_usage(self._out_of_core_directory).free)
+            if free < required + safety:
+                raise TrainingDataInputError(
+                    "NEIGHBOR1 out-of-core finalization requires approximately "
+                    f"{required / 1024**3:.1f} GiB plus "
+                    f"{safety / 1024**3:.1f} GiB safety headroom, but only "
+                    f"{free / 1024**3:.1f} GiB is free under "
+                    f"{self._out_of_core_directory}."
+                )
+
+        output_paths: list[Path] = []
+        try:
+            offsets, offsets_path = self._finalize_offsets()
+            if int(offsets[-1]) != self._edge_count:
+                raise TrainingDataInputError("NEIGHBOR1 streamed CSR edge count is inconsistent.")
+            if offsets_path is not None:
+                output_paths.append(offsets_path)
+            candidates, candidates_path = self._finalize_candidates()
+            if candidates_path is not None:
+                output_paths.append(candidates_path)
+            self.close()
+            return TargetCoverageExactNeighborhoodFamily(
+                label_domain_id=self.prepared.label_domain_id,
+                frame_domain_digest=self.prepared.frame_domain_digest,
+                family_id=self.prepared.family.family_id,
+                family_digest=self.prepared.family.content_digest,
+                candidate_count=self.prepared.candidate_count,
+                witness_count=len(self.prepared.scaled),
+                witness_offsets=offsets,
+                witness_candidates=candidates,
+            )
+        except Exception:
+            self.close()
+            for path in output_paths:
+                try:
+                    path.unlink()
+                except FileNotFoundError:
+                    pass
+            raise
 
     def close(self) -> None:
         if not self._closed:
@@ -595,8 +725,14 @@ class ExactNeighborhoodEngine:
         )
 
     @staticmethod
-    def open_stream(prepared: ExactNeighborhoodPreparedFamily) -> ExactNeighborhoodCSRStream:
-        return ExactNeighborhoodCSRStream(prepared)
+    def open_stream(
+        prepared: ExactNeighborhoodPreparedFamily,
+        *,
+        out_of_core_directory: str | Path | None = None,
+    ) -> ExactNeighborhoodCSRStream:
+        return ExactNeighborhoodCSRStream(
+            prepared, out_of_core_directory=out_of_core_directory
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -675,6 +811,7 @@ def build_target_coverage_exact_neighborhood_store(
     progress_interval_seconds: float = 30.0,
     progress_callback: Callable[[str], None] | None = None,
     resource_scope: StageResourceScope | None = None,
+    out_of_core_directory: str | Path | None = None,
     return_telemetry: bool = False,
 ) -> TargetCoverageExactNeighborhoodStore | tuple[TargetCoverageExactNeighborhoodStore, ExactNeighborhoodBuildTelemetry]:
     """Build every exact family neighborhood through one PARCORE1 work queue.
@@ -689,6 +826,9 @@ def build_target_coverage_exact_neighborhood_store(
     native_workers = max(1, int(query_workers)) if workers == 1 else 1
     block_size = max(1, int(query_block_size))
     interval = max(0.05, float(progress_interval_seconds))
+    ooc_root = None if out_of_core_directory is None else Path(out_of_core_directory)
+    if ooc_root is not None:
+        ooc_root.mkdir(parents=True, exist_ok=True)
     explicit_scope = resource_scope is not None
     scope = _default_scope(workers=workers, tree_workers=native_workers) if resource_scope is None else resource_scope
     if int(scope.python_workers) != workers:
@@ -725,7 +865,7 @@ def build_target_coverage_exact_neighborhood_store(
     inflight_blocks_by_job: dict[int, int] = {}
     owners: dict[str, tuple[str, int, tuple[int, int] | None]] = {}
     reservation_by_job: dict[int, str] = {}
-    output_reservations: list[str] = []
+    pending_finalization: set[int] = set()
     next_prepare = 0
     preparing = 0
     rr_cursor = 0
@@ -805,7 +945,7 @@ def build_target_coverage_exact_neighborhood_store(
 
         def refill() -> None:
             nonlocal next_prepare, rr_cursor
-            if buffered_count() >= max_pending + 2 * workers:
+            if pending_finalization or buffered_count() >= max_pending + 2 * workers:
                 return
             if not prepared_by_job:
                 prep_target = min(workers, len(manifest) - next_prepare + preparing)
@@ -838,14 +978,51 @@ def build_target_coverage_exact_neighborhood_store(
                     break
                 next_prepare += 1
 
+        def finalize_pending_jobs() -> bool:
+            progressed = False
+            for job_index in sorted(tuple(pending_finalization)):
+                stream = stream_by_job[job_index]
+                finalize_id = f"neighbor-finalize:{job_index:08d}"
+                if not queue.try_reserve_memory(
+                    finalize_id, stream.finalization_memory_bytes
+                ):
+                    continue
+                try:
+                    family_result = stream.finalize()
+                finally:
+                    queue.release_memory(finalize_id)
+                if _csr_memory_estimate(family_result) != stream.final_array_storage_bytes:
+                    raise TrainingDataInputError(
+                        "NEIGHBOR1 final CSR storage accounting changed during materialization."
+                    )
+                result_by_job[job_index] = family_result
+                pending_finalization.remove(job_index)
+                stream_by_job.pop(job_index, None)
+                queue.release_memory(reservation_by_job.pop(job_index))
+                del reducer_by_job[job_index]
+                del prepared_by_job[job_index]
+                del next_block_by_job[job_index]
+                del inflight_blocks_by_job[job_index]
+                progressed = True
+            return progressed
+
         while next_prepare < len(manifest) and queue.outstanding_tasks < workers:
             if not submit_prepare(next_prepare):
                 break
             next_prepare += 1
 
         while len(result_by_job) < len(manifest):
+            finalize_pending_jobs()
             refill()
             if not queue.has_outstanding_work:
+                if pending_finalization:
+                    job_index = min(pending_finalization)
+                    stream = stream_by_job[job_index]
+                    queue.reserve_memory(
+                        f"neighbor-finalize:{job_index:08d}",
+                        stream.finalization_memory_bytes,
+                    )
+                    raise AssertionError("unreachable NEIGHBOR1 finalization admission state")
                 raise TrainingDataInputError("NEIGHBOR1 scheduler exhausted work before all families completed.")
             timeout = max(0.05, interval - (time.monotonic() - last_progress))
             if not queue.wait_for_completion(timeout=timeout):
@@ -873,7 +1050,9 @@ def build_target_coverage_exact_neighborhood_store(
                     preparing -= 1
                     prepared = completion.value
                     prepared_by_job[job_index] = prepared
-                    stream_by_job[job_index] = engine.open_stream(prepared)
+                    stream_by_job[job_index] = engine.open_stream(
+                        prepared, out_of_core_directory=ooc_root
+                    )
                     next_block_by_job[job_index] = 0
                     inflight_blocks_by_job[job_index] = 0
 
@@ -928,27 +1107,11 @@ def build_target_coverage_exact_neighborhood_store(
                     and next_block_by_job[job_index] == len(prepared.blocks)
                     and inflight_blocks_by_job[job_index] == 0
                 ):
-                    stream = stream_by_job.pop(job_index)
-                    output_id = f"neighbor-output:{job_index:08d}"
-                    # Admit the exact final CSR allocation before materializing
-                    # it from the disk-backed edge stream.  This keeps the
-                    # StageResourceScope RAM budget fail-closed.
-                    queue.reserve_memory(output_id, stream.final_array_memory_bytes)
-                    output_reservations.append(output_id)
-                    family_result = stream.finalize()
-                    if _csr_memory_estimate(family_result) != stream.final_array_memory_bytes:
-                        raise TrainingDataInputError("NEIGHBOR1 final CSR memory accounting changed during materialization.")
-                    result_by_job[job_index] = family_result
-                    queue.release_memory(reservation_by_job.pop(job_index))
-                    del reducer_by_job[job_index]
-                    del prepared_by_job[job_index]
-                    del next_block_by_job[job_index]
-                    del inflight_blocks_by_job[job_index]
+                    pending_finalization.add(job_index)
+            finalize_pending_jobs()
             refill()
 
         final_snapshot = queue.snapshot()
-        for reservation_id in output_reservations:
-            queue.release_memory(reservation_id)
 
     domains: list[TargetCoverageExactNeighborhoodDomain] = []
     by_domain: dict[int, list[TargetCoverageExactNeighborhoodFamily]] = {}

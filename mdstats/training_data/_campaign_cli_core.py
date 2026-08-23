@@ -4390,7 +4390,7 @@ def _ensure_target_coverage_feasibility(
         f"{coverage_resources.cpu_threads_budget} CPU-budget lanes; tree-workers/task={coverage_workers}; "
         f"profiles={total_profiles}; blocks={total_blocks}; witnesses={total_witnesses}; "
         f"query block={block_size}; progress={progress_interval:g}s; "
-        f"hard ceiling={policy.maximum_candidate_size}",
+        f"hard ceiling={policy.maximum_candidate_size}; final-csr-storage=file-backed",
         flush=True,
     )
     started = time.monotonic()
@@ -4401,23 +4401,42 @@ def _ensure_target_coverage_feasibility(
         tree_workers=coverage_workers,
         blas_threads=1,
     )
-    report, neighborhoods = mdstats.build_target_coverage_feasibility_artifacts(
-        coverage_reference,
-        role_freeze,
-        policy=policy,
-        query_workers=coverage_workers,
-        query_block_size=block_size,
-        block_workers=block_workers,
-        progress_interval_seconds=progress_interval,
-        progress_callback=lambda message: print(
-            f"[TARGET-DATA2B-FEAS1] {message}", flush=True
-        ),
-        resource_scope=scope,
+    store.external_record_directory.mkdir(parents=True, exist_ok=True)
+    neighbor_build_root = Path(
+        tempfile.mkdtemp(
+            prefix="neighbor1-out-of-core-build-", dir=store.external_record_directory
+        )
     )
-    store.put_records({
-        "target_coverage_feasibility": report,
-        "target_coverage_exact_neighborhoods": neighborhoods,
-    })
+    try:
+        report, neighborhoods = mdstats.build_target_coverage_feasibility_artifacts(
+            coverage_reference,
+            role_freeze,
+            policy=policy,
+            query_workers=coverage_workers,
+            query_block_size=block_size,
+            block_workers=block_workers,
+            progress_interval_seconds=progress_interval,
+            progress_callback=lambda message: print(
+                f"[TARGET-DATA2B-FEAS1] {message}", flush=True
+            ),
+            resource_scope=scope,
+            out_of_core_directory=neighbor_build_root,
+        )
+        store.put_records({
+            "target_coverage_feasibility": report,
+            "target_coverage_exact_neighborhoods": neighborhoods,
+        })
+        persisted_neighborhoods = store.get_record(
+            "target_coverage_exact_neighborhoods",
+            mdstats.TargetCoverageExactNeighborhoodStore,
+        )
+        if persisted_neighborhoods.content_digest != neighborhoods.content_digest:
+            raise CampaignCliError(
+                "TARGET-DATA2B-FEAS1/NEIGHBOR1 persisted native cache changed during out-of-core handoff."
+            )
+        neighborhoods = persisted_neighborhoods
+    finally:
+        shutil.rmtree(neighbor_build_root, ignore_errors=True)
     _ok(
         "NEIGHBOR1 forward CSR emitted with FEAS1: "
         f"families={sum(len(domain.families) for domain in neighborhoods.domains)}; "
@@ -4718,16 +4737,36 @@ def _ensure_target_coverage_sparse_index(
             f"global-workers={global_workers}; tree-workers/task={tree_workers}; query-block={block_size}",
             flush=True,
         )
-        neighborhoods = mdstats.build_target_coverage_exact_neighborhood_store(
-            coverage_reference,
-            global_workers=global_workers,
-            query_workers=tree_workers,
-            query_block_size=block_size,
-            progress_interval_seconds=progress_interval,
-            progress_callback=lambda message: print(f"[NEIGHBOR1] {message}", flush=True),
-            resource_scope=neighbor_scope,
+        store.external_record_directory.mkdir(parents=True, exist_ok=True)
+        neighbor_build_root = Path(
+            tempfile.mkdtemp(
+                prefix="neighbor1-out-of-core-rebuild-",
+                dir=store.external_record_directory,
+            )
         )
-        store.put_record("target_coverage_exact_neighborhoods", neighborhoods)
+        try:
+            neighborhoods = mdstats.build_target_coverage_exact_neighborhood_store(
+                coverage_reference,
+                global_workers=global_workers,
+                query_workers=tree_workers,
+                query_block_size=block_size,
+                progress_interval_seconds=progress_interval,
+                progress_callback=lambda message: print(f"[NEIGHBOR1] {message}", flush=True),
+                resource_scope=neighbor_scope,
+                out_of_core_directory=neighbor_build_root,
+            )
+            store.put_record("target_coverage_exact_neighborhoods", neighborhoods)
+            persisted_neighborhoods = store.get_record(
+                "target_coverage_exact_neighborhoods",
+                mdstats.TargetCoverageExactNeighborhoodStore,
+            )
+            if persisted_neighborhoods.content_digest != neighborhoods.content_digest:
+                raise CampaignCliError(
+                    "NEIGHBOR1 persisted native cache changed during out-of-core handoff."
+                )
+            neighborhoods = persisted_neighborhoods
+        finally:
+            shutil.rmtree(neighbor_build_root, ignore_errors=True)
         _ok(
             "NEIGHBOR1 exact forward CSR rebuilt and persisted: "
             f"edges={neighborhoods.edge_count}; digest={neighborhoods.content_digest[:12]}..."

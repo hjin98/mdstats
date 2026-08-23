@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import mmap
 import os
 from pathlib import Path
 import shutil
@@ -47,6 +48,49 @@ def _write_json_atomic(path: Path, payload: Mapping[str, Any]) -> None:
     os.replace(temporary, path)
 
 
+
+
+def _root_memmap(array: np.ndarray) -> np.memmap | None:
+    current: Any = array
+    visited: set[int] = set()
+    while isinstance(current, np.ndarray) and id(current) not in visited:
+        visited.add(id(current))
+        if isinstance(current, np.memmap) and isinstance(current.base, mmap.mmap):
+            return current
+        current = getattr(current, "base", None)
+    return None
+
+
+def _whole_npy_memmap_source(array: np.ndarray) -> Path | None:
+    """Return the backing NPY file when ``array`` covers one complete memmap."""
+
+    root = _root_memmap(array)
+    if root is None or not array.flags.c_contiguous:
+        return None
+    filename = getattr(root, "filename", None)
+    if filename is None:
+        return None
+    source = Path(os.fspath(filename)).resolve()
+    if source.suffix.lower() != ".npy" or not source.is_file():
+        return None
+    if (
+        int(array.ctypes.data) != int(root.ctypes.data)
+        or int(array.nbytes) != int(root.nbytes)
+        or tuple(array.shape) != tuple(root.shape)
+        or array.dtype != root.dtype
+    ):
+        return None
+    try:
+        probe = np.load(source, mmap_mode="r", allow_pickle=False)
+    except (OSError, ValueError):
+        return None
+    try:
+        if tuple(probe.shape) != tuple(array.shape) or probe.dtype != array.dtype:
+            return None
+    finally:
+        del probe
+    return source
+
 class _HashingBinaryWriter:
     def __init__(self, handle: Any) -> None:
         self.handle = handle
@@ -80,6 +124,19 @@ class _HashingBinaryWriter:
 
 def _write_npy(path: Path, array: np.ndarray) -> dict[str, Any]:
     contiguous = np.ascontiguousarray(array)
+    source = _whole_npy_memmap_source(contiguous)
+    if source is not None:
+        try:
+            os.link(source, path)
+        except OSError:
+            source = None
+        else:
+            return {
+                "relative_path": path.name,
+                "sha256": _sha256_file(source),
+                "size_bytes": source.stat().st_size,
+                "array_reference": _coverage_array_reference(contiguous),
+            }
     with path.open("wb") as raw_handle:
         handle = _HashingBinaryWriter(raw_handle)
         np.save(handle, contiguous, allow_pickle=False)
@@ -256,7 +313,7 @@ def read_target_coverage_exact_neighborhood_native_record(
     pointer: Mapping[str, Any],
     campaign_root: str | Path,
     *,
-    mmap_threshold_bytes: int = 8 * 1024 * 1024,
+    mmap_threshold_bytes: int = 0,
 ) -> TargetCoverageExactNeighborhoodStore:
     if pointer.get("schema") != TARGET_COVERAGE_EXACT_NEIGHBORHOOD_NATIVE_POINTER_SCHEMA:
         raise TargetCoverageExactNeighborhoodNativeStoreError("Unsupported NEIGHBOR1 native pointer schema.")
