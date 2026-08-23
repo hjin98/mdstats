@@ -1,8 +1,8 @@
 ---
 title: "MLFF-DATA9A9b Production DATA6-DATA8 Materialization"
 author: "mdstats project"
-date: "2026-07-30"
-version: "0.20.55a0"
+date: "2026-08-23"
+version: "0.20.132a0"
 geometry: margin=0.8in
 fontsize: 10pt
 header-includes:
@@ -77,7 +77,7 @@ checkpoint used for DATA6 predictions.
 # 4. Restart semantics
 
 Each DATA7 domain is written independently to
-`data7/<domain_digest>.json`. `ProductionData7ArtifactRecord` binds:
+`data7/<domain_digest>.data7.zip`. `ProductionData7ArtifactRecord` binds:
 
 - domain digest;
 - DATA7 bundle digest;
@@ -85,22 +85,30 @@ Each DATA7 domain is written independently to
 - file SHA-256.
 
 `ProductionMaterializationCheckpoint` is atomically replaced after every newly
-completed domain. A bounded run may stop after `max_new_data7_domains`; a later
-run verifies and reuses all valid records.
+committed canonical domain. A bounded run may stop after
+`max_new_data7_domains`; shared-cache hits count toward that limit because the
+limit governs checkpoint advancement, not expensive-computation count. A later
+run verifies and reuses all valid records. Parallel domain completion may be
+out of order, but checkpoint mutation remains in canonical plan order.
 
 The production implementation SHALL avoid hidden repeated whole-corpus work:
 
 - build the frame-array index once and reuse it across DATA7 domains;
-- cache checkpoint-bound descriptor summaries across overlapping final/fold
-  domains while keeping each domain's fitted scaler/PCA independent;
-- hash each newly streamed DATA7 JSON during the atomic write instead of
-  rereading it immediately;
-- retain a DATA7 bundle already parsed for verification or construction when
-  the same invocation immediately assembles DATA8;
-- release descriptor-summary caches before loading all DATA7 bundles for DATA8
-  to prevent swap-induced wall-time growth;
+- use authenticated columnar/shard-batched raw descriptor sources where
+  available while keeping every domain's fitted scaler/PCA/E0/weight state
+  independent;
+- admit independent final/fold domain fits through the runtime resource queue
+  using the campaign CPU budget, a conservative peak incremental-memory
+  estimate, inner native widths of one, and no GPU jobs;
+- keep mutable extraction caches task-local under concurrent fitting;
+- have workers publish immutable authenticated DATA7 cache generations and
+  return compact receipts while the coordinator alone mutates production
+  records/checkpoints;
 - reuse lineage-identical DATA7 artifacts across seeds and modes through the
-  shared recipe cache.
+  shared recipe cache; current cache writes use atomic content-addressed
+  generations while legacy flat generations remain read-compatible;
+- verify and return each promoted DATA7 bundle in one load path rather than
+  hashing/parsing it twice.
 
 These rules make post-DATA6 orchestration linear in frame count for fixed fold
 count, feature dimension, and largest selection ladder, apart from bounded
@@ -131,7 +139,7 @@ provenance, counts, species, and replay policy must remain unchanged.
 
 # 6. DATA8 promotion
 
-DATA8 construction begins only when every planned DATA7 domain is valid. It is built in hidden staging, verified, moved into a content-addressed generation directory, and exposed by an atomic `data8` symlink switch. The output tree contains:
+DATA8 construction begins only when every planned DATA7 domain is valid. Immutable fixed-file recipes are enumerated and deduplicated before production-tree mutation. Cache misses may be populated by balanced fresh CPU-only interpreter batches using compact recipe/path descriptors and mmap/file-backed read-only context. CPU, RAM, task count, and the configured free-disk reserve bound this execution-only concurrency. Workers publish only authenticated fixed-file cache generations; the parent then assembles the production tree canonically in hidden staging, verifies it, moves it into a content-addressed generation directory, and exposes it by an atomic `data8` symlink switch. The output tree contains:
 
 - one final-development job;
 - one job per cross-validation fold;
@@ -142,9 +150,14 @@ DATA8 construction begins only when every planned DATA7 domain is valid. It is b
 - sealed locked-test metadata without materialized locked-test labels.
 
 A DATA8 artifact record binds the native DATA8 bundle digest and a deterministic
-relative-path/file-SHA tree manifest. Completion is promoted only after the
-whole tree and bundle can be reloaded and verified. Failed construction removes
-an unpromoted partial DATA8 directory and records failure evidence.
+relative-path/file-SHA tree manifest. Fixed-file cache population is
+reconstructible execution state and never replaces this promoted authority.
+Foundation/selected-head sources are authenticated and staged by atomic
+hardlink-or-copy; repeated weighted-replay byte realizations may be reused from
+an exact recipe-bound execution cache. Completion is promoted only after the
+whole staged tree is hashed and its bundle is valid. Restored records perform
+independent tree verification. Failed construction removes an unpromoted
+partial DATA8 directory and records failure evidence.
 
 # 7. Atomic-reference modes
 

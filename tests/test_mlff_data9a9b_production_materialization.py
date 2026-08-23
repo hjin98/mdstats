@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from dataclasses import replace
 from types import SimpleNamespace
 import hashlib
 import json
+import shutil
+import threading
+import time
 
 import numpy as np
 import pytest
@@ -12,6 +16,8 @@ from ase.calculators.calculator import Calculator, all_changes
 
 import mdstats
 from mdstats.training_data._common import digest
+from mdstats.training_data.resources import GpuResourceSnapshot, SystemResourceSnapshot
+from mdstats.training_data.work_queue import DeterministicWorkQueueMemoryError
 from tests.test_mlff_data5_partition_roles import _build
 from tests.test_mlff_data8_mace_artifacts import _probe, _write_replay
 
@@ -42,6 +48,19 @@ class _Calculator(Calculator):
 
 def _sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _resources(cpu_budget: int, ram_budget: int = 8 * 1024**3) -> SystemResourceSnapshot:
+    return SystemResourceSnapshot(
+        cpu_threads_available=max(1, int(cpu_budget)),
+        cpu_fraction=1.0,
+        cpu_threads_budget=max(1, int(cpu_budget)),
+        ram_available_bytes=int(ram_budget),
+        ram_fraction=1.0,
+        ram_budget_bytes=int(ram_budget),
+        gpu_memory_fraction=0.9,
+        gpu=GpuResourceSnapshot(False, 0, None, None, None, None, None, "test"),
+    )
 
 
 def _fixture(tmp_path: Path):
@@ -646,3 +665,307 @@ def test_prescribed_target_prefixes_drive_final_and_cv_data7_without_reselection
         mdstats.FeatureFitDomainKind.FINAL_DEVELOPMENT,
         mdstats.FeatureFitDomainKind.CROSS_VALIDATION_TRAINING,
     }
+
+
+def test_data7_parallel_domains_preserve_serial_content(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    inputs = _fixture(tmp_path)
+    import mdstats.training_data.production_materialization as module
+
+    serial = mdstats.run_restartable_production_materialization(
+        *inputs[:7],
+        inputs[7],
+        tmp_path / "serial",
+        execution_resources=_resources(1),
+        execution_policy=mdstats.ProductionMaterializationExecutionPolicy(materialize_data8=False),
+    )
+
+    original = module.build_data7_preparation_bundle
+    active = 0
+    maximum = 0
+    lock = threading.Lock()
+
+    def observed(*args, **kwargs):
+        nonlocal active, maximum
+        with lock:
+            active += 1
+            maximum = max(maximum, active)
+        try:
+            time.sleep(0.05)
+            return original(*args, **kwargs)
+        finally:
+            with lock:
+                active -= 1
+
+    monkeypatch.setattr(module, "build_data7_preparation_bundle", observed)
+    parallel = mdstats.run_restartable_production_materialization(
+        *inputs[:7],
+        inputs[7],
+        tmp_path / "parallel",
+        execution_resources=_resources(4),
+        execution_policy=mdstats.ProductionMaterializationExecutionPolicy(materialize_data8=False),
+    )
+    assert maximum >= 2
+    assert parallel.data7_bundle_digests == serial.data7_bundle_digests
+    assert [item.file_sha256 for item in parallel.checkpoint.data7_artifacts] == [
+        item.file_sha256 for item in serial.checkpoint.data7_artifacts
+    ]
+
+
+def test_data7_ram_admission_rejects_intrinsically_impossible_domain(tmp_path: Path) -> None:
+    inputs = _fixture(tmp_path)
+    with pytest.raises(DeterministicWorkQueueMemoryError):
+        mdstats.run_restartable_production_materialization(
+            *inputs[:7],
+            inputs[7],
+            tmp_path / "too-small",
+            execution_resources=_resources(2, ram_budget=32 * 1024**2),
+            execution_policy=mdstats.ProductionMaterializationExecutionPolicy(materialize_data8=False),
+        )
+
+
+def test_max_new_domains_counts_verified_shared_cache_hits(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    inputs = _fixture(tmp_path)
+    import mdstats.training_data.production_materialization as module
+
+    cache = tmp_path / "shared-data7"
+    seed = mdstats.run_restartable_production_materialization(
+        *inputs[:7],
+        inputs[7],
+        tmp_path / "seed",
+        shared_data7_cache_directory=cache,
+        execution_resources=_resources(4),
+        execution_policy=mdstats.ProductionMaterializationExecutionPolicy(materialize_data8=False),
+    )
+    assert len(seed.checkpoint.data7_artifacts) == len(seed.checkpoint.plan.domains)
+    assert not tuple(cache.glob("*.manifest.json"))
+    assert len(tuple(cache.glob("*/*/cache.json"))) == len(seed.checkpoint.plan.domains)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("shared-cache hit unexpectedly rebuilt DATA7")
+
+    monkeypatch.setattr(module, "build_data7_preparation_bundle", forbidden)
+    partial = mdstats.run_restartable_production_materialization(
+        *inputs[:7],
+        inputs[7],
+        tmp_path / "partial-from-cache",
+        shared_data7_cache_directory=cache,
+        execution_resources=_resources(4),
+        execution_policy=mdstats.ProductionMaterializationExecutionPolicy(
+            max_new_data7_domains=2,
+            materialize_data8=False,
+        ),
+    )
+    assert len(partial.checkpoint.data7_artifacts) == 2
+
+
+def test_data7_shared_cache_accepts_legacy_flat_generations(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    inputs = _fixture(tmp_path)
+    import mdstats.training_data.production_materialization as module
+
+    current_cache = tmp_path / "current-data7"
+    seed = mdstats.run_restartable_production_materialization(
+        *inputs[:7],
+        inputs[7],
+        tmp_path / "legacy-seed",
+        shared_data7_cache_directory=current_cache,
+        execution_resources=_resources(4),
+        execution_policy=mdstats.ProductionMaterializationExecutionPolicy(materialize_data8=False),
+    )
+    legacy_cache = tmp_path / "legacy-data7"
+    legacy_cache.mkdir()
+    for metadata_path in current_cache.glob("*/*/cache.json"):
+        metadata = json.loads(metadata_path.read_text())
+        recipe_digest = metadata["recipe_digest"]
+        artifact_name = f"{recipe_digest}.data7.zip"
+        shutil.copy2(metadata_path.parent / metadata["artifact_name"], legacy_cache / artifact_name)
+        metadata["schema"] = module.SHARED_DATA7_ARTIFACT_V2_SCHEMA
+        metadata["artifact_name"] = artifact_name
+        (legacy_cache / f"{recipe_digest}.manifest.json").write_text(
+            json.dumps(metadata, sort_keys=True, separators=(",", ":")) + "\n"
+        )
+    assert len(tuple(legacy_cache.glob("*.manifest.json"))) == len(seed.checkpoint.plan.domains)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("legacy DATA7 cache hit unexpectedly rebuilt DATA7")
+
+    monkeypatch.setattr(module, "build_data7_preparation_bundle", forbidden)
+    restored = mdstats.run_restartable_production_materialization(
+        *inputs[:7],
+        inputs[7],
+        tmp_path / "legacy-restored",
+        shared_data7_cache_directory=legacy_cache,
+        execution_resources=_resources(4),
+        execution_policy=mdstats.ProductionMaterializationExecutionPolicy(materialize_data8=False),
+    )
+    assert restored.data7_bundle_digests == seed.data7_bundle_digests
+
+
+def test_data7_shared_cache_concurrent_publishers_validate_one_generation(tmp_path: Path) -> None:
+    inputs = _fixture(tmp_path)
+    import mdstats.training_data.production_materialization as module
+
+    seed = mdstats.run_restartable_production_materialization(
+        *inputs[:7],
+        inputs[7],
+        tmp_path / "cache-race-seed",
+        execution_resources=_resources(1),
+        execution_policy=mdstats.ProductionMaterializationExecutionPolicy(materialize_data8=False),
+    )
+    domain = seed.checkpoint.plan.domains[0]
+    bundle = seed.load_data7_bundles()[0]
+    recipe_digest = module._data7_recipe_digest(seed.checkpoint.plan, domain)
+    cache = tmp_path / "cache-race"
+
+    def publish(_index: int):
+        return module._write_reusable_data7_artifact(
+            cache, recipe_digest, domain, bundle, seed.checkpoint.plan
+        )
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        receipts = tuple(executor.map(publish, range(8)))
+    assert len({item.path for item in receipts}) == 1
+    assert len({item.file_sha256 for item in receipts}) == 1
+    assert len({item.bundle_digest for item in receipts}) == 1
+    assert len(tuple(cache.glob("*/*/cache.json"))) == 1
+    loaded = module._load_reusable_data7_artifact(
+        cache, recipe_digest, domain, seed.checkpoint.plan
+    )
+    assert loaded is not None
+    assert loaded[0].file_sha256 == receipts[0].file_sha256
+
+
+def test_data8_fixed_file_cache_uses_fresh_parallel_workers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    inputs = _fixture(tmp_path)
+    import mdstats.training_data.data8_bundle as module
+
+    original = module.isolated_process_map
+    observed_workers: list[int] = []
+
+    def counted(*args, workers: int, **kwargs):
+        observed_workers.append(int(workers))
+        yield from original(*args, workers=workers, **kwargs)
+
+    monkeypatch.setattr(module, "isolated_process_map", counted)
+    cache = tmp_path / "shared-data8"
+    progress: list[str] = []
+    record = mdstats.run_restartable_production_materialization(
+        *inputs[:7],
+        inputs[7],
+        tmp_path / "parallel-data8",
+        shared_data8_fixed_file_cache_directory=cache,
+        execution_resources=_resources(4),
+        minimum_free_disk_bytes=0,
+        progress_callback=progress.append,
+    )
+    assert record.complete
+    assert observed_workers and max(observed_workers) >= 2
+    assert any("DATA8 fixed-file cache; mode=parallel" in item for item in progress)
+    assert any("completed_misses=" in item for item in progress)
+    fixed_generations = tuple(
+        path for path in cache.glob("*/*/cache.json")
+        if "weighted-replay" not in path.parts
+    )
+    assert len(fixed_generations) > 1
+    assert record.load_data8_bundle().content_digest == record.data8_bundle_digest
+
+
+def test_data8_parallel_fixed_cache_preserves_serial_extxyz_bytes(tmp_path: Path) -> None:
+    inputs = _fixture(tmp_path)
+
+    def identities(record):
+        bundle = record.load_data8_bundle()
+        artifacts = tuple(bundle.target_artifacts) + tuple(bundle.fold_evaluation_artifacts)
+        return tuple(
+            sorted(
+                (
+                    item.role,
+                    item.relative_path,
+                    item.sha256,
+                    item.sidecar_sha256,
+                    item.content_digest,
+                )
+                for item in artifacts
+            )
+        )
+
+    serial = mdstats.run_restartable_production_materialization(
+        *inputs[:7],
+        inputs[7],
+        tmp_path / "serial-data8",
+        shared_data8_fixed_file_cache_directory=tmp_path / "serial-data8-cache",
+        execution_resources=_resources(1),
+        minimum_free_disk_bytes=0,
+    )
+    parallel = mdstats.run_restartable_production_materialization(
+        *inputs[:7],
+        inputs[7],
+        tmp_path / "parallel-data8-exact",
+        shared_data8_fixed_file_cache_directory=tmp_path / "parallel-data8-cache-exact",
+        execution_resources=_resources(4),
+        minimum_free_disk_bytes=0,
+    )
+    assert identities(parallel) == identities(serial)
+
+
+def test_data8_shared_cache_reuses_weighted_replay_realization(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    inputs = _fixture(tmp_path)
+    import mdstats.training_data.data8_bundle as module
+
+    original = module._scale_extxyz_configuration_weights
+    calls = 0
+
+    def counted(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(module, "_scale_extxyz_configuration_weights", counted)
+    cache = tmp_path / "shared-data8"
+    first = mdstats.run_restartable_production_materialization(
+        *inputs[:7],
+        inputs[7],
+        tmp_path / "variant-one",
+        shared_data8_fixed_file_cache_directory=cache,
+        execution_resources=_resources(4),
+        minimum_free_disk_bytes=0,
+    )
+    assert first.complete
+    assert calls == 1
+    first_replay = first.load_data8_bundle().replay_plan.train_artifact
+    assert first_replay is not None
+
+    second = mdstats.run_restartable_production_materialization(
+        *inputs[:7],
+        replace(inputs[7], optimizer_policy=replace(inputs[7].optimizer_policy, seed=97)),
+        tmp_path / "variant-two",
+        shared_data8_fixed_file_cache_directory=cache,
+        shared_data7_artifacts={},
+        execution_resources=_resources(4),
+        minimum_free_disk_bytes=0,
+    )
+    assert second.complete
+    assert calls == 1
+    second_replay = second.load_data8_bundle().replay_plan.train_artifact
+    assert second_replay is not None
+    assert second_replay.content_digest == first_replay.content_digest
+    assert second_replay.sha256 == first_replay.sha256
+
+
+def test_data8_parallel_cache_respects_free_disk_reserve(tmp_path: Path) -> None:
+    inputs = _fixture(tmp_path)
+    cache = tmp_path / "shared-data8"
+    cache.mkdir()
+    free = shutil.disk_usage(cache).free
+    with pytest.raises(mdstats.TrainingDataInputError, match="lacks free disk"):
+        mdstats.run_restartable_production_materialization(
+            *inputs[:7],
+            inputs[7],
+            tmp_path / "disk-bound",
+            shared_data8_fixed_file_cache_directory=cache,
+            execution_resources=_resources(4),
+            minimum_free_disk_bytes=free,
+        )

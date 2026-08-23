@@ -1198,6 +1198,16 @@ $$
 
 For native kernels such as cKDTree, BLAS, or OpenMP, a campaign resource scope owns native-thread admission. Individual workers do not independently oversubscribe the machine.
 
+## DATA6-to-DATA8 materialization boundary
+
+DATA6 is the last preparation stage that owns the MACE accelerator model. After its final descriptor/prediction consumer, production explicitly releases calculator/model references and unused CUDA allocator state. DATA7/DATA8 are CPU/I/O stages and advertise no GPU jobs. Heavy frame-cache restoration and foundation-energy reconstruction remain lazy until a materialization variant actually misses the completed-artifact reuse path.
+
+DATA7 exposes canonical final/fold domains as the outer parallel unit. Each domain retains independent fitted scaler, PCA, E0, weighting, selection, and coverage state. Immutable frame arrays and authenticated descriptor shards may be shared, but task-local mutable extraction state is not shared between concurrent domains. Outer DATA7 work is admitted through the deterministic resource queue using the live runtime CPU budget and a conservative peak incremental-memory estimate; inner BLAS/OpenMP/PyTorch widths are one while multiple domains are available. Workers publish authenticated immutable DATA7 cache generations and return compact receipts. Only the coordinator mutates production records/checkpoints, in canonical domain order.
+
+DATA8 separates immutable fixed-file production from production-tree assembly. Unique ExtXYZ cache misses are enumerated first, then balanced across fresh CPU-only interpreter batches. The large read-only context is serialized once with mmap/file references; worker messages carry compact context paths and recipe digests rather than dense arrays. Fixed-file cache generations use atomic publish-or-validate-winner semantics. CPU, RAM, task count, and configured free-disk reserve bound concurrency. After cache population, the production tree, YAML, scripts, protocol identities, tree digest, and promotion are assembled canonically in the parent process.
+
+Shared DATA7/DATA8 caches are reconstructible execution state. Cache layout, worker count, batch assignment, and completion order do not enter scientific identity. Legacy DATA7 flat cache generations remain read-compatible; current writes use atomically installed content-addressed generations.
+
 ## Deterministic resource-bounded work queue
 
 CPU-heavy independent tasks use a shared deterministic queue abstraction with explicit CPU and memory ownership. Its architectural responsibilities are:

@@ -13,7 +13,12 @@ import json
 import os
 from pathlib import Path
 import shutil
+import time
 import uuid
+
+import numpy as np
+
+from threading import Lock
 from typing import Any, Callable, Mapping, MutableMapping, Sequence
 
 from .progress_timing import format_progress_fraction
@@ -45,6 +50,12 @@ from .reference_fit import AtomicReferenceFitMode, AtomicReferenceFitPolicy
 from .replay import ReplayMode, ReplayPreparationPlan, ReplayFileArtifact, ReplayLabelMode
 from .online_monitor import OnlineMonitorPolicy
 from .selection import SelectionBudgetPolicy
+from .resources import (
+    SystemResourceSnapshot,
+    build_stage_resource_scope,
+    detect_system_resources,
+)
+from .work_queue import DeterministicOrderedReducer, DeterministicWorkQueue
 
 PRODUCTION_MATERIALIZATION_POLICY_SCHEMA = "mdstats.production-materialization-policy.v1"
 PRODUCTION_MATERIALIZATION_PLAN_SCHEMA = "mdstats.production-materialization-plan.v9"
@@ -60,7 +71,8 @@ PRODUCTION_DATA8_ARTIFACT_SCHEMA = "mdstats.production-data8-artifact.v2"
 PRODUCTION_MATERIALIZATION_CHECKPOINT_SCHEMA = "mdstats.production-materialization-checkpoint.v2"
 PRODUCTION_MATERIALIZATION_RECORD_SCHEMA = "mdstats.production-materialization-record.v2"
 MLFF_DATA9A9B_VERSION = "mdstats.mlff-data9a9c.production-gate-integrity.2026-07.v1"
-SHARED_DATA7_ARTIFACT_SCHEMA = "mdstats.shared-data7-artifact.v2"
+SHARED_DATA7_ARTIFACT_SCHEMA = "mdstats.shared-data7-artifact.v3"
+SHARED_DATA7_ARTIFACT_V2_SCHEMA = "mdstats.shared-data7-artifact.v2"
 SHARED_DATA7_ARTIFACT_LEGACY_SCHEMA = "mdstats.shared-data7-artifact.v1"
 SHARED_DATA7_RECIPE_SCHEMA = "mdstats.shared-data7-recipe.v1"
 
@@ -72,6 +84,17 @@ class _ReusableData7Artifact:
     bundle_digest: str
     file_sha256: str
     path: str
+
+
+@dataclass(frozen=True, slots=True)
+class _Data7ArtifactReceipt:
+    recipe_digest: str
+    domain_digest: str
+    bundle_digest: str
+    file_sha256: str
+    path: str
+    source: str
+    wall_seconds: float = 0.0
 
 
 def _sha256_file(path: Path) -> str:
@@ -836,26 +859,29 @@ class ProductionMaterializationRecord:
     def load_data7_bundles(self) -> tuple[Data7PreparationBundle, ...]:
         root = Path(self.root_directory)
         indexed = {item.domain_digest: item for item in self.checkpoint.data7_artifacts}
-        for record in indexed.values():
-            if not _data7_record_valid(record, root, self.checkpoint.plan):
-                raise TrainingDataSerializationError("Production DATA7 artifact failed verification before loading.")
-        return tuple(
-            _read_data7_artifact(
-                root / indexed[domain.content_digest].relative_path,
-                expected_sha256=indexed[domain.content_digest].file_sha256,
-            )
-            for domain in self.checkpoint.plan.domains
-            if domain.content_digest in indexed
-        )
+        bundles: list[Data7PreparationBundle] = []
+        for domain in self.checkpoint.plan.domains:
+            record = indexed.get(domain.content_digest)
+            if record is None:
+                continue
+            bundle = _load_valid_data7_record(record, root, self.checkpoint.plan)
+            if bundle is None:
+                raise TrainingDataSerializationError(
+                    "Production DATA7 artifact failed verification before loading."
+                )
+            bundles.append(bundle)
+        return tuple(bundles)
 
     def load_data8_bundle(self) -> Data8PreparationBundle:
         if self.checkpoint.data8_artifact is None:
             raise TrainingDataInputError("Production materialization has no DATA8 artifact.")
         root = Path(self.root_directory)
-        if not _data8_record_valid(self.checkpoint.data8_artifact, root, self.checkpoint.plan):
+        bundle = _load_valid_data8_record(
+            self.checkpoint.data8_artifact, root, self.checkpoint.plan
+        )
+        if bundle is None:
             raise TrainingDataSerializationError("Production DATA8 artifact failed verification before loading.")
-        path = root / self.checkpoint.data8_artifact.bundle_relative_path
-        return Data8PreparationBundle.from_dict(json.loads(path.read_text(encoding="utf-8")))
+        return bundle
 
     def _identity_payload(self) -> dict[str, Any]:
         return {"schema": PRODUCTION_MATERIALIZATION_RECORD_SCHEMA, "checkpoint": self.checkpoint.to_dict()}
@@ -1123,13 +1149,14 @@ def _atomic_link_or_copy(source: Path, destination: Path) -> None:
         raise
 
 
-def _load_reusable_data7_artifact(
-    cache_root: Path,
+def _load_reusable_data7_artifact_from_paths(
+    *,
+    manifest_path: Path,
+    artifact_root: Path,
     recipe_digest: str,
     domain: FeatureFitDomain,
     plan: ProductionMaterializationPlan,
 ) -> tuple[_ReusableData7Artifact, Data7PreparationBundle] | None:
-    manifest_path = cache_root / f"{recipe_digest}.manifest.json"
     if not manifest_path.is_file():
         return None
     try:
@@ -1137,6 +1164,7 @@ def _load_reusable_data7_artifact(
         if (
             metadata.get("schema") not in {
                 SHARED_DATA7_ARTIFACT_SCHEMA,
+                SHARED_DATA7_ARTIFACT_V2_SCHEMA,
                 SHARED_DATA7_ARTIFACT_LEGACY_SCHEMA,
             }
             or metadata.get("recipe_digest") != recipe_digest
@@ -1145,12 +1173,12 @@ def _load_reusable_data7_artifact(
             return None
         artifact_name = metadata.get("artifact_name")
         if artifact_name is None:
-            artifact_path = cache_root / f"{recipe_digest}.json"
+            artifact_path = artifact_root / f"{recipe_digest}.json"
         else:
             candidate = Path(str(artifact_name))
             if candidate.is_absolute() or ".." in candidate.parts:
                 return None
-            artifact_path = cache_root / candidate
+            artifact_path = artifact_root / candidate
         if not artifact_path.is_file():
             return None
         file_sha256 = str(metadata.get("file_sha256", ""))
@@ -1176,33 +1204,192 @@ def _load_reusable_data7_artifact(
         return None
 
 
+def _load_reusable_data7_artifact(
+    cache_root: Path,
+    recipe_digest: str,
+    domain: FeatureFitDomain,
+    plan: ProductionMaterializationPlan,
+) -> tuple[_ReusableData7Artifact, Data7PreparationBundle] | None:
+    # Current cache generations are installed atomically as one directory.
+    generation = cache_root / recipe_digest[:2] / recipe_digest
+    current = _load_reusable_data7_artifact_from_paths(
+        manifest_path=generation / "cache.json",
+        artifact_root=generation,
+        recipe_digest=recipe_digest,
+        domain=domain,
+        plan=plan,
+    )
+    if current is not None:
+        return current
+    # Read-only compatibility for pre-PAR1 flat cache generations.
+    return _load_reusable_data7_artifact_from_paths(
+        manifest_path=cache_root / f"{recipe_digest}.manifest.json",
+        artifact_root=cache_root,
+        recipe_digest=recipe_digest,
+        domain=domain,
+        plan=plan,
+    )
+
+
 def _write_reusable_data7_artifact(
     cache_root: Path,
     recipe_digest: str,
     domain: FeatureFitDomain,
     bundle: Data7PreparationBundle,
+    plan: ProductionMaterializationPlan,
 ) -> _ReusableData7Artifact:
     cache_root.mkdir(parents=True, exist_ok=True)
-    artifact_path = cache_root / f"{recipe_digest}.data7.zip"
-    file_sha256 = write_data7_archive(bundle, artifact_path)
-    _atomic_json(
-        cache_root / f"{recipe_digest}.manifest.json",
-        {
-            "schema": SHARED_DATA7_ARTIFACT_SCHEMA,
-            "recipe_digest": recipe_digest,
-            "domain_digest": domain.content_digest,
-            "bundle_digest": bundle.content_digest,
-            "artifact_name": artifact_path.name,
-            "file_sha256": file_sha256,
-        },
+    cache_directory = cache_root / recipe_digest[:2] / recipe_digest
+    existing = _load_reusable_data7_artifact(
+        cache_root, recipe_digest, domain, plan
     )
-    return _ReusableData7Artifact(
-        recipe_digest=recipe_digest,
-        domain_digest=domain.content_digest,
-        bundle_digest=bundle.content_digest,
-        file_sha256=file_sha256,
-        path=str(artifact_path),
+    if existing is not None:
+        return existing[0]
+
+    cache_directory.parent.mkdir(parents=True, exist_ok=True)
+    staging = cache_directory.parent / (
+        f".{recipe_digest}.tmp-{os.getpid()}-{uuid.uuid4().hex}"
     )
+    shutil.rmtree(staging, ignore_errors=True)
+    staging.mkdir(parents=True, exist_ok=False)
+    try:
+        artifact_path = staging / "artifact.data7.zip"
+        file_sha256 = write_data7_archive(bundle, artifact_path)
+        _atomic_json(
+            staging / "cache.json",
+            {
+                "schema": SHARED_DATA7_ARTIFACT_SCHEMA,
+                "recipe_digest": recipe_digest,
+                "domain_digest": domain.content_digest,
+                "bundle_digest": bundle.content_digest,
+                "artifact_name": artifact_path.name,
+                "file_sha256": file_sha256,
+            },
+        )
+        try:
+            os.rename(staging, cache_directory)
+        except OSError:
+            # Another equivalent producer may have won the content-addressed
+            # race. Never trust the winner implicitly; authenticate it below.
+            shutil.rmtree(staging, ignore_errors=True)
+        winner = _load_reusable_data7_artifact(
+            cache_root, recipe_digest, domain, plan
+        )
+        if winner is None:
+            raise TrainingDataSerializationError(
+                "Concurrent DATA7 cache publication did not yield a valid generation."
+            )
+        return winner[0]
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+
+
+def _estimate_data7_domain_peak_bytes(
+    domain: FeatureFitDomain,
+    plan: ProductionMaterializationPlan,
+    data6_bundle: Any,
+    frame_data_by_run: Mapping[str, Any],
+) -> int:
+    """Conservative incremental peak-RSS estimate for one DATA7 fit.
+
+    DATA7 extracts one raw block at a time but retains transformed block outputs
+    until the final combined matrix is assembled.  The estimate intentionally
+    overstates unknown low-dimensional blocks so queue admission fails safe.
+    """
+
+    rows = max(1, len(domain.frame_uids))
+    species = {
+        int(number)
+        for frame_data in frame_data_by_run.values()
+        for number in np.asarray(frame_data.atomic_numbers, dtype=np.int32).reshape(-1)
+    }
+    species_count = max(1, len(species))
+    structural_dimension = 0
+    domain_set = frozenset(domain.frame_uids)
+    for catalog in getattr(data6_bundle, "universal_structural_features", ()):
+        table = catalog.frame_descriptor_table
+        if domain_set.issubset(table.frame_uid_set):
+            structural_dimension = max(structural_dimension, len(table.feature_names))
+
+    descriptor_dimension = 0
+    manifest = getattr(data6_bundle, "mace_descriptor_manifest", None)
+    if manifest is not None:
+        signature = getattr(manifest, "signature", None)
+        if signature is not None:
+            descriptor_dimension = int(signature.returned_per_atom_dimension)
+        elif getattr(manifest, "records", ()):
+            descriptor_dimension = max(int(item.shape[1]) for item in manifest.records)
+    mace_summary_dimension = (
+        2 * descriptor_dimension + species_count * (descriptor_dimension + 1)
+        if descriptor_dimension > 0
+        else 0
+    )
+
+    raw_physical_dimension = 20 + 3 * species_count
+    difficulty_dimension = 5 + 3 * species_count
+    profile_dimension = 0
+    profile_extensions = tuple(
+        getattr(data6_bundle, "profile_selection_features", ())
+    )
+    if not profile_extensions and getattr(
+        data6_bundle, "lta_selection_features", None
+    ) is not None:
+        # The compatibility wrapper is deterministic and does not materialize
+        # frame matrices; use it only to learn the actual extension width.
+        from .profile_extensions import wrap_lta_selection_features
+
+        profile_extensions = (
+            wrap_lta_selection_features(
+                data6_bundle.lta_selection_features,
+                data4_bundle_digest=data6_bundle.data4_bundle_digest,
+            ),
+        )
+    if profile_extensions and domain.frame_uids:
+        sample_uid = domain.frame_uids[0]
+        for extension in profile_extensions:
+            try:
+                names, _, _ = extension.frame_feature_vector(sample_uid)
+            except (KeyError, TrainingDataInputError):
+                continue
+            profile_dimension += len(names)
+
+    # Unknown future blocks fail conservatively without making today's
+    # low-dimensional raw/difficulty blocks look thousands of columns wide.
+    conservative_unknown_dimension = 4096
+    input_dimensions: list[int] = []
+    output_dimensions: list[int] = []
+    for block in plan.feature_metric_policy.blocks:
+        if block.name == "universal_structural" and structural_dimension > 0:
+            width = structural_dimension
+        elif block.name == "mace_summary" and mace_summary_dimension > 0:
+            width = mace_summary_dimension
+        elif block.name == "raw_physical":
+            width = raw_physical_dimension
+        elif block.name == "difficulty":
+            width = difficulty_dimension
+        elif block.name in {"profile_extensions", "lta_frame"} and profile_dimension > 0:
+            width = profile_dimension
+        else:
+            width = conservative_unknown_dimension
+        logical = width * (2 if block.include_missing_indicators else 1)
+        output = (
+            min(logical, int(block.pca_components))
+            if block.pca_components is not None
+            else logical
+        )
+        input_dimensions.append(width)
+        output_dimensions.append(max(1, output))
+
+    maximum_input = max(input_dimensions, default=conservative_unknown_dimension)
+    retained_output = sum(output_dimensions)
+    # Per raw value: input float64 + missing bool + standardized/work matrices
+    # and conservative PCA/quantile scratch. Retained outputs are counted twice
+    # to cover block outputs plus the final combined table during assembly.
+    block_workspace = rows * maximum_input * 40
+    retained_workspace = rows * retained_output * 16
+    fixed_overhead = 256 * 1024**2
+    estimate = int((block_workspace + retained_workspace + fixed_overhead) * 1.20)
+    return max(64 * 1024**2, estimate)
 
 
 def _load_valid_data7_record(
@@ -1286,19 +1473,33 @@ def register_reusable_data7_artifacts(
     return registered
 
 
-def _data8_record_valid(record: ProductionData8ArtifactRecord, root: Path, plan: ProductionMaterializationPlan) -> bool:
+def _load_valid_data8_record(
+    record: ProductionData8ArtifactRecord,
+    root: Path,
+    plan: ProductionMaterializationPlan,
+) -> Data8PreparationBundle | None:
     directory = root / record.relative_directory
     bundle_path = root / record.bundle_relative_path
     if not directory.is_dir() or not bundle_path.is_file():
-        return False
+        return None
     entries = _tree_entries(directory)
     if entries != record.tree_entries or _tree_digest(entries) != record.tree_digest:
-        return False
+        return None
     try:
         bundle = Data8PreparationBundle.from_dict(json.loads(bundle_path.read_text(encoding="utf-8")))
     except Exception:
-        return False
-    return bundle.content_digest == record.bundle_digest and bundle.data5_bundle_digest == plan.data5_bundle_digest and _replay_semantically_matches(plan.replay_plan, bundle.replay_plan)
+        return None
+    if (
+        bundle.content_digest != record.bundle_digest
+        or bundle.data5_bundle_digest != plan.data5_bundle_digest
+        or not _replay_semantically_matches(plan.replay_plan, bundle.replay_plan)
+    ):
+        return None
+    return bundle
+
+
+def _data8_record_valid(record: ProductionData8ArtifactRecord, root: Path, plan: ProductionMaterializationPlan) -> bool:
+    return _load_valid_data8_record(record, root, plan) is not None
 
 
 def _verify_live_inputs(
@@ -1341,6 +1542,8 @@ def run_restartable_production_materialization(
     shared_data7_artifacts: MutableMapping[str, _ReusableData7Artifact] | None = None,
     shared_data8_fixed_file_cache_directory: str | Path | None = None,
     shared_frame_array_index_cache: MutableMapping[str, Mapping[str, tuple[Any, Any, int]]] | None = None,
+    execution_resources: SystemResourceSnapshot | None = None,
+    minimum_free_disk_bytes: int = 0,
     execution_policy: ProductionMaterializationExecutionPolicy | None = None,
     progress_callback: Callable[[str], None] | None = None,
 ) -> ProductionMaterializationRecord:
@@ -1412,125 +1615,253 @@ def run_restartable_production_materialization(
         if shared_frame_array_index_cache is None
         else shared_frame_array_index_cache.get(frame_catalog.content_digest)
     )
-    mace_summary_cache: dict[
-        tuple[str, tuple[int, ...]], tuple[Any, Any]
-    ] = {}
-    composition_count_cache: dict[str, Mapping[int, int]] = {}
-    try:
-        for domain in plan.domains:
-            if domain.content_digest in records:
-                continue
-            if active.max_new_data7_domains is not None and new_domains >= active.max_new_data7_domains:
-                break
-            recipe_digest = _data7_recipe_digest(plan, domain)
-            domain_label = (
-                f"DATA7 kind={domain.kind.value} fold={domain.fold_index}"
+    progress_lock = Lock()
+    resources = (
+        detect_system_resources(device="cpu")
+        if execution_resources is None
+        else execution_resources
+    )
+
+    def emit_progress(message: str) -> None:
+        if progress_callback is None:
+            return
+        with progress_lock:
+            progress_callback(message)
+
+    def build_receipt(
+        domain: FeatureFitDomain,
+        recipe_digest: str,
+    ) -> _Data7ArtifactReceipt:
+        started = time.monotonic()
+        label = f"DATA7 kind={domain.kind.value} fold={domain.fold_index}"
+
+        def domain_progress(message: str) -> None:
+            emit_progress(f"{label}: {message}")
+
+        domain_progress("status=building; phase=domain-fit")
+        bundle = build_data7_preparation_bundle(
+            source_catalog, frame_catalog, frame_data_by_run, data4_bundle, data5_bundle, data6_bundle, domain,
+            feature_metric_policy=plan.feature_metric_policy,
+            atomic_reference_policy=plan.atomic_reference_policy,
+            objective_policy=plan.objective_policy,
+            configuration_weight_policy=plan.configuration_weight_policy,
+            checkpoint_metric_policy=plan.checkpoint_metric_policy,
+            selection_budget_policy=plan.selection_budget_policy,
+            mace_descriptor_root=model_sweep_artifacts.root_directory if mace_descriptor_root is None else mace_descriptor_root,
+            foundation_prediction_energy_by_frame=(prediction_energy if plan.atomic_reference_policy.fit_mode is AtomicReferenceFitMode.FOUNDATION_RESIDUAL else None),
+            foundation_reference_energies=(dict(plan.foundation_reference_energies) or None) if plan.atomic_reference_policy.fit_mode is AtomicReferenceFitMode.FOUNDATION_RESIDUAL else None,
+            foundation_checkpoint_digest=None,
+            foundation_identity_digest=(plan.foundation_checkpoint.canonical_content_digest if plan.atomic_reference_policy.fit_mode is AtomicReferenceFitMode.FOUNDATION_RESIDUAL else None),
+            frame_array_index=frame_array_index,
+            mace_summary_cache={},
+            composition_count_cache={},
+            canonical_domain_digests=canonical_domain_digests,
+            frame_record_by_uid=frame_record_by_uid,
+            event_anchor_frame_uids=event_anchor_frame_uids,
+            protected_event_frame_uids=protected_event_frame_uids,
+            prescribed_selection_frame_uids=(
+                None
+                if plan.selection_authority_role == "standard"
+                else dict(plan.prescribed_training_domain_prefixes).get(domain.content_digest)
+            ),
+            prescribed_selection_role=(
+                None if plan.selection_authority_role == "standard" else plan.selection_authority_role
+            ),
+            progress_callback=domain_progress,
+        )
+        if not _data7_bundle_matches_plan(bundle, plan, domain):
+            raise TrainingDataSerializationError(
+                "New DATA7 artifact does not match its scientific recipe."
             )
+        if shared_cache_root is not None:
+            artifact = _write_reusable_data7_artifact(
+                shared_cache_root, recipe_digest, domain, bundle, plan
+            )
+            path = artifact.path
+            bundle_digest = artifact.bundle_digest
+            file_sha256 = artifact.file_sha256
+            source = "built-shared-cache"
+        else:
+            relative = Path("data7") / f"{domain.content_digest}.data7.zip"
+            path_obj = root / relative
+            file_sha256 = write_data7_archive(bundle, path_obj)
+            path = str(path_obj)
+            bundle_digest = bundle.content_digest
+            source = "built-production"
+        wall = max(0.0, time.monotonic() - started)
+        domain_progress(
+            f"status=complete; phase=domain-fit; elapsed_seconds={wall:.3f}"
+        )
+        return _Data7ArtifactReceipt(
+            recipe_digest=recipe_digest,
+            domain_digest=domain.content_digest,
+            bundle_digest=bundle_digest,
+            file_sha256=file_sha256,
+            path=path,
+            source=source,
+            wall_seconds=wall,
+        )
 
-            def domain_progress(message: str, *, _label: str = domain_label) -> None:
-                if progress_callback is not None:
-                    progress_callback(f"{_label}: {message}")
+    try:
+        missing_domains = [
+            domain for domain in plan.domains if domain.content_digest not in records
+        ]
+        if active.max_new_data7_domains is not None:
+            missing_domains = missing_domains[: active.max_new_data7_domains]
 
+        immediate: list[tuple[FeatureFitDomain, _Data7ArtifactReceipt]] = []
+        builds: list[tuple[int, FeatureFitDomain, str, int]] = []
+        for canonical_index, domain in enumerate(missing_domains):
+            recipe_digest = _data7_recipe_digest(plan, domain)
             artifact = None if shared_memory is None else shared_memory.get(recipe_digest)
-            bundle: Data7PreparationBundle | None = None
             if artifact is not None and Path(artifact.path).is_file():
-                if progress_callback is not None:
-                    progress_callback(
-                        f"DATA7 domain; progress={format_progress_fraction(new_domains + 1, len(plan.domains))}; status=reuse-in-process; "
-                        f"kind={domain.kind.value} fold={domain.fold_index}"
-                    )
-            elif shared_cache_root is not None:
+                immediate.append((
+                    domain,
+                    _Data7ArtifactReceipt(
+                        recipe_digest=recipe_digest,
+                        domain_digest=domain.content_digest,
+                        bundle_digest=artifact.bundle_digest,
+                        file_sha256=artifact.file_sha256,
+                        path=artifact.path,
+                        source="reuse-in-process",
+                    ),
+                ))
+                continue
+            if shared_cache_root is not None:
                 restored_shared = _load_reusable_data7_artifact(
                     shared_cache_root, recipe_digest, domain, plan
                 )
                 if restored_shared is not None:
-                    artifact, bundle = restored_shared
-                    resolved_bundles[domain.content_digest] = bundle
+                    artifact, restored_bundle = restored_shared
+                    del restored_bundle
                     if shared_memory is not None:
                         shared_memory[recipe_digest] = artifact
-                    if progress_callback is not None:
-                        progress_callback(
-                            f"DATA7 domain; progress={format_progress_fraction(new_domains + 1, len(plan.domains))}; status=reuse-verified; "
-                            f"kind={domain.kind.value} fold={domain.fold_index}"
-                        )
-            if artifact is None:
-                if progress_callback is not None:
-                    progress_callback(
-                        f"DATA7 domain; progress={format_progress_fraction(new_domains + 1, len(plan.domains))}; status=building; "
-                        f"kind={domain.kind.value} fold={domain.fold_index}"
-                    )
-                if frame_array_index is None:
-                    if progress_callback is not None:
-                        progress_callback("status=phase; phase=building-shared-frame-array-index; consumer=DATA7")
-                    from ._frame_access import build_frame_array_index
+                    immediate.append((
+                        domain,
+                        _Data7ArtifactReceipt(
+                            recipe_digest=recipe_digest,
+                            domain_digest=domain.content_digest,
+                            bundle_digest=artifact.bundle_digest,
+                            file_sha256=artifact.file_sha256,
+                            path=artifact.path,
+                            source="reuse-verified",
+                        ),
+                    ))
+                    continue
+            estimate = _estimate_data7_domain_peak_bytes(
+                domain, plan, data6_bundle, frame_data_by_run
+            )
+            builds.append((canonical_index, domain, recipe_digest, estimate))
 
-                    frame_array_index = build_frame_array_index(
-                        frame_catalog, frame_data_by_run
-                    )
-                    if shared_frame_array_index_cache is not None:
-                        shared_frame_array_index_cache[frame_catalog.content_digest] = frame_array_index
-                bundle = build_data7_preparation_bundle(
-                    source_catalog, frame_catalog, frame_data_by_run, data4_bundle, data5_bundle, data6_bundle, domain,
-                    feature_metric_policy=plan.feature_metric_policy,
-                    atomic_reference_policy=plan.atomic_reference_policy,
-                    objective_policy=plan.objective_policy,
-                    configuration_weight_policy=plan.configuration_weight_policy,
-                    checkpoint_metric_policy=plan.checkpoint_metric_policy,
-                    selection_budget_policy=plan.selection_budget_policy,
-                    mace_descriptor_root=model_sweep_artifacts.root_directory if mace_descriptor_root is None else mace_descriptor_root,
-                    foundation_prediction_energy_by_frame=(prediction_energy if plan.atomic_reference_policy.fit_mode is AtomicReferenceFitMode.FOUNDATION_RESIDUAL else None),
-                    foundation_reference_energies=(dict(plan.foundation_reference_energies) or None) if plan.atomic_reference_policy.fit_mode is AtomicReferenceFitMode.FOUNDATION_RESIDUAL else None,
-                    foundation_checkpoint_digest=None,
-                    foundation_identity_digest=(plan.foundation_checkpoint.canonical_content_digest if plan.atomic_reference_policy.fit_mode is AtomicReferenceFitMode.FOUNDATION_RESIDUAL else None),
-                    frame_array_index=frame_array_index,
-                    mace_summary_cache=mace_summary_cache,
-                    composition_count_cache=composition_count_cache,
-                    canonical_domain_digests=canonical_domain_digests,
-                    frame_record_by_uid=frame_record_by_uid,
-                    event_anchor_frame_uids=event_anchor_frame_uids,
-                    protected_event_frame_uids=protected_event_frame_uids,
-                    prescribed_selection_frame_uids=(
-                        None
-                        if plan.selection_authority_role == "standard"
-                        else dict(plan.prescribed_training_domain_prefixes).get(domain.content_digest)
-                    ),
-                    prescribed_selection_role=(
-                        None if plan.selection_authority_role == "standard" else plan.selection_authority_role
-                    ),
-                    progress_callback=domain_progress,
-                )
-                resolved_bundles[domain.content_digest] = bundle
-                if not _data7_bundle_matches_plan(bundle, plan, domain):
-                    raise TrainingDataSerializationError(
-                        "New DATA7 artifact does not match its scientific recipe."
-                    )
-                if shared_cache_root is not None:
-                    artifact = _write_reusable_data7_artifact(
-                        shared_cache_root, recipe_digest, domain, bundle
-                    )
-                    if shared_memory is not None:
-                        shared_memory[recipe_digest] = artifact
+        if builds and frame_array_index is None:
+            emit_progress(
+                "status=phase; phase=building-shared-frame-array-index; consumer=DATA7"
+            )
+            from ._frame_access import build_frame_array_index
+
+            frame_array_index = build_frame_array_index(
+                frame_catalog, frame_data_by_run
+            )
+            if shared_frame_array_index_cache is not None:
+                shared_frame_array_index_cache[frame_catalog.content_digest] = frame_array_index
+
+        selected_by_digest = {domain.content_digest: domain for domain in missing_domains}
+
+        def commit_receipt(domain_digest: str, receipt: _Data7ArtifactReceipt) -> None:
+            nonlocal new_domains
+            domain = selected_by_digest[domain_digest]
             relative = Path("data7") / f"{domain.content_digest}.data7.zip"
-            path = root / relative
-            if artifact is not None:
-                _atomic_link_or_copy(Path(artifact.path), path)
-                bundle_digest = artifact.bundle_digest
-                file_sha256 = artifact.file_sha256
-            else:
-                assert bundle is not None
-                file_sha256 = write_data7_archive(bundle, path)
-                bundle_digest = bundle.content_digest
-            if bundle is not None:
-                resolved_bundles[domain.content_digest] = bundle
+            destination = root / relative
+            source_path = Path(receipt.path)
+            if source_path.resolve() != destination.resolve():
+                _atomic_link_or_copy(source_path, destination)
             records[domain.content_digest] = ProductionData7ArtifactRecord(
                 domain_digest=domain.content_digest,
                 relative_path=relative.as_posix(),
-                bundle_digest=bundle_digest,
-                file_sha256=file_sha256,
+                bundle_digest=receipt.bundle_digest,
+                file_sha256=receipt.file_sha256,
             )
+            if shared_memory is not None:
+                shared_memory[receipt.recipe_digest] = _ReusableData7Artifact(
+                    recipe_digest=receipt.recipe_digest,
+                    domain_digest=receipt.domain_digest,
+                    bundle_digest=receipt.bundle_digest,
+                    file_sha256=receipt.file_sha256,
+                    path=str(source_path),
+                )
             new_domains += 1
-            checkpoint = ProductionMaterializationCheckpoint(plan=plan, data7_artifacts=tuple(records.values()), status=ProductionMaterializationStatus.INCOMPLETE)
+            checkpoint = ProductionMaterializationCheckpoint(
+                plan=plan,
+                data7_artifacts=tuple(records.values()),
+                status=ProductionMaterializationStatus.INCOMPLETE,
+            )
             _atomic_json(checkpoint_path, checkpoint.to_dict())
+            emit_progress(
+                f"DATA7 domain; progress={format_progress_fraction(new_domains, len(plan.domains))}; "
+                f"status=committed; kind={domain.kind.value} fold={domain.fold_index}; "
+                f"source={receipt.source}; elapsed_seconds={receipt.wall_seconds:.3f}"
+            )
+
+        reducer = DeterministicOrderedReducer(
+            [domain.content_digest for domain in missing_domains],
+            commit=commit_receipt,
+        )
+        for domain, receipt in immediate:
+            reducer.push(domain.content_digest, receipt)
+
+        if builds:
+            workers = max(1, min(len(builds), int(resources.cpu_threads_budget)))
+            scope = build_stage_resource_scope(
+                resources,
+                stage_name="DATA7-domain-materialization",
+                python_workers=workers,
+                structural_workers=1,
+                tree_workers=1,
+                blas_threads=1,
+                native_openmp_threads=1,
+                pytorch_cpu_workers=1,
+                gpu_jobs=0,
+                ram_budget_bytes=resources.ram_budget_bytes,
+            )
+            emit_progress(
+                f"status=phase; phase=DATA7-parallel-domains; workers={workers}; "
+                f"cpu_budget={resources.cpu_threads_budget}; "
+                f"ram_budget_bytes={scope.ram_budget_bytes}"
+            )
+
+            def queue_telemetry(snapshot: Any) -> None:
+                emit_progress(
+                    "DATA7 queue; "
+                    f"busy={snapshot.busy_workers}/{snapshot.allocated_workers}; "
+                    f"finished={snapshot.finished_tasks}/{snapshot.submitted_tasks}; "
+                    f"accounted_ram_bytes={snapshot.accounted_memory_bytes}; "
+                    f"ram_budget_bytes={snapshot.memory_budget_bytes}; "
+                    f"memory_backpressure={snapshot.memory_backpressure_events}"
+                )
+
+            with DeterministicWorkQueue(
+                scope,
+                max_ready_tasks=max(1, len(builds)),
+                max_inflight_tasks=workers,
+                max_completed_tasks=max(1, len(builds)),
+                heartbeat_interval_seconds=15.0,
+                telemetry_callback=queue_telemetry,
+                thread_name_prefix="mdstats-data7",
+            ) as queue:
+                for canonical_index, domain, recipe_digest, estimate in builds:
+                    queue.submit(
+                        task_id=domain.content_digest,
+                        canonical_order=(canonical_index,),
+                        function=build_receipt,
+                        args=(domain, recipe_digest),
+                        task_kind="DATA7-domain",
+                        estimated_memory_bytes=estimate,
+                        locality_key=domain.label_domain_id,
+                    )
+                while not reducer.complete:
+                    queue.wait_for_completion()
+                    for completion in queue.drain_completed():
+                        reducer.push(completion.task_id, completion.value)
 
         all_data7 = len(records) == len(plan.domains)
         if all_data7 and active.materialize_data8 and data8_record is None:
@@ -1538,7 +1869,6 @@ def run_restartable_production_materialization(
             # DATA8 consumes the compact DATA7 bundles, not these raw summary
             # arrays. Release them before loading/assembling all DATA7 domains
             # together to avoid avoidable peak memory and swap-induced stalls.
-            mace_summary_cache.clear()
             if progress_callback is not None:
                 progress_callback("status=phase; phase=assembling-DATA8-fixed-files")
             bundles_list: list[Data7PreparationBundle] = []
@@ -1604,6 +1934,9 @@ def run_restartable_production_materialization(
                 ),
                 frame_array_index=frame_array_index,
                 shared_fixed_file_cache_directory=shared_data8_fixed_file_cache_directory,
+                execution_resources=resources,
+                minimum_free_disk_bytes=max(0, int(minimum_free_disk_bytes)),
+                progress_callback=progress_callback,
             )
             _atomic_json(staging / "data8_preparation_bundle.json", bundle8.to_dict())
             entries = _tree_entries(staging)

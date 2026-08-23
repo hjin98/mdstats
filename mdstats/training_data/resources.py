@@ -448,6 +448,7 @@ def isolated_process_map(
     *,
     workers: int,
     scratch_directory: str | Path | None = None,
+    cpu_only: bool = False,
 ):
     """Yield one-shot subprocess results with bounded concurrency and disk backpressure."""
 
@@ -466,6 +467,10 @@ def isolated_process_map(
     active: dict[Any, dict[str, Any]] = {}
     limit = max(1, int(workers))
     environment = configure_worker_thread_environment(dict(os.environ), threads=1)
+    if cpu_only:
+        # Fresh-interpreter CPU phases must not initialize or reserve accelerator
+        # state inherited conceptually from an earlier GPU stage.
+        environment["CUDA_VISIBLE_DEVICES"] = ""
     package_root = str(Path(__file__).resolve().parents[2])
     existing_pythonpath = environment.get("PYTHONPATH", "")
     environment["PYTHONPATH"] = (

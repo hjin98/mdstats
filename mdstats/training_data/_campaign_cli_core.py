@@ -8707,28 +8707,35 @@ def _prepare_materialization(
             checkpoint_identity=sweep.checkpoint.plan.checkpoint_identity,
         )
         data6_start = time.monotonic()
-        data6 = mdstats.build_data6_feature_bundle(
-            sources,
-            frames,
-            resolved_frame_data(),
-            data4,
-            data5,
-            policy=data6_policy,
-            # Production selection consumes frame-level structural summaries and
-            # event evidence.  Materializing one Python descriptor per atom would
-            # create millions of redundant objects and is not needed by DATA7.
-            universal_structural_policy=mdstats.UniversalStructuralSelectionPolicy(
-                materialize_atomic_environments=False,
-            ),
-            lta_selection_policy=mdstats.LtaSelectionPolicy(
-                materialize_atomic_environments=False,
-            ),
-            model_provider=provider,
-            model_sweep_artifacts=sweep,
-            progress_callback=lambda message: print(f"[DATA6 finalize] {message}", flush=True),
-            structural_max_workers=int(_cfg(cfg, "selection", "structural_workers", 0)),
-            structural_resources=_performance_resources(cfg),
-        )
+        try:
+            data6 = mdstats.build_data6_feature_bundle(
+                sources,
+                frames,
+                resolved_frame_data(),
+                data4,
+                data5,
+                policy=data6_policy,
+                # Production selection consumes frame-level structural summaries and
+                # event evidence.  Materializing one Python descriptor per atom would
+                # create millions of redundant objects and is not needed by DATA7.
+                universal_structural_policy=mdstats.UniversalStructuralSelectionPolicy(
+                    materialize_atomic_environments=False,
+                ),
+                lta_selection_policy=mdstats.LtaSelectionPolicy(
+                    materialize_atomic_environments=False,
+                ),
+                model_provider=provider,
+                model_sweep_artifacts=sweep,
+                progress_callback=lambda message: print(f"[DATA6 finalize] {message}", flush=True),
+                structural_max_workers=int(_cfg(cfg, "selection", "structural_workers", 0)),
+                structural_resources=_performance_resources(cfg),
+            )
+        finally:
+            provider.close(release_cuda_memory=True)
+            print(
+                "[DATA6 finalize] released MACE provider and unused CUDA allocator state",
+                flush=True,
+            )
         _ok(f"DATA6 evidence finalized; elapsed={format_progress_time(time.monotonic() - data6_start)}")
         print(
             "[DATA6 finalize] persisting finalized DATA6 evidence as checksummed array/JSONL shards",
@@ -8927,7 +8934,12 @@ def _prepare_materialization(
     loader_workers, loader_resources, loader_estimate = _resolve_mace_loader_workers(cfg)
     print(f"Resource budget: {loader_resources.summary()}", flush=True)
     print(
-        f"MACE DataLoader workers={loader_workers}; "
+        "Preparation execution workers=auto from the live 90% CPU/RAM/disk "
+        "budget after an active materialization miss",
+        flush=True,
+    )
+    print(
+        f"Future MACE training DataLoader workers/job={loader_workers}; "
         f"estimated RAM/worker={loader_estimate / 1024**2:.0f} MiB",
         flush=True,
     )
@@ -9015,7 +9027,6 @@ def _prepare_materialization(
         size = variant.selection_size
         seed = variant.seed
         variant_id = variant.variant_id
-        variant_progress.item_start(variant_index, variant_id, "selection + fold-local fit + ExtXYZ/YAML")
         variant_start = time.monotonic()
         require_replay = mode == "multihead_replay"
         fold_key = (
@@ -9211,10 +9222,26 @@ def _prepare_materialization(
             )
             _ok(f"DATA7/DATA8 artifacts reused for {variant_id}{suffix}")
             continue
+        variant_progress.item_start(
+            variant_index,
+            variant_id,
+            "active materialization; resolving shared DATA7/DATA8 prerequisites",
+        )
+        print(
+            f"[{variant_id}] status=phase; phase=resolving-shared-materialization-inputs",
+            flush=True,
+        )
+        materialization_frame_data = resolved_frame_data()
+        materialization_foundation_energy = resolved_foundation_prediction_energy()
+        materialization_resources = _performance_resources(cfg)
+        print(
+            f"[{variant_id}] DATA7/DATA8 execution resource budget: {materialization_resources.summary()}",
+            flush=True,
+        )
         record = mdstats.run_restartable_production_materialization(
             sources,
             frames,
-            resolved_frame_data(),
+            materialization_frame_data,
             data4,
             data5,
             data6,
@@ -9222,7 +9249,12 @@ def _prepare_materialization(
             plan,
             output,
             mace_descriptor_root=paths.internal / "model-sweep",
-            foundation_prediction_energy_by_frame=resolved_foundation_prediction_energy(),
+            foundation_prediction_energy_by_frame=materialization_foundation_energy,
+            execution_resources=materialization_resources,
+            minimum_free_disk_bytes=int(
+                float(_cfg(cfg, "execution", "minimum_free_disk_gib", 20.0))
+                * 1024**3
+            ),
             shared_data7_cache_directory=shared_data7_cache,
             shared_data7_artifacts=shared_data7_artifacts,
             shared_data8_fixed_file_cache_directory=shared_data8_fixed_file_cache,
