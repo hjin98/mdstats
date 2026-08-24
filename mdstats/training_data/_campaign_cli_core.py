@@ -6,7 +6,7 @@ configuration, one SQLite state database, and a compact results directory.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field, fields, is_dataclass, replace
 from collections import Counter, deque
 from contextlib import contextmanager
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
@@ -11500,10 +11500,9 @@ def _inference_concurrency_policy(
     def calibration_window_seconds() -> float:
         """Resolve the one-job CUDA calibration duration.
 
-        Evaluation and verification calibrate one CUDA job for five minutes
-        and reuse a peak-trimmed upper-band per-job estimate for the remaining
-        queue. Exact shared defaults emitted by 0.20.86a0--0.20.89a0
-        (10, 60, 20, and 180 seconds) migrate to 300 seconds. Explicit
+        Evaluation and verification stop after stable representative evidence,
+        with this value as a bounded maximum window. Exact historical generated
+        defaults migrate to the two-minute maximum. Explicit
         phase-specific values remain authoritative for users who intentionally
         tuned a phase.
         """
@@ -11528,7 +11527,7 @@ def _inference_concurrency_policy(
                 math.isclose(shared_value, old, rel_tol=0.0, abs_tol=1.0e-12)
                 for old in (20.0, 60.0, 180.0)
             ):
-                return 300.0
+                return 120.0
             return shared_value
         specific_legacy = _cfg(
             cfg,
@@ -11545,10 +11544,10 @@ def _inference_concurrency_policy(
             None,
         )
         if shared_legacy is None:
-            return 300.0
+            return 120.0
         legacy_value = float(shared_legacy)
         if math.isclose(legacy_value, 10.0, rel_tol=0.0, abs_tol=1.0e-12):
-            return 300.0
+            return 120.0
         return legacy_value
 
     def cpu_calibration_window_seconds() -> float:
@@ -11574,7 +11573,7 @@ def _inference_concurrency_policy(
         # Before 0.20.89a0 the same calibration-window key controlled CPU and
         # CUDA admission. Preserve deliberate phase-specific/custom values, but
         # migrate generated shared defaults back to the new 20-second CPU
-        # default rather than inheriting the new five-minute CUDA window.
+        # default rather than inheriting the longer bounded CUDA window.
         specific_new = _cfg(
             cfg,
             "execution",
@@ -11668,6 +11667,7 @@ def _inference_concurrency_policy(
         return 0.10
 
     try:
+        maximum_calibration_window = calibration_window_seconds()
         return InferenceConcurrencyPolicy(
             requested_jobs=int(
                 _cfg(
@@ -11694,7 +11694,14 @@ def _inference_concurrency_policy(
             estimated_ram_mib_per_job=float(
                 value("estimated_ram_mib_per_job", 4096.0)
             ),
-            stabilization_seconds=calibration_window_seconds(),
+            stabilization_seconds=maximum_calibration_window,
+            minimum_calibration_seconds=min(
+                maximum_calibration_window,
+                float(value("minimum_calibration_seconds", 20.0)),
+            ),
+            calibration_stability_relative_tolerance=float(
+                value("calibration_stability_relative_tolerance", 0.10)
+            ),
             cpu_stabilization_seconds=cpu_calibration_window_seconds(),
             minimum_gpu_activity_fraction=float(
                 value("gpu_minimum_activity_fraction", 0.01)
@@ -12029,8 +12036,8 @@ def _run_adaptive_inference_tasks(
                 # CUDA calibration intentionally samples from task launch, not
                 # from a later workload marker. Near-zero setup/IO samples are
                 # filtered by the controller's 1% activity floor, while real
-                # GPU/VRAM bursts anywhere in the five-minute single-job
-                # calibration remain visible. The controller discards the highest
+                # GPU/VRAM bursts anywhere in the bounded single-job calibration
+                # remain visible. The controller discards the highest
                 # 5% of retained activity and averages the next 10% band.
                 telemetry_ready_active_jobs = None
             elif not telemetry_ready:
@@ -12149,6 +12156,39 @@ class _StagedEvaluationTiming:
     prepared_seconds: float = 0.0
     inference_seconds: float = 0.0
     finalized_seconds: float = 0.0
+
+
+def _pipeline_resident_bytes(value: Any, seen: set[int] | None = None) -> int:
+    """Conservatively count Python/numpy state retained between pipeline stages."""
+
+    active_seen = set() if seen is None else seen
+    identity = id(value)
+    if identity in active_seen:
+        return 0
+    active_seen.add(identity)
+    if value is None:
+        return 0
+    if isinstance(value, np.ndarray):
+        return int(value.nbytes)
+    if isinstance(value, (bytes, bytearray, memoryview, str)):
+        return len(value)
+    if isinstance(value, Mapping):
+        return sum(
+            _pipeline_resident_bytes(key, active_seen)
+            + _pipeline_resident_bytes(item, active_seen)
+            for key, item in value.items()
+        )
+    if isinstance(value, (tuple, list, deque, set, frozenset)):
+        return sum(_pipeline_resident_bytes(item, active_seen) for item in value)
+    if is_dataclass(value) and not isinstance(value, type):
+        return sum(
+            _pipeline_resident_bytes(getattr(value, item.name), active_seen)
+            for item in fields(value)
+        )
+    try:
+        return int(sys.getsizeof(value))
+    except Exception:
+        return 0
 
 
 def _run_staged_evaluation_tasks(
@@ -12270,6 +12310,23 @@ def _run_staged_evaluation_tasks(
         len(tasks), configured_buffer if configured_buffer > 0 else auto_buffer
     )
     pipeline_buffer = max(1, pipeline_buffer)
+    configured_buffer_mib = float(
+        _cfg(cfg, "execution", "evaluation_pipeline_buffer_mib", 0.0)
+    )
+    if configured_buffer_mib < 0.0:
+        raise CampaignCliError(
+            "[execution].evaluation_pipeline_buffer_mib must be zero (auto) or positive."
+        )
+    pipeline_ram_budget = (
+        int(configured_buffer_mib * 1024**2)
+        if configured_buffer_mib > 0.0
+        else (
+            None
+            if resources.ram_budget_bytes is None
+            else max(1, int(resources.ram_budget_bytes) // 2)
+        )
+    )
+    prepare_reservation = max(1, int(plan.estimated_ram_bytes_per_job))
     finalize_backlog_limit = max(
         finalize_workers,
         min(pipeline_buffer, max(2, int(plan.maximum_jobs) * 2)),
@@ -12278,7 +12335,8 @@ def _run_staged_evaluation_tasks(
     _ok(
         "evaluation pipeline: "
         f"{plan.summary()}; CPU prepare={prepare_workers}, "
-        f"CPU finalize={finalize_workers}, prepared buffer={pipeline_buffer}"
+        f"CPU finalize={finalize_workers}, prepared buffer={pipeline_buffer}, "
+        f"pipeline RAM={'unknown' if pipeline_ram_budget is None else _format_bytes_gib(pipeline_ram_budget)}"
     )
 
     pending = deque(tasks)
@@ -12291,7 +12349,7 @@ def _run_staged_evaluation_tasks(
         Future[Any], tuple[_StagedEvaluationTask, Any, _StagedEvaluationTiming, _InferenceWorkerStatus]
     ] = {}
     active_finalize: dict[
-        Future[Any], tuple[_StagedEvaluationTask, _StagedEvaluationTiming]
+        Future[Any], tuple[_StagedEvaluationTask, _StagedEvaluationTiming, int]
     ] = {}
     results: dict[str, Any] = {}
     failures: list[str] = []
@@ -12379,6 +12437,20 @@ def _run_staged_evaluation_tasks(
     def launch_prepare(pool: ThreadPoolExecutor) -> None:
         if stop_scheduling:
             return
+        def resident_bytes() -> int:
+            total = len(active_prepare) * prepare_reservation
+            total += sum(_pipeline_resident_bytes(prepared) for _, prepared, _ in ready_inference)
+            total += sum(
+                _pipeline_resident_bytes(prepared)
+                for _, prepared, _, _ in active_inference.values()
+            )
+            total += sum(
+                _pipeline_resident_bytes(prepared) + _pipeline_resident_bytes(result)
+                for _, prepared, result, _ in waiting_finalize
+            )
+            total += sum(reservation for _, _, reservation in active_finalize.values())
+            return total
+
         while (
             pending
             and len(active_prepare) < prepare_workers
@@ -12387,6 +12459,12 @@ def _run_staged_evaluation_tasks(
         ):
             buffered = len(active_prepare) + len(ready_inference) + len(waiting_finalize)
             if buffered >= pipeline_buffer:
+                break
+            if (
+                pipeline_ram_budget is not None
+                and resident_bytes() + prepare_reservation > pipeline_ram_budget
+                and (active_prepare or ready_inference or active_inference or waiting_finalize or active_finalize)
+            ):
                 break
             task = pending.popleft()
             timing = _StagedEvaluationTiming(started=time.monotonic())
@@ -12409,7 +12487,11 @@ def _run_staged_evaluation_tasks(
             future = pool.submit(
                 execute_finalize, task, prepared, inference_result, timing
             )
-            active_finalize[future] = (task, timing)
+            active_finalize[future] = (
+                task,
+                timing,
+                _pipeline_resident_bytes(prepared) + _pipeline_resident_bytes(inference_result),
+            )
 
     def launch_inference(pool: ThreadPoolExecutor) -> None:
         if stop_scheduling:
@@ -12503,7 +12585,7 @@ def _run_staged_evaluation_tasks(
                         _fail(failures[-1])
                         stop_scheduling = True
                 elif future in active_finalize:
-                    task, timing = active_finalize.pop(future)
+                    task, timing, _reservation = active_finalize.pop(future)
                     try:
                         result = future.result()
                         results[task.key] = result
@@ -17685,17 +17767,90 @@ def _eval2_target_artifact_for_run(
     )
 
 
+def _indexed_target_atoms(
+    *, paths: CampaignPaths, artifact: Any, target_path: Path,
+    configuration_indices: Sequence[int],
+) -> dict[int, Any]:
+    """Read only authenticated target frames needed by a verification gate."""
+
+    import mdstats
+
+    requested = tuple(sorted(set(int(value) for value in configuration_indices)))
+    index = mdstats.build_extxyz_source_index(
+        target_path,
+        source_sha256=artifact.sha256,
+        source_artifact_digest=artifact.content_digest,
+        cache_directory=paths.internal / "extxyz-indexes" / artifact.sha256,
+    )
+    if index.configuration_count != artifact.configuration_count:
+        raise CampaignCliError("Target ExtXYZ index configuration count changed from its authority.")
+    return dict(mdstats.iter_indexed_extxyz_frames(index, source_indices=requested))
+
+
+def _evaluation_inference_execution_plan(cfg: Mapping[str, Any]) -> Any:
+    """Resolve new auto/fixed execution config without reinterpreting legacy values."""
+
+    import mdstats
+
+    section = cfg.get("evaluation", {})
+    raw_policy = section.get("inference_batch_policy")
+    if raw_policy is None:
+        selected = int(section.get("batch_size", 8))
+        if selected <= 0:
+            raise CampaignCliError("Legacy evaluation.batch_size must be positive.")
+        return mdstats.InferenceExecutionPlan(
+            batch_policy="fixed",
+            selected_batch_size=selected,
+            maximum_batch_size=selected,
+            concurrent_model_jobs=max(1, int(section.get("concurrent_model_jobs", 1))),
+            graph_cache_enabled=bool(section.get("cache_monitor_datasets", True)),
+            monitor_cache_enabled=bool(section.get("cache_monitor_datasets", True)),
+            rationale=("legacy_positive_batch_is_explicit_fixed",),
+        )
+
+    policy = str(raw_policy).strip().lower()
+    if policy not in {"auto", "fixed"}:
+        raise CampaignCliError("evaluation.inference_batch_policy must be 'auto' or 'fixed'.")
+    maximum = int(section.get("maximum_inference_batch_size", 32))
+    if maximum <= 0:
+        raise CampaignCliError("evaluation.maximum_inference_batch_size must be positive.")
+    if policy == "fixed":
+        selected = int(section.get("fixed_inference_batch_size", section.get("batch_size", 8)))
+        if selected <= 0 or selected > maximum:
+            raise CampaignCliError(
+                "evaluation.fixed_inference_batch_size must be positive and no larger than maximum_inference_batch_size."
+            )
+        rationale = ("explicit_fixed_execution_configuration",)
+    else:
+        # Batch 8 is the bounded cold-start point. The canonical executor retains
+        # OOM-learned ceilings, while compatible calibrated profiles and final
+        # target-hardware qualification may select another operating point.
+        selected = min(8, maximum)
+        rationale = ("auto_requested", "bounded_cold_start_operating_point")
+    return mdstats.InferenceExecutionPlan(
+        batch_policy=policy,
+        selected_batch_size=selected,
+        maximum_batch_size=maximum,
+        concurrent_model_jobs=max(1, int(section.get("concurrent_model_jobs", 1))),
+        use_cuda_streams=bool(section.get("use_cuda_streams", False)),
+        graph_cache_enabled=bool(section.get("cache_monitor_datasets", True)),
+        monitor_cache_enabled=bool(section.get("cache_monitor_datasets", True)),
+        rationale=rationale,
+    )
+
+
 def _eval2_evaluation_policy(cfg: Mapping[str, Any], paths: CampaignPaths, job: Any, *, model_dtype: str) -> Any:
     import mdstats
 
     control = job.protocol.checkpoint_control_policy
+    execution_plan = _evaluation_inference_execution_plan(cfg)
     return mdstats.CheckpointEvaluationPolicy(
         target_head_name=control.target_head_name,
         replay_head_name=control.replay_head_name,
         focus_atomic_numbers=tuple(int(v) for v in _cfg(cfg, "profile", "mobile_atomic_numbers", (3, 11, 19))),
         device=str(_cfg(cfg, "evaluation", "device", _cfg(cfg, "training", "device", "cuda"))),
         default_dtype=model_dtype,
-        batch_size=int(_cfg(cfg, "evaluation", "batch_size", 8)),
+        batch_size=execution_plan.selected_batch_size,
         cache_monitor_datasets=bool(_cfg(cfg, "evaluation", "cache_monitor_datasets", True)),
         cache_replay_baseline=bool(_cfg(cfg, "evaluation", "cache_replay_baseline", True)),
         evaluate_foundation_on_target=False,
@@ -17736,6 +17891,10 @@ def _eval2_full_checkpoint(
     if admissibility is None:
         raise CampaignCliError("EVAL2 checkpoint is missing TRAIN2 admissibility authority.")
     evaluation_policy = _eval2_evaluation_policy(cfg, paths, job, model_dtype=model_dtype)
+    execution_plan = _evaluation_inference_execution_plan(cfg)
+    store.put_record(
+        f"inference_execution_plan:{run.run_id}:{checkpoint.sha256}", execution_plan
+    )
     training_replay_artifact = bundle.replay_plan.monitor_artifact
     training_replay_path = None
     replay_artifact = None
@@ -21336,22 +21495,27 @@ def _deploy_verify_one_train2_run(
         target_head_deployment_identity_digest=target_head_deployment_identity.content_digest,
     )
 
-    try:
-        from ase.io import read
-    except ModuleNotFoundError as exc:
-        raise CampaignCliError(f"DEPLOY-VERIFY1 requires ASE: {exc}") from exc
-    all_atoms = tuple(read(target_path, index=":"))
-    if len(all_atoms) != target_artifact.configuration_count:
-        raise CampaignCliError("DEPLOY-VERIFY1 target artifact configuration count changed.")
-    probe_atoms = tuple(all_atoms[index] for index in probe_set.configuration_indices)
+    target_by_index = _indexed_target_atoms(
+        paths=paths, artifact=target_artifact, target_path=target_path,
+        configuration_indices=probe_set.configuration_indices,
+    )
+    probe_atoms = tuple(target_by_index[index] for index in probe_set.configuration_indices)
     device = str(_cfg(cfg, "verification", "device", _cfg(cfg, "training", "device", "cuda")))
+    deploy_execution = _evaluation_inference_execution_plan(cfg)
+    deploy_graph_cache = paths.internal / "verification-graphs"
     rtol, atol = policy.tolerances
     print(f"[DEPLOY] comparing checkpoint target head to exported target-only model on {len(probe_atoms)} probes", flush=True)
     checkpoint_predictions = mdstats.predict_mace_model_on_probe(
-        source_model, probe_atoms, device=device, model_dtype=model_dtype, head=target_head
+        source_model, probe_atoms, device=device, model_dtype=model_dtype, head=target_head,
+        batch_size=deploy_execution.selected_inference_batch_size,
+        geometry_identities=probe_set.frame_uids,
+        graph_cache_directory=deploy_graph_cache,
     )
     target_predictions = mdstats.predict_mace_model_on_probe(
-        target_model, probe_atoms, device=device, model_dtype=model_dtype, head=None
+        target_model, probe_atoms, device=device, model_dtype=model_dtype, head=None,
+        batch_size=deploy_execution.selected_inference_batch_size,
+        geometry_identities=probe_set.frame_uids,
+        graph_cache_directory=deploy_graph_cache,
     )
     checkpoint_to_target = mdstats.compare_prediction_channels(
         checkpoint_predictions,
@@ -21608,15 +21772,10 @@ def _pes_verify_common_target(
     campaign: Any,
     target_size_study: Any,
     deploy: Any,
-) -> tuple[tuple[Any, ...], Any]:
+) -> tuple[dict[int, Any], Any]:
     """Restore the candidate-independent target domain used by DEPLOY/PES."""
 
     import mdstats
-    try:
-        from ase.io import read
-    except ModuleNotFoundError as exc:
-        raise CampaignCliError(f"PES-VERIFY1 requires ASE: {exc}") from exc
-
     _, expected_runs = _deploy_verify_candidate_runs(campaign, target_size_study)
     run_by_digest = {run.content_digest: run for run in expected_runs}
     first_deploy = deploy.run_records[0]
@@ -21651,12 +21810,12 @@ def _pes_verify_common_target(
             or record.probe_set.target_artifact_sha256 != artifact.sha256
         ):
             raise CampaignCliError("PES-VERIFY1 candidates do not share one authenticated target-role authority.")
-    values = read(target_path, index=":", format="extxyz")
-    if not isinstance(values, list):
-        values = [values]
-    if len(values) != artifact.configuration_count:
-        raise CampaignCliError("PES-VERIFY1 target artifact configuration count changed.")
-    return tuple(values), artifact
+    requested = tuple(first_deploy.probe_set.configuration_indices)
+    values = _indexed_target_atoms(
+        paths=paths, artifact=artifact, target_path=target_path,
+        configuration_indices=requested,
+    )
+    return values, artifact
 
 
 def _pes_reference_protocol_digest(cfg: Mapping[str, Any]) -> str | None:
@@ -21856,6 +22015,9 @@ def _command_verify_train2_pes(
         store.delete_record("pes_verify")
 
     device = str(_cfg(cfg, "verification", "device", _cfg(cfg, "training", "device", "cuda")))
+    pes_execution = _evaluation_inference_execution_plan(cfg)
+    pes_geometry_identities = tuple(probe.probe_uid for probe in probe_set.probes)
+    pes_graph_cache = paths.internal / "verification-graphs"
     foundation_head = pes_foundation_head
     _mark_stage(store, paths, "verify", StageState.RUNNING, "running PES-VERIFY1 finite-displacement local-PES qualification")
     print(f"[PES] evaluating foundation model on {len(request_atoms)} common DFT probes", flush=True)
@@ -21868,6 +22030,9 @@ def _command_verify_train2_pes(
         calculator_kwargs=pes_foundation_calculator_kwargs,
         foundation_potential_identity=pes_foundation_potential,
         foundation_inference_identity=pes_foundation_inference,
+        batch_size=pes_execution.selected_inference_batch_size,
+        geometry_identities=pes_geometry_identities,
+        graph_cache_directory=pes_graph_cache,
     )
     foundation_predictions = mdstats.prediction_payload_from_mace_view(foundation_view, request_atoms)
     foundation_qualification = mdstats.assess_pes_model(
@@ -21891,6 +22056,9 @@ def _command_verify_train2_pes(
             device=device,
             model_dtype=model_dtype,
             head=None,
+            batch_size=pes_execution.selected_inference_batch_size,
+            geometry_identities=pes_geometry_identities,
+            graph_cache_directory=pes_graph_cache,
         )
         candidate_predictions = mdstats.prediction_payload_from_mace_view(candidate_view, request_atoms)
         qualification = mdstats.assess_pes_model(
@@ -22094,20 +22262,62 @@ def _command_verify_train2_relax(
 
     device = str(_cfg(cfg, "verification", "device", _cfg(cfg, "training", "device", "cuda")))
     _mark_stage(store, paths, "verify", StageState.RUNNING, "running RELAX-VERIFY1 zero-K topology/geometry qualification")
-    run_records = []
-    for pes_record in eligible_pes:
+    case_tasks: list[_AdaptiveInferenceTask] = []
+    relax_worker = threading.local()
+    for candidate_index, pes_record in enumerate(eligible_pes):
         candidate_path = Path(pes_record.candidate_model_path).resolve()
         if not candidate_path.is_file() or _sha256(candidate_path) != pes_record.candidate_model_sha256:
             raise CampaignCliError("RELAX-VERIFY1 candidate target-only model bytes changed after PES-VERIFY1.")
-        print(f"[RELAX] relaxing candidate {pes_record.run_plan_digest[:12]} on {len(base_atoms)} common base(s)...", flush=True)
-        relaxed, steps, converged, energy_drop = mdstats.relax_mace_model(
-            candidate_path,
-            base_atoms,
-            policy=policy,
-            device=device,
-            model_dtype=model_dtype,
-            head=None,
+        for base_index, (base_uid, base_atoms_value) in enumerate(
+            zip(base_set.base_frame_uids, base_atoms)
+        ):
+            case_key = f"{pes_record.run_plan_digest}:{base_index}"
+
+            def execute_case(
+                candidate_path=candidate_path,
+                candidate_sha=pes_record.candidate_model_sha256,
+                base_atoms_value=base_atoms_value,
+            ):
+                worker_key = (str(candidate_path), candidate_sha, device, model_dtype)
+                if getattr(relax_worker, "key", None) != worker_key:
+                    relax_worker.calculator = mdstats.create_mace_relax_calculator(
+                        candidate_path, device=device, model_dtype=model_dtype, head=None
+                    )
+                    relax_worker.key = worker_key
+                return mdstats.relax_atoms_with_calculator(
+                    base_atoms_value, relax_worker.calculator, policy=policy
+                )
+
+            case_tasks.append(_AdaptiveInferenceTask(
+                display_index=len(case_tasks) + 1,
+                key=case_key,
+                label=f"{pes_record.run_plan_digest[:12]}/base-{base_index}",
+                start_detail=f"FIRE base={base_uid[:12]}",
+                execute=execute_case,
+                done_detail=lambda result, wall: (
+                    f"steps={result[1]}; converged={str(result[2]).lower()}; "
+                    f"wall={_ProgressReporter._duration(wall)}"
+                ),
+            ))
+    case_results = _run_adaptive_inference_tasks(
+        case_tasks,
+        cfg=cfg,
+        phase="relaxation",
+        device=device,
+        progress=_ProgressReporter("RELAX", len(case_tasks)),
+    )
+
+    run_records = []
+    for pes_record in eligible_pes:
+        candidate_path = Path(pes_record.candidate_model_path).resolve()
+        ordered_cases = tuple(
+            case_results[f"{pes_record.run_plan_digest}:{base_index}"]
+            for base_index in range(len(base_atoms))
         )
+        relaxed = tuple(value[0] for value in ordered_cases)
+        steps = tuple(value[1] for value in ordered_cases)
+        converged = tuple(value[2] for value in ordered_cases)
+        energy_drop = tuple(value[3] for value in ordered_cases)
         metrics = mdstats.assess_relaxed_geometry(
             base_set,
             ordered_reference,
@@ -22858,7 +23068,29 @@ def _command_verify_train2_dyn(
     root = (paths.results / "dyn-verify2").resolve(); root.mkdir(parents=True, exist_ok=True)
     _mark_stage(store, paths, "verify", StageState.RUNNING, "running DYN-VERIFY2 short deployed structural dynamics")
     timeout = float(_cfg(cfg, "verification", "dyn_lammps_timeout_seconds", 3600.0))
-    records = []
+    minimum_free_disk_bytes = int(float(_cfg(cfg, "execution", "minimum_free_disk_gib", 20.0)) * 1024**3)
+    estimated_case_bytes = int(float(_cfg(cfg, "execution", "estimated_dynamics_output_mib_per_case", 512.0)) * 1024**2)
+    if estimated_case_bytes <= 0:
+        raise CampaignCliError("[execution].estimated_dynamics_output_mib_per_case must be positive.")
+    if shutil.disk_usage(root).free - minimum_free_disk_bytes < estimated_case_bytes:
+        raise CampaignCliError("DYN-VERIFY2 lacks the configured free-disk reserve for one in-flight case.")
+    disk_case_slots = max(
+        1,
+        (shutil.disk_usage(root).free - minimum_free_disk_bytes) // estimated_case_bytes,
+    )
+    execution_cfg = dict(cfg.get("execution", {}))
+    configured_dynamics_max = int(execution_cfg.get("maximum_parallel_dynamics_jobs", 1))
+    disk_bounded_max = min(
+        disk_case_slots,
+        configured_dynamics_max if configured_dynamics_max > 0 else disk_case_slots,
+    )
+    configured_dynamics_jobs = int(execution_cfg.get("parallel_dynamics_jobs", 0))
+    if configured_dynamics_jobs > 0:
+        execution_cfg["parallel_dynamics_jobs"] = min(configured_dynamics_jobs, disk_bounded_max)
+    execution_cfg["maximum_parallel_dynamics_jobs"] = disk_bounded_max
+    dynamics_cfg = {**cfg, "execution": execution_cfg}
+
+    case_tasks: list[_AdaptiveInferenceTask] = []
     for relax_record in sorted(eligible_relax.values(), key=lambda v: v.run_plan_digest):
         deploy_record = deploy_by_run.get(relax_record.run_plan_digest)
         if deploy_record is None:
@@ -22866,7 +23098,10 @@ def _command_verify_train2_dyn(
         mliap = Path(deploy_record.mliap_artifact_path).resolve()
         if not mliap.is_file() or _sha256(mliap) != deploy_record.mliap_artifact_sha256:
             raise CampaignCliError("DYN-VERIFY2 ML-IAP artifact bytes changed after DEPLOY-VERIFY1.")
-        case_metrics = []
+        arguments_digest = digest({
+            "schema": "mdstats.dyn-lammps-arguments.v1",
+            "arguments": list(deploy_record.lammps_run0.command_arguments),
+        })
         seed_index = 0
         for base_index, (uid, selected, reference) in enumerate(zip(
             plan.base_frame_uids, plan.topology_atom_indices_by_base, references
@@ -22874,25 +23109,78 @@ def _command_verify_train2_dyn(
             for temperature in plan.temperatures_kelvin:
                 velocity_seed = plan.case_velocity_seeds[seed_index]; seed_index += 1
                 case_root = root / relax_record.run_plan_digest / f"base-{base_index:02d}-T{temperature:g}K"
-                print(
-                    f"[DYN] {relax_record.run_plan_digest[:12]} base={base_index} T={temperature:g} K "
-                    f"({policy.nvt_steps} NVT + {policy.nve_steps} NVE steps)", flush=True,
-                )
-                metric = mdstats.run_lammps_mliap_dynamics_case(
-                    mliap, reference, base_frame_uid=uid, topology_atom_indices=selected,
-                    temperature_kelvin=temperature, velocity_seed=velocity_seed,
-                    element_order=deploy_record.lammps_run0.element_order, policy=policy,
-                    lammps_executable=deploy_record.lammps_run0.executable_path,
-                    lammps_arguments=deploy_record.lammps_run0.command_arguments,
-                    work_directory=case_root, timeout_seconds=timeout,
-                    expected_executable_sha256=deploy_record.lammps_run0.executable_sha256,
-                )
-                case_metrics.append(metric)
-                status = "PASS" if metric.passed else "FAIL"
-                print(
-                    f"[DYN {status}] base={base_index} T={temperature:g} K: drift={metric.absolute_energy_drift_ev_per_atom_per_ps:.4g} "
-                    f"eV/atom/ps; persistent_damage={metric.persistent_structural_damage}", flush=True,
-                )
+                case_key = f"{relax_record.run_plan_digest}:{base_index}:{temperature:.17g}"
+                receipt_path = case_root / "completion.json"
+
+                def execute_case(
+                    relax_record=relax_record, deploy_record=deploy_record, mliap=mliap,
+                    uid=uid, selected=selected, reference=reference,
+                    temperature=temperature, velocity_seed=velocity_seed,
+                    case_root=case_root, receipt_path=receipt_path,
+                    arguments_digest=arguments_digest,
+                ):
+                    reusable = mdstats.reusable_dyn_case_metric(
+                        receipt_path,
+                        run_plan_digest=relax_record.run_plan_digest,
+                        plan_digest=plan.content_digest,
+                        policy_digest=policy.policy_digest,
+                        mliap_artifact_sha256=deploy_record.mliap_artifact_sha256,
+                        lammps_executable_sha256=deploy_record.lammps_run0.executable_sha256,
+                        lammps_arguments_digest=arguments_digest,
+                        base_frame_uid=uid, temperature_kelvin=temperature,
+                        velocity_seed=velocity_seed,
+                    )
+                    if reusable is not None:
+                        return reusable
+                    if shutil.disk_usage(root).free - minimum_free_disk_bytes < estimated_case_bytes:
+                        raise CampaignCliError("DYN-VERIFY2 disk admission denied an in-flight case.")
+                    metric = mdstats.run_lammps_mliap_dynamics_case(
+                        mliap, reference, base_frame_uid=uid, topology_atom_indices=selected,
+                        temperature_kelvin=temperature, velocity_seed=velocity_seed,
+                        element_order=deploy_record.lammps_run0.element_order, policy=policy,
+                        lammps_executable=deploy_record.lammps_run0.executable_path,
+                        lammps_arguments=deploy_record.lammps_run0.command_arguments,
+                        work_directory=case_root, timeout_seconds=timeout,
+                        expected_executable_sha256=deploy_record.lammps_run0.executable_sha256,
+                    )
+                    mdstats.write_dyn_case_completion_receipt(
+                        receipt_path,
+                        mdstats.DynCaseCompletionReceipt(
+                            run_plan_digest=relax_record.run_plan_digest,
+                            plan_digest=plan.content_digest, policy_digest=policy.policy_digest,
+                            mliap_artifact_sha256=deploy_record.mliap_artifact_sha256,
+                            lammps_executable_sha256=deploy_record.lammps_run0.executable_sha256,
+                            lammps_arguments_digest=arguments_digest, metric=metric,
+                        ),
+                    )
+                    return metric
+
+                case_tasks.append(_AdaptiveInferenceTask(
+                    display_index=len(case_tasks) + 1, key=case_key,
+                    label=f"{relax_record.run_plan_digest[:12]}/base-{base_index}/T{temperature:g}",
+                    start_detail=f"LAMMPS {policy.nvt_steps} NVT + {policy.nve_steps} NVE",
+                    execute=execute_case,
+                    done_detail=lambda metric, wall: (
+                        f"{'PASS' if metric.passed else 'FAIL'}; drift={metric.absolute_energy_drift_ev_per_atom_per_ps:.4g}; "
+                        f"wall={_ProgressReporter._duration(wall)}"
+                    ),
+                ))
+    dynamics_device = str(_cfg(cfg, "verification", "device", _cfg(cfg, "training", "device", "cuda")))
+    case_results = _run_adaptive_inference_tasks(
+        case_tasks, cfg=dynamics_cfg, phase="dynamics", device=dynamics_device,
+        progress=_ProgressReporter("DYN", len(case_tasks)),
+    )
+    records = []
+    for relax_record in sorted(eligible_relax.values(), key=lambda v: v.run_plan_digest):
+        deploy_record = deploy_by_run.get(relax_record.run_plan_digest)
+        assert deploy_record is not None
+        mliap = Path(deploy_record.mliap_artifact_path).resolve()
+        case_metrics = []
+        for base_index, uid in enumerate(plan.base_frame_uids):
+            for temperature in plan.temperatures_kelvin:
+                case_metrics.append(case_results[
+                    f"{relax_record.run_plan_digest}:{base_index}:{temperature:.17g}"
+                ])
         record = mdstats.DynVerifyRunRecord(
             run_plan_digest=relax_record.run_plan_digest, relax_verify_run_digest=relax_record.content_digest,
             deploy_verify_run_digest=deploy_record.content_digest, mliap_artifact_path=str(mliap),
@@ -25509,7 +25797,9 @@ inference_gpu_memory_fraction = 0.90
 inference_gpu_utilization_fraction = 0.90
 inference_estimated_vram_mib_per_job = 4096.0
 inference_estimated_ram_mib_per_job = 4096.0
-parallel_inference_calibration_window_seconds = 300.0
+parallel_inference_calibration_window_seconds = 120.0
+inference_minimum_calibration_seconds = 20.0
+inference_calibration_stability_relative_tolerance = 0.10
 parallel_inference_cpu_calibration_window_seconds = 20.0
 inference_gpu_minimum_activity_fraction = 0.01
 inference_gpu_calibration_peak_trim_fraction = 0.05
@@ -25537,6 +25827,16 @@ parallel_inference_post_calibration_monitor_interval_seconds = 30.0
 parallel_evaluation_prepare_jobs = 0
 parallel_evaluation_finalize_jobs = 0
 evaluation_pipeline_buffer_jobs = 0
+evaluation_pipeline_buffer_mib = 0
+# External DYN cases are admitted independently from static model inference.
+# One process is the conservative production default until a target-GPU
+# benchmark demonstrates that concurrent LAMMPS/Kokkos processes improve
+# end-to-end throughput. Positive overrides remain subject to live resources.
+parallel_dynamics_jobs = 0
+maximum_parallel_dynamics_jobs = 1
+dynamics_estimated_vram_mib_per_job = 4096.0
+dynamics_estimated_ram_mib_per_job = 4096.0
+estimated_dynamics_output_mib_per_case = 512.0
 # Stop admitting new jobs after the first failed run; already-active jobs finish.
 stop_scheduling_after_failure = true
 
@@ -25611,8 +25911,11 @@ eval2_candidate_rescue_cap = 5
 # Permit checkpoint evaluation after any run completes. Incomplete campaigns are
 # labeled interim and cannot create a production protocol freeze.
 allow_partial_campaign = true
-# Native MACE graph batch. CUDA OOM automatically bisects the active batch.
-batch_size = 8
+# Runtime inference choices are execution evidence, not scientific policy.
+# Historical positive batch_size values remain explicit fixed execution.
+inference_batch_policy = "auto"
+maximum_inference_batch_size = 32
+concurrent_model_jobs = 1
 # Immutable monitor and foundation-baseline results are reused across checkpoints.
 cache_monitor_datasets = true
 cache_replay_baseline = true

@@ -2330,6 +2330,195 @@ class MaceCalculatorProvider:
 
 
 @dataclass(frozen=True, slots=True)
+class StaticInferenceOperatingPoint:
+    """One measured joint batch/model-job operating point."""
+
+    batch_size: int
+    concurrent_model_jobs: int
+    structures_per_second: float
+    peak_vram_bytes: int
+
+    def __post_init__(self) -> None:
+        if int(self.batch_size) <= 0 or int(self.concurrent_model_jobs) <= 0:
+            raise TrainingDataInputError("Static inference operating-point sizes must be positive.")
+        if float(self.structures_per_second) < 0.0 or not np.isfinite(self.structures_per_second):
+            raise TrainingDataInputError("Static inference throughput must be finite and nonnegative.")
+        if int(self.peak_vram_bytes) < 0:
+            raise TrainingDataInputError("Static inference peak VRAM must be nonnegative.")
+
+
+def select_static_inference_operating_point(
+    points: Sequence[StaticInferenceOperatingPoint],
+    *,
+    live_vram_budget_bytes: int,
+    throughput_tolerance_fraction: float = 0.05,
+) -> StaticInferenceOperatingPoint:
+    """Select the lowest-resource safe point within the near-optimal throughput band."""
+
+    budget = int(live_vram_budget_bytes)
+    tolerance = float(throughput_tolerance_fraction)
+    if budget <= 0 or not (0.0 <= tolerance < 1.0):
+        raise TrainingDataInputError("Static inference live VRAM budget/tolerance is invalid.")
+    safe = tuple(point for point in points if point.peak_vram_bytes <= budget)
+    if not safe:
+        raise TrainingDataInputError("No static inference operating point fits the live VRAM budget.")
+    peak = max(point.structures_per_second for point in safe)
+    floor = peak * (1.0 - tolerance)
+    near = tuple(point for point in safe if point.structures_per_second >= floor)
+    return min(
+        near,
+        key=lambda point: (
+            point.peak_vram_bytes,
+            point.concurrent_model_jobs,
+            point.batch_size,
+            -point.structures_per_second,
+        ),
+    )
+
+
+class StaticMaceInferenceExecutor:
+    """Canonical deterministic batched prediction owner with bounded OOM learning."""
+
+    def __init__(
+        self,
+        provider: Any,
+        *,
+        batch_size: int,
+        graph_cache_directory: str | Path | None = None,
+        maximum_oom_backoffs: int = 8,
+        owns_provider: bool = False,
+    ) -> None:
+        if int(batch_size) <= 0 or int(maximum_oom_backoffs) < 0:
+            raise TrainingDataInputError("Static inference batch/backoff configuration is invalid.")
+        self.provider = provider
+        self.requested_batch_size = int(batch_size)
+        self.learned_safe_batch_size = int(batch_size)
+        self.graph_cache_directory = graph_cache_directory
+        self.maximum_oom_backoffs = int(maximum_oom_backoffs)
+        self.oom_backoff_count = 0
+        self.owns_provider = bool(owns_provider)
+
+    @classmethod
+    def from_model_path(
+        cls,
+        model_path: str | Path,
+        *,
+        batch_size: int,
+        device: str,
+        default_dtype: str,
+        graph_cache_directory: str | Path | None = None,
+        **calculator_kwargs: Any,
+    ) -> "StaticMaceInferenceExecutor":
+        provider = MaceCalculatorProvider.from_model_path(
+            model_path, device=device, default_dtype=default_dtype, **calculator_kwargs
+        )
+        return cls(
+            provider, batch_size=batch_size, graph_cache_directory=graph_cache_directory,
+            owns_provider=True,
+        )
+
+    @staticmethod
+    def _is_oom(exc: BaseException) -> bool:
+        message = str(exc).lower()
+        return any(
+            marker in message
+            for marker in (
+                "out of memory", "cannot allocate memory", "cuda error: memory allocation",
+                "cublas_status_alloc_failed",
+            )
+        )
+
+    @staticmethod
+    def _release_cuda_cache() -> None:
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception:
+            return
+
+    def close(self) -> None:
+        if self.owns_provider and hasattr(self.provider, "close"):
+            self.provider.close()
+
+    def __enter__(self) -> "StaticMaceInferenceExecutor":
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        self.close()
+
+    def _provider_batch(
+        self, atoms_batch: Sequence[Any], geometry_identities: Sequence[str] | None
+    ) -> tuple[AtomicModelPrediction, ...]:
+        try:
+            return tuple(self.provider.predict_batch(
+                atoms_batch, geometry_identities=geometry_identities,
+                graph_cache_directory=self.graph_cache_directory,
+            ))
+        except TypeError as exc:
+            if "unexpected keyword" not in str(exc) and "geometry_identities" not in str(exc):
+                raise
+            return tuple(self.provider.predict_batch(atoms_batch))
+
+    def predict(
+        self,
+        atoms: Sequence[Any],
+        *,
+        geometry_identities: Sequence[str] | None = None,
+    ) -> tuple[AtomicModelPrediction, ...]:
+        values = tuple(atoms)
+        identities = None if geometry_identities is None else tuple(str(value) for value in geometry_identities)
+        if not values:
+            raise TrainingDataInputError("Static inference input is empty.")
+        if identities is not None and len(identities) != len(values):
+            raise TrainingDataInputError("Static inference geometry identity count mismatch.")
+        result: list[AtomicModelPrediction] = []
+        position = 0
+        while position < len(values):
+            batch_size = min(self.learned_safe_batch_size, len(values) - position)
+            batch = values[position:position + batch_size]
+            batch_ids = None if identities is None else identities[position:position + batch_size]
+            try:
+                predictions = self._provider_batch(batch, batch_ids)
+            except RuntimeError as exc:
+                if not self._is_oom(exc) or batch_size <= 1:
+                    raise
+                if self.oom_backoff_count >= self.maximum_oom_backoffs:
+                    raise TrainingDataInputError(
+                        "Static inference exhausted its bounded OOM backoff budget."
+                    ) from exc
+                self.oom_backoff_count += 1
+                self.learned_safe_batch_size = max(1, batch_size // 2)
+                self._release_cuda_cache()
+                continue
+            if len(predictions) != len(batch):
+                raise TrainingDataInputError("Static inference provider returned the wrong prediction count.")
+            result.extend(predictions)
+            position += batch_size
+        return tuple(result)
+
+    def prediction_channels(
+        self,
+        atoms: Sequence[Any],
+        *,
+        geometry_identities: Sequence[str] | None = None,
+    ) -> dict[str, np.ndarray]:
+        predictions = self.predict(atoms, geometry_identities=geometry_identities)
+        energies = np.asarray([value.energy_ev for value in predictions], dtype=np.float64)
+        forces = np.concatenate([
+            np.asarray(value.forces_ev_per_angstrom, dtype=np.float64).reshape(-1)
+            for value in predictions
+        ])
+        result = {"energy": energies, "forces": forces}
+        if all(value.stress_ev_per_angstrom3 is not None for value in predictions):
+            result["stress"] = np.stack([
+                np.asarray(value.stress_ev_per_angstrom3, dtype=np.float64)
+                for value in predictions
+            ])
+        return result
+
+
+@dataclass(frozen=True, slots=True)
 class MaceDescriptorFileRecord:
     frame_uid: str
     frame_record_digest: str

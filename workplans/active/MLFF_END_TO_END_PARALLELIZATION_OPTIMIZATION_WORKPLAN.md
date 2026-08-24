@@ -613,6 +613,47 @@ Run:
 
 After functional acceptance, prepare the final target-workstation GPU production qualification package. Production GPU qualification remains separate from implementation acceptance and is run only on the final assembled candidate.
 
+## Implementation execution record (2026-08-24)
+
+Functional implementation gates G0-G9 are closed on branch
+`feat/mlff-end-to-end-performance-v1`; G10 functional affected-surface
+reconciliation is closed subject to the separate target-workstation production
+qualification below.
+
+- G0 froze bounded EVAL/DEPLOY/PES/RELAX/DYN/LOCKED behavior and added explicit
+  DYN duplicate-timestep/reference-frame oracles.
+- G1-G4 introduced the execution-only inference plan, authenticated generic
+  ExtXYZ indexing and immutable staging, the canonical static executor, bounded
+  OOM learning, stable evidence-based calibration, and byte-aware staged EVAL.
+- G5 retained fresh model construction. This host has no usable CUDA device and
+  the existing authenticated CPU benchmark records shell reload as 6.49% slower.
+- G6 routes DEPLOY/PES static predictions through the canonical executor with
+  sparse target reads, shared geometry identities/graphs, and immutable staging.
+- G7 globally schedules independent candidate/base FIRE cases with worker-private
+  calculator reuse and vectorized bond/angle reductions while retaining ASE FIRE.
+- G8 globally admits external cases, preserves a disk reserve, uses bounded
+  file-backed process-group execution, hardlink-first staging, streamed reduction,
+  and authenticated atomic case receipts for partial restart.
+- G9 made no production change: this 32-thread CPU host resolves four loader
+  workers inside a 28-thread/40.4 GiB budget, and unavailable CUDA means there is
+  no representative evidence for relaxing the training-job ceiling.
+
+Gate-local and assembled affected-surface regression is terminal PASS (191
+passed, one external-LTA-data skip in the final assembled set). The repository
+suite excluding one uncollectable missing-fixture module reached 3,156 passed,
+36 skipped, 272 failed, and 84 errors; the failures/errors are dominated by
+pre-existing missing `tests/data` assets, historical version/document pins, and
+facade-source/monkeypatch tests that no longer follow `_campaign_cli_core`
+ownership. The unfiltered suite cannot collect because
+`tests/data/mesh_topology_revision_stage1_cases.json` is absent.
+
+The real external LTA campaign integration and target-workstation GPU production
+qualification remain explicitly deferred. The handoff must run the unchanged
+production-scale scientific workload on the final candidate and record joint
+static `(batch_size, concurrent_jobs)`, LAMMPS process concurrency, wall time,
+GPU utilization/VRAM, CPU/RAM, disk/I/O, cold/warm cache, and restart evidence.
+No GPU performance or production-qualification claim is made by this execution.
+
 ## Risks / redesign triggers
 
 - **Batching changes numerical outputs beyond the accepted evaluation tolerance.** If observed, batch size cannot be treated as purely execution-only; persist/identity it accordingly and preserve the scientifically accepted policy.

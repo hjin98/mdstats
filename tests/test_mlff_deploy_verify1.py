@@ -7,6 +7,7 @@ from ase import Atoms
 
 import mdstats
 from mdstats.training_data import deploy_verify as dv
+from mdstats.training_data import model_features
 
 
 def _h(text: str) -> str:
@@ -63,6 +64,50 @@ def test_prediction_comparison_requires_energy_and_forces_and_detects_mismatch()
             {"energy": np.array([1.0])}, {"energy": np.array([1.0])},
             reference_identity="a", observed_identity="b", rtol=1e-5, atol=1e-6,
         )
+
+
+def test_probe_prediction_routes_through_canonical_static_executor(monkeypatch):
+    calls = {}
+
+    class Executor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def prediction_channels(self, atoms, *, geometry_identities=None):
+            calls["atoms"] = tuple(atoms)
+            calls["geometry_identities"] = tuple(geometry_identities or ())
+            return {
+                "energy": np.array([-1.0, -2.0]),
+                "forces": np.zeros(6),
+                "stress": np.zeros((2, 3, 3)),
+            }
+
+    def from_model_path(cls, model_path, **kwargs):
+        calls["model_path"] = Path(model_path)
+        calls["kwargs"] = kwargs
+        return Executor()
+
+    monkeypatch.setattr(
+        model_features.StaticMaceInferenceExecutor,
+        "from_model_path",
+        classmethod(from_model_path),
+    )
+    atoms = (
+        Atoms("Li", cell=[5, 5, 5], pbc=True),
+        Atoms("Li", cell=[5, 5, 5], pbc=True),
+    )
+    view = mdstats.predict_mace_model_on_probe(
+        __file__, atoms, device="cpu", model_dtype="float64", head="target",
+        batch_size=2, geometry_identities=(_h("g0"), _h("g1")),
+        graph_cache_directory=Path(__file__).parent / "graph-cache",
+    )
+    assert view["energy"].tolist() == [-1.0, -2.0]
+    assert calls["geometry_identities"] == (_h("g0"), _h("g1"))
+    assert calls["kwargs"]["batch_size"] == 2
+    assert calls["kwargs"]["head"] == "target"
 
 
 def test_policy_roundtrip_and_dtype_tolerances():

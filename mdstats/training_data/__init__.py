@@ -655,6 +655,8 @@ from .model_features import (
     AtomicModelPrediction,
     AtomicModelProvider,
     MaceCalculatorProvider,
+    StaticInferenceOperatingPoint,
+    StaticMaceInferenceExecutor,
     MaceDescriptorFileRecord,
     MaceDescriptorManifest,
     MaceDescriptorPolicy,
@@ -668,6 +670,7 @@ from .model_features import (
     build_mace_descriptor_manifest,
     read_mace_descriptor_array,
     recommend_mace_batch_size_from_probes,
+    select_static_inference_operating_point,
     summarize_prediction,
     clear_mace_graph_batch_cache,
     clear_mace_monitor_graph_cache,
@@ -1340,6 +1343,7 @@ from .campaign_execution import (
     TRAINING_RUN_ATTEMPT_SCHEMA,
     TRAINING_RUN_EXECUTION_SCHEMA,
     CHECKPOINT_EVALUATION_POLICY_SCHEMA,
+    INFERENCE_EXECUTION_PLAN_SCHEMA,
     CHECKPOINT_EVALUATION_RECORD_SCHEMA,
     MODEL_DATASET_METRIC_RECORD_SCHEMA,
     PROTOCOL_VARIANT_AGGREGATE_SCHEMA,
@@ -1363,6 +1367,7 @@ from .campaign_execution import (
     TrainingRunAttemptRecord,
     TrainingRunExecutionRecord,
     CheckpointEvaluationPolicy,
+    InferenceExecutionPlan,
     CheckpointEvaluationRecord,
     PreparedCheckpointEvaluation,
     CheckpointEvaluationPredictionBundle,
@@ -1899,6 +1904,8 @@ from .relax_verify import (
     load_relax_reference_extxyz,
     collect_relax_reference_from_vasp,
     assess_relaxed_geometry,
+    create_mace_relax_calculator,
+    relax_atoms_with_calculator,
     relax_mace_model,
     write_relaxed_model_artifact,
 )
@@ -1910,10 +1917,13 @@ from .dyn_verify import (
     DynVerifyPolicy,
     DynVerifyPlan,
     DynCaseMetric,
+    DynCaseCompletionReceipt,
     DynVerifyRunRecord,
     DynVerifyCampaignRecord,
     build_dyn_verify_plan,
     assess_dyn_trajectory,
+    write_dyn_case_completion_receipt,
+    reusable_dyn_case_metric,
     run_lammps_mliap_dynamics_case,
 )
 
@@ -2038,13 +2048,25 @@ __all__ = sorted(set([name for name in globals() if not name.startswith("_")] + 
 
 from .replay_index import (
     DEFAULT_REPLAY_INDEX_PARSE_CHUNK_SIZE,
+    EXTXYZ_SOURCE_INDEX_RECEIPT_SCHEMA,
+    EXTXYZ_SOURCE_INDEX_SCHEMA,
     REPLAY_SOURCE_INDEX_RECEIPT_SCHEMA,
     REPLAY_SOURCE_INDEX_SCHEMA,
+    ExtxyzSourceIndex,
     ReplaySourceIndex,
+    build_extxyz_source_index,
     build_replay_source_index,
+    iter_indexed_extxyz_frames,
     iter_indexed_replay_frames,
     replay_source_indices_for_identities,
+    validate_extxyz_source_index,
     validate_replay_source_index,
+)
+
+from .artifact_staging import (
+    IMMUTABLE_ARTIFACT_STAGE_SCHEMA,
+    ImmutableArtifactStage,
+    stage_immutable_artifact,
 )
 
 __all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))

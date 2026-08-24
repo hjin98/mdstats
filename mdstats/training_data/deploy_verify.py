@@ -15,7 +15,6 @@ import hashlib
 import json
 import math
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -28,6 +27,7 @@ from ._common import (
     digest,
     validate_digest,
 )
+from .artifact_staging import stage_immutable_artifact
 
 DEPLOY_VERIFY_POLICY_SCHEMA = "mdstats.deploy-verify-policy.v1"
 DEPLOY_VERIFY_PROBE_SET_SCHEMA = "mdstats.deploy-verify-probe-set.v1"
@@ -498,6 +498,9 @@ def predict_mace_model_on_probe(
     calculator_kwargs: Mapping[str, Any] | None = None,
     foundation_potential_identity: Any | None = None,
     foundation_inference_identity: Any | None = None,
+    batch_size: int = 1,
+    geometry_identities: Sequence[str] | None = None,
+    graph_cache_directory: str | Path | None = None,
 ) -> dict[str, np.ndarray]:
     """Predict energy/forces/stress through the deployable MACE calculator.
 
@@ -505,10 +508,7 @@ def predict_mace_model_on_probe(
     inference identities. Candidate/deployment callers retain the historical
     head-only interface.
     """
-    try:
-        from mace.calculators import MACECalculator
-    except ModuleNotFoundError as exc:  # pragma: no cover
-        raise TrainingDataInputError("mace-torch is required for DEPLOY-VERIFY1.") from exc
+    from .model_features import StaticMaceInferenceExecutor
     resolved_path = Path(model_path).resolve()
     kwargs: dict[str, Any] = dict(calculator_kwargs or {})
     if foundation_potential_identity is not None:
@@ -529,34 +529,25 @@ def predict_mace_model_on_probe(
             raise TrainingDataInputError("Foundation probe calculator backend disagrees with inference identity.")
     if head is not None:
         kwargs["head"] = head
-    calculator = MACECalculator(
-        model_paths=str(resolved_path),
+    if foundation_potential_identity is not None:
+        kwargs["foundation_potential_identity"] = foundation_potential_identity
+        kwargs["foundation_inference_identity"] = foundation_inference_identity
+    with StaticMaceInferenceExecutor.from_model_path(
+        resolved_path,
+        batch_size=int(batch_size),
         device=str(device),
         default_dtype=str(model_dtype),
+        graph_cache_directory=graph_cache_directory,
         **kwargs,
-    )
-    energies: list[float] = []
-    forces: list[np.ndarray] = []
-    stresses: list[np.ndarray] = []
-    stress_available = True
-    for source in probe_atoms:
-        atoms = source.copy()
-        atoms.calc = calculator
-        energies.append(float(atoms.get_potential_energy()))
-        forces.append(np.asarray(atoms.get_forces(), dtype=np.float64))
-        if bool(np.all(atoms.pbc)) and float(abs(atoms.get_volume())) > 1.0e-12:
-            try:
-                stresses.append(np.asarray(atoms.get_stress(voigt=False), dtype=np.float64))
-            except Exception:
-                stress_available = False
-        else:
-            stress_available = False
-    result: dict[str, np.ndarray] = {
-        "energy": np.asarray(energies, dtype=np.float64),
-        "forces": np.concatenate([v.reshape(-1) for v in forces]),
-    }
-    if stress_available and len(stresses) == len(probe_atoms):
-        result["stress"] = np.stack(stresses, axis=0)
+    ) as executor:
+        result = executor.prediction_channels(
+            probe_atoms, geometry_identities=geometry_identities
+        )
+    if not all(
+        bool(np.all(atoms.pbc)) and float(abs(atoms.get_volume())) > 1.0e-12
+        for atoms in probe_atoms
+    ):
+        result.pop("stress", None)
     return result
 
 
@@ -707,7 +698,7 @@ def export_mliap_lammps_artifact(
     root.mkdir(parents=True, exist_ok=True)
     staged = root / "target-only.model"
     if staged.resolve() != source:
-        shutil.copy2(source, staged)
+        staged = Path(stage_immutable_artifact(source, staged).staged_path)
     else:
         staged = source
     command = [
@@ -878,7 +869,7 @@ def run_lammps_mliap_run0(
         case.mkdir(parents=True, exist_ok=True)
         data_path = case / "structure.data"
         local_model = case / "deployment-mliap.pt"
-        shutil.copy2(mliap, local_model)
+        stage_immutable_artifact(mliap, local_model)
         write(data_path, source, format="lammps-data", atom_style="atomic", specorder=list(elements), masses=True)
         boundary = " ".join("p" if bool(v) else "f" for v in source.pbc)
         input_text = "\n".join([

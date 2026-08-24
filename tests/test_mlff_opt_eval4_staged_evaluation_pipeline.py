@@ -537,3 +537,60 @@ def test_staged_runner_one_thread_budget_serializes_all_cpu_stages(
     )
     assert result == {"one-0": 0, "one-1": 1}
     assert peak == 1
+
+
+def test_staged_runner_applies_byte_budget_to_all_retained_stage_payloads(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(campaign_cli._core, "detect_system_resources", lambda **kwargs: _resources())
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", _Probe)
+    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", lambda device: None)
+    cfg = _pipeline_cfg()
+    cfg["execution"]["evaluation_pipeline_buffer_mib"] = 1.5
+
+    spans: dict[str, list[float]] = {}
+    lock = threading.Lock()
+
+    def record(name: str, delay: float) -> None:
+        with lock:
+            spans[name] = [time.monotonic(), 0.0]
+        time.sleep(delay)
+        with lock:
+            spans[name][1] = time.monotonic()
+
+    def make_task(index: int) -> campaign_cli._StagedEvaluationTask:
+        def prepare():
+            record(f"prepare{index}", 0.02)
+            return np.zeros(2 * 1024**2, dtype=np.uint8)
+
+        def infer(prepared):
+            record(f"infer{index}", 0.06)
+            return index
+
+        def finalize(prepared, inferred):
+            record(f"finalize{index}", 0.04)
+            return inferred
+
+        return campaign_cli._StagedEvaluationTask(
+            display_index=index + 1,
+            key=f"bytes-{index}",
+            label=f"bytes-{index}",
+            start_detail="byte-budget",
+            prepare=prepare,
+            requires_inference=lambda prepared: True,
+            infer=infer,
+            finalize=finalize,
+            done_detail=lambda result, wall: "done",
+        )
+
+    result = campaign_cli._run_staged_evaluation_tasks(
+        [make_task(0), make_task(1)],
+        cfg=cfg,
+        device="cpu",
+        progress=_Progress(),
+    )
+    assert result == {"bytes-0": 0, "bytes-1": 1}
+    # The first 2 MiB prepared payload alone exceeds the 1.5 MiB cap.  It is
+    # allowed to drain (deadlock avoidance), but no second preparation may be
+    # admitted while that payload is retained by inference or finalization.
+    assert spans["prepare1"][0] >= spans["finalize0"][1]

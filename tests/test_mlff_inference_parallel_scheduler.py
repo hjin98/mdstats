@@ -636,32 +636,33 @@ def test_campaign_runner_reports_evaluation_stage_transitions(monkeypatch, capsy
     assert "loading candidate MACE model" in output
     assert "evaluating candidate on LTA target monitor" in output
 
-def test_legacy_generated_ten_second_window_migrates_to_five_minutes() -> None:
+def test_legacy_generated_ten_second_window_migrates_to_bounded_two_minutes() -> None:
     from mdstats.training_data import campaign_cli
 
     policy = campaign_cli._inference_concurrency_policy(
         {"execution": {"parallel_inference_stabilization_seconds": 10.0}},
         "evaluation",
     )
-    assert policy.stabilization_seconds == 300.0
+    assert policy.stabilization_seconds == 120.0
+    assert policy.minimum_calibration_seconds == 20.0
 
-def test_previous_shared_sixty_second_default_migrates_to_five_minutes() -> None:
+def test_previous_shared_sixty_second_default_migrates_to_bounded_two_minutes() -> None:
     from mdstats.training_data import campaign_cli
 
     policy = campaign_cli._inference_concurrency_policy(
         {"execution": {"parallel_inference_calibration_window_seconds": 60.0}},
         "evaluation",
     )
-    assert policy.stabilization_seconds == 300.0
+    assert policy.stabilization_seconds == 120.0
 
-def test_previous_shared_twenty_second_default_migrates_to_five_minutes() -> None:
+def test_previous_shared_twenty_second_default_migrates_to_bounded_two_minutes() -> None:
     from mdstats.training_data import campaign_cli
 
     policy = campaign_cli._inference_concurrency_policy(
         {"execution": {"parallel_inference_calibration_window_seconds": 20.0}},
         "verification",
     )
-    assert policy.stabilization_seconds == 300.0
+    assert policy.stabilization_seconds == 120.0
     assert policy.cpu_stabilization_seconds == 20.0
     assert policy.minimum_gpu_activity_fraction == 0.01
     assert policy.gpu_calibration_peak_trim_fraction == 0.05
@@ -698,6 +699,7 @@ def test_default_peak_trim_uses_85_to_95_percentile_band() -> None:
     policy = InferenceConcurrencyPolicy(
         maximum_auto_jobs=8,
         stabilization_seconds=40.0,
+        minimum_calibration_seconds=40.0,
         minimum_gpu_activity_fraction=0.01,
         stability_samples=2,
         monitor_interval_seconds=2.0,
@@ -738,14 +740,39 @@ def test_default_peak_trim_uses_85_to_95_percentile_band() -> None:
     assert "next 10%" in decision.reason
 
 
-def test_previous_shared_three_minute_default_migrates_to_five_minutes() -> None:
+def test_cuda_calibration_converges_after_minimum_stable_representative_evidence() -> None:
+    policy = InferenceConcurrencyPolicy(
+        maximum_auto_jobs=4, stabilization_seconds=120.0,
+        minimum_calibration_seconds=20.0, calibration_stability_relative_tolerance=0.05,
+        stability_samples=3, monitor_interval_seconds=5.0,
+        estimated_gpu_memory_mib_per_job=512.0,
+    )
+    plan = build_inference_concurrency_plan(
+        task_count=4, device="cuda:0", resources=_resources(), policy=policy,
+        gpu_sample=_gpu_sample(0.0, 1.0, 2.0), cpu_sample=CpuTelemetrySample(0.0, 3.0),
+    )
+    controller = AdaptiveInferenceConcurrency(plan, policy)
+    controller.start_calibration(now=0.0)
+    for second in (5.0, 10.0, 15.0):
+        decision = controller.observe(
+            active_jobs=1, gpu_sample=_gpu_sample(second, 4.0, 40.0), now=second,
+        )
+        assert not controller.gpu_calibrated
+    decision = controller.observe(
+        active_jobs=1, gpu_sample=_gpu_sample(20.0, 4.0, 40.0), now=20.0,
+    )
+    assert controller.gpu_calibrated
+    assert "calibration complete" in decision.reason
+
+
+def test_previous_shared_three_minute_default_migrates_to_bounded_two_minutes() -> None:
     from mdstats.training_data import campaign_cli
 
     policy = campaign_cli._inference_concurrency_policy(
         {"execution": {"parallel_inference_calibration_window_seconds": 180.0}},
         "evaluation",
     )
-    assert policy.stabilization_seconds == 300.0
+    assert policy.stabilization_seconds == 120.0
 
 
 def test_phase_specific_sixty_second_window_remains_authoritative() -> None:

@@ -60,6 +60,11 @@ def test_init_creates_one_config_and_one_state_database(tmp_path: Path) -> None:
     assert "online_monitor_seed = 161803" in text
     assert "online_target_monitor_configurations = 256" in text
     assert "online_replay_monitor_configurations = 512" in text
+    assert 'inference_batch_policy = "auto"' in text
+    assert "maximum_parallel_dynamics_jobs = 1" in text
+    assert "estimated_dynamics_output_mib_per_case = 512.0" in text
+    assert "maximum_inference_batch_size = 32" in text
+    assert "\nbatch_size = 8\n" not in text[text.index("[evaluation]"):text.index("[preflight]")]
     state = tmp_path / "work" / ".mdstats" / "campaign.sqlite3"
     assert state.is_file()
     assert not state.with_name(state.name + "-wal").exists()
@@ -114,6 +119,44 @@ def test_checkpoint_evaluation_policy_separates_baseline_head() -> None:
     foundation = mdstats.CheckpointEvaluationPolicy(replay_baseline_head_name=None)
     assert mdstats.CheckpointEvaluationPolicy.from_dict(foundation.to_dict()) == foundation
     assert foundation.policy_digest != legacy.policy_digest
+
+
+def test_inference_execution_plan_roundtrip_is_separate_from_scientific_policy() -> None:
+    policy = mdstats.CheckpointEvaluationPolicy(condition_keys=(), batch_size=8)
+    plan = mdstats.InferenceExecutionPlan(
+        batch_policy="auto", selected_batch_size=8, maximum_batch_size=32,
+        concurrent_model_jobs=2, rationale=("bounded-test",),
+    )
+    assert mdstats.InferenceExecutionPlan.from_dict(plan.to_dict()) == plan
+    assert "execution_digest" in plan.to_dict()
+    assert "inference" not in policy.to_dict()["schema"]
+    assert "batch_policy" not in policy.to_dict()
+
+
+def test_evaluation_execution_resolution_preserves_legacy_fixed_and_distinguishes_auto() -> None:
+    legacy = campaign_core._evaluation_inference_execution_plan(
+        {"evaluation": {"batch_size": 12}}
+    )
+    automatic = campaign_core._evaluation_inference_execution_plan(
+        {"evaluation": {
+            "inference_batch_policy": "auto", "maximum_inference_batch_size": 24,
+        }}
+    )
+    fixed = campaign_core._evaluation_inference_execution_plan(
+        {"evaluation": {
+            "inference_batch_policy": "fixed", "fixed_inference_batch_size": 6,
+            "maximum_inference_batch_size": 24,
+        }}
+    )
+    assert (legacy.batch_policy, legacy.selected_batch_size, legacy.maximum_batch_size) == (
+        "fixed", 12, 12
+    )
+    assert (automatic.batch_policy, automatic.selected_batch_size, automatic.maximum_batch_size) == (
+        "auto", 8, 24
+    )
+    assert (fixed.batch_policy, fixed.selected_batch_size, fixed.maximum_batch_size) == (
+        "fixed", 6, 24
+    )
 
 
 def _as_legacy_mpa0_config(text: str) -> str:

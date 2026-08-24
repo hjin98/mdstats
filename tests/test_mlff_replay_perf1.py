@@ -14,9 +14,13 @@ from mdstats.training_data.replay import (
     materialize_replay_true_label_views,
 )
 from mdstats.training_data.replay_index import (
+    EXTXYZ_SOURCE_INDEX_RECEIPT_SCHEMA,
     REPLAY_SOURCE_INDEX_RECEIPT_SCHEMA,
+    ExtxyzSourceIndex,
     ReplaySourceIndex,
+    build_extxyz_source_index,
     build_replay_source_index,
+    iter_indexed_extxyz_frames,
     iter_indexed_replay_frames,
     replay_source_indices_for_identities,
 )
@@ -92,6 +96,52 @@ def test_indexed_frame_reader_is_chunk_size_invariant_and_exact(tmp_path: Path) 
     from mdstats.training_data.replay import canonical_replay_geometry_identity
     assert [canonical_replay_geometry_identity(a) for _, a in first] == [source.geometry_identities[i] for i in requested]
     assert [canonical_replay_geometry_identity(a) for _, a in second] == [source.geometry_identities[i] for i in requested]
+
+
+def test_generic_extxyz_index_sparse_access_matches_full_ase_read(tmp_path: Path) -> None:
+    source_path = tmp_path / "target.extxyz"
+    _write_source(source_path, 24)
+    source = inspect_replay_source_extxyz(source_path)
+    index = build_extxyz_source_index(
+        source_path, source_sha256=source.sha256,
+        source_artifact_digest=source.content_digest,
+        cache_directory=tmp_path / "generic-index",
+    )
+    assert ExtxyzSourceIndex.from_dict(index.to_dict()) == index
+    receipt = json.loads(
+        (tmp_path / "generic-index" / "extxyz-source-index.json").read_text(encoding="utf-8")
+    )
+    assert receipt["schema"] == EXTXYZ_SOURCE_INDEX_RECEIPT_SCHEMA
+    requested = (0, 3, 4, 17, 23)
+    sparse = list(iter_indexed_extxyz_frames(index, source_indices=requested, chunk_size=2))
+    from ase.io import read
+    full = read(source_path, index=":", format="extxyz")
+    assert [position for position, _ in sparse] == list(requested)
+    for (position, observed), expected_position in zip(sparse, requested, strict=True):
+        assert position == expected_position
+        assert observed == full[expected_position]
+
+
+def test_generic_extxyz_index_concurrent_creation_is_atomic(tmp_path: Path) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    source_path = tmp_path / "target.extxyz"
+    _write_source(source_path, 18)
+    source = inspect_replay_source_extxyz(source_path)
+    cache = tmp_path / "generic-index"
+
+    def build():
+        return build_extxyz_source_index(
+            source_path, source_sha256=source.sha256,
+            source_artifact_digest=source.content_digest, cache_directory=cache,
+        )
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        values = tuple(pool.map(lambda _: build(), range(24)))
+    assert len({value.content_digest for value in values}) == 1
+    assert not tuple(cache.glob("*.tmp"))
+    payload = json.loads((cache / "extxyz-source-index.json").read_text(encoding="utf-8"))
+    assert ExtxyzSourceIndex.from_dict(payload["index"]).content_digest == values[0].content_digest
 
 
 def test_monitor_only_materialization_with_index_reads_only_monitor_source_indices(tmp_path: Path, monkeypatch) -> None:

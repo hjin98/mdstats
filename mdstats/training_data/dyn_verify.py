@@ -10,22 +10,26 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Iterable, Iterator, Mapping, Sequence
 import hashlib
 import json
 import math
 import os
+import signal
 import shutil
 import subprocess
+import tempfile
 
 import numpy as np
 
 from ._common import TrainingDataInputError, TrainingDataSerializationError, digest, validate_digest
 from .relax_verify import _edge_map, _angle_map, _periodic_displacements
+from .artifact_staging import stage_immutable_artifact
 
 DYN_VERIFY_POLICY_SCHEMA = "mdstats.dyn-verify-policy.v1"
 DYN_VERIFY_PLAN_SCHEMA = "mdstats.dyn-verify-plan.v1"
 DYN_VERIFY_CASE_SCHEMA = "mdstats.dyn-verify-case-metric.v1"
+DYN_CASE_COMPLETION_SCHEMA = "mdstats.dyn-case-completion.v1"
 DYN_VERIFY_RUN_SCHEMA = "mdstats.dyn-verify-run.v1"
 DYN_VERIFY_CAMPAIGN_SCHEMA = "mdstats.dyn-verify-campaign.v1"
 DYN_VERIFY_IMPLEMENTATION_VERSION = "mdstats.dyn-verify2.2026-08.v1"
@@ -274,6 +278,119 @@ class DynCaseMetric:
 
 
 @dataclass(frozen=True, slots=True)
+class DynCaseCompletionReceipt:
+    run_plan_digest: str
+    plan_digest: str
+    policy_digest: str
+    mliap_artifact_sha256: str
+    lammps_executable_sha256: str
+    lammps_arguments_digest: str
+    metric: DynCaseMetric
+    serialization_schema: str = field(default=DYN_CASE_COMPLETION_SCHEMA, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        if self.serialization_schema != DYN_CASE_COMPLETION_SCHEMA:
+            raise TrainingDataInputError("Unsupported DYN case-completion schema.")
+        for name in (
+            "run_plan_digest", "plan_digest", "policy_digest", "mliap_artifact_sha256",
+            "lammps_executable_sha256", "lammps_arguments_digest",
+        ):
+            object.__setattr__(self, name, validate_digest(getattr(self, name), name=name))
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "schema": self.serialization_schema,
+            "run_plan_digest": self.run_plan_digest,
+            "plan_digest": self.plan_digest,
+            "policy_digest": self.policy_digest,
+            "mliap_artifact_sha256": self.mliap_artifact_sha256,
+            "lammps_executable_sha256": self.lammps_executable_sha256,
+            "lammps_arguments_digest": self.lammps_arguments_digest,
+            "metric": self.metric.to_dict(),
+        }
+
+    @property
+    def content_digest(self) -> str:
+        return digest(self._payload())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._payload(), "content_digest": self.content_digest}
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "DynCaseCompletionReceipt":
+        result = cls(
+            run_plan_digest=str(payload["run_plan_digest"]),
+            plan_digest=str(payload["plan_digest"]),
+            policy_digest=str(payload["policy_digest"]),
+            mliap_artifact_sha256=str(payload["mliap_artifact_sha256"]),
+            lammps_executable_sha256=str(payload["lammps_executable_sha256"]),
+            lammps_arguments_digest=str(payload["lammps_arguments_digest"]),
+            metric=DynCaseMetric.from_dict(payload["metric"]),
+        )
+        if payload.get("schema") != DYN_CASE_COMPLETION_SCHEMA or payload.get("content_digest") not in (None, result.content_digest):
+            raise TrainingDataSerializationError("DYN case-completion receipt is corrupt.")
+        return result
+
+
+def write_dyn_case_completion_receipt(
+    path: str | Path, receipt: DynCaseCompletionReceipt
+) -> None:
+    target = Path(path).resolve()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{target.name}.", suffix=".tmp", dir=target.parent
+    )
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(receipt.to_dict(), handle, sort_keys=True, indent=2)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_name, target)
+    finally:
+        Path(temporary_name).unlink(missing_ok=True)
+
+
+def reusable_dyn_case_metric(
+    path: str | Path,
+    *,
+    run_plan_digest: str,
+    plan_digest: str,
+    policy_digest: str,
+    mliap_artifact_sha256: str,
+    lammps_executable_sha256: str,
+    lammps_arguments_digest: str,
+    base_frame_uid: str,
+    temperature_kelvin: float,
+    velocity_seed: int,
+) -> DynCaseMetric | None:
+    """Return only a fully authenticated completed case; stale/corrupt means miss."""
+    try:
+        receipt = DynCaseCompletionReceipt.from_dict(
+            json.loads(Path(path).read_text(encoding="utf-8"))
+        )
+        expected = (
+            receipt.run_plan_digest == run_plan_digest,
+            receipt.plan_digest == plan_digest,
+            receipt.policy_digest == policy_digest,
+            receipt.mliap_artifact_sha256 == mliap_artifact_sha256,
+            receipt.lammps_executable_sha256 == lammps_executable_sha256,
+            receipt.lammps_arguments_digest == lammps_arguments_digest,
+            receipt.metric.base_frame_uid == base_frame_uid,
+            receipt.metric.temperature_kelvin == float(temperature_kelvin),
+            receipt.metric.velocity_seed == int(velocity_seed),
+        )
+        trajectory = Path(receipt.metric.trajectory_path).resolve()
+        if not all(expected) or not trajectory.is_file() or _sha256_file(trajectory) != receipt.metric.trajectory_sha256:
+            return None
+        log_path = trajectory.parent / "log.lammps"
+        if not log_path.is_file() or _sha256_file(log_path) != receipt.metric.log_sha256:
+            return None
+        return receipt.metric
+    except (OSError, ValueError, KeyError, TypeError, TrainingDataInputError, TrainingDataSerializationError):
+        return None
+
+@dataclass(frozen=True, slots=True)
 class DynVerifyRunRecord:
     run_plan_digest: str
     relax_verify_run_digest: str
@@ -463,7 +580,7 @@ def _max_consecutive(flags: Sequence[bool]) -> int:
 
 def assess_dyn_trajectory(
     reference: Any,
-    frames: Sequence[Any],
+    frames: Iterable[Any],
     thermo_rows: Sequence[Sequence[float]],
     *,
     base_frame_uid: str,
@@ -476,54 +593,63 @@ def assess_dyn_trajectory(
     log_sha256: str = "",
 ) -> DynCaseMetric:
     """Reduce one common short rollout into numerical and persistent-structure gates."""
-    values = tuple(frames)
     rows = np.asarray(tuple(tuple(float(x) for x in row) for row in thermo_rows), dtype=float)
-    if not values or rows.ndim != 2 or rows.shape[1] < 5:
+    if rows.ndim != 2 or rows.shape[1] < 5:
         raise TrainingDataInputError("DYN-VERIFY2 trajectory/thermo evidence is empty or malformed.")
-    if tuple(int(v) for v in reference.numbers) != tuple(int(v) for v in values[0].numbers):
-        raise TrainingDataInputError("DYN-VERIFY2 reference and trajectory atom identities disagree.")
     selected = tuple(int(v) for v in topology_atom_indices)
     ref_edges = _edge_map(reference, selected, policy.topology_cutoff_scale)
     if not ref_edges:
         raise TrainingDataInputError("DYN-VERIFY2 protected topology resolved to no reference bonds.")
     ref_angles = _angle_map(reference, ref_edges)
-    frame_damage: list[bool] = []
-    rms_values: list[float] = []
-    max_disp_values: list[float] = []
-    bond_rmse_values: list[float] = []
-    angle_rmse_values: list[float] = []
-    min_distances: list[float] = []
-    max_forces: list[float] = []
+    sample_count = damaged_count = consecutive_damage = maximum_consecutive = 0
+    maximum_rms = maximum_displacement = maximum_bond_rmse = maximum_angle_rmse = 0.0
+    minimum_distance = float("inf")
+    maximum_force = 0.0
     finite = bool(np.all(np.isfinite(rows)))
 
-    for atoms in values:
+    ref_keys = tuple(sorted(ref_edges))
+    ref_pairs = np.asarray(ref_keys, dtype=np.int64)
+    for atoms in frames:
+        if sample_count == 0 and tuple(int(v) for v in reference.numbers) != tuple(int(v) for v in atoms.numbers):
+            raise TrainingDataInputError("DYN-VERIFY2 reference and trajectory atom identities disagree.")
+        sample_count += 1
         finite = finite and bool(np.all(np.isfinite(np.asarray(atoms.positions, dtype=float))))
-        min_distances.append(_minimum_pair_distance(atoms))
+        minimum_distance = min(minimum_distance, _minimum_pair_distance(atoms))
         max_force, force_valid = _max_force(atoms)
-        max_forces.append(max_force)
+        maximum_force = max(maximum_force, max_force)
         finite = finite and force_valid
         disp = _periodic_displacements(reference, atoms, selected)
         norms = np.linalg.norm(disp, axis=1) if len(disp) else np.zeros(0)
         rms = float(np.sqrt(np.mean(norms ** 2))) if len(norms) else 0.0
         max_disp = float(np.max(norms)) if len(norms) else 0.0
-        rms_values.append(rms); max_disp_values.append(max_disp)
-        current_ref_bonds = {key: float(atoms.get_distance(key[0], key[1], mic=True)) for key in ref_edges}
+        maximum_rms = max(maximum_rms, rms)
+        maximum_displacement = max(maximum_displacement, max_disp)
+        current_distances = np.asarray(
+            atoms.get_distances(ref_pairs[:, 0], ref_pairs[:, 1], mic=True), dtype=np.float64
+        )
+        current_ref_bonds = dict(zip(ref_keys, current_distances.tolist()))
         broken = any(current_ref_bonds[key] > policy.reference_bond_break_ratio * ref_edges[key] for key in ref_edges)
         new_edges = set(_edge_map(atoms, selected, policy.new_bond_cutoff_scale)) - set(ref_edges)
         bond_err = np.asarray([current_ref_bonds[key] - ref_edges[key] for key in sorted(ref_edges)], dtype=float)
         bond_rmse = float(np.sqrt(np.mean(bond_err ** 2))) if bond_err.size else 0.0
-        bond_rmse_values.append(bond_rmse)
+        maximum_bond_rmse = max(maximum_bond_rmse, bond_rmse)
         current_angles = _angle_map(atoms, current_ref_bonds)
         common_angles = sorted(set(ref_angles) & set(current_angles))
         angle_err = np.asarray([current_angles[k] - ref_angles[k] for k in common_angles], dtype=float)
         angle_rmse = float(np.sqrt(np.mean(angle_err ** 2))) if angle_err.size else 0.0
-        angle_rmse_values.append(angle_rmse)
-        frame_damage.append(bool(
+        maximum_angle_rmse = max(maximum_angle_rmse, angle_rmse)
+        damaged = bool(
             broken or new_edges or rms > policy.protected_rms_displacement_tolerance_angstrom
             or max_disp > policy.protected_max_displacement_tolerance_angstrom
             or bond_rmse > policy.protected_bond_rmse_tolerance_angstrom
             or angle_rmse > policy.protected_angle_rmse_tolerance_degrees
-        ))
+        )
+        damaged_count += int(damaged)
+        consecutive_damage = consecutive_damage + 1 if damaged else 0
+        maximum_consecutive = max(maximum_consecutive, consecutive_damage)
+
+    if sample_count == 0:
+        raise TrainingDataInputError("DYN-VERIFY2 trajectory/thermo evidence is empty or malformed.")
 
     steps = rows[:, 0]
     temps = rows[:, 1]
@@ -537,9 +663,7 @@ def assess_dyn_trajectory(
     nve_times_ps = (nve_steps - policy.nvt_steps) * policy.timestep_fs / 1000.0
     energy_per_atom = etotal[nve_mask] / max(1, len(reference))
     drift = float(abs(np.polyfit(nve_times_ps, energy_per_atom, 1)[0]))
-    max_consecutive = _max_consecutive(frame_damage)
-    persistent = max_consecutive >= policy.persistent_damage_samples
-    minimum_distance = float(np.min(min_distances)); maximum_force = float(np.max(max_forces))
+    persistent = maximum_consecutive >= policy.persistent_damage_samples
     finite = bool(finite and math.isfinite(minimum_distance) and math.isfinite(maximum_force) and bool(np.isfinite(drift)))
     reasons: list[str] = []
     if not finite:
@@ -558,14 +682,14 @@ def assess_dyn_trajectory(
         reasons.append("persistent_structural_damage")
     return DynCaseMetric(
         base_frame_uid=base_frame_uid, temperature_kelvin=temperature_kelvin, velocity_seed=velocity_seed,
-        sample_count=len(values), nvt_mean_temperature_kelvin=nvt_mean, nve_mean_temperature_kelvin=nve_mean,
+        sample_count=sample_count, nvt_mean_temperature_kelvin=nvt_mean, nve_mean_temperature_kelvin=nve_mean,
         absolute_energy_drift_ev_per_atom_per_ps=drift, minimum_pair_distance_angstrom=minimum_distance,
         maximum_force_ev_per_angstrom=maximum_force,
-        maximum_protected_rms_displacement_angstrom=float(max(rms_values)),
-        maximum_protected_displacement_angstrom=float(max(max_disp_values)),
-        maximum_protected_bond_rmse_angstrom=float(max(bond_rmse_values)),
-        maximum_protected_angle_rmse_degrees=float(max(angle_rmse_values)),
-        damaged_sample_count=sum(frame_damage), maximum_consecutive_damage_samples=max_consecutive,
+        maximum_protected_rms_displacement_angstrom=maximum_rms,
+        maximum_protected_displacement_angstrom=maximum_displacement,
+        maximum_protected_bond_rmse_angstrom=maximum_bond_rmse,
+        maximum_protected_angle_rmse_degrees=maximum_angle_rmse,
+        damaged_sample_count=damaged_count, maximum_consecutive_damage_samples=maximum_consecutive,
         persistent_structural_damage=persistent, finite=finite, passed=not reasons, failure_reasons=tuple(reasons),
         trajectory_path=str(trajectory_path), trajectory_sha256=str(trajectory_sha256), log_sha256=str(log_sha256),
     )
@@ -599,6 +723,85 @@ def _parse_thermo_log(path: Path) -> tuple[tuple[float, ...], ...]:
     return tuple(by_step[key] for key in sorted(by_step))
 
 
+def _iter_deduplicated_lammps_frames(
+    path: Path, *, elements: Sequence[str]
+) -> Iterator[Any]:
+    """Stream normal ordered dumps; retain the exact sorted/last-wins fallback."""
+    try:
+        from ase.io import iread
+    except ModuleNotFoundError as exc:  # pragma: no cover
+        raise TrainingDataInputError("ASE is required for DYN-VERIFY2 trajectory streaming.") from exc
+
+    previous_step: int | None = None
+    out_of_order = False
+    for index, atoms in enumerate(
+        iread(path, index=":", format="lammps-dump-text", specorder=list(elements))
+    ):
+        step = int(atoms.info.get("timestep", index))
+        if previous_step is not None and step < previous_step:
+            out_of_order = True
+            break
+        previous_step = step
+    if out_of_order:
+        # Noncanonical external dumps retain the historical sorted, last-wins
+        # semantics. LAMMPS-produced evidence takes the bounded path below.
+        by_step: dict[int, Any] = {}
+        for index, atoms in enumerate(
+            iread(path, index=":", format="lammps-dump-text", specorder=list(elements))
+        ):
+            by_step[int(atoms.info.get("timestep", index))] = atoms
+        for step in sorted(by_step):
+            yield by_step[step]
+        return
+
+    pending: Any | None = None
+    pending_step: int | None = None
+    for index, atoms in enumerate(
+        iread(path, index=":", format="lammps-dump-text", specorder=list(elements))
+    ):
+        step = int(atoms.info.get("timestep", index))
+        if pending is not None and step != pending_step:
+            yield pending
+        pending = atoms
+        pending_step = step
+    if pending is not None:
+        yield pending
+
+
+def _file_tail(path: Path, maximum_bytes: int = 5000) -> str:
+    with path.open("rb") as handle:
+        handle.seek(0, os.SEEK_END)
+        size = handle.tell()
+        handle.seek(max(0, size - int(maximum_bytes)))
+        return handle.read().decode("utf-8", errors="replace")
+
+
+def _run_file_backed_process(
+    command: Sequence[str], *, cwd: Path, environment: Mapping[str, str],
+    stdout_path: Path, stderr_path: Path, timeout_seconds: float,
+) -> subprocess.CompletedProcess[Any]:
+    """Run one external case in a cancellable process group with bounded RAM."""
+    with stdout_path.open("w", encoding="utf-8") as stdout_handle, stderr_path.open("w", encoding="utf-8") as stderr_handle:
+        process = subprocess.Popen(
+            list(command), cwd=cwd, env=dict(environment), stdout=stdout_handle,
+            stderr=stderr_handle, text=True, start_new_session=True,
+        )
+        try:
+            returncode = process.wait(timeout=float(timeout_seconds))
+        except BaseException:
+            try:
+                os.killpg(process.pid, signal.SIGTERM)
+                process.wait(timeout=10.0)
+            except (OSError, subprocess.TimeoutExpired):
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except OSError:
+                    pass
+                process.wait()
+            raise
+    return subprocess.CompletedProcess(list(command), returncode)
+
+
 def run_lammps_mliap_dynamics_case(
     mliap_artifact_path: str | Path,
     reference_atoms: Any,
@@ -618,7 +821,7 @@ def run_lammps_mliap_dynamics_case(
 ) -> DynCaseMetric:
     """Run one NVT→NVE ML-IAP/LAMMPS case and reduce it to DYN-VERIFY2 evidence."""
     try:
-        from ase.io import write, read
+        from ase.io import write
     except ModuleNotFoundError as exc:  # pragma: no cover
         raise TrainingDataInputError("ASE is required for DYN-VERIFY2 LAMMPS dynamics.") from exc
     executable_text = str(lammps_executable)
@@ -636,7 +839,8 @@ def run_lammps_mliap_dynamics_case(
     if not mliap.is_file():
         raise TrainingDataInputError("DYN-VERIFY2 ML-IAP artifact is missing.")
     root = Path(work_directory).resolve(); root.mkdir(parents=True, exist_ok=True)
-    local_model = root / "deployment-mliap.pt"; shutil.copy2(mliap, local_model)
+    local_model = root / "deployment-mliap.pt"
+    stage_immutable_artifact(mliap, local_model)
     data_path = root / "structure.data"
     elements = tuple(str(v) for v in element_order)
     write(data_path, reference_atoms, format="lammps-data", atom_style="atomic", specorder=list(elements), masses=True)
@@ -660,22 +864,27 @@ def run_lammps_mliap_dynamics_case(
     if environment is not None:
         merged_env.update({str(k): str(v) for k, v in environment.items()})
     command = [str(executable), *[str(v) for v in lammps_arguments], "-log", str(log_path.name), "-in", str(input_path.name)]
-    completed = subprocess.run(command, cwd=root, env=merged_env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False, timeout=float(timeout_seconds))
+    stdout_path = root / "lammps.stdout.log"
+    stderr_path = root / "lammps.stderr.log"
+    completed = _run_file_backed_process(
+        command, cwd=root, environment=merged_env, stdout_path=stdout_path,
+        stderr_path=stderr_path, timeout_seconds=float(timeout_seconds),
+    )
     if completed.returncode != 0:
-        tail = (completed.stderr or completed.stdout)[-5000:]
+        tail = _file_tail(stderr_path) or _file_tail(stdout_path)
         raise TrainingDataInputError(f"DYN-VERIFY2 LAMMPS dynamics failed. Last output:\n{tail}")
     if not trajectory.is_file() or not log_path.is_file():
         raise TrainingDataInputError("DYN-VERIFY2 LAMMPS run did not create trajectory/log evidence.")
-    frames = read(trajectory, index=":", format="lammps-dump-text", specorder=list(elements))
-    if not isinstance(frames, list):
-        frames = [frames]
-    # Multiple LAMMPS run commands can emit the shared boundary step twice.
-    # Persistence is defined in physical sampled time, so deduplicate by timestep.
-    frame_by_step = {int(atoms.info.get("timestep", index)): atoms for index, atoms in enumerate(frames)}
-    frames = [frame_by_step[key] for key in sorted(frame_by_step)]
+    frames = _iter_deduplicated_lammps_frames(trajectory, elements=elements)
+    try:
+        first_frame = next(frames)
+    except StopIteration as exc:
+        raise TrainingDataInputError("DYN-VERIFY2 LAMMPS trajectory is empty.") from exc
+    from itertools import chain
     thermo = _parse_thermo_log(log_path)
     return assess_dyn_trajectory(
-        frames[0], frames, thermo, base_frame_uid=base_frame_uid, topology_atom_indices=topology_atom_indices,
+        first_frame, chain((first_frame,), frames), thermo,
+        base_frame_uid=base_frame_uid, topology_atom_indices=topology_atom_indices,
         temperature_kelvin=temperature_kelvin, velocity_seed=velocity_seed, policy=policy,
         trajectory_path=str(trajectory), trajectory_sha256=_sha256_file(trajectory), log_sha256=_sha256_file(log_path),
     )
@@ -683,6 +892,7 @@ def run_lammps_mliap_dynamics_case(
 
 __all__ = [
     "DYN_VERIFY_IMPLEMENTATION_VERSION", "DynVerifyPolicy", "DynVerifyPlan", "DynCaseMetric",
+    "DynCaseCompletionReceipt", "write_dyn_case_completion_receipt", "reusable_dyn_case_metric",
     "DynVerifyRunRecord", "DynVerifyCampaignRecord", "build_dyn_verify_plan", "assess_dyn_trajectory",
     "run_lammps_mliap_dynamics_case",
 ]

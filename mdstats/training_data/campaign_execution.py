@@ -88,6 +88,7 @@ CHECKPOINT_EVALUATION_POLICY_LEGACY_V4_SCHEMA = "mdstats.checkpoint-evaluation-p
 CHECKPOINT_EVALUATION_POLICY_LEGACY_V3_SCHEMA = "mdstats.checkpoint-evaluation-policy.v3"
 CHECKPOINT_EVALUATION_POLICY_LEGACY_V2_SCHEMA = "mdstats.checkpoint-evaluation-policy.v2"
 CHECKPOINT_EVALUATION_POLICY_LEGACY_SCHEMA = "mdstats.checkpoint-evaluation-policy.v1"
+INFERENCE_EXECUTION_PLAN_SCHEMA = "mdstats.inference-execution-plan.v1"
 MODEL_DATASET_METRIC_RECORD_SCHEMA = "mdstats.model-dataset-metric-record.v1"
 CHECKPOINT_EVALUATION_RECORD_SCHEMA = "mdstats.checkpoint-evaluation-record.v3"
 CHECKPOINT_EVALUATION_RECORD_LEGACY_V2_SCHEMA = "mdstats.checkpoint-evaluation-record.v2"
@@ -2146,6 +2147,108 @@ class CheckpointEvaluationPolicy:
         return result
 
 
+@dataclass(frozen=True, slots=True)
+class InferenceExecutionPlan:
+    """Resolved runtime choices kept outside scientific evaluation identity."""
+
+    batch_policy: str = "fixed"
+    selected_batch_size: int = 8
+    maximum_batch_size: int = 8
+    concurrent_model_jobs: int = 1
+    use_cuda_streams: bool = False
+    host_ram_budget_bytes: int | None = None
+    graph_cache_enabled: bool = True
+    monitor_cache_enabled: bool = True
+    compatible_profile_digest: str | None = None
+    rationale: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        policy = str(self.batch_policy).strip().lower()
+        if policy not in {"auto", "fixed"}:
+            raise TrainingDataInputError("Inference batch_policy must be 'auto' or 'fixed'.")
+        selected = int(self.selected_batch_size)
+        maximum = int(self.maximum_batch_size)
+        jobs = int(self.concurrent_model_jobs)
+        if selected <= 0 or maximum <= 0 or selected > maximum:
+            raise TrainingDataInputError(
+                "Inference selected_batch_size and maximum_batch_size must be positive and ordered."
+            )
+        if jobs <= 0:
+            raise TrainingDataInputError("Inference concurrent_model_jobs must be positive.")
+        if self.host_ram_budget_bytes is not None and int(self.host_ram_budget_bytes) <= 0:
+            raise TrainingDataInputError("Inference host RAM budget must be positive when present.")
+        profile = self.compatible_profile_digest
+        if profile is not None:
+            profile = validate_digest(profile, name="compatible_profile_digest")
+        object.__setattr__(self, "batch_policy", policy)
+        object.__setattr__(self, "selected_batch_size", selected)
+        object.__setattr__(self, "maximum_batch_size", maximum)
+        object.__setattr__(self, "concurrent_model_jobs", jobs)
+        object.__setattr__(
+            self,
+            "host_ram_budget_bytes",
+            None if self.host_ram_budget_bytes is None else int(self.host_ram_budget_bytes),
+        )
+        object.__setattr__(self, "compatible_profile_digest", profile)
+        object.__setattr__(
+            self, "rationale", tuple(str(value) for value in self.rationale if str(value))
+        )
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "schema": INFERENCE_EXECUTION_PLAN_SCHEMA,
+            "batch_policy": self.batch_policy,
+            "selected_batch_size": self.selected_batch_size,
+            "maximum_batch_size": self.maximum_batch_size,
+            "concurrent_model_jobs": self.concurrent_model_jobs,
+            "use_cuda_streams": bool(self.use_cuda_streams),
+            "host_ram_budget_bytes": self.host_ram_budget_bytes,
+            "graph_cache_enabled": bool(self.graph_cache_enabled),
+            "monitor_cache_enabled": bool(self.monitor_cache_enabled),
+            "compatible_profile_digest": self.compatible_profile_digest,
+            "rationale": list(self.rationale),
+        }
+
+    @property
+    def execution_digest(self) -> str:
+        return digest(self._payload())
+
+    @property
+    def content_digest(self) -> str:
+        return self.execution_digest
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._payload(), "execution_digest": self.execution_digest}
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "InferenceExecutionPlan":
+        if payload.get("schema") != INFERENCE_EXECUTION_PLAN_SCHEMA:
+            raise TrainingDataSerializationError("Unsupported inference-execution plan schema.")
+        result = cls(
+            batch_policy=str(payload["batch_policy"]),
+            selected_batch_size=int(payload["selected_batch_size"]),
+            maximum_batch_size=int(payload["maximum_batch_size"]),
+            concurrent_model_jobs=int(payload.get("concurrent_model_jobs", 1)),
+            use_cuda_streams=bool(payload.get("use_cuda_streams", False)),
+            host_ram_budget_bytes=(
+                None
+                if payload.get("host_ram_budget_bytes") is None
+                else int(payload["host_ram_budget_bytes"])
+            ),
+            graph_cache_enabled=bool(payload.get("graph_cache_enabled", True)),
+            monitor_cache_enabled=bool(payload.get("monitor_cache_enabled", True)),
+            compatible_profile_digest=(
+                None
+                if payload.get("compatible_profile_digest") is None
+                else str(payload["compatible_profile_digest"])
+            ),
+            rationale=tuple(str(value) for value in payload.get("rationale", ())),
+        )
+        if payload.get("execution_digest") != result.execution_digest:
+            raise TrainingDataSerializationError("Inference-execution plan digest mismatch.")
+        return result
+
+
 def _path_cache_identity(path: Path, expected_sha256: str) -> tuple[str, int, int, int, str]:
     resolved = path.resolve()
     stat = resolved.stat()
@@ -2374,27 +2477,14 @@ def _predict_model_on_atoms(
         )
     else:
         provider.set_head(head)
-    if geometry_identities is not None and len(geometry_identities) != len(atoms_list):
-        raise TrainingDataInputError("Evaluation geometry identity count mismatch.")
-    batch_size = max(1, min(int(policy.batch_size), len(atoms_list)))
-    result: list[Any] = []
-    for start in range(0, len(atoms_list), batch_size):
-        batch = atoms_list[start : start + batch_size]
-        batch_geometry = (
-            None
-            if geometry_identities is None
-            else geometry_identities[start : start + len(batch)]
-        )
-        predictions = _predict_batch_with_backoff(
-            provider,
-            batch,
-            geometry_identities=batch_geometry,
-            graph_cache_directory=graph_cache_directory,
-        )
-        if len(predictions) != len(batch):
-            raise TrainingDataInputError("MACE evaluation returned the wrong prediction count.")
-        result.extend(predictions)
-    return tuple(result)
+    from .model_features import StaticMaceInferenceExecutor
+
+    executor = StaticMaceInferenceExecutor(
+        provider,
+        batch_size=max(1, min(int(policy.batch_size), len(atoms_list))),
+        graph_cache_directory=graph_cache_directory,
+    )
+    return executor.predict(atoms_list, geometry_identities=geometry_identities)
 
 
 def _predict_model_on_monitor(

@@ -17,7 +17,7 @@ import math
 import os
 from pathlib import Path
 import time
-from typing import Callable, Deque, Iterator
+from typing import Callable, Deque, Iterator, Sequence
 
 from .resources import SystemResourceSnapshot
 from .training_parallel import GpuTelemetrySample
@@ -234,7 +234,9 @@ class InferenceConcurrencyPolicy:
     gpu_utilization_fraction: float = 0.90
     estimated_gpu_memory_mib_per_job: float = 4096.0
     estimated_ram_mib_per_job: float = 4096.0
-    stabilization_seconds: float = 300.0
+    stabilization_seconds: float = 120.0
+    minimum_calibration_seconds: float = 20.0
+    calibration_stability_relative_tolerance: float = 0.10
     cpu_stabilization_seconds: float = 20.0
     minimum_gpu_activity_fraction: float = 0.01
     gpu_calibration_peak_trim_fraction: float = 0.05
@@ -262,6 +264,12 @@ class InferenceConcurrencyPolicy:
             raise ValueError("estimated_ram_mib_per_job must be positive.")
         if float(self.stabilization_seconds) < 0.0:
             raise ValueError("stabilization_seconds must be non-negative.")
+        if float(self.minimum_calibration_seconds) < 0.0:
+            raise ValueError("minimum_calibration_seconds must be nonnegative.")
+        if float(self.minimum_calibration_seconds) > float(self.stabilization_seconds):
+            object.__setattr__(self, "minimum_calibration_seconds", float(self.stabilization_seconds))
+        if not (0.0 <= float(self.calibration_stability_relative_tolerance) < 1.0):
+            raise ValueError("calibration_stability_relative_tolerance must lie in [0, 1).")
         if float(self.cpu_stabilization_seconds) < 0.0:
             raise ValueError("cpu_stabilization_seconds must be non-negative.")
         minimum_activity = float(self.minimum_gpu_activity_fraction)
@@ -752,9 +760,26 @@ class AdaptiveInferenceConcurrency:
 
             started = self._gpu_calibration_started
             age = 0.0 if started is None else max(0.0, now - started)
-            if age < float(self.policy.stabilization_seconds):
+            sample_floor = int(self.policy.stability_samples)
+
+            def stable(values: Sequence[float]) -> bool:
+                if len(values) < sample_floor:
+                    return False
+                recent = tuple(float(value) for value in values[-sample_floor:])
+                scale = max(max(abs(value) for value in recent), 1.0e-12)
+                spread = max(recent) - min(recent)
+                return spread / scale <= float(
+                    self.policy.calibration_stability_relative_tolerance
+                )
+
+            sufficient = bool(
+                age >= float(self.policy.minimum_calibration_seconds)
+                and stable([value for _, value in self._gpu_util_samples])
+                and stable([float(value) for _, value in self._gpu_memory_samples])
+            )
+            if not sufficient and age < float(self.policy.stabilization_seconds):
                 return self._hold(
-                    "single-job GPU/VRAM calibration "
+                    "single-job GPU/VRAM calibration awaiting sufficient stable evidence "
                     f"({age:.0f}/{self.policy.stabilization_seconds:.0f}s); "
                     f"retained nonzero samples: GPU={len(self._gpu_util_samples)}, "
                     f"VRAM={len(self._gpu_memory_samples)}"
@@ -951,4 +976,3 @@ class AdaptiveInferenceConcurrency:
             cpu_sample=cpu_sample,
             now=current,
         )
-
