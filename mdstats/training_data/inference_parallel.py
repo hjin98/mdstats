@@ -801,7 +801,13 @@ class AdaptiveInferenceConcurrency:
                     incremental_memory
                     * float(self.policy.observed_memory_growth_margin)
                 )
-                if incremental_memory > 0 and measured_one_job > memory_budget:
+                # Preserve the established multi-job fail-closed guard. Only
+                # one-slot plans defer classification to the job boundary.
+                if (
+                    int(self.plan.maximum_jobs) > 1
+                    and incremental_memory > 0
+                    and measured_one_job > memory_budget
+                ):
                     previous = self.target_jobs
                     self._gpu_estimated_memory_bytes_per_job = incremental_memory
                     self._gpu_estimated_utilization_per_job = max(
@@ -821,14 +827,16 @@ class AdaptiveInferenceConcurrency:
                         measured_one_job,
                         self._cuda_projection_for_jobs(1)[1],
                     )
-
-                # There is no promotion decision to stabilize when the ceiling
-                # is one.  The first execution-region sample is sufficient to
-                # classify future one-job admission, and finishing here avoids
-                # stranding queued work behind a long multi-job calibration
-                # window after a short first task completes.
+                # A one-job ceiling prevents promotion, but it does not make a
+                # single early sample evidence for the complete job envelope.
+                # The scheduler calls ``complete_first_cuda_job`` at the first
+                # task-completion boundary, after which these retained peaks can
+                # safely govern replacement admission.
                 if int(self.plan.maximum_jobs) == 1:
-                    return self._finish_cuda_calibration()
+                    return self._hold(
+                        "one-slot CUDA calibration retains complete-first-job telemetry "
+                        "until the admitted job finishes"
+                    )
 
             started = self._gpu_calibration_started
             age = 0.0 if started is None else max(0.0, now - started)
@@ -938,6 +946,31 @@ class AdaptiveInferenceConcurrency:
             predicted_memory=predicted_memory,
             predicted_utilization=predicted_util,
         )
+
+    def complete_first_cuda_job(
+        self,
+        *,
+        gpu_sample: GpuTelemetrySample | None = None,
+        now: float | None = None,
+    ) -> InferenceConcurrencyDecision:
+        """Finalize a one-slot CUDA calibration at its first-job boundary.
+
+        The optional final sample is deliberately processed as active work before
+        finalization.  This prevents a final transient allocation from being lost
+        merely because the parent scheduler has already removed the completed
+        future from its active set.
+        """
+
+        if not self.plan.uses_cuda or self._gpu_calibrated:
+            return self._hold("CUDA calibration is already complete or not required")
+        if int(self.plan.maximum_jobs) != 1:
+            return self._hold("multi-job CUDA calibration remains telemetry-window driven")
+        current = time.monotonic() if now is None else float(now)
+        if gpu_sample is not None:
+            # Retain the final active observation without allowing the one-slot
+            # path in _observe_cuda to close early.
+            self._observe_cuda(active_jobs=1, gpu_sample=gpu_sample, now=current)
+        return self._finish_cuda_calibration()
 
     def _observe_cpu(
         self,

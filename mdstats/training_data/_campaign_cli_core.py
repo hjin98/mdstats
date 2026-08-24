@@ -12009,6 +12009,26 @@ def _run_adaptive_inference_tasks(
                 results[task.key] = result
                 completed_successfully.append((task, result, wall))
 
+            if (
+                str(device).startswith("cuda")
+                and int(plan.maximum_jobs) == 1
+                and completed_successfully
+                and not controller.gpu_calibrated
+            ):
+                # Do this before refilling a vacated slot.  A one-slot plan must
+                # classify the complete first job before a replacement can launch.
+                now = time.monotonic()
+                final_sample, last_gpu_poll = _maybe_query_inference_gpu_telemetry(
+                    cfg=cfg,
+                    policy=policy,
+                    controller=controller,
+                    device=device,
+                    active_jobs=1,
+                    now=now,
+                    last_sample_monotonic=last_gpu_poll,
+                )
+                controller.complete_first_cuda_job(gpu_sample=final_sample, now=now)
+
             # Pop the whole completed wave before doing any parent-side result
             # work, then refill every newly empty slot at once.  This matters
             # when a completion callback performs run selection or starts a model
@@ -12700,6 +12720,7 @@ def _run_staged_evaluation_tasks(
                 raise
 
             completed_parent_callbacks: list[tuple[_StagedEvaluationTask, Any, _StagedEvaluationTiming]] = []
+            completed_one_slot_cuda_inference = False
 
             for future in tuple(done):
                 if future in active_prepare:
@@ -12726,6 +12747,7 @@ def _run_staged_evaluation_tasks(
                         cancel_event.set()
                 elif future in active_inference:
                     task, prepared, timing, status = active_inference.pop(future)
+                    completed_one_slot_cuda_inference = True
                     try:
                         inference_result = future.result()
                         result_bytes = (
@@ -12764,6 +12786,27 @@ def _run_staged_evaluation_tasks(
                         _fail(failures[-1])
                         stop_scheduling = True
                         cancel_event.set()
+
+            if (
+                str(device).startswith("cuda")
+                and int(plan.maximum_jobs) == 1
+                and completed_one_slot_cuda_inference
+                and not controller.gpu_calibrated
+            ):
+                # The inference completion was popped above, so it no longer
+                # appears in active_inference.  Finalize before launch_inference
+                # can consume the freed slot.
+                now = time.monotonic()
+                final_sample, last_gpu_poll = _maybe_query_inference_gpu_telemetry(
+                    cfg=cfg,
+                    policy=policy,
+                    controller=controller,
+                    device=device,
+                    active_jobs=1,
+                    now=now,
+                    last_sample_monotonic=last_gpu_poll,
+                )
+                controller.complete_first_cuda_job(gpu_sample=final_sample, now=now)
 
             # Refill GPU and CPU stage slots before parent-side publication or
             # SQLite callbacks. This preserves work conservation even if the last

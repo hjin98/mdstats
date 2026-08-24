@@ -359,13 +359,16 @@ def test_one_slot_cuda_ceiling_still_measures_and_blocks_unsafe_replacement() ->
         now=1.0,
     )
 
+    assert not controller.gpu_calibrated
+    assert decision.target_jobs == 1
+    decision = controller.complete_first_cuda_job(now=2.0)
     assert controller.gpu_calibrated
     assert decision.target_jobs == 0
     assert controller.admission_blocked_reason is not None
-    assert "measured single-job VRAM peak" in decision.reason
+    assert "fixed projection permits 0" in decision.reason
 
 
-def test_one_slot_cuda_ceiling_completes_calibration_after_first_safe_sample() -> None:
+def test_one_slot_cuda_ceiling_completes_calibration_only_after_first_job() -> None:
     policy = InferenceConcurrencyPolicy(
         maximum_auto_jobs=1,
         stabilization_seconds=300.0,
@@ -390,10 +393,72 @@ def test_one_slot_cuda_ceiling_completes_calibration_after_first_safe_sample() -
         now=1.0,
     )
 
+    assert not controller.gpu_calibrated
+    assert decision.target_jobs == 1
+    assert "complete-first-job" in decision.reason
+
+    decision = controller.complete_first_cuda_job(now=2.0)
+
     assert controller.gpu_calibrated
     assert decision.target_jobs == 1
     assert controller.admission_blocked_reason is None
     assert "calibration complete" in decision.reason
+
+
+def test_one_slot_cuda_completion_uses_late_peak_and_blocks_replacement() -> None:
+    policy = InferenceConcurrencyPolicy(
+        maximum_auto_jobs=1,
+        stabilization_seconds=300.0,
+        minimum_calibration_seconds=300.0,
+        monitor_interval_seconds=1.0,
+        observed_memory_growth_margin=1.0,
+        estimated_gpu_memory_mib_per_job=1024.0,
+    )
+    plan = build_inference_concurrency_plan(
+        task_count=2,
+        device="cuda:0",
+        resources=_resources(),
+        policy=policy,
+        gpu_sample=_gpu_sample(0.0, 1.0, 2.0),
+        cpu_sample=CpuTelemetrySample(0.0, 0.0),
+    )
+    controller = AdaptiveInferenceConcurrency(plan, policy)
+    controller.observe(
+        active_jobs=1, gpu_sample=_gpu_sample(1.0, 3.0, 12.0), now=1.0
+    )
+    assert not controller.gpu_calibrated
+
+    decision = controller.complete_first_cuda_job(
+        gpu_sample=_gpu_sample(2.0, 23.0, 12.0), now=2.0
+    )
+
+    assert controller.gpu_calibrated
+    assert decision.target_jobs == 0
+    assert controller.admission_blocked_reason is not None
+    assert "fixed projection permits 0" in decision.reason
+
+
+def test_one_slot_cuda_completion_uses_configured_vram_fallback_without_samples() -> None:
+    policy = InferenceConcurrencyPolicy(
+        maximum_auto_jobs=1,
+        estimated_gpu_memory_mib_per_job=1024.0,
+        observed_memory_growth_margin=1.0,
+    )
+    plan = build_inference_concurrency_plan(
+        task_count=2,
+        device="cuda:0",
+        resources=_resources(),
+        policy=policy,
+        gpu_sample=_gpu_sample(0.0, 1.0, 2.0),
+        cpu_sample=CpuTelemetrySample(0.0, 0.0),
+    )
+    controller = AdaptiveInferenceConcurrency(plan, policy)
+
+    decision = controller.complete_first_cuda_job(now=1.0)
+
+    assert controller.gpu_calibrated
+    assert decision.target_jobs == 1
+    assert "configured VRAM fallback" in decision.reason
 
 
 def test_live_external_vram_baseline_can_block_all_future_admission() -> None:

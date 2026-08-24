@@ -256,6 +256,101 @@ def test_joint_executor_keeps_one_job_when_second_private_model_is_slower() -> N
     assert authority.selected_point.concurrent_model_jobs == 1
 
 
+def test_joint_executor_reuses_persistent_private_provider_pool_across_waves() -> None:
+    import time
+
+    created = 0
+    closed = 0
+
+    class Provider(_Provider):
+        def __init__(self, *, private=False):
+            nonlocal created
+            super().__init__()
+            self.private = private
+            if private:
+                created += 1
+
+        def predict_batch(self, atoms, **kwargs):
+            time.sleep(0.004)
+            return super().predict_batch(atoms, **kwargs)
+
+        def close(self):
+            nonlocal closed
+            if self.private:
+                closed += 1
+                self.private = False
+
+    authority = _authority(ram=1 << 30, vram=None)
+    executor = StaticMaceInferenceExecutor(
+        Provider(), batch_size=32, runtime_authority=authority,
+        provider_factory=lambda: Provider(private=True),
+    )
+
+    executor.predict(_atoms(64))
+    assert authority.selected_point is not None
+    assert authority.selected_point.concurrent_model_jobs == 2
+    assert created == 1
+    executor.predict(_atoms(32))
+    assert created == 1
+    assert executor.resident_provider_pool_size == 2
+    executor.close()
+    assert closed == 1
+
+
+def test_resource_limited_private_pool_growth_retains_lower_safe_point() -> None:
+    import time
+
+    created = 0
+    closed = 0
+
+    class Provider(_Provider):
+        def __init__(self, private=False):
+            nonlocal created
+            super().__init__()
+            self.private = private
+            if private:
+                created += 1
+
+        def predict_batch(self, atoms, **kwargs):
+            time.sleep(0.003)
+            return super().predict_batch(atoms, **kwargs)
+
+        def close(self):
+            nonlocal closed
+            if self.private:
+                closed += 1
+                self.private = False
+
+    def factory():
+        if created >= 2:
+            raise RuntimeError("CUDA out of memory while materializing provider")
+        return Provider(private=True)
+
+    authority = StaticInferenceRuntimeAuthority(
+        compatibility_digest=digest({"fixture": "pool-growth-oom"}),
+        maximum_batch_size=32,
+        maximum_concurrent_model_jobs=4,
+        live_ram_budget_bytes=1 << 30,
+        live_vram_budget_bytes=None,
+    )
+    executor = StaticMaceInferenceExecutor(
+        Provider(), batch_size=32, runtime_authority=authority, provider_factory=factory,
+    )
+
+    assert len(executor.predict(_atoms(128))) == 128
+    assert any(
+        point.concurrent_model_jobs == 4 and point.failure_kind == "oom"
+        for point in authority.evidence
+    )
+    assert authority.selected_point is not None
+    assert authority.selected_point.concurrent_model_jobs <= 2
+    # The partially grown third private slot was closed; a retained lower pool
+    # remains usable until the executor is retired.
+    assert closed >= 1
+    executor.close()
+    assert closed == created
+
+
 def test_joint_resource_evidence_covers_all_private_model_residency(
     monkeypatch,
 ) -> None:
@@ -287,12 +382,13 @@ def test_joint_resource_evidence_covers_all_private_model_residency(
 
     monkeypatch.setattr(model_features, "_StaticInferenceResourceMonitor", ResidencyMonitor)
     authority = _authority(ram=1 << 30, vram=None)
-    StaticMaceInferenceExecutor(
+    executor = StaticMaceInferenceExecutor(
         ResidencyProvider(),
         batch_size=32,
         runtime_authority=authority,
         provider_factory=lambda: ResidencyProvider(clone=True),
-    ).predict(_atoms(64))
+    )
+    executor.predict(_atoms(64))
 
     single = next(
         point for point in authority.evidence
@@ -303,7 +399,38 @@ def test_joint_resource_evidence_covers_all_private_model_residency(
         if (point.batch_size, point.concurrent_model_jobs) == (8, 2)
     )
     assert joint.peak_ram_bytes > single.peak_ram_bytes
+    assert joint.provider_pool_resident_ram_bytes > 0
+    assert joint.execution_peak_ram_bytes > 0
+    assert joint.peak_ram_bytes == (
+        joint.provider_pool_resident_ram_bytes + joint.execution_peak_ram_bytes
+    )
+    executor.close()
     assert ResidencyProvider.live_clones == 0
+
+
+def test_live_resource_shrink_blocks_private_pool_growth_before_factory(monkeypatch) -> None:
+    from mdstats.training_data import resources
+
+    authority = _authority(ram=1 << 30, vram=None)
+    for batch in authority.candidate_batch_sizes:
+        authority.record(_measured_point(batch, 1, 1.0, 100, None))
+    created = 0
+
+    def factory():
+        nonlocal created
+        created += 1
+        return _Provider()
+
+    # J=1 remains admissible, but its measured envelope makes the first J=2
+    # growth inadmissible.  The factory must not be entered for that rejected
+    # material transition.
+    monkeypatch.setattr(resources, "available_memory_bytes", lambda: 150)
+    executor = StaticMaceInferenceExecutor(
+        _Provider(), batch_size=32, runtime_authority=authority,
+        provider_factory=factory,
+    )
+    assert len(executor.predict(_atoms(64))) == 64
+    assert created == 0
 
 
 def test_serial_executor_records_point_local_ram_delta_not_process_high_water(
@@ -368,7 +495,9 @@ def test_cuda_resource_monitor_retains_transient_live_peak(monkeypatch) -> None:
     from mdstats.training_data import model_features, training_parallel
     from mdstats.training_data.training_parallel import GpuTelemetrySample
 
-    used = iter((10, 10, 90, 20, 20))
+    # Initial planning plus the mandatory immediate pre-wave live admission
+    # consume two samples before the execution-region monitor begins.
+    used = iter((10, 10, 10, 90, 20, 20))
     monkeypatch.setattr(model_features, "_current_process_rss_bytes", lambda: 1_000)
     monkeypatch.setattr(
         training_parallel,
@@ -399,6 +528,17 @@ def test_v1_runtime_profile_is_rejected_for_old_evidence_semantics(tmp_path) -> 
     path = tmp_path / "legacy-profile.json"
     path.write_text(
         '{"schema":"mdstats.static-inference-runtime-profile.v1"}',
+        encoding="utf-8",
+    )
+    assert StaticInferenceRuntimeProfile.load_compatible(
+        path, compatibility_digest=digest({"fixture": "joint-static"})
+    ) is None
+
+
+def test_v2_runtime_profile_is_rejected_for_pre_persistent_pool_semantics(tmp_path) -> None:
+    path = tmp_path / "v2-profile.json"
+    path.write_text(
+        '{"schema":"mdstats.static-inference-runtime-profile.v2"}',
         encoding="utf-8",
     )
     assert StaticInferenceRuntimeProfile.load_compatible(

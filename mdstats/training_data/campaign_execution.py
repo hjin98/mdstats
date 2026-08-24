@@ -2613,7 +2613,12 @@ def _predict_model_on_atoms(
         device=policy.device,
         provider_factory=provider_factory,
     )
-    result = executor.predict(atoms_list, geometry_identities=geometry_identities)
+    try:
+        result = executor.predict(atoms_list, geometry_identities=geometry_identities)
+    finally:
+        # The caller owns the base provider, while this canonical executor owns
+        # any persistent private slots created for its joint operating point.
+        executor.close()
     if runtime_authority is not None and runtime_profile_path is not None:
         try:
             runtime_authority.profile().write_atomic(runtime_profile_path)

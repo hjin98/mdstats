@@ -1,6 +1,6 @@
 # MLFF-END-TO-END-PERF1 Fourth-Reopen Implementation Workplan
 
-Status: **ACTIVE — FUNCTIONAL ACCEPTANCE REOPENED**  
+Status: **FUNCTIONAL IMPLEMENTATION ACCEPTED — TARGET-WORKSTATION GPU QUALIFICATION DEFERRED**
 Branch: `feat/mlff-end-to-end-performance-v1`  
 Reviewed implementation tip: `514d70a57a3c954bd777c99eee314019107f9ef2`  
 Supersedes closeout conclusion only: `MLFF_END_TO_END_PERF1_REOPEN3_IMPLEMENTATION_WORKPLAN.md` section 14  
@@ -491,3 +491,33 @@ Return MLFF-END-TO-END-PERF1 to **FUNCTIONAL IMPLEMENTATION ACCEPTED — TARGET-
 - a distinct fresh bounded assembled production-interface integration passes on the same candidate;
 - unavailable checks are explicitly recorded;
 - full target-workstation GPU qualification remains deferred as a separate final handoff.
+
+## 17. Fourth-reopen implementation acceptance record (2026-08-24)
+
+F-R2A, F-R2B, F-R2C, F-R5, and F-R8 are functionally accepted on branch
+`feat/mlff-end-to-end-performance-v1`.
+
+- F-R2A now retains one-slot CUDA telemetry until the first admitted job has
+  completed.  The runner finalizes that calibration before refilling a vacated
+  slot; a late unsafe VRAM sample therefore produces zero future admission, and
+  a no-sample completion uses the configured conservative fallback.
+- F-R2B/F-R2C give the canonical static executor one lazily grown,
+  worker-private provider pool.  Growth is immediately live-admitted, reuse is
+  steady-state timed only after the required pool is resident, resource OOM
+  during a higher-J growth retains a lower safe pool, and private providers are
+  retired exactly once.  Runtime evidence/profile schema v3 records persistent
+  pool residency separately from the steady-state execution peak and rejects
+  v2 evidence rather than reinterpreting it.
+- F-R5 consumers remain on the canonical executor/authority.  Staged EVAL,
+  DEPLOY, PES, LOCKED, replay, scheduler/resource, restart, DYN, RELAX, and
+  command-boundary coverage was rerun in the final affected-surface regression.
+- F-R8 final affected-surface/production-interface regression passed `230
+  passed, 1 skipped`.  The skip requires an externally supplied real LTA
+  training root.  The unfiltered repository suite was also attempted, but is
+  blocked during collection by the pre-existing missing fixture
+  `tests/data/mesh_topology_revision_stage1_cases.json`; that module is outside
+  the changed surface.  `git diff --check` and Python compilation passed.
+
+No target-workstation GPU qualification was run.  Production-scale GPU/VRAM,
+pool materialization, throughput, cold/warm profile, and end-to-end timing
+claims remain deferred to the section-14 handoff.
