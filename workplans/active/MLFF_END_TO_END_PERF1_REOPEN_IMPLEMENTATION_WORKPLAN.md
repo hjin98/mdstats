@@ -1,6 +1,6 @@
 # MLFF-END-TO-END-PERF1 Reopen Implementation Workplan
 
-Status: **ACTIVE — OPEN FOR IMPLEMENTATION**  
+Status: **FUNCTIONAL IMPLEMENTATION ACCEPTED — TARGET-WORKSTATION GPU QUALIFICATION DEFERRED**
 Branch: `feat/mlff-end-to-end-performance-v1`  
 Reopens: `MLFF_END_TO_END_PARALLELIZATION_OPTIMIZATION_WORKPLAN.md` closeout status  
 Date reopened: 2026-08-24
@@ -375,3 +375,37 @@ This reopen workplan can be closed only when:
 - production GPU qualification is left as a separate final handoff rather than being conflated with implementation acceptance.
 
 Until those conditions are met, MLFF-END-TO-END-PERF1 remains **ACTIVE / OPEN FOR IMPLEMENTATION**.
+
+## 11. Implementation acceptance record (2026-08-24)
+
+R0-R8 functional implementation is accepted on branch
+`feat/mlff-end-to-end-performance-v1`.
+
+- Stage-local focused gates passed after each material change. The final
+  re-derived affected surface passed `250 passed, 2 skipped`; the skips require
+  a real LTA training root and an explicitly supplied real MACE model.
+- Bounded production-interface acceptance passed `121 passed`, covering the
+  available preparation/materialization and preflight authorities, EVAL,
+  command-level DEPLOY/PES consumers, RELAX, split DYN and restart behavior,
+  SELECT2, and LOCKED-TEST2 boundaries. Heavy dependencies were stubbed only
+  below the production boundary under test.
+- Static checks passed: module compilation, `git diff --check`, and searches for
+  removed field names, superseded operating-point/cache owners, and the former
+  shallow pipeline estimator.
+- The repository-wide available run, excluding the independently uncollectable
+  `tests/test_mesh_topology_revision_stage1.py` missing-fixture module, reached
+  `3183 passed, 36 skipped, 261 failed, 84 errors` in 511.67 seconds. The error
+  population is dominated by absent repository LTA JSON/data fixtures. The
+  failure population is dominated by historical release/manual assertions and
+  tests monkeypatching the user-facing CLI facade rather than its implementation
+  owner. Every failure touching this reopen's changed or transitively affected
+  execution surface was isolated and rerun after repair; the final affected
+  surface above is green.
+- No supported target GPU qualification was run. Production-scale GPU/VRAM,
+  LAMMPS concurrency, disk/I/O, cold/warm cache, restart, and end-to-end timing
+  qualification remains the separate handoff defined in section 8.
+
+The reopened functional acceptance conditions are therefore closed. This
+workplan remains in `workplans/active/` only as the handoff authority for the
+explicitly deferred target-workstation qualification; repository hygiene may
+archive it after that separate qualification is accepted.

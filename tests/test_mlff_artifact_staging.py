@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import errno
 from pathlib import Path
+import threading
 
 import pytest
 
@@ -31,8 +32,12 @@ def test_immutable_staging_copy_fallback_and_failure_cleanup(tmp_path: Path, mon
     source = tmp_path / "source.pt"
     source.write_bytes(b"immutable-model-bytes")
 
-    def cross_device(*args, **kwargs):
-        raise OSError(errno.EXDEV, "cross-device link")
+    real_link = staging.os.link
+
+    def cross_device(source_path, destination_path, *args, **kwargs):
+        if Path(source_path) == source:
+            raise OSError(errno.EXDEV, "cross-device link")
+        return real_link(source_path, destination_path, *args, **kwargs)
 
     monkeypatch.setattr(staging.os, "link", cross_device)
     destination = tmp_path / "stage" / "model.pt"
@@ -50,3 +55,61 @@ def test_immutable_staging_refuses_existing_different_bytes(tmp_path: Path) -> N
     with pytest.raises(Exception, match="different bytes"):
         stage_immutable_artifact(source, destination)
     assert destination.read_bytes() == b"other"
+
+
+def test_simultaneous_identical_publishers_converge_without_clobber(tmp_path: Path) -> None:
+    source = tmp_path / "source.pt"
+    destination = tmp_path / "stage" / "model.pt"
+    source.write_bytes(b"same")
+    barrier = threading.Barrier(2)
+    results = []
+    failures = []
+
+    def publish() -> None:
+        try:
+            barrier.wait(timeout=2.0)
+            results.append(stage_immutable_artifact(source, destination))
+        except BaseException as exc:
+            failures.append(exc)
+
+    threads = [threading.Thread(target=publish) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=3.0)
+    assert not failures
+    assert len(results) == 2
+    assert destination.read_bytes() == b"same"
+    assert {result.method for result in results} <= {"hardlink", "copy", "existing"}
+
+
+def test_simultaneous_different_publishers_never_replace_winner(tmp_path: Path) -> None:
+    first = tmp_path / "first.pt"
+    second = tmp_path / "second.pt"
+    destination = tmp_path / "stage" / "model.pt"
+    first.write_bytes(b"first")
+    second.write_bytes(b"second")
+    barrier = threading.Barrier(2)
+    outcomes = []
+
+    def publish(source: Path) -> None:
+        try:
+            barrier.wait(timeout=2.0)
+            outcomes.append(stage_immutable_artifact(source, destination))
+        except BaseException as exc:
+            outcomes.append(exc)
+
+    threads = [
+        threading.Thread(target=publish, args=(first,)),
+        threading.Thread(target=publish, args=(second,)),
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=3.0)
+    assert sum(isinstance(value, ImmutableArtifactStage) for value in outcomes) == 1
+    assert sum(isinstance(value, Exception) for value in outcomes) == 1
+    accepted = destination.read_bytes()
+    assert accepted in {b"first", b"second"}
+    assert destination.read_bytes() == accepted
+    assert not tuple(destination.parent.glob("*.tmp"))

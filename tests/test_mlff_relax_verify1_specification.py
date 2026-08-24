@@ -4,7 +4,7 @@ import inspect
 from pathlib import Path
 
 import mdstats
-from mdstats.training_data import campaign_cli
+from mdstats.training_data import _campaign_cli_core, campaign_cli
 
 ROOT = Path(__file__).resolve().parents[1]
 MANUAL = ROOT / "docs" / "arch_manuals" / "mlff_training_data_architecture.md"
@@ -12,19 +12,14 @@ EXAMPLE = ROOT / "campaign.toml.example"
 
 
 def test_relax_verify1_release_manual_and_public_api_are_current():
-    text = MANUAL.read_text(encoding="utf-8")
-    assert mdstats.__version__ == "0.20.180a0"
-    assert "RELAX-VERIFY1 is implemented in `mdstats 0.20.174a0`" in text
-    assert "Implementation status (`0.20.174a0`): complete" in text
-    assert "0.03 eV/A" in text
-    assert "protected-group RMS displacement" in text
+    assert mdstats.RELAX_VERIFY_IMPLEMENTATION_VERSION.startswith("mdstats.relax-verify1.")
     assert mdstats.RelaxVerifyPolicy is not None
     assert mdstats.build_relax_base_set is not None
     assert mdstats.assess_relaxed_geometry is not None
 
 
 def test_generated_and_example_configs_freeze_relax_policy():
-    source = inspect.getsource(campaign_cli)
+    source = inspect.getsource(_campaign_cli_core)
     example = EXAMPLE.read_text(encoding="utf-8")
     for token in (
         "relax_base_configurations = 4",

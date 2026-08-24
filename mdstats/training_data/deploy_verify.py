@@ -15,6 +15,8 @@ import hashlib
 import json
 import math
 import os
+import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -473,21 +475,6 @@ def compare_prediction_channels(
     )
 
 
-def _load_probe_atoms(path: str | Path, indices: Sequence[int]) -> tuple[Any, ...]:
-    try:
-        from ase.io import read
-    except ModuleNotFoundError as exc:  # pragma: no cover
-        raise TrainingDataInputError("ASE is required for DEPLOY-VERIFY1.") from exc
-    target = Path(path).resolve()
-    if not target.is_file():
-        raise TrainingDataInputError("DEPLOY-VERIFY1 target artifact is missing.")
-    all_atoms = tuple(read(target, index=":"))
-    result = tuple(all_atoms[int(i)] for i in indices)
-    if not result:
-        raise TrainingDataInputError("DEPLOY-VERIFY1 probe set is empty.")
-    return result
-
-
 def predict_mace_model_on_probe(
     model_path: str | Path,
     probe_atoms: Sequence[Any],
@@ -821,6 +808,44 @@ def _model_element_order(model_path: str | Path) -> tuple[str, ...]:
     return tuple(chemical_symbols[v] for v in values)
 
 
+def _file_tail(path: Path, maximum_bytes: int = 5000) -> str:
+    if not path.is_file():
+        return ""
+    with path.open("rb") as handle:
+        handle.seek(0, os.SEEK_END)
+        size = handle.tell()
+        handle.seek(max(0, size - int(maximum_bytes)))
+        return handle.read().decode("utf-8", errors="replace")
+
+
+def _run_file_backed_process(
+    command: Sequence[str], *, cwd: Path, environment: Mapping[str, str],
+    stdout_path: Path, stderr_path: Path, timeout_seconds: float,
+) -> subprocess.CompletedProcess[Any]:
+    """Run an owned external process group without retaining output in RAM."""
+    with stdout_path.open("w", encoding="utf-8") as stdout_handle, stderr_path.open(
+        "w", encoding="utf-8"
+    ) as stderr_handle:
+        process = subprocess.Popen(
+            list(command), cwd=cwd, env=dict(environment), stdout=stdout_handle,
+            stderr=stderr_handle, text=True, start_new_session=True,
+        )
+        try:
+            returncode = process.wait(timeout=float(timeout_seconds))
+        except BaseException:
+            try:
+                os.killpg(process.pid, signal.SIGTERM)
+                process.wait(timeout=10.0)
+            except (OSError, subprocess.TimeoutExpired):
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except OSError:
+                    pass
+                process.wait()
+            raise
+    return subprocess.CompletedProcess(list(command), returncode)
+
+
 def run_lammps_mliap_run0(
     mliap_artifact_path: str | Path,
     target_model_path: str | Path,
@@ -897,21 +922,22 @@ def run_lammps_mliap_run0(
         ])
         (case / "run0.in").write_text(input_text, encoding="utf-8")
         command = [str(executable), *[str(v) for v in lammps_arguments], "-in", "run0.in"]
-        completed = subprocess.run(
-            command,
-            cwd=case,
-            env=merged_env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            check=False,
-            timeout=float(timeout_seconds),
-        )
-        if completed.returncode != 0:
-            tail = (completed.stderr or completed.stdout)[-5000:]
-            raise TrainingDataInputError(f"LAMMPS ML-IAP run 0 failed for probe {index}. Last output:\n{tail}")
         metrics_path = case / "metrics.txt"
         dump_path = case / "forces.dump"
+        stdout_path = case / "lammps.stdout.log"
+        stderr_path = case / "lammps.stderr.log"
+        # A failed retry must never authenticate outputs left by an earlier run.
+        metrics_path.unlink(missing_ok=True)
+        dump_path.unlink(missing_ok=True)
+        completed = _run_file_backed_process(
+            command, cwd=case, environment=merged_env, stdout_path=stdout_path,
+            stderr_path=stderr_path, timeout_seconds=float(timeout_seconds),
+        )
+        if completed.returncode != 0:
+            metrics_path.unlink(missing_ok=True)
+            dump_path.unlink(missing_ok=True)
+            tail = _file_tail(stderr_path) or _file_tail(stdout_path)
+            raise TrainingDataInputError(f"LAMMPS ML-IAP run 0 failed for probe {index}. Last output:\n{tail}")
         if not metrics_path.is_file() or not dump_path.is_file():
             raise TrainingDataInputError("LAMMPS run 0 did not create the required parity outputs.")
         values = np.loadtxt(metrics_path, dtype=float).reshape(-1)

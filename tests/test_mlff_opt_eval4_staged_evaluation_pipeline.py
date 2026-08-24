@@ -294,6 +294,96 @@ def test_cache_only_staged_task_bypasses_inference_pool(
     assert execution_threads
     assert all(name.startswith("mdstats-eval-finalize") for name in execution_threads)
 
+
+def test_dynamics_reduction_overlaps_next_single_slot_simulation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(campaign_cli._core, "detect_system_resources", lambda **kwargs: _resources())
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", _Probe)
+    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", lambda device: None)
+    cfg = _pipeline_cfg()
+    cfg["execution"].update({
+        "parallel_dynamics_jobs": 1,
+        "maximum_parallel_dynamics_jobs": 1,
+        "parallel_dynamics_prepare_jobs": 1,
+        "parallel_dynamics_finalize_jobs": 1,
+        "dynamics_pipeline_buffer_jobs": 2,
+        "dynamics_estimated_ram_mib_per_job": 1.0,
+        "parallel_dynamics_stabilization_seconds": 0.0,
+        "parallel_dynamics_cpu_stabilization_seconds": 0.0,
+        "parallel_dynamics_stability_samples": 2,
+        "parallel_dynamics_monitor_interval_seconds": 0.005,
+    })
+    lock = threading.Lock()
+    spans: dict[str, list[float]] = {}
+    active_simulations = 0
+    peak_simulations = 0
+
+    def mark(name: str, delay: float, *, simulation: bool = False) -> str:
+        nonlocal active_simulations, peak_simulations
+        with lock:
+            spans[name] = [time.monotonic(), 0.0]
+            if simulation:
+                active_simulations += 1
+                peak_simulations = max(peak_simulations, active_simulations)
+        time.sleep(delay)
+        with lock:
+            spans[name][1] = time.monotonic()
+            if simulation:
+                active_simulations -= 1
+        return name
+
+    def task(index: int) -> campaign_cli._StagedEvaluationTask:
+        return campaign_cli._StagedEvaluationTask(
+            display_index=index + 1, key=f"case-{index}", label=f"case-{index}",
+            start_detail="DYN pipeline test", prepare=lambda: True,
+            requires_inference=lambda prepared: True,
+            infer=lambda prepared: mark(f"simulate{index}", 0.08, simulation=True),
+            finalize=lambda prepared, result: mark(f"reduce{index}", 0.12),
+            done_detail=lambda result, wall: result,
+        )
+
+    result = campaign_cli._run_staged_evaluation_tasks(
+        [task(0), task(1)], cfg=cfg, phase="dynamics", device="cpu", progress=_Progress()
+    )
+    assert set(result) == {"case-0", "case-1"}
+    assert peak_simulations == 1
+    assert spans["simulate1"][0] < spans["reduce0"][1]
+    assert spans["simulate1"][1] > spans["reduce0"][0]
+
+
+def test_dynamics_authenticated_receipt_path_bypasses_simulation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(campaign_cli._core, "detect_system_resources", lambda **kwargs: _resources())
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", _Probe)
+    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", lambda device: None)
+    cfg = _pipeline_cfg()
+    cfg["execution"].update({
+        "parallel_dynamics_jobs": 1,
+        "maximum_parallel_dynamics_jobs": 1,
+        "parallel_dynamics_prepare_jobs": 1,
+        "parallel_dynamics_finalize_jobs": 1,
+        "parallel_dynamics_stabilization_seconds": 0.0,
+        "parallel_dynamics_cpu_stabilization_seconds": 0.0,
+    })
+    simulated = []
+    receipt_metric = object()
+    task = campaign_cli._StagedEvaluationTask(
+        display_index=1, key="accepted", label="accepted", start_detail="restart",
+        prepare=lambda: receipt_metric,
+        requires_inference=lambda prepared: False,
+        infer=lambda prepared: simulated.append(True),
+        cached_result=lambda prepared: prepared,
+        finalize=lambda prepared, result: result,
+        done_detail=lambda result, wall: "reused",
+    )
+    result = campaign_cli._run_staged_evaluation_tasks(
+        [task], cfg=cfg, phase="dynamics", device="cpu", progress=_Progress()
+    )
+    assert result["accepted"] is receipt_metric
+    assert not simulated
+
 @pytest.mark.parametrize(
     "key",
     ["parallel_evaluation_prepare_jobs", "parallel_evaluation_finalize_jobs"],
@@ -561,7 +651,7 @@ def test_staged_runner_applies_byte_budget_to_all_retained_stage_payloads(
     def make_task(index: int) -> campaign_cli._StagedEvaluationTask:
         def prepare():
             record(f"prepare{index}", 0.02)
-            return np.zeros(2 * 1024**2, dtype=np.uint8)
+            return np.zeros(400 * 1024, dtype=np.uint8)
 
         def infer(prepared):
             record(f"infer{index}", 0.06)
@@ -590,7 +680,38 @@ def test_staged_runner_applies_byte_budget_to_all_retained_stage_payloads(
         progress=_Progress(),
     )
     assert result == {"bytes-0": 0, "bytes-1": 1}
-    # The first 2 MiB prepared payload alone exceeds the 1.5 MiB cap.  It is
-    # allowed to drain (deadlock avoidance), but no second preparation may be
-    # admitted while that payload is retained by inference or finalization.
-    assert spans["prepare1"][0] >= spans["finalize0"][1]
+    # Prepared bytes plus the explicit inference-worker reservation nearly fill
+    # the cap, so the producer is held until the first inference reservation is
+    # released. CPU finalization may then overlap the next preparation.
+    assert spans["prepare1"][0] >= spans["infer0"][1]
+
+
+def test_staged_runner_fails_when_one_prepared_payload_exceeds_byte_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(campaign_cli._core, "detect_system_resources", lambda **kwargs: _resources())
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", _Probe)
+    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", lambda device: None)
+    cfg = _pipeline_cfg()
+    cfg["execution"]["evaluation_pipeline_buffer_mib"] = 1.5
+    task = campaign_cli._StagedEvaluationTask(
+        display_index=1, key="oversized", label="oversized", start_detail="bytes",
+        prepare=lambda: np.zeros(2 * 1024**2, dtype=np.uint8),
+        requires_inference=lambda prepared: True, infer=lambda prepared: 1,
+        finalize=lambda prepared, inferred: inferred,
+        done_detail=lambda result, wall: "done",
+    )
+    with pytest.raises(campaign_cli.CampaignCliError, match="cannot admit one required payload"):
+        campaign_cli._run_staged_evaluation_tasks(
+            [task], cfg=cfg, device="cpu", progress=_Progress()
+        )
+
+
+def test_ase_atoms_retained_bytes_include_array_storage() -> None:
+    from ase import Atoms
+
+    atoms = Atoms("H100", positions=np.zeros((100, 3)))
+    atoms.arrays["large"] = np.zeros((100, 64), dtype=np.float64)
+    retained = campaign_cli._core._evaluation_payload_bytes(atoms)
+    assert retained >= atoms.arrays["large"].nbytes + atoms.positions.nbytes
+    assert retained > atoms.__sizeof__()

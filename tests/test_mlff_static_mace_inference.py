@@ -4,13 +4,11 @@ import numpy as np
 import pytest
 from ase import Atoms
 
-from mdstats.training_data._common import TrainingDataInputError
 from mdstats.training_data.model_features import (
     AtomicModelPrediction,
-    StaticInferenceOperatingPoint,
     StaticMaceInferenceExecutor,
-    select_static_inference_operating_point,
 )
+from mdstats.training_data._common import TrainingDataInputError
 
 
 def _atoms(count: int = 9):
@@ -67,16 +65,24 @@ def test_static_executor_surfaces_batch_one_oom() -> None:
         executor.predict(_atoms(1))
 
 
-def test_joint_operating_point_uses_live_budget_and_near_optimal_headroom() -> None:
-    points = (
-        StaticInferenceOperatingPoint(8, 1, 100.0, 4_000),
-        StaticInferenceOperatingPoint(16, 1, 104.0, 7_000),
-        StaticInferenceOperatingPoint(8, 2, 106.0, 9_000),
-        StaticInferenceOperatingPoint(16, 2, 120.0, 15_000),
-    )
-    selected = select_static_inference_operating_point(
-        points, live_vram_budget_bytes=10_000, throughput_tolerance_fraction=0.06
-    )
-    assert selected == points[0]
-    with pytest.raises(TrainingDataInputError, match="No static inference operating point"):
-        select_static_inference_operating_point(points, live_vram_budget_bytes=3_000)
+def test_static_executor_prohibits_concurrent_model_shell_sharing() -> None:
+    import threading
+
+    entered = threading.Event()
+    release = threading.Event()
+
+    class BlockingProvider(_Provider):
+        def predict_batch(self, atoms, **kwargs):
+            entered.set()
+            release.wait(timeout=2.0)
+            return super().predict_batch(atoms, **kwargs)
+
+    executor = StaticMaceInferenceExecutor(BlockingProvider(), batch_size=1)
+    worker = threading.Thread(target=lambda: executor.predict(_atoms(1)))
+    worker.start()
+    assert entered.wait(timeout=1.0)
+    with pytest.raises(TrainingDataInputError, match="cannot be shared"):
+        executor.predict(_atoms(1))
+    release.set()
+    worker.join(timeout=2.0)
+    assert not worker.is_alive()

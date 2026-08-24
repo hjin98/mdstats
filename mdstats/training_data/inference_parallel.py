@@ -3,7 +3,7 @@
 Evaluation and bounded MD verification consist of independent model-inference
 jobs. CUDA execution starts with one job, calibrates that single-job workload
 for a long fixed interval while filtering near-zero GPU/VRAM observations, and
-then reuses the measured per-job demand to project a fixed safe concurrency for
+then reuses peak-safe measured per-job demand to project safe concurrency for
 the remaining queue. CPU execution is bounded by the configured thread budget,
 available RAM, and a projected host-utilization ceiling.
 """
@@ -389,9 +389,15 @@ def build_inference_concurrency_plan(
     if resources.ram_budget_bytes is None:
         ram_limit = tasks
     else:
-        ram_limit = max(1, int(resources.ram_budget_bytes) // estimated_ram)
+        ram_limit = int(resources.ram_budget_bytes) // estimated_ram
+        if ram_limit < 1:
+            raise ValueError(
+                "Inference RAM admission cannot fit one job: "
+                f"budget={int(resources.ram_budget_bytes)} bytes, "
+                f"estimated_job={estimated_ram} bytes."
+            )
     maximum = min(requested_cap, max(1, resources.cpu_threads_budget), ram_limit)
-    maximum = max(1, min(tasks, maximum))
+    maximum = min(tasks, maximum)
     threads_per_job = max(1, resources.cpu_threads_budget // maximum)
     estimated_cpu_per_job = 100.0 * threads_per_job / max(1, resources.cpu_threads_available)
 
@@ -403,9 +409,9 @@ def build_inference_concurrency_plan(
     estimated_gpu = None
     if str(device).startswith("cuda"):
         if gpu_sample is None:
-            maximum = 1
-            initial = 1
-            reason = "CUDA telemetry unavailable; concurrency held at one job"
+            raise ValueError(
+                "CUDA inference admission requires live VRAM telemetry to prove one-job feasibility."
+            )
         else:
             gpu_total = int(gpu_sample.total_bytes)
             gpu_budget = int(gpu_total * float(policy.gpu_memory_fraction))
@@ -413,6 +419,14 @@ def build_inference_concurrency_plan(
             baseline_gpu_used = int(gpu_sample.used_bytes)
             baseline_gpu_util = max(0.0, float(gpu_sample.utilization_percent))
             estimated_gpu = max(1, int(float(policy.estimated_gpu_memory_mib_per_job) * _MIB))
+            one_job_projection = baseline_gpu_used + math.ceil(
+                estimated_gpu * float(policy.observed_memory_growth_margin)
+            )
+            if one_job_projection > gpu_budget:
+                raise ValueError(
+                    "Inference VRAM admission cannot fit one job: "
+                    f"projected={one_job_projection} bytes, ceiling={gpu_budget} bytes."
+                )
             # Do not use the configured per-job VRAM guess as a pre-calibration
             # concurrency cap. CUDA runs exactly one job until the measured
             # single-job calibration is complete; the retained VRAM samples then
@@ -475,11 +489,9 @@ class AdaptiveInferenceConcurrency:
     kept active at a time for the configured calibration duration (300 seconds
     by default). GPU-utilization and incremental-VRAM samples below the
     configured activity floor (1% by default) are discarded independently.
-    To remain conservative without letting momentary peaks dominate, the highest
-    5% of retained samples are discarded and the next-highest 10% are averaged
-    for each resource independently (approximately the 85th--95th percentile
-    band by default). This avoids both initialization/IO gaps pulling the estimate
-    toward zero and rare spikes inflating the fixed concurrency cost.
+    GPU-utilization samples use an upper-band estimate, while every retained VRAM
+    allocation peak remains safety evidence. Future admission is re-clamped from
+    live aggregate VRAM before additional jobs are launched.
 
     CPU execution retains the shorter workload-window controller because host
     utilization is continuous enough to estimate directly and is independently
@@ -642,12 +654,11 @@ class AdaptiveInferenceConcurrency:
             utilization_per_job = threshold_percent
 
         if self._gpu_memory_samples:
-            memory_band_mean, memory_band_count, memory_trim_count = (
-                self._trimmed_upper_band_mean(
-                    [float(value) for _, value in self._gpu_memory_samples]
-                )
-            )
-            memory_per_job = math.ceil(memory_band_mean)
+            # Allocation peaks are safety evidence, not utilization noise. Keep
+            # the highest observed incremental residency even when GPU
+            # utilization uses a trimmed upper band for throughput projection.
+            memory_per_job = max(value for _, value in self._gpu_memory_samples)
+            memory_band_count = 1
         else:
             # If resident growth never crossed the activity floor, retain the
             # configured VRAM estimate as a conservative fallback.
@@ -692,10 +703,10 @@ class AdaptiveInferenceConcurrency:
         reason = (
             "single-job calibration complete: "
             f"retained GPU-utilization samples={util_count}, VRAM samples={memory_count}; "
-            f"peak-trimmed upper-band mean discards GPU={util_trim_count}, VRAM={memory_trim_count} "
-            f"sample(s) from the highest {100.0 * self.policy.gpu_calibration_peak_trim_fraction:.0f}% and averages "
-            f"GPU={util_band_count}, VRAM={memory_band_count} sample(s) from the next "
-            f"{100.0 * self._gpu_calibration_band_fraction():.0f}%; "
+            f"GPU upper-band estimate discards {util_trim_count} sample(s) from the highest "
+            f"{100.0 * self.policy.gpu_calibration_peak_trim_fraction:.0f}% and averages "
+            f"{util_band_count} sample(s) from the next {100.0 * self._gpu_calibration_band_fraction():.0f}%; "
+            f"VRAM uses the retained allocation peak from {memory_count} sample(s); "
             f"per-job estimate={self._gpu_estimated_utilization_per_job:.1f}% GPU, "
             f"{self._gpu_estimated_memory_bytes_per_job / _GIB:.2f} GiB VRAM; "
             f"fixed projection permits {self.target_jobs} concurrent job(s)"
@@ -792,24 +803,42 @@ class AdaptiveInferenceConcurrency:
         # telemetry is retained only for the hard VRAM guard, where ignoring an
         # excursion can cause an allocation failure/OOM rather than merely high
         # device occupancy.
-        if (
-            gpu_sample is not None
-            and active > 1
-            and self.plan.gpu_memory_budget_bytes is not None
-            and int(gpu_sample.used_bytes) >= int(self.plan.gpu_memory_budget_bytes)
-        ):
-            previous = self.target_jobs
-            self.target_jobs = max(1, min(self.target_jobs, active - 1))
-            return InferenceConcurrencyDecision(
-                previous,
-                self.target_jobs,
-                self.target_jobs != previous,
-                "live VRAM safety override: aggregate VRAM reached the configured "
-                "ceiling; future replacements throttled (GPU-utilization spikes "
-                "remain governed by the fixed calibrated estimate)",
-                int(gpu_sample.used_bytes),
-                self._cuda_projection_for_jobs(self.target_jobs)[1],
-            )
+        if gpu_sample is not None and self.plan.gpu_memory_budget_bytes is not None:
+            memory_budget = int(self.plan.gpu_memory_budget_bytes)
+            live_used = int(gpu_sample.used_bytes)
+            if live_used >= memory_budget:
+                previous = self.target_jobs
+                self.target_jobs = max(1, active - 1)
+                return InferenceConcurrencyDecision(
+                    previous,
+                    self.target_jobs,
+                    self.target_jobs != previous,
+                    "live VRAM safety override: aggregate VRAM reached the configured "
+                    "ceiling; future replacements throttled",
+                    live_used,
+                    self._cuda_projection_for_jobs(self.target_jobs)[1],
+                )
+            per_job = max(1, int(self._gpu_estimated_memory_bytes_per_job or 1))
+            margin = float(self.policy.observed_memory_growth_margin)
+            live_limit = max(1, active)
+            for jobs in range(max(1, active), int(self.target_jobs) + 1):
+                additional = max(0, jobs - active)
+                projected_live = live_used + math.ceil(additional * per_job * margin)
+                if projected_live <= memory_budget:
+                    live_limit = jobs
+                    continue
+                break
+            if live_limit < self.target_jobs:
+                previous = self.target_jobs
+                self.target_jobs = live_limit
+                return InferenceConcurrencyDecision(
+                    previous,
+                    live_limit,
+                    True,
+                    "live VRAM re-clamp reduced future admission before launching another job",
+                    live_used + math.ceil(max(0, live_limit - active) * per_job * margin),
+                    self._cuda_projection_for_jobs(live_limit)[1],
+                )
 
         predicted_memory, predicted_util = self._cuda_projection_for_jobs(
             self.target_jobs

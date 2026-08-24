@@ -209,9 +209,7 @@ def test_checkpoint_evaluation_batches_and_reuses_provider() -> None:
     assert metrics["worst_condition_force_rmse_ev_per_angstrom"] == 0.0
 
 
-def test_monitor_and_baseline_caches_are_bound_to_authenticated_file_identity(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_monitor_cache_is_bound_to_authenticated_file_identity(tmp_path: Path) -> None:
     monitor = tmp_path / "monitor.xyz"
     atoms = Atoms("H", positions=[[0.0, 0.0, 0.0]])
     write(monitor, [atoms], format="extxyz")
@@ -224,41 +222,7 @@ def test_monitor_and_baseline_caches_are_bound_to_authenticated_file_identity(
         monitor, expected_sha256=monitor_sha, use_cache=True
     )
     assert first is second
-
-    model = tmp_path / "baseline.model"
-    model.write_bytes(b"baseline")
-    model_sha = hashlib.sha256(model.read_bytes()).hexdigest()
-    campaign_execution._BASELINE_METRIC_CACHE.clear()
-    campaign_execution._BASELINE_METRIC_CACHE_ORDER.clear()
-    calls = 0
-
-    def fake_evaluate(*args, **kwargs):
-        nonlocal calls
-        calls += 1
-        return {
-            "configuration_count": 1,
-            "energy_mae_ev_per_atom": 0.0,
-            "force_component_rmse_ev_per_angstrom": 0.0,
-            "focus_force_rmse_ev_per_angstrom": (),
-            "stress_rmse_ev_per_angstrom3": None,
-            "worst_condition_force_rmse_ev_per_angstrom": 0.0,
-            "condition_force_rmse_ev_per_angstrom": (),
-            "combined_loss": 0.0,
-        }
-
-    monkeypatch.setattr(campaign_execution, "_evaluate_model_on_atoms", fake_evaluate)
-    policy = mdstats.CheckpointEvaluationPolicy(condition_keys=())
-    for _ in range(2):
-        campaign_execution._baseline_metrics_cached(
-            model,
-            model_sha,
-            monitor,
-            monitor_sha,
-            first,
-            head="pt_head",
-            policy=policy,
-        )
-    assert calls == 1
+    assert not hasattr(campaign_execution, "_baseline_metrics_cached")
 
 
 def test_shard_summary_and_energy_readers_do_not_materialize_heavy_members(

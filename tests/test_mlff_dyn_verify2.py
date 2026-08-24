@@ -326,6 +326,19 @@ def test_lammps_runner_deduplicates_frames_last_wins_and_uses_earliest_frame_as_
     }
 
 
+def test_lammps_frame_stream_rejects_out_of_order_timesteps(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import ase.io
+    import mdstats
+    import mdstats.training_data.dyn_verify as dv
+
+    frames = tuple(SimpleNamespace(info={"timestep": step}) for step in (0, 20, 10))
+    monkeypatch.setattr(ase.io, "iread", lambda *args, **kwargs: iter(frames))
+    with pytest.raises(mdstats.TrainingDataInputError, match="out of order"):
+        tuple(dv._iter_deduplicated_lammps_frames(tmp_path / "trajectory.dump", elements=("Li",)))
+
+
 def test_file_backed_process_timeout_terminates_the_complete_process_group(
     tmp_path: Path, monkeypatch
 ) -> None:

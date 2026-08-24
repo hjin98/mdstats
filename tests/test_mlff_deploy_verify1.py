@@ -217,9 +217,9 @@ def test_lammps_run0_contract_parses_energy_forces_and_stress(tmp_path: Path, mo
             "ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n2\nITEM: BOX BOUNDS pp pp pp\n0 5\n0 5\n0 5\n"
             "ITEM: ATOMS id type fx fy fz\n2 2 4 5 6\n1 1 1 2 3\n"
         )
-        return SimpleNamespace(returncode=0, stdout="", stderr="")
+        return SimpleNamespace(returncode=0)
 
-    monkeypatch.setattr(dv.subprocess, "run", fake_run)
+    monkeypatch.setattr(dv, "_run_file_backed_process", fake_run)
     predictions, record = mdstats.run_lammps_mliap_run0(
         mliap, target, (atoms,), probe_set_digest=_h("probe"),
         lammps_executable=executable, work_directory=tmp_path / "run0",
@@ -228,3 +228,37 @@ def test_lammps_run0_contract_parses_energy_forces_and_stress(tmp_path: Path, mo
     assert predictions["forces"].tolist() == [1, 2, 3, 4, 5, 6]
     assert predictions["stress"].shape == (1, 3, 3)
     assert record.probe_set_digest == _h("probe")
+
+
+def test_lammps_run0_timeout_terminates_process_group_and_rejects_stale_outputs(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import signal
+    import subprocess
+
+    class Process:
+        pid = 4321
+
+        def __init__(self):
+            self.waits = 0
+
+        def wait(self, timeout=None):
+            self.waits += 1
+            if self.waits == 1:
+                raise subprocess.TimeoutExpired(["fake"], timeout)
+            return -signal.SIGTERM
+
+    process = Process()
+    signals = []
+    monkeypatch.setattr(dv.subprocess, "Popen", lambda *args, **kwargs: process)
+    monkeypatch.setattr(dv.os, "killpg", lambda pid, sig: signals.append((pid, sig)))
+    case = tmp_path / "case"
+    case.mkdir()
+    (case / "metrics.txt").write_text("stale", encoding="utf-8")
+    (case / "forces.dump").write_text("stale", encoding="utf-8")
+    with pytest.raises(subprocess.TimeoutExpired):
+        dv._run_file_backed_process(
+            ("fake",), cwd=case, environment={}, stdout_path=case / "stdout.log",
+            stderr_path=case / "stderr.log", timeout_seconds=0.01,
+        )
+    assert signals == [(4321, signal.SIGTERM)]

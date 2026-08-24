@@ -2329,53 +2329,6 @@ class MaceCalculatorProvider:
         return tuple(result)
 
 
-@dataclass(frozen=True, slots=True)
-class StaticInferenceOperatingPoint:
-    """One measured joint batch/model-job operating point."""
-
-    batch_size: int
-    concurrent_model_jobs: int
-    structures_per_second: float
-    peak_vram_bytes: int
-
-    def __post_init__(self) -> None:
-        if int(self.batch_size) <= 0 or int(self.concurrent_model_jobs) <= 0:
-            raise TrainingDataInputError("Static inference operating-point sizes must be positive.")
-        if float(self.structures_per_second) < 0.0 or not np.isfinite(self.structures_per_second):
-            raise TrainingDataInputError("Static inference throughput must be finite and nonnegative.")
-        if int(self.peak_vram_bytes) < 0:
-            raise TrainingDataInputError("Static inference peak VRAM must be nonnegative.")
-
-
-def select_static_inference_operating_point(
-    points: Sequence[StaticInferenceOperatingPoint],
-    *,
-    live_vram_budget_bytes: int,
-    throughput_tolerance_fraction: float = 0.05,
-) -> StaticInferenceOperatingPoint:
-    """Select the lowest-resource safe point within the near-optimal throughput band."""
-
-    budget = int(live_vram_budget_bytes)
-    tolerance = float(throughput_tolerance_fraction)
-    if budget <= 0 or not (0.0 <= tolerance < 1.0):
-        raise TrainingDataInputError("Static inference live VRAM budget/tolerance is invalid.")
-    safe = tuple(point for point in points if point.peak_vram_bytes <= budget)
-    if not safe:
-        raise TrainingDataInputError("No static inference operating point fits the live VRAM budget.")
-    peak = max(point.structures_per_second for point in safe)
-    floor = peak * (1.0 - tolerance)
-    near = tuple(point for point in safe if point.structures_per_second >= floor)
-    return min(
-        near,
-        key=lambda point: (
-            point.peak_vram_bytes,
-            point.concurrent_model_jobs,
-            point.batch_size,
-            -point.structures_per_second,
-        ),
-    )
-
-
 class StaticMaceInferenceExecutor:
     """Canonical deterministic batched prediction owner with bounded OOM learning."""
 
@@ -2397,6 +2350,7 @@ class StaticMaceInferenceExecutor:
         self.maximum_oom_backoffs = int(maximum_oom_backoffs)
         self.oom_backoff_count = 0
         self.owns_provider = bool(owns_provider)
+        self._execution_lock = RLock()
 
     @classmethod
     def from_model_path(
@@ -2460,7 +2414,7 @@ class StaticMaceInferenceExecutor:
                 raise
             return tuple(self.provider.predict_batch(atoms_batch))
 
-    def predict(
+    def _predict_owned(
         self,
         atoms: Sequence[Any],
         *,
@@ -2496,6 +2450,25 @@ class StaticMaceInferenceExecutor:
             result.extend(predictions)
             position += batch_size
         return tuple(result)
+
+    def predict(
+        self,
+        atoms: Sequence[Any],
+        *,
+        geometry_identities: Sequence[str] | None = None,
+    ) -> tuple[AtomicModelPrediction, ...]:
+        """Predict serially with one executor-owned mutable model shell."""
+
+        if not self._execution_lock.acquire(blocking=False):
+            raise TrainingDataInputError(
+                "A StaticMaceInferenceExecutor/model shell cannot be shared across concurrent workers."
+            )
+        try:
+            return self._predict_owned(
+                atoms, geometry_identities=geometry_identities
+            )
+        finally:
+            self._execution_lock.release()
 
     def prediction_channels(
         self,

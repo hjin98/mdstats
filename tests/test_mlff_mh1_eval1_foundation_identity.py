@@ -57,7 +57,7 @@ def test_eval1_policy_derives_source_head_and_preserves_candidate_heads():
     assert policy.source_foundation_head_name == "omat_pbe"
     assert policy.target_head_name == "target_head"
     assert policy.replay_head_name == "pt_head"
-    assert policy.to_dict()["schema"] == "mdstats.checkpoint-evaluation-policy.v7"
+    assert policy.to_dict()["schema"] == "mdstats.checkpoint-evaluation-policy.v8"
     assert "replay_baseline_head_name" not in policy.to_dict()
     restored = mdstats.CheckpointEvaluationPolicy.from_dict(policy.to_dict())
     assert restored.policy_digest == policy.policy_digest

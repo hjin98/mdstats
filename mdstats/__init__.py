@@ -3590,7 +3590,6 @@ from .training_data import (
     Data6Policy,
     DifficultyFrameRecord,
     MaceCalculatorProvider,
-    StaticInferenceOperatingPoint,
     StaticMaceInferenceExecutor,
     MaceDescriptorFileRecord,
     MaceDescriptorManifest,
@@ -3615,7 +3614,6 @@ from .training_data import (
     build_training_difficulty_feature_catalog,
     read_mace_descriptor_array,
     recommend_mace_batch_size_from_probes,
-    select_static_inference_operating_point,
     summarize_prediction,
 )
 
@@ -3659,7 +3657,6 @@ __all__ += [
     "LtaSelectionFeatureCatalog",
     "LtaSelectionPolicy",
     "MaceCalculatorProvider",
-    "StaticInferenceOperatingPoint",
     "StaticMaceInferenceExecutor",
     "MaceDescriptorFileRecord",
     "MaceDescriptorManifest",
@@ -3685,7 +3682,6 @@ __all__ += [
     "build_training_difficulty_feature_catalog",
     "read_mace_descriptor_array",
     "recommend_mace_batch_size_from_probes",
-    "select_static_inference_operating_point",
     "summarize_prediction",
 ]
 
@@ -6235,6 +6231,7 @@ from .training_data import (
     DynVerifyPlan,
     DynCaseMetric,
     DynCaseCompletionReceipt,
+    DynCaseSimulationArtifacts,
     DynVerifyRunRecord,
     DynVerifyCampaignRecord,
     build_dyn_verify_plan,
@@ -6242,12 +6239,15 @@ from .training_data import (
     write_dyn_case_completion_receipt,
     reusable_dyn_case_metric,
     run_lammps_mliap_dynamics_case,
+    simulate_lammps_mliap_dynamics_case,
+    reduce_lammps_mliap_dynamics_case,
 )
 __all__ += [
     "DYN_VERIFY_IMPLEMENTATION_VERSION", "DynVerifyPolicy", "DynVerifyPlan", "DynCaseMetric",
     "DynCaseCompletionReceipt", "write_dyn_case_completion_receipt", "reusable_dyn_case_metric",
     "DynVerifyRunRecord", "DynVerifyCampaignRecord", "build_dyn_verify_plan", "assess_dyn_trajectory",
-    "run_lammps_mliap_dynamics_case",
+    "DynCaseSimulationArtifacts", "simulate_lammps_mliap_dynamics_case",
+    "reduce_lammps_mliap_dynamics_case", "run_lammps_mliap_dynamics_case",
 ]
 
 from .training_data import (

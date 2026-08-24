@@ -148,7 +148,7 @@ def test_post_calibration_inference_gpu_polling_is_sparse(
     calls: list[str] = []
     sample = training_parallel.GpuTelemetrySample(1.0, 0, 10.0, 1, 10)
     monkeypatch.setattr(
-        campaign_cli,
+        campaign_cli._core,
         "query_gpu_telemetry",
         lambda device: calls.append(device) or sample,
     )

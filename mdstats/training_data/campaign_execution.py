@@ -81,7 +81,8 @@ TRAINING_EXECUTION_POLICY_SCHEMA = "mdstats.training-execution-policy.v2"
 TRAINING_EXECUTION_POLICY_LEGACY_SCHEMA = "mdstats.training-execution-policy.v1"
 TRAINING_RUN_ATTEMPT_SCHEMA = "mdstats.training-run-attempt.v1"
 TRAINING_RUN_EXECUTION_SCHEMA = "mdstats.training-run-execution.v1"
-CHECKPOINT_EVALUATION_POLICY_SCHEMA = "mdstats.checkpoint-evaluation-policy.v7"
+CHECKPOINT_EVALUATION_POLICY_SCHEMA = "mdstats.checkpoint-evaluation-policy.v8"
+CHECKPOINT_EVALUATION_POLICY_LEGACY_V7_SCHEMA = "mdstats.checkpoint-evaluation-policy.v7"
 CHECKPOINT_EVALUATION_POLICY_LEGACY_V6_SCHEMA = "mdstats.checkpoint-evaluation-policy.v6"
 CHECKPOINT_EVALUATION_POLICY_LEGACY_V5_SCHEMA = "mdstats.checkpoint-evaluation-policy.v5"
 CHECKPOINT_EVALUATION_POLICY_LEGACY_V4_SCHEMA = "mdstats.checkpoint-evaluation-policy.v4"
@@ -1838,6 +1839,12 @@ class CheckpointEvaluationPolicy:
     # None preserves the historical critical-FP64 evaluation identity.  PREC3
     # passes an explicit profile-bound policy for canonical single/double/refine.
     critical_precision_policy: MaceCriticalPrecisionPolicy | None = None
+    # Runtime fields remain readable for historical/API compatibility, but are
+    # excluded from the canonical v8 scientific identity. Active campaign
+    # execution is owned by InferenceExecutionPlan.
+    _legacy_serialized_payload: dict[str, Any] | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
 
     @property
     def active_critical_precision_policy(self) -> MaceCriticalPrecisionPolicy:
@@ -1911,23 +1918,9 @@ class CheckpointEvaluationPolicy:
         return None if self.foundation_inference_identity is None else self.foundation_inference_identity.content_digest
 
     def _payload(self) -> dict[str, Any]:
-        # Preserve the exact v3 identity when the new comparison is disabled.
-        # This keeps legacy campaign TOMLs and cached evaluations reusable.
         explicit_precision = self.critical_precision_policy is not None
         payload = {
-            "schema": (
-                CHECKPOINT_EVALUATION_POLICY_SCHEMA
-                if self.foundation_identity_bound
-                else CHECKPOINT_EVALUATION_POLICY_LEGACY_V6_SCHEMA
-                if self.acceleration_realization_digest is not None
-                else CHECKPOINT_EVALUATION_POLICY_LEGACY_V5_SCHEMA
-                if explicit_precision
-                else (
-                    CHECKPOINT_EVALUATION_POLICY_LEGACY_V4_SCHEMA
-                    if self.evaluate_foundation_on_target
-                    else CHECKPOINT_EVALUATION_POLICY_LEGACY_V3_SCHEMA
-                )
-            ),
+            "schema": CHECKPOINT_EVALUATION_POLICY_SCHEMA,
             "target_head_name": self.target_head_name,
             "replay_head_name": self.replay_head_name,
             "replay_baseline_head_name": self.replay_baseline_head_name,
@@ -1943,9 +1936,6 @@ class CheckpointEvaluationPolicy:
             "combined_stress_weight": self.combined_stress_weight,
             "device": self.device,
             "default_dtype": self.default_dtype,
-            "batch_size": self.batch_size,
-            "cache_monitor_datasets": bool(self.cache_monitor_datasets),
-            "cache_replay_baseline": bool(self.cache_replay_baseline),
             "acceleration_policy": self.acceleration_policy.to_dict(),
         }
         if self.evaluate_foundation_on_target:
@@ -1963,15 +1953,18 @@ class CheckpointEvaluationPolicy:
 
     @property
     def policy_digest(self) -> str:
-        return digest(self._payload())
+        payload = self._legacy_serialized_payload
+        return digest(self._payload() if payload is None else payload)
 
     def to_dict(self) -> dict[str, Any]:
-        return {**self._payload(), "policy_digest": self.policy_digest}
+        payload = self._legacy_serialized_payload
+        return {**(self._payload() if payload is None else payload), "policy_digest": self.policy_digest}
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "CheckpointEvaluationPolicy":
         if payload.get("schema") not in {
             CHECKPOINT_EVALUATION_POLICY_SCHEMA,
+            CHECKPOINT_EVALUATION_POLICY_LEGACY_V7_SCHEMA,
             CHECKPOINT_EVALUATION_POLICY_LEGACY_V6_SCHEMA,
             CHECKPOINT_EVALUATION_POLICY_LEGACY_V5_SCHEMA,
             CHECKPOINT_EVALUATION_POLICY_LEGACY_V4_SCHEMA,
@@ -1985,7 +1978,8 @@ class CheckpointEvaluationPolicy:
             replay_head_name=str(payload["replay_head_name"]),
             replay_baseline_head_name=(
                 None
-                if payload.get("schema") == CHECKPOINT_EVALUATION_POLICY_SCHEMA
+                if payload.get("schema") in {CHECKPOINT_EVALUATION_POLICY_SCHEMA, CHECKPOINT_EVALUATION_POLICY_LEGACY_V7_SCHEMA}
+                and payload.get("foundation_potential_identity") is not None
                 else ("pt_head" if "replay_baseline_head_name" not in payload else (None if payload.get("replay_baseline_head_name") in (None, "") else str(payload["replay_baseline_head_name"])))
             ),
             foundation_potential_identity=(None if payload.get("foundation_potential_identity") is None else FoundationPotentialIdentity.from_dict(payload["foundation_potential_identity"])),
@@ -2004,7 +1998,7 @@ class CheckpointEvaluationPolicy:
             default_dtype=str(payload["default_dtype"]),
             batch_size=(
                 int(payload.get("batch_size", 8))
-                if payload.get("schema") in {CHECKPOINT_EVALUATION_POLICY_SCHEMA, CHECKPOINT_EVALUATION_POLICY_LEGACY_V6_SCHEMA, CHECKPOINT_EVALUATION_POLICY_LEGACY_V5_SCHEMA, CHECKPOINT_EVALUATION_POLICY_LEGACY_V4_SCHEMA, CHECKPOINT_EVALUATION_POLICY_LEGACY_V3_SCHEMA}
+                if payload.get("schema") in {CHECKPOINT_EVALUATION_POLICY_SCHEMA, CHECKPOINT_EVALUATION_POLICY_LEGACY_V7_SCHEMA, CHECKPOINT_EVALUATION_POLICY_LEGACY_V6_SCHEMA, CHECKPOINT_EVALUATION_POLICY_LEGACY_V5_SCHEMA, CHECKPOINT_EVALUATION_POLICY_LEGACY_V4_SCHEMA, CHECKPOINT_EVALUATION_POLICY_LEGACY_V3_SCHEMA}
                 else 1
             ),
             cache_monitor_datasets=bool(payload.get("cache_monitor_datasets", True)),
@@ -2024,7 +2018,11 @@ class CheckpointEvaluationPolicy:
             ),
         )
         expected_digest = result.policy_digest
-        if payload.get("schema") == CHECKPOINT_EVALUATION_POLICY_LEGACY_V6_SCHEMA:
+        if payload.get("schema") == CHECKPOINT_EVALUATION_POLICY_LEGACY_V7_SCHEMA:
+            legacy_payload = dict(payload)
+            legacy_payload.pop("policy_digest", None)
+            expected_digest = digest(legacy_payload)
+        elif payload.get("schema") == CHECKPOINT_EVALUATION_POLICY_LEGACY_V6_SCHEMA:
             legacy_payload = dict(payload)
             legacy_payload.pop("policy_digest", None)
             expected_digest = digest(legacy_payload)
@@ -2144,6 +2142,10 @@ class CheckpointEvaluationPolicy:
             )
         if payload.get("policy_digest") not in (None, expected_digest):
             raise TrainingDataSerializationError("Checkpoint-evaluation policy digest mismatch.")
+        if payload.get("schema") != CHECKPOINT_EVALUATION_POLICY_SCHEMA:
+            legacy_payload = dict(payload)
+            legacy_payload.pop("policy_digest", None)
+            object.__setattr__(result, "_legacy_serialized_payload", legacy_payload)
         return result
 
 
@@ -2154,12 +2156,9 @@ class InferenceExecutionPlan:
     batch_policy: str = "fixed"
     selected_batch_size: int = 8
     maximum_batch_size: int = 8
-    concurrent_model_jobs: int = 1
-    use_cuda_streams: bool = False
-    host_ram_budget_bytes: int | None = None
     graph_cache_enabled: bool = True
     monitor_cache_enabled: bool = True
-    compatible_profile_digest: str | None = None
+    prediction_cache_enabled: bool = True
     rationale: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
@@ -2168,28 +2167,13 @@ class InferenceExecutionPlan:
             raise TrainingDataInputError("Inference batch_policy must be 'auto' or 'fixed'.")
         selected = int(self.selected_batch_size)
         maximum = int(self.maximum_batch_size)
-        jobs = int(self.concurrent_model_jobs)
         if selected <= 0 or maximum <= 0 or selected > maximum:
             raise TrainingDataInputError(
                 "Inference selected_batch_size and maximum_batch_size must be positive and ordered."
             )
-        if jobs <= 0:
-            raise TrainingDataInputError("Inference concurrent_model_jobs must be positive.")
-        if self.host_ram_budget_bytes is not None and int(self.host_ram_budget_bytes) <= 0:
-            raise TrainingDataInputError("Inference host RAM budget must be positive when present.")
-        profile = self.compatible_profile_digest
-        if profile is not None:
-            profile = validate_digest(profile, name="compatible_profile_digest")
         object.__setattr__(self, "batch_policy", policy)
         object.__setattr__(self, "selected_batch_size", selected)
         object.__setattr__(self, "maximum_batch_size", maximum)
-        object.__setattr__(self, "concurrent_model_jobs", jobs)
-        object.__setattr__(
-            self,
-            "host_ram_budget_bytes",
-            None if self.host_ram_budget_bytes is None else int(self.host_ram_budget_bytes),
-        )
-        object.__setattr__(self, "compatible_profile_digest", profile)
         object.__setattr__(
             self, "rationale", tuple(str(value) for value in self.rationale if str(value))
         )
@@ -2200,12 +2184,9 @@ class InferenceExecutionPlan:
             "batch_policy": self.batch_policy,
             "selected_batch_size": self.selected_batch_size,
             "maximum_batch_size": self.maximum_batch_size,
-            "concurrent_model_jobs": self.concurrent_model_jobs,
-            "use_cuda_streams": bool(self.use_cuda_streams),
-            "host_ram_budget_bytes": self.host_ram_budget_bytes,
             "graph_cache_enabled": bool(self.graph_cache_enabled),
             "monitor_cache_enabled": bool(self.monitor_cache_enabled),
-            "compatible_profile_digest": self.compatible_profile_digest,
+            "prediction_cache_enabled": bool(self.prediction_cache_enabled),
             "rationale": list(self.rationale),
         }
 
@@ -2228,25 +2209,31 @@ class InferenceExecutionPlan:
             batch_policy=str(payload["batch_policy"]),
             selected_batch_size=int(payload["selected_batch_size"]),
             maximum_batch_size=int(payload["maximum_batch_size"]),
-            concurrent_model_jobs=int(payload.get("concurrent_model_jobs", 1)),
-            use_cuda_streams=bool(payload.get("use_cuda_streams", False)),
-            host_ram_budget_bytes=(
-                None
-                if payload.get("host_ram_budget_bytes") is None
-                else int(payload["host_ram_budget_bytes"])
-            ),
             graph_cache_enabled=bool(payload.get("graph_cache_enabled", True)),
             monitor_cache_enabled=bool(payload.get("monitor_cache_enabled", True)),
-            compatible_profile_digest=(
-                None
-                if payload.get("compatible_profile_digest") is None
-                else str(payload["compatible_profile_digest"])
-            ),
+            prediction_cache_enabled=bool(payload.get("prediction_cache_enabled", True)),
             rationale=tuple(str(value) for value in payload.get("rationale", ())),
         )
         if payload.get("execution_digest") != result.execution_digest:
             raise TrainingDataSerializationError("Inference-execution plan digest mismatch.")
         return result
+
+
+def _legacy_inference_execution_plan(
+    policy: CheckpointEvaluationPolicy,
+) -> InferenceExecutionPlan:
+    """Isolate compatibility for callers predating explicit execution plans."""
+
+    batch_size = max(1, int(policy.batch_size))
+    return InferenceExecutionPlan(
+        batch_policy="fixed",
+        selected_batch_size=batch_size,
+        maximum_batch_size=batch_size,
+        graph_cache_enabled=True,
+        monitor_cache_enabled=bool(policy.cache_monitor_datasets),
+        prediction_cache_enabled=bool(policy.cache_replay_baseline),
+        rationale=("legacy_checkpoint_evaluation_api",),
+    )
 
 
 def _path_cache_identity(path: Path, expected_sha256: str) -> tuple[str, int, int, int, str]:
@@ -2437,6 +2424,7 @@ def _predict_model_on_atoms(
     *,
     head: str | None,
     policy: CheckpointEvaluationPolicy,
+    execution_plan: InferenceExecutionPlan | None = None,
     provider: Any | None = None,
     geometry_identities: Sequence[str] | None = None,
     graph_cache_directory: str | Path | None = None,
@@ -2479,10 +2467,17 @@ def _predict_model_on_atoms(
         provider.set_head(head)
     from .model_features import StaticMaceInferenceExecutor
 
+    active_execution = (
+        _legacy_inference_execution_plan(policy)
+        if execution_plan is None
+        else execution_plan
+    )
     executor = StaticMaceInferenceExecutor(
         provider,
-        batch_size=max(1, min(int(policy.batch_size), len(atoms_list))),
-        graph_cache_directory=graph_cache_directory,
+        batch_size=max(1, min(active_execution.selected_batch_size, len(atoms_list))),
+        graph_cache_directory=(
+            graph_cache_directory if active_execution.graph_cache_enabled else None
+        ),
     )
     return executor.predict(atoms_list, geometry_identities=geometry_identities)
 
@@ -2493,6 +2488,7 @@ def _predict_model_on_monitor(
     *,
     head: str | None,
     policy: CheckpointEvaluationPolicy,
+    execution_plan: InferenceExecutionPlan | None = None,
     provider: Any | None = None,
     geometry_identities: Sequence[str] = (),
     graph_cache_directory: str | Path | None,
@@ -2505,6 +2501,7 @@ def _predict_model_on_monitor(
             atoms_list,
             head=head,
             policy=policy,
+            execution_plan=execution_plan,
             provider=provider,
             geometry_identities=geometry_identities,
             graph_cache_directory=graph_cache_directory,
@@ -2576,61 +2573,9 @@ def _evaluate_model_on_atoms(
     return _metrics_from_predictions(atoms_list, predictions, policy=policy)
 
 
-_BASELINE_METRIC_CACHE: dict[tuple[Any, ...], dict[str, Any]] = {}
-_BASELINE_METRIC_CACHE_ORDER: list[tuple[Any, ...]] = []
-_BASELINE_METRIC_CACHE_LIMIT = 8
+# Durable prediction artifacts are the cache authority. The lock only provides
+# single-flight foundation prediction/import publication within this process.
 _BASELINE_METRIC_CACHE_LOCK = RLock()
-
-
-def _baseline_metrics_cached(
-    model_path: Path,
-    model_sha256: str,
-    monitor_path: Path,
-    monitor_sha256: str,
-    atoms_list: Sequence[Any],
-    *,
-    head: str | None,
-    policy: CheckpointEvaluationPolicy,
-    stage_label: str = "evaluating foundation model",
-) -> dict[str, Any]:
-    from .inference_parallel import report_inference_worker_phase
-
-    # Report before acquiring the first-use cache lock so concurrent workers
-    # visibly explain that they are waiting for or reusing foundation evidence.
-    report_inference_worker_phase(stage_label)
-    key = (
-        _path_cache_identity(model_path, model_sha256),
-        _path_cache_identity(monitor_path, monitor_sha256),
-        head,
-        policy.policy_digest,
-    )
-    if not policy.cache_replay_baseline:
-        return _evaluate_model_on_atoms(
-            model_path,
-            atoms_list,
-            head=head,
-            policy=policy,
-        )
-    # Serialize the first baseline calculation per immutable model/dataset key.
-    # Candidate checkpoints still run concurrently; followers reuse the single
-    # foundation result instead of multiplying VRAM and inference cost.
-    with _BASELINE_METRIC_CACHE_LOCK:
-        cached = _BASELINE_METRIC_CACHE.get(key)
-        if cached is not None:
-            return dict(cached)
-        metrics = _evaluate_model_on_atoms(
-            model_path,
-            atoms_list,
-            head=head,
-            policy=policy,
-        )
-        if key not in _BASELINE_METRIC_CACHE:
-            _BASELINE_METRIC_CACHE_ORDER.append(key)
-        _BASELINE_METRIC_CACHE[key] = dict(metrics)
-        while len(_BASELINE_METRIC_CACHE_ORDER) > _BASELINE_METRIC_CACHE_LIMIT:
-            oldest = _BASELINE_METRIC_CACHE_ORDER.pop(0)
-            _BASELINE_METRIC_CACHE.pop(oldest, None)
-        return metrics
 
 
 def _evaluation_prediction_key(
@@ -2842,6 +2787,7 @@ def _pseudolabel_foundation_predictions(
     baseline_sha256: str,
     head: str | None,
     policy: CheckpointEvaluationPolicy,
+    use_dataset_cache: bool | None = None,
     configuration_indices: Sequence[int] | None = None,
 ) -> tuple[tuple[Any, ...], str] | None:
     """Treat authenticated foundation pseudolabels as persisted foundation predictions."""
@@ -2879,7 +2825,11 @@ def _pseudolabel_foundation_predictions(
     atoms_list = _as_atoms_list(
         path,
         expected_sha256=training_replay_monitor_artifact.sha256,
-        use_cache=policy.cache_monitor_datasets,
+        use_cache=(
+            policy.cache_monitor_datasets
+            if use_dataset_cache is None
+            else bool(use_dataset_cache)
+        ),
     )
     from ase.stress import voigt_6_to_full_3x3_stress
     from .model_features import AtomicModelPrediction
@@ -3218,6 +3168,7 @@ class PreparedCheckpointEvaluation:
     target_configuration_indices: tuple[int, ...]
     target_view: Any
     policy: CheckpointEvaluationPolicy
+    execution_plan: InferenceExecutionPlan
     prediction_cache_directory: Path | None
     graph_cache_directory: Path | None
     baseline_model_path: Path | None
@@ -3303,6 +3254,7 @@ def prepare_mace_checkpoint_evaluation(
     evaluation_state_capsule: EvaluationStateCapsuleRecord | None = None,
     target_monitor_artifact: MaceExtxyzArtifact,
     policy: CheckpointEvaluationPolicy = CheckpointEvaluationPolicy(),
+    execution_plan: InferenceExecutionPlan | None = None,
     replay_monitor_path: str | Path | None = None,
     replay_monitor_artifact: ReplayFileArtifact | None = None,
     training_replay_monitor_artifact: ReplayFileArtifact | None = None,
@@ -3329,6 +3281,11 @@ def prepare_mace_checkpoint_evaluation(
     from .evaluation_views import cached_evaluation_dataset_view
 
     report_inference_worker_phase("authenticating evaluation artifacts")
+    active_execution = (
+        _legacy_inference_execution_plan(policy)
+        if execution_plan is None
+        else execution_plan
+    )
     candidate = Path(candidate_model_path).resolve()
     calculator_model = (
         None if calculator_model_path is None else Path(calculator_model_path).resolve()
@@ -3392,7 +3349,7 @@ def prepare_mace_checkpoint_evaluation(
         _as_atoms_list(
             target,
             expected_sha256=target_monitor_artifact.sha256,
-            use_cache=policy.cache_monitor_datasets,
+            use_cache=active_execution.monitor_cache_enabled,
         )
     )
     if len(target_all_atoms) != target_monitor_artifact.configuration_count:
@@ -3414,8 +3371,16 @@ def prepare_mace_checkpoint_evaluation(
         condition_keys=policy.condition_keys,
     )
 
-    prediction_cache = _optional_cache_path(prediction_cache_directory)
-    graph_cache = _optional_cache_path(graph_cache_directory)
+    prediction_cache = (
+        _optional_cache_path(prediction_cache_directory)
+        if active_execution.prediction_cache_enabled
+        else None
+    )
+    graph_cache = (
+        _optional_cache_path(graph_cache_directory)
+        if active_execution.graph_cache_enabled
+        else None
+    )
     foundation_root = _optional_cache_path(foundation_prediction_root)
 
     target_candidate_artifact, target_candidate_predictions = _cached_evaluation_predictions(
@@ -3567,7 +3532,7 @@ def prepare_mace_checkpoint_evaluation(
             _as_atoms_list(
                 replay,
                 expected_sha256=replay_monitor_artifact.sha256,
-                use_cache=policy.cache_monitor_datasets,
+                use_cache=active_execution.monitor_cache_enabled,
             )
         )
         if len(replay_all_atoms) != replay_monitor_artifact.configuration_count:
@@ -3625,6 +3590,7 @@ def prepare_mace_checkpoint_evaluation(
                         baseline_sha256=baseline_sha,
                         head=policy.source_foundation_head_name,
                         policy=policy,
+                        use_dataset_cache=active_execution.monitor_cache_enabled,
                         configuration_indices=replay_indices,
                     )
                     if pseudo_source is not None:
@@ -3658,6 +3624,7 @@ def prepare_mace_checkpoint_evaluation(
         target_configuration_indices=target_indices,
         target_view=target_view,
         policy=policy,
+        execution_plan=active_execution,
         prediction_cache_directory=prediction_cache,
         graph_cache_directory=graph_cache,
         baseline_model_path=baseline,
@@ -3806,6 +3773,7 @@ def run_prepared_mace_checkpoint_inference(
             prepared.target_atoms,
             head=policy.target_head_name,
             policy=policy,
+            execution_plan=prepared.execution_plan,
             provider=require_candidate_provider(policy.target_head_name),
             geometry_identities=prepared.target_geometry_identities,
             graph_cache_directory=prepared.graph_cache_directory,
@@ -3833,6 +3801,7 @@ def run_prepared_mace_checkpoint_inference(
                     prepared.target_atoms,
                     head=policy.source_foundation_head_name,
                     policy=policy,
+                    execution_plan=prepared.execution_plan,
                     provider=require_baseline_provider(policy.source_foundation_head_name),
                     geometry_identities=prepared.target_geometry_identities,
                     graph_cache_directory=prepared.graph_cache_directory,
@@ -3858,6 +3827,7 @@ def run_prepared_mace_checkpoint_inference(
                 prepared.replay_atoms,
                 head=policy.replay_head_name,
                 policy=policy,
+                execution_plan=prepared.execution_plan,
                 provider=require_candidate_provider(policy.replay_head_name),
                 geometry_identities=prepared.replay_geometry_identities,
                 graph_cache_directory=prepared.graph_cache_directory,
@@ -3881,6 +3851,7 @@ def run_prepared_mace_checkpoint_inference(
                         prepared.replay_atoms,
                         head=policy.source_foundation_head_name,
                         policy=policy,
+                        execution_plan=prepared.execution_plan,
                         provider=require_baseline_provider(policy.source_foundation_head_name),
                         geometry_identities=prepared.replay_geometry_identities,
                         graph_cache_directory=prepared.graph_cache_directory,
@@ -4129,6 +4100,7 @@ def evaluate_mace_checkpoint(
     calculator_model_path: str | Path | None = None,
     target_monitor_artifact: MaceExtxyzArtifact,
     policy: CheckpointEvaluationPolicy = CheckpointEvaluationPolicy(),
+    execution_plan: InferenceExecutionPlan | None = None,
     replay_monitor_path: str | Path | None = None,
     replay_monitor_artifact: ReplayFileArtifact | None = None,
     training_replay_monitor_artifact: ReplayFileArtifact | None = None,
@@ -4156,6 +4128,7 @@ def evaluate_mace_checkpoint(
         target_monitor_path=target_monitor_path,
         target_monitor_artifact=target_monitor_artifact,
         policy=policy,
+        execution_plan=execution_plan,
         replay_monitor_path=replay_monitor_path,
         replay_monitor_artifact=replay_monitor_artifact,
         training_replay_monitor_artifact=training_replay_monitor_artifact,

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from mdstats.training_data.inference_parallel import (
     AdaptiveInferenceConcurrency,
     CpuTelemetryProbe,
@@ -147,7 +149,7 @@ def test_cuda_single_job_calibration_caps_fixed_target_below_ninety_percent() ->
     predicted_memory, predicted_util = controller._cuda_projection_for_jobs(3)
     assert predicted_util >= 90.0
 
-def test_cuda_calibration_uses_peak_trimmed_upper_band_mean() -> None:
+def test_cuda_calibration_keeps_vram_peak_while_trimming_utilization() -> None:
     policy = InferenceConcurrencyPolicy(
         maximum_auto_jobs=8,
         stabilization_seconds=20.0,
@@ -171,10 +173,8 @@ def test_cuda_calibration_uses_peak_trimmed_upper_band_mean() -> None:
     controller = AdaptiveInferenceConcurrency(plan, policy)
     controller.start_calibration(now=0.0)
 
-    # Eight modest samples, one representative high-load sample, and one extreme
-    # burst. The highest 10% (the extreme burst) is discarded and the next 10%
-    # is used, so the estimate follows the representative high-load point rather
-    # than either the full mean or the single maximum.
+    # GPU utilization may use the representative upper band, but the extreme
+    # allocation remains safety evidence for VRAM admission.
     decision = None
     for index in range(1, 11):
         second = float(index * 2)
@@ -192,12 +192,12 @@ def test_cuda_calibration_uses_peak_trimmed_upper_band_mean() -> None:
 
     assert decision is not None
     assert controller.gpu_calibrated
-    # Baseline is 2% GPU and 1 GiB VRAM, so the representative high-load
-    # increments are 40% and 4 GiB after the top spike is trimmed.
+    # Baseline is 2% GPU and 1 GiB VRAM. Utilization uses the representative
+    # 40% increment while VRAM retains the 9-GiB incremental allocation peak.
     assert controller._gpu_estimated_utilization_per_job == 40.0
-    assert controller._gpu_estimated_memory_bytes_per_job == 4 * _GIB
+    assert controller._gpu_estimated_memory_bytes_per_job == 9 * _GIB
     assert controller.target_jobs == 2
-    assert "discards GPU=1, VRAM=1 sample(s) from the highest 10%" in decision.reason
+    assert "VRAM uses the retained allocation peak" in decision.reason
     assert "next 10%" in decision.reason
 
 
@@ -219,6 +219,56 @@ def test_cpu_initial_parallelism_respects_ninety_percent_utility_and_eighty_perc
     assert 1 <= plan.initial_jobs <= 6
     projected = 10.0 + plan.initial_jobs * plan.estimated_cpu_utilization_per_job
     assert projected <= 90.0
+
+
+def test_one_job_ram_infeasibility_fails_before_launch() -> None:
+    with pytest.raises(ValueError, match="cannot fit one job"):
+        build_inference_concurrency_plan(
+            task_count=1, device="cpu", resources=_resources(ram_gib=1),
+            policy=InferenceConcurrencyPolicy(estimated_ram_mib_per_job=2048.0),
+            gpu_sample=None, cpu_sample=CpuTelemetrySample(0.0, 0.0),
+        )
+
+
+def test_one_job_vram_infeasibility_and_missing_telemetry_fail_before_launch() -> None:
+    policy = InferenceConcurrencyPolicy(estimated_gpu_memory_mib_per_job=4096.0)
+    with pytest.raises(ValueError, match="cannot fit one job"):
+        build_inference_concurrency_plan(
+            task_count=1, device="cuda:0", resources=_resources(), policy=policy,
+            gpu_sample=_gpu_sample(0.0, 20.0, 1.0),
+            cpu_sample=CpuTelemetrySample(0.0, 0.0),
+        )
+    with pytest.raises(ValueError, match="requires live VRAM telemetry"):
+        build_inference_concurrency_plan(
+            task_count=1, device="cuda:0", resources=_resources(), policy=policy,
+            gpu_sample=None, cpu_sample=CpuTelemetrySample(0.0, 0.0),
+        )
+
+
+def test_live_vram_change_reclamps_future_admission() -> None:
+    policy = InferenceConcurrencyPolicy(
+        maximum_auto_jobs=4, stabilization_seconds=2.0,
+        minimum_calibration_seconds=2.0, stability_samples=2,
+        monitor_interval_seconds=1.0, observed_memory_growth_margin=1.0,
+        observed_utilization_growth_margin=1.0,
+        estimated_gpu_memory_mib_per_job=1024.0,
+    )
+    plan = build_inference_concurrency_plan(
+        task_count=4, device="cuda:0", resources=_resources(), policy=policy,
+        gpu_sample=_gpu_sample(0.0, 1.0, 2.0),
+        cpu_sample=CpuTelemetrySample(0.0, 0.0),
+    )
+    controller = AdaptiveInferenceConcurrency(plan, policy)
+    controller.start_calibration(now=0.0)
+    controller.observe(active_jobs=1, gpu_sample=_gpu_sample(1.0, 3.0, 12.0), now=1.0)
+    controller.observe(active_jobs=1, gpu_sample=_gpu_sample(2.0, 3.0, 12.0), now=2.0)
+    assert controller.target_jobs >= 3
+    decision = controller.observe(
+        active_jobs=1, gpu_sample=_gpu_sample(3.0, 18.0, 12.0), now=3.0
+    )
+    assert decision.changed
+    assert decision.target_jobs == 2
+    assert "live VRAM re-clamp" in decision.reason
 
 
 
@@ -732,10 +782,10 @@ def test_default_peak_trim_uses_85_to_95_percentile_band() -> None:
         )
 
     assert decision is not None and controller.gpu_calibrated
-    # Baseline is 2% / 1 GiB. After discarding the 90%-increment / 9-GiB peak,
-    # the next two increments average (50 + 40)/2 = 45% and (5 + 4)/2 = 4.5 GiB.
+    # Utilization averages the next two increments, while VRAM retains the
+    # 9-GiB incremental allocation peak.
     assert controller._gpu_estimated_utilization_per_job == 45.0
-    assert controller._gpu_estimated_memory_bytes_per_job == int(4.5 * _GIB)
+    assert controller._gpu_estimated_memory_bytes_per_job == 9 * _GIB
     assert "highest 5%" in decision.reason
     assert "next 10%" in decision.reason
 

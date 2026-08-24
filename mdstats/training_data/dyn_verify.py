@@ -726,33 +726,11 @@ def _parse_thermo_log(path: Path) -> tuple[tuple[float, ...], ...]:
 def _iter_deduplicated_lammps_frames(
     path: Path, *, elements: Sequence[str]
 ) -> Iterator[Any]:
-    """Stream normal ordered dumps; retain the exact sorted/last-wins fallback."""
+    """Stream canonical ordered dumps with exact duplicate-step last-wins."""
     try:
         from ase.io import iread
     except ModuleNotFoundError as exc:  # pragma: no cover
         raise TrainingDataInputError("ASE is required for DYN-VERIFY2 trajectory streaming.") from exc
-
-    previous_step: int | None = None
-    out_of_order = False
-    for index, atoms in enumerate(
-        iread(path, index=":", format="lammps-dump-text", specorder=list(elements))
-    ):
-        step = int(atoms.info.get("timestep", index))
-        if previous_step is not None and step < previous_step:
-            out_of_order = True
-            break
-        previous_step = step
-    if out_of_order:
-        # Noncanonical external dumps retain the historical sorted, last-wins
-        # semantics. LAMMPS-produced evidence takes the bounded path below.
-        by_step: dict[int, Any] = {}
-        for index, atoms in enumerate(
-            iread(path, index=":", format="lammps-dump-text", specorder=list(elements))
-        ):
-            by_step[int(atoms.info.get("timestep", index))] = atoms
-        for step in sorted(by_step):
-            yield by_step[step]
-        return
 
     pending: Any | None = None
     pending_step: int | None = None
@@ -760,12 +738,23 @@ def _iter_deduplicated_lammps_frames(
         iread(path, index=":", format="lammps-dump-text", specorder=list(elements))
     ):
         step = int(atoms.info.get("timestep", index))
+        if pending_step is not None and step < pending_step:
+            raise TrainingDataInputError(
+                "DYN-VERIFY2 trajectory timesteps are out of order; refusing an unbounded reorder fallback."
+            )
         if pending is not None and step != pending_step:
             yield pending
         pending = atoms
         pending_step = step
     if pending is not None:
         yield pending
+
+
+@dataclass(frozen=True, slots=True)
+class DynCaseSimulationArtifacts:
+    trajectory_path: str
+    log_path: str
+    element_order: tuple[str, ...]
 
 
 def _file_tail(path: Path, maximum_bytes: int = 5000) -> str:
@@ -802,7 +791,7 @@ def _run_file_backed_process(
     return subprocess.CompletedProcess(list(command), returncode)
 
 
-def run_lammps_mliap_dynamics_case(
+def simulate_lammps_mliap_dynamics_case(
     mliap_artifact_path: str | Path,
     reference_atoms: Any,
     *,
@@ -818,8 +807,8 @@ def run_lammps_mliap_dynamics_case(
     timeout_seconds: float = 3600.0,
     expected_executable_sha256: str | None = None,
     environment: Mapping[str, str] | None = None,
-) -> DynCaseMetric:
-    """Run one NVT→NVE ML-IAP/LAMMPS case and reduce it to DYN-VERIFY2 evidence."""
+) -> DynCaseSimulationArtifacts:
+    """Run only the external NVT→NVE ML-IAP/LAMMPS simulation phase."""
     try:
         from ase.io import write
     except ModuleNotFoundError as exc:  # pragma: no cover
@@ -866,6 +855,9 @@ def run_lammps_mliap_dynamics_case(
     command = [str(executable), *[str(v) for v in lammps_arguments], "-log", str(log_path.name), "-in", str(input_path.name)]
     stdout_path = root / "lammps.stdout.log"
     stderr_path = root / "lammps.stderr.log"
+    # Never allow a successful-but-incomplete retry to inherit prior evidence.
+    trajectory.unlink(missing_ok=True)
+    log_path.unlink(missing_ok=True)
     completed = _run_file_backed_process(
         command, cwd=root, environment=merged_env, stdout_path=stdout_path,
         stderr_path=stderr_path, timeout_seconds=float(timeout_seconds),
@@ -875,13 +867,39 @@ def run_lammps_mliap_dynamics_case(
         raise TrainingDataInputError(f"DYN-VERIFY2 LAMMPS dynamics failed. Last output:\n{tail}")
     if not trajectory.is_file() or not log_path.is_file():
         raise TrainingDataInputError("DYN-VERIFY2 LAMMPS run did not create trajectory/log evidence.")
-    frames = _iter_deduplicated_lammps_frames(trajectory, elements=elements)
+    return DynCaseSimulationArtifacts(
+        trajectory_path=str(trajectory), log_path=str(log_path), element_order=elements
+    )
+
+
+def reduce_lammps_mliap_dynamics_case(
+    artifacts: DynCaseSimulationArtifacts,
+    reference_atoms: Any,
+    *,
+    base_frame_uid: str,
+    topology_atom_indices: Sequence[int],
+    temperature_kelvin: float,
+    velocity_seed: int,
+    policy: DynVerifyPolicy,
+) -> DynCaseMetric:
+    """Stream and reduce completed simulation evidence without a GPU lease."""
+
+    trajectory = Path(artifacts.trajectory_path).resolve()
+    log_path = Path(artifacts.log_path).resolve()
+    if not trajectory.is_file() or not log_path.is_file():
+        raise TrainingDataInputError("DYN-VERIFY2 completed simulation evidence is missing.")
+    frames = _iter_deduplicated_lammps_frames(
+        trajectory, elements=artifacts.element_order
+    )
     try:
         first_frame = next(frames)
     except StopIteration as exc:
         raise TrainingDataInputError("DYN-VERIFY2 LAMMPS trajectory is empty.") from exc
     from itertools import chain
     thermo = _parse_thermo_log(log_path)
+    # The case-level disk admission bound limits both evidence files. Hashing is
+    # a second sequential read so that ASE's streaming parser remains the sole
+    # trajectory decoder and no frame inventory is retained merely for digesting.
     return assess_dyn_trajectory(
         first_frame, chain((first_frame,), frames), thermo,
         base_frame_uid=base_frame_uid, topology_atom_indices=topology_atom_indices,
@@ -890,9 +908,30 @@ def run_lammps_mliap_dynamics_case(
     )
 
 
+def run_lammps_mliap_dynamics_case(
+    mliap_artifact_path: str | Path,
+    reference_atoms: Any,
+    **kwargs: Any,
+) -> DynCaseMetric:
+    """Compatibility wrapper for synchronous simulation plus reduction."""
+
+    artifacts = simulate_lammps_mliap_dynamics_case(
+        mliap_artifact_path, reference_atoms, **kwargs
+    )
+    reduction_keys = {
+        "base_frame_uid", "topology_atom_indices", "temperature_kelvin",
+        "velocity_seed", "policy",
+    }
+    return reduce_lammps_mliap_dynamics_case(
+        artifacts, reference_atoms,
+        **{key: value for key, value in kwargs.items() if key in reduction_keys},
+    )
+
+
 __all__ = [
     "DYN_VERIFY_IMPLEMENTATION_VERSION", "DynVerifyPolicy", "DynVerifyPlan", "DynCaseMetric",
     "DynCaseCompletionReceipt", "write_dyn_case_completion_receipt", "reusable_dyn_case_metric",
     "DynVerifyRunRecord", "DynVerifyCampaignRecord", "build_dyn_verify_plan", "assess_dyn_trajectory",
-    "run_lammps_mliap_dynamics_case",
+    "DynCaseSimulationArtifacts", "simulate_lammps_mliap_dynamics_case",
+    "reduce_lammps_mliap_dynamics_case", "run_lammps_mliap_dynamics_case",
 ]

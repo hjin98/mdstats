@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import inspect
 
-from mdstats.training_data import campaign_cli
+from mdstats.training_data import _campaign_cli_core
 
 
 def test_evaluated_model_publication_is_synchronous_and_durable() -> None:
-    source = inspect.getsource(campaign_cli.command_evaluate)
+    source = inspect.getsource(_campaign_cli_core._execute_evaluate_current_authority)
     # Regression for 0.20.95a0: publication was delegated to a single async
     # export pool and its SQLite receipt was committed only after the complete
     # campaign-wide evaluation queue drained.
@@ -18,7 +18,7 @@ def test_evaluated_model_publication_is_synchronous_and_durable() -> None:
 
 
 def test_cached_only_runs_reconcile_before_new_inference_queue() -> None:
-    source = inspect.getsource(campaign_cli.command_evaluate)
+    source = inspect.getsource(_campaign_cli_core._execute_evaluate_current_authority)
     prequeue = source.index("# Cached-only runs can be selected and exported")
     finalize = source.index("finalize_evaluated_run(context)", prequeue)
     scheduler = source.index("_run_staged_evaluation_tasks(", finalize)
@@ -26,7 +26,7 @@ def test_cached_only_runs_reconcile_before_new_inference_queue() -> None:
 
 
 def test_publication_failure_remains_retryable_on_restart() -> None:
-    source = inspect.getsource(campaign_cli.command_evaluate)
+    source = inspect.getsource(_campaign_cli_core._execute_evaluate_current_authority)
     publish = source.index("publish_evaluated_model(context, selection)")
     finalized = source.index('context["selection_finalized"] = True', publish)
     # Do not mark the transient in-memory state complete until the atomic export

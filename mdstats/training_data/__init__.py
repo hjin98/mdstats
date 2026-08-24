@@ -655,7 +655,6 @@ from .model_features import (
     AtomicModelPrediction,
     AtomicModelProvider,
     MaceCalculatorProvider,
-    StaticInferenceOperatingPoint,
     StaticMaceInferenceExecutor,
     MaceDescriptorFileRecord,
     MaceDescriptorManifest,
@@ -670,7 +669,6 @@ from .model_features import (
     build_mace_descriptor_manifest,
     read_mace_descriptor_array,
     recommend_mace_batch_size_from_probes,
-    select_static_inference_operating_point,
     summarize_prediction,
     clear_mace_graph_batch_cache,
     clear_mace_monitor_graph_cache,
@@ -1918,6 +1916,7 @@ from .dyn_verify import (
     DynVerifyPlan,
     DynCaseMetric,
     DynCaseCompletionReceipt,
+    DynCaseSimulationArtifacts,
     DynVerifyRunRecord,
     DynVerifyCampaignRecord,
     build_dyn_verify_plan,
@@ -1925,6 +1924,8 @@ from .dyn_verify import (
     write_dyn_case_completion_receipt,
     reusable_dyn_case_metric,
     run_lammps_mliap_dynamics_case,
+    simulate_lammps_mliap_dynamics_case,
+    reduce_lammps_mliap_dynamics_case,
 )
 
 __all__ = sorted(set([name for name in globals() if not name.startswith("_")] + list(_LAZY_LTA_EXPORTS)))

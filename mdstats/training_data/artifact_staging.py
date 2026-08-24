@@ -115,7 +115,17 @@ def stage_immutable_artifact(
             shutil.copy2(source, temporary)
         if sha256_file_cached(temporary) != source_sha:
             raise TrainingDataInputError("Immutable staged bytes differ from their source.")
-        os.replace(temporary, destination)
+        try:
+            # Hard-link publication is an atomic no-clobber create because the
+            # attempt-local temporary lives in the destination directory. A
+            # concurrent winner is authenticated below; it is never replaced.
+            os.link(temporary, destination)
+        except FileExistsError:
+            if not destination.is_file() or sha256_file_cached(destination) != source_sha:
+                raise TrainingDataInputError(
+                    "Immutable staging destination was concurrently published with different bytes."
+                )
+            method = "existing"
     finally:
         temporary.unlink(missing_ok=True)
     if sha256_file_cached(source) != source_sha or sha256_file_cached(destination) != source_sha:

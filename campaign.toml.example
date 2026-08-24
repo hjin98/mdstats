@@ -426,10 +426,11 @@ eval2_candidate_rescue_cap = 5
 # labeled interim and cannot create a production protocol freeze.
 allow_partial_campaign = true
 # Runtime inference choices are execution evidence, not scientific policy.
-# Historical positive batch_size values remain explicit fixed execution.
+# A historical file with no inference_batch_policy keeps its positive batch_size
+# as an exact fixed runtime choice. New fixed mode uses fixed_inference_batch_size
+# (bounded by maximum_inference_batch_size); auto starts bounded and may adapt.
 inference_batch_policy = "auto"
 maximum_inference_batch_size = 32
-concurrent_model_jobs = 1
 # Immutable monitor and foundation-baseline results are reused across checkpoints.
 cache_monitor_datasets = true
 cache_replay_baseline = true

@@ -11488,7 +11488,7 @@ def _inference_concurrency_policy(
 ) -> InferenceConcurrencyPolicy:
     """Resolve runtime-only evaluation/verification concurrency controls."""
 
-    if phase not in {"evaluation", "verification"}:
+    if phase not in {"evaluation", "verification", "dynamics", "relaxation"}:
         raise CampaignCliError(f"Unsupported inference concurrency phase: {phase}")
 
     def value(suffix: str, default: Any) -> Any:
@@ -11879,14 +11879,13 @@ def _run_adaptive_inference_tasks(
     )
     cpu_sample = cpu_probe.sample(blocking_seconds=0.10)
     gpu_sample = query_gpu_telemetry(device)
-    plan = build_inference_concurrency_plan(
-        task_count=len(tasks),
-        device=device,
-        resources=resources,
-        policy=policy,
-        gpu_sample=gpu_sample,
-        cpu_sample=cpu_sample,
-    )
+    try:
+        plan = build_inference_concurrency_plan(
+            task_count=len(tasks), device=device, resources=resources,
+            policy=policy, gpu_sample=gpu_sample, cpu_sample=cpu_sample,
+        )
+    except ValueError as exc:
+        raise CampaignCliError(str(exc)) from exc
     _ok(f"{phase} concurrency: {plan.summary()}")
     _configure_inference_thread_budget(plan)
     controller = AdaptiveInferenceConcurrency(plan, policy)
@@ -12148,6 +12147,9 @@ class _StagedEvaluationTask:
     finalize: Callable[[Any, Any], Any]
     done_detail: Callable[[Any, float], str]
     on_success: Callable[[Any], None] | None = None
+    prepared_bytes: Callable[[Any], int] | None = None
+    inference_result_bytes: Callable[[Any], int] | None = None
+    cached_result: Callable[[Any], Any] | None = None
 
 
 @dataclass
@@ -12158,10 +12160,26 @@ class _StagedEvaluationTiming:
     finalized_seconds: float = 0.0
 
 
-def _pipeline_resident_bytes(value: Any, seen: set[int] | None = None) -> int:
-    """Conservatively count Python/numpy state retained between pipeline stages."""
+def _ase_atoms_retained_bytes(atoms: Any) -> int:
+    """Count ndarray storage retained by one ASE Atoms payload."""
+
+    arrays = getattr(atoms, "arrays", {})
+    total = sum(int(value.nbytes) for value in arrays.values() if isinstance(value, np.ndarray))
+    cell = getattr(getattr(atoms, "cell", None), "array", None)
+    if isinstance(cell, np.ndarray):
+        total += int(cell.nbytes)
+    for value in getattr(atoms, "info", {}).values():
+        if isinstance(value, np.ndarray):
+            total += int(value.nbytes)
+    return max(1, total)
+
+
+def _evaluation_payload_bytes(value: Any, seen: set[int] | None = None) -> int:
+    """Explicit retained-byte accounting for EVAL pipeline payload types."""
 
     active_seen = set() if seen is None else seen
+    if value is None:
+        return 0
     identity = id(value)
     if identity in active_seen:
         return 0
@@ -12170,25 +12188,60 @@ def _pipeline_resident_bytes(value: Any, seen: set[int] | None = None) -> int:
         return 0
     if isinstance(value, np.ndarray):
         return int(value.nbytes)
+    if value.__class__.__module__.startswith("ase") and hasattr(value, "arrays"):
+        return _ase_atoms_retained_bytes(value)
     if isinstance(value, (bytes, bytearray, memoryview, str)):
         return len(value)
     if isinstance(value, Mapping):
         return sum(
-            _pipeline_resident_bytes(key, active_seen)
-            + _pipeline_resident_bytes(item, active_seen)
+            _evaluation_payload_bytes(key, active_seen)
+            + _evaluation_payload_bytes(item, active_seen)
             for key, item in value.items()
         )
     if isinstance(value, (tuple, list, deque, set, frozenset)):
-        return sum(_pipeline_resident_bytes(item, active_seen) for item in value)
-    if is_dataclass(value) and not isinstance(value, type):
+        return sum(_evaluation_payload_bytes(item, active_seen) for item in value)
+    if value.__class__.__name__ in {
+        "PreparedCheckpointEvaluation", "CheckpointEvaluationPredictionBundle",
+        "AtomicModelPrediction",
+    } and is_dataclass(value):
         return sum(
-            _pipeline_resident_bytes(getattr(value, item.name), active_seen)
+            _evaluation_payload_bytes(getattr(value, item.name), active_seen)
             for item in fields(value)
         )
-    try:
+    if isinstance(value, (int, float, bool)):
         return int(sys.getsizeof(value))
-    except Exception:
-        return 0
+    retained = getattr(value, "retained_bytes", None)
+    if retained is not None:
+        return max(0, int(retained))
+    return 0
+
+
+@dataclass
+class _PipelineByteLedger:
+    budget_bytes: int | None
+    reservations: dict[str, int] = field(default_factory=dict)
+
+    @property
+    def total_bytes(self) -> int:
+        return sum(self.reservations.values())
+
+    def can_reserve(self, amount: int) -> bool:
+        return self.budget_bytes is None or self.total_bytes + max(0, int(amount)) <= self.budget_bytes
+
+    def reserve(self, owner: str, amount: int) -> None:
+        value = max(0, int(amount))
+        if owner in self.reservations:
+            raise CampaignCliError(f"Duplicate EVAL byte reservation owner: {owner}.")
+        if not self.can_reserve(value):
+            raise CampaignCliError(
+                "Evaluation pipeline RAM cannot admit one required payload: "
+                f"owner={owner}; payload={value} bytes; retained={self.total_bytes} bytes; "
+                f"budget={self.budget_bytes} bytes."
+            )
+        self.reservations[owner] = value
+
+    def release(self, owner: str) -> None:
+        self.reservations.pop(owner, None)
 
 
 def _run_staged_evaluation_tasks(
@@ -12197,6 +12250,7 @@ def _run_staged_evaluation_tasks(
     cfg: Mapping[str, Any],
     device: str,
     progress: Any,
+    phase: str = "evaluation",
 ) -> dict[str, Any]:
     """Run evaluation as a bounded CPU -> accelerator -> CPU pipeline.
 
@@ -12206,7 +12260,8 @@ def _run_staged_evaluation_tasks(
     an inference-worker boundary.
     """
 
-    phase = "evaluation"
+    phase = str(phase).strip().lower()
+    thread_phase = "eval" if phase == "evaluation" else phase
     if not tasks:
         return {}
     policy = _inference_concurrency_policy(cfg, phase)
@@ -12222,14 +12277,13 @@ def _run_staged_evaluation_tasks(
     cpu_probe = CpuTelemetryProbe(capacity_threads=resources.cpu_threads_available)
     cpu_sample = cpu_probe.sample(blocking_seconds=0.10)
     gpu_sample = query_gpu_telemetry(device)
-    plan = build_inference_concurrency_plan(
-        task_count=len(tasks),
-        device=device,
-        resources=resources,
-        policy=policy,
-        gpu_sample=gpu_sample,
-        cpu_sample=cpu_sample,
-    )
+    try:
+        plan = build_inference_concurrency_plan(
+            task_count=len(tasks), device=device, resources=resources,
+            policy=policy, gpu_sample=gpu_sample, cpu_sample=cpu_sample,
+        )
+    except ValueError as exc:
+        raise CampaignCliError(str(exc)) from exc
     def _positive_stage_workers(key: str, default: int) -> int:
         value = int(_cfg(cfg, "execution", key, 0))
         if value < 0:
@@ -12248,13 +12302,13 @@ def _run_staged_evaluation_tasks(
     requested_prepare = min(
         len(tasks),
         _positive_stage_workers(
-            "parallel_evaluation_prepare_jobs", auto_cpu_stage_workers
+            f"parallel_{phase}_prepare_jobs", auto_cpu_stage_workers
         ),
     )
     requested_finalize = min(
         len(tasks),
         _positive_stage_workers(
-            "parallel_evaluation_finalize_jobs", auto_cpu_stage_workers
+            f"parallel_{phase}_finalize_jobs", auto_cpu_stage_workers
         ),
     )
     if cpu_budget >= 3:
@@ -12299,11 +12353,11 @@ def _run_staged_evaluation_tasks(
     _configure_inference_thread_budget(plan)
     controller = AdaptiveInferenceConcurrency(plan, policy)
     configured_buffer = int(
-        _cfg(cfg, "execution", "evaluation_pipeline_buffer_jobs", 0)
+        _cfg(cfg, "execution", f"{phase}_pipeline_buffer_jobs", 0)
     )
     if configured_buffer < 0:
         raise CampaignCliError(
-            "[execution].evaluation_pipeline_buffer_jobs must be zero (auto) or positive."
+            f"[execution].{phase}_pipeline_buffer_jobs must be zero (auto) or positive."
         )
     auto_buffer = max(2, min(8, max(1, int(plan.maximum_jobs)) * 2))
     pipeline_buffer = min(
@@ -12311,11 +12365,11 @@ def _run_staged_evaluation_tasks(
     )
     pipeline_buffer = max(1, pipeline_buffer)
     configured_buffer_mib = float(
-        _cfg(cfg, "execution", "evaluation_pipeline_buffer_mib", 0.0)
+        _cfg(cfg, "execution", f"{phase}_pipeline_buffer_mib", 0.0)
     )
     if configured_buffer_mib < 0.0:
         raise CampaignCliError(
-            "[execution].evaluation_pipeline_buffer_mib must be zero (auto) or positive."
+            f"[execution].{phase}_pipeline_buffer_mib must be zero (auto) or positive."
         )
     pipeline_ram_budget = (
         int(configured_buffer_mib * 1024**2)
@@ -12327,13 +12381,19 @@ def _run_staged_evaluation_tasks(
         )
     )
     prepare_reservation = max(1, int(plan.estimated_ram_bytes_per_job))
+    ledger = _PipelineByteLedger(pipeline_ram_budget)
+    if not ledger.can_reserve(prepare_reservation):
+        raise CampaignCliError(
+            "Evaluation pipeline RAM cannot admit one CPU preparation reservation: "
+            f"required={prepare_reservation} bytes; budget={pipeline_ram_budget} bytes."
+        )
     finalize_backlog_limit = max(
         finalize_workers,
         min(pipeline_buffer, max(2, int(plan.maximum_jobs) * 2)),
     )
 
     _ok(
-        "evaluation pipeline: "
+        f"{phase} pipeline: "
         f"{plan.summary()}; CPU prepare={prepare_workers}, "
         f"CPU finalize={finalize_workers}, prepared buffer={pipeline_buffer}, "
         f"pipeline RAM={'unknown' if pipeline_ram_budget is None else _format_bytes_gib(pipeline_ram_budget)}"
@@ -12367,7 +12427,7 @@ def _run_staged_evaluation_tasks(
             stage_events.clear()
         for task_label, stage in events:
             print(
-                f"[EVALUATION stage] status=phase; item={task_label}; phase={stage}",
+                f"[{phase.upper()} stage] status=phase; item={task_label}; phase={stage}",
                 flush=True,
             )
 
@@ -12426,7 +12486,11 @@ def _run_staged_evaluation_tasks(
             # admission. Its prediction stage is a cheap bundle assembly and is
             # safe to execute in this CPU worker before metric reduction.
             active_result = (
-                task.infer(prepared)
+                (
+                    task.cached_result(prepared)
+                    if task.cached_result is not None
+                    else task.infer(prepared)
+                )
                 if inference_result is None
                 else inference_result
             )
@@ -12437,20 +12501,6 @@ def _run_staged_evaluation_tasks(
     def launch_prepare(pool: ThreadPoolExecutor) -> None:
         if stop_scheduling:
             return
-        def resident_bytes() -> int:
-            total = len(active_prepare) * prepare_reservation
-            total += sum(_pipeline_resident_bytes(prepared) for _, prepared, _ in ready_inference)
-            total += sum(
-                _pipeline_resident_bytes(prepared)
-                for _, prepared, _, _ in active_inference.values()
-            )
-            total += sum(
-                _pipeline_resident_bytes(prepared) + _pipeline_resident_bytes(result)
-                for _, prepared, result, _ in waiting_finalize
-            )
-            total += sum(reservation for _, _, reservation in active_finalize.values())
-            return total
-
         while (
             pending
             and len(active_prepare) < prepare_workers
@@ -12460,13 +12510,10 @@ def _run_staged_evaluation_tasks(
             buffered = len(active_prepare) + len(ready_inference) + len(waiting_finalize)
             if buffered >= pipeline_buffer:
                 break
-            if (
-                pipeline_ram_budget is not None
-                and resident_bytes() + prepare_reservation > pipeline_ram_budget
-                and (active_prepare or ready_inference or active_inference or waiting_finalize or active_finalize)
-            ):
+            if not ledger.can_reserve(prepare_reservation):
                 break
             task = pending.popleft()
+            ledger.reserve(f"prepare:{task.key}", prepare_reservation)
             timing = _StagedEvaluationTiming(started=time.monotonic())
             progress.item_start(
                 task.display_index,
@@ -12490,7 +12537,7 @@ def _run_staged_evaluation_tasks(
             active_finalize[future] = (
                 task,
                 timing,
-                _pipeline_resident_bytes(prepared) + _pipeline_resident_bytes(inference_result),
+                _evaluation_payload_bytes(prepared) + _evaluation_payload_bytes(inference_result),
             )
 
     def launch_inference(pool: ThreadPoolExecutor) -> None:
@@ -12501,7 +12548,10 @@ def _run_staged_evaluation_tasks(
                 break
             if len(waiting_finalize) + len(active_finalize) >= finalize_backlog_limit:
                 break
+            if not ledger.can_reserve(prepare_reservation):
+                break
             task, prepared, timing = ready_inference.popleft()
+            ledger.reserve(f"inference:{task.key}", prepare_reservation)
             status = _InferenceWorkerStatus()
             if str(device).startswith("cuda"):
                 controller.start_calibration(now=time.monotonic())
@@ -12511,15 +12561,15 @@ def _run_staged_evaluation_tasks(
     with (
         ThreadPoolExecutor(
             max_workers=max(1, prepare_workers),
-            thread_name_prefix="mdstats-eval-prepare",
+                thread_name_prefix=f"mdstats-{thread_phase}-prepare",
         ) as prepare_pool,
         ThreadPoolExecutor(
             max_workers=max(1, plan.maximum_jobs),
-            thread_name_prefix="mdstats-eval-infer",
+                thread_name_prefix=f"mdstats-{thread_phase}-infer",
         ) as inference_pool,
         ThreadPoolExecutor(
             max_workers=max(1, finalize_workers),
-            thread_name_prefix="mdstats-eval-finalize",
+                thread_name_prefix=f"mdstats-{thread_phase}-finalize",
         ) as finalize_pool,
     ):
         launch_prepare(prepare_pool)
@@ -12545,7 +12595,7 @@ def _run_staged_evaluation_tasks(
                 if stop_scheduling:
                     break
                 raise CampaignCliError(
-                    "Evaluation pipeline stalled with queued work but no active stage."
+                    f"{phase.capitalize()} pipeline stalled with queued work but no active stage."
                 )
             done, _ = wait(
                 all_futures,
@@ -12558,8 +12608,15 @@ def _run_staged_evaluation_tasks(
             for future in tuple(done):
                 if future in active_prepare:
                     task, timing = active_prepare.pop(future)
+                    ledger.release(f"prepare:{task.key}")
                     try:
                         prepared = future.result()
+                        prepared_bytes = (
+                            task.prepared_bytes(prepared)
+                            if task.prepared_bytes is not None
+                            else _evaluation_payload_bytes(prepared)
+                        )
+                        ledger.reserve(f"prepared:{task.key}", prepared_bytes)
                         if task.requires_inference(prepared):
                             ready_inference.append((task, prepared, timing))
                         else:
@@ -12574,10 +12631,19 @@ def _run_staged_evaluation_tasks(
                     task, prepared, timing, status = active_inference.pop(future)
                     try:
                         inference_result = future.result()
+                        result_bytes = (
+                            task.inference_result_bytes(inference_result)
+                            if task.inference_result_bytes is not None
+                            else _evaluation_payload_bytes(inference_result)
+                        )
+                        ledger.release(f"inference:{task.key}")
+                        ledger.reserve(f"result:{task.key}", result_bytes)
                         waiting_finalize.append(
                             (task, prepared, inference_result, timing)
                         )
                     except Exception as exc:
+                        ledger.release(f"inference:{task.key}")
+                        ledger.release(f"prepared:{task.key}")
                         failures.append(
                             f"{task.label}: {type(exc).__name__}: {exc} "
                             f"(stage={status.phase()})"
@@ -12586,6 +12652,8 @@ def _run_staged_evaluation_tasks(
                         stop_scheduling = True
                 elif future in active_finalize:
                     task, timing, _reservation = active_finalize.pop(future)
+                    ledger.release(f"prepared:{task.key}")
+                    ledger.release(f"result:{task.key}")
                     try:
                         result = future.result()
                         results[task.key] = result
@@ -12680,7 +12748,7 @@ def _run_staged_evaluation_tasks(
                     else f"{decision.predicted_utilization_percent_at_target:.1f}%"
                 )
                 print(
-                    "[EVALUATION scheduler] status=concurrency-change; "
+                    f"[{phase.upper()} scheduler] status=concurrency-change; "
                     f"progress={format_progress_fraction(len(results), len(tasks))}; "
                     f"elapsed={format_progress_time(now - pipeline_started)}; eta=--:--:--; "
                     f"workers={decision.previous_target}->{decision.target_jobs}; reason={decision.reason}; "
@@ -12701,7 +12769,7 @@ def _run_staged_evaluation_tasks(
                         for name, count in sorted(active_phases.items())
                     )
                 print(
-                    "[EVALUATION pipeline] status=running; "
+                    f"[{phase.upper()} pipeline] status=running; "
                     f"progress={format_progress_fraction(len(results), len(tasks))}; "
                     f"elapsed={format_progress_time(now - pipeline_started)}; eta=--:--:--; "
                     f"prepare={len(active_prepare)}; ready={len(ready_inference)}; "
@@ -12715,9 +12783,10 @@ def _run_staged_evaluation_tasks(
             report_stage_events()
 
     report_stage_events()
+    ledger.reservations.clear()
     if failures:
         raise CampaignCliError(
-            f"Evaluation staged execution failed: {failures[0]}"
+            f"{phase.capitalize()} staged execution failed: {failures[0]}"
         )
     unfinished = (
         len(pending)
@@ -15506,6 +15575,7 @@ def _multi_fidelity_screen_run(
                     target_monitor_path=target_path,
                     target_monitor_artifact=target_artifact,
                     policy=evaluation_policy,
+                    execution_plan=_evaluation_inference_execution_plan(cfg),
                     replay_monitor_path=replay_path,
                     replay_monitor_artifact=evaluation_replay_artifact,
                     training_replay_monitor_artifact=active_training_replay_artifact,
@@ -15582,6 +15652,7 @@ def _multi_fidelity_screen_run(
                         target_monitor_path=target_path,
                         target_monitor_artifact=target_artifact,
                         policy=evaluation_policy,
+                        execution_plan=_evaluation_inference_execution_plan(cfg),
                         replay_monitor_path=replay_path,
                         replay_monitor_artifact=evaluation_replay_artifact,
                         training_replay_monitor_artifact=active_training_replay_artifact,
@@ -16608,9 +16679,6 @@ def _command_evaluate_mlcv_agg1(
                 ),
                 device=str(_cfg(cfg, "evaluation", "device", _cfg(cfg, "training", "device", "cuda"))),
                 default_dtype=model_dtype,
-                batch_size=int(_cfg(cfg, "evaluation", "batch_size", 8)),
-                cache_monitor_datasets=bool(_cfg(cfg, "evaluation", "cache_monitor_datasets", True)),
-                cache_replay_baseline=False,
                 evaluate_foundation_on_target=False,
                 acceleration_policy=acceleration,
                 **_evaluation_acceleration_binding(cfg, paths),
@@ -16646,6 +16714,7 @@ def _command_evaluate_mlcv_agg1(
                     target_monitor_path=outer_path,
                     target_monitor_artifact=outer_artifact,
                     policy=eval_policy,
+                    execution_plan=_evaluation_inference_execution_plan(cfg),
                     prediction_cache_directory=prediction_cache_directory,
                     graph_cache_directory=graph_cache_directory,
                     # AGG1 evaluates only the sealed outer target fold. Full replay
@@ -17048,9 +17117,6 @@ def _command_evaluate_mlcv_select1(
                 ),
                 device=str(_cfg(cfg, "evaluation", "device", _cfg(cfg, "training", "device", "cuda"))),
                 default_dtype=model_dtype,
-                batch_size=int(_cfg(cfg, "evaluation", "batch_size", 8)),
-                cache_monitor_datasets=bool(_cfg(cfg, "evaluation", "cache_monitor_datasets", True)),
-                cache_replay_baseline=bool(_cfg(cfg, "evaluation", "cache_replay_baseline", True)),
                 evaluate_foundation_on_target=False,
                 acceleration_policy=acceleration,
                 **_evaluation_foundation_binding(cfg, paths),
@@ -17094,6 +17160,7 @@ def _command_evaluate_mlcv_select1(
                     target_monitor_path=target_full_path,
                     target_monitor_artifact=target_full_artifact,
                     policy=eval_policy,
+                    execution_plan=_evaluation_inference_execution_plan(cfg),
                     replay_monitor_path=replay_full_path,
                     replay_monitor_artifact=replay_full_artifact,
                     training_replay_monitor_artifact=(
@@ -17381,9 +17448,6 @@ def _command_evaluate_adaptive_topk(
                 ),
                 device=str(_cfg(cfg, "evaluation", "device", _cfg(cfg, "training", "device", "cuda"))),
                 default_dtype=model_dtype,
-                batch_size=int(_cfg(cfg, "evaluation", "batch_size", 8)),
-                cache_monitor_datasets=bool(_cfg(cfg, "evaluation", "cache_monitor_datasets", True)),
-                cache_replay_baseline=bool(_cfg(cfg, "evaluation", "cache_replay_baseline", True)),
                 evaluate_foundation_on_target=False,
                 acceleration_policy=acceleration,
                 **_evaluation_foundation_binding(cfg, paths),
@@ -17430,6 +17494,7 @@ def _command_evaluate_adaptive_topk(
                     target_monitor_path=full_target_path,
                     target_monitor_artifact=full_target_artifact,
                     policy=eval_policy,
+                    execution_plan=_evaluation_inference_execution_plan(cfg),
                     replay_monitor_path=full_replay_path,
                     replay_monitor_artifact=full_replay_artifact,
                     training_replay_monitor_artifact=(
@@ -17802,9 +17867,9 @@ def _evaluation_inference_execution_plan(cfg: Mapping[str, Any]) -> Any:
             batch_policy="fixed",
             selected_batch_size=selected,
             maximum_batch_size=selected,
-            concurrent_model_jobs=max(1, int(section.get("concurrent_model_jobs", 1))),
             graph_cache_enabled=bool(section.get("cache_monitor_datasets", True)),
             monitor_cache_enabled=bool(section.get("cache_monitor_datasets", True)),
+            prediction_cache_enabled=bool(section.get("cache_replay_baseline", True)),
             rationale=("legacy_positive_batch_is_explicit_fixed",),
         )
 
@@ -17831,10 +17896,9 @@ def _evaluation_inference_execution_plan(cfg: Mapping[str, Any]) -> Any:
         batch_policy=policy,
         selected_batch_size=selected,
         maximum_batch_size=maximum,
-        concurrent_model_jobs=max(1, int(section.get("concurrent_model_jobs", 1))),
-        use_cuda_streams=bool(section.get("use_cuda_streams", False)),
         graph_cache_enabled=bool(section.get("cache_monitor_datasets", True)),
         monitor_cache_enabled=bool(section.get("cache_monitor_datasets", True)),
+        prediction_cache_enabled=bool(section.get("cache_replay_baseline", True)),
         rationale=rationale,
     )
 
@@ -17843,16 +17907,12 @@ def _eval2_evaluation_policy(cfg: Mapping[str, Any], paths: CampaignPaths, job: 
     import mdstats
 
     control = job.protocol.checkpoint_control_policy
-    execution_plan = _evaluation_inference_execution_plan(cfg)
     return mdstats.CheckpointEvaluationPolicy(
         target_head_name=control.target_head_name,
         replay_head_name=control.replay_head_name,
         focus_atomic_numbers=tuple(int(v) for v in _cfg(cfg, "profile", "mobile_atomic_numbers", (3, 11, 19))),
         device=str(_cfg(cfg, "evaluation", "device", _cfg(cfg, "training", "device", "cuda"))),
         default_dtype=model_dtype,
-        batch_size=execution_plan.selected_batch_size,
-        cache_monitor_datasets=bool(_cfg(cfg, "evaluation", "cache_monitor_datasets", True)),
-        cache_replay_baseline=bool(_cfg(cfg, "evaluation", "cache_replay_baseline", True)),
         evaluate_foundation_on_target=False,
         acceleration_policy=_acceleration_policy(cfg),
         **_evaluation_foundation_binding(cfg, paths),
@@ -17953,6 +18013,7 @@ def _eval2_full_checkpoint(
             target_monitor_path=target_path,
             target_monitor_artifact=target_artifact,
             policy=evaluation_policy,
+            execution_plan=execution_plan,
             replay_monitor_path=replay_path,
             replay_monitor_artifact=replay_artifact,
             training_replay_monitor_artifact=training_replay_artifact if replay_requested else None,
@@ -18694,13 +18755,6 @@ def _execute_evaluate_current_authority(args: argparse.Namespace) -> int:
         ),
         device=str(_cfg(cfg, "evaluation", "device", _cfg(cfg, "training", "device", "cuda"))),
         default_dtype=model_dtype,
-        batch_size=int(_cfg(cfg, "evaluation", "batch_size", 8)),
-        cache_monitor_datasets=bool(
-            _cfg(cfg, "evaluation", "cache_monitor_datasets", True)
-        ),
-        cache_replay_baseline=bool(
-            _cfg(cfg, "evaluation", "cache_replay_baseline", True)
-        ),
         evaluate_foundation_on_target=bool(
             _cfg(
                 cfg,
@@ -19349,6 +19403,7 @@ def _execute_evaluate_current_authority(args: argparse.Namespace) -> int:
                     target_monitor_path=active_target_path,
                     target_monitor_artifact=active_target_artifact,
                     policy=evaluation_policy,
+                    execution_plan=_evaluation_inference_execution_plan(cfg),
                     replay_monitor_path=active_replay_path,
                     replay_monitor_artifact=active_evaluation_replay_artifact,
                     training_replay_monitor_artifact=active_training_replay_artifact_bound,
@@ -21196,9 +21251,6 @@ def _command_verify_mlcv(
             focus_atomic_numbers=tuple(int(v) for v in _cfg(cfg, "profile", "mobile_atomic_numbers", (3, 11, 19))),
             device=str(_cfg(cfg, "evaluation", "device", _cfg(cfg, "training", "device", "cuda"))),
             default_dtype=model_dtype,
-            batch_size=int(_cfg(cfg, "evaluation", "batch_size", 8)),
-            cache_monitor_datasets=bool(_cfg(cfg, "evaluation", "cache_monitor_datasets", True)),
-            cache_replay_baseline=False,
             evaluate_foundation_on_target=False,
             acceleration_policy=acceleration,
             **_evaluation_acceleration_binding(cfg, paths),
@@ -21213,6 +21265,7 @@ def _command_verify_mlcv(
             target_monitor_path=locked_path,
             target_monitor_artifact=locked_artifact,
             policy=eval_policy,
+            execution_plan=_evaluation_inference_execution_plan(cfg),
             prediction_cache_directory=prediction_cache_directory,
             graph_cache_directory=graph_cache_directory,
             allow_target_monitor_override=True,
@@ -21502,18 +21555,19 @@ def _deploy_verify_one_train2_run(
     probe_atoms = tuple(target_by_index[index] for index in probe_set.configuration_indices)
     device = str(_cfg(cfg, "verification", "device", _cfg(cfg, "training", "device", "cuda")))
     deploy_execution = _evaluation_inference_execution_plan(cfg)
+    store.put_record(f"inference_execution_plan:deploy:{run.run_id}", deploy_execution)
     deploy_graph_cache = paths.internal / "verification-graphs"
     rtol, atol = policy.tolerances
     print(f"[DEPLOY] comparing checkpoint target head to exported target-only model on {len(probe_atoms)} probes", flush=True)
     checkpoint_predictions = mdstats.predict_mace_model_on_probe(
         source_model, probe_atoms, device=device, model_dtype=model_dtype, head=target_head,
-        batch_size=deploy_execution.selected_inference_batch_size,
+        batch_size=deploy_execution.selected_batch_size,
         geometry_identities=probe_set.frame_uids,
         graph_cache_directory=deploy_graph_cache,
     )
     target_predictions = mdstats.predict_mace_model_on_probe(
         target_model, probe_atoms, device=device, model_dtype=model_dtype, head=None,
-        batch_size=deploy_execution.selected_inference_batch_size,
+        batch_size=deploy_execution.selected_batch_size,
         geometry_identities=probe_set.frame_uids,
         graph_cache_directory=deploy_graph_cache,
     )
@@ -22016,6 +22070,7 @@ def _command_verify_train2_pes(
 
     device = str(_cfg(cfg, "verification", "device", _cfg(cfg, "training", "device", "cuda")))
     pes_execution = _evaluation_inference_execution_plan(cfg)
+    store.put_record("inference_execution_plan:pes", pes_execution)
     pes_geometry_identities = tuple(probe.probe_uid for probe in probe_set.probes)
     pes_graph_cache = paths.internal / "verification-graphs"
     foundation_head = pes_foundation_head
@@ -22030,7 +22085,7 @@ def _command_verify_train2_pes(
         calculator_kwargs=pes_foundation_calculator_kwargs,
         foundation_potential_identity=pes_foundation_potential,
         foundation_inference_identity=pes_foundation_inference,
-        batch_size=pes_execution.selected_inference_batch_size,
+        batch_size=pes_execution.selected_batch_size,
         geometry_identities=pes_geometry_identities,
         graph_cache_directory=pes_graph_cache,
     )
@@ -22056,7 +22111,7 @@ def _command_verify_train2_pes(
             device=device,
             model_dtype=model_dtype,
             head=None,
-            batch_size=pes_execution.selected_inference_batch_size,
+            batch_size=pes_execution.selected_batch_size,
             geometry_identities=pes_geometry_identities,
             graph_cache_directory=pes_graph_cache,
         )
@@ -22853,8 +22908,7 @@ def _command_verify_train2_locked_test(
             focus_atomic_numbers=tuple(int(v) for v in _cfg(cfg, "profile", "mobile_atomic_numbers", (3, 11, 19))),
             device=str(_cfg(cfg, "evaluation", "device", _cfg(cfg, "training", "device", "cuda"))),
             default_dtype=str(_binary_model_precision_contract(cfg)["model_dtype"]),
-            batch_size=int(_cfg(cfg, "evaluation", "batch_size", 8)),
-            cache_monitor_datasets=True, cache_replay_baseline=False, evaluate_foundation_on_target=False,
+            evaluate_foundation_on_target=False,
             acceleration_policy=_acceleration_policy(cfg),
             **_evaluation_acceleration_binding(cfg, paths),
             critical_precision_policy=_critical_precision_policy(cfg),
@@ -23090,7 +23144,7 @@ def _command_verify_train2_dyn(
     execution_cfg["maximum_parallel_dynamics_jobs"] = disk_bounded_max
     dynamics_cfg = {**cfg, "execution": execution_cfg}
 
-    case_tasks: list[_AdaptiveInferenceTask] = []
+    case_tasks: list[_StagedEvaluationTask] = []
     for relax_record in sorted(eligible_relax.values(), key=lambda v: v.run_plan_digest):
         deploy_record = deploy_by_run.get(relax_record.run_plan_digest)
         if deploy_record is None:
@@ -23112,7 +23166,7 @@ def _command_verify_train2_dyn(
                 case_key = f"{relax_record.run_plan_digest}:{base_index}:{temperature:.17g}"
                 receipt_path = case_root / "completion.json"
 
-                def execute_case(
+                def prepare_case(
                     relax_record=relax_record, deploy_record=deploy_record, mliap=mliap,
                     uid=uid, selected=selected, reference=reference,
                     temperature=temperature, velocity_seed=velocity_seed,
@@ -23134,7 +23188,15 @@ def _command_verify_train2_dyn(
                         return reusable
                     if shutil.disk_usage(root).free - minimum_free_disk_bytes < estimated_case_bytes:
                         raise CampaignCliError("DYN-VERIFY2 disk admission denied an in-flight case.")
-                    metric = mdstats.run_lammps_mliap_dynamics_case(
+                    return True
+
+                def simulate_case(
+                    _prepared,
+                    deploy_record=deploy_record, mliap=mliap, reference=reference,
+                    uid=uid, selected=selected, temperature=temperature,
+                    velocity_seed=velocity_seed, case_root=case_root,
+                ):
+                    return mdstats.simulate_lammps_mliap_dynamics_case(
                         mliap, reference, base_frame_uid=uid, topology_atom_indices=selected,
                         temperature_kelvin=temperature, velocity_seed=velocity_seed,
                         element_order=deploy_record.lammps_run0.element_order, policy=policy,
@@ -23142,6 +23204,21 @@ def _command_verify_train2_dyn(
                         lammps_arguments=deploy_record.lammps_run0.command_arguments,
                         work_directory=case_root, timeout_seconds=timeout,
                         expected_executable_sha256=deploy_record.lammps_run0.executable_sha256,
+                    )
+
+                def reduce_case(
+                    prepared, artifacts,
+                    relax_record=relax_record, deploy_record=deploy_record,
+                    reference=reference, uid=uid, selected=selected,
+                    temperature=temperature, velocity_seed=velocity_seed,
+                    receipt_path=receipt_path, arguments_digest=arguments_digest,
+                ):
+                    if isinstance(artifacts, mdstats.DynCaseMetric):
+                        return artifacts
+                    metric = mdstats.reduce_lammps_mliap_dynamics_case(
+                        artifacts, reference, base_frame_uid=uid,
+                        topology_atom_indices=selected, temperature_kelvin=temperature,
+                        velocity_seed=velocity_seed, policy=policy,
                     )
                     mdstats.write_dyn_case_completion_receipt(
                         receipt_path,
@@ -23155,18 +23232,22 @@ def _command_verify_train2_dyn(
                     )
                     return metric
 
-                case_tasks.append(_AdaptiveInferenceTask(
+                case_tasks.append(_StagedEvaluationTask(
                     display_index=len(case_tasks) + 1, key=case_key,
                     label=f"{relax_record.run_plan_digest[:12]}/base-{base_index}/T{temperature:g}",
                     start_detail=f"LAMMPS {policy.nvt_steps} NVT + {policy.nve_steps} NVE",
-                    execute=execute_case,
+                    prepare=prepare_case,
+                    requires_inference=lambda prepared: prepared is True,
+                    infer=simulate_case,
+                    finalize=reduce_case,
+                    cached_result=lambda prepared: prepared,
                     done_detail=lambda metric, wall: (
                         f"{'PASS' if metric.passed else 'FAIL'}; drift={metric.absolute_energy_drift_ev_per_atom_per_ps:.4g}; "
                         f"wall={_ProgressReporter._duration(wall)}"
                     ),
                 ))
     dynamics_device = str(_cfg(cfg, "verification", "device", _cfg(cfg, "training", "device", "cuda")))
-    case_results = _run_adaptive_inference_tasks(
+    case_results = _run_staged_evaluation_tasks(
         case_tasks, cfg=dynamics_cfg, phase="dynamics", device=dynamics_device,
         progress=_ProgressReporter("DYN", len(case_tasks)),
     )
@@ -25912,10 +25993,11 @@ eval2_candidate_rescue_cap = 5
 # labeled interim and cannot create a production protocol freeze.
 allow_partial_campaign = true
 # Runtime inference choices are execution evidence, not scientific policy.
-# Historical positive batch_size values remain explicit fixed execution.
+# A historical file with no inference_batch_policy keeps its positive batch_size
+# as an exact fixed runtime choice. New fixed mode uses fixed_inference_batch_size
+# (bounded by maximum_inference_batch_size); auto starts bounded and may adapt.
 inference_batch_policy = "auto"
 maximum_inference_batch_size = 32
-concurrent_model_jobs = 1
 # Immutable monitor and foundation-baseline results are reused across checkpoints.
 cache_monitor_datasets = true
 cache_replay_baseline = true
