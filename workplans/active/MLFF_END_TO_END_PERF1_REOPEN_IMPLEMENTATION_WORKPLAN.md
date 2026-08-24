@@ -1,411 +1,417 @@
 # MLFF-END-TO-END-PERF1 Reopen Implementation Workplan
 
-Status: **FUNCTIONAL IMPLEMENTATION ACCEPTED — TARGET-WORKSTATION GPU QUALIFICATION DEFERRED**
+Status: **ACTIVE — SECOND CLOSEOUT REOPEN / NEXT IMPLEMENTATION ROUND**  
 Branch: `feat/mlff-end-to-end-performance-v1`  
-Reopens: `MLFF_END_TO_END_PARALLELIZATION_OPTIMIZATION_WORKPLAN.md` closeout status  
+Current reviewed implementation tip: `8ddd481cafe75b0d40930e852d03447d0be3eb55`  
+Reopens: `MLFF_END_TO_END_PARALLELIZATION_OPTIMIZATION_WORKPLAN.md` closeout status and the superseded first-reopen acceptance record  
 Date reopened: 2026-08-24
 
 ## 1. Authority and purpose
 
-This workplan is the authoritative reopening amendment for the next implementation round of MLFF-END-TO-END-PERF1.
+This file is the active implementation contract for the next MLFF-END-TO-END-PERF1 closeout round.
 
-The original `MLFF_END_TO_END_PARALLELIZATION_OPTIMIZATION_WORKPLAN.md` remains the architectural baseline and source of the original G0-G10 requirements. This amendment supersedes only its implementation-closeout claim. It does **not** discard accepted mechanisms or broaden scientific scope.
+The parent `MLFF_END_TO_END_PARALLELIZATION_OPTIMIZATION_WORKPLAN.md` remains the architectural baseline. The first reopen round materially repaired the implementation, but an independent second closeout review found remaining resource-ownership, operating-point, persistence, and cancellation gaps. The prior statement that R0-R8 were functionally accepted is therefore superseded.
 
-The previous statement that G0-G9 were functionally closed and G10 was closed subject only to target-workstation production qualification is withdrawn. Independent closeout review found one deterministic late-stage command failure and several material architecture/acceptance gaps. Functional acceptance is therefore reopened before production GPU qualification.
+This second reopen is intentionally narrow. Preserve accepted mechanisms and evidence unless a changed dimension can plausibly invalidate them. Do not replay already-closed design work merely because a new implementation round begins.
 
-Implementation may proceed gate-by-gate under this plan without another design round unless a redesign trigger or genuine blocker below is reached.
+Implementation may proceed gate-by-gate under this workplan without another design round unless a genuine redesign trigger in section 10 fires.
 
-## 2. Engineering envelope retained from PERF1
+## 2. Frozen engineering envelope
 
-The reopened implementation must preserve all scientific and campaign semantics already frozen by the parent plan:
+The following requirements remain non-negotiable:
 
-- no change to target-size authority, 3 -> 10 -> 30 dependency/freeze semantics, selection/ranking rules, candidate population, seeds, scientific thresholds, dtype/precision policy, or production verification resolution merely to improve throughput;
-- execution choices such as inference batch size, model-job concurrency, cache use, queue depth, worker count, staging method, and scheduling order remain execution state unless numerical evidence proves otherwise;
-- scientific ordering and durable authority must be independent of concurrent completion order;
-- accepted immutable/restart evidence must be authenticated before reuse;
-- CPU/RAM/VRAM/storage/I/O admission must fail closed when even one required unit of work cannot fit its configured safety envelope;
-- cancellation/failure must stop new admission, clean up owned workers/process groups, and preserve previously accepted atomic state;
-- full production-scale GPU qualification remains separate from functional regression/integration and remains deferred to the final assembled candidate on the target workstation.
+- preserve target-size authority, 3 -> 10 -> 30 dependency/freeze semantics, candidate population, seeds, scientific thresholds, ranking/admissibility rules, verification resolution, and precision/dtype policy;
+- runtime batch size, model-job concurrency, cache use, queue depth, worker count, scheduling order, and runtime operating profiles are execution state and must not alter scientific identity;
+- optimized execution must remain numerically equivalent to the accepted scientific/reference path within frozen tolerances;
+- durable ordering and published authority must be deterministic and independent of concurrent completion order;
+- immutable/restart evidence must be authenticated before reuse;
+- CPU/RAM/VRAM/storage/I/O admission must fail closed when one required unit of work cannot fit the configured safety envelope;
+- the scheduler must be able to represent **zero currently admissible jobs** and terminate with an actionable resource error rather than forcing one job or deadlocking;
+- failure/cancellation must stop new admission, terminate owned workers/process groups, and preserve previously accepted atomic state;
+- full production-scale GPU qualification remains separate from functional acceptance and remains deferred to the final assembled candidate on the target workstation.
 
-## 3. Reopen findings that are now implementation requirements
+The governing optimization hierarchy remains:
 
-### F1 — DEPLOY/PES hard command-path failure
+`product capability/correctness/resource fitness > minimum justified system complexity > development economy`
 
-`InferenceExecutionPlan` defines `selected_batch_size`, while current DEPLOY/PES command orchestration reads `selected_inference_batch_size`. The real command path can therefore raise `AttributeError` before prediction.
+## 3. Accepted work that remains closed
 
-Required outcome: one canonical field/API is used consistently across all production callers. Do not add a second long-lived synonym merely to hide caller drift unless compatibility requires it.
+### R0 — command-field hard failure: **CLOSED**
 
-### F2 — scientific policy and runtime execution identity remain entangled
+Preserve:
 
-`CheckpointEvaluationPolicy.batch_size` still participates in policy serialization/digest while the new `InferenceExecutionPlan` also owns runtime batch selection. The command path copies runtime selection back into the policy.
+- DEPLOY/PES use the real `InferenceExecutionPlan.selected_batch_size` field;
+- command-boundary tests exercise real execution-plan consumers;
+- no long-lived compatibility alias was added for the stale field name.
 
-Required outcome: runtime batch/concurrency/cache/stream/profile choices must not mutate scientific evaluation identity. Historical serialized policies must remain readable and existing accepted evidence must retain explicit compatibility rules.
+### R1 — scientific-policy / runtime-plan separation: **CLOSED**
 
-### F3 — canonical static inference owner is incomplete and authority is duplicated
+Preserve:
 
-`StaticMaceInferenceExecutor` currently provides deterministic batching, graph reuse and bounded OOM backoff, but joint `(batch_size, concurrent_model_jobs)` selection, compatible profile reuse, live VRAM re-clamping and outer concurrency remain outside it or unintegrated. `StaticInferenceOperatingPoint` selection exists but is not the authoritative production path.
+- canonical scientific `CheckpointEvaluationPolicy` identity excludes runtime batch/cache choices;
+- runtime execution evidence is separate from scientific policy identity;
+- historical scientific policy digests remain readable with explicit legacy semantics;
+- EVAL2 ranking/admissibility semantics remain unchanged.
 
-Required outcome: consolidate static inference resource/operating-point ownership so there is one coherent production authority for batch size, model-job concurrency, profile compatibility and OOM/re-clamp behavior. Reuse existing mechanisms rather than introducing a third scheduler/profile layer.
+A runtime **execution-plan persistence schema** issue remains open below, but it does not reopen scientific-policy identity.
 
-### F4 — CUDA/RAM admission can force one job even when one job is infeasible
+### R4 — immutable concurrent publication: **CLOSED**
 
-Current planning can coerce RAM-derived capacity to at least one job. CUDA calibration can likewise retain one job even when projected one-job resource use breaches the configured ceiling. VRAM calibration also peak-trims the observations used for concurrency projection.
+Preserve the no-clobber publication behavior:
 
-Required outcome: explicit one-unit feasibility checks before admission; impossible budgets fail closed. VRAM safety must be based on a peak-safe/high-confidence bound with headroom rather than discarding safety-relevant peaks. Live VRAM re-clamping must occur before new overlapping admission, not only after the ceiling is already reached.
+- identical concurrent publishers converge safely;
+- conflicting bytes cannot replace an accepted immutable destination;
+- attempt-local temporaries are cleaned without overwriting accepted state.
 
-### F5 — EVAL byte-aware backpressure is not authoritative for real resident payloads
+### R7 — RELAX architecture: **CLOSED subject to final affected regression**
 
-The current recursive object-size estimator can shallow-count non-dataclass containers such as ASE `Atoms`, and it does not form an explicit ownership ledger for prepared graphs, predictions, model/provider residency and queued result state.
+No RELAX redesign is authorized unless a new regression appears. Preserve flattened `(candidate, base)` scheduling, worker-private mutable calculators, sequential ASE FIRE semantics, vectorized topology reductions, and deterministic aggregation.
 
-Required outcome: replace inference-by-introspection with explicit byte reservations/measurements attached to staged pipeline payloads and release them on ownership transitions. Queue admission must remain bounded under representative low-RAM conditions.
+## 4. Valid evidence retained from the first reopen round
 
-### F6 — immutable artifact staging publication is not race-safe against conflicting concurrent publishers
+The following evidence remains useful but is **not final acceptance** for the second-round candidate:
 
-Current staging can use unconditional replacement after an initial destination-existence check.
+- final first-round affected surface: `250 passed, 2 skipped`;
+- bounded production-interface suite: `121 passed`;
+- broader available suite excluding the independently uncollectable mesh-topology fixture module: `3183 passed, 36 skipped, 261 failed, 84 errors`;
+- command-level DEPLOY/PES coverage, split-DYN overlap/restart coverage, immutable staging concurrency coverage, and scientific/runtime policy-separation coverage.
 
-Required outcome: accepted immutable destinations must never be silently replaced by a competing publisher. Use no-clobber publication or a keyed lock plus post-race byte comparison. Identical concurrent publishers may converge to the same accepted artifact; different bytes must fail without replacement.
+Reuse stage-local evidence only while the behavior it establishes is unchanged. Every second-round executable edit still requires its own focused + affected stage-local regression, and the final assembled candidate requires a fresh affected-surface regression and integration pass.
 
-### F7 — DYN does not implement the intended simulation -> reduction pipeline
+## 5. Second closeout findings now promoted to implementation requirements
 
-A DYN scheduler task currently owns model staging, full LAMMPS execution, trajectory/log parsing, hashing and CPU reduction before releasing the scheduler slot. With the conservative one-LAMMPS-process default, CPU reduction therefore leaves the GPU idle instead of overlapping case N reduction with case N+1 simulation.
+### S1 — measured/live CUDA infeasibility cannot become zero-admissible capacity
 
-Required outcome: split DYN into independently bounded external-simulation and CPU/I/O-reduction phases with deterministic aggregation and authenticated case completion. A valid final GPU simulation concurrency may remain one.
+Initial estimated one-job RAM/VRAM checks now fail closed correctly, and VRAM calibration retains allocation peaks. However, post-launch calibration initializes the safe target at one job and the live hard-VRAM guard likewise clamps to at least one.
 
-### F8 — DYN streaming is improved but still performs redundant full passes and has an unbounded rare fallback
+Consequences:
 
-Normal trajectory handling performs an ordering pass and then a second parse pass; hashing adds another full read. The out-of-order fallback retains all frames in a dictionary.
+- an underestimated workload can prove, after the first calibration job, that even one job breaches the configured envelope yet still remain admitted at one;
+- a later baseline/external VRAM increase can make one job infeasible while the controller still represents one replacement job as admissible.
 
-Required outcome: make the canonical LAMMPS-produced path single-pass or bounded-pass for parse/reduce/hash where practical. Preserve exact duplicate-timestep last-wins semantics. Bound or explicitly reject pathological noncanonical out-of-order inputs rather than silently materializing arbitrarily large trajectories.
+Required outcome: resource control must represent a terminal/blocked zero-admission state and fail cleanly without launching another job.
 
-### F9 — final affected-surface regression/integration did not exercise the real command boundary strongly enough
+### S2 — G3 joint static operating-point optimization/profile reuse is still absent
 
-Focused tests passed while the real DEPLOY/PES field mismatch remained. The real bounded assembled campaign path was not completed.
+`inference_batch_policy = "auto"` currently chooses a bounded cold-start batch (normally 8), while `StaticMaceInferenceExecutor` can only reduce that batch after OOM. Model-job concurrency is calibrated separately by the outer adaptive scheduler. There is no production joint `(batch_size, concurrent_model_jobs)` operating-point search or compatible profile reuse.
 
-Required outcome: every materially affected CLI/public command must be exercised through its production boundary, with stubbing only below that boundary. Final functional acceptance requires bounded assembled integration through preflight -> preparation/materialization -> training/evaluation -> DEPLOY/PES/RELAX/DYN -> selection/publication as applicable.
+Consequences:
 
-## 4. Product-complexity rule for the reopen
+- `maximum_inference_batch_size > 8` is not meaningfully explored by auto mode unless implementation-specific OOM behavior drives downward adjustment;
+- batch and concurrency are optimized by separate authorities even though they compete for the same VRAM/RAM and jointly determine throughput;
+- no persistent compatible runtime profile accelerates repeated runs/checkpoints;
+- live host-RAM re-clamping is not symmetrical with live VRAM control.
 
-Prefer, in order:
+Required outcome: one coherent production runtime authority must own joint batch/concurrency selection, compatibility evidence, reuse, and live re-clamping. Existing executor/scheduler mechanisms should be consolidated rather than wrapped in a third independent optimizer.
 
-`reuse -> consolidate -> refactor -> delete`
+### S3 — DEPLOY/PES static prediction bypasses live resource admission
 
-The reopen is not permission to accumulate compatibility wrappers or parallel schedulers. In particular:
+DEPLOY and PES now call the correct static executor/batch field, but they construct static prediction directly rather than entering the same RAM/VRAM admission authority used by adaptive evaluation/verification scheduling.
 
-- do not retain two active batch/concurrency authorities;
-- do not retain both scientific-policy batch ownership and runtime-plan batch ownership after migration is complete;
-- do not create a second DYN restart authority beside authenticated case receipts;
-- do not create a second generic memory estimator when explicit payload/resource reservations can be owned by the scheduler;
-- keep historical readers only where required for compatibility, and isolate them from the new canonical write path.
+Required outcome: DEPLOY/PES must prove one-job feasibility from live resources before model materialization/accelerator prediction and use the same canonical static operating-point authority. Scientific probe/policy identity must remain unchanged.
 
-## 5. Reopened implementation sequence
+### S4 — staged pipeline RAM ownership is improved but incomplete
 
-### R0 — hard-failure repair and real-boundary smoke gate
+The explicit payload ledger correctly measures important retained objects, including ASE arrays, and transfers prepared/result reservations. Remaining gaps:
 
-Implement first:
+- an explicitly configured `*_pipeline_buffer_mib` can exceed the campaign's global RAM budget unless capped/rejected;
+- finalize/reduction workers do not hold an explicit per-worker working-memory reservation;
+- relevant model/provider/cache residency is not consistently represented in the aggregate pipeline RAM envelope;
+- DYN CPU reduction inherits these gaps because it uses the staged finalize domain.
 
-1. fix the `selected_batch_size` production API drift across DEPLOY/PES and any other callers;
-2. search all `InferenceExecutionPlan` consumers for stale/nonexistent fields;
-3. add production-boundary smoke tests for DEPLOY and PES command orchestration that resolve the real execution plan and reach the prediction owner;
-4. add an API/schema test that rejects future field drift by constructing the real plan and exercising all command consumers.
+Required outcome: the stage ledger must bound aggregate retained payload + active worker/model/cache reservations and fail closed before overcommit.
 
-Stage-local acceptance:
+### S5 — DYN split is correct, but scheduler-level external-process cancellation is incomplete
 
-- focused execution-plan/DEPLOY/PES tests pass;
-- real CLI/internal command boundary reaches the static executor without `AttributeError`/schema drift;
-- existing DEPLOY checkpoint <-> target and PES scientific parity/pass-fail tests remain unchanged;
-- no compatibility alias is added unless an actually supported external API requires it.
+The simulation -> reduction split, bounded handoff behavior, streaming canonical reduction, duplicate-timestep semantics, and authenticated case receipts are accepted. The remaining gap is cancellation propagation from the staged scheduler into already-running external LAMMPS processes.
 
-Do not proceed to broader architectural edits while this hard failure remains.
+Required outcome: sibling failure, scheduler cancellation, or user interruption must propagate a shared cancellation signal to owned external simulations; each process group must terminate promptly while prior accepted receipts remain intact.
 
-### R1 — complete G1 scientific-policy / execution-plan separation
+### S6 — `InferenceExecutionPlan` wire semantics changed without a schema-version transition
 
-Implement:
+The current `mdstats.inference-execution-plan.v1` representation removed former fields and added new runtime fields while retaining the same schema identifier. A historical v1 record can therefore be rejected because the new reader reconstructs different v1 semantics before checking the digest.
 
-1. define the canonical scientific `CheckpointEvaluationPolicy` identity independently of runtime batch size/concurrency/cache/streams/profile;
-2. move active runtime batch ownership to `InferenceExecutionPlan` only;
-3. preserve historical policy schema/digest readers and explicit evidence compatibility;
-4. ensure current canonical writes do not fold runtime-only fields into scientific policy identity;
-5. ensure EVAL persistence stores runtime execution evidence separately from scientific evaluation evidence;
-6. document migration behavior for legacy `evaluation.batch_size` and fixed-batch configurations.
+Required outcome: runtime evidence persistence must have explicit compatibility semantics. Prefer a v2 canonical write schema with an exact v1 reader/migration rule, or another equally simple solution that preserves old valid v1 evidence or deliberately invalidates/rebuilds it at the owning layer without masquerading as the same wire schema.
 
-Required regression:
+This is runtime evidence compatibility, not a scientific-policy schema change.
 
-- two execution plans with different batch sizes produce identical scientific policy digest and identical bounded scientific metrics;
-- differing model-job concurrency/cache/stream choices likewise leave scientific identity unchanged;
-- historical serialized policy fixtures round-trip/read with correct legacy digest semantics;
-- existing EVAL2 ranking, candidate admissibility and restart evidence remain unchanged;
-- config precedence for legacy fixed batch, explicit new fixed batch and auto mode is deterministic.
+## 6. Next-round gated implementation sequence
 
-Gate close only after affected EVAL2 and persistence regression passes.
+### R2A — zero-admission state + execution-plan persistence repair
 
-### R2 — complete G3 canonical static inference and fail-closed resource ownership
+Implement first because later operating-point work depends on correct resource/persistence semantics.
 
-Consolidate rather than layer new machinery.
+#### Required behavior
 
-Implement:
+1. Introduce an explicit representation for **no job currently admissible** after calibration/live re-clamp.
+2. Do not force `target_jobs >= 1` when measured one-job projection breaches RAM/VRAM/utilization safety bounds.
+3. A zero-admission decision must produce a deterministic actionable error/blocked outcome; the scheduler must not spin or deadlock with queued work and zero capacity.
+4. Once a running job has demonstrated one-job infeasibility, do not launch a replacement after it completes.
+5. If live external/baseline VRAM rises so that one additional calibrated job no longer fits, block new admission before launch; if the remaining queued workload can no longer ever fit, fail cleanly.
+6. Preserve already-running work unless immediate termination is necessary for safety; do not convert a future-admission re-clamp into unnecessary cancellation of a healthy in-envelope active job.
+7. Version `InferenceExecutionPlan` persistence correctly. Canonical new writes must not silently change the meaning of schema v1.
+8. Preserve or explicitly rebuild old runtime evidence through one owning migration path; do not add scattered compatibility branches at consumers.
 
-1. make one production owner responsible for static inference batch selection, model-job concurrency and compatible operating-point evidence;
-2. integrate `StaticInferenceOperatingPoint`/equivalent measured operating-point selection into the real production path or remove it if a simpler existing mechanism becomes canonical;
-3. support bounded cold-start operation followed by compatible profile reuse and live re-clamping;
-4. require explicit one-job feasibility before any CUDA/RAM admission;
-5. use VRAM peak-safe/high-confidence evidence with configured reserve/headroom; do not discard safety-relevant allocation peaks merely as utilization noise;
-6. make aggregate live VRAM/RAM checks occur before additional admission;
-7. retain bounded per-executor OOM batch backoff and learned safe ceiling;
-8. define whether one worker owns one model shell and prohibit unsafe mutable shell sharing across concurrent workers;
-9. either implement currently exposed execution fields (`concurrent_model_jobs`, `use_cuda_streams`, compatible profile identity, host RAM budget) or remove/defer them from active production configuration so configuration does not advertise inert behavior.
+#### Focused regression
 
-Required regression:
+- configured one-job RAM infeasibility still fails before launch;
+- configured one-job VRAM infeasibility still fails before launch;
+- **new:** initial estimate fits, measured first-job VRAM peak proves one job infeasible -> zero future admission + clean error;
+- **new:** calibrated plan initially fits, live VRAM baseline rises until one job cannot fit -> no new launch + clean error;
+- zero-admission queue cannot deadlock;
+- historical execution-plan v1 fixture has deterministic read/rebuild behavior;
+- canonical new execution-plan serialization round-trips under the new schema/version contract;
+- scientific policy digest and scientific metrics remain unchanged.
+
+#### Gate acceptance
+
+R2A closes only after focused tests plus affected scheduler/persistence/CLI regression pass.
+
+---
+
+### R2B — canonical joint static inference operating-point authority
+
+This is the central remaining PERF1 architecture gate.
+
+#### Product design to implement
+
+One production **static-inference runtime authority** must jointly own:
+
+- active inference batch size;
+- concurrent model-job admission;
+- one-job and aggregate RAM/VRAM safety;
+- measured throughput/peak-resource operating-point evidence;
+- compatible runtime-profile reuse;
+- live re-clamping;
+- bounded per-executor OOM learning.
+
+It may delegate model execution to `StaticMaceInferenceExecutor` and telemetry/scheduling mechanics to existing helpers, but there must not be two independent optimizers deciding batch and concurrency without a shared operating-point decision.
+
+#### Bounded operating-point search requirements
+
+1. Auto mode begins from a safe bounded cold-start point, but must be able to explore other batch sizes up to `maximum_inference_batch_size` when representative work is available.
+2. Candidate batch sizes should be a bounded monotonic/geometric set plus relevant learned limits rather than every integer.
+3. Candidate concurrency must remain bounded by CPU/RAM/VRAM/task-count constraints.
+4. Collect actual throughput and peak-safe resource evidence for feasible `(batch, jobs)` points without exhausting the machine.
+5. Select the globally best justified safe point for the observed workload; when throughput is statistically/operationally near-equivalent, prefer the lower-resource/lower-complexity point.
+6. Retain OOM halving as a local safety mechanism, and feed its learned safe ceiling back into the runtime authority rather than letting it become a hidden second batch policy.
+7. The selected point must never exceed the live resource envelope after configured reserve/headroom.
+8. Runtime-profile compatibility must include enough hardware/runtime/model/workload-shape identity to prevent unsafe reuse. A conservative compatibility key is acceptable; stale/incompatible profiles must be ignored/rebuilt.
+9. Runtime profile identity must not enter scientific policy/probe/result identity.
+10. Live RAM as well as live VRAM must be able to reduce future admission when the actual available envelope shrinks.
+11. Remove obsolete operating-point/profile fields or mechanisms that are no longer authoritative.
+
+#### Required regression
 
 - batch-1/reference versus optimized energy/force/stress equivalence;
-- deterministic output order under concurrent completion;
-- forced OOM halves batch only within bounded retry budget and retains the learned safe ceiling;
-- one-job RAM infeasibility fails before launch;
-- one-job VRAM infeasibility fails before launch;
-- spiky VRAM calibration cannot promote concurrency based on a trimmed-away unsafe peak;
-- stale/incompatible execution profiles are ignored/rebuilt;
-- live resource change re-clamps future admission without changing scientific results;
-- no second active batch/concurrency authority remains after gate close.
+- auto mode with `maximum_inference_batch_size > 8` can select/exercise a batch above 8 when synthetic/representative evidence makes it best;
+- auto mode can retain a smaller batch when larger points are slower or resource-unsafe;
+- joint selection chooses the best safe `(batch, jobs)` point from a deterministic synthetic telemetry/throughput fixture;
+- output ordering is deterministic under out-of-order worker completion;
+- OOM backoff is bounded and the learned safe batch ceiling is respected by later point selection;
+- profile reuse skips calibration when compatibility matches and live resources still admit the profile;
+- stale/incompatible profile is ignored/rebuilt;
+- compatible profile is live-reclamped before admission when RAM/VRAM changed;
+- changing runtime operating points leaves scientific policy digest and bounded scientific results unchanged;
+- code search/review confirms one active joint operating-point authority remains.
 
-Representative CPU-only evidence may establish functional behavior in CI/development. Target-workstation GPU throughput qualification remains deferred.
+Representative CPU/synthetic telemetry evidence is sufficient for functional implementation. **Do not run full target-GPU throughput qualification here.**
 
-### R3 — complete G4 EVAL explicit byte-ledger/backpressure
+---
 
-Implement:
+### R3B — finish aggregate staged-pipeline RAM ownership
 
-1. replace generic shallow object introspection as the scheduling authority with explicit byte reservations or measured payload sizes for each pipeline stage;
-2. account separately for active prepare reservations, prepared graph/data payloads, active inference residency, inference result payloads, finalize backlog and relevant worker/model/cache reservations;
-3. transfer/release reservations exactly when ownership moves between prepare -> inference -> finalize;
-4. keep queue-depth limits in addition to byte limits;
-5. fail closed when the configured RAM envelope cannot admit one required payload;
-6. retain bounded cancellation/failure cleanup so reservations and queues cannot leak.
+Preserve the current explicit payload ledger and improve only the missing aggregate ownership.
 
-Required regression:
+#### Required behavior
 
-- ASE `Atoms`/graph-containing prepared payloads are charged by their real/explicit retained bytes rather than shallow `sys.getsizeof()`;
-- low-RAM fixture demonstrates producer backpressure and bounded ready/finalize queues;
-- one-payload infeasibility fails deterministically instead of overcommitting;
-- out-of-order completion produces the same evaluation records/ranking;
-- worker failure/cancellation drains/releases reservations;
-- cold/warm EVAL2 integration remains scientifically identical.
+1. Explicit `evaluation_pipeline_buffer_mib` / `dynamics_pipeline_buffer_mib` values must be capped by or rejected against the active global RAM budget; a sub-budget cannot authorize more RAM than the campaign resource envelope.
+2. Add explicit working-memory reservations for active prepare/inference/finalize domains where their execution requires memory beyond retained input/result payloads.
+3. Charge model/provider residency and material graph/cache reservations when they are part of the active pipeline envelope; do not double-count shared immutable caches.
+4. DYN reduction/finalize workers must have an explicit bounded working-memory reservation separate from the retained trajectory/result payload.
+5. Reservation acquisition must precede worker launch; release must occur on every success/failure/cancellation path.
+6. Queue-depth limits remain in force in addition to byte limits.
+7. Preserve overlap where resources permit; do not solve accounting by globally serializing the pipeline.
 
-### R4 — close G2 concurrent immutable-publication race
+#### Required regression
 
-Implement the smallest ownership fix:
+- explicit pipeline MiB greater than global RAM budget is rejected/capped deterministically;
+- low-RAM EVAL fixture backpressures without exceeding the ledger;
+- low-RAM DYN fixture allows simulation/reduction overlap only when both worker reservations fit;
+- finalize/reduction worker reservation prevents over-admission;
+- worker failure/cancellation releases all reservations;
+- no reservation leak/deadlock under out-of-order completion;
+- cold/warm EVAL2 and DYN scientific metrics/pass-fail remain unchanged.
 
-1. no-clobber or keyed-lock immutable destination publication;
-2. if a concurrent writer wins, verify accepted bytes against the intended source;
-3. identical bytes -> reuse accepted destination;
-4. different bytes -> hard failure without replacement;
-5. cleanup attempt-local temporary paths on all failure/interruption paths.
+---
 
-Required regression:
+### R5B — route DEPLOY/PES through the canonical static resource authority
 
-- two simultaneous identical publishers converge safely;
-- two simultaneous different publishers cannot replace each other;
-- interrupted/corrupt attempt leaves accepted destination unchanged;
-- SHA/authority checks and direct-reference/hardlink/copy semantics remain unchanged.
+After R2A/R2B stabilize the shared runtime owner:
 
-After R4, G2 may be considered closed again.
+1. DEPLOY checkpoint-head and target-only static predictions must enter the canonical static inference runtime authority.
+2. PES foundation and candidate predictions must use the same authority.
+3. Before model construction/device transfer, prove one-job feasibility against live RAM/VRAM for the selected device.
+4. Reuse safe compatible runtime operating profiles when applicable, with live re-clamping before admission.
+5. Preserve sparse target reads, stable geometry graph reuse, probe identities, scientific tolerances, deterministic ordering, and target-head/ML-IAP parity.
+6. Keep external LAMMPS run-0 resource/process handling separate from static MACE prediction where the resource domains differ.
+7. Remove direct static-prediction bypasses that evade resource admission unless retained solely as a lower-level library API with explicit caller-owned admission semantics.
 
-### R5 — finish G6 DEPLOY/PES consolidation on the corrected static authority
+#### Required regression
 
-After R1-R4 stabilize the shared execution layer:
+- command-level DEPLOY and PES still exercise the real orchestration boundary;
+- DEPLOY/PES one-job RAM/VRAM infeasibility fails **before** model construction/prediction;
+- safe resource conditions reach the canonical executor and preserve numerical parity;
+- graph-cache identity remains safe across model/candidate changes;
+- execution-profile evidence remains runtime-only;
+- external LAMMPS run-0 failure/cancellation leaves no orphan process group or partial accepted artifact.
 
-1. route DEPLOY and PES through the corrected canonical static inference owner only;
-2. keep sparse target reads and stable geometry graph reuse;
-3. ensure execution-plan evidence is separate from scientific probe/policy identity;
-4. ensure GPU/resource admission covers actual accelerator work rather than unrelated CPU/I/O finalization where practical;
-5. verify immutable staging and external LAMMPS run-0 cleanup/cancellation semantics;
-6. remove stale duplicate static-prediction paths if no longer needed for compatibility.
+---
 
-Required regression:
+### R6B — DYN cancellation propagation + final resource closeout
 
-- checkpoint target head <-> exported target-only model <-> ML-IAP parity remains unchanged;
-- PES request/probe identities and pass/fail remain unchanged;
-- sparse target lookup equals full-reference lookup;
-- shared graph cache is identity-safe under candidate/model changes;
-- command-level DEPLOY and PES tests execute the real orchestration boundary;
-- external process failure/cancellation leaves no orphan process group or accepted partial artifact;
-- deterministic aggregation independent of completion order.
+Do not redesign the accepted simulation/reduction split.
 
-### R6 — complete G8 DYN external simulation/reduction pipeline
+#### Required behavior
 
-Refactor around two explicit resource domains rather than treating the entire case as one GPU task.
+1. Give the staged scheduler an explicit cancellation signal/token shared with active external simulations.
+2. On sibling worker failure, user interruption, or scheduler abort: set cancellation, stop new admission, and propagate cancellation to owned LAMMPS processes.
+3. `_run_file_backed_process` or its owning wrapper must observe cancellation while waiting and terminate the complete process group with the existing TERM -> KILL policy when necessary.
+4. Cancellation of one unfinished case must not invalidate authenticated receipts from previously completed cases.
+5. No completion receipt may be published for a cancelled/partial simulation or failed reduction.
+6. Integrate R3B finalize/reduction RAM reservations into the DYN pipeline.
+7. Preserve canonical streaming reduction, duplicate-timestep last-wins semantics, reference-frame semantics, drift/topology metrics, deterministic final ordering, disk reserve checks, and file-backed logs.
 
-Implement:
+#### Required regression
 
-1. **simulation phase**: immutable staging/input creation + external LAMMPS process under CPU/RAM/GPU/VRAM/disk/I/O admission;
-2. **reduction phase**: trajectory/log parse, metric reduction, digest verification and receipt publication under CPU/RAM/I/O admission without holding a GPU simulation slot;
-3. bounded handoff queue between simulation completion and reduction;
-4. permit CPU reduction of case N to overlap GPU simulation of case N+1 when resources permit;
-5. retain conservative `maximum_parallel_dynamics_jobs = 1` unless representative target-GPU evidence later justifies more;
-6. keep authenticated case-level receipts as the sole restart authority;
-7. preserve deterministic final run-record assembly from the canonical case inventory;
-8. integrate digest computation into the streaming pass when practical, or explicitly bound/justify an additional sequential read;
-9. canonical LAMMPS-produced trajectory reduction must be streaming/bounded;
-10. preserve duplicate timestep ordering/last-wins, reference-frame, force, NVT/NVE boundary, drift, minimum-distance, topology and persistent-damage semantics exactly;
-11. bound or fail explicitly on noncanonical out-of-order trajectory fallback rather than accumulating an unbounded frame dictionary;
-12. preserve process-group cancellation and file-backed logs.
+- deterministic staged-runner test with an active fake external process proves sibling failure cancels/kills the process group;
+- KeyboardInterrupt/cancel path kills the owned process group without waiting for natural completion;
+- accepted prior case receipt remains reusable after later-case cancellation;
+- cancelled/incomplete case has no accepted receipt and reruns on restart;
+- simulated ENOSPC/write failure preserves prior receipts;
+- simulation N can overlap reduction N-1 when RAM and CPU reservations permit;
+- final DYN metrics/pass-fail remain identical to the accepted oracle fixtures.
 
-Required regression:
+## 7. R8B — final affected-surface reconciliation and functional acceptance
 
-- old/reference versus new pipeline DYN metrics and pass/fail are identical on frozen fixtures;
-- duplicate timestep/reference-frame/seed/NVT/NVE semantics explicitly match the oracle;
-- reduction of one completed case overlaps the next simulated case in a deterministic concurrency test;
-- GPU simulation concurrency can remain one while reduction concurrency is independently >0;
-- case receipt is published only after successful complete reduction/digest validation;
-- restart reuses only authenticated accepted cases and reruns stale/corrupt/incomplete cases;
-- simulated ENOSPC/write failure leaves earlier accepted receipts untouched;
-- process cancellation kills owned process groups and preserves accepted prior cases;
-- queue, log and trajectory-reduction memory are bounded;
-- final candidate/run ordering is independent of completion order.
+R8 is reopened and can close only after R2A, R2B, R3B, R5B, and R6B are accepted.
 
-### R7 — G7/RELAX regression preservation and complexity reconciliation
+### Required final review/test sequence
 
-No redesign of RELAX is required unless a regression is discovered.
+1. Re-derive the complete affected behavioral surface from the assembled source.
+2. Include modified and transitively affected callers, config, persistence, cache/profile, scheduler, static inference, DEPLOY/PES, DYN, RELAX, public API, and CLI boundaries.
+3. Search for stale field names, duplicate batch/concurrency authorities, obsolete profile/cache owners, old execution-plan write schemas, direct DEPLOY/PES admission bypasses, and uncancelled external-process paths.
+4. Run focused tests for every new second-round mechanism.
+5. Run a fresh complete affected-surface regression after all second-round executable edits.
+6. Re-run bounded production-interface integration through the real preflight -> preparation/materialization -> TRAIN/EVAL -> DEPLOY -> PES -> RELAX -> DYN -> selection/publication boundaries available in the representative fixture.
+7. Re-run EVAL restart and DYN partial-completion/restart integration where changed resource/profile behavior can affect them.
+8. Re-run cancellation/failure integration across worker and external-process boundaries.
+9. Confirm LOCKED-TEST2 activation/prediction-evidence isolation remains unchanged.
+10. Run repository-required broader/full available tests when the final affected surface cannot be bounded confidently; triage every failure/error that plausibly intersects the changed surface.
+11. Record genuinely unavailable checks explicitly. An unavailable required functional check is not a pass.
 
-Revalidate:
+A harness may stub heavyweight dependencies **below** the real production/public boundary. It must not reconstruct the orchestration/resource logic being tested.
 
-- global `(candidate, base)` scheduling;
-- worker-private calculator reuse with no cross-worker mutable sharing;
-- sequential ASE FIRE semantics per trajectory;
-- convergence/pass-fail equivalence;
-- vectorized topology reductions;
-- bounded nested native CPU width and resource admission;
-- deterministic aggregation and failure cleanup.
+### Functional acceptance invariants
 
-Remove any superseded wrapper/scheduler path exposed by R2/R5 consolidation.
+Before this workplan may return to functional-accepted status, the assembled candidate must demonstrate all of the following:
 
-### R8 — reopened G10 final affected-surface reconciliation and functional acceptance
+- measured or live one-job infeasibility can become zero-admissible capacity and fails cleanly;
+- no scheduler deadlock occurs at zero capacity;
+- auto static inference genuinely chooses among bounded batch/concurrency operating points rather than freezing batch 8;
+- compatible runtime profiles can be reused safely and stale ones are rejected;
+- live RAM/VRAM changes re-clamp future admission;
+- DEPLOY/PES cannot enter accelerator prediction without canonical resource admission;
+- execution-plan persistence has explicit version/compatibility semantics;
+- EVAL/DYN staged RAM accounting includes active worker working memory and cannot exceed the global envelope by configuration;
+- DYN scheduler cancellation terminates owned external process groups and preserves prior accepted receipts;
+- all scientific/reference outputs remain within frozen tolerances;
+- final bounded assembled integration succeeds.
 
-After all executable reopen gates close:
+## 8. Expected second-round affected surface
 
-1. re-derive the complete affected behavioral surface from the assembled source; do not use this file list as a hard boundary;
-2. search for stale field names, duplicate schedulers, duplicate runtime/scientific policy authorities, obsolete compatibility write paths, unused execution fields and superseded caches;
-3. run complete focused tests for every new/modified mechanism;
-4. run the full affected regression surface for all modified **and transitively affected** old modules;
-5. run repository-required broader/full available tests, triaging every failure/error that touches the affected surface rather than dismissing failures by aggregate category;
-6. execute bounded integration through real production interfaces from preflight through preparation/materialization, TRAIN/EVAL, DEPLOY, PES, RELAX, DYN and final selection/publication boundaries available in the representative fixture;
-7. execute restart integration at EVAL and DYN partial-completion boundaries;
-8. execute cancellation/failure integration across worker and owned external-process boundaries;
-9. confirm LOCKED-TEST2 activation boundary and prediction-evidence isolation remain unchanged;
-10. record unavailable checks explicitly.
+At minimum:
 
-A test harness may stub heavyweight dependencies **below** the production command/public boundary, but it must not reconstruct the orchestration logic being tested.
-
-Functional G10 acceptance requires all material command paths to execute successfully on bounded representative data. The target-workstation production-scale GPU qualification remains deferred after this acceptance.
-
-## 6. Initially expected affected behavioral surface for the reopen
-
-At minimum re-evaluate:
-
-- `mdstats/training_data/campaign_execution.py`;
-- `mdstats/training_data/model_features.py`;
 - `mdstats/training_data/inference_parallel.py`;
-- `mdstats/training_data/_campaign_cli_core.py` and any current CLI facade/owner;
+- `mdstats/training_data/model_features.py`;
+- `mdstats/training_data/campaign_execution.py`;
+- `mdstats/training_data/_campaign_cli_core.py`;
 - `mdstats/training_data/deploy_verify.py`;
-- `mdstats/training_data/pes_verify.py`;
-- `mdstats/training_data/relax_verify.py`;
+- `mdstats/training_data/pes_verify.py` and direct PES callers;
 - `mdstats/training_data/dyn_verify.py`;
-- `mdstats/training_data/artifact_staging.py`;
-- indexed ExtXYZ/replay helpers and sparse target consumers;
-- resource-plan/work-queue helpers used by evaluation or verification;
-- configuration generation/resolution and legacy migration paths;
-- state-store/persistence readers and writers for evaluation execution evidence and DYN receipts;
-- LOCKED static inference consumers after the activation boundary;
-- all tests that call the affected production interfaces or monkeypatch previous ownership boundaries.
+- execution-plan serialization/export surfaces in `mdstats/training_data/__init__.py` and `mdstats/__init__.py` if schema/API changes propagate;
+- campaign config generation/resolution for inference auto/fixed policy and pipeline RAM controls;
+- state-store readers/writers for runtime execution evidence/profile persistence;
+- scheduler/resource tests including `tests/test_mlff_inference_parallel_scheduler.py`;
+- staged-pipeline tests including `tests/test_mlff_opt_eval4_staged_evaluation_pipeline.py`;
+- command-boundary tests including `tests/test_mlff_perf1_reopen_command_boundaries.py`;
+- DEPLOY/PES/DYN/RELAX affected regression consumers;
+- all additional callers discovered by final assembled impact analysis.
 
-The final R8 review must expand this list when implementation changes reveal additional callers/consumers.
+Do not treat this list as a hard boundary.
 
-## 7. Stage-local regression rule
+## 9. Stage-local regression rule
 
-Every R0-R6 material behavior-changing stage must pass, before dependent work continues:
+Every material second-round gate must close with:
 
-1. focused tests for the new/changed mechanism;
-2. regression for all old behavior plausibly affected by that stage;
-3. direct integration through the real affected product boundary where appropriate.
+1. cheapest high-signal focused tests for the changed mechanism;
+2. regression for all old behavior plausibly affected by that gate;
+3. real consumer/command integration where the changed behavior crosses a product boundary.
 
-A later final test run does not substitute for a failed or skipped stage-local regression gate.
+Do not defer all testing to R8B. Reuse still-valid first-round evidence only for behavior unchanged by the current gate.
 
-## 8. Production qualification boundary
+## 10. Genuine redesign triggers
 
-Do **not** perform full production-scale GPU qualification during this reopen implementation round.
+Stop dependent implementation and reopen only the affected design surface if:
 
-After R8 functional acceptance, prepare the final target-workstation qualification handoff. That qualification should characterize the assembled final candidate on the user's target GPU/system, including:
+- batching/concurrency changes alter accepted scientific results beyond frozen tolerances;
+- representative evidence shows no practical bounded joint operating-point scheme can safely satisfy both EVAL and verification without materially different resource semantics;
+- a safe compatible profile key would require scientific identity coupling rather than runtime execution identity;
+- exact execution-plan v1 compatibility cannot be preserved without corrupting or ambiguously reinterpreting accepted runtime evidence;
+- live RAM cannot be measured/represented sufficiently for safe pre-admission without changing the broader resource model;
+- DYN external cancellation cannot be integrated without replacing the existing process ownership model;
+- implementation broadens into a new architectural subsystem not covered by PERF1.
 
-- joint static inference `(batch_size, concurrent_jobs)` optimum and headroom;
-- GPU utilization and peak/steady VRAM;
-- CPU/RAM usage;
-- LAMMPS external process concurrency;
+Ordinary bugs, missing tests, local schema migration, conservative resource-estimate corrections, scheduler refactoring, and removal of stale authorities are **not** redesign triggers.
+
+## 11. Production qualification boundary
+
+Do **not** perform full production-scale GPU qualification during R2A-R8B implementation.
+
+After functional R8B acceptance, prepare the final target-workstation qualification handoff. It should characterize the final assembled candidate on the user's target GPU/system, including:
+
+- selected joint static inference `(batch_size, concurrent_jobs)` operating point and alternatives considered;
+- throughput and calibration/profile reuse behavior;
+- GPU utilization and peak/steady VRAM/headroom;
+- CPU/RAM usage and live re-clamp behavior;
+- LAMMPS external-process concurrency;
 - DYN simulation/reduction overlap;
 - disk/I/O and scratch footprint;
-- cold/warm cache and restart behavior;
+- cold/warm cache/profile and restart behavior;
 - end-to-end/per-stage wall time.
 
-No accelerator-performance claim is accepted before that qualification.
+No target-hardware performance claim is accepted before that qualification. Production qualification cannot substitute for missing functional regression/integration.
 
-## 9. Genuine redesign triggers
+## 12. Superseded first-reopen acceptance record
 
-Stop the current implementation gate and reopen design only if one of these occurs:
+The 2026-08-24 first-reopen record that declared R0-R8 functionally accepted is retained in Git history as evidence of that implementation round, but its **closeout conclusion is withdrawn** by this second independent review.
 
-- batching/concurrency changes accepted scientific results beyond frozen tolerances, proving the supposedly runtime-only choice is scientifically material;
-- the clean removal of batch size from scientific identity would invalidate accepted historical evidence without a defensible compatibility migration;
-- one canonical inference owner cannot represent both EVAL and verification resource requirements without reintroducing materially different semantics;
-- target-GPU evidence later proves multi-model static concurrency or multi-LAMMPS concurrency needs a qualitatively different resource model;
-- DYN streaming cannot preserve required duplicate-timestep/reference semantics without a different file/index representation;
-- post-R6 representative profiling shows exact topology/neighbor operations dominate enough to justify a separately qualified compiled kernel;
-- implementation broadens the affected surface into an architectural subsystem not covered by the parent PERF1 design.
+Its test results remain reusable evidence for unchanged behavior as described in section 4. They do not close the newly identified S1-S6 gaps.
 
-Ordinary bugs, missing tests, local API drift, conservative resource-estimate corrections and scheduler refactoring are **not** redesign triggers.
+## 13. Completion condition
 
-## 10. Completion condition
+This active workplan can be returned to **FUNCTIONAL IMPLEMENTATION ACCEPTED — TARGET-WORKSTATION GPU QUALIFICATION DEFERRED** only when:
 
-This reopen workplan can be closed only when:
+- R2A, R2B, R3B, R5B, R6B, and R8B are accepted;
+- R0, R1, R4, and R7 remain regression-clean;
+- zero-admission resource infeasibility is represented and tested without deadlock;
+- one canonical joint static operating-point authority owns batch/concurrency/profile/re-clamp decisions;
+- execution-plan persistence has explicit version compatibility;
+- DEPLOY/PES use canonical live resource admission;
+- staged RAM accounting cannot exceed the global envelope and includes active worker working memory;
+- DYN scheduler-level cancellation kills owned external processes and preserves prior accepted receipts;
+- the final re-derived affected surface passes fresh regression and bounded assembled integration;
+- unavailable functional checks are explicitly recorded;
+- full production GPU qualification remains deferred as a separate final handoff.
 
-- R0-R8 are accepted;
-- the prior DEPLOY/PES hard failure is covered by a real-boundary regression;
-- scientific policy and runtime execution identity are cleanly separated;
-- static inference has one authoritative operating-point/resource owner;
-- one-unit resource infeasibility fails closed;
-- EVAL backpressure uses explicit bounded resource accounting;
-- immutable concurrent publication cannot overwrite accepted different bytes;
-- DYN simulation and reduction are independently scheduled and restart-safe;
-- the re-derived affected surface passes final regression and bounded assembled integration;
-- unavailable checks are explicitly recorded;
-- production GPU qualification is left as a separate final handoff rather than being conflated with implementation acceptance.
-
-Until those conditions are met, MLFF-END-TO-END-PERF1 remains **ACTIVE / OPEN FOR IMPLEMENTATION**.
-
-## 11. Implementation acceptance record (2026-08-24)
-
-R0-R8 functional implementation is accepted on branch
-`feat/mlff-end-to-end-performance-v1`.
-
-- Stage-local focused gates passed after each material change. The final
-  re-derived affected surface passed `250 passed, 2 skipped`; the skips require
-  a real LTA training root and an explicitly supplied real MACE model.
-- Bounded production-interface acceptance passed `121 passed`, covering the
-  available preparation/materialization and preflight authorities, EVAL,
-  command-level DEPLOY/PES consumers, RELAX, split DYN and restart behavior,
-  SELECT2, and LOCKED-TEST2 boundaries. Heavy dependencies were stubbed only
-  below the production boundary under test.
-- Static checks passed: module compilation, `git diff --check`, and searches for
-  removed field names, superseded operating-point/cache owners, and the former
-  shallow pipeline estimator.
-- The repository-wide available run, excluding the independently uncollectable
-  `tests/test_mesh_topology_revision_stage1.py` missing-fixture module, reached
-  `3183 passed, 36 skipped, 261 failed, 84 errors` in 511.67 seconds. The error
-  population is dominated by absent repository LTA JSON/data fixtures. The
-  failure population is dominated by historical release/manual assertions and
-  tests monkeypatching the user-facing CLI facade rather than its implementation
-  owner. Every failure touching this reopen's changed or transitively affected
-  execution surface was isolated and rerun after repair; the final affected
-  surface above is green.
-- No supported target GPU qualification was run. Production-scale GPU/VRAM,
-  LAMMPS concurrency, disk/I/O, cold/warm cache, restart, and end-to-end timing
-  qualification remains the separate handoff defined in section 8.
-
-The reopened functional acceptance conditions are therefore closed. This
-workplan remains in `workplans/active/` only as the handoff authority for the
-explicitly deferred target-workstation qualification; repository hygiene may
-archive it after that separate qualification is accepted.
+Until all of those conditions are met, **MLFF-END-TO-END-PERF1 remains ACTIVE / OPEN FOR IMPLEMENTATION**.
