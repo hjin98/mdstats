@@ -2429,63 +2429,6 @@ def _is_memory_exhaustion(exc: BaseException) -> bool:
     )
 
 
-def _release_cuda_cache() -> None:
-    try:
-        import torch
-
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-    except Exception:
-        return
-
-
-def _predict_batch_with_backoff(
-    provider: Any,
-    atoms_batch: Sequence[Any],
-    *,
-    geometry_identities: Sequence[str] | None = None,
-    graph_cache_directory: str | Path | None = None,
-) -> tuple[Any, ...]:
-    if not atoms_batch:
-        return ()
-    if geometry_identities is not None and len(geometry_identities) != len(atoms_batch):
-        raise TrainingDataInputError("Graph-cache geometry identity count mismatch.")
-    try:
-        return tuple(
-            provider.predict_batch(
-                atoms_batch,
-                geometry_identities=geometry_identities,
-                graph_cache_directory=graph_cache_directory,
-            )
-        )
-    except TypeError as exc:
-        # Third-party/test providers predating OPT-EVAL3 retain the original
-        # surface. Only fall back when the keyword extension itself is rejected.
-        if "unexpected keyword" not in str(exc) and "geometry_identities" not in str(exc):
-            raise
-        return tuple(provider.predict_batch(atoms_batch))
-    except RuntimeError as exc:
-        if len(atoms_batch) <= 1 or not _is_memory_exhaustion(exc):
-            raise
-        _release_cuda_cache()
-        middle = len(atoms_batch) // 2
-        left_ids = None if geometry_identities is None else geometry_identities[:middle]
-        right_ids = None if geometry_identities is None else geometry_identities[middle:]
-        return (
-            *_predict_batch_with_backoff(
-                provider,
-                atoms_batch[:middle],
-                geometry_identities=left_ids,
-                graph_cache_directory=graph_cache_directory,
-            ),
-            *_predict_batch_with_backoff(
-                provider,
-                atoms_batch[middle:],
-                geometry_identities=right_ids,
-                graph_cache_directory=graph_cache_directory,
-            ),
-        )
-
 
 @mace_runtime_warning_handled("checkpoint prediction")
 def _predict_model_on_atoms(
@@ -2537,6 +2480,7 @@ def _predict_model_on_atoms(
         provider.set_head(head)
     from .model_features import (
         MACE_ADAPTER_VERSION,
+        MaceCalculatorProvider,
         StaticInferenceRuntimeAuthority,
         StaticInferenceRuntimeProfile,
         StaticMaceInferenceExecutor,
@@ -2549,6 +2493,7 @@ def _predict_model_on_atoms(
     )
     runtime_authority = None
     runtime_profile_path = None
+    provider_factory = None
     if active_execution.batch_policy == "auto":
         from .resources import detect_system_resources
 
@@ -2586,6 +2531,18 @@ def _predict_model_on_atoms(
                 "model_identity": model_identity,
                 "device": str(policy.device),
                 "default_dtype": str(policy.default_dtype),
+                "head": None if head is None else str(head),
+                "acceleration_policy_digest": getattr(
+                    policy.acceleration_policy, "policy_digest", None
+                ),
+                "resolved_acceleration_kernel_mode": policy.resolved_acceleration_kernel_mode,
+                "critical_precision_policy_digest": getattr(
+                    policy.active_critical_precision_policy, "policy_digest", None
+                ),
+                "graph_cache_enabled": bool(
+                    active_execution.graph_cache_enabled
+                    and graph_cache_directory is not None
+                ),
                 "cpu_threads_available": resources.cpu_threads_available,
                 "gpu_name": resources.gpu.device_name,
                 "gpu_total_bytes": resources.gpu.total_bytes,
@@ -2617,6 +2574,24 @@ def _predict_model_on_atoms(
             cold_start_batch_size=int(active_execution.selected_batch_size),
             compatible_profile=compatible_profile,
         )
+        private_calculator_kwargs = dict(
+            policy.acceleration_policy.calculator_kwargs()
+            if policy.resolved_acceleration_kernel_mode is None
+            else MaceAccelerationKernelMode(
+                policy.resolved_acceleration_kernel_mode
+            ).calculator_kwargs()
+        )
+        if head is not None:
+            private_calculator_kwargs["head"] = head
+
+        def provider_factory() -> Any:
+            return MaceCalculatorProvider.from_model_path(
+                model_path,
+                device=policy.device,
+                default_dtype=policy.default_dtype,
+                critical_precision_policy=policy.active_critical_precision_policy,
+                **private_calculator_kwargs,
+            )
     executor = StaticMaceInferenceExecutor(
         provider,
         batch_size=max(
@@ -2636,6 +2611,7 @@ def _predict_model_on_atoms(
         runtime_authority=runtime_authority,
         concurrent_model_jobs=active_execution.selected_concurrent_model_jobs,
         device=policy.device,
+        provider_factory=provider_factory,
     )
     result = executor.predict(atoms_list, geometry_identities=geometry_identities)
     if runtime_authority is not None and runtime_profile_path is not None:

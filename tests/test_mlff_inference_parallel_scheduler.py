@@ -332,6 +332,70 @@ def test_measured_one_job_vram_infeasibility_blocks_future_admission() -> None:
     assert "measured single-job VRAM peak" in decision.reason
 
 
+def test_one_slot_cuda_ceiling_still_measures_and_blocks_unsafe_replacement() -> None:
+    policy = InferenceConcurrencyPolicy(
+        maximum_auto_jobs=1,
+        stabilization_seconds=300.0,
+        minimum_calibration_seconds=300.0,
+        monitor_interval_seconds=1.0,
+        observed_memory_growth_margin=1.0,
+        estimated_gpu_memory_mib_per_job=1024.0,
+    )
+    plan = build_inference_concurrency_plan(
+        task_count=2,
+        device="cuda:0",
+        resources=_resources(),
+        policy=policy,
+        gpu_sample=_gpu_sample(0.0, 1.0, 2.0),
+        cpu_sample=CpuTelemetrySample(0.0, 0.0),
+    )
+    assert plan.maximum_jobs == 1
+    controller = AdaptiveInferenceConcurrency(plan, policy)
+    assert not controller.gpu_calibrated
+
+    decision = controller.observe(
+        active_jobs=1,
+        gpu_sample=_gpu_sample(1.0, 23.0, 20.0),
+        now=1.0,
+    )
+
+    assert controller.gpu_calibrated
+    assert decision.target_jobs == 0
+    assert controller.admission_blocked_reason is not None
+    assert "measured single-job VRAM peak" in decision.reason
+
+
+def test_one_slot_cuda_ceiling_completes_calibration_after_first_safe_sample() -> None:
+    policy = InferenceConcurrencyPolicy(
+        maximum_auto_jobs=1,
+        stabilization_seconds=300.0,
+        minimum_calibration_seconds=300.0,
+        monitor_interval_seconds=1.0,
+        observed_memory_growth_margin=1.0,
+        observed_utilization_growth_margin=1.0,
+        estimated_gpu_memory_mib_per_job=1024.0,
+    )
+    plan = build_inference_concurrency_plan(
+        task_count=2,
+        device="cuda:0",
+        resources=_resources(),
+        policy=policy,
+        gpu_sample=_gpu_sample(0.0, 1.0, 2.0),
+        cpu_sample=CpuTelemetrySample(0.0, 0.0),
+    )
+    controller = AdaptiveInferenceConcurrency(plan, policy)
+    decision = controller.observe(
+        active_jobs=1,
+        gpu_sample=_gpu_sample(1.0, 3.0, 12.0),
+        now=1.0,
+    )
+
+    assert controller.gpu_calibrated
+    assert decision.target_jobs == 1
+    assert controller.admission_blocked_reason is None
+    assert "calibration complete" in decision.reason
+
+
 def test_live_external_vram_baseline_can_block_all_future_admission() -> None:
     policy = InferenceConcurrencyPolicy(
         maximum_auto_jobs=4,

@@ -103,13 +103,27 @@ def _authority(*, profile=None, ram=20_000, vram=20_000, compatibility=None):
     )
 
 
+def _measured_point(batch, jobs, throughput, ram, vram):
+    completed = batch * jobs
+    return StaticInferenceOperatingPointEvidence(
+        batch,
+        jobs,
+        throughput,
+        ram,
+        vram,
+        completed_structures=completed,
+        elapsed_seconds=completed / throughput,
+        observed_max_active_jobs=jobs,
+    )
+
+
 def test_joint_runtime_authority_selects_best_safe_near_equivalent_point() -> None:
     authority = _authority(vram=10_000)
     points = (
-        StaticInferenceOperatingPointEvidence(8, 1, 100.0, 2_000, 4_000),
-        StaticInferenceOperatingPointEvidence(16, 1, 104.0, 3_000, 7_000),
-        StaticInferenceOperatingPointEvidence(8, 2, 103.0, 4_000, 9_000),
-        StaticInferenceOperatingPointEvidence(16, 2, 120.0, 5_000, 15_000),
+        _measured_point(8, 1, 100.0, 2_000, 4_000),
+        _measured_point(16, 1, 104.0, 3_000, 7_000),
+        _measured_point(8, 2, 103.0, 4_000, 9_000),
+        _measured_point(16, 2, 120.0, 5_000, 15_000),
     )
     for point in points:
         authority.record(point)
@@ -121,7 +135,7 @@ def test_joint_runtime_authority_selects_best_safe_near_equivalent_point() -> No
 
 def test_executor_auto_search_exercises_geometric_batches_above_eight() -> None:
     provider = _Provider()
-    authority = _authority(vram=None)
+    authority = _authority(ram=1 << 30, vram=None)
     executor = StaticMaceInferenceExecutor(
         provider,
         batch_size=32,
@@ -133,13 +147,269 @@ def test_executor_auto_search_exercises_geometric_batches_above_eight() -> None:
 
     assert len(predictions) == 64
     assert [size for size, _ in provider.calls[:3]] == [8, 16, 32]
-    assert {point.concurrent_model_jobs for point in authority.evidence} == {2}
+    # A serial executor is evidence for J=1 only; configured outer concurrency
+    # must never be used as a synthetic throughput/evidence multiplier.
+    assert {point.concurrent_model_jobs for point in authority.evidence} == {1}
+
+
+def test_joint_executor_selects_only_actually_executed_fastest_point() -> None:
+    import time
+
+    class TimedProvider(_Provider):
+        lock = __import__("threading").Lock()
+        active = 0
+
+        def predict_batch(self, atoms, **kwargs):
+            with self.lock:
+                type(self).active += 1
+            try:
+                time.sleep(0.005)
+                with self.lock:
+                    concurrent = type(self).active
+                delay = 0.02 if len(atoms) == 8 and concurrent >= 2 else 0.20
+                time.sleep(delay)
+                return super().predict_batch(atoms, **kwargs)
+            finally:
+                with self.lock:
+                    type(self).active -= 1
+
+        def close(self):
+            pass
+
+    authority = _authority(ram=1 << 30, vram=None)
+    executor = StaticMaceInferenceExecutor(
+        TimedProvider(),
+        batch_size=32,
+        runtime_authority=authority,
+        provider_factory=TimedProvider,
+    )
+
+    observed = executor.predict(_atoms(64))
+
+    assert len(observed) == 64
+    assert authority.selected_point is not None
+    assert (authority.selected_point.batch_size, authority.selected_point.concurrent_model_jobs) == (8, 2)
+    joint = next(
+        point for point in authority.evidence
+        if (point.batch_size, point.concurrent_model_jobs) == (8, 2)
+    )
+    assert joint.observed_max_active_jobs == 2
+    assert joint.structures_per_second == pytest.approx(
+        joint.completed_structures / joint.elapsed_seconds
+    )
+    np.testing.assert_allclose(
+        [value.energy_ev for value in observed],
+        [value.positions[1, 2] for value in _atoms(64)],
+        rtol=0.0,
+        atol=0.0,
+    )
+
+
+def test_joint_executor_can_select_batch_above_eight_when_really_faster() -> None:
+    import time
+
+    class FixedCostProvider(_Provider):
+        def predict_batch(self, atoms, **kwargs):
+            time.sleep(0.01)
+            return super().predict_batch(atoms, **kwargs)
+
+        def close(self):
+            pass
+
+    authority = _authority(ram=1 << 30, vram=None)
+    StaticMaceInferenceExecutor(
+        FixedCostProvider(), batch_size=32, runtime_authority=authority,
+        provider_factory=FixedCostProvider,
+    ).predict(_atoms(64))
+
+    assert authority.selected_point is not None
+    assert authority.selected_point.batch_size > 8
+
+
+def test_joint_executor_keeps_one_job_when_second_private_model_is_slower() -> None:
+    import time
+
+    created = 0
+
+    class AsymmetricProvider(_Provider):
+        def __init__(self):
+            nonlocal created
+            super().__init__()
+            self.delay = 0.004 if created == 0 else 0.08
+            created += 1
+
+        def predict_batch(self, atoms, **kwargs):
+            time.sleep(self.delay)
+            return super().predict_batch(atoms, **kwargs)
+
+        def close(self):
+            pass
+
+    base = AsymmetricProvider()
+    authority = _authority(ram=1 << 30, vram=None)
+    StaticMaceInferenceExecutor(
+        base, batch_size=32, runtime_authority=authority,
+        provider_factory=AsymmetricProvider,
+    ).predict(_atoms(64))
+
+    assert authority.selected_point is not None
+    assert authority.selected_point.concurrent_model_jobs == 1
+
+
+def test_joint_resource_evidence_covers_all_private_model_residency(
+    monkeypatch,
+) -> None:
+    from mdstats.training_data import model_features
+
+    class ResidencyProvider(_Provider):
+        live_clones = 0
+
+        def __init__(self, clone=False):
+            super().__init__()
+            self.clone = clone
+            if clone:
+                type(self).live_clones += 1
+
+        def close(self):
+            if self.clone:
+                type(self).live_clones -= 1
+                self.clone = False
+
+    class ResidencyMonitor:
+        def __init__(self, device):
+            pass
+
+        def start(self):
+            pass
+
+        def finish(self):
+            return 10 + 100 * ResidencyProvider.live_clones, None
+
+    monkeypatch.setattr(model_features, "_StaticInferenceResourceMonitor", ResidencyMonitor)
+    authority = _authority(ram=1 << 30, vram=None)
+    StaticMaceInferenceExecutor(
+        ResidencyProvider(),
+        batch_size=32,
+        runtime_authority=authority,
+        provider_factory=lambda: ResidencyProvider(clone=True),
+    ).predict(_atoms(64))
+
+    single = next(
+        point for point in authority.evidence
+        if (point.batch_size, point.concurrent_model_jobs) == (8, 1)
+    )
+    joint = next(
+        point for point in authority.evidence
+        if (point.batch_size, point.concurrent_model_jobs) == (8, 2)
+    )
+    assert joint.peak_ram_bytes > single.peak_ram_bytes
+    assert ResidencyProvider.live_clones == 0
+
+
+def test_serial_executor_records_point_local_ram_delta_not_process_high_water(
+    monkeypatch,
+) -> None:
+    from mdstats.training_data import model_features
+
+    samples = iter((10_000, 10_000, 12_500, 12_500))
+    monkeypatch.setattr(
+        model_features,
+        "_current_process_rss_bytes",
+        lambda: next(samples, 12_500),
+    )
+    authority = _authority(vram=None)
+    executor = StaticMaceInferenceExecutor(
+        _Provider(), batch_size=1, runtime_authority=authority
+    )
+
+    executor.predict(_atoms(1))
+
+    assert authority.evidence[0].peak_ram_bytes == 2_500
+
+
+def test_measured_batch_one_resource_breach_blocks_all_replacement_work(
+    monkeypatch,
+) -> None:
+    from mdstats.training_data import model_features
+
+    class UnsafeMonitor:
+        def __init__(self, device):
+            pass
+
+        def start(self):
+            pass
+
+        def finish(self):
+            return 100, None
+
+    monkeypatch.setattr(model_features, "_StaticInferenceResourceMonitor", UnsafeMonitor)
+    provider = _Provider()
+    authority = StaticInferenceRuntimeAuthority(
+        compatibility_digest=digest({"fixture": "one-job-unsafe"}),
+        maximum_batch_size=1,
+        maximum_concurrent_model_jobs=1,
+        live_ram_budget_bytes=10,
+        live_vram_budget_bytes=None,
+        cold_start_batch_size=1,
+    )
+    executor = StaticMaceInferenceExecutor(
+        provider, batch_size=1, runtime_authority=authority
+    )
+
+    with pytest.raises(TrainingDataInputError, match="no future prediction"):
+        executor.predict(_atoms(2))
+
+    assert len(provider.calls) == 1
+
+
+def test_cuda_resource_monitor_retains_transient_live_peak(monkeypatch) -> None:
+    import time
+
+    from mdstats.training_data import model_features, training_parallel
+    from mdstats.training_data.training_parallel import GpuTelemetrySample
+
+    used = iter((10, 10, 90, 20, 20))
+    monkeypatch.setattr(model_features, "_current_process_rss_bytes", lambda: 1_000)
+    monkeypatch.setattr(
+        training_parallel,
+        "query_gpu_telemetry",
+        lambda device: GpuTelemetrySample(
+            sampled_monotonic=time.monotonic(),
+            device_index=0,
+            utilization_percent=1.0,
+            used_bytes=next(used, 20),
+            total_bytes=1_000,
+        ),
+    )
+
+    class SlowProvider(_Provider):
+        def predict_batch(self, atoms, **kwargs):
+            time.sleep(0.008)
+            return super().predict_batch(atoms, **kwargs)
+
+    authority = _authority(vram=1_000)
+    StaticMaceInferenceExecutor(
+        SlowProvider(), batch_size=1, runtime_authority=authority, device="cuda:0"
+    ).predict(_atoms(1))
+
+    assert authority.evidence[0].peak_vram_bytes == 80
+
+
+def test_v1_runtime_profile_is_rejected_for_old_evidence_semantics(tmp_path) -> None:
+    path = tmp_path / "legacy-profile.json"
+    path.write_text(
+        '{"schema":"mdstats.static-inference-runtime-profile.v1"}',
+        encoding="utf-8",
+    )
+    assert StaticInferenceRuntimeProfile.load_compatible(
+        path, compatibility_digest=digest({"fixture": "joint-static"})
+    ) is None
 
 
 def test_runtime_profile_reuse_requires_compatibility_and_live_reclamps() -> None:
     original = _authority()
-    low = StaticInferenceOperatingPointEvidence(8, 1, 100.0, 2_000, 4_000)
-    high = StaticInferenceOperatingPointEvidence(16, 2, 130.0, 8_000, 12_000)
+    low = _measured_point(8, 1, 100.0, 2_000, 4_000)
+    high = _measured_point(16, 2, 130.0, 8_000, 12_000)
     original.record(low)
     original.record(high)
     profile = original.profile()
@@ -158,7 +428,7 @@ def test_runtime_profile_reuse_requires_compatibility_and_live_reclamps() -> Non
 
     selected = reused.reclamp(live_ram_budget_bytes=3_000, live_vram_budget_bytes=5_000)
     assert selected == low
-    assert not reused.reused_compatible_profile
+    assert reused.reused_compatible_profile
 
 
 def test_oom_backoff_feeds_authoritative_safe_batch_ceiling() -> None:
@@ -203,6 +473,16 @@ def test_auto_execution_path_persists_and_reuses_compatible_profile(
         def set_head(self, head):
             pass
 
+        def close(self):
+            pass
+
+    from mdstats.training_data import model_features
+    monkeypatch.setattr(
+        model_features.MaceCalculatorProvider,
+        "from_model_path",
+        classmethod(lambda cls, *args, **kwargs: Provider()),
+    )
+
     model = tmp_path / "model.pt"
     model.write_bytes(b"runtime-profile-fixture")
     graph_cache = tmp_path / "evaluation-graphs"
@@ -227,11 +507,19 @@ def test_auto_execution_path_persists_and_reuses_compatible_profile(
         provider=first_provider,
         graph_cache_directory=graph_cache,
     )
-    assert [size for size, _ in first_provider.calls[:3]] == [8, 16, 32]
+    assert any(size > 8 for size, _ in first_provider.calls)
     profiles = tuple((tmp_path / "static-inference-runtime-profiles").glob("*.json"))
     assert len(profiles) == 1
     profile = StaticInferenceRuntimeProfile.from_dict(
         __import__("json").loads(profiles[0].read_text(encoding="utf-8"))
+    )
+    assert any(
+        point.concurrent_model_jobs == 2
+        and point.observed_max_active_jobs == 2
+        and point.completed_structures > 0
+        and point.structures_per_second
+        == pytest.approx(point.completed_structures / point.elapsed_seconds)
+        for point in profile.evidence
     )
 
     reused_provider = Provider()

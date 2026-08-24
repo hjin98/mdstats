@@ -1,6 +1,6 @@
 # MLFF-END-TO-END-PERF1 Third-Reopen Implementation Workplan
 
-Status: **ACTIVE — FUNCTIONAL ACCEPTANCE REOPENED**  
+Status: **FUNCTIONAL IMPLEMENTATION ACCEPTED — TARGET-WORKSTATION GPU QUALIFICATION DEFERRED**
 Branch: `feat/mlff-end-to-end-performance-v1`  
 Supersedes closeout status only: `MLFF_END_TO_END_PERF1_REOPEN_IMPLEMENTATION_WORKPLAN.md` section 14 acceptance record  
 Date reopened: 2026-08-24
@@ -327,3 +327,57 @@ Return MLFF-END-TO-END-PERF1 to **FUNCTIONAL IMPLEMENTATION ACCEPTED — TARGET-
 - final re-derived affected regression and bounded assembled integration pass;
 - unavailable functional checks are explicitly recorded;
 - production GPU qualification remains deferred as a separate final handoff.
+
+## 14. Third-reopen implementation acceptance record (2026-08-24)
+
+T-R2A, T-R2B, T-R5, and T-R8 are functionally accepted on branch
+`feat/mlff-end-to-end-performance-v1`.
+
+- T-R2A removed the one-slot CUDA calibration bypass. A configured ceiling of
+  one now still measures the first real job, unsafe measured or live RAM/VRAM
+  transitions produce zero future admission without replacement launch, and a
+  safe first sample closes one-slot calibration without stranding queued work.
+  Runtime-profile evidence is now schema v2 with point-local RSS/device-delta
+  semantics; process-lifetime RSS and post-call-only device sampling are no
+  longer represented as point-local peaks. Old v1 evidence is deterministically
+  rejected and rebuilt. Focused plus affected scheduler/profile/static regression
+  passed `51 passed`.
+- T-R2B replaced synthetic concurrency evidence with actual joint trials. One
+  canonical `StaticInferenceRuntimeAuthority` owns bounded geometric batch/job
+  candidates, selection, OOM ceilings, compatible profile reuse, and live
+  re-clamping. A `J > 1` point constructs private provider/model shells, executes
+  all jobs concurrently, records observed maximum active jobs, and computes
+  throughput strictly as completed structures divided by joint wall time. The
+  staged EVAL pipeline admits one outer inference owner and binds its
+  resource-bounded model-job cap into that authority, preventing nested outer
+  and inner concurrency multiplication. Focused and stage-local affected
+  regression passed `84 passed`, with additional deterministic tests covering
+  joint-fastest selection, larger-batch selection, lower-concurrency selection,
+  aggregate private-model residency, ordering, OOM ceilings, live re-clamping,
+  and compatible profile reuse.
+- T-R5 retained pre-model one-job admission for DEPLOY/PES/LOCKED and routed
+  command/probe prediction through the corrected authority. Replay pseudo-label
+  fixed-batch prediction now uses the canonical static executor, and the obsolete
+  duplicate recursive static backoff path was removed. Consumer reconciliation
+  also fixed the DEPLOY execution-plan path's branch-local
+  `sha256_file_cached` binding. Consumer/command regression passed `72 passed,
+  1 skipped`, followed by `33 passed` after the final boundary repair.
+- T-R8 re-derived the affected surface and found no serial-throughput concurrency
+  multiplier, no process-lifetime RSS profile evidence, no one-slot calibration
+  bypass, and no direct static provider prediction outside the canonical
+  executor. Fresh final affected regression passed `267 passed, 4 skipped`; it
+  covers scheduler and runtime-profile persistence, staged EVAL/resource ledgers,
+  DEPLOY/PES/LOCKED, replay/static consumers, CLI/config, DYN cancellation,
+  RELAX, restart, SELECT2/publication, and resource/scientific-identity paths.
+  Module compilation and `git diff --check` passed.
+
+The four unavailable checks require a real LTA training root, locked MACE 0.3.16
+deployment runtime, locked MH-1/MPA-0 checkpoints, or another real MACE
+environment/checkpoint. Historical specification suites also retain stale
+assertions for old package versions and the pre-facade `campaign_cli.py` source
+layout; those failures were reproduced but do not intersect this runtime change.
+
+No supported target GPU qualification was run. Production-scale GPU/VRAM,
+throughput, utilization, cold/warm profile, storage/I/O, restart, and end-to-end
+timing qualification remains the separate section-11 handoff; no target-hardware
+performance claim is made here.

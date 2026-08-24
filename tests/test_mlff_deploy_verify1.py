@@ -161,6 +161,61 @@ def test_probe_resource_admission_fails_before_model_construction(monkeypatch):
     assert not constructed
 
 
+def test_probe_execution_plan_reaches_canonical_static_runtime_authority(monkeypatch):
+    captured = {}
+
+    class Executor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def prediction_channels(self, atoms, **kwargs):
+            return {
+                "energy": np.asarray([-1.0]),
+                "forces": np.zeros((1, 1, 3)),
+                "stress": np.zeros((1, 3, 3)),
+            }
+
+    def from_model_path(cls, model_path, **kwargs):
+        captured.update(kwargs)
+        return Executor()
+
+    monkeypatch.setattr(
+        model_features.StaticMaceInferenceExecutor,
+        "from_model_path",
+        classmethod(from_model_path),
+    )
+    monkeypatch.setattr(
+        resource_module,
+        "detect_system_resources",
+        lambda **kwargs: SystemResourceSnapshot(
+            cpu_threads_available=4, cpu_fraction=0.90, cpu_threads_budget=3,
+            ram_available_bytes=8 * 1024**3, ram_fraction=0.80,
+            ram_budget_bytes=6 * 1024**3, gpu_memory_fraction=0.90,
+            gpu=GpuResourceSnapshot(False, 0, None, None, None, None, None, "cpu"),
+        ),
+    )
+
+    mdstats.predict_mace_model_on_probe(
+        __file__,
+        (Atoms("Li", cell=[5, 5, 5], pbc=True),),
+        device="cpu",
+        model_dtype="float64",
+        head=None,
+        execution_plan=mdstats.InferenceExecutionPlan(
+            batch_policy="auto", selected_batch_size=1, maximum_batch_size=1
+        ),
+        resource_policy=InferenceConcurrencyPolicy(
+            maximum_auto_jobs=1, estimated_ram_mib_per_job=1.0
+        ),
+    )
+
+    assert isinstance(captured["runtime_authority"], model_features.StaticInferenceRuntimeAuthority)
+    assert captured["concurrent_model_jobs"] == 1
+
+
 def test_policy_roundtrip_and_dtype_tolerances():
     p32 = mdstats.DeployVerifyPolicy(model_dtype="float32")
     p64 = mdstats.DeployVerifyPolicy(model_dtype="float64")

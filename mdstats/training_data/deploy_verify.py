@@ -503,12 +503,12 @@ def predict_mace_model_on_probe(
         StaticInferenceRuntimeProfile,
         StaticMaceInferenceExecutor,
     )
+    from ._common import sha256_file_cached
     resolved_path = Path(model_path).resolve()
     kwargs: dict[str, Any] = dict(calculator_kwargs or {})
     if foundation_potential_identity is not None:
         if foundation_inference_identity is None:
             raise TrainingDataInputError("Canonical foundation probe inference requires FoundationInferenceIdentity.")
-        from ._common import sha256_file_cached
         if sha256_file_cached(resolved_path) != foundation_potential_identity.sha256:
             raise TrainingDataInputError("Foundation probe model bytes disagree with FoundationPotentialIdentity.")
         if foundation_inference_identity.foundation_potential_digest != foundation_potential_identity.canonical_content_digest:
@@ -578,6 +578,14 @@ def predict_mace_model_on_probe(
                 "model_sha256": sha256_file_cached(resolved_path),
                 "device": str(device),
                 "default_dtype": str(model_dtype),
+                "head": None if head is None else str(head),
+                "calculator_runtime_digest": digest({
+                    str(key): repr(value) for key, value in sorted(kwargs.items())
+                }),
+                "graph_cache_enabled": bool(
+                    execution_plan.graph_cache_enabled
+                    and graph_cache_directory is not None
+                ),
                 "gpu_name": resources.gpu.device_name,
                 "gpu_total_bytes": resources.gpu.total_bytes,
                 "cpu_threads_available": resources.cpu_threads_available,

@@ -542,9 +542,11 @@ class AdaptiveInferenceConcurrency:
         self._gpu_util_samples: Deque[tuple[float, float]] = deque(maxlen=gpu_buffer)
         self._gpu_memory_samples: Deque[tuple[float, int]] = deque(maxlen=gpu_buffer)
         self._gpu_calibration_started: float | None = None
-        self._gpu_calibrated = bool(
-            not plan.uses_cuda or int(plan.maximum_jobs) <= 1
-        )
+        # A one-job ceiling limits promotion; it is not evidence that the one
+        # admitted CUDA job fits after model/provider residency is established.
+        # Every CUDA plan therefore observes the first real job before allowing
+        # queued replacement work to launch.
+        self._gpu_calibrated = bool(not plan.uses_cuda)
         self._gpu_estimated_utilization_per_job: float | None = None
         self._gpu_estimated_memory_bytes_per_job: int | None = None
         self._gpu_calibration_samples_seen = 0
@@ -759,10 +761,6 @@ class AdaptiveInferenceConcurrency:
         now: float,
     ) -> InferenceConcurrencyDecision:
         active = max(0, int(active_jobs))
-        if int(self.plan.maximum_jobs) <= 1:
-            self._gpu_calibrated = True
-            return self._hold("configured/resource concurrency ceiling is one job")
-
         self.start_calibration(now=now)
 
         if not self._gpu_calibrated:
@@ -823,6 +821,14 @@ class AdaptiveInferenceConcurrency:
                         measured_one_job,
                         self._cuda_projection_for_jobs(1)[1],
                     )
+
+                # There is no promotion decision to stabilize when the ceiling
+                # is one.  The first execution-region sample is sufficient to
+                # classify future one-job admission, and finishing here avoids
+                # stranding queued work behind a long multi-job calibration
+                # window after a short first task completes.
+                if int(self.plan.maximum_jobs) == 1:
+                    return self._finish_cuda_calibration()
 
             started = self._gpu_calibration_started
             age = 0.0 if started is None else max(0.0, now - started)

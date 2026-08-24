@@ -12341,7 +12341,15 @@ def _run_staged_evaluation_tasks(
 
     inference_capacity = max(1, cpu_budget - reserved_side)
     maximum_jobs = max(1, min(int(plan.maximum_jobs), inference_capacity))
-    initial_jobs = max(1, min(int(plan.initial_jobs), maximum_jobs))
+    # Static MACE batch size and model-job concurrency are one operating point.
+    # Admit one owning inference task at a time; its canonical runtime authority
+    # may exercise this resource-bounded number of private model shells.
+    joint_authority_owns_model_jobs = str(phase) == "evaluation"
+    joint_model_jobs = maximum_jobs if joint_authority_owns_model_jobs else 1
+    initial_jobs = (
+        1 if joint_authority_owns_model_jobs
+        else max(1, min(int(plan.initial_jobs), maximum_jobs))
+    )
     # Native BLAS/OpenMP controls are process-wide for this threaded pipeline.
     # Conservatively assume every simultaneously active side-stage worker may
     # consume the same native width as an inference job.  For B=1 the
@@ -12353,7 +12361,7 @@ def _run_staged_evaluation_tasks(
     plan = replace(
         plan,
         initial_jobs=initial_jobs,
-        maximum_jobs=maximum_jobs,
+        maximum_jobs=1 if joint_authority_owns_model_jobs else maximum_jobs,
         cpu_threads_per_job=threads_per_job,
         estimated_cpu_utilization_per_job=(
             100.0 * threads_per_job / max(1, int(resources.cpu_threads_available))
@@ -12422,7 +12430,9 @@ def _run_staged_evaluation_tasks(
 
     estimated_worker_bytes = max(1, int(plan.estimated_ram_bytes_per_job))
     prepare_reservation = _working_reservation("prepare", estimated_worker_bytes)
-    inference_reservation = _working_reservation("inference", estimated_worker_bytes)
+    inference_reservation = _working_reservation(
+        "inference", estimated_worker_bytes * joint_model_jobs
+    )
     finalize_reservation = _working_reservation(
         "finalize", max(1, estimated_worker_bytes // 4)
     )
@@ -12512,10 +12522,10 @@ def _run_staged_evaluation_tasks(
                 prepared.execution_plan = replace(
                     active_execution_plan,
                     selected_concurrent_model_jobs=max(
-                        1, int(controller.target_jobs)
+                        1, int(joint_model_jobs)
                     ),
                     rationale=tuple(active_execution_plan.rationale)
-                    + ("joint_runtime_authority_scheduler_binding",),
+                    + ("canonical_joint_runtime_authority_owns_model_jobs",),
                 )
             with inference_start_signal(
                 status.mark_workload_started,

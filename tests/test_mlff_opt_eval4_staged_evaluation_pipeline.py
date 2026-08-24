@@ -206,6 +206,61 @@ def _pipeline_cfg() -> dict:
     }
 
 
+def test_staged_eval_has_one_outer_owner_and_binds_joint_model_job_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(campaign_cli._core, "detect_system_resources", lambda **kwargs: _resources())
+    monkeypatch.setattr(campaign_cli._core, "CpuTelemetryProbe", _Probe)
+    monkeypatch.setattr(campaign_cli._core, "query_gpu_telemetry", lambda device: None)
+    lock = threading.Lock()
+    active = 0
+    peak = 0
+    observed_jobs: list[int] = []
+
+    class Prepared:
+        def __init__(self):
+            self.execution_plan = mdstats.InferenceExecutionPlan(
+                batch_policy="auto", selected_batch_size=8,
+                maximum_batch_size=32,
+            )
+
+    def infer(prepared):
+        nonlocal active, peak
+        observed_jobs.append(prepared.execution_plan.selected_concurrent_model_jobs)
+        with lock:
+            active += 1
+            peak = max(peak, active)
+        time.sleep(0.02)
+        with lock:
+            active -= 1
+        return True
+
+    tasks = tuple(
+        campaign_cli._StagedEvaluationTask(
+            display_index=index + 1,
+            key=str(index),
+            label=f"eval-{index}",
+            start_detail="joint",
+            prepare=Prepared,
+            requires_inference=lambda prepared: True,
+            infer=infer,
+            finalize=lambda prepared, result: result,
+            done_detail=lambda result, wall: "done",
+        )
+        for index in range(2)
+    )
+    cfg = _pipeline_cfg()
+    cfg["execution"]["parallel_evaluation_jobs"] = 2
+
+    results = campaign_cli._run_staged_evaluation_tasks(
+        tasks, cfg=cfg, phase="evaluation", device="cpu", progress=_Progress()
+    )
+
+    assert results == {"0": True, "1": True}
+    assert peak == 1
+    assert observed_jobs == [2, 2]
+
+
 def test_staged_runner_overlaps_prepare_and_finalize_with_single_inference_slot(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
