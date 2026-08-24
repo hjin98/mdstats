@@ -141,7 +141,7 @@ class StageState(str, Enum):
     FAILED = "failed"
 
 
-PIPELINE = (
+HISTORICAL_PIPELINE = (
     ("doctor", "environment and input checks"),
     ("prepare", "source audit, partitioning, model sweep, and MACE data"),
     ("preflight", "bounded real-MACE and accelerator smoke test"),
@@ -149,6 +149,10 @@ PIPELINE = (
     ("evaluate", "adaptive full-model selection or historical protocol comparison"),
     ("verify", "bounded deployment and MD stability verification"),
 )
+
+# Backward-compatible internal alias.  TRAIN2 status/advance no longer use this
+# static sequence; historical campaigns and storage safety checks still do.
+PIPELINE = HISTORICAL_PIPELINE
 
 
 @dataclass(frozen=True)
@@ -8234,11 +8238,11 @@ def _target_size_materialization_variants(
 ) -> tuple[_VariantSpec, ...]:
     """Return the materialization matrix for the v5 study or selected production size.
 
-    Before selection only the currently authorized fidelity-stage candidates are
-    materialized, with the training protocol's complete ordered screening seed set
-    and no held-out CV jobs.  The same candidate DATA8 runs survive all 3/10/30
-    continuation boundaries.  After selection the normal configured seed/CV
-    matrix is materialized for the single frozen production size.
+    Before selection the complete qualified candidate population is materialized
+    once, with the training protocol's complete ordered screening seed set and no
+    held-out CV jobs.  That exact DATA8 matrix survives all 3/10/30 continuation
+    boundaries.  After selection the normal configured seed/CV matrix is
+    materialized for the single frozen production size.
     """
 
     import mdstats
@@ -8262,6 +8266,46 @@ def _target_size_materialization_variants(
         _VariantSpec(
             mode=method.mode, selection_size=int(size), seed=int(seed),
             cross_validation_folds=0, fold_partition_seed=method.fold_partition_seed,
+        )
+        for size in study.qualified_sizes
+        for seed in study.policy.screening_optimizer_seeds
+    )
+
+
+def _target_size_training_variants(
+    cfg: Mapping[str, Any], *, study: Any
+) -> tuple[_VariantSpec, ...]:
+    """Return only the variants authorized to execute at the current boundary.
+
+    The active DATA8 matrix intentionally remains the complete screening matrix;
+    this narrower view controls which already-materialized variants participate in
+    epoch-3/10/30 training.  After selection it equals the production matrix.
+    """
+
+    import mdstats
+
+    if study.outcome == mdstats.OUTCOME_SELECTED:
+        return _variant_specs(cfg, selection_sizes=(int(study.selected_target_size),))
+    if study.outcome not in {
+        mdstats.OUTCOME_AWAITING_EPOCH_3,
+        mdstats.OUTCOME_AWAITING_EPOCH_10,
+        mdstats.OUTCOME_AWAITING_EPOCH_30,
+    }:
+        return ()
+    methods = _training_method_specs(cfg)
+    if len(methods) != 1:
+        raise CampaignCliError(
+            "Target-size v5 screening requires exactly one enabled training mode; "
+            f"found {[item.mode for item in methods]}."
+        )
+    method = methods[0]
+    return tuple(
+        _VariantSpec(
+            mode=method.mode,
+            selection_size=int(size),
+            seed=int(seed),
+            cross_validation_folds=0,
+            fold_partition_seed=method.fold_partition_seed,
         )
         for size in study.next_training_sizes
         for seed in study.policy.screening_optimizer_seeds
@@ -8659,9 +8703,16 @@ def _try_reuse_completed_prepare(
             if observed != receipt.get("model_sweep"):
                 return False
         entries = _current_data8_entries(store)
-        expected_ids = {variant.variant_id for variant in _variant_specs(cfg)}
+        if _training_policy_generation(cfg) == "train2":
+            study = _load_verified_target_size_study_authority(store)
+            expected_variants = _target_size_materialization_variants(cfg, study=study)
+        else:
+            expected_variants = _variant_specs(cfg)
+        expected_ids = {variant.variant_id for variant in expected_variants}
         if {entry.variant_id for entry in entries} != expected_ids:
             return False
+        if _training_policy_generation(cfg) == "train2":
+            _validate_train2_data8_matrix(cfg, store, study)
         observed_data8 = []
         for entry in sorted(entries, key=lambda item: item.variant_id):
             materialization = entry.materialization
@@ -9529,12 +9580,15 @@ def _prepare_materialization(
     return True
 
 
-def command_prepare(args: argparse.Namespace) -> int:
+def _execute_prepare_current_authority(args: argparse.Namespace) -> int:
+    import mdstats
+
     cfg, paths = _load_config(args.config)
     _binary_model_precision_contract(cfg)
     store = CampaignStore(paths.state_db)
     _require_stage_complete(store, paths, "doctor")
     _stored_acceleration_realization(cfg, paths, require_qualified=True)
+    semantic_operation = str(getattr(args, "_semantic_operation", "prepare"))
 
     continue_after_approval = bool(getattr(args, "continue_after_approval", False))
     if args.approve_manifest and not continue_after_approval:
@@ -9562,7 +9616,14 @@ def command_prepare(args: argparse.Namespace) -> int:
     if plain_restart and _try_reuse_completed_prepare(cfg, paths, store):
         return 0
 
-    _mark_stage(store, paths, "prepare", StageState.RUNNING, "building production MACE data")
+    running_message = (
+        "materializing selected production/CV MACE data"
+        if semantic_operation == "materialize"
+        else "building target-size screening MACE data"
+        if _training_policy_generation(cfg) == "train2"
+        else "building production MACE data"
+    )
+    _mark_stage(store, paths, "prepare", StageState.RUNNING, running_message)
     precision_profile = _print_precision_profile(cfg)
     store.put_record("precision_profile", precision_profile)
     _atomic_json(paths.results / "precision-profile.json", precision_profile)
@@ -9613,11 +9674,146 @@ def command_prepare(args: argparse.Namespace) -> int:
             _mark_stage(store, paths, "prepare", StageState.WAITING, str(exc))
             print(str(exc), flush=True)
             return 2
+        if _training_policy_generation(cfg) == "train2":
+            try:
+                terminal_study = _load_train2_study_optional(store)
+            except Exception:
+                terminal_study = None
+            if terminal_study is not None and terminal_study.outcome in {
+                mdstats.OUTCOME_INSUFFICIENT_QUALIFIED_SIZES,
+                mdstats.OUTCOME_NONCONVERGED_AT_FIXED_CEILING,
+                mdstats.OUTCOME_INSUFFICIENT_COMPARABLE_CANDIDATES,
+            }:
+                _mark_stage(
+                    store,
+                    paths,
+                    "prepare",
+                    StageState.COMPLETE,
+                    f"target-size scientific terminal outcome: {terminal_study.outcome}",
+                )
+                print(
+                    f"\nTarget-size study is scientifically terminal: {terminal_study.outcome}; "
+                    f"{terminal_study.decision_reason}",
+                    flush=True,
+                )
+                return 0
         _mark_stage(store, paths, "prepare", StageState.FAILED, str(exc))
         raise
-    _mark_stage(store, paths, "prepare", StageState.COMPLETE, "production data gate passed")
-    print("\nPreparation passed. Next: `preflight`.", flush=True)
+    completion_message = (
+        "selected production/CV materialization gate passed"
+        if semantic_operation == "materialize"
+        else "target-size screening preparation gate passed"
+        if _training_policy_generation(cfg) == "train2"
+        else "production data gate passed"
+    )
+    _mark_stage(store, paths, "prepare", StageState.COMPLETE, completion_message)
+    if semantic_operation == "materialize":
+        print("\nSelected production/CV materialization passed. Next: `preflight`.", flush=True)
+    else:
+        print("\nPreparation passed. Next: `preflight`.", flush=True)
     return 0
+
+
+def _load_train2_study_optional(store: CampaignStore) -> Any | None:
+    if not store.has_record("target_size_study"):
+        return None
+    return _load_verified_target_size_study_authority(store)
+
+
+def command_prepare(args: argparse.Namespace) -> int:
+    """Prepare the initial target-size screening workload for TRAIN2 campaigns."""
+
+    import mdstats
+
+    cfg, paths = _load_config(args.config)
+    if _training_policy_generation(cfg) == "train2":
+        study = _load_train2_study_optional(CampaignStore(paths.state_db))
+        if study is not None and study.outcome == mdstats.OUTCOME_SELECTED:
+            raise CampaignCliError(
+                "Target size is already selected and frozen. `prepare` owns only the initial "
+                "screening workload; run `materialize` for the selected production/CV workload."
+            )
+        if study is not None and study.outcome in {
+            mdstats.OUTCOME_INSUFFICIENT_QUALIFIED_SIZES,
+            mdstats.OUTCOME_NONCONVERGED_AT_FIXED_CEILING,
+            mdstats.OUTCOME_INSUFFICIENT_COMPARABLE_CANDIDATES,
+        }:
+            print(
+                f"Target-size selection is scientifically terminal ({study.outcome}); "
+                "there is no production workload to prepare.",
+                flush=True,
+            )
+            return 0
+    setattr(args, "_semantic_operation", "prepare")
+    return _execute_prepare_current_authority(args)
+
+
+def command_materialize(args: argparse.Namespace) -> int:
+    """Realize the frozen selected-size production/CV workload for TRAIN2."""
+
+    import mdstats
+
+    cfg, paths = _load_config(args.config)
+    if _training_policy_generation(cfg) != "train2":
+        raise CampaignCliError(
+            "`materialize` is a TRAIN2 lifecycle command. Historical campaigns continue to use `prepare`."
+        )
+    store = CampaignStore(paths.state_db)
+    study = _load_verified_target_size_study_authority(store)
+    if study.outcome != mdstats.OUTCOME_SELECTED:
+        raise CampaignCliError(
+            "Selected production materialization requires a frozen target size. "
+            "Run `select-target-size` first."
+        )
+    before_matrix_digest = None
+    try:
+        before_entries, _ = _validate_train2_data8_matrix(cfg, store, study)
+        before_matrix_digest = _data8_matrix_digest(before_entries)
+    except CampaignCliError:
+        # Expected on the first post-selection call while screening DATA8 is still active.
+        pass
+
+    internal = argparse.Namespace(
+        config=args.config,
+        approve_manifest=False,
+        continue_after_approval=False,
+        refresh_inferences=False,
+        rebuild_catalog=False,
+        max_new_frames=None,
+        max_new_domains=getattr(args, "max_new_domains", None),
+        _semantic_operation="materialize",
+    )
+    result = _execute_prepare_current_authority(internal)
+    if result == 0:
+        after_entries, _ = _validate_train2_data8_matrix(cfg, store, study)
+        after_matrix_digest = _data8_matrix_digest(after_entries)
+        if before_matrix_digest != after_matrix_digest:
+            # These are execution receipts only.  Scientific authority remains in
+            # TargetSizeStudyPlan and the selected DATA8 matrix/preflight digest.
+            # Reopen them only when the active workload actually changed; an
+            # idempotent materialize rerun must not reopen completed production work.
+            _mark_stage(
+                store,
+                paths,
+                "preflight",
+                StageState.WAITING,
+                "selected production/CV DATA8 matrix changed; rerun preflight",
+            )
+            _mark_stage(
+                store,
+                paths,
+                "train",
+                StageState.WAITING,
+                f"selected production/CV workload n={study.selected_target_size} requires training",
+            )
+            _mark_stage(
+                store,
+                paths,
+                "evaluate",
+                StageState.WAITING,
+                f"selected production/CV workload n={study.selected_target_size} requires evaluation",
+            )
+    return result
 
 _DATA8_VARIANT_RE = re.compile(
     r"^(naive_fine_tuning|multihead_replay)-n(?P<size>[0-9]+)-seed(?P<seed>-?[0-9]+)$"
@@ -9683,7 +9879,20 @@ def _data8_matrix_digest(entries: Sequence[_Data8RuntimeEntry]) -> str:
 def _current_data8_entries(store: CampaignStore) -> list[_Data8RuntimeEntry]:
     import mdstats
 
-    keys = store.record_keys("data8:")
+    get_meta = getattr(store, "get_meta", None)
+    active_variant_ids = None if get_meta is None else get_meta("data8_variants")
+    if isinstance(active_variant_ids, (list, tuple)) and active_variant_ids:
+        keys = tuple(f"data8:{str(variant_id)}" for variant_id in active_variant_ids)
+        missing = tuple(key for key in keys if not store.has_record(key))
+        if missing:
+            raise CampaignCliError(
+                "The active DATA8 matrix references missing bundle records: "
+                + ", ".join(missing[:4])
+                + ". Rerun the current materialization operation."
+            )
+    else:
+        # Legacy campaign databases did not persist the active-matrix index.
+        keys = store.record_keys("data8:")
     if not keys:
         raise CampaignCliError("No DATA8 bundles are available. Run `prepare` first.")
     entries: list[_Data8RuntimeEntry] = []
@@ -9725,6 +9934,141 @@ def _current_data8_entries(store: CampaignStore) -> list[_Data8RuntimeEntry]:
             )
         )
     return entries
+
+
+def _data8_bundle_variant_shape(bundle: Any, *, label: str) -> tuple[str, int, int, int]:
+    """Return one DATA8 bundle's public variant identity plus realized CV-fold count."""
+
+    jobs = tuple(bundle.jobs)
+    if not jobs:
+        raise CampaignCliError(f"DATA8 bundle {label} contains no MACE jobs.")
+    first = jobs[0].protocol
+    identity = (
+        first.training_mode.value,
+        int(first.selection_size),
+        int(first.optimizer_policy.seed),
+    )
+    if any(
+        (
+            job.protocol.training_mode.value,
+            int(job.protocol.selection_size),
+            int(job.protocol.optimizer_policy.seed),
+        )
+        != identity
+        for job in jobs
+    ):
+        raise CampaignCliError(
+            f"DATA8 bundle {label} mixes multiple mode/size/seed identities."
+        )
+    folds = tuple(
+        sorted(
+            int(job.fold_index)
+            for job in jobs
+            if job.kind.value == "cross_validation_fold" and job.fold_index is not None
+        )
+    )
+    expected_fold_sequence = tuple(range(len(folds)))
+    if folds != expected_fold_sequence:
+        raise CampaignCliError(
+            f"DATA8 bundle {label} has noncanonical CV fold topology {folds}."
+        )
+    final_count = sum(job.kind.value == "final_development" for job in jobs)
+    if final_count != 1:
+        raise CampaignCliError(
+            f"DATA8 bundle {label} requires exactly one final-development job; "
+            f"found {final_count}."
+        )
+    return (*identity, len(folds))
+
+
+def _data8_entry_variant_shape(entry: _Data8RuntimeEntry) -> tuple[str, int, int, int]:
+    return _data8_bundle_variant_shape(entry.bundle, label=entry.variant_id)
+
+
+def _validate_train2_data8_matrix(
+    cfg: Mapping[str, Any],
+    store: CampaignStore,
+    study: Any,
+) -> tuple[list[_Data8RuntimeEntry], str]:
+    """Authenticate the active DATA8 matrix against the current target-size phase."""
+
+    import mdstats
+
+    variants = _target_size_materialization_variants(cfg, study=study)
+    if not variants:
+        raise CampaignCliError(
+            f"Target-size v5 has no materializable workload in state {study.outcome}."
+        )
+    entries = _current_data8_entries(store)
+    expected = {
+        (item.mode, int(item.selection_size), int(item.seed), int(item.cross_validation_folds))
+        for item in variants
+    }
+    observed = {_data8_entry_variant_shape(entry) for entry in entries}
+    if observed != expected:
+        missing = sorted(expected - observed)
+        extra = sorted(observed - expected)
+        raise CampaignCliError(
+            "The active DATA8 matrix does not match the current target-size lifecycle workload. "
+            f"missing={missing[:4]}; unexpected={extra[:4]}."
+        )
+
+    if study.outcome == mdstats.OUTCOME_SELECTED:
+        expected_role = "selected_production_prefix"
+        expected_study_digest = study.content_digest
+        phase = "selected production/CV"
+    else:
+        expected_role = "target_size_candidate"
+        expected_study_digest = study.candidate_authority_digest
+        phase = "target-size screening"
+    for entry in entries:
+        materialization = entry.materialization
+        if materialization is None:
+            raise CampaignCliError(
+                f"DATA8 bundle {entry.variant_id} lacks a promoted materialization record."
+            )
+        plan = materialization.checkpoint.plan
+        if plan.selection_authority_role != expected_role:
+            raise CampaignCliError(
+                f"DATA8 bundle {entry.variant_id} carries selection role "
+                f"{plan.selection_authority_role!r}; expected {expected_role!r} for {phase}."
+            )
+        if plan.target_size_study_digest != expected_study_digest:
+            raise CampaignCliError(
+                f"DATA8 bundle {entry.variant_id} is bound to a different target-size authority."
+            )
+    return entries, phase
+
+
+def _require_train2_preflight_authorization(
+    cfg: Mapping[str, Any],
+    paths: CampaignPaths,
+    store: CampaignStore,
+    study: Any,
+) -> tuple[list[_Data8RuntimeEntry], str]:
+    """Require a passed smoke bound to the exact active TRAIN2 DATA8 matrix."""
+
+    entries, phase = _validate_train2_data8_matrix(cfg, store, study)
+    if not store.has_record("preflight_smoke"):
+        raise CampaignCliError(
+            f"The {phase} DATA8 workload has no one-epoch MACE preflight receipt. Run `preflight`."
+        )
+    smoke = store.get_payload("preflight_smoke")
+    if not smoke.get("passed", False):
+        raise CampaignCliError(
+            f"The {phase} one-epoch MACE preflight has not passed. Run `preflight`."
+        )
+    observed_digest = _data8_matrix_digest(entries)
+    if smoke.get("data8_matrix_digest") != observed_digest:
+        raise CampaignCliError(
+            f"The active {phase} DATA8 matrix changed after preflight. Run `preflight` again."
+        )
+    state, message = _effective_stage(store, paths, "preflight")
+    if state is not StageState.COMPLETE:
+        raise CampaignCliError(
+            f"The {phase} preflight receipt is not current ({message}). Run `preflight`."
+        )
+    return entries, phase
 
 
 def _current_data8_bundles(store: CampaignStore) -> list[Any]:
@@ -10678,14 +11022,33 @@ def command_preflight(args: argparse.Namespace) -> int:
         f"Q={list(target_size_study.qualified_sizes)}; outcome={target_size_study.outcome}; "
         f"{target_size_study.content_digest[:12]}..."
     )
+    train2 = _training_policy_generation(cfg) == "train2"
+    train2_phase: str | None = None
+    if train2:
+        try:
+            entries, train2_phase = _validate_train2_data8_matrix(
+                cfg, store, target_size_study
+            )
+        except CampaignCliError as exc:
+            if target_size_study.outcome == mdstats.OUTCOME_SELECTED:
+                raise CampaignCliError(
+                    "The selected production/CV DATA8 workload is not current. "
+                    "Run `materialize` before production preflight."
+                ) from exc
+            raise CampaignCliError(
+                "The target-size screening DATA8 workload is not current. Run `prepare`."
+            ) from exc
+    else:
+        entries = _current_data8_entries(store)
     _mark_stage(store, paths, "preflight", StageState.RUNNING, "running bounded training preflight")
     failures: list[str] = []
-    _print_header("Production preflight")
+    _print_header(
+        f"Preflight - {train2_phase}" if train2_phase is not None else "Production preflight"
+    )
     _print_precision_profile(cfg)
     doctor_result = command_doctor(argparse.Namespace(config=args.config, embedded=True))
     if doctor_result != 0:
         failures.append("doctor failed")
-    entries = _current_data8_entries(store)
     bundles = [entry.bundle for entry in entries]
     data8_matrix_digest = _data8_matrix_digest(entries)
     job_count = sum(len(v.jobs) for v in bundles)
@@ -10787,7 +11150,10 @@ def command_preflight(args: argparse.Namespace) -> int:
         return 2
     _update_benchmark(paths, "preflight", {"job_count": job_count, "smoke": smoke_payload})
     _mark_stage(store, paths, "preflight", StageState.COMPLETE, "environment, DATA8, and real-MACE smoke passed")
-    print("\nPreflight passed. Next: `train --dry-run`, then `train`.")
+    if train2 and target_size_study.outcome != mdstats.OUTCOME_SELECTED:
+        print("\nScreening preflight passed. Next: `select-target-size`.")
+    else:
+        print("\nPreflight passed. Next: `train --dry-run`, then `train`.")
     return 0
 
 def _build_campaign(cfg: Mapping[str, Any], store: CampaignStore, data8_bundles: Sequence[Any]) -> Any:
@@ -10806,12 +11172,31 @@ def _build_campaign(cfg: Mapping[str, Any], store: CampaignStore, data8_bundles:
     study = None
     if _training_policy_generation(cfg) == "train2":
         study = _load_verified_target_size_study_authority(store)
-        variants = _target_size_materialization_variants(cfg, study=study)
+        variants = _target_size_training_variants(cfg, study=study)
         if not variants:
             raise CampaignCliError(
                 f"Target-size v5 has no trainable/materializable state: {study.outcome}; {study.decision_reason}"
             )
         candidate_phase = study.outcome != mdstats.OUTCOME_SELECTED
+        expected_shapes = {
+            (item.mode, int(item.selection_size), int(item.seed), int(item.cross_validation_folds))
+            for item in variants
+        }
+        filtered_bundles = tuple(
+            bundle
+            for index, bundle in enumerate(data8_bundles)
+            if _data8_bundle_variant_shape(bundle, label=f"bundle-{index}") in expected_shapes
+        )
+        observed_shapes = {
+            _data8_bundle_variant_shape(bundle, label=f"bundle-{index}")
+            for index, bundle in enumerate(filtered_bundles)
+        }
+        if observed_shapes != expected_shapes:
+            raise CampaignCliError(
+                "The active DATA8 matrix does not contain the exact TRAIN2 population authorized "
+                f"for the current fidelity boundary: missing={sorted(expected_shapes - observed_shapes)[:4]}."
+            )
+        data8_bundles = filtered_bundles
     else:
         variants = _variant_specs(cfg)
         candidate_phase = False
@@ -12752,7 +13137,7 @@ def _is_target_size_scientific_execution_failure(
     )
 
 
-def command_train(args: argparse.Namespace) -> int:
+def _execute_train_current_authority(args: argparse.Namespace) -> int:
     import mdstats
 
     cfg, paths = _load_config(args.config)
@@ -13791,11 +14176,142 @@ def command_train(args: argparse.Namespace) -> int:
             store, paths, "train", StageState.WAITING,
             f"{train2_stage_label} execution complete ({complete_count}/{required_run_count}); awaiting evaluation evidence",
         )
-        print(f"\n{train2_stage_label} execution complete. Next: `evaluate`.")
+        if not bool(getattr(args, "_target_size_orchestrated", False)):
+            print(f"\n{train2_stage_label} execution complete. Next: `select-target-size`.")
         return 0
     _mark_stage(store, paths, "train", StageState.COMPLETE, f"all {required_run_count} required runs complete")
     print("\nTraining complete. Next: `evaluate`.")
     return 0
+
+
+def command_train(args: argparse.Namespace) -> int:
+    """Train only the selected production/CV workload for TRAIN2 campaigns."""
+
+    import mdstats
+
+    cfg, paths = _load_config(args.config)
+    if _training_policy_generation(cfg) == "train2":
+        store = CampaignStore(paths.state_db)
+        study = _load_verified_target_size_study_authority(store)
+        if study.outcome != mdstats.OUTCOME_SELECTED:
+            raise CampaignCliError(
+                "TRAIN2 public `train` is reserved for the frozen production/CV workload. "
+                "The target-size 3/10/30 experiment is owned by `select-target-size`."
+            )
+        try:
+            _require_train2_preflight_authorization(cfg, paths, store, study)
+        except CampaignCliError as exc:
+            raise CampaignCliError(
+                "Production training requires the selected-size production/CV DATA8 matrix and "
+                "a preflight receipt bound to that exact matrix. Run `materialize`, then `preflight`."
+            ) from exc
+    return _execute_train_current_authority(args)
+
+
+def command_select_target_size(args: argparse.Namespace) -> int:
+    """Run/resume the complete TRAIN2 3/10/30 controlled-fidelity study."""
+
+    import mdstats
+
+    cfg, paths = _load_config(args.config)
+    if _training_policy_generation(cfg) != "train2":
+        raise CampaignCliError(
+            "`select-target-size` is available only for TRAIN2 campaigns. Historical campaigns "
+            "retain their existing train/evaluate lifecycle."
+        )
+    store = CampaignStore(paths.state_db)
+    study = _load_verified_target_size_study_authority(store)
+    terminal_outcomes = {
+        mdstats.OUTCOME_INSUFFICIENT_QUALIFIED_SIZES,
+        mdstats.OUTCOME_NONCONVERGED_AT_FIXED_CEILING,
+        mdstats.OUTCOME_INSUFFICIENT_COMPARABLE_CANDIDATES,
+    }
+    if study.outcome == mdstats.OUTCOME_SELECTED:
+        print(
+            f"Target data size is already selected and frozen: n={study.selected_target_size}. "
+            "Next: `materialize`.",
+            flush=True,
+        )
+        return 0
+    if study.outcome in terminal_outcomes:
+        print(
+            f"Target-size study is scientifically terminal: {study.outcome}; "
+            f"{study.decision_reason}",
+            flush=True,
+        )
+        return 0
+
+    active_outcomes = {
+        mdstats.OUTCOME_AWAITING_EPOCH_3,
+        mdstats.OUTCOME_AWAITING_EPOCH_10,
+        mdstats.OUTCOME_AWAITING_EPOCH_30,
+    }
+    if study.outcome not in active_outcomes:
+        raise CampaignCliError(
+            f"Target-size study has no executable state: {study.outcome}; {study.decision_reason}"
+        )
+
+    _require_train2_preflight_authorization(cfg, paths, store, study)
+    _print_header("Target-size selection - controlled 3 -> 10 -> 30 epoch fidelity")
+    print(
+        "Epoch is controlled during this operation: only the exact 3/10/30 boundary "
+        "checkpoints may contribute to target-size ranking.",
+        flush=True,
+    )
+
+    while study.outcome in active_outcomes:
+        _require_train2_preflight_authorization(cfg, paths, store, study)
+        boundary = int(study.next_training_epoch)
+        sizes = tuple(int(value) for value in study.next_training_sizes)
+        print(
+            f"\nTARGET-SIZE-V5 boundary epoch {boundary}: "
+            f"sizes={list(sizes)}; seeds={list(study.policy.screening_optimizer_seeds)}",
+            flush=True,
+        )
+        train_args = argparse.Namespace(
+            config=args.config,
+            dry_run=False,
+            run_id=None,
+            training_mode=None,
+            seed=None,
+            selection_size=None,
+            max_runs=None,
+            _target_size_orchestrated=True,
+        )
+        result = _execute_train_current_authority(train_args)
+        if result != 0:
+            return result
+
+        evaluate_args = argparse.Namespace(
+            config=args.config,
+            training_mode=None,
+            seed=None,
+            selection_size=None,
+            require_complete=True,
+            _target_size_orchestrated=True,
+        )
+        result = _execute_evaluate_current_authority(evaluate_args)
+        if result != 0:
+            return result
+        study = _load_verified_target_size_study_authority(store)
+
+    if study.outcome == mdstats.OUTCOME_SELECTED:
+        print(
+            f"\nTarget-size selection complete: n={study.selected_target_size} is frozen. "
+            "Next: `materialize`.",
+            flush=True,
+        )
+        return 0
+    if study.outcome in terminal_outcomes:
+        print(
+            f"\nTarget-size study stopped with scientific outcome {study.outcome}. "
+            "No production target size is available.",
+            flush=True,
+        )
+        return 0
+    raise CampaignCliError(
+        f"Target-size study left the controlled-fidelity loop in unsupported state {study.outcome}."
+    )
 
 def _artifact_lookup(bundle: Any) -> tuple[dict[str, Any], Any | None]:
     target = {v.content_digest: v for v in bundle.target_artifacts}
@@ -17757,7 +18273,8 @@ def _command_evaluate_train2(
             )
             _mark_stage(store, paths, "evaluate", StageState.COMPLETE, "target-size epoch-3 screen complete")
             _mark_stage(store, paths, "train", StageState.WAITING, "continue target-size survivors to epoch 10")
-            print("\nTarget-size epoch-3 screen complete. Next: `train` to continue survivors to epoch 10.")
+            if not bool(getattr(args, "_target_size_orchestrated", False)):
+                print("\nTarget-size epoch-3 screen complete. Continue with `select-target-size`.")
             return 0
         if updated.outcome == mdstats.OUTCOME_AWAITING_EPOCH_30:
             _ok(
@@ -17766,16 +18283,21 @@ def _command_evaluate_train2(
             )
             _mark_stage(store, paths, "evaluate", StageState.COMPLETE, "target-size epoch-10 screen complete")
             _mark_stage(store, paths, "train", StageState.WAITING, "continue target-size finalists to epoch 30")
-            print("\nTarget-size epoch-10 screen complete. Next: `train` to continue finalists to epoch 30.")
+            if not bool(getattr(args, "_target_size_orchestrated", False)):
+                print("\nTarget-size epoch-10 screen complete. Continue with `select-target-size`.")
             return 0
-        if updated.outcome == mdstats.OUTCOME_INSUFFICIENT_COMPARABLE_CANDIDATES:
+        if updated.outcome in {
+            mdstats.OUTCOME_INSUFFICIENT_QUALIFIED_SIZES,
+            mdstats.OUTCOME_NONCONVERGED_AT_FIXED_CEILING,
+            mdstats.OUTCOME_INSUFFICIENT_COMPARABLE_CANDIDATES,
+        }:
             _mark_stage(
                 store, paths, "evaluate", StageState.COMPLETE,
                 f"target-size-v5 terminal scientific outcome: {updated.outcome}",
             )
             print(
-                "\nTarget-size v5 terminated scientifically with insufficient comparable paired candidates. "
-                "Failure evidence is frozen in target_size_study.",
+                f"\nTarget-size v5 reached terminal scientific outcome {updated.outcome}. "
+                "Evidence is frozen in target_size_study; no production size will be materialized.",
                 flush=True,
             )
             return 0
@@ -17784,24 +18306,21 @@ def _command_evaluate_train2(
                 f"target-size selection frozen at n={updated.selected_target_size}; "
                 "held-out CV/EVAL/VERIFY may now be materialized"
             )
-            # Candidate DATA8 is not the production corpus.  Force the normal
-            # prepare/preflight/train/evaluate sequence to rebuild around the
-            # exact selected REPAIR2 prefix before any held-out work starts.
-            for stage_name in ("prepare", "preflight", "train", "evaluate"):
-                _mark_stage(
-                    store, paths, stage_name, StageState.WAITING,
-                    f"target-size v5 selected n={updated.selected_target_size}; selected production prefix rebuild required",
-                )
+            _mark_stage(
+                store,
+                paths,
+                "evaluate",
+                StageState.COMPLETE,
+                f"target-size v5 selected n={updated.selected_target_size} at exact epoch-30 boundary",
+            )
             print(
                 f"\nTarget data size selected and frozen: n={updated.selected_target_size}. "
-                "Next: rerun `prepare`, then `preflight`, to materialize the selected "
-                "REPAIR2 prefix and held-out CV matrix."
+                "Next: `materialize`."
             )
             return 0
-        _mark_stage(store, paths, "evaluate", StageState.FAILED, updated.decision_reason)
         raise CampaignCliError(
-            f"Target-size v5 terminated without a selected production size: {updated.outcome}; "
-            f"{updated.decision_reason}"
+            f"Target-size v5 entered an unsupported state after endpoint reduction: "
+            f"{updated.outcome}; {updated.decision_reason}"
         )
 
     if study.outcome != mdstats.OUTCOME_SELECTED:
@@ -17852,7 +18371,7 @@ def _command_evaluate_train2(
 
 
 @mace_runtime_warning_handled("campaign checkpoint evaluation")
-def command_evaluate(args: argparse.Namespace) -> int:
+def _execute_evaluate_current_authority(args: argparse.Namespace) -> int:
     import mdstats
 
     cfg, paths = _load_config(args.config)
@@ -19142,6 +19661,30 @@ def command_evaluate(args: argparse.Namespace) -> int:
     )
     print("Next: `verify`.", flush=True)
     return 0
+
+
+def command_evaluate(args: argparse.Namespace) -> int:
+    """Evaluate only selected production/CV trajectories for TRAIN2 campaigns."""
+
+    import mdstats
+
+    cfg, paths = _load_config(args.config)
+    if _training_policy_generation(cfg) == "train2":
+        store = CampaignStore(paths.state_db)
+        study = _load_verified_target_size_study_authority(store)
+        if study.outcome != mdstats.OUTCOME_SELECTED:
+            raise CampaignCliError(
+                "TRAIN2 public `evaluate` is reserved for production checkpoint selection. "
+                "Target-size endpoint comparison is owned by `select-target-size`."
+            )
+        try:
+            _require_train2_preflight_authorization(cfg, paths, store, study)
+        except CampaignCliError as exc:
+            raise CampaignCliError(
+                "Production evaluation requires the selected-size production/CV DATA8 matrix and "
+                "its matching preflight receipt. Run `materialize`, then `preflight`."
+            ) from exc
+    return _execute_evaluate_current_authority(args)
 
 
 _VERIFICATION_WORKER_LOCAL = threading.local()
@@ -23898,18 +24441,280 @@ def command_cleanup(args: argparse.Namespace) -> int:
     return 0
 
 
+@dataclass(frozen=True)
+class _PublicLifecycleStep:
+    semantic_id: str
+    command: str
+    label: str
+    description: str
+    state: StageState
+    message: str
+    terminal: bool = False
+
+
+def _train2_public_lifecycle(
+    cfg: Mapping[str, Any], paths: CampaignPaths, store: CampaignStore
+) -> tuple[_PublicLifecycleStep, ...]:
+    """Project existing TRAIN2 authorities into the stable public CLI lifecycle."""
+
+    import mdstats
+
+    steps: list[_PublicLifecycleStep] = []
+    doctor_state, doctor_message = _effective_stage(store, paths, "doctor")
+    steps.append(_PublicLifecycleStep(
+        "doctor", "doctor", "doctor", "environment and input checks",
+        doctor_state, doctor_message,
+    ))
+
+    study = _load_train2_study_optional(store)
+    terminal_outcomes = {
+        mdstats.OUTCOME_INSUFFICIENT_QUALIFIED_SIZES,
+        mdstats.OUTCOME_NONCONVERGED_AT_FIXED_CEILING,
+        mdstats.OUTCOME_INSUFFICIENT_COMPARABLE_CANDIDATES,
+    }
+    active_outcomes = {
+        mdstats.OUTCOME_AWAITING_EPOCH_3,
+        mdstats.OUTCOME_AWAITING_EPOCH_10,
+        mdstats.OUTCOME_AWAITING_EPOCH_30,
+    }
+
+    if study is None:
+        prepare_state, prepare_message = _effective_stage(store, paths, "prepare")
+        if prepare_state is StageState.COMPLETE:
+            prepare_state = StageState.WAITING
+            prepare_message = "TARGET-SIZE-V5 authority is absent; rerun prepare"
+        steps.extend((
+            _PublicLifecycleStep(
+                "initial_prepare", "prepare", "prepare", "target-size screening preparation",
+                prepare_state, prepare_message,
+            ),
+            _PublicLifecycleStep(
+                "screening_preflight", "preflight", "preflight [screening]",
+                "one-epoch smoke for the screening matrix", StageState.NOT_STARTED,
+                "screening DATA8 matrix has not been established",
+            ),
+            _PublicLifecycleStep(
+                "target_size_selection", "select-target-size", "select-target-size",
+                "controlled exact 3/10/30 target-size selection", StageState.NOT_STARTED,
+                "target-size authority has not been established",
+            ),
+        ))
+    elif study.outcome == mdstats.OUTCOME_SELECTED:
+        steps.extend((
+            _PublicLifecycleStep(
+                "initial_prepare", "prepare", "prepare", "target-size screening preparation",
+                StageState.COMPLETE, "screening workload completed before target-size freeze",
+            ),
+            _PublicLifecycleStep(
+                "screening_preflight", "preflight", "preflight [screening]",
+                "one-epoch smoke for the screening matrix", StageState.COMPLETE,
+                "screening workload was authorized before target-size selection",
+            ),
+            _PublicLifecycleStep(
+                "target_size_selection", "select-target-size", "select-target-size",
+                "controlled exact 3/10/30 target-size selection", StageState.COMPLETE,
+                f"selected target size frozen at n={study.selected_target_size}",
+            ),
+        ))
+    elif study.outcome in terminal_outcomes:
+        has_screening_preflight = False
+        try:
+            smoke = store.get_payload("preflight_smoke") if store.has_record("preflight_smoke") else None
+            has_screening_preflight = bool(isinstance(smoke, Mapping) and smoke.get("passed", False))
+        except Exception:
+            has_screening_preflight = False
+        steps.extend((
+            _PublicLifecycleStep(
+                "initial_prepare", "prepare", "prepare", "target-size screening preparation",
+                StageState.COMPLETE, "screening preparation reached target-size authority",
+            ),
+            _PublicLifecycleStep(
+                "screening_preflight", "preflight", "preflight [screening]",
+                "one-epoch smoke for the screening matrix",
+                StageState.COMPLETE if has_screening_preflight else StageState.NOT_STARTED,
+                (
+                    "screening execution was authorized before the terminal scientific decision"
+                    if has_screening_preflight
+                    else "no screening preflight was required before this scientific terminal outcome"
+                ),
+            ),
+            _PublicLifecycleStep(
+                "target_size_selection", "select-target-size", "select-target-size",
+                "controlled exact 3/10/30 target-size selection", StageState.COMPLETE,
+                f"scientific terminal outcome: {study.outcome}; {study.decision_reason}",
+                terminal=True,
+            ),
+        ))
+    elif study.outcome in active_outcomes:
+        try:
+            _validate_train2_data8_matrix(cfg, store, study)
+        except Exception as exc:
+            prepare_state = StageState.WAITING
+            prepare_message = f"screening DATA8 matrix is not current ({exc}); rerun prepare"
+            preflight_state = StageState.NOT_STARTED
+            preflight_message = "screening matrix must be repaired before preflight"
+        else:
+            prepare_state = StageState.COMPLETE
+            prepare_message = "complete qualified target-size screening matrix is current"
+            try:
+                _require_train2_preflight_authorization(cfg, paths, store, study)
+            except Exception as exc:
+                preflight_state = StageState.WAITING
+                preflight_message = f"screening preflight is not current ({exc})"
+            else:
+                preflight_state = StageState.COMPLETE
+                preflight_message = "one preflight authorizes the unchanged 3/10/30 screening matrix"
+        raw_train_state, _ = store.stage("train")
+        raw_eval_state, _ = store.stage("evaluate")
+        selection_state = (
+            StageState.RUNNING
+            if StageState.RUNNING in {raw_train_state, raw_eval_state}
+            else StageState.WAITING
+        )
+        selection_message = (
+            f"current boundary=epoch {study.next_training_epoch}; "
+            f"sizes={list(study.next_training_sizes)}"
+        )
+        steps.extend((
+            _PublicLifecycleStep(
+                "initial_prepare", "prepare", "prepare", "target-size screening preparation",
+                prepare_state, prepare_message,
+            ),
+            _PublicLifecycleStep(
+                "screening_preflight", "preflight", "preflight [screening]",
+                "one-epoch smoke for the screening matrix", preflight_state, preflight_message,
+            ),
+            _PublicLifecycleStep(
+                "target_size_selection", "select-target-size", "select-target-size",
+                "controlled exact 3/10/30 target-size selection", selection_state,
+                selection_message,
+            ),
+        ))
+    else:
+        raise CampaignCliError(
+            f"Unsupported TARGET-SIZE-V5 lifecycle state: {study.outcome}; {study.decision_reason}"
+        )
+
+    selected = study is not None and study.outcome == mdstats.OUTCOME_SELECTED
+    terminal = study is not None and study.outcome in terminal_outcomes
+    if selected:
+        try:
+            _validate_train2_data8_matrix(cfg, store, study)
+        except Exception as exc:
+            materialize_state = StageState.WAITING
+            materialize_message = f"selected production/CV matrix is not current ({exc})"
+            production_preflight_state = StageState.NOT_STARTED
+            production_preflight_message = "selected production/CV matrix must be materialized first"
+        else:
+            materialize_state = StageState.COMPLETE
+            materialize_message = (
+                f"selected n={study.selected_target_size} final-development/CV matrix is current"
+            )
+            try:
+                _require_train2_preflight_authorization(cfg, paths, store, study)
+            except Exception as exc:
+                production_preflight_state = StageState.WAITING
+                production_preflight_message = f"production preflight is not current ({exc})"
+            else:
+                production_preflight_state = StageState.COMPLETE
+                production_preflight_message = "preflight is bound to the selected production/CV matrix"
+    else:
+        materialize_state = StageState.NOT_STARTED
+        materialize_message = (
+            "no production target size exists" if terminal else "target size is not frozen yet"
+        )
+        production_preflight_state = StageState.NOT_STARTED
+        production_preflight_message = materialize_message
+
+    steps.extend((
+        _PublicLifecycleStep(
+            "production_materialization", "materialize", "materialize",
+            "selected-size final-development/CV realization", materialize_state,
+            materialize_message,
+        ),
+        _PublicLifecycleStep(
+            "production_preflight", "preflight", "preflight [production]",
+            "one-epoch smoke for selected production/CV", production_preflight_state,
+            production_preflight_message,
+        ),
+    ))
+
+    if production_preflight_state is StageState.COMPLETE:
+        train_state, train_message = _effective_stage(store, paths, "train")
+    else:
+        train_state, train_message = StageState.NOT_STARTED, "production preflight is not complete"
+    steps.append(_PublicLifecycleStep(
+        "production_train", "train", "train", "selected production/CV training",
+        train_state, train_message,
+    ))
+
+    if train_state is StageState.COMPLETE:
+        evaluate_state, evaluate_message = _effective_stage(store, paths, "evaluate")
+    else:
+        evaluate_state, evaluate_message = StageState.NOT_STARTED, "production training is not complete"
+    steps.append(_PublicLifecycleStep(
+        "production_evaluate", "evaluate", "evaluate",
+        "production checkpoint selection; earlier admissible epoch may win",
+        evaluate_state, evaluate_message,
+    ))
+
+    if evaluate_state is StageState.COMPLETE:
+        verify_state, verify_message = _effective_stage(store, paths, "verify")
+    else:
+        verify_state, verify_message = StageState.NOT_STARTED, "production evaluation is not complete"
+    steps.append(_PublicLifecycleStep(
+        "verify", "verify", "verify", "physical/deployment/locked verification",
+        verify_state, verify_message,
+    ))
+    return tuple(steps)
+
+
+def _next_public_operation(
+    cfg: Mapping[str, Any], paths: CampaignPaths, store: CampaignStore
+) -> str | None:
+    if _training_policy_generation(cfg) != "train2":
+        for name, _ in HISTORICAL_PIPELINE:
+            state, _ = _effective_stage(store, paths, name)
+            if state is not StageState.COMPLETE:
+                return name
+        return None
+    lifecycle = _train2_public_lifecycle(cfg, paths, store)
+    if any(step.terminal for step in lifecycle):
+        return None
+    for step in lifecycle:
+        if step.state is not StageState.COMPLETE:
+            return step.command
+    return None
+
+
 def command_status(args: argparse.Namespace) -> int:
     cfg, paths = _load_config(args.config)
     store = CampaignStore(paths.state_db)
     _print_header(f"Campaign status: {_cfg(cfg, 'campaign', 'id', 'mlff-campaign')}")
-    next_command = None
-    for name, description in PIPELINE:
-        state, message = _effective_stage(store, paths, name)
-        symbol = {StageState.COMPLETE: "PASS", StageState.FAILED: "FAIL", StageState.WAITING: "WAIT", StageState.RUNNING: "RUN ", StageState.NOT_STARTED: "----"}[state]
-        print(f"[{symbol}] {name:<10} {description}")
-        print(f"       {message}")
-        if next_command is None and state is not StageState.COMPLETE:
-            next_command = name
+    if _training_policy_generation(cfg) == "train2":
+        lifecycle = _train2_public_lifecycle(cfg, paths, store)
+        for step in lifecycle:
+            symbol = (
+                "STOP" if step.terminal else {
+                    StageState.COMPLETE: "PASS",
+                    StageState.FAILED: "FAIL",
+                    StageState.WAITING: "WAIT",
+                    StageState.RUNNING: "RUN ",
+                    StageState.NOT_STARTED: "----",
+                }[step.state]
+            )
+            print(f"[{symbol}] {step.label:<24} {step.description}")
+            print(f"       {step.message}")
+        next_command = _next_public_operation(cfg, paths, store)
+    else:
+        next_command = None
+        for name, description in HISTORICAL_PIPELINE:
+            state, message = _effective_stage(store, paths, name)
+            symbol = {StageState.COMPLETE: "PASS", StageState.FAILED: "FAIL", StageState.WAITING: "WAIT", StageState.RUNNING: "RUN ", StageState.NOT_STARTED: "----"}[state]
+            print(f"[{symbol}] {name:<10} {description}")
+            print(f"       {message}")
+            if next_command is None and state is not StageState.COMPLETE:
+                next_command = name
     print(f"\nWorkspace: {paths.workspace}")
     print(f"State DB:  {paths.state_db}")
     print(f"Results:   {paths.results}")
@@ -23968,8 +24773,16 @@ def command_status(args: argparse.Namespace) -> int:
             f"Historical evaluator evidence: {len(historical)} preserved record(s); read-only for adaptive selection.",
             flush=True,
         )
+    terminal_step = None
+    if _training_policy_generation(cfg) == "train2":
+        terminal_step = next(
+            (step for step in _train2_public_lifecycle(cfg, paths, store) if step.terminal),
+            None,
+        )
     if next_command:
         print(f"\nNext command: python tools/mdstats-mlff-campaign.py --config {paths.config} {next_command}")
+    elif terminal_step is not None:
+        print("\nTarget-size study stopped scientifically; no production next command exists.")
     else:
         print("\nAll bounded campaign stages are complete.")
     return 0
@@ -23978,24 +24791,35 @@ def command_status(args: argparse.Namespace) -> int:
 def command_advance(args: argparse.Namespace) -> int:
     cfg, paths = _load_config(args.config)
     store = CampaignStore(paths.state_db)
-    for name, _ in PIPELINE:
-        state, _ = _effective_stage(store, paths, name)
-        if state is StageState.COMPLETE:
-            continue
-        if name == "doctor":
-            return command_doctor(args)
-        if name == "prepare":
-            return command_prepare(argparse.Namespace(config=args.config, approve_manifest=False, continue_after_approval=False, refresh_inferences=False, rebuild_catalog=False, max_new_frames=None, max_new_domains=None))
-        if name == "preflight":
-            return command_preflight(argparse.Namespace(config=args.config, check_only=False, run_smoke=False))
-        if name == "train":
-            return command_train(argparse.Namespace(config=args.config, run_id=None, max_runs=None, dry_run=False))
-        if name == "evaluate":
-            return command_evaluate(argparse.Namespace(config=args.config, training_mode=None, seed=None, selection_size=None, require_complete=False))
-        if name == "verify":
-            return command_verify(argparse.Namespace(config=args.config, structure=None, steps=None, require_frozen=False))
-    print("Campaign is already complete.")
-    return 0
+    name = _next_public_operation(cfg, paths, store)
+    if name is None:
+        if _training_policy_generation(cfg) == "train2":
+            study = _load_train2_study_optional(store)
+            if study is not None and study.outcome != "selected":
+                print(
+                    f"Campaign has no next production command: target-size outcome={study.outcome}.",
+                    flush=True,
+                )
+                return 0
+        print("Campaign is already complete.")
+        return 0
+    if name == "doctor":
+        return command_doctor(args)
+    if name == "prepare":
+        return command_prepare(argparse.Namespace(config=args.config, approve_manifest=False, continue_after_approval=False, refresh_inferences=False, rebuild_catalog=False, max_new_frames=None, max_new_domains=None))
+    if name == "materialize":
+        return command_materialize(argparse.Namespace(config=args.config, max_new_domains=None))
+    if name == "preflight":
+        return command_preflight(argparse.Namespace(config=args.config, check_only=False, run_smoke=False))
+    if name == "select-target-size":
+        return command_select_target_size(argparse.Namespace(config=args.config))
+    if name == "train":
+        return command_train(argparse.Namespace(config=args.config, run_id=None, training_mode=None, seed=None, selection_size=None, max_runs=None, dry_run=False))
+    if name == "evaluate":
+        return command_evaluate(argparse.Namespace(config=args.config, training_mode=None, seed=None, selection_size=None, require_complete=False))
+    if name == "verify":
+        return command_verify(argparse.Namespace(config=args.config, structure=None, steps=None, require_frozen=False))
+    raise CampaignCliError(f"Unsupported derived next operation: {name}")
 
 
 def command_extend_seed(args: argparse.Namespace) -> int:
@@ -24929,16 +25753,29 @@ maximum_force_ev_per_angstrom = 100.0
 
 
 GUIDE_TEXT = """\
-MLFF campaign in seven commands
-===============================
+MLFF campaign commands
+======================
 
-1. init       Create one annotated campaign.toml.
-2. doctor     Verify paths, MACE wrappers, checkpoint-bound replay, CUDA, and the frozen e3nn/CuEq backend.
-3. prepare    Infer XML metadata, build leakage-safe MACE data, and freeze role-correct MLCV target/replay light/full monitors plus training diagnostics.
-4. preflight  Verify every job and run the required real one-epoch smoke.
-5. train      Execute configured fold/final, seed, size, and naive/replay jobs with safe resume; run-local lightweight target/replay and selection-inert training diagnostics are evaluated each epoch.
-6. evaluate   Rank one champion per run and fully evaluate adaptive finalists in score order; historical campaigns retain their original evaluator.
-7. verify     For TRAIN2, prove DEPLOY-VERIFY1 numerical parity, then materialize/consume the common finite-displacement DFT request and run PES-VERIFY1 before later relaxation/dynamics gates. Historical MLCV/adaptive campaigns retain their original verification paths.
+TRAIN2 has one stable public lifecycle:
+
+1. init                Create one annotated campaign.toml.
+2. doctor              Verify paths, MACE wrappers, checkpoint-bound replay, CUDA, and the frozen e3nn/CuEq backend.
+3. prepare             Build the initial leakage-safe target-size screening DATA7/DATA8 matrix.
+4. preflight           Verify that exact screening matrix and run the required real one-epoch smoke.
+5. select-target-size  Run/resume the complete controlled 3 -> 10 -> 30 epoch target-size experiment and freeze N*.
+6. materialize         Realize the selected N* final-development and held-out CV production matrix.
+7. preflight           Re-run the same operational smoke contract for the changed production matrix.
+8. train               Train/resume only the frozen selected-size production/CV workload.
+9. evaluate            Evaluate production trajectories and select admissible checkpoints; an earlier epoch may beat epoch 30.
+10. verify             Run the existing physical/deployment/locked verification sequence.
+
+During `select-target-size`, epoch is a controlled variable: only exact epoch-3,
+epoch-10, and epoch-30 checkpoints may affect target-size ranking. Production
+`evaluate` answers a different question: target size is already frozen and the
+best admissible checkpoint epoch may be selected from the trajectory.
+
+Historical adaptive/MLCV campaigns retain their original prepare -> preflight ->
+train -> evaluate -> verify lifecycle.
 
 Use `status` at any time. It reports the next command and never advances a failed gate.
 Use the unified `storage` command for all STOR1-STOR5 storage operations.
@@ -24997,11 +25834,14 @@ TRAIN2A/TRAIN2B/EVAL2/DEPLOY-VERIFY1/PES-VERIFY1/RELAX-VERIFY1/DYN-VERIFY2/SELEC
 `policy_generation = "train2"` and `checkpoint_strategy = "train2_target_first"` and freezes separate
 TrainingBudgetPolicy, LearningRateSchedulePolicy, CheckpointAdmissibilityPolicy, and
 CheckpointSelectionPolicy identities. Replay is an authenticated TRUE_DFT hard-retention constraint;
-once admissible, extra replay margin has zero checkpoint/seed ranking or tie-break authority. `train` now
-uses the TRAIN2B fixed-budget runtime: LR advances once per optimizer update on the frozen 30-epoch
-horizon, validation cannot mutate LR or terminate a valid run, Stage-B pauses exactly at 10-of-30, and
-Stage-C resumes from the authenticated live/EMA/optimizer/RNG continuation state without renormalizing
-the schedule. New-policy `evaluate` uses EVAL2 target-first static selection; `verify` executes DEPLOY-VERIFY1, then PES-VERIFY1 with a common fixed-geometry DFT probe request, then RELAX-VERIFY1 with matched fixed-cell DFT zero-K relaxations, and finally DYN-VERIFY2 with common deployed finite-temperature NVT->NVE structural rollouts; SELECT2 freezes the first physically qualified seed in the pre-ranked target-only order; LOCKED-TEST2 then evaluates that exact frozen candidate once on sealed locked E and either publishes the exact frozen MACE/ML-IAP bytes or fails the campaign without fallback. Historical configs without `policy_generation` retain their
+once admissible, extra replay margin has zero checkpoint/seed ranking or tie-break authority.
+`select-target-size` owns TRAIN2B exact continuation at 3/10/30 and EVAL2 endpoint
+reduction; it never substitutes a better earlier checkpoint. After N* is frozen,
+public `train` uses the same TRAIN2B fixed-budget runtime for the selected production/CV
+matrix and public `evaluate` uses EVAL2 production checkpoint selection, where an
+earlier admissible epoch may legitimately win. LR advances once per optimizer update
+on the frozen 30-epoch horizon and continuation preserves authenticated live/EMA/
+optimizer/RNG state without renormalizing the schedule. `verify` executes DEPLOY-VERIFY1, then PES-VERIFY1 with a common fixed-geometry DFT probe request, then RELAX-VERIFY1 with matched fixed-cell DFT zero-K relaxations, and finally DYN-VERIFY2 with common deployed finite-temperature NVT->NVE structural rollouts; SELECT2 freezes the first physically qualified seed in the pre-ranked target-only order; LOCKED-TEST2 then evaluates that exact frozen candidate once on sealed locked E and either publishes the exact frozen MACE/ML-IAP bytes or fails the campaign without fallback. Historical configs without `policy_generation` retain their
 original authority.
 
 The interrupted-campaign bounded-evidence workflow described below applies to historical adaptive/MLCV
@@ -25160,7 +26000,10 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("doctor", help="check inputs, MACE, replay, wrappers, CUDA, and the frozen acceleration backend")
     p.set_defaults(func=command_doctor)
 
-    p = sub.add_parser("prepare", help="build leakage-safe target/replay MACE artifacts; safely resumable")
+    p = sub.add_parser(
+        "prepare",
+        help="build initial target-size screening artifacts for TRAIN2; safely resumable",
+    )
     p.add_argument("--approve-manifest", action="store_true", help="approve the reviewed manifest and return; then run plain prepare")
     p.add_argument(
         "--continue-after-approval",
@@ -25177,7 +26020,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--max-new-domains", type=int, help="bound new DATA7 domains for this invocation")
     p.set_defaults(func=command_prepare)
 
-    p = sub.add_parser("preflight", help="verify generated jobs and run the required one-epoch real-MACE smoke")
+    p = sub.add_parser(
+        "preflight",
+        help="verify the exact current DATA8 workload and run the required one-epoch real-MACE smoke",
+    )
     group = p.add_mutually_exclusive_group()
     group.add_argument(
         "--check-only", action="store_true",
@@ -25188,7 +26034,27 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.set_defaults(func=command_preflight, check_only=False)
 
-    p = sub.add_parser("train", help="run or resume the frozen fold/final campaign")
+    p = sub.add_parser(
+        "select-target-size",
+        help="run/resume the complete TRAIN2 exact 3/10/30 target-size selection funnel",
+    )
+    p.set_defaults(func=command_select_target_size)
+
+    p = sub.add_parser(
+        "materialize",
+        help="realize the frozen selected-size production and CV DATA7/DATA8 workload",
+    )
+    p.add_argument(
+        "--max-new-domains",
+        type=int,
+        help="bound new DATA7 domains for this selected-production materialization invocation",
+    )
+    p.set_defaults(func=command_materialize)
+
+    p = sub.add_parser(
+        "train",
+        help="run/resume selected production/CV training; TRAIN2 screening is owned by select-target-size",
+    )
     p.add_argument("--dry-run", action="store_true", help="print exact commands without launching them")
     p.add_argument("--run-id", help="execute one exact run")
     p.add_argument("--training-mode", choices=("naive_fine_tuning", "multihead_replay"), help="restrict training to one method")
@@ -25219,7 +26085,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser(
         "evaluate",
-        help="evaluate completed checkpoints; freeze the full protocol only when the configured campaign is complete",
+        help="evaluate selected production trajectories and choose admissible checkpoints; earlier epochs may win",
     )
     p.add_argument(
         "--training-mode",

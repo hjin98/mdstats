@@ -83,19 +83,21 @@ def test_prepare_receipt_hard_cuts_retired_derived_authorities() -> None:
     )
 
 
-def test_target_size_funnel_finishes_before_held_out_cv() -> None:
-    eval_source = inspect.getsource(campaign_cli._command_evaluate_train2)
-    role_source = inspect.getsource(campaign_cli._eval2_target_role_for_run)
-    assert "attach_epoch_3_outcomes" in eval_source
-    assert "attach_epoch_10_outcomes" in eval_source
-    assert "attach_epoch_30_outcomes" in eval_source
-    assert "target-size selection frozen" in eval_source
-    assert "Target data size selected and frozen: n={updated.selected_target_size}" in eval_source
-    assert 'for stage_name in ("prepare", "preflight", "train", "evaluate")' in eval_source
-    assert "Held-out CV EVAL2 is blocked until selected_target_size is frozen" in role_source
-    for retired_mutator in ("with_stage_b0_evidence", "with_stage_b_evidence", "with_stage_c_evidence"):
-        assert retired_mutator not in eval_source
-        assert retired_mutator not in role_source
+def test_public_train_and_evaluate_do_not_own_active_target_size_screening(monkeypatch) -> None:
+    study = SimpleNamespace(
+        outcome=mdstats.OUTCOME_AWAITING_EPOCH_10,
+        decision_reason="epoch-3 screen complete",
+    )
+    cfg = {"training": {"policy_generation": "train2"}}
+    paths = SimpleNamespace(state_db=Path("state.sqlite3"))
+    monkeypatch.setattr(campaign_core, "_load_config", lambda _path: (cfg, paths))
+    monkeypatch.setattr(campaign_core, "CampaignStore", lambda _path: object())
+    monkeypatch.setattr(campaign_core, "_load_verified_target_size_study_authority", lambda _store: study)
+
+    with pytest.raises(campaign_core.CampaignCliError, match="owned by `select-target-size`"):
+        campaign_core.command_train(SimpleNamespace(config="campaign.toml"))
+    with pytest.raises(campaign_core.CampaignCliError, match="owned by `select-target-size`"):
+        campaign_core.command_evaluate(SimpleNamespace(config="campaign.toml"))
 
 
 def test_held_out_cv_runtime_is_rejected_before_target_size_freeze(monkeypatch) -> None:
@@ -116,22 +118,36 @@ def test_held_out_cv_runtime_is_rejected_before_target_size_freeze(monkeypatch) 
         )
 
 
-def test_screening_materialization_uses_exact_stage_sizes_and_ordered_seed_set(monkeypatch) -> None:
+def test_screening_materialization_is_stable_while_training_population_halves(monkeypatch) -> None:
     method = SimpleNamespace(mode="multihead", fold_partition_seed=17)
     monkeypatch.setattr(campaign_core, "_training_method_specs", lambda _cfg: (method,))
     study = SimpleNamespace(
         outcome=mdstats.OUTCOME_AWAITING_EPOCH_10,
+        qualified_sizes=(512, 1024, 2048, 4096),
         next_training_sizes=(512, 2048),
         policy=SimpleNamespace(screening_optimizer_seeds=(7, 11)),
     )
-    variants = campaign_core._target_size_materialization_variants({}, study=study)
-    assert [(item.selection_size, item.seed) for item in variants] == [
+    materialized = campaign_core._target_size_materialization_variants({}, study=study)
+    assert [(item.selection_size, item.seed) for item in materialized] == [
+        (512, 7),
+        (512, 11),
+        (1024, 7),
+        (1024, 11),
+        (2048, 7),
+        (2048, 11),
+        (4096, 7),
+        (4096, 11),
+    ]
+    assert all(item.cross_validation_folds == 0 for item in materialized)
+
+    training = campaign_core._target_size_training_variants({}, study=study)
+    assert [(item.selection_size, item.seed) for item in training] == [
         (512, 7),
         (512, 11),
         (2048, 7),
         (2048, 11),
     ]
-    assert all(item.cross_validation_folds == 0 for item in variants)
+    assert all(item.cross_validation_folds == 0 for item in training)
 
 
 def test_post_selection_verification_cannot_advance_target_size() -> None:

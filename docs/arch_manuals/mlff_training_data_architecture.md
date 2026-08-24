@@ -747,9 +747,11 @@ A target bundle contains one compatible target `LabelDomain` and, when replay is
 
 The target-size experiment is a special protocol-comparison control described in Part V. It uses authenticated 3 -> 10 -> 30 epoch continuation with a frozen common seed set and disables ordinary target-success early stopping so candidate sizes reach comparable fidelity boundaries. Hard numerical/scientific failure remains a valid rejection.
 
-Ordinary production/CV stopping policy resumes after `N_selected` is frozen. Its target-oriented stopping and LR-refinement semantics are part of `TrainingProtocolIdentity`; changing them after protocol comparison invalidates the comparison.
+Epoch has deliberately different semantics in the two phases. During target-size selection, epoch is a **controlled variable**: the epoch-3 comparison consumes only exact epoch-3 checkpoints, the epoch-10 comparison only exact epoch-10 checkpoints, and the final comparison only exact epoch-30 checkpoints. An earlier checkpoint is inadmissible even when it scores better, because substituting it would confound target-data size with achieved training fidelity. The public `select-target-size` operation owns this complete restartable 3 -> 10 -> 30 experiment.
 
-This separation prevents an early-stopping rule from turning nominal size into a confounded comparison of both size and achieved fidelity.
+After `N_selected` is frozen, ordinary production/CV training resumes under the frozen protocol. Production checkpoint epoch is then a **selectable model variable**: production `evaluate` may choose an earlier admissible checkpoint when it is better under the frozen checkpoint-selection policy, even though the training horizon remains 30 epochs. Its target-oriented stopping and LR-refinement semantics are part of `TrainingProtocolIdentity`; changing them after protocol comparison invalidates the comparison.
+
+The stable TRAIN2 command boundary is therefore `prepare -> preflight -> select-target-size -> materialize -> preflight -> train -> evaluate -> verify`. `prepare` owns only the initial screening workload; `materialize` owns only the selected-size final-development/CV realization; both `preflight` occurrences have the same operational meaning and are bound to the exact current DATA8 matrix. The screening preflight remains valid throughout the unchanged 3/10/30 candidate matrix, while selected-production materialization changes that matrix and therefore requires a new preflight.
 
 ## Protocol-matched cross-validation
 
@@ -1564,7 +1566,19 @@ foundation -> epoch 3 -> epoch 10 -> epoch 30
 
 Epoch 10 authenticates the exact epoch-3 model/optimizer/RNG parent; epoch 30 authenticates epoch 10. Candidates use the same foundation, replay semantics, objective, optimizer/LR schedule, exposure policy, precision/backend, and ordered seed set. That seed set comes from the `seeds` field of the sole enabled training method; current generated campaigns default the owning field to `[1, 2]`. The target-size policy serializes the ordered set and does not invent a second seed convention.
 
+At every target-size boundary the endpoint itself is authoritative: `S(N,3)`, `S(N,10)`, and `S(N,30)` are evaluated at matched fidelity. A better earlier checkpoint cannot replace the prescribed endpoint. This is distinct from post-selection production checkpoint selection, where `N_selected` is fixed and the checkpoint epoch may be optimized over the admissible trajectory.
+
 Ordinary target-success early stopping is disabled during the size experiment because candidates must reach comparable fidelity boundaries. Every expected candidate/seed produces exactly one stage outcome: strict successful endpoint evidence or explicit authenticated candidate-specific numerical/scientific failure evidence. Generic execution/resource/input/schema/lineage failures remain campaign errors. Normal production/CV stopping resumes after target size is frozen.
+
+### Public orchestration boundary
+
+The TRAIN2 CLI is a projection of existing scientific/execution authorities, not an additional persistent lifecycle authority. Its stable lifecycle is:
+
+```text
+prepare -> preflight -> select-target-size -> materialize -> preflight -> train -> evaluate -> verify
+```
+
+`select-target-size` is the sole public owner of the restartable 3/10/30 controlled-fidelity loop. It reuses one screening DATA8 matrix and one matrix-bound preflight across all halving boundaries. Once `selected_target_size` is frozen, `materialize` realizes exactly that size across the final-development and configured CV topology; because this changes the active DATA8 matrix, the earlier screening preflight cannot authorize production training. Public `train` and `evaluate` are then restricted to the selected production/CV workload. `status` and `advance` derive these semantic steps from `TargetSizeStudyPlan`, active DATA8 identities, the preflight matrix digest, and existing execution/evaluation receipts; they do not write a second scientific state machine.
 
 ### Successive-fidelity funnel
 
