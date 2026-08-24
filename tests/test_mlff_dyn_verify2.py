@@ -369,3 +369,44 @@ def test_file_backed_process_timeout_terminates_the_complete_process_group(
             timeout_seconds=0.01,
         )
     assert signals == [(4321, signal.SIGTERM)]
+
+
+def test_file_backed_process_external_cancellation_terminates_process_group(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import signal
+    import subprocess
+    import mdstats.training_data.dyn_verify as dv
+
+    class Process:
+        pid = 4322
+
+        def __init__(self):
+            self.terminated = False
+
+        def wait(self, timeout=None):
+            if self.terminated:
+                return -signal.SIGTERM
+            raise subprocess.TimeoutExpired(["fake"], timeout)
+
+    process = Process()
+    signals = []
+    checks = iter((False, True))
+    monkeypatch.setattr(dv.subprocess, "Popen", lambda *args, **kwargs: process)
+
+    def killpg(pid, sig):
+        signals.append((pid, sig))
+        process.terminated = True
+
+    monkeypatch.setattr(dv.os, "killpg", killpg)
+    with pytest.raises(dv.TrainingDataInputError, match="cancelled by the staged scheduler"):
+        dv._run_file_backed_process(
+            ("fake",),
+            cwd=tmp_path,
+            environment={},
+            stdout_path=tmp_path / "stdout.log",
+            stderr_path=tmp_path / "stderr.log",
+            timeout_seconds=10.0,
+            cancellation_requested=lambda: next(checks, True),
+        )
+    assert signals == [(4322, signal.SIGTERM)]

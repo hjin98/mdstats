@@ -146,6 +146,41 @@ def test_inference_execution_plan_roundtrip_is_separate_from_scientific_policy()
     assert "batch_policy" not in policy.to_dict()
 
 
+def test_historical_inference_execution_plan_v1_is_validated_then_rebuilt_as_v2() -> None:
+    legacy = {
+        "schema": "mdstats.inference-execution-plan.v1",
+        "batch_policy": "auto",
+        "selected_batch_size": 8,
+        "maximum_batch_size": 32,
+        "concurrent_model_jobs": 3,
+        "use_cuda_streams": True,
+        "host_ram_budget_bytes": 8 * 1024**3,
+        "graph_cache_enabled": False,
+        "monitor_cache_enabled": False,
+        "compatible_profile_digest": "a" * 64,
+        "rationale": ["historical-fixture"],
+    }
+    legacy["execution_digest"] = digest(legacy)
+
+    rebuilt = mdstats.InferenceExecutionPlan.from_dict(legacy)
+
+    assert rebuilt.to_dict()["schema"] == "mdstats.inference-execution-plan.v2"
+    assert rebuilt.selected_batch_size == 8
+    assert rebuilt.maximum_batch_size == 32
+    assert rebuilt.graph_cache_enabled is False
+    assert rebuilt.monitor_cache_enabled is False
+    assert rebuilt.rationale == (
+        "historical-fixture",
+        "rebuilt_from_inference_execution_plan_v1",
+    )
+    assert mdstats.InferenceExecutionPlan.from_dict(rebuilt.to_dict()) == rebuilt
+
+    corrupted = dict(legacy)
+    corrupted["selected_batch_size"] = 16
+    with pytest.raises(mdstats.TrainingDataSerializationError, match="legacy v1 digest mismatch"):
+        mdstats.InferenceExecutionPlan.from_dict(corrupted)
+
+
 def test_runtime_variants_leave_scientific_policy_and_metrics_unchanged() -> None:
     import numpy as np
     from ase import Atoms
@@ -209,9 +244,13 @@ def test_evaluation_execution_resolution_preserves_legacy_fixed_and_distinguishe
         {"evaluation": {"batch_size": 12}}
     )
     automatic = campaign_core._evaluation_inference_execution_plan(
-        {"evaluation": {
-            "inference_batch_policy": "auto", "maximum_inference_batch_size": 24,
-        }}
+        {
+            "performance": {"cpu_fraction": 0.75, "ram_fraction": 0.65},
+            "execution": {"inference_gpu_memory_fraction": 0.70},
+            "evaluation": {
+                "inference_batch_policy": "auto", "maximum_inference_batch_size": 24,
+            },
+        }
     )
     fixed = campaign_core._evaluation_inference_execution_plan(
         {"evaluation": {
@@ -225,6 +264,11 @@ def test_evaluation_execution_resolution_preserves_legacy_fixed_and_distinguishe
     assert (automatic.batch_policy, automatic.selected_batch_size, automatic.maximum_batch_size) == (
         "auto", 8, 24
     )
+    assert (
+        automatic.cpu_fraction,
+        automatic.ram_fraction,
+        automatic.gpu_memory_fraction,
+    ) == (0.75, 0.65, 0.70)
     assert (fixed.batch_policy, fixed.selected_batch_size, fixed.maximum_batch_size) == (
         "fixed", 6, 24
     )

@@ -1,8 +1,8 @@
 # MLFF-END-TO-END-PERF1 Reopen Implementation Workplan
 
-Status: **ACTIVE — SECOND CLOSEOUT REOPEN / NEXT IMPLEMENTATION ROUND**  
+Status: **FUNCTIONAL IMPLEMENTATION ACCEPTED — TARGET-WORKSTATION GPU QUALIFICATION DEFERRED**
 Branch: `feat/mlff-end-to-end-performance-v1`  
-Current reviewed implementation tip: `8ddd481cafe75b0d40930e852d03447d0be3eb55`  
+Second-round reviewed base tip: `8ddd481cafe75b0d40930e852d03447d0be3eb55`
 Reopens: `MLFF_END_TO_END_PARALLELIZATION_OPTIMIZATION_WORKPLAN.md` closeout status and the superseded first-reopen acceptance record  
 Date reopened: 2026-08-24
 
@@ -414,4 +414,50 @@ This active workplan can be returned to **FUNCTIONAL IMPLEMENTATION ACCEPTED —
 - unavailable functional checks are explicitly recorded;
 - full production GPU qualification remains deferred as a separate final handoff.
 
-Until all of those conditions are met, **MLFF-END-TO-END-PERF1 remains ACTIVE / OPEN FOR IMPLEMENTATION**.
+## 14. Second-reopen implementation acceptance record (2026-08-24)
+
+R2A, R2B, R3B, R5B, R6B, and R8B are functionally accepted on branch
+`feat/mlff-end-to-end-performance-v1`.
+
+- R2A introduced terminal zero-admission semantics for measured/live one-job
+  infeasibility, actionable no-capacity scheduler failure, and a canonical
+  `mdstats.inference-execution-plan.v2` writer with one exact owning v1
+  validation/rebuild path. Complete scheduler/CLI persistence regression passed
+  `82 passed, 1 skipped`.
+- R2B introduced one executor-integrated static runtime authority for bounded
+  geometric batch/job evidence, actual throughput and peak-resource evidence,
+  near-best low-resource selection, OOM safe-ceiling feedback, conservative
+  hardware/runtime/model/workload compatibility, persistent profile reuse, and
+  live RAM/VRAM re-clamping. Auto mode exercises batches above eight when
+  evidence supports them. The staged/CLI/static affected gate passed
+  `117 passed, 1 skipped`.
+- R3B rejects a pipeline sub-budget above the live global RAM envelope and
+  reserves prepare/inference/finalize-or-reduction working memory before launch,
+  including optional shared runtime residency. Reservations release on success,
+  failure, cancellation, and queued-work cleanup while permitted EVAL/DYN overlap
+  remains intact. Focused EVAL/DYN resource regression passed `24 passed`.
+- R5B routes command-level DEPLOY, PES, and LOCKED-TEST2 static prediction through
+  live one-job RAM/VRAM admission before model construction and through the same
+  static runtime authority. Functional DEPLOY/PES boundary regression passed;
+  two separately observed PES specification assertions remain historical stale
+  checks for an old package version and the pre-facade CLI source layout.
+- R6B propagates one staged-scheduler cancellation token into owned external
+  LAMMPS process groups. Sibling failure and `KeyboardInterrupt` both exercise
+  TERM-to-KILL-capable process-group shutdown; cancelled cases cannot reach
+  reduction or receipt publication, while previously accepted receipts remain
+  reusable. Complete DYN/staged regression passed `36 passed`.
+- R8B re-derived the assembled surface and found legacy execution-plan fields
+  only in the owning v1 migration and fixtures, one active static operating-point
+  authority, no direct DEPLOY/PES/LOCKED admission bypass, and one cancellable DYN
+  external-process wait path. Fresh affected regression passed
+  `195 passed, 2 skipped`; a separate bounded production-interface suite covering
+  preparation/materialization, EVAL, command DEPLOY/PES, RELAX/DYN and restart,
+  SELECT2/publication, and LOCKED-TEST2 passed `113 passed`. The final core
+  second-round suite passed `136 passed, 1 skipped`. Module compilation and
+  `git diff --check` passed.
+
+The unavailable functional checks are the repository fixture requiring a real
+LTA training root and the optional real-MACE-model test. No supported target GPU
+qualification was run. Production-scale GPU/VRAM, concurrency, cold/warm profile,
+disk/I/O, and end-to-end timing qualification remains the separate handoff in
+section 11; no target-hardware performance claim is made here.

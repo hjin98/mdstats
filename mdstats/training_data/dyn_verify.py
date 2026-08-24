@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable, Iterator, Mapping, Sequence
+from typing import Any, Callable, Iterable, Iterator, Mapping, Sequence
 import hashlib
 import json
 import math
@@ -19,6 +19,7 @@ import signal
 import shutil
 import subprocess
 import tempfile
+import time
 
 import numpy as np
 
@@ -768,6 +769,7 @@ def _file_tail(path: Path, maximum_bytes: int = 5000) -> str:
 def _run_file_backed_process(
     command: Sequence[str], *, cwd: Path, environment: Mapping[str, str],
     stdout_path: Path, stderr_path: Path, timeout_seconds: float,
+    cancellation_requested: Callable[[], bool] | None = None,
 ) -> subprocess.CompletedProcess[Any]:
     """Run one external case in a cancellable process group with bounded RAM."""
     with stdout_path.open("w", encoding="utf-8") as stdout_handle, stderr_path.open("w", encoding="utf-8") as stderr_handle:
@@ -775,8 +777,24 @@ def _run_file_backed_process(
             list(command), cwd=cwd, env=dict(environment), stdout=stdout_handle,
             stderr=stderr_handle, text=True, start_new_session=True,
         )
+        started = time.monotonic()
         try:
-            returncode = process.wait(timeout=float(timeout_seconds))
+            while True:
+                if cancellation_requested is not None and cancellation_requested():
+                    raise TrainingDataInputError(
+                        "DYN-VERIFY2 external simulation cancelled by the staged scheduler."
+                    )
+                remaining = float(timeout_seconds) - (time.monotonic() - started)
+                if remaining <= 0.0:
+                    raise subprocess.TimeoutExpired(list(command), float(timeout_seconds))
+                poll_seconds = min(0.20, remaining)
+                try:
+                    returncode = process.wait(timeout=poll_seconds)
+                    break
+                except subprocess.TimeoutExpired:
+                    if poll_seconds >= remaining:
+                        raise
+                    continue
         except BaseException:
             try:
                 os.killpg(process.pid, signal.SIGTERM)
@@ -807,6 +825,7 @@ def simulate_lammps_mliap_dynamics_case(
     timeout_seconds: float = 3600.0,
     expected_executable_sha256: str | None = None,
     environment: Mapping[str, str] | None = None,
+    cancellation_requested: Callable[[], bool] | None = None,
 ) -> DynCaseSimulationArtifacts:
     """Run only the external NVT→NVE ML-IAP/LAMMPS simulation phase."""
     try:
@@ -861,6 +880,7 @@ def simulate_lammps_mliap_dynamics_case(
     completed = _run_file_backed_process(
         command, cwd=root, environment=merged_env, stdout_path=stdout_path,
         stderr_path=stderr_path, timeout_seconds=float(timeout_seconds),
+        cancellation_requested=cancellation_requested,
     )
     if completed.returncode != 0:
         tail = _file_tail(stderr_path) or _file_tail(stdout_path)

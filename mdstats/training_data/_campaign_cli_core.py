@@ -71,6 +71,7 @@ from .mace_compatibility import (
     mace_runtime_warning_scope,
 )
 from .resources import (
+    available_memory_bytes,
     build_stage_resource_scope,
     configure_worker_thread_environment,
     detect_system_resources,
@@ -89,6 +90,7 @@ from .inference_parallel import (
     InferenceConcurrencyPolicy,
     build_inference_concurrency_plan,
     inference_start_signal,
+    inference_cancellation_requested,
     mark_inference_workload_started,
     report_inference_worker_phase,
 )
@@ -11968,12 +11970,20 @@ def _run_adaptive_inference_tasks(
                 status,
             )
 
+    def fail_if_zero_admission() -> None:
+        if pending and not active and controller.admission_blocked_reason is not None:
+            raise CampaignCliError(
+                f"{phase.capitalize()} resource admission blocked with "
+                f"{len(pending)} queued task(s): {controller.admission_blocked_reason}."
+            )
+
     with ThreadPoolExecutor(
         max_workers=max(1, plan.maximum_jobs),
         thread_name_prefix=f"mdstats-{phase}",
     ) as pool:
         while active or pending:
             launch(pool)
+            fail_if_zero_admission()
             report_stage_events()
             if not active:
                 break
@@ -12004,7 +12014,8 @@ def _run_adaptive_inference_tasks(
             # when a completion callback performs run selection or starts a model
             # export: another already-completed sibling must not remain counted as
             # active while that callback runs, otherwise its slot can sit idle.
-            launch(pool)
+            if not str(device).startswith("cuda") or controller.gpu_calibrated:
+                launch(pool)
 
             for task, result, wall in completed_successfully:
                 try:
@@ -12072,6 +12083,7 @@ def _run_adaptive_inference_tasks(
                 workload_active_jobs=workload_active_jobs,
                 gpu_sample=gpu_runtime_sample,
                 cpu_sample=cpu_runtime_sample,
+                live_ram_available_bytes=available_memory_bytes(),
                 now=now,
             )
             if decision.changed and uses_cuda:
@@ -12119,6 +12131,7 @@ def _run_adaptive_inference_tasks(
             # slots in the same scheduler iteration rather than waiting through
             # another monitor interval.
             launch(pool)
+            fail_if_zero_admission()
             report_stage_events()
 
     report_stage_events()
@@ -12231,10 +12244,10 @@ class _PipelineByteLedger:
     def reserve(self, owner: str, amount: int) -> None:
         value = max(0, int(amount))
         if owner in self.reservations:
-            raise CampaignCliError(f"Duplicate EVAL byte reservation owner: {owner}.")
+            raise CampaignCliError(f"Duplicate pipeline byte reservation owner: {owner}.")
         if not self.can_reserve(value):
             raise CampaignCliError(
-                "Evaluation pipeline RAM cannot admit one required payload: "
+                "Pipeline RAM cannot admit one required payload/worker: "
                 f"owner={owner}; payload={value} bytes; retained={self.total_bytes} bytes; "
                 f"budget={self.budget_bytes} bytes."
             )
@@ -12380,8 +12393,50 @@ def _run_staged_evaluation_tasks(
             else max(1, int(resources.ram_budget_bytes) // 2)
         )
     )
-    prepare_reservation = max(1, int(plan.estimated_ram_bytes_per_job))
+    if (
+        pipeline_ram_budget is not None
+        and resources.ram_budget_bytes is not None
+        and pipeline_ram_budget > int(resources.ram_budget_bytes)
+    ):
+        raise CampaignCliError(
+            f"[execution].{phase}_pipeline_buffer_mib authorizes "
+            f"{pipeline_ram_budget} bytes, exceeding the active global RAM budget "
+            f"of {int(resources.ram_budget_bytes)} bytes."
+        )
+
+    def _working_reservation(stage: str, default_bytes: int) -> int:
+        configured_mib = float(
+            _cfg(cfg, "execution", f"{phase}_{stage}_working_memory_mib", 0.0)
+        )
+        if configured_mib < 0.0:
+            raise CampaignCliError(
+                f"[execution].{phase}_{stage}_working_memory_mib must be zero "
+                "(estimated) or positive."
+            )
+        return max(
+            1,
+            int(configured_mib * 1024**2)
+            if configured_mib > 0.0
+            else int(default_bytes),
+        )
+
+    estimated_worker_bytes = max(1, int(plan.estimated_ram_bytes_per_job))
+    prepare_reservation = _working_reservation("prepare", estimated_worker_bytes)
+    inference_reservation = _working_reservation("inference", estimated_worker_bytes)
+    finalize_reservation = _working_reservation(
+        "finalize", max(1, estimated_worker_bytes // 4)
+    )
+    shared_residency_mib = float(
+        _cfg(cfg, "execution", f"{phase}_shared_runtime_residency_mib", 0.0)
+    )
+    if shared_residency_mib < 0.0:
+        raise CampaignCliError(
+            f"[execution].{phase}_shared_runtime_residency_mib must be nonnegative."
+        )
+    shared_residency = int(shared_residency_mib * 1024**2)
     ledger = _PipelineByteLedger(pipeline_ram_budget)
+    if shared_residency:
+        ledger.reserve("shared:runtime-residency", shared_residency)
     if not ledger.can_reserve(prepare_reservation):
         raise CampaignCliError(
             "Evaluation pipeline RAM cannot admit one CPU preparation reservation: "
@@ -12414,6 +12469,7 @@ def _run_staged_evaluation_tasks(
     results: dict[str, Any] = {}
     failures: list[str] = []
     stop_scheduling = False
+    cancel_event = threading.Event()
     stage_events: deque[tuple[str, str]] = deque()
     stage_events_lock = threading.Lock()
     last_report = 0.0
@@ -12451,9 +12507,20 @@ def _run_staged_evaluation_tasks(
 
         started = time.monotonic()
         try:
+            active_execution_plan = getattr(prepared, "execution_plan", None)
+            if active_execution_plan is not None:
+                prepared.execution_plan = replace(
+                    active_execution_plan,
+                    selected_concurrent_model_jobs=max(
+                        1, int(controller.target_jobs)
+                    ),
+                    rationale=tuple(active_execution_plan.rationale)
+                    + ("joint_runtime_authority_scheduler_binding",),
+                )
             with inference_start_signal(
                 status.mark_workload_started,
                 phase_callback=update_phase,
+                cancellation_requested=cancel_event.is_set,
             ):
                 update_phase("accelerator model conversion / inference")
                 if not str(device).startswith("cuda"):
@@ -12530,14 +12597,17 @@ def _run_staged_evaluation_tasks(
             and (cpu_budget >= 3 or not active_prepare)
             and (cpu_budget > 1 or not active_inference)
         ):
+            if not ledger.can_reserve(finalize_reservation):
+                break
             task, prepared, inference_result, timing = waiting_finalize.popleft()
+            ledger.reserve(f"finalize:{task.key}", finalize_reservation)
             future = pool.submit(
                 execute_finalize, task, prepared, inference_result, timing
             )
             active_finalize[future] = (
                 task,
                 timing,
-                _evaluation_payload_bytes(prepared) + _evaluation_payload_bytes(inference_result),
+                finalize_reservation,
             )
 
     def launch_inference(pool: ThreadPoolExecutor) -> None:
@@ -12548,10 +12618,10 @@ def _run_staged_evaluation_tasks(
                 break
             if len(waiting_finalize) + len(active_finalize) >= finalize_backlog_limit:
                 break
-            if not ledger.can_reserve(prepare_reservation):
+            if not ledger.can_reserve(inference_reservation):
                 break
             task, prepared, timing = ready_inference.popleft()
-            ledger.reserve(f"inference:{task.key}", prepare_reservation)
+            ledger.reserve(f"inference:{task.key}", inference_reservation)
             status = _InferenceWorkerStatus()
             if str(device).startswith("cuda"):
                 controller.start_calibration(now=time.monotonic())
@@ -12594,14 +12664,30 @@ def _run_staged_evaluation_tasks(
             if not all_futures:
                 if stop_scheduling:
                     break
+                if (
+                    ready_inference
+                    and controller.admission_blocked_reason is not None
+                ):
+                    cancel_event.set()
+                    raise CampaignCliError(
+                        f"{phase.capitalize()} resource admission blocked with "
+                        f"{len(ready_inference)} queued inference task(s): "
+                        f"{controller.admission_blocked_reason}."
+                    )
+                cancel_event.set()
                 raise CampaignCliError(
                     f"{phase.capitalize()} pipeline stalled with queued work but no active stage."
                 )
-            done, _ = wait(
-                all_futures,
-                timeout=float(policy.monitor_interval_seconds),
-                return_when=FIRST_COMPLETED,
-            )
+            try:
+                done, _ = wait(
+                    all_futures,
+                    timeout=float(policy.monitor_interval_seconds),
+                    return_when=FIRST_COMPLETED,
+                )
+            except BaseException:
+                stop_scheduling = True
+                cancel_event.set()
+                raise
 
             completed_parent_callbacks: list[tuple[_StagedEvaluationTask, Any, _StagedEvaluationTiming]] = []
 
@@ -12627,6 +12713,7 @@ def _run_staged_evaluation_tasks(
                         )
                         _fail(failures[-1])
                         stop_scheduling = True
+                        cancel_event.set()
                 elif future in active_inference:
                     task, prepared, timing, status = active_inference.pop(future)
                     try:
@@ -12650,8 +12737,10 @@ def _run_staged_evaluation_tasks(
                         )
                         _fail(failures[-1])
                         stop_scheduling = True
+                        cancel_event.set()
                 elif future in active_finalize:
                     task, timing, _reservation = active_finalize.pop(future)
+                    ledger.release(f"finalize:{task.key}")
                     ledger.release(f"prepared:{task.key}")
                     ledger.release(f"result:{task.key}")
                     try:
@@ -12664,6 +12753,7 @@ def _run_staged_evaluation_tasks(
                         )
                         _fail(failures[-1])
                         stop_scheduling = True
+                        cancel_event.set()
 
             # Refill GPU and CPU stage slots before parent-side publication or
             # SQLite callbacks. This preserves work conservation even if the last
@@ -12734,6 +12824,7 @@ def _run_staged_evaluation_tasks(
                 workload_active_jobs=workload_active_jobs,
                 gpu_sample=gpu_runtime_sample,
                 cpu_sample=cpu_runtime_sample,
+                live_ram_available_bytes=available_memory_bytes(),
                 now=now,
             )
             if decision.changed and uses_cuda:
@@ -12783,7 +12874,20 @@ def _run_staged_evaluation_tasks(
             report_stage_events()
 
     report_stage_events()
+    for task, _, _ in ready_inference:
+        ledger.release(f"prepared:{task.key}")
+    for task, _, result, _ in waiting_finalize:
+        ledger.release(f"prepared:{task.key}")
+        if result is not None:
+            ledger.release(f"result:{task.key}")
+    ledger.release("shared:runtime-residency")
+    leaked_reservations = dict(ledger.reservations)
     ledger.reservations.clear()
+    if not failures and leaked_reservations:
+        raise CampaignCliError(
+            "Pipeline RAM reservation leak after successful execution: "
+            + ", ".join(sorted(leaked_reservations))
+        )
     if failures:
         raise CampaignCliError(
             f"{phase.capitalize()} staged execution failed: {failures[0]}"
@@ -17858,6 +17962,13 @@ def _evaluation_inference_execution_plan(cfg: Mapping[str, Any]) -> Any:
     import mdstats
 
     section = cfg.get("evaluation", {})
+    execution_fractions = {
+        "cpu_fraction": float(_cfg(cfg, "performance", "cpu_fraction", 0.90)),
+        "ram_fraction": float(_cfg(cfg, "performance", "ram_fraction", 0.80)),
+        "gpu_memory_fraction": float(
+            _cfg(cfg, "execution", "inference_gpu_memory_fraction", 0.90)
+        ),
+    }
     raw_policy = section.get("inference_batch_policy")
     if raw_policy is None:
         selected = int(section.get("batch_size", 8))
@@ -17871,6 +17982,7 @@ def _evaluation_inference_execution_plan(cfg: Mapping[str, Any]) -> Any:
             monitor_cache_enabled=bool(section.get("cache_monitor_datasets", True)),
             prediction_cache_enabled=bool(section.get("cache_replay_baseline", True)),
             rationale=("legacy_positive_batch_is_explicit_fixed",),
+            **execution_fractions,
         )
 
     policy = str(raw_policy).strip().lower()
@@ -17900,6 +18012,7 @@ def _evaluation_inference_execution_plan(cfg: Mapping[str, Any]) -> Any:
         monitor_cache_enabled=bool(section.get("cache_monitor_datasets", True)),
         prediction_cache_enabled=bool(section.get("cache_replay_baseline", True)),
         rationale=rationale,
+        **execution_fractions,
     )
 
 
@@ -21564,12 +21677,16 @@ def _deploy_verify_one_train2_run(
         batch_size=deploy_execution.selected_batch_size,
         geometry_identities=probe_set.frame_uids,
         graph_cache_directory=deploy_graph_cache,
+        execution_plan=deploy_execution,
+        resource_policy=_inference_concurrency_policy(cfg, "verification"),
     )
     target_predictions = mdstats.predict_mace_model_on_probe(
         target_model, probe_atoms, device=device, model_dtype=model_dtype, head=None,
         batch_size=deploy_execution.selected_batch_size,
         geometry_identities=probe_set.frame_uids,
         graph_cache_directory=deploy_graph_cache,
+        execution_plan=deploy_execution,
+        resource_policy=_inference_concurrency_policy(cfg, "verification"),
     )
     checkpoint_to_target = mdstats.compare_prediction_channels(
         checkpoint_predictions,
@@ -22088,6 +22205,8 @@ def _command_verify_train2_pes(
         batch_size=pes_execution.selected_batch_size,
         geometry_identities=pes_geometry_identities,
         graph_cache_directory=pes_graph_cache,
+        execution_plan=pes_execution,
+        resource_policy=_inference_concurrency_policy(cfg, "verification"),
     )
     foundation_predictions = mdstats.prediction_payload_from_mace_view(foundation_view, request_atoms)
     foundation_qualification = mdstats.assess_pes_model(
@@ -22114,6 +22233,8 @@ def _command_verify_train2_pes(
             batch_size=pes_execution.selected_batch_size,
             geometry_identities=pes_geometry_identities,
             graph_cache_directory=pes_graph_cache,
+            execution_plan=pes_execution,
+            resource_policy=_inference_concurrency_policy(cfg, "verification"),
         )
         candidate_predictions = mdstats.prediction_payload_from_mace_view(candidate_view, request_atoms)
         qualification = mdstats.assess_pes_model(
@@ -22919,8 +23040,14 @@ def _command_verify_train2_locked_test(
             stress_key=evaluation_policy.stress_key, focus_atomic_numbers=evaluation_policy.focus_atomic_numbers,
             condition_keys=evaluation_policy.condition_keys,
         )
+        locked_execution = _evaluation_inference_execution_plan(cfg)
         model_view = mdstats.predict_mace_model_on_probe(
-            target_model, atoms, device=evaluation_policy.device, model_dtype=evaluation_policy.default_dtype, head=None,
+            target_model, atoms, device=evaluation_policy.device,
+            model_dtype=evaluation_policy.default_dtype, head=None,
+            execution_plan=locked_execution,
+            resource_policy=_inference_concurrency_policy(cfg, "verification"),
+            geometry_identities=activation.locked_frame_uids,
+            graph_cache_directory=paths.internal / "verification-graphs",
         )
         import numpy as np
         energies = np.asarray(model_view["energy"], dtype=np.float64)
@@ -23204,6 +23331,7 @@ def _command_verify_train2_dyn(
                         lammps_arguments=deploy_record.lammps_run0.command_arguments,
                         work_directory=case_root, timeout_seconds=timeout,
                         expected_executable_sha256=deploy_record.lammps_run0.executable_sha256,
+                        cancellation_requested=inference_cancellation_requested,
                     )
 
                 def reduce_case(
@@ -25909,6 +26037,11 @@ parallel_evaluation_prepare_jobs = 0
 parallel_evaluation_finalize_jobs = 0
 evaluation_pipeline_buffer_jobs = 0
 evaluation_pipeline_buffer_mib = 0
+# Zero uses the phase RAM estimate; shared model/cache residency is charged once.
+evaluation_prepare_working_memory_mib = 0
+evaluation_inference_working_memory_mib = 0
+evaluation_finalize_working_memory_mib = 0
+evaluation_shared_runtime_residency_mib = 0
 # External DYN cases are admitted independently from static model inference.
 # One process is the conservative production default until a target-GPU
 # benchmark demonstrates that concurrent LAMMPS/Kokkos processes improve
@@ -25917,6 +26050,12 @@ parallel_dynamics_jobs = 0
 maximum_parallel_dynamics_jobs = 1
 dynamics_estimated_vram_mib_per_job = 4096.0
 dynamics_estimated_ram_mib_per_job = 4096.0
+dynamics_pipeline_buffer_jobs = 0
+dynamics_pipeline_buffer_mib = 0
+dynamics_prepare_working_memory_mib = 0
+dynamics_inference_working_memory_mib = 0
+dynamics_finalize_working_memory_mib = 0
+dynamics_shared_runtime_residency_mib = 0
 estimated_dynamics_output_mib_per_case = 512.0
 # Stop admitting new jobs after the first failed run; already-active jobs finish.
 stop_scheduling_after_failure = true

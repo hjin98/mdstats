@@ -488,6 +488,8 @@ def predict_mace_model_on_probe(
     batch_size: int = 1,
     geometry_identities: Sequence[str] | None = None,
     graph_cache_directory: str | Path | None = None,
+    execution_plan: Any | None = None,
+    resource_policy: Any | None = None,
 ) -> dict[str, np.ndarray]:
     """Predict energy/forces/stress through the deployable MACE calculator.
 
@@ -495,7 +497,12 @@ def predict_mace_model_on_probe(
     inference identities. Candidate/deployment callers retain the historical
     head-only interface.
     """
-    from .model_features import StaticMaceInferenceExecutor
+    from .model_features import (
+        MACE_ADAPTER_VERSION,
+        StaticInferenceRuntimeAuthority,
+        StaticInferenceRuntimeProfile,
+        StaticMaceInferenceExecutor,
+    )
     resolved_path = Path(model_path).resolve()
     kwargs: dict[str, Any] = dict(calculator_kwargs or {})
     if foundation_potential_identity is not None:
@@ -519,17 +526,121 @@ def predict_mace_model_on_probe(
     if foundation_potential_identity is not None:
         kwargs["foundation_potential_identity"] = foundation_potential_identity
         kwargs["foundation_inference_identity"] = foundation_inference_identity
+    runtime_authority = None
+    profile_path = None
+    active_batch_size = int(batch_size)
+    active_jobs = 1
+    if execution_plan is not None:
+        from .inference_parallel import (
+            CpuTelemetryProbe,
+            InferenceConcurrencyPolicy,
+            build_inference_concurrency_plan,
+        )
+        from .resources import detect_system_resources
+        from .training_parallel import query_gpu_telemetry
+
+        policy = (
+            InferenceConcurrencyPolicy(maximum_auto_jobs=1)
+            if resource_policy is None
+            else resource_policy
+        )
+        try:
+            resources = detect_system_resources(
+                cpu_fraction=float(execution_plan.cpu_fraction),
+                ram_fraction=float(execution_plan.ram_fraction),
+                gpu_memory_fraction=min(
+                    float(execution_plan.gpu_memory_fraction),
+                    float(policy.gpu_memory_fraction),
+                ),
+                device=str(device),
+            )
+            cpu_sample = CpuTelemetryProbe(
+                capacity_threads=resources.cpu_threads_available
+            ).sample(blocking_seconds=0.10)
+            gpu_sample = query_gpu_telemetry(str(device))
+            admission = build_inference_concurrency_plan(
+                task_count=1,
+                device=str(device),
+                resources=resources,
+                policy=policy,
+                gpu_sample=gpu_sample,
+                cpu_sample=cpu_sample,
+            )
+        except ValueError as exc:
+            raise TrainingDataInputError(str(exc)) from exc
+        if resources.ram_budget_bytes is None:
+            raise TrainingDataInputError(
+                "Static probe admission requires live host-RAM telemetry."
+            )
+        compatibility = StaticInferenceRuntimeAuthority.compatibility_key(
+            {
+                "adapter_version": MACE_ADAPTER_VERSION,
+                "model_sha256": sha256_file_cached(resolved_path),
+                "device": str(device),
+                "default_dtype": str(model_dtype),
+                "gpu_name": resources.gpu.device_name,
+                "gpu_total_bytes": resources.gpu.total_bytes,
+                "cpu_threads_available": resources.cpu_threads_available,
+                "workload_shape_digest": digest(
+                    {
+                        "atom_counts": [int(len(value)) for value in probe_atoms],
+                        "configuration_count": len(probe_atoms),
+                    }
+                ),
+            }
+        )
+        compatible_profile = None
+        if graph_cache_directory is not None:
+            profile_path = (
+                Path(graph_cache_directory).resolve().parent
+                / "static-inference-runtime-profiles"
+                / f"{compatibility}.json"
+            )
+            compatible_profile = StaticInferenceRuntimeProfile.load_compatible(
+                profile_path, compatibility_digest=compatibility
+            )
+        active_jobs = max(1, min(
+            int(execution_plan.selected_concurrent_model_jobs),
+            int(admission.maximum_jobs),
+        ))
+        runtime_authority = StaticInferenceRuntimeAuthority(
+            compatibility_digest=compatibility,
+            maximum_batch_size=min(
+                int(execution_plan.maximum_batch_size), len(probe_atoms)
+            ),
+            maximum_concurrent_model_jobs=active_jobs,
+            live_ram_budget_bytes=int(resources.ram_budget_bytes),
+            live_vram_budget_bytes=(
+                admission.gpu_memory_budget_bytes
+                if str(device).startswith("cuda")
+                else None
+            ),
+            cold_start_batch_size=int(execution_plan.selected_batch_size),
+            compatible_profile=compatible_profile,
+        )
+        active_batch_size = (
+            int(execution_plan.maximum_batch_size)
+            if execution_plan.batch_policy == "auto"
+            else int(execution_plan.selected_batch_size)
+        )
     with StaticMaceInferenceExecutor.from_model_path(
         resolved_path,
-        batch_size=int(batch_size),
+        batch_size=max(1, min(active_batch_size, len(probe_atoms))),
         device=str(device),
         default_dtype=str(model_dtype),
         graph_cache_directory=graph_cache_directory,
+        runtime_authority=runtime_authority,
+        concurrent_model_jobs=active_jobs,
         **kwargs,
     ) as executor:
         result = executor.prediction_channels(
             probe_atoms, geometry_identities=geometry_identities
         )
+    if runtime_authority is not None and profile_path is not None:
+        try:
+            runtime_authority.profile().write_atomic(profile_path)
+        except TrainingDataInputError:
+            pass
     if not all(
         bool(np.all(atoms.pbc)) and float(abs(atoms.get_volume())) > 1.0e-12
         for atoms in probe_atoms

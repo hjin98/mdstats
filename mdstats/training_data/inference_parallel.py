@@ -34,6 +34,9 @@ _INFERENCE_PHASE_CALLBACK: ContextVar[Callable[[str], None] | None] = ContextVar
     "mdstats_inference_phase_callback",
     default=None,
 )
+_INFERENCE_CANCELLATION_CALLBACK: ContextVar[Callable[[], bool] | None] = ContextVar(
+    "mdstats_inference_cancellation_callback", default=None
+)
 
 
 @contextmanager
@@ -41,6 +44,7 @@ def inference_start_signal(
     callback: Callable[[], None],
     *,
     phase_callback: Callable[[str], None] | None = None,
+    cancellation_requested: Callable[[], bool] | None = None,
 ) -> Iterator[None]:
     """Bind worker-local adaptive-telemetry and stage callbacks.
 
@@ -60,11 +64,22 @@ def inference_start_signal(
     phase_token: Token[Callable[[str], None] | None] = (
         _INFERENCE_PHASE_CALLBACK.set(phase_callback)
     )
+    cancellation_token: Token[Callable[[], bool] | None] = (
+        _INFERENCE_CANCELLATION_CALLBACK.set(cancellation_requested)
+    )
     try:
         yield
     finally:
+        _INFERENCE_CANCELLATION_CALLBACK.reset(cancellation_token)
         _INFERENCE_PHASE_CALLBACK.reset(phase_token)
         _INFERENCE_START_CALLBACK.reset(token)
+
+
+def inference_cancellation_requested() -> bool:
+    """Return the staged scheduler's shared cancellation state in this worker."""
+
+    callback = _INFERENCE_CANCELLATION_CALLBACK.get()
+    return False if callback is None else bool(callback())
 
 
 def report_inference_worker_phase(phase: str) -> None:
@@ -308,6 +323,7 @@ class InferenceConcurrencyPlan:
     maximum_jobs: int
     cpu_threads_per_job: int
     ram_budget_bytes: int | None
+    ram_budget_fraction: float
     estimated_ram_bytes_per_job: int
     cpu_utilization_budget_percent: float
     baseline_cpu_utilization_percent: float | None
@@ -365,6 +381,7 @@ def build_inference_concurrency_plan(
             maximum_jobs=0,
             cpu_threads_per_job=1,
             ram_budget_bytes=resources.ram_budget_bytes,
+            ram_budget_fraction=float(resources.ram_fraction),
             estimated_ram_bytes_per_job=estimated_ram,
             cpu_utilization_budget_percent=cpu_budget_percent,
             baseline_cpu_utilization_percent=baseline_cpu,
@@ -457,6 +474,7 @@ def build_inference_concurrency_plan(
         maximum_jobs=maximum,
         cpu_threads_per_job=threads_per_job,
         ram_budget_bytes=resources.ram_budget_bytes,
+        ram_budget_fraction=float(resources.ram_fraction),
         estimated_ram_bytes_per_job=estimated_ram,
         cpu_utilization_budget_percent=cpu_budget_percent,
         baseline_cpu_utilization_percent=baseline_cpu,
@@ -530,10 +548,17 @@ class AdaptiveInferenceConcurrency:
         self._gpu_estimated_utilization_per_job: float | None = None
         self._gpu_estimated_memory_bytes_per_job: int | None = None
         self._gpu_calibration_samples_seen = 0
+        self._admission_blocked_reason: str | None = None
 
     @property
     def gpu_calibrated(self) -> bool:
         return bool(self._gpu_calibrated)
+
+    @property
+    def admission_blocked_reason(self) -> str | None:
+        """Actionable terminal reason when no future job is admissible."""
+
+        return self._admission_blocked_reason
 
     def start_calibration(self, *, now: float | None = None) -> None:
         """Start the fixed single-job CUDA calibration clock.
@@ -575,12 +600,12 @@ class AdaptiveInferenceConcurrency:
         memory_per_job = max(1, int(self._gpu_estimated_memory_bytes_per_job or 1))
         util_per_job = max(0.0, float(self._gpu_estimated_utilization_per_job or 0.0))
         predicted_memory = baseline_memory + math.ceil(
-            max(1, int(jobs))
+            max(0, int(jobs))
             * memory_per_job
             * float(self.policy.observed_memory_growth_margin)
         )
         predicted_util = baseline_util + (
-            max(1, int(jobs))
+            max(0, int(jobs))
             * util_per_job
             * float(self.policy.observed_utilization_growth_margin)
         )
@@ -676,7 +701,7 @@ class AdaptiveInferenceConcurrency:
 
         memory_budget = int(self.plan.gpu_memory_budget_bytes)
         util_budget = float(self.plan.gpu_utilization_budget_percent)
-        safe_jobs = 1
+        safe_jobs = 0
         safe_memory, safe_util = self._cuda_projection_for_jobs(1)
         for jobs in range(1, int(self.plan.maximum_jobs) + 1):
             predicted_memory, predicted_util = self._cuda_projection_for_jobs(jobs)
@@ -687,7 +712,12 @@ class AdaptiveInferenceConcurrency:
             break
 
         previous = self.target_jobs
-        self.target_jobs = max(1, min(int(self.plan.maximum_jobs), safe_jobs))
+        self.target_jobs = max(0, min(int(self.plan.maximum_jobs), safe_jobs))
+        if self.target_jobs == 0:
+            self._admission_blocked_reason = (
+                "measured single-job CUDA demand exceeds the configured VRAM or "
+                "GPU-utilization envelope; no future inference job is admissible"
+            )
         util_count = len(self._gpu_util_samples)
         memory_count = len(self._gpu_memory_samples)
         fallback_bits: list[str] = []
@@ -768,6 +798,31 @@ class AdaptiveInferenceConcurrency:
                     self._gpu_util_samples.append((now, incremental_util))
                 if incremental_memory_percent >= threshold_percent:
                     self._gpu_memory_samples.append((now, incremental_memory))
+                memory_budget = int(self.plan.gpu_memory_budget_bytes or 0)
+                measured_one_job = baseline_memory + math.ceil(
+                    incremental_memory
+                    * float(self.policy.observed_memory_growth_margin)
+                )
+                if incremental_memory > 0 and measured_one_job > memory_budget:
+                    previous = self.target_jobs
+                    self._gpu_estimated_memory_bytes_per_job = incremental_memory
+                    self._gpu_estimated_utilization_per_job = max(
+                        threshold_percent, incremental_util
+                    )
+                    self._gpu_calibrated = True
+                    self.target_jobs = 0
+                    self._admission_blocked_reason = (
+                        "measured single-job VRAM peak exceeds the configured ceiling; "
+                        f"projected={measured_one_job} bytes, ceiling={memory_budget} bytes"
+                    )
+                    return InferenceConcurrencyDecision(
+                        previous,
+                        0,
+                        previous != 0,
+                        self._admission_blocked_reason,
+                        measured_one_job,
+                        self._cuda_projection_for_jobs(1)[1],
+                    )
 
             started = self._gpu_calibration_started
             age = 0.0 if started is None else max(0.0, now - started)
@@ -808,20 +863,49 @@ class AdaptiveInferenceConcurrency:
             live_used = int(gpu_sample.used_bytes)
             if live_used >= memory_budget:
                 previous = self.target_jobs
-                self.target_jobs = max(1, active - 1)
+                self.target_jobs = max(0, active - 1)
+                if self.target_jobs == 0:
+                    self._admission_blocked_reason = (
+                        "live aggregate VRAM reached the configured ceiling and no "
+                        "future inference job is admissible"
+                    )
                 return InferenceConcurrencyDecision(
                     previous,
                     self.target_jobs,
                     self.target_jobs != previous,
-                    "live VRAM safety override: aggregate VRAM reached the configured "
+                    self._admission_blocked_reason
+                    or "live VRAM safety override: aggregate VRAM reached the configured "
                     "ceiling; future replacements throttled",
                     live_used,
                     self._cuda_projection_for_jobs(self.target_jobs)[1],
                 )
             per_job = max(1, int(self._gpu_estimated_memory_bytes_per_job or 1))
             margin = float(self.policy.observed_memory_growth_margin)
-            live_limit = max(1, active)
-            for jobs in range(max(1, active), int(self.target_jobs) + 1):
+            estimated_external_baseline = max(
+                int(self.plan.baseline_gpu_used_bytes or 0),
+                live_used - active * per_job,
+            )
+            replacement_projection = estimated_external_baseline + math.ceil(
+                per_job * margin
+            )
+            if replacement_projection > memory_budget:
+                previous = self.target_jobs
+                self.target_jobs = 0
+                self._admission_blocked_reason = (
+                    "live external VRAM baseline leaves insufficient capacity for one "
+                    f"calibrated inference job; projected={replacement_projection} bytes, "
+                    f"ceiling={memory_budget} bytes"
+                )
+                return InferenceConcurrencyDecision(
+                    previous,
+                    0,
+                    previous != 0,
+                    self._admission_blocked_reason,
+                    replacement_projection,
+                    self._cuda_projection_for_jobs(1)[1],
+                )
+            live_limit = max(0, active)
+            for jobs in range(max(0, active), int(self.target_jobs) + 1):
                 additional = max(0, jobs - active)
                 projected_live = live_used + math.ceil(additional * per_job * margin)
                 if projected_live <= memory_budget:
@@ -989,9 +1073,36 @@ class AdaptiveInferenceConcurrency:
         inference_active_jobs: int | None = None,
         gpu_sample: GpuTelemetrySample | None = None,
         cpu_sample: CpuTelemetrySample | None = None,
+        live_ram_available_bytes: int | None = None,
         now: float | None = None,
     ) -> InferenceConcurrencyDecision:
         current = time.monotonic() if now is None else float(now)
+        if live_ram_available_bytes is not None:
+            available = max(0, int(live_ram_available_bytes))
+            estimate = max(1, int(self.plan.estimated_ram_bytes_per_job))
+            active = max(0, int(active_jobs))
+            future_available = available + active * estimate
+            live_limit = math.floor(
+                future_available * float(self.plan.ram_budget_fraction) / estimate
+            )
+            live_limit = min(int(self.plan.maximum_jobs), max(0, live_limit))
+            if live_limit < self.target_jobs:
+                previous = self.target_jobs
+                self.target_jobs = live_limit
+                if live_limit == 0:
+                    self._admission_blocked_reason = (
+                        "live host-RAM headroom cannot admit one future inference job; "
+                        f"available={available} bytes, estimated_job={estimate} bytes"
+                    )
+                return InferenceConcurrencyDecision(
+                    previous,
+                    live_limit,
+                    previous != live_limit,
+                    self._admission_blocked_reason
+                    or "live host-RAM re-clamp reduced future inference admission",
+                    live_limit * estimate,
+                    None,
+                )
         if self.plan.uses_cuda:
             return self._observe_cuda(
                 active_jobs=active_jobs,

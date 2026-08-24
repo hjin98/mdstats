@@ -20,6 +20,7 @@ import gc
 import time
 import json
 import os
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any, Mapping, Protocol, Sequence
@@ -59,6 +60,7 @@ MACE_DESCRIPTOR_POLICY_VERSION = "mdstats.mlff-data6.mace-descriptor.2026-08.v2"
 MACE_ADAPTER_VERSION = "mdstats.mlff-data6.mace-calculator.2026-08.v2"
 MACE_MONITOR_GRAPH_CACHE_SCHEMA = "mdstats.mace-monitor-graph-cache.v1"
 MACE_MONITOR_GRAPH_POLICY_VERSION = "mdstats.mlff-opt-eval3.graph.2026-08.v1"
+STATIC_INFERENCE_RUNTIME_PROFILE_SCHEMA = "mdstats.static-inference-runtime-profile.v1"
 
 
 def _sha256_file(path: Path) -> str:
@@ -2329,6 +2331,317 @@ class MaceCalculatorProvider:
         return tuple(result)
 
 
+@dataclass(frozen=True, slots=True)
+class StaticInferenceOperatingPointEvidence:
+    """Measured safety and throughput evidence for one joint runtime point."""
+
+    batch_size: int
+    concurrent_model_jobs: int
+    structures_per_second: float
+    peak_ram_bytes: int
+    peak_vram_bytes: int | None
+    feasible: bool = True
+    failure_kind: str | None = None
+
+    def __post_init__(self) -> None:
+        if int(self.batch_size) <= 0 or int(self.concurrent_model_jobs) <= 0:
+            raise TrainingDataInputError("Static inference operating-point sizes must be positive.")
+        if not np.isfinite(float(self.structures_per_second)) or float(self.structures_per_second) < 0:
+            raise TrainingDataInputError("Static inference throughput must be finite and nonnegative.")
+        if int(self.peak_ram_bytes) < 0 or (
+            self.peak_vram_bytes is not None and int(self.peak_vram_bytes) < 0
+        ):
+            raise TrainingDataInputError("Static inference peak memory must be nonnegative.")
+        object.__setattr__(self, "batch_size", int(self.batch_size))
+        object.__setattr__(self, "concurrent_model_jobs", int(self.concurrent_model_jobs))
+        object.__setattr__(self, "structures_per_second", float(self.structures_per_second))
+        object.__setattr__(self, "peak_ram_bytes", int(self.peak_ram_bytes))
+        object.__setattr__(
+            self, "peak_vram_bytes",
+            None if self.peak_vram_bytes is None else int(self.peak_vram_bytes),
+        )
+        object.__setattr__(
+            self, "failure_kind",
+            None if self.failure_kind is None else str(self.failure_kind).strip() or None,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "batch_size": self.batch_size,
+            "concurrent_model_jobs": self.concurrent_model_jobs,
+            "structures_per_second": self.structures_per_second,
+            "peak_ram_bytes": self.peak_ram_bytes,
+            "peak_vram_bytes": self.peak_vram_bytes,
+            "feasible": bool(self.feasible),
+            "failure_kind": self.failure_kind,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "StaticInferenceOperatingPointEvidence":
+        return cls(
+            batch_size=int(payload["batch_size"]),
+            concurrent_model_jobs=int(payload["concurrent_model_jobs"]),
+            structures_per_second=float(payload["structures_per_second"]),
+            peak_ram_bytes=int(payload["peak_ram_bytes"]),
+            peak_vram_bytes=(
+                None if payload.get("peak_vram_bytes") is None
+                else int(payload["peak_vram_bytes"])
+            ),
+            feasible=bool(payload.get("feasible", True)),
+            failure_kind=(
+                None if payload.get("failure_kind") is None
+                else str(payload["failure_kind"])
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class StaticInferenceRuntimeProfile:
+    """Runtime-only compatible result of bounded joint operating-point search."""
+
+    compatibility_digest: str
+    selected_batch_size: int
+    selected_concurrent_model_jobs: int
+    learned_safe_batch_ceiling: int
+    evidence: tuple[StaticInferenceOperatingPointEvidence, ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "compatibility_digest",
+            validate_digest(self.compatibility_digest, name="compatibility_digest"),
+        )
+        for value in (
+            self.selected_batch_size,
+            self.selected_concurrent_model_jobs,
+            self.learned_safe_batch_ceiling,
+        ):
+            if int(value) <= 0:
+                raise TrainingDataInputError("Static inference profile sizes must be positive.")
+        object.__setattr__(self, "selected_batch_size", int(self.selected_batch_size))
+        object.__setattr__(
+            self, "selected_concurrent_model_jobs", int(self.selected_concurrent_model_jobs)
+        )
+        object.__setattr__(
+            self, "learned_safe_batch_ceiling", int(self.learned_safe_batch_ceiling)
+        )
+        object.__setattr__(self, "evidence", tuple(self.evidence))
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "schema": STATIC_INFERENCE_RUNTIME_PROFILE_SCHEMA,
+            "compatibility_digest": self.compatibility_digest,
+            "selected_batch_size": self.selected_batch_size,
+            "selected_concurrent_model_jobs": self.selected_concurrent_model_jobs,
+            "learned_safe_batch_ceiling": self.learned_safe_batch_ceiling,
+            "evidence": [value.to_dict() for value in self.evidence],
+        }
+
+    @property
+    def content_digest(self) -> str:
+        return digest(self._payload())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._payload(), "content_digest": self.content_digest}
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "StaticInferenceRuntimeProfile":
+        if payload.get("schema") != STATIC_INFERENCE_RUNTIME_PROFILE_SCHEMA:
+            raise TrainingDataSerializationError("Unsupported static-inference runtime profile schema.")
+        result = cls(
+            compatibility_digest=str(payload["compatibility_digest"]),
+            selected_batch_size=int(payload["selected_batch_size"]),
+            selected_concurrent_model_jobs=int(payload["selected_concurrent_model_jobs"]),
+            learned_safe_batch_ceiling=int(payload["learned_safe_batch_ceiling"]),
+            evidence=tuple(
+                StaticInferenceOperatingPointEvidence.from_dict(value)
+                for value in payload.get("evidence", ())
+            ),
+        )
+        if payload.get("content_digest") != result.content_digest:
+            raise TrainingDataSerializationError("Static-inference runtime profile digest mismatch.")
+        return result
+
+    @classmethod
+    def load_compatible(
+        cls, path: str | Path, *, compatibility_digest: str
+    ) -> "StaticInferenceRuntimeProfile | None":
+        candidate = Path(path)
+        if not candidate.is_file():
+            return None
+        try:
+            result = cls.from_dict(json.loads(candidate.read_text(encoding="utf-8")))
+        except (OSError, ValueError, KeyError, TypeError, TrainingDataInputError):
+            return None
+        return (
+            result
+            if result.compatibility_digest == compatibility_digest
+            else None
+        )
+
+    def write_atomic(self, path: str | Path) -> None:
+        destination = Path(path)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        descriptor, temporary = tempfile.mkstemp(
+            prefix=f".{destination.name}.", suffix=".tmp", dir=destination.parent
+        )
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                json.dump(self.to_dict(), handle, sort_keys=True, separators=(",", ":"))
+                handle.write("\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, destination)
+        finally:
+            try:
+                os.unlink(temporary)
+            except FileNotFoundError:
+                pass
+
+
+class StaticInferenceRuntimeAuthority:
+    """Single owner for static batch/job search, reuse, re-clamp, and OOM learning."""
+
+    def __init__(
+        self,
+        *,
+        compatibility_digest: str,
+        maximum_batch_size: int,
+        maximum_concurrent_model_jobs: int,
+        live_ram_budget_bytes: int,
+        live_vram_budget_bytes: int | None,
+        cold_start_batch_size: int = 8,
+        throughput_tolerance_fraction: float = 0.05,
+        compatible_profile: StaticInferenceRuntimeProfile | None = None,
+    ) -> None:
+        self.compatibility_digest = validate_digest(
+            compatibility_digest, name="compatibility_digest"
+        )
+        self.maximum_batch_size = int(maximum_batch_size)
+        self.maximum_concurrent_model_jobs = int(maximum_concurrent_model_jobs)
+        self.live_ram_budget_bytes = int(live_ram_budget_bytes)
+        self.live_vram_budget_bytes = (
+            None if live_vram_budget_bytes is None else int(live_vram_budget_bytes)
+        )
+        self.throughput_tolerance_fraction = float(throughput_tolerance_fraction)
+        if (
+            self.maximum_batch_size <= 0
+            or self.maximum_concurrent_model_jobs <= 0
+            or self.live_ram_budget_bytes <= 0
+            or (self.live_vram_budget_bytes is not None and self.live_vram_budget_bytes <= 0)
+            or not 0.0 <= self.throughput_tolerance_fraction < 1.0
+        ):
+            raise TrainingDataInputError("Static inference runtime authority limits are invalid.")
+        cold = min(self.maximum_batch_size, max(1, int(cold_start_batch_size)))
+        ascending: list[int] = []
+        value = cold
+        while value < self.maximum_batch_size:
+            ascending.append(value)
+            value = min(self.maximum_batch_size, value * 2)
+        ascending.append(self.maximum_batch_size)
+        descending: list[int] = []
+        value = cold // 2
+        while value >= 1:
+            descending.append(value)
+            value //= 2
+        self.candidate_batch_sizes = tuple(dict.fromkeys((*ascending, *descending, 1)))
+        self.learned_safe_batch_ceiling = self.maximum_batch_size
+        self.evidence: list[StaticInferenceOperatingPointEvidence] = []
+        self.selected_point: StaticInferenceOperatingPointEvidence | None = None
+        self.reused_compatible_profile = False
+        if (
+            compatible_profile is not None
+            and compatible_profile.compatibility_digest == self.compatibility_digest
+        ):
+            self.learned_safe_batch_ceiling = min(
+                self.maximum_batch_size, compatible_profile.learned_safe_batch_ceiling
+            )
+            self.evidence.extend(compatible_profile.evidence)
+            self._select()
+            self.reused_compatible_profile = self.selected_point is not None
+
+    @staticmethod
+    def compatibility_key(payload: Mapping[str, Any]) -> str:
+        """Hash conservative hardware/runtime/model/workload-shape identity."""
+
+        return digest({"schema": "mdstats.static-inference-compatibility.v1", **dict(payload)})
+
+    def _safe(self, point: StaticInferenceOperatingPointEvidence) -> bool:
+        return bool(
+            point.feasible
+            and point.batch_size <= self.learned_safe_batch_ceiling
+            and point.batch_size <= self.maximum_batch_size
+            and point.concurrent_model_jobs <= self.maximum_concurrent_model_jobs
+            and point.peak_ram_bytes <= self.live_ram_budget_bytes
+            and (
+                self.live_vram_budget_bytes is None
+                or point.peak_vram_bytes is not None
+                and point.peak_vram_bytes <= self.live_vram_budget_bytes
+            )
+        )
+
+    def _select(self) -> StaticInferenceOperatingPointEvidence | None:
+        safe = tuple(point for point in self.evidence if self._safe(point))
+        if not safe:
+            self.selected_point = None
+            return None
+        peak = max(point.structures_per_second for point in safe)
+        floor = peak * (1.0 - self.throughput_tolerance_fraction)
+        near = tuple(point for point in safe if point.structures_per_second >= floor)
+        self.selected_point = min(
+            near,
+            key=lambda point: (
+                point.peak_ram_bytes,
+                -1 if point.peak_vram_bytes is None else point.peak_vram_bytes,
+                point.concurrent_model_jobs,
+                point.batch_size,
+                -point.structures_per_second,
+            ),
+        )
+        return self.selected_point
+
+    def next_batch_size(self, remaining: int) -> int:
+        if self.reused_compatible_profile and self.selected_point is not None:
+            return min(int(remaining), self.selected_point.batch_size)
+        measured = {point.batch_size for point in self.evidence}
+        for candidate in self.candidate_batch_sizes:
+            if candidate <= self.learned_safe_batch_ceiling and candidate not in measured:
+                return min(int(remaining), candidate)
+        selected = self._select()
+        return min(int(remaining), 1 if selected is None else selected.batch_size)
+
+    def record(self, point: StaticInferenceOperatingPointEvidence) -> None:
+        self.evidence.append(point)
+        if not point.feasible and point.failure_kind == "oom":
+            self.learned_safe_batch_ceiling = min(
+                self.learned_safe_batch_ceiling, max(1, point.batch_size // 2)
+            )
+        self._select()
+
+    def reclamp(
+        self, *, live_ram_budget_bytes: int, live_vram_budget_bytes: int | None
+    ) -> StaticInferenceOperatingPointEvidence | None:
+        self.live_ram_budget_bytes = int(live_ram_budget_bytes)
+        self.live_vram_budget_bytes = (
+            None if live_vram_budget_bytes is None else int(live_vram_budget_bytes)
+        )
+        self.reused_compatible_profile = False
+        return self._select()
+
+    def profile(self) -> StaticInferenceRuntimeProfile:
+        selected = self._select()
+        if selected is None:
+            raise TrainingDataInputError(
+                "No measured static inference operating point fits the live resource envelope."
+            )
+        return StaticInferenceRuntimeProfile(
+            compatibility_digest=self.compatibility_digest,
+            selected_batch_size=selected.batch_size,
+            selected_concurrent_model_jobs=selected.concurrent_model_jobs,
+            learned_safe_batch_ceiling=self.learned_safe_batch_ceiling,
+            evidence=tuple(self.evidence),
+        )
+
+
 class StaticMaceInferenceExecutor:
     """Canonical deterministic batched prediction owner with bounded OOM learning."""
 
@@ -2340,6 +2653,9 @@ class StaticMaceInferenceExecutor:
         graph_cache_directory: str | Path | None = None,
         maximum_oom_backoffs: int = 8,
         owns_provider: bool = False,
+        runtime_authority: StaticInferenceRuntimeAuthority | None = None,
+        concurrent_model_jobs: int = 1,
+        device: str = "cpu",
     ) -> None:
         if int(batch_size) <= 0 or int(maximum_oom_backoffs) < 0:
             raise TrainingDataInputError("Static inference batch/backoff configuration is invalid.")
@@ -2350,6 +2666,9 @@ class StaticMaceInferenceExecutor:
         self.maximum_oom_backoffs = int(maximum_oom_backoffs)
         self.oom_backoff_count = 0
         self.owns_provider = bool(owns_provider)
+        self.runtime_authority = runtime_authority
+        self.concurrent_model_jobs = max(1, int(concurrent_model_jobs))
+        self.device = str(device)
         self._execution_lock = RLock()
 
     @classmethod
@@ -2361,6 +2680,8 @@ class StaticMaceInferenceExecutor:
         device: str,
         default_dtype: str,
         graph_cache_directory: str | Path | None = None,
+        runtime_authority: StaticInferenceRuntimeAuthority | None = None,
+        concurrent_model_jobs: int = 1,
         **calculator_kwargs: Any,
     ) -> "StaticMaceInferenceExecutor":
         provider = MaceCalculatorProvider.from_model_path(
@@ -2368,7 +2689,8 @@ class StaticMaceInferenceExecutor:
         )
         return cls(
             provider, batch_size=batch_size, graph_cache_directory=graph_cache_directory,
-            owns_provider=True,
+            owns_provider=True, runtime_authority=runtime_authority,
+            concurrent_model_jobs=concurrent_model_jobs, device=device,
         )
 
     @staticmethod
@@ -2429,14 +2751,32 @@ class StaticMaceInferenceExecutor:
         result: list[AtomicModelPrediction] = []
         position = 0
         while position < len(values):
-            batch_size = min(self.learned_safe_batch_size, len(values) - position)
+            remaining = len(values) - position
+            batch_size = min(self.learned_safe_batch_size, remaining)
+            if self.runtime_authority is not None:
+                batch_size = min(
+                    batch_size, self.runtime_authority.next_batch_size(remaining)
+                )
             batch = values[position:position + batch_size]
             batch_ids = None if identities is None else identities[position:position + batch_size]
+            started = time.perf_counter()
             try:
                 predictions = self._provider_batch(batch, batch_ids)
             except RuntimeError as exc:
                 if not self._is_oom(exc) or batch_size <= 1:
                     raise
+                if self.runtime_authority is not None:
+                    self.runtime_authority.record(
+                        StaticInferenceOperatingPointEvidence(
+                            batch_size=batch_size,
+                            concurrent_model_jobs=self.concurrent_model_jobs,
+                            structures_per_second=0.0,
+                            peak_ram_bytes=0,
+                            peak_vram_bytes=None,
+                            feasible=False,
+                            failure_kind="oom",
+                        )
+                    )
                 if self.oom_backoff_count >= self.maximum_oom_backoffs:
                     raise TrainingDataInputError(
                         "Static inference exhausted its bounded OOM backoff budget."
@@ -2445,10 +2785,47 @@ class StaticMaceInferenceExecutor:
                 self.learned_safe_batch_size = max(1, batch_size // 2)
                 self._release_cuda_cache()
                 continue
+            elapsed = max(time.perf_counter() - started, 1.0e-12)
             if len(predictions) != len(batch):
                 raise TrainingDataInputError("Static inference provider returned the wrong prediction count.")
             result.extend(predictions)
             position += batch_size
+            if self.runtime_authority is not None:
+                peak_ram = 0
+                try:
+                    import resource
+
+                    peak_ram = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+                    if os.name != "posix" or not sys.platform.startswith("darwin"):
+                        peak_ram *= 1024
+                except Exception:
+                    peak_ram = 0
+                peak_vram = None
+                try:
+                    from .training_parallel import query_gpu_telemetry
+
+                    sample = query_gpu_telemetry(self.device)
+                    if sample is not None:
+                        peak_vram = int(sample.used_bytes)
+                except Exception:
+                    peak_vram = None
+                self.runtime_authority.record(
+                    StaticInferenceOperatingPointEvidence(
+                        batch_size=batch_size,
+                        concurrent_model_jobs=self.concurrent_model_jobs,
+                        structures_per_second=(
+                            batch_size * self.concurrent_model_jobs / elapsed
+                        ),
+                        peak_ram_bytes=peak_ram,
+                        peak_vram_bytes=peak_vram,
+                    )
+                )
+        if self.runtime_authority is not None and self.runtime_authority.selected_point is not None:
+            self.learned_safe_batch_size = min(
+                self.learned_safe_batch_size,
+                self.runtime_authority.selected_point.batch_size,
+                self.runtime_authority.learned_safe_batch_ceiling,
+            )
         return tuple(result)
 
     def predict(

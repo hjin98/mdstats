@@ -89,7 +89,8 @@ CHECKPOINT_EVALUATION_POLICY_LEGACY_V4_SCHEMA = "mdstats.checkpoint-evaluation-p
 CHECKPOINT_EVALUATION_POLICY_LEGACY_V3_SCHEMA = "mdstats.checkpoint-evaluation-policy.v3"
 CHECKPOINT_EVALUATION_POLICY_LEGACY_V2_SCHEMA = "mdstats.checkpoint-evaluation-policy.v2"
 CHECKPOINT_EVALUATION_POLICY_LEGACY_SCHEMA = "mdstats.checkpoint-evaluation-policy.v1"
-INFERENCE_EXECUTION_PLAN_SCHEMA = "mdstats.inference-execution-plan.v1"
+INFERENCE_EXECUTION_PLAN_SCHEMA = "mdstats.inference-execution-plan.v2"
+INFERENCE_EXECUTION_PLAN_LEGACY_SCHEMA = "mdstats.inference-execution-plan.v1"
 MODEL_DATASET_METRIC_RECORD_SCHEMA = "mdstats.model-dataset-metric-record.v1"
 CHECKPOINT_EVALUATION_RECORD_SCHEMA = "mdstats.checkpoint-evaluation-record.v3"
 CHECKPOINT_EVALUATION_RECORD_LEGACY_V2_SCHEMA = "mdstats.checkpoint-evaluation-record.v2"
@@ -2156,6 +2157,10 @@ class InferenceExecutionPlan:
     batch_policy: str = "fixed"
     selected_batch_size: int = 8
     maximum_batch_size: int = 8
+    selected_concurrent_model_jobs: int = 1
+    cpu_fraction: float = 0.90
+    ram_fraction: float = 0.80
+    gpu_memory_fraction: float = 0.90
     graph_cache_enabled: bool = True
     monitor_cache_enabled: bool = True
     prediction_cache_enabled: bool = True
@@ -2167,13 +2172,26 @@ class InferenceExecutionPlan:
             raise TrainingDataInputError("Inference batch_policy must be 'auto' or 'fixed'.")
         selected = int(self.selected_batch_size)
         maximum = int(self.maximum_batch_size)
-        if selected <= 0 or maximum <= 0 or selected > maximum:
+        jobs = int(self.selected_concurrent_model_jobs)
+        fractions = (
+            float(self.cpu_fraction),
+            float(self.ram_fraction),
+            float(self.gpu_memory_fraction),
+        )
+        if (
+            selected <= 0 or maximum <= 0 or selected > maximum or jobs <= 0
+            or any(not math.isfinite(value) or not 0.0 < value <= 1.0 for value in fractions)
+        ):
             raise TrainingDataInputError(
-                "Inference selected_batch_size and maximum_batch_size must be positive and ordered."
+                "Inference batch sizes and selected concurrency must be positive and ordered."
             )
         object.__setattr__(self, "batch_policy", policy)
         object.__setattr__(self, "selected_batch_size", selected)
         object.__setattr__(self, "maximum_batch_size", maximum)
+        object.__setattr__(self, "selected_concurrent_model_jobs", jobs)
+        object.__setattr__(self, "cpu_fraction", fractions[0])
+        object.__setattr__(self, "ram_fraction", fractions[1])
+        object.__setattr__(self, "gpu_memory_fraction", fractions[2])
         object.__setattr__(
             self, "rationale", tuple(str(value) for value in self.rationale if str(value))
         )
@@ -2184,6 +2202,10 @@ class InferenceExecutionPlan:
             "batch_policy": self.batch_policy,
             "selected_batch_size": self.selected_batch_size,
             "maximum_batch_size": self.maximum_batch_size,
+            "selected_concurrent_model_jobs": self.selected_concurrent_model_jobs,
+            "cpu_fraction": self.cpu_fraction,
+            "ram_fraction": self.ram_fraction,
+            "gpu_memory_fraction": self.gpu_memory_fraction,
             "graph_cache_enabled": bool(self.graph_cache_enabled),
             "monitor_cache_enabled": bool(self.monitor_cache_enabled),
             "prediction_cache_enabled": bool(self.prediction_cache_enabled),
@@ -2203,12 +2225,60 @@ class InferenceExecutionPlan:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "InferenceExecutionPlan":
-        if payload.get("schema") != INFERENCE_EXECUTION_PLAN_SCHEMA:
+        schema = payload.get("schema")
+        if schema == INFERENCE_EXECUTION_PLAN_LEGACY_SCHEMA:
+            # V1 is validated against its exact historical wire semantics in
+            # this owning migration path.  Removed runtime hints are deliberately
+            # not reintroduced as authorities; the rebuilt v2 plan retains only
+            # the still-supported choices and records the migration rationale.
+            legacy_payload = {
+                "schema": INFERENCE_EXECUTION_PLAN_LEGACY_SCHEMA,
+                "batch_policy": str(payload["batch_policy"]),
+                "selected_batch_size": int(payload["selected_batch_size"]),
+                "maximum_batch_size": int(payload["maximum_batch_size"]),
+                "concurrent_model_jobs": int(payload.get("concurrent_model_jobs", 1)),
+                "use_cuda_streams": bool(payload.get("use_cuda_streams", False)),
+                "host_ram_budget_bytes": (
+                    None
+                    if payload.get("host_ram_budget_bytes") is None
+                    else int(payload["host_ram_budget_bytes"])
+                ),
+                "graph_cache_enabled": bool(payload.get("graph_cache_enabled", True)),
+                "monitor_cache_enabled": bool(payload.get("monitor_cache_enabled", True)),
+                "compatible_profile_digest": (
+                    None
+                    if payload.get("compatible_profile_digest") is None
+                    else str(payload["compatible_profile_digest"])
+                ),
+                "rationale": [str(value) for value in payload.get("rationale", ())],
+            }
+            if payload.get("execution_digest") != digest(legacy_payload):
+                raise TrainingDataSerializationError(
+                    "Inference-execution plan legacy v1 digest mismatch."
+                )
+            return cls(
+                batch_policy=legacy_payload["batch_policy"],
+                selected_batch_size=legacy_payload["selected_batch_size"],
+                maximum_batch_size=legacy_payload["maximum_batch_size"],
+                selected_concurrent_model_jobs=legacy_payload["concurrent_model_jobs"],
+                graph_cache_enabled=legacy_payload["graph_cache_enabled"],
+                monitor_cache_enabled=legacy_payload["monitor_cache_enabled"],
+                prediction_cache_enabled=True,
+                rationale=tuple(legacy_payload["rationale"])
+                + ("rebuilt_from_inference_execution_plan_v1",),
+            )
+        if schema != INFERENCE_EXECUTION_PLAN_SCHEMA:
             raise TrainingDataSerializationError("Unsupported inference-execution plan schema.")
         result = cls(
             batch_policy=str(payload["batch_policy"]),
             selected_batch_size=int(payload["selected_batch_size"]),
             maximum_batch_size=int(payload["maximum_batch_size"]),
+            selected_concurrent_model_jobs=int(
+                payload.get("selected_concurrent_model_jobs", 1)
+            ),
+            cpu_fraction=float(payload.get("cpu_fraction", 0.90)),
+            ram_fraction=float(payload.get("ram_fraction", 0.80)),
+            gpu_memory_fraction=float(payload.get("gpu_memory_fraction", 0.90)),
             graph_cache_enabled=bool(payload.get("graph_cache_enabled", True)),
             monitor_cache_enabled=bool(payload.get("monitor_cache_enabled", True)),
             prediction_cache_enabled=bool(payload.get("prediction_cache_enabled", True)),
@@ -2465,21 +2535,117 @@ def _predict_model_on_atoms(
         )
     else:
         provider.set_head(head)
-    from .model_features import StaticMaceInferenceExecutor
+    from .model_features import (
+        MACE_ADAPTER_VERSION,
+        StaticInferenceRuntimeAuthority,
+        StaticInferenceRuntimeProfile,
+        StaticMaceInferenceExecutor,
+    )
 
     active_execution = (
         _legacy_inference_execution_plan(policy)
         if execution_plan is None
         else execution_plan
     )
+    runtime_authority = None
+    runtime_profile_path = None
+    if active_execution.batch_policy == "auto":
+        from .resources import detect_system_resources
+
+        try:
+            resources = detect_system_resources(
+                cpu_fraction=active_execution.cpu_fraction,
+                ram_fraction=active_execution.ram_fraction,
+                gpu_memory_fraction=active_execution.gpu_memory_fraction,
+                device=policy.device,
+            )
+        except ValueError as exc:
+            raise TrainingDataInputError(str(exc)) from exc
+        if resources.ram_budget_bytes is None:
+            raise TrainingDataInputError(
+                "Automatic static inference requires live host-RAM telemetry."
+            )
+        uses_cuda = str(policy.device).startswith("cuda")
+        if uses_cuda and resources.gpu.budget_bytes is None:
+            raise TrainingDataInputError(
+                "Automatic static inference requires live VRAM telemetry."
+            )
+        provider_identity = getattr(provider, "checkpoint_identity", None)
+        model_identity = getattr(provider_identity, "content_digest", None)
+        if model_identity is None:
+            model_identity = _sha256_file(model_path)
+        workload_shape_digest = digest(
+            {
+                "atom_counts": [int(len(value)) for value in atoms_list],
+                "configuration_count": len(atoms_list),
+            }
+        )
+        compatibility = StaticInferenceRuntimeAuthority.compatibility_key(
+            {
+                "adapter_version": MACE_ADAPTER_VERSION,
+                "model_identity": model_identity,
+                "device": str(policy.device),
+                "default_dtype": str(policy.default_dtype),
+                "cpu_threads_available": resources.cpu_threads_available,
+                "gpu_name": resources.gpu.device_name,
+                "gpu_total_bytes": resources.gpu.total_bytes,
+                "workload_shape_digest": workload_shape_digest,
+            }
+        )
+        compatible_profile = None
+        if graph_cache_directory is not None:
+            runtime_profile_path = (
+                Path(graph_cache_directory).resolve().parent
+                / "static-inference-runtime-profiles"
+                / f"{compatibility}.json"
+            )
+            compatible_profile = StaticInferenceRuntimeProfile.load_compatible(
+                runtime_profile_path, compatibility_digest=compatibility
+            )
+        runtime_authority = StaticInferenceRuntimeAuthority(
+            compatibility_digest=compatibility,
+            maximum_batch_size=min(
+                int(active_execution.maximum_batch_size), len(atoms_list)
+            ),
+            maximum_concurrent_model_jobs=int(
+                active_execution.selected_concurrent_model_jobs
+            ),
+            live_ram_budget_bytes=int(resources.ram_budget_bytes),
+            live_vram_budget_bytes=(
+                resources.gpu.budget_bytes if uses_cuda else None
+            ),
+            cold_start_batch_size=int(active_execution.selected_batch_size),
+            compatible_profile=compatible_profile,
+        )
     executor = StaticMaceInferenceExecutor(
         provider,
-        batch_size=max(1, min(active_execution.selected_batch_size, len(atoms_list))),
+        batch_size=max(
+            1,
+            min(
+                (
+                    active_execution.maximum_batch_size
+                    if runtime_authority is not None
+                    else active_execution.selected_batch_size
+                ),
+                len(atoms_list),
+            ),
+        ),
         graph_cache_directory=(
             graph_cache_directory if active_execution.graph_cache_enabled else None
         ),
+        runtime_authority=runtime_authority,
+        concurrent_model_jobs=active_execution.selected_concurrent_model_jobs,
+        device=policy.device,
     )
-    return executor.predict(atoms_list, geometry_identities=geometry_identities)
+    result = executor.predict(atoms_list, geometry_identities=geometry_identities)
+    if runtime_authority is not None and runtime_profile_path is not None:
+        try:
+            runtime_authority.profile().write_atomic(runtime_profile_path)
+        except TrainingDataInputError:
+            # The run remains valid when conservative live telemetry declines to
+            # persist a reusable point; the next invocation calibrates again.
+            pass
+    return result
 
 
 def _predict_model_on_monitor(

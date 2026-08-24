@@ -334,12 +334,24 @@ parallel_evaluation_prepare_jobs = 0
 parallel_evaluation_finalize_jobs = 0
 evaluation_pipeline_buffer_jobs = 0
 evaluation_pipeline_buffer_mib = 0
+# Zero working-memory values use the phase estimate. Finalize/reduction defaults
+# to one quarter of that estimate. Shared residency is explicit and charged once.
+evaluation_prepare_working_memory_mib = 0
+evaluation_inference_working_memory_mib = 0
+evaluation_finalize_working_memory_mib = 0
+evaluation_shared_runtime_residency_mib = 0
 # External DYN cases remain single-process by default until target-GPU evidence
 # proves that multiple LAMMPS/Kokkos processes improve end-to-end throughput.
 parallel_dynamics_jobs = 0
 maximum_parallel_dynamics_jobs = 1
 dynamics_estimated_vram_mib_per_job = 4096.0
 dynamics_estimated_ram_mib_per_job = 4096.0
+dynamics_pipeline_buffer_jobs = 0
+dynamics_pipeline_buffer_mib = 0
+dynamics_prepare_working_memory_mib = 0
+dynamics_inference_working_memory_mib = 0
+dynamics_finalize_working_memory_mib = 0
+dynamics_shared_runtime_residency_mib = 0
 estimated_dynamics_output_mib_per_case = 512.0
 # Stop admitting new jobs after the first failed run; already-active jobs finish.
 stop_scheduling_after_failure = true
