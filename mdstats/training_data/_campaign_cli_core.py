@@ -4189,6 +4189,127 @@ def _target_size_required_feature_fit_domains(
     )
 
 
+
+class _TargetSizeMaterializationResolver:
+    """Namespace-safe, lazy bridge from coverage authority to DATA7 domains."""
+
+    def __init__(self, coverage_reference: Any, target_size_study: Any, target_multi_view_repair: Any) -> None:
+        self._target_size_study = target_size_study
+        self._repair2 = target_multi_view_repair
+        self._prefixes: dict[tuple[str, int], tuple[str, ...]] = {}
+        self._by_training_digest: dict[str, Any] = {}
+        self._final_by_source_label: dict[str, Any] = {}
+        for coverage in coverage_reference.domains:
+            training_digest = str(coverage.training_domain_digest)
+            if training_digest in self._by_training_digest:
+                raise CampaignCliError(
+                    "Target-size coverage authority has ambiguous training-domain identity: "
+                    f"{training_digest}."
+                )
+            self._by_training_digest[training_digest] = coverage
+            if coverage.training_domain_kind == "final_development":
+                source_label = str(coverage.source_label_domain_id)
+                if source_label in self._final_by_source_label:
+                    raise CampaignCliError(
+                        "Target-size coverage authority has multiple final-development domains for "
+                        f"source label {source_label!r}."
+                    )
+                self._final_by_source_label[source_label] = coverage
+        qualified = tuple(int(value) for value in target_size_study.qualified_sizes)
+        if not qualified:
+            raise CampaignCliError("Target-size materialization requires at least one qualified size.")
+        self._maximum_qualified_size = max(qualified)
+
+    @property
+    def coverage_domain_count(self) -> int:
+        return len(self._by_training_digest)
+
+    @property
+    def cached_prefix_count(self) -> int:
+        return len(self._prefixes)
+
+    def _coverage_for_domain(self, feature_domain: Any) -> Any:
+        try:
+            coverage = self._by_training_digest[feature_domain.content_digest]
+        except KeyError:
+            raise CampaignCliError(
+                "Target-size v5 production domain is missing from the authenticated "
+                "REPAIR2/MVQUAL2 authority: "
+                f"{feature_domain.content_digest[:12]}."
+            ) from None
+        if (
+            str(coverage.source_label_domain_id) != str(feature_domain.label_domain_id)
+            or str(coverage.training_domain_kind) != str(feature_domain.kind.value)
+            or coverage.training_domain_fold_index != feature_domain.fold_index
+        ):
+            raise CampaignCliError(
+                "Target-size coverage authority disagrees with the requested DATA7 training-domain topology: "
+                f"training_domain={feature_domain.content_digest[:12]}."
+            )
+        return coverage
+
+    def prefix_for_domain(self, feature_domain: Any, target_size: int) -> tuple[str, ...]:
+        import mdstats
+
+        coverage = self._coverage_for_domain(feature_domain)
+        key = (feature_domain.content_digest, int(target_size))
+        cached = self._prefixes.get(key)
+        if cached is not None:
+            return cached
+        prefix = tuple(
+            mdstats.materialize_candidate_prefix(
+                self._target_size_study,
+                repair2=self._repair2,
+                label_domain_id=coverage.label_domain_id,
+                target_size=int(target_size),
+            )
+        )
+        if not frozenset(prefix).issubset(frozenset(coverage.frame_uids)):
+            raise CampaignCliError(
+                "Authenticated target-size prefix contains frames outside its coverage training domain."
+            )
+        self._prefixes[key] = prefix
+        return prefix
+
+    def prefixes_for_domains(self, feature_domains: Sequence[Any], target_size: int) -> dict[str, tuple[str, ...]]:
+        return {
+            domain.content_digest: self.prefix_for_domain(domain, target_size)
+            for domain in feature_domains
+        }
+
+    def candidate_evaluation_frames_for_domain(self, feature_domain: Any) -> tuple[str, ...]:
+        import mdstats
+
+        if self._target_size_study.outcome == mdstats.OUTCOME_SELECTED:
+            raise CampaignCliError(
+                "Selected target-size production does not define a candidate evaluation cohort."
+            )
+        coverage = self._coverage_for_domain(feature_domain)
+        if str(feature_domain.kind.value) != "final_development":
+            raise CampaignCliError(
+                "Target-size candidate evaluation is defined only for final-development domains."
+            )
+        source_label = str(feature_domain.label_domain_id)
+        if self._final_by_source_label.get(source_label) is not coverage:
+            raise CampaignCliError(
+                "Target-size final-development coverage authority is ambiguous or mismatched."
+            )
+        maximum_prefix = frozenset(
+            self.prefix_for_domain(feature_domain, self._maximum_qualified_size)
+        )
+        return tuple(uid for uid in coverage.frame_uids if uid not in maximum_prefix)
+
+    def candidate_evaluation_frames_for_domains(self, feature_domains: Sequence[Any]) -> dict[str, tuple[str, ...]]:
+        import mdstats
+
+        if self._target_size_study.outcome == mdstats.OUTCOME_SELECTED:
+            return {}
+        return {
+            domain.label_domain_id: self.candidate_evaluation_frames_for_domain(domain)
+            for domain in feature_domains
+            if domain.kind is mdstats.FeatureFitDomainKind.FINAL_DEVELOPMENT
+        }
+
 def _ensure_target_coverage_reference(
     store: CampaignStore,
     *,
@@ -9043,51 +9164,19 @@ def _prepare_materialization(
     shared_data8_fixed_file_cache = paths.internal / "data8-fixed-cache"
     cross_validation_cache: dict[tuple[int, int], tuple[Any, ...]] = {}
     feature_domain_cache: dict[tuple[int, int], tuple[Any, ...]] = {}
-    coverage_domain_by_training_digest = {
-        domain.training_domain_digest: domain
-        for domain in coverage_reference.domains
-    }
     policy_generation = _training_policy_generation(cfg)
-    target_prefix_matrix: dict[tuple[str, int], tuple[str, ...]] = {}
-    target_evaluation_frames_by_label: dict[str, tuple[str, ...]] = {}
+    target_materialization_resolver: _TargetSizeMaterializationResolver | None = None
     if policy_generation == "train2":
         planning_start = time.monotonic()
-        print(
-            "[DATA7 planning] materializing authenticated target-size prefixes once",
-            flush=True,
-        )
-        target_sizes = tuple(sorted({
-            int(variant.selection_size) for variant in variants
-        } | {max(int(value) for value in target_size_study.qualified_sizes)}))
-        target_labels = tuple(sorted({
-            str(domain.label_domain_id) for domain in coverage_reference.domains
-        }))
-        target_prefix_matrix = mdstats.materialize_candidate_prefix_matrix(
+        target_materialization_resolver = _TargetSizeMaterializationResolver(
+            coverage_reference,
             target_size_study,
-            repair2=target_multi_view_repair,
-            label_domain_ids=target_labels,
-            target_sizes=target_sizes,
+            target_multi_view_repair,
         )
-        if target_size_study.outcome != mdstats.OUTCOME_SELECTED:
-            role_freeze = store.get_record(
-                "target_data_role_freeze", mdstats.TargetDataRoleFreeze
-            )
-            maximum_qualified_size = max(
-                int(value) for value in target_size_study.qualified_sizes
-            )
-            for label in target_labels:
-                maximum_prefix = frozenset(
-                    target_prefix_matrix[(label, maximum_qualified_size)]
-                )
-                target_evaluation_frames_by_label[label] = tuple(
-                    uid
-                    for uid in role_freeze.domain(label).size_development_frame_uids
-                    if uid not in maximum_prefix
-                )
         _ok(
-            "target-size planning authority prepared once; "
-            f"prefixes={len(target_prefix_matrix)}; "
-            f"evaluation_domains={len(target_evaluation_frames_by_label)}; "
+            "target-size materialization resolver prepared; "
+            f"coverage_domains={target_materialization_resolver.coverage_domain_count}; "
+            "prefixes=lazy; "
             f"elapsed={format_progress_time(time.monotonic() - planning_start)}"
         )
     variant_progress = _ProgressReporter("DATA8", len(variants))
@@ -9147,16 +9236,6 @@ def _prepare_materialization(
             f"source={feature_domain_source}; domains={len(variant_feature_domains)}",
             flush=True,
         )
-        missing_training_domains = tuple(
-            domain.content_digest
-            for domain in variant_feature_domains
-            if domain.content_digest not in coverage_domain_by_training_digest
-        )
-        if policy_generation == "train2" and missing_training_domains:
-            raise CampaignCliError(
-                "Target-size v5 production domain is missing from the authenticated REPAIR2/MVQUAL2 authority: "
-                + ", ".join(value[:12] for value in missing_training_domains)
-            )
         adaptive_stop_policy = None
         training_budget_policy = None
         learning_rate_schedule_policy = None
@@ -9189,7 +9268,6 @@ def _prepare_materialization(
             compatibility_probe=probe,
             replay_plan=replay,
             cross_validation_plans=variant_cv_plans,
-            feature_fit_domains=variant_feature_domains,
             online_monitor_policy=online_monitor_policy,
             true_replay_monitor_artifact=true_replay_resolution.monitor_artifact,
             adaptive_stop_policy=adaptive_stop_policy,
@@ -9261,28 +9339,18 @@ def _prepare_materialization(
             ),
             prescribed_training_domain_prefixes=(
                 None
-                if _training_policy_generation(cfg) != "train2"
-                else {
-                    feature_domain.content_digest: target_prefix_matrix[(
-                        coverage_domain_by_training_digest[
-                            feature_domain.content_digest
-                        ].label_domain_id,
-                        int(size),
-                    )]
-                    for feature_domain in variant_feature_domains
-                }
+                if target_materialization_resolver is None
+                else target_materialization_resolver.prefixes_for_domains(
+                    variant_feature_domains, int(size)
+                )
             ),
             prescribed_target_size_evaluation_frames=(
                 None
-                if _training_policy_generation(cfg) != "train2"
+                if target_materialization_resolver is None
                 or target_size_study.outcome == mdstats.OUTCOME_SELECTED
-                else {
-                    feature_domain.label_domain_id: target_evaluation_frames_by_label[
-                        feature_domain.label_domain_id
-                    ]
-                    for feature_domain in variant_feature_domains
-                    if feature_domain.kind is mdstats.FeatureFitDomainKind.FINAL_DEVELOPMENT
-                }
+                else target_materialization_resolver.candidate_evaluation_frames_for_domains(
+                    variant_feature_domains
+                )
             ),
             require_foundation_residual_e0=True,
             require_replay=require_replay,

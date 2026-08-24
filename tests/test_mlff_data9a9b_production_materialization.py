@@ -1544,3 +1544,652 @@ def test_single_head_train2_target_prefix_uses_current_plan_schema(tmp_path: Pat
     assert payload["selected_head_qualification"] is None
     restored = mdstats.ProductionMaterializationPlan.from_dict(payload)
     assert restored.content_digest == plan.content_digest
+
+
+def test_materialization_plan_topology_is_canonical_and_fails_closed(tmp_path: Path) -> None:
+    inputs = _fixture(tmp_path)
+    data5 = inputs[4]
+    plan = inputs[7]
+    canonical = mdstats.build_feature_fit_domains(
+        data5, cross_validation_plans=plan.cross_validation_plans
+    )
+    assert plan.domains == canonical
+
+    without_final = tuple(
+        domain
+        for domain in plan.domains
+        if domain.kind is not mdstats.FeatureFitDomainKind.FINAL_DEVELOPMENT
+    )
+    with pytest.raises(mdstats.TrainingDataInputError, match="exactly one final-development"):
+        replace(plan, domains=without_final)
+
+    cv_domain = next(
+        domain
+        for domain in plan.domains
+        if domain.kind is mdstats.FeatureFitDomainKind.CROSS_VALIDATION_TRAINING
+    )
+    duplicate_topology = replace(cv_domain, data5_bundle_digest="b" * 64)
+    with pytest.raises(mdstats.TrainingDataInputError, match="unique DATA7 domain topology keys"):
+        replace(plan, domains=plan.domains + (duplicate_topology,))
+
+    wrong_fold = replace(cv_domain, fold_index=99)
+    replaced_domains = tuple(
+        wrong_fold if domain.content_digest == cv_domain.content_digest else domain
+        for domain in plan.domains
+    )
+    with pytest.raises(mdstats.TrainingDataInputError, match="do not match the configured cross-validation plans"):
+        replace(plan, domains=replaced_domains)
+
+    with pytest.raises(
+        mdstats.TrainingDataInputError,
+        match="with cross-validation domains require configured cross-validation plans",
+    ):
+        replace(
+            plan,
+            plan_schema=mdstats.PRODUCTION_MATERIALIZATION_PLAN_SCHEMA,
+            cross_validation_plans=(),
+        )
+
+    # Historical plan payloads can legitimately lack explicit CV-plan authority.
+    # Keep them readable while requiring the invariant for newly written v10 plans.
+    legacy = replace(plan, cross_validation_plans=())
+    assert any(
+        domain.kind is mdstats.FeatureFitDomainKind.CROSS_VALIDATION_TRAINING
+        for domain in legacy.domains
+    )
+
+
+def test_full_data7_cache_rejects_same_recipe_divergent_result(tmp_path: Path) -> None:
+    import mdstats.training_data.production_materialization as module
+
+    inputs = _fixture(tmp_path)
+    record = mdstats.run_restartable_production_materialization(
+        *inputs[:7],
+        inputs[7],
+        tmp_path / "data7-divergence-seed",
+        execution_policy=mdstats.ProductionMaterializationExecutionPolicy(
+            materialize_data8=False
+        ),
+    )
+    domain = record.checkpoint.plan.domains[0]
+    bundles = {bundle.domain.content_digest: bundle for bundle in record.load_data7_bundles()}
+    bundle = bundles[domain.content_digest]
+    divergent = replace(bundle, notes=bundle.notes + ("deliberate deterministic-result divergence",))
+    assert module._data7_bundle_matches_plan(divergent, record.checkpoint.plan, domain)
+    assert divergent.content_digest != bundle.content_digest
+
+    cache = tmp_path / "data7-divergence-cache"
+    recipe = module._data7_recipe_digest(record.checkpoint.plan, domain)
+    module._write_reusable_data7_artifact(
+        cache, recipe, domain, bundle, record.checkpoint.plan
+    )
+    with pytest.raises(
+        mdstats.TrainingDataSerializationError, match="Divergent DATA7 results"
+    ):
+        module._write_reusable_data7_artifact(
+            cache, recipe, domain, divergent, record.checkpoint.plan
+        )
+
+
+def _diverge_fitted_training_weights(bundle):
+    weights = bundle.training_weights
+    records = list(weights.records)
+    records[0] = replace(
+        records[0], energy_weight=float(records[0].energy_weight) + 0.125
+    )
+    divergent_weights = replace(weights, records=tuple(records))
+    return replace(bundle, training_weights=divergent_weights)
+
+
+def test_fitted_core_index_rejects_same_recipe_divergent_result_sequentially(
+    tmp_path: Path,
+) -> None:
+    import mdstats.training_data.production_materialization as module
+
+    inputs = _fixture(tmp_path)
+    plan4 = replace(
+        inputs[7],
+        selection_budget_policy=mdstats.SelectionBudgetPolicy(target_sizes=(4,)),
+    )
+    plan8 = replace(
+        inputs[7],
+        selection_budget_policy=mdstats.SelectionBudgetPolicy(target_sizes=(8,)),
+    )
+    policy = mdstats.ProductionMaterializationExecutionPolicy(materialize_data8=False)
+    record4 = mdstats.run_restartable_production_materialization(
+        *inputs[:7], plan4, tmp_path / "fit-core-four", execution_policy=policy
+    )
+    record8 = mdstats.run_restartable_production_materialization(
+        *inputs[:7], plan8, tmp_path / "fit-core-eight", execution_policy=policy
+    )
+    domain4 = plan4.domains[0]
+    domain8 = next(
+        domain for domain in plan8.domains if domain.content_digest == domain4.content_digest
+    )
+    bundles4 = {bundle.domain.content_digest: bundle for bundle in record4.load_data7_bundles()}
+    bundles8 = {bundle.domain.content_digest: bundle for bundle in record8.load_data7_bundles()}
+    bundle4 = bundles4[domain4.content_digest]
+    bundle8 = _diverge_fitted_training_weights(bundles8[domain8.content_digest])
+    assert module._data7_fitted_core_matches_plan(bundle8, plan8, domain8)
+    assert module._data7_fitted_result_digest(bundle4) != module._data7_fitted_result_digest(bundle8)
+    assert module._data7_fit_core_digest(plan4, domain4) == module._data7_fit_core_digest(plan8, domain8)
+
+    cache = tmp_path / "fit-core-divergence-cache"
+    artifact4 = module._write_reusable_data7_artifact(
+        cache, module._data7_recipe_digest(plan4, domain4), domain4, bundle4, plan4
+    )
+    artifact8 = module._write_reusable_data7_artifact(
+        cache, module._data7_recipe_digest(plan8, domain8), domain8, bundle8, plan8
+    )
+    fit_core_digest = module._data7_fit_core_digest(plan4, domain4)
+    module._write_data7_fit_core_index(
+        cache, fit_core_digest, artifact4, bundle4, domain4, plan4
+    )
+    with pytest.raises(
+        mdstats.TrainingDataSerializationError, match="Divergent DATA7 fitted-core results"
+    ):
+        module._write_data7_fit_core_index(
+            cache, fit_core_digest, artifact8, bundle8, domain8, plan8
+        )
+
+
+def test_fitted_core_index_rejects_concurrent_divergent_publishers(tmp_path: Path) -> None:
+    import mdstats.training_data.production_materialization as module
+
+    inputs = _fixture(tmp_path)
+    plan4 = replace(
+        inputs[7],
+        selection_budget_policy=mdstats.SelectionBudgetPolicy(target_sizes=(4,)),
+    )
+    plan8 = replace(
+        inputs[7],
+        selection_budget_policy=mdstats.SelectionBudgetPolicy(target_sizes=(8,)),
+    )
+    policy = mdstats.ProductionMaterializationExecutionPolicy(materialize_data8=False)
+    record4 = mdstats.run_restartable_production_materialization(
+        *inputs[:7], plan4, tmp_path / "fit-core-race-four", execution_policy=policy
+    )
+    record8 = mdstats.run_restartable_production_materialization(
+        *inputs[:7], plan8, tmp_path / "fit-core-race-eight", execution_policy=policy
+    )
+    domain4 = plan4.domains[0]
+    domain8 = next(
+        domain for domain in plan8.domains if domain.content_digest == domain4.content_digest
+    )
+    bundle4 = {
+        bundle.domain.content_digest: bundle for bundle in record4.load_data7_bundles()
+    }[domain4.content_digest]
+    bundle8 = _diverge_fitted_training_weights({
+        bundle.domain.content_digest: bundle for bundle in record8.load_data7_bundles()
+    }[domain8.content_digest])
+    cache = tmp_path / "fit-core-race-cache"
+    artifact4 = module._write_reusable_data7_artifact(
+        cache, module._data7_recipe_digest(plan4, domain4), domain4, bundle4, plan4
+    )
+    artifact8 = module._write_reusable_data7_artifact(
+        cache, module._data7_recipe_digest(plan8, domain8), domain8, bundle8, plan8
+    )
+    fit_core_digest = module._data7_fit_core_digest(plan4, domain4)
+    barrier = threading.Barrier(2)
+
+    def publish(args):
+        artifact, bundle, domain, plan = args
+        barrier.wait()
+        return module._write_data7_fit_core_index(
+            cache, fit_core_digest, artifact, bundle, domain, plan
+        )
+
+    outcomes: list[object] = []
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = (
+            executor.submit(publish, (artifact4, bundle4, domain4, plan4)),
+            executor.submit(publish, (artifact8, bundle8, domain8, plan8)),
+        )
+        for future in futures:
+            try:
+                outcomes.append(future.result())
+            except mdstats.TrainingDataSerializationError as exc:
+                outcomes.append(exc)
+    errors = [item for item in outcomes if isinstance(item, mdstats.TrainingDataSerializationError)]
+    successes = [item for item in outcomes if not isinstance(item, Exception)]
+    assert len(errors) == 1
+    assert len(successes) == 1
+    assert "divergent" in str(errors[0]).lower()
+
+
+def test_stale_fitted_core_cache_is_invalidated_and_fresh_fit_succeeds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import mdstats.training_data.data7_bundle as data7_module
+    import mdstats.training_data.production_materialization as module
+
+    inputs = _fixture(tmp_path)
+    monkeypatch.setattr(module, "DATA7_FIT_CORE_REUSE_MIN_DOMAIN_FRAMES", 0)
+    plan4 = replace(
+        inputs[7], selection_budget_policy=mdstats.SelectionBudgetPolicy(target_sizes=(4,))
+    )
+    plan8 = replace(
+        inputs[7], selection_budget_policy=mdstats.SelectionBudgetPolicy(target_sizes=(8,))
+    )
+    cache = tmp_path / "stale-fit-core-cache"
+    policy = mdstats.ProductionMaterializationExecutionPolicy(materialize_data8=False)
+    mdstats.run_restartable_production_materialization(
+        *inputs[:7],
+        plan4,
+        tmp_path / "stale-fit-core-seed",
+        shared_data7_cache_directory=cache,
+        execution_policy=policy,
+    )
+
+    original_fit = data7_module.fit_feature_metric
+    fit_calls = 0
+
+    def counted_fit(*args, **kwargs):
+        nonlocal fit_calls
+        fit_calls += 1
+        return original_fit(*args, **kwargs)
+
+    def stale_validator(*_args, **_kwargs):
+        raise mdstats.TrainingDataInputError("simulated exact fitted-core input mismatch")
+
+    monkeypatch.setattr(data7_module, "fit_feature_metric", counted_fit)
+    monkeypatch.setattr(module, "validate_data7_fitted_component_reuse", stale_validator)
+    restored = mdstats.run_restartable_production_materialization(
+        *inputs[:7],
+        plan8,
+        tmp_path / "stale-fit-core-rebuilt",
+        shared_data7_cache_directory=cache,
+        execution_policy=policy,
+    )
+    assert len(restored.checkpoint.data7_artifacts) == len(plan8.domains)
+    assert fit_calls == len(plan8.domains)
+
+
+def test_fitted_core_reuse_has_separate_ram_admission_class(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import mdstats.training_data.production_materialization as module
+
+    inputs = _fixture(tmp_path)
+    monkeypatch.setattr(module, "DATA7_FIT_CORE_REUSE_MIN_DOMAIN_FRAMES", 0)
+    plan4 = replace(
+        inputs[7], selection_budget_policy=mdstats.SelectionBudgetPolicy(target_sizes=(4,))
+    )
+    plan8 = replace(
+        inputs[7], selection_budget_policy=mdstats.SelectionBudgetPolicy(target_sizes=(8,))
+    )
+    cache = tmp_path / "reuse-ram-cache"
+    policy = mdstats.ProductionMaterializationExecutionPolicy(materialize_data8=False)
+    mdstats.run_restartable_production_materialization(
+        *inputs[:7],
+        plan4,
+        tmp_path / "reuse-ram-seed",
+        shared_data7_cache_directory=cache,
+        execution_policy=policy,
+        execution_resources=_resources(1),
+    )
+
+    reuse_estimates: list[int] = []
+    full_estimates: list[int] = []
+    for domain in plan8.domains:
+        fit_core_digest = module._data7_fit_core_digest(plan8, domain)
+        loaded = module._load_reusable_data7_fit_core(
+            cache, fit_core_digest, domain, plan8
+        )
+        assert loaded is not None
+        carrier, _bundle = loaded
+        reuse_estimates.append(
+            module._estimate_data7_reuse_peak_bytes(domain, plan8, carrier)
+        )
+        full_estimates.append(
+            module._estimate_data7_domain_peak_bytes(
+                domain, plan8, inputs[5], inputs[2]
+            )
+        )
+    ram_budget = max(reuse_estimates) + 1024
+    assert max(reuse_estimates) < min(full_estimates)
+    assert ram_budget < min(full_estimates)
+
+    restored = mdstats.run_restartable_production_materialization(
+        *inputs[:7],
+        plan8,
+        tmp_path / "reuse-ram-restored",
+        shared_data7_cache_directory=cache,
+        execution_policy=policy,
+        execution_resources=_resources(1, ram_budget=ram_budget),
+    )
+    assert len(restored.checkpoint.data7_artifacts) == len(plan8.domains)
+
+
+@pytest.mark.parametrize(
+    ("case", "selected", "use_canonical_cv", "derived_cv"),
+    (
+        ("screening-folds-zero", False, False, False),
+        ("selected-canonical-cv", True, True, False),
+        ("selected-derived-cv", True, False, True),
+    ),
+)
+def test_prepare_materialization_real_bridge_reaches_first_data7_invocation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    case: str,
+    selected: bool,
+    use_canonical_cv: bool,
+    derived_cv: bool,
+) -> None:
+    """Exercise the real coverage -> target-prefix -> plan orchestration seam."""
+
+    import sys
+    from types import ModuleType
+    from mdstats.training_data import _campaign_cli_core as core
+
+    inputs = _fixture(tmp_path / case)
+    sources, frames, frame_data, data4, data5, data6, sweep, base_plan = inputs[:8]
+    canonical_folds = len(data5.cross_validation_plans[0].folds)
+    if use_canonical_cv or derived_cv:
+        folds = canonical_folds
+        fold_seed = data5.partition_policy.cross_validation_seed + (1 if derived_cv else 0)
+    else:
+        folds = 0
+        fold_seed = data5.partition_policy.cross_validation_seed
+    variant = core._VariantSpec(
+        mode="multihead_replay",
+        selection_size=4,
+        seed=1,
+        cross_validation_folds=folds,
+        fold_partition_seed=fold_seed,
+    )
+    expected_cv_plans = core._variant_cross_validation_plans(
+        data5, frames, data4, variant
+    )
+    expected_domains = mdstats.build_feature_fit_domains(
+        data5, cross_validation_plans=expected_cv_plans
+    )
+
+    # Screening deliberately receives a coverage authority that also contains
+    # canonical CV domains.  Those synthetic IDs must remain unused because the
+    # folds=0 variant requests only its final-development training domain.
+    coverage_domains = (
+        mdstats.build_feature_fit_domains(data5)
+        if not selected and folds == 0
+        else expected_domains
+    )
+    coverage_items = []
+    prefix_by_authority: dict[str, tuple[str, ...]] = {}
+    for domain in coverage_domains:
+        authority_id = (
+            f"{domain.label_domain_id}::{domain.kind.value}:"
+            f"{('final' if domain.fold_index is None else 'fold' + str(domain.fold_index))}:"
+            f"{domain.content_digest}"
+        )
+        coverage_items.append(
+            SimpleNamespace(
+                label_domain_id=authority_id,
+                source_label_domain_id=domain.label_domain_id,
+                training_domain_kind=domain.kind.value,
+                training_domain_fold_index=domain.fold_index,
+                training_domain_digest=domain.content_digest,
+                frame_uids=domain.frame_uids,
+            )
+        )
+        prefix_by_authority[authority_id] = tuple(domain.frame_uids[:4])
+    coverage_reference = SimpleNamespace(domains=tuple(coverage_items))
+    study_digest = digest({"prepare-bridge-study": case})
+    study = SimpleNamespace(
+        qualified_sizes=(4,),
+        selected_target_size=(4 if selected else None),
+        outcome=(mdstats.OUTCOME_SELECTED if selected else mdstats.OUTCOME_AWAITING_EPOCH_3),
+        content_digest=study_digest,
+        candidate_authority_digest=study_digest,
+    )
+    prefix_calls: list[tuple[str, int]] = []
+
+    def materialize_prefix(_study, *, repair2, label_domain_id: str, target_size: int):
+        del repair2
+        prefix_calls.append((label_domain_id, int(target_size)))
+        return prefix_by_authority[label_domain_id][: int(target_size)]
+
+    class Store:
+        def __init__(self) -> None:
+            self.records: dict[str, object] = {"data6": data6}
+
+        def get_record_optional(self, key, _cls):
+            return self.records.get(key)
+
+        def put_record(self, key, value):
+            self.records[key] = value
+
+        def record_keys(self, prefix=""):
+            return tuple(sorted(key for key in self.records if key.startswith(prefix)))
+
+        def delete_record(self, key):
+            self.records.pop(key, None)
+
+    workspace = tmp_path / f"workspace-{case}"
+    paths = core.CampaignPaths(
+        config=tmp_path / f"{case}.toml",
+        config_dir=tmp_path,
+        workspace=workspace,
+        state_db=workspace / "state.sqlite3",
+        manifest=workspace / "manifest.json",
+        internal=workspace / ".mdstats",
+        data=workspace / "data",
+        runs=workspace / "runs",
+        models=workspace / "models",
+        results=workspace / "results",
+    )
+    for path in (paths.internal, paths.data, paths.runs, paths.models, paths.results):
+        path.mkdir(parents=True, exist_ok=True)
+    training_root = tmp_path / f"training-{case}"
+    training_root.mkdir()
+    model_path = Path(base_plan.foundation_checkpoint.reference)
+    cfg = {
+        "paths": {
+            "training_root": str(training_root),
+            "foundation_model": str(model_path),
+        },
+        "training": {
+            "policy_generation": "train2",
+            "max_num_epochs": 30,
+            "eval_interval": 1,
+            "learning_rate": 1.0e-4,
+            "device": "cpu",
+            "online_target_monitor_configurations": 1,
+            "online_replay_monitor_configurations": 1,
+            "training_diagnostic_monitor_configurations": 1,
+        },
+        "profile": {
+            "all_atomic_numbers": [3, 8, 11, 13, 14, 19],
+            "mobile_atomic_numbers": [3, 11, 19],
+        },
+        "execution": {"minimum_free_disk_gib": 0.0},
+    }
+    store = Store()
+    monkeypatch.setattr(core, "_load_prepared", lambda _store: (sources, frames, data4, data5))
+    monkeypatch.setattr(core, "_data6_bundle_matches_live_inputs", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(core, "_ensure_foundation_target_audit", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(core, "_ensure_target_coverage_reference", lambda *_args, **_kwargs: coverage_reference)
+    monkeypatch.setattr(core, "_ensure_target_coverage_feasibility", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(core, "_ensure_target_coverage_sparse_index", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(core, "_ensure_target_multi_view_selection_v2", lambda *_args, **_kwargs: (object(), object()))
+    repair2 = object()
+    monkeypatch.setattr(core, "_ensure_target_multi_view_repair_v2", lambda *_args, **_kwargs: repair2)
+    monkeypatch.setattr(core, "_ensure_target_multi_view_qualification_v2", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(core, "_ensure_target_size_study", lambda *_args, **_kwargs: study)
+    monkeypatch.setattr(
+        core,
+        "_qualify_replay",
+        lambda *_args, **_kwargs: (base_plan.replay_plan, object(), (), None),
+    )
+    monkeypatch.setattr(core, "_persist_single_source_replay_authority", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        core,
+        "_resolve_true_label_replay_inputs",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            monitor_artifact=replace(
+                base_plan.replay_plan.monitor_artifact,
+                label_mode=mdstats.ReplayLabelMode.TRUE_DFT,
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        core, "_resolved_foundation_potential_identity", lambda *_args, **_kwargs: base_plan.foundation_checkpoint
+    )
+    monkeypatch.setattr(core, "_stored_selected_head_training_foundation", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(core, "_extract_foundation_e0", lambda *_args, **_kwargs: {z: 0.0 for z in (3, 8, 11, 13, 14, 19)})
+    monkeypatch.setattr(core, "_pre_materialization_corpus_blockers", lambda *_args, **_kwargs: ())
+    monkeypatch.setattr(core, "_target_size_materialization_variants", lambda *_args, **_kwargs: (variant,))
+    monkeypatch.setattr(core, "_resolve_mace_loader_workers", lambda *_args, **_kwargs: (1, _resources(1), 256 * 1024**2))
+    monkeypatch.setattr(core, "_performance_resources", lambda *_args, **_kwargs: _resources(1))
+    monkeypatch.setattr(
+        core,
+        "_optimizer_policy",
+        lambda _cfg, *, seed, num_workers: mdstats.MaceOptimizerPolicy(
+            learning_rate=1.0e-4,
+            batch_size=2,
+            valid_batch_size=2,
+            num_workers=num_workers,
+            max_num_epochs=30,
+            eval_interval=1,
+            default_dtype="float64",
+            device="cpu",
+            seed=seed,
+        ),
+    )
+    monkeypatch.setattr(core, "_reuse_materialization_if_current", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(mdstats, "materialize_candidate_prefix", materialize_prefix)
+    monkeypatch.setattr(mdstats, "probe_mace_source_tree", lambda *_args, **_kwargs: base_plan.compatibility_probe)
+    fake_mace = ModuleType("mace")
+    fake_mace.__file__ = str(tmp_path / "mace" / "__init__.py")
+    monkeypatch.setitem(sys.modules, "mace", fake_mace)
+
+    class ReachedData7(Exception):
+        pass
+
+    captured: dict[str, object] = {}
+
+    def first_materialization_call(*args, **kwargs):
+        captured["plan"] = args[7]
+        captured["kwargs"] = kwargs
+        raise ReachedData7
+
+    monkeypatch.setattr(mdstats, "run_restartable_production_materialization", first_materialization_call)
+    with pytest.raises(ReachedData7):
+        core._prepare_materialization(
+            cfg,
+            paths,
+            store,
+            max_new_domains=None,
+            frame_data_by_run=frame_data,
+            sweep_artifacts=sweep,
+        )
+
+    plan = captured["plan"]
+    assert isinstance(plan, mdstats.ProductionMaterializationPlan)
+    assert plan.domains == expected_domains
+    prescribed = dict(plan.prescribed_training_domain_prefixes)
+    assert set(prescribed) == {domain.content_digest for domain in expected_domains}
+    for domain in expected_domains:
+        assert prescribed[domain.content_digest] == tuple(domain.frame_uids[:4])
+    assert len(prefix_calls) == len(expected_domains)
+    assert all(label in prefix_by_authority for label, _size in prefix_calls)
+    assert all(label not in {domain.label_domain_id for domain in expected_domains} for label, _size in prefix_calls)
+    if selected:
+        assert dict(plan.prescribed_target_size_evaluation_frames) == {}
+    else:
+        final_domain = next(
+            domain
+            for domain in expected_domains
+            if domain.kind is mdstats.FeatureFitDomainKind.FINAL_DEVELOPMENT
+        )
+        assert dict(plan.prescribed_target_size_evaluation_frames) == {
+            final_domain.label_domain_id: tuple(final_domain.frame_uids[4:])
+        }
+        # The maximum-qualified prefix is the same requested n=4 prefix, so the
+        # candidate comparison cohort is fixed without a second helper call.
+        assert len(prefix_calls) == 1
+        assert len(coverage_domains) > len(expected_domains)
+
+
+def test_residual_fitted_core_exact_prediction_mismatch_refits_only_affected_domains(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import mdstats.training_data.data7_bundle as data7_module
+    import mdstats.training_data.production_materialization as module
+
+    inputs = _fixture(tmp_path)
+    sweep = inputs[6]
+    base_plan = inputs[7]
+    monkeypatch.setattr(module, "DATA7_FIT_CORE_REUSE_MIN_DOMAIN_FRAMES", 0)
+    prediction_cache = sweep.prediction_cache()
+    predictions = {
+        item.frame_uid: prediction_cache.energy_for_frame(item.frame_uid)
+        for item in sweep.prediction_manifest.records
+    }
+    references = tuple((z, 0.0) for z in (3, 8, 11, 13, 14, 19))
+
+    def residual_plan(size: int):
+        return replace(
+            base_plan,
+            atomic_reference_policy=mdstats.AtomicReferenceFitPolicy(
+                fit_mode=mdstats.AtomicReferenceFitMode.FOUNDATION_RESIDUAL
+            ),
+            foundation_reference_energies=references,
+            require_foundation_residual_e0=True,
+            selection_budget_policy=mdstats.SelectionBudgetPolicy(
+                target_sizes=(size,)
+            ),
+        )
+
+    plan4 = residual_plan(4)
+    plan8 = residual_plan(8)
+    cache = tmp_path / "residual-fit-core-cache"
+    policy = mdstats.ProductionMaterializationExecutionPolicy(materialize_data8=False)
+    mdstats.run_restartable_production_materialization(
+        *inputs[:7],
+        plan4,
+        tmp_path / "residual-four",
+        foundation_prediction_energy_by_frame=predictions,
+        shared_data7_cache_directory=cache,
+        execution_policy=policy,
+    )
+
+    final_domain = next(
+        domain
+        for domain in plan8.domains
+        if domain.kind is mdstats.FeatureFitDomainKind.FINAL_DEVELOPMENT
+    )
+    changed_uid = final_domain.frame_uids[0]
+    changed_predictions = dict(predictions)
+    changed_predictions[changed_uid] += 0.25
+    expected_refits = sum(changed_uid in domain.frame_uids for domain in plan8.domains)
+
+    original_fit = data7_module.fit_feature_metric
+    fit_calls = 0
+
+    def counted_fit(*args, **kwargs):
+        nonlocal fit_calls
+        fit_calls += 1
+        return original_fit(*args, **kwargs)
+
+    monkeypatch.setattr(data7_module, "fit_feature_metric", counted_fit)
+    reused = mdstats.run_restartable_production_materialization(
+        *inputs[:7],
+        plan8,
+        tmp_path / "residual-eight-reuse",
+        foundation_prediction_energy_by_frame=changed_predictions,
+        shared_data7_cache_directory=cache,
+        execution_policy=policy,
+    )
+    assert fit_calls == expected_refits
+
+    fit_calls_after_reuse = fit_calls
+    reference = mdstats.run_restartable_production_materialization(
+        *inputs[:7],
+        plan8,
+        tmp_path / "residual-eight-reference",
+        foundation_prediction_energy_by_frame=changed_predictions,
+        execution_policy=policy,
+    )
+    assert fit_calls == fit_calls_after_reuse + len(plan8.domains)
+    assert reused.data7_bundle_digests == reference.data7_bundle_digests

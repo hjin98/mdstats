@@ -540,3 +540,213 @@ def test_dependency_graph_keeps_replay_out_of_target_size_decision_authority() -
         "to": "FROZEN_TRAINING_PROTOCOL",
         "type": "identity_requires",
     } in graph["edges"]
+
+
+def test_target_size_materialization_resolver_confines_authority_namespaces_and_is_lazy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mdstats.training_data._common import digest
+
+    final_training_digest = digest({"domain": "final"})
+    cv_training_digest = digest({"domain": "cv0"})
+    final_frames = tuple(digest({"frame": index}) for index in range(12))
+    cv_frames = tuple(digest({"cv-frame": index}) for index in range(10))
+    final_authority_id = (
+        "source-label::final_development:" + final_training_digest
+    )
+    cv_authority_id = (
+        "source-label::cross_validation_training:fold0:" + cv_training_digest
+    )
+    coverage_reference = SimpleNamespace(
+        domains=(
+            SimpleNamespace(
+                label_domain_id=final_authority_id,
+                source_label_domain_id="source-label",
+                training_domain_kind="final_development",
+                training_domain_fold_index=None,
+                training_domain_digest=final_training_digest,
+                frame_uids=final_frames,
+            ),
+            SimpleNamespace(
+                label_domain_id=cv_authority_id,
+                source_label_domain_id="source-label",
+                training_domain_kind="cross_validation_training",
+                training_domain_fold_index=0,
+                training_domain_digest=cv_training_digest,
+                frame_uids=cv_frames,
+            ),
+        )
+    )
+    study = SimpleNamespace(
+        qualified_sizes=(4, 8),
+        outcome=mdstats.OUTCOME_AWAITING_EPOCH_10,
+    )
+    final_domain = SimpleNamespace(
+        content_digest=final_training_digest,
+        label_domain_id="source-label",
+        kind=mdstats.FeatureFitDomainKind.FINAL_DEVELOPMENT,
+        fold_index=None,
+    )
+    cv_domain = SimpleNamespace(
+        content_digest=cv_training_digest,
+        label_domain_id="source-label",
+        kind=mdstats.FeatureFitDomainKind.CROSS_VALIDATION_TRAINING,
+        fold_index=0,
+    )
+    calls: list[tuple[str, int]] = []
+
+    def materialize_prefix(_study, *, repair2, label_domain_id: str, target_size: int):
+        del repair2
+        calls.append((label_domain_id, int(target_size)))
+        if label_domain_id == final_authority_id:
+            return final_frames[: int(target_size)]
+        if label_domain_id == cv_authority_id:
+            return cv_frames[: int(target_size)]
+        raise AssertionError(f"source DATA2A label escaped resolver: {label_domain_id}")
+
+    monkeypatch.setattr(mdstats, "materialize_candidate_prefix", materialize_prefix)
+    resolver = campaign_core._TargetSizeMaterializationResolver(
+        coverage_reference, study, object()
+    )
+
+    observed = resolver.prefixes_for_domains((final_domain,), 4)
+    assert observed == {final_training_digest: final_frames[:4]}
+    assert calls == [(final_authority_id, 4)]
+    # Repeating the same actual training-domain request is a resolver cache hit.
+    assert resolver.prefixes_for_domains((final_domain,), 4) == observed
+    assert calls == [(final_authority_id, 4)]
+
+    evaluation = resolver.candidate_evaluation_frames_for_domains((final_domain,))
+    assert evaluation == {"source-label": final_frames[8:]}
+    assert calls == [(final_authority_id, 4), (final_authority_id, 8)]
+
+    # An unused synthetic CV coverage authority is not eagerly materialized.
+    assert resolver.cached_prefix_count == 2
+    assert resolver.prefixes_for_domains((cv_domain,), 4) == {
+        cv_training_digest: cv_frames[:4]
+    }
+    assert calls[-1] == (cv_authority_id, 4)
+    assert all(label != "source-label" for label, _ in calls)
+
+
+def test_target_size_materialization_resolver_keeps_fixed_evaluation_cohort_across_fidelity_stages(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mdstats.training_data._common import digest
+
+    training_digest = digest({"domain": "fixed-fidelity-final"})
+    frames = tuple(digest({"fixed-fidelity-frame": index}) for index in range(12))
+    authority_id = "source::final-authority"
+    coverage_reference = SimpleNamespace(
+        domains=(
+            SimpleNamespace(
+                label_domain_id=authority_id,
+                source_label_domain_id="source",
+                training_domain_kind="final_development",
+                training_domain_fold_index=None,
+                training_domain_digest=training_digest,
+                frame_uids=frames,
+            ),
+        )
+    )
+    domain = SimpleNamespace(
+        content_digest=training_digest,
+        label_domain_id="source",
+        kind=mdstats.FeatureFitDomainKind.FINAL_DEVELOPMENT,
+        fold_index=None,
+    )
+    calls: list[tuple[str, int]] = []
+
+    def materialize_prefix(_study, *, repair2, label_domain_id: str, target_size: int):
+        del repair2
+        calls.append((label_domain_id, int(target_size)))
+        return frames[: int(target_size)]
+
+    monkeypatch.setattr(mdstats, "materialize_candidate_prefix", materialize_prefix)
+    observed = []
+    for outcome in (
+        mdstats.OUTCOME_AWAITING_EPOCH_3,
+        mdstats.OUTCOME_AWAITING_EPOCH_10,
+        mdstats.OUTCOME_AWAITING_EPOCH_30,
+    ):
+        resolver = campaign_core._TargetSizeMaterializationResolver(
+            coverage_reference,
+            SimpleNamespace(qualified_sizes=(4, 8), outcome=outcome),
+            object(),
+        )
+        observed.append(resolver.candidate_evaluation_frames_for_domains((domain,)))
+
+    assert observed == [{"source": frames[8:]}] * 3
+    assert calls == [(authority_id, 8)] * 3
+
+
+def test_target_size_materialization_resolver_selected_production_has_no_candidate_evaluation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mdstats.training_data._common import digest
+
+    training_digest = digest({"domain": "selected-final"})
+    frames = tuple(digest({"selected-frame": index}) for index in range(8))
+    coverage_reference = SimpleNamespace(
+        domains=(
+            SimpleNamespace(
+                label_domain_id="source::final-authority",
+                source_label_domain_id="source",
+                training_domain_kind="final_development",
+                training_domain_fold_index=None,
+                training_domain_digest=training_digest,
+                frame_uids=frames,
+            ),
+        )
+    )
+    study = SimpleNamespace(qualified_sizes=(4,), outcome=mdstats.OUTCOME_SELECTED)
+    domain = SimpleNamespace(
+        content_digest=training_digest,
+        label_domain_id="source",
+        kind=mdstats.FeatureFitDomainKind.FINAL_DEVELOPMENT,
+        fold_index=None,
+    )
+    calls = 0
+
+    def materialize_prefix(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        return frames[:4]
+
+    monkeypatch.setattr(mdstats, "materialize_candidate_prefix", materialize_prefix)
+    resolver = campaign_core._TargetSizeMaterializationResolver(
+        coverage_reference, study, object()
+    )
+    assert resolver.candidate_evaluation_frames_for_domains((domain,)) == {}
+    assert calls == 0
+
+
+def test_target_size_materialization_resolver_rejects_ambiguous_training_domain_identity() -> None:
+    from mdstats.training_data._common import digest
+
+    training_digest = digest({"domain": "ambiguous"})
+    coverage = SimpleNamespace(
+        source_label_domain_id="source",
+        training_domain_kind="final_development",
+        training_domain_fold_index=None,
+        training_domain_digest=training_digest,
+        frame_uids=(digest({"frame": 0}),),
+    )
+    reference = SimpleNamespace(
+        domains=(
+            SimpleNamespace(label_domain_id="authority-a", **vars(coverage)),
+            SimpleNamespace(label_domain_id="authority-b", **vars(coverage)),
+        )
+    )
+    with pytest.raises(campaign_core.CampaignCliError, match="ambiguous training-domain identity"):
+        campaign_core._TargetSizeMaterializationResolver(
+            reference,
+            SimpleNamespace(qualified_sizes=(4,), outcome=mdstats.OUTCOME_AWAITING_EPOCH_3),
+            object(),
+        )
+
+
+def test_materialization_plan_builder_does_not_expose_feature_domain_authority_injection() -> None:
+    signature = inspect.signature(production_materialization.build_production_materialization_plan)
+    assert "feature_fit_domains" not in signature.parameters
+    assert hasattr(mdstats, "materialize_candidate_prefix")

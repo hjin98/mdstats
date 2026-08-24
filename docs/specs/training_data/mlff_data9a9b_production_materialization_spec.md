@@ -116,7 +116,21 @@ The production implementation SHALL avoid hidden repeated whole-corpus work:
   shared recipe cache; current cache writes use atomic content-addressed
   generations while legacy flat generations remain read-compatible;
 - verify and return each promoted DATA7 bundle in one load path rather than
-  hashing/parsing it twice.
+  hashing/parsing it twice;
+- derive canonical final/CV feature-fit domains inside the materialization-plan
+  builder and reject duplicate topology keys, missing final-development domains,
+  or CV topology that differs from the authenticated CV plans;
+- resolve target-size prefixes lazily by canonical training-domain digest while
+  confining synthetic coverage-authority IDs to REPAIR2 lookup; derive each
+  pre-selection evaluation cohort from the authenticated final coverage domain
+  minus the maximum-qualified prefix;
+- authenticate shared fitted-core results separately from their execution recipe,
+  publish fitted-core indices create-once/validate-winner, and reject divergent
+  full-DATA7 or fitted-core results for one recipe;
+- treat stale reconstructible fitted-core indices as cache misses and fall back to
+  a fresh fit after exact lineage/foundation-input validation;
+- admit authenticated fitted-core reuse with a conservative reuse-path memory
+  estimate rather than the full feature-fit peak.
 
 These rules make post-DATA6 orchestration linear in frame count for fixed fold
 count, feature dimension, and largest selection ladder, apart from bounded
@@ -229,7 +243,11 @@ The release gate must cover:
 14. no duplicate parse/hash pass when verified DATA7 immediately feeds DATA8.
 15. target-size candidate-prefix planning scales with unique domain/size pairs rather than development-frame count times optimizer variants;
 16. target-size size changes reuse an authenticated selection-invariant DATA7 fitted core while producing the exact same size-specific DATA7 bundle digest as a clean refit;
-17. current DATA7 shared-cache recipe identity excludes DATA8-only evaluation membership and target-study outcome state, with legacy v1 recipe reads preserved.
+17. current DATA7 shared-cache recipe identity excludes DATA8-only evaluation membership and target-study outcome state, with legacy v1 recipe reads preserved;
+18. the real campaign preparation bridge reaches DATA7 for folds=0 screening, canonical selected CV, and per-seed selected CV without synthetic-ID namespace leakage;
+19. malformed plan topology (missing final domain, duplicate topology key, or wrong CV fold membership) fails before DATA7 execution;
+20. same-recipe divergent full DATA7 and fitted-core results fail closed, including concurrent fitted-core publishers;
+21. stale fitted-core carriers fall back to fresh fitting and reuse-path RAM admission is evaluated independently from full-fit RAM.
 
 # 11. Scope of the current implementation
 

@@ -32,6 +32,7 @@ from .data7_bundle import (
     MLFF_DATA7_PARSER_VERSION,
     Data7PreparationBundle,
     build_data7_preparation_bundle,
+    validate_data7_fitted_component_reuse,
 )
 from .data8_bundle import Data8PreparationBundle, build_data8_preparation_bundle
 from .data7_archive import (
@@ -78,7 +79,8 @@ SHARED_DATA7_ARTIFACT_LEGACY_SCHEMA = "mdstats.shared-data7-artifact.v1"
 SHARED_DATA7_RECIPE_SCHEMA = "mdstats.shared-data7-recipe.v2"
 SHARED_DATA7_RECIPE_V1_SCHEMA = "mdstats.shared-data7-recipe.v1"
 SHARED_DATA7_FIT_CORE_SCHEMA = "mdstats.shared-data7-fit-core.v1"
-SHARED_DATA7_FIT_CORE_INDEX_SCHEMA = "mdstats.shared-data7-fit-core-index.v1"
+SHARED_DATA7_FIT_CORE_INDEX_SCHEMA = "mdstats.shared-data7-fit-core-index.v2"
+SHARED_DATA7_FIT_CORE_INDEX_V1_SCHEMA = "mdstats.shared-data7-fit-core-index.v1"
 DATA7_FIT_CORE_REUSE_MIN_DOMAIN_FRAMES = 128
 
 
@@ -105,6 +107,7 @@ class _Data7ArtifactReceipt:
 @dataclass(frozen=True, slots=True)
 class _ReusableData7FitCore:
     fit_core_digest: str
+    fitted_result_digest: str
     carrier_recipe_digest: str
     domain_digest: str
     bundle_digest: str
@@ -138,6 +141,31 @@ def _atomic_json(path: Path, payload: Mapping[str, Any]) -> str:
     except Exception:
         temporary.unlink(missing_ok=True)
         raise
+
+
+def _publish_json_create_once(path: Path, payload: Mapping[str, Any]) -> bool:
+    """Publish a complete JSON file only if no concurrent publisher won first."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(
+        f".{path.name}.tmp-{os.getpid()}-{uuid.uuid4().hex}"
+    )
+    encoded = (
+        json.dumps(payload, sort_keys=False, separators=(",", ":"), ensure_ascii=True)
+        + "\n"
+    ).encode("ascii")
+    try:
+        with temporary.open("xb") as handle:
+            handle.write(encoded)
+            handle.flush()
+            os.fsync(handle.fileno())
+        try:
+            os.link(temporary, path)
+            return True
+        except FileExistsError:
+            return False
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def _read_data7_artifact(
@@ -347,6 +375,26 @@ class ProductionMaterializationPlan:
         domains = tuple(sorted(self.domains, key=lambda item: (item.label_domain_id, item.kind.value, -1 if item.fold_index is None else item.fold_index)))
         if not domains or len({item.content_digest for item in domains}) != len(domains):
             raise TrainingDataInputError("Production materialization requires unique canonical DATA7 domains.")
+        topology_keys = tuple(
+            (item.label_domain_id, item.kind.value, item.fold_index) for item in domains
+        )
+        if len(set(topology_keys)) != len(topology_keys):
+            raise TrainingDataInputError(
+                "Production materialization requires unique DATA7 domain topology keys."
+            )
+        source_labels = {item.label_domain_id for item in domains}
+        final_counts = {
+            label: sum(
+                item.label_domain_id == label
+                and item.kind is FeatureFitDomainKind.FINAL_DEVELOPMENT
+                for item in domains
+            )
+            for label in source_labels
+        }
+        if any(count != 1 for count in final_counts.values()):
+            raise TrainingDataInputError(
+                "Production materialization requires exactly one final-development domain per source label."
+            )
         if any(item.data5_bundle_digest != self.data5_bundle_digest for item in domains):
             raise TrainingDataInputError("Production DATA7 domain/DATA5 lineage mismatch.")
         object.__setattr__(self, "domains", domains)
@@ -378,11 +426,20 @@ class ProductionMaterializationPlan:
             for item in plans
             for fold in item.folds
         }
-        domain_fold_pairs = {
+        domain_fold_sequence = tuple(
             (item.label_domain_id, item.fold_index)
             for item in domains
-            if item.fold_index is not None
-        }
+            if item.kind is FeatureFitDomainKind.CROSS_VALIDATION_TRAINING
+        )
+        domain_fold_pairs = set(domain_fold_sequence)
+        if len(domain_fold_sequence) != len(domain_fold_pairs):
+            raise TrainingDataInputError(
+                "Production DATA7 domains contain duplicate cross-validation topology keys."
+            )
+        if self.plan_schema == PRODUCTION_MATERIALIZATION_PLAN_SCHEMA and domain_fold_pairs and not plans:
+            raise TrainingDataInputError(
+                "Current production DATA7 plans with cross-validation domains require configured cross-validation plans."
+            )
         if plans and domain_fold_pairs != plan_fold_pairs:
             raise TrainingDataInputError(
                 "Production DATA7 domains do not match the configured cross-validation plans."
@@ -1014,7 +1071,6 @@ def build_production_materialization_plan(
     compatibility_probe: MaceSourceProbe,
     replay_plan: ReplayPreparationPlan,
     cross_validation_plans: Sequence[CrossValidationPlan] | None = None,
-    feature_fit_domains: Sequence[FeatureFitDomain] | None = None,
     online_monitor_policy: OnlineMonitorPolicy | None = None,
     true_replay_monitor_artifact: ReplayFileArtifact | None = None,
     adaptive_stop_policy: AdaptiveTrainingStopPolicy | None = None,
@@ -1080,13 +1136,9 @@ def build_production_materialization_plan(
         if cross_validation_plans is None
         else tuple(cross_validation_plans)
     )
-    active_feature_domains = (
-        build_feature_fit_domains(
-            data5_bundle,
-            cross_validation_plans=active_cv_plans,
-        )
-        if feature_fit_domains is None
-        else tuple(feature_fit_domains)
+    active_feature_domains = build_feature_fit_domains(
+        data5_bundle,
+        cross_validation_plans=active_cv_plans,
     )
     return ProductionMaterializationPlan(
         dataset_id=frame_catalog.dataset_id,
@@ -1257,6 +1309,41 @@ def _data7_fit_core_digest(
     })
 
 
+def _data7_fitted_result_digest(bundle: Data7PreparationBundle) -> str:
+    """Authenticate the selection-invariant fitted products carried by DATA7."""
+
+    return digest({
+        "schema": "mdstats.shared-data7-fitted-result.v1",
+        "fitted_metric_digest": bundle.fitted_metric.content_digest,
+        "atomic_reference_fit_digest": bundle.atomic_reference_fit.content_digest,
+        "training_weights_digest": bundle.training_weights.content_digest,
+        "checkpoint_metric_policy_digest": bundle.checkpoint_metric_policy.policy_digest,
+    })
+
+
+def _register_reusable_data7_fit_core(
+    registry: MutableMapping[str, _ReusableData7FitCore],
+    carrier: _ReusableData7FitCore,
+) -> None:
+    previous = registry.get(carrier.fit_core_digest)
+    if previous is not None:
+        if (
+            previous.fitted_result_digest != carrier.fitted_result_digest
+            or previous.domain_digest != carrier.domain_digest
+        ):
+            raise TrainingDataSerializationError(
+                "Conflicting DATA7 fitted-core results share one execution recipe: "
+                f"fit_core={carrier.fit_core_digest}; "
+                f"existing_result={previous.fitted_result_digest}; "
+                f"candidate_result={carrier.fitted_result_digest}; "
+                f"existing_carrier={previous.carrier_recipe_digest}; "
+                f"candidate_carrier={carrier.carrier_recipe_digest}."
+            )
+        return
+    registry[carrier.fit_core_digest] = carrier
+
+
+
 def _data7_fitted_core_matches_plan(
     bundle: Data7PreparationBundle,
     plan: ProductionMaterializationPlan,
@@ -1265,6 +1352,14 @@ def _data7_fitted_core_matches_plan(
     requires_foundation = (
         plan.atomic_reference_policy.fit_mode
         is AtomicReferenceFitMode.FOUNDATION_RESIDUAL
+    )
+    plan_reference_energies = dict(plan.foundation_reference_energies)
+    element_order = tuple(int(z) for z in bundle.atomic_reference_fit.element_order)
+    expected_domain_references = (
+        tuple((z, plan_reference_energies[z]) for z in element_order)
+        if requires_foundation
+        and all(z in plan_reference_energies for z in element_order)
+        else (() if not requires_foundation else None)
     )
     return (
         bundle.dataset_id == plan.dataset_id
@@ -1290,7 +1385,7 @@ def _data7_fitted_core_matches_plan(
             )
         )
         and bundle.atomic_reference_fit.foundation_reference_energies_ev
-        == plan.foundation_reference_energies
+        == expected_domain_references
         and bundle.training_weights.objective_policy.policy_digest
         == plan.objective_policy.policy_digest
         and bundle.training_weights.configuration_policy.policy_digest
@@ -1487,10 +1582,18 @@ def _load_reusable_data7_fit_core(
     fit_core_digest: str,
     domain: FeatureFitDomain,
     plan: ProductionMaterializationPlan,
+    *,
+    reuse_validator: Callable[[Data7PreparationBundle], bool] | None = None,
+    invalidate_invalid: bool = False,
 ) -> tuple[_ReusableData7FitCore, Data7PreparationBundle] | None:
     path = _fit_core_index_path(cache_root, fit_core_digest)
     if not path.is_file():
         return None
+
+    def invalid() -> None:
+        if invalidate_invalid:
+            path.unlink(missing_ok=True)
+
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
         if (
@@ -1498,7 +1601,12 @@ def _load_reusable_data7_fit_core(
             or payload.get("fit_core_digest") != fit_core_digest
             or payload.get("domain_digest") != domain.content_digest
         ):
+            invalid()
             return None
+        fitted_result_digest = validate_digest(
+            str(payload.get("fitted_result_digest", "")),
+            name="fitted_result_digest",
+        )
         carrier_recipe_digest = validate_digest(
             str(payload.get("carrier_recipe_digest", "")),
             name="carrier_recipe_digest",
@@ -1507,18 +1615,24 @@ def _load_reusable_data7_fit_core(
             cache_root, carrier_recipe_digest
         )
         if loaded is None:
+            invalid()
             return None
         artifact, bundle = loaded
+        observed_result_digest = _data7_fitted_result_digest(bundle)
         if (
             artifact.domain_digest != domain.content_digest
             or artifact.bundle_digest != payload.get("bundle_digest")
             or artifact.file_sha256 != payload.get("file_sha256")
+            or observed_result_digest != fitted_result_digest
             or not _data7_fitted_core_matches_plan(bundle, plan, domain)
+            or (reuse_validator is not None and not reuse_validator(bundle))
         ):
+            invalid()
             return None
         return (
             _ReusableData7FitCore(
                 fit_core_digest=fit_core_digest,
+                fitted_result_digest=fitted_result_digest,
                 carrier_recipe_digest=carrier_recipe_digest,
                 domain_digest=domain.content_digest,
                 bundle_digest=artifact.bundle_digest,
@@ -1528,6 +1642,7 @@ def _load_reusable_data7_fit_core(
             bundle,
         )
     except Exception:
+        invalid()
         return None
 
 
@@ -1535,21 +1650,46 @@ def _write_data7_fit_core_index(
     cache_root: Path,
     fit_core_digest: str,
     artifact: _ReusableData7Artifact,
+    bundle: Data7PreparationBundle,
     domain: FeatureFitDomain,
     plan: ProductionMaterializationPlan,
 ) -> _ReusableData7FitCore:
+    if (
+        artifact.domain_digest != domain.content_digest
+        or artifact.bundle_digest != bundle.content_digest
+        or not _data7_fitted_core_matches_plan(bundle, plan, domain)
+    ):
+        raise TrainingDataSerializationError(
+            "DATA7 fitted-core publication carrier does not match its recipe."
+        )
+    local_result_digest = _data7_fitted_result_digest(bundle)
     existing = _load_reusable_data7_fit_core(
-        cache_root, fit_core_digest, domain, plan
+        cache_root,
+        fit_core_digest,
+        domain,
+        plan,
+        invalidate_invalid=True,
     )
     if existing is not None:
-        return existing[0]
+        winner = existing[0]
+        if winner.fitted_result_digest != local_result_digest:
+            raise TrainingDataSerializationError(
+                "Divergent DATA7 fitted-core results share one execution recipe: "
+                f"fit_core={fit_core_digest}; "
+                f"winner_result={winner.fitted_result_digest}; "
+                f"local_result={local_result_digest}; "
+                f"winner_carrier={winner.carrier_recipe_digest}; "
+                f"local_carrier={artifact.recipe_digest}."
+            )
+        return winner
+
     path = _fit_core_index_path(cache_root, fit_core_digest)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    _atomic_json(
+    _publish_json_create_once(
         path,
         {
             "schema": SHARED_DATA7_FIT_CORE_INDEX_SCHEMA,
             "fit_core_digest": fit_core_digest,
+            "fitted_result_digest": local_result_digest,
             "carrier_recipe_digest": artifact.recipe_digest,
             "domain_digest": domain.content_digest,
             "bundle_digest": artifact.bundle_digest,
@@ -1563,7 +1703,17 @@ def _write_data7_fit_core_index(
         raise TrainingDataSerializationError(
             "DATA7 fitted-core index publication did not yield a valid carrier."
         )
-    return winner[0]
+    winner_carrier = winner[0]
+    if winner_carrier.fitted_result_digest != local_result_digest:
+        raise TrainingDataSerializationError(
+            "Concurrent DATA7 fitted-core publishers produced divergent results: "
+            f"fit_core={fit_core_digest}; "
+            f"winner_result={winner_carrier.fitted_result_digest}; "
+            f"local_result={local_result_digest}; "
+            f"winner_carrier={winner_carrier.carrier_recipe_digest}; "
+            f"local_carrier={artifact.recipe_digest}."
+        )
+    return winner_carrier
 
 
 def _write_reusable_data7_artifact(
@@ -1575,12 +1725,6 @@ def _write_reusable_data7_artifact(
 ) -> _ReusableData7Artifact:
     cache_root.mkdir(parents=True, exist_ok=True)
     cache_directory = cache_root / recipe_digest[:2] / recipe_digest
-    existing = _load_reusable_data7_artifact(
-        cache_root, recipe_digest, domain, plan
-    )
-    if existing is not None:
-        return existing[0]
-
     cache_directory.parent.mkdir(parents=True, exist_ok=True)
     staging = cache_directory.parent / (
         f".{recipe_digest}.tmp-{os.getpid()}-{uuid.uuid4().hex}"
@@ -1589,23 +1733,44 @@ def _write_reusable_data7_artifact(
     staging.mkdir(parents=True, exist_ok=False)
     try:
         artifact_path = staging / "artifact.data7.zip"
-        file_sha256 = write_data7_archive(bundle, artifact_path)
+        local_file_sha256 = write_data7_archive(bundle, artifact_path)
+        local_bundle_digest = bundle.content_digest
+
+        existing = _load_reusable_data7_artifact(
+            cache_root, recipe_digest, domain, plan
+        )
+        if existing is not None:
+            winner = existing[0]
+            if (
+                winner.bundle_digest != local_bundle_digest
+                or winner.file_sha256 != local_file_sha256
+            ):
+                raise TrainingDataSerializationError(
+                    "Divergent DATA7 results share one scientific recipe: "
+                    f"recipe={recipe_digest}; "
+                    f"winner_bundle={winner.bundle_digest}; "
+                    f"local_bundle={local_bundle_digest}; "
+                    f"winner_file_sha256={winner.file_sha256}; "
+                    f"local_file_sha256={local_file_sha256}."
+                )
+            return winner
+
         _atomic_json(
             staging / "cache.json",
             {
                 "schema": SHARED_DATA7_ARTIFACT_SCHEMA,
                 "recipe_digest": recipe_digest,
                 "domain_digest": domain.content_digest,
-                "bundle_digest": bundle.content_digest,
+                "bundle_digest": local_bundle_digest,
                 "artifact_name": artifact_path.name,
-                "file_sha256": file_sha256,
+                "file_sha256": local_file_sha256,
             },
         )
         try:
             os.rename(staging, cache_directory)
         except OSError:
-            # Another equivalent producer may have won the content-addressed
-            # race. Never trust the winner implicitly; authenticate it below.
+            # Another producer won. Authenticate the complete generation below
+            # and require its deterministic scientific/archive result to match.
             shutil.rmtree(staging, ignore_errors=True)
         winner = _load_reusable_data7_artifact(
             cache_root, recipe_digest, domain, plan
@@ -1614,7 +1779,20 @@ def _write_reusable_data7_artifact(
             raise TrainingDataSerializationError(
                 "Concurrent DATA7 cache publication did not yield a valid generation."
             )
-        return winner[0]
+        winner_artifact = winner[0]
+        if (
+            winner_artifact.bundle_digest != local_bundle_digest
+            or winner_artifact.file_sha256 != local_file_sha256
+        ):
+            raise TrainingDataSerializationError(
+                "Concurrent DATA7 publishers produced divergent results: "
+                f"recipe={recipe_digest}; "
+                f"winner_bundle={winner_artifact.bundle_digest}; "
+                f"local_bundle={local_bundle_digest}; "
+                f"winner_file_sha256={winner_artifact.file_sha256}; "
+                f"local_file_sha256={local_file_sha256}."
+            )
+        return winner_artifact
     finally:
         shutil.rmtree(staging, ignore_errors=True)
 
@@ -1727,6 +1905,36 @@ def _estimate_data7_domain_peak_bytes(
     return max(64 * 1024**2, estimate)
 
 
+def _estimate_data7_reuse_peak_bytes(
+    domain: FeatureFitDomain,
+    plan: ProductionMaterializationPlan,
+    carrier: _ReusableData7FitCore,
+) -> int:
+    """Conservative peak-RSS estimate for selection-only fitted-core reuse."""
+
+    try:
+        archive_bytes = max(0, Path(carrier.path).stat().st_size)
+    except OSError:
+        archive_bytes = 0
+    rows = max(1, len(domain.frame_uids))
+    selected_rows = max(
+        1,
+        int(plan.selection_size or 0),
+        max((len(uids) for _, uids in plan.prescribed_training_domain_prefixes), default=0),
+    )
+    # Archive inflation/load, selection bookkeeping, coverage realization, and
+    # deterministic archive output.  Keep a substantial floor while remaining
+    # materially below the feature-fit workspace for normal domains.
+    estimate = (
+        archive_bytes * 8
+        + rows * 4096
+        + selected_rows * 2048
+        + 32 * 1024**2
+    )
+    return max(64 * 1024**2, int(estimate * 1.20))
+
+
+
 def _load_valid_data7_record(
     record: ProductionData7ArtifactRecord,
     root: Path,
@@ -1795,13 +2003,17 @@ def register_reusable_data7_artifacts(
         )
         if shared_data7_fit_cores is not None:
             fit_core_digest = _data7_fit_core_digest(plan, domain)
-            shared_data7_fit_cores[fit_core_digest] = _ReusableData7FitCore(
-                fit_core_digest=fit_core_digest,
-                carrier_recipe_digest=recipe_digest,
-                domain_digest=domain.content_digest,
-                bundle_digest=bundle.content_digest,
-                file_sha256=item.file_sha256,
-                path=str(source),
+            _register_reusable_data7_fit_core(
+                shared_data7_fit_cores,
+                _ReusableData7FitCore(
+                    fit_core_digest=fit_core_digest,
+                    fitted_result_digest=_data7_fitted_result_digest(bundle),
+                    carrier_recipe_digest=recipe_digest,
+                    domain_digest=domain.content_digest,
+                    bundle_digest=bundle.content_digest,
+                    file_sha256=item.file_sha256,
+                    path=str(source),
+                ),
             )
         previous = shared_data7_artifacts.get(recipe_digest)
         if previous is not None:
@@ -1970,6 +2182,64 @@ def run_restartable_production_materialization(
         else execution_resources
     )
 
+    def exact_fit_core_bundle_matches(
+        bundle: Data7PreparationBundle, domain: FeatureFitDomain
+    ) -> bool:
+        try:
+            validate_data7_fitted_component_reuse(
+                bundle,
+                source_catalog,
+                frame_catalog,
+                data4_bundle,
+                data5_bundle,
+                data6_bundle,
+                domain,
+                feature_metric_policy=plan.feature_metric_policy,
+                atomic_reference_policy=plan.atomic_reference_policy,
+                objective_policy=plan.objective_policy,
+                configuration_weight_policy=plan.configuration_weight_policy,
+                checkpoint_metric_policy=plan.checkpoint_metric_policy,
+                foundation_prediction_energy_by_frame=(
+                    prediction_energy
+                    if plan.atomic_reference_policy.fit_mode
+                    is AtomicReferenceFitMode.FOUNDATION_RESIDUAL
+                    else None
+                ),
+                foundation_reference_energies=(
+                    dict(plan.foundation_reference_energies) or None
+                    if plan.atomic_reference_policy.fit_mode
+                    is AtomicReferenceFitMode.FOUNDATION_RESIDUAL
+                    else None
+                ),
+                foundation_checkpoint_digest=None,
+                foundation_identity_digest=(
+                    plan.foundation_checkpoint.canonical_content_digest
+                    if plan.atomic_reference_policy.fit_mode
+                    is AtomicReferenceFitMode.FOUNDATION_RESIDUAL
+                    else None
+                ),
+            )
+        except TrainingDataInputError:
+            return False
+        return True
+
+    def in_memory_fit_core_matches(
+        carrier: _ReusableData7FitCore, domain: FeatureFitDomain
+    ) -> bool:
+        try:
+            bundle = _read_data7_artifact(
+                Path(carrier.path), expected_sha256=carrier.file_sha256
+            )
+        except Exception:
+            return False
+        return (
+            carrier.domain_digest == domain.content_digest
+            and carrier.bundle_digest == bundle.content_digest
+            and carrier.fitted_result_digest == _data7_fitted_result_digest(bundle)
+            and _data7_fitted_core_matches_plan(bundle, plan, domain)
+            and exact_fit_core_bundle_matches(bundle, domain)
+        )
+
     def emit_progress(message: str) -> None:
         if progress_callback is None:
             return
@@ -1995,7 +2265,13 @@ def run_restartable_production_materialization(
                     Path(fit_core_carrier.path),
                     expected_sha256=fit_core_carrier.file_sha256,
                 )
-                if _data7_fitted_core_matches_plan(candidate, plan, domain):
+                if (
+                    fit_core_carrier.bundle_digest == candidate.content_digest
+                    and fit_core_carrier.fitted_result_digest
+                    == _data7_fitted_result_digest(candidate)
+                    and _data7_fitted_core_matches_plan(candidate, plan, domain)
+                    and exact_fit_core_bundle_matches(candidate, domain)
+                ):
                     reuse_bundle = candidate
                     domain_progress(
                         "status=reusing; phase=domain-fitted-core; "
@@ -2003,6 +2279,14 @@ def run_restartable_production_materialization(
                     )
             except Exception:
                 reuse_bundle = None
+        if fit_core_carrier is not None and reuse_bundle is None:
+            if shared_fit_memory is not None:
+                current = shared_fit_memory.get(fit_core_digest)
+                if current == fit_core_carrier:
+                    shared_fit_memory.pop(fit_core_digest, None)
+            domain_progress(
+                "status=invalidated; phase=domain-fitted-core; action=fresh-fit"
+            )
         domain_progress(
             "status=building; phase="
             + ("selection-realization" if reuse_bundle is not None else "domain-fit")
@@ -2051,7 +2335,7 @@ def run_restartable_production_materialization(
             )
             fit_core_artifact = (
                 _write_data7_fit_core_index(
-                    shared_cache_root, fit_core_digest, artifact, domain, plan
+                    shared_cache_root, fit_core_digest, artifact, bundle, domain, plan
                 )
                 if fit_core_enabled
                 else None
@@ -2070,6 +2354,7 @@ def run_restartable_production_materialization(
             fit_core_artifact = (
                 _ReusableData7FitCore(
                     fit_core_digest=fit_core_digest,
+                    fitted_result_digest=_data7_fitted_result_digest(bundle),
                     carrier_recipe_digest=recipe_digest,
                     domain_digest=domain.content_digest,
                     bundle_digest=bundle.content_digest,
@@ -2080,7 +2365,7 @@ def run_restartable_production_materialization(
                 else None
             )
         if shared_fit_memory is not None and fit_core_artifact is not None:
-            shared_fit_memory[fit_core_digest] = fit_core_artifact
+            _register_reusable_data7_fit_core(shared_fit_memory, fit_core_artifact)
         if reuse_bundle is not None:
             source = "built-from-fit-core"
         wall = max(0.0, time.monotonic() - started)
@@ -2151,11 +2436,14 @@ def run_restartable_production_materialization(
                             shared_cache_root,
                             fit_core_digest,
                             artifact,
+                            restored_bundle,
                             domain,
                             plan,
                         )
                         if shared_fit_memory is not None:
-                            shared_fit_memory[fit_core_digest] = fit_core_artifact
+                            _register_reusable_data7_fit_core(
+                                shared_fit_memory, fit_core_artifact
+                            )
                     del restored_bundle
                     if shared_memory is not None:
                         shared_memory[recipe_digest] = artifact
@@ -2176,10 +2464,25 @@ def run_restartable_production_materialization(
                 if shared_fit_memory is None or not fit_core_enabled
                 else shared_fit_memory.get(fit_core_digest)
             )
+            if fit_core_carrier is not None and not in_memory_fit_core_matches(
+                fit_core_carrier, domain
+            ):
+                if shared_fit_memory is not None:
+                    current = shared_fit_memory.get(fit_core_digest)
+                    if current == fit_core_carrier:
+                        shared_fit_memory.pop(fit_core_digest, None)
+                fit_core_carrier = None
             if fit_core_carrier is None and shared_cache_root is not None:
                 restored_core = (
                     _load_reusable_data7_fit_core(
-                        shared_cache_root, fit_core_digest, domain, plan
+                        shared_cache_root,
+                        fit_core_digest,
+                        domain,
+                        plan,
+                        reuse_validator=lambda bundle, domain=domain: exact_fit_core_bundle_matches(
+                            bundle, domain
+                        ),
+                        invalidate_invalid=True,
                     )
                     if fit_core_enabled
                     else None
@@ -2188,9 +2491,15 @@ def run_restartable_production_materialization(
                     fit_core_carrier, restored_core_bundle = restored_core
                     del restored_core_bundle
                     if shared_fit_memory is not None:
-                        shared_fit_memory[fit_core_digest] = fit_core_carrier
-            estimate = _estimate_data7_domain_peak_bytes(
-                domain, plan, data6_bundle, frame_data_by_run
+                        _register_reusable_data7_fit_core(
+                            shared_fit_memory, fit_core_carrier
+                        )
+            estimate = (
+                _estimate_data7_reuse_peak_bytes(domain, plan, fit_core_carrier)
+                if fit_core_carrier is not None
+                else _estimate_data7_domain_peak_bytes(
+                    domain, plan, data6_bundle, frame_data_by_run
+                )
             )
             builds.append((
                 canonical_index,

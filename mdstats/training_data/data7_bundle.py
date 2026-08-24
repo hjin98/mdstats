@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Mapping, MutableMapping
+from typing import Any, Callable, Mapping, MutableMapping, Sequence
 
 import numpy as np
 
@@ -162,6 +162,120 @@ class Data7PreparationBundle:
         return result
 
 
+
+def validate_data7_fitted_component_reuse(
+    carrier: Data7PreparationBundle,
+    source_catalog: Any,
+    frame_catalog: Any,
+    data4_bundle: Any,
+    data5_bundle: Any,
+    data6_bundle: Any,
+    domain: FeatureFitDomain,
+    *,
+    feature_metric_policy: FeatureMetricPolicyTemplate,
+    atomic_reference_policy: AtomicReferenceFitPolicy,
+    objective_policy: TrainingObjectivePolicy,
+    configuration_weight_policy: ConfigurationWeightPolicy,
+    checkpoint_metric_policy: CheckpointMetricPolicy,
+    foundation_prediction_energy_by_frame: Mapping[str, float] | None = None,
+    foundation_reference_energies: Mapping[int, float] | None = None,
+    foundation_checkpoint_digest: str | None = None,
+    foundation_identity_digest: str | None = None,
+) -> None:
+    """Validate the exact execution contract for DATA7 fitted-component reuse.
+
+    The reusable carrier is an execution cache only.  This validator binds the
+    carrier to the same lineage, policies, residual-foundation identity, exact
+    per-frame foundation prediction vector, and reference-E0 mapping that a
+    fresh fit would consume.  Callers may catch :class:`TrainingDataInputError`
+    and rebuild a stale reconstructible cache, while explicit API misuse keeps
+    the historical fail-closed behavior.
+    """
+
+    if (
+        carrier.dataset_id != frame_catalog.dataset_id
+        or carrier.source_catalog_digest != source_catalog.content_digest
+        or carrier.frame_catalog_digest != frame_catalog.content_digest
+        or carrier.data4_bundle_digest != data4_bundle.content_digest
+        or carrier.data5_bundle_digest != data5_bundle.content_digest
+        or carrier.data6_bundle_digest != data6_bundle.content_digest
+        or carrier.domain.content_digest != domain.content_digest
+        or carrier.fitted_metric.policy.policy_digest
+        != feature_metric_policy.policy_digest
+        or carrier.atomic_reference_fit.policy.policy_digest
+        != atomic_reference_policy.policy_digest
+        or carrier.training_weights.objective_policy.policy_digest
+        != objective_policy.policy_digest
+        or carrier.training_weights.configuration_policy.policy_digest
+        != configuration_weight_policy.policy_digest
+        or carrier.checkpoint_metric_policy.policy_digest
+        != checkpoint_metric_policy.policy_digest
+    ):
+        raise TrainingDataInputError(
+            "DATA7 fitted-component reuse carrier does not match the requested domain/lineage/policies."
+        )
+
+    carrier_e0 = carrier.atomic_reference_fit
+    if atomic_reference_policy.fit_mode is AtomicReferenceFitMode.FOUNDATION_RESIDUAL:
+        if foundation_prediction_energy_by_frame is None or foundation_reference_energies is None:
+            raise TrainingDataInputError(
+                "DATA7 fitted-component reuse requires the same foundation predictions and E0 mapping as a fresh residual fit."
+            )
+        missing_predictions = tuple(
+            uid for uid in domain.frame_uids
+            if uid not in foundation_prediction_energy_by_frame
+        )
+        missing_references = tuple(
+            int(z) for z in carrier_e0.element_order
+            if int(z) not in foundation_reference_energies
+        )
+        if missing_predictions or missing_references:
+            raise TrainingDataInputError(
+                "DATA7 fitted-component reuse is missing foundation inputs required by the fit domain."
+            )
+        expected_predictions = tuple(
+            float(foundation_prediction_energy_by_frame[uid])
+            for uid in domain.frame_uids
+        )
+        expected_references = tuple(sorted(
+            (int(z), float(foundation_reference_energies[int(z)]))
+            for z in carrier_e0.element_order
+        ))
+        if (
+            carrier_e0.foundation_prediction_energies_ev != expected_predictions
+            or carrier_e0.foundation_reference_energies_ev != expected_references
+            or (
+                foundation_identity_digest is not None
+                and carrier_e0.foundation_identity_digest
+                != validate_digest(
+                    foundation_identity_digest, name="foundation_identity_digest"
+                )
+            )
+            or (
+                foundation_identity_digest is None
+                and foundation_checkpoint_digest is not None
+                and carrier_e0.foundation_checkpoint_digest
+                != validate_digest(
+                    foundation_checkpoint_digest, name="foundation_checkpoint_digest"
+                )
+            )
+        ):
+            raise TrainingDataInputError(
+                "DATA7 fitted-component reuse carrier does not match the requested foundation-fit inputs."
+            )
+    elif any(
+        value is not None
+        for value in (
+            foundation_prediction_energy_by_frame,
+            foundation_reference_energies,
+            foundation_checkpoint_digest,
+            foundation_identity_digest,
+        )
+    ):
+        raise TrainingDataInputError(
+            "Foundation inputs cannot accompany a from-scratch DATA7 fitted-component reuse."
+        )
+
 def build_data7_preparation_bundle(
     source_catalog: Any, frame_catalog: Any, frame_data_by_run: Mapping[str, Any], data4_bundle: Any, data5_bundle: Any, data6_bundle: Any,
     domain: FeatureFitDomain, *, feature_metric_policy: FeatureMetricPolicyTemplate | None = None,
@@ -243,83 +357,24 @@ def build_data7_preparation_bundle(
         )
     else:
         carrier = reuse_fitted_components_from
-        if (
-            carrier.dataset_id != frame_catalog.dataset_id
-            or carrier.source_catalog_digest != source_catalog.content_digest
-            or carrier.frame_catalog_digest != frame_catalog.content_digest
-            or carrier.data4_bundle_digest != data4_bundle.content_digest
-            or carrier.data5_bundle_digest != data5_bundle.content_digest
-            or carrier.data6_bundle_digest != data6_bundle.content_digest
-            or carrier.domain.content_digest != domain.content_digest
-            or carrier.fitted_metric.policy.policy_digest != active_metric_policy.policy_digest
-            or carrier.atomic_reference_fit.policy.policy_digest != active_atomic_policy.policy_digest
-            or carrier.training_weights.objective_policy.policy_digest != active_objective_policy.policy_digest
-            or carrier.training_weights.configuration_policy.policy_digest != active_configuration_policy.policy_digest
-            or carrier.checkpoint_metric_policy.policy_digest != checkpoint.policy_digest
-        ):
-            raise TrainingDataInputError(
-                "DATA7 fitted-component reuse carrier does not match the requested domain/lineage/policies."
-            )
-        carrier_e0 = carrier.atomic_reference_fit
-        if active_atomic_policy.fit_mode is AtomicReferenceFitMode.FOUNDATION_RESIDUAL:
-            if foundation_prediction_energy_by_frame is None or foundation_reference_energies is None:
-                raise TrainingDataInputError(
-                    "DATA7 fitted-component reuse requires the same foundation predictions and E0 mapping as a fresh residual fit."
-                )
-            missing_predictions = tuple(
-                uid for uid in domain.frame_uids
-                if uid not in foundation_prediction_energy_by_frame
-            )
-            missing_references = tuple(
-                int(z) for z in carrier_e0.element_order
-                if int(z) not in foundation_reference_energies
-            )
-            if missing_predictions or missing_references:
-                raise TrainingDataInputError(
-                    "DATA7 fitted-component reuse is missing foundation inputs required by the fit domain."
-                )
-            expected_predictions = tuple(
-                float(foundation_prediction_energy_by_frame[uid])
-                for uid in domain.frame_uids
-            )
-            expected_references = tuple(sorted(
-                (int(z), float(foundation_reference_energies[int(z)]))
-                for z in carrier_e0.element_order
-            ))
-            if (
-                carrier_e0.foundation_prediction_energies_ev != expected_predictions
-                or carrier_e0.foundation_reference_energies_ev != expected_references
-                or (
-                    foundation_identity_digest is not None
-                    and carrier_e0.foundation_identity_digest
-                    != validate_digest(
-                        foundation_identity_digest, name="foundation_identity_digest"
-                    )
-                )
-                or (
-                    foundation_identity_digest is None
-                    and foundation_checkpoint_digest is not None
-                    and carrier_e0.foundation_checkpoint_digest
-                    != validate_digest(
-                        foundation_checkpoint_digest, name="foundation_checkpoint_digest"
-                    )
-                )
-            ):
-                raise TrainingDataInputError(
-                    "DATA7 fitted-component reuse carrier does not match the requested foundation-fit inputs."
-                )
-        elif any(
-            value is not None
-            for value in (
-                foundation_prediction_energy_by_frame,
-                foundation_reference_energies,
-                foundation_checkpoint_digest,
-                foundation_identity_digest,
-            )
-        ):
-            raise TrainingDataInputError(
-                "Foundation inputs cannot accompany a from-scratch DATA7 fitted-component reuse."
-            )
+        validate_data7_fitted_component_reuse(
+            carrier,
+            source_catalog,
+            frame_catalog,
+            data4_bundle,
+            data5_bundle,
+            data6_bundle,
+            domain,
+            feature_metric_policy=active_metric_policy,
+            atomic_reference_policy=active_atomic_policy,
+            objective_policy=active_objective_policy,
+            configuration_weight_policy=active_configuration_policy,
+            checkpoint_metric_policy=checkpoint,
+            foundation_prediction_energy_by_frame=foundation_prediction_energy_by_frame,
+            foundation_reference_energies=foundation_reference_energies,
+            foundation_checkpoint_digest=foundation_checkpoint_digest,
+            foundation_identity_digest=foundation_identity_digest,
+        )
         if progress_callback is not None:
             progress_callback(
                 "status=phase; phase=reusing-authenticated-domain-fitted-core"
